@@ -1,5 +1,10 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.sbe.SbeFace;
+import com.openmason.engine.entity.sbe.MaterialImage;
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.openmason.engine.rendering.model.IndexedDrawBatch;
 import com.stonebreak.mobs.sbe.*;
 import org.joml.Vector3f;
@@ -60,7 +65,7 @@ class SbeDrawPlanTest {
     void shippedPlayerAndHairRetainEveryIndexAndMaterialWithOver99PercentFewerDraws() {
         for (String name : List.of("Mobs/SB_Player", "PlayerCustomize/SB_MHair1", "PlayerCustomize/SB_MHair2",
                 "Player/SB_FPArm")) {
-            var asset = SbeEntityLoader.loadAttachableResource("/sbe/" + name + ".sbe");
+            var asset = GameSbeAssets.loadAttachableResource("/sbe/" + name + ".sbe");
             var geometry = asset.geometryFor(null);
             var plan = new SbeDrawPlan(geometry);
             int faces = 0, batches = 0;

@@ -17,12 +17,18 @@ import java.util.List;
  *   <li>1.4 - The UI Editor node also records whether the UI tab was popped out into its own
  *       window ({@code detached}, the list of popped-out tabs) and the editor's canvas settings ({@code settings}); both
  *       optional, absent = docked, defaults.</li>
+ *   <li>1.5 - The project's game target ({@code target}: a registered {@code GameTarget} id; #380).
+ *       Absent in a 1.5+ file = no target (a project-only project). Older files have no node and
+ *       migrate to the target claiming legacy projects ({@link TargetReference#LEGACY}).</li>
  * </ul>
  */
 public final class OMPFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.4";
+    public static final String FORMAT_VERSION = "1.5";
+
+    /** First version whose files record their game target; older files migrate. */
+    public static final String TARGET_SINCE = "1.5";
 
     /** File extension for OMP files */
     public static final String FILE_EXTENSION = ".omp";
@@ -75,7 +81,8 @@ public final class OMPFormat {
             UIState ui,
             List<PartData> parts,
             SceneReference scene,
-            UiEditorReference uiEditor
+            UiEditorReference uiEditor,
+            TargetReference target
     ) {
         public Document {
             if (version == null || version.isBlank()) {
@@ -84,6 +91,18 @@ public final class OMPFormat {
             if (projectName == null) {
                 projectName = "Untitled Project";
             }
+            if (target == null) {
+                target = TargetReference.NONE;
+            }
+        }
+
+        /** Backward-compatible constructor for pre-1.5 call sites (no game target). */
+        public Document(String version, String projectName, String createdAt, String lastSavedAt,
+                         CameraState camera, ViewportState viewport, TransformData transform,
+                         ModelReference model, UIState ui, List<PartData> parts, SceneReference scene,
+                         UiEditorReference uiEditor) {
+            this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, parts, scene,
+                    uiEditor, TargetReference.NONE);
         }
 
         /** Backward-compatible constructor for pre-1.3 call sites (no UI editor node). */
@@ -109,6 +128,56 @@ public final class OMPFormat {
                          ModelReference model, UIState ui, List<PartData> parts) {
             this(version, projectName, createdAt, lastSavedAt, camera, viewport, transform, model, ui, parts, null, null);
         }
+    }
+
+    /**
+     * The project's game target (v1.5).
+     *
+     * @param id     the target's id, or null for none
+     * @param legacy the file predates targets (below 1.5): the reader resolves it to the target that
+     *               claims legacy projects ({@code GameTarget.legacyDefault}); {@code id} is null then
+     */
+    public record TargetReference(String id, boolean legacy) {
+        /** No game target: a project-only project. */
+        public static final TargetReference NONE = new TargetReference(null, false);
+        /** A pre-1.5 file, to be migrated. */
+        public static final TargetReference LEGACY = new TargetReference(null, true);
+
+        public TargetReference {
+            if (id != null && id.isBlank()) {
+                id = null;
+            }
+            if (legacy && id != null) {
+                throw new IllegalArgumentException("a legacy reference names no target");
+            }
+        }
+
+        public static TargetReference of(String id) {
+            return id == null || id.isBlank() ? NONE : new TargetReference(id, false);
+        }
+
+        /** {@code id}, or for a legacy file {@code legacyTargetId} (which may itself be null). */
+        public String resolve(String legacyTargetId) {
+            return legacy ? legacyTargetId : id;
+        }
+    }
+
+    /** True when {@code version} is older than {@code than} (dotted numbers; unparseable = not older). */
+    public static boolean isOlder(String version, String than) {
+        String[] a = version.trim().split("\\.");
+        String[] b = than.trim().split("\\.");
+        try {
+            for (int i = 0; i < Math.max(a.length, b.length); i++) {
+                int x = i < a.length ? Integer.parseInt(a[i]) : 0;
+                int y = i < b.length ? Integer.parseInt(b[i]) : 0;
+                if (x != y) {
+                    return x < y;
+                }
+            }
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        return false;
     }
 
     /**

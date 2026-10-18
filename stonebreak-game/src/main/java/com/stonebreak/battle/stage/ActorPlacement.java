@@ -1,5 +1,6 @@
 package com.stonebreak.battle.stage;
 
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
 import com.stonebreak.battle.api.ActorPose;
 import com.stonebreak.battle.api.BattleStageLayout;
 import com.stonebreak.battle.api.CombatantId;

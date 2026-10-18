@@ -1,9 +1,9 @@
 package com.openmason.main.systems.rendering.model.item;
 
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.player.items.voxelization.ColorPalette;
+import com.openmason.engine.rendering.sprite.ColorPalette;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
-import com.stonebreak.rendering.player.items.voxelization.VoxelMesh;
+import com.openmason.engine.rendering.sprite.VoxelMesh;
 
 import java.util.ArrayList;
 import java.util.HashMap;

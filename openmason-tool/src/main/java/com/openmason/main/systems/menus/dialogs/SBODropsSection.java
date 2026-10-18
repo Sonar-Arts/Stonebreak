@@ -545,7 +545,7 @@ public class SBODropsSection implements AutoCloseable {
         });
     }
 
-    /** "stonebreak:clay_chunk" → "Clay Chunk". */
+    /** "ns:clay_chunk" → "Clay Chunk". */
     private static String displayName(String objectId) {
         int colon = objectId.indexOf(':');
         String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;

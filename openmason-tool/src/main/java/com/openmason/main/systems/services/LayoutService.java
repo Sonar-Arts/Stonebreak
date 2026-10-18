@@ -16,7 +16,8 @@ import java.nio.file.Paths;
  */
 public class LayoutService {
 
-    private com.openmason.main.systems.layout.MainLayoutBuilder layoutBuilder;
+    /** Rebuilds the Scene workspace's default dock layout on its next frame. */
+    private Runnable resetDockLayout;
 
     private static final Logger logger = LoggerFactory.getLogger(LayoutService.class);
 
@@ -41,8 +42,8 @@ public class LayoutService {
         // Rebuild the dock layout on the next frame rather than deleting imgui.ini.
         // Deleting it did not actually work: ImGui rewrites the file from its in-memory
         // state on exit, so the layout came back — and it forced a restart for no reason.
-        if (layoutBuilder != null) {
-            layoutBuilder.requestReset();
+        if (resetDockLayout != null) {
+            resetDockLayout.run();
             statusService.updateStatus("Layout reset to default");
         } else {
             logger.warn("No layout builder wired; cannot reset the dock layout");
@@ -51,8 +52,8 @@ public class LayoutService {
     }
 
     /** Supplied by the shell so a reset can rebuild the dockspace in place. */
-    public void setLayoutBuilder(com.openmason.main.systems.layout.MainLayoutBuilder builder) {
-        this.layoutBuilder = builder;
+    public void setResetDockLayout(Runnable resetDockLayout) {
+        this.resetDockLayout = resetDockLayout;
     }
 
     /**

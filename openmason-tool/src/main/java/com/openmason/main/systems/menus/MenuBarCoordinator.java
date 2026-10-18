@@ -1,54 +1,127 @@
 package com.openmason.main.systems.menus;
 
-import com.openmason.main.systems.LogoManager;
+import com.openmason.api.Contributions;
+import com.openmason.api.menu.MenuEntry;
+import com.openmason.api.menu.MenuItem;
+import com.openmason.api.menu.MenuSection;
+import com.openmason.api.menu.TopMenu;
+import com.openmason.main.systems.keybinds.KeybindAction;
+import com.openmason.main.systems.keybinds.KeybindRegistry;
 import com.openmason.main.systems.menus.icons.MenuBarIconManager;
 import com.openmason.main.systems.stateHandling.UIVisibilityState;
 import imgui.ImGui;
 import imgui.ImVec4;
 import imgui.flag.ImGuiCol;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Comparator;
+import java.util.List;
 
 /**
- * Menu bar coordinator - composes all menu handlers.
+ * The main menu bar, drawn from the menu contributions (#379): every registered {@link TopMenu},
+ * by order, with its {@link MenuEntry entries} by order (ties keep registration order). Built-in
+ * File/Edit/View menus are {@link MenuSection}s over their handlers; plugins add menus or items.
+ * Right-aligned: a toolbar-restore button and the Home button.
  */
 public class MenuBarCoordinator extends BaseMenuBarRenderer {
 
-    private final UIVisibilityState uiState;
-
-    private final FileMenuHandler fileMenu;
-    private final EditMenuHandler editMenu;
-    private final ViewMenuHandler viewMenu;
-    private final ToolsMenuHandler toolsMenu;
-    private final AboutMenuHandler aboutMenu;
+    private static final Logger logger = LoggerFactory.getLogger(MenuBarCoordinator.class);
 
     private static final float HOME_ICON_DISPLAY_SIZE = 16.0f;
 
-    public MenuBarCoordinator(UIVisibilityState uiState, LogoManager logoManager,
-                              FileMenuHandler fileMenu, EditMenuHandler editMenu,
-                              ViewMenuHandler viewMenu, ToolsMenuHandler toolsMenu,
-                              AboutMenuHandler aboutMenu) {
+    private final UIVisibilityState uiState;
+    private final Contributions<TopMenu> menus;
+    private final Contributions<MenuEntry> entries;
+    private Runnable homeAction;
+
+    public MenuBarCoordinator(UIVisibilityState uiState, Contributions<TopMenu> menus,
+                              Contributions<MenuEntry> entries) {
         this.uiState = uiState;
-        this.fileMenu = fileMenu;
-        this.editMenu = editMenu;
-        this.viewMenu = viewMenu;
-        this.toolsMenu = toolsMenu;
-        this.aboutMenu = aboutMenu;
+        this.menus = menus;
+        this.entries = entries;
     }
 
-    /**
-     * Render menu bar content.
-     * Delegates to specialized menu handlers and provides toolbar restore functionality.
-     */
+    /** What the Home button does. */
+    public void setHomeAction(Runnable homeAction) {
+        this.homeAction = homeAction;
+    }
+
     @Override
     protected void renderMenuBarContent() {
-        // Render all menus
-        fileMenu.render();
-        editMenu.render();
-        viewMenu.render();
-        toolsMenu.render();
-        aboutMenu.render();
+        for (TopMenu menu : sorted(menus.all(), Comparator.comparingInt(TopMenu::order))) {
+            if (menu.onClick() != null) {
+                if (ImGui.menuItem(menu.label())) {
+                    run(menu.id(), menu.onClick());
+                }
+                continue;
+            }
+            List<MenuEntry> inMenu = entriesOf(menu.id());
+            if (inMenu.isEmpty()) {
+                continue;
+            }
+            if (ImGui.beginMenu(menu.label())) {
+                for (MenuEntry entry : inMenu) {
+                    renderEntry(entry);
+                }
+                ImGui.endMenu();
+            }
+        }
 
         // Spacer + right-aligned items
         renderRightAlignedItems();
+    }
+
+    /** {@code menuId}'s entries in display order. */
+    public List<MenuEntry> entriesOf(String menuId) {
+        return sorted(entries.all().stream().filter(e -> e.menuId().equals(menuId)).toList(),
+                Comparator.comparingInt(MenuEntry::order));
+    }
+
+    private void renderEntry(MenuEntry entry) {
+        try {
+            switch (entry) {
+                case MenuSection section -> section.render().run();
+                case MenuItem item -> renderItem(item);
+            }
+        } catch (RuntimeException e) {
+            logger.error("Menu entry {} failed to render", entry.id(), e);
+        }
+    }
+
+    private void renderItem(MenuItem item) {
+        if (item.separatorBefore()) {
+            ImGui.separator();
+        }
+        String shortcut = item.commandId() != null
+                ? KeybindRegistry.getInstance().getShortcutDisplayName(item.commandId()) : "";
+        boolean enabled = item.enabled() == null || item.enabled().getAsBoolean();
+        boolean checked = item.checked() != null && item.checked().getAsBoolean();
+        if (ImGui.menuItem(item.label(), shortcut, checked, enabled)) {
+            if (item.action() != null) {
+                run(item.id(), item.action());
+            } else {
+                KeybindAction command = KeybindRegistry.getInstance().getAction(item.commandId());
+                if (command != null) {
+                    run(item.id(), command::execute);
+                } else {
+                    logger.warn("Menu item {} runs unknown command {}", item.id(), item.commandId());
+                }
+            }
+        }
+    }
+
+    private static void run(String id, Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException e) {
+            logger.error("Menu command {} failed", id, e);
+        }
+    }
+
+    /** Stable sort: equal orders keep registration order. */
+    private static <T> List<T> sorted(List<T> list, Comparator<T> by) {
+        return list.stream().sorted(by).toList();
     }
 
     /**
@@ -108,8 +181,8 @@ public class MenuBarCoordinator extends BaseMenuBarRenderer {
 
         popTransparentButtonStyle();
 
-        if (clicked) {
-            fileMenu.requestHomeScreen();
+        if (clicked && homeAction != null) {
+            homeAction.run();
         }
 
         if (ImGui.isItemHovered()) {

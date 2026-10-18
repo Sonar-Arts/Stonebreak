@@ -6,10 +6,10 @@ import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
 import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.stonebreak.mobs.sbe.SbeAttachmentPoint;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeModelGeometry;
-import com.stonebreak.mobs.sbe.SbePart;
+import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbePart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 

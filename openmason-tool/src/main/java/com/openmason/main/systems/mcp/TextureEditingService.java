@@ -1,6 +1,6 @@
 package com.openmason.main.systems.mcp;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorImGui;
 import com.openmason.main.systems.menus.textureCreator.canvas.PixelCanvas;
@@ -50,15 +50,15 @@ public final class TextureEditingService {
 
     private static final long DEFAULT_TIMEOUT_MS = 10_000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
     /** Document id named by the caller (MCP thread), carried to the main thread by {@link #onMain}. */
     private static final ThreadLocal<String> REQUESTED_DOCUMENT = new ThreadLocal<>();
     /** The document id an operation runs against, set on the main thread for its duration. */
     private static final ThreadLocal<String> TARGET_DOCUMENT = new ThreadLocal<>();
 
-    public TextureEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public TextureEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     /**
@@ -188,10 +188,10 @@ public final class TextureEditingService {
      */
     public EditorStatus openEditor(Integer faceId, Integer width, Integer height) {
         return onMain((() -> {
-            MainImGuiInterface.TextureEditorPresenter presenter = requirePresenter();
+            com.openmason.main.systems.services.TextureEditorPresenter presenter = requirePresenter();
             TextureCreatorController c = requireController();
             if (faceId != null) {
-                var panel = mainInterface.getPropertyPanel();
+                var panel = editorServices.getPropertyPanel();
                 if (panel == null || panel.getViewportConnector() == null) {
                     throw new IllegalStateException("Viewport is not connected — load a model first");
                 }
@@ -289,20 +289,20 @@ public final class TextureEditingService {
     }
 
     private void flushPreview() {
-        var p = mainInterface.getTextureEditorPresenter();
+        var p = editorServices.getTextureEditorPresenter();
         if (p != null) p.flush();
     }
 
-    private MainImGuiInterface.TextureEditorPresenter requirePresenter() {
-        var p = mainInterface.getTextureEditorPresenter();
+    private com.openmason.main.systems.services.TextureEditorPresenter requirePresenter() {
+        var p = editorServices.getTextureEditorPresenter();
         if (p == null) throw new IllegalStateException("Texture editor window is not wired yet");
         return p;
     }
 
     private EditorStatus editorStatusUnsafe() {
-        TextureCreatorImGui ui = mainInterface.getTextureCreator();
+        TextureCreatorImGui ui = editorServices.getTextureCreator();
         TextureCreatorController c = ui != null ? ui.getController() : null;
-        var presenter = mainInterface.getTextureEditorPresenter();
+        var presenter = editorServices.getTextureEditorPresenter();
         boolean visible = presenter != null && presenter.isVisible();
         if (c == null) {
             return new EditorStatus(visible, List.of(), null, false, -1, null, null, null, null, null);
@@ -591,7 +591,7 @@ public final class TextureEditingService {
     /** Select the interactive toolbar tool and/or the current paint colour for the user. */
     public ToolStatus setTool(String toolName, int[] rgbaOrNull) {
         return onMain((() -> {
-            TextureCreatorImGui ui = mainInterface.getTextureCreator();
+            TextureCreatorImGui ui = editorServices.getTextureCreator();
             if (ui == null) throw new IllegalStateException("Texture editor not initialized");
             if (toolName != null && !ui.selectToolByName(toolName)) {
                 throw new IllegalArgumentException("Unknown tool '" + toolName + "' (valid: "
@@ -607,7 +607,7 @@ public final class TextureEditingService {
 
     public ToolStatus getToolStatus() {
         return onMain((() -> {
-            TextureCreatorImGui ui = mainInterface.getTextureCreator();
+            TextureCreatorImGui ui = editorServices.getTextureCreator();
             if (ui == null) throw new IllegalStateException("Texture editor not initialized");
             return toolStatusUnsafe(ui);
         }));
@@ -685,7 +685,7 @@ public final class TextureEditingService {
      */
     public CanvasInfo resizeFaceTexture(int width, int height) {
         return onMain((() -> {
-            TextureCreatorImGui ui = mainInterface.getTextureCreator();
+            TextureCreatorImGui ui = editorServices.getTextureCreator();
             if (ui == null) throw new IllegalStateException("Texture editor not initialized");
             var dialog = ui.getFaceTextureResizeDialog();
             if (dialog == null) {
@@ -791,7 +791,7 @@ public final class TextureEditingService {
     // ===================== Plumbing =====================
 
     private TextureCreatorController requireController() {
-        TextureCreatorImGui ui = mainInterface.getTextureCreator();
+        TextureCreatorImGui ui = editorServices.getTextureCreator();
         if (ui == null) throw new IllegalStateException("Texture editor not initialized");
         TextureCreatorController c = ui.getController();
         if (c == null) throw new IllegalStateException("Texture editor controller not available");

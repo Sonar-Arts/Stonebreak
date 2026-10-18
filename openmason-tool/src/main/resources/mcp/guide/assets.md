@@ -1,10 +1,11 @@
 # Asset lens (SBO/SBE eyeglass)
 
-Read the game's shipped assets straight from disk — no editor session, no
-external scripts. All tools address assets by `objectId` (namespaced, e.g.
-`stonebreak:oak_door`); the file name (`SB_Oak_Door` / `SB_Oak_Door.sbo`) and
-the id without namespace also resolve. Paths are accepted only inside the
-game resource tree.
+Read the game target's shipped assets straight from disk — no editor session, no
+external scripts. All tools address assets by `objectId` (namespaced with the
+target's namespace, e.g. `<ns>:oak_door`); the file name (Stonebreak:
+`SB_Oak_Door` / `SB_Oak_Door.sbo`) and the id without namespace also resolve.
+Paths are accepted only inside the target's resource tree; a project without a
+game target has no assets here.
 
 - `asset_list {query?, kind?, type?, limit?, offset?, refresh?}` — ranked
   search over every SBO (blocks/items/models) and SBE (all sbe/ folders).

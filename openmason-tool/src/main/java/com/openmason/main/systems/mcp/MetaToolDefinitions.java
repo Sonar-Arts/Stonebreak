@@ -2,6 +2,8 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.List;
+
 import static com.openmason.main.systems.mcp.McpArgs.optString;
 
 /**
@@ -22,6 +24,7 @@ public final class MetaToolDefinitions {
     private final AttachmentEditingService attachments;
     private final AnimationEditingService animation;
     private final ObjectMapper mapper;
+    private final McpGuide guide;
 
     public MetaToolDefinitions(ModelSummaryService summary,
                                ModelEditingService model,
@@ -29,7 +32,8 @@ public final class MetaToolDefinitions {
                                BoneEditingService bones,
                                AttachmentEditingService attachments,
                                AnimationEditingService animation,
-                               ObjectMapper mapper) {
+                               ObjectMapper mapper,
+                               McpGuide guide) {
         this.summary = summary;
         this.model = model;
         this.texture = texture;
@@ -37,6 +41,7 @@ public final class MetaToolDefinitions {
         this.attachments = attachments;
         this.animation = animation;
         this.mapper = mapper;
+        this.guide = guide;
     }
 
     public void registerAll(McpToolRegistry registry) {
@@ -58,12 +63,13 @@ public final class MetaToolDefinitions {
                         + "tex_describe/tex_paint_grid text pixel art), recipes (workflows like "
                         + "'build a quadruped mob'), assets, saving, ui_editor (UI documents: keys, "
                         + "overrides, ui_ops, Preview). Read "
-                        + "overview once per session; other topics on demand.",
+                        + "overview once per session; other topics on demand."
+                        + pluginTopics(),
                 McpSchema.of(mapper)
                         .enumStr("topic", "Guide topic (default overview)",
-                                McpGuide.TOPICS.toArray(new String[0]))
+                                guide.topics().toArray(new String[0]))
                         .build(),
-                args -> McpGuide.topic(optString(args, "topic"))));
+                args -> guide.topic(optString(args, "topic"))));
 
         registry.register(new McpTool(
                 "undo",
@@ -98,5 +104,11 @@ public final class MetaToolDefinitions {
             default -> throw McpErrors.invalidEnum("domain", d,
                     java.util.List.of("model", "texture", "bone", "attach", "anim"));
         };
+    }
+
+    /** Topics plugins added beyond the built-in ones, named so agents can find them. */
+    private String pluginTopics() {
+        List<String> extra = guide.topics().stream().filter(t -> !McpGuide.BUILTIN_TOPICS.contains(t)).toList();
+        return extra.isEmpty() ? "" : " Plugin topics: " + String.join(", ", extra) + ".";
     }
 }

@@ -4,7 +4,7 @@ import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.scripting.commands.ModelSummary;
 import com.openmason.main.systems.threading.MainThreadExecutor;
@@ -25,10 +25,10 @@ public final class ModelSummaryService {
 
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
-    public ModelSummaryService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public ModelSummaryService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     /** {@code {loaded}} or the full digest; nulls (empty sections) are omitted by the mapper. */
@@ -44,7 +44,7 @@ public final class ModelSummaryService {
 
     public Summary summarize() {
         return await(MainThreadExecutor.submit(() -> {
-            ViewportController vp = mainInterface.getViewport3D();
+            ViewportController vp = editorServices.getViewport3D();
             ModelPartManager pm = vp != null ? vp.getPartManager() : null;
             if (vp == null || pm == null || pm.getPartCount() == 0) {
                 return new Summary(false, null, null, null, null, null, null);

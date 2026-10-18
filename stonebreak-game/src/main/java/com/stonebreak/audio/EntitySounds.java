@@ -3,7 +3,7 @@ package com.stonebreak.audio;
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 
 import java.util.Map;

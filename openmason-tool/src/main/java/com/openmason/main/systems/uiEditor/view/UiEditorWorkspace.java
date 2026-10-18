@@ -50,6 +50,7 @@ public final class UiEditorWorkspace implements AutoCloseable {
     private final UiEditorContext ctx;
     private final UiDocumentService service;
     private final UiWorkspaceLayout layout = new UiWorkspaceLayout();
+    private Runnable onResetLayout = () -> { };
     private final PalettePanel palette;
     private final HierarchyPanel hierarchy;
     private final DesignerPanel designer;
@@ -167,13 +168,18 @@ public final class UiEditorWorkspace implements AutoCloseable {
 
     // ── per frame ───────────────────────────────────────────────────────────
 
-    /** Submits the workspace dockspace's default layout when it has none (inside the host window). */
-    public void applyLayout(int dockspaceId, float width, float height) {
-        layout.applyIfNeeded(dockspaceId, width, height);
+    /** Arranges the workspace dockspace's default layout (the host's layout gate decides when). */
+    public void buildDefaultLayout(int dockspaceId, float width, float height) {
+        layout.build(dockspaceId, width, height);
     }
 
+    /** Window → Reset Layout: asks the host to rebuild the default layout on the next frame. */
     public void resetLayout() {
-        layout.requestReset();
+        onResetLayout.run();
+    }
+
+    public void setOnResetLayout(Runnable r) {
+        onResetLayout = r == null ? () -> { } : r;
     }
 
     /** The workspace's toolbar (File/Window menus, Save, Export, pop-out), above its dockspace. */

@@ -1,7 +1,6 @@
 package com.openmason.main.systems.menus.panes.projectBrowser.views;
 
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
-import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetType;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserController;
 import com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.ThumbnailCache;
 import imgui.ImGui;
@@ -51,9 +50,11 @@ public class ProjectBrowserContextMenu {
             ImGui.closeCurrentPopup();
         }
         ImGui.separator();
-        if (item.type() != AssetType.OMSC && item.type() != AssetType.OMUI) {
+        String typeId = item.type().id();
+        // Models and textures only: they have cached thumbnails and the delete flow detaches their editors.
+        if ("omo".equals(typeId) || "omt".equals(typeId)) {
             if (ImGui.menuItem("Refresh Thumbnail")) {
-                String key = item.type() == AssetType.OMO
+                String key = "omo".equals(typeId)
                         ? ThumbnailCache.omoKey(item.pathString(), thumbnailSize)
                         : ThumbnailCache.omtKey(item.pathString(), thumbnailSize);
                 thumbnailCache.invalidate(key);

@@ -1,0 +1,15 @@
+scene_delete
+scene_duplicate
+scene_focus
+scene_get
+scene_info
+scene_list
+scene_new
+scene_open
+scene_place
+scene_redo
+scene_save
+scene_select
+scene_set_properties
+scene_set_transform
+scene_undo

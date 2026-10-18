@@ -134,6 +134,12 @@ module openmason.engine {
 
     // Export low-level GL helpers (error handling, state save/restore, projection config)
     exports com.openmason.engine.rendering.gl;
+    // SBE runtime assets: decoded entity geometry, clips, sounds (#381)
+    exports com.openmason.engine.entity.sbe;
+    // Sprite voxelization shared by held items and the editor's .SBT viewport (#381)
+    exports com.openmason.engine.rendering.sprite;
+    // Hosting OMUI/SBUI documents for any host (game window, editor preview; #381)
+    exports com.openmason.engine.ui.hosting;
 
     // Export CBR clean core (block definitions, registry/resource interfaces, mesh manager)
     exports com.openmason.engine.rendering.cbr.models;

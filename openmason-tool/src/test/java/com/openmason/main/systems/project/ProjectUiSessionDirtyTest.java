@@ -21,7 +21,7 @@ class ProjectUiSessionDirtyTest {
     Path tempDir;
 
     private static ProjectService headlessService() {
-        return new ProjectService() {
+        return new ProjectService(new com.openmason.main.systems.target.GameTargets(List::of)) {
             @Override
             public void restoreState(OMPFormat.Document document,
                                      com.openmason.main.systems.ViewportController viewport,

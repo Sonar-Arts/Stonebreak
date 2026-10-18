@@ -1,5 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.io.BuiltinFileTypes;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbe.AnimationCompatibility;
@@ -269,7 +271,7 @@ public class SBOExportWindow {
 
     private void renderMetadataTab() {
         ThemedWidgets.sectionLabel("Identity");
-        ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:oak_planks", objectId);
+        ImGui.inputTextWithHint("Object ID", "e.g. " + GameTargets.shared().qualify("oak_planks"), objectId);
         ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName);
 
         ThemedWidgets.sectionLabel("Classification");
@@ -357,11 +359,14 @@ public class SBOExportWindow {
     }
 
     private String describeTargetFolder() {
-        String dir = GameResourceDirs.sboFolderFor(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
-        if (dir == null) return "the last used folder (game resources not found)";
-        Path root = GameResourceDirs.resourcesRoot();
-        Path p = Path.of(dir);
-        return root != null && p.startsWith(root) ? root.relativize(p).toString() : dir;
+        GameTargets targets = GameTargets.shared();
+        Path dir = targets.folderFor(BuiltinFileTypes.SBO.id(), OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
+        if (dir == null) {
+            return targets.active().isPresent() ? "the last used folder (game resources not found)"
+                    : "the last used folder (the project has no game target)";
+        }
+        Path root = targets.resourcesRoot();
+        return root != null && dir.startsWith(root) ? root.relativize(dir).toString() : dir.toString();
     }
 
     private NumericIdValidator.Domain currentDomain() {
@@ -403,7 +408,7 @@ public class SBOExportWindow {
                     ? fileName.substring(0, fileName.lastIndexOf('.'))
                     : fileName;
             objectName.set(nameWithoutExt);
-            objectId.set("stonebreak:" + nameWithoutExt.toLowerCase().replace(' ', '_'));
+            objectId.set(GameTargets.shared().qualify(nameWithoutExt.toLowerCase().replace(' ', '_')));
         }
     }
 
@@ -476,8 +481,8 @@ public class SBOExportWindow {
         }
 
         String typeLabel = OBJECT_TYPE_LABELS[objectTypeIndex.get()];
-        String targetDir = GameResourceDirs.sboFolderFor(typeLabel);
-        String fileName = GameResourceDirs.suggestedFileName(objectName.get(), "sbo", "object.sbo");
+        String targetDir = GameTargets.shared().folderPathFor(BuiltinFileTypes.SBO.id(), typeLabel);
+        String fileName = GameTargets.shared().suggestedFileName(objectName.get(), "sbo", "object.sbo");
 
         fileDialogService.showSaveSBODialog(fileName, targetDir, filePath -> {
             boolean success = textureSource()
@@ -644,13 +649,14 @@ public class SBOExportWindow {
     }
 
     /**
-     * Mark the tile declared by each {@code .sbo} in {@code sbo/blocks/} whose
+     * Mark the tile declared by each block {@code .sbo} of the game target whose
      * {@code gameProperties.atlasX/atlasY} are both ≥ 0. Unreadable files are
      * skipped — best-effort, since one bad file shouldn't block exporting.
      */
     private static void markSboDeclaredTiles(int cols, int rows, Set<Long> occupied) {
         SBOParser parser = new SBOParser();
-        for (Path path : SBOObjectIndex.discover("sbo/blocks")) {
+        for (Path path : SBOObjectIndex.listAll().stream()
+                .filter(SBOObjectIndex.Entry::isBlock).map(SBOObjectIndex.Entry::sourcePath).toList()) {
             try {
                 SBOParser.RawParse raw = parser.parseRaw(path);
                 SBOFormat.GameProperties gp = raw.manifest().gameProperties();

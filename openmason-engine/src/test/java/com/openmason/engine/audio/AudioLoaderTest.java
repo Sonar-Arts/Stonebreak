@@ -332,11 +332,10 @@ class AudioLoaderTest {
     }
 
     @Test
-    void missingClasspathResourceFailsWhenNoFallbackSampleIsPresent() {
-        // The engine's test classpath has no /sounds/GrassWalk.wav, the loader's hardcoded fallback.
+    void missingClasspathResourceFailsWithoutSubstitutingAnotherSample() {
         AudioLoader.LoadResult r = loader.loadSound("ghost", "/audio/does-not-exist.wav");
         assertFalse(r.success);
-        assertEquals("Could not find sound file at any path!", r.errorMessage);
+        assertEquals("Sound resource not found: /audio/does-not-exist.wav", r.errorMessage);
         assertTrue(uploads.isEmpty());
     }
 }

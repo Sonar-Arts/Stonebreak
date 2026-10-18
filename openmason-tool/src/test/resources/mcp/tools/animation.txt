@@ -1,0 +1,14 @@
+anim_apply_pose
+anim_delete_keyframe
+anim_delete_track
+anim_edit_keyframe
+anim_get_info
+anim_insert_keyframe
+anim_list_keyframes
+anim_list_tracks
+anim_load
+anim_new_clip
+anim_save
+anim_set_clip
+anim_set_layer
+anim_transport

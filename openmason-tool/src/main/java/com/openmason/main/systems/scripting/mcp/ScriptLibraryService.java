@@ -1,6 +1,6 @@
 package com.openmason.main.systems.scripting.mcp;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.mcp.McpAck;
 import com.openmason.main.systems.scripting.library.ScriptLibraryStore;
 import com.openmason.main.systems.threading.MainThreadExecutor;
@@ -17,15 +17,15 @@ import java.util.concurrent.TimeUnit;
  */
 public class ScriptLibraryService {
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final ScriptLibraryStore store;
 
-    public ScriptLibraryService(MainImGuiInterface mainInterface) {
-        this(mainInterface, new ScriptLibraryStore());
+    public ScriptLibraryService(EditorServices editorServices) {
+        this(editorServices, new ScriptLibraryStore());
     }
 
-    public ScriptLibraryService(MainImGuiInterface mainInterface, ScriptLibraryStore store) {
-        this.mainInterface = mainInterface;
+    public ScriptLibraryService(EditorServices editorServices, ScriptLibraryStore store) {
+        this.editorServices = editorServices;
         this.store = store;
     }
 
@@ -74,8 +74,8 @@ public class ScriptLibraryService {
         String finalName = name;
         try {
             MainThreadExecutor.submit(() -> {
-                MainImGuiInterface.ScriptingPresenter presenter =
-                        mainInterface != null ? mainInterface.getScriptingPresenter() : null;
+                com.openmason.main.systems.services.ScriptingPresenter presenter =
+                        editorServices != null ? editorServices.getScriptingPresenter() : null;
                 if (presenter == null) {
                     throw new IllegalStateException(
                             "Scripting window unavailable — is the UI running?");

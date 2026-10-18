@@ -1,5 +1,6 @@
 package com.openmason.main.systems.layout;
 
+import com.openmason.api.workspace.WorkspaceDescriptor;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCol;
@@ -9,12 +10,13 @@ import imgui.flag.ImGuiTabBarFlags;
 import imgui.flag.ImGuiTabItemFlags;
 import imgui.type.ImBoolean;
 
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
- * The main window's workspace tabs (Unity-style document tabs): {@code Scene}, {@code UI} and,
- * while the Texture Editor is open, {@code Texture}, at the top of the main window above the front
+ * The main window's workspace tabs (Unity-style document tabs), one per registered workspace in
+ * registration order: {@code Scene}, {@code UI}, while the Texture Editor is open {@code Texture},
+ * then any plugin's, at the top of the main window above the front
  * workspace's toolbar. Closable tabs carry a close button.
  *
  * <p>Dragging a tab off the strip, or its context menu, pops it out into its own window, as long
@@ -37,15 +39,15 @@ public final class WorkspaceTabStrip {
     /** Vertical drag (px) that tears a tab off the strip. */
     private static final float TEAR_OFF_DISTANCE = 24f;
 
-    private Workspace shownTab;
-    private Workspace forceTab;
-    private final Map<Workspace, float[]> tearOffs = new EnumMap<>(Workspace.class);
+    private String shownTab;
+    private String forceTab;
+    private final Map<String, float[]> tearOffs = new HashMap<>();
     private final TabRightClickGuard rightClick = new TabRightClickGuard();
     private final ImBoolean tabOpen = new ImBoolean(true);
 
     public void render(WorkspaceState state) {
-        Workspace want = state.current();
-        if (want != shownTab) {
+        String want = state.current();
+        if (!java.util.Objects.equals(want, shownTab)) {
             forceTab = want;
         }
         ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 14f, 5f);
@@ -56,42 +58,42 @@ public final class WorkspaceTabStrip {
         float closeMinWidth = style.getTabCloseButtonMinWidthUnselected();
         style.setTabCloseButtonMinWidthUnselected(CLOSE_ALWAYS_VISIBLE);
         if (ImGui.beginTabBar("##workspaceTabs", ImGuiTabBarFlags.FittingPolicyScroll)) {
-            Workspace clicked = null;
-            Workspace closed = null;
-            for (Workspace ws : Workspace.values()) {
-                if (!state.isOpen(ws) || state.isDetached(ws)) {
+            String clicked = null;
+            String closed = null;
+            for (WorkspaceDescriptor ws : state.workspaces()) {
+                if (!state.isOpen(ws.id()) || state.isDetached(ws.id())) {
                     continue;
                 }
-                int flags = ImGuiTabItemFlags.NoReorder | (ws == forceTab ? ImGuiTabItemFlags.SetSelected : 0);
-                String id = ws.label() + "###ws" + ws.name();
+                int flags = ImGuiTabItemFlags.NoReorder | (ws.id().equals(forceTab) ? ImGuiTabItemFlags.SetSelected : 0);
+                String id = ws.label() + "###ws" + ws.id();
                 boolean selected;
                 if (ws.closable()) {
                     tabOpen.set(true);
                     selected = ImGui.beginTabItem(id, tabOpen, flags);
                     if (!tabOpen.get()) {
-                        closed = ws;
+                        closed = ws.id();
                     }
                 } else {
                     selected = ImGui.beginTabItem(id, flags);
                 }
-                boolean canDetach = state.canDetach(ws);
+                boolean canDetach = state.canDetach(ws.id());
                 if (ImGui.isItemHovered() && !ImGui.isMouseDragging(ImGuiMouseButton.Left)) {
                     ImGui.setTooltip(ws.description());
                 }
                 if (canDetach && ImGui.isItemActive()
                         && Math.abs(ImGui.getMouseDragDeltaY(ImGuiMouseButton.Left)) > TEAR_OFF_DISTANCE) {
-                    tearOffs.put(ws, new float[]{ImGui.getMousePosX(), ImGui.getMousePosY()});
+                    tearOffs.put(ws.id(), new float[]{ImGui.getMousePosX(), ImGui.getMousePosY()});
                     ImGui.resetMouseDragDelta(ImGuiMouseButton.Left);
-                    state.detach(ws);
+                    state.detach(ws.id());
                 }
                 contextMenu(state, ws, canDetach);
                 if (selected) {
-                    clicked = ws;
+                    clicked = ws.id();
                     ImGui.endTabItem();
                 }
             }
-            for (Workspace ws : Workspace.values()) {
-                if (state.isDetached(ws)) {
+            for (WorkspaceDescriptor ws : state.workspaces()) {
+                if (state.isDetached(ws.id())) {
                     detachedButton(state, ws);
                 }
             }
@@ -100,7 +102,7 @@ public final class WorkspaceTabStrip {
             rightClick.end();
             if (closed != null) {
                 state.requestClose(closed);
-            } else if (forceTab == null && clicked != null && clicked != state.current()) {
+            } else if (forceTab == null && clicked != null && !clicked.equals(state.current())) {
                 // A forced frame only shows the new selection; afterwards, what the user picks wins.
                 state.set(clicked);
             }
@@ -116,17 +118,17 @@ public final class WorkspaceTabStrip {
      * Where {@code ws}'s tab was torn off (screen px), consumed by its detached window to open
      * under the pointer; null when it was popped out another way.
      */
-    public float[] takeTearOffPosition(Workspace ws) {
+    public float[] takeTearOffPosition(String ws) {
         return tearOffs.remove(ws);
     }
 
-    private void contextMenu(WorkspaceState state, Workspace ws, boolean canDetach) {
-        rightClick.openContextMenu("##wsctx" + ws.name());
-        if (!ImGui.beginPopupContextItem("##wsctx" + ws.name())) {
+    private void contextMenu(WorkspaceState state, WorkspaceDescriptor ws, boolean canDetach) {
+        rightClick.openContextMenu("##wsctx" + ws.id());
+        if (!ImGui.beginPopupContextItem("##wsctx" + ws.id())) {
             return;
         }
         if (ImGui.menuItem("Open in New Window", "", false, canDetach)) {
-            state.detach(ws);
+            state.detach(ws.id());
         }
         if (!canDetach && ImGui.isItemHovered(imgui.flag.ImGuiHoveredFlags.AllowWhenDisabled)) {
             ImGui.setTooltip("The main window keeps at least one tab:\ndock another one back first");
@@ -139,11 +141,11 @@ public final class WorkspaceTabStrip {
      * A popped-out tab: its name plus a pop-out icon (and a close icon when closable); clicking
      * raises its window, clicking the close icon closes the tab.
      */
-    private void detachedButton(WorkspaceState state, Workspace ws) {
+    private void detachedButton(WorkspaceState state, WorkspaceDescriptor ws) {
         // Trailing spaces reserve room for the icons, painted over them (the ImGui font is ASCII-only).
         boolean closable = ws.closable();
         boolean pressed = ImGui.tabItemButton(ws.label() + ICON_GAP + (closable ? CLOSE_GAP : "")
-                + "###wsOut" + ws.name(), ImGuiTabItemFlags.Trailing | ImGuiTabItemFlags.NoTooltip);
+                + "###wsOut" + ws.id(), ImGuiTabItemFlags.Trailing | ImGuiTabItemFlags.NoTooltip);
         float minY = ImGui.getItemRectMinY();
         float maxX = ImGui.getItemRectMaxX();
         float maxY = ImGui.getItemRectMaxY();
@@ -173,18 +175,18 @@ public final class WorkspaceTabStrip {
 
         if (pressed) {
             if (overClose) {
-                state.requestClose(ws);
+                state.requestClose(ws.id());
                 return;
             }
-            state.set(ws); // raises the detached window
+            state.set(ws.id()); // raises the detached window
         }
         if (hovered) {
             ImGui.setTooltip(overClose ? "Close " + ws.label() : ws.label() + " is in its own window");
         }
-        rightClick.openContextMenu("##wsctxOut" + ws.name());
-        if (ImGui.beginPopupContextItem("##wsctxOut" + ws.name())) {
+        rightClick.openContextMenu("##wsctxOut" + ws.id());
+        if (ImGui.beginPopupContextItem("##wsctxOut" + ws.id())) {
             if (ImGui.menuItem("Dock Back into Main Window")) {
-                state.attach(ws, true);
+                state.attach(ws.id(), true);
             }
             closeItem(state, ws);
             ImGui.endPopup();
@@ -192,11 +194,11 @@ public final class WorkspaceTabStrip {
     }
 
     /** "Close" in a closable tab's context menu. */
-    private static void closeItem(WorkspaceState state, Workspace ws) {
+    private static void closeItem(WorkspaceState state, WorkspaceDescriptor ws) {
         if (ws.closable()) {
             ImGui.separator();
             if (ImGui.menuItem("Close " + ws.label())) {
-                state.requestClose(ws);
+                state.requestClose(ws.id());
             }
         }
     }

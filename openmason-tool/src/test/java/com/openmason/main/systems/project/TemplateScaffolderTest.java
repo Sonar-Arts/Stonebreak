@@ -1,9 +1,12 @@
 package com.openmason.main.systems.project;
 
 import com.openmason.engine.format.omo.OMOFormat;
+import com.openmason.api.target.GameTarget;
+import com.openmason.main.plugins.builtin.StonebreakGameTarget;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
+import com.openmason.main.systems.target.TestGameTargets;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,11 +41,14 @@ class TemplateScaffolderTest {
     private static final List<String> BIOME_MODELS = List.of("Log", "Planks", "Stairs", "Leaves", "Sapling", "Grass");
 
     private static ProjectTemplate template(String id) {
-        return new TemplateService().getAllTemplates().stream()
-                .filter(t -> t.getId().equals(id))
-                .findFirst()
-                .orElseThrow();
+        return switch (id) {
+            case "new-biome" -> StonebreakGameTarget.newBiomeTemplate();
+            case "blank-template" -> TemplateService.blankTemplate();
+            default -> throw new IllegalArgumentException(id);
+        };
     }
+
+    private static final GameTarget STONEBREAK = TestGameTargets.stonebreak();
 
     /** Loads a model and returns its mesh; {@code parts} is the expected part count. */
     private static OMOFormat.MeshData load(Path omo, int parts) {
@@ -56,7 +62,7 @@ class TemplateScaffolderTest {
 
     @Test
     void newBiomeWritesStarterModelsAndOpensLog(@TempDir Path root) {
-        Path open = TemplateScaffolder.scaffold(template("new-biome"), root);
+        Path open = TemplateScaffolder.scaffold(template("new-biome"), root, STONEBREAK);
 
         assertEquals(root.resolve("Log.omo"), open);
         for (String name : BIOME_MODELS) {
@@ -69,7 +75,7 @@ class TemplateScaffolderTest {
 
     @Test
     void stairsCopyTheGameStairGeometryWithoutItsTexture(@TempDir Path root) throws Exception {
-        TemplateScaffolder.scaffold(template("new-biome"), root);
+        TemplateScaffolder.scaffold(template("new-biome"), root, STONEBREAK);
 
         OMOReader.ReadResult game;
         URL folder = BlockType.class.getClassLoader().getResource("sbo/blocks");
@@ -93,11 +99,38 @@ class TemplateScaffolderTest {
     }
 
     @Test
+    void newBiomeTargetsStonebreak() {
+        assertEquals(StonebreakGameTarget.ID, template("new-biome").getTargetId());
+        assertNull(template("blank-template").getTargetId());
+    }
+
+    @Test
+    void withoutItsTargetTheTargetSourcedModelIsSkipped(@TempDir Path root) {
+        // The Stairs copy the game's stair mesh; with no target to read it from, only they are missing.
+        Path open = TemplateScaffolder.scaffold(template("new-biome"), root, null);
+
+        assertEquals(root.resolve("Log.omo"), open);
+        assertFalse(Files.exists(root.resolve("Stairs.omo")));
+        assertTrue(Files.exists(root.resolve("Planks.omo")));
+    }
+
+    @Test
+    void targetSourcedModelsReadFromTheTargetsTree(@TempDir Path root, @TempDir Path tree) throws Exception {
+        // A target rooted elsewhere serves its own copy of the source asset (dev tree before class path).
+        Path stairs = STONEBREAK.resources().locate().resolve("sbo/blocks/SB_Oak_Stairs.sbo");
+        Files.createDirectories(tree.resolve("sbo/blocks"));
+        Files.copy(stairs, tree.resolve("sbo/blocks/SB_Oak_Stairs.sbo"));
+
+        TemplateScaffolder.scaffold(template("new-biome"), root, TestGameTargets.stonebreakAt(tree));
+        assertTrue(Files.exists(root.resolve("Stairs.omo")));
+    }
+
+    @Test
     void existingModelsAreNotOverwritten(@TempDir Path root) throws Exception {
         Path log = root.resolve("Log.omo");
         Files.writeString(log, "user work");
 
-        Path open = TemplateScaffolder.scaffold(template("new-biome"), root);
+        Path open = TemplateScaffolder.scaffold(template("new-biome"), root, STONEBREAK);
 
         assertEquals("user work", Files.readString(log));
         assertEquals(log, open);
@@ -105,7 +138,7 @@ class TemplateScaffolderTest {
 
     @Test
     void blankTemplateWritesNothing(@TempDir Path root) throws Exception {
-        assertNull(TemplateScaffolder.scaffold(template("blank-template"), root));
+        assertNull(TemplateScaffolder.scaffold(template("blank-template"), root, null));
         try (var files = Files.list(root)) {
             assertEquals(0, files.count());
         }

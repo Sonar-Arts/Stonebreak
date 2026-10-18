@@ -55,21 +55,29 @@ final class NativeLibraryExtractor {
         return "natives/" + platform() + "/" + libName;
     }
 
-    /** Where extractions live: {@code -Dcenda.natives.cache}, else the per-user cache directory. */
+    /**
+     * Where extractions live: {@code -Dcenda.natives.cache}, else {@code <app>/natives} in the
+     * per-user cache directory, where {@code <app>} is {@code -Dopenmason.app.name} (default
+     * {@code openmason}).
+     */
     static Path cacheRoot() {
         String prop = System.getProperty("cenda.natives.cache");
         if (prop != null && !prop.isBlank()) {
             return Path.of(prop);
         }
+        String app = System.getProperty("openmason.app.name", "openmason");
+        if (app.isBlank() || !app.matches("[A-Za-z0-9._-]+")) {
+            app = "openmason";
+        }
         String localAppData = System.getenv("LOCALAPPDATA");
         if (localAppData != null && !localAppData.isBlank()) {
-            return Path.of(localAppData, "Stonebreak", "natives");
+            return Path.of(localAppData, app, "natives");
         }
         String xdg = System.getenv("XDG_CACHE_HOME");
         if (xdg != null && !xdg.isBlank()) {
-            return Path.of(xdg, "stonebreak", "natives");
+            return Path.of(xdg, app, "natives");
         }
-        return Path.of(System.getProperty("user.home", "."), ".cache", "stonebreak", "natives");
+        return Path.of(System.getProperty("user.home", "."), ".cache", app, "natives");
     }
 
     /**

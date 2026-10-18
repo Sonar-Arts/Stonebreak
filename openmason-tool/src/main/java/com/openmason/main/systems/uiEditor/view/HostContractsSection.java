@@ -16,7 +16,6 @@ import java.util.TreeMap;
  */
 final class HostContractsSection {
 
-    private static UiHostProfile gameProfile;
 
     private HostContractsSection() {
     }
@@ -66,15 +65,17 @@ final class HostContractsSection {
         }
     }
 
-    /** The game host's contracts, built once (headless: no game is running in the editor). */
+    /** The game target's host contracts (headless: no game is running in the editor); null without one. */
     private static UiHostProfile gameProfile() {
-        if (gameProfile == null) {
-            try {
-                gameProfile = com.stonebreak.ui.runtime.GameUiHost.declaredProfile();
-            } catch (RuntimeException | LinkageError e) {
-                return null;
-            }
+        var host = com.openmason.main.systems.target.GameTargets.shared().active()
+                .map(com.openmason.api.target.GameTarget::uiHost).orElse(null);
+        if (host == null) {
+            return null;
         }
-        return gameProfile;
+        try {
+            return host.profile();
+        } catch (RuntimeException | LinkageError e) {
+            return null;
+        }
     }
 }

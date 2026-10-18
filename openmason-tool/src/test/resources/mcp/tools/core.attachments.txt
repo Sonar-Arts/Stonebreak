@@ -1,0 +1,9 @@
+attach_clear
+attach_create
+attach_delete
+attach_get
+attach_list
+attach_rename
+attach_select
+attach_set_parent
+attach_set_transform

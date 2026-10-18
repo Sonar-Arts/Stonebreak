@@ -1,0 +1,5 @@
+script_delete
+script_list
+script_read
+script_save
+scripting_open_window

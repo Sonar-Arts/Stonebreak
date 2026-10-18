@@ -1,7 +1,7 @@
 package com.openmason.main.systems.mcp;
 
 import com.openmason.engine.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.services.commands.MeshSnapshot;
 import com.openmason.main.systems.services.commands.ModelCommandHistory;
@@ -19,7 +19,7 @@ import java.util.function.Supplier;
  *
  * <p>Usage:
  * <pre>{@code
- * McpUndoCapture.runRecorded(mainInterface, "Create Part", () -> {
+ * McpUndoCapture.runRecorded(editorServices, "Create Part", () -> {
  *     // … mutation that touches the GMR / FaceTextureManager …
  *     return someResult;
  * });
@@ -40,10 +40,10 @@ public final class McpUndoCapture {
      *
      * <p>Must be called on the GL/main thread — captures GPU-bound state.
      */
-    public static <T> T runRecorded(MainImGuiInterface mainInterface,
+    public static <T> T runRecorded(EditorServices editorServices,
                                      String description,
                                      Supplier<T> mutation) {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         GenericModelRenderer gmr = vp != null ? vp.getModelRenderer() : null;
         ModelCommandHistory history = vp != null ? vp.getCommandHistory() : null;
         RendererSynchronizer sync = vp != null ? vp.getRendererSynchronizer() : null;
@@ -69,10 +69,10 @@ public final class McpUndoCapture {
     }
 
     /** Convenience overload for void mutations. */
-    public static void runRecorded(MainImGuiInterface mainInterface,
+    public static void runRecorded(EditorServices editorServices,
                                     String description,
                                     Runnable mutation) {
-        runRecorded(mainInterface, description, () -> {
+        runRecorded(editorServices, description, () -> {
             mutation.run();
             return null;
         });

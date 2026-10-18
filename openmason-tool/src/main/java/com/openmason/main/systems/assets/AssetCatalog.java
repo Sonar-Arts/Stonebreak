@@ -1,8 +1,10 @@
 package com.openmason.main.systems.assets;
 
+import com.openmason.api.target.GameTarget;
 import com.openmason.engine.format.sbe.SBEParser;
 import com.openmason.engine.format.sbo.SBOParser;
-import com.openmason.main.systems.menus.dialogs.GameResourceDirs;
+import com.openmason.main.systems.io.BuiltinFileTypes;
+import com.openmason.main.systems.target.GameTargets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,18 +20,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * Unified index of every SBO/SBE asset in the game resource tree — the search
- * surface behind the asset-lens ("eyeglass") tools.
+ * Unified index of every SBO/SBE asset in the active game target's resource tree
+ * — the search surface behind the asset-lens ("eyeglass") tools.
  *
- * <p>Scans {@code sbo/blocks}, {@code sbo/items}, {@code sbo/models} and every
- * sub-folder of {@code sbe/} (recursively) under
- * {@link GameResourceDirs#resourcesRoot()}. When no dev tree exists (packaged
- * launch), known resource folders are mirrored from the classpath into a
- * read-only temp directory so all downstream tooling keeps working on plain
- * {@link Path}s.
+ * <p>Scans every folder the target declares for {@code .sbo} and {@code .sbe}
+ * assets ({@link com.openmason.api.target.AssetFolders}), recursively. When no
+ * dev tree exists (packaged launch), those folders are mirrored from the
+ * target's class path into a read-only temp directory so all downstream tooling
+ * keeps working on plain {@link Path}s. No target: the catalog is empty.
  *
  * <p>Staleness is detected with a cheap per-root fingerprint (file count +
  * max mtime + total size), probed at most every 2 seconds unless a refresh is
@@ -37,7 +40,7 @@ import java.util.stream.Stream;
  */
 public final class AssetCatalog {
 
-    private static final AssetCatalog SHARED = new AssetCatalog();
+    private static final AssetCatalog SHARED = new AssetCatalog(GameTargets.shared()::active);
 
     /** Process-wide shared catalog (UI pickers and MCP/harness tools). */
     public static AssetCatalog shared() {
@@ -46,16 +49,20 @@ public final class AssetCatalog {
 
     private static final Logger logger = LoggerFactory.getLogger(AssetCatalog.class);
     private static final long PROBE_DEBOUNCE_MS = 2_000;
-    private static final String[] SBO_FOLDERS = {"sbo/blocks", "sbo/items", "sbo/models"};
-    private static final String[] CLASSPATH_SBE_FOLDERS =
-            {"sbe/Mobs", "sbe/Clothing", "sbe/PlayerCustomize", "sbe/Particles"};
-
+    private final Supplier<Optional<GameTarget>> target;
     private final Object lock = new Object();
     private List<AssetEntry> entries = List.of();
     private Map<String, Long> fingerprint = Map.of();
     private long lastProbeMillis;
     private boolean scannedOnce;
     private Path classpathMirror;
+    /** The target {@link #classpathMirror} was made for (a target switch makes a new one). */
+    private String mirrorTarget;
+
+    /** A catalog over whatever target {@code target} names at each scan. */
+    public AssetCatalog(Supplier<Optional<GameTarget>> target) {
+        this.target = target;
+    }
 
     /** A ranked search outcome. */
     public record SearchResult(List<AssetEntry> entries, int total) {
@@ -83,8 +90,8 @@ public final class AssetCatalog {
     /**
      * Resolve an asset by objectId — exact first, then case-insensitive, then
      * the id without its {@code namespace:} prefix, then the file name (with
-     * or without extension). Ships ids like {@code stonebreak:oak_door} in
-     * files named {@code SB_Oak_Door.sbo}, so all four spellings must work.
+     * or without extension). Games ship ids like {@code <ns>:oak_door} in files
+     * named {@code <prefix>Oak_Door.sbo}, so all four spellings must work.
      */
     public AssetEntry find(String id) {
         if (id == null || id.isBlank()) {
@@ -204,7 +211,7 @@ public final class AssetCatalog {
     /** Absolute scan roots that currently exist (for path-guard whitelisting). */
     public List<Path> scanRoots() {
         List<Path> roots = new ArrayList<>();
-        Path resources = GameResourceDirs.resourcesRoot();
+        Path resources = resourcesRoot();
         if (resources != null) {
             roots.add(resources);
         }
@@ -220,6 +227,7 @@ public final class AssetCatalog {
 
     private Map<String, Long> computeFingerprint() {
         Map<String, Long> fp = new HashMap<>();
+        fp.put("@target", (long) target.get().map(GameTarget::id).orElse("").hashCode());
         for (Path dir : scanDirs()) {
             long acc = 0;
             long count = 0;
@@ -242,29 +250,45 @@ public final class AssetCatalog {
         return fp;
     }
 
+    private Path resourcesRoot() {
+        return target.get().map(t -> t.resources().locate()).orElse(null);
+    }
+
+    /** The target's {@code .sbo} then {@code .sbe} folders (resource-relative), no repeats. */
+    private static List<String> assetFolders(GameTarget t) {
+        List<String> out = new ArrayList<>(t.folders().foldersOf(BuiltinFileTypes.SBO.id()));
+        for (String f : t.folders().foldersOf(BuiltinFileTypes.SBE.id())) {
+            if (!out.contains(f)) {
+                out.add(f);
+            }
+        }
+        return out;
+    }
+
     private List<Path> scanDirs() {
         List<Path> dirs = new ArrayList<>();
-        Path resources = GameResourceDirs.resourcesRoot();
+        Optional<GameTarget> t = target.get();
+        if (t.isEmpty()) {
+            return dirs;
+        }
+        Path resources = t.get().resources().locate();
         if (resources != null) {
-            for (String rel : SBO_FOLDERS) {
+            // Every declared folder and its sub-folders; a base folder covers its subtypes'.
+            java.util.Set<Path> seen = new java.util.LinkedHashSet<>();
+            for (String rel : assetFolders(t.get())) {
                 Path dir = resources.resolve(rel);
-                if (Files.isDirectory(dir)) {
-                    dirs.add(dir);
+                if (!Files.isDirectory(dir)) {
+                    continue;
                 }
-            }
-            Path sbe = resources.resolve("sbe");
-            if (Files.isDirectory(sbe)) {
-                dirs.add(sbe);
-                try (Stream<Path> stream = Files.walk(sbe)) {
-                    stream.filter(Files::isDirectory)
-                            .filter(d -> !d.equals(sbe))
-                            .forEach(dirs::add);
+                try (Stream<Path> stream = Files.walk(dir)) {
+                    stream.filter(Files::isDirectory).forEach(seen::add);
                 } catch (IOException ignored) {
-                    // top-level sbe scan still applies
+                    seen.add(dir);
                 }
             }
+            dirs.addAll(seen);
         } else {
-            Path mirror = ensureClasspathMirror();
+            Path mirror = ensureClasspathMirror(t.get());
             if (mirror != null) {
                 try (Stream<Path> stream = Files.walk(mirror)) {
                     stream.filter(Files::isDirectory).forEach(dirs::add);
@@ -279,8 +303,9 @@ public final class AssetCatalog {
         List<AssetEntry> out = new ArrayList<>();
         SBOParser sboParser = new SBOParser();
         SBEParser sbeParser = new SBEParser();
-        Path resources = GameResourceDirs.resourcesRoot();
-        Path base = resources != null ? resources : ensureClasspathMirror();
+        Optional<GameTarget> t = target.get();
+        Path resources = resourcesRoot();
+        Path base = resources != null ? resources : t.map(this::ensureClasspathMirror).orElse(null);
         for (Path dir : scanDirs()) {
             List<Path> files;
             try (Stream<Path> stream = Files.list(dir)) {
@@ -295,15 +320,14 @@ public final class AssetCatalog {
                 try {
                     long size = Files.size(p);
                     long mtime = Files.getLastModifiedTime(p).toMillis();
-                    String lower = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                    if (lower.endsWith(".sbo")) {
+                    if (BuiltinFileTypes.SBO.matches(p)) {
                         SBOParser.RawParse raw = sboParser.parseRaw(p);
                         out.add(new AssetEntry(raw.manifest().objectId(), raw.manifest().objectName(),
                                 AssetEntry.Kind.SBO, lower(raw.manifest().objectType(), "model"),
                                 p.toAbsolutePath(), folder, size, mtime));
                     } else {
                         SBEParser.RawParse raw = sbeParser.parseRaw(p);
-                        String type = lower(raw.manifest().entityType(), folderType(folder));
+                        String type = lower(raw.manifest().entityType(), folderType(t.orElse(null), folder));
                         out.add(new AssetEntry(raw.manifest().objectId(), raw.manifest().objectName(),
                                 AssetEntry.Kind.SBE, type, p.toAbsolutePath(), folder, size, mtime));
                     }
@@ -317,23 +341,17 @@ public final class AssetCatalog {
     }
 
     private static boolean isAsset(Path p) {
-        String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
-        return Files.isRegularFile(p) && (n.endsWith(".sbo") || n.endsWith(".sbe"));
+        return Files.isRegularFile(p) && (BuiltinFileTypes.SBO.matches(p) || BuiltinFileTypes.SBE.matches(p));
     }
 
     private static String lower(String s, String fallback) {
         return s == null || s.isBlank() ? fallback : s.trim().toLowerCase(Locale.ROOT);
     }
 
-    private static String folderType(String folder) {
-        String name = folder == null ? "" : folder.substring(folder.lastIndexOf('/') + 1);
-        return switch (name.toLowerCase(Locale.ROOT)) {
-            case "mobs" -> "mob";
-            case "clothing" -> "clothing";
-            case "playercustomize" -> "playercustomize";
-            case "particles" -> "particle";
-            default -> "other";
-        };
+    /** The entity type the target files {@code folder} under ({@code sbe/Mobs} → {@code mob}), else {@code other}. */
+    private static String folderType(GameTarget t, String folder) {
+        String type = t == null || folder == null ? null : t.folders().subtypeOf(BuiltinFileTypes.SBE.id(), folder);
+        return type == null ? "other" : type;
     }
 
     /**
@@ -341,25 +359,27 @@ public final class AssetCatalog {
      * mirror once per catalog lifetime so every downstream consumer works on
      * real read-only files.
      */
-    private Path ensureClasspathMirror() {
+    private Path ensureClasspathMirror(GameTarget t) {
         synchronized (lock) {
-            if (classpathMirror != null) {
+            if (classpathMirror != null && t.id().equals(mirrorTarget)) {
                 return classpathMirror;
             }
             try {
                 Path mirror = Files.createTempDirectory("openmason-asset-mirror");
                 mirror.toFile().deleteOnExit();
-                ClassLoader cl = AssetCatalog.class.getClassLoader();
-                List<String> folders = new ArrayList<>(List.of(SBO_FOLDERS));
-                folders.addAll(List.of(CLASSPATH_SBE_FOLDERS));
+                ClassLoader cl = t.resources().classpath();
+                if (cl == null) {
+                    return null;
+                }
                 int copied = 0;
-                for (String folder : folders) {
+                for (String folder : assetFolders(t)) {
                     copied += mirrorFolder(cl, folder, mirror);
                 }
                 if (copied == 0) {
                     return null; // nothing on classpath either
                 }
                 classpathMirror = mirror;
+                mirrorTarget = t.id();
                 logger.info("Asset catalog: mirrored {} classpath assets into {}", copied, mirror);
                 return mirror;
             } catch (IOException e) {

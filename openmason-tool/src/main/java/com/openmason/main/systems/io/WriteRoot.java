@@ -10,15 +10,20 @@ import java.util.Locale;
 public enum WriteRoot {
     /** The folder the open {@code .omp} project lives in (or the default projects dir). */
     PROJECT("project"),
-    /** {@code stonebreak-game/src/main/resources} — the shipped-asset tree. */
-    GAME_RESOURCES("game"),
+    /**
+     * The active game target's resource tree (#380) — the shipped-asset tree. {@code game} (and
+     * the enum's old name {@code game_resources}) are the pre-#380 spellings and still parse.
+     */
+    TARGET("target", "game", "game_resources"),
     /** {@code ~/.openmason/exports} — the tool-owned scratch jail. */
     EXPORTS("exports");
 
     private final String prefix;
+    private final String[] aliases;
 
-    WriteRoot(String prefix) {
+    WriteRoot(String prefix, String... aliases) {
         this.prefix = prefix;
+        this.aliases = aliases;
     }
 
     /** The {@code <prefix>:relative/path} spelling accepted by {@link WriteSandbox}. */
@@ -26,7 +31,7 @@ public enum WriteRoot {
         return prefix;
     }
 
-    /** Parse a prefix (case-insensitive); null when unknown. */
+    /** Parse a prefix or alias (case-insensitive); null when unknown. */
     public static WriteRoot fromPrefix(String s) {
         if (s == null) {
             return null;
@@ -35,6 +40,11 @@ public enum WriteRoot {
         for (WriteRoot r : values()) {
             if (r.prefix.equals(key) || r.name().toLowerCase(Locale.ROOT).equals(key)) {
                 return r;
+            }
+            for (String alias : r.aliases) {
+                if (alias.equals(key)) {
+                    return r;
+                }
             }
         }
         return null;

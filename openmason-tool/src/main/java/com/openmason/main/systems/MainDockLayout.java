@@ -1,149 +1,94 @@
 package com.openmason.main.systems;
 
+import com.openmason.api.workspace.WorkspaceDescriptor;
+import com.openmason.main.systems.layout.BuiltinWorkspaces;
 import com.openmason.main.systems.layout.CenterTabFocusRequest;
-import com.openmason.main.systems.layout.Workspace;
-import com.openmason.main.systems.layout.MainLayoutBuilder;
-import com.openmason.main.systems.services.LayoutService;
+import com.openmason.main.systems.layout.DetachedWorkspaceWindow;
+import com.openmason.main.systems.layout.WorkspaceLayouts;
+import com.openmason.main.systems.layout.WorkspaceState;
+import com.openmason.main.systems.layout.WorkspaceTabStrip;
 import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
 /**
  * Dock layout for the main editor shell: submits the full-work-area host window
- * ("OpenMason Dockspace") with the toolbar inline, creates the central dockspace,
- * builds the versioned default layout on first use or after a reset (via
- * {@link MainLayoutBuilder}, which the View menu's reset-layout action also drives
- * through {@link LayoutService}), and owns the deferred centre-tab focus request.
- * Extracted from {@link MainImGuiInterface}; ImGui call order and ids are unchanged.
+ * ("OpenMason Dockspace") with the workspace tabs and the front workspace's toolbar inline,
+ * submits every registered workspace's dockspace (the front one for real, the others kept alive
+ * so their docked windows keep their places), hosts popped-out workspaces in their own windows,
+ * builds each workspace's versioned default layout through {@link WorkspaceLayouts}, and owns the
+ * deferred centre-tab focus request.
+ *
+ * <p>Workspaces come from the plugin registry (#379); nothing here knows which ones exist.
  */
 public final class MainDockLayout {
 
     /** Title of the host window that fills the main viewport's work area. */
     public static final String DOCKSPACE_WINDOW_TITLE = "OpenMason Dockspace";
 
-    /** String id the central dockspace node is keyed by. */
+    /** Dockspace string id of the Scene workspace. */
     public static final String DOCKSPACE_ID = "OpenMasonDockSpace";
 
-    /** String id of the UI Editor workspace's dockspace (#293). */
+    /** Dockspace string id of the UI Editor workspace (#293). */
     public static final String UI_DOCKSPACE_ID = com.openmason.main.systems.uiEditor.view.UiWorkspaceLayout.DOCKSPACE_ID;
 
-    /** String id of the Texture Editor workspace's dockspace. */
+    /** Dockspace string id of the Texture Editor workspace. */
     public static final String TEXTURE_DOCKSPACE_ID = "OpenMasonTextureDockSpace";
 
-    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
-    /** The secondary workspaces' dock contents (Scene's is built in). */
-    private final java.util.Map<Workspace, com.openmason.main.systems.layout.WorkspaceDock> docks =
-            new java.util.EnumMap<>(Workspace.class);
-    private final com.openmason.main.systems.layout.WorkspaceTabStrip tabStrip =
-            new com.openmason.main.systems.layout.WorkspaceTabStrip();
-    private final java.util.Map<Workspace, com.openmason.main.systems.layout.DetachedWorkspaceWindow> detachedWindows =
-            new java.util.EnumMap<>(Workspace.class);
-    private final java.util.EnumSet<Workspace> detachedVisible = java.util.EnumSet.noneOf(Workspace.class);
+    private final WorkspaceState workspaceState;
+    private final WorkspaceLayouts layouts;
+    private final WorkspaceTabStrip tabStrip = new WorkspaceTabStrip();
+    private final Map<String, DetachedWorkspaceWindow> detachedWindows = new HashMap<>();
+    private final Set<String> detachedVisible = new HashSet<>();
     /** Dockspace ids, hashed in the host window so they are stable whichever window submits them. */
-    private final java.util.Map<Workspace, Integer> dockspaceIds = new java.util.EnumMap<>(Workspace.class);
-    /** The Scene workspace's toolbar, as last passed to {@link #render(Runnable)}. */
-    private Runnable sceneToolbar;
+    private final Map<String, Integer> dockspaceIds = new HashMap<>();
+    private final CenterTabFocusRequest centerTabFocus;
 
-    /**
-     * Adds the UI workspace behind the main window's {@code Scene | UI} tabs: the front tab's
-     * dockspace fills the host window and the others are kept alive invisibly, so each workspace's
-     * docked windows keep their places across switches. Popped out, a workspace's dockspace moves
-     * into its {@link com.openmason.main.systems.layout.DetachedWorkspaceWindow}.
-     */
-    public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state,
-                               com.openmason.main.systems.layout.WorkspaceDock dock) {
-        this.workspaceState = state;
-        for (Workspace ws : Workspace.values()) {
-            detachedWindows.computeIfAbsent(ws, com.openmason.main.systems.layout.DetachedWorkspaceWindow::new);
-        }
-        addWorkspace(Workspace.UI, dock);
+    public MainDockLayout(WorkspaceState workspaceState, WorkspaceLayouts layouts, CenterTabFocusRequest centerTabFocus) {
+        this.workspaceState = Objects.requireNonNull(workspaceState, "workspaceState");
+        this.layouts = Objects.requireNonNull(layouts, "layouts");
+        this.centerTabFocus = Objects.requireNonNull(centerTabFocus, "centerTabFocus");
     }
 
     /**
-     * Adds another secondary workspace's dock contents (e.g. the Texture Editor); its tab shows
-     * while the {@link com.openmason.main.systems.layout.WorkspaceState} has it open. Call after
-     * {@link #setUiWorkspace}.
-     */
-    public void addWorkspace(Workspace ws, com.openmason.main.systems.layout.WorkspaceDock dock) {
-        if (ws == Workspace.MODELING) {
-            throw new IllegalArgumentException("Scene's dock is built in");
-        }
-        docks.put(ws, dock);
-    }
-
-    /** True once the workspace tabs are installed (the main window shows a tab strip). */
-    private boolean hasWorkspaces() {
-        return workspaceState != null && !docks.isEmpty();
-    }
-
-    /** Whether {@code ws} has dock contents here: Scene always, the others once added. */
-    private boolean hosts(Workspace ws) {
-        return ws == Workspace.MODELING || docks.containsKey(ws);
-    }
-
-    /**
-     * Submits the window of every popped-out workspace; call right after {@link #render(Runnable)}
-     * and before any workspace panels.
+     * Submits the window of every popped-out workspace; call right after {@link #render()} and
+     * before any workspace panels.
      */
     public void renderDetached() {
         detachedVisible.clear();
-        if (!hasWorkspaces()) {
-            return;
-        }
-        for (Workspace ws : Workspace.values()) {
-            if (!hosts(ws)) {
-                continue;
+        for (WorkspaceDescriptor ws : workspaceState.workspaces()) {
+            if (!dockspaceIds.containsKey(ws.id())) {
+                continue; // registered after this frame's host window: its dockspace starts next frame
             }
-            if (detachedWindows.get(ws).render(workspaceState, () -> renderHeader(ws),
-                    (w, h) -> submitDockspace(ws, w, h), tabStrip.takeTearOffPosition(ws))) {
-                detachedVisible.add(ws);
+            DetachedWorkspaceWindow window = detachedWindows.computeIfAbsent(ws.id(), id -> new DetachedWorkspaceWindow(ws));
+            if (window.render(workspaceState, () -> ws.dock().renderHeader(),
+                    (w, h) -> submitDockspace(ws, w, h), tabStrip.takeTearOffPosition(ws.id()))) {
+                detachedVisible.add(ws.id());
             }
         }
     }
 
     /**
-     * True when {@code ws}'s panels should draw this frame: it is the main window's front tab, or
-     * it is popped out and its window showed its contents. Valid after {@link #renderDetached()}.
+     * True when workspace {@code ws}'s panels should draw this frame: it is the main window's front
+     * tab, or it is popped out and its window showed its contents. Valid after {@link #renderDetached()}.
      */
-    public boolean isShown(Workspace ws) {
-        if (!hasWorkspaces()) {
-            return ws == Workspace.MODELING;
-        }
-        if (!hosts(ws) || !workspaceState.isOpen(ws)) {
+    public boolean isShown(String ws) {
+        if (ws == null || !workspaceState.isOpen(ws)) {
             return false;
         }
-        return workspaceState.current() == ws || detachedVisible.contains(ws);
+        return ws.equals(workspaceState.current()) || detachedVisible.contains(ws);
     }
 
-    // Dock layout: versioned so each release adding a window forces exactly one rebuild.
-    private final MainLayoutBuilder mainLayoutBuilder;
-    private final CenterTabFocusRequest centerTabFocus = new CenterTabFocusRequest();
-
-    /**
-     * @param mainLayoutBuilder builds the default layout and tracks the layout version
-     * @param layoutService     the View menu's layout service; receives the builder so
-     *                          "Reset Layout" can request a rebuild
-     */
-    public MainDockLayout(MainLayoutBuilder mainLayoutBuilder, LayoutService layoutService) {
-        if (mainLayoutBuilder == null) {
-            throw new IllegalArgumentException("MainLayoutBuilder cannot be null");
-        }
-        this.mainLayoutBuilder = mainLayoutBuilder;
-        if (layoutService != null) {
-            layoutService.setLayoutBuilder(mainLayoutBuilder);
-        }
-    }
-
-    /**
-     * Render main docking space with integrated toolbar.
-     *
-     * @param toolbar the Scene workspace's toolbar, rendered below the workspace tabs and above the
-     *                dockspace of whichever window holds Scene (pushes content down naturally;
-     *                draws its own bottom border); the UI workspace draws its own header instead
-     */
-    public void render(Runnable toolbar) {
+    /** Render the main docking space with the workspace tabs and the front workspace's toolbar. */
+    public void render() {
         int windowFlags = ImGuiWindowFlags.NoDocking;
 
         ImGuiViewport viewport = ImGui.getMainViewport();
@@ -165,32 +110,27 @@ public final class MainDockLayout {
         ImGui.begin(DOCKSPACE_WINDOW_TITLE, windowFlags);
         ImGui.popStyleVar(4);
 
-        // Workspace tabs (Scene | UI | Texture) on top, then the front workspace's toolbar inline
-        // (pushes content down naturally; each toolbar draws its own bottom border)
-        sceneToolbar = toolbar;
-        Workspace front = Workspace.MODELING;
-        if (hasWorkspaces()) {
-            tabStrip.render(workspaceState);
-            front = workspaceState.current();
+        // Workspace tabs on top, then the front workspace's toolbar inline (pushes content down
+        // naturally; each toolbar draws its own bottom border)
+        tabStrip.render(workspaceState);
+        WorkspaceDescriptor front = workspaceState.descriptor(workspaceState.current()).orElse(null);
+        if (front != null) {
+            front.dock().renderHeader();
         }
-        renderHeader(front);
 
         // Reset padding for dockspace area
         ImGui.pushStyleVar(ImGuiStyleVar.WindowPadding, 0.0f, 0.0f);
 
         ImGuiViewport mainViewport = ImGui.getMainViewport();
-        for (Workspace ws : Workspace.values()) {
-            if (!hosts(ws)) {
-                continue;
-            }
-            dockspaceIds.put(ws, ImGui.getID(dockspaceName(ws)));
+        for (WorkspaceDescriptor ws : workspaceState.workspaces()) {
+            dockspaceIds.put(ws.id(), ImGui.getID(ws.dockspaceName()));
             if (ws == front) {
                 submitDockspace(ws, mainViewport.getWorkSizeX(), mainViewport.getWorkSizeY());
             } else {
                 // Kept alive here even while popped out or closed: the detached window submits it for
                 // real later in the frame, and a minimised, closing or closed workspace must not undock
                 // its panels.
-                ImGui.dockSpace(dockspaceId(ws), 0.0f, 0.0f, ImGuiDockNodeFlags.KeepAliveOnly);
+                ImGui.dockSpace(dockspaceIds.get(ws.id()), 0.0f, 0.0f, ImGuiDockNodeFlags.KeepAliveOnly);
             }
         }
 
@@ -199,44 +139,9 @@ public final class MainDockLayout {
         ImGui.end();
     }
 
-    private static String dockspaceName(Workspace ws) {
-        return switch (ws) {
-            case MODELING -> DOCKSPACE_ID;
-            case UI -> UI_DOCKSPACE_ID;
-            case TEXTURE -> TEXTURE_DOCKSPACE_ID;
-        };
-    }
-
-    private int dockspaceId(Workspace ws) {
-        return dockspaceIds.get(ws);
-    }
-
-    private void renderHeader(Workspace ws) {
-        var dock = docks.get(ws);
-        if (dock != null) {
-            dock.renderHeader();
-        } else if (ws == Workspace.MODELING && sceneToolbar != null) {
-            sceneToolbar.run();
-        }
-    }
-
     /** The workspace's real dockspace (in the main host or its own window) and its default layout. */
-    private void submitDockspace(Workspace ws, float width, float height) {
-        var dock = docks.get(ws);
-        if (dock != null) {
-            dock.submitBody(dockspaceId(ws), width, height);
-            return;
-        }
-        int sceneDockspaceId = dockspaceId(Workspace.MODELING);
-        ImGui.dockSpace(sceneDockspaceId, 0.0f, 0.0f, ImGuiDockNodeFlags.PassthruCentralNode);
-        if (mainLayoutBuilder.applyIfNeeded(sceneDockspaceId, width, height)) {
-            // A rebuild's focus is only a fallback: a project's recorded centre tab
-            // (already pending from the restore hook) must win over it.
-            String rebuildFocus = mainLayoutBuilder.takePendingFocusWindow();
-            if (!centerTabFocus.isPending()) {
-                centerTabFocus.request(rebuildFocus);
-            }
-        }
+    private void submitDockspace(WorkspaceDescriptor ws, float width, float height) {
+        ws.dock().submitBody(dockspaceIds.get(ws.id()), width, height, layouts.gate(ws));
     }
 
     /**
@@ -257,12 +162,8 @@ public final class MainDockLayout {
         centerTabFocus.tick();
     }
 
-    /** Ask for the default layout to be rebuilt on the next frame. */
+    /** Ask for the Scene workspace's default layout to be rebuilt on the next frame. */
     public void resetLayout() {
-        mainLayoutBuilder.requestReset();
-    }
-
-    public MainLayoutBuilder getLayoutBuilder() {
-        return mainLayoutBuilder;
+        layouts.requestReset(BuiltinWorkspaces.MODELING);
     }
 }

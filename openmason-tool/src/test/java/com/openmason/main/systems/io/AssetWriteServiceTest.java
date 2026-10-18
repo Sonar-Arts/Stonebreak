@@ -2,6 +2,7 @@ package com.openmason.main.systems.io;
 
 import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
+import com.openmason.main.systems.target.TestGameTargets;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -37,7 +38,7 @@ class AssetWriteServiceTest {
         project = Files.createDirectories(tmp.resolve("proj"));
         game = Files.createDirectories(tmp.resolve("game"));
         Files.createDirectories(game.resolve("sbo/blocks"));
-        sandbox = new WriteSandbox(WriteRoots.of(project, game, tmp.resolve("exports")));
+        sandbox = new WriteSandbox(WriteRoots.forTarget(project, TestGameTargets.stonebreakAt(game), tmp.resolve("exports")));
         // No UI: submit() runs inline on the bound thread.
         MainThreadExecutor.bindToCurrentThread();
     }
@@ -63,7 +64,7 @@ class AssetWriteServiceTest {
                 WritePolicy.ASK_RISKY));
         assertTrue(AssetWriteService.mustAsk(target(WriteRoot.PROJECT, true), req(true),
                 WritePolicy.ASK_RISKY));
-        assertTrue(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, false), req(false),
+        assertTrue(AssetWriteService.mustAsk(target(WriteRoot.TARGET, false), req(false),
                 WritePolicy.ASK_RISKY));
 
         // ASK_NEVER_IN_PROJECT: overwrite needs the flag; game tree still asks
@@ -73,12 +74,12 @@ class AssetWriteServiceTest {
                 () -> AssetWriteService.mustAsk(target(WriteRoot.PROJECT, true), req(false),
                         WritePolicy.ASK_NEVER_IN_PROJECT));
         assertTrue(e.getMessage().startsWith("file_exists"));
-        assertTrue(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, false), req(true),
+        assertTrue(AssetWriteService.mustAsk(target(WriteRoot.TARGET, false), req(true),
                 WritePolicy.ASK_NEVER_IN_PROJECT));
 
         // NEVER_ASK: overwrites and game resources write silently (the sandbox still bounds them)
         assertFalse(AssetWriteService.mustAsk(target(WriteRoot.PROJECT, true), req(false), WritePolicy.NEVER_ASK));
-        assertFalse(AssetWriteService.mustAsk(target(WriteRoot.GAME_RESOURCES, true), req(false),
+        assertFalse(AssetWriteService.mustAsk(target(WriteRoot.TARGET, true), req(false),
                 WritePolicy.NEVER_ASK));
     }
 
@@ -167,6 +168,10 @@ class AssetWriteServiceTest {
         AssetWriteService svc = new AssetWriteService(null, sandbox, () -> WritePolicy.ASK_RISKY);
         Map<String, Object> t = svc.targets();
         assertEquals("ASK_RISKY", t.get("policy"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> target = (Map<String, Object>) t.get("target");
+        assertEquals("stonebreak", target.get("id"));
+        assertEquals("stonebreak", target.get("namespace"));
         assertEquals(Boolean.FALSE, t.get("saveSheetAvailable"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> roots = (List<Map<String, Object>>) t.get("roots");
@@ -176,8 +181,8 @@ class AssetWriteServiceTest {
         assertEquals(Boolean.TRUE, roots.get(2).get("present"), "exports root is created lazily, so it is always offered");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> kinds = (List<Map<String, Object>>) t.get("kinds");
-        assertEquals(WriteKind.values().length, kinds.size());
-        assertEquals("game:sbo/blocks/MyObject.sbo",
+        assertEquals(WriteKind.builtins().size(), kinds.size());
+        assertEquals("target:sbo/blocks/MyObject.sbo",
                 kinds.stream().filter(k -> "sbo".equals(k.get("kind"))).findFirst().orElseThrow().get("example"));
     }
 

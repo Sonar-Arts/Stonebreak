@@ -139,7 +139,6 @@ class SoundSystemWithoutDeviceTest {
             sound.playSoundAt3D("blockpickup", 0.5f, 1.1f, at);
             sound.playSoundAt3DWithVariation("blockpickup", 0.5f, 1, 2, 3);
             sound.playSoundAt3DWithVariation("blockpickup", 0.5f, at);
-            sound.testSoundPlayback();
             sound.playMusic("theme");
             sound.stopMusic();
         });

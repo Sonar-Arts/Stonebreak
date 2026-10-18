@@ -16,10 +16,13 @@ public class HubActionService {
 
     private static final Logger logger = LoggerFactory.getLogger(HubActionService.class);
 
-    /** Shell hook for project creation; {@code template} is null for a blank project. */
+    /**
+     * Shell hook for project creation; {@code template} is null for a blank project and
+     * {@code targetId} null for a project without a game target (#380).
+     */
     @FunctionalInterface
     public interface CreateProjectCallback {
-        void create(String name, String directory, ProjectTemplate template);
+        void create(String name, String directory, ProjectTemplate template, String targetId);
     }
 
     private CreateProjectCallback createProjectCallback;
@@ -32,15 +35,16 @@ public class HubActionService {
      * opens the editor.
      *
      * @param template the template to create from, or null for a blank project
+     * @param targetId the project's game target, or null for none
      */
-    public void createProject(String name, String directory, ProjectTemplate template) {
+    public void createProject(String name, String directory, ProjectTemplate template, String targetId) {
         if (name == null || name.isBlank() || directory == null || directory.isBlank()) {
             logger.warn("Cannot create project: name and directory are required");
             return;
         }
         logger.info("Creating project '{}' in {}", name, directory);
         if (createProjectCallback != null) {
-            createProjectCallback.create(name.trim(), directory.trim(), template);
+            createProjectCallback.create(name.trim(), directory.trim(), template, targetId);
         } else {
             logger.warn("No create-project callback registered");
         }

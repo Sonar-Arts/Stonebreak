@@ -190,13 +190,15 @@ public final class ProjectLifecycle {
      * file exists on disk the moment the editor opens. Assumes the editor was
      * just reset to a fresh blank session.
      *
+     * @param targetId the project's game target (#380), or null for none
      * @return true if the project file was written
      */
-    public boolean saveNewProject(String projectName, String ompFilePath) {
+    public boolean saveNewProject(String projectName, String ompFilePath, String targetId) {
         if (projectService == null || viewport3D == null) {
             logger.warn("Cannot create project: service or viewport not initialized");
             return false;
         }
+        projectService.setTargetId(targetId);
         boolean success = projectService.saveProjectAs(ompFilePath, viewport3D, modelState,
                 uiVisibilityState, projectName);
         if (success) {

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.skeleton.AttachmentCommandHistory;
 import com.openmason.main.systems.skeleton.AttachmentSnapshot;
@@ -37,7 +37,7 @@ public final class AttachmentEditingService {
 
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     /**
      * AttachmentCommandHistory is per-AttachmentStore. Keyed by identity so a
      * fresh store (model reload) gets a fresh history without ever holding the
@@ -45,8 +45,8 @@ public final class AttachmentEditingService {
      */
     private final Map<AttachmentStore, AttachmentCommandHistory> historyByStore = new IdentityHashMap<>();
 
-    public AttachmentEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public AttachmentEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     /**
@@ -248,7 +248,7 @@ public final class AttachmentEditingService {
     // ===================== Helpers =====================
 
     private AttachmentStore optStore() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         return vp != null ? vp.getAttachmentStore() : null;
     }
 
@@ -261,7 +261,7 @@ public final class AttachmentEditingService {
     }
 
     private ModelPartManager requirePartManager() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         ModelPartManager pm = vp != null ? vp.getPartManager() : null;
         if (pm == null) {
             throw new IllegalStateException("Part manager not available — viewport not initialized");

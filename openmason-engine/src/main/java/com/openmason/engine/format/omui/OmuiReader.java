@@ -152,7 +152,7 @@ public final class OmuiReader {
         SchemaVersion current = OmuiFormat.SCHEMA_VERSION;
         if (version.major() > current.major()) {
             d.error(Code.UNSUPPORTED_SCHEMA_VERSION, OmuiFormat.MANIFEST, "/schemaVersion",
-                    "Schema " + version + " is newer than supported " + current + "; update Open Mason/Stonebreak");
+                    "Schema " + version + " is newer than supported " + current + "; update Open Mason");
         } else if (version.major() < current.major()) {
             d.error(Code.NEEDS_UPGRADE, OmuiFormat.MANIFEST, "/schemaVersion",
                     "Schema " + version + " must be upgraded to " + current + " (OmuiUpgrader) before use");

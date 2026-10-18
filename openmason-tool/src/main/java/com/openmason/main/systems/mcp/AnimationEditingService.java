@@ -3,7 +3,7 @@ package com.openmason.main.systems.mcp;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui;
 import com.openmason.main.systems.menus.animationEditor.controller.AnimationEditorController;
 import com.openmason.main.systems.menus.animationEditor.data.AnimationClip;
@@ -33,10 +33,10 @@ public final class AnimationEditingService {
 
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
-    public AnimationEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public AnimationEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     // ===================== Read =====================
@@ -312,7 +312,7 @@ public final class AnimationEditingService {
     // ===================== Helpers =====================
 
     private AnimationEditorController optController() {
-        AnimationEditorImGui editor = mainInterface.getAnimationEditor();
+        AnimationEditorImGui editor = editorServices.getAnimationEditor();
         return editor != null ? editor.getController() : null;
     }
 

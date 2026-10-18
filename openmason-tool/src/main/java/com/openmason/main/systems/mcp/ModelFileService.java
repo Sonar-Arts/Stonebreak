@@ -1,6 +1,6 @@
 package com.openmason.main.systems.mcp;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.io.AssetWriteService;
 import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
@@ -28,11 +28,11 @@ public final class ModelFileService {
 
     private static final long MAIN_TIMEOUT_S = 30;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final AssetWriteService writes;
 
-    public ModelFileService(MainImGuiInterface mainInterface, AssetWriteService writes) {
-        this.mainInterface = mainInterface;
+    public ModelFileService(EditorServices editorServices, AssetWriteService writes) {
+        this.editorServices = editorServices;
         this.writes = writes;
     }
 
@@ -100,7 +100,7 @@ public final class ModelFileService {
         String path = t.path().toString();
         return onMain(() -> {
             ops.loadOMOModel(path);
-            ModelState st = mainInterface.getModelState();
+            ModelState st = editorServices.getModelState();
             boolean ok = st != null && st.isModelLoaded() && path.equals(st.getCurrentOMOFilePath());
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("opened", ok);
@@ -130,7 +130,7 @@ public final class ModelFileService {
         ModelOperationService ops = requireOps();
         return onMain(() -> {
             ops.newModel();
-            ModelState st = mainInterface.getModelState();
+            ModelState st = editorServices.getModelState();
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("opened", st != null && st.isModelLoaded());
             out.put("name", st != null ? st.getCurrentModelPath() : null);
@@ -143,13 +143,13 @@ public final class ModelFileService {
     /** Null when approved; otherwise the structured decline to return. */
     private Map<String, Object> confirmReplace(String action, String title, List<String> details,
                                                int timeoutSeconds) {
-        return McpApprovals.confirm(mainInterface != null ? mainInterface.getApprovalGate() : null,
+        return McpApprovals.confirm(editorServices != null ? editorServices.getApprovalGate() : null,
                 action, title, details, timeoutSeconds);
     }
 
     private Snapshot snapshot() {
         return onMain(() -> {
-            ModelState st = mainInterface != null ? mainInterface.getModelState() : null;
+            ModelState st = editorServices != null ? editorServices.getModelState() : null;
             if (st == null) {
                 throw new IllegalStateException("Model editor unavailable — is the UI running?");
             }
@@ -159,7 +159,7 @@ public final class ModelFileService {
     }
 
     private ModelOperationService requireOps() {
-        ModelOperationService ops = mainInterface != null ? mainInterface.getModelOperations() : null;
+        ModelOperationService ops = editorServices != null ? editorServices.getModelOperations() : null;
         if (ops == null) {
             throw new IllegalStateException("Model editor unavailable — is the UI running?");
         }

@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.mainHub.components;
 
+import com.openmason.api.target.GameTarget;
 import com.openmason.main.systems.LogoManager;
 import com.openmason.main.systems.menus.mainHub.dialogs.DeleteProjectDialog;
 import com.openmason.main.systems.menus.mainHub.dialogs.RenameProjectDialog;
@@ -13,6 +14,7 @@ import com.openmason.main.systems.mortar.paint.MortarPainter;
 import com.openmason.main.systems.mortar.parts.MortarBadge;
 import com.openmason.main.systems.mortar.theme.Argb;
 import com.openmason.main.systems.skija.SkijaFontStore.Weight;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.mortar.theme.MortarType;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
@@ -57,6 +59,10 @@ public class PreviewPanel {
     private final ImString projectName = new ImString(128);
     private final ImString projectDir = new ImString(512);
     private final imgui.type.ImBoolean createSubfolder = new imgui.type.ImBoolean(true);
+    /** The new project's game target id (null = none), defaulted per template ({@link #targetFor}). */
+    private String targetChoice;
+    /** The template {@link #targetChoice} was defaulted for ("" = blank project). */
+    private String targetChoiceFor;
 
     /** Supplies the base projects folder used to prefill the directory field. */
     private java.util.function.Supplier<String> defaultProjectDirectory;
@@ -146,14 +152,65 @@ public class PreviewPanel {
         ImGui.dummy(0, 4f);
         ImGui.checkbox("Create project subfolder", createSubfolder);
 
+        ImGui.dummy(0, 6f);
+        renderTargetChoice(template);
+
         ImGui.dummy(0, 8f);
         boolean valid = !projectName.get().isBlank() && !projectDir.get().isBlank();
         ImGui.beginDisabled(!valid);
         boolean create = accentButton("Create Project");
         ImGui.endDisabled();
         if (create && valid) {
-            actionService.createProject(projectName.get(), effectiveDirectory(), template);
+            actionService.createProject(projectName.get(), effectiveDirectory(), template, targetChoice);
         }
+    }
+
+    /**
+     * The game target the project will record (#380). A template that copies a game's assets
+     * fixes its target; otherwise the default is the first registered target, and "None" makes a
+     * project-only project (no game paths, no deploy actions).
+     */
+    private void renderTargetChoice(ProjectTemplate template) {
+        String key = template == null ? "" : template.getId();
+        if (!key.equals(targetChoiceFor)) {
+            targetChoiceFor = key;
+            targetChoice = targetFor(template);
+        }
+        java.util.List<GameTarget> targets = GameTargets.shared().all();
+        fieldLabel("Game Target");
+        boolean fixed = template != null && template.getTargetId() != null;
+        ImGui.setNextItemWidth(-1);
+        ImGui.beginDisabled(fixed);
+        if (ImGui.beginCombo("##np_target", targetLabel(targets, targetChoice))) {
+            if (ImGui.selectable("None (project only)", targetChoice == null)) {
+                targetChoice = null;
+            }
+            for (GameTarget t : targets) {
+                if (ImGui.selectable(t.displayName() + "##" + t.id(), t.id().equals(targetChoice))) {
+                    targetChoice = t.id();
+                }
+            }
+            ImGui.endCombo();
+        }
+        ImGui.endDisabled();
+        if (fixed && ImGui.isItemHovered(imgui.flag.ImGuiHoveredFlags.AllowWhenDisabled)) {
+            ImGui.setTooltip("This template builds on the game's assets, so it targets that game.");
+        }
+    }
+
+    private static String targetFor(ProjectTemplate template) {
+        if (template != null && template.getTargetId() != null) {
+            return template.getTargetId();
+        }
+        return GameTargets.shared().defaultTarget().map(GameTarget::id).orElse(null);
+    }
+
+    private static String targetLabel(java.util.List<GameTarget> targets, String id) {
+        if (id == null) {
+            return "None (project only)";
+        }
+        return targets.stream().filter(t -> t.id().equals(id)).map(GameTarget::displayName).findFirst()
+                .orElse(id + " (not installed)");
     }
 
     /**

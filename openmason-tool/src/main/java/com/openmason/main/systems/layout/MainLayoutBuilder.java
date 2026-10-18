@@ -1,6 +1,5 @@
 package com.openmason.main.systems.layout;
 
-import com.openmason.main.omConfig;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectBrowserImGui;
 import com.openmason.main.systems.menus.panes.propertyPane.PropertyPanelImGui;
 import com.openmason.main.systems.menus.panes.riggingPane.RiggingPaneImGui;
@@ -12,8 +11,6 @@ import imgui.ImGui;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiDockNodeFlags;
 import imgui.type.ImInt;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Builds the main dockspace's default arrangement.
@@ -28,12 +25,10 @@ import org.slf4j.LoggerFactory;
  * +---------------------------------------------------------------------+
  * </pre>
  *
- * <p>Modelled on {@code TextureEditorLayoutBuilder}: a version number rather than a
- * boolean, so each release that adds a docked window can force exactly one rebuild.
+ * <p>The Scene workspace's {@code layoutVersion} is {@link #LAYOUT_VERSION}: each release that adds
+ * a docked window bumps it and every user gets exactly one rebuild ({@link WorkspaceLayouts}).
  */
 public final class MainLayoutBuilder {
-
-    private static final Logger logger = LoggerFactory.getLogger(MainLayoutBuilder.class);
 
     /**
      * Bump when the default arrangement gains or moves a window.
@@ -52,57 +47,7 @@ public final class MainLayoutBuilder {
      */
     public static final int LAYOUT_VERSION = 4;
 
-    private final omConfig config;
-
-    private boolean resetRequested = false;
-    private boolean appliedThisSession = false;
     private String pendingFocusWindow;
-
-    public MainLayoutBuilder(omConfig config) {
-        this.config = java.util.Objects.requireNonNull(config, "config");
-    }
-
-    /** View → Layout → Reset: rebuild on the next frame, no restart needed. */
-    public void requestReset() {
-        this.resetRequested = true;
-        this.appliedThisSession = false;
-    }
-
-    /**
-     * Rebuild the layout if this user needs it.
-     *
-     * @return true if a rebuild happened, in which case {@link #takePendingFocusWindow()}
-     *         names the tab to bring forward
-     */
-    public boolean applyIfNeeded(int dockspaceId, float width, float height) {
-        if (appliedThisSession) {
-            return false;
-        }
-
-        var node = imgui.internal.ImGui.dockBuilderGetNode(dockspaceId);
-        boolean hasSavedLayout = node != null && node.isSplitNode();
-        int storedVersion = config.getMainLayoutVersion();
-
-        if (!LayoutRebuildDecision.shouldRebuild(hasSavedLayout, storedVersion, LAYOUT_VERSION, resetRequested)) {
-            appliedThisSession = true;
-            return false;
-        }
-
-        if (hasSavedLayout && !resetRequested) {
-            logger.info("Rebuilding the dock layout once (was version {}, now {}) so the new windows have a home",
-                    storedVersion, LAYOUT_VERSION);
-        } else {
-            logger.info("Building the default dock layout");
-        }
-
-        build(dockspaceId, width, height);
-
-        config.setMainLayoutVersion(LAYOUT_VERSION);
-        config.saveConfiguration();
-        appliedThisSession = true;
-        resetRequested = false;
-        return true;
-    }
 
     /** The tab to focus after a rebuild; consumed once. */
     public String takePendingFocusWindow() {
@@ -111,7 +56,11 @@ public final class MainLayoutBuilder {
         return window;
     }
 
-    private void build(int dockspaceId, float width, float height) {
+    /**
+     * Arranges the default layout into {@code dockspaceId}; whether that is due (no saved layout,
+     * a newer {@link #LAYOUT_VERSION}, a reset) is decided by {@link WorkspaceLayouts}.
+     */
+    public void build(int dockspaceId, float width, float height) {
         imgui.internal.ImGui.dockBuilderRemoveNode(dockspaceId);
         // ImGuiDockNodeFlags.None, not PassthruCentralNode: this call expects *internal*
         // node flags, and the passthru behaviour actually comes from the ImGui.dockSpace()

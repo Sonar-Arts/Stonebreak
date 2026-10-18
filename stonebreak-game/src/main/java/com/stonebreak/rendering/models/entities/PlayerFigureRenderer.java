@@ -41,7 +41,7 @@ final class PlayerFigureRenderer {
     void renderLocalPlayer(com.stonebreak.player.Player player,
                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
                            com.stonebreak.world.World world, Vector3f cameraPos) {
-        com.stonebreak.mobs.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+        com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) return;
 
         // The BASE clip is pure locomotion (jump one-shots use event-relative
@@ -96,7 +96,7 @@ final class PlayerFigureRenderer {
                            Vector4f untexturedTint,
                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
                            com.stonebreak.world.World world, Vector3f cameraPos) {
-        com.stonebreak.mobs.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+        com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) {
             // Asset not loaded — fall back to cylinder so the figure never goes invisible.
             remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
@@ -146,7 +146,7 @@ final class PlayerFigureRenderer {
                              Vector3f position, float yawDegrees, Vector3f scale,
                              Matrix4f viewMatrix, Matrix4f projectionMatrix,
                              Object attachmentKey) {
-        com.stonebreak.mobs.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+        com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) return;
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
                 position, yawDegrees, scale, 0f, 0f, stateName, animationTime,
@@ -164,7 +164,7 @@ final class PlayerFigureRenderer {
      * ({@link com.stonebreak.mobs.sbe.EntityAttachments}) render after the
      * figure; null skips attachments (UI previews).
      */
-    private void renderPlayerFigure(com.stonebreak.mobs.sbe.SbeEntityAsset asset,
+    private void renderPlayerFigure(com.openmason.engine.entity.sbe.SbeEntityAsset asset,
                                     PlayerFigureRenderState figure,
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                     com.stonebreak.world.World world, Vector3f cameraPos,
@@ -177,19 +177,19 @@ final class PlayerFigureRenderer {
 
         if (SbeRenderSupport.isTextured(asset)) {
             sbeEntityRenderer.render(
-                    asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    asset, com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                     anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, world, cameraPos, figure.headYaw(), figure.headPitch());
         } else {
             sbeEntityRenderer.renderColored(
-                    asset, com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                    asset, com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                     anim, figure.position(), figure.yaw(), figure.scale(),
                     viewMatrix, projectionMatrix, figure.tint(), figure.headYaw(), figure.headPitch());
         }
 
         if (attachmentKey != null) {
             attachmentRenderer.render(attachmentKey, asset,
-                    com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT, anim,
+                    com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, anim,
                     figure.position(), figure.yaw(), figure.scale(),
                     figure.headYaw(), figure.headPitch(),
                     viewMatrix, projectionMatrix, world, cameraPos);

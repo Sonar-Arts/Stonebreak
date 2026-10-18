@@ -1,5 +1,6 @@
 package com.openmason.engine.voxel.cco.data.palette;
 
+import com.openmason.engine.util.EngineProperties;
 import com.openmason.engine.voxel.IBlockType;
 
 import java.util.Arrays;
@@ -92,9 +93,9 @@ public final class CcoPaletteSection {
     public static boolean packsToNibbles(int paletteLength) {
         return NIBBLE_TIER && paletteLength <= MAX_NIBBLE_PALETTE;
     }
-    /** Kill switch: {@code -Dstonebreak.palette.nibble=off} keeps the byte tier for ≤16 palettes. */
+    /** Kill switch: {@code -Dopenmason.palette.nibble=off} keeps the byte tier for ≤16 palettes. */
     private static final boolean NIBBLE_TIER =
-        !"off".equalsIgnoreCase(System.getProperty("stonebreak.palette.nibble", "on"));
+        !EngineProperties.isOff("palette.nibble");
 
     private static int nibbleAt(byte[] nibbles, int cellIndex) {
         int b = nibbles[cellIndex >> 1];

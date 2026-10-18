@@ -1,11 +1,12 @@
 package com.openmason.main.systems.uiEditor.service;
 
+import com.openmason.main.systems.target.TargetUi;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.ui.assets.AssetSource;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.rendering.RasterMasonryBackend;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
-import com.stonebreak.ui.runtime.GameUiDocuments;
 import io.github.humbleui.skija.Typeface;
 
 import java.awt.image.BufferedImage;
@@ -29,7 +30,8 @@ public final class UiSnapshot {
      */
     public static BufferedImage render(OmuiArchive doc, List<AssetSource> sources, Typeface typeface, int width,
                                        int height, float uiScale) throws java.io.IOException {
-        try (UiDocumentView view = GameUiDocuments.open(doc, sources, () -> typeface, com.stonebreak.ui.runtime.GameUiProviders.skiaOnly())) {
+        try (UiDocumentView view = UiDocuments.open(doc, UiDocuments.withFallback(sources, TargetUi.packagedAssets()),
+                TargetUi.textures(), () -> typeface, TargetUi.previewProviders())) {
             return render(view, typeface, width, height, uiScale);
         }
     }

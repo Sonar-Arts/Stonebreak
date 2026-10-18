@@ -1,6 +1,6 @@
 package com.openmason.main.systems.io;
 
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.mcp.approval.ApprovalGate;
 import com.openmason.main.systems.mcp.approval.McpApprovalGate;
 import com.openmason.main.systems.mcp.approval.PromptGate;
@@ -141,13 +141,13 @@ public final class AssetWriteService {
         }
     }
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final WriteSandbox sandbox;
     private final Supplier<WritePolicy> policy;
 
-    public AssetWriteService(MainImGuiInterface mainInterface, WriteSandbox sandbox,
+    public AssetWriteService(EditorServices editorServices, WriteSandbox sandbox,
                              Supplier<WritePolicy> policy) {
-        this.mainInterface = mainInterface;
+        this.editorServices = editorServices;
         this.sandbox = sandbox;
         this.policy = policy;
     }
@@ -256,9 +256,9 @@ public final class AssetWriteService {
         return switch (policy) {
             case ASK_ALWAYS -> true;
             case NEVER_ASK -> false;
-            case ASK_RISKY -> target.exists() || target.insideGame();
+            case ASK_RISKY -> target.exists() || target.asksFirst();
             case ASK_NEVER_IN_PROJECT -> {
-                if (target.insideGame()) {
+                if (target.asksFirst()) {
                     yield true;
                 }
                 if (target.exists() && !req.overwrite()) {
@@ -284,8 +284,8 @@ public final class AssetWriteService {
             name = target.fileName();
             overwrite = target.exists() ? target.path() : null;
         } else {
-            root = req.suggestedRoot() != null ? req.suggestedRoot() : kind.defaultRoot();
-            subdir = req.suggestedSubdir() != null ? req.suggestedSubdir() : kind.defaultSubdir();
+            root = req.suggestedRoot() != null ? req.suggestedRoot() : sandbox.roots().defaultRoot(kind);
+            subdir = req.suggestedSubdir() != null ? req.suggestedSubdir() : sandbox.roots().subdir(kind);
             String suggested = req.suggestedName();
             name = suggested == null || suggested.isBlank() ? kind.fallbackName() : suggested;
         }
@@ -301,7 +301,7 @@ public final class AssetWriteService {
         if (MainThreadExecutor.isMainThread()) {
             throw new IllegalStateException("AssetWriteService.save must not run on the main thread");
         }
-        SaveSheetGate gate = mainInterface != null ? mainInterface.getSaveSheetGate() : null;
+        SaveSheetGate gate = editorServices != null ? editorServices.getSaveSheetGate() : null;
         if (gate == null) {
             return SaveSheetResult.UNAVAILABLE;
         }
@@ -326,9 +326,18 @@ public final class AssetWriteService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("policy", policy.get().name());
         out.put("policyMeaning", policy.get().label());
-        out.put("pathGrammar", "absolute | project:<rel> | game:<rel> | exports:<rel> | "
-                + "bare name (kind's default root + sub-folder); the extension is added when missing");
-        out.put("saveSheetAvailable", mainInterface != null && mainInterface.getSaveSheetGate() != null);
+        out.put("pathGrammar", "absolute | project:<rel> | target:<rel> | exports:<rel> | "
+                + "bare name (kind's default root + sub-folder); the extension is added when missing; "
+                + "game:<rel> is an old spelling of target:<rel>");
+        out.put("target", sandbox.roots().target().map(t -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", t.id());
+            row.put("displayName", t.displayName());
+            row.put("namespace", t.defaultNamespace());
+            row.put("folders", t.folders().folders());
+            return (Object) row;
+        }).orElse("none"));
+        out.put("saveSheetAvailable", editorServices != null && editorServices.getSaveSheetGate() != null);
         List<Map<String, Object>> roots = new ArrayList<>();
         for (WriteRoot r : WriteRoot.values()) {
             Path p = sandbox.roots().path(r);
@@ -343,14 +352,15 @@ public final class AssetWriteService {
         }
         out.put("roots", roots);
         List<Map<String, Object>> kinds = new ArrayList<>();
-        for (WriteKind k : WriteKind.values()) {
+        for (WriteKind k : saveKinds()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("kind", k.id());
             row.put("extension", k.extension());
-            row.put("defaultRoot", k.defaultRoot().prefix());
-            row.put("defaultSubdir", k.defaultSubdir());
-            row.put("example", k.defaultRoot().prefix() + ":"
-                    + (k.defaultSubdir().isEmpty() ? "" : k.defaultSubdir() + "/")
+            row.put("defaultRoot", sandbox.roots().defaultRoot(k).prefix());
+            String subdir = sandbox.roots().subdir(k);
+            row.put("defaultSubdir", subdir);
+            row.put("example", sandbox.roots().defaultRoot(k).prefix() + ":"
+                    + (subdir.isEmpty() ? "" : subdir + "/")
                     + "My" + capitalize(k.fallbackName()) + k.extension());
             kinds.add(row);
         }
@@ -362,7 +372,7 @@ public final class AssetWriteService {
     public Map<String, Object> promptStatus() {
         Map<String, Object> out = new LinkedHashMap<>();
         boolean pending = false;
-        SaveSheetGate sheet = mainInterface != null ? mainInterface.getSaveSheetGate() : null;
+        SaveSheetGate sheet = editorServices != null ? editorServices.getSaveSheetGate() : null;
         if (sheet != null) {
             PromptGate.Pending<SaveSheetRequest, SaveSheetResult> p = sheet.pending();
             if (p != null) {
@@ -373,7 +383,7 @@ public final class AssetWriteService {
                 out.put("secondsRemaining", sheet.secondsRemaining());
             }
         }
-        ApprovalGate approval = mainInterface != null ? mainInterface.getApprovalGate() : null;
+        ApprovalGate approval = editorServices != null ? editorServices.getApprovalGate() : null;
         if (!pending && approval instanceof McpApprovalGate mag) {
             PromptGate.Pending<ApprovalGate.ApprovalRequest, ApprovalGate.Decision> p = mag.pending();
             if (p != null) {
@@ -411,5 +421,16 @@ public final class AssetWriteService {
 
     private static String capitalize(String s) {
         return s == null || s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** The kinds agents can write: the registered file types with a save rule, else the built-ins. */
+    private List<WriteKind> saveKinds() {
+        if (editorServices != null) {
+            FileTypeService types = editorServices.registry().find(FileTypeService.class).orElse(null);
+            if (types != null) {
+                return types.saveKinds();
+            }
+        }
+        return WriteKind.builtins();
     }
 }

@@ -80,8 +80,24 @@ public class OMPDeserializer {
                 parseUIState(root.get("ui")),
                 parsePartsList(root.get("parts")),
                 parseSceneReference(root.get("scene")),
-                parseUiEditorReference(root.get("uiEditor"))
+                parseUiEditorReference(root.get("uiEditor")),
+                parseTarget(root, version)
         );
+    }
+
+    /**
+     * 1.5+: the {@code target} id, absent/null = none. Older files predate targets: they migrate
+     * ({@link OMPFormat.TargetReference#LEGACY}) to the target claiming legacy projects.
+     */
+    private OMPFormat.TargetReference parseTarget(JsonNode root, String version) {
+        JsonNode node = root.get("target");
+        if (node != null && node.isTextual()) {
+            return OMPFormat.TargetReference.of(node.asText());
+        }
+        if (node == null && OMPFormat.isOlder(version, OMPFormat.TARGET_SINCE)) {
+            return OMPFormat.TargetReference.LEGACY;
+        }
+        return OMPFormat.TargetReference.NONE;
     }
 
     private OMPFormat.CameraState parseCameraState(JsonNode node) {

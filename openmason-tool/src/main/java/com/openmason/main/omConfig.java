@@ -22,9 +22,6 @@ public class omConfig {
     private static final String CONFIG_FILE = "config.properties";
     
     // Default configuration values
-    private static final String DEFAULT_STONEBREAK_PROJECT_PATH = "../stonebreak-game";
-    private static final String DEFAULT_MODELS_PATH = "src/main/resources/models";
-    private static final String DEFAULT_TEXTURES_PATH = "src/main/resources/textures";
     private static final boolean DEFAULT_AUTO_SAVE_ENABLED = true;
     private static final int DEFAULT_AUTO_SAVE_INTERVAL = 300; // 5 minutes
     private static final boolean DEFAULT_DARK_THEME_ENABLED = true;
@@ -77,18 +74,21 @@ public class omConfig {
         try (InputStream input = Files.newInputStream(configFilePath)) {
             properties.load(input);
         }
+        // Never read; game paths come from the project's game target (#380). Dropped on the next save.
+        for (String retired : RETIRED_KEYS) {
+            properties.remove(retired);
+        }
     }
+
+    /** Keys older configs carry that nothing reads any more. */
+    private static final java.util.List<String> RETIRED_KEYS =
+            java.util.List.of("stonebreak.project.path", "stonebreak.models.path", "stonebreak.textures.path");
     
     /**
      * Load default configuration values.
      */
     private void loadDefaultConfiguration() {
         properties.clear();
-        
-        // Project paths
-        properties.setProperty("stonebreak.project.path", DEFAULT_STONEBREAK_PROJECT_PATH);
-        properties.setProperty("stonebreak.models.path", DEFAULT_MODELS_PATH);
-        properties.setProperty("stonebreak.textures.path", DEFAULT_TEXTURES_PATH);
         
         // Application settings
         properties.setProperty("app.auto.save.enabled", String.valueOf(DEFAULT_AUTO_SAVE_ENABLED));
@@ -220,6 +220,26 @@ public class omConfig {
 
     public void setMainLayoutVersion(int version) {
         properties.setProperty(KEY_MAIN_LAYOUT_VERSION, String.valueOf(version));
+    }
+
+    /**
+     * The default dock layout version workspace {@code workspaceId} was last given (#379), or -1
+     * when none was recorded under the per-workspace key yet.
+     */
+    public int getWorkspaceLayoutVersion(String workspaceId) {
+        String raw = properties.getProperty("ui.layout.workspace." + workspaceId + ".version");
+        if (raw != null) {
+            try {
+                return Integer.parseInt(raw.trim());
+            } catch (NumberFormatException e) {
+                // corrupt: treated as never recorded
+            }
+        }
+        return -1;
+    }
+
+    public void setWorkspaceLayoutVersion(String workspaceId, int version) {
+        properties.setProperty("ui.layout.workspace." + workspaceId + ".version", String.valueOf(version));
     }
 
     public String getLastOpenedProjectPath() {

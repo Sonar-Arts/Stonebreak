@@ -20,9 +20,9 @@ import java.util.function.Supplier;
  * <p>Samples are cached in the engine's sound buffer under content-derived
  * keys ({@code res:<path>} for classpath resources, {@code embed:<len>:<hash>}
  * for embedded bytes) so repeated previews of the same sample decode once.
- * Resource paths resolve against the tool classpath, which includes the
- * stonebreak-game module — exactly the resources a shipped asset would
- * reference at runtime.
+ * Resource paths resolve against the active game target's resources (its
+ * source tree, then its class path; #380) — exactly the resources a shipped
+ * asset would reference at runtime — and then the tool's own class path.
  *
  * <p>Failures never throw out of {@link #playEmbedded}/{@link #playResource};
  * they return {@code false} and expose a human-readable {@link #lastError()}
@@ -65,8 +65,19 @@ public final class SoundPreviewService {
             return false;
         }
         String path = resourcePath.trim();
-        return play("res:" + path,
-                () -> SoundPreviewService.class.getResourceAsStream(path), volume, pitch);
+        return play("res:" + path, () -> openResource(path), volume, pitch);
+    }
+
+    private static InputStream openResource(String path) {
+        var target = com.openmason.main.systems.target.GameTargets.shared().active();
+        if (target.isPresent()) {
+            try {
+                return target.get().resources().open(path.startsWith("/") ? path.substring(1) : path);
+            } catch (java.io.IOException ignored) {
+                // not the target's: try the tool's own class path
+            }
+        }
+        return SoundPreviewService.class.getResourceAsStream(path);
     }
 
     /** Human-readable reason the most recent preview failed, or null. */

@@ -1,7 +1,7 @@
 package com.stonebreak.player;
 
 import com.openmason.engine.format.oma.ParsedAnimClip;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 import java.util.List;

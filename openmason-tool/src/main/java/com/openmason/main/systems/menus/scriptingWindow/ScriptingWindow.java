@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.scriptingWindow;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.scripting.ScriptExecutor;
 import com.openmason.main.systems.scripting.library.ScriptLibraryStore;
 import com.openmason.main.systems.scripting.mcp.ScriptingService;
@@ -47,7 +47,7 @@ public class ScriptingWindow {
     public static final String WINDOW_TITLE = "Scripting";
     private static final int EDITOR_CAPACITY = 256 * 1024;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final ScriptLibraryStore store;
     private final ImBoolean visible = new ImBoolean(false);
     private final ImGuiWindowClass windowClass = new ImGuiWindowClass();
@@ -57,7 +57,7 @@ public class ScriptingWindow {
         return t;
     });
 
-    private ScriptingService scripting; // lazy — needs mainInterface at run time
+    private ScriptingService scripting; // lazy — needs editorServices at run time
     private boolean iniFileSet = false;
     private boolean wasVisible = false;
 
@@ -84,12 +84,12 @@ public class ScriptingWindow {
     private record RunOutcome(boolean ok, String headline, String body, boolean undoNote) {
     }
 
-    public ScriptingWindow(MainImGuiInterface mainInterface) {
-        this(mainInterface, new ScriptLibraryStore());
+    public ScriptingWindow(EditorServices editorServices) {
+        this(editorServices, new ScriptLibraryStore());
     }
 
-    public ScriptingWindow(MainImGuiInterface mainInterface, ScriptLibraryStore store) {
-        this.mainInterface = mainInterface;
+    public ScriptingWindow(EditorServices editorServices, ScriptLibraryStore store) {
+        this.editorServices = editorServices;
         this.store = store;
         windowClass.setViewportFlagsOverrideClear(
                 ImGuiViewportFlags.NoDecoration | ImGuiViewportFlags.NoTaskBarIcon);
@@ -543,7 +543,7 @@ public class ScriptingWindow {
 
     private ScriptingService requireScripting() {
         if (scripting == null) {
-            scripting = new ScriptingService(mainInterface, new ObjectMapper());
+            scripting = new ScriptingService(editorServices, new ObjectMapper());
         }
         return scripting;
     }

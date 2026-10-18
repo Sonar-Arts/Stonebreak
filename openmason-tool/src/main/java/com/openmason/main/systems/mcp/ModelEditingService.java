@@ -10,7 +10,7 @@ import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
 import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import com.openmason.engine.rendering.model.gmr.parts.PartTransform;
 import org.joml.Matrix4f;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.threading.MainThreadExecutor;
@@ -38,17 +38,17 @@ public final class ModelEditingService {
 
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
-    public ModelEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public ModelEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     // ===================== Read =====================
 
     public ModelInfo getModelInfo() {
         return await(MainThreadExecutor.submit(() -> {
-            ViewportController vp = mainInterface.getViewport3D();
+            ViewportController vp = editorServices.getViewport3D();
             ModelPartManager pm = vp != null ? vp.getPartManager() : null;
             int partCount = pm != null ? pm.getPartCount() : 0;
             return new ModelInfo(vp != null && pm != null, partCount);
@@ -113,7 +113,7 @@ public final class ModelEditingService {
     public PartView createPart(String shapeName, String name, Vector3f size) {
         PartShapeFactory.Shape shape = parseShape(shapeName);
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Create Part: " + name, () -> {
+                editorServices, "Create Part: " + name, () -> {
                     ensureModelLoaded();
                     ModelPartManager pm = requirePartManager();
                     ModelPart geometry = PartShapeFactory.create(shape, name, size);
@@ -124,7 +124,7 @@ public final class ModelEditingService {
 
     public boolean deletePart(String idOrName) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Delete Part", () -> {
+                editorServices, "Delete Part", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return false;
                     return requirePartManager().removePart(p.get().id());
@@ -133,7 +133,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> duplicatePart(String idOrName) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Duplicate Part", () -> {
+                editorServices, "Duplicate Part", () -> {
                     Optional<ModelPartDescriptor> source = resolve(idOrName);
                     if (source.isEmpty()) return Optional.<PartView>empty();
                     Optional<ModelPartDescriptor> dup = requirePartManager().duplicatePart(source.get().id());
@@ -143,7 +143,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> renamePart(String idOrName, String newName) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Rename Part", () -> {
+                editorServices, "Rename Part", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     Optional<ModelPartDescriptor> renamed = requirePartManager().renamePart(p.get().id(), newName);
@@ -155,7 +155,7 @@ public final class ModelEditingService {
                                                Vector3f origin, Vector3f position,
                                                Vector3f rotation, Vector3f scale) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Set Part Transform", () -> {
+                editorServices, "Set Part Transform", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     ModelPartManager pm = requirePartManager();
@@ -173,7 +173,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> translatePart(String idOrName, Vector3f delta) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Translate Part", () -> {
+                editorServices, "Translate Part", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     ModelPartManager pm = requirePartManager();
@@ -184,7 +184,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> rotatePart(String idOrName, Vector3f eulerDeltaDegrees) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Rotate Part", () -> {
+                editorServices, "Rotate Part", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     ModelPartManager pm = requirePartManager();
@@ -195,7 +195,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> scalePart(String idOrName, Vector3f factors) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Scale Part", () -> {
+                editorServices, "Scale Part", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     ModelPartManager pm = requirePartManager();
@@ -206,7 +206,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> setPartVisibility(String idOrName, boolean visible) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Set Part Visibility", () -> {
+                editorServices, "Set Part Visibility", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     ModelPartManager pm = requirePartManager();
@@ -310,7 +310,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> moveVertex(String idOrName, int localIndex, Vector3f vec, boolean absolute) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Move Vertex", () -> {
+                editorServices, "Move Vertex", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     applyVertexMove(p.get(), new int[] {localIndex}, vec, absolute);
@@ -320,7 +320,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> moveEdge(String idOrName, int edgeIndex, Vector3f delta) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Move Edge", () -> {
+                editorServices, "Move Edge", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     int[] verts = edgeVertexIndices(p.get(), edgeIndex);
@@ -335,7 +335,7 @@ public final class ModelEditingService {
                                                float[] texCoords,
                                                int[] triangleToFaceId) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Set Part Geometry", () -> {
+                editorServices, "Set Part Geometry", () -> {
             Optional<ModelPartDescriptor> p = resolve(idOrName);
             if (p.isEmpty()) return Optional.<PartView>empty();
             if (vertices == null || vertices.length < 3 || vertices.length % 3 != 0) {
@@ -373,7 +373,7 @@ public final class ModelEditingService {
 
     public boolean undo() {
         return await(MainThreadExecutor.submit(() -> {
-            ViewportController vp = mainInterface.getViewport3D();
+            ViewportController vp = editorServices.getViewport3D();
             if (vp == null || vp.getCommandHistory() == null) return false;
             if (!vp.getCommandHistory().canUndo()) return false;
             vp.getCommandHistory().undo();
@@ -383,7 +383,7 @@ public final class ModelEditingService {
 
     public boolean redo() {
         return await(MainThreadExecutor.submit(() -> {
-            ViewportController vp = mainInterface.getViewport3D();
+            ViewportController vp = editorServices.getViewport3D();
             if (vp == null || vp.getCommandHistory() == null) return false;
             if (!vp.getCommandHistory().canRedo()) return false;
             vp.getCommandHistory().redo();
@@ -393,7 +393,7 @@ public final class ModelEditingService {
 
     public Optional<PartView> moveFace(String idOrName, int localFaceId, Vector3f delta) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Move Face", () -> {
+                editorServices, "Move Face", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     int[] verts = faceVertexIndices(p.get(), localFaceId);
@@ -413,7 +413,7 @@ public final class ModelEditingService {
             throw new IllegalArgumentException("t must be strictly between 0 and 1, got " + t);
         }
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Insert Vertex on Edge", () -> {
+                editorServices, "Insert Vertex on Edge", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<SubdivideEdgeResult>empty();
                     int[] localVerts = edgeVertexIndices(p.get(), edgeIndex);
@@ -441,7 +441,7 @@ public final class ModelEditingService {
      */
     public Optional<PartView> scaleFaces(String idOrName, int[] localFaceIds, float factor) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, "Scale Faces", () -> {
+                editorServices, "Scale Faces", () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<PartView>empty();
                     int[] globalIds = toGlobalFaceIds(p.get(), localFaceIds);
@@ -477,7 +477,7 @@ public final class ModelEditingService {
     private Optional<FacesOpResult> facesTopologyOp(String idOrName, int[] localFaceIds,
                                                     String label, FacesOp op) {
         return await(MainThreadExecutor.submit(() -> McpUndoCapture.runRecorded(
-                mainInterface, label, () -> {
+                editorServices, label, () -> {
                     Optional<ModelPartDescriptor> p = resolve(idOrName);
                     if (p.isEmpty()) return Optional.<FacesOpResult>empty();
                     int[] globalIds = toGlobalFaceIds(p.get(), localFaceIds);
@@ -580,7 +580,7 @@ public final class ModelEditingService {
     }
 
     private GenericModelRenderer requireModelRenderer() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         GenericModelRenderer gmr = vp != null ? vp.getModelRenderer() : null;
         if (gmr == null) throw new IllegalStateException("Model renderer not available");
         return gmr;
@@ -658,8 +658,8 @@ public final class ModelEditingService {
     // ===================== Helpers =====================
 
     private void ensureModelLoaded() {
-        ViewportController vp = mainInterface.getViewport3D();
-        ModelOperationService ops = mainInterface.getModelOperations();
+        ViewportController vp = editorServices.getViewport3D();
+        ModelOperationService ops = editorServices.getModelOperations();
         if (vp == null || ops == null) {
             throw new IllegalStateException("Editor not initialized");
         }
@@ -669,7 +669,7 @@ public final class ModelEditingService {
     }
 
     private ModelPartManager requirePartManager() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         if (vp == null) throw new IllegalStateException("Viewport not initialized");
         ModelPartManager pm = vp.getPartManager();
         if (pm == null) throw new IllegalStateException("Part manager not available");

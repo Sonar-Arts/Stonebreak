@@ -1,6 +1,7 @@
 package com.openmason.main.systems.skeleton;
 
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

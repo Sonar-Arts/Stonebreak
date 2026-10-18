@@ -172,6 +172,39 @@ public class FileMenuHandler {
         this.onSaveOpenScene = callback;
     }
 
+    /**
+     * The open project's game target (#380): None makes it a project-only project; a target whose
+     * plugin is not installed shows as such and stays selected until the user picks another.
+     */
+    private void renderGameTargetMenu(boolean hasProject) {
+        if (!ImGui.beginMenu("Game Target", hasProject)) {
+            return;
+        }
+        String current = projectService.getTargetId();
+        if (ImGui.menuItem("None (project only)", "", current == null)) {
+            changeTarget(null);
+        }
+        java.util.List<com.openmason.api.target.GameTarget> targets =
+                com.openmason.main.systems.target.GameTargets.shared().all();
+        for (com.openmason.api.target.GameTarget t : targets) {
+            if (ImGui.menuItem(t.displayName() + "##target_" + t.id(), "", t.id().equals(current))) {
+                changeTarget(t.id());
+            }
+        }
+        if (current != null && targets.stream().noneMatch(t -> t.id().equals(current))) {
+            ImGui.menuItem(current + " (not installed)", "", true, false);
+        }
+        ImGui.endMenu();
+    }
+
+    private void changeTarget(String id) {
+        projectService.setTargetId(id);
+        if (statusService != null) {
+            statusService.updateStatus(id == null ? "Project has no game target (project only)"
+                    : "Project game target: " + id + " (save the project to keep it)");
+        }
+    }
+
     public void setProjectService(ProjectService projectService) {
         this.projectService = projectService;
     }
@@ -213,13 +246,9 @@ public class FileMenuHandler {
     }
 
     /**
-     * Render the file menu with grouped sections.
+     * Render the file menu's items (inside the open menu; the menu bar draws the menu itself) with grouped sections.
      */
-    public void render() {
-        if (!ImGui.beginMenu("File")) {
-            return;
-        }
-
+    public void renderItems() {
         // --- New / Open ---
         if (ImGui.menuItem("New Model")) {
             modelOperations.newModel();
@@ -278,14 +307,14 @@ public class FileMenuHandler {
             saveProjectAs();
         }
 
+        renderGameTargetMenu(hasProject);
+
         ImGui.separator();
 
         // --- Exit ---
         if (ImGui.menuItem("Exit", "Alt+F4")) {
             exitApplication();
         }
-
-        ImGui.endMenu();
     }
 
     /**

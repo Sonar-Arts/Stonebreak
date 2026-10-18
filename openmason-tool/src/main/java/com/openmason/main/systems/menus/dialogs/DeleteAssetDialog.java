@@ -68,7 +68,7 @@ public class DeleteAssetDialog {
 
         if (ModalDialogs.begin(POPUP_ID, new ModalDialogs.Anchor(openCenterX, openCenterY), DIALOG_WIDTH)) {
             ImGui.textWrapped("Permanently delete '" + targetEntry.name() + "' ("
-                    + targetEntry.type().label() + ") from disk?");
+                    + targetEntry.type().browse().label() + ") from disk?");
             ImGui.textDisabled(targetEntry.pathString());
             ImGui.spacing();
 

@@ -39,6 +39,14 @@ import java.util.function.Consumer;
  */
 public class ProjectHubScreen {
 
+    /** The templates the hub offers (the registered template contributions, #379). */
+    private TemplateService templateService;
+
+    public TemplateService getTemplateService() {
+        return templateService;
+    }
+
+
     private static final Logger logger = LoggerFactory.getLogger(ProjectHubScreen.class);
 
     private static final String WINDOW_TITLE = "Open Mason - Project Hub";
@@ -74,7 +82,7 @@ public class ProjectHubScreen {
 
         this.hubState = new HubState();
 
-        TemplateService templateService = new TemplateService();
+        this.templateService = new TemplateService();
         this.recentProjectsService = new RecentProjectsService();
         this.projectScanService = new ProjectScanService(config::getProjectsBaseFolder);
         this.actionService = new HubActionService();

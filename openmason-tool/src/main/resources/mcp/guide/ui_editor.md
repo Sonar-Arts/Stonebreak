@@ -24,12 +24,13 @@ override** (the component file is untouched). `reset_override {keys}` = reset to
 `set_param {key:<instance>, param, value}` sets an exposed component parameter (null resets).
 
 ## ui_ops
+Ids below use the namespace `mygame`; use your project's game-target namespace (`save_targets` → `target.namespace`).
 ```json
 {"ops":[
  {"op":"create","type":"Box","name":"panel","style":{"width":400,"padding-top":16},"as":"panel"},
  {"op":"create","parent":"$panel","type":"Label","props":{"text":"Paused"},"classes":["title"]},
  {"op":"create","parent":"$panel","type":"Label","bindings":[{"target":"prop:text","path":"session.name"}]},
- {"op":"add_instance","parent":"$panel","component":"stonebreak:ui/components/stone_button","as":"btn"},
+ {"op":"add_instance","parent":"$panel","component":"mygame:ui/components/stone_button","as":"btn"},
  {"op":"set_prop","keys":"$btn/label","prop":"text","value":"Resume"},
  {"op":"add_sheet","id":"hud"},
  {"op":"add_rule","sheet":"hud","selector":"#panel","style":{"background-color":"#203040"}},
@@ -48,11 +49,11 @@ Optional features the document uses are added to the manifest's `requires` autom
 Assets, graphs, state machines (same batch, same single undo step; project writes are undone too):
 ```json
 {"ops":[
- {"op":"add_dependency","path":"UI/stonebreak/ui/textures/panel.sbt"},
- {"op":"add_dependency","path":"UI/stonebreak/ui/textures/slots.sprites.json"},
- {"op":"add_dependency","id":"stonebreak:ui/fonts/minecraft","kind":"font","license":"OFL"},
- {"op":"set_dependency","id":"stonebreak:ui/textures/panel","optional":true,"fallback":"stonebreak:ui/textures/plain"},
- {"op":"embed_dependency","id":"stonebreak:ui/textures/panel"},
+ {"op":"add_dependency","path":"UI/mygame/ui/textures/panel.sbt"},
+ {"op":"add_dependency","path":"UI/mygame/ui/textures/slots.sprites.json"},
+ {"op":"add_dependency","id":"mygame:ui/fonts/minecraft","kind":"font","license":"OFL"},
+ {"op":"set_dependency","id":"mygame:ui/textures/panel","optional":true,"fallback":"mygame:ui/textures/plain"},
+ {"op":"embed_dependency","id":"mygame:ui/textures/panel"},
  {"op":"put_graph","graph":{"id":"behaviors","nodes":[],"edges":[]}},
  {"op":"put_state_machine","machine":{"id":"button","driver":"interaction","element":"resume","initial":"normal",
    "states":[{"name":"normal"},{"name":"hover","clip":"lift"}],"transitions":[{"to":"hover","blend":0.1}]}}
@@ -65,10 +66,10 @@ while anything still references the id (`force:true` overrides). `extract_depend
 fail|keep_project|replace}`, `relink_dependency {id, path}`, `refresh_dependency {id}`.
 
 ## Host contracts
-A document reads host data (`session.online`) and calls host actions (`stonebreak:screen.pause.resume`)
+A document reads host data (`session.online`) and calls host actions (`mygame:screen.pause.resume`)
 only under the contracts its manifest declares (`hostApis`); undeclared roots read as failed and the
 game refuses the screen. `set_host_api {id, version, optional?}` declares one (`version: null` removes
-it); `set_provider` does the same for draw providers (`stonebreak:item-icon`). Every export's
+it); `set_provider` does the same for draw providers (`mygame:item-icon`). Every export's
 `hostCheck` lists what the game host knows.
 
 ## Inspect
@@ -86,15 +87,16 @@ pseudo-states. Frame: `width/height` (device px), `ui_scale`, `pixel_ratio`.
 `ui_save` → in place, or for a new document its **convention path** `UI/<ns>/<path>.omui`
 (so screens resolve project components; save a component before placing it elsewhere).
 `ui_save_as {path | prompt:true, overwrite?}` saves elsewhere (it becomes the document's file).
-Re-saving a file under `game:` asks the user; a document with a newer
+Re-saving a file under `target:` asks the user; a document with a newer
 crash-recovery copy cannot be saved until the author Restores or Discards it (`ui_documents`
 shows `recovery`; the editor's own autosave never counts). A re-save of a file someone changed
 on disk meanwhile is refused unless `overwrite:true`. `ui_close {discard:true}` keeps the unsaved
 changes in crash recovery for the author. `ui_export {mode: shared|collect_all}` →
 `Exports/UI/<stem>.sbui` + report; every export reports `hostCheck` (what the real game host
 would refuse: unknown data roots, contracts, actions). `ui_export {deploy:true}` ships it to the
-game: `game:ui/documents/<stem>.sbui` and, in shared mode, each shared asset under
-`game:ui/shared/<ns>/<path>` (asks the user; never deploys an export the game would refuse).
+project's game target in the target's deploy layout (Stonebreak: `target:ui/documents/<stem>.sbui` and, in
+shared mode, each shared asset under `target:ui/shared/<ns>/<path>`; asks the user; never deploys an export
+the game would refuse). A project without a game target (or one whose target ships no UI) cannot deploy.
 `ui_import_sbui {path}` imports into the project (new files only).
 
 ## Scripting

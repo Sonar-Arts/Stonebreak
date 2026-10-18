@@ -1,0 +1,9 @@
+bone_clear
+bone_create
+bone_delete
+bone_get
+bone_list
+bone_rename
+bone_select
+bone_set_parent
+bone_set_transform

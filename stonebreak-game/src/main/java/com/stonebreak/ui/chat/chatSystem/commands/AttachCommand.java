@@ -1,16 +1,17 @@
 package com.stonebreak.ui.chat.chatSystem.commands;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.sbe.EntityAttachments;
-import com.stonebreak.mobs.sbe.SbeAttachmentPoint;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityLoader;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
-import com.stonebreak.mobs.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.chat.chatSystem.ChatMessageManager;
 import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
@@ -109,7 +110,7 @@ public class AttachCommand implements ChatCommand {
         }
         String resource = path.startsWith("/") ? path : "/" + path;
         if (SbeEntityLoader.class.getResource(resource) != null) {
-            return SbeEntityLoader.loadAttachableResource(resource);
+            return GameSbeAssets.loadAttachableResource(resource);
         }
         throw new IllegalStateException("not found on disk (" + path
                 + ") or on the classpath (" + resource + ")");

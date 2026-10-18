@@ -37,13 +37,9 @@ public class ViewMenuHandler {
     }
 
     /**
-     * Render the view menu.
+     * Render the view menu's items (inside the open menu; the menu bar draws the menu itself).
      */
-    public void render() {
-        if (!ImGui.beginMenu("View")) {
-            return;
-        }
-
+    public void renderItems() {
         // --- Camera ---
         if (ImGui.menuItem(label(ViewportKeybindActions.RESET_VIEW, "Reset View"),
                 shortcut(ViewportKeybindActions.RESET_VIEW))) {
@@ -136,8 +132,6 @@ public class ViewMenuHandler {
 
             ImGui.endMenu();
         }
-
-        ImGui.endMenu();
     }
 
     /** Shortcut column from the keybind registry, so a rebind never leaves it stale. */

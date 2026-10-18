@@ -1,10 +1,10 @@
 package com.openmason.main.systems.viewport.viewportRendering.attachments;
 
 import com.openmason.engine.rendering.shaders.ShaderProgram;
-import com.stonebreak.mobs.sbe.MaterialImage;
-import com.stonebreak.mobs.sbe.SbeFace;
-import com.stonebreak.mobs.sbe.SbeModelGeometry;
-import com.stonebreak.mobs.sbe.SbePart;
+import com.openmason.engine.entity.sbe.MaterialImage;
+import com.openmason.engine.entity.sbe.SbeFace;
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbePart;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import org.slf4j.Logger;

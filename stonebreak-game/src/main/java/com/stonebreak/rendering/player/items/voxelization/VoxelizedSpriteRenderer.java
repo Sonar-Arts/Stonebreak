@@ -1,5 +1,7 @@
 package com.stonebreak.rendering.player.items.voxelization;
 
+import com.openmason.engine.rendering.sprite.VoxelData;
+import com.openmason.engine.rendering.sprite.VoxelMesh;
 import com.stonebreak.items.ItemType;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Vector4f;

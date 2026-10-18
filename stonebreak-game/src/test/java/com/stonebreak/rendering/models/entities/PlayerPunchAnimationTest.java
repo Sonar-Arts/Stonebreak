@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
 import com.stonebreak.player.PlayerConstants;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Exercises the shipped punch through the same hierarchy and layering used by the game. */
 class PlayerPunchAnimationTest {
     private static Map<String, Matrix4f> pose(AnimState state) {
-        var asset = SbeEntityLoader.load("/sbe/Mobs/SB_Player.sbe");
+        var asset = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
         Map<String, Matrix4f> matrices = new HashMap<>();
         SbePoseSolver.forEachPartMatrix(asset.geometryFor("Default"), asset, state,
                 new Matrix4f(), 0f, 0f, (matrix, part) -> matrices.put(part.name(), new Matrix4f(matrix)));
@@ -51,7 +51,7 @@ class PlayerPunchAnimationTest {
 
     @Test
     void punchIsOneShotAndReturnsEveryPartToRest() {
-        var asset = SbeEntityLoader.load("/sbe/Mobs/SB_Player.sbe");
+        var asset = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
         var clip = asset.clipFor("attacking");
         assertFalse(clip.loop());
         assertEquals(0.78f, clip.duration(), 1e-6f);

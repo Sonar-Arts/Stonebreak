@@ -25,6 +25,7 @@ public class ProjectTemplate {
     private final Map<String, String> metadata;
     private final List<TemplateModel> models;
     private final String openOnCreate;
+    private final String targetId;
 
     /**
      * One part of a template model: a primitive of {@code size} (full extents, model
@@ -41,15 +42,15 @@ public class ProjectTemplate {
 
     /**
      * A blank model the template writes into a new project as {@code <name>.omo}. Its
-     * geometry is either built from primitive {@code parts}, or copied from the mesh of one
-     * of the game's block {@code .sbo} files ({@code gameBlockSbo}, a file name under
-     * {@code sbo/blocks/}) with its materials dropped.
+     * geometry is either built from primitive {@code parts}, or copied from the mesh of an
+     * {@code .sbo} of the template's game target ({@code targetSbo}, a path relative to the
+     * target's resource root, read through its template source) with its materials dropped.
      */
-    public record TemplateModel(String name, List<TemplatePart> parts, String gameBlockSbo) {
+    public record TemplateModel(String name, List<TemplatePart> parts, String targetSbo) {
         public TemplateModel {
             Objects.requireNonNull(name, "Model name cannot be null");
             parts = parts == null ? List.of() : List.copyOf(parts);
-            if (parts.isEmpty() == (gameBlockSbo == null)) {
+            if (parts.isEmpty() == (targetSbo == null)) {
                 throw new IllegalArgumentException(
                         "Template model '" + name + "' needs either parts or an .sbo source, not both");
             }
@@ -77,6 +78,10 @@ public class ProjectTemplate {
         this.metadata = new HashMap<>(builder.metadata);
         this.models = List.copyOf(builder.models);
         this.openOnCreate = builder.openOnCreate;
+        this.targetId = builder.targetId;
+        if (targetId == null && models.stream().anyMatch(m -> m.targetSbo() != null)) {
+            throw new IllegalArgumentException("Template '" + id + "' copies target assets but names no game target");
+        }
     }
 
     // Getters
@@ -119,6 +124,11 @@ public class ProjectTemplate {
         return openOnCreate;
     }
 
+    /** The game target projects made from this template target (#380), or null for none in particular. */
+    public String getTargetId() {
+        return targetId;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -154,6 +164,7 @@ public class ProjectTemplate {
         private final Map<String, String> metadata = new HashMap<>();
         private final List<TemplateModel> models = new ArrayList<>();
         private String openOnCreate;
+        private String targetId;
 
         public Builder id(String id) {
             this.id = id;
@@ -200,9 +211,18 @@ public class ProjectTemplate {
             return this;
         }
 
-        /** A model whose geometry is copied, untextured, from a game block {@code .sbo}. */
-        public Builder modelFromGameBlock(String name, String gameBlockSbo) {
-            this.models.add(new TemplateModel(name, null, gameBlockSbo));
+        /**
+         * A model whose geometry is copied, untextured, from an {@code .sbo} of the template's
+         * game target ({@code targetSbo} relative to its resource root).
+         */
+        public Builder modelFromTargetSbo(String name, String targetSbo) {
+            this.models.add(new TemplateModel(name, null, targetSbo));
+            return this;
+        }
+
+        /** The game target projects made from this template target. */
+        public Builder target(String targetId) {
+            this.targetId = targetId;
             return this;
         }
 

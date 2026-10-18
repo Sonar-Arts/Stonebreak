@@ -1,6 +1,7 @@
 package com.openmason.engine.voxel.mms.mmsCore;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.util.EngineProperties;
 import com.openmason.engine.vram.VramPlans;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL15;
@@ -32,7 +33,7 @@ import java.nio.ByteBuffer;
  * <p>GL-thread confined, like every mesh upload. Created lazily via
  * {@link #sharedInstance()}; returns null (callers keep the classic
  * {@code glBufferSubData} path) when the context lacks GL 4.4 or
- * {@code -Dstonebreak.stagingring=off} is set.
+ * {@code -Dopenmason.stagingring=off} is set.
  */
 public final class MmsStagingRing implements AutoCloseable {
 
@@ -50,8 +51,7 @@ public final class MmsStagingRing implements AutoCloseable {
      */
     public static MmsStagingRing sharedInstance() {
         if (!sharedDecided) {
-            String prop = System.getProperty("stonebreak.stagingring", "on");
-            boolean off = "off".equalsIgnoreCase(prop) || "false".equalsIgnoreCase(prop);
+            boolean off = EngineProperties.isOff("stagingring");
             boolean capable = false;
             if (!off) {
                 try {
@@ -75,7 +75,7 @@ public final class MmsStagingRing implements AutoCloseable {
                 }
             } else {
                 System.out.println("[MmsStagingRing] Persistent-mapped staging disabled ("
-                        + (off ? "-Dstonebreak.stagingring=off" : "no GL 4.4 / ARB_buffer_storage") + ")");
+                        + (off ? "-D" + EngineProperties.name("stagingring") + "=off" : "no GL 4.4 / ARB_buffer_storage") + ")");
             }
         }
         return shared;
