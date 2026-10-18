@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.stonebreak.items.ItemType;
 
 /**

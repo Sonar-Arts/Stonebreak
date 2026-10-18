@@ -1,6 +1,7 @@
 package com.openmason.main.systems.project;
 
-import com.openmason.main.systems.layout.Workspace;
+import com.openmason.main.systems.layout.BuiltinWorkspaces;
+import com.openmason.main.systems.layout.WorkspaceFixtures;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -45,7 +46,7 @@ class OMPUiEditorReferenceTest {
                 List.of("UI/stonebreak/ui/screens/pause.omui", "UI/stonebreak/ui/components/button.omui"),
                 "UI/stonebreak/ui/screens/pause.omui")));
         assertNotNull(loaded.uiEditor());
-        assertEquals(Workspace.UI, Workspace.resolve(loaded.uiEditor().workspace()));
+        assertEquals(BuiltinWorkspaces.UI, WorkspaceFixtures.state().resolve(loaded.uiEditor().workspace()));
         assertEquals(2, loaded.uiEditor().documents().size());
         assertEquals("UI/stonebreak/ui/screens/pause.omui", loaded.uiEditor().activeDocument());
         assertEquals("MODEL_EDITOR", loaded.scene().activeCenterTab(), "the scene node is unaffected");
@@ -85,7 +86,7 @@ class OMPUiEditorReferenceTest {
         assertNotNull(loaded);
         assertNull(loaded.uiEditor());
         assertEquals("SCENE_VIEWER", loaded.scene().activeCenterTab());
-        assertEquals(Workspace.MODELING, Workspace.resolve(null));
+        assertEquals(BuiltinWorkspaces.MODELING, WorkspaceFixtures.state().resolve(null));
         // re-saving without a supplier writes no node: the file only grows what it had
         Path again = tempDir.resolve("again.omp");
         assertTrue(new OMPSerializer().save(doc(null), again.toString()));
@@ -94,8 +95,8 @@ class OMPUiEditorReferenceTest {
 
     @Test
     void unknownWorkspaceValuesFallBackToModeling() {
-        assertEquals(Workspace.MODELING, Workspace.resolve("SOMETHING_NEW"));
-        assertEquals(Workspace.UI, Workspace.resolve("ui"));
+        assertEquals(BuiltinWorkspaces.MODELING, WorkspaceFixtures.state().resolve("SOMETHING_NEW"));
+        assertEquals(BuiltinWorkspaces.UI, WorkspaceFixtures.state().resolve("ui"));
         assertEquals("MODELING", new OMPFormat.UiEditorReference(null, null, null).workspace());
     }
 }

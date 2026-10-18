@@ -8,7 +8,7 @@ import com.openmason.engine.rendering.model.gmr.editable.MeshImporter;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartDescriptor;
 import com.openmason.engine.rendering.model.gmr.parts.ModelPartManager;
 import com.openmason.engine.rendering.model.gmr.parts.PartMeshRebuilder;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import org.joml.Vector3f;
@@ -38,13 +38,13 @@ public class ModelInspectionService {
     /** texture:true is heavy (a glyph grid per face) — keep pages tiny. */
     static final int TEXTURE_PAGE_MAX = 8;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final FaceTextureEditingService faceTextures;
     protected final ObjectMapper mapper;
 
-    public ModelInspectionService(MainImGuiInterface mainInterface,
+    public ModelInspectionService(EditorServices editorServices,
                                   FaceTextureEditingService faceTextures, ObjectMapper mapper) {
-        this.mainInterface = mainInterface;
+        this.editorServices = editorServices;
         this.faceTextures = faceTextures;
         this.mapper = mapper;
     }
@@ -99,7 +99,7 @@ public class ModelInspectionService {
         List<PartSnapshot> scope = filterParts(snapshots, part);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        var modelState = mainInterface.getModelState();
+        var modelState = editorServices.getModelState();
         if (modelState != null) {
             out.put("model", modelState.getCurrentModelPath());
             out.put("dirty", modelState.hasUnsavedChanges());
@@ -283,7 +283,7 @@ public class ModelInspectionService {
     }
 
     private ModelPartManager requirePartManager() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         if (vp == null) {
             throw new IllegalStateException("Viewport is not connected — load a model first");
         }

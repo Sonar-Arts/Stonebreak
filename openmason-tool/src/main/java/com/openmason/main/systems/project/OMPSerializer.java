@@ -83,6 +83,8 @@ public class OMPSerializer {
         root.put("projectName", doc.projectName());
         if (doc.createdAt() != null) root.put("createdAt", doc.createdAt());
         if (doc.lastSavedAt() != null) root.put("lastSavedAt", doc.lastSavedAt());
+        // 1.5: a legacy reference is resolved before saving; anything still unresolved is "none".
+        if (doc.target().id() != null) root.put("target", doc.target().id());
 
         if (doc.camera() != null) {
             ObjectNode camera = objectMapper.createObjectNode();

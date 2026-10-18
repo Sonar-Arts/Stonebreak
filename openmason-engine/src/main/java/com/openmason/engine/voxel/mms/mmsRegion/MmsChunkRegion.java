@@ -1,6 +1,7 @@
 package com.openmason.engine.voxel.mms.mmsRegion;
 
 import com.openmason.engine.diagnostics.GpuMemoryTracker;
+import com.openmason.engine.util.EngineProperties;
 import com.openmason.engine.vram.VramArenaPolicy;
 import com.openmason.engine.vram.VramPlans;
 import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
@@ -46,7 +47,7 @@ import java.util.List;
  *       that never move</i>; the trim sweep decommits any page no live
  *       segment touches (copy-free, fragmentation-immune). Falls back to
  *       copy mode when the extension is missing or
- *       {@code -Dstonebreak.sparse=off} is set.
+ *       {@code -Dopenmason.sparse=off} is set.
  * </ul>
  *
  * <p>All methods are GL-thread confined. Uploads and copies go through the
@@ -213,7 +214,7 @@ public final class MmsChunkRegion {
     /** One-time capability + kill-switch check (only reached when a plan asks). */
     private static boolean sparseSupported() {
         if (sparseCapable == null) {
-            boolean off = "off".equalsIgnoreCase(System.getProperty("stonebreak.sparse", "on"));
+            boolean off = EngineProperties.isOff("sparse");
             boolean capable;
             try {
                 GL.getCapabilities();
@@ -226,7 +227,7 @@ public final class MmsChunkRegion {
             sparseCapable = !off && capable;
             System.out.println("[MmsChunkRegion] Sparse arenas "
                 + (sparseCapable ? "ENABLED (page commitment growth)"
-                    : "unavailable (" + (off ? "-Dstonebreak.sparse=off"
+                    : "unavailable (" + (off ? "-D" + EngineProperties.name("sparse") + "=off"
                         : "no ARB_sparse_buffer") + ") — copy growth"));
         }
         return sparseCapable;
@@ -770,7 +771,7 @@ public final class MmsChunkRegion {
      * packing every live segment to the tail, old buffer deleted, VAO
      * re-pointed at the new buffer.
      */
-    private static final boolean ARENA_DEBUG = Boolean.getBoolean("stonebreak.arena.debug");
+    private static final boolean ARENA_DEBUG = EngineProperties.flag("arena.debug");
 
     private void resizeArena(MmsArenaAllocator alloc, long newCapacity, boolean vertex) {
         int elementBytes = vertex ? vertexStride : Short.BYTES;

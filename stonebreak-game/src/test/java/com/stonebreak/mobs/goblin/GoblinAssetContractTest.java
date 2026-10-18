@@ -7,9 +7,9 @@ import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 import com.stonebreak.mobs.sbe.Clothing;
 import com.stonebreak.mobs.sbe.MobStateMapping;
-import com.stonebreak.mobs.sbe.SbeAttachmentPoint;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -30,7 +30,7 @@ class GoblinAssetContractTest {
 
     private static final float CLIP_TOLERANCE_SECONDS = 0.02f;
 
-    private final SbeEntityAsset goblin = SbeEntityLoader.load("/sbe/Mobs/SB_Goblin.sbe");
+    private final SbeEntityAsset goblin = GameSbeAssets.load("/sbe/Mobs/SB_Goblin.sbe");
 
     private ParsedAnimClip clipFor(MobBehaviorState state) {
         String name = MobStateMapping.sbeState(EntityType.GOBLIN, state);
@@ -90,9 +90,9 @@ class GoblinAssetContractTest {
     @Test
     void everyCosmeticDecodesWithItsVariants() {
         for (String path : new String[] {Clothing.PIRATE_HAT, Clothing.GOLD_EARRING, Clothing.BANDANA}) {
-            assertNotNull(SbeEntityLoader.loadAttachableResource(path).geometryFor(SbeEntityAsset.DEFAULT_VARIANT), path);
+            assertNotNull(GameSbeAssets.loadAttachableResource(path).geometryFor(SbeEntityAsset.DEFAULT_VARIANT), path);
         }
-        Set<String> colors = SbeEntityLoader.loadAttachableResource(Clothing.BANDANA).variants().keySet();
+        Set<String> colors = GameSbeAssets.loadAttachableResource(Clothing.BANDANA).variants().keySet();
         assertTrue(colors.containsAll(Clothing.BANDANA_COLORS), "bandana colours " + colors);
     }
 }

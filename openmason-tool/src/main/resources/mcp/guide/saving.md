@@ -4,18 +4,21 @@ Every file an agent writes goes through one sandbox + one policy + one dialog.
 
 **Roots** (`save_targets` lists them with sub-folders):
 - `project:` — the open .omp's folder (default for .omo/.omt/.omanim; scenes → `Scenes/`)
-- `game:` — `stonebreak-game/src/main/resources` (default for .sbo → `sbo/<type>/`, .sbe → `sbe/Mobs/`)
+- `target:` — the project's **game target** resource tree (default for .sbo/.sbe, in the target's folder for the
+  asset's type; `save_targets.target` lists the target, its namespace and folders). A project with no target
+  (File → Game Target → None) has no `target:` root; .sbo/.sbe then default to `project:`. `game:` still
+  parses as the old spelling of `target:`.
 - `exports:` — `~/.openmason/exports` (default for .png)
 
-**Path grammar** for every `file_path`: absolute · `project:models/x.omo` · `game:sbo/blocks/SB_X.sbo` ·
-bare `SB_X` (kind's default root + sub-folder; extension added). Anything outside the roots is refused
+**Path grammar** for every `file_path`: absolute · `project:models/x.omo` · `target:<folder>/X.sbo` ·
+bare `X` (kind's default root + sub-folder; extension added). Anything outside the roots is refused
 (`path_outside_sandbox`) — no dialog, no write.
 
 **When the user is asked** (policy `ASK_RISKY`, Preferences → Assistant → Agent File Writes):
 - new file in `project:`/`exports:` → written silently (status toast)
-- overwrite of an existing file, or anything under `game:` → the in-app **Save Sheet** opens
+- overwrite of an existing file, or anything under `target:` → the in-app **Save Sheet** opens
 - no `file_path`, or `prompt:true` → Save Sheet
-- `ASK_ALWAYS` asks for everything; `ASK_NEVER_IN_PROJECT` lets `overwrite:true` replace silently outside `game:`.
+- `ASK_ALWAYS` asks for everything; `ASK_NEVER_IN_PROJECT` lets `overwrite:true` replace silently outside `target:`.
 
 The Save Sheet is a modal the human answers (root, folder, name, existing files, overwrite warning,
 countdown). While it is open, `ui_prompt_status` says so — explain the wait, do not retry blindly.
@@ -32,7 +35,7 @@ A decline is `reason: user_declined|timeout|busy|prompt_unavailable`, never a pr
   sound samples) must live inside a root.
 - `sbo_editor_open/get/set/save`, `sbe_editor_*`: drive the editor windows the user sees. `get` returns the
   draft manifest; `set` patches metadata / gameProperties / sounds / drops / tool (states and embedded bytes stay);
-  `save` validates like the Save button and writes through the sandbox — a shipped asset is under `game:`, so it asks.
+  `save` validates like the Save button and writes through the sandbox — a shipped asset is under `target:`, so it asks.
 
 **`sbo_export` params** — `objectId`, `objectName`, `objectType` (block|item|entity|decoration|particle|other),
 `objectPack`, `author`, `description`, `gameProperties{numericId, hardness, solid, breakable, atlasX, atlasY,
@@ -42,7 +45,7 @@ variation}]`, `drops{drops[{objectId, min, max, chance}], toolOverrides[{tool, d
 drops nothing; absent = game default), `tool{toolClass, tier (int or wood|stone|iron|diamond), speedMultiplier
 (hardness ×, lower = faster), materials[], durability?, attackDamage?}` (items; speeds up blocks whose
 `gameProperties.material` is listed when `tier >= requiredTier`). Missing fields get the export window's defaults: next free `numericId`,
-a free atlas slot, `stonebreak:<slug>` id, the OS user as author.
+a free atlas slot, `<namespace>:<slug>` id (the game target's namespace), the OS user as author.
 
 **Texture-only SBO** (the Texture Editor's Export SBO) — `sbo_export` with `source: "texture"`: the payload is
 the texture editor's open `.omt` (saved first when untitled or dirty; refused while a model-face session is
@@ -50,7 +53,7 @@ open) or an explicit `omt` path inside a root (implies the texture source). `obj
 `block`/`entity` are refused (they need a model). Items need `numericId > 0` (next free item id by default).
 `gameProperties` merge over sprite defaults: hardness 0, not solid, CUTOUT + transparent, no atlas tile,
 `maxStackSize` 64, `TOOLS`, not placeable. `states[{name, omt?}]` take `.omt` sources and no `clip`.
-Exports into `game:sbo/items/` and opens in the SBO editor.
+Exports into the target's item folder and opens in the SBO editor.
 
 **`sbe_export` params** — `objectId`, `objectName`, `entityType` (mob|npc|projectile|vehicle|other), `objectPack`,
 `author`, `description`, `states[{name, model?, clip?}]`, `variants[{name, model?}]`, `sounds[…]`.

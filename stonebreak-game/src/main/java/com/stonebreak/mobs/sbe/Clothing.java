@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+
 import java.util.List;
 
 /**
@@ -40,7 +42,7 @@ public final class Clothing {
             return;
         }
         try {
-            SbeEntityAsset asset = SbeEntityLoader.loadAttachableResource(resourcePath);
+            SbeEntityAsset asset = GameSbeAssets.loadAttachableResource(resourcePath);
             EntityAttachments.attach(entityKey, socket, new AttachmentVisual.Model(asset,
                     variant != null ? variant : SbeEntityAsset.DEFAULT_VARIANT));
         } catch (Exception e) {

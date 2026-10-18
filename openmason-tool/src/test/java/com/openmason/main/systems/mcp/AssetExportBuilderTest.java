@@ -11,6 +11,7 @@ import com.openmason.engine.format.sbo.SBOSerializer;
 import com.openmason.main.systems.services.ModelOperationService;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
+import com.openmason.main.systems.target.TestGameTargets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,17 @@ class AssetExportBuilderTest {
     Path tmp;
 
     private Path omo;
+
+    /** The export windows' defaults are the active game target's (#380): a Stonebreak session. */
+    @BeforeEach
+    void stonebreakSession() {
+        TestGameTargets.installStonebreak();
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void noTarget() {
+        TestGameTargets.clearShared();
+    }
 
     @BeforeEach
     void blankCubeOnDisk() {

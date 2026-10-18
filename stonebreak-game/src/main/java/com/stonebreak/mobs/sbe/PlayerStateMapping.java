@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+
 /**
  * Maps the player's local movement state to an animation state name authored
  * in {@code SB_Player.sbe}.

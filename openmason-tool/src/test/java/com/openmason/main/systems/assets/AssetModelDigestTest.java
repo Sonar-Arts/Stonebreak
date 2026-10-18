@@ -1,6 +1,7 @@
 package com.openmason.main.systems.assets;
 
 import com.openmason.engine.rendering.model.gmr.analysis.WindingAnalyzer;
+import com.openmason.main.systems.target.TestGameTargets;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -14,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Digests real shipped assets — SBO block, SBE mob — end to end. */
 class AssetModelDigestTest {
 
-    private final AssetCatalog catalog = new AssetCatalog();
+    private final AssetCatalog catalog =
+            new AssetCatalog(() -> java.util.Optional.of(TestGameTargets.stonebreak()));
 
     private AssetEntry require(String id) {
         AssetEntry e = catalog.find(id);

@@ -1,6 +1,8 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.target.GameTargets;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.nfd.NFDFilterItem;
@@ -300,12 +302,82 @@ public class FileDialogService {
         void onSave(String filePath);
     }
 
+    // ========================================
+    // Type-driven dialogs (#379): any registered file type
+    // ========================================
+
+    /** Where a type-driven dialog starts when the caller names no folder. */
+    public enum StartIn {
+        /** The folder last used for this type (per-type navigation context). */
+        LAST_USED,
+        /** The open project's folder (the .omp's), else the last-used folder. */
+        PROJECT,
+        /**
+         * The type's own folder inside the project ({@code FileType.SaveRule.subdir}, e.g. Scenes
+         * or UI) when it exists, else the project folder, else the last-used folder.
+         */
+        TYPE_FOLDER
+    }
+
+    /**
+     * Open a file of one of {@code types} (one filter per type, in order).
+     *
+     * @param start where the dialog starts (the first type's folder for {@link StartIn#TYPE_FOLDER})
+     */
+    public void showOpenDialog(StartIn start, OpenCallback callback, com.openmason.api.files.FileType... types) {
+        showOpenDialog(directoryFor(start, types[0]), callback, types);
+    }
+
+    /** Open a file of one of {@code types}, starting in {@code preferredDirectory} (null = last used). */
+    public void showOpenDialog(String preferredDirectory, OpenCallback callback,
+                               com.openmason.api.files.FileType... types) {
+        String[] names = new String[types.length];
+        String[] specs = new String[types.length];
+        for (int i = 0; i < types.length; i++) {
+            names[i] = types[i].displayName();
+            specs[i] = String.join(",", types[i].extensions().stream().map(e -> e.substring(1)).toList());
+        }
+        showNFDOpenDialogMultiFilter("Opening " + types[0].displayName() + "...", names, specs,
+                preferredDirectory, "Selected " + types[0].displayName(), callback);
+    }
+
+    /**
+     * Save a file of {@code type} (its primary extension is enforced). A null
+     * {@code preferredDirectory} starts in the type's folder for project-rooted types
+     * ({@link StartIn#TYPE_FOLDER}), else in the last folder used for the type.
+     */
+    public void showSaveDialog(com.openmason.api.files.FileType type, String defaultFileName,
+                               String preferredDirectory, OpenCallback callback) {
+        String dir = preferredDirectory != null ? preferredDirectory
+                : type.save() != null && "project".equals(type.save().root())
+                ? directoryFor(StartIn.TYPE_FOLDER, type) : null;
+        String name = defaultFileName != null && !defaultFileName.isBlank() ? defaultFileName
+                : (type.save() != null ? type.save().fallbackName() : "untitled") + type.extension();
+        showNFDSaveDialog("Saving " + type.displayName() + "...", type.displayName(), type.filterSpec(), name, dir,
+                "Save " + type.displayName() + " to file", callback::onOpen);
+    }
+
+    /** The starting folder for {@code start} and {@code type} (null = the type's last-used folder). */
+    private String directoryFor(StartIn start, com.openmason.api.files.FileType type) {
+        return switch (start) {
+            case LAST_USED -> null;
+            case PROJECT -> projectDirectoryOrNull();
+            case TYPE_FOLDER -> {
+                String projectDir = projectDirectoryOrNull();
+                if (projectDir == null || type.save() == null || type.save().subdir().isEmpty()) {
+                    yield projectDir;
+                }
+                java.nio.file.Path sub = java.nio.file.Path.of(projectDir).resolve(type.save().subdir());
+                yield java.nio.file.Files.isDirectory(sub) ? sub.toString() : projectDir;
+            }
+        };
+    }
+
     /**
      * Show open PNG dialog using native file dialog.
      */
     public void showOpenPNGDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening PNG file...", "PNG Image", "png",
-                "Selected PNG file", callback);
+        showOpenDialog(StartIn.LAST_USED, callback, com.openmason.main.systems.io.BuiltinFileTypes.PNG);
     }
 
     /**
@@ -313,8 +385,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSavePNGDialog(SavePNGCallback callback) {
-        showNFDSaveDialog("Saving PNG file...", "PNG Image", "png",
-                "texture.png", "Save PNG to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.PNG, "texture.png", null, callback::onSave);
     }
 
     /**
@@ -346,8 +417,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenOMTDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMT project...", "Open Mason Texture", "omt",
-                "Selected OMT file", callback);
+        showOpenDialog(StartIn.LAST_USED, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMT);
     }
 
     /**
@@ -357,8 +427,7 @@ public class FileDialogService {
      * assets that belong to the object's project.
      */
     public void showOpenOMTInProjectDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMT project...", "Open Mason Texture", "omt",
-                projectDirectoryOrNull(), "Selected OMT file", callback);
+        showOpenDialog(StartIn.PROJECT, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMT);
     }
 
     /**
@@ -368,10 +437,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenTextureDialog(OpenCallback callback) {
-        showNFDOpenDialogMultiFilter("Opening texture file...",
-                new String[]{"Open Mason Texture", "PNG Image"},
-                new String[]{"omt", "png"},
-                "Selected texture file", callback);
+        showOpenDialog(StartIn.LAST_USED, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMT, com.openmason.main.systems.io.BuiltinFileTypes.PNG);
     }
 
     /**
@@ -379,8 +445,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveOMTDialog(SaveOMTCallback callback) {
-        showNFDSaveDialog("Saving OMT project...", "Open Mason Texture", "omt",
-                "texture.omt", projectDirectoryOrNull(), "Save OMT to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.OMT, "texture.omt", null, callback::onSave);
     }
 
     /**
@@ -395,8 +460,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenOMODialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMO model...", "Open Mason Object", "omo",
-                "Selected OMO file", callback);
+        showOpenDialog(StartIn.LAST_USED, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMO);
     }
 
     /**
@@ -406,8 +470,7 @@ public class FileDialogService {
      * the entity's project.
      */
     public void showOpenOMOInProjectDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMO model...", "Open Mason Object", "omo",
-                projectDirectoryOrNull(), "Selected OMO file", callback);
+        showOpenDialog(StartIn.PROJECT, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMO);
     }
 
     /**
@@ -417,19 +480,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveOMODialog(SaveOMOCallback callback) {
-        showNFDSaveDialog("Saving OMO model...", "Open Mason Object", "omo",
-                "model.omo", projectDirectoryOrNull(), "Save OMO to file", callback::onSave);
-    }
-
-    /** Scene dialogs default into the project's Scenes folder. */
-    private String scenesDirectoryOrNull() {
-        String projectDir = projectDirectoryOrNull();
-        if (projectDir == null) {
-            return null;
-        }
-        java.nio.file.Path scenes = com.openmason.main.systems.project.ProjectLayout.scenesDir(
-                java.nio.file.Path.of(projectDir));
-        return scenes != null && java.nio.file.Files.isDirectory(scenes) ? scenes.toString() : projectDir;
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.OMO, "model.omo", null, callback::onSave);
     }
 
     /** The open project's UI folder when it exists, else the project folder, else null (#293). */
@@ -445,38 +496,32 @@ public class FileDialogService {
 
     /** Open a UI document: an .omui, or an .sbui export (opened as an editable copy). */
     public void showOpenUiDocumentDialog(OpenCallback callback) {
-        showNFDOpenDialogMultiFilter("Opening UI document...", new String[]{"UI Documents", "UI Exports"},
-                new String[]{"omui", "sbui"}, uiDirectoryOrNull(), "Selected UI document", callback);
+        showOpenDialog(StartIn.TYPE_FOLDER, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMUI, com.openmason.main.systems.io.BuiltinFileTypes.SBUI);
     }
 
     /** Open an .sbui export (import into the project). */
     public void showOpenSBUIDialog(OpenCallback callback) {
-        showNFDOpenDialog("Choosing SBUI...", "Stonebreak UI Export", "sbui", uiDirectoryOrNull(),
-                "Selected SBUI", callback);
+        showOpenDialog(uiDirectoryOrNull(), callback, com.openmason.main.systems.io.BuiltinFileTypes.SBUI);
     }
 
     /** Save a UI document (.omui), defaulting into the project's UI folder. */
     public void showSaveOMUIDialog(String defaultName, OpenCallback callback) {
-        showNFDSaveDialog("Saving UI document...", "Open Mason UI Document", "omui", defaultName,
-                uiDirectoryOrNull(), "Save UI document", callback::onOpen);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.OMUI, defaultName, null, callback);
     }
 
     /** Choose an .sbui export target. */
     public void showSaveSBUIDialog(String defaultName, OpenCallback callback) {
-        showNFDSaveDialog("Choosing export target...", "Stonebreak UI Export", "sbui", defaultName,
-                projectDirectoryOrNull(), "Export UI to", callback::onOpen);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.SBUI, defaultName, projectDirectoryOrNull(), callback);
     }
 
     /** Open a .OMSC scene, starting in the project's Scenes folder. */
     public void showOpenOMSCDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening scene...", "Open Mason Scene", "omsc",
-                scenesDirectoryOrNull(), "Selected scene file", callback);
+        showOpenDialog(StartIn.TYPE_FOLDER, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMSC);
     }
 
     /** Save a .OMSC scene, defaulting into the project's Scenes folder. */
     public void showSaveOMSCDialog(SaveOMSCCallback callback) {
-        showNFDSaveDialog("Saving scene...", "Open Mason Scene", "omsc",
-                "scene.omsc", scenesDirectoryOrNull(), "Save scene to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.OMSC, "scene.omsc", null, callback::onSave);
     }
 
     /** Callback interface for scene save operations. */
@@ -496,8 +541,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenOMPDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMP project...", "Open Mason Project", "omp",
-                "Selected OMP file", callback);
+        showOpenDialog(StartIn.LAST_USED, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMP);
     }
 
     /**
@@ -505,8 +549,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveOMPDialog(SaveOMPCallback callback) {
-        showNFDSaveDialog("Saving OMP project...", "Open Mason Project", "omp",
-                "project.omp", "Save OMP to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.OMP, "project.omp", null, callback::onSave);
     }
 
     /**
@@ -554,8 +597,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showOpenOMADialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening OMA animation...", "Open Mason Animation", "omanim",
-                projectDirectoryOrNull(), "Selected OMA file", callback);
+        showOpenDialog(StartIn.PROJECT, callback, com.openmason.main.systems.io.BuiltinFileTypes.OMANIM);
     }
 
     /**
@@ -572,8 +614,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveOMADialog(SaveOMACallback callback) {
-        showNFDSaveDialog("Saving OMA animation...", "Open Mason Animation", "omanim",
-                "animation.omanim", projectDirectoryOrNull(), "Save OMA to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.OMANIM, "animation.omanim", null, callback::onSave);
     }
 
     /**
@@ -588,7 +629,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBODialog(SaveSBOCallback callback) {
-        showSaveSBODialog("object.sbo", GameResourceDirs.sboBlocks(), callback);
+        showSaveSBODialog("object.sbo", targetFolder(BuiltinFileTypes.SBO, "block"), callback);
     }
 
     /**
@@ -598,28 +639,31 @@ public class FileDialogService {
      * falls back to the last directory used for {@code .sbo} files.
      */
     public void showSaveSBODialog(String defaultFileName, String preferredDirectory, SaveSBOCallback callback) {
-        showNFDSaveDialog("Exporting SBO file...", "Stonebreak Object", "sbo",
-                defaultFileName, preferredDirectory, "Export SBO to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.SBO, defaultFileName, preferredDirectory, callback::onSave);
     }
 
     /**
      * Show open SBO (Stonebreak Object) dialog using native file dialog.
      * Starts in the last {@code .sbo} folder the user visited as long as it
-     * lies inside the game resources, otherwise in {@code sbo/blocks}.
+     * lies inside the game target's resources, otherwise in the target's block folder.
      */
     public void showOpenSBODialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening SBO file...", "Stonebreak Object", "sbo",
-                repoDirectoryFor("sbo", GameResourceDirs.sboBlocks()), "Selected SBO file", callback);
+        showOpenDialog(repoDirectoryFor("sbo", targetFolder(BuiltinFileTypes.SBO, "block")), callback, BuiltinFileTypes.SBO);
+    }
+
+    /** The active game target's folder for {@code type} assets of manifest type {@code subtype}, or null. */
+    private static String targetFolder(com.openmason.api.files.FileType type, String subtype) {
+        return GameTargets.shared().folderPathFor(type.id(), subtype);
     }
 
     /**
      * Repo-routed starting directory for a file type: the last directory used
-     * for that type if it is inside the game resources tree, else the given
+     * for that type if it is inside the game target's resource tree, else the given
      * canonical folder (may be null → NFD default).
      */
     private String repoDirectoryFor(String filterSpec, String canonicalDirectory) {
         String last = resolveDefaultDirectory(new String[]{filterSpec});
-        if (last != null && GameResourceDirs.isInsideResources(last)) {
+        if (last != null && GameTargets.shared().isInsideResources(last)) {
             return last;
         }
         return canonicalDirectory;
@@ -637,7 +681,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBEDialog(SaveSBECallback callback) {
-        showSaveSBEDialog("entity.sbe", GameResourceDirs.sbeRoot(), callback);
+        showSaveSBEDialog("entity.sbe", targetFolder(BuiltinFileTypes.SBE, null), callback);
     }
 
     /**
@@ -646,18 +690,16 @@ public class FileDialogService {
      * {@code preferredDirectory} falls back to the last {@code .sbe} folder.
      */
     public void showSaveSBEDialog(String defaultFileName, String preferredDirectory, SaveSBECallback callback) {
-        showNFDSaveDialog("Exporting SBE file...", "Stonebreak Entity", "sbe",
-                defaultFileName, preferredDirectory, "Export SBE to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.SBE, defaultFileName, preferredDirectory, callback::onSave);
     }
 
     /**
      * Show open SBE (Stonebreak Entity) dialog using native file dialog.
      * Starts in the last {@code .sbe} folder the user visited as long as it
-     * lies inside the game resources, otherwise in the {@code sbe} root.
+     * lies inside the game target's resources, otherwise in the target's entity root.
      */
     public void showOpenSBEDialog(OpenCallback callback) {
-        showNFDOpenDialog("Opening SBE file...", "Stonebreak Entity", "sbe",
-                repoDirectoryFor("sbe", GameResourceDirs.sbeRoot()), "Selected SBE file", callback);
+        showOpenDialog(repoDirectoryFor("sbe", targetFolder(BuiltinFileTypes.SBE, null)), callback, BuiltinFileTypes.SBE);
     }
 
     /**
@@ -684,8 +726,7 @@ public class FileDialogService {
      * @param callback callback to receive selected file path
      */
     public void showSaveSBTDialog(SaveSBTCallback callback) {
-        showNFDSaveDialog("Exporting SBT file...", "Stonebreak Texture", "sbt",
-                "texture.sbt", "Export SBT to file", callback::onSave);
+        showSaveDialog(com.openmason.main.systems.io.BuiltinFileTypes.SBT, "texture.sbt", null, callback::onSave);
     }
 
     /**

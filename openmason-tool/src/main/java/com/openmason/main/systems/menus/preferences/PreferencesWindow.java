@@ -59,6 +59,9 @@ public class PreferencesWindow {
     // State management
     private final PreferencesState state;
 
+    /** The pages: built-in and plugin contributions (#379), shown by order. */
+    private final com.openmason.api.Contributions<com.openmason.api.prefs.PreferencePage> pages;
+
     // Unified page renderer
     private final PreferencesPageRenderer pageRenderer;
 
@@ -81,6 +84,7 @@ public class PreferencesWindow {
      * Creates a new unified preferences window.
      */
     public PreferencesWindow(ImBoolean visible,
+                             com.openmason.api.Contributions<com.openmason.api.prefs.PreferencePage> pages,
                              PreferencesManager preferencesManager,
                              ThemeManager themeManager,
                              TextureCreatorImGui textureCreatorImGui,
@@ -91,6 +95,7 @@ public class PreferencesWindow {
         }
 
         this.visible = visible;
+        this.pages = java.util.Objects.requireNonNull(pages, "pages");
         this.state = new PreferencesState();
 
         this.pageRenderer = new PreferencesPageRenderer(
@@ -141,7 +146,7 @@ public class PreferencesWindow {
         if (!visible.get()) {
             if (wasVisible) {
                 // Hidden by a path other than the footer buttons: same as Cancel.
-                pageRenderer.cancelChanges();
+                pages().forEach(com.openmason.api.prefs.PreferencePage::cancel);
             }
             wasVisible = false;
             return;
@@ -150,7 +155,7 @@ public class PreferencesWindow {
         // Detect window open transition and sync state from persistence
         if (!wasVisible) {
             escapeOwnedLastFrame = false;
-            pageRenderer.onWindowOpened();
+            pages().forEach(com.openmason.api.prefs.PreferencePage::opened);
             ImGui.setNextWindowFocus();
             wasVisible = true;
         }
@@ -205,13 +210,13 @@ public class PreferencesWindow {
 
     /** Applies all staged values and persists them. Keeps the window open. */
     private void apply() {
-        pageRenderer.applyAllSettings();
+        applyAllPages();
         logger.info("Preferences applied");
     }
 
     /** Applies and closes. */
     private void ok() {
-        pageRenderer.applyAllSettings();
+        applyAllPages();
         visible.set(false);
         logger.info("Preferences applied and window closed");
     }
@@ -221,7 +226,7 @@ public class PreferencesWindow {
      * Staged values are dropped (re-synced on next open); immediate keybind edits are reverted.
      */
     private void cancel() {
-        pageRenderer.cancelChanges();
+        pages().forEach(com.openmason.api.prefs.PreferencePage::cancel);
         visible.set(false);
         logger.info("Preferences cancelled");
     }
@@ -320,15 +325,44 @@ public class PreferencesWindow {
         }
     }
 
+    /** The registered pages, by order (ties keep registration order). */
+    private java.util.List<com.openmason.api.prefs.PreferencePage> pages() {
+        return pages.all().stream()
+                .sorted(java.util.Comparator.comparingInt(com.openmason.api.prefs.PreferencePage::order)).toList();
+    }
+
+    /** The selected page, or the first one when the selection is not registered. */
+    private com.openmason.api.prefs.PreferencePage currentPage(java.util.List<com.openmason.api.prefs.PreferencePage> all) {
+        for (var page : all) {
+            if (page.id().equals(state.getCurrentPage())) {
+                return page;
+            }
+        }
+        return all.isEmpty() ? null : all.get(0);
+    }
+
+    /** Apply/OK: every page commits its edits; a failing (plugin) page does not stop the others. */
+    private void applyAllPages() {
+        for (var page : pages()) {
+            try {
+                page.apply();
+            } catch (RuntimeException e) {
+                logger.error("Preference page {} failed to apply", page.id(), e);
+            }
+        }
+        pageRenderer.afterApply();
+    }
+
     /**
      * Sidebar navigation: a Mortar region of nav items (same look as HubSidebarNav),
      * or plain ImGui selectables when Skija is unavailable.
      */
     private void renderSidebar() {
-        PreferencesState.PreferencePage[] pages = PreferencesState.PreferencePage.values();
+        java.util.List<com.openmason.api.prefs.PreferencePage> all = pages();
+        com.openmason.api.prefs.PreferencePage current = currentPage(all);
 
         if (!navRegion.isAvailable()) {
-            renderFallbackSidebar(pages);
+            renderFallbackSidebar(all, current);
             return;
         }
 
@@ -343,49 +377,65 @@ public class PreferencesWindow {
         navRegion.begin(width, height);
 
         float y = NAV_PAD;
-        for (PreferencesState.PreferencePage page : pages) {
-            navRegion.add("nav." + page.name(), NAV_PAD, y, width - NAV_PAD * 2f, NAV_ITEM_HEIGHT,
-                    state.getCurrentPage() == page, new MortarNavItem(page.getDisplayName()));
+        for (var page : all) {
+            navRegion.add("nav." + page.id(), NAV_PAD, y, width - NAV_PAD * 2f, NAV_ITEM_HEIGHT,
+                    page == current, new MortarNavItem(page.title()));
             y += NAV_ITEM_HEIGHT + NAV_ITEM_GAP;
         }
 
         MortarFrameResult input = navRegion.render();
-        for (PreferencesState.PreferencePage page : pages) {
-            if (input.isClicked("nav." + page.name())) {
-                selectPage(page);
+        for (var page : all) {
+            if (input.isClicked("nav." + page.id())) {
+                selectPage(page.id());
             }
         }
     }
 
-    private void renderFallbackSidebar(PreferencesState.PreferencePage[] pages) {
+    private void renderFallbackSidebar(java.util.List<com.openmason.api.prefs.PreferencePage> all,
+                                       com.openmason.api.prefs.PreferencePage current) {
         ImGui.dummy(0, NAV_PAD);
         ImGui.indent(NAV_PAD);
-        for (PreferencesState.PreferencePage page : pages) {
-            if (ImGui.selectable(page.getDisplayName(), state.getCurrentPage() == page,
+        for (var page : all) {
+            if (ImGui.selectable(page.title(), page == current,
                     0, ImGui.getContentRegionAvailX() - NAV_PAD, NAV_ITEM_HEIGHT * 0.75f)) {
-                selectPage(page);
+                selectPage(page.id());
             }
         }
         ImGui.unindent(NAV_PAD);
     }
 
-    private void selectPage(PreferencesState.PreferencePage page) {
-        state.setCurrentPage(page);
-        logger.debug("Switched to page: {}", page.name());
+    private void selectPage(String pageId) {
+        state.setCurrentPage(pageId);
+        logger.debug("Switched to page: {}", pageId);
     }
 
     /**
      * Renders the currently selected page content.
      */
     private void renderSelectedPage() {
-        pageRenderer.render(state.getCurrentPage());
+        var page = currentPage(pages());
+        if (page == null) {
+            ImGui.textDisabled("No preference pages are registered.");
+            return;
+        }
+        try {
+            page.render();
+        } catch (RuntimeException e) {
+            logger.error("Preference page {} failed to render", page.id(), e);
+            ImGui.textDisabled("This page failed to render; see the log.");
+        }
     }
 
     /**
-     * Sets the current page to display.
+     * Sets the current page to display (a page id).
      */
-    public void setCurrentPage(PreferencesState.PreferencePage page) {
-        state.setCurrentPage(page);
+    public void setCurrentPage(String pageId) {
+        state.setCurrentPage(pageId);
+    }
+
+    /** The built-in pages' renderer (the built-in plugins register its pages). */
+    public PreferencesPageRenderer getPageRenderer() {
+        return pageRenderer;
     }
 
     /**

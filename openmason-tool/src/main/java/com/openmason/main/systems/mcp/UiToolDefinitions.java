@@ -47,14 +47,14 @@ public final class UiToolDefinitions {
                         + "writes UI/<ns>/<path>.omui). Templates: blank_screen (default), menu_screen, "
                         + "blank_component, button_component.",
                 schema().str("template", "blank_screen | menu_screen | blank_component | button_component")
-                        .str("id", "Document id namespace:path, lowercase (stonebreak:ui/screens/hud)")
+                        .str("id", "Document id namespace:path, lowercase (<ns>:ui/screens/hud)")
                         .str("name", "Display name (default: last id segment)")
                         .required("id").build(),
                 args -> ui.create(optString(args, "template"), reqString(args, "id"), optString(args, "name"))));
 
         registry.register(new McpTool("ui_open",
                 "Open a .omui, or an .sbui as an editable copy (never written back). path: absolute or "
-                        + "project:/game:/exports: inside the sandbox roots. Already open = activated.",
+                        + "project:/target:/exports: inside the sandbox roots. Already open = activated.",
                 schema().str("path", "File to open").required("path").build(),
                 args -> ui.open(reqString(args, "path"))));
 
@@ -178,14 +178,14 @@ public final class UiToolDefinitions {
         // ---------- files ----------
         registry.register(new McpTool("ui_save",
                 "Save the .omui to its file, or a new document to its convention path "
-                        + "UI/<ns>/<path>.omui (screens resolve project components there). Files under game: "
+                        + "UI/<ns>/<path>.omui (screens resolve project components there). Files under target: "
                         + "and overwrites follow the write policy (may ask the user). Use ui_save_as for "
                         + "another file.",
                 schema().str("doc", DOC).build(),
                 args -> ui.save(optString(args, "doc"), null, false, false)));
 
         registry.register(new McpTool("ui_save_as",
-                "Save the .omui to another file through the write sandbox (project:/exports:/game:, or "
+                "Save the .omui to another file through the write sandbox (project:/exports:/target:, or "
                         + "absolute inside a root); it becomes the document's file. prompt:true lets the user "
                         + "pick in the Save Sheet; overwrite acknowledges replacing a file.",
                 schema().str("doc", DOC).str("path", "Target .omui (extension added)")

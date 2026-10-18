@@ -3,7 +3,7 @@ package com.stonebreak.rendering.player;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.OverlayAnimState;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import org.joml.Matrix4f;
 
 import java.util.List;

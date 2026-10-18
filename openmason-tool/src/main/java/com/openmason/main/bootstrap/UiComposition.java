@@ -37,7 +37,7 @@ public final class UiComposition {
     /** Lifecycle hooks the application shell provides to the composed UI graph. */
     public interface Host {
         /** Project Hub "create" transition (name + directory + template, null when blank). */
-        void createNewProjectFile(String name, String directory, ProjectTemplate template);
+        void createNewProjectFile(String name, String directory, ProjectTemplate template, String targetId);
 
         /** Project Hub "open recent" transition. */
         void openRecentProject(RecentProject project);
@@ -59,6 +59,7 @@ public final class UiComposition {
     private final long window;
     private final CenterTabTracker centerTabTracker;
     private final Host host;
+    private final com.openmason.main.plugins.EditorRegistries registries;
 
     private ThemeManager themeManager;
     private ProjectHubScreen projectHubScreen;
@@ -70,15 +71,18 @@ public final class UiComposition {
     private ScriptingWindow scriptingWindow;
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
-    private final com.openmason.main.systems.layout.WorkspaceState workspaceState =
-            new com.openmason.main.systems.layout.WorkspaceState();
+    private final com.openmason.main.systems.layout.WorkspaceState workspaceState;
+    private com.openmason.main.systems.layout.WorkspaceLayouts workspaceLayouts;
     private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
 
-    public UiComposition(omConfig omConfig, long window, CenterTabTracker centerTabTracker, Host host) {
+    public UiComposition(omConfig omConfig, long window, CenterTabTracker centerTabTracker, Host host,
+                         com.openmason.main.plugins.EditorRegistries registries) {
         this.omConfig = omConfig;
         this.window = window;
         this.centerTabTracker = centerTabTracker;
         this.host = host;
+        this.registries = registries;
+        this.workspaceState = new com.openmason.main.systems.layout.WorkspaceState(registries.workspaces());
     }
 
     public ThemeManager themeManager() { return themeManager; }
@@ -92,6 +96,7 @@ public final class UiComposition {
     public AnimationEditorImGui animationEditor() { return animationEditor; }
     public TexturePreviewPipeline texturePreviewPipeline() { return texturePreviewPipeline; }
     public com.openmason.main.systems.layout.WorkspaceState workspaceState() { return workspaceState; }
+    public com.openmason.main.systems.layout.WorkspaceLayouts workspaceLayouts() { return workspaceLayouts; }
     public com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor() { return uiEditor; }
 
     /**
@@ -103,7 +108,30 @@ public final class UiComposition {
             themeManager.initializeForImGui();
 
             projectHubScreen = new ProjectHubScreen(themeManager, omConfig);
-            mainInterface = new MainImGuiInterface(themeManager);
+            // Templates and themes are plugin contributions (#379).
+            projectHubScreen.getTemplateService().setSource(registries.templates()::all);
+            // Game targets (#380): export dialogs, the asset catalog and the write sandbox read them here.
+            com.openmason.main.systems.target.GameTargets.shared().setSource(registries.gameTargets()::all);
+            registries.themes().addListener(new com.openmason.api.Contributions.Listener<>() {
+                @Override
+                public void added(com.openmason.main.systems.themes.core.ThemeDefinition theme) {
+                    themeManager.registerPluginTheme(theme,
+                            registries.themes().ownerOf(theme.getId()).orElse("?"));
+                }
+
+                @Override
+                public void removed(com.openmason.main.systems.themes.core.ThemeDefinition theme) {
+                    themeManager.unregisterPluginTheme(theme.getId());
+                }
+            });
+
+            // Each workspace's default dock layout is versioned per workspace id.
+            workspaceLayouts = new com.openmason.main.systems.layout.WorkspaceLayouts(
+                    new com.openmason.main.systems.layout.ConfigLayoutVersionStore(omConfig,
+                            PreferencesManager.getInstance()));
+            mainInterface = new MainImGuiInterface(themeManager, registries, workspaceState, workspaceLayouts);
+            registries.services().put(com.openmason.main.systems.layout.WorkspaceLayouts.class, workspaceLayouts);
+            registries.services().put(ProjectHubScreen.class, projectHubScreen);
 
             projectHubScreen.setTransitionCallbacks(host::createNewProjectFile, host::openRecentProject);
             projectHubScreen.setFolderPicker(onChosen ->
@@ -113,8 +141,6 @@ public final class UiComposition {
             // Wire recent projects service from hub into main interface for project tracking
             mainInterface.setRecentProjectsService(projectHubScreen.getRecentProjectsService());
 
-            // Initialize keybind system BEFORE creating viewport and texture editor
-            initializeKeybindSystem();
 
             viewportInterface = new ViewportImGuiInterface(themeManager, new PreferencesManager());
             viewportInterface.setViewport3D(mainInterface.getViewport3D());
@@ -156,8 +182,6 @@ public final class UiComposition {
                 String dir = mainInterface.getProjectDirectorySupplier().get();
                 return dir == null ? null : java.nio.file.Path.of(dir);
             };
-            mainInterface.setOpenSceneCallback(path ->
-                    sceneViewerInterface.getSceneService().openScene(path.toString(), sceneRoot.get()));
             mainInterface.setSceneActions(
                     () -> sceneViewerInterface.getSceneService().newScene("Untitled Scene"),
                     () -> mainInterface.getFileDialogService().showOpenOMSCDialog(path ->
@@ -223,7 +247,11 @@ public final class UiComposition {
 
             textureCreatorInterface = TextureCreatorImGui.createDefault();
             textureEditorWorkspace = new TextureEditorWorkspace(textureCreatorInterface);
-            scriptingWindow = new ScriptingWindow(mainInterface);
+            scriptingWindow = new ScriptingWindow(new com.openmason.main.systems.services.EditorServices(
+                    registries.services()));
+            registries.services().put(TextureEditorWorkspace.class, textureEditorWorkspace);
+            registries.services().put(ScriptingWindow.class, scriptingWindow);
+            registries.services().put(ViewportImGuiInterface.class, viewportInterface);
 
             // Point the texture editor's save/open dialogs at the open project's root
             // folder (same source the model-save dialogs use).
@@ -235,19 +263,9 @@ public final class UiComposition {
             wireAnimationEditor();
 
             wireUiEditor(sceneRoot);
-            // The Texture Editor is the third workspace tab, present while it is open.
-            mainInterface.addWorkspaceDock(com.openmason.main.systems.layout.Workspace.TEXTURE, textureEditorWorkspace);
-            // Closing the Texture tab asks about unsaved textures first (it comes forward to ask).
-            workspaceState.setCloseGuard(com.openmason.main.systems.layout.Workspace.TEXTURE, proceed -> {
-                if (textureCreatorInterface.confirmCloseAll(proceed)) {
-                    return true;
-                }
-                workspaceState.set(com.openmason.main.systems.layout.Workspace.TEXTURE);
-                return false;
-            });
-
-            // Load custom keybinds AFTER both viewport and texture editor are initialized
-            loadCustomKeybinds();
+            wireScenePanels();
+            // The workspaces themselves (Scene, UI, Texture) are registered by the built-in plugins;
+            // custom keybinds load once every plugin registered its commands (mainOpenMason).
 
             wireCallbacks();
             setWindowHandles();
@@ -351,7 +369,7 @@ public final class UiComposition {
      */
     private void wireUiEditor(java.util.function.Supplier<java.nio.file.Path> projectRoot) {
         uiEditor = new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace(projectRoot);
-        uiEditor.setOnActivateRequest(() -> workspaceState.set(com.openmason.main.systems.layout.Workspace.UI));
+        uiEditor.setOnActivateRequest(() -> workspaceState.set(com.openmason.main.systems.layout.BuiltinWorkspaces.UI));
         mainInterface.setUiEditor(uiEditor); // MCP / scripting reach the workspace here (#324)
         var dialogs = mainInterface.getFileDialogService();
         uiEditor.setFileDialogs(new com.openmason.main.systems.uiEditor.view.UiEditorWorkspace.FileDialogs() {
@@ -375,10 +393,6 @@ public final class UiComposition {
                 dialogs.showOpenSBUIDialog(chosen::accept);
             }
         });
-        mainInterface.setOpenUiDocumentCallback(path -> {
-            workspaceState.set(com.openmason.main.systems.layout.Workspace.UI);
-            uiEditor.openFile(path);
-        });
         uiEditor.registerKeybinds(com.openmason.main.systems.keybinds.KeybindRegistry.getInstance());
         // #294: "Edit Texture" opens the texture behind a UI image; saves refresh every document.
         uiEditor.setTextureEditor(omt -> {
@@ -392,34 +406,23 @@ public final class UiComposition {
         textureCreatorInterface.getController().addSaveListener(uiEditor::textureSaved);
         var editor = uiEditor;
         var workspaces = workspaceState;
-        mainInterface.setUiWorkspace(workspaces, new com.openmason.main.systems.layout.WorkspaceDock() {
-                    @Override
-                    public void applyLayout(int dockspaceId, float width, float height) {
-                        editor.applyLayout(dockspaceId, width, height);
-                    }
+        mainInterface.setUiMenuHooks(new com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks() {
+            @Override
+            public boolean anyDirty() {
+                return editor.hasUnsavedChanges();
+            }
 
-                    @Override
-                    public void renderHeader() {
-                        editor.renderHeader();
-                    }
-                },
-                new com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks() {
-                    @Override
-                    public boolean anyDirty() {
-                        return editor.hasUnsavedChanges();
-                    }
+            @Override
+            public java.util.List<String> saveAllInPlace() {
+                return editor.saveAllInPlace();
+            }
 
-                    @Override
-                    public java.util.List<String> saveAllInPlace() {
-                        return editor.saveAllInPlace();
-                    }
-
-                    @Override
-                    public void discardAll() {
-                        editor.discardAll();
-                    }
-                });
-        var uiTab = com.openmason.main.systems.layout.Workspace.UI;
+            @Override
+            public void discardAll() {
+                editor.discardAll();
+            }
+        });
+        var uiTab = com.openmason.main.systems.layout.BuiltinWorkspaces.UI;
         editor.setDockControls(() -> workspaces.isDetached(uiTab), () -> workspaces.canDetach(uiTab), () -> {
             if (workspaces.isDetached(uiTab)) {
                 workspaces.attach(uiTab, true);
@@ -427,20 +430,21 @@ public final class UiComposition {
                 workspaces.detach(uiTab);
             }
         });
+        editor.setOnResetLayout(() -> workspaceLayouts.requestReset(uiTab));
         mainInterface.setUiEditorSessionHooks(
                 () -> new com.openmason.main.systems.project.OMPFormat.UiEditorReference(
-                        workspaces.current().name(), editor.sessionDocuments(), editor.sessionActive(),
-                        workspaces.detached().stream().map(Enum::name).toList(), editor.sessionSettings()),
+                        workspaces.current(), editor.sessionDocuments(), editor.sessionActive(),
+                        java.util.List.copyOf(workspaces.detached()), editor.sessionSettings()),
                 ref -> {
                     if (ref == null) {
                         // A pre-1.3 project: Scene, as it always opened.
-                        workspaces.restore(com.openmason.main.systems.layout.Workspace.MODELING, java.util.List.of());
+                        workspaces.restore(com.openmason.main.systems.layout.BuiltinWorkspaces.MODELING, java.util.List.of());
                         return;
                     }
                     editor.restoreSession(ref.documents(), ref.activeDocument());
                     editor.restoreSettings(ref.settings());
-                    workspaces.restore(com.openmason.main.systems.layout.Workspace.resolve(ref.workspace()),
-                            ref.detached().stream().map(com.openmason.main.systems.layout.Workspace::find)
+                    workspaces.restore(workspaces.resolve(ref.workspace()),
+                            ref.detached().stream().map(workspaces::find)
                                     .filter(java.util.Objects::nonNull).toList());
                 });
         // Opening, closing, activating or saving a UI document and switching workspace change what the
@@ -450,63 +454,39 @@ public final class UiComposition {
     }
 
     /**
-     * Initialize the keybind system.
-     * Called before creating viewport and texture editor interfaces.
+     * The Scene workspace's centre views: the model editor viewport and the Scene Viewer, drawn
+     * while the workspace shows; afterwards the front centre tab is noted so a project save can
+     * record it.
      */
-    private void initializeKeybindSystem() {
-        logger.info("Initializing keybind system...");
-
-        // Get the keybind registry singleton
-        com.openmason.main.systems.keybinds.KeybindRegistry registry =
-                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
-
-        // Note: Viewport actions will be registered when ViewportImGuiInterface is created
-        // Note: Texture editor actions will be registered when TextureCreatorImGui.createDefault() is called
-
-        logger.info("Keybind registry initialized successfully");
+    private void wireScenePanels() {
+        mainInterface.getSceneWorkspaceDock().setPanels(deltaTime -> {
+            renderSafely("Viewport", () -> {
+                viewportInterface.render();
+                viewportInterface.update(deltaTime);
+            });
+            renderSafely("Scene Viewer", () -> {
+                sceneViewerInterface.render();
+                sceneViewerInterface.update(deltaTime);
+            });
+            var sceneState = sceneViewerInterface.getUIState();
+            var modelState = viewportInterface.getViewportUIState();
+            centerTabTracker.noteFrame(
+                    sceneState.isSceneViewVisible(), sceneState.isSceneViewFocused(),
+                    modelState.isViewportWindowVisible(), modelState.isViewportFocused());
+        });
     }
 
-    /**
-     * Load custom keybinds from preferences.
-     * Called after both viewport and texture editor are created and have registered their actions.
-     */
-    private void loadCustomKeybinds() {
-        logger.info("Loading custom keybinds from preferences...");
-
-        com.openmason.main.systems.menus.preferences.PreferencesManager preferencesManager =
-                new com.openmason.main.systems.menus.preferences.PreferencesManager();
-        com.openmason.main.systems.keybinds.KeybindRegistry registry =
-                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
-
-        preferencesManager.loadKeybindsIntoRegistry(registry);
-
-        logger.info("Custom keybinds loaded successfully");
+    private static void renderSafely(String name, Runnable render) {
+        try {
+            render.run();
+        } catch (Exception e) {
+            logger.error("Error rendering {}", name, e);
+        }
     }
 
     private void wireCallbacks() {
         mainInterface.setBackToHomeCallback(host::transitionToHomeScreen);
         mainInterface.setExitCallback(host::requestExit);
-        mainInterface.setOpenScriptingWindowCallback(() -> {
-            if (scriptingWindow != null) {
-                scriptingWindow.show();
-            }
-        });
-        mainInterface.setOpenTextureEditorCallback(() -> {
-            // Brings the editor forward with its open textures; a fresh untitled one when none is open.
-            textureCreatorInterface.getController().ensureDocument();
-            host.showTextureEditor();
-        });
-        // Clicking a .OMT in the project browser opens it as a document tab (or focuses its tab)
-        mainInterface.setOpenTextureInEditorCallback(path -> {
-            if (path == null) return;
-            boolean loaded = textureCreatorInterface.getController().loadProject(path.toString());
-            if (!loaded) {
-                logger.warn("Failed to open .OMT in texture editor: {}", path);
-                return;
-            }
-            host.showTextureEditor();
-        });
-        mainInterface.setOpenAnimationEditorCallback(this::openAnimationEditor);
         mainInterface.setTextureCreatorInterface(textureCreatorInterface);
 
         // A new/different model: the face documents point at the old model's textures, so they
@@ -526,25 +506,11 @@ public final class UiComposition {
         textureCreatorInterface.setPreferencesCallback(mainInterface.getShowPreferencesCallback());
     }
 
-    /**
-     * Bind the animation editor to whatever model is currently loaded so the
-     * timeline drives this viewport's parts, then show it. Re-binding while
-     * already open is routed through {@code onModelChanged} so the preview's
-     * rest-pose snapshot is not clobbered.
-     */
+    /** Tools → Animation Editor (and the clip bridge): bound to the model the viewport holds. */
     private void openAnimationEditor() {
         if (animationEditor == null) return;
-        if (mainInterface.getViewport3D() != null) {
-            var pm = mainInterface.getViewport3D().getPartManager();
-            if (animationEditor.isVisible() && animationEditor.getController().partManager() == pm) {
-                // already bound to this model
-            } else if (animationEditor.isVisible()) {
-                animationEditor.getController().onModelChanged(pm);
-            } else {
-                animationEditor.bindViewport(pm);
-            }
-        }
-        animationEditor.show();
+        animationEditor.openFor(mainInterface.getViewport3D() != null
+                ? mainInterface.getViewport3D().getPartManager() : null);
     }
 
     /**

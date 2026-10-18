@@ -8,7 +8,6 @@ import com.openmason.main.systems.menus.panes.projectBrowser.AssetEditorDetacher
 import com.openmason.main.systems.menus.preferences.config.WindowConfig;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.ProjectBrowserListener;
 import com.openmason.main.systems.menus.panes.projectBrowser.events.ModelSelectedEvent;
-import com.openmason.main.systems.menus.panes.projectBrowser.events.TextureSelectedEvent;
 import com.openmason.main.systems.menus.mainHub.services.RecentProjectsService;
 import com.openmason.main.systems.project.ProjectService;
 import com.openmason.main.systems.services.LayoutService;
@@ -71,12 +70,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     private RiggingPaneImGui riggingPaneImGui;
     private ProjectBrowserImGui projectBrowserImGui;
 
-    /** Invoked with a .OMT file path to open it in the texture editor (wired in mainOpenMason). */
-    private java.util.function.Consumer<java.nio.file.Path> openTextureInEditorCallback;
-
-    /** Invoked with a .OMSC path to open it in the Scene Viewer (wired in mainOpenMason). */
-    private java.util.function.Consumer<java.nio.file.Path> openSceneCallback;
-
     /** The Scene Viewer, once composed; null in headless/snapshot construction. */
     private com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer;
     private com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor;
@@ -92,7 +85,9 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     // Menu System
     private final MenuBarCoordinator menuBarCoordinator;
     private final FileMenuHandler fileMenuHandler;
-    private final ToolsMenuHandler toolsMenuHandler;
+    private final EditMenuHandler editMenuHandler;
+    private final ViewMenuHandler viewMenuHandler;
+    private final AssetExportMenuActions assetExportActions;
 
     // Toolbar
     private final ModelEditorToolbarRenderer toolbarRenderer;
@@ -121,6 +116,15 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     // Dock layout (dockspace host window, default layout, centre-tab focus)
     private final MainDockLayout dockLayout;
 
+    /** The Scene workspace's contents (registered as a workspace by the core plugin). */
+    private final com.openmason.main.systems.layout.SceneWorkspaceDock sceneWorkspaceDock;
+
+    /** Workspace tabs (registered by plugins) and the shared services this shell publishes. */
+    private final com.openmason.main.systems.layout.WorkspaceState workspaceState;
+    private final com.openmason.main.plugins.EditorRegistries registries;
+    private final com.openmason.api.ServiceRegistry services;
+    private final com.openmason.main.systems.io.FileTypeService fileTypes;
+
     // Camera settings loaded from preferences on startup
     private float initialCameraOrbitSpeed;
     private float initialCameraPanSpeed;
@@ -128,12 +132,19 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     /**
      * Create MainImGuiInterface with dependency injection.
      */
-    public MainImGuiInterface(ThemeManager themeManager) {
+    public MainImGuiInterface(ThemeManager themeManager, com.openmason.main.plugins.EditorRegistries registries,
+                              com.openmason.main.systems.layout.WorkspaceState workspaceState,
+                              com.openmason.main.systems.layout.WorkspaceLayouts workspaceLayouts) {
         if (themeManager == null) {
             throw new IllegalArgumentException("ThemeManager cannot be null");
         }
 
         this.themeManager = themeManager;
+        this.registries = java.util.Objects.requireNonNull(registries, "registries");
+        this.services = registries.services();
+        this.fileTypes = new com.openmason.main.systems.io.FileTypeService(registries.fileTypes(),
+                registries.fileOpeners());
+        this.workspaceState = java.util.Objects.requireNonNull(workspaceState, "workspaceState");
 
         // Initialize state objects
         this.modelState = new ModelState();
@@ -163,9 +174,10 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         this.projectLifecycle = new ProjectLifecycle(new ProjectService(), modelState,
                 uiVisibilityState, modelOperations, statusService);
         projectLifecycle.setOnProjectPathChanged(this::refreshProjectBrowserRoot);
-        this.dockLayout = new MainDockLayout(
-                new com.openmason.main.systems.layout.MainLayoutBuilder(new com.openmason.main.omConfig()),
-                layoutService);
+        com.openmason.main.systems.layout.CenterTabFocusRequest centerTabFocus =
+                new com.openmason.main.systems.layout.CenterTabFocusRequest();
+        this.dockLayout = new MainDockLayout(workspaceState, workspaceLayouts, centerTabFocus);
+        layoutService.setResetDockLayout(dockLayout::resetLayout);
 
         // Model-save dialogs start in the open project's folder (.OMP location)
         fileDialogService.setProjectDirectorySupplier(getProjectDirectorySupplier());
@@ -182,15 +194,21 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         EditMenuHandler editMenu = new EditMenuHandler(uiVisibilityState);
         ViewMenuHandler viewMenu = new ViewMenuHandler(uiVisibilityState, viewportState,
                 viewportOperations, layoutService);
-        this.toolsMenuHandler = new ToolsMenuHandler();
-        AboutMenuHandler aboutMenu = new AboutMenuHandler(uiVisibilityState);
+        this.editMenuHandler = editMenu;
+        this.viewMenuHandler = viewMenu;
+        this.assetExportActions = new AssetExportMenuActions();
 
-        this.menuBarCoordinator = new MenuBarCoordinator(uiVisibilityState, logoManager,
-                fileMenuHandler, editMenu, viewMenu, toolsMenuHandler, aboutMenu);
+        // The menus themselves are contributions (core plugin: File/Edit/View/About; each
+        // editor's plugin: its Tools entries).
+        this.menuBarCoordinator = new MenuBarCoordinator(uiVisibilityState, registries.menus(),
+                registries.menuEntries());
+        menuBarCoordinator.setHomeAction(fileMenuHandler::requestHomeScreen);
 
         // Initialize toolbar
         this.toolbarRenderer = new ModelEditorToolbarRenderer(uiVisibilityState, modelState, modelOperations,
                 viewportOperations, statusService);
+        this.sceneWorkspaceDock = new com.openmason.main.systems.layout.SceneWorkspaceDock(
+                centerTabFocus, toolbarRenderer::render);
 
         // Initialize components
         initializeComponents();
@@ -208,8 +226,52 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         toolbarRenderer.setViewport(viewport3D);
         modelOperations.setPropertiesPanel(propertyPanelImGui);
 
+        publishServices();
+
         // Create default blank model on startup
         createDefaultModel();
+    }
+
+    /**
+     * Publishes this shell's services for plugins and the MCP services (#379); late-wired ones
+     * are published by their setters.
+     */
+    private void publishServices() {
+        services.put(com.openmason.main.systems.layout.WorkspaceState.class, workspaceState);
+        services.put(com.openmason.main.systems.io.FileTypeService.class, fileTypes);
+        services.put(ThemeManager.class, themeManager);
+        services.put(PreferencesManager.class, preferencesManager);
+        services.put(ModelState.class, modelState);
+        services.put(UIVisibilityState.class, uiVisibilityState);
+        services.put(ViewportUIState.class, viewportState);
+        services.put(StatusService.class, statusService);
+        services.put(ModelOperationService.class, modelOperations);
+        services.put(ViewportOperationService.class, viewportOperations);
+        services.put(FileDialogService.class, fileDialogService);
+        services.put(com.openmason.main.systems.services.ProjectDirectory.class, getProjectDirectorySupplier()::get);
+        services.put(ProjectService.class, projectLifecycle.getProjectService());
+        services.put(FileMenuHandler.class, fileMenuHandler);
+        services.put(EditMenuHandler.class, editMenuHandler);
+        services.put(ViewMenuHandler.class, viewMenuHandler);
+        services.put(AssetExportMenuActions.class, assetExportActions);
+        services.put(com.openmason.main.systems.layout.SceneWorkspaceDock.class, sceneWorkspaceDock);
+        services.put(com.openmason.main.systems.keybinds.KeybindRegistry.class,
+                com.openmason.main.systems.keybinds.KeybindRegistry.getInstance());
+        services.put(ViewportController.class, viewport3D);
+        services.put(PropertyPanelImGui.class, propertyPanelImGui);
+        services.put(RiggingPaneImGui.class, riggingPaneImGui);
+        services.put(PreferencesWindow.class, preferencesWindow);
+        services.put(SBOExportWindow.class, sboExportWindow);
+        services.put(SBEExportWindow.class, sbeExportWindow);
+        services.put(SBTExportWindow.class, sbtExportWindow);
+        services.put(SBOEditorWindow.class, sboEditorWindow);
+        services.put(SBEEditorWindow.class, sbeEditorWindow);
+        services.put(MainImGuiInterface.class, this);
+    }
+
+    /** The registries and shared services the plugins see. */
+    public com.openmason.api.ServiceRegistry getServices() {
+        return services;
     }
 
     /**
@@ -241,6 +303,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             // Note: TextureCreatorImGui will be set later from OpenMasonApp after it's created
             this.preferencesWindow = new PreferencesWindow(
                     uiVisibilityState.getShowPreferencesWindow(),
+                    registries.preferencePages(),
                     preferencesManager,
                     themeManager,
                     null, // TextureCreatorImGui set later via setTextureCreatorInterface()
@@ -257,7 +320,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
                     statusService,
                     fileDialogService
             );
-            toolsMenuHandler.setSBOExportWindow(sboExportWindow);
+            assetExportActions.setSBOExportWindow(sboExportWindow);
 
             // Initialize SBE export window
             this.sbeExportWindow = new SBEExportWindow(
@@ -267,7 +330,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
                     statusService,
                     fileDialogService
             );
-            toolsMenuHandler.setSBEExportWindow(sbeExportWindow);
+            assetExportActions.setSBEExportWindow(sbeExportWindow);
 
             // Initialize SBT export window — OMT path supplier is wired later
             // when the TextureCreatorImGui becomes available.
@@ -280,7 +343,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
             // SBO editor — for opening and editing existing .sbo files
             this.sboEditorWindow = new SBOEditorWindow(fileDialogService, statusService);
-            toolsMenuHandler.setSBOEditorWindow(sboEditorWindow);
+            assetExportActions.setSBOEditorWindow(sboEditorWindow);
             sboEditorWindow.setOpenModelHandler((omoBytes, name) -> {
                 if (modelOperations != null) {
                     modelOperations.openExtractedAssetModel(omoBytes, name, name);
@@ -289,7 +352,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
             // SBE editor — for opening and editing existing .sbe files
             this.sbeEditorWindow = new SBEEditorWindow(fileDialogService, statusService);
-            toolsMenuHandler.setSBEEditorWindow(sbeEditorWindow);
+            assetExportActions.setSBEEditorWindow(sbeEditorWindow);
             sbeEditorWindow.setOpenModelHandler((omoBytes, name) -> {
                 if (modelOperations != null) {
                     modelOperations.openExtractedAssetModel(omoBytes, name, name);
@@ -301,9 +364,9 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             sboExportWindow.setOnExported(sboEditorWindow::openFile);
             sbeExportWindow.setOnExported(sbeEditorWindow::openFile);
 
-            toolsMenuHandler.setModelState(modelState);
-            toolsMenuHandler.setStatusService(statusService);
-            toolsMenuHandler.setModelOperations(modelOperations);
+            assetExportActions.setModelState(modelState);
+            assetExportActions.setStatusService(statusService);
+            assetExportActions.setModelOperations(modelOperations);
             logger.debug("SBO, SBE, SBT export windows and SBO/SBE editors initialized");
         } catch (Exception e) {
             logger.error("Failed to initialize components", e);
@@ -378,6 +441,9 @@ public class MainImGuiInterface implements ProjectBrowserListener {
                 this::createNewModel  // Callback for "New Model" button
             );
 
+            // Listed types and click-to-open come from the registered file types (#379)
+            controller.setFileTypes(fileTypes);
+
             // Register this as a listener to receive project browser events
             controller.addListener(this);
 
@@ -391,11 +457,11 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Main render method - called every frame.
      */
     public void render() {
-        dockLayout.render(toolbarRenderer::render);
+        dockLayout.render();
         dockLayout.renderDetached();
         menuBarCoordinator.render();
 
-        if (!isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING)) {
+        if (!isWorkspaceShown(com.openmason.main.systems.layout.BuiltinWorkspaces.MODELING)) {
             // Scene is neither the main window's front tab nor a visible window of its own: its
             // panels stay docked but hidden (the UI and Texture workspaces draw their own).
             aboutDialog.render();
@@ -403,6 +469,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
             if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
                 fileMenuHandler.getHomeScreenDialog().render();
             }
+            com.openmason.main.systems.keybinds.KeybindRegistry.getInstance().dispatchGlobal();
             return;
         }
 
@@ -435,6 +502,8 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         if (fileMenuHandler != null && fileMenuHandler.getHomeScreenDialog() != null) {
             fileMenuHandler.getHomeScreenDialog().render();
         }
+        // Plugin commands in the global context (#379) fire wherever focus is.
+        com.openmason.main.systems.keybinds.KeybindRegistry.getInstance().dispatchGlobal();
     }
 
     /**
@@ -454,49 +523,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     @Override
     public void onModelSelected(ModelSelectedEvent event) {
         logger.debug(".OMO selected: {}", event.entry().name());
-    }
-
-    /** Clicking a .OMT opens it in the texture editor for editing. */
-    @Override
-    public void onTextureSelected(TextureSelectedEvent event) {
-        try {
-            if (openTextureInEditorCallback != null) {
-                openTextureInEditorCallback.accept(event.entry().path());
-            } else {
-                logger.warn("No texture-editor open callback wired; cannot open {}", event.entry().name());
-            }
-        } catch (Exception e) {
-            logger.error("Failed to handle OMT selection event", e);
-        }
-    }
-
-    private java.util.function.Consumer<java.nio.file.Path> openUiDocumentCallback;
-
-    /** Set by the app: opens a .omui in the UI Editor workspace. */
-    public void setOpenUiDocumentCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
-        this.openUiDocumentCallback = callback;
-    }
-
-    @Override
-    public void onUiDocumentSelected(com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry entry) {
-        if (openUiDocumentCallback != null) {
-            openUiDocumentCallback.accept(entry.path());
-        }
-    }
-
-    /** A scene was clicked in the browser; the app-level handler opens it. */
-    @Override
-    public void onSceneSelected(com.openmason.main.systems.menus.panes.projectBrowser.events.SceneSelectedEvent event) {
-        if (openSceneCallback != null) {
-            openSceneCallback.accept(event.entry().path());
-        } else {
-            logger.warn("No scene-open callback wired; cannot open {}", event.entry().name());
-        }
-    }
-
-    /** Set by the app: opens a .omsc in the Scene Viewer. */
-    public void setOpenSceneCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
-        this.openSceneCallback = callback;
     }
 
     /** Delete was chosen in the browser: show the confirmation dialog first. */
@@ -646,6 +672,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     public void setApprovalGate(com.openmason.main.systems.mcp.approval.ApprovalGate gate) {
         this.approvalGate = gate;
+        services.put(com.openmason.main.systems.mcp.approval.ApprovalGate.class, gate);
     }
 
     public com.openmason.main.systems.mcp.approval.ApprovalGate getApprovalGate() {
@@ -657,6 +684,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     public void setSaveSheetGate(com.openmason.main.systems.mcp.approval.SaveSheetGate gate) {
         this.saveSheetGate = gate;
+        services.put(com.openmason.main.systems.mcp.approval.SaveSheetGate.class, gate);
     }
 
     public com.openmason.main.systems.mcp.approval.SaveSheetGate getSaveSheetGate() {
@@ -695,6 +723,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     public void setSceneViewer(com.openmason.main.systems.scene.SceneViewerImGuiInterface sceneViewer) {
         this.sceneViewer = sceneViewer;
+        services.put(com.openmason.main.systems.scene.SceneViewerImGuiInterface.class, sceneViewer);
     }
 
     /** The Scene Viewer (scene service, document, actions), or null before composition. */
@@ -704,6 +733,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
 
     public void setUiEditor(com.openmason.main.systems.uiEditor.view.UiEditorWorkspace uiEditor) {
         this.uiEditor = uiEditor;
+        services.put(com.openmason.main.systems.uiEditor.view.UiEditorWorkspace.class, uiEditor);
     }
 
     /** The UI Editor workspace (#293; open UI documents, their runtimes), or null before composition. */
@@ -740,39 +770,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     public void setBackToHomeCallback(Runnable callback) {
         if (fileMenuHandler != null) {
             fileMenuHandler.setBackToHomeCallback(callback);
-        }
-    }
-
-    /**
-     * Set callback for opening the texture editor.
-     * This callback will be invoked when the user selects "Texture Editor" from the Tools menu.
-     */
-    public void setOpenTextureEditorCallback(Runnable callback) {
-        if (toolsMenuHandler != null) {
-            toolsMenuHandler.setOpenTextureEditorCallback(callback);
-        }
-    }
-
-    public void setOpenScriptingWindowCallback(Runnable callback) {
-        if (toolsMenuHandler != null) {
-            toolsMenuHandler.setOpenScriptingWindowCallback(callback);
-        }
-    }
-
-    /**
-     * Set the callback that opens a specific .OMT file in the texture editor.
-     * Invoked when a .OMT is clicked in the project browser.
-     */
-    public void setOpenTextureInEditorCallback(java.util.function.Consumer<java.nio.file.Path> callback) {
-        this.openTextureInEditorCallback = callback;
-    }
-
-    /**
-     * Set callback for opening the animation editor.
-     */
-    public void setOpenAnimationEditorCallback(Runnable callback) {
-        if (toolsMenuHandler != null) {
-            toolsMenuHandler.setOpenAnimationEditorCallback(callback);
         }
     }
 
@@ -838,29 +835,6 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         return textureCreatorImGui;
     }
 
-    /**
-     * The application shell's side of the texture editor, for external drivers such as the MCP
-     * server. Drivers work on documents (the editor's controller opens, focuses and closes them);
-     * the shell only makes sure the Texture workspace is on screen. Closing the workspace is the
-     * user's alone (its tab's close button or menu), so there is deliberately no close here.
-     */
-    public interface TextureEditorPresenter {
-        /**
-         * Bring the Texture workspace forward, opening its tab first when it is not open (raises
-         * its window when popped out). Never closes anything.
-         */
-        void show();
-
-        /** Whether the Texture workspace tab is open. */
-        boolean isVisible();
-
-        /**
-         * Push the active face document's pending canvas edits to its GPU texture (no-op for a
-         * standalone texture).
-         */
-        void flush();
-    }
-
     /** Assistant chat pane (installed by the app shell once the harness exists). */
     private com.openmason.main.systems.assistant.ui.AssistantPaneImGui assistantPane;
 
@@ -868,40 +842,26 @@ public class MainImGuiInterface implements ProjectBrowserListener {
         this.assistantPane = pane;
     }
 
-    private TextureEditorPresenter textureEditorPresenter;
+    private com.openmason.main.systems.services.ScriptingPresenter scriptingPresenter;
+    private com.openmason.main.systems.services.TextureEditorPresenter textureEditorPresenter;
 
-    /**
-     * Seam to the standalone Scripting window (mirrors TextureEditorPresenter):
-     * lets MCP tools and the assistant open it without coupling to the window class.
-     */
-    public interface ScriptingPresenter {
-        void show();
-
-        /** Show and load a saved script from the library by name. */
-        void showWithScript(String scriptName);
-
-        void close();
-
-        boolean isVisible();
-    }
-
-    private ScriptingPresenter scriptingPresenter;
-
-    public void setScriptingPresenter(ScriptingPresenter presenter) {
+    public void setScriptingPresenter(com.openmason.main.systems.services.ScriptingPresenter presenter) {
         this.scriptingPresenter = presenter;
+        services.put(com.openmason.main.systems.services.ScriptingPresenter.class, presenter);
     }
 
-    public ScriptingPresenter getScriptingPresenter() {
+    public com.openmason.main.systems.services.ScriptingPresenter getScriptingPresenter() {
         return scriptingPresenter;
     }
 
     /** Install the shell's texture editor window control. */
-    public void setTextureEditorPresenter(TextureEditorPresenter presenter) {
+    public void setTextureEditorPresenter(com.openmason.main.systems.services.TextureEditorPresenter presenter) {
         this.textureEditorPresenter = presenter;
+        services.put(com.openmason.main.systems.services.TextureEditorPresenter.class, presenter);
     }
 
     /** @return the texture editor window control, or null before the shell wires it */
-    public TextureEditorPresenter getTextureEditorPresenter() {
+    public com.openmason.main.systems.services.TextureEditorPresenter getTextureEditorPresenter() {
         return textureEditorPresenter;
     }
 
@@ -919,6 +879,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
     public void setAnimationEditorInterface(
             com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui animationEditorImGui) {
         this.animationEditorImGui = animationEditorImGui;
+        services.put(com.openmason.main.systems.menus.animationEditor.AnimationEditorImGui.class, animationEditorImGui);
     }
 
     /**
@@ -926,6 +887,7 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      */
     public void setTextureCreatorInterface(TextureCreatorImGui textureCreatorImGui) {
         this.textureCreatorImGui = textureCreatorImGui;
+        services.put(TextureCreatorImGui.class, textureCreatorImGui);
         if (preferencesWindow != null) {
             preferencesWindow.setTextureCreatorImGui(textureCreatorImGui);
             logger.debug("TextureCreatorImGui wired up to unified preferences window");
@@ -996,39 +958,24 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      * Reset all editor state to defaults for a fresh session.
      * Called when creating a new blank project from the hub.
      */
-    private com.openmason.main.systems.layout.WorkspaceState workspaceState;
-
-    /**
-     * Installs the UI workspace (#293): its dockspace behind the main window's {@code Scene | UI}
-     * tabs (or its own window when popped out), the Tools menu entry, and the project-level save
-     * hooks (Save Project saves UI documents too).
-     */
-    public void setUiWorkspace(com.openmason.main.systems.layout.WorkspaceState state,
-                               com.openmason.main.systems.layout.WorkspaceDock dock,
-                               com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks hooks) {
-        this.workspaceState = state;
-        dockLayout.setUiWorkspace(state, dock);
-        toolsMenuHandler.setOpenUiEditorCallback(() -> state.set(com.openmason.main.systems.layout.Workspace.UI));
+    /** The UI workspace's save hooks: Save Project / exit prompts cover open UI documents too. */
+    public void setUiMenuHooks(com.openmason.main.systems.menus.FileMenuHandler.UiMenuHooks hooks) {
         if (fileMenuHandler != null) {
             fileMenuHandler.setUiHooks(hooks);
         }
     }
 
     /**
-     * Adds another workspace tab (the Texture Editor) behind the main window's tab strip; call
-     * after {@link #setUiWorkspace}. Its tab shows while the workspace state has it open.
+     * Whether workspace {@code ws}'s panels should draw this frame: it is the main window's front tab
+     * or a popped-out window showing its contents. Valid once this frame's {@link #render()} ran.
      */
-    public void addWorkspaceDock(com.openmason.main.systems.layout.Workspace ws,
-                                 com.openmason.main.systems.layout.WorkspaceDock dock) {
-        dockLayout.addWorkspace(ws, dock);
+    public boolean isWorkspaceShown(String ws) {
+        return dockLayout.isShown(ws);
     }
 
-    /**
-     * Whether {@code ws}'s panels should draw this frame: it is the main window's front tab or a
-     * popped-out window showing its contents. Valid once this frame's {@link #render()} ran.
-     */
-    public boolean isWorkspaceShown(com.openmason.main.systems.layout.Workspace ws) {
-        return dockLayout.isShown(ws);
+    /** The Scene workspace's dock (registered by the core plugin). */
+    public com.openmason.main.systems.layout.SceneWorkspaceDock getSceneWorkspaceDock() {
+        return sceneWorkspaceDock;
     }
 
     public com.openmason.main.systems.layout.WorkspaceState getWorkspaceState() {
@@ -1080,8 +1027,8 @@ public class MainImGuiInterface implements ProjectBrowserListener {
      *
      * @return true if the project file was written
      */
-    public boolean saveNewProject(String projectName, String ompFilePath) {
-        return projectLifecycle.saveNewProject(projectName, ompFilePath);
+    public boolean saveNewProject(String projectName, String ompFilePath, String targetId) {
+        return projectLifecycle.saveNewProject(projectName, ompFilePath, targetId);
     }
 
     public void openProjectFromHub(String ompFilePath) {

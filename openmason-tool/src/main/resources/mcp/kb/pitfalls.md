@@ -46,7 +46,8 @@
   a known historical bug.
 
 ## Misc traps
-- objectIds are namespaced ("stonebreak:cow") while files are SB_Cow.sbe —
+- objectIds are namespaced ("<ns>:cow", the game target's namespace) while files carry the
+  target's file prefix (Stonebreak: SB_Cow.sbe) —
   asset tools accept both, but store the objectId when persisting references.
 - Legacy texture-only SBOs (some items) embed no model at all: asset_open
   refuses them with asset_has_no_model; describe/export their texture instead.

@@ -29,13 +29,9 @@ public class EditMenuHandler {
     }
 
     /**
-     * Render the edit menu.
+     * Render the edit menu's items (inside the open menu; the menu bar draws the menu itself).
      */
-    public void render() {
-        if (!ImGui.beginMenu("Edit")) {
-            return;
-        }
-
+    public void renderItems() {
         ModelCommandHistory history = viewport != null ? viewport.getCommandHistory() : null;
         boolean canUndo = history != null && history.canUndo();
         boolean canRedo = history != null && history.canRedo();
@@ -53,8 +49,6 @@ public class EditMenuHandler {
         if (ImGui.menuItem("Preferences...")) {
             uiState.showPreferences();
         }
-
-        ImGui.endMenu();
     }
 
     /** Shortcut column from the keybind registry, so a rebind never leaves it stale. */

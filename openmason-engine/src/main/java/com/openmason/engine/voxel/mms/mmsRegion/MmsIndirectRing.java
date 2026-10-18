@@ -22,7 +22,7 @@ import java.util.List;
  * half rewritten — after a mesh churn the same slot names a different mesh,
  * so a torn command draws one mesh's indices against another's base vertex.
  * That was the one-frame "sky-wall" flash, seen while sprinting (constant
- * churn) and gone under {@code glFinish} or {@code -Dstonebreak.gpucull=off}.
+ * churn) and gone under {@code glFinish} or the host's GPU-cull kill switch.
  *
  * <p>Same shape as {@code MmsStagingRing}: equal slices, each allocation
  * inside one slice. Slices touched by a pass are fenced at the pass's end

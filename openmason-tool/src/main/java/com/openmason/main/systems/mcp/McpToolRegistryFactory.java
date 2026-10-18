@@ -1,19 +1,32 @@
 package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.api.ServiceRegistry;
+import com.openmason.api.mcp.McpToolContext;
+import com.openmason.api.mcp.McpToolContribution;
+import com.openmason.main.systems.io.AssetWriteService;
+import com.openmason.main.systems.io.WriteRoots;
+import com.openmason.main.systems.io.WriteSandbox;
+import com.openmason.main.systems.menus.preferences.AssistantPreferences;
+import com.openmason.main.systems.services.EditorServices;
+
+import java.util.List;
 
 /**
- * Single source of truth for the MCP tool surface.
+ * Single source of truth for the MCP tool surface: builds the registry from the MCP tool
+ * contributions of the active plugins (#379).
  *
  * <p>Both consumers build the registry here so they can never drift apart:
  * the embedded HTTP MCP server ({@link McpServerBootstrap}) and the in-tool
  * assistant harness, which translates the same {@link McpTool} records into
  * OpenAI function specs and dispatches through the same handlers.
  *
- * <p>Service constructors must only store the {@code mainInterface} reference
- * (it is {@code null} in the snapshot test); handlers hop to the main thread
- * via {@code MainThreadExecutor} when invoked.
+ * <p>Before the contributors run, the services every contributor shares are created once and
+ * published in the build's {@link McpToolContext#services()}: {@link EditorServices}, the
+ * {@link AssetWriteService} (every file write goes through one sandbox + policy + Save Sheet seam)
+ * and the domain editing services ({@link McpSharedServices}). Service constructors must only store
+ * the {@code EditorServices} reference (it is empty in the snapshot test); handlers hop to the main
+ * thread via {@code MainThreadExecutor} when invoked.
  */
 public final class McpToolRegistryFactory {
 
@@ -21,75 +34,61 @@ public final class McpToolRegistryFactory {
         // Static factory
     }
 
-    /** Build the full tool registry for the given capability set. */
-    public static McpToolRegistry build(MainImGuiInterface mainInterface, ObjectMapper mapper,
+    /** The built-in tool surface (the built-in plugins' contributions), for headless tests. */
+    public static McpToolRegistry build(EditorServices editorServices, ObjectMapper mapper,
                                         ToolCapabilities capabilities) {
+        return build(editorServices, mapper, capabilities, McpSurface.builtin());
+    }
+
+    /** Builds the registry from the surface's tool contributions, in order. */
+    public static McpToolRegistry build(EditorServices editorServices, ObjectMapper mapper,
+                                        ToolCapabilities capabilities, McpSurface surface) {
         McpToolRegistry registry = new McpToolRegistry();
-
-        // Every file write goes through one sandbox + policy + Save Sheet seam.
-        com.openmason.main.systems.io.AssetWriteService writes =
-                new com.openmason.main.systems.io.AssetWriteService(mainInterface,
-                        new com.openmason.main.systems.io.WriteSandbox(
-                                com.openmason.main.systems.io.WriteRoots.forInterface(mainInterface)),
-                        com.openmason.main.systems.menus.preferences.AssistantPreferences::writePolicy);
-        new SaveToolDefinitions(writes, mapper).registerAll(registry);
-        ModelFileService modelFiles = new ModelFileService(mainInterface, writes);
-        new ModelFileToolDefinitions(modelFiles, mapper).registerAll(registry);
-        TextureEditingService textureEditor = new TextureEditingService(mainInterface);
-        new AssetExportToolDefinitions(new AssetExportService(mainInterface, writes, modelFiles, textureEditor),
-                mapper).registerAll(registry);
-
-        ModelEditingService editor = new ModelEditingService(mainInterface);
-        new OpenMasonToolDefinitions(editor, mapper).registerAll(registry);
-
-        CanvasCaptureService canvasCapture = new CanvasCaptureService(mainInterface);
-        new TextureToolDefinitions(textureEditor, canvasCapture, writes, mapper).registerAll(registry);
-
-        FaceTextureEditingService faceTextureEditor = new FaceTextureEditingService(mainInterface);
-        new FaceTextureToolDefinitions(faceTextureEditor, mapper).registerAll(registry);
-
-        BoneEditingService boneEditor = new BoneEditingService(mainInterface);
-        new BoneToolDefinitions(boneEditor, mapper).registerAll(registry);
-
-        AttachmentEditingService attachmentEditor = new AttachmentEditingService(mainInterface);
-        new AttachmentToolDefinitions(attachmentEditor, mapper).registerAll(registry);
-
-        AnimationEditingService animationEditor = new AnimationEditingService(mainInterface);
-        new AnimationToolDefinitions(animationEditor, writes, mapper).registerAll(registry);
-
-        ViewportCaptureService viewportCapture = new ViewportCaptureService(mainInterface);
-        new ViewportToolDefinitions(viewportCapture, mapper).registerAll(registry);
-
-        SceneEditingService sceneEditor = new SceneEditingService(mainInterface);
-        new SceneToolDefinitions(sceneEditor, writes, mapper).registerAll(registry);
-
-        // UI Editor (#324): documents, inspection, op batches (one undo step each), preview, files.
-        new UiToolDefinitions(UiEditingService.forInterface(mainInterface, writes, mapper), mapper)
-                .registerAll(registry);
-
-        com.openmason.main.systems.scripting.mcp.ScriptingService scripting =
-                new com.openmason.main.systems.scripting.mcp.ScriptingService(mainInterface, mapper);
-        new com.openmason.main.systems.scripting.mcp.ScriptingToolDefinitions(scripting, mapper)
-                .registerAll(registry);
-
-        AssetLensService assetLens = new AssetLensService(mainInterface, mapper);
-        new AssetLensToolDefinitions(assetLens, mapper).registerAll(registry);
-
-        ModelInspectionService modelInspection =
-                new ModelInspectionService(mainInterface, faceTextureEditor, mapper);
-        new ModelInspectionToolDefinitions(modelInspection, mapper).registerAll(registry);
-
-        com.openmason.main.systems.scripting.mcp.ScriptLibraryService scriptLibrary =
-                new com.openmason.main.systems.scripting.mcp.ScriptLibraryService(mainInterface);
-        new com.openmason.main.systems.scripting.mcp.ScriptLibraryToolDefinitions(scriptLibrary, mapper)
-                .registerAll(registry);
-
-        new KnowledgeToolDefinitions(mapper, capabilities.libalexRecall()).registerAll(registry);
-
-        new MetaToolDefinitions(new ModelSummaryService(mainInterface),
-                editor, textureEditor, boneEditor, attachmentEditor, animationEditor, mapper)
-                .registerAll(registry);
-
+        McpToolContext context = context(editorServices, mapper, capabilities, registry, surface);
+        List<McpToolContribution> contributions = surface.tools();
+        for (McpToolContribution c : contributions) {
+            c.contributor().contribute(context);
+        }
         return registry;
+    }
+
+    /**
+     * A build context over {@code registry} with the shared services published (also used by the
+     * per-contributor snapshot test).
+     */
+    public static McpToolContext context(EditorServices editorServices, ObjectMapper mapper,
+                                         ToolCapabilities capabilities, McpToolRegistry registry,
+                                         McpSurface surface) {
+        EditorServices editor = editorServices != null ? editorServices : EditorServices.empty();
+        ServiceRegistry services = new ServiceRegistry();
+        services.put(EditorServices.class, editor);
+        AssetWriteService writes = new AssetWriteService(editor,
+                new WriteSandbox(WriteRoots.forInterface(editor)), AssistantPreferences::writePolicy);
+        services.put(AssetWriteService.class, writes);
+        services.put(McpSharedServices.class, McpSharedServices.create(editor, writes));
+        services.put(McpGuide.class, new McpGuide(surface.guideTopics()));
+        services.put(KnowledgeBase.class, new KnowledgeBase(surface.knowledgePacks()));
+        ToolCapabilities caps = capabilities != null ? capabilities : ToolCapabilities.none();
+        return new McpToolContext() {
+            @Override
+            public McpToolRegistry registry() {
+                return registry;
+            }
+
+            @Override
+            public ObjectMapper mapper() {
+                return mapper;
+            }
+
+            @Override
+            public ToolCapabilities capabilities() {
+                return caps;
+            }
+
+            @Override
+            public ServiceRegistry services() {
+                return services;
+            }
+        };
     }
 }

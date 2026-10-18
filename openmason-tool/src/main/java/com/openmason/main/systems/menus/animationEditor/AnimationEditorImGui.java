@@ -71,6 +71,24 @@ public final class AnimationEditorImGui {
     }
 
     /**
+     * Tools → Animation Editor: bind to the model the viewport holds (null = leave the binding)
+     * so the timeline drives its parts, then show. Re-binding while already open is routed
+     * through {@code onModelChanged} so the preview's rest-pose snapshot is not clobbered.
+     */
+    public void openFor(ModelPartManager partManager) {
+        if (partManager != null) {
+            if (isVisible() && controller.partManager() == partManager) {
+                // already bound to this model
+            } else if (isVisible()) {
+                controller.onModelChanged(partManager);
+            } else {
+                bindViewport(partManager);
+            }
+        }
+        show();
+    }
+
+    /**
      * Run {@code action} now if the clip is clean, otherwise after the user
      * chooses Save / Discard in the confirmation popup (Cancel drops it).
      */

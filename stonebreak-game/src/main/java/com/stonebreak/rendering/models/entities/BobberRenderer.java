@@ -18,7 +18,7 @@ final class BobberRenderer {
     private final FallbackCubeRenderer fallback;
 
     // Cached bobber SBE asset — loaded once on first render.
-    private com.stonebreak.mobs.sbe.SbeEntityAsset bobberAsset;
+    private com.openmason.engine.entity.sbe.SbeEntityAsset bobberAsset;
     private boolean bobberAssetLoadAttempted = false;
 
     BobberRenderer(SbeEntityRenderer sbeEntityRenderer, FallbackCubeRenderer fallback) {
@@ -31,7 +31,7 @@ final class BobberRenderer {
         if (!bobberAssetLoadAttempted) {
             bobberAssetLoadAttempted = true;
             try {
-                bobberAsset = com.stonebreak.mobs.sbe.SbeEntityLoader.load("/sbe/Mobs/SB_Bobber.sbe");
+                bobberAsset = com.stonebreak.mobs.sbe.GameSbeAssets.load("/sbe/Mobs/SB_Bobber.sbe");
             } catch (Exception e) {
                 LOGGER.error("Failed to load bobber SBE: {}", e.getMessage());
             }
@@ -46,7 +46,7 @@ final class BobberRenderer {
             try {
                 sbeEntityRenderer.render(
                         bobberAsset,
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         null,
                         0.0f,
                         renderPos,

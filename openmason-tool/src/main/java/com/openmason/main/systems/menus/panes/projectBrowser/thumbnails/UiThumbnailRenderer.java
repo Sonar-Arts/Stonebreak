@@ -1,11 +1,11 @@
 package com.openmason.main.systems.menus.panes.projectBrowser.thumbnails;
 
+import com.openmason.main.systems.target.TargetUi;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
 import com.openmason.main.systems.project.ProjectLayout;
 import com.openmason.main.systems.uiEditor.service.UiSnapshot;
-import com.stonebreak.ui.runtime.GameUiResources;
 import io.github.humbleui.skija.Typeface;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Thumbnails of UI documents (#293): the document painted by the game's own runtime at a
+ * Thumbnails of UI documents (#293): the document painted by the shared UI runtime at a
  * 1280 x 720 logical frame, at half scale on the CPU, then fitted into the square. Cached by
  * path, size and modification time; documents that cannot run get the placeholder.
  */
@@ -58,7 +58,7 @@ public final class UiThumbnailRenderer {
         }
         try {
             if (typeface == null) {
-                typeface = GameUiResources.loadTypeface();
+                typeface = TargetUi.loadTypeface();
             }
             OmuiArchive doc = OmuiReader.read(file).archive();
             Path root = projectRoot(file);

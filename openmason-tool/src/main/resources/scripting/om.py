@@ -837,7 +837,7 @@ class _Ui:
     # -- dependency table (textures, sprites, fonts, sounds, shared scripts / sheets)
     def add_dependency(self, path=_UNSET, id=_UNSET, kind=_UNSET, embed=_UNSET, optional=_UNSET,
                        fallback=_UNSET, requires=_UNSET, license=_UNSET):
-        """path: a project file (UI/stonebreak/ui/textures/panel.sbt), or id + kind found in the
+        """path: a project file (UI/mygame/ui/textures/panel.sbt), or id + kind found in the
         project / the game's packaged assets. embed=True snapshots it into the document."""
         self._queue("add_dependency", dict(path=path, id=id, kind=kind, embed=embed, optional=optional,
             fallback=fallback, requires=requires, license=license))
@@ -910,11 +910,11 @@ Animate:  c = om.anim.clip("idle", duration=2.0, fps=30, loop=True)
 Loops:    import math; [om.box(f"leg{i}", at=(math.cos(i*math.pi/2)*3, 1, math.sin(i*math.pi/2)*3)) for i in range(4)]
 UI docs:  p = om.ui.create("Box", name="panel", style={"width": 400, "row-gap": 12})   # active UI document
           t = om.ui.create("Label", parent=p, props={"text": "Paused"}, classes=["title"])
-          b = om.ui.add_instance("stonebreak:ui/components/stone_button", parent=p)
+          b = om.ui.add_instance("mygame:ui/components/stone_button", parent=p)
           om.ui.set_prop(b.inner("label"), "text", "Resume")     # inside an instance = override
           om.ui.add_sheet("hud"); om.ui.add_rule("hud", "#panel", {"background-color": "#203040"})
-          om.ui.tree(); om.ui.get("panel"); om.ui.use("stonebreak:ui/hud")   # one undo step on success
-          om.ui.add_dependency(path="UI/stonebreak/ui/textures/panel.sbt")     # + put_graph/put_state_machine
+          om.ui.tree(); om.ui.get("panel"); om.ui.use("mygame:ui/hud")   # one undo step on success
+          om.ui.add_dependency(path="UI/mygame/ui/textures/panel.sbt")     # + put_graph/put_state_machine
 """
 
 # Install as the `om` module so user scripts `import om`.

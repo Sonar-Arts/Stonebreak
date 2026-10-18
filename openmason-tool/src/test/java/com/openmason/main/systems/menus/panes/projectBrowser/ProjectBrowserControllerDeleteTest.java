@@ -1,7 +1,8 @@
 package com.openmason.main.systems.menus.panes.projectBrowser;
 
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
-import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetType;
+import com.openmason.api.files.FileType;
+import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.menus.panes.projectBrowser.AssetEditorDetacher;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorController;
 import com.openmason.main.systems.menus.textureCreator.TextureCreatorState;
@@ -73,7 +74,7 @@ class ProjectBrowserControllerDeleteTest {
                 new ModelOperationService(null, null, null), statusService);
     }
 
-    private AssetEntry writeEntry(String fileName, AssetType type) throws IOException {
+    private AssetEntry writeEntry(String fileName, FileType type) throws IOException {
         Path file = temp.resolve(fileName);
         Files.writeString(file, "stub");
         return new AssetEntry(fileName, file, type);
@@ -84,7 +85,7 @@ class ProjectBrowserControllerDeleteTest {
     @Test
     void deleteOmoRemovesFileReportsStatusClearsSelectionAndRescans() throws IOException {
         ProjectBrowserController controller = newController();
-        AssetEntry entry = writeEntry("sword.omo", AssetType.OMO);
+        AssetEntry entry = writeEntry("sword.omo", BuiltinFileTypes.OMO);
         assertTrue(controller.getVisibleAssets().stream().anyMatch(e -> e.pathString().equals(entry.pathString())),
                 "entry should be visible before delete");
 
@@ -100,7 +101,7 @@ class ProjectBrowserControllerDeleteTest {
     @Test
     void deleteOmtReportsOmtTextureStatus() throws IOException {
         ProjectBrowserController controller = newController();
-        AssetEntry entry = writeEntry("parchment.omt", AssetType.OMT);
+        AssetEntry entry = writeEntry("parchment.omt", BuiltinFileTypes.OMT);
 
         assertTrue(controller.deleteAsset(entry), "delete of an existing .OMT should succeed");
 
@@ -111,7 +112,7 @@ class ProjectBrowserControllerDeleteTest {
     @Test
     void deleteAlreadyDeletedPathFailsWithReadableStatusAndNoCrash() throws IOException {
         ProjectBrowserController controller = newController();
-        AssetEntry entry = writeEntry("gone.omo", AssetType.OMO);
+        AssetEntry entry = writeEntry("gone.omo", BuiltinFileTypes.OMO);
 
         assertTrue(controller.deleteAsset(entry));
         assertFalse(controller.deleteAsset(entry), "second delete of a deleted path should return false, not throw");
@@ -124,8 +125,8 @@ class ProjectBrowserControllerDeleteTest {
     @Test
     void deletingOneAssetKeepsAnotherSelectedStatusLine() throws IOException {
         ProjectBrowserController controller = newController();
-        AssetEntry a = writeEntry("a.omo", AssetType.OMO);
-        AssetEntry b = writeEntry("b.omo", AssetType.OMO);
+        AssetEntry a = writeEntry("a.omo", BuiltinFileTypes.OMO);
+        AssetEntry b = writeEntry("b.omo", BuiltinFileTypes.OMO);
         // Select a: the controller sets the status line before the (swallowed) load error.
         controller.selectAsset(a);
         assertEquals("Selected: a.omo (.OMO Model)", controller.getState().getSelectedAssetInfo());
@@ -144,7 +145,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void pathsEqualComparesNormalizedAndRejectsBlank() throws IOException {
-        Path file = writeEntry("backing.omo", AssetType.OMO).path();
+        Path file = writeEntry("backing.omo", BuiltinFileTypes.OMO).path();
         assertTrue(AssetEditorDetacher.pathsEqual(file, file.toString()));
         assertTrue(AssetEditorDetacher.pathsEqual(file, temp.resolve("./backing.omo").toString()),
                 "normalized comparison: same file, different resolution");
@@ -157,7 +158,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void omoDetachAfterSuccessfulDeleteBlanksMatchingPathOnly() throws IOException {
-        AssetEntry entry = writeEntry("backing.omo", AssetType.OMO);
+        AssetEntry entry = writeEntry("backing.omo", BuiltinFileTypes.OMO);
         ModelState modelState = new ModelState();
         modelState.setCurrentOMOFilePath(entry.pathString());
         modelState.setModelLoaded(true);
@@ -172,7 +173,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void omoDetachSkipsNonMatchingPath() throws IOException {
-        AssetEntry entry = writeEntry("other.omo", AssetType.OMO);
+        AssetEntry entry = writeEntry("other.omo", BuiltinFileTypes.OMO);
         ModelState modelState = new ModelState();
         modelState.setCurrentOMOFilePath(temp.resolve("kept.omo").toString());
 
@@ -195,7 +196,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void omtDetachAfterSuccessfulDeleteBlanksPathKeepsDirty() throws IOException {
-        AssetEntry entry = writeEntry("backing.omt", AssetType.OMT);
+        AssetEntry entry = writeEntry("backing.omt", BuiltinFileTypes.OMT);
         TextureCreatorController textures = texturesOn(entry.pathString());
         TextureDocument doc = textures.getActiveDocument();
 
@@ -208,7 +209,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void omtDetachReachesEveryTabOnTheFileNotJustTheActiveOne() throws IOException {
-        AssetEntry entry = writeEntry("backing.omt", AssetType.OMT);
+        AssetEntry entry = writeEntry("backing.omt", BuiltinFileTypes.OMT);
         TextureCreatorController textures = texturesOn(entry.pathString(), temp.resolve("kept.omt").toString());
         TextureDocument onDeleted = textures.getDocuments().get(0);
         TextureDocument kept = textures.getDocuments().get(1);
@@ -224,7 +225,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void omtDetachSkipsNonMatchingPath() throws IOException {
-        AssetEntry entry = writeEntry("other.omt", AssetType.OMT);
+        AssetEntry entry = writeEntry("other.omt", BuiltinFileTypes.OMT);
         TextureCreatorController textures = texturesOn(temp.resolve("kept.omt").toString());
 
         new AssetEditorDetacher().afterDelete(entry, true, null, textures);
@@ -235,7 +236,7 @@ class ProjectBrowserControllerDeleteTest {
 
     @Test
     void failedDeleteLeavesEditorsAttached() throws IOException {
-        AssetEntry entry = writeEntry("backing.omo", AssetType.OMO);
+        AssetEntry entry = writeEntry("backing.omo", BuiltinFileTypes.OMO);
         ModelState modelState = new ModelState();
         modelState.setCurrentOMOFilePath(entry.pathString());
         TextureCreatorController textures = texturesOn(entry.pathString());

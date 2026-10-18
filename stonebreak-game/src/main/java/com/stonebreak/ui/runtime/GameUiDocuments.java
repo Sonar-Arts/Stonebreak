@@ -1,37 +1,30 @@
 package com.stonebreak.ui.runtime;
 
 import com.openmason.engine.format.omui.OmuiArchive;
-import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.engine.format.sbui.SbuiArchive;
 import com.openmason.engine.format.sbui.SbuiReader;
-import com.openmason.engine.ui.assets.AssetResolver;
 import com.openmason.engine.ui.assets.AssetSource;
 import com.openmason.engine.ui.assets.HostCompatibility;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
-import com.openmason.engine.ui.runtime.anim.UiClocks;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.openmason.engine.ui.runtime.UiRuntimeContext;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.binding.UiActivation;
 import com.openmason.engine.ui.runtime.binding.UiActivationException;
-import com.openmason.engine.ui.runtime.binding.UiBinder;
 import com.openmason.engine.ui.runtime.binding.UiConverters;
 import com.openmason.engine.ui.data.UiHost;
 import com.openmason.engine.format.omui.UiDiagnostic;
 import com.openmason.engine.ui.runtime.input.UiInputGate;
-import com.openmason.engine.ui.runtime.paint.MasonryContentMeasurer;
 import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
 import com.openmason.engine.ui.runtime.paint.UiDocumentView;
 import com.openmason.engine.ui.runtime.paint.UiPaintHost;
-import com.openmason.engine.ui.runtime.paint.UiPainter;
 import com.openmason.engine.ui.diag.UiBudgets;
 import com.openmason.engine.ui.diag.UiFrameMonitor;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import com.openmason.engine.ui.script.UiScriptOptions;
 import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
-import com.openmason.engine.ui.script.UiScripts;
 import com.stonebreak.rendering.UI.masonryUI.textures.MTextureRegistry;
 import com.stonebreak.ui.runtime.screens.ShippedDocuments;
 import com.stonebreak.ui.runtime.screens.UiLayer;
@@ -45,9 +38,10 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Hosts OMUI/SBUI documents in the game window (#287): builds the runtime context the editor
- * preview also uses (built-in widgets, #285 asset resolution, the game's texture cache, the
- * Masonry font measurer) and paints through the game's Skija backend.
+ * Hosts OMUI/SBUI documents in the game window (#287) on the engine's {@link UiDocuments} (#381:
+ * the runtime context, asset resolution and painter the editor preview uses too), with the
+ * game's own parts: its packaged assets, texture cache ({@link MTextureRegistry}), host, input
+ * stack, shipped screens and budget monitor.
  *
  * <p>Screens migrate onto this in #297 onward through
  * {@link com.stonebreak.ui.runtime.screens.DocumentScreenHost}, which opens shipped exports with
@@ -63,17 +57,13 @@ public final class GameUiDocuments {
     /** A view of an exported screen, resolving shared rows through the packaged root and {@code packs}. */
     public static UiDocumentView open(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
                                       Map<String, UiPaintHost.UiDrawProvider> providers) throws IOException {
-        List<AssetSource> sources = GameUiAssets.sources(packs);
-        ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
-            MTextureRegistry.cache()).withDerived(sbui);
-        return view(sbui.source(), assets, typeface, providers);
+        return UiDocuments.open(sbui, GameUiAssets.sources(packs), MTextureRegistry.cache(), typeface, providers);
     }
 
     /** A view of an authoring document (dev and tests): embedded rows plus the packaged root. */
     public static UiDocumentView open(OmuiArchive omui, Supplier<Typeface> typeface,
                                       Map<String, UiPaintHost.UiDrawProvider> providers) throws IOException {
-        List<AssetSource> sources = GameUiAssets.sources(Map.of());
-        return view(omui, AssetResolver.forDocument(omui, sources), sources, typeface, providers);
+        return UiDocuments.open(omui, GameUiAssets.sources(Map.of()), MTextureRegistry.cache(), typeface, providers);
     }
 
     /**
@@ -82,13 +72,8 @@ public final class GameUiDocuments {
      */
     public static UiDocumentView open(OmuiArchive omui, List<AssetSource> projectSources, Supplier<Typeface> typeface,
                                       Map<String, UiPaintHost.UiDrawProvider> providers) throws IOException {
-        List<AssetSource> sources = new java.util.ArrayList<>(projectSources);
-        for (AssetSource s : GameUiAssets.sources(Map.of())) {
-            if (sources.stream().noneMatch(x -> x.name().equals(s.name()))) {
-                sources.add(s);
-            }
-        }
-        return view(omui, AssetResolver.forDocument(omui, sources), sources, typeface, providers);
+        List<AssetSource> sources = UiDocuments.withFallback(projectSources, GameUiAssets.sources(Map.of()));
+        return UiDocuments.open(omui, sources, MTextureRegistry.cache(), typeface, providers);
     }
 
     /** Reads {@code .sbui} or {@code .omui} from disk. */
@@ -98,10 +83,7 @@ public final class GameUiDocuments {
 
     /** The editable tree of a {@code .sbui} (its embedded source) or {@code .omui} file. */
     public static OmuiArchive read(Path file) throws IOException {
-        if (file.getFileName().toString().endsWith(".sbui")) {
-            return SbuiReader.read(file, SbuiReader.Options.RUNTIME).archive().source();
-        }
-        return OmuiReader.read(file).archive();
+        return UiDocuments.read(file);
     }
 
     /**
@@ -182,15 +164,14 @@ public final class GameUiDocuments {
                                     UiConverters converters, UiScriptServices services, UiLayer layer,
                                     boolean firstParty) throws IOException {
         List<AssetSource> sources = GameUiAssets.sources(packs);
-        ResolvedUiAssets assets = new ResolvedUiAssets(AssetResolver.forExport(sbui, sources), sources,
-            MTextureRegistry.cache()).withDerived(sbui); // graph Lua compiled at export (#291)
+        ResolvedUiAssets assets = UiDocuments.exportAssets(sbui, sources, MTextureRegistry.cache()); // + graph Lua (#291)
         UiActivation.require(sbui, assets, host);
         requireAssets(sbui, host, sources);
         List<UiDiagnostic> unresolved = assets.check().stream().filter(UiDiagnostic::isError).toList();
         if (!unresolved.isEmpty()) { // resolution through the runtime's own tables (fallbacks, hashes)
             throw new UiActivationException(sbui.source().manifest().documentId(), unresolved);
         }
-        UiDocumentView view = view(sbui.source(), assets, typeface, providers);
+        UiDocumentView view = UiDocuments.view(sbui.source(), assets, typeface, providers);
         try {
             requireInputGate(view, Locale.getDefault());
             UiScriptOptions options = budgets(view, layer).scriptOptions();
@@ -263,7 +244,7 @@ public final class GameUiDocuments {
      * preview a {@code FixtureHost}. Prefer {@link #scripts}, which also runs code-behind.
      */
     public static UiDocumentView bind(UiDocumentView view, UiHost host, UiConverters converters) {
-        return view.bind(UiBinder.open(view.instance(), host, converters));
+        return UiDocuments.bind(view, host, converters);
     }
 
     /**
@@ -273,8 +254,7 @@ public final class GameUiDocuments {
     public static UiScriptRuntime scripts(UiDocumentView view, UiHost host, UiConverters fallback,
                                           UiScriptServices services) {
         // Hard limits from the document's budgets (#296): 4 MiB / 50 ms, 32 MiB for Canvas minigames
-        UiScriptOptions options = UiBudgets.forDocument(view.instance().document()).scriptOptions();
-        return UiScripts.open(view, host, fallback, options, services);
+        return UiDocuments.scripts(view, host, fallback, services);
     }
 
     /**
@@ -300,12 +280,12 @@ public final class GameUiDocuments {
      */
     public static UiScriptRuntime scripts(UiDocumentView view, UiHost host, UiConverters fallback,
                                           UiScriptServices services, UiScriptOptions options) {
-        return UiScripts.open(view, host, fallback, options, services);
+        return UiDocuments.scripts(view, host, fallback, services, options);
     }
 
     /** Activation findings of an already open view's document against {@code host} (dev overlay, preview). */
     public static List<UiDiagnostic> activationGate(UiDocumentView view, UiHost host) {
-        return UiActivation.check(view.instance().document(), view.instance().context().source(), host);
+        return UiDocuments.activationGate(view, host);
     }
 
     /**
@@ -313,25 +293,7 @@ public final class GameUiDocuments {
      * hot-swaps its code-behind (a module that no longer compiles keeps the previous version).
      */
     public static UiDocumentInstance.ReloadReport reload(UiDocumentView view, Path file) throws IOException {
-        UiDocumentInstance.ReloadReport report = view.instance().reload(read(file));
-        UiScriptRuntime scripts = UiScripts.of(view);
-        if (scripts != null) {
-            scripts.reload();
-        }
-        return report;
-    }
-
-    private static UiDocumentView view(OmuiArchive doc, AssetResolver resolver, List<AssetSource> sources,
-                                       Supplier<Typeface> typeface, Map<String, UiPaintHost.UiDrawProvider> providers) {
-        return view(doc, new ResolvedUiAssets(resolver, sources, MTextureRegistry.cache()), typeface, providers);
-    }
-
-    private static UiDocumentView view(OmuiArchive doc, ResolvedUiAssets assets, Supplier<Typeface> typeface,
-                                       Map<String, UiPaintHost.UiDrawProvider> providers) {
-        UiPaintHost host = assets.paintHost(providers);
-        MasonryContentMeasurer text = new MasonryContentMeasurer(typeface, host);
-        UiRuntimeContext context = UiRuntimeContext.basic().withSource(assets).withMeasurer(text);
-        return new UiDocumentView(UiDocumentInstance.instantiate(doc, context), new UiPainter(host, text));
+        return UiDocuments.reload(view, file);
     }
 
     /**
@@ -351,10 +313,7 @@ public final class GameUiDocuments {
      * {@code game} clock.
      */
     public static void frame(UiDocumentView view, double uiDt, double gameDt) {
-        if (gameDt > 0) {
-            view.instance().clocks().advance(UiClocks.GAME, gameDt);
-        }
-        view.frame(uiDt);
+        UiDocuments.frame(view, uiDt, gameDt);
     }
 
     /** True while gameplay advances (in a world and not paused): what {@link #frame}'s game clock follows. */
@@ -377,15 +336,6 @@ public final class GameUiDocuments {
      * @param masonry a per-view Masonry handle on the game backend
      */
     public static void render(UiDocumentView view, MasonryUI masonry, int width, int height, float uiScale) {
-        view.layout(width, height, uiScale, 1f);
-        view.prepareProviders();
-        if (!masonry.beginFrame(width, height, 1f)) {
-            return;
-        }
-        try {
-            view.paint(masonry);
-        } finally {
-            masonry.endFrame();
-        }
+        UiDocuments.render(view, masonry, width, height, uiScale);
     }
 }

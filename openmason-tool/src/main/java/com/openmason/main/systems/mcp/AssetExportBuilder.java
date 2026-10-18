@@ -8,6 +8,7 @@ import com.openmason.engine.format.sound.SoundDef;
 import com.openmason.engine.format.sound.SoundSpec;
 import com.openmason.main.systems.menus.dialogs.SBOExportWindow;
 import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
+import com.openmason.main.systems.target.GameTargets;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -95,7 +96,7 @@ public final class AssetExportBuilder {
         SBOFormat.ExportParameters params = new SBOFormat.ExportParameters();
         String name = text(n, "objectName", cleanName(defaultName));
         params.setObjectName(name);
-        params.setObjectId(text(n, "objectId", "stonebreak:" + slug(name)));
+        params.setObjectId(text(n, "objectId", GameTargets.shared().qualify(slug(name))));
         SBOFormat.ObjectType type = SBOFormat.ObjectType.fromId(text(n, "objectType", texture ? "item" : "block"));
         if (texture && !textureObjectTypeAllowed(type)) {
             throw new IllegalArgumentException("invalid_params: objectType " + type.getId()
@@ -352,7 +353,7 @@ public final class AssetExportBuilder {
         SBEFormat.ExportParameters params = new SBEFormat.ExportParameters();
         String name = text(n, "objectName", cleanName(defaultName));
         params.setObjectName(name);
-        params.setObjectId(text(n, "objectId", "stonebreak:" + slug(name)));
+        params.setObjectId(text(n, "objectId", GameTargets.shared().qualify(slug(name))));
         params.setEntityType(SBEFormat.EntityType.fromId(text(n, "entityType", "mob")));
         params.setObjectPack(text(n, "objectPack", "default"));
         params.setAuthor(text(n, "author", defaultAuthor()));

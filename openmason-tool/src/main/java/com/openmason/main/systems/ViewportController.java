@@ -40,7 +40,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * 3D viewport controller using modular architecture.
- * Displays models, blocks, and items from stonebreak-game module.
+ * Displays models, plus the game target's blocks and items (Stonebreak's until #382).
  */
 public class ViewportController {
 
@@ -55,6 +55,9 @@ public class ViewportController {
     private final ViewerCamera viewportCamera;
     private final ViewerRenderContext renderContext;
     private ViewportRenderPipeline viewportRenderPipeline;
+
+    /** Non-model content (the registered viewport content providers, #379); null = the built-ins. */
+    private java.util.function.Supplier<java.util.List<com.openmason.api.viewport.ViewportContentProvider>> contentProviders;
 
     // ========== State ==========
     private final ViewportUIState viewportState;
@@ -303,6 +306,7 @@ public class ViewportController {
             // overlays -> gizmo -> rigging) exactly as before.
             modelViewer.addPass(new com.openmason.engine.rendering.viewer.passes.GridPass());
             modelViewer.addPass(this.viewportRenderPipeline);
+            this.viewportRenderPipeline.setContentProviders(contentProviders);
             this.viewportRenderPipeline.setBoneStore(boneStore);
             this.viewportRenderPipeline.setAttachmentStore(attachmentStore);
             this.viewportRenderPipeline.setAttachmentPreviewStore(attachmentPreviewStore);
@@ -1068,5 +1072,65 @@ public class ViewportController {
         } else {
             logger.warn("Cannot set window handle - input handler is null");
         }
+    }
+
+    /** Where the viewport's non-model content comes from (the registered content providers). */
+    public void setContentProviders(
+            java.util.function.Supplier<java.util.List<com.openmason.api.viewport.ViewportContentProvider>> providers) {
+        this.contentProviders = providers;
+        if (viewportRenderPipeline != null) {
+            viewportRenderPipeline.setContentProviders(providers);
+        }
+    }
+
+    /**
+     * The block / item / .SBT content the viewport can draw, as content providers for the built-in
+     * Stonebreak plugin to register. They forward to the render pipeline once it exists (before
+     * that they are never ready).
+     */
+    public java.util.List<com.openmason.api.viewport.ViewportContentProvider> builtinContentProviders() {
+        return java.util.List.of(builtinContent("stonebreak.block", "Stonebreak block"),
+                builtinContent("stonebreak.item", "Stonebreak item"),
+                builtinContent("stonebreak.sbt", "Stonebreak texture (.SBT)"));
+    }
+
+    private com.openmason.api.viewport.ViewportContentProvider builtinContent(String id, String label) {
+        return new com.openmason.api.viewport.ViewportContentProvider() {
+            private com.openmason.api.viewport.ViewportContentProvider target() {
+                if (viewportRenderPipeline == null) {
+                    return null;
+                }
+                for (var p : viewportRenderPipeline.builtinContentProviders()) {
+                    if (p.id().equals(id)) {
+                        return p;
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            public String id() {
+                return id;
+            }
+
+            @Override
+            public String label() {
+                return label;
+            }
+
+            @Override
+            public boolean ready() {
+                var t = target();
+                return t != null && t.ready();
+            }
+
+            @Override
+            public void render(com.openmason.api.viewport.ViewportContentFrame frame) {
+                var t = target();
+                if (t != null) {
+                    t.render(frame);
+                }
+            }
+        };
     }
 }

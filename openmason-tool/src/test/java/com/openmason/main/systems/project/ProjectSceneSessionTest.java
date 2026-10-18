@@ -41,7 +41,7 @@ class ProjectSceneSessionTest {
 
     /** A service that skips the viewport/model restore, which needs a live UI. */
     private static ProjectService headlessService() {
-        return new ProjectService() {
+        return new ProjectService(new com.openmason.main.systems.target.GameTargets(java.util.List::of)) {
             @Override
             public void restoreState(OMPFormat.Document document,
                                      com.openmason.main.systems.ViewportController viewport,

@@ -3,6 +3,7 @@ package com.openmason.main.systems.menus.dialogs;
 import com.openmason.engine.format.sbt.SBTFormat;
 import com.openmason.engine.format.sbt.SBTSerializer;
 import com.openmason.main.systems.services.StatusService;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.core.ThemeManager;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
@@ -178,7 +179,7 @@ public class SBTExportWindow {
 
     private void renderFormFields() {
         ThemedWidgets.sectionLabel("Identity");
-        ImGui.inputTextWithHint("Texture ID", "e.g. stonebreak:cow_default", textureId);
+        ImGui.inputTextWithHint("Texture ID", "e.g. " + GameTargets.shared().qualify("cow_default"), textureId);
         ImGui.inputTextWithHint("Texture Name", "e.g. Cow Default", textureName);
 
         ThemedWidgets.sectionLabel("Classification");
@@ -206,7 +207,7 @@ public class SBTExportWindow {
             textureName.set(nameWithoutExt);
 
             String idCandidate = nameWithoutExt.toLowerCase().replace(' ', '_');
-            textureId.set("stonebreak:" + idCandidate);
+            textureId.set(GameTargets.shared().qualify(idCandidate));
         }
     }
 

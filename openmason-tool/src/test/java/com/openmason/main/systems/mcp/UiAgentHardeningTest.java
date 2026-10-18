@@ -9,6 +9,7 @@ import com.openmason.main.systems.io.AssetWriteService;
 import com.openmason.main.systems.io.WritePolicy;
 import com.openmason.main.systems.io.WriteRoots;
 import com.openmason.main.systems.io.WriteSandbox;
+import com.openmason.main.systems.target.TestGameTargets;
 import com.openmason.main.systems.threading.MainThreadExecutor;
 import com.openmason.main.systems.uiEditor.automation.UiAutomation;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
@@ -54,6 +55,7 @@ class UiAgentHardeningTest {
     private Path project;
     private Path game;
     private UiEditorContext ctx;
+    private com.openmason.api.target.GameTarget target;
     private McpToolRegistry registry;
 
     @BeforeEach
@@ -61,10 +63,13 @@ class UiAgentHardeningTest {
         MainThreadExecutor.bindToCurrentThread();
         project = Files.createDirectories(tmp.resolve("proj"));
         game = Files.createDirectories(tmp.resolve("game"));
+        // The Stonebreak target (its UI host, deploy layout) with its tree in the temp folder (#380).
+        target = TestGameTargets.stonebreakAt(game);
+        TestGameTargets.installShared(target);
         ctx = new UiEditorContext(new UiDocumentService(new UiProjectContext(() -> project),
             new UiRecoveryService(tmp.resolve("rec"))));
         UiAutomation automation = new UiAutomation(ctx, null);
-        AssetWriteService writes = new AssetWriteService(null, new WriteSandbox(WriteRoots.of(project, game,
+        AssetWriteService writes = new AssetWriteService(null, new WriteSandbox(WriteRoots.forTarget(project, target,
             Files.createDirectories(tmp.resolve("exports")))), () -> WritePolicy.ASK_RISKY);
         registry = new McpToolRegistry();
         new UiToolDefinitions(new UiEditingService(() -> automation, writes, mapper, null), mapper).registerAll(registry);
@@ -72,6 +77,7 @@ class UiAgentHardeningTest {
 
     @AfterEach
     void tearDown() {
+        TestGameTargets.clearShared();
         ctx.close();
         MainThreadExecutor.bindToCurrentThread();
     }

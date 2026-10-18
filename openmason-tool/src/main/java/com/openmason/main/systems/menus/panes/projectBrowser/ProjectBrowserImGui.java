@@ -74,7 +74,7 @@ public class ProjectBrowserImGui {
     private void installThumbnailInvalidator() {
         controller.setThumbnailInvalidator(entry -> {
             for (int size : new int[]{ThumbnailCache.SIZE_LARGE, ThumbnailCache.SIZE_MEDIUM, ThumbnailCache.SIZE_SMALL}) {
-                thumbnailCache.invalidate(entry.type() == ProjectAssetScanner.AssetType.OMO
+                thumbnailCache.invalidate("omo".equals(entry.type().id())
                         ? ThumbnailCache.omoKey(entry.pathString(), size)
                         : ThumbnailCache.omtKey(entry.pathString(), size));
             }

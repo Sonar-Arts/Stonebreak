@@ -1,7 +1,6 @@
 package com.openmason.main.systems.menus.panes.projectBrowser.views;
 
 import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetEntry;
-import com.openmason.main.systems.menus.panes.projectBrowser.ProjectAssetScanner.AssetType;
 import com.openmason.main.systems.scene.dnd.ScenePayloads;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -28,7 +27,7 @@ public final class ProjectBrowserDragSource {
      *         also load it into the editor.
      */
     public static boolean emit(AssetEntry item) {
-        if (item == null || item.type() != AssetType.OMO) {
+        if (item == null || !"omo".equals(item.type().id())) {
             return false;
         }
         if (ImGui.beginDragDropSource(ImGuiDragDropFlags.SourceAllowNullID)) {

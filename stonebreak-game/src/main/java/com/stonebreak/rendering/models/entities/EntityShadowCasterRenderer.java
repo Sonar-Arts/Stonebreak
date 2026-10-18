@@ -77,10 +77,10 @@ final class EntityShadowCasterRenderer {
         // model isn't drawn to screen but its shadow still should be.
         if (player != null && lightFrustum.testSphere(player.getPosition().x,
                 player.getPosition().y + 1f, player.getPosition().z, 2f)) {
-            com.stonebreak.mobs.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+            com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
                         player.getBodyEventTime(),
                         player.getPosition(), player.getBodyYaw(), unitScale,
@@ -103,10 +103,10 @@ final class EntityShadowCasterRenderer {
 
         if ((type == EntityType.REMOTE_PLAYER || type == EntityType.ILLUSION_DECOY)
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            com.stonebreak.mobs.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+            com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,
-                        com.stonebreak.mobs.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
                         rp.getBodyAnimationTime(),
                         rp.getPosition(), rp.getBodyYaw(), rp.getScale(),

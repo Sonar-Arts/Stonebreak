@@ -1,5 +1,7 @@
 package com.openmason.main.systems.uiPreview;
 
+import com.openmason.main.systems.target.TargetUi;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiWriter;
 import com.openmason.engine.format.omui.UiDiagnostic;
@@ -26,8 +28,6 @@ import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.main.platform.ToolInputTap;
 import com.openmason.main.systems.themes.utils.ThemeColors;
 import com.openmason.main.systems.uiPreview.graph.GraphEditorWindow;
-import com.stonebreak.ui.runtime.GameUiDocuments;
-import com.stonebreak.ui.runtime.GameUiResources;
 import imgui.ImDrawList;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
@@ -58,7 +58,7 @@ import java.util.Map;
  * "Reload" re-reads the file and keeps each surviving element's instance state, the live path
  * component and document edits take, and hot-swaps the Lua code-behind (#292).
  *
- * <p>Code-behind runs on the same runtime as the game ({@code GameUiDocuments.scripts}) against
+ * <p>Code-behind runs on the same runtime as the game ({@code UiDocuments.scripts}) against
  * the fixture host, so actions answer from the fixture and never reach game services. Sounds,
  * navigation and close requests are listed instead of performed. The "Scripts" section shows
  * the running modules, memory and call cost, diagnostics with {@code chunk:line}, the script
@@ -506,16 +506,17 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
             requests.clear();
             Typeface tf = typeface;
             Path path = Path.of(file.get().trim());
-            view = GameUiDocuments.open(path, () -> tf);
+            view = UiDocuments.open(UiDocuments.read(path), TargetUi.packagedAssets(), TargetUi.textures(), () -> tf,
+                TargetUi.previewProviders());
             // Bindings run against fixtures, never live game services (#289): a sidecar
             // <file>.fixture.json wins over the archive's own editor/fixtures.json.
             fixtures = fixtures(path, view.instance().document());
-            List<UiDiagnostic> gate = GameUiDocuments.activationGate(view, fixtures.host());
+            List<UiDiagnostic> gate = UiDocuments.activationGate(view, fixtures.host());
             // Code-behind (#292) binds the view with its converters and runs against the fixtures.
             // Debug build: graphs compile with trace calls for the graph editor's highlighting (#291).
             // Hard limits are the document's game budgets (#296), so a script that would fail in
             // the game fails here first.
-            scripts = GameUiDocuments.scripts(view, fixtures.host(), null, previewServices(),
+            scripts = UiDocuments.scripts(view, fixtures.host(), null, previewServices(),
                 UiBudgets.forDocument(view.instance().document()).scriptOptions().withGraphDebug(true));
             budgets = UiFrameMonitor.attach(view);
             input = new PreviewInput(view.input());
@@ -554,7 +555,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
 
     private boolean reload() {
         try {
-            UiDocumentInstance.ReloadReport r = GameUiDocuments.reload(view, Path.of(file.get().trim()));
+            UiDocumentInstance.ReloadReport r = UiDocuments.reload(view, Path.of(file.get().trim()));
             status = summary("Reloaded (kept " + r.kept().size() + ", added " + r.added().size() + ", dropped "
                 + r.dropped().size() + ")", view.instance());
             graphWindow.documentReloaded(view.instance().document(), view.instance().context().source(), false);
@@ -640,7 +641,7 @@ public final class UiDocumentPreviewPanel implements AutoCloseable {
     private boolean open() {
         try {
             nativeStatus = com.openmason.engine.ui.script.UiNativeHealth.check();
-            typeface = GameUiResources.loadTypeface();
+            typeface = TargetUi.loadTypeface();
             preview = new MasonryPreview(typeface, MasonryPreview.Path.RASTER);
             ToolInputTap.add(tap);
             if (!file.get().isBlank()) {

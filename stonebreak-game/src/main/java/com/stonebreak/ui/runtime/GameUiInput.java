@@ -93,7 +93,7 @@ public final class GameUiInput {
 
     /**
      * Maps GLFW key tokens to the keyboard layout before documents see them (C8); the game
-     * installs {@link LayoutKeys} once GLFW is up. Identity until then (tests, headless).
+     * installs the engine's {@code LayoutKeys} once GLFW is up. Identity until then (tests, headless).
      */
     public void setKeyTranslator(IntUnaryOperator translator) {
         keyTranslator = translator == null ? IntUnaryOperator.identity() : translator;

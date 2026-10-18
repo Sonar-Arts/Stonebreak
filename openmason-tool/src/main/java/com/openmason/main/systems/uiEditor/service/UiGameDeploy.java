@@ -1,6 +1,10 @@
 package com.openmason.main.systems.uiEditor.service;
 
+import com.openmason.api.target.GameTarget;
+import com.openmason.api.target.UiDeployLayout;
+import com.openmason.api.target.UiHostSource;
 import com.openmason.engine.format.omui.OmuiArchive;
+import com.openmason.engine.format.omui.UiHostProfile;
 import com.openmason.engine.format.omui.UiBytes;
 import com.openmason.engine.format.omui.UiDiagnostic;
 import com.openmason.engine.format.omui.UiDiagnostics;
@@ -18,6 +22,7 @@ import com.openmason.engine.ui.assets.export.ExportMode;
 import com.openmason.engine.ui.assets.export.ExportPlanner;
 import com.openmason.engine.ui.assets.export.PlanItem;
 import com.openmason.engine.ui.assets.export.UiExportService;
+import com.openmason.engine.ui.data.UiHost;
 import com.openmason.engine.ui.runtime.UiDocumentSource;
 import com.openmason.engine.ui.runtime.binding.UiActivation;
 import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
@@ -34,19 +39,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Checks an export against the real game host and ships it into the game (C14/C15).
+ * Checks an export against the game target's real UI host and ships it into the game (C14/C15).
  *
  * <p><b>Host check</b>: the editor previews documents against fixture data, which can promise
- * roots, actions and contracts the game does not have. The check runs the same gates the game's
- * {@code GameUiDocuments.openBound} runs, against {@link GameUiHost#declaration()} (every
+ * roots, actions and contracts the game does not have. The check runs the same gates the game
+ * runs when it opens a document, against the target's {@link UiHostSource#declaration()} (every
  * contract the game registers, no game behind it): activation (contracts, data roots, actions,
  * providers, features) and host compatibility (profile + asset resolution). An export the game
  * would refuse is reported before anyone ships it.
  *
- * <p><b>Deploy</b>: writes the SBUI to {@code ui/documents/<screen>.sbui} and every shared
- * dependency the export needs from the project to {@code ui/shared/<ns>/<path><ext>} in the
- * game's resource tree, the layout the game's packaged asset source reads. Files that already
- * exist with different bytes are conflicts: nothing is written unless the caller confirms.
+ * <p><b>Deploy</b>: writes the SBUI and every shared dependency the export needs from the
+ * project into the game's resource tree, in the target's {@link UiDeployLayout} (the layout the
+ * game's packaged asset source reads). Files that already exist with different bytes are
+ * conflicts: nothing is written unless the caller confirms.
+ *
+ * <p>{@link #stonebreakHost()} is the Stonebreak target's UI host (#380; moves to the Stonebreak
+ * plugin in #382).
  */
 public final class UiGameDeploy {
 
@@ -95,20 +103,26 @@ public final class UiGameDeploy {
     }
 
     /**
-     * Checks {@code sbui} against the game's declared host. Shared rows resolve through the game's
-     * packaged assets and then {@code pending} (the project files a deploy would ship).
+     * Checks {@code sbui} against {@code target}'s declared host. Shared rows resolve through the
+     * game's packaged assets and then {@code pending} (the project files a deploy would ship).
+     * A target without a UI host cannot run documents: that is the one finding.
      */
-    public static HostCheck check(SbuiArchive sbui, List<? extends AssetSource> pending) {
+    public static HostCheck check(SbuiArchive sbui, List<? extends AssetSource> pending, UiHostSource target) {
+        if (target == null) {
+            UiDiagnostics d = new UiDiagnostics();
+            d.error(UiDiagnostic.Code.MISSING_ENTRY, "", "", "The project has no game target with a UI host");
+            return new HostCheck(d.list(), List.of());
+        }
         List<AssetSource> sources = new ArrayList<>();
         try {
-            sources.addAll(GameUiAssets.sources(Map.of()));
+            sources.addAll(target.packagedAssets());
         } catch (IOException e) {
             UiDiagnostics d = new UiDiagnostics();
             d.error(UiDiagnostic.Code.MISSING_ENTRY, "", "", "The game's packaged UI assets are unreadable: " + e.getMessage());
             return new HostCheck(List.of(), d.list());
         }
         sources.addAll(pending);
-        GameUiHost declared = GameUiHost.declaration();
+        UiHost declared = target.declaration();
         List<UiDiagnostic> host = new ArrayList<>();
         UiDocumentSource components;
         try {
@@ -116,18 +130,10 @@ public final class UiGameDeploy {
         } catch (RuntimeException e) {
             components = UiDocumentSource.EMPTY;
         }
-        host.addAll(UiActivation.check(sbui, components, declared.host()));
-        HostCompatibility compat = HostCompatibility.check(sbui, declared.host().profile(), sources);
+        host.addAll(UiActivation.check(sbui, components, declared));
+        HostCompatibility compat = HostCompatibility.check(sbui, declared.profile(), sources);
         host.addAll(compat.host());
         return new HostCheck(dedupe(host), compat.assets());
-    }
-
-    /**
-     * Where the game reads shipped screen {@code id} from, relative to its resources: the C14
-     * layout {@code ui/documents/<id>.sbui} ({@code GameUiDocuments.readScreen}).
-     */
-    public static String screenPath(String id) {
-        return "ui/documents/" + id + ".sbui";
     }
 
     /** The screen id the game opens an export by: the last segment of its document id. */
@@ -137,19 +143,24 @@ public final class UiGameDeploy {
     }
 
     /**
-     * Exports {@code doc} and plans its deployment under {@code gameResources}
-     * ({@code stonebreak-game/src/main/resources}).
+     * Exports {@code doc} and plans its deployment under {@code gameResources} (the target's
+     * resource tree), in {@code target}'s deploy layout.
      *
      * @throws UiFormatException when the export itself is blocked
+     * @throws IllegalStateException when the target ships no UI documents
      */
     public static Plan plan(OmuiArchive doc, List<? extends AssetSource> projectSources, ExportMode mode,
-                            Path gameResources) throws UiFormatException, IOException {
+                            GameTarget target, Path gameResources) throws UiFormatException, IOException {
+        if (target == null || target.uiDeploy() == null) {
+            throw new IllegalStateException("The project has no game target that ships UI documents");
+        }
+        UiDeployLayout layout = target.uiDeploy();
         UiExportService.Result r = UiExportService.export(doc, projectSources, ExportPlanner.Request.of(mode), null);
         String screen = screenId(doc);
         List<DeployFile> files = new ArrayList<>();
         List<String> notes = new ArrayList<>();
         UiBytes sbuiBytes = UiBytes.copyOf(SbuiWriter.write(r.sbui()));
-        files.add(file(gameResources.resolve(screenPath(screen)), sbuiBytes));
+        files.add(file(gameResources.resolve(layout.screenPath(screen)), sbuiBytes));
         Map<String, ResolvedAsset> resolved = new LinkedHashMap<>();
         UiDiagnostics scratch = new UiDiagnostics();
         AssetResolver resolver = AssetResolver.forDocument(doc, projectSources);
@@ -167,10 +178,10 @@ public final class UiGameDeploy {
                 continue;
             }
             resolved.put(item.id(), a);
-            String rel = GameUiAssets.RESOURCE_ROOT + AssetKinds.fileName(item.id(), item.kind(), item.location());
+            String rel = layout.sharedPath(AssetKinds.fileName(item.id(), item.kind(), item.location()));
             files.add(file(gameResources.resolve(rel), a.bytes()));
         }
-        HostCheck check = check(r.sbui(), projectSources);
+        HostCheck check = check(r.sbui(), projectSources, target.uiHost());
         return new Plan(screen, files, notes, check);
     }
 
@@ -215,5 +226,56 @@ public final class UiGameDeploy {
 
     private static List<UiDiagnostic> dedupe(List<UiDiagnostic> in) {
         return new ArrayList<>(new java.util.LinkedHashSet<>(in));
+    }
+
+    /** The Stonebreak game's UI host, headless (#380): declarations, fixture, packaged assets, font, preview providers. */
+    public static UiHostSource stonebreakHost() {
+        return StonebreakUiHost.INSTANCE;
+    }
+
+    private enum StonebreakUiHost implements UiHostSource {
+        INSTANCE;
+
+        private volatile UiHostProfile profile;
+
+        @Override
+        public UiHostProfile profile() {
+            UiHostProfile p = profile;
+            if (p == null) {
+                p = GameUiHost.declaredProfile();
+                profile = p;
+            }
+            return p;
+        }
+
+        @Override
+        public UiHost declaration() {
+            return GameUiHost.declaration().host();
+        }
+
+        @Override
+        public byte[] fixtureJson() {
+            return GameUiHost.fixtureJson();
+        }
+
+        @Override
+        public String fixtureName() {
+            return GameUiHost.FIXTURE_RESOURCE;
+        }
+
+        @Override
+        public List<AssetSource> packagedAssets() throws IOException {
+            return GameUiAssets.sources(Map.of());
+        }
+
+        @Override
+        public io.github.humbleui.skija.Typeface loadTypeface() throws IOException {
+            return com.stonebreak.ui.runtime.GameUiResources.loadTypeface();
+        }
+
+        @Override
+        public Map<String, com.openmason.engine.ui.runtime.paint.UiPaintHost.UiDrawProvider> previewProviders() {
+            return com.stonebreak.ui.runtime.GameUiProviders.skiaOnly();
+        }
     }
 }

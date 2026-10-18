@@ -102,6 +102,48 @@ public class KeybindRegistry {
     }
 
     /**
+     * Context of commands that fire wherever the keyboard focus is (unless a text field has it),
+     * dispatched once per frame by the editor shell ({@link #dispatchGlobal()}). Other contexts only
+     * fire while the surface that polls them (viewport, texture, scene, ui) has focus.
+     */
+    public static final String GLOBAL_CONTEXT = "global";
+
+    /**
+     * Removes an action (a plugin's command whose registration was rolled back); its custom
+     * binding is forgotten for this session. Unknown ids are ignored.
+     */
+    public synchronized void unregisterAction(String actionId) {
+        KeybindAction action = actions.remove(actionId);
+        if (action == null) {
+            return;
+        }
+        Map<ShortcutKey, String> contextMap = contextBindings.get(action.getContext());
+        if (contextMap != null) {
+            contextMap.values().removeIf(actionId::equals);
+        }
+        customBindings.remove(actionId);
+    }
+
+    /**
+     * Runs the first {@link #GLOBAL_CONTEXT} command whose key is pressed this frame. Call once per
+     * frame from the UI thread, after the windows were submitted.
+     *
+     * @return true when a command ran
+     */
+    public boolean dispatchGlobal() {
+        if (imgui.ImGui.isAnyItemActive() && imgui.ImGui.getIO().getWantTextInput()) {
+            return false;
+        }
+        for (KeybindAction action : getActionsByContext(GLOBAL_CONTEXT)) {
+            if (getKeybind(action.getId()).isPressed()) {
+                action.execute();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Sets a custom keybind for an action.
      * <p>
      * Updates both the current bindings and custom bindings maps.

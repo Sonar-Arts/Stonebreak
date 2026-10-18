@@ -1,5 +1,6 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
@@ -343,7 +344,7 @@ public class SBOEditorWindow {
             ImGui.separator();
         }
         ThemedWidgets.sectionLabel("Identity");
-        if (ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:oak_planks", objectId)) dirty = true;
+        if (ImGui.inputTextWithHint("Object ID", "e.g. " + GameTargets.shared().qualify("oak_planks"), objectId)) dirty = true;
         if (ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName))         dirty = true;
 
         ThemedWidgets.sectionLabel("Classification");

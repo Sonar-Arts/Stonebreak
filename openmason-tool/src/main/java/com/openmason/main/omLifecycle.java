@@ -3,17 +3,23 @@ package com.openmason.main;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
+import com.openmason.api.lifecycle.LifecycleListener;
+import com.openmason.main.systems.threading.MainThreadExecutor;
+
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Application lifecycle management for OpenMason.
- * Handles startup, shutdown, and resource management throughout the application lifecycle.
+ * Handles startup, shutdown, and resource management throughout the application lifecycle, and
+ * tells the registered {@link LifecycleListener}s (plugin contributions, #379) about it on the UI
+ * thread: {@code started} when the main loop is about to run, {@code ready} when background start-up
+ * work finished, {@code shuttingDown} before the UI and GL context are torn down.
  */
 public class omLifecycle {
     
@@ -21,42 +27,17 @@ public class omLifecycle {
     
     private static final int SHUTDOWN_TIMEOUT_SECONDS = 10;
     
-    private final List<LifecycleListener> listeners;
+    /** The registered listeners, read at each event (plugins may register late). */
+    private volatile Supplier<List<LifecycleListener>> listeners = List::of;
     private final ExecutorService backgroundExecutor;
     private boolean isStarted = false;
-    private boolean isShuttingDown = false;
-    
-    /**
-     * Interface for components that need lifecycle notifications.
-     */
-    public interface LifecycleListener {
-        
-        /**
-         * Called when application starts up.
-         */
-        default void onStartup() {}
-        
-        /**
-         * Called when application is ready (after UI is loaded).
-         */
-        default void onReady() {}
-        
-        /**
-         * Called when application begins shutdown.
-         */
-        default void onShutdownStarted() {}
-        
-        /**
-         * Called when application shutdown is complete.
-         */
-        default void onShutdownComplete() {}
-    }
-    
+    private volatile boolean isShuttingDown = false;
+    private boolean notifiedShuttingDown = false;
+
     /**
      * Initialize application lifecycle manager.
      */
     public omLifecycle() {
-        this.listeners = new ArrayList<>();
         this.backgroundExecutor = Executors.newCachedThreadPool(r -> {
             Thread thread = new Thread(r, "OpenMason-Background");
             thread.setDaemon(true);
@@ -72,6 +53,23 @@ public class omLifecycle {
         }, "OpenMason-Shutdown"));
     }
     
+    /** Where the listeners come from (the lifecycle contributions). */
+    public void setListeners(Supplier<List<LifecycleListener>> listeners) {
+        this.listeners = java.util.Objects.requireNonNull(listeners, "listeners");
+    }
+
+    /**
+     * Tells the listeners the editor is shutting down, while the UI and GL context still exist.
+     * Call from the UI thread at the start of the shutdown sequence; runs once.
+     */
+    public void notifyShuttingDown() {
+        if (notifiedShuttingDown) {
+            return;
+        }
+        notifiedShuttingDown = true;
+        notifyListeners(LifecycleListener::shuttingDown);
+    }
+
     /**
      * Called when application has started (UI loaded).
      */
@@ -85,13 +83,14 @@ public class omLifecycle {
         // logger.info("Application lifecycle started");
         
         // Notify listeners of startup
-        notifyListeners(LifecycleListener::onStartup);
+        notifyListeners(LifecycleListener::started);
         
         // Perform background initialization
         CompletableFuture.runAsync(this::performBackgroundInitialization, backgroundExecutor)
             .thenRun(() -> {
                 // logger.info("Application ready");
-                notifyListeners(LifecycleListener::onReady);
+                // Listeners run on the UI thread; drained by the main loop.
+                MainThreadExecutor.post(() -> notifyListeners(LifecycleListener::ready));
             })
             .exceptionally(throwable -> {
                 logger.error("Background initialization failed", throwable);
@@ -119,14 +118,8 @@ public class omLifecycle {
         // logger.info("Beginning application shutdown sequence");
         
         try {
-            // Notify listeners that shutdown is starting
-            notifyListeners(LifecycleListener::onShutdownStarted);
-            
             // Shutdown background executor
             shutdownExecutor();
-            
-            // Notify listeners that shutdown is complete
-            notifyListeners(LifecycleListener::onShutdownComplete);
             
             // logger.info("Application shutdown sequence completed");
             
@@ -212,7 +205,7 @@ public class omLifecycle {
      * Notify all listeners with the given action.
      */
     private void notifyListeners(Consumer<LifecycleListener> action) {
-        for (LifecycleListener listener : listeners) {
+        for (LifecycleListener listener : listeners.get()) {
             try {
                 action.accept(listener);
             } catch (Exception e) {

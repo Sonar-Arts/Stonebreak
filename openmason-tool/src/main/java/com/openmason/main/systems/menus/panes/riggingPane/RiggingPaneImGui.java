@@ -89,7 +89,7 @@ public class RiggingPaneImGui {
         fileDialogService.showOpenAttachableModelDialog(filePath -> {
             try {
                 var path = java.nio.file.Path.of(filePath);
-                var asset = com.stonebreak.mobs.sbe.SbeEntityLoader.loadAttachable(path);
+                var asset = com.openmason.engine.entity.sbe.SbeEntityLoader.loadAttachable(path);
                 attachmentPreviewStore.set(socketId, path.getFileName().toString(), asset);
                 logger.info("Previewing '{}' on socket {}", path.getFileName(), socketId);
             } catch (Exception e) {

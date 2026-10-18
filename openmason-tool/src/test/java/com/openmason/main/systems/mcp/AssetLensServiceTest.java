@@ -3,6 +3,9 @@ package com.openmason.main.systems.mcp;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.openmason.main.systems.target.TestGameTargets;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +22,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Exercises the eyeglass end-to-end against the real shipped game assets. */
 @Tag("integration")
 class AssetLensServiceTest {
+
+    /** The lens reads the active game target's tree (#380): the Stonebreak checkout. */
+    @BeforeEach
+    void stonebreakSession() {
+        TestGameTargets.installStonebreak();
+    }
+
+    @AfterEach
+    void noTarget() {
+        TestGameTargets.clearShared();
+    }
 
     private static AssetLensService service() {
         ObjectMapper mapper = new ObjectMapper();

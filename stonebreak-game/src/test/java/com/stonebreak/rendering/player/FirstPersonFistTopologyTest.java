@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.player;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.openmason.engine.format.omo.OMOReader;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class FirstPersonFistTopologyTest {
     @Test
     void exportedFistIsOneClosedConsistentlyWoundShell() {
-        var geometry = SbeEntityLoader.load(FirstPersonArmPose.RESOURCE).geometryFor("Default");
+        var geometry = GameSbeAssets.load(FirstPersonArmPose.RESOURCE).geometryFor("Default");
         var fist = geometry.parts().stream().filter(p -> p.name().equals("fist")).findFirst().orElseThrow();
         // Render vertices split at face/UV seams; compare the shared geometric positions.
         Map<Vector3f, Integer> vertices = new HashMap<>();

@@ -1,6 +1,7 @@
 package com.openmason.main.systems.project;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.api.target.GameTarget;
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sbo.SBOFormat;
@@ -11,15 +12,12 @@ import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate.TemplatePa
 import com.openmason.main.systems.scripting.commands.ModelCommands;
 import com.openmason.main.systems.scripting.doc.HeadlessModelDocument;
 import com.openmason.main.systems.scripting.runner.HeadlessOmoWriter;
-import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipEntry;
@@ -31,24 +29,23 @@ import java.util.zip.ZipInputStream;
  * <p>Each {@link TemplateModel} becomes a {@code <name>.omo} at the project
  * root, built through the GL-free scripting path so no editor session is needed. Existing
  * files are never overwritten — creating a project into a folder that already holds a
- * {@code Log.omo} keeps the user's work.
+ * {@code Log.omo} keeps the user's work. Models copied from a game asset read it through the
+ * project's game target ({@link GameTarget#templates()}, #380).
  */
 public final class TemplateScaffolder {
 
     private static final Logger logger = LoggerFactory.getLogger(TemplateScaffolder.class);
-
-    /** Where the game keeps its block {@code .sbo} files on its classpath. */
-    private static final String GAME_BLOCKS_DIR = "sbo/blocks";
 
     private TemplateScaffolder() {
         throw new UnsupportedOperationException("Utility class");
     }
 
     /**
+     * @param target the new project's game target (where target-sourced models are read), or null
      * @return the path of the template's open-on-create model, or null when the template
      *         names none (or that model could not be written)
      */
-    public static Path scaffold(ProjectTemplate template, Path projectRoot) {
+    public static Path scaffold(ProjectTemplate template, Path projectRoot, GameTarget target) {
         if (template == null || projectRoot == null) {
             return null;
         }
@@ -57,7 +54,7 @@ public final class TemplateScaffolder {
         ObjectMapper mapper = new ObjectMapper();
         for (TemplateModel model : template.getModels()) {
             Path out = projectRoot.resolve(model.name() + ".omo");
-            if (!Files.exists(out) && !writeModel(model, out, mapper)) {
+            if (!Files.exists(out) && !writeModel(model, out, mapper, target)) {
                 continue;
             }
             if (model.name().equals(template.getOpenOnCreate())) {
@@ -67,11 +64,14 @@ public final class TemplateScaffolder {
         return openPath;
     }
 
-    private static boolean writeModel(TemplateModel model, Path out, ObjectMapper mapper) {
+    private static boolean writeModel(TemplateModel model, Path out, ObjectMapper mapper, GameTarget target) {
         try {
             HeadlessModelDocument doc = new HeadlessModelDocument();
-            if (model.gameBlockSbo() != null) {
-                doc.parts().addPartFromGeometry(model.name(), readGameBlockMesh(model.gameBlockSbo()), new Vector3f());
+            if (model.targetSbo() != null) {
+                if (target == null) {
+                    throw new IOException("the project has no game target to read " + model.targetSbo() + " from");
+                }
+                doc.parts().addPartFromGeometry(model.name(), readTargetMesh(target, model.targetSbo()), new Vector3f());
             } else {
                 ModelCommands commands = new ModelCommands(doc, mapper);
                 for (TemplatePart part : model.parts()) {
@@ -87,21 +87,9 @@ public final class TemplateScaffolder {
         }
     }
 
-    /**
-     * The mesh of the model embedded in one of the game's block {@code .sbo} files; its
-     * materials are ignored.
-     *
-     * <p>The game is a named module and {@code sbo/blocks} counts as one of its packages, so
-     * a plain {@code getResourceAsStream} from here is refused. Like the game's own
-     * {@code SBOBlockRegistry}, resolve the folder URL first and open the file beneath it.
-     */
-    private static PartMeshRebuilder.PartGeometry readGameBlockMesh(String fileName) throws IOException {
-        URL folder = BlockType.class.getClassLoader().getResource(GAME_BLOCKS_DIR);
-        if (folder == null) {
-            throw new IOException("game resource folder " + GAME_BLOCKS_DIR + " not found");
-        }
-        String resource = GAME_BLOCKS_DIR + "/" + fileName;
-        try (InputStream sbo = URI.create(folder + "/" + fileName).toURL().openStream()) {
+    /** The mesh of the model embedded in {@code target}'s {@code .sbo} at {@code resource}; its materials are ignored. */
+    private static PartMeshRebuilder.PartGeometry readTargetMesh(GameTarget target, String resource) throws IOException {
+        try (InputStream sbo = target.templates().open(resource)) {
             ZipInputStream zip = new ZipInputStream(sbo);
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
                 if (SBOFormat.EMBEDDED_OMO_FILENAME.equals(entry.getName())) {

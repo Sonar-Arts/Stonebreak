@@ -115,7 +115,7 @@ final class HostKinds {
     private static void checkArgs(KindContext ctx, GraphNode n, NodeKind.Checks out) {
         String action = KindContext.str(n, "action");
         if (action != null && !action.matches("[a-z0-9_.-]{1,64}:[a-z0-9_.-]+(/[a-z0-9_.-]+)*")) {
-            out.error(Code.INVALID_PROP, "", "action id '" + action + "' is not ns:id (stonebreak:screen.pause.resume)");
+            out.error(Code.INVALID_PROP, "", "action id '" + action + "' is not ns:id (e.g. game:screen.pause.resume)");
         }
         for (String name : KindContext.names(n, "args")) {
             if (!Ports.IDENT.matcher(name).matches() || name.equals(PortSpec.EXEC_IN)) {

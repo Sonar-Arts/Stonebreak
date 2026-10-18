@@ -65,6 +65,11 @@ public class mainOpenMason {
     private AnimationEditorImGui animationEditor;
     private TexturePreviewPipeline texturePreviewPipeline;
     private final McpServerBootstrap mcpServer = new McpServerBootstrap();
+    /** Every contribution list + the shared services; filled by the plugins (#379). */
+    private final com.openmason.main.plugins.EditorRegistries registries =
+            new com.openmason.main.plugins.EditorRegistries();
+    private final com.openmason.main.plugins.PluginManager pluginManager =
+            new com.openmason.main.plugins.PluginManager(registries);
     private final com.openmason.main.systems.mcp.approval.McpApprovalGate approvalGate =
             new com.openmason.main.systems.mcp.approval.McpApprovalGate();
     private com.openmason.main.systems.menus.dialogs.ApprovalDialog approvalDialog;
@@ -104,9 +109,14 @@ public class mainOpenMason {
             initializeSkija();
             initializeUI();
 
+            omLifecycle.setListeners(registries.lifecycle()::all);
             omLifecycle.onApplicationStarted();
             com.openmason.main.systems.mcp.ToolCapabilities toolCapabilities = buildToolCapabilities();
-            mcpServer.start(mainInterface, toolCapabilities);
+            // The MCP surface is what the active plugins contributed.
+            mcpServer.start(new com.openmason.main.systems.services.EditorServices(registries.services()),
+                    toolCapabilities, new com.openmason.main.systems.mcp.McpSurface(registries.mcpTools().all(),
+                            registries.guideTopics().all(), registries.knowledgePacks().all()));
+            pluginManager.started();
             if (assistantController != null) {
                 assistantController.setLibalexAvailable(toolCapabilities.libalexAvailable());
             }
@@ -192,8 +202,9 @@ public class mainOpenMason {
         UiComposition composition = new UiComposition(omConfig, window(), centerTabTracker,
                 new UiComposition.Host() {
                     @Override
-                    public void createNewProjectFile(String name, String directory, ProjectTemplate template) {
-                        mainOpenMason.this.createNewProjectFile(name, directory, template);
+                    public void createNewProjectFile(String name, String directory, ProjectTemplate template,
+                                                     String targetId) {
+                        mainOpenMason.this.createNewProjectFile(name, directory, template, targetId);
                     }
 
                     @Override
@@ -220,7 +231,7 @@ public class mainOpenMason {
                     public void showTextureEditor() {
                         openTextureEditor();
                     }
-                });
+                }, registries);
         try {
             composition.compose();
         } finally {
@@ -266,25 +277,18 @@ public class mainOpenMason {
             saveSheetDialog = new com.openmason.main.systems.menus.dialogs.SaveSheetDialog(
                     saveSheetGate,
                     new com.openmason.main.systems.io.WriteSandbox(
-                            com.openmason.main.systems.io.WriteRoots.forInterface(mainInterface)));
+                            com.openmason.main.systems.io.WriteRoots.forInterface(
+                            new com.openmason.main.systems.services.EditorServices(registries.services()))));
+            // Any registered kind (a plugin's too) gets the native save dialog for its file type.
             saveSheetDialog.setNativePicker((kind, suggestedName, preferredDir, onPicked) -> {
                 var dialogs = mainInterface.getFileDialogService();
-                if (dialogs == null) {
-                    return;
-                }
-                switch (kind) {
-                    case OMO -> dialogs.showSaveOMODialog(onPicked::accept);
-                    case OMT -> dialogs.showSaveOMTDialog(onPicked::accept);
-                    case OMANIM -> dialogs.showSaveOMADialog(onPicked::accept);
-                    case OMSC -> dialogs.showSaveOMSCDialog(onPicked::accept);
-                    case PNG -> dialogs.showSavePNGDialog(onPicked::accept);
-                    case SBO -> dialogs.showSaveSBODialog(suggestedName, preferredDir, onPicked::accept);
-                    case SBE -> dialogs.showSaveSBEDialog(suggestedName, preferredDir, onPicked::accept);
+                if (dialogs != null) {
+                    dialogs.showSaveDialog(kind.fileType(), suggestedName, preferredDir, onPicked::accept);
                 }
             });
         }
         if (mainInterface != null && scriptingWindow != null) {
-            mainInterface.setScriptingPresenter(new MainImGuiInterface.ScriptingPresenter() {
+            mainInterface.setScriptingPresenter(new com.openmason.main.systems.services.ScriptingPresenter() {
                 @Override
                 public void show() {
                     scriptingWindow.show();
@@ -307,7 +311,7 @@ public class mainOpenMason {
             });
         }
         if (mainInterface != null && textureEditorWorkspace != null) {
-            mainInterface.setTextureEditorPresenter(new MainImGuiInterface.TextureEditorPresenter() {
+            mainInterface.setTextureEditorPresenter(new com.openmason.main.systems.services.TextureEditorPresenter() {
                 @Override
                 public void show() {
                     openTextureEditor();
@@ -316,7 +320,7 @@ public class mainOpenMason {
                 @Override
                 public boolean isVisible() {
                     return showTextureEditor && workspaceState != null
-                            && workspaceState.isOpen(com.openmason.main.systems.layout.Workspace.TEXTURE);
+                            && workspaceState.isOpen(com.openmason.main.systems.layout.BuiltinWorkspaces.TEXTURE);
                 }
 
                 @Override
@@ -327,6 +331,31 @@ public class mainOpenMason {
                 }
             });
         }
+        registerPlugins();
+    }
+
+    /**
+     * Registers the editor's core features, then the built-in plugins and every plugin found on the
+     * module path (#379), then loads
+     * the user's custom keybinds (after every plugin registered its commands, so none is dropped).
+     */
+    private void registerPlugins() {
+        if (mainInterface == null) {
+            logger.error("UI composition failed; plugins not registered");
+            return;
+        }
+        registries.services().put(com.openmason.main.plugins.PluginManager.class, pluginManager);
+        registries.services().put(com.openmason.main.plugins.EditorRegistries.class, registries);
+        var keybinds = com.openmason.main.systems.keybinds.KeybindRegistry.getInstance();
+        registries.forwardCommandsTo(keybinds);
+        if (mainInterface.getViewport3D() != null) {
+            mainInterface.getViewport3D().setContentProviders(registries.viewportContent()::all);
+        }
+        // The editor's own features first, through the same registrars; a failure here stops start-up.
+        com.openmason.main.bootstrap.CoreFeatures.register(registries);
+        pluginManager.registerAll(com.openmason.main.plugins.builtin.BuiltinPlugins.all(),
+                pluginManager.discover());
+        new com.openmason.main.systems.menus.preferences.PreferencesManager().loadKeybindsIntoRegistry(keybinds);
     }
 
     /**
@@ -355,39 +384,16 @@ public class mainOpenMason {
         if (showModelEditor) {
             renderComponent(mainInterface, deltaTime, "Main Interface");
         }
-        // Each workspace draws while it is the main window's front tab or a visible popped-out
-        // window; the main interface has just submitted the dockspaces they dock into.
-        boolean uiShown = showModelEditor && mainInterface != null
-                && mainInterface.isWorkspaceShown(com.openmason.main.systems.layout.Workspace.UI);
-        boolean sceneShown = showModelEditor && (mainInterface == null
-                || mainInterface.isWorkspaceShown(com.openmason.main.systems.layout.Workspace.MODELING));
-        if (uiEditor != null) {
-            safeRender(() -> uiEditor.render(deltaTime, uiShown), uiShown ? "UI Editor" : "UI Editor (background)");
-        }
-
-        if (sceneShown) {
-            renderComponent(viewportInterface, deltaTime, "Viewport");
-            renderComponent(sceneViewerInterface, deltaTime, "Scene Viewer");
-
-            // Both centre views have reported visibility/focus by now; remember which
-            // tab is in front so a project save can record it.
-            if (viewportInterface != null && sceneViewerInterface != null) {
-                var sceneState = sceneViewerInterface.getUIState();
-                var modelState = viewportInterface.getViewportUIState();
-                centerTabTracker.noteFrame(
-                        sceneState.isSceneViewVisible(), sceneState.isSceneViewFocused(),
-                        modelState.isViewportWindowVisible(), modelState.isViewportFocused());
+        // Each workspace's panels draw while it is the main window's front tab or a visible
+        // popped-out window (the main interface has just submitted the dockspaces they dock into);
+        // a dock may also tick while hidden.
+        if (workspaceState != null) {
+            for (var ws : workspaceState.workspaces()) {
+                boolean shown = showModelEditor && mainInterface != null && mainInterface.isWorkspaceShown(ws.id());
+                safeRender(() -> ws.dock().renderPanels(deltaTime, shown), ws.label());
             }
-        }
-
-        // The Texture tab's docked panels and dialogs (its toolbar and body were drawn with the
-        // window holding it); closing the tab runs the editor's tear-down.
-        if (textureEditorWorkspace != null) {
-            boolean textureShown = showModelEditor && showTextureEditor && mainInterface != null
-                    && mainInterface.isWorkspaceShown(com.openmason.main.systems.layout.Workspace.TEXTURE);
-            safeRender(() -> textureEditorWorkspace.renderPanels(textureShown), "Texture Editor");
-            if (showTextureEditor && workspaceState != null
-                    && !workspaceState.isOpen(com.openmason.main.systems.layout.Workspace.TEXTURE)) {
+            // Closing the Texture tab runs the editor's tear-down.
+            if (showTextureEditor && !workspaceState.isOpen(com.openmason.main.systems.layout.BuiltinWorkspaces.TEXTURE)) {
                 onTextureEditorClosed();
             }
         }
@@ -457,12 +463,6 @@ public class mainOpenMason {
             } else if (component instanceof MainImGuiInterface main) {
                 main.render();
                 main.update(deltaTime);
-            } else if (component instanceof ViewportImGuiInterface viewport) {
-                viewport.render();
-                viewport.update(deltaTime);
-            } else if (component instanceof com.openmason.main.systems.scene.SceneViewerImGuiInterface scene) {
-                scene.render();
-                scene.update(deltaTime);
             }
         }, name);
     }
@@ -511,7 +511,7 @@ public class mainOpenMason {
         }
         openTextureEditor();
         if (Boolean.getBoolean("openmason.texeditor.detached")) {
-            workspaceState.detach(com.openmason.main.systems.layout.Workspace.TEXTURE);
+            workspaceState.detach(com.openmason.main.systems.layout.BuiltinWorkspaces.TEXTURE);
         }
     }
 
@@ -535,13 +535,13 @@ public class mainOpenMason {
         if (!parts[0].isBlank()) {
             mainInterface.openProjectFromHub(parts[0].trim());
         }
-        workspaceState.set(com.openmason.main.systems.layout.Workspace.UI);
+        workspaceState.set(com.openmason.main.systems.layout.BuiltinWorkspaces.UI);
         String detach = System.getProperty("openmason.uieditor.detached");
         if (detach != null && !detach.isBlank() && !"false".equalsIgnoreCase(detach)) {
             // start with a tab popped out into its own window: true/ui = UI, scene = Scene
             workspaceState.detach("scene".equalsIgnoreCase(detach.trim())
-                    ? com.openmason.main.systems.layout.Workspace.MODELING
-                    : com.openmason.main.systems.layout.Workspace.UI);
+                    ? com.openmason.main.systems.layout.BuiltinWorkspaces.MODELING
+                    : com.openmason.main.systems.layout.BuiltinWorkspaces.UI);
         }
         if (parts.length > 1 && !parts[1].isBlank()) {
             uiEditor.openFile(java.nio.file.Path.of(parts[1].trim()));
@@ -585,7 +585,7 @@ public class mainOpenMason {
      * editor on the fresh project. A template's starter models are written beside
      * the .omp and its open-on-create model is loaded into the editor.
      */
-    private void createNewProjectFile(String name, String directory, ProjectTemplate template) {
+    private void createNewProjectFile(String name, String directory, ProjectTemplate template, String targetId) {
         String safeName = (name == null || name.isBlank()) ? "Untitled" : name.trim();
         if (directory == null || directory.isBlank()) {
             // No directory chosen — just open a fresh (unsaved) editor session.
@@ -603,10 +603,12 @@ public class mainOpenMason {
         // save dialog has somewhere sensible to default to.
         com.openmason.main.systems.project.ProjectLayout.ensureScaffold(java.nio.file.Path.of(directory));
         // Template models go down before the pre-save, whose browser refresh then lists them.
-        java.nio.file.Path openModel = TemplateScaffolder.scaffold(template, java.nio.file.Path.of(directory));
+        com.openmason.api.target.GameTarget target =
+                com.openmason.main.systems.target.GameTargets.shared().find(targetId).orElse(null);
+        java.nio.file.Path openModel = TemplateScaffolder.scaffold(template, java.nio.file.Path.of(directory), target);
 
         transitionToMainInterface();
-        boolean saved = mainInterface.saveNewProject(safeName, path);
+        boolean saved = mainInterface.saveNewProject(safeName, path, targetId);
         if (saved && projectHubScreen != null) {
             projectHubScreen.getRecentProjectsService().addProject(safeName, path);
         }
@@ -683,7 +685,7 @@ public class mainOpenMason {
             return;
         }
         showTextureEditor = true;
-        workspaceState.open(com.openmason.main.systems.layout.Workspace.TEXTURE);
+        workspaceState.open(com.openmason.main.systems.layout.BuiltinWorkspaces.TEXTURE);
     }
 
     /**
@@ -694,7 +696,7 @@ public class mainOpenMason {
         showModelEditor = false;
         showTextureEditor = false;
         if (workspaceState != null) {
-            workspaceState.close(com.openmason.main.systems.layout.Workspace.TEXTURE);
+            workspaceState.close(com.openmason.main.systems.layout.BuiltinWorkspaces.TEXTURE);
         }
         if (animationEditor != null) {
             animationEditor.hide();
@@ -741,6 +743,11 @@ public class mainOpenMason {
         cleanedUp = true;
 
         try {
+            // Plugins and lifecycle listeners hear about shutdown while the UI and GL still exist.
+            if (omLifecycle != null) {
+                omLifecycle.notifyShuttingDown();
+            }
+            pluginManager.stopping();
             approvalGate.shutdown();
             saveSheetGate.shutdown();
             if (libalexClient != null) {

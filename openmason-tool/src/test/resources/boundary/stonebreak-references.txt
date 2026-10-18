@@ -1,0 +1,15 @@
+# Tool classes still allowed to reference the game (com.stonebreak.*). Ratchet: the list may only
+# shrink. ToolGameReferenceRatchetTest fails on a new referrer AND on a line whose class no longer
+# refers to the game. Top-level class names, one per line. Target: empty after #382 (epic #390).
+com.openmason.main.mainOpenMason
+com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator
+com.openmason.main.systems.project.ProjectService
+com.openmason.main.systems.rendering.core.BlockRenderer
+com.openmason.main.systems.rendering.core.ItemRenderer
+com.openmason.main.systems.rendering.model.block.BlockManager
+com.openmason.main.systems.rendering.model.item.ItemManager
+com.openmason.main.systems.uiEditor.service.UiGameDeploy
+com.openmason.main.systems.viewport.content.ContentTypeManager
+com.openmason.main.systems.ViewportController
+com.openmason.main.systems.viewport.state.RenderingState
+com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline

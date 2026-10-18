@@ -1,7 +1,7 @@
 package com.openmason.main.systems.mcp;
 
 import com.openmason.engine.rendering.viewer.scene.ModelInstance;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.scene.SceneDocument;
 import com.openmason.main.systems.scene.SceneModelRef;
 import com.openmason.main.systems.scene.SceneService;
@@ -33,10 +33,10 @@ public final class SceneEditingService {
 
     private static final long DEFAULT_TIMEOUT_MS = 10_000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
 
-    public SceneEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public SceneEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     // ---------------------------------------------------------------- views
@@ -281,7 +281,7 @@ public final class SceneEditingService {
     // ---------------------------------------------------------------- helpers
 
     private SceneViewerImGuiInterface requireViewer() {
-        SceneViewerImGuiInterface viewer = mainInterface != null ? mainInterface.getSceneViewer() : null;
+        SceneViewerImGuiInterface viewer = editorServices != null ? editorServices.getSceneViewer() : null;
         if (viewer == null) {
             throw new IllegalStateException("The Scene Viewer is not available (is a project open?)");
         }
@@ -289,8 +289,8 @@ public final class SceneEditingService {
     }
 
     private Path projectRoot() {
-        String dir = mainInterface.getProjectDirectorySupplier() != null
-                ? mainInterface.getProjectDirectorySupplier().get() : null;
+        String dir = editorServices.getProjectDirectorySupplier() != null
+                ? editorServices.getProjectDirectorySupplier().get() : null;
         return dir == null ? null : Path.of(dir);
     }
 

@@ -34,27 +34,13 @@ public class AudioDiagnostics {
             System.out.println("OpenAL is functioning correctly");
         }
 
-        // Test if the eagerly-loaded pickup sound is present (block/entity
-        // sounds are data-driven and load lazily, so they can't be probed here)
-        if (soundBuffer.isSoundLoaded("blockpickup")) {
-            System.out.println("✓ Blockpickup sound is properly loaded");
+        // Sounds are data-driven and mostly load lazily, so only report what is resident
+        if (buffers.isEmpty()) {
+            System.out.println("No sounds loaded yet");
         } else {
-            System.err.println("✗ Blockpickup sound failed to load!");
-            System.err.println("soundBuffers contains 'blockpickup': " + buffers.containsKey("blockpickup"));
-            System.err.println("sources contains 'blockpickup': " + sources.containsKey("blockpickup"));
-
-            // Show what we actually have
-            if (!buffers.isEmpty()) {
-                System.err.println("Available sound buffers:");
-                for (String key : buffers.keySet()) {
-                    System.err.println("  - '" + key + "'");
-                }
-            }
-            if (!sources.isEmpty()) {
-                System.err.println("Available sources:");
-                for (String key : sources.keySet()) {
-                    System.err.println("  - '" + key + "'");
-                }
+            System.out.println("Loaded sounds (" + buffers.size() + "):");
+            for (String key : buffers.keySet()) {
+                System.out.println("  - '" + key + "' sources=" + (sources.containsKey(key) ? "yes" : "MISSING"));
             }
         }
         System.out.println("========================");

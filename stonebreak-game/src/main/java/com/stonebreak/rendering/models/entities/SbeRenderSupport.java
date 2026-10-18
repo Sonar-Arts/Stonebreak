@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.stonebreak.mobs.entities.LivingEntity;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeModelGeometry;
 import org.joml.Vector3f;
 
 /**

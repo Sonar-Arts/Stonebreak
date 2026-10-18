@@ -74,7 +74,7 @@ public class GridViewRenderer implements ViewRenderer {
             controller.selectAsset(item);
         }
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip(item.name() + "\n" + item.type().label());
+            ImGui.setTooltip(item.name() + "\n" + item.type().browse().label());
             ImGui.getWindowDrawList().addRect(
                     ImGui.getItemRectMinX(), ImGui.getItemRectMinY(),
                     ImGui.getItemRectMaxX(), ImGui.getItemRectMaxY(),
@@ -108,13 +108,13 @@ public class GridViewRenderer implements ViewRenderer {
     }
 
     private int thumbnailFor(AssetEntry item) {
-        return switch (item.type()) {
-            case OMO -> modelRenderer.getThumbnail(item, THUMBNAIL_SIZE);
-            case OMT -> omtRenderer.getThumbnail(item, THUMBNAIL_SIZE);
-            // Scenes have no thumbnail yet; every view already falls back to a
+        return switch (item.type().id()) {
+            case "omo" -> modelRenderer.getThumbnail(item, THUMBNAIL_SIZE);
+            case "omt" -> omtRenderer.getThumbnail(item, THUMBNAIL_SIZE);
+            case "omui" -> com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.UiThumbnailRenderer.get(item, THUMBNAIL_SIZE);
+            // Scenes and plugin file types have no thumbnail; every view already falls back to a
             // placeholder when the texture id is <= 0.
-            case OMSC -> 0;
-            case OMUI -> com.openmason.main.systems.menus.panes.projectBrowser.thumbnails.UiThumbnailRenderer.get(item, THUMBNAIL_SIZE);
+            default -> 0;
         };
     }
 

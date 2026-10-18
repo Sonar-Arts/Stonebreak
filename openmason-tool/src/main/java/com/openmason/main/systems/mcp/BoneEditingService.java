@@ -2,7 +2,7 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.openmason.engine.format.omo.OMOFormat;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.skeleton.BoneCommandHistory;
 import com.openmason.main.systems.skeleton.BoneSnapshot;
@@ -32,7 +32,7 @@ public final class BoneEditingService {
 
     private static final long DEFAULT_TIMEOUT_MS = 5000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     /**
      * BoneCommandHistory is per-BoneStore. Keyed by identity so a fresh store
      * (model reload) gets a fresh history without ever holding the previous
@@ -40,8 +40,8 @@ public final class BoneEditingService {
      */
     private final Map<BoneStore, BoneCommandHistory> historyByStore = new IdentityHashMap<>();
 
-    public BoneEditingService(MainImGuiInterface mainInterface) {
-        this.mainInterface = mainInterface;
+    public BoneEditingService(EditorServices editorServices) {
+        this.editorServices = editorServices;
     }
 
     /**
@@ -262,7 +262,7 @@ public final class BoneEditingService {
     // ===================== Helpers =====================
 
     private BoneStore optStore() {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         return vp != null ? vp.getBoneStore() : null;
     }
 

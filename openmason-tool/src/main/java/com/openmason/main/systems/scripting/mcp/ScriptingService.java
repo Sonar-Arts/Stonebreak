@@ -2,7 +2,7 @@ package com.openmason.main.systems.scripting.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.systems.scripting.ScriptExecutor;
 import com.openmason.main.systems.scripting.ScriptExecutor.Language;
@@ -49,12 +49,12 @@ public final class ScriptingService {
     public static final long DEFAULT_TIMEOUT_MS = 30_000;
     public static final long MAX_TIMEOUT_MS = 300_000;
 
-    private final MainImGuiInterface mainInterface;
+    private final EditorServices editorServices;
     private final ObjectMapper mapper;
     private final ScriptExecutor executor;
 
-    public ScriptingService(MainImGuiInterface mainInterface, ObjectMapper mapper) {
-        this.mainInterface = mainInterface;
+    public ScriptingService(EditorServices editorServices, ObjectMapper mapper) {
+        this.editorServices = editorServices;
         this.mapper = mapper;
         this.executor = new ScriptExecutor(mapper, PythonScriptEngine.ifAvailable());
     }
@@ -83,7 +83,7 @@ public final class ScriptingService {
     }
 
     private ScriptResult runOnMainThread(ScriptSource src, RunOptions opts) {
-        ViewportController vp = mainInterface.getViewport3D();
+        ViewportController vp = editorServices.getViewport3D();
         if (vp == null) {
             return ScriptResult.failure(new ScriptError(
                     "Editor not initialized", null, null, null));
@@ -92,8 +92,8 @@ public final class ScriptingService {
         // open (the starter model contributes one default part) — except for a
         // script that only edits UI documents (om.ui), which must not touch the model.
         if ((vp.getPartManager() == null || vp.getPartManager().getPartCount() == 0)
-                && mainInterface.getModelOperations() != null && !uiOnly(src)) {
-            mainInterface.getModelOperations().newModel();
+                && editorServices.getModelOperations() != null && !uiOnly(src)) {
+            editorServices.getModelOperations().newModel();
         }
         if (vp.getPartManager() == null || vp.getModelRenderer() == null) {
             return ScriptResult.failure(new ScriptError(
@@ -107,7 +107,7 @@ public final class ScriptingService {
         // switch mid-run does not redirect them); with none open the command layer raises a
         // teaching error on the first canvas op.
         LiveCanvasSurface canvasSurface = null;
-        var textureCreator = mainInterface.getTextureCreator();
+        var textureCreator = editorServices.getTextureCreator();
         if (textureCreator != null && textureCreator.getController() != null
                 && textureCreator.getController().hasOpenDocument()) {
             var controller = textureCreator.getController();
@@ -177,7 +177,7 @@ public final class ScriptingService {
 
     /** The live UI Editor for {@code om.ui}, or null when it is not up. */
     private com.openmason.main.systems.scripting.commands.UiScriptCommands.Target uiTarget() {
-        var ws = mainInterface.getUiEditor();
+        var ws = editorServices.getUiEditor();
         return ws == null ? null : new com.openmason.main.systems.scripting.live.LiveUiScriptTarget(
                 new com.openmason.main.systems.uiEditor.automation.UiAutomation(ws.context(), ws::reveal,
                         ws::offerRecovery), mapper);

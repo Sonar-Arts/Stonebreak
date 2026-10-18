@@ -1,11 +1,11 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.stonebreak.mobs.sbe.SbeEntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityLoader;
-import com.stonebreak.mobs.sbe.SbePart;
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbePart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Shipped Monk assets exercised through the actual runtime hierarchy/sampler. */
 class PlayerCombatAnimationTest {
-    private static final SbeEntityAsset ASSET = SbeEntityLoader.load("/sbe/Mobs/SB_Player.sbe");
+    private static final SbeEntityAsset ASSET = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
 
     private static JsonNode contract() throws IOException {
         try (var in = PlayerCombatAnimationTest.class.getResourceAsStream("/sbe/Mobs/player-combat/clips.json")) {

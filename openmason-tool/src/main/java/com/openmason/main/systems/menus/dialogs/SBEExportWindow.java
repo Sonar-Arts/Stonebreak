@@ -1,5 +1,7 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.main.systems.io.BuiltinFileTypes;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbe.AnimationCompatibility;
@@ -205,7 +207,7 @@ public class SBEExportWindow {
 
     private void renderMetadataTab() {
         ThemedWidgets.sectionLabel("Identity");
-        ImGui.inputTextWithHint("Object ID", "e.g. stonebreak:cow", objectId);
+        ImGui.inputTextWithHint("Object ID", "e.g. " + GameTargets.shared().qualify("cow"), objectId);
         ImGui.sameLine();
         if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##sbe_show_ids")) {
             objectIndexPopup.open();
@@ -309,11 +311,14 @@ public class SBEExportWindow {
     }
 
     private String describeTargetFolder() {
-        String dir = GameResourceDirs.sbeFolderFor(ENTITY_TYPE_LABELS[entityTypeIndex.get()]);
-        if (dir == null) return "the last used folder (game resources not found)";
-        Path root = GameResourceDirs.resourcesRoot();
-        Path p = Path.of(dir);
-        return root != null && p.startsWith(root) ? root.relativize(p).toString() : dir;
+        GameTargets targets = GameTargets.shared();
+        Path dir = targets.folderFor(BuiltinFileTypes.SBE.id(), ENTITY_TYPE_LABELS[entityTypeIndex.get()]);
+        if (dir == null) {
+            return targets.active().isPresent() ? "the last used folder (game resources not found)"
+                    : "the last used folder (the project has no game target)";
+        }
+        Path root = targets.resourcesRoot();
+        return root != null && dir.startsWith(root) ? root.relativize(dir).toString() : dir.toString();
     }
 
     // ========================================
@@ -328,7 +333,7 @@ public class SBEExportWindow {
                     ? fileName.substring(0, fileName.lastIndexOf('.'))
                     : fileName;
             objectName.set(nameWithoutExt);
-            objectId.set("stonebreak:" + nameWithoutExt.toLowerCase().replace(' ', '_'));
+            objectId.set(GameTargets.shared().qualify(nameWithoutExt.toLowerCase().replace(' ', '_')));
         }
     }
 
@@ -372,8 +377,9 @@ public class SBEExportWindow {
             return;
         }
 
-        String targetDir = GameResourceDirs.sbeFolderFor(ENTITY_TYPE_LABELS[entityTypeIndex.get()]);
-        String fileName = GameResourceDirs.suggestedFileName(objectName.get(), "sbe", "entity.sbe");
+        String targetDir = GameTargets.shared().folderPathFor(BuiltinFileTypes.SBE.id(),
+                ENTITY_TYPE_LABELS[entityTypeIndex.get()]);
+        String fileName = GameTargets.shared().suggestedFileName(objectName.get(), "sbe", "entity.sbe");
 
         fileDialogService.showSaveSBEDialog(fileName, targetDir, filePath -> {
             boolean success = serializer.export(params, omoPath, filePath);

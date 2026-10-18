@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  * Unified preferences page renderer for all Open Mason tools.
  * <p>
  * Uses a deferred-apply model: slider and combo changes only update local ImGui state.
- * Changes are persisted and applied to live systems only when {@link #applyAllSettings()} is called
+ * Changes are persisted and applied to live systems only when its page's {@code apply()} runs (Apply / OK)
  * (triggered by the OK or Apply buttons in {@link PreferencesWindow}). Cancel simply discards
  * the staged state (it is re-synced from persistence on the next open).
  * </p>
@@ -163,48 +163,6 @@ public class PreferencesPageRenderer {
     // ========================================
 
     /**
-     * Called when the preferences window opens.
-     * Loads all ImGui state holders from persisted values so sliders/combos
-     * reflect the current saved settings.
-     */
-    public void onWindowOpened() {
-        syncModelEditorState();
-
-        TextureCreatorPreferences texPrefs = getTexturePreferences();
-        if (texPrefs != null) {
-            syncTextureEditorState(texPrefs);
-        }
-
-        syncCommonState();
-        syncAssetsState();
-        syncAssistantState();
-        keybindSnapshot = KeybindSnapshot.capture(keybindRegistry);
-
-        logger.debug("All preference pages synced from persistence");
-    }
-
-    /**
-     * Persists all current ImGui state to disk and applies to live systems.
-     * Called by the Apply and OK buttons.
-     */
-    public void applyAllSettings() {
-        applyModelEditorSettings();
-        applyTextureEditorSettings();
-        applyCommonSettings();
-        applyAssetsSettings();
-        applyAssistantSettings();
-
-        // Migrate the file so it contains every known key.
-        // Adds defaults for any missing keys without overwriting existing values.
-        preferencesManager.migrateFile();
-
-        // Keybinds are already live; Apply makes their current state the new revert point.
-        keybindSnapshot = KeybindSnapshot.capture(keybindRegistry);
-
-        logger.info("All preferences applied and saved");
-    }
-
-    /**
      * Reverts everything that took effect before Apply/OK: keybind edits (immediate).
      * Staged values on every other page were never applied, so they are just dropped
      * and re-synced from persistence on the next open. Idempotent.
@@ -235,34 +193,124 @@ public class PreferencesPageRenderer {
     // Page Rendering
     // ========================================
 
+    /** Ids of the built-in pages. */
+    public static final String MODEL_EDITOR = "model_editor";
+    public static final String TEXTURE_EDITOR = "texture_editor";
+    public static final String FOLDERS = "folders";
+    public static final String KEYBINDS = "keybinds";
+    public static final String ASSISTANT = "assistant";
+    public static final String COMMON = "common";
+
     /**
-     * Renders the selected preference page.
-     * State is NOT synced per-frame — only on window open via {@link #onWindowOpened()}.
+     * The built-in pages as contributions (#379), each syncing its own state when the window
+     * opens and committing it on Apply/OK; registered by the built-in plugins.
      */
-    public void render(PreferencesState.PreferencePage page) {
-        switch (page) {
-            case MODEL_EDITOR:
-                renderModelEditorPage();
-                break;
-            case TEXTURE_EDITOR:
-                renderTextureEditorPage();
-                break;
-            case KEYBINDS:
+    public com.openmason.api.prefs.PreferencePage modelEditorPage() {
+        return page(MODEL_EDITOR, "Model Editor", 100, this::renderModelEditorPage,
+                this::syncModelEditorState, this::applyModelEditorSettings);
+    }
+
+    public com.openmason.api.prefs.PreferencePage textureEditorPage() {
+        return page(TEXTURE_EDITOR, "Texture Editor", 200, this::renderTextureEditorPage, () -> {
+            TextureCreatorPreferences texPrefs = getTexturePreferences();
+            if (texPrefs != null) {
+                syncTextureEditorState(texPrefs);
+            }
+        }, this::applyTextureEditorSettings);
+    }
+
+    public com.openmason.api.prefs.PreferencePage foldersPage() {
+        return page(FOLDERS, "Folders", 300, this::renderAssetsPage, this::syncAssetsState, this::applyAssetsSettings);
+    }
+
+    /** Keybind edits are live; Apply makes them the revert point, Cancel restores it. */
+    public com.openmason.api.prefs.PreferencePage keybindsPage() {
+        return new com.openmason.api.prefs.PreferencePage() {
+            @Override
+            public String id() {
+                return KEYBINDS;
+            }
+
+            @Override
+            public String title() {
+                return "Keybinds";
+            }
+
+            @Override
+            public int order() {
+                return 400;
+            }
+
+            @Override
+            public void render() {
                 renderKeybindsPage();
-                break;
-            case ASSETS:
-                renderAssetsPage();
-                break;
-            case ASSISTANT:
-                renderAssistantPage();
-                break;
-            case COMMON:
-                renderCommonPage();
-                break;
-            default:
-                ImGui.text("Unknown page: " + page);
-                break;
-        }
+            }
+
+            @Override
+            public void opened() {
+                keybindSnapshot = KeybindSnapshot.capture(keybindRegistry);
+            }
+
+            @Override
+            public void apply() {
+                keybindSnapshot = KeybindSnapshot.capture(keybindRegistry);
+            }
+
+            @Override
+            public void cancel() {
+                cancelChanges();
+            }
+        };
+    }
+
+    public com.openmason.api.prefs.PreferencePage assistantPage() {
+        return page(ASSISTANT, "Assistant", 500, this::renderAssistantPage, this::syncAssistantState,
+                this::applyAssistantSettings);
+    }
+
+    public com.openmason.api.prefs.PreferencePage commonPage() {
+        return page(COMMON, "Common", 600, this::renderCommonPage, this::syncCommonState, this::applyCommonSettings);
+    }
+
+    /** Called after every page applied: the file gains every known key (defaults only, no overwrites). */
+    public void afterApply() {
+        preferencesManager.migrateFile();
+        logger.info("All preferences applied and saved");
+    }
+
+    private static com.openmason.api.prefs.PreferencePage page(String id, String title, int order, Runnable render,
+                                                               Runnable sync, Runnable apply) {
+        return new com.openmason.api.prefs.PreferencePage() {
+            @Override
+            public String id() {
+                return id;
+            }
+
+            @Override
+            public String title() {
+                return title;
+            }
+
+            @Override
+            public int order() {
+                return order;
+            }
+
+            @Override
+            public void render() {
+                render.run();
+            }
+
+            @Override
+            public void opened() {
+                sync.run();
+            }
+
+            @Override
+            public void apply() {
+                apply.run();
+            }
+        };
     }
 
     // ========================================

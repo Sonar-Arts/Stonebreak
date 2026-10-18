@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class WorkspaceTabRightClickTest {
 
-    private final WorkspaceState state = new WorkspaceState();
+    private final WorkspaceState state = WorkspaceFixtures.state();
     private final WorkspaceTabStrip strip = new WorkspaceTabStrip();
     private boolean popupOpen;
 
@@ -60,8 +60,8 @@ class WorkspaceTabRightClickTest {
     /** Centre of the UI tab: the strip lays Scene then UI with 14 px frame padding and 2 px between. */
     private float[] uiTabCentre() {
         ImGui.newFrame();
-        float scene = ImGui.calcTextSize(Workspace.MODELING.label()).x + 28f;
-        float ui = ImGui.calcTextSize(Workspace.UI.label()).x + 28f;
+        float scene = ImGui.calcTextSize("Scene").x + 28f;
+        float ui = ImGui.calcTextSize("UI").x + 28f;
         float h = ImGui.getFontSize() + 10f;
         ImGui.endFrame();
         return new float[]{scene + 2f + ui / 2f, h / 2f};
@@ -85,27 +85,27 @@ class WorkspaceTabRightClickTest {
         for (int i = 0; i < 3; i++) {
             frame();
         }
-        assertEquals(Workspace.MODELING, state.current());
+        assertEquals(BuiltinWorkspaces.MODELING, state.current());
 
         click(ImGuiMouseButton.Right, ui);
         assertTrue(popupOpen, "the tab's context menu opened");
-        assertEquals(Workspace.MODELING, state.current(), "a right click never switches the workspace");
+        assertEquals(BuiltinWorkspaces.MODELING, state.current(), "a right click never switches the workspace");
 
         click(ImGuiMouseButton.Left, new float[]{400f, 400f}); // dismiss the menu by clicking away
         assertFalse(popupOpen);
-        assertEquals(Workspace.MODELING, state.current());
+        assertEquals(BuiltinWorkspaces.MODELING, state.current());
 
         click(ImGuiMouseButton.Left, ui);
-        assertEquals(Workspace.UI, state.current(), "control: a left click does switch");
+        assertEquals(BuiltinWorkspaces.UI, state.current(), "control: a left click does switch");
     }
 
     @Test
     void clickingAPoppedOutTabRaisesItsWindowWithoutDockingIt() {
-        state.detach(Workspace.UI);
-        assertTrue(state.takeFocusRequest(Workspace.UI)); // the pop-out's own request, consumed by its window
+        state.detach(BuiltinWorkspaces.UI);
+        assertTrue(state.takeFocusRequest(BuiltinWorkspaces.UI)); // the pop-out's own request, consumed by its window
         ImGui.newFrame();
-        float scene = ImGui.calcTextSize(Workspace.MODELING.label()).x + 28f;
-        float w = ImGui.calcTextSize(Workspace.UI.label() + WorkspaceTabStrip.ICON_GAP).x + 28f;
+        float scene = ImGui.calcTextSize("Scene").x + 28f;
+        float w = ImGui.calcTextSize("UI" + WorkspaceTabStrip.ICON_GAP).x + 28f;
         float h = ImGui.getFontSize() + 10f;
         ImGui.endFrame();
         for (int i = 0; i < 3; i++) {
@@ -113,8 +113,8 @@ class WorkspaceTabRightClickTest {
         }
 
         click(ImGuiMouseButton.Left, new float[]{scene + 2f + w / 2f, h / 2f}); // the popped-out tab, after Scene
-        assertTrue(state.takeFocusRequest(Workspace.UI), "the window is asked to come forward");
-        assertTrue(state.isDetached(Workspace.UI), "it stays in its own window");
-        assertEquals(Workspace.MODELING, state.current());
+        assertTrue(state.takeFocusRequest(BuiltinWorkspaces.UI), "the window is asked to come forward");
+        assertTrue(state.isDetached(BuiltinWorkspaces.UI), "it stays in its own window");
+        assertEquals(BuiltinWorkspaces.MODELING, state.current());
     }
 }

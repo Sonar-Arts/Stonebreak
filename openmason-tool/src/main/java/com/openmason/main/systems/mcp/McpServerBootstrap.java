@@ -2,7 +2,7 @@ package com.openmason.main.systems.mcp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,18 +24,22 @@ public final class McpServerBootstrap {
     private McpToolRegistry registry;
     private ObjectMapper mapper;
 
-    public void start(MainImGuiInterface mainInterface) {
-        start(mainInterface, ToolCapabilities.none());
+    public void start(EditorServices editorServices) {
+        start(editorServices, ToolCapabilities.none(), McpSurface.builtin());
     }
 
-    public void start(MainImGuiInterface mainInterface, ToolCapabilities capabilities) {
+    /**
+     * Builds the registry from {@code surface} (the active plugins' MCP tool groups, guide topics
+     * and knowledge packs) and starts the server.
+     */
+    public void start(EditorServices editorServices, ToolCapabilities capabilities, McpSurface surface) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             // Token efficiency: omit null fields from tool results (gated arrays in
             // inspect_part, unresolved bone world positions, etc.).
             mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
             McpToolRegistry registry =
-                    McpToolRegistryFactory.build(mainInterface, mapper, capabilities);
+                    McpToolRegistryFactory.build(editorServices, mapper, capabilities, surface);
             this.registry = registry;
             this.mapper = mapper;
 

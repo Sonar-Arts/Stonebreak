@@ -1,7 +1,7 @@
 package com.openmason.main.systems.menus.textureCreator;
 
-import com.openmason.main.systems.layout.WorkspaceDock;
-import com.openmason.main.systems.menus.preferences.PreferencesManager;
+import com.openmason.api.workspace.WorkspaceDock;
+import com.openmason.api.workspace.WorkspaceLayout;
 import com.openmason.main.systems.menus.textureCreator.panels.status.StatusBarPanel;
 import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorLayoutBuilder;
 import com.openmason.main.systems.menus.textureCreator.rendering.TextureEditorStyleScope;
@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  * options are the workspace toolbar, and below them the fixed Color/Tools columns, the dockspace
  * (Canvas | Layers) and the status bar fill whichever window holds the tab: the main window, or
  * the workspace's own window when popped out. Docked panels and dialogs draw afterwards in
- * {@link #renderPanels(boolean)}, like the UI workspace's.
+ * {@link #renderPanels(float, boolean)}, like the UI workspace's.
  *
  * <p>Opening and closing the tab is the editor's lifecycle (it replaced the standalone
  * TextureEditorWindow). Inside it, every open texture is a document tab above the canvas
@@ -46,10 +46,14 @@ public final class TextureEditorWorkspace implements WorkspaceDock {
             throw new IllegalArgumentException("TextureCreatorImGui cannot be null");
         }
         this.textureCreator = textureCreator;
-        this.layoutBuilder = new TextureEditorLayoutBuilder(PreferencesManager.getInstance());
+        this.layoutBuilder = new TextureEditorLayoutBuilder();
         // The host provides the dockspace and the windowed (non-absolute) tool options bar is used.
         textureCreator.setWindowedMode(true);
-        textureCreator.setOnResetLayout(layoutBuilder::requestReset);
+    }
+
+    /** View → Reset Layout in the editor's menu: the host's layout gate rebuilds on the next frame. */
+    public void setResetLayoutAction(Runnable resetLayout) {
+        textureCreator.setOnResetLayout(resetLayout);
     }
 
     public TextureCreatorImGui getTextureCreator() {
@@ -57,8 +61,8 @@ public final class TextureEditorWorkspace implements WorkspaceDock {
     }
 
     @Override
-    public void applyLayout(int dockspaceId, float width, float height) {
-        layoutBuilder.applyIfNeeded(dockspaceId, width, height);
+    public void buildDefaultLayout(int dockspaceId, float width, float height) {
+        layoutBuilder.build(dockspaceId, width, height);
     }
 
     /** The editor's menu bar and tool options, above its body. */
@@ -80,7 +84,7 @@ public final class TextureEditorWorkspace implements WorkspaceDock {
      * Layers) and the status bar pinned below it, inside the window holding the workspace.
      */
     @Override
-    public void submitBody(int dockspaceId, float width, float height) {
+    public void submitBody(int dockspaceId, float width, float height, WorkspaceLayout layout) {
         styleScope.push();
         try {
             // The host window keeps the app theme's background; the editor body is flat dark.
@@ -108,7 +112,7 @@ public final class TextureEditorWorkspace implements WorkspaceDock {
 
             float dockspaceWidth = ImGui.getContentRegionAvailX();
             ImGui.dockSpace(dockspaceId, 0.0f, rowHeight, ImGuiDockNodeFlags.None);
-            layoutBuilder.applyIfNeeded(dockspaceId, dockspaceWidth, rowHeight);
+            layout.applyIfNeeded(dockspaceId, dockspaceWidth, rowHeight);
 
             textureCreator.renderStatusBar();
         } catch (Exception e) {
@@ -126,7 +130,8 @@ public final class TextureEditorWorkspace implements WorkspaceDock {
      *
      * @param shown whether the workspace is in front of the main window or in its own visible window
      */
-    public void renderPanels(boolean shown) {
+    @Override
+    public void renderPanels(float deltaTime, boolean shown) {
         if (!shown) {
             wasShown = false;
             return;

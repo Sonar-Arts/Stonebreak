@@ -1,5 +1,8 @@
 package com.openmason.main.systems.menus.panes.projectBrowser;
 
+import com.openmason.api.files.FileType;
+import com.openmason.api.files.FileTypes;
+import com.openmason.main.systems.io.FileTypeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -7,41 +10,31 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * Scans the open project's folder (the directory its .omp lives in) for the
- * asset files the Project Browser lists: .OMO models and .OMT textures. One
- * directory level, cached; call {@link #invalidate()} to force a rescan.
+ * Scans the open project's folder (the directory its .omp lives in) for the asset files the
+ * Project Browser lists: every registered {@link FileType} with a {@link FileType.Browse browse}
+ * rule (#379), in the folders that rule names ({@code ""} = the project folder itself, flat;
+ * {@code Scenes} = that folder, flat; {@code UI/**} = that folder, recursively). Cached; call
+ * {@link #invalidate()} to force a rescan.
  */
 public class ProjectAssetScanner {
 
     private static final Logger logger = LoggerFactory.getLogger(ProjectAssetScanner.class);
 
-    /** Asset kinds the browser understands. */
-    public enum AssetType {
-        OMO(".OMO Model", ".omo"),
-        OMT(".OMT Texture", ".omt"),
-        OMSC(".OMSC Scene", ".omsc"),
-        OMUI(".OMUI UI Document", ".omui");
-
-        private final String label;
-        private final String extension;
-
-        AssetType(String label, String extension) {
-            this.label = label;
-            this.extension = extension;
-        }
-
-        public String label() {
-            return label;
-        }
-    }
+    /** How deep a recursive ({@code /**}) folder is walked. */
+    private static final int MAX_DEPTH = 8;
 
     /** One asset file discovered in the project folder. */
-    public record AssetEntry(String name, Path path, AssetType type) {
+    public record AssetEntry(String name, Path path, FileType type) {
 
         public String pathString() {
             return path.toString();
@@ -50,6 +43,13 @@ public class ProjectAssetScanner {
 
     private Path root;
     private List<AssetEntry> cached;
+    private Supplier<List<FileType>> types = () -> FileTypeService.builtin().browsable();
+
+    /** Where the browsable types come from (the registered file types). */
+    public void setTypes(Supplier<List<FileType>> types) {
+        this.types = Objects.requireNonNull(types, "types");
+        cached = null;
+    }
 
     /** Set the project folder to scan; {@code null} means no project is open. */
     public void setRoot(Path root) {
@@ -80,64 +80,45 @@ public class ProjectAssetScanner {
         if (root == null || !Files.isDirectory(root)) {
             return List.of();
         }
+        List<FileType> browsable = types.get().stream().filter(t -> t.browse() != null).toList();
+        // Folder spec -> the types listed there, in the order the specs first appear.
+        Map<String, List<FileType>> byFolder = new LinkedHashMap<>();
+        for (FileType t : browsable) {
+            for (String folder : t.browse().folders()) {
+                byFolder.computeIfAbsent(folder, f -> new ArrayList<>()).add(t);
+            }
+        }
         List<AssetEntry> entries = new ArrayList<>();
-        // Models and textures stay flat at the project root, exactly as before.
-        try (Stream<Path> files = Files.list(root)) {
-            files.filter(Files::isRegularFile).forEach(file -> {
-                AssetEntry entry = toEntry(file);
-                if (entry != null) {
-                    entries.add(entry);
-                }
-            });
-        } catch (IOException e) {
-            logger.warn("Failed to scan project folder: {}", root, e);
-        }
-
-        // Scenes live one level down. Deliberately a second targeted pass rather than a
-        // recursive walk: walking would start surfacing .omo files nested in subfolders,
-        // which changes what the browser has always listed.
-        Path scenesDir = root.resolve(com.openmason.main.systems.project.ProjectLayout.SCENES_DIR);
-        if (Files.isDirectory(scenesDir)) {
-            try (Stream<Path> files = Files.list(scenesDir)) {
+        Set<Path> seen = new LinkedHashSet<>();
+        for (Map.Entry<String, List<FileType>> e : byFolder.entrySet()) {
+            String spec = e.getKey();
+            boolean recursive = spec.endsWith("/**");
+            String rel = recursive ? spec.substring(0, spec.length() - 3) : spec;
+            Path dir = rel.isEmpty() ? root : root.resolve(rel);
+            if (!Files.isDirectory(dir)) {
+                continue;
+            }
+            // Flat folders stay flat on purpose: walking would start surfacing models nested in
+            // subfolders, which changes what the browser has always listed.
+            try (Stream<Path> files = recursive ? Files.walk(dir, MAX_DEPTH) : Files.list(dir)) {
                 files.filter(Files::isRegularFile).forEach(file -> {
-                    AssetEntry entry = toEntry(file);
-                    if (entry != null && entry.type() == AssetType.OMSC) {
+                    AssetEntry entry = toEntry(file, e.getValue());
+                    if (entry != null && seen.add(file.toAbsolutePath().normalize())) {
                         entries.add(entry);
                     }
                 });
-            } catch (IOException e) {
-                logger.warn("Failed to scan the Scenes folder: {}", scenesDir, e);
+            } catch (IOException ex) {
+                logger.warn("Failed to scan project folder: {}", dir, ex);
             }
         }
-
-        // UI documents live under UI/ by convention (#293), nested by namespace and path.
-        Path uiDir = root.resolve(com.openmason.main.systems.project.ProjectLayout.UI_DIR);
-        if (Files.isDirectory(uiDir)) {
-            try (Stream<Path> files = Files.walk(uiDir, 8)) {
-                files.filter(Files::isRegularFile).forEach(file -> {
-                    AssetEntry entry = toEntry(file);
-                    if (entry != null && entry.type() == AssetType.OMUI) {
-                        entries.add(entry);
-                    }
-                });
-            } catch (IOException e) {
-                logger.warn("Failed to scan the UI folder: {}", uiDir, e);
-            }
-        }
-
         logger.debug("Scanned {} asset(s) for project folder {}", entries.size(), root);
         return entries;
     }
 
-    private static AssetEntry toEntry(Path file) {
+    private static AssetEntry toEntry(Path file, List<FileType> types) {
         String fileName = file.getFileName().toString();
-        String lower = fileName.toLowerCase();
-        for (AssetType type : AssetType.values()) {
-            if (lower.endsWith(type.extension)) {
-                String name = fileName.substring(0, fileName.length() - type.extension.length());
-                return new AssetEntry(name, file, type);
-            }
-        }
-        return null;
+        return FileTypes.match(types, fileName)
+                .map(t -> new AssetEntry(t.stripExtension(fileName), file, t))
+                .orElse(null);
     }
 }

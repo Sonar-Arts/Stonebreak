@@ -221,7 +221,7 @@ public class PlayerArmRenderer {
                 .getBaseSpriteTransform();
         org.joml.Vector3f best = null;
         float bestEyeY = -Float.MAX_VALUE;
-        for (com.stonebreak.rendering.player.items.voxelization.VoxelData voxel : result.getVoxels()) {
+        for (com.openmason.engine.rendering.sprite.VoxelData voxel : result.getVoxels()) {
             org.joml.Vector3f model = sprite.transformPosition(new org.joml.Vector3f(voxel.getPosition()));
             float eyeY = armViewModel.transformPosition(new org.joml.Vector3f(model)).y;
             if (eyeY > bestEyeY) {

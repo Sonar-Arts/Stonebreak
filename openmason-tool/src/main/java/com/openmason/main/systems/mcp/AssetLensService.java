@@ -9,7 +9,7 @@ import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.rendering.model.gmr.analysis.WindingAnalyzer;
 import com.openmason.engine.rendering.model.gmr.editable.EditableFace;
-import com.openmason.main.systems.MainImGuiInterface;
+import com.openmason.main.systems.services.EditorServices;
 import com.openmason.main.systems.assets.AssetCatalog;
 import com.openmason.main.systems.assets.AssetEntry;
 import com.openmason.main.systems.assets.AssetModelDigest;
@@ -45,13 +45,13 @@ public class AssetLensService {
     static final int DESCRIBE_MAX_EDGE = 64;
     static final int INLINE_IMAGE_MAX = 512;
 
-    protected final MainImGuiInterface mainInterface;
+    protected final EditorServices editorServices;
     protected final ObjectMapper mapper;
     private final AssetCatalog catalog = AssetCatalog.shared();
     private final AssetParseCache parseCache = new AssetParseCache();
 
-    public AssetLensService(MainImGuiInterface mainInterface, ObjectMapper mapper) {
-        this.mainInterface = mainInterface;
+    public AssetLensService(EditorServices editorServices, ObjectMapper mapper) {
+        this.editorServices = editorServices;
         this.mapper = mapper;
     }
 
@@ -397,11 +397,11 @@ public class AssetLensService {
         AssetEntry entry = resolve(asset);
         byte[] omoBytes = extractModelBytes(entry, blankTo(state), blankTo(variant));
 
-        if (mainInterface == null) {
+        if (editorServices == null) {
             return declined("approval_unavailable",
                     "the Open Mason UI is not running — asset_open needs a human to approve");
         }
-        com.openmason.main.systems.mcp.approval.ApprovalGate gate = mainInterface.getApprovalGate();
+        com.openmason.main.systems.mcp.approval.ApprovalGate gate = editorServices.getApprovalGate();
         if (gate == null) {
             return declined("approval_unavailable", "no approval gate is wired in this session");
         }
@@ -450,7 +450,7 @@ public class AssetLensService {
 
         try {
             var result = com.openmason.main.systems.threading.MainThreadExecutor.submit(() ->
-                            mainInterface.getModelOperations().openExtractedAssetModel(
+                            editorServices.getModelOperations().openExtractedAssetModel(
                                     omoBytes, entry.displayName(), entry.id()))
                     .get(30, java.util.concurrent.TimeUnit.SECONDS);
             Map<String, Object> out = new LinkedHashMap<>();

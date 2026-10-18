@@ -15,6 +15,7 @@ import com.openmason.engine.ui.assets.edit.SbuiProjectImport;
 import com.openmason.engine.ui.assets.export.ExportMode;
 import com.openmason.engine.ui.assets.export.ExportPlanner;
 import com.openmason.engine.ui.assets.export.UiExportService;
+import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.uiEditor.command.UiHistory;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
 import org.slf4j.Logger;
@@ -185,7 +186,7 @@ public final class UiDocumentService {
         }
         String name = abs.getFileName().toString().toLowerCase(Locale.ROOT);
         try {
-            if (name.endsWith(".sbui")) {
+            if (com.openmason.main.systems.io.BuiltinFileTypes.SBUI.matches(name)) {
                 SbuiArchive sbui = SbuiReader.read(abs, SbuiReader.Options.EDITOR).archive();
                 OmuiArchive copy = SbuiImporter.importEditable(sbui).document();
                 return new OpenResult(adopt(new UiEditorDocument(copy, null, UiEditorDocument.Origin.SBUI_COPY, abs)),
@@ -378,7 +379,7 @@ public final class UiDocumentService {
      * wrote it (a git pull, another editor): the save would silently bury that version.
      */
     public String saveAs(UiEditorDocument doc, Path target, boolean overwriteExternal) {
-        if (!target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(OmuiFormat.FILE_EXTENSION)) {
+        if (!com.openmason.main.systems.io.BuiltinFileTypes.OMUI.matches(target)) {
             target = target.resolveSibling(target.getFileName() + OmuiFormat.FILE_EXTENSION);
         }
         if (!overwriteExternal && changedOnDisk(doc, target)) {
@@ -436,8 +437,13 @@ public final class UiDocumentService {
      * actions and providers, with shared rows resolving through the game and then this project.
      */
     public UiGameDeploy.HostCheck hostCheck(SbuiArchive sbui) {
+        com.openmason.api.target.UiHostSource host = GameTargets.shared().active()
+                .map(com.openmason.api.target.GameTarget::uiHost).orElse(null);
+        if (host == null) {
+            return null; // no game target with a UI host: nothing to check against (#380)
+        }
         try {
-            return UiGameDeploy.check(sbui, project.sources());
+            return UiGameDeploy.check(sbui, project.sources(), host);
         } catch (RuntimeException e) {
             logger.warn("Game host check failed", e);
             com.openmason.engine.format.omui.UiDiagnostics d = new com.openmason.engine.format.omui.UiDiagnostics();
@@ -447,14 +453,26 @@ public final class UiDocumentService {
     }
 
     /**
-     * Plans shipping {@code doc} into the game's resources (C14); nothing is written yet.
+     * Plans shipping {@code doc} into the active game target's resources (C14); nothing is written yet.
      *
-     * @param gameResources {@code stonebreak-game/src/main/resources}
+     * @param gameResources the target's resource tree
      */
     public UiGameDeploy.Plan planDeploy(UiEditorDocument doc, ExportMode mode, Path gameResources)
             throws UiFormatException, IOException {
+        return planDeploy(doc, mode, GameTargets.shared().active().orElse(null), gameResources);
+    }
+
+    /** As {@link #planDeploy(UiEditorDocument, ExportMode, Path)} into {@code target}'s deploy layout. */
+    public UiGameDeploy.Plan planDeploy(UiEditorDocument doc, ExportMode mode,
+                                        com.openmason.api.target.GameTarget target, Path gameResources)
+            throws UiFormatException, IOException {
         // project first, then the game's packaged root: project copies ship, the game's own stay
-        return UiGameDeploy.plan(doc.archive(), project.sources(), mode, gameResources);
+        return UiGameDeploy.plan(doc.archive(), project.sources(), mode, target, gameResources);
+    }
+
+    /** True when the active game target ships UI documents (else the editor hides deploy actions). */
+    public static boolean canDeploy() {
+        return GameTargets.shared().active().map(t -> t.uiDeploy() != null).orElse(false);
     }
 
     /** Default export location: {@code <project>/Exports/UI/<stem>.sbui}, else beside the document. */
@@ -488,9 +506,9 @@ public final class UiDocumentService {
             return p;
         }
         String name = p.getFileName().toString();
-        String stem = name.endsWith(".omui") ? name.substring(0, name.length() - 5) : name;
+        String stem = com.openmason.main.systems.io.BuiltinFileTypes.OMUI.stripExtension(name);
         for (int i = 2; ; i++) {
-            Path c = p.resolveSibling(stem + "_" + i + ".omui");
+            Path c = p.resolveSibling(stem + "_" + i + com.openmason.main.systems.io.BuiltinFileTypes.OMUI.extension());
             if (!Files.exists(c)) {
                 return c;
             }

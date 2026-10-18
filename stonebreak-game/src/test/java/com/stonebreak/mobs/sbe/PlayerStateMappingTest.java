@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbePart;
 import org.junit.jupiter.api.Test;
 import java.util.stream.Collectors;
 
@@ -20,7 +21,7 @@ class PlayerStateMappingTest {
 
     @Test
     void publishedPlayerHasCompatibleClipsForEveryState() {
-        var asset = SbeEntityLoader.load("/sbe/Mobs/SB_Player.sbe");
+        var asset = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
         var partIds = asset.geometryFor("Default").parts().stream()
                 .map(SbePart::id).collect(Collectors.toSet());
         for (var state : PlayerStateMapping.PlayerMovementState.values()) {

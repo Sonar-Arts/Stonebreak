@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import org.junit.jupiter.api.Test;
 

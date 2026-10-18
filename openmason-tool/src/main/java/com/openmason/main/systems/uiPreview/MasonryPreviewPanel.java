@@ -1,5 +1,6 @@
 package com.openmason.main.systems.uiPreview;
 
+import com.openmason.main.systems.target.TargetUi;
 import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MDropdown;
 import com.openmason.engine.ui.masonry.MPainter;
@@ -9,7 +10,6 @@ import com.openmason.engine.ui.masonry.MasonryEnvironment;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.rendering.PreviewMapping;
-import com.stonebreak.ui.runtime.GameUiResources;
 import imgui.ImGui;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
@@ -100,7 +100,7 @@ public final class MasonryPreviewPanel implements AutoCloseable {
             dropdown.open();
         }
         dropdown.render(ui);
-        MTexture heart = GameUiResources.texture(HEART);
+        MTexture heart = TargetUi.targetTexture(HEART);
         if (heart != null) {
             MPainter.drawImage(ui.canvas(), heart.image(), 200, 100, heart.width() * 2f, heart.height() * 2f);
         }
@@ -109,7 +109,7 @@ public final class MasonryPreviewPanel implements AutoCloseable {
 
     private boolean open() {
         try {
-            typeface = GameUiResources.loadTypeface();
+            typeface = TargetUi.loadTypeface();
             preview = new MasonryPreview(typeface, MasonryPreview.Path.RASTER);
             return true;
         } catch (Exception e) {

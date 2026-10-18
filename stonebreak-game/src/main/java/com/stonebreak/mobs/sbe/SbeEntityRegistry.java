@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.sbe;
 
+import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.sbe.SbeEntityLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +58,7 @@ public final class SbeEntityRegistry {
         com.stonebreak.audio.EntitySounds.invalidate();
         for (String resourcePath : discover()) {
             try {
-                SbeEntityAsset asset = SbeEntityLoader.load(resourcePath);
+                SbeEntityAsset asset = GameSbeAssets.load(resourcePath);
                 BY_OBJECT_ID.put(asset.objectId(), asset);
             } catch (RuntimeException e) {
                 logger.error("Failed to load SBE file: {}", resourcePath, e);
