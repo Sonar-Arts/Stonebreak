@@ -3,6 +3,7 @@ package com.stonebreak.world.save.serialization;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
+import com.stonebreak.world.weather.WeatherZone;
 import org.joml.Vector3f;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
@@ -35,6 +36,7 @@ public class JsonWorldSerializer {
         json.append("  \"cheatsEnabled\": ").append(world.isCheatsEnabled()).append(",\n");
         json.append("  \"weatherSeconds\": ").append(world.getWeatherSeconds()).append(",\n");
         json.append("  \"weatherMode\": \"").append(world.getWeatherMode().name()).append("\",\n");
+        json.append("  \"weatherZones\": \"").append(WeatherZone.formatAll(world.getWeatherZones())).append("\",\n");
         json.append("  \"formatVersion\": ").append(world.getFormatVersion()).append(",\n");
         json.append("  \"generatorType\": \"").append(world.getGeneratorType().name()).append("\"\n");
         json.append("}");
@@ -59,6 +61,7 @@ public class JsonWorldSerializer {
                 .weatherSeconds(JsonParsingUtil.extractLong(json, "weatherSeconds", 0L))
                 .weatherMode(WorldData.parseWeatherMode(
                     JsonParsingUtil.extractStringOptional(json, "weatherMode")))
+                .weatherZones(WeatherZone.parseAll(JsonParsingUtil.extractStringOptional(json, "weatherZones")))
                 .formatVersion(JsonParsingUtil.extractInt(json, "formatVersion", 1))
                 .generatorType(TerrainGeneratorType.parse(
                     JsonParsingUtil.extractStringOptional(json, "generatorType"), WorldData.LEGACY_GENERATOR))

@@ -13,11 +13,11 @@ package com.stonebreak.world.weather;
  * <p>The ordinal is the type id the shaders index by; append new types at the end.</p>
  */
 public enum CloudType {
-    //            baseY  maxHeight  sigma   albedo  precipitates  storm
-    CUMULUS      (176,   48,        0.060f, 1.00f,  false,        false),
-    STRATUS      (200,   8,         0.025f, 0.95f,  false,        false),
-    NIMBOSTRATUS (160,   48,        0.090f, 0.62f,  true,         false),
-    CUMULONIMBUS (152,   136,       0.140f, 0.52f,  true,         true);
+    //            baseY  maxHeight  sigma   albedo  rain   storm
+    CUMULUS      (176,   48,        0.060f, 1.00f,  0f,    false),
+    STRATUS      (200,   8,         0.025f, 0.95f,  0f,    false),
+    NIMBOSTRATUS (160,   48,        0.090f, 0.62f,  0.7f,  false),
+    CUMULONIMBUS (152,   136,       0.140f, 0.52f,  1f,    true);
 
     /** Lowest block a cloud of this type occupies; a multiple of {@link CloudField#VOXEL}. */
     public final int baseY;
@@ -26,15 +26,18 @@ public enum CloudType {
     public final float sigma;
     /** Reflectance in [0, 1]; storm clouds are dark from every side. */
     public final float albedo;
+    /** Rain or snow a full-density, fully grown column of this type drops, 0..1. */
+    public final float rain;
     public final boolean precipitates;
     public final boolean storm;
 
-    CloudType(int baseY, int maxHeight, float sigma, float albedo, boolean precipitates, boolean storm) {
+    CloudType(int baseY, int maxHeight, float sigma, float albedo, float rain, boolean storm) {
         this.baseY = baseY;
         this.maxHeight = maxHeight;
         this.sigma = sigma;
         this.albedo = albedo;
-        this.precipitates = precipitates;
+        this.rain = rain;
+        this.precipitates = rain > 0f;
         this.storm = storm;
     }
 
@@ -57,6 +60,29 @@ public enum CloudType {
         if (wetness >= NIMBOSTRATUS_MIN_WETNESS) return NIMBOSTRATUS;
         if (wetness < STRATUS_MAX_WETNESS) return STRATUS;
         return CUMULUS;
+    }
+
+    /**
+     * Wetness range over which one type fades into the next where a column is
+     * drawn and rains (the column's {@link #forWetness type} still switches at
+     * the split). Mirrored by {@code cloudTypeWeights} in cloud_field.glsl.
+     */
+    public static final float TYPE_BLEND = 0.04f;
+
+    /**
+     * How much of each type a column of {@code wetness} holds, indexed by
+     * ordinal; sums to 1. The same cross-fades the clouds are drawn with.
+     */
+    public static float[] weights(float wetness) {
+        float cu = CloudField.smoothstep(-TYPE_BLEND, TYPE_BLEND, wetness - STRATUS_MAX_WETNESS);
+        float ns = CloudField.smoothstep(-TYPE_BLEND, TYPE_BLEND, wetness - NIMBOSTRATUS_MIN_WETNESS);
+        float cb = CloudField.smoothstep(-TYPE_BLEND, TYPE_BLEND, wetness - CUMULONIMBUS_MIN_WETNESS);
+        float[] w = new float[VALUES.length];
+        w[CUMULUS.ordinal()] = cu * (1f - ns);
+        w[STRATUS.ordinal()] = 1f - cu;
+        w[NIMBOSTRATUS.ordinal()] = ns * (1f - cb);
+        w[CUMULONIMBUS.ordinal()] = cb;
+        return w;
     }
 
     /** Lowest base of any type: the bottom of the cloud slab. */

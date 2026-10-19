@@ -82,6 +82,9 @@ public class WaterRenderer {
      */
     public static final int SCENE_DEPTH_TEXTURE_UNIT = 9;
 
+    /** Texture unit of this frame's cloud buffer (alpha = transmittance). */
+    private static final int CLOUD_BUFFER_TEXTURE_UNIT = 20;
+
     private final ShaderProgram shader;
     private final Matrix4f invProjection = new Matrix4f();
     private final com.stonebreak.rendering.gameWorld.SceneDepthCopy sceneDepth =
@@ -114,8 +117,11 @@ public class WaterRenderer {
             shader.createUniform("uSceneDepth");
             shader.createUniform("uInvProjection");
             shader.createUniform("uViewport");
+            shader.createUniform("uCloudBuffer");
+            shader.createUniform("uCloudsDrawn");
             shader.bind();
             shader.setUniform("uSceneDepth", SCENE_DEPTH_TEXTURE_UNIT);
+            shader.setUniform("uCloudBuffer", CLOUD_BUFFER_TEXTURE_UNIT);
             shader.unbind();
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize water shader", e);
@@ -153,6 +159,9 @@ public class WaterRenderer {
      * @param lodStamp          the batcher cycle stamp returned by this frame's
      *                          {@code FastLodRenderPass.render}
      * @param clouds            this frame's cloud-shadow uniforms
+     * @param cloudBuffer       the cloud buffer already composited over the
+     *                          scene this frame (alpha = transmittance), or 0
+     *                          when no clouds were drawn
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
@@ -161,7 +170,8 @@ public class WaterRenderer {
                        List<LodWaterNode> lodWater,
                        com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
                        int lodStamp,
-                       com.stonebreak.rendering.gameWorld.clouds.CloudUniforms clouds) {
+                       com.stonebreak.rendering.gameWorld.clouds.CloudUniforms clouds,
+                       int cloudBuffer) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -196,11 +206,19 @@ public class WaterRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCENE_DEPTH_TEXTURE_UNIT);
         int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
         sceneDepth.copy();
+        // The clouds are already over the scene, so water blending on top would
+        // paint over cloud lying in front of it (seen from above the clouds);
+        // the shader thins itself by the cloud's transmittance instead.
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + CLOUD_BUFFER_TEXTURE_UNIT);
+        int previousCloudTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, cloudBuffer);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCENE_DEPTH_TEXTURE_UNIT);
 
         shader.bind();
         shader.setUniform("uProjection", projection);
         shader.setUniform("uInvProjection", invProjection.set(projection).invert());
         shader.setUniform("uViewport", sceneDepth.viewport());
+        shader.setUniform("uCloudsDrawn", cloudBuffer != 0);
         shader.setUniform("uView", view);
         shader.setUniform("uTime", time);
         shader.setUniform("uWavesEnabled", wavesEnabled);
@@ -250,6 +268,8 @@ public class WaterRenderer {
 
         // Restore GL state.
         glBindTexture(GL_TEXTURE_2D, previousTexture);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + CLOUD_BUFFER_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, previousCloudTexture);
         GL13.glActiveTexture(previousActiveTexture);
         if (depthTestEnabled) {
             glEnable(GL_DEPTH_TEST);

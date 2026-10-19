@@ -242,7 +242,8 @@ public final class MultiplayerSession {
      * Route a /weather to the authoritative server. Returns false when this client has no
      * authority to change it (a remote JOIN client, or no session), like {@link #requestServerTimeSet}.
      */
-    public static boolean requestServerWeatherSet(com.stonebreak.world.weather.WeatherMode weatherMode) {
+    public static boolean requestServerWeatherSet(com.stonebreak.world.weather.WeatherMode weatherMode,
+                                                  boolean world) {
         if (mode == Mode.JOIN) {
             return false; // host-only: the server rejects non-local weather sets
         }
@@ -250,7 +251,7 @@ public final class MultiplayerSession {
         if (c == null || c.isDisconnected()) {
             return false; // weather lives on the server; with no session there is none to set
         }
-        c.sendWeatherSet(weatherMode);
+        c.sendWeatherSet(weatherMode, world);
         return true;
     }
 

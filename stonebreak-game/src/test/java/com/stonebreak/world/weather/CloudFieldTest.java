@@ -80,12 +80,36 @@ class CloudFieldTest {
         CloudField b = new CloudField(SEED);
         float min = 1f, max = -1f;
         for (int s = 0; s < 200_000; s += 500) {
-            WeatherBias ba = a.bias(WeatherMode.AUTO, s);
-            assertEquals(ba, b.bias(WeatherMode.AUTO, s));
+            WeatherBias ba = a.bias(WeatherMode.AUTO, 100, -300, s);
+            assertEquals(ba, b.bias(WeatherMode.AUTO, 100, -300, s));
             min = Math.min(min, ba.coverage());
             max = Math.max(max, ba.coverage());
         }
         assertTrue(max - min > 0.8f, "AUTO coverage should swing, got " + min + ".." + max);
+    }
+
+    @Test
+    void autoWeatherIsRegional() {
+        // At one moment, places a few weather systems apart see different skies.
+        CloudField field = new CloudField(SEED);
+        float min = 1f, max = -1f;
+        for (int x = -30_000; x <= 30_000; x += 1500) {
+            float c = field.bias(WeatherMode.AUTO, x, 7_000, 5000).coverage();
+            min = Math.min(min, c);
+            max = Math.max(max, c);
+        }
+        assertTrue(max - min > 0.8f, "AUTO coverage across the land should vary, got " + min + ".." + max);
+    }
+
+    @Test
+    void zonesHoldTheirWeatherAndFadeAtTheEdge() {
+        CloudField field = new CloudField(SEED);
+        var zones = java.util.List.of(new WeatherZone(1000, 2000, 1500f, WeatherMode.STORM));
+        assertEquals(WeatherMode.STORM.fixedBias(), field.bias(WeatherMode.CLEAR, zones, 1000, 2000, 50));
+        assertEquals(WeatherMode.CLEAR.fixedBias(), field.bias(WeatherMode.CLEAR, zones, 1000, 3600, 50));
+        float edge = field.bias(WeatherMode.CLEAR, zones, 1000, 2000 + 1250, 50).coverage();
+        assertTrue(edge > WeatherMode.CLEAR.fixedBias().coverage() && edge < WeatherMode.STORM.fixedBias().coverage(),
+                "the edge blends, got " + edge);
     }
 
     /**
@@ -93,6 +117,7 @@ class CloudFieldTest {
      * seen from a point (cloudy share within 1500 blocks) is clear (under 2/8),
      * broken or overcast (over 7/8) about a third of the time each; rain falls
      * on a point about 10% of the time, and thunderstorms are overhead 1-2%.
+     * The weather is regional, so each cell takes the bias where it is.
      */
     @Test
     void autoMatchesClimatology() {
@@ -101,12 +126,13 @@ class CloudFieldTest {
         int clear = 0, overcast = 0, samples = 0;
         long cells = 0, rain = 0, storm = 0;
         for (double t = 0; t < 2_000_000; t += 2500) {
-            WeatherBias bias = field.bias(WeatherMode.AUTO, t);
             int ox = (int) (t / 7);
             int cloudy = 0, total = 0;
             for (int i = -radius; i <= radius; i += stride) {
                 for (int j = -radius; j <= radius; j += stride) {
                     if (i * i + j * j > radius * radius) continue;
+                    WeatherBias bias = field.bias(WeatherMode.AUTO, (ox + i + 0.5) * CloudField.CELL
+                            + CloudField.driftX(t), (j + 0.5) * CloudField.CELL + CloudField.driftZ(t), t);
                     CloudColumn col = CloudField.resolve(field.raw(ox + i, j), bias);
                     total++;
                     if (col.isClear()) continue;
@@ -130,6 +156,68 @@ class CloudFieldTest {
         assertTrue(1 - clearShare - overcastShare > 0.25, report);
         assertTrue(rainShare > 0.06 && rainShare < 0.14, report);
         assertTrue(stormShare > 0.005 && stormShare < 0.025, report);
+    }
+
+    /**
+     * Rain follows the cloud block by block: the smooth field changes only a
+     * little between neighbouring blocks (the old cell lookup jumped every
+     * {@link CloudField#CELL} blocks), and somewhere it does rain.
+     */
+    @Test
+    void rainChangesSmoothlyBetweenBlocks() {
+        CloudField field = new CloudField(SEED);
+        WeatherBias bias = WeatherMode.RAIN.fixedBias();
+        float worst = 0f, most = 0f;
+        for (int z = 0; z < 4000; z += 97) {
+            float prev = field.columnAt(0, z, 0.0, bias).precipitation();
+            for (int x = 1; x < 4000; x++) {
+                float p = field.columnAt(x, z, 0.0, bias).precipitation();
+                worst = Math.max(worst, Math.abs(p - prev));
+                most = Math.max(most, p);
+                prev = p;
+            }
+        }
+        assertTrue(most > 0.5f, "it rains somewhere: " + most);
+        assertTrue(worst < 0.12f, "rain jumps by " + worst + " between neighbouring blocks");
+    }
+
+    @Test
+    void smallCloudsRainLighterThanBigOnes() {
+        // Same type and density, different growth.
+        CloudColumn small = new CloudColumn(1f, CloudType.NIMBOSTRATUS, 160, 168, 0.05f, 0.8f);
+        CloudColumn big = new CloudColumn(1f, CloudType.NIMBOSTRATUS, 160, 208, 1f, 0.8f);
+        assertTrue(small.precipitation() > 0f);
+        assertTrue(small.precipitation() < 0.5f * big.precipitation(),
+                small.precipitation() + " vs " + big.precipitation());
+    }
+
+    /**
+     * Whether a cloud rides over a mountain or is steered aside changes slowly
+     * across the sky, so a cloud is never torn between the two: even at the
+     * full {@link TerrainFlow#DEFLECT_REACH} the steering would move by under a
+     * block per block (the baked shift is far smaller, and sheared at most
+     * {@code TerrainRelief.MAX_SHEAR}, so the two together never fold the map).
+     */
+    @Test
+    void massChangesSlowlyAcrossTheSky() {
+        CloudField field = new CloudField(SEED);
+        float worst = 0f;
+        for (WeatherMode mode : new WeatherMode[]{WeatherMode.CLOUDY, WeatherMode.RAIN, WeatherMode.STORM}) {
+            WeatherBias bias = mode.fixedBias();
+            for (int z = 0; z < 3000; z += 211) {
+                float prev = hold(field.sample(0, z), bias);
+                for (int x = 4; x < 6000; x += 4) {
+                    float h = hold(field.sample(x, z), bias);
+                    worst = Math.max(worst, Math.abs(h - prev) / 4f * TerrainFlow.DEFLECT_REACH);
+                    prev = h;
+                }
+            }
+        }
+        assertTrue(worst < 1f, "steering shifts by " + worst + " blocks per block as mass changes");
+    }
+
+    private static float hold(CloudField.Channels ch, WeatherBias bias) {
+        return 1f - CloudField.smoothstep(TerrainFlow.PASS_MASS_LO, TerrainFlow.PASS_MASS_HI, CloudField.mass(ch, bias));
     }
 
     private static double coverage(WeatherMode mode) {

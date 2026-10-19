@@ -136,7 +136,7 @@ public class SaveService implements AutoCloseable {
         }
         com.stonebreak.world.weather.WeatherState weather = weatherSource;
         if (weather != null) {
-            updatedWorld = updatedWorld.withWeather((long) weather.seconds(), weather.mode());
+            updatedWorld = updatedWorld.withWeather((long) weather.seconds(), weather.mode(), weather.zones());
         }
 
         this.worldData = updatedWorld;

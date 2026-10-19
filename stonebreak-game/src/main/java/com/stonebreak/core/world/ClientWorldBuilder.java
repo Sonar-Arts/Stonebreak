@@ -172,7 +172,8 @@ public final class ClientWorldBuilder {
         game.setTimeOfDay(new TimeOfDay(serverTicks != null ? serverTicks : TimeOfDay.NOON));
         var weatherSync = MultiplayerSession.pendingWeatherSync();
         game.setWeather(weatherSync != null
-                ? new com.stonebreak.world.weather.ClientWeather(seed, weatherSync.weatherSeconds(), weatherSync.mode())
+                ? new com.stonebreak.world.weather.ClientWeather(seed, weatherSync.weatherSeconds(), weatherSync.mode(),
+                        weatherSync.zones())
                 : new com.stonebreak.world.weather.ClientWeather(seed, 0.0, com.stonebreak.world.weather.WeatherMode.AUTO));
     }
 

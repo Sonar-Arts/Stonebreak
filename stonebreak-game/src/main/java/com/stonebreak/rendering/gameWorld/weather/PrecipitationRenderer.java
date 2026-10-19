@@ -3,15 +3,14 @@ package com.stonebreak.rendering.gameWorld.weather;
 import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
+import com.stonebreak.rendering.gameWorld.clouds.CloudUniforms;
 import com.stonebreak.world.World;
-import com.stonebreak.world.weather.ClientWeather;
-import com.stonebreak.world.weather.CloudColumn;
-import com.stonebreak.world.weather.CloudField;
 import com.stonebreak.world.weather.WeatherSurface;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL13;
 
 import java.nio.FloatBuffer;
 
@@ -20,41 +19,58 @@ import static org.lwjgl.opengl.GL15.*;
 import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL31.glDrawArraysInstanced;
-import static org.lwjgl.opengl.GL33.glVertexAttribDivisor;
 
 /**
- * Rain and snow under the clouds that make them. Every block column within
- * {@link #RADIUS} of the camera whose cloud precipitates gets one sheet (an
- * instanced, camera-facing quad from the column's ground up to the cloud base,
- * or up past the camera when the base is out of sight); the shader draws the
- * falling streaks or flakes. Rain stops where the cloud stops, because the
- * intensity comes from the same {@link CloudField} cell, and it never falls
- * above the cloud it comes from.
+ * Rain and snow falling from the clouds that make them. Lanes (thin streaks)
+ * sit on a grid fixed in cloud space, so the whole pattern rides the wind with
+ * the cloud; each lane asks the GPU cloud field ({@code cloudPrecipitation} in
+ * cloud_field.glsl, the same field the clouds are drawn from) how much falls
+ * at its own spot. So rain starts and stops exactly under the cloud, a cloud's
+ * edge rains on part of a block, and small clouds drop less. All of it happens
+ * in the vertex shader: one instanced draw, no per-frame instance data.
  *
  * <p>Ground height and snow come from {@link WeatherSurface} (loaded chunks
- * only), so the render thread never waits on terrain generation.</p>
+ * only) as a small texture around the camera, so the render thread never
+ * waits on terrain generation.</p>
  */
 public final class PrecipitationRenderer {
 
-    /** Columns drawn around the camera, in blocks. */
+    /** Lanes drawn around the camera, in blocks. */
     static final int RADIUS = 20;
-    /** How far below and above the camera sheets reach. */
+    /** How far below and above the camera lanes reach. */
     private static final float BELOW = 24f;
     private static final float ABOVE = 32f;
+    /**
+     * Blocks between lane slots in cloud space: four lanes per block, each
+     * raining or not on its own. Divides the cloud map period, so the slot
+     * hash repeats with the offset's wrap and no lane jumps.
+     */
+    private static final float LANE_SPACING = 0.5f;
+    private static final int LANE_GRID = 2 * (int) Math.ceil(RADIUS / LANE_SPACING) + 1;
+    private static final int LANE_PERIOD = (int) (CloudUniforms.MAP_PERIOD_BLOCKS / LANE_SPACING);
+    /** Quad width of a lane, blocks: room for a streak, or a swaying flake. */
+    private static final Vector2f LANE_WIDTH = new Vector2f(0.1f, 0.5f);
 
-    private static final int FLOATS_PER_INSTANCE = 6;
-    private static final int MAX_INSTANCES = (2 * RADIUS + 1) * (2 * RADIUS + 1);
-    /** Cloud cells spanned by the column grid (plus a margin for the cell boundary). */
-    private static final int CELL_SPAN = (2 * RADIUS + 1) / CloudField.CELL + 3;
+    /** Ground columns around the camera: the lanes' reach plus a block each side. */
+    private static final int GROUND_SIZE = 2 * RADIUS + 3;
+    /** Ground written where the chunk isn't loaded: below anything, so the lane stops at {@link #BELOW}. */
+    private static final float GROUND_UNKNOWN = -1e6f;
+    /** Clear of the cloud field's units (10, 15-17) and the cloud passes' (11-14). */
+    private static final int GROUND_TEXTURE_UNIT = 18;
+
+    static {
+        if (CloudUniforms.MAP_PERIOD_BLOCKS % LANE_SPACING != 0f) {
+            throw new IllegalStateException("LANE_SPACING must divide the cloud map period");
+        }
+    }
 
     private final ShaderProgram shader;
     private final int vao;
     private final int cornerVbo;
-    private final int instanceVbo;
-    private final FloatBuffer instances = BufferUtils.createFloatBuffer(MAX_INSTANCES * FLOATS_PER_INSTANCE);
-    private final CloudColumn[] cellColumns = new CloudColumn[CELL_SPAN * CELL_SPAN];
+    private final int groundTexture;
+    private final FloatBuffer ground = BufferUtils.createFloatBuffer(GROUND_SIZE * GROUND_SIZE * 2);
     private final Vector3f renderCamera = new Vector3f();
-    private final Vector2f renderOrigin = new Vector2f();
+    private final Vector2f groundOrigin = new Vector2f();
 
     public PrecipitationRenderer() {
         shader = new ShaderProgram();
@@ -69,19 +85,17 @@ public final class PrecipitationRenderer {
         glBufferData(GL_ARRAY_BUFFER, new float[]{0, 0, 1, 0, 0, 1, 1, 1}, GL_STATIC_DRAW);
         glVertexAttribPointer(0, 2, GL_FLOAT, false, 2 * Float.BYTES, 0);
         glEnableVertexAttribArray(0);
-
-        instanceVbo = glGenBuffers();
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVbo);
-        glBufferData(GL_ARRAY_BUFFER, (long) MAX_INSTANCES * FLOATS_PER_INSTANCE * Float.BYTES, GL_STREAM_DRAW);
-        int stride = FLOATS_PER_INSTANCE * Float.BYTES;
-        glVertexAttribPointer(1, 4, GL_FLOAT, false, stride, 0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribDivisor(1, 1);
-        glVertexAttribPointer(2, 2, GL_FLOAT, false, stride, 4L * Float.BYTES);
-        glEnableVertexAttribArray(2);
-        glVertexAttribDivisor(2, 1);
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        groundTexture = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, groundTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, GROUND_SIZE, GROUND_SIZE, 0, GL_RG, GL_FLOAT, (FloatBuffer) null);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 
     /** Lambda (not a method reference) so the caller-sensitive lookup happens in this module. */
@@ -89,17 +103,18 @@ public final class PrecipitationRenderer {
         return ShaderResourceLoader.load(path, p -> PrecipitationRenderer.class.getResourceAsStream(p));
     }
 
-    /** Draws this frame's rain and snow over the bound framebuffer (depth-tested, no depth writes). */
-    public void render(World world, ClientWeather weather, Matrix4f projection, Matrix4f view,
+    /**
+     * Draws this frame's rain and snow over the bound framebuffer (depth-tested,
+     * no depth writes). {@code clouds} must hold this frame's cloud field
+     * ({@code CloudRenderer.mapsReady()}).
+     */
+    public void render(World world, CloudUniforms clouds, Matrix4f projection, Matrix4f view,
                        Vector3f cameraWorldPos, float time, float ambientLight) {
-        if (weather == null || world == null) return;
-        int count = collectColumns(world, weather, cameraWorldPos);
-        if (count == 0) return;
+        if (world == null || clouds == null) return;
 
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVbo);
-        glBufferData(GL_ARRAY_BUFFER, (long) MAX_INSTANCES * FLOATS_PER_INSTANCE * Float.BYTES, GL_STREAM_DRAW);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, instances);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + GROUND_TEXTURE_UNIT);
+        uploadGround(world, cameraWorldPos);
 
         boolean depthTest = glIsEnabled(GL_DEPTH_TEST);
         boolean blend = glIsEnabled(GL_BLEND);
@@ -115,17 +130,26 @@ public final class PrecipitationRenderer {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         shader.bind();
+        clouds.applyTo(shader);
         shader.setMat4("uProjection", projection);
         shader.setMat4("uView", view);
         shader.setVec3("uCameraPos", RenderOrigin.toRender(cameraWorldPos, renderCamera));
-        shader.setVec2("uRenderOrigin", renderOrigin.set(RenderOrigin.x(), RenderOrigin.z()));
+        shader.setFloat("uLaneSpacing", LANE_SPACING);
+        shader.setInt("uLaneGrid", LANE_GRID);
+        shader.setInt("uLanePeriod", LANE_PERIOD);
+        shader.setVec2("uLaneWidth", LANE_WIDTH);
+        shader.setFloat("uRadius", RADIUS);
+        shader.setFloat("uBelow", BELOW);
+        shader.setFloat("uAbove", ABOVE);
+        shader.setInt("uGround", GROUND_TEXTURE_UNIT);
+        shader.setVec2("uGroundOrigin", groundOrigin);
         shader.setFloat("uTime", time);
         shader.setFloat("uAmbient", ambientLight);
-        shader.setFloat("uRadius", RADIUS);
         glBindVertexArray(vao);
-        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, count);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, LANE_GRID * LANE_GRID);
         glBindVertexArray(0);
         shader.unbind();
+        GL13.glActiveTexture(previousUnit);
 
         glBlendFunc(blendSrc, blendDst);
         if (!blend) glDisable(GL_BLEND);
@@ -134,60 +158,29 @@ public final class PrecipitationRenderer {
         glDepthMask(depthMask);
     }
 
-    /** Fills {@link #instances} with every raining column in range; returns how many. */
-    private int collectColumns(World world, ClientWeather weather, Vector3f cam) {
-        double s = weather.seconds();
-        int camX = (int) Math.floor(cam.x);
-        int camZ = (int) Math.floor(cam.z);
-        int cell0X = CloudField.cellX(camX - RADIUS, s);
-        int cell0Z = CloudField.cellZ(camZ - RADIUS, s);
-        java.util.Arrays.fill(cellColumns, null);
-        float originX = RenderOrigin.x();
-        float originZ = RenderOrigin.z();
-
-        instances.clear();
-        int count = 0;
-        for (int dx = -RADIUS; dx <= RADIUS; dx++) {
-            for (int dz = -RADIUS; dz <= RADIUS; dz++) {
-                if (dx * dx + dz * dz > RADIUS * RADIUS) continue;
-                int wx = camX + dx;
-                int wz = camZ + dz;
-                CloudColumn cloud = column(weather, CloudField.cellX(wx + 0.5, s) - cell0X,
-                        CloudField.cellZ(wz + 0.5, s) - cell0Z, cell0X, cell0Z);
-                float intensity = cloud.precipitation();
-                if (intensity <= 0f) continue;
-
-                int ground = WeatherSurface.groundY(world, wx, wz);
-                float bottom = ground == WeatherSurface.UNKNOWN ? cam.y - BELOW : Math.max(ground, cam.y - BELOW);
-                // Falls from the cloud base: nothing above it, nothing when the camera is above it.
-                float top = Math.min(cam.y + ABOVE, cloud.baseY());
-                if (top <= bottom) continue;
-
-                instances.put(wx + 0.5f - originX).put(wz + 0.5f - originZ).put(bottom).put(top)
-                        .put(intensity).put(WeatherSurface.isSnow(world, wx, wz) ? 1f : 0f);
-                count++;
+    /** Fills and binds the ground texture around the camera (active unit). */
+    private void uploadGround(World world, Vector3f cam) {
+        int x0 = (int) Math.floor(cam.x) - RADIUS - 1;
+        int z0 = (int) Math.floor(cam.z) - RADIUS - 1;
+        ground.clear();
+        for (int j = 0; j < GROUND_SIZE; j++) {
+            for (int i = 0; i < GROUND_SIZE; i++) {
+                int y = WeatherSurface.groundY(world, x0 + i, z0 + j);
+                ground.put(y == WeatherSurface.UNKNOWN ? GROUND_UNKNOWN : y)
+                        .put(WeatherSurface.isSnow(world, x0 + i, z0 + j) ? 1f : 0f);
             }
         }
-        instances.flip();
-        return count;
-    }
-
-    /** Per-cloud-cell column, resolved once per frame per cell. */
-    private CloudColumn column(ClientWeather weather, int i, int j, int cell0X, int cell0Z) {
-        if (i < 0 || j < 0 || i >= CELL_SPAN || j >= CELL_SPAN) return CloudColumn.CLEAR;
-        int idx = i * CELL_SPAN + j;
-        CloudColumn col = cellColumns[idx];
-        if (col == null) {
-            col = CloudField.resolve(weather.field().raw(cell0X + i, cell0Z + j), weather.bias());
-            cellColumns[idx] = col;
-        }
-        return col;
+        ground.flip();
+        glBindTexture(GL_TEXTURE_2D, groundTexture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, GROUND_SIZE, GROUND_SIZE, GL_RG, GL_FLOAT, ground);
+        groundOrigin.set((float) (x0 - (double) RenderOrigin.x()), (float) (z0 - (double) RenderOrigin.z()));
     }
 
     public void cleanup() {
         shader.cleanup();
         glDeleteBuffers(cornerVbo);
-        glDeleteBuffers(instanceVbo);
         glDeleteVertexArrays(vao);
+        glDeleteTextures(groundTexture);
     }
 }

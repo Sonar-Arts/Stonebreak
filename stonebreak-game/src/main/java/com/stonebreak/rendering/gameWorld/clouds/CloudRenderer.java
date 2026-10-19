@@ -25,7 +25,8 @@ import static org.lwjgl.opengl.GL11.*;
  *   <li>{@link #prepareFrame} patches the {@link CloudMap} around the camera and
  *       resolves this frame's {@link CloudUniforms} — before the world draws,
  *       because terrain and water read cloud shadows from them;</li>
- *   <li>{@link #render} (after water) snapshots scene depth, raymarches the
+ *   <li>{@link #render} (after the opaque world, before glass, ice and water)
+ *       snapshots scene depth, raymarches the
  *       clouds at half resolution into an RGBA16F target, blends that into the
  *       reprojected history of earlier frames (the march's dither changes every
  *       frame, so its grain averages away), then composites the result over
@@ -43,6 +44,10 @@ public final class CloudRenderer {
     private static final int DETAIL_TEXTURE_UNIT = 13;
     /** Unit for the cloud history read by the temporal pass; its binding is restored. */
     private static final int HISTORY_TEXTURE_UNIT = 14;
+    /** Unit for the march's cloud distances read by the temporal pass; its binding is restored. */
+    private static final int DISTANCE_TEXTURE_UNIT = 19;
+    /** Unit for the history's slab-visibility mask read by the temporal pass; its binding is restored. */
+    private static final int VISIBLE_TEXTURE_UNIT = 21;
 
     /**
      * How fast the shape and detail noise rise through the clouds, blocks per
@@ -62,6 +67,8 @@ public final class CloudRenderer {
     private static final Vector4f NO_FLASH = new Vector4f();
 
     private final CloudMap map = new CloudMap();
+    private final WeatherMapTexture weatherMap = new WeatherMapTexture();
+    private final TerrainMap terrainMap = new TerrainMap();
     private final CloudNoiseTextures noise = new CloudNoiseTextures();
     private final CloudUniforms uniforms = new CloudUniforms();
     private final SceneDepthCopy sceneDepth = new SceneDepthCopy();
@@ -80,6 +87,8 @@ public final class CloudRenderer {
     private final Vector3f camDelta = new Vector3f();
     private double prevCamX, prevCamY, prevCamZ;
     private boolean prepared;
+    /** The maps are current this frame (weather exists), whether or not clouds draw. */
+    private boolean mapsReady;
     private boolean drawnThisFrame;
     private float shapeRise;
     private float detailRise;
@@ -113,15 +122,17 @@ public final class CloudRenderer {
     /**
      * Updates the map and this frame's uniforms. Call before any shader that
      * receives cloud shadows is set up; with {@code enabled} false (setting
-     * off, no weather yet) receivers get unshadowed light and nothing draws.
+     * off) receivers get unshadowed light and no cloud draws, but the maps stay
+     * current for the rain, which falls from the cloud field either way.
      */
     public void prepareFrame(ClientWeather weather, Vector3f cameraWorldPos, Vector3f sunDirection,
                              boolean enabled) {
         drawnThisFrame = false;
-        prepared = enabled && weather != null;
-        if (!prepared) {
+        mapsReady = weather != null;
+        prepared = enabled && mapsReady;
+        if (!prepared) historyValid = false; // stale by the time clouds return
+        if (!mapsReady) {
             uniforms.disable();
-            historyValid = false; // stale by the time clouds return
             return;
         }
         double s = weather.seconds();
@@ -131,12 +142,23 @@ public final class CloudRenderer {
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.CLOUD_MAP_TEXTURE_UNIT);
         map.update(weather.field(), CloudField.cellX(cameraWorldPos.x, s), CloudField.cellZ(cameraWorldPos.z, s));
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.WEATHER_MAP_TEXTURE_UNIT);
+        weatherMap.update(weather.map());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.TERRAIN_MAP_TEXTURE_UNIT);
+        terrainMap.update(weather.relief(), cameraWorldPos.x, cameraWorldPos.z);
         GL13.glActiveTexture(previousUnit);
         // cloud = world - drift = render + origin - drift
-        uniforms.prepare(map.texture(),
+        uniforms.prepare(map.texture(), weatherMap.texture(), terrainMap.shapeTexture(), terrainMap.flowTexture(),
                 RenderOrigin.x() - CloudField.driftX(s),
                 RenderOrigin.z() - CloudField.driftZ(s),
-                weather.bias(), sunDirection, true);
+                RenderOrigin.x(), RenderOrigin.z(),
+                sunDirection, true);
+        if (!prepared) uniforms.disable();
+    }
+
+    /** Whether {@link #uniforms} hold this frame's cloud field (for the rain). */
+    public boolean mapsReady() {
+        return mapsReady;
     }
 
     /** The uniforms receivers apply (cloud shadows); valid after {@link #prepareFrame}. */
@@ -146,7 +168,7 @@ public final class CloudRenderer {
 
     /**
      * Draws the clouds over the bound framebuffer, which must hold this frame's
-     * scene depth (opaque + water). No-op unless {@link #prepareFrame} enabled them.
+     * opaque scene depth (translucent passes draw after). No-op unless {@link #prepareFrame} enabled them.
      *
      * @param renderCameraPos camera position in render space
      * @param flashes         lightning flash points (render-space xyz, intensity w; 0 = unused),
@@ -178,9 +200,11 @@ public final class CloudRenderer {
 
         int hw = Math.max(1, vw / 2), hh = Math.max(1, vh / 2);
         if (target == null) {
-            target = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F);
-            history[0] = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F);
-            history[1] = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F);
+            // Second attachment: how far away each pixel's cloud is, for reprojection.
+            target = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F, GL30.GL_R32F);
+            // Second attachment: whether each texel saw the slab, so history the scene hid is never read.
+            history[0] = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F, GL30.GL_R8);
+            history[1] = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F, GL30.GL_R8);
         } else if (target.getWidth() != hw || target.getHeight() != hh) {
             target.resize(hw, hh);
             history[0].resize(hw, hh);
@@ -239,10 +263,18 @@ public final class CloudRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + HISTORY_TEXTURE_UNIT);
         int previousHistoryUnitTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
         glBindTexture(GL_TEXTURE_2D, previous.getColorTexture());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + DISTANCE_TEXTURE_UNIT);
+        int previousDistanceUnitTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, target.getExtraColorTexture());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + VISIBLE_TEXTURE_UNIT);
+        int previousVisibleUnitTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, previous.getExtraColorTexture());
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
         temporalShader.bind();
         temporalShader.setInt("u_current", SCRATCH_TEXTURE_UNIT);
+        temporalShader.setInt("u_cloudDistance", DISTANCE_TEXTURE_UNIT);
         temporalShader.setInt("u_history", HISTORY_TEXTURE_UNIT);
+        temporalShader.setInt("u_historyVisible", VISIBLE_TEXTURE_UNIT);
         temporalShader.setBool("u_historyValid", historyValid);
         temporalShader.setMat4("u_invViewProj", invViewProj);
         temporalShader.setVec3("u_camPos", renderCameraPos);
@@ -251,6 +283,10 @@ public final class CloudRenderer {
         temporalShader.setFloat("u_slabBottom", CloudType.slabBottom());
         temporalShader.setFloat("u_slabTop", CloudType.slabTop());
         quad.draw();
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + VISIBLE_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, previousVisibleUnitTexture);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + DISTANCE_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, previousDistanceUnitTexture);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + HISTORY_TEXTURE_UNIT);
         glBindTexture(GL_TEXTURE_2D, previousHistoryUnitTexture);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
@@ -262,15 +298,27 @@ public final class CloudRenderer {
         historyIndex = 1 - historyIndex;
 
         // Pass 3: composite over the scene: scene * transmittance + cloud light.
+        // Depth-aware, so it reads the scene depth beside the clouds.
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousFbo);
         glViewport(vx, vy, vw, vh);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_SRC_ALPHA);
         glBindTexture(GL_TEXTURE_2D, resolved.getColorTexture());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + HISTORY_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, sceneDepth.texture());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
         compositeShader.bind();
         compositeShader.setInt("u_clouds", SCRATCH_TEXTURE_UNIT);
+        compositeShader.setInt("u_sceneDepth", HISTORY_TEXTURE_UNIT);
+        compositeShader.setMat4("u_invViewProj", invViewProj);
+        compositeShader.setVec3("u_camPos", renderCameraPos);
+        compositeShader.setFloat("u_slabBottom", CloudType.slabBottom());
+        compositeShader.setFloat("u_slabTop", CloudType.slabTop());
         quad.draw();
         compositeShader.unbind();
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + HISTORY_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, previousHistoryUnitTexture);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
         drawnThisFrame = true;
 
         // Restore state.
@@ -329,6 +377,8 @@ public final class CloudRenderer {
 
     public void cleanup() {
         map.cleanup();
+        weatherMap.cleanup();
+        terrainMap.cleanup();
         noise.cleanup();
         sceneDepth.cleanup();
         quad.cleanup();

@@ -20,18 +20,18 @@ class LightningSchedulerTest {
 
     @Test
     void sameSeedAndWindowGiveTheSameStrikes() {
-        List<LightningScheduler.Strike> a = scheduler().strikesBetween(1000, 1010, 0, 0, RANGE, storm());
-        List<LightningScheduler.Strike> b = scheduler().strikesBetween(1000, 1010, 0, 0, RANGE, storm());
+        List<LightningScheduler.Strike> a = scheduler().strikesBetween(1000, 1010, 0, 0, RANGE, columns(storm()));
+        List<LightningScheduler.Strike> b = scheduler().strikesBetween(1000, 1010, 0, 0, RANGE, columns(storm()));
         assertEquals(a, b);
     }
 
     @Test
     void frameSlicingDoesNotChangeTheStrikes() {
         LightningScheduler s = scheduler();
-        List<LightningScheduler.Strike> whole = s.strikesBetween(500, 510, 0, 0, RANGE, storm());
+        List<LightningScheduler.Strike> whole = s.strikesBetween(500, 510, 0, 0, RANGE, columns(storm()));
         List<LightningScheduler.Strike> sliced = new ArrayList<>();
         for (double t = 500; t < 510; t += 1.0 / 60) {
-            sliced.addAll(s.strikesBetween(t, Math.min(t + 1.0 / 60, 510), 0, 0, RANGE, storm()));
+            sliced.addAll(s.strikesBetween(t, Math.min(t + 1.0 / 60, 510), 0, 0, RANGE, columns(storm())));
         }
         assertEquals(whole, sliced);
     }
@@ -42,12 +42,12 @@ class LightningSchedulerTest {
         // One query evaluates at most MAX_WINDOW_SECONDS, so walk ten minutes in steps.
         List<LightningScheduler.Strike> strikes = new ArrayList<>();
         for (double t = 0; t < 600; t += LightningScheduler.MAX_WINDOW_SECONDS) {
-            strikes.addAll(s.strikesBetween(t, t + LightningScheduler.MAX_WINDOW_SECONDS, 0, 0, RANGE, storm()));
+            strikes.addAll(s.strikesBetween(t, t + LightningScheduler.MAX_WINDOW_SECONDS, 0, 0, RANGE, columns(storm())));
         }
         // Real storms flash a few times a minute; a sky full of them, tens at most.
         double perMinute = strikes.size() / 10.0;
         assertTrue(perMinute >= 2 && perMinute <= 20, "STORM strikes per minute: " + perMinute);
-        assertTrue(s.strikesBetween(0, 600, 0, 0, RANGE, WeatherMode.CLEAR.fixedBias()).isEmpty());
+        assertTrue(s.strikesBetween(0, 600, 0, 0, RANGE, columns(WeatherMode.CLEAR.fixedBias())).isEmpty());
         CloudField field = new CloudField(SEED);
         for (LightningScheduler.Strike strike : strikes) {
             CloudColumn col = field.columnAt(strike.x(), strike.z(), strike.seconds(), storm());
@@ -57,7 +57,13 @@ class LightningSchedulerTest {
     }
 
     private static LightningScheduler scheduler() {
-        return new LightningScheduler(new CloudField(SEED), SEED);
+        return new LightningScheduler(SEED);
+    }
+
+    /** Clouds under one bias everywhere, terrain aside. */
+    private static LightningScheduler.Columns columns(WeatherBias bias) {
+        CloudField field = new CloudField(SEED);
+        return (x, z, seconds) -> field.columnAt(x, z, seconds, bias);
     }
 
     private static WeatherBias storm() {

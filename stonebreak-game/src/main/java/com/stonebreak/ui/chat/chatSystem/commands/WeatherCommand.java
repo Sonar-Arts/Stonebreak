@@ -4,6 +4,7 @@ import com.stonebreak.ui.chat.chatSystem.ChatMessageManager;
 import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
 import com.stonebreak.ui.chat.chatSystem.commands.util.CommandValidator;
 import com.stonebreak.world.weather.WeatherMode;
+import com.stonebreak.world.weather.WeatherZone;
 
 import java.util.Arrays;
 import java.util.List;
@@ -19,26 +20,40 @@ import java.util.Locale;
  */
 public class WeatherCommand implements ChatCommand {
 
+    /** Second argument that sets the weather of the whole world instead of the region around you. */
+    private static final String WORLD = "world";
+
     private static final List<String> MODES = Arrays.stream(WeatherMode.values())
             .map(m -> m.name().toLowerCase(Locale.ROOT))
             .toList();
+
+    private static final String USAGE = "Usage: /weather <" + String.join("|", MODES) + "> [" + WORLD + "]";
 
     @Override
     public void execute(String[] args, ChatMessageManager messageManager) {
         if (!CommandValidator.validateCheatCommand(messageManager)) {
             return;
         }
-        WeatherMode mode = args.length == 1 ? WeatherMode.parse(args[0]) : null;
-        if (mode == null) {
-            messageManager.addMessage("Usage: /weather <" + String.join("|", MODES) + ">", ChatColors.YELLOW);
+        WeatherMode mode = args.length >= 1 && args.length <= 2 ? WeatherMode.parse(args[0]) : null;
+        boolean world = args.length == 2 && args[1].equalsIgnoreCase(WORLD);
+        if (mode == null || (args.length == 2 && !world)) {
+            messageManager.addMessage(USAGE, ChatColors.YELLOW);
             return;
         }
-        if (!com.stonebreak.network.MultiplayerSession.requestServerWeatherSet(mode)) {
+        if (!com.stonebreak.network.MultiplayerSession.requestServerWeatherSet(mode, world)) {
             messageManager.addMessage("Weather is server-controlled — only the host can set it.",
                     ChatColors.RED);
             return;
         }
-        messageManager.addMessage("Weather set to " + mode.name().toLowerCase(Locale.ROOT), ChatColors.GREEN);
+        String name = mode.name().toLowerCase(Locale.ROOT);
+        if (world) {
+            messageManager.addMessage("Weather set to " + name + " everywhere", ChatColors.GREEN);
+        } else if (mode == WeatherMode.AUTO) {
+            messageManager.addMessage("Weather here returns to normal", ChatColors.GREEN);
+        } else {
+            messageManager.addMessage("Weather set to " + name + " within "
+                    + Math.round(WeatherZone.DEFAULT_RADIUS) + " blocks", ChatColors.GREEN);
+        }
     }
 
     @Override
@@ -48,7 +63,8 @@ public class WeatherCommand implements ChatCommand {
 
     @Override
     public String getDescription() {
-        return "Set the weather (/weather <" + String.join("|", MODES) + ">)";
+        return "Set the weather around you, or everywhere with \"" + WORLD + "\" (/weather <"
+                + String.join("|", MODES) + "> [" + WORLD + "])";
     }
 
     @Override
@@ -60,6 +76,9 @@ public class WeatherCommand implements ChatCommand {
     public List<String> getAutocompleteSuggestions(String[] args, String currentArg) {
         if (args.length == 0) {
             return MODES.stream().filter(s -> s.startsWith(currentArg.toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 1 && WORLD.startsWith(currentArg.toLowerCase(Locale.ROOT))) {
+            return List.of(WORLD);
         }
         return List.of();
     }

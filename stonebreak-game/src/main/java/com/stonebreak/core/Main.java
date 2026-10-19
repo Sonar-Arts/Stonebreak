@@ -248,10 +248,11 @@ public class Main {
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
     }
 
-    // ─── Dev: -Dstonebreak.autoview=<x>:<y|top[+n]>:<z>:<yaw>:<pitch> ────────
+    // ─── Dev: -Dstonebreak.autoview=<x>:<y|top[+n]>:<z>:<yaw>:<pitch>[:<bob>[:<period>]] ─
     //          -Dstonebreak.autolod=<LOW|MEDIUM|HIGH|ULTRA>[:<lodDistance>]
 
     private boolean autoViewArmed;
+    private long autoViewStartNanos = -1;
 
     /**
      * Development shortcut paired with {@code stonebreak.autoworld}: once the
@@ -259,7 +260,10 @@ public class Main {
      * fixed camera, so distant-terrain (FastLOD) changes can be screenshotted
      * from the same viewpoint run after run. {@code stonebreak.autolod}
      * overrides the LOD quality preset (and optionally the LOD distance) for
-     * this session only — nothing is saved. Inert unless a property is set.
+     * this session only — nothing is saved. An optional {@code bob} sways the
+     * camera that many blocks up and down every {@code period} seconds (default
+     * 3), to reproduce artifacts that only show while the camera moves. Inert
+     * unless a property is set.
      */
     private void maybeAutoView() {
         if (Game.getInstance().getState() != GameState.PLAYING) {
@@ -298,6 +302,20 @@ public class Main {
         float x = Float.parseFloat(p[0]);
         float z = Float.parseFloat(p[2]);
         float y = p[1].startsWith("top") ? autoViewTopY(x, z, p[1]) : Float.parseFloat(p[1]);
+        if (p.length > 5) {
+            if (autoViewStartNanos < 0) {
+                autoViewStartNanos = System.nanoTime();
+            }
+            double period = p.length > 6 ? Double.parseDouble(p[6]) : 3.0;
+            double t = (System.nanoTime() - autoViewStartNanos) / 1e9;
+            y += (float) (Float.parseFloat(p[5]) * Math.sin(2.0 * Math.PI * t / period));
+        }
+        { // TEMP leaf-shell probe
+            var w = Game.getWorld(); var g = com.stonebreak.blocks.BlockType.LEAVES;
+            int bx=(int)Math.floor(x), by=(int)Math.floor(y), bz=(int)Math.floor(z);
+            if (w != null && !autoProbeBuilt) { autoProbeBuilt = true; for (int dx=-4;dx<=4;dx++) for (int dy=-6;dy<=6;dy++) for (int dz=-4;dz<=4;dz++)
+                if (Math.max(Math.abs(dx),Math.abs(dz))==4 && ((dx+dy+dz)&1)==0) w.setBlockAt(bx+dx,by+dy,bz+dz,g); }
+        }
         player.setPosition(x, y, z);
         player.setVelocity(new org.joml.Vector3f());
         player.getCamera().setYaw(Float.parseFloat(p[3]));
@@ -308,6 +326,7 @@ public class Main {
      * {@code top[+n]}: stand on the highest block of the column (n blocks above it),
      * re-evaluated every frame so the camera rises as the column streams in.
      */
+    private static boolean autoProbeBuilt;
     private static float autoViewTopY(float x, float z, String spec) {
         float above = spec.length() > 3 ? Float.parseFloat(spec.substring(4)) : 0f;
         var world = Game.getWorld();

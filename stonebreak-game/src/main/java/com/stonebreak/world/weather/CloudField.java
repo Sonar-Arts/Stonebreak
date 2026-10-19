@@ -9,8 +9,9 @@ import com.stonebreak.world.generation.NoiseGenerator;
  * clock and the {@link WeatherMode}, never cloud data, and every client agrees.
  *
  * <p>The field lives in <em>cloud space</em>: world space minus the wind drift.
- * Each {@link #CELL}-block cloud-space cell carries three bias-independent noise
- * channels ({@link #raw}); {@link #resolve} turns them into a {@link CloudColumn}
+ * Each {@link #CELL}-block cloud-space cell carries four bias-independent noise
+ * channels ({@link #raw}); {@link #sample} filters them smoothly between cells
+ * (as the GPU does), and {@link #resolve} turns them into a {@link CloudColumn}
  * under the current {@link WeatherBias}. The renderer uploads the raw channels
  * and resolves on the GPU ({@code cloud_field.glsl}), so changing weather never
  * re-uploads the map — it only changes uniforms.</p>
@@ -29,7 +30,7 @@ public final class CloudField {
     /** Coverage noise above this (at zero bias) starts to cloud. */
     static final float COVERAGE_THRESHOLD = 0.58f;
     /** How far the bias moves the threshold: bias -1 lifts it out of reach, +1 overcasts. */
-    static final float COVERAGE_BIAS_SPAN = 0.42f;
+    public static final float COVERAGE_BIAS_SPAN = 0.42f;
     /** Noise range over which a column fades from wisp to full density. */
     public static final float COVERAGE_EDGE = 0.14f;
     /**
@@ -59,7 +60,7 @@ public final class CloudField {
      */
     private static final float ORGANISATION_SCALE = 1f / 160f;
     /** Share of the organisation in the coverage channel; the rest is cumulus. */
-    static final float ORGANISATION_WEIGHT = 0.5f;
+    public static final float ORGANISATION_WEIGHT = 0.5f;
     private static final float WETNESS_SCALE = 1f / 200f;
     /** Share of the cumulus noise in the wetness channel. */
     static final float WETNESS_CELL_WEIGHT = 0.3f;
@@ -70,15 +71,22 @@ public final class CloudField {
 
     /** AUTO weather periods, seconds of weather time. */
     private static final float AUTO_COVERAGE_PERIOD = 1500f;
+    /**
+     * Scale of AUTO weather systems, blocks: one system is a few kilometres
+     * across, so the cloud view (about 5.5 km) often holds the edge of one.
+     * Smaller and every view would be a patchwork, and clear or overcast skies
+     * (whole views) would grow rare — CloudFieldTest's climatology pins it.
+     */
+    static final float REGION_BLOCKS = 8000f;
     private static final float AUTO_WETNESS_PERIOD = 2300f;
     /*
      * AUTO tuning, calibrated by CloudFieldTest against mid-latitude land
      * climatology: about a third of the time clear, a third broken, a third
      * overcast; rain over a point about 10% of the time, thunderstorms 1-2%.
      */
-    private static final float AUTO_COVERAGE_MEAN = 0.24f;
-    private static final float AUTO_COVERAGE_SWING = 2.1f;
-    private static final float AUTO_WETNESS_MEAN = -0.31f;
+    private static final float AUTO_COVERAGE_MEAN = 0.3f;
+    private static final float AUTO_COVERAGE_SWING = 5.0f;
+    private static final float AUTO_WETNESS_MEAN = -0.37f;
     private static final float AUTO_WETNESS_FOLLOW = 0.35f;
     private static final float AUTO_WETNESS_SWING = 0.22f;
 
@@ -118,10 +126,22 @@ public final class CloudField {
     // --- Raw channels ----------------------------------------------------------
 
     /**
-     * The three noise channels of a cloud-space cell, quantised to bytes and
-     * packed as {@code 0xAABBGGRR} (R = coverage, G = wetness, B = detail,
-     * A = 255) — the exact bytes the GPU map holds, so CPU and GPU resolve the
-     * same values.
+     * The channels of a cloud field position, each 0..1.
+     *
+     * @param coverage where clouds are and how far each has grown
+     * @param wetness  which type they are
+     * @param detail   gentle variation of the tops
+     * @param mass     the cloud system's organisation alone (the coverage
+     *                 without its cumulus blobs): smooth over kilometres, so
+     *                 {@link #mass} never changes sharply between neighbours
+     */
+    public record Channels(float coverage, float wetness, float detail, float mass) {}
+
+    /**
+     * The noise channels of a cloud-space cell, quantised to bytes and packed
+     * as {@code 0xAABBGGRR} (R = coverage, G = wetness, B = detail, A = mass;
+     * see {@link Channels}) — the exact bytes the GPU map holds, so CPU and GPU
+     * resolve the same values.
      */
     public int raw(int cellX, int cellZ) {
         float cumulus = coverage.noise(cellX * COVERAGE_SCALE, cellZ * COVERAGE_SCALE);
@@ -132,7 +152,48 @@ public final class CloudField {
         float wet = wetness.noise(cellX * WETNESS_SCALE, cellZ * WETNESS_SCALE);
         int w = toByte((1f - WETNESS_CELL_WEIGHT) * wet + WETNESS_CELL_WEIGHT * cumulus);
         int d = toByte(detail.noise(cellX * DETAIL_SCALE, cellZ * DETAIL_SCALE));
-        return c | (w << 8) | (d << 16) | (0xFF << 24);
+        int m = toByte(fields);
+        return c | (w << 8) | (d << 16) | (m << 24);
+    }
+
+    /** A packed {@link #raw} cell as channels. */
+    public static Channels unpack(int raw) {
+        return new Channels((raw & 0xFF) / 255f, ((raw >>> 8) & 0xFF) / 255f,
+                ((raw >>> 16) & 0xFF) / 255f, ((raw >>> 24) & 0xFF) / 255f);
+    }
+
+    /**
+     * The channels at cloud-space position ({@code cloudX}, {@code cloudZ}),
+     * blocks, through a cubic B-spline over the cells: smooth in value and
+     * slope, so nothing follows the cell grid. Mirrored by
+     * {@code cloudMapCubic} in cloud_field.glsl.
+     */
+    public Channels sample(double cloudX, double cloudZ) {
+        double u = cloudX / CELL - 0.5, v = cloudZ / CELL - 0.5;
+        long i0 = (long) Math.floor(u), j0 = (long) Math.floor(v);
+        float[] wu = bspline((float) (u - i0)), wv = bspline((float) (v - j0));
+        float c = 0f, w = 0f, d = 0f, m = 0f;
+        for (int b = 0; b < 4; b++) {
+            for (int a = 0; a < 4; a++) {
+                float k = wu[a] * wv[b];
+                int raw = raw((int) (i0 - 1 + a), (int) (j0 - 1 + b));
+                c += k * (raw & 0xFF);
+                w += k * ((raw >>> 8) & 0xFF);
+                d += k * ((raw >>> 16) & 0xFF);
+                m += k * ((raw >>> 24) & 0xFF);
+            }
+        }
+        return new Channels(c / 255f, w / 255f, d / 255f, m / 255f);
+    }
+
+    /** Cubic B-spline weights of the four cells around fraction {@code f}. */
+    private static float[] bspline(float f) {
+        float f2 = f * f, f3 = f2 * f;
+        return new float[]{
+                (1f - 3f * f + 3f * f2 - f3) / 6f,
+                (4f - 6f * f2 + 3f * f3) / 6f,
+                (1f + 3f * f + 3f * f2 - 3f * f3) / 6f,
+                f3 / 6f};
     }
 
     private static int toByte(float noise) {
@@ -147,14 +208,19 @@ public final class CloudField {
         return COVERAGE_THRESHOLD - COVERAGE_BIAS_SPAN * bias.coverage();
     }
 
-    /**
-     * Resolves a packed {@link #raw} cell under {@code bias}. Mirrored by
-     * {@code cloudResolve} in {@code shaders/clouds/cloud_field.glsl} — change both together.
-     */
+    /** Resolves a packed {@link #raw} cell under {@code bias}. */
     public static CloudColumn resolve(int raw, WeatherBias bias) {
-        float c = (raw & 0xFF) / 255f;
-        float w = ((raw >>> 8) & 0xFF) / 255f;
-        float d = ((raw >>> 16) & 0xFF) / 255f;
+        return resolve(unpack(raw), bias);
+    }
+
+    /**
+     * Resolves channels under {@code bias}. Mirrored by {@code cloudResolve}
+     * in {@code shaders/clouds/cloud_field.glsl} — change both together.
+     */
+    public static CloudColumn resolve(Channels ch, WeatherBias bias) {
+        float c = ch.coverage();
+        float w = ch.wetness();
+        float d = ch.detail();
 
         float t = coverageThreshold(bias);
         float density = smoothstep(t, t + COVERAGE_EDGE, c);
@@ -169,32 +235,79 @@ public final class CloudField {
             height = floor + (height - floor) * smoothstep(min, min + TOWER_RAMP, wet);
         }
         float dome = smoothstep(t, t + DOME_RAMP, c);
-        int voxels = Math.max(1, (int) Math.floor(
-                height / VOXEL * dome * dome * (0.75f + 0.25f * d) + 0.5f));
-        return new CloudColumn(density, type, type.baseY, type.baseY + voxels * VOXEL);
-    }
-
-    /** The column above world column ({@code worldX}, {@code worldZ}). */
-    public CloudColumn columnAt(double worldX, double worldZ, double weatherSeconds, WeatherBias bias) {
-        return resolve(raw(cellX(worldX, weatherSeconds), cellZ(worldZ, weatherSeconds)), bias);
+        float build = dome * dome * (0.75f + 0.25f * d);
+        int voxels = Math.max(1, (int) Math.floor(height / VOXEL * build + 0.5f));
+        return new CloudColumn(density, type, type.baseY, type.baseY + voxels * VOXEL, build, wet);
     }
 
     /**
-     * The bias {@code mode} applies at {@code weatherSeconds}. AUTO wanders
-     * slowly and deterministically, so every client agrees without extra sync.
+     * How much cloud the system here has clumped up under {@code bias}, 0..1:
+     * the dome {@link #resolve} builds height from, for a cloud of average
+     * cumulus noise in this system. It reads only the organisation, so it is
+     * smooth over kilometres: a whole cloud mass decides together whether it
+     * rides over a mountain, rather than its core going over while its fringe
+     * is steered aside (that tore clouds apart). Mirrored by {@code cloudMass}
+     * in cloud_field.glsl.
      */
-    public WeatherBias bias(WeatherMode mode, double weatherSeconds) {
+    public static float mass(Channels ch, WeatherBias bias) {
+        float t = coverageThreshold(bias);
+        // The coverage channel is ORGANISATION_WEIGHT of this plus the rest of cumulus noise, whose mean is 0.5.
+        float c = ORGANISATION_WEIGHT * ch.mass() + (1f - ORGANISATION_WEIGHT) * 0.5f;
+        return smoothstep(t, t + DOME_RAMP, c);
+    }
+
+    /** Cloud-space X of world X at {@code weatherSeconds}. */
+    public static double cloudX(double worldX, double weatherSeconds) {
+        return worldX - driftX(weatherSeconds);
+    }
+
+    public static double cloudZ(double worldZ, double weatherSeconds) {
+        return worldZ - driftZ(weatherSeconds);
+    }
+
+    /** The column above world position ({@code worldX}, {@code worldZ}), smoothly filtered, terrain aside. */
+    public CloudColumn columnAt(double worldX, double worldZ, double weatherSeconds, WeatherBias bias) {
+        return resolve(sample(cloudX(worldX, weatherSeconds), cloudZ(worldZ, weatherSeconds)), bias);
+    }
+
+    /**
+     * The bias {@code mode} applies to world column ({@code worldX}, {@code worldZ})
+     * at {@code weatherSeconds}. AUTO is regional: weather systems about
+     * {@link #REGION_BLOCKS} across, fixed in cloud space so they ride the wind
+     * with their clouds, that grow and fade over time. Deterministic, so every
+     * client agrees without extra sync.
+     */
+    public WeatherBias bias(WeatherMode mode, double worldX, double worldZ, double weatherSeconds) {
         if (mode != WeatherMode.AUTO) return mode.fixedBias();
+        float rx = (float) ((worldX - driftX(weatherSeconds)) / REGION_BLOCKS);
+        float rz = (float) ((worldZ - driftZ(weatherSeconds)) / REGION_BLOCKS);
         float tc = (float) (weatherSeconds / AUTO_COVERAGE_PERIOD);
         float tw = (float) (weatherSeconds / AUTO_WETNESS_PERIOD);
-        float cov = Math.clamp(AUTO_COVERAGE_MEAN + AUTO_COVERAGE_SWING * climate.noise(tc, 17.3f), -1f, 1f);
-        // Rain comes with cloud: the wetter spells are the overcast ones.
+        // Fractional offsets keep the axes off the simplex lattice planes, where
+        // the noise is muted (a line through one swung half as far).
+        float cov = Math.clamp(AUTO_COVERAGE_MEAN + AUTO_COVERAGE_SWING * climate.noise3D(rx + 0.31f, rz + 0.67f, tc), -1f, 1f);
+        // Rain comes with cloud: the wetter systems are the overcast ones.
         float wet = Math.clamp(AUTO_WETNESS_MEAN + AUTO_WETNESS_FOLLOW * cov
-                + AUTO_WETNESS_SWING * climate.noise(41.9f, tw), -0.5f, 0.5f);
+                + AUTO_WETNESS_SWING * climate.noise3D(rz + 41.9f, tw, rx + 0.53f), -0.5f, 0.5f);
         return new WeatherBias(cov, wet);
     }
 
-    static float smoothstep(float e0, float e1, float x) {
+    /**
+     * The weather at a world column: the world's {@code mode}, with each zone
+     * that reaches it blended over on top.
+     */
+    public WeatherBias bias(WeatherMode mode, java.util.List<WeatherZone> zones,
+                            double worldX, double worldZ, double weatherSeconds) {
+        WeatherBias b = bias(mode, worldX, worldZ, weatherSeconds);
+        for (WeatherZone zone : zones) {
+            float w = zone.weight(worldX, worldZ);
+            if (w >= 1f) b = bias(zone.mode(), worldX, worldZ, weatherSeconds);
+            else if (w > 0f) b = b.lerp(bias(zone.mode(), worldX, worldZ, weatherSeconds), w);
+        }
+        return b;
+    }
+
+    public static float smoothstep(float e0, float e1, float x) {
         float t = Math.clamp((x - e0) / (e1 - e0), 0f, 1f);
         return t * t * (3f - 2f * t);
     }

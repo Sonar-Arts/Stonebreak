@@ -35,11 +35,15 @@ public final class LightningScheduler {
      */
     public record Strike(double seconds, double x, double z, long seed) {}
 
-    private final CloudField field;
+    /** The cloud over a world column at a weather time, as the weather resolves it there. */
+    @FunctionalInterface
+    public interface Columns {
+        CloudColumn at(double worldX, double worldZ, double weatherSeconds);
+    }
+
     private final long worldSeed;
 
-    public LightningScheduler(CloudField field, long worldSeed) {
-        this.field = field;
+    public LightningScheduler(long worldSeed) {
         this.worldSeed = worldSeed;
     }
 
@@ -48,21 +52,21 @@ public final class LightningScheduler {
      * world column ({@code centerX}, {@code centerZ}), in time order.
      */
     public List<Strike> strikesBetween(double from, double to, double centerX, double centerZ,
-                                       double range, WeatherBias bias) {
+                                       double range, Columns columns) {
         List<Strike> out = new ArrayList<>();
         if (to <= from) return out;
         from = Math.max(from, to - MAX_WINDOW_SECONDS);
         long firstBucket = (long) Math.floor(from / BUCKET_SECONDS);
         long lastBucket = (long) Math.floor(to / BUCKET_SECONDS);
         for (long bucket = firstBucket; bucket <= lastBucket; bucket++) {
-            collectBucket(bucket, from, to, centerX, centerZ, range, bias, out);
+            collectBucket(bucket, from, to, centerX, centerZ, range, columns, out);
         }
         out.sort((a, b) -> Double.compare(a.seconds(), b.seconds()));
         return out;
     }
 
     private void collectBucket(long bucket, double from, double to, double centerX, double centerZ,
-                               double range, WeatherBias bias, List<Strike> out) {
+                               double range, Columns columns, List<Strike> out) {
         double bucketStart = bucket * BUCKET_SECONDS;
         double driftX = CloudField.driftX(bucketStart);
         double driftZ = CloudField.driftZ(bucketStart);
@@ -80,8 +84,8 @@ public final class LightningScheduler {
                 double cloudZ = (j + unit(mix(h + 3))) * CELL_BLOCKS;
                 double x = cloudX + driftX, z = cloudZ + driftZ;
                 if ((x - centerX) * (x - centerX) + (z - centerZ) * (z - centerZ) > range * range) continue;
-                CloudColumn column = CloudField.resolve(field.raw(
-                        (int) Math.floor(cloudX / CloudField.CELL), (int) Math.floor(cloudZ / CloudField.CELL)), bias);
+                // Judged at the bucket's start, so every client asks the same question.
+                CloudColumn column = columns.at(x, z, bucketStart);
                 if (column.isClear() || !column.type().storm) continue;
                 out.add(new Strike(seconds, x, z, mix(h + 4)));
             }

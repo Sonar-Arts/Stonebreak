@@ -481,10 +481,10 @@ public final class ClientWorldView {
     }
 
     /** /weather intent: ask the server to set the world's weather mode. */
-    public void sendWeatherSet(com.stonebreak.world.weather.WeatherMode mode) {
+    public void sendWeatherSet(com.stonebreak.world.weather.WeatherMode mode, boolean world) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
-            conn.send(new com.stonebreak.network.packet.world.WeatherSetC2S(mode), false);
+            conn.send(new com.stonebreak.network.packet.world.WeatherSetC2S(mode, world), false);
         }
     }
 
@@ -710,7 +710,7 @@ public final class ClientWorldView {
         pendingWeatherSync = ws;
         com.stonebreak.world.weather.ClientWeather weather = Game.getWeather();
         if (weather != null) {
-            weather.sync(ws.weatherSeconds(), ws.mode());
+            weather.sync(ws.weatherSeconds(), ws.mode(), ws.zones());
         }
     }
 

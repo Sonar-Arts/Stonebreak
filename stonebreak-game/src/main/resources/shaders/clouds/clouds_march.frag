@@ -3,7 +3,10 @@
 // Volumetric clouds, sculpted after real ones. Each pixel's view ray is marched
 // through the cloud slab, and at every step the density is built up in layers:
 //  - the cloud map says where clouds are, which type and how far each has
-//    grown (cloud_field.glsl), bilinearly smoothed so nothing follows the grid;
+//    grown (cloud_field.glsl), smoothly filtered so nothing follows the grid,
+//    under the local weather and pushed by the terrain: cloud piles up on
+//    windward faces and funnels around mountains unless it is massive enough
+//    to ride over, and reaches down to the ground but never into it;
 //  - a vertical profile per type: cumulus have flat bases and domed tops,
 //    stratus are thin sheets, nimbostratus thick decks with ragged undersides,
 //    and cumulonimbus are towers that spread into a flat anvil at the top;
@@ -16,12 +19,17 @@
 // rule cloud shadows and water use, so thin cloud is see-through.
 //
 // Output (half resolution): rgb = cloud light, premultiplied; a = how much of
-// the scene behind survives. Composite with blend (ONE, SRC_ALPHA).
+// the scene behind survives. Composite with blend (ONE, SRC_ALPHA). Second
+// output: how far along the ray the cloud a pixel shows sits, which the
+// temporal pass reprojects it by.
 
 #include "/shaders/clouds/cloud_field.glsl"
 
 in vec2 vUv;
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;
+// Distance to the pixel's cloud, weighted by how much light each sample adds;
+// NO_CLOUD where the ray met none.
+layout(location = 1) out float cloudDistance;
 
 uniform sampler2D u_sceneDepth;
 uniform sampler3D u_shapeNoise;     // Perlin-Worley, repeats every u_shapeTile blocks
@@ -51,6 +59,11 @@ uniform int u_frame;
 
 const int MAX_STEPS = 256;
 const float MIN_TRANSMITTANCE = 0.01;
+// cloudDistance where the ray met no cloud (clouds_temporal.frag reads it).
+const float NO_CLOUD = -1.0;
+// cloudDistance where scene geometry ends the ray before it reaches the slab:
+// not sky, so the temporal pass keeps it out of its history clamp.
+const float OCCLUDED = -2.0;
 // View steps grow with distance, from MIN_STEP blocks up to MAX_STEP...
 const float MIN_STEP = 2.0;
 const float MAX_STEP = 40.0;
@@ -78,10 +91,6 @@ const float SHAPE_EROSION = 1.2;
 // Cover above the noise's floor that reaches full density: small, so a cloud
 // has a crisp, billowed surface instead of a soft fog around a smooth core.
 const float EROSION_EDGE = 0.25;
-// Wetness range over which one type fades into the next. Each type keeps its
-// own altitude band while it fades, so the layers cross-fade instead of one
-// sheet sloping into the other (which drew long smeared ribbons).
-const float TYPE_BLEND = 0.04;
 // How much of the eroded body the detail noise may eat.
 const float DETAIL_EROSION = 0.5;
 // Thinnest a cloud body is drawn, blocks: a column the map only just grows is
@@ -117,22 +126,11 @@ float remap(float v, float lo, float hi, float newLo, float newHi) {
 
 // A per-type value (indexed by CloudType ordinal) blended across the type
 // boundaries in wetness, so a cloud crossing from one type into the next
-// changes base, height and optics smoothly instead of in a step.
+// changes optics smoothly instead of in a step. Each type keeps its own
+// altitude band while it fades (cloudTypeWeights), so the layers cross-fade
+// instead of one sheet sloping into the other (which drew smeared ribbons).
 float typeBlend(vec4 v, float wet) {
-    float r = v[1];                                                                      // STRATUS
-    r = mix(r, v[0], smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.x));    // CUMULUS
-    r = mix(r, v[2], smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.y));    // NIMBOSTRATUS
-    r = mix(r, v[3], smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.z));    // CUMULONIMBUS
-    return r;
-}
-
-// How much of each type a column holds, indexed by CloudType ordinal; sums to 1.
-// The same cross-fades typeBlend applies.
-vec4 typeWeights(float wet) {
-    float cu = smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.x);
-    float ns = smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.y);
-    float cb = smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.z);
-    return vec4(cu * (1.0 - ns), 1.0 - cu, ns * (1.0 - cb), cb);
+    return dot(v, cloudTypeWeights(wet));
 }
 
 // How much cloud a type allows at height fraction h (0 = base, 1 = top).
@@ -168,8 +166,14 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
     CloudSample s;
     s.density = 0.0;
     s.height = 0.0;
-    vec2 xz = p.xz + u_cloudOffset;
-    CloudColumn c = cloudColumnSmooth(xz);
+    // The local weather, pushed by the terrain: cloud piles up on windward
+    // faces and funnels around mountains it is too light to cross. The noise
+    // is read where the cloud was drawn from, so a steered cloud keeps the
+    // billows it had before the mountain bent it.
+    float clip;
+    vec2 shift;
+    CloudColumn c = cloudColumnLocal(p, clip, shift);
+    vec2 xz = p.xz + u_cloudOffset + shift;
     float wet = c.wet;
     s.sigma = typeBlend(u_cloudTypeSigma, wet);
     s.albedo = typeBlend(u_cloudTypeAlbedo, wet);
@@ -180,7 +184,7 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
     vec4 h = u_cloudTypeHeight;
     float storm = smoothstep(u_cloudWetSplits.z, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
     vec4 heights = vec4(h.x, h.y, h.z, h.z + (h.w - h.z) * storm);
-    vec4 weights = typeWeights(wet);
+    vec4 weights = cloudTypeWeights(wet);
     // Where two types' bands overlap, height and sheetness are averaged by
     // each type's share of the cover. Taking them from whichever type covers
     // most flipped them at the altitude where the profiles cross, and skylight
@@ -200,7 +204,7 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
             frac += b * clamp(f, 0.0, 1.0);
             sheet += (t == 1 || t == 2) ? b : 0.0;
         }
-        body *= c.density;
+        body *= c.density * clip;
     }
 
     // Anvil: a mature storm's updraft hits the top of the troposphere and
@@ -212,7 +216,7 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
         anvil = anvilStorm * smoothstep(0.0, 0.2, a) * (1.0 - smoothstep(0.5, 1.0, a));
     }
 
-    float cover = max(body, anvil);
+    float cover = max(body, anvil * clip);
     covered = cover > 0.0;
     if (!covered) return s;
     // The anvil counts as cloud top (it sees the sky), blended in by its share
@@ -316,6 +320,17 @@ float dither(vec2 frag) {
     return fract(ign + 0.61803399 * float(u_frame & 63));
 }
 
+// Farthest scene depth over the 2x2 full-resolution texels under half-res
+// pixel `px`. clouds_composite.frag rebuilds it the same way.
+float sceneDepthFarthest(ivec2 px) {
+    ivec2 last = textureSize(u_sceneDepth, 0) - 1;
+    ivec2 p = px * 2;
+    return max(max(texelFetch(u_sceneDepth, min(p, last), 0).r,
+                   texelFetch(u_sceneDepth, min(p + ivec2(1, 0), last), 0).r),
+               max(texelFetch(u_sceneDepth, min(p + ivec2(0, 1), last), 0).r,
+                   texelFetch(u_sceneDepth, min(p + ivec2(1, 1), last), 0).r));
+}
+
 float stepAt(float t) {
     return clamp(t * STEP_PER_BLOCK, MIN_STEP, MAX_STEP);
 }
@@ -345,22 +360,29 @@ void main() {
     // Taken here, in uniform control flow, where derivatives are defined.
     float pixelAngle = max(length(dFdx(rd)), length(dFdy(rd)));
 
-    // How far the ray may go: the opaque scene, or the fade-out distance.
-    float depth = texture(u_sceneDepth, vUv).r;
+    // How far the ray may go: the opaque scene, or the fade-out distance. The
+    // scene depth is the FARTHEST of this pixel's 2x2 full-resolution texels: a
+    // pixel straddling a block's silhouette then marches the sky behind it, and
+    // the depth-aware composite keeps that cloud off the block. Taking one texel
+    // let the block's depth stop the ray short, and the cloud-free pixel drew a
+    // clear rim of sky around every block edge.
+    float depth = sceneDepthFarthest(ivec2(gl_FragCoord.xy));
     float tLimit = u_fadeEnd;
     if (depth < 1.0) tLimit = min(tLimit, length(worldAt(vUv, depth) - ro));
 
     // Clip to the cloud slab.
-    float tNear = 0.0, tFar = tLimit;
+    float tNear = 0.0, tFar = u_fadeEnd;
     if (abs(rd.y) < 1e-5) {
-        if (ro.y < u_slabBottom || ro.y > u_slabTop) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+        if (ro.y < u_slabBottom || ro.y > u_slabTop) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = NO_CLOUD; return; }
     } else {
         float ta = (u_slabBottom - ro.y) / rd.y;
         float tb = (u_slabTop - ro.y) / rd.y;
         tNear = max(tNear, min(ta, tb));
         tFar = min(tFar, max(ta, tb));
     }
-    if (tNear >= tFar) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    if (tNear >= tFar) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = NO_CLOUD; return; }
+    if (tLimit <= tNear) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = OCCLUDED; return; }
+    tFar = min(tFar, tLimit);
 
     vec3 sunMarch = normalize(vec3(u_sunDir.x, max(u_sunDir.y, MIN_SUN_Y), u_sunDir.z));
     float cosTheta = dot(rd, u_sunDir);
@@ -376,6 +398,8 @@ void main() {
     float t = tNear + scale * stepAt(tNear) * dither(gl_FragCoord.xy);
     float transmittance = 1.0;
     vec3 light = vec3(0.0);
+    float distanceSum = 0.0;
+    float opacitySum = 0.0;
 
     // Extra distance the last clear-air stride took beyond a plain step.
     float overshoot = 0.0;
@@ -411,7 +435,10 @@ void main() {
             // ...and clouds thin out toward the fade distance instead of ending in a wall.
             float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, t);
             float stepT = exp(-ext * fade * min(ds, tFar - t));
-            light += transmittance * (1.0 - stepT) * lit;
+            float added = transmittance * (1.0 - stepT);
+            light += added * lit;
+            distanceSum += added * t;
+            opacitySum += added;
             transmittance *= stepT;
             if (transmittance < MIN_TRANSMITTANCE) break;
         }
@@ -420,4 +447,5 @@ void main() {
     }
 
     fragColor = vec4(light, transmittance);
+    cloudDistance = opacitySum > 1e-4 ? distanceSum / opacitySum : NO_CLOUD;
 }

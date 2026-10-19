@@ -215,8 +215,14 @@ public class WorldRenderer {
         // before the sky pass rather than with the fog parameters further down.
         Vector3f cameraPos = player.getCamera().getPosition();
 
+        // The local weather and terrain relief follow the camera; rain and
+        // lightning read them even with clouds switched off.
+        com.stonebreak.world.weather.ClientWeather weather = Game.getWeather();
+        if (weather != null) {
+            weather.focus(cameraPos.x, cameraPos.z, world.terrain());
+        }
         // Clouds resolve before any receiver of cloud shadows is set up.
-        cloudRenderer.prepareFrame(Game.getWeather(), cameraPos, sunDirection,
+        cloudRenderer.prepareFrame(weather, cameraPos, sunDirection,
                 com.stonebreak.config.Settings.getInstance().getCloudsEnabled());
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
@@ -342,6 +348,27 @@ public class WorldRenderer {
         // Water can then occlude them properly (water renders with glDepthMask(false))
         renderOpaqueDrops(player);
 
+        // Volumetric clouds — drawn after the opaque world but BEFORE anything
+        // translucent: the raymarch stops at the scene depth, and glass/ice
+        // write depth, so marching after them hid every cloud behind a window.
+        // Here they march to opaque depth (clouds behind mountains stay hidden,
+        // clouds below a high camera cover the terrain under them) and glass
+        // blends over them. Water, drawn later, fades itself out under the
+        // cloud in front of it (WaterRenderer). Not underwater, for the same
+        // reason the sky is skipped there: clouds are never fogged, and they
+        // would draw into exactly the gaps that have no water in front of
+        // them — the unloaded horizon.
+        if (!cameraUnderwater) {
+            // Bolts write depth before the clouds march, so cloud in front of a
+            // bolt hides it and cloud behind it doesn't paint over it.
+            lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
+            cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
+                    sunDirection, skyColor,
+                    timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
+                    lightningRenderer.flashes());
+            checkGLError("After cloud rendering");
+        }
+
         // Render transparent pass (translucent solids like ice)
         renderTransparentPass(visibleChunks, player);
 
@@ -368,28 +395,16 @@ public class WorldRenderer {
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, sunDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
-                reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms());
+                reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
+                cloudRenderer.transmittanceTexture());
         checkGLError("After water pass");
 
-        // Volumetric clouds — drawn AFTER world geometry and water: the
-        // raymarch stops at the scene depth they left, so clouds behind
-        // mountains are hidden and clouds below a high camera cover the
-        // terrain under them. Not underwater, for the same reason the sky is
-        // skipped there: clouds are never fogged, and they would draw into
-        // exactly the gaps that have no water in front of them — the
-        // unloaded horizon.
         if (!cameraUnderwater) {
-            // Bolts write depth before the clouds march, so cloud in front of a
-            // bolt hides it and cloud behind it doesn't paint over it.
-            lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
-            cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
-                    sunDirection, skyColor,
-                    timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
-                    lightningRenderer.flashes());
-            checkGLError("After cloud rendering");
             // Rain and snow fall below the clouds and in front of them.
-            precipitationRenderer.render(world, Game.getWeather(), projectionMatrix, player.getViewMatrix(),
-                    cameraPos, totalTime, ambientLightLevel);
+            if (cloudRenderer.mapsReady()) {
+                precipitationRenderer.render(world, cloudRenderer.uniforms(), projectionMatrix,
+                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel);
+            }
             checkGLError("After precipitation rendering");
         }
 

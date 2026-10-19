@@ -66,7 +66,7 @@ public final class ServerLevel {
         this.entitySpawner = entitySpawner;
         this.timeOfDay = new TimeOfDay(worldTimeTicks);
         this.weather = new com.stonebreak.world.weather.WeatherState(
-                worldData.getWeatherSeconds(), worldData.getWeatherMode());
+                worldData.getWeatherSeconds(), worldData.getWeatherMode(), worldData.getWeatherZones());
         this.saveService = saveService;
         this.worldData = worldData;
         this.spawn = spawn;

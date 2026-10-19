@@ -101,5 +101,9 @@ public final class GameServices {
     public void setTimeOfDay(TimeOfDay timeOfDay) { this.timeOfDay = timeOfDay; }
 
     public com.stonebreak.world.weather.ClientWeather weather() { return weather; }
-    public void setWeather(com.stonebreak.world.weather.ClientWeather weather) { this.weather = weather; }
+    /** Replaces the weather; the previous world's (and its terrain worker) is closed. */
+    public void setWeather(com.stonebreak.world.weather.ClientWeather weather) {
+        if (this.weather != null && this.weather != weather) this.weather.close();
+        this.weather = weather;
+    }
 }

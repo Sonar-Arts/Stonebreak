@@ -295,9 +295,18 @@ public final class IntegratedServer {
         if (level == null) {
             return;
         }
-        level.weather().setMode(ws.mode());
+        var weather = level.weather();
+        if (ws.world()) {
+            weather.setMode(ws.mode());
+        } else if (ws.mode() == com.stonebreak.world.weather.WeatherMode.AUTO) {
+            weather.clearZonesAt(sp.x(), sp.z());
+        } else {
+            weather.placeZone(new com.stonebreak.world.weather.WeatherZone(sp.x(), sp.z(),
+                    com.stonebreak.world.weather.WeatherZone.DEFAULT_RADIUS, ws.mode()));
+        }
         ctx.broadcast(currentWeatherSync(), false);
-        System.out.println("[SERVER] Weather set to " + ws.mode() + " by " + sp.username());
+        System.out.println("[SERVER] Weather set to " + ws.mode() + (ws.world() ? " worldwide" : " around "
+                + Math.round(sp.x()) + ", " + Math.round(sp.z())) + " by " + sp.username());
     }
 
     /** Authoritative weather sample for WeatherSyncS2C, or null before the level is booted. */
@@ -307,7 +316,8 @@ public final class IntegratedServer {
             return null;
         }
         var weather = level.weather();
-        return new com.stonebreak.network.packet.world.WeatherSyncS2C(weather.seconds(), weather.mode());
+        return new com.stonebreak.network.packet.world.WeatherSyncS2C(weather.seconds(), weather.mode(),
+                weather.zones());
     }
 
     /** Authoritative time sample for TimeSyncS2C, or null before the level is booted. */

@@ -36,6 +36,8 @@ class JsonWorldSerializerTest {
             .cheatsEnabled(true)
             .weatherSeconds(987654L)
             .weatherMode(com.stonebreak.world.weather.WeatherMode.STORM)
+            .weatherZones(java.util.List.of(new com.stonebreak.world.weather.WeatherZone(
+                -512.5, 2048, 1500f, com.stonebreak.world.weather.WeatherMode.RAIN)))
             .formatVersion(3)
             .build();
 
@@ -53,6 +55,7 @@ class JsonWorldSerializerTest {
         assertTrue(deserialized.isCheatsEnabled());
         assertEquals(987654L, deserialized.getWeatherSeconds());
         assertEquals(com.stonebreak.world.weather.WeatherMode.STORM, deserialized.getWeatherMode());
+        assertEquals(original.getWeatherZones(), deserialized.getWeatherZones());
         assertEquals(3, deserialized.getFormatVersion());
     }
 
@@ -88,6 +91,7 @@ class JsonWorldSerializerTest {
         assertFalse(data.isCheatsEnabled());
         assertEquals(0L, data.getWeatherSeconds());
         assertEquals(com.stonebreak.world.weather.WeatherMode.AUTO, data.getWeatherMode());
+        assertTrue(data.getWeatherZones().isEmpty(), "saves from before weather zones have none");
         assertEquals(1, data.getFormatVersion());
         assertFalse(data.hasExplicitSpawn());
         assertEquals(new Vector3f(0f, 100f, 0f), data.getSpawnPosition());

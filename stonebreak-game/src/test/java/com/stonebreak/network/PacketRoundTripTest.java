@@ -120,13 +120,16 @@ class PacketRoundTripTest {
                 roundTrip(com.stonebreak.network.packet.world.CheatsStateS2C.CODEC,
                     new com.stonebreak.network.packet.world.CheatsStateS2C(enabled)));
         }
+        java.util.List<com.stonebreak.world.weather.WeatherZone> zones = java.util.List.of(
+            new com.stonebreak.world.weather.WeatherZone(-1234.5, 6789.25, 1500f, com.stonebreak.world.weather.WeatherMode.STORM),
+            new com.stonebreak.world.weather.WeatherZone(10, -20, 800f, com.stonebreak.world.weather.WeatherMode.CLEAR));
         for (com.stonebreak.world.weather.WeatherMode mode : com.stonebreak.world.weather.WeatherMode.values()) {
-            assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode),
+            assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode, zones),
                 roundTrip(com.stonebreak.network.packet.world.WeatherSyncS2C.CODEC,
-                    new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode)));
-            assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(mode),
+                    new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode, zones)));
+            assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(mode, mode.ordinal() % 2 == 0),
                 roundTrip(com.stonebreak.network.packet.world.WeatherSetC2S.CODEC,
-                    new com.stonebreak.network.packet.world.WeatherSetC2S(mode)));
+                    new com.stonebreak.network.packet.world.WeatherSetC2S(mode, mode.ordinal() % 2 == 0)));
         }
         assertEquals(new DropItemC2S(12, 64), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)));
         assertEquals(new SnowLayerC2S(10, 64, -5, (byte) 8), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(10, 64, -5, (byte) 8)));
@@ -243,12 +246,12 @@ class PacketRoundTripTest {
             viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.world.CheatsSetC2S(true)));
         assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(true),
             viaRegistry(reg, PLAY, CLIENTBOUND, new com.stonebreak.network.packet.world.CheatsStateS2C(true)));
-        assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM),
+        assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM, java.util.List.of()),
             viaRegistry(reg, PLAY, CLIENTBOUND,
-                new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM)));
-        assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR),
+                new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM, java.util.List.of())));
+        assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR, false),
             viaRegistry(reg, PLAY, SERVERBOUND,
-                new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR)));
+                new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR, false)));
     }
 
     /** Encode/decode through the registry exactly as the pipeline does (id varint + codec). */

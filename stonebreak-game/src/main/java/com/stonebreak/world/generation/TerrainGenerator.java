@@ -92,6 +92,21 @@ public interface TerrainGenerator {
                           int[] outHeights, int[] outWaterLevels, BlockType[] outSurface);
 
     /**
+     * Coarse surface heights for weather (clouds meeting mountains): over the same
+     * {@code count x count} grid as {@link #sampleColumns}, indexed {@code [ix*count + iz]}, the
+     * height of the column or of the water standing on it, whichever is higher. May block on a
+     * terrain service, so call it from a worker thread only. Implementations may sample a far
+     * cheaper, coarser source than chunk generation, since nothing is built from it.
+     */
+    default void sampleReliefHeights(int worldX0, int worldZ0, int count, int stride, int[] outHeights) {
+        int[] water = new int[count * count];
+        sampleRawColumns(worldX0, worldZ0, count, stride, outHeights, water, null);
+        for (int i = 0; i < outHeights.length && i < water.length; i++) {
+            outHeights[i] = Math.max(outHeights[i], water[i]);
+        }
+    }
+
+    /**
      * Every tree the real generator plants inside a coarse FastLOD node, for drawing past the
      * finest band: each column of each cell probed against the cell's biome and sampled
      * surface block. A submerged cell, or one whose surface no tree grows on, plants nothing.

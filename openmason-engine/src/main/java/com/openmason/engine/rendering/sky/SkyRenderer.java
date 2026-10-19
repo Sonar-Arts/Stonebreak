@@ -171,7 +171,11 @@ public class SkyRenderer {
         glDepthFunc(GL_LEQUAL); // Sky should be rendered at maximum depth
         glDisable(GL_CULL_FACE); // Render both sides of sky dome
         glDisable(GL_BLEND); // Sky doesn't need blending
-        glDepthMask(true); // Enable depth writing for sky
+        // No depth writes: the cleared 1.0 already says "sky". The xyww trick
+        // rounds some dome pixels to just under 1.0, and passes that read scene
+        // depth (clouds) took those for a surface at the far plane, cutting
+        // distant clouds into a comb that crawled as the camera moved.
+        glDepthMask(false);
 
         // Use sky shader
         skyShaderProgram.bind();
