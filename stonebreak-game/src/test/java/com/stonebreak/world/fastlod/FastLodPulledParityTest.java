@@ -124,34 +124,15 @@ class FastLodPulledParityTest {
             && i[3] <= o[3] + 1e-3f && i[4] <= o[4] + 1e-3f && i[5] <= o[5] + 1e-3f;
     }
 
+    /** "[minX,minY,minZ]-[maxX,maxY,maxZ]" -> the six values (the "-" between corners is no sign). */
     private static float[] box(String sig) {
-        String[] parts = sig.replace("[", "").replace("]", "").split("[-,]");
-        // "-" also appears inside negative numbers; parse robustly by rejoining
-        java.util.List<Float> vals = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        for (int k = 0; k < sig.length(); k++) {
-            char ch = sig.charAt(k);
-            if (ch == '[' || ch == ']') {
-                continue;
-            }
-            if (ch == ',' || (ch == '-' && cur.length() > 0 && cur.charAt(cur.length() - 1) != 'e')) {
-                if (cur.length() > 0) {
-                    vals.add(Float.parseFloat(cur.toString()));
-                    cur.setLength(0);
-                }
-                if (ch == '-') {
-                    cur.append(ch);
-                }
-                continue;
-            }
-            cur.append(ch);
-        }
-        if (cur.length() > 0) {
-            vals.add(Float.parseFloat(cur.toString()));
-        }
+        String[] corners = sig.substring(1, sig.length() - 1).split("]-\\[");
         float[] out = new float[6];
-        for (int k = 0; k < 6; k++) {
-            out[k] = vals.get(k);
+        for (int c = 0; c < 2; c++) {
+            String[] xyz = corners[c].split(",");
+            for (int k = 0; k < 3; k++) {
+                out[c * 3 + k] = Float.parseFloat(xyz[k]);
+            }
         }
         return out;
     }

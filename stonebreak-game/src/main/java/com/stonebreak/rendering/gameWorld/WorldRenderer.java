@@ -66,6 +66,8 @@ public class WorldRenderer {
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
     private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
     private final List<Chunk> reusableLoadedChunks = new ArrayList<>();
+    /** This frame's render-distance square in world XZ: {minX, minZ, maxX, maxZ}. */
+    private final float[] renderSquare = new float[4];
     private final List<Chunk> reusableTranslucentChunks = new ArrayList<>();
     private long[] sortKeys = new long[512];
     // Region-level frustum pre-cull grid: one classifying AABB test per
@@ -477,6 +479,9 @@ public class WorldRenderer {
         int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
         reusableLoadedChunks.clear();
         world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, loadedCollector);
+        // The same square bounds the GPU-culled camera pass (see renderOpaquePass).
+        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.chunkSquare(
+            playerChunkX, playerChunkZ, world.getConfig().getRenderDistance(), renderSquare);
     }
 
     /**
@@ -573,10 +578,12 @@ public class WorldRenderer {
             // projectionViewWorld, not projectionView: the cull compute shader
             // tests per-mesh AABBs that were uploaded in world coordinates,
             // while the draw itself runs in render space off the mesh origins.
+            // Bounded to the render-distance square, as the CPU list is: the
+            // client keeps chunks meshed two past it, and FastLOD owns that ring.
             if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
                     && regionRenderer.drawLayerGpuCulled(
                         com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
-                        frustumCuller.projectionViewWorld())) {
+                        frustumCuller.projectionViewWorld(), renderSquare)) {
                 regionRenderer.drawLegacyOnly(visibleChunks,
                     com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
                 return;

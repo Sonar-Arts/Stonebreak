@@ -9,6 +9,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.DesertGravel;
 import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.CavernOrigins;
@@ -772,7 +773,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
 
     /**
      * Mixes dirt and clay into the sand of every {@link BiomeType#OCEAN} column's floor
-     * ({@link OceanFloor}). A pass over the finished storage rather than a branch of
+     * ({@link OceanFloor}) and lays the {@link BiomeType#DESERT}'s gravel patches ({@link DesertGravel}). A pass over the finished storage rather than a branch of
      * {@link #determineBlockType}: the fused kernel's surface table holds one block per biome,
      * so both paths lay sand and both get the same mix here, which keeps them byte-identical.
      * A floor that is not sand (carved, or anything else) is left alone.
@@ -784,14 +785,14 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
-                if (biomes[idx] != BiomeType.OCEAN) {
+                if (biomes[idx] != BiomeType.OCEAN && biomes[idx] != BiomeType.DESERT) {
                     continue;
                 }
                 int y = heights[idx] - 1 + Y_OFFSET;
                 if (storage.get(x, y, z) != BlockType.SAND) {
                     continue;
                 }
-                BlockType floor = OceanFloor.block(chunkX * CHUNK_SIZE + x, chunkZ * CHUNK_SIZE + z, seed);
+                BlockType floor = surfaceBlockAt(biomes[idx], chunkX * CHUNK_SIZE + x, chunkZ * CHUNK_SIZE + z);
                 if (floor != BlockType.SAND) {
                     storage.set(x, y, z, floor);
                 }
@@ -1091,7 +1092,11 @@ public class TerrainGenerationSystem implements TerrainGenerator {
      * floor's per-column mix ({@link #paintOceanFloor}).
      */
     private BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ) {
-        return biome == BiomeType.OCEAN ? OceanFloor.block(worldX, worldZ, seed) : surfaceBlock(biome);
+        if (biome == BiomeType.OCEAN) {
+            return OceanFloor.block(worldX, worldZ, seed);
+        }
+        return biome == BiomeType.DESERT && DesertGravel.at(worldX, worldZ, seed) ? BlockType.GRAVEL
+            : surfaceBlock(biome);
     }
 
     /** Package-private so the fused native generator's biome tables share this single source. */

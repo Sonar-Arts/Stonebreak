@@ -16,6 +16,7 @@ import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.DesertGravel;
 import com.stonebreak.world.generation.biomes.LakeBed;
 import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
@@ -993,7 +994,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     /**
      * Per-column surface: the sea floor mixes in dirt and clay ({@link OceanFloor}); ground under
      * inland water — a lake or a river, {@code waterDepth} blocks of it — is a lake bed of sand and
-     * dirt ({@link LakeBed}) instead of grass; dry ground is the biome's surface block.
+     * dirt ({@link LakeBed}) instead of grass; dry desert holds gravel patches ({@link DesertGravel});
+     * other dry ground is the biome's surface block.
      *
      * @param waterDepth {@code waterLevel - height}; zero or less for a dry column
      */
@@ -1002,7 +1004,10 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             return OceanFloor.block(worldX, worldZ, seed);
         }
         BlockType surface = surfaceBlock(biome);
-        return waterDepth > 0 ? LakeBed.block(biome, waterDepth, worldX, worldZ, seed, surface) : surface;
+        if (waterDepth > 0) {
+            return LakeBed.block(biome, waterDepth, worldX, worldZ, seed, surface);
+        }
+        return biome == BiomeType.DESERT && DesertGravel.at(worldX, worldZ, seed) ? BlockType.GRAVEL : surface;
     }
 
     private static BlockType surfaceBlock(BiomeType biome) {

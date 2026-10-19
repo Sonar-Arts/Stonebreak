@@ -142,15 +142,16 @@ class FastLodSerializerTest {
      * a v8 bank stands where no bank stands now; v9 roofs ground too thin to carry a
      * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
      * a coarse cell's footprint holds a river; v11 has no coarse tree spots; v11 and v12 show
-     * swamps dry, with no pools and no cypress past the finest band. The version bump forces
+     * swamps dry, with no pools and no cypress past the finest band; v13 shows deserts without
+     * their gravel. The version bump forces
      * the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(13, blob[4], "version byte moved; update this test and the note above");
-        for (byte older = 4; older < 13; older++) {
+        assertEquals(14, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 14; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");

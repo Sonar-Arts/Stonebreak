@@ -99,8 +99,9 @@ class FastLodCaveOpeningTest {
         cover[0] = (byte) 128;
         FastLodMesher.Result withMouth = mesher.build(flat(level, floor, cover));
 
-        assertEquals(quadCount(plain.mesh()) + 5, quadCount(withMouth.mesh()),
-                "one cave mouth is a floor quad plus four walls");
+        // Rim tops around the hole + floor + four walls of three bands (grass, dirt, stone).
+        assertEquals(quadCount(plain.mesh()) - 1 + 4 + 1 + 4 * 3, quadCount(withMouth.mesh()),
+                "one cave mouth is a holed top, a floor quad and four layered walls");
         assertTrue(hasVertexAtY(withMouth.mesh(), GROUND - 10),
                 "the pit floor is drawn at the opening floor");
         assertFalse(hasVertexAtY(plain.mesh(), GROUND - 10),

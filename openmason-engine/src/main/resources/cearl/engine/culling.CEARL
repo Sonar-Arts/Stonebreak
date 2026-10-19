@@ -25,7 +25,9 @@ end
 kernel cull_commands(64)
     take meshes: MeshMeta[] in
     take cmds: DrawCmd[] out
-    take planes: vec4[6]
+    ~ planes 0..5: the frustum; 6..9: an optional keep box the pass draws inside
+    ~ (vertical planes; (0,0,0,1) when the pass has none -- always passes).
+    take planes: vec4[10]
     take mesh_count: u32
 
     fix i = gid.x
@@ -34,7 +36,7 @@ kernel cull_commands(64)
     end
     fix m = meshes[i]
     flux visible = true
-    for p in 0..6
+    for p in 0..10
         fix pl = planes[p]
         ~ Positive vertex: the AABB corner farthest along the plane normal —
         ~ if even it is behind the plane, the whole box is out.

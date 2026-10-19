@@ -10,10 +10,10 @@ import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Surface decorations: gravel, ice, snow, clay - biome-specific overlays.
+ * Surface decorations: ice, snow, clay - biome-specific overlays. (Desert gravel is part of
+ * the terrain's surface now: {@link com.stonebreak.world.generation.biomes.DesertGravel}.)
  */
 public class SurfaceDecorationGenerator {
-    private static final float GRAVEL_CHANCE = 0.0015f;
     private static final float ICE_CHANCE = 0.03f;
     private static final float SNOW_CHANCE = 0.08f; // cumulative threshold (>= ICE_CHANCE)
     private static final float CLAY_CHANCE = 0.0012f;
@@ -50,7 +50,6 @@ public class SurfaceDecorationGenerator {
                 BlockType surfaceBlock = chunk.getBlock(x, surface - 1, z);
 
                 switch (biome) {
-                    case DESERT -> generateGravel(ctx, x, z, worldX, worldZ, surfaceBlock);
                     case SNOWY_PLAINS -> generateIceAndSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case RED_SAND_DESERT -> generateClay(ctx.world, worldX, worldZ, surfaceBlock);
                     case TUNDRA -> generateTundraIce(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
@@ -59,28 +58,6 @@ public class SurfaceDecorationGenerator {
                     case ICE_FIELDS -> generateGlacialSnow(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     case BADLANDS -> generateBadlandsBands(ctx, x, z, worldX, worldZ, surface, surfaceBlock);
                     default -> { /* none */ }
-                }
-            }
-        }
-    }
-
-    private void generateGravel(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
-                                BlockType surfaceBlock) {
-        if (surfaceBlock != BlockType.SAND ||
-            !rng.shouldGenerate(worldX, worldZ, "gravel_patch", GRAVEL_CHANCE)) {
-            return;
-        }
-        int radius = 4 + rng.getInt(worldX, worldZ, "gravel_patch_size", 3);
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                double distance = Math.sqrt(dx * dx + dz * dz);
-                if (distance > radius) continue;
-
-                int px = worldX + dx;
-                int pz = worldZ + dz;
-                float placeChance = 1.0f - (float) (distance / radius) * 0.35f;
-                if (rng.getFloat(px, pz, "gravel_place") < placeChance) {
-                    placeOnSurface(ctx.world, px, pz, BlockType.SAND, BlockType.GRAVEL);
                 }
             }
         }
