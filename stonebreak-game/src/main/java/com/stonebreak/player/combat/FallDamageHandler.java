@@ -26,6 +26,14 @@ public class FallDamageHandler {
             return;
         }
 
+        if (flying) {
+            // Being in flight (including re-catching yourself mid-air after a toggle-off)
+            // voids any fall in progress. Without this, wasFalling stays set and previousY
+            // stays frozen at the pre-flight height, so the next landing takes damage for
+            // a fall that never happened.
+            state.setWasFalling(false);
+        }
+
         if (!state.isOnGround() && state.getVelocity().y < 0 && !flying) {
             state.setWasFalling(true);
         }
