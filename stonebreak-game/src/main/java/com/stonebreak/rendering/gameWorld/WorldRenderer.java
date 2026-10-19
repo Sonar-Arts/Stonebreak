@@ -376,7 +376,14 @@ public class WorldRenderer {
         }
 
         // Render transparent pass (translucent solids like ice)
+        // Ice blended over the clouds would paint over the cloud in front of
+        // it; the shader composites it behind that cloud instead.
+        shaderProgram.bind();
+        int previousCloudTexture = com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.enable(
+                shaderProgram, cameraUnderwater ? 0 : cloudRenderer.transmittanceTexture());
         renderTransparentPass(visibleChunks, player);
+        shaderProgram.bind();
+        com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.disable(shaderProgram, previousCloudTexture);
 
         // Transparent drops and the crack overlay draw BEFORE water: the water
         // pass depth-prepasses its nearest surface into the depth buffer (to
@@ -502,6 +509,8 @@ public class WorldRenderer {
         shadowMapRenderer.applyToShader(shaderProgram);
         // Cloud shadows (sunlight dimmed by the cloud above, Beer-Lambert).
         cloudRenderer.uniforms().applyTo(shaderProgram);
+        com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.bindSampler(shaderProgram);
+        shaderProgram.setBool("u_cloudsInFront", false);
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));

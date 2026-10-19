@@ -53,16 +53,11 @@ uniform float uLodFade;
 uniform sampler2D uSceneDepth;
 uniform mat4 uInvProjection;
 uniform vec4 uViewport; // x, y, width, height
-// The half-resolution cloud buffer, composited over the scene BEFORE water
-// draws (alpha = transmittance of the cloud along this pixel's ray). Nothing
-// cloudy lies under a water surface, so all of it is cloud in front of the
-// water, which the water must not paint over.
-uniform sampler2D uCloudBuffer;
-uniform bool uCloudsDrawn;
-
 #include "/shaders/lighting/point_lights.glsl"
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shadow.glsl"
+// The clouds are composited BEFORE water draws; this keeps it behind them.
+#include "/shaders/clouds/clouds_in_front.glsl"
 #include "/shaders/weather/precip_fog.glsl"
 
 out vec4 fragColor;
@@ -266,12 +261,8 @@ void main() {
     }
     color = applyPrecipFog(color, uCameraPos, vWorldPos - uCameraPos, uFogColor, fogF);
 
-    // Fade out under cloud in front of the surface: the framebuffer already
-    // holds scene * T + cloud, so blending at alpha * T keeps thick cloud
-    // intact and leaves clear sky exact.
-    if (uCloudsDrawn) {
-        alpha *= texture(uCloudBuffer, sceneUv).a;
-    }
+    // Behind the cloud in front of the surface (seen from above the clouds).
+    color = behindClouds(color, uCameraPos, vWorldPos);
 
     fragColor = vec4(color, alpha);
 }
