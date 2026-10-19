@@ -206,7 +206,7 @@ def main(argv=None) -> None:
                  time.monotonic() - t0, gen.river.describe())
         t0 = time.monotonic()
         gen.warm_up()   # kernels + CUDA graphs now, so the first tile does not pay for them
-        log.info("GPU kernels warm in %.1f s", time.monotonic() - t0)
+        log.info("native kernels warm in %.1f s", time.monotonic() - t0)
 
         hello = W.read_frame(proto_in)
         if hello is None:

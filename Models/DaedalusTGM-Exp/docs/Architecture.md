@@ -1,6 +1,6 @@
 # DaedalusTGM-Exp: Terrain Generation Model Architecture
 
-**Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-29 (v4: 49M detail sampler, 24 regions, routed drainage + downhill-only rivers, hilly lowlands, biome sidecar, §1a; Triton kernels, §12a; done / left checklist, §15)
+**Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-29 (v4: 49M detail sampler, 24 regions, routed drainage + downhill-only rivers, hilly lowlands, biome sidecar, §1a; native CUDA + C++ kernels (2026-10-19), §12a; done / left checklist, §15)
 **Name:** **DaedalusTGM-Exp** (Daedalus Terrain Generation Model, experimental): the official name of the model (the process that serves it to the game is **TGMPipe**). Code identifiers keep their original names: Python package `terrain_slm`. The name appears in `terrain_slm.MODEL_NAME`, the service's READY handshake (`"name"`), its `model_id` (`DaedalusTGM-Exp/v3:p…:r…:l…:h…:b…:g…`), its log, and `TGMPipe.MODEL_NAME` (Java)
 **Home:** `Models/DaedalusTGM-Exp/` (this model: code, training, TGMPipe, checkpoints, reports, docs) · Java `TGMPipe` + world constants (`TerrainScale`)
 **Plan / history:** [`Terrain-SLM-Plan.md`](Terrain-SLM-Plan.md) (§13 onward is the running log)
@@ -424,32 +424,82 @@ One child process of the game, `python -m terrain_slm.tgmpipe`, spoken to over i
 - **Lifecycle:** exits when stdin closes (the game exited, crashed or was killed), so it never outlives the game. Java `TGMPipe` restarts it if it dies while running and re-sends in-flight tiles (3 restarts / 10 min), and kills a service that sends nothing for 10 min with tiles pending.
 - Biomes come from upstream's classifier, vendored verbatim. Knobs (env or flags): `TERRAIN_SLM_T_START` 0.6, `TERRAIN_SLM_STEPS` 8, `TERRAIN_SLM_AMP_SCALE` 1.0, `TERRAIN_SLM_RIVER_THRESHOLD` (model default: 5.5 with hydro, 4.5 relief-only, 3.3 without either), `TERRAIN_SLM_DEVICE`.
 
-**Timing** (one RTX PRO 6000; v3 numbers — v4 with the Triton kernels: **7.8 s** cold, **0.56 s** per streaming tile, §12a): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile. Planner windows are generated in fixed batches of 32 (`PLANNER_BATCH`; inputs computed once over the batch's bounding box, bit-identical to one at a time): per-window launch overhead was ~31 ms, now a coarse tile's 2,145 windows take seconds, not a minute.
+**Timing** (one RTX PRO 6000; v3 numbers — v4 with the native kernels: **6.3-6.9 s** cold, **~0.5 s** per streaming tile, §12a): first tile of a new world **28.7 s** cold (relief, hydro and descriptor windows warm up), then about **1.5 s** per tile. Planner windows are generated in fixed batches of 32 (`PLANNER_BATCH`; inputs computed once over the batch's bounding box, bit-identical to one at a time): per-window launch overhead was ~31 ms, now a coarse tile's 2,145 windows take seconds, not a minute.
 
 **Far-zoom preview tiles (`lod`).** A tile request may carry `lod` (world blocks per sample, a power of two). Coordinates are then in sample units (world // lod), so the 256×256 tile shape is unchanged and a tile covers 256·lod blocks. Each sample is `downscale × lod` native pixels, and the disk cache keys `lod` separately. At 8 px or more per sample (whole 240 m cells), the service answers from the cell fields alone (`TileBuilder._overview`): coarse height, hydro rivers (one sample wide) with D8 flow, and biomes; no descriptor sampling, synth, refiner or river pipeline. An 8,192-block square takes 17 s cold (0.6 s per tile once windows are warm), against ~11 min of full tiles. For the terrain mapper zoomed out only, never for chunks.
 
-## 12a. Inference kernels (`terrain_slm/kernels/`, 2026-09-29)
+## 12a. Inference kernels (`terrain_slm/kernels/`, native since 2026-10-19)
 
-Custom Triton kernels for the two hot spots of a v4 tile. On by default on CUDA; `TGM_KERNELS=0` (or `GenConfig.fused_kernels=False`) is the plain torch path.
+The project's own kernels: CUDA C++ and C++, no Triton, no nvcc, no torch extension. On by default;
+`TGM_KERNELS=0` (or `GenConfig.fused_kernels=False` for the samplers) is the plain torch / numpy path.
+(2026-09-29 to 2026-10-18 these were Triton kernels, model id `:kf1`; replaced in full.)
 
-- **Controls** (`kernels/controls.py`): `procedural_controls` (~40 hash-noise fbm evaluations, ~2,000 tiny launches, **27 ms** per call, ~100 calls on a cold tile) as one kernel: **0.03 ms**, **bit-identical** to `procedural_controls_torch` (the definition; change both together). Exactness takes: every mul/add through libdevice `mul_rn`/`add_rn`/`sub_rn`, libdevice `exp`, IEEE `div_rn`, no FTZ, `tensor / scalar` as a multiply by the fp32 reciprocal (torch's CUDA scalar division), softmax with a sequential sum, the archetype blend in torch's 4-accumulator reduction order. **Trap:** plain `a * b + c` in Triton is *not* exact on sm_120 even with `enable_fp_fusion=False` -- LLVM O3 pairs lanes into `mul/add.rn.f32x2` and the bundled ptxas 12.9 fuses those into FFMA (seen in SASS), so the result drifted by an ulp and depended on how an argument specialisation got vectorised (a cell's value changed with the window size). torch's own `procedural_controls` differs for a 1x1 window (single-output reduction path); the kernel matches torch's canonical values at every size.
-- **Fused conv** (`kernels/conv.py`): implicit-GEMM NHWC bf16 convolution, fp32 accumulation, with the UNet glue folded in -- input SiLU is written by the producer's epilogue, skip concat is a second K segment, FiLM + bias + residual + SiLU in the epilogue, the Euler update in the output conv. `upconv` runs nearest-2x-upsample + 3x3 conv as four 2x2 phase convolutions (collapsed taps pre-summed): 2.25x fewer FLOPs, the upsampled tensor never exists. Launch configs are a fixed table per layer shape (`CONFIGS`, `UP_CONFIGS`, from `scripts/tune_kernels.py`), never timed at run time, so every process computes the same numbers. Input channels must be multiples of 16 (`FusedSampler.supported`; v3's relief falls back to torch).
-- **Samplers** (`kernels/unet.py`, `FusedSampler`): a `Detail` or `Relief` becomes a static plan of ~54 fused launches per step, FiLM tables precomputed for the fixed time grid, and all 16 Euler steps captured as **one CUDA graph** (thread-local capture; buffers preallocated per window shape). The service samples on `cuda:1` while `cuda:0` is current: every launch is wrapped in `torch.cuda.device` (Triton launches on the current device).
-- **Numerics:** the fused samplers are *closer* to an fp32 reference than autocast (detail RMS 1.3–2.0 m vs 1.8–2.8 m; relief 0.57–0.66 vs 0.72–0.80 m) but not identical to it: 10.4% of block columns differ, almost all by ±1 block (0.8% of water columns). The model id gains `:kf1`, so tile caches / the FastLOD store keep the two apart; chunks saved under the torch path will meet new ones with ±1-block steps at the explored frontier. Guard behaviour unchanged (4/256 first-attempt instabilities on both paths, none non-finite). Deterministic: a tile built on `cuda:1` in one process equals the single-GPU build byte for byte.
-- **FP8 is not a drop-in:** fake-quantised e4m3 convs (per-channel weights, static or per-pixel activations) move the detail sample 28–42 m RMS (~70% of the relief's std; bf16: ~2 m) -- it would need quantisation-aware fine-tuning first.
+- **Build + load** (`kernels/native.py`): `csrc/*.cu` is compiled at run time by **NVRTC** -- the libnvrtc
+  in torch's own `nvidia-cuda-nvrtc` wheel, so no CUDA toolkit is needed -- to a cubin for the device's exact
+  architecture, loaded with the CUDA **driver API** (ctypes `libcuda`) into torch's primary context and
+  launched with `cuLaunchKernel` on torch's current stream (so torch's CUDA graphs capture them). `csrc/*.cpp`
+  is compiled by the system C++ compiler (`-O3 -march=x86-64-v3`) and loaded with ctypes. Both are cached in
+  `Models/kernel_cache/` (gitignored; `TGM_KERNEL_CACHE`), keyed by source hash + options + target; the game's
+  setup warm-up fills it, so a world never waits on a compiler.
+- **Controls** (`csrc/controls.cu`, `cuda_controls.py`): `procedural_controls` as one kernel, **0.017 ms** per
+  448² call (torch: 27 ms), **bit-identical** to `procedural_controls_torch` (the definition; change both
+  together). Every fp32 mul/add/sub is an explicitly rounded intrinsic (`__fmul_rn`...: never contracted,
+  never paired into f32x2), IEEE `__fdiv_rn`, CUDA `expf` (what torch.exp calls), `--fmad=false -ftz=false`,
+  `tensor / scalar` as torch's multiply by the fp32 reciprocal.
+- **Convolutions**, fp16 tensor cores (`mma.sync.m16n8k16`, `ldmatrix`, multi-stage `cp.async`), fp32
+  accumulation, the UNet glue fused (bias, FiLM, residual, raw + SiLU stores, Euler update):
+  - `csrc/hconv.cu` -- **halo-tiled 3x3** for every ResBlock conv: a block owns a 2D pixel tile and loads its
+    input halo once per 16-channel chunk; the nine taps are shifted ldmatrix row addresses into it. The
+    implicit GEMM re-streamed every input pixel nine times through L2, which -- not the tensor cores -- set the
+    speed (by ablation: operand loads alone were ~50% of kernel time). Epilogue staged per warp for coalesced
+    16 B stores, with residuals loaded up front (in place, `res == out_raw`, the compiler cannot hoist a load
+    above an earlier store: per-task loads serialised ~600-cycle misses).
+  - `csrc/conv.cu` -- implicit GEMM for the rest: stride-2 downs, the stem, and the up path as four 2x2 phase
+    convolutions (4 taps instead of 9, no upsampled tensor) with the Detail's 1x1 merge **folded in**
+    (`merge(cat(up(h), skip)) = (Wa Wup) * up(silu h) + Wb skip + bias`, exact: nothing nonlinear in between;
+    composite weights in fp64, rounded once). N tiles are any multiple of 16 (Triton's powers of two wasted 25%
+    of the MMAs on the 96 / 288-channel levels).
+  - **Kernel type is a rule, configs are tuned.** The two kernels sum in different orders, so which one a layer
+    uses is fixed (`cuda_unet.uses_hconv`); launch configs within a kernel never change a number (fixed K
+    order, no split-K; `tests/test_cuda_kernels.py` pins it), so `scripts/tune_cuda_kernels.py` may tune them
+    per GPU into `kernels/cuda_configs.json` (data: retuning leaves tile caches alone). Tune round-robin: at the
+    300 W cap clocks drift 1.4-2.9 GHz with load, so back-to-back timings rank configs by temperature.
+  - A Winograd F(2x2, 3x3) kernel (2.25x fewer MMAs) was built and dropped: it moves 16/9 more weight bytes per
+    tile and lost to the halo kernel at every level, sustained and in bursts.
+- **Samplers** (`cuda_unet.py`, `NativeSampler`): a `Detail` or `Relief` becomes a static plan of fused
+  launches over preallocated NHWC fp16 buffers, FiLM tables in fp32 for the fixed time grid, all 16 Euler steps
+  recorded as **one CUDA graph**; the Euler state stays fp32.
+- **Numerics: fp16, not bf16.** Same tensor-core rate, 8x finer mantissa; activations peak ~50, far inside fp16
+  range. Against the fp32 model on 12 real in-game windows: detail **0.136 m** RMS / 1.8-2.3 m worst pixel
+  (Triton bf16: 1.32 m / 24.7 m; autocast bf16: 1.88 m), relief 0.055 m (Triton 0.57 m). In whole tiles
+  (2 seeds x 16 tiles vs an fp32-sampler world): columns whose height differs **1.0-1.1%** (Triton 6.6-7.9%),
+  >= 2 blocks 0.05% (0.16-0.25%), water presence 0.04-0.06% (0.12-0.22%), biome 0.006-0.016% (0.03-0.13%).
+  Model id `:kc1`. Guard failures 0 on both. Deterministic: graph replay == eager launches, bit for bit.
+- **Routing** (`csrc/hydro.cpp`, `hydro.py`): priority-flood fill, D8, accumulation and seam-cycle breaking in
+  C++, **bit-identical** to the numba / numpy reference (a radix heap with FIFO buckets pops in exactly the
+  reference's (key, insertion) order; a binary-heap replica where that order could break). route_window
+  28.6 -> 14.2 ms, break_seam_cycles 11.2 -> 1.3 ms per 448² window. `fill.py` / `flow.py` dispatch to it too.
+- **CPU path** (`csrc/unet_cpu.cpp`, `cpu_sampler.py`, `controls_cpu.py`): the samplers in fp32 C++ (AVX2 + FMA
+  6x16 micro-kernel, Winograd F(6x6) / F(4x4) by layer -- fp32 has the headroom -- fused epilogues, own
+  work-stealing thread pool for the hybrid P/E cores, bit-identical across thread counts), ~1e-4 m from the fp32
+  model. Detail window **5.8 s** (torch CPU fp32: 31.8 s), relief ~1 s. CPU controls in C++ (5.8 ms vs 187 ms),
+  same op order as the GPU kernel but CPU `expf` differs by an ulp, so CPU worlds are their own model id
+  (`:cc1`). `--device cpu` on the service / warm-up.
+- **FP8 is not a drop-in:** fake-quantised e4m3 convs move the detail sample 28-42 m RMS -- it would need
+  quantisation-aware fine-tuning first.
 
-**Measured** (RTX PRO 6000 at its 300 W limit; sustained load holds ~1.7 GHz of 3.09):
+**Measured** (RTX PRO 6000 at its 300 W cap, vLLM resident on both cards, A/B in one session):
 
-| | torch / autocast | kernels |
+| | Triton (`:kf1`) | native (`:kc1`) |
 |---|---|---|
-| detail window (16 steps, 512²) sustained / burst | 200 / 174 ms | 131 / 85 ms |
-| relief window (16 steps, 448²) | 62.5 ms | 19 ms |
-| `procedural_controls` | 27 ms | 0.03 ms |
-| 12 streaming tiles | 929 ms/tile | 560 ms/tile |
-| neighbour tile / cold first tile | 1.25 / 13.2 s | 0.82 / 7.8 s |
-| 27 tiles, 3 seeds (cold per seed) | 53.3 s | 29.3 s |
+| detail window (16 steps, 512²), sustained | 149 ms | 134 ms |
+| relief window (16 steps, 448²) | ~19 ms | 17 ms |
+| `procedural_controls` 448² | 0.03 ms | 0.017 ms |
+| cold first tile (4x4 tile runs, 3 runs) | 7.6-8.2 s | 6.3-6.9 s |
+| streaming tiles, mean / median | 535-564 / 255-268 ms | 490-505 / 238-266 ms |
 
-First launch on a machine (or after editing a kernel) compiles the kernels once: +11 s on the first tile, then Triton's disk cache (`~/.triton/cache`). What is left per steady-state tile is ~84% the detail UNet, now ~60% of the card's bf16 tensor peak in bursts and power-bound when sustained.
+Both are power-bound when sustained (~293 W, 1.4-1.5 GHz): removing stalls lowers the clock at the same speed,
+only less energy per window helps. What is left per steady-state tile is ~55% the detail UNet.
 
 ## 13. Game integration (Java)
 
@@ -483,8 +533,8 @@ First launch on a machine (or after editing a kernel) compiles the kernels once:
 ### Closed since this list was written (v3)
 
 - ✅ **Rivers climbed, flipped direction, and were far too many** — routed drainage over the model's own height, downhill-only surfaces and blocks, threshold recalibrated (v4, §1a).
-- ✅ **Cold start 28.7 s for the first tile** — now **7.8 s** (v4 + Triton kernels, §12a); a first-ever launch also compiles the kernels during the game's setup screen, not on the first tile.
-- ✅ **Inference speed** — custom Triton kernels: 929 → 560 ms per streaming tile, detail window 200 → 131 ms sustained (§12a).
+- ✅ **Cold start 28.7 s for the first tile** — now **6.3-6.9 s** (v4 + native kernels, §12a); a first-ever launch also compiles the kernels during the game's setup screen, not on the first tile.
+- ✅ **Inference speed** — own CUDA + C++ kernels (replaced the Triton ones 2026-10-19): ~0.5 s per streaming tile, 7x closer to the fp32 model than Triton's bf16; routing native (§12a).
 - ✅ **Setup by hand** — the game installs the Python environment and compiles the kernels itself on launch (`ModelSetup`, README "Playing").
 - ✅ **Checkpoint shipping** — v4 tracked as bf16 in plain git (no LFS).
 - ◐ **Bland lowlands** — hilly lowland provinces calibrated on real hilly regions (v4, §1a); *terrain shape following climate zones* is still left (below).
@@ -519,9 +569,9 @@ First launch on a machine (or after editing a kernel) compiles the kernels once:
 **Before shipping beyond this machine**
 
 14. ☐ **Licensing** — GLO-30 attribution and WorldClim terms before distributing weights.
-15. ☐ **Windows is untested** — the setup handles its paths, but Triton does not ship there, so it would run the slower torch path.
+15. ☐ **Windows is untested** — the setup handles its paths; the CUDA kernels need only NVRTC (in torch's wheel) and the driver, but `native.py` loads `libcuda.so.1` / builds `.so` with a POSIX compiler, so Windows needs `nvcuda.dll` + MSVC support there first.
 
-**Standing caveat:** worlds keep the terrain their chunks were saved with. Chunks from an older model (v1–v3), or from the torch path before the fused samplers (`:kf1`, ±1 block on ~10% of columns), will not match new tiles at the explored frontier; start a new world for a clean result.
+**Standing caveat:** worlds keep the terrain their chunks were saved with. Chunks from an older model (v1–v3), or from an earlier kernel path (`:kf1` Triton, the torch path; ±1 block on ~7-10% of columns vs `:kc1`), will not match new tiles at the explored frontier; start a new world for a clean result.
 
 ## 16. Mountain diagnosis that led to v2 (2026-09-27)
 

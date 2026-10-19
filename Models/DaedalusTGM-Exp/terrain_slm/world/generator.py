@@ -322,18 +322,23 @@ def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device)
 
     Stand-ins for painted maps: continents, mountain ranges and hills (the smooth trend),
     roughness (wildness) from the same fields, and climate archetypes. Pointwise in cell
-    coordinates, so any window of it is exact. On CUDA this runs as one Triton kernel
-    (kernels/controls.py, bit-identical, ~1000x faster); `procedural_controls_torch` is the definition.
+    coordinates, so any window of it is exact. On CUDA this runs as one native kernel
+    (kernels/cuda_controls.py, bit-identical, ~1000x faster); `procedural_controls_torch` is the definition.
     """
     if K.available(device):
-        from terrain_slm.kernels import controls as KC
+        from terrain_slm.kernels import cuda_controls as KC
         return KC.procedural_controls(ci0, cj0, hc, wc, seed, device)
+    if K.cpu_available(device):
+        # C++ on the CPU: the same op order, but CPU expf is not CUDA's (~1 ulp), so CPU worlds carry
+        # their own model_id marker (see WorldGenerator.__init__).
+        from terrain_slm.kernels import controls_cpu as KCC
+        return KCC.procedural_controls(ci0, cj0, hc, wc, seed)
     return procedural_controls_torch(ci0, cj0, hc, wc, seed, device)
 
 
 def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> dict:
-    """The reference definition of `procedural_controls` (kernels/controls.py must match it bit for bit:
-    change both together, and the kernel's `_check_constants`)."""
+    """The reference definition of `procedural_controls` (csrc/controls.cu must match it bit for bit:
+    change both together, and kernels/cuda_controls.py's `_check_constants`)."""
     ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
     cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
     continent, land = _continent(ci, cj, seed)
@@ -375,7 +380,11 @@ def route_window(height: torch.Tensor, precip_mm: torch.Tensor, flat_noise: torc
     """Route water over one window's coarse height: fill depressions (every land cell gets a
     descending path to the sea or the window edge), steepest-descent D8. Returns numpy
     (recv (H*W,) int64 flat receiver or -1, invalid (H, W) bool ocean, weights (H, W) float64
-    precipitation runoff per cell) -- the training data's own definition (data/build.py)."""
+    precipitation runoff per cell) -- the training data's own definition (data/build.py). Native
+    (kernels/hydro.py, bit-identical) when a C++ compiler is available."""
+    from terrain_slm.kernels import hydro as KH
+    if KH.available():
+        return KH.route_window(height, precip_mm, flat_noise)
     import numpy as np
     from terrain_slm.data.hydrology.fill import fill_depressions, ocean_mask
     from terrain_slm.data.hydrology.flow import d8_receivers
@@ -401,27 +410,32 @@ def accumulate_drainage(recv, invalid, weights, inflow_logacc: torch.Tensor | No
     from terrain_slm.data.build import D8_OFFSETS
     from terrain_slm.data.hydrology.flow import flow_accumulation
 
+    from terrain_slm.kernels import hydro as KH
     h, w = invalid.shape
-    idx = np.arange(h * w)
-    if inflow_logacc is not None:
-        ring = np.zeros((h, w), dtype=bool)
-        ring[0, :] = ring[-1, :] = ring[:, 0] = ring[:, -1] = True
-        inward = ring.ravel() & (recv >= 0)
-        extra = np.expm1(inflow_logacc.detach().double().cpu().numpy().clip(0.0, 30.0)).ravel()
-        wv = weights.ravel().copy()
-        wv[inward] = np.maximum(wv[inward], extra[inward])
-        weights = wv.reshape(h, w)
-    acc = flow_accumulation(recv, ~invalid, weights=weights)
-    d8 = np.full(h * w, 8, dtype=np.int64)
-    live = recv >= 0
-    dr = recv[live] // w - idx[live] // w
-    dc = recv[live] % w - idx[live] % w
-    for k, (a, b) in enumerate(D8_OFFSETS):
-        d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
+    if KH.available():
+        acc, d8 = KH.accumulate_core(recv, invalid, weights, inflow_logacc)
+    else:
+        idx = np.arange(h * w)
+        if inflow_logacc is not None:
+            ring = np.zeros((h, w), dtype=bool)
+            ring[0, :] = ring[-1, :] = ring[:, 0] = ring[:, -1] = True
+            inward = ring.ravel() & (recv >= 0)
+            extra = np.expm1(inflow_logacc.detach().double().cpu().numpy().clip(0.0, 30.0)).ravel()
+            wv = weights.ravel().copy()
+            wv[inward] = np.maximum(wv[inward], extra[inward])
+            weights = wv.reshape(h, w)
+        acc = flow_accumulation(recv, ~invalid, weights=weights)
+        d8 = np.full(h * w, 8, dtype=np.int64)
+        live = recv >= 0
+        dr = recv[live] // w - idx[live] // w
+        dc = recv[live] % w - idx[live] % w
+        for k, (a, b) in enumerate(D8_OFFSETS):
+            d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
+        d8 = d8.reshape(h, w)
     acc_t = torch.from_numpy(acc).float().to(device)
     acc_t = F.max_pool2d(acc_t[None, None], 3, stride=1, padding=1)[0, 0]
     river = (acc_t >= P.RIVER_MIN_UPSLOPE_CELLS).float()
-    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8.reshape(h, w)).float().to(device)])
+    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8).float().to(device)])
 
 
 def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
@@ -435,7 +449,11 @@ def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc
 def break_seam_cycles(recv, owner):
     """Make a stitched receiver graph acyclic. Each window's own routing strictly descends, so a
     cycle can only run through edges between cells owned by different windows; among the cells
-    Kahn's algorithm cannot drain, those edges are cut (the cell becomes terminal). In place."""
+    Kahn's algorithm cannot drain, those edges are cut (the cell becomes terminal). In place.
+    Native (kernels/hydro.py, bit-identical) when a C++ compiler is available."""
+    from terrain_slm.kernels import hydro as KH
+    if KH.available():
+        return KH.break_seam_cycles(recv, owner)
     import numpy as np
     n = recv.size
     for _ in range(4):
@@ -475,9 +493,9 @@ class GenConfig:
     # regression: accumulation then grows downstream by construction, so rivers form connected
     # networks instead of fragments that start and stop wherever the regressed flow wobbles.
     routed_drainage: bool = True
-    # Detail / relief samplers as fused Triton convolutions in one CUDA graph (kernels/unet.py):
-    # ~2x faster detail windows, ~3x faster relief windows. Numerically close to the autocast
-    # samplers but not identical, so the model_id carries a marker. TGM_KERNELS=0 also turns it off.
+    # Detail / relief samplers on the native kernels (kernels/cuda_unet.py: fused fp16 tensor-core convs
+    # in one CUDA graph), ~10x closer to the fp32 model than bf16 autocast. Their numbers differ from
+    # the torch samplers', so the model_id carries a marker. TGM_KERNELS=0 also turns them off.
     fused_kernels: bool = True
 
 
@@ -535,12 +553,20 @@ class WorldGenerator:
         self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
                          f":h{hyd_step}:b{bank_step}:g{dg_step}:d{det_step}")
         self._samplers = {}
-        self._fused = set()   # ids of the UNets sampled by kernels/unet.py
+        self._fused = set()   # ids of the UNets sampled by the native samplers (kernels/cuda_unet.py, cpu_sampler.py)
+        self._sampler_cls = None
         if cfg.fused_kernels and K.available(device):
-            from terrain_slm.kernels.unet import FusedSampler
-            self._fused = {id(m) for m in (self.detail, self.relief) if m is not None and FusedSampler.supported(m)}
+            from terrain_slm.kernels.cuda_unet import NativeSampler as cls
+            self._sampler_cls, marker = cls, ":kc1"     # native fp16 tensor-core samplers
+        elif cfg.fused_kernels and K.cpu_available(device):
+            from terrain_slm.kernels.cpu_sampler import CpuSampler as cls
+            self._sampler_cls, marker = cls, ":cc1"     # native fp32 CPU samplers (+ CPU controls)
+        if self._sampler_cls is not None:
+            self._fused = {id(m) for m in (self.detail, self.relief) if m is not None and self._sampler_cls.supported(m)}
         if self._fused:
-            self.model_id += ":kf1"   # fused-kernel samplers (their numbers differ from autocast's)
+            self.model_id += marker   # their numbers differ from the torch samplers', so tile caches keep them apart
+        elif K.cpu_available(device):
+            self.model_id += ":cc0"   # CPU controls without native samplers
         # Optional biome sidecar (v4): coherent biomes instead of the rule classifier's per-column decisions.
         self.biomenet, bio_step = self._optional(model_dir / "biome.pt", lambda c: BN.BiomeNet(BN.BiomeNetConfig(**c)))
         if bio_step != "none":
@@ -576,9 +602,9 @@ class WorldGenerator:
         return m, k.get("step", 0)
 
     def _sample(self, model, cond: torch.Tensor, noise: torch.Tensor, steps: int, t_start: float = 0.0) -> torch.Tensor:
-        """Euler-sample `model` (the detail or relief UNet) from `noise` under `cond`: the fused CUDA-graph
-        sampler when kernels are on (one per model and window shape, built on first use), else the torch
-        sampler. Both return the encoded sample (1, 1, H, W) fp32."""
+        """Euler-sample `model` (the detail or relief UNet) from `noise` under `cond`: the native sampler when
+        kernels are on (CUDA graph on a GPU, C++ on the CPU; one per model and window shape, built on first
+        use), else the torch sampler. All return the encoded sample (1, 1, H, W) fp32."""
         if id(model) not in self._fused:
             if isinstance(model, DT.Detail):
                 return DT.sample(model, cond.contiguous(memory_format=torch.channels_last), noise, steps=steps, t_start=t_start)
@@ -586,15 +612,15 @@ class WorldGenerator:
         key = (id(model), tuple(cond.shape), steps, t_start)
         fs = self._samplers.get(key)
         if fs is None:
-            from terrain_slm.kernels.unet import FusedSampler
-            fs = self._samplers[key] = FusedSampler(model, cond.shape[-2], cond.shape[-1], steps, t_start)
+            fs = self._samplers[key] = self._sampler_cls(model, cond.shape[-2], cond.shape[-1], steps, t_start)
         return fs(cond, noise)
 
     def warm_up(self, report=lambda what: None) -> None:
-        """Compile the GPU kernels and capture the samplers' CUDA graphs now instead of on the first tile
-        (compiled kernels persist in Triton's disk cache; graphs live as long as this generator).
-        `report(name)` hears each piece as it starts. A no-op on the torch path."""
-        if not K.available(self.device):
+        """Compile the native kernels and build the samplers (capturing their CUDA graphs on a GPU) now
+        instead of on the first tile (compiled kernels persist in the kernel cache, Models/kernel_cache;
+        samplers live as long as this generator). `report(name)` hears each piece as it starts. A no-op on
+        the torch path."""
+        if not (K.available(self.device) or K.cpu_available(self.device)):
             return
         with self.lock, torch.no_grad():
             report("terrain controls")
@@ -607,7 +633,8 @@ class WorldGenerator:
                 report(name)
                 zeros = lambda c: torch.zeros(1, c, n, n, device=self.device)
                 self._sample(model, zeros(n_cond), zeros(1), steps, t_start)
-            torch.cuda.synchronize(self.device)
+            if torch.device(self.device).type == "cuda":
+                torch.cuda.synchronize(self.device)
 
     def set_block_scale(self, scale: BlockScale) -> None:
         """The game's metres<->blocks mapping (the service passes the one from its handshake)."""

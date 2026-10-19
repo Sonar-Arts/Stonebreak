@@ -1,6 +1,6 @@
-"""Game-launch check of the terrain model: GPU, model, and the GPU kernels compiled ahead of time.
+"""Game-launch check of the terrain model: GPU, model, and the native kernels compiled ahead of time.
 
-    python -m terrain_slm.tgmpipe.warmup [model_dir] [--device cuda]
+    python -m terrain_slm.tgmpipe.warmup [model_dir] [--device cuda|cpu]
 
 The game's model setup (Java `ModelSetup`) runs this once after installing the environment and
 whenever the kernels change, so the first world never waits on a compiler. It reports progress
@@ -11,8 +11,9 @@ as one JSON object per line on stdout, which the setup screen shows:
     {"done": true, "gpu": "...", "device": "...", "seconds": 12.3}
     {"error": "..."}                          (then exit status 1)
 
-Compiled kernels land in Triton's cache (TRITON_CACHE_DIR, which the game points at
-Models/triton_cache), where the TGMPipe service finds them.
+Compiled kernels (NVRTC cubins for csrc/*.cu, shared libraries for csrc/*.cpp) land in the kernel
+cache (TGM_KERNEL_CACHE, which the game points at Models/kernel_cache), where the TGMPipe service
+finds them. `--device cpu` checks the CPU path instead (C++ samplers; slow, but no GPU needed).
 """
 from __future__ import annotations
 
@@ -42,11 +43,14 @@ def main(argv=None) -> int:
         from terrain_slm.tgmpipe.service import pick_device
         from terrain_slm.world.generator import WorldGenerator
 
-        if not torch.cuda.is_available():
-            _emit(error="PyTorch cannot see a CUDA GPU (NVIDIA driver missing or too old?)")
-            return 1
-        device = pick_device(args.device)
-        gpu = torch.cuda.get_device_name(torch.device(device))
+        if args.device == "cpu":
+            device, gpu = "cpu", "CPU"
+        else:
+            if not torch.cuda.is_available():
+                _emit(error="PyTorch cannot see a CUDA GPU (NVIDIA driver missing or too old?)")
+                return 1
+            device = pick_device(args.device)
+            gpu = torch.cuda.get_device_name(torch.device(device))
         _emit(stage="verify", detail=f"Loading the model on {gpu}")
         model_dir = Path(args.model_path)
         if not model_dir.is_absolute():
