@@ -27,6 +27,7 @@ from terrain_slm import biomes as B
 from terrain_slm.models import biomenet as BN
 from terrain_slm.world import generator as G
 from terrain_slm.world import ocean as O
+from terrain_slm.world import swamp_relief as SR
 
 # Biome climate is lapse-adjusted by the REGIONAL elevation (generator.regional_elevation): with each
 # column's own height, hard classifier thresholds made biome boundaries follow every hill's contours
@@ -166,7 +167,9 @@ class TileBuilder:
         h, w = i2 - i1, j2 - j1
         c = gen.overview_cells((i1 - 1) * k, (j1 - 1) * k, (h + 2) * k, (w + 2) * k)
         pool = lambda x: F.avg_pool2d(x[None], k)[0]
-        elev = pool(c["height"][None])[0]
+        # Swamp ground on its water table, as river_field flattens full tiles (swamp_relief).
+        elev = pool(SR.flatten(c["height"], *gen.swamp_relief_cells((i1 - 1) * k, (j1 - 1) * k, (h + 2) * k,
+                                                                    (w + 2) * k))[None])[0]
         peak, idx = F.max_pool2d(c["logacc"][None, None], k, return_indices=True)
         wet = (peak[0, 0] >= gen.cfg.river_log_threshold) & (elev > 0.5)
         sc = gen.scale

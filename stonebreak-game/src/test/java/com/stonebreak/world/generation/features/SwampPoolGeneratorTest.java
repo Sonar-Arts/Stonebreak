@@ -1,6 +1,7 @@
 package com.stonebreak.world.generation.features;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ import com.stonebreak.world.generation.biomes.BiomeType;
  * Swamp pools must never leak. Every generated water cell must have a watertight floor and
  * four watertight sides, or WaterSim wakes it on load and the source floods forever. The
  * fixtures are built to tempt leaks: stepped ground, bumps, carved air beside the surface,
- * and an unloaded (air) neighbour chunk.
+ * and an unloaded neighbour chunk answered by the terrain-pass oracle, including a carved one.
  */
 class SwampPoolGeneratorTest {
 
@@ -42,6 +43,22 @@ class SwampPoolGeneratorTest {
     private static Fixture generate(Terrain terrain, BiomeType biome, long seed,
                                     SwampPoolGenerator.BlockReader outside) {
         Chunk chunk = new Chunk(0, 0);
+        new SwampPoolGenerator(new DeterministicRandom(seed)).generate(
+            context(chunk, terrain, biome), outside);
+        return new Fixture(chunk, outside);
+    }
+
+    /** Unloaded neighbours answered by the terrain pass instead of by {@code outside}. */
+    private static Fixture generate(Terrain terrain, BiomeType biome, long seed,
+                                    SwampPoolGenerator.ColumnOracle columns) {
+        Chunk chunk = new Chunk(0, 0);
+        new SwampPoolGenerator(new DeterministicRandom(seed)).generate(
+            context(chunk, terrain, biome), columns);
+        return new Fixture(chunk, (x, y, z) -> SwampPoolGenerator.terrainPassBlock(columns, x, y, z));
+    }
+
+    /** Fills {@code chunk} the way the terrain pass would and wraps it in a generation context. */
+    private static ChunkGenerationContext context(Chunk chunk, Terrain terrain, BiomeType biome) {
         int[] heights = new int[SIZE * SIZE];
         BiomeType[] biomes = new BiomeType[SIZE * SIZE];
         for (int x = 0; x < SIZE; x++) {
@@ -53,13 +70,20 @@ class SwampPoolGeneratorTest {
                 chunk.setBlock(x, h - 1, z, BlockType.SWAMPY_GRASS);
             }
         }
-        new SwampPoolGenerator(new DeterministicRandom(seed)).generate(
-            new ChunkGenerationContext(null, chunk, null, heights, biomes, null, biome), outside);
-        return new Fixture(chunk, outside);
+        return new ChunkGenerationContext(null, chunk, null, heights, biomes, null, biome);
     }
 
     private static SwampPoolGenerator.BlockReader solidBelow(Terrain terrain) {
         return (x, y, z) -> y < terrain.height(x, z) ? BlockType.DIRT : BlockType.AIR;
+    }
+
+    /** A {@code ColumnOracle} reading its three column facts from per-column terrain functions. */
+    private static SwampPoolGenerator.ColumnOracle oracle(Terrain raw, Terrain surface, Terrain water) {
+        return new SwampPoolGenerator.ColumnOracle() {
+            @Override public int rawHeight(int x, int z) { return raw.height(x, z); }
+            @Override public int surfaceHeight(int x, int z) { return surface.height(x, z); }
+            @Override public int waterLevel(int x, int z) { return water.height(x, z); }
+        };
     }
 
     /** Asserts containment and returns how many water cells there are. */
@@ -139,16 +163,100 @@ class SwampPoolGeneratorTest {
     }
 
     @Test
-    void unloadedNeighbourKeepsBorderColumnsDry() {
+    void unloadedNeighbourAnsweredByOracleFloodsBorderColumns() {
         Terrain flat = (x, z) -> BASE;
+        SwampPoolGenerator.ColumnOracle columns = oracle((x, z) -> BASE, (x, z) -> BASE, (x, z) -> -1);
+        int borderWater = 0;
         for (long seed = 0; seed < 20; seed++) {
-            Fixture f = generate(flat, BiomeType.SWAMP, seed, (x, y, z) -> BlockType.AIR);
+            Fixture f = generate(flat, BiomeType.SWAMP, seed, columns);
             assertSealed(f);
             for (int i = 0; i < SIZE; i++) {
-                assertEquals(BlockType.SWAMPY_GRASS, f.chunk().getBlock(0, BASE - 1, i));
-                assertEquals(BlockType.SWAMPY_GRASS, f.chunk().getBlock(SIZE - 1, BASE - 1, i));
+                if (f.chunk().getBlock(0, BASE - 1, i) == BlockType.WATER) borderWater++;
+                if (f.chunk().getBlock(SIZE - 1, BASE - 1, i) == BlockType.WATER) borderWater++;
+                if (f.chunk().getBlock(i, BASE - 1, 0) == BlockType.WATER) borderWater++;
+                if (f.chunk().getBlock(i, BASE - 1, SIZE - 1) == BlockType.WATER) borderWater++;
             }
         }
+        assertTrue(borderWater > 0, "border columns are still forced dry");
+    }
+
+    @Test
+    void borderPoolsDoNotDependOnPopulationOrder() {
+        Terrain flat = (x, z) -> BASE;
+        SwampPoolGenerator.ColumnOracle columns = oracle((x, z) -> BASE, (x, z) -> BASE, (x, z) -> -1);
+        SwampPoolGenerator.BlockReader oracleOutside =
+            (x, y, z) -> SwampPoolGenerator.terrainPassBlock(columns, x, y, z);
+        SwampPoolGenerator gen = new SwampPoolGenerator(new DeterministicRandom(3));
+
+        // Order 1: A first with B unloaded, then B with A actually loaded.
+        Chunk a1 = new Chunk(0, 0);
+        Chunk b1 = new Chunk(1, 0);
+        gen.generate(context(a1, flat, BiomeType.SWAMP), columns);
+        gen.generate(context(b1, flat, BiomeType.SWAMP), loadedNeighbour(a1, oracleOutside));
+
+        // Order 2: the same pair populated the other way round.
+        Chunk a2 = new Chunk(0, 0);
+        Chunk b2 = new Chunk(1, 0);
+        gen.generate(context(b2, flat, BiomeType.SWAMP), columns);
+        gen.generate(context(a2, flat, BiomeType.SWAMP), loadedNeighbour(b2, oracleOutside));
+
+        for (int x = 0; x < SIZE; x++) {
+            for (int z = 0; z < SIZE; z++) {
+                for (int y = BASE - 3; y < BASE + 1; y++) {
+                    assertEquals(a1.getBlock(x, y, z), a2.getBlock(x, y, z), "A(" + x + "," + y + "," + z + ")");
+                    assertEquals(b1.getBlock(x, y, z), b2.getBlock(x, y, z), "B(" + x + "," + y + "," + z + ")");
+                }
+            }
+        }
+        assertPairSealed(a1, b1, oracleOutside);
+        assertPairSealed(a2, b2, oracleOutside);
+    }
+
+    @Test
+    void carvedOracleColumnKeepsBorderDry() {
+        Terrain flat = (x, z) -> BASE;
+        // The -X neighbour column is carved, so its terrain pass reads as air at pool level.
+        SwampPoolGenerator.ColumnOracle columns = oracle(
+            (x, z) -> BASE,
+            (x, z) -> x == -1 ? BASE - 2 : BASE,
+            (x, z) -> -1);
+        for (long seed = 0; seed < 20; seed++) {
+            Fixture f = generate(flat, BiomeType.SWAMP, seed, columns);
+            assertSealed(f);
+            for (int z = 0; z < SIZE; z++) {
+                assertNotEquals(BlockType.WATER, f.chunk().getBlock(0, BASE - 1, z), "z=" + z);
+            }
+        }
+    }
+
+    /** Reads a loaded neighbour chunk's cells from that chunk, everything else from {@code elsewhere}. */
+    private static SwampPoolGenerator.BlockReader loadedNeighbour(Chunk other,
+            SwampPoolGenerator.BlockReader elsewhere) {
+        int ox = other.getChunkX() * SIZE;
+        int oz = other.getChunkZ() * SIZE;
+        return (x, y, z) -> x >= ox && x < ox + SIZE && z >= oz && z < oz + SIZE
+            ? other.getBlock(x - ox, y, z - oz)
+            : elsewhere.get(x, y, z);
+    }
+
+    /** Every water cell in the chunk pair stays sealed once both chunks and the oracle are visible. */
+    private static void assertPairSealed(Chunk a, Chunk b, SwampPoolGenerator.BlockReader outside) {
+        SwampPoolGenerator.BlockReader both = loadedNeighbour(a, loadedNeighbour(b, outside));
+        List<String> leaks = new ArrayList<>();
+        for (Chunk c : new Chunk[] {a, b}) {
+            int ox = c.getChunkX() * SIZE;
+            for (int x = 0; x < SIZE; x++) {
+                for (int z = 0; z < SIZE; z++) {
+                    for (int y = BASE - 3; y < BASE + 1; y++) {
+                        if (c.getBlock(x, y, z) != BlockType.WATER) continue;
+                        if (!SwampPoolGenerator.sealed(both, ox + x, y, z)) {
+                            leaks.add("chunk " + c.getChunkX() + " (" + x + "," + y + "," + z + ")");
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(leaks.isEmpty(), () -> leaks.size() + " leaking cells, e.g. " + leaks.subList(0, Math.min(8, leaks.size())));
     }
 
     @Test

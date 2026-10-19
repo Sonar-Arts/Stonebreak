@@ -37,6 +37,7 @@ from terrain_slm.river import pipeline as RP
 from terrain_slm.river.banks import BankConfig, BankNet
 from terrain_slm.river.field import Drainage, RiverConfig, RiverField
 from terrain_slm.river.scale import BlockScale
+from terrain_slm.world import swamp_relief as SR
 
 CP = D.CELL_PX
 WIN = 64  # planner window, cells
@@ -1065,6 +1066,7 @@ class WorldGenerator:
             hp = RP.HALO_PX
             a1, b1, a2, b2 = i1 - hp, j1 - hp, i2 + hp, j2 + hp
             heights = soft_cap_peaks(self.native(a1, b1, a2, b2))
+            heights = self._flatten_swamps(heights, a1, b1)
             ci0, cj0 = a1 // CP - RP.CELL_HALO, b1 // CP - RP.CELL_HALO
             ci1, cj1 = -(-a2 // CP) + RP.CELL_HALO, -(-b2 // CP) + RP.CELL_HALO
             c = self.cells(ci0, cj0, ci1 - ci0, cj1 - cj0)
@@ -1079,6 +1081,33 @@ class WorldGenerator:
         """Final native terrain with rivers: (carved elevation m, water surface m / NaN dry)."""
         field, _ = self.river_field(i1, j1, i2, j2)
         return field.carved, field.top
+
+    def swamp_relief_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """(weight, table m) of swamp_relief for cells [ci0, ci0+hc) x [cj0, cj0+wc), from canonical planner cells
+        and controls over fixed margins, so request-independent."""
+        m, mr = SR.MARGIN_CELLS, int(math.ceil(3 * LAPSE_REGIONAL_SIGMA_CELLS)) + 1
+        with self.lock:
+            cells = soft_cap_peaks(self._planner_cells(ci0 - m - mr, cj0 - m - mr, hc + 2 * (m + mr),
+                                                       wc + 2 * (m + mr))[0])
+            ctrl = procedural_controls(ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m, self.seed, self.device)
+        reg = D.blur(cells[None, None], LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, mr:-mr, mr:-mr]
+        height = cells[mr:-mr, mr:-mr]
+        climate = torch.stack([ctrl["t0"] - LAPSE_C_PER_M * reg.clamp_min(0.0),
+                               ctrl["tseason"], ctrl["precip"], ctrl["pcv"]])
+        bpc = max(1, round(CP / self.scale.px_per_block))
+        weight, table = SR.cell_fields(height, reg, climate, ci0 - m, cj0 - m, bpc)
+        return weight[m:-m, m:-m], table[m:-m, m:-m]
+
+    def _flatten_swamps(self, heights: torch.Tensor, i1: int, j1: int) -> torch.Tensor:
+        """Native heights [i1, i1+H) x [j1, j1+W) with swamp ground pulled onto its water table (swamp_relief)."""
+        h, w = heights.shape
+        ci0, cj0 = i1 // CP - 1, j1 // CP - 1
+        hc, wc = (i1 + h - 1) // CP + 2 - ci0, (j1 + w - 1) // CP + 2 - cj0
+        weight, table = self.swamp_relief_cells(ci0, cj0, hc, wc)
+        if not bool((weight > 0).any()):
+            return heights
+        oi, oj = i1 - ci0 * CP, j1 - cj0 * CP
+        return SR.flatten(heights, SR.upsample(weight, CP, oi, oj, h, w), SR.upsample(table, CP, oi, oj, h, w))
 
     def regional_elevation(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
         """(H, W) metres at native pixels [i1, i2) x [j1, j2): the planner's coarse height blurred by

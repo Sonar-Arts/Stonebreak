@@ -868,7 +868,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
         // Before vegetation: cypress trees may root in the pools.
-        swampPoolGenerator.generate(ctx);
+        swampPoolGenerator.generate(ctx, SwampPoolGenerator.ColumnOracle.of(this));
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
