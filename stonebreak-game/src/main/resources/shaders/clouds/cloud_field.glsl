@@ -28,8 +28,10 @@ struct CloudColumn {
     float density;  // 0 = clear
     float base;     // first block of cloud
     float top;      // block above the last
+    float build;    // 0..1: how far the column has grown toward its type's height
     float sigma;    // extinction per block at this density
     float albedo;
+    float wet;      // wetness with the weather bias applied
     int type;
 };
 
@@ -44,6 +46,7 @@ CloudColumn cloudResolve(vec4 raw) {
     CloudColumn col;
     col.density = smoothstep(u_cloudThreshold, u_cloudThreshold + u_cloudEdge, raw.r);
     float wet = raw.g + u_cloudWetBias;
+    col.wet = wet;
     col.type = cloudTypeOf(wet);
     col.base = u_cloudTypeBase[col.type];
     float height = u_cloudTypeHeight[col.type];
@@ -53,23 +56,23 @@ CloudColumn cloudResolve(vec4 raw) {
                 * smoothstep(u_cloudWetSplits.z, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
     }
     float dome = smoothstep(u_cloudThreshold, u_cloudThreshold + u_cloudDomeRamp, raw.r);
-    float voxels = max(1.0, floor(height / u_cloudVoxel
-            * dome * dome * (0.75 + 0.25 * raw.b) + 0.5));
+    col.build = dome * dome * (0.75 + 0.25 * raw.b);
+    float voxels = max(1.0, floor(height / u_cloudVoxel * col.build + 0.5));
     col.top = col.base + voxels * u_cloudVoxel;
     col.sigma = u_cloudTypeSigma[col.type] * col.density;
     col.albedo = u_cloudTypeAlbedo[col.type];
     return col;
 }
 
-// The blocky column over a cloud-space cell.
+// The column over a cloud-space cell, as rain and lightning see it.
 CloudColumn cloudColumnAt(ivec2 cell) {
     ivec2 size = textureSize(u_cloudMap, 0);
     ivec2 texel = ivec2(mod(vec2(cell), vec2(size)));
     return cloudResolve(texelFetch(u_cloudMap, texel, 0));
 }
 
-// A bilinearly smoothed column at a cloud-space position — soft-edged, for
-// shadows, where hard cell steps would alias across the terrain.
+// A bilinearly smoothed column at a cloud-space position — soft-edged, so
+// clouds and their shadows have no cell steps.
 CloudColumn cloudColumnSmooth(vec2 cloudXZ) {
     vec2 uv = cloudXZ / (u_cloudCell * vec2(textureSize(u_cloudMap, 0)));
     return cloudResolve(texture(u_cloudMap, uv));

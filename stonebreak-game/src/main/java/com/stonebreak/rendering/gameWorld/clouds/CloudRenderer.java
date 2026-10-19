@@ -12,13 +12,15 @@ import com.stonebreak.world.weather.CloudType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
 
 import static org.lwjgl.opengl.GL11.*;
 
 /**
- * Volumetric voxel clouds. Each frame:
+ * Volumetric clouds, sculpted from the {@link CloudField} with 3D noise
+ * ({@link CloudNoise}) into flat-based, billowing shapes. Each frame:
  * <ol>
  *   <li>{@link #prepareFrame} patches the {@link CloudMap} around the camera and
  *       resolves this frame's {@link CloudUniforms} — before the world draws,
@@ -34,6 +36,17 @@ public final class CloudRenderer {
 
     /** Unit for this renderer's own samplers (scene depth, then the cloud buffer). */
     private static final int SCRATCH_TEXTURE_UNIT = 11;
+    /** Units of the shape and detail noise volumes, read only by the cloud march. */
+    private static final int SHAPE_TEXTURE_UNIT = 12;
+    private static final int DETAIL_TEXTURE_UNIT = 13;
+
+    /**
+     * How fast the shape and detail noise rise through the clouds, blocks per
+     * second of weather time: billows slowly boil up and dissolve, the detail
+     * faster than the body, as in a time-lapse of real cumulus.
+     */
+    private static final double SHAPE_RISE_SPEED = 0.05;
+    private static final double DETAIL_RISE_SPEED = 0.3;
 
     /** Clouds thin out from here... */
     private static final float FADE_START = 2000f;
@@ -45,6 +58,7 @@ public final class CloudRenderer {
     private static final Vector4f NO_FLASH = new Vector4f();
 
     private final CloudMap map = new CloudMap();
+    private final CloudNoiseTextures noise = new CloudNoiseTextures();
     private final CloudUniforms uniforms = new CloudUniforms();
     private final SceneDepthCopy sceneDepth = new SceneDepthCopy();
     private final FullscreenQuad quad = new FullscreenQuad();
@@ -53,6 +67,8 @@ public final class CloudRenderer {
     private RenderTarget target;
     private boolean prepared;
     private boolean drawnThisFrame;
+    private float shapeRise;
+    private float detailRise;
 
     private final Matrix4f invViewProj = new Matrix4f();
     private final Vector3f sunColor = new Vector3f();
@@ -90,6 +106,9 @@ public final class CloudRenderer {
             return;
         }
         double s = weather.seconds();
+        // Wrapped to a tile in double precision, so float precision never runs out.
+        shapeRise = (float) (s * SHAPE_RISE_SPEED % CloudNoiseTextures.SHAPE_TILE_BLOCKS);
+        detailRise = (float) (s * DETAIL_RISE_SPEED % CloudNoiseTextures.DETAIL_TILE_BLOCKS);
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.CLOUD_MAP_TEXTURE_UNIT);
         map.update(weather.field(), CloudField.cellX(cameraWorldPos.x, s), CloudField.cellZ(cameraWorldPos.z, s));
@@ -146,6 +165,9 @@ public final class CloudRenderer {
         }
         // (Re)creating the target unbinds the active unit's texture.
         glBindTexture(GL_TEXTURE_2D, sceneDepth.texture());
+        bindNoise(SHAPE_TEXTURE_UNIT, noise.shape());
+        bindNoise(DETAIL_TEXTURE_UNIT, noise.detail());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
 
         glDisable(GL_DEPTH_TEST);
         glDepthMask(false);
@@ -157,6 +179,12 @@ public final class CloudRenderer {
         marchShader.bind();
         uniforms.applyTo(marchShader);
         marchShader.setInt("u_sceneDepth", SCRATCH_TEXTURE_UNIT);
+        marchShader.setInt("u_shapeNoise", SHAPE_TEXTURE_UNIT);
+        marchShader.setInt("u_detailNoise", DETAIL_TEXTURE_UNIT);
+        marchShader.setFloat("u_shapeTile", CloudNoiseTextures.SHAPE_TILE_BLOCKS);
+        marchShader.setFloat("u_detailTile", CloudNoiseTextures.DETAIL_TILE_BLOCKS);
+        marchShader.setFloat("u_shapeRise", shapeRise);
+        marchShader.setFloat("u_detailRise", detailRise);
         marchShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
         marchShader.setVec3("u_camPos", renderCameraPos);
         marchShader.setVec3("u_sunDir", sunDirection);
@@ -203,6 +231,12 @@ public final class CloudRenderer {
         return drawnThisFrame && target != null ? target.getColorTexture() : 0;
     }
 
+    /** Binds a noise volume on its own unit, which nothing else samples, so it is left bound. */
+    private static void bindNoise(int unit, int texture) {
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
+        glBindTexture(GL12.GL_TEXTURE_3D, texture);
+    }
+
     /** Warm and dim near the horizon, white overhead, gone below it. */
     private Vector3f sunColor(Vector3f sun) {
         float up = sun.y;
@@ -234,6 +268,7 @@ public final class CloudRenderer {
 
     public void cleanup() {
         map.cleanup();
+        noise.cleanup();
         sceneDepth.cleanup();
         quad.cleanup();
         marchShader.cleanup();

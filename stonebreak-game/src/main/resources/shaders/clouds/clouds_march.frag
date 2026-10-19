@@ -1,10 +1,19 @@
 #version 330 core
 
-// Volumetric voxel clouds. Each pixel's view ray walks the cloud map's cells
-// with a 2D DDA; inside a cell the cloud is a solid block column, so the
-// stretch of ray inside it is exact, not sampled. Light behind the cloud is
-// kept by exp(-sigma * distance) — the water shader's Beer-Lambert rule — so
-// thin cloud is see-through and thick cloud is opaque.
+// Volumetric clouds, sculpted after real ones. Each pixel's view ray is marched
+// through the cloud slab, and at every step the density is built up in layers:
+//  - the cloud map says where clouds are, which type and how far each has
+//    grown (cloud_field.glsl), bilinearly smoothed so nothing follows the grid;
+//  - a vertical profile per type: cumulus have flat bases and domed tops,
+//    stratus are thin sheets, nimbostratus thick decks with ragged undersides,
+//    and cumulonimbus are towers that spread into a flat anvil at the top;
+//  - 3D Perlin-Worley noise breaks the body into billows, and finer Worley
+//    noise frays its edges: wisps at the base, cauliflower at the top.
+// Lighting is a short march toward the sun (Beer-Lambert), a two-lobe
+// Henyey-Greenstein phase (the silver lining toward the sun), octaves of
+// multiple scattering (why thick cloud is white, not black) and "powder"
+// darkening of creases. Light behind the cloud is kept by exp(-sigma * d), the
+// rule cloud shadows and water use, so thin cloud is see-through.
 //
 // Output (half resolution): rgb = cloud light, premultiplied; a = how much of
 // the scene behind survives. Composite with blend (ONE, SRC_ALPHA).
@@ -15,6 +24,13 @@ in vec2 vUv;
 out vec4 fragColor;
 
 uniform sampler2D u_sceneDepth;
+uniform sampler3D u_shapeNoise;     // Perlin-Worley, repeats every u_shapeTile blocks
+uniform sampler3D u_detailNoise;    // Worley fBm, repeats every u_detailTile blocks
+uniform float u_shapeTile;
+uniform float u_detailTile;
+// How far each noise has risen through the cloud, blocks: clouds slowly boil.
+uniform float u_shapeRise;
+uniform float u_detailRise;
 uniform mat4 u_invViewProj;     // render space
 uniform vec3 u_camPos;          // render space
 uniform vec3 u_sunDir;
@@ -30,22 +46,215 @@ uniform float u_fadeEnd;        // ...and are gone here (inside the map's reach)
 // within FLASH_RADIUS of it.
 uniform vec4 u_flashes[4];
 
-const int MAX_CELLS = 384;
+const int MAX_STEPS = 256;
 const float MIN_TRANSMITTANCE = 0.01;
+// View steps grow with distance, from MIN_STEP blocks up to MAX_STEP...
+const float MIN_STEP = 2.0;
+const float MAX_STEP = 40.0;
+const float STEP_PER_BLOCK = 0.01;
+// A ray whose slab crossing needs more steps than MAX_STEPS has them all
+// stretched to fit (see stepScale), so it never stops short of the far clouds.
+// Inside cloud a step crosses at most this optical depth, so where a pixel's
+// dithered first sample lands no longer decides its brightness (that drew the
+// dither pattern on dense cloud). Cheap: dense cloud ends a ray in a few steps.
+const float MAX_STEP_DEPTH = 0.35;
+// ...and stride this much longer through clear sky.
+const float EMPTY_STRIDE = 2.0;
+// Sun march: LIGHT_STEPS steps, the first LIGHT_STEP0 blocks, each LIGHT_GROWTH longer.
+const int LIGHT_STEPS = 5;
+const float LIGHT_STEP0 = 3.0;
+const float LIGHT_GROWTH = 1.9;
+// Erosion leaves the fringe of a cloud thin; this keeps a cloud as opaque
+// overall as its type's sigma says.
+const float DENSITY_SCALE = 4.0;
+// Highest floor the shape noise may set under the cover: a cloud's heart
+// (cover 1) is never eroded, and cover below this survives only on billows.
+const float SHAPE_EROSION = 0.9;
+// Cover above the noise's floor that reaches full density: small, so a cloud
+// has a crisp, billowed surface instead of a soft fog around a smooth core.
+const float EROSION_EDGE = 0.25;
+// Wetness range over which one type fades into the next. Each type keeps its
+// own altitude band while it fades, so the layers cross-fade instead of one
+// sheet sloping into the other (which drew long smeared ribbons).
+const float TYPE_BLEND = 0.04;
+// How much of the eroded body the detail noise may eat.
+const float DETAIL_EROSION = 0.5;
+// Thinnest a cloud body is drawn, blocks: a column the map only just grows is
+// still a sheet of cloud, not a film the noise erodes to nothing.
+const float MIN_THICKNESS = 12.0;
+// Sheets (stratus, nimbostratus) are a few blocks thick, so seen at a slant a
+// ray averages out every billow it crosses and the sheet streaks toward the
+// horizon. Their cells are this many times wider than a cumulus billow, as
+// real sheet clouds' are.
+const float SHEET_STRETCH = 4.0;
+// Depth of a cumulonimbus anvil below the top of the tower, blocks.
+const float ANVIL_DEPTH = 30.0;
 
-// Face shades of the old flat clouds, so lit sides still read as blocks.
-// Only faces the ray actually enters from clear air get one: walls between
-// two cloudy cells are interior and keep the shade of the face the ray came
-// in through, so a cloud reads as one solid shape, not a grid of cells.
-const float SHADE_TOP = 1.0;
-const float SHADE_X = 0.86;
-const float SHADE_Z = 0.78;
-const float SHADE_BOTTOM = 0.62;
+// The scene is not tone-mapped, so cloud light gets its own exposure curve:
+// sunlit tops approach white while the greys of shaded sides and bases survive
+// instead of clipping into a flat white sheet.
+const float EXPOSURE = 1.6;
 
 const float FLASH_RADIUS = 110.0;
 const vec3 FLASH_COLOR = vec3(0.75, 0.8, 1.0);
-// Lowest sun elevation the sunlight path through a cloud is computed for.
+// Lowest sun elevation the sun march is aimed at, so it never runs flat along the slab.
 const float MIN_SUN_Y = 0.15;
+
+float remap(float v, float lo, float hi, float newLo, float newHi) {
+    return newLo + (v - lo) / (hi - lo) * (newHi - newLo);
+}
+
+// A per-type value (indexed by CloudType ordinal) blended across the type
+// boundaries in wetness, so a cloud crossing from one type into the next
+// changes base, height and optics smoothly instead of in a step.
+float typeBlend(vec4 v, float wet) {
+    float r = v[1];                                                                      // STRATUS
+    r = mix(r, v[0], smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.x));    // CUMULUS
+    r = mix(r, v[2], smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.y));    // NIMBOSTRATUS
+    r = mix(r, v[3], smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.z));    // CUMULONIMBUS
+    return r;
+}
+
+// How much of each type a column holds, indexed by CloudType ordinal; sums to 1.
+// The same cross-fades typeBlend applies.
+vec4 typeWeights(float wet) {
+    float cu = smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.x);
+    float ns = smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.y);
+    float cb = smoothstep(-TYPE_BLEND, TYPE_BLEND, wet - u_cloudWetSplits.z);
+    return vec4(cu * (1.0 - ns), 1.0 - cu, ns * (1.0 - cb), cb);
+}
+
+// How much cloud a type allows at height fraction h (0 = base, 1 = top).
+float heightProfile(int type, float h) {
+    if (h < 0.0 || h > 1.0) return 0.0;
+    // A thin sheet, soft on both faces.
+    if (type == 1) return smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.5, 1.0, h));
+    // A thick deck: ragged underside, flat top.
+    if (type == 2) return smoothstep(0.0, 0.18, h) * (1.0 - smoothstep(0.75, 1.0, h));
+    // Cumulus and storm towers: flat, crisp base where the rising air reaches
+    // condensation; domed top.
+    return smoothstep(0.0, 0.06, h) * (1.0 - smoothstep(0.4, 1.0, h));
+}
+
+struct CloudSample {
+    float density;  // 0 = clear air
+    float height;   // 0 at the cloud's base, 1 at its top: how much sky it sees
+    float sigma;    // extinction per block at density 1
+    float albedo;
+};
+
+// Mip level that filters a noise volume down to `footprint` blocks. Explicit,
+// because a raymarch has no usable screen derivatives: neighbouring pixels sit
+// at different steps, so implicit LOD picks a different mip per pixel and the
+// distant clouds shimmer.
+float noiseLod(sampler3D noise, float tile, float footprint) {
+    return log2(max(footprint * float(textureSize(noise, 0).x) / tile, 1.0));
+}
+
+// The cloud at render-space p, `footprint` blocks across one pixel there.
+// `covered` is false where no cloud is near, so the march may stride.
+CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
+    CloudSample s;
+    s.density = 0.0;
+    s.height = 0.0;
+    vec2 xz = p.xz + u_cloudOffset;
+    CloudColumn c = cloudColumnSmooth(xz);
+    float wet = c.wet;
+    s.sigma = typeBlend(u_cloudTypeSigma, wet);
+    s.albedo = typeBlend(u_cloudTypeAlbedo, wet);
+
+    // Each type the column holds, in its own altitude band, faded by its share.
+    // A storm tower's height ramps up from nimbostratus height with wetness
+    // (as CloudField.resolve does).
+    vec4 h = u_cloudTypeHeight;
+    float storm = smoothstep(u_cloudWetSplits.z, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
+    vec4 heights = vec4(h.x, h.y, h.z, h.z + (h.w - h.z) * storm);
+    vec4 weights = typeWeights(wet);
+    float body = 0.0;
+    float frac = 0.0;
+    float sheet = 0.0; // how much of the cover is sheet cloud
+    if (c.density > 0.0) {
+        for (int t = 0; t < 4; t++) {
+            if (weights[t] <= 0.0) continue;
+            float base = u_cloudTypeBase[t];
+            float f = (p.y - base) / max(heights[t] * c.build, MIN_THICKNESS);
+            float b = weights[t] * heightProfile(t, f);
+            if (b > body) { body = b; frac = f; sheet = (t == 1 || t == 2) ? 1.0 : 0.0; }
+        }
+        body *= c.density;
+    }
+
+    // Anvil: a mature storm's updraft hits the top of the troposphere and
+    // spreads sideways into a flat sheet wider than the tower beneath it.
+    float anvil = 0.0;
+    float anvilStorm = smoothstep(u_cloudWetSplits.z - 0.02, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
+    if (anvilStorm > 0.0) {
+        float a = (u_cloudTypeBase.w + h.w - p.y) / ANVIL_DEPTH; // 0 at the top, 1 at the anvil's base
+        anvil = anvilStorm * smoothstep(0.0, 0.2, a) * (1.0 - smoothstep(0.5, 1.0, a));
+    }
+
+    float cover = max(body, anvil);
+    covered = cover > 0.0;
+    if (!covered) return s;
+    s.height = anvil > body ? 1.0 : frac;
+
+    // Billows: the noise sets the floor the cover must clear (erosion), so the
+    // dense heart of a cloud stays solid and only its thinner fringe is carved
+    // into separate puffs toward its edges and domes at its top. Scaling the
+    // body by the noise instead punched see-through holes into the heart.
+    vec3 q = vec3(xz.x, p.y - u_shapeRise, xz.y);
+    float shape = textureLod(u_shapeNoise, q / u_shapeTile, noiseLod(u_shapeNoise, u_shapeTile, footprint)).r;
+    if (sheet > 0.0) {
+        vec3 qs = vec3(q.x / SHEET_STRETCH, q.y, q.z / SHEET_STRETCH);
+        shape = textureLod(u_shapeNoise, qs / u_shapeTile,
+                noiseLod(u_shapeNoise, u_shapeTile * SHEET_STRETCH, footprint)).r;
+    }
+    float floorAt = (1.0 - shape) * SHAPE_EROSION;
+    float d = clamp((cover - floorAt) / EROSION_EDGE, 0.0, 1.0);
+    if (detail && d > 0.0) {
+        float n = textureLod(u_detailNoise, vec3(xz.x, p.y - u_detailRise, xz.y) / u_detailTile,
+                noiseLod(u_detailNoise, u_detailTile, footprint)).r;
+        // Wisps (the noise) at the base, billows (its inverse) toward the top.
+        n = mix(n, 1.0 - n, clamp(s.height * 3.0, 0.0, 1.0));
+        d = clamp(remap(d, n * DETAIL_EROSION, 1.0, 0.0, 1.0), 0.0, 1.0);
+    }
+    s.density = d;
+    return s;
+}
+
+// Extinction (sigma * density) at a sample.
+float extinction(CloudSample s) {
+    return s.sigma * s.density * DENSITY_SCALE;
+}
+
+// Optical depth from p toward the sun, through the cloud above and around it.
+float sunOpticalDepth(vec3 p, vec3 dir, float footprint) {
+    float od = 0.0;
+    float t = 0.0;
+    float ds = LIGHT_STEP0;
+    for (int i = 0; i < LIGHT_STEPS; i++) {
+        vec3 q = p + dir * (t + 0.5 * ds);
+        if (q.y > u_slabTop) break;
+        bool covered;
+        od += extinction(cloudAt(q, max(footprint, ds), i == 0, covered)) * ds;
+        t += ds;
+        ds *= LIGHT_GROWTH;
+    }
+    return od;
+}
+
+// Henyey-Greenstein, scaled so isotropic scattering is 1.
+float hg(float cosTheta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5);
+}
+
+// Strong forward lobe (the silver lining) plus a weaker back lobe (the
+// glow of a cloud with the sun behind the viewer). k < 1 flattens it for
+// higher scattering orders.
+float cloudPhase(float cosTheta, float k) {
+    return mix(hg(cosTheta, -0.25 * k), hg(cosTheta, 0.65 * k), 0.6);
+}
 
 // Lightning light at p: each flash lights the cloud near it, not the whole deck.
 float flashAt(vec3 p) {
@@ -62,9 +271,40 @@ vec3 worldAt(vec2 uv, float depth) {
     return p.xyz / p.w;
 }
 
+// Interleaved gradient noise: a per-pixel offset for the first step, so step
+// banding turns into fine grain the upsample blurs away.
+float dither(vec2 frag) {
+    return fract(52.9829189 * fract(dot(frag, vec2(0.06711056, 0.00583715))));
+}
+
+float stepAt(float t) {
+    return clamp(t * STEP_PER_BLOCK, MIN_STEP, MAX_STEP);
+}
+
+// Steps stepAt takes from t0 to t1 (no clear-air striding): MIN_STEP up close,
+// then growing geometrically, then MAX_STEP.
+float stepsNeeded(float t0, float t1) {
+    float near = MIN_STEP / STEP_PER_BLOCK, far = MAX_STEP / STEP_PER_BLOCK;
+    float n = max(min(t1, near) - t0, 0.0) / MIN_STEP;
+    float g0 = max(t0, near), g1 = min(t1, far);
+    if (g1 > g0) n += log(g1 / g0) / STEP_PER_BLOCK;
+    n += max(t1 - max(t0, far), 0.0) / MAX_STEP;
+    return n;
+}
+
+// How much to stretch every step so the crossing fits in MAX_STEPS. Without
+// it a ray grazing the slab ran out of steps a few hundred blocks out, and the
+// clouds beyond popped in along a hard line where rays began to fit.
+float stepScale(float t0, float t1) {
+    return max(1.0, stepsNeeded(t0, t1) / float(MAX_STEPS - 8));
+}
+
 void main() {
     vec3 ro = u_camPos;
     vec3 rd = normalize(worldAt(vUv, 1.0) - ro);
+    // Radians one pixel spans: a pixel at distance t covers t * this blocks.
+    // Taken here, in uniform control flow, where derivatives are defined.
+    float pixelAngle = max(length(dFdx(rd)), length(dFdy(rd)));
 
     // How far the ray may go: the opaque scene, or the fade-out distance.
     float depth = texture(u_sceneDepth, vUv).r;
@@ -83,112 +323,60 @@ void main() {
     }
     if (tNear >= tFar) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
 
-    // 2D DDA over cloud-space cells.
-    vec2 pos = (ro.xz + u_cloudOffset) / u_cloudCell;       // in cells
-    vec2 dir = rd.xz / u_cloudCell;                          // cells per block of t
-    vec2 start = pos + dir * tNear;
-    ivec2 cell = ivec2(floor(start));
-    ivec2 stepDir = ivec2(sign(dir));
-    vec2 invDir = 1.0 / max(abs(dir), vec2(1e-8));
-    vec2 tNext = vec2(
-        (dir.x >= 0.0 ? (float(cell.x) + 1.0 - pos.x) : (pos.x - float(cell.x))) * invDir.x,
-        (dir.y >= 0.0 ? (float(cell.y) + 1.0 - pos.y) : (pos.y - float(cell.y))) * invDir.y);
-    // lastAxis: which wall the ray came through (0 = x, 1 = z, -1 = none yet).
-    int lastAxis = -1;
-    // Whether the ray was still inside cloud when it left the previous cell,
-    // and the face it entered that cloud through.
-    bool inCloud = false;
-    vec3 entryNormal = vec3(0.0, 1.0, 0.0);
-    float entryShade = SHADE_TOP;
+    vec3 sunMarch = normalize(vec3(u_sunDir.x, max(u_sunDir.y, MIN_SUN_Y), u_sunDir.z));
+    float cosTheta = dot(rd, u_sunDir);
+    // Multiple scattering (Wrenninge's octaves): each order is weaker, reaches
+    // deeper into the cloud and scatters more evenly.
+    vec3 phase = vec3(cloudPhase(cosTheta, 1.0), cloudPhase(cosTheta, 0.5), cloudPhase(cosTheta, 0.25));
+    // Powder: seen with the sun behind you, a cloud's thin edges and creases
+    // have gathered less scattered light than its body, so they read darker.
+    // Gone when looking toward the sun.
+    float powderAmount = 0.6 * (0.5 - 0.5 * cosTheta);
 
-    float t = tNear;
+    float scale = stepScale(tNear, tFar);
+    float t = tNear + scale * stepAt(tNear) * dither(gl_FragCoord.xy);
     float transmittance = 1.0;
     vec3 light = vec3(0.0);
 
-    for (int i = 0; i < MAX_CELLS && t < tFar; i++) {
-        float tExit = min(min(tNext.x, tNext.y), tFar);
-        CloudColumn col = cloudColumnAt(cell);
-        bool leftInCloud = false;
-        if (col.density > 0.0) {
-            // Where along [t, tExit] the ray is inside the column's height range.
-            float lo = t, hi = tExit;
-            if (abs(rd.y) < 1e-5) {
-                if (ro.y < col.base || ro.y >= col.top) hi = lo;
-            } else {
-                float ta = (col.base - ro.y) / rd.y;
-                float tb = (col.top - ro.y) / rd.y;
-                lo = max(lo, min(ta, tb));
-                hi = min(hi, max(ta, tb));
-            }
-            if (hi > lo) {
-                bool throughWall = lo <= t + 1e-3 && lastAxis >= 0;
-                if (!throughWall) {
-                    bool fromAbove = rd.y < 0.0;
-                    entryNormal = vec3(0.0, fromAbove ? 1.0 : -1.0, 0.0);
-                    entryShade = fromAbove ? SHADE_TOP : SHADE_BOTTOM;
-                } else if (!inCloud) {
-                    // An exposed side: the cell the ray came from was clear here.
-                    if (lastAxis == 0) {
-                        entryNormal = vec3(-float(stepDir.x), 0.0, 0.0);
-                        entryShade = SHADE_X;
-                    } else {
-                        entryNormal = vec3(0.0, 0.0, -float(stepDir.y));
-                        entryShade = SHADE_Z;
-                    }
-                }
-                leftInCloud = hi >= tExit - 1e-3 && tExit < tFar;
-
-                // Light the stretch where most of what we see comes from: one
-                // mean free path in (Beer-Lambert), capped to the stretch.
-                float tLit = lo + min(hi - lo, 1.0 / max(col.sigma, 1e-4)) * 0.5;
-                float tMid = 0.5 * (lo + hi);
-                vec3 p = ro + rd * tLit;
-                // Optics from the bilinearly smoothed field, so brightness
-                // flows across cells; the blocky shape stays per cell.
-                CloudColumn soft = cloudColumnSmooth(p.xz + u_cloudOffset);
-                float sigma = 0.5 * (col.sigma + soft.sigma);
-                float albedo = soft.density > 0.0 ? 0.5 * (col.albedo + soft.albedo) : col.albedo;
-                float softTop = soft.density > 0.0 ? soft.top : col.top;
-                float softBase = soft.density > 0.0 ? soft.base : col.base;
-                // Sunlight reaching p: through the cloud above it, along the sun.
-                // Depends on height in the cloud, not on the cell's walls, so the
-                // base is dark and the top bright with no per-cell gradient.
-                float sunPath = max(softTop - p.y, 0.0) / max(u_sunDir.y, MIN_SUN_Y);
-                float sunT = exp(-sigma * sunPath);
-                float facing = 0.5 + 0.5 * max(dot(entryNormal, u_sunDir), 0.0);
-                // Skylight: the underside of a thick cloud sees less of the sky.
-                float height = clamp((p.y - softBase) / max(softTop - softBase, 1.0), 0.0, 1.0);
-                float skyLit = mix(0.7, 1.0, height);
-                // Forward scattering: clouds between the eye and the sun glow
-                // instead of going black.
-                float phase = 1.0 + 1.5 * pow(max(dot(rd, u_sunDir), 0.0), 6.0);
-                vec3 lit = albedo * (u_ambientColor * entryShade * skyLit
-                        + u_sunColor * sunT * facing * phase);
-                lit += FLASH_COLOR * flashAt(p);
-
-                // Aerial perspective, like the terrain's distance fog...
-                lit = mix(lit, u_hazeColor, 0.65 * smoothstep(0.0, u_fadeEnd, tMid));
-                // ...and clouds thin out toward the fade distance instead of ending in a wall.
-                float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, tMid);
-                float stepT = exp(-sigma * fade * (hi - lo));
-                light += transmittance * (1.0 - stepT) * lit;
-                transmittance *= stepT;
-                if (transmittance < MIN_TRANSMITTANCE) break;
-            }
+    // Extra distance the last clear-air stride took beyond a plain step.
+    float overshoot = 0.0;
+    for (int i = 0; i < MAX_STEPS && t < tFar; i++) {
+        float ds = scale * stepAt(t);
+        vec3 p = ro + rd * t;
+        float footprint = t * pixelAngle;
+        bool covered;
+        CloudSample s = cloudAt(p, footprint, true, covered);
+        // A stride out of clear air landed in cloud: back up to a plain step
+        // past the clear sample, or how deep a pixel enters the cloud depends
+        // on its dither and the grain shows through as light.
+        if (covered && overshoot > 0.0) {
+            t -= overshoot;
+            overshoot = 0.0;
+            continue;
         }
-        inCloud = leftInCloud;
-        // Advance to the next cell.
-        if (tNext.x < tNext.y) {
-            t = tNext.x;
-            tNext.x += invDir.x;
-            cell.x += stepDir.x;
-            lastAxis = 0;
-        } else {
-            t = tNext.y;
-            tNext.y += invDir.y;
-            cell.y += stepDir.y;
-            lastAxis = 1;
+        if (s.density > 0.0) {
+            float ext = extinction(s);
+            ds = min(ds, max(MAX_STEP_DEPTH / ext, MIN_STEP * 0.25));
+            float od = sunOpticalDepth(p, sunMarch, footprint);
+            float sun = phase.x * exp(-od) + 0.5 * phase.y * exp(-0.35 * od) + 0.25 * phase.z * exp(-0.12 * od);
+            float powder = mix(1.0, 1.0 - exp(-ext * 16.0), powderAmount);
+            // Skylight: the base of a cloud sees less of the sky than its top.
+            float skyLit = mix(0.35, 1.0, sqrt(clamp(s.height, 0.0, 1.0)));
+            vec3 lit = s.albedo * (u_sunColor * sun * powder + u_ambientColor * skyLit);
+            lit += FLASH_COLOR * flashAt(p);
+            lit = 1.0 - exp(-EXPOSURE * lit);
+
+            // Aerial perspective, like the terrain's distance fog...
+            lit = mix(lit, u_hazeColor, 0.65 * smoothstep(0.0, u_fadeEnd, t));
+            // ...and clouds thin out toward the fade distance instead of ending in a wall.
+            float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, t);
+            float stepT = exp(-ext * fade * min(ds, tFar - t));
+            light += transmittance * (1.0 - stepT) * lit;
+            transmittance *= stepT;
+            if (transmittance < MIN_TRANSMITTANCE) break;
         }
+        overshoot = covered ? 0.0 : ds * (EMPTY_STRIDE - 1.0);
+        t += ds + overshoot;
     }
 
     fragColor = vec4(light, transmittance);
