@@ -63,6 +63,7 @@ uniform bool uCloudsDrawn;
 #include "/shaders/lighting/point_lights.glsl"
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shadow.glsl"
+#include "/shaders/weather/precip_fog.glsl"
 
 out vec4 fragColor;
 
@@ -251,18 +252,19 @@ void main() {
     color = applyPointLight(color, baseColor,
             pointLightContribution(vWorldPos, N, pointLightWeight(uAmbientLight, 1.0, 1.0)));
 
-    // Distance fog toward the sky color, measured exactly as the world shader
+    // Distance fog toward the sky color, then rain and snow, measured exactly as the world shader
     // measures it — alpha untouched so the blend over terrain stays correct.
     // Native water and FastLOD sheets share this shader, so the near/far
     // water handover needs no color matching: both sides ARE the same code
     // blending over real geometry (native seabed vs LOD seabed).
+    float fogF = 0.0;
     if (uFogEnd > uFogStart) {
         float fogDist = uFogSpherical
                 ? length(vWorldPos - uCameraPos)
                 : length(vWorldPos.xz - uCameraPos.xz);
-        float fogF = smoothstep(uFogStart, uFogEnd, fogDist);
-        color = mix(color, uFogColor, fogF);
+        fogF = smoothstep(uFogStart, uFogEnd, fogDist);
     }
+    color = applyPrecipFog(color, uCameraPos, vWorldPos - uCameraPos, uFogColor, fogF);
 
     // Fade out under cloud in front of the surface: the framebuffer already
     // holds scene * T + cloud, so blending at alpha * T keeps thick cloud

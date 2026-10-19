@@ -6,6 +6,7 @@ import com.openmason.engine.rendering.postfx.RenderTarget;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.stonebreak.rendering.gameWorld.SceneDepthCopy;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
 import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.world.weather.CloudField;
 import com.stonebreak.world.weather.CloudType;
@@ -57,10 +58,13 @@ public final class CloudRenderer {
     private static final double SHAPE_RISE_SPEED = 0.05;
     private static final double DETAIL_RISE_SPEED = 0.3;
 
-    /** Clouds thin out from here... */
-    private static final float FADE_START = 2000f;
-    /** ...and are gone here, inside the map's half-width so no wrapped cell shows. */
+    /**
+     * Clouds are gone this far out (horizontally), inside the map's half-width
+     * so no wrapped cell shows, or sooner, at the terrain's horizon...
+     */
     private static final float FADE_END = CloudMap.PERIOD_BLOCKS * 0.45f;
+    /** ...and thin out over this last share of that distance. */
+    private static final float FADE_SHARE = 0.3f;
 
     /** Must match the {@code u_flashes} array length in clouds_march.frag. */
     private static final String[] FLASH_UNIFORMS = {"u_flashes[0]", "u_flashes[1]", "u_flashes[2]", "u_flashes[3]"};
@@ -173,9 +177,12 @@ public final class CloudRenderer {
      * @param renderCameraPos camera position in render space
      * @param flashes         lightning flash points (render-space xyz, intensity w; 0 = unused),
      *                        each lighting only the cloud around it
+     * @param fog             rain and snow fog, which hides the cloud behind it
+     * @param reach           blocks to the terrain's horizon: no cloud hangs beyond it
      */
     public void render(Matrix4f projection, Matrix4f view, Vector3f renderCameraPos,
-                       Vector3f sunDirection, Vector3f skyColor, float ambientLight, Vector4f[] flashes) {
+                       Vector3f sunDirection, Vector3f skyColor, float ambientLight, Vector4f[] flashes,
+                       PrecipitationFog fog, float reach) {
         if (!prepared) return;
 
         // Save state.
@@ -240,10 +247,12 @@ public final class CloudRenderer {
         marchShader.setVec3("u_sunColor", sunColor(sunDirection));
         marchShader.setVec3("u_ambientColor", ambientColor(skyColor, ambientLight));
         marchShader.setVec3("u_hazeColor", skyColor);
+        fog.applyTo(marchShader);
         marchShader.setFloat("u_slabBottom", CloudType.slabBottom());
         marchShader.setFloat("u_slabTop", CloudType.slabTop());
-        marchShader.setFloat("u_fadeStart", FADE_START);
-        marchShader.setFloat("u_fadeEnd", FADE_END);
+        float fadeEnd = Math.min(FADE_END, reach);
+        marchShader.setFloat("u_fadeStart", fadeEnd * (1f - FADE_SHARE));
+        marchShader.setFloat("u_fadeEnd", fadeEnd);
         for (int i = 0; i < FLASH_UNIFORMS.length; i++) {
             marchShader.setVec4(FLASH_UNIFORMS[i], i < flashes.length ? flashes[i] : NO_FLASH);
         }

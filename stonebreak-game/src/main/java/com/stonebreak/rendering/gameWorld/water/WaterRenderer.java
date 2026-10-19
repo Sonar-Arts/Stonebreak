@@ -162,6 +162,7 @@ public class WaterRenderer {
      * @param cloudBuffer       the cloud buffer already composited over the
      *                          scene this frame (alpha = transmittance), or 0
      *                          when no clouds were drawn
+     * @param precipitationFog  rain and snow fog in front of the water
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
                        Vector3f cameraPos, float time, Vector3f sunDirection,
@@ -171,7 +172,8 @@ public class WaterRenderer {
                        com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
                        int lodStamp,
                        com.stonebreak.rendering.gameWorld.clouds.CloudUniforms clouds,
-                       int cloudBuffer) {
+                       int cloudBuffer,
+                       com.stonebreak.rendering.gameWorld.weather.PrecipitationFog precipitationFog) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -243,6 +245,7 @@ public class WaterRenderer {
         shader.setUniform("uFogStart", fogStart);
         shader.setUniform("uFogEnd", fogEnd);
         shader.setUniform("uFogSpherical", fogSpherical);
+        precipitationFog.applyTo(shader);
 
         // Two sub-passes make water self-occluding, like ice: looking through
         // water never shows other water faces (flowing step faces, far walls,

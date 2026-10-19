@@ -49,6 +49,7 @@ public class WorldRenderer {
     private final AnimatedBlockRenderer animatedBlockRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
+    private final com.stonebreak.rendering.gameWorld.weather.PrecipitationFog precipitationFog;
     /** How much a full lightning flash adds to the scene's ambient light. */
     private static final float LIGHTNING_AMBIENT = 0.6f;
     private final com.stonebreak.rendering.gameWorld.weather.WeatherEffects weatherEffects =
@@ -100,6 +101,7 @@ public class WorldRenderer {
         this.animatedBlockRenderer = animatedBlockRenderer;
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
+        this.precipitationFog = new com.stonebreak.rendering.gameWorld.weather.PrecipitationFog();
         this.precipitationRenderer = new com.stonebreak.rendering.gameWorld.weather.PrecipitationRenderer();
         this.lightningRenderer = new com.stonebreak.rendering.gameWorld.weather.LightningRenderer();
         this.shadowMapRenderer =
@@ -172,10 +174,13 @@ public class WorldRenderer {
         // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
         // from TimeOfDay, so resolve the values they need here (static fallback when absent).
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
-        // Weather first: it dims the ambient light and greys the sky read below,
-        // and lightning flashes brighten it.
-        float lightningFlash = lightningRenderer.update(Game.getWeather(), world, player.getCamera().getPosition());
-        weatherEffects.update(Game.getWeather(), player.getCamera().getPosition(), totalTime,
+        // Weather first: it dims the ambient light, greys the sky read below and
+        // veils it with rain/snow fog, and lightning flashes brighten it. None of
+        // it reaches past the terrain's horizon.
+        float weatherReach = horizonDistance(com.stonebreak.config.Settings.getInstance());
+        float lightningFlash = lightningRenderer.update(Game.getWeather(), world, player.getCamera().getPosition(),
+                weatherReach);
+        weatherEffects.update(Game.getWeather(), world, player.getCamera().getPosition(), totalTime,
                 LIGHTNING_AMBIENT * lightningFlash);
         Vector3f sunDirection;
         Vector3f skyColor;
@@ -183,6 +188,7 @@ public class WorldRenderer {
         if (timeOfDay != null) {
             sunDirection = timeOfDay.getSunDirection();
             skyColor = weatherEffects.tintSky(timeOfDay.getSkyColor(), new Vector3f());
+            weatherEffects.updateFogColor(timeOfDay.getSkyColor(), timeOfDay.getAmbientLightLevel());
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
@@ -226,6 +232,11 @@ public class WorldRenderer {
                 com.stonebreak.config.Settings.getInstance().getCloudsEnabled());
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
+        // Rain and snow fog for every pass this frame; underwater the murk replaces it.
+        com.stonebreak.rendering.gameWorld.weather.WeatherFog.set(
+                cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
+        precipitationFog.prepare(cloudRenderer.uniforms(), cloudRenderer.mapsReady() && !cameraUnderwater,
+                cameraPos, weatherReach, weatherEffects);
 
         if (cameraUnderwater) {
             // Fog alone cannot hide the horizon, because it only tints pixels
@@ -247,6 +258,7 @@ public class WorldRenderer {
         } else {
             // Render sky first (before world geometry for proper depth testing)
             skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
+            precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
         }
         checkGLError("After sky rendering");
 
@@ -279,15 +291,7 @@ public class WorldRenderer {
             fogColor = UnderwaterFog.COLOR;
         } else if (settings.getLodEnabled() && settings.getLodDistance() > 0) {
             fogStart = settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
-            fogEnd = (settings.getRenderDistance() + settings.getLodDistance())
-                    * (float) WorldConfiguration.CHUNK_SIZE;
-        }
-        if (!cameraUnderwater && weatherEffects.storminess() > 0.01f) {
-            // Rain haze closes in toward the camera (and turns fog on without LOD).
-            float clearEnd = fogEnd > fogStart ? fogEnd
-                    : settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
-            fogEnd = weatherEffects.fogEnd(clearEnd);
-            fogStart = Math.min(fogStart, fogEnd * (1f - 0.8f * weatherEffects.storminess()));
+            fogEnd = horizonDistance(settings);
         }
 
         // Set common uniforms for world rendering
@@ -365,7 +369,7 @@ public class WorldRenderer {
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
                     sunDirection, skyColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
-                    lightningRenderer.flashes());
+                    lightningRenderer.flashes(), precipitationFog, weatherReach);
             checkGLError("After cloud rendering");
         }
 
@@ -396,7 +400,7 @@ public class WorldRenderer {
                 player.getCamera().getPosition(), totalTime, sunDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
-                cloudRenderer.transmittanceTexture());
+                cloudRenderer.transmittanceTexture(), precipitationFog);
         checkGLError("After water pass");
 
         if (!cameraUnderwater) {
@@ -445,6 +449,16 @@ public class WorldRenderer {
         }
     }
     
+    /**
+     * Blocks to the edge of the drawn terrain: the native ring plus the LOD
+     * ring when LOD is on. The atmospheric fog is opaque there, and the
+     * weather ends there too.
+     */
+    private static float horizonDistance(com.stonebreak.config.Settings settings) {
+        int chunks = settings.getRenderDistance() + (settings.getLodEnabled() ? settings.getLodDistance() : 0);
+        return chunks * (float) WorldConfiguration.CHUNK_SIZE;
+    }
+
     /**
      * Set up common uniforms for world rendering.
      */
@@ -497,6 +511,8 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_fogStart", fogStart);
         shaderProgram.setUniform("u_fogEnd", fogEnd);
         shaderProgram.setUniform("u_fogSpherical", fogSpherical);
+        // Rain and snow fog (precip_fog.glsl), marched in front of every fragment.
+        precipitationFog.applyTo(shaderProgram);
     }
     
     /**
@@ -923,6 +939,7 @@ public class WorldRenderer {
         if (skyRenderer != null) {
             skyRenderer.cleanup();
         }
+        precipitationFog.cleanup();
         if (cloudRenderer != null) {
             cloudRenderer.cleanup();
         }

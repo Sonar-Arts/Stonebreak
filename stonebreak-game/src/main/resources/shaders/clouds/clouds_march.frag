@@ -24,6 +24,7 @@
 // temporal pass reprojects it by.
 
 #include "/shaders/clouds/cloud_field.glsl"
+#include "/shaders/weather/precip_fog.glsl"
 
 in vec2 vUv;
 layout(location = 0) out vec4 fragColor;
@@ -47,8 +48,8 @@ uniform vec3 u_ambientColor;
 uniform vec3 u_hazeColor;       // distant clouds fade toward this (the sky)
 uniform float u_slabBottom;
 uniform float u_slabTop;
-uniform float u_fadeStart;      // clouds thin out with distance...
-uniform float u_fadeEnd;        // ...and are gone here (inside the map's reach)
+uniform float u_fadeStart;      // clouds thin out with horizontal distance...
+uniform float u_fadeEnd;        // ...and are gone here (the terrain's horizon, inside the map's reach)
 // Lightning: up to four live flashes, xyz = render-space light point inside
 // the storm cloud, w = intensity (0 = unused). Each lights only the cloud
 // within FLASH_RADIUS of it.
@@ -367,11 +368,16 @@ void main() {
     // let the block's depth stop the ray short, and the cloud-free pixel drew a
     // clear rim of sky around every block edge.
     float depth = sceneDepthFarthest(ivec2(gl_FragCoord.xy));
-    float tLimit = u_fadeEnd;
+    // The fade is measured across the ground, as the terrain's distance fog
+    // is, so the clouds end over the last terrain drawn: a ray reaches it
+    // farther along the ray the steeper it climbs.
+    float across = length(rd.xz);
+    float tReach = across > 1e-5 ? u_fadeEnd / across : 1e9;
+    float tLimit = tReach;
     if (depth < 1.0) tLimit = min(tLimit, length(worldAt(vUv, depth) - ro));
 
     // Clip to the cloud slab.
-    float tNear = 0.0, tFar = u_fadeEnd;
+    float tNear = 0.0, tFar = tReach;
     if (abs(rd.y) < 1e-5) {
         if (ro.y < u_slabBottom || ro.y > u_slabTop) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = NO_CLOUD; return; }
     } else {
@@ -431,9 +437,9 @@ void main() {
             lit = 1.0 - exp(-EXPOSURE * lit);
 
             // Aerial perspective, like the terrain's distance fog...
-            lit = mix(lit, u_hazeColor, 0.65 * smoothstep(0.0, u_fadeEnd, t));
+            lit = mix(lit, u_hazeColor, 0.65 * smoothstep(0.0, u_fadeEnd, t * across));
             // ...and clouds thin out toward the fade distance instead of ending in a wall.
-            float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, t);
+            float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, t * across);
             float stepT = exp(-ext * fade * min(ds, tFar - t));
             float added = transmittance * (1.0 - stepT);
             light += added * lit;
@@ -444,6 +450,17 @@ void main() {
         }
         overshoot = covered ? 0.0 : ds * (EMPTY_STRIDE - 1.0);
         t += ds + overshoot;
+    }
+
+    // Rain and snow below the cloud, between it and the eye. The scene behind
+    // is already fogged along this whole stretch (terrain itself, the sky by
+    // precip_fog_sky.frag), and the composite gives scene * T + light. So the
+    // cloud's light is dimmed by the fog in front, and the fog's own light is
+    // added here for the share of the scene the cloud hides. From above the
+    // cloud the rain is behind it, and the fogged scene already holds it.
+    if (ro.y < u_precipFogTop && transmittance < 1.0) {
+        vec4 fog = precipFog(ro, rd, tNear);
+        light = light * fog.a + fog.rgb * (1.0 - transmittance);
     }
 
     fragColor = vec4(light, transmittance);

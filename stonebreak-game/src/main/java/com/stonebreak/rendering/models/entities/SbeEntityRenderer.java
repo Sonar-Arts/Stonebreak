@@ -30,6 +30,7 @@ import static org.lwjgl.system.MemoryUtil.memAllocInt;
 import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memFree;
 import com.stonebreak.rendering.gameWorld.UnderwaterFog;
+import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
 
 /**
  * Entity-blind renderer for SBE-driven mobs.
@@ -351,6 +352,10 @@ public final class SbeEntityRenderer {
             // Scaled by depth, so an entity dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
             fogDensity = UnderwaterFog.density(cameraPos.y);
+        } else if (cameraPos != null && !uiPreviewLighting) {
+            // Rain and snow fog, as the terrain behind the entity gets it.
+            fogDensity = WeatherFog.density();
+            WeatherFog.color(fogColor);
         }
         // cameraPos arrives in world coordinates (the underwater probe above needs
         // it that way); the shader differences it against a render-space fragment

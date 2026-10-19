@@ -15,6 +15,7 @@ out vec4 fragColor;
 #include "/shaders/shadow/csm_functions.glsl"
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shadow.glsl"
+#include "/shaders/weather/precip_fog.glsl"
 
 uniform sampler2D texture_sampler;
 // Block texture array — sampled when u_useTextureArray is true.
@@ -201,12 +202,17 @@ void main() {
         // volume around the eye and up/down must fade like sideways does;
         // skipped for player-held geometry (arm-local fragPos) and
         // disabled by the CPU (fogEnd=0) when LOD is off.
-        if (!u_isUIElement && u_playerLight < 0.0 && u_fogEnd > u_fogStart) {
-            float fogDist = u_fogSpherical
-                    ? length(fragPos - u_viewPos)
-                    : length(fragPos.xz - u_viewPos.xz);
-            float fogF = smoothstep(u_fogStart, u_fogEnd, fogDist);
-            fragColor = vec4(mix(fragColor.rgb, u_fogColor, fogF), fragColor.a);
+        if (!u_isUIElement && u_playerLight < 0.0) {
+            float fogF = 0.0;
+            if (u_fogEnd > u_fogStart) {
+                float fogDist = u_fogSpherical
+                        ? length(fragPos - u_viewPos)
+                        : length(fragPos.xz - u_viewPos.xz);
+                fogF = smoothstep(u_fogStart, u_fogEnd, fogDist);
+            }
+            // With the rain and snow in front of the fragment, and the sky's
+            // own where the distance fog dissolves it into the sky.
+            fragColor.rgb = applyPrecipFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos, u_fogColor, fogF);
         }
 
         // Apply underwater fog effect if not UI element and fog density > 0

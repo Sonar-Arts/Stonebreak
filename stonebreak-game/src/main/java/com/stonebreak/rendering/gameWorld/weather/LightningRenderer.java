@@ -33,7 +33,7 @@ import static org.lwjgl.opengl.GL30.*;
  */
 public final class LightningRenderer {
 
-    /** Strikes farther than this are neither seen nor lit. */
+    /** Strikes farther than this (or than the terrain's horizon) are neither seen nor lit. */
     static final double RANGE = 1500;
     private static final float BOLT_SECONDS = 0.35f;
     private static final float FLASH_DECAY_SECONDS = 0.12f;
@@ -95,9 +95,10 @@ public final class LightningRenderer {
     /**
      * Picks up new strikes and drops finished bolts.
      *
+     * @param reach blocks to the terrain's horizon: no strikes beyond it
      * @return this frame's flash in [0, 1]
      */
-    public float update(ClientWeather weather, World world, Vector3f cameraWorldPos) {
+    public float update(ClientWeather weather, World world, Vector3f cameraWorldPos, float reach) {
         if (weather == null) {
             bolts.clear();
             lastSeconds = Double.NaN;
@@ -107,7 +108,7 @@ public final class LightningRenderer {
         double now = weather.seconds();
         if (!Double.isNaN(lastSeconds)) {
             for (LightningScheduler.Strike s : weather.strikesBetween(lastSeconds, now,
-                    cameraWorldPos.x, cameraWorldPos.z, RANGE)) {
+                    cameraWorldPos.x, cameraWorldPos.z, Math.min(RANGE, reach))) {
                 int ground = world != null
                         ? WeatherSurface.groundY(world, (int) Math.floor(s.x()), (int) Math.floor(s.z()))
                         : WeatherSurface.UNKNOWN;
