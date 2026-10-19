@@ -45,6 +45,9 @@ uniform float u_fadeEnd;        // ...and are gone here (inside the map's reach)
 // the storm cloud, w = intensity (0 = unused). Each lights only the cloud
 // within FLASH_RADIUS of it.
 uniform vec4 u_flashes[4];
+// Frame counter: the step dither moves every frame and the temporal pass
+// (clouds_temporal.frag) averages it away.
+uniform int u_frame;
 
 const int MAX_STEPS = 256;
 const float MIN_TRANSMITTANCE = 0.01;
@@ -67,9 +70,11 @@ const float LIGHT_GROWTH = 1.9;
 // Erosion leaves the fringe of a cloud thin; this keeps a cloud as opaque
 // overall as its type's sigma says.
 const float DENSITY_SCALE = 4.0;
-// Highest floor the shape noise may set under the cover: a cloud's heart
-// (cover 1) is never eroded, and cover below this survives only on billows.
-const float SHAPE_EROSION = 0.9;
+// Highest floor the shape noise may set under the cover. Above 1, so the gaps
+// between billows are carved even into a full-cover heart: a cloud wall is a
+// cluster of billows, not a sheer plank. The gaps are thin sheets between
+// noise cells, so they read as creases, never see-through holes.
+const float SHAPE_EROSION = 1.2;
 // Cover above the noise's floor that reaches full density: small, so a cloud
 // has a crisp, billowed surface instead of a soft fog around a smooth core.
 const float EROSION_EDGE = 0.25;
@@ -87,6 +92,12 @@ const float MIN_THICKNESS = 12.0;
 // horizon. Their cells are this many times wider than a cumulus billow, as
 // real sheet clouds' are.
 const float SHEET_STRETCH = 4.0;
+// Skylight occlusion: probe distance up, blocks; how strongly the cloud above
+// dims it (skylight scatters in from all around, so less than the sun); and
+// the most it may darken a point.
+const float SKY_PROBE = 5.0;
+const float SKY_OCCLUSION = 0.5;
+const float SKY_OCCLUSION_MAX = 0.6;
 // Depth of a cumulonimbus anvil below the top of the tower, blocks.
 const float ANVIL_DEPTH = 30.0;
 
@@ -170,7 +181,12 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
     float storm = smoothstep(u_cloudWetSplits.z, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
     vec4 heights = vec4(h.x, h.y, h.z, h.z + (h.w - h.z) * storm);
     vec4 weights = typeWeights(wet);
+    // Where two types' bands overlap, height and sheetness are averaged by
+    // each type's share of the cover. Taking them from whichever type covers
+    // most flipped them at the altitude where the profiles cross, and skylight
+    // (which follows height) drew a hard horizontal line across the cloud.
     float body = 0.0;
+    float sum = 0.0;
     float frac = 0.0;
     float sheet = 0.0; // how much of the cover is sheet cloud
     if (c.density > 0.0) {
@@ -179,7 +195,10 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
             float base = u_cloudTypeBase[t];
             float f = (p.y - base) / max(heights[t] * c.build, MIN_THICKNESS);
             float b = weights[t] * heightProfile(t, f);
-            if (b > body) { body = b; frac = f; sheet = (t == 1 || t == 2) ? 1.0 : 0.0; }
+            body = max(body, b);
+            sum += b;
+            frac += b * clamp(f, 0.0, 1.0);
+            sheet += (t == 1 || t == 2) ? b : 0.0;
         }
         body *= c.density;
     }
@@ -196,7 +215,11 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
     float cover = max(body, anvil);
     covered = cover > 0.0;
     if (!covered) return s;
-    s.height = anvil > body ? 1.0 : frac;
+    // The anvil counts as cloud top (it sees the sky), blended in by its share
+    // rather than switched on where it overtakes the tower.
+    float anvilW = anvil / (anvil + body + 1e-6);
+    s.height = mix(frac / max(sum, 1e-6), 1.0, anvilW);
+    sheet = sheet / max(sum, 1e-6) * (1.0 - anvilW);
 
     // Billows: the noise sets the floor the cover must clear (erosion), so the
     // dense heart of a cloud stays solid and only its thinner fringe is carved
@@ -204,10 +227,13 @@ CloudSample cloudAt(vec3 p, float footprint, bool detail, out bool covered) {
     // body by the noise instead punched see-through holes into the heart.
     vec3 q = vec3(xz.x, p.y - u_shapeRise, xz.y);
     float shape = textureLod(u_shapeNoise, q / u_shapeTile, noiseLod(u_shapeNoise, u_shapeTile, footprint)).r;
+    // Blended, not swapped: switching noise where sheet and cumulus meet cut a
+    // hard seam through the cloud.
     if (sheet > 0.0) {
         vec3 qs = vec3(q.x / SHEET_STRETCH, q.y, q.z / SHEET_STRETCH);
-        shape = textureLod(u_shapeNoise, qs / u_shapeTile,
+        float sheetShape = textureLod(u_shapeNoise, qs / u_shapeTile,
                 noiseLod(u_shapeNoise, u_shapeTile * SHEET_STRETCH, footprint)).r;
+        shape = mix(shape, sheetShape, sheet);
     }
     float floorAt = (1.0 - shape) * SHAPE_EROSION;
     float d = clamp((cover - floorAt) / EROSION_EDGE, 0.0, 1.0);
@@ -228,6 +254,16 @@ float extinction(CloudSample s) {
 }
 
 // Optical depth from p toward the sun, through the cloud above and around it.
+// How much of the sky a point sees: two short samples straight up. In shade
+// (inside a storm, under a deck) skylight is the only light, and without this
+// every crease and bulge got the same amount, so the face read as a flat wall.
+float skyVisibility(vec3 p, float footprint) {
+    bool covered;
+    float od = extinction(cloudAt(p + vec3(0.0, SKY_PROBE, 0.0), footprint, false, covered)) * SKY_PROBE
+             + extinction(cloudAt(p + vec3(0.0, 3.0 * SKY_PROBE, 0.0), footprint, false, covered)) * 2.0 * SKY_PROBE;
+    return exp(-SKY_OCCLUSION * od);
+}
+
 float sunOpticalDepth(vec3 p, vec3 dir, float footprint) {
     float od = 0.0;
     float t = 0.0;
@@ -272,9 +308,12 @@ vec3 worldAt(vec2 uv, float depth) {
 }
 
 // Interleaved gradient noise: a per-pixel offset for the first step, so step
-// banding turns into fine grain the upsample blurs away.
+// banding turns into fine grain. Shifted by the golden ratio every frame, so
+// each pixel's offsets fill [0, 1) evenly over the frames the temporal pass
+// averages.
 float dither(vec2 frag) {
-    return fract(52.9829189 * fract(dot(frag, vec2(0.06711056, 0.00583715))));
+    float ign = fract(52.9829189 * fract(dot(frag, vec2(0.06711056, 0.00583715))));
+    return fract(ign + 0.61803399 * float(u_frame & 63));
 }
 
 float stepAt(float t) {
@@ -361,7 +400,8 @@ void main() {
             float sun = phase.x * exp(-od) + 0.5 * phase.y * exp(-0.35 * od) + 0.25 * phase.z * exp(-0.12 * od);
             float powder = mix(1.0, 1.0 - exp(-ext * 16.0), powderAmount);
             // Skylight: the base of a cloud sees less of the sky than its top.
-            float skyLit = mix(0.35, 1.0, sqrt(clamp(s.height, 0.0, 1.0)));
+            float skyLit = mix(0.35, 1.0, sqrt(clamp(s.height, 0.0, 1.0)))
+                    * mix(1.0 - SKY_OCCLUSION_MAX, 1.0, skyVisibility(p, footprint));
             vec3 lit = s.albedo * (u_sunColor * sun * powder + u_ambientColor * skyLit);
             lit += FLASH_COLOR * flashAt(p);
             lit = 1.0 - exp(-EXPOSURE * lit);

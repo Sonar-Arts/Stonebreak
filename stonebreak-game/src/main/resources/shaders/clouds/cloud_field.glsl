@@ -71,9 +71,30 @@ CloudColumn cloudColumnAt(ivec2 cell) {
     return cloudResolve(texelFetch(u_cloudMap, texel, 0));
 }
 
-// A bilinearly smoothed column at a cloud-space position — soft-edged, so
+// The cloud map at a cloud-space position through a cubic B-spline: smooth in
+// value AND slope, so clouds and their shadows have no cell steps and no
+// creases. (Bilinear filtering is only continuous in value; its slope breaks
+// at every cell edge, which drew a vertical crease up every cloud wall.)
+// Four bilinear taps, weighted, make the 4x4 B-spline.
+vec4 cloudMapCubic(vec2 cloudXZ) {
+    vec2 size = vec2(textureSize(u_cloudMap, 0));
+    vec2 p = cloudXZ / u_cloudCell - 0.5;
+    vec2 i = floor(p);
+    vec2 f = p - i;
+    vec2 f2 = f * f, f3 = f2 * f;
+    vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+    vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+    vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+    vec2 w3 = f3 / 6.0;
+    vec2 g0 = w0 + w1, g1 = w2 + w3;
+    vec2 h0 = (i - 0.5 + w1 / g0) / size;   // texel centres sit at i + 0.5
+    vec2 h1 = (i + 1.5 + w3 / g1) / size;
+    return g0.y * (g0.x * texture(u_cloudMap, vec2(h0.x, h0.y)) + g1.x * texture(u_cloudMap, vec2(h1.x, h0.y)))
+         + g1.y * (g0.x * texture(u_cloudMap, vec2(h0.x, h1.y)) + g1.x * texture(u_cloudMap, vec2(h1.x, h1.y)));
+}
+
+// A smoothly filtered column at a cloud-space position — soft-edged, so
 // clouds and their shadows have no cell steps.
 CloudColumn cloudColumnSmooth(vec2 cloudXZ) {
-    vec2 uv = cloudXZ / (u_cloudCell * vec2(textureSize(u_cloudMap, 0)));
-    return cloudResolve(texture(u_cloudMap, uv));
+    return cloudResolve(cloudMapCubic(cloudXZ));
 }

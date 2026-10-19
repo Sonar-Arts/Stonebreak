@@ -26,8 +26,10 @@ import static org.lwjgl.opengl.GL11.*;
  *       resolves this frame's {@link CloudUniforms} — before the world draws,
  *       because terrain and water read cloud shadows from them;</li>
  *   <li>{@link #render} (after water) snapshots scene depth, raymarches the
- *       clouds at half resolution into an RGBA16F target, then composites that
- *       over the scene.</li>
+ *       clouds at half resolution into an RGBA16F target, blends that into the
+ *       reprojected history of earlier frames (the march's dither changes every
+ *       frame, so its grain averages away), then composites the result over
+ *       the scene.</li>
  * </ol>
  * Opacity follows Beer-Lambert like water: thin cloud lets the sky and sun
  * through, thick cloud hides them. Saves and restores all GL state it touches.
@@ -39,6 +41,8 @@ public final class CloudRenderer {
     /** Units of the shape and detail noise volumes, read only by the cloud march. */
     private static final int SHAPE_TEXTURE_UNIT = 12;
     private static final int DETAIL_TEXTURE_UNIT = 13;
+    /** Unit for the cloud history read by the temporal pass; its binding is restored. */
+    private static final int HISTORY_TEXTURE_UNIT = 14;
 
     /**
      * How fast the shape and detail noise rise through the clouds, blocks per
@@ -63,8 +67,18 @@ public final class CloudRenderer {
     private final SceneDepthCopy sceneDepth = new SceneDepthCopy();
     private final FullscreenQuad quad = new FullscreenQuad();
     private final ShaderProgram marchShader;
+    private final ShaderProgram temporalShader;
     private final ShaderProgram compositeShader;
     private RenderTarget target;
+    /** Ping-ponged accumulation targets: one is read as history while the other is written. */
+    private final RenderTarget[] history = new RenderTarget[2];
+    private int historyIndex;
+    private boolean historyValid;
+    private int frame;
+    private final Matrix4f prevViewProjRel = new Matrix4f();
+    private final Matrix4f viewProjRel = new Matrix4f();
+    private final Vector3f camDelta = new Vector3f();
+    private double prevCamX, prevCamY, prevCamZ;
     private boolean prepared;
     private boolean drawnThisFrame;
     private float shapeRise;
@@ -81,6 +95,10 @@ public final class CloudRenderer {
         marchShader.createVertexShader(vert);
         marchShader.createFragmentShader(load("/shaders/clouds/clouds_march.frag"));
         marchShader.link();
+        temporalShader = new ShaderProgram();
+        temporalShader.createVertexShader(vert);
+        temporalShader.createFragmentShader(load("/shaders/clouds/clouds_temporal.frag"));
+        temporalShader.link();
         compositeShader = new ShaderProgram();
         compositeShader.createVertexShader(vert);
         compositeShader.createFragmentShader(load("/shaders/clouds/clouds_composite.frag"));
@@ -103,6 +121,7 @@ public final class CloudRenderer {
         prepared = enabled && weather != null;
         if (!prepared) {
             uniforms.disable();
+            historyValid = false; // stale by the time clouds return
             return;
         }
         double s = weather.seconds();
@@ -160,8 +179,13 @@ public final class CloudRenderer {
         int hw = Math.max(1, vw / 2), hh = Math.max(1, vh / 2);
         if (target == null) {
             target = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F);
-        } else {
+            history[0] = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F);
+            history[1] = new RenderTarget(hw, hh, false, GL30.GL_RGBA16F);
+        } else if (target.getWidth() != hw || target.getHeight() != hh) {
             target.resize(hw, hh);
+            history[0].resize(hw, hh);
+            history[1].resize(hw, hh);
+            historyValid = false;
         }
         // (Re)creating the target unbinds the active unit's texture.
         glBindTexture(GL_TEXTURE_2D, sceneDepth.texture());
@@ -187,6 +211,7 @@ public final class CloudRenderer {
         marchShader.setFloat("u_detailRise", detailRise);
         marchShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
         marchShader.setVec3("u_camPos", renderCameraPos);
+        marchShader.setInt("u_frame", frame++);
         marchShader.setVec3("u_sunDir", sunDirection);
         marchShader.setVec3("u_sunColor", sunColor(sunDirection));
         marchShader.setVec3("u_ambientColor", ambientColor(skyColor, ambientLight));
@@ -200,12 +225,48 @@ public final class CloudRenderer {
         }
         quad.draw();
 
-        // Pass 2: composite over the scene: scene * transmittance + cloud light.
+        // Pass 2: blend into the reprojected history. Camera-relative, so a
+        // render-origin rebase between frames doesn't break the reprojection.
+        double camX = renderCameraPos.x + (double) RenderOrigin.x();
+        double camY = renderCameraPos.y; // the origin rebases X/Z only
+        double camZ = renderCameraPos.z + (double) RenderOrigin.z();
+        camDelta.set((float) (camX - prevCamX), (float) (camY - prevCamY), (float) (camZ - prevCamZ));
+        viewProjRel.set(view).setTranslation(0f, 0f, 0f).mulLocal(projection);
+        RenderTarget resolved = history[historyIndex];
+        RenderTarget previous = history[1 - historyIndex];
+        resolved.bind();
+        glBindTexture(GL_TEXTURE_2D, target.getColorTexture());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + HISTORY_TEXTURE_UNIT);
+        int previousHistoryUnitTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, previous.getColorTexture());
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
+        temporalShader.bind();
+        temporalShader.setInt("u_current", SCRATCH_TEXTURE_UNIT);
+        temporalShader.setInt("u_history", HISTORY_TEXTURE_UNIT);
+        temporalShader.setBool("u_historyValid", historyValid);
+        temporalShader.setMat4("u_invViewProj", invViewProj);
+        temporalShader.setVec3("u_camPos", renderCameraPos);
+        temporalShader.setMat4("u_prevViewProjRel", prevViewProjRel);
+        temporalShader.setVec3("u_camDelta", camDelta);
+        temporalShader.setFloat("u_slabBottom", CloudType.slabBottom());
+        temporalShader.setFloat("u_slabTop", CloudType.slabTop());
+        quad.draw();
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + HISTORY_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, previousHistoryUnitTexture);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
+        prevViewProjRel.set(viewProjRel);
+        prevCamX = camX;
+        prevCamY = camY;
+        prevCamZ = camZ;
+        historyValid = true;
+        historyIndex = 1 - historyIndex;
+
+        // Pass 3: composite over the scene: scene * transmittance + cloud light.
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousFbo);
         glViewport(vx, vy, vw, vh);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_SRC_ALPHA);
-        glBindTexture(GL_TEXTURE_2D, target.getColorTexture());
+        glBindTexture(GL_TEXTURE_2D, resolved.getColorTexture());
         compositeShader.bind();
         compositeShader.setInt("u_clouds", SCRATCH_TEXTURE_UNIT);
         quad.draw();
@@ -228,7 +289,7 @@ public final class CloudRenderer {
      * for screen-space effects that should see clouds; 0 when none was drawn.
      */
     public int transmittanceTexture() {
-        return drawnThisFrame && target != null ? target.getColorTexture() : 0;
+        return drawnThisFrame && target != null ? history[1 - historyIndex].getColorTexture() : 0;
     }
 
     /** Binds a noise volume on its own unit, which nothing else samples, so it is left bound. */
@@ -272,7 +333,12 @@ public final class CloudRenderer {
         sceneDepth.cleanup();
         quad.cleanup();
         marchShader.cleanup();
+        temporalShader.cleanup();
         compositeShader.cleanup();
-        if (target != null) target.cleanup();
+        if (target != null) {
+            target.cleanup();
+            history[0].cleanup();
+            history[1].cleanup();
+        }
     }
 }
