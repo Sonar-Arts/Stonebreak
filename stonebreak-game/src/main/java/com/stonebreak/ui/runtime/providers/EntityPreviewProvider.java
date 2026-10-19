@@ -1,6 +1,7 @@
 package com.stonebreak.ui.runtime.providers;
 
 import com.openmason.engine.format.omui.UiValue;
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityType;
@@ -92,7 +93,13 @@ public final class EntityPreviewProvider extends GlPreviewProvider {
         float az = yaw instanceof UiValue.Num n
             ? (float) Math.toRadians(n.value())
             : time * (float) number(p, "orbitSpeed", 0.6);
-        return frame(b, az, el, margin, aspect);
+        Orbit o = frame(b, az, el, margin, aspect);
+        // The SBE draw path rebases models into render space (RenderOrigin), so a camera
+        // built in model coordinates frames empty air once the origin has stepped. The
+        // orbit camera consumes world/model positions — the documented crossover is
+        // acceptRenderSpace, which keeps the preview framed at any origin.
+        RenderOrigin.acceptRenderSpace(o.view());
+        return o;
     }
 
     static Orbit frame(float[] b, float az, float el, float margin, float aspect) {
