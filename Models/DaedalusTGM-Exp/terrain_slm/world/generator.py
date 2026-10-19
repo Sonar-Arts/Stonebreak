@@ -171,6 +171,13 @@ RED_DESERT_SOFTNESS = 2.0     # softmax sharpness of the walk's dryness field (t
 RED_DESERT_MAX_STEPS = 400
 RED_DESERT_OCTAVES = 1        # the climate scores' first octave only: one dryness basin per dry zone
 RED_DESERT_STREAM = 31337
+# Where nodes of one desert disagree (it spans basins either side of the threshold), the border runs through a
+# domain-warped cubic B-spline blend of the node votes rather than along the lattice squares (2026-10-18, user: "square
+# tile borders between regular sand deserts and red sand deserts").
+RED_DESERT_WARP_CELLS = 24.0      # warp amplitude (fbm is mostly |f| < 0.5: ~48 blocks): the basin split itself is near-straight
+RED_DESERT_WARP_PERIOD = 96.0     # warp wavelength (~384 blocks), 4 octaves down to ~48 blocks
+RED_DESERT_JITTER = 0.5           # fine edge noise added to the blended vote (on a [-1, 1] scale)
+RED_DESERT_JITTER_PERIOD = 8.0    # ~32 blocks, 3 octaves down to ~8 (one octave alone reads as regular ripples)
 
 
 def _dryness(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
@@ -186,14 +193,12 @@ _RED_MEMO: "OrderedDict[tuple, bool]" = OrderedDict()   # (seed, node i, node j)
 _RED_MEMO_CAP = 2_000_000
 
 
-def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
-    """Bool per cell: does the desert this cell would belong to come out red? (Only meaningful where the
-    biome is desert; callers mask.) Walks each lattice node downhill in `_dryness` to its minimum; only
-    unfinished nodes step, and every node's answer is memoised per seed (neighbouring tiles share walks)."""
+def _red_desert_nodes(ni: torch.Tensor, nj: torch.Tensor, seed: int) -> torch.Tensor:
+    """Bool per lattice node (ni, nj): does the dryness basin it drains to come out red? Walks each node
+    downhill in `_dryness` to its minimum; only unfinished nodes step, and every node's answer is memoised
+    per seed (neighbouring tiles share walks)."""
     L = RED_DESERT_LATTICE
-    dev = ci.device
-    ni = torch.round(ci.float() / L).long()
-    nj = torch.round(cj.float() / L).long()
+    dev = ni.device
     nodes, inv = torch.unique(torch.stack([ni.flatten(), nj.flatten()]), dim=1, return_inverse=True)
     keys = [(seed, int(a), int(b)) for a, b in zip(nodes[0].tolist(), nodes[1].tolist())]
     cached = [_RED_MEMO.get(key) for key in keys]
@@ -225,7 +230,47 @@ def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Ten
             _RED_MEMO[keys[k]] = r
         while len(_RED_MEMO) > _RED_MEMO_CAP:
             _RED_MEMO.popitem(last=False)
-    return result[inv].view(ci.shape)
+    return result[inv].view(ni.shape)
+
+
+def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
+    """Bool per point at float cell coords (ci, cj): does the desert it would belong to come out red? (Only
+    meaningful where the biome is desert; callers mask.) Lattice nodes vote (`_red_desert_nodes`); a point
+    reads the cubic B-spline blend of its 4x4 surrounding nodes at a domain-warped position, plus fine
+    jitter, so where all nearby nodes agree (inside one basin) the whole desert decides alike, and where they
+    disagree the border is organic instead of following node squares. Pure function of the point."""
+    L = RED_DESERT_LATTICE
+    ci, cj = ci.float(), cj.float()
+    wi = ci + RED_DESERT_WARP_CELLS * _fbm(ci, cj, RED_DESERT_WARP_PERIOD, seed, RED_DESERT_STREAM + 1, octaves=4)
+    wj = cj + RED_DESERT_WARP_CELLS * _fbm(ci, cj, RED_DESERT_WARP_PERIOD, seed, RED_DESERT_STREAM + 2, octaves=4)
+    x, y = wi / L, wj / L
+    x0, y0 = torch.floor(x), torch.floor(y)
+    n0i, n0j = x0.long(), y0.long()
+    # Uniform cubic B-spline over the 4x4 surrounding nodes: bilinear blending left a scallop per node where the
+    # vote split runs diagonally across the lattice. The nodes are walked once over their (small) bounding box and
+    # gathered from it: deduplicating the 16 corners of every point instead cost ~1 s per tile.
+    wx, wy = _bspline_weights(x - x0), _bspline_weights(y - y0)
+    dev = ci.device
+    if ci.numel() == 0:
+        return torch.zeros(ci.shape, dtype=torch.bool, device=dev)
+    bi, bj = int(n0i.min()) - 1, int(n0j.min()) - 1
+    hi, hj = int(n0i.max()) + 3 - bi, int(n0j.max()) + 3 - bj
+    box = _red_desert_nodes((torch.arange(hi, device=dev) + bi).view(-1, 1).expand(hi, hj),
+                            (torch.arange(hj, device=dev) + bj).view(1, -1).expand(hi, hj), seed).float() * 2 - 1
+    d4 = torch.arange(-1, 3, device=dev)
+    ri = (n0i - bi).unsqueeze(0) + d4.view(4, *([1] * ci.dim()))           # 4 x shape
+    rj = (n0j - bj).unsqueeze(0) + d4.view(4, *([1] * ci.dim()))
+    votes = box.flatten()[(ri[:, None] * hj + rj[None, :])]                # 4 x 4 x shape
+    blend = (votes * wx[:, None] * wy[None, :]).sum(dim=(0, 1))
+    # Jitter only moves borders: where all 16 nodes agree |blend| = 1 > RED_DESERT_JITTER.
+    blend = blend + RED_DESERT_JITTER * _fbm(ci, cj, RED_DESERT_JITTER_PERIOD, seed, RED_DESERT_STREAM + 3, octaves=3)
+    return blend > 0
+
+
+def _bspline_weights(t: torch.Tensor) -> torch.Tensor:
+    """Uniform cubic B-spline weights of nodes -1, 0, 1, 2 at fraction t in [0, 1); stacked on dim 0, sum 1."""
+    t2, t3 = t * t, t * t * t
+    return torch.stack([(1 - t) ** 3, 3 * t3 - 6 * t2 + 4, -3 * t3 + 3 * t2 + 3 * t + 1, t3]) / 6
 
 
 def _smoothstep(x: torch.Tensor) -> torch.Tensor:

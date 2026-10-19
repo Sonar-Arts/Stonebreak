@@ -152,7 +152,8 @@ class TileBuilder:
         dev = biome.device
         si = torch.arange(i1, i1 + h, device=dev).view(-1, 1).expand(h, w)
         sj = torch.arange(j1, j1 + w, device=dev).view(1, -1).expand(h, w)
-        ci, cj = torch.div(si * d, CELL_PX, rounding_mode="floor"), torch.div(sj * d, CELL_PX, rounding_mode="floor")
+        # Float cell coords of the sample centres: the red/sand border is resolved per sample, not per cell.
+        ci, cj = (si * d + d / 2) / CELL_PX, (sj * d + d / 2) / CELL_PX
         red = G.red_desert_cells(ci[desert], cj[desert], self.gen.seed)
         out = biome.clone()
         out[desert] = torch.where(red, torch.full_like(biome[desert], B.RED_DESERT_ID), biome[desert])
