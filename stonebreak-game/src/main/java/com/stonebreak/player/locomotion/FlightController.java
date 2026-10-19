@@ -2,9 +2,11 @@ package com.stonebreak.player.locomotion;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.player.state.PhysicsState;
+import org.joml.Vector3f;
 
 import static com.stonebreak.player.PlayerConstants.DOUBLE_TAP_WINDOW;
 import static com.stonebreak.player.PlayerConstants.FLY_VERTICAL_SPEED;
+import static com.stonebreak.player.PlayerConstants.MOVE_SPEED;
 
 /**
  * Owns the creative-style flight toggle: tracks whether flight is enabled (via command)
@@ -31,12 +33,31 @@ public class FlightController {
             if (flying) {
                 state.setOnGround(false);
                 state.getVelocity().y = 0;
+            } else {
+                shedFlightMomentum();
             }
             lastSpaceKeyTime = 0.0f;
             return true;
         }
         lastSpaceKeyTime = currentTime;
         return false;
+    }
+
+    /**
+     * Shed flight momentum on any flight stop: a cancelled flight must not keep carrying
+     * FLY_SPEED / FLY_VERTICAL_SPEED into normal physics, or the player plummets at descent
+     * speed and lands at lethal velocity. Vertical momentum is dropped; horizontal is clamped
+     * to ground-locomotion speed (direction preserved).
+     */
+    private void shedFlightMomentum() {
+        Vector3f velocity = state.getVelocity();
+        velocity.y = 0;
+        float horizontal = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        if (horizontal > MOVE_SPEED) {
+            float scale = MOVE_SPEED / horizontal;
+            velocity.x *= scale;
+            velocity.z *= scale;
+        }
     }
 
     public void processAscent(boolean shift) {
@@ -57,8 +78,15 @@ public class FlightController {
     public boolean isFlightEnabled() { return flightEnabled; }
 
     public void setFlightEnabled(boolean enabled) {
+        boolean wasFlying = this.flying;
         this.flightEnabled = enabled;
-        if (!enabled) this.flying = false;
+        if (!enabled) {
+            this.flying = false;
+            // /fly off (or equivalent) mid-flight stops flight just like the double-tap
+            // toggle — shed momentum too. Only when flight was actually active, so
+            // disabling a capability the player wasn't using never touches their velocity.
+            if (wasFlying) shedFlightMomentum();
+        }
     }
 
     public void reset() {
