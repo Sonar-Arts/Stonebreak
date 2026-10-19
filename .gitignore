@@ -157,6 +157,7 @@ QWEN.md
 # its own data, checkpoints and environment (Models/DaedalusTGM-Exp/.gitignore).
 /Models/tile_cache/
 /Models/triton_cache/
+/Models/kernel_cache/
 /Models/tools/
 /Models/**/__pycache__/
 # Terrain service log (TGMPipe's default -Dstonebreak.tgmpipe.logDir).

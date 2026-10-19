@@ -35,7 +35,7 @@ The tested platform is Linux. WSL2 should behave the same; native Windows is unt
 ```bash
 git clone <repo> && cd <repo> && git checkout Project-Daedalus
 cd Models/DaedalusTGM-Exp
-uv sync                                            # Python 3.12 + torch cu128 (Blackwell / sm_120)
+uv sync                                            # Python 3.12 + torch cu129 (Blackwell / sm_120)
 tar -xf /path/to/DaedalusTGM-Exp-data-<date>.tar   # creates data/<region>/...
 sha256sum -c data/SHA256SUMS                       # every line must say OK
 .venv/bin/python -m pytest -q                      # should all pass

@@ -16,6 +16,8 @@ import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.DesertGravel;
+import com.stonebreak.world.generation.biomes.LakeBed;
 import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
@@ -63,6 +65,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     private final OreGenerator oreGenerator;
     private final LimestoneGenerator limestoneGenerator;
     private final SwampPoolGenerator swampPoolGenerator;
+    /** Terrain-pass columns behind FastLOD's swamp pools (see {@link #sampleColumns}). */
+    private final SwampPoolGenerator.ColumnOracle poolColumns = SwampPoolGenerator.ColumnOracle.of(this);
     private final VegetationGenerator vegetationGenerator;
     private final CactusGenerator cactusGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
@@ -167,7 +171,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     }
 
     /**
-     * The model's tile-cache namespace (see {@link TGMPipe#cacheNamespace}): it changes whenever a
+     * The model's tile-cache namespace (see {@link TGMPipe#cacheNamespace()}): it changes whenever a
      * retrained checkpoint, a re-tuned world or an edited pipeline changes what a tile holds, and
      * so must every FastLOD node sampled from those tiles.
      */
@@ -299,7 +303,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * not a separate rule.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
-        return surfaceBlockAt(biomeManager.getBiome(worldX, worldZ), worldX, worldZ, seed);
+        int depth = heightMapGenerator.waterLevel(worldX, worldZ) - heightMapGenerator.generateHeight(worldX, worldZ);
+        return surfaceBlockAt(biomeManager.getBiome(worldX, worldZ), worldX, worldZ, seed, depth);
     }
 
     /** Deterministic RNG for shared probing logic (tree placement, etc.). */
@@ -346,6 +351,10 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * scatter of puddles (measured on v4 tiles: 22 rivers became 156 pieces at L3, 62 of them
      * single cells). Any-in-footprint keeps every river whole at every level, one cell wide at
      * least. The sea is left to the probe — a coastline needs no help staying continuous.
+     *
+     * <p>Swamp pools are features, not tile water, but each one is decided from the terrain pass
+     * alone ({@link SwampPoolGenerator#probePoolDepth}), so a pool column reports what its chunk
+     * will hold: water at its old surface over a dirt bed one or two blocks down.
      *
      * <p>On the diffusion generator the batching win lives one layer down: the
      * heights come from service tiles that {@code DiffusionTileCache} already
@@ -421,8 +430,10 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                                   BlockType[] outSurface,
                                   com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees,
                                   boolean carved) {
-        boolean needBiomes = outSurface != null || outTrees != null;
-        boolean needWater = outWaterLevels != null || outTrees != null;
+        // Surfaces and trees need the water (a submerged surface is its lake bed), and the water
+        // needs the biome and surface (a swamp pool is water only the swamp's surface knows of).
+        boolean needBiomes = outSurface != null || outTrees != null || outWaterLevels != null;
+        SwampPoolGenerator.ColumnOracle pools = carved ? poolColumns : poolColumns.uncarved();
         for (int ix = 0; ix < count; ix++) {
             for (int iz = 0; iz < count; iz++) {
                 int idx = ix * count + iz;
@@ -438,27 +449,37 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 int rawHeight = heightMapGenerator.generateHeight(wx, wz);
                 int height = carved ? carvedSurfaceHeight(wx, wz) : rawHeight;
                 outHeights[idx] = height;
-                int waterLevel = needWater ? heightMapGenerator.waterLevel(wx, wz) : TerrainTile.NO_WATER;
-                if (outWaterLevels != null) {
-                    outWaterLevels[idx] = waterLevel;
-                }
                 if (!needBiomes) {
                     continue;
                 }
+                int waterLevel = heightMapGenerator.waterLevel(wx, wz);
                 // Biome is resolved for submerged columns too — their surface
                 // is the real seabed block (see getSurfaceBlockAt).
                 BiomeType biome = biomeManager.getBiome(wx, wz);
-                BlockType surface = exposedBlock(rawHeight, height, biome, wx, wz, seed);
-                if (outSurface != null) {
-                    outSurface[idx] = surface;
-                }
+                BlockType surface = exposedBlock(rawHeight, height, waterLevel, biome, wx, wz, seed);
+                // A swamp pool floods the top block (and, in a pool core, the one under it):
+                // the column shows water at its old surface over a dirt bed, as the chunk will.
+                int pool = SwampPoolGenerator.probePoolDepth(biome, surface, rawHeight, height, waterLevel,
+                        wx, wz, pools, deterministicRandom);
                 if (outTrees != null) {
                     // The real generator reads the block at rawHeight - 1 and every placement
                     // branch needs it to be the biome's surface block. Carved away, it is air
                     // and nothing is planted — so a carved top is exactly a treeless column.
-                    outTrees[idx] = (waterLevel > rawHeight || height != rawHeight) ? null
+                    // A cypress also roots in a pool's water, but only on a bed: never in a core.
+                    outTrees[idx] = (waterLevel > rawHeight || height != rawHeight || pool == 2) ? null
                         : com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
-                            wx, wz, biome, surface, deterministicRandom);
+                            wx, wz, biome, pool > 0 ? BlockType.WATER : surface, deterministicRandom);
+                }
+                if (pool > 0) {
+                    outHeights[idx] = height - pool;
+                    waterLevel = rawHeight;
+                    surface = BlockType.DIRT;
+                }
+                if (outWaterLevels != null) {
+                    outWaterLevels[idx] = waterLevel;
+                }
+                if (outSurface != null) {
+                    outSurface[idx] = surface;
                 }
             }
         }
@@ -482,14 +503,25 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             for (int ix = 0; ix < cellsPerAxis; ix++) {
                 for (int iz = 0; iz < cellsPerAxis; iz++) {
                     int cell = ix * cellsPerAxis + iz;
-                    BlockType surface = cellSurface[cell];
-                    // probeTree only ever plants on these two; skip the biome lookup otherwise.
-                    if (cellWaterLevels[cell] > cellHeights[cell]
-                            || (surface != BlockType.GRASS && surface != BlockType.SNOWY_DIRT)) {
-                        continue;
-                    }
                     int rep = cellSize / 2;
-                    BiomeType biome = biomeManager.getBiome(baseX + ix * cellSize + rep, baseZ + iz * cellSize + rep);
+                    int repX = baseX + ix * cellSize + rep;
+                    int repZ = baseZ + iz * cellSize + rep;
+                    BlockType surface = cellSurface[cell];
+                    BiomeType biome = null;
+                    if (cellWaterLevels[cell] > cellHeights[cell]) {
+                        // Standing water plants nothing, except a 1-deep swamp pool: cypress root in it.
+                        biome = biomeManager.getBiome(repX, repZ);
+                        if (!isShallowPoolCell(repX, repZ, biome, cellHeights[cell], cellWaterLevels[cell])) {
+                            continue;
+                        }
+                        surface = BlockType.WATER;
+                    }
+                    if (!com.stonebreak.world.generation.features.VegetationGenerator.growsTreeOn(surface)) {
+                        continue; // skips the biome lookup for most cells
+                    }
+                    if (biome == null) {
+                        biome = biomeManager.getBiome(repX, repZ);
+                    }
                     for (int dx = 0; dx < cellSize; dx++) {
                         for (int dz = 0; dz < cellSize; dz++) {
                             int lx = ix * cellSize + dx;
@@ -506,6 +538,20 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             }
             return java.util.Arrays.copyOf(out, n);
         });
+    }
+
+    /**
+     * Whether a submerged coarse cell is a 1-deep swamp pool rather than a river, lake or sea:
+     * its probe column grows a pool whose water stands exactly where the cell's does. Probed
+     * uncarved (no carve profile); a swamp is never carved, so that only differs at its rim.
+     */
+    private boolean isShallowPoolCell(int repX, int repZ, BiomeType biome, int cellHeight, int cellWaterLevel) {
+        int rawHeight = heightMapGenerator.generateHeight(repX, repZ);
+        int waterLevel = heightMapGenerator.waterLevel(repX, repZ);
+        BlockType surface = exposedBlock(rawHeight, rawHeight, waterLevel, biome, repX, repZ, seed);
+        return cellWaterLevel == rawHeight && cellHeight == rawHeight - 1
+            && SwampPoolGenerator.probePoolDepth(biome, surface, rawHeight, rawHeight, waterLevel,
+                   repX, repZ, poolColumns.uncarved(), deterministicRandom) > 0;
     }
 
     private static final long NO_RIVER_COLUMN = Long.MIN_VALUE;
@@ -851,7 +897,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * {@link #determineBlockType}. Uncarved columns get the biome's surface block as
      * before; a ravine wall gets stone rather than a sheet of grass laid over the cut.
      */
-    private static BlockType exposedBlock(int rawHeight, int carvedHeight, BiomeType biome, int worldX, int worldZ, long seed) {
+    private static BlockType exposedBlock(int rawHeight, int carvedHeight, int waterLevel, BiomeType biome,
+                                          int worldX, int worldZ, long seed) {
         int y = carvedHeight - 1;
         if (y < rawHeight - 4) {
             return BlockType.STONE;
@@ -859,7 +906,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         if (y < rawHeight - 1) {
             return subsurfaceBlock(biome);
         }
-        return surfaceBlockAt(biome, worldX, worldZ, seed);
+        return surfaceBlockAt(biome, worldX, worldZ, seed, waterLevel - rawHeight);
     }
 
     /**
@@ -910,7 +957,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
         // Before vegetation: cypress trees may root in the pools.
-        swampPoolGenerator.generate(ctx);
+        swampPoolGenerator.generate(ctx, SwampPoolGenerator.ColumnOracle.of(this));
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
@@ -956,7 +1003,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             return subsurfaceBlock(biome);
         }
         if (y < height) {
-            return surfaceBlockAt(biome, worldX, worldZ, seed);
+            return surfaceBlockAt(biome, worldX, worldZ, seed, waterLevel - height);
         }
         // Was `y < SEA_LEVEL`. The ocean is now one case of a per-column water surface
         // rather than a global constant, so a river or a lake several hundred blocks up
@@ -984,9 +1031,28 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         };
     }
 
-    /** Per-column surface: the biome's surface block, except the sea floor mixes in dirt and clay ({@link OceanFloor}). */
+    /** Per-column surface of a dry column: the biome's surface block, except the sea floor ({@link OceanFloor}). */
     static BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ, long seed) {
-        return biome == BiomeType.OCEAN ? OceanFloor.block(worldX, worldZ, seed) : surfaceBlock(biome);
+        return surfaceBlockAt(biome, worldX, worldZ, seed, 0);
+    }
+
+    /**
+     * Per-column surface: the sea floor mixes in dirt and clay ({@link OceanFloor}); ground under
+     * inland water — a lake or a river, {@code waterDepth} blocks of it — is a lake bed of sand and
+     * dirt ({@link LakeBed}) instead of grass; dry desert holds gravel patches ({@link DesertGravel});
+     * other dry ground is the biome's surface block.
+     *
+     * @param waterDepth {@code waterLevel - height}; zero or less for a dry column
+     */
+    static BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ, long seed, int waterDepth) {
+        if (biome == BiomeType.OCEAN) {
+            return OceanFloor.block(worldX, worldZ, seed);
+        }
+        BlockType surface = surfaceBlock(biome);
+        if (waterDepth > 0) {
+            return LakeBed.block(biome, waterDepth, worldX, worldZ, seed, surface);
+        }
+        return biome == BiomeType.DESERT && DesertGravel.at(worldX, worldZ, seed) ? BlockType.GRAVEL : surface;
     }
 
     private static BlockType surfaceBlock(BiomeType biome) {

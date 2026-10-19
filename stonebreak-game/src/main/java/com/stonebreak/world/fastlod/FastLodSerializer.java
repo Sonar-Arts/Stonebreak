@@ -90,8 +90,16 @@ public final class FastLodSerializer {
      * levels may hold the uncarved height (keys with {@code carved == false}), and
      * submerged columns are the OCEAN biome whose sea floor mixes in dirt and clay —
      * main's v4/v5, merged onto this branch's v11.
+     *
+     * <p>13: swamp pools are sampled ({@code SwampPoolGenerator.probePoolDepth}): a pool
+     * cell's height drops to its bed under a water level, and cypress stand in 1-deep pools
+     * and at every coarse level. Same layout as v12, but v11 and v12 nodes show swamps as dry
+     * ground with no cypress past the finest band, so they no longer load.
+     *
+     * <p>14: desert gravel is part of the surface ({@code DesertGravel}), sampled like any
+     * other; a v13 node shows the desert as unbroken sand where the chunks lay gravel.
      */
-    public static final int VERSION = 12;
+    public static final int VERSION = 14;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel

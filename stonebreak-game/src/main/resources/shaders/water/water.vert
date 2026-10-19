@@ -169,12 +169,16 @@ void main() {
         } else if (!isBottomFace) {
             // Stretch side faces so their top edge follows the displaced surface.
             float blockBase = floor(pos.y + 0.0001);
-            float normalizedHeight = 0.0;
-            if (surfH > 0.0001) {
-                normalizedHeight = clamp((pos.y - blockBase) / surfH, 0.0, 1.0);
-            }
+            // A side face's vertices are either bottom (flag 0) or top (flag =
+            // the sewn corner height), so this is a switch, not a ratio: the
+            // position is quantized in 1/128 and the flag in 1/255, and a
+            // (pos - base) / surfH ratio leaves the top a hair short of the
+            // top face's corner — a hairline crack along every edge.
+            float normalizedHeight = surfH > 0.0001 ? 1.0 : 0.0;
+            // Same clamp as the top face: the shared corner must land on the
+            // same Y, or a full-height (0.875) side pokes up above its surface.
             float minAllowed = blockBase + max(MIN_WATER_SURFACE, surfH - MAX_WAVE_DELTA);
-            float maxAllowed = blockBase + surfH + MAX_WAVE_DELTA;
+            float maxAllowed = blockBase + min(0.875, surfH + MAX_WAVE_DELTA);
             float displacedTopY = clamp(blockBase + surfH + wave, minAllowed, maxAllowed);
             // Bottom vertices (normalizedHeight 0) keep their meshed position —
             // the CPU clips side-face bottoms to the neighbor column's water

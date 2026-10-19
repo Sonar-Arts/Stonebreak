@@ -16,7 +16,7 @@ Service -> game
                then PLANES int16 planes of rows x cols, row-major (row = x - i1, col = z - j1):
                block height, biome id, water level, river tunnel floor, roof, flow octant
   TILE_ERROR   u32 id, UTF-8 message
-  STATUS_REPLY u32 token, UTF-8 JSON
+  STATUS_REPLY u32 token, UTF-8 JSON (model, queue, cache, timings; "vram" = tgmpipe/gpu_memory.py, the F3 screen)
   FATAL        UTF-8 message; the service exits after sending it
 
 Every TILE is answered by exactly one TILE_DATA or TILE_ERROR, unless it was cancelled first.

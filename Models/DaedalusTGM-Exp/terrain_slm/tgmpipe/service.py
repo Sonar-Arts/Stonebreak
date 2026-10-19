@@ -98,8 +98,14 @@ class Service:
             self.scheduler.submit(req_id, key, priority)
 
     def _status(self, token: int) -> None:
+        from terrain_slm.tgmpipe import gpu_memory
+        device = str(self.info.get("device", "cpu"))
+        try:
+            vram = gpu_memory.snapshot(device)
+        except Exception as e:  # noqa: BLE001 - diagnostics only; the status itself must still answer
+            vram = {"device": device, "error": f"{type(e).__name__}: {e}"}
         self.out.send(W.status_reply(token, {**self.info, "queue": self.scheduler.depth(),
-                                             "cache": self.cache.stats(), **self.stats}))
+                                             "cache": self.cache.stats(), "vram": vram, **self.stats}))
 
     # ------------------------------------------------------------------ GPU
     def _gpu_loop(self) -> None:
@@ -206,7 +212,7 @@ def main(argv=None) -> None:
                  time.monotonic() - t0, gen.river.describe())
         t0 = time.monotonic()
         gen.warm_up()   # kernels + CUDA graphs now, so the first tile does not pay for them
-        log.info("GPU kernels warm in %.1f s", time.monotonic() - t0)
+        log.info("native kernels warm in %.1f s", time.monotonic() - t0)
 
         hello = W.read_frame(proto_in)
         if hello is None:

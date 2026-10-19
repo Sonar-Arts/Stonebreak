@@ -37,6 +37,7 @@ from terrain_slm.river import pipeline as RP
 from terrain_slm.river.banks import BankConfig, BankNet
 from terrain_slm.river.field import Drainage, RiverConfig, RiverField
 from terrain_slm.river.scale import BlockScale
+from terrain_slm.world import swamp_relief as SR
 
 CP = D.CELL_PX
 WIN = 64  # planner window, cells
@@ -170,6 +171,13 @@ RED_DESERT_SOFTNESS = 2.0     # softmax sharpness of the walk's dryness field (t
 RED_DESERT_MAX_STEPS = 400
 RED_DESERT_OCTAVES = 1        # the climate scores' first octave only: one dryness basin per dry zone
 RED_DESERT_STREAM = 31337
+# Where nodes of one desert disagree (it spans basins either side of the threshold), the border runs through a
+# domain-warped cubic B-spline blend of the node votes rather than along the lattice squares (2026-10-18, user: "square
+# tile borders between regular sand deserts and red sand deserts").
+RED_DESERT_WARP_CELLS = 24.0      # warp amplitude (fbm is mostly |f| < 0.5: ~48 blocks): the basin split itself is near-straight
+RED_DESERT_WARP_PERIOD = 96.0     # warp wavelength (~384 blocks), 4 octaves down to ~48 blocks
+RED_DESERT_JITTER = 0.5           # fine edge noise added to the blended vote (on a [-1, 1] scale)
+RED_DESERT_JITTER_PERIOD = 8.0    # ~32 blocks, 3 octaves down to ~8 (one octave alone reads as regular ripples)
 
 
 def _dryness(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
@@ -185,14 +193,12 @@ _RED_MEMO: "OrderedDict[tuple, bool]" = OrderedDict()   # (seed, node i, node j)
 _RED_MEMO_CAP = 2_000_000
 
 
-def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
-    """Bool per cell: does the desert this cell would belong to come out red? (Only meaningful where the
-    biome is desert; callers mask.) Walks each lattice node downhill in `_dryness` to its minimum; only
-    unfinished nodes step, and every node's answer is memoised per seed (neighbouring tiles share walks)."""
+def _red_desert_nodes(ni: torch.Tensor, nj: torch.Tensor, seed: int) -> torch.Tensor:
+    """Bool per lattice node (ni, nj): does the dryness basin it drains to come out red? Walks each node
+    downhill in `_dryness` to its minimum; only unfinished nodes step, and every node's answer is memoised
+    per seed (neighbouring tiles share walks)."""
     L = RED_DESERT_LATTICE
-    dev = ci.device
-    ni = torch.round(ci.float() / L).long()
-    nj = torch.round(cj.float() / L).long()
+    dev = ni.device
     nodes, inv = torch.unique(torch.stack([ni.flatten(), nj.flatten()]), dim=1, return_inverse=True)
     keys = [(seed, int(a), int(b)) for a, b in zip(nodes[0].tolist(), nodes[1].tolist())]
     cached = [_RED_MEMO.get(key) for key in keys]
@@ -224,7 +230,47 @@ def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Ten
             _RED_MEMO[keys[k]] = r
         while len(_RED_MEMO) > _RED_MEMO_CAP:
             _RED_MEMO.popitem(last=False)
-    return result[inv].view(ci.shape)
+    return result[inv].view(ni.shape)
+
+
+def red_desert_cells(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> torch.Tensor:
+    """Bool per point at float cell coords (ci, cj): does the desert it would belong to come out red? (Only
+    meaningful where the biome is desert; callers mask.) Lattice nodes vote (`_red_desert_nodes`); a point
+    reads the cubic B-spline blend of its 4x4 surrounding nodes at a domain-warped position, plus fine
+    jitter, so where all nearby nodes agree (inside one basin) the whole desert decides alike, and where they
+    disagree the border is organic instead of following node squares. Pure function of the point."""
+    L = RED_DESERT_LATTICE
+    ci, cj = ci.float(), cj.float()
+    wi = ci + RED_DESERT_WARP_CELLS * _fbm(ci, cj, RED_DESERT_WARP_PERIOD, seed, RED_DESERT_STREAM + 1, octaves=4)
+    wj = cj + RED_DESERT_WARP_CELLS * _fbm(ci, cj, RED_DESERT_WARP_PERIOD, seed, RED_DESERT_STREAM + 2, octaves=4)
+    x, y = wi / L, wj / L
+    x0, y0 = torch.floor(x), torch.floor(y)
+    n0i, n0j = x0.long(), y0.long()
+    # Uniform cubic B-spline over the 4x4 surrounding nodes: bilinear blending left a scallop per node where the
+    # vote split runs diagonally across the lattice. The nodes are walked once over their (small) bounding box and
+    # gathered from it: deduplicating the 16 corners of every point instead cost ~1 s per tile.
+    wx, wy = _bspline_weights(x - x0), _bspline_weights(y - y0)
+    dev = ci.device
+    if ci.numel() == 0:
+        return torch.zeros(ci.shape, dtype=torch.bool, device=dev)
+    bi, bj = int(n0i.min()) - 1, int(n0j.min()) - 1
+    hi, hj = int(n0i.max()) + 3 - bi, int(n0j.max()) + 3 - bj
+    box = _red_desert_nodes((torch.arange(hi, device=dev) + bi).view(-1, 1).expand(hi, hj),
+                            (torch.arange(hj, device=dev) + bj).view(1, -1).expand(hi, hj), seed).float() * 2 - 1
+    d4 = torch.arange(-1, 3, device=dev)
+    ri = (n0i - bi).unsqueeze(0) + d4.view(4, *([1] * ci.dim()))           # 4 x shape
+    rj = (n0j - bj).unsqueeze(0) + d4.view(4, *([1] * ci.dim()))
+    votes = box.flatten()[(ri[:, None] * hj + rj[None, :])]                # 4 x 4 x shape
+    blend = (votes * wx[:, None] * wy[None, :]).sum(dim=(0, 1))
+    # Jitter only moves borders: where all 16 nodes agree |blend| = 1 > RED_DESERT_JITTER.
+    blend = blend + RED_DESERT_JITTER * _fbm(ci, cj, RED_DESERT_JITTER_PERIOD, seed, RED_DESERT_STREAM + 3, octaves=3)
+    return blend > 0
+
+
+def _bspline_weights(t: torch.Tensor) -> torch.Tensor:
+    """Uniform cubic B-spline weights of nodes -1, 0, 1, 2 at fraction t in [0, 1); stacked on dim 0, sum 1."""
+    t2, t3 = t * t, t * t * t
+    return torch.stack([(1 - t) ** 3, 3 * t3 - 6 * t2 + 4, -3 * t3 + 3 * t2 + 3 * t + 1, t3]) / 6
 
 
 def _smoothstep(x: torch.Tensor) -> torch.Tensor:
@@ -254,29 +300,48 @@ HILL_HOME_MIN = 0.55          # hilliness floor around spawn (0 disables)
 HILL_ROUGH = 0.55             # extra roughness in hill country: band-3 ~2.7 m -> ~14 m
 
 
+def _continent(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """(continent field, land weight in [0, 1]) at cell coordinates: the controls' land/sea split."""
+    continent = _fbm(ci, cj, 900.0, seed, 1, octaves=4)
+    # "Home continent": a broad bump around the world origin so spawn is always on land.
+    continent = continent + 0.7 * torch.exp(-(ci**2 + cj**2) / (2 * HOME_RADIUS_CELLS**2))
+    land = _smoothstep((continent + 0.35) / 0.2)  # no cliffs at the coast
+    return continent, land
+
+
+def continent_land(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> torch.Tensor:
+    """(hc, wc) land weight of cells [ci0, ci0+hc) x [cj0, cj0+wc): 0 is open ocean in the controls
+    (trend -300 m), 1 is continent. Pointwise, so any window of it is exact."""
+    ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
+    cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
+    return _continent(ci, cj, seed)[1]
+
+
 def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> dict:
     """Per-cell control fields for cells [ci0, ci0+hc) x [cj0, cj0+wc).
 
     Stand-ins for painted maps: continents, mountain ranges and hills (the smooth trend),
     roughness (wildness) from the same fields, and climate archetypes. Pointwise in cell
-    coordinates, so any window of it is exact. On CUDA this runs as one Triton kernel
-    (kernels/controls.py, bit-identical, ~1000x faster); `procedural_controls_torch` is the definition.
+    coordinates, so any window of it is exact. On CUDA this runs as one native kernel
+    (kernels/cuda_controls.py, bit-identical, ~1000x faster); `procedural_controls_torch` is the definition.
     """
     if K.available(device):
-        from terrain_slm.kernels import controls as KC
+        from terrain_slm.kernels import cuda_controls as KC
         return KC.procedural_controls(ci0, cj0, hc, wc, seed, device)
+    if K.cpu_available(device):
+        # C++ on the CPU: the same op order, but CPU expf is not CUDA's (~1 ulp), so CPU worlds carry
+        # their own model_id marker (see WorldGenerator.__init__).
+        from terrain_slm.kernels import controls_cpu as KCC
+        return KCC.procedural_controls(ci0, cj0, hc, wc, seed)
     return procedural_controls_torch(ci0, cj0, hc, wc, seed, device)
 
 
 def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> dict:
-    """The reference definition of `procedural_controls` (kernels/controls.py must match it bit for bit:
-    change both together, and the kernel's `_check_constants`)."""
+    """The reference definition of `procedural_controls` (csrc/controls.cu must match it bit for bit:
+    change both together, and kernels/cuda_controls.py's `_check_constants`)."""
     ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
     cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
-    continent = _fbm(ci, cj, 900.0, seed, 1, octaves=4)
-    # "Home continent": a broad bump around the world origin so spawn is always on land.
-    continent = continent + 0.7 * torch.exp(-(ci**2 + cj**2) / (2 * HOME_RADIUS_CELLS**2))
-    land = _smoothstep((continent + 0.35) / 0.2)  # no cliffs at the coast
+    continent, land = _continent(ci, cj, seed)
     wi = ci + RANGE_WARP_CELLS * _fbm(ci, cj, 400.0, seed, 4, octaves=2)
     wj = cj + RANGE_WARP_CELLS * _fbm(ci, cj, 400.0, seed, 5, octaves=2)
     n_range = _fbm(wi, wj, RANGE_PERIOD_CELLS, seed, 2, octaves=2) / _FBM2_STD
@@ -311,21 +376,20 @@ def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, d
     }
 
 
-def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
-                    flat_noise: torch.Tensor | None = None) -> torch.Tensor:
+def route_window(height: torch.Tensor, precip_mm: torch.Tensor, flat_noise: torch.Tensor | None = None):
     """Route water over one window's coarse height: fill depressions (every land cell gets a
-    descending path to the sea or the window edge), steepest-descent D8, precipitation-weighted
-    accumulation -- the training data's own definition (data/build.py), 3x3-dilated like every
-    model's drainage target. Basins reaching past the window enter through its edge: a ring cell
-    that drains inward also carries `inflow_logacc` (the hydro sidecar's estimate of the
-    upslope area it has) as extra weight. Returns (3, H, W) [log1p(acc), river, D8 class]."""
+    descending path to the sea or the window edge), steepest-descent D8. Returns numpy
+    (recv (H*W,) int64 flat receiver or -1, invalid (H, W) bool ocean, weights (H, W) float64
+    precipitation runoff per cell) -- the training data's own definition (data/build.py). Native
+    (kernels/hydro.py, bit-identical) when a C++ compiler is available."""
+    from terrain_slm.kernels import hydro as KH
+    if KH.available():
+        return KH.route_window(height, precip_mm, flat_noise)
     import numpy as np
-    from terrain_slm.data.build import D8_OFFSETS
     from terrain_slm.data.hydrology.fill import fill_depressions, ocean_mask
-    from terrain_slm.data.hydrology.flow import d8_receivers, flow_accumulation
+    from terrain_slm.data.hydrology.flow import d8_receivers
 
     z = height.detach().double().cpu().numpy()
-    h, w = z.shape
     invalid = ocean_mask(z)
     eps_field = None
     if flat_noise is not None:  # meandering paths across filled flats (fill.epsilon_field)
@@ -334,27 +398,81 @@ def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc
         eps_field = DEFAULT_EPSILON * (1.0 + 0.9 * u)
     recv = d8_receivers(fill_depressions(z, invalid=invalid, epsilon_field=eps_field), invalid)
     weights = np.clip(precip_mm.detach().double().cpu().numpy(), 0.0, None) / 1000.0
-    idx = np.arange(h * w)
-    if inflow_logacc is not None:
-        ring = np.zeros((h, w), dtype=bool)
-        ring[0, :] = ring[-1, :] = ring[:, 0] = ring[:, -1] = True
-        inward = ring.ravel() & (recv >= 0)
-        extra = np.expm1(inflow_logacc.detach().double().cpu().numpy().clip(0.0, 30.0)).ravel()
-        wv = weights.ravel().copy()
-        wv[inward] = np.maximum(wv[inward], extra[inward])
-        weights = wv.reshape(h, w)
-    acc = flow_accumulation(recv, ~invalid, weights=weights)
-    d8 = np.full(h * w, 8, dtype=np.int64)
-    live = recv >= 0
-    dr = recv[live] // w - idx[live] // w
-    dc = recv[live] % w - idx[live] % w
-    for k, (a, b) in enumerate(D8_OFFSETS):
-        d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
-    dev = height.device
-    acc_t = torch.from_numpy(acc).float().to(dev)
+    return recv, invalid, weights
+
+
+def accumulate_drainage(recv, invalid, weights, inflow_logacc: torch.Tensor | None, device) -> torch.Tensor:
+    """Precipitation-weighted accumulation over a receiver graph, 3x3-dilated like every model's
+    drainage target. A ring cell that drains inward also carries `inflow_logacc` (the hydro
+    sidecar's estimate of the upslope area it has beyond the window) as extra weight. Returns
+    (3, H, W) [log1p(acc), river, D8 class]."""
+    import numpy as np
+    from terrain_slm.data.build import D8_OFFSETS
+    from terrain_slm.data.hydrology.flow import flow_accumulation
+
+    from terrain_slm.kernels import hydro as KH
+    h, w = invalid.shape
+    if KH.available():
+        acc, d8 = KH.accumulate_core(recv, invalid, weights, inflow_logacc)
+    else:
+        idx = np.arange(h * w)
+        if inflow_logacc is not None:
+            ring = np.zeros((h, w), dtype=bool)
+            ring[0, :] = ring[-1, :] = ring[:, 0] = ring[:, -1] = True
+            inward = ring.ravel() & (recv >= 0)
+            extra = np.expm1(inflow_logacc.detach().double().cpu().numpy().clip(0.0, 30.0)).ravel()
+            wv = weights.ravel().copy()
+            wv[inward] = np.maximum(wv[inward], extra[inward])
+            weights = wv.reshape(h, w)
+        acc = flow_accumulation(recv, ~invalid, weights=weights)
+        d8 = np.full(h * w, 8, dtype=np.int64)
+        live = recv >= 0
+        dr = recv[live] // w - idx[live] // w
+        dc = recv[live] % w - idx[live] % w
+        for k, (a, b) in enumerate(D8_OFFSETS):
+            d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
+        d8 = d8.reshape(h, w)
+    acc_t = torch.from_numpy(acc).float().to(device)
     acc_t = F.max_pool2d(acc_t[None, None], 3, stride=1, padding=1)[0, 0]
     river = (acc_t >= P.RIVER_MIN_UPSLOPE_CELLS).float()
-    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8.reshape(h, w)).float().to(dev)])
+    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8).float().to(device)])
+
+
+def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
+                    flat_noise: torch.Tensor | None = None) -> torch.Tensor:
+    """Route water over one window's coarse height and accumulate it (route_window ->
+    accumulate_drainage): (3, H, W) [log1p(acc), river, D8 class]."""
+    recv, invalid, weights = route_window(height, precip_mm, flat_noise)
+    return accumulate_drainage(recv, invalid, weights, inflow_logacc, height.device)
+
+
+def break_seam_cycles(recv, owner):
+    """Make a stitched receiver graph acyclic. Each window's own routing strictly descends, so a
+    cycle can only run through edges between cells owned by different windows; among the cells
+    Kahn's algorithm cannot drain, those edges are cut (the cell becomes terminal). In place.
+    Native (kernels/hydro.py, bit-identical) when a C++ compiler is available."""
+    from terrain_slm.kernels import hydro as KH
+    if KH.available():
+        return KH.break_seam_cycles(recv, owner)
+    import numpy as np
+    n = recv.size
+    for _ in range(4):
+        live = recv >= 0
+        indeg = np.bincount(recv[live], minlength=n)
+        frontier = np.flatnonzero(indeg == 0)
+        done = np.zeros(n, dtype=bool)
+        while frontier.size:
+            done[frontier] = True
+            tgt = recv[frontier]
+            tgt = tgt[tgt >= 0]
+            np.subtract.at(indeg, tgt, 1)
+            frontier = np.unique(tgt[indeg[tgt] == 0])
+        stuck = np.flatnonzero(~done)
+        if stuck.size == 0:
+            return recv
+        cut = stuck[(recv[stuck] >= 0) & (owner[stuck] != owner[recv[stuck].clip(0)])]
+        recv[cut] = -1
+    return recv
 
 
 # ----------------------------------------------------------------------------- generator
@@ -375,9 +493,9 @@ class GenConfig:
     # regression: accumulation then grows downstream by construction, so rivers form connected
     # networks instead of fragments that start and stop wherever the regressed flow wobbles.
     routed_drainage: bool = True
-    # Detail / relief samplers as fused Triton convolutions in one CUDA graph (kernels/unet.py):
-    # ~2x faster detail windows, ~3x faster relief windows. Numerically close to the autocast
-    # samplers but not identical, so the model_id carries a marker. TGM_KERNELS=0 also turns it off.
+    # Detail / relief samplers on the native kernels (kernels/cuda_unet.py: fused fp16 tensor-core convs
+    # in one CUDA graph), ~10x closer to the fp32 model than bf16 autocast. Their numbers differ from
+    # the torch samplers', so the model_id carries a marker. TGM_KERNELS=0 also turns them off.
     fused_kernels: bool = True
 
 
@@ -435,12 +553,20 @@ class WorldGenerator:
         self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
                          f":h{hyd_step}:b{bank_step}:g{dg_step}:d{det_step}")
         self._samplers = {}
-        self._fused = set()   # ids of the UNets sampled by kernels/unet.py
+        self._fused = set()   # ids of the UNets sampled by the native samplers (kernels/cuda_unet.py, cpu_sampler.py)
+        self._sampler_cls = None
         if cfg.fused_kernels and K.available(device):
-            from terrain_slm.kernels.unet import FusedSampler
-            self._fused = {id(m) for m in (self.detail, self.relief) if m is not None and FusedSampler.supported(m)}
+            from terrain_slm.kernels.cuda_unet import NativeSampler as cls
+            self._sampler_cls, marker = cls, ":kc1"     # native fp16 tensor-core samplers
+        elif cfg.fused_kernels and K.cpu_available(device):
+            from terrain_slm.kernels.cpu_sampler import CpuSampler as cls
+            self._sampler_cls, marker = cls, ":cc1"     # native fp32 CPU samplers (+ CPU controls)
+        if self._sampler_cls is not None:
+            self._fused = {id(m) for m in (self.detail, self.relief) if m is not None and self._sampler_cls.supported(m)}
         if self._fused:
-            self.model_id += ":kf1"   # fused-kernel samplers (their numbers differ from autocast's)
+            self.model_id += marker   # their numbers differ from the torch samplers', so tile caches keep them apart
+        elif K.cpu_available(device):
+            self.model_id += ":cc0"   # CPU controls without native samplers
         # Optional biome sidecar (v4): coherent biomes instead of the rule classifier's per-column decisions.
         self.biomenet, bio_step = self._optional(model_dir / "biome.pt", lambda c: BN.BiomeNet(BN.BiomeNetConfig(**c)))
         if bio_step != "none":
@@ -458,6 +584,7 @@ class WorldGenerator:
         self.river_cfg = RiverConfig(log_threshold=self.cfg.river_log_threshold)
         self.scale = BlockScale.game_default(device)
         self._hydro_windows = _LRU(64)
+        self._route_windows = _LRU(128)
         self._relief_windows = _LRU(64)
         self._windows = _LRU(4096)
         self._regions = _LRU(cache_regions)
@@ -475,9 +602,9 @@ class WorldGenerator:
         return m, k.get("step", 0)
 
     def _sample(self, model, cond: torch.Tensor, noise: torch.Tensor, steps: int, t_start: float = 0.0) -> torch.Tensor:
-        """Euler-sample `model` (the detail or relief UNet) from `noise` under `cond`: the fused CUDA-graph
-        sampler when kernels are on (one per model and window shape, built on first use), else the torch
-        sampler. Both return the encoded sample (1, 1, H, W) fp32."""
+        """Euler-sample `model` (the detail or relief UNet) from `noise` under `cond`: the native sampler when
+        kernels are on (CUDA graph on a GPU, C++ on the CPU; one per model and window shape, built on first
+        use), else the torch sampler. All return the encoded sample (1, 1, H, W) fp32."""
         if id(model) not in self._fused:
             if isinstance(model, DT.Detail):
                 return DT.sample(model, cond.contiguous(memory_format=torch.channels_last), noise, steps=steps, t_start=t_start)
@@ -485,15 +612,15 @@ class WorldGenerator:
         key = (id(model), tuple(cond.shape), steps, t_start)
         fs = self._samplers.get(key)
         if fs is None:
-            from terrain_slm.kernels.unet import FusedSampler
-            fs = self._samplers[key] = FusedSampler(model, cond.shape[-2], cond.shape[-1], steps, t_start)
+            fs = self._samplers[key] = self._sampler_cls(model, cond.shape[-2], cond.shape[-1], steps, t_start)
         return fs(cond, noise)
 
     def warm_up(self, report=lambda what: None) -> None:
-        """Compile the GPU kernels and capture the samplers' CUDA graphs now instead of on the first tile
-        (compiled kernels persist in Triton's disk cache; graphs live as long as this generator).
-        `report(name)` hears each piece as it starts. A no-op on the torch path."""
-        if not K.available(self.device):
+        """Compile the native kernels and build the samplers (capturing their CUDA graphs on a GPU) now
+        instead of on the first tile (compiled kernels persist in the kernel cache, Models/kernel_cache;
+        samplers live as long as this generator). `report(name)` hears each piece as it starts. A no-op on
+        the torch path."""
+        if not (K.available(self.device) or K.cpu_available(self.device)):
             return
         with self.lock, torch.no_grad():
             report("terrain controls")
@@ -506,7 +633,8 @@ class WorldGenerator:
                 report(name)
                 zeros = lambda c: torch.zeros(1, c, n, n, device=self.device)
                 self._sample(model, zeros(n_cond), zeros(1), steps, t_start)
-            torch.cuda.synchronize(self.device)
+            if torch.device(self.device).type == "cuda":
+                torch.cuda.synchronize(self.device)
 
     def set_block_scale(self, scale: BlockScale) -> None:
         """The game's metres<->blocks mapping (the service passes the one from its handshake)."""
@@ -745,31 +873,78 @@ class WorldGenerator:
         return d * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
 
     # ---------------------------------------------------------------- hydrology (cells)
-    def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
-        """Drainage for one canonical window on the planner's final coarse height:
-        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)].
-        Routed (cfg.routed_drainage) or the hydro sidecar's prediction."""
+    def _hydro_pred(self, wi: int, wj: int) -> torch.Tensor | None:
+        """The hydro sidecar's (3, EXT, EXT) [logacc, river probability, D8 class] for a canonical
+        window, or None without one."""
+        if self.hydro is None:
+            return None
+        ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
+        n = RELIEF_EXT
+        height = self._planner_cells(ci0, cj0, n, n)[0]
+        c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
+        x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
+            out = self.hydro(x)[0].float()
+        return torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
+                            out[HY.OUT_D8].argmax(0).float()])
+
+    def _route_window(self, wi: int, wj: int):
+        """route_window over one canonical window's planner height (numpy recv, invalid, weights)."""
         def run():
             ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
             n = RELIEF_EXT
             height = self._planner_cells(ci0, cj0, n, n)[0]
             c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
-            pred = None
-            if self.hydro is not None:
-                x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
-                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
-                    out = self.hydro(x)[0].float()
-                pred = torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
-                                    out[HY.OUT_D8].argmax(0).float()])
-            if not self.cfg.routed_drainage and pred is not None:
-                return pred
             # Route over the height plus a few metres of smooth, coordinate-hashed noise: on near-flat
             # plains a steepest-descent path otherwise runs dead straight along the cell grid.
             jit = D.blur(S.white_noise(ci0, cj0, n, n, self.seed, ROUTE_NOISE_STREAM, self.device)[None, None],
                          ROUTE_NOISE_SIGMA)[0, 0]
             jit = jit * (ROUTE_NOISE_M * 2.0 * ROUTE_NOISE_SIGMA * math.sqrt(math.pi))  # std of blurred white noise = 1/(2 sigma sqrt(pi))
-            return routed_drainage(height + jit * (height > 0), c["precip"], None if pred is None else pred[0],
-                                   flat_noise=jit / ROUTE_NOISE_M)
+            return route_window(height + jit * (height > 0), c["precip"], flat_noise=jit / ROUTE_NOISE_M)
+        return self._route_windows.get_or((self.seed, wi, wj), run)
+
+    def _stitched_route(self, wi: int, wj: int):
+        """The receiver graph over window (wi, wj)'s extent with every cell routed by the window whose
+        CORE owns it (the same owner the D8 field uses). Windows route the same ground differently
+        -- each one's edge is an outlet, so filled lowland flats drain wherever that window's edge
+        is nearest -- and cross-fading their separately routed drainage averaged disagreeing river
+        networks: across the fade bands (3/4 of every axis) each path faded below the threshold in
+        turn, and rivers stopped and started. On one shared graph a river's path is continuous
+        across every seam; windows then differ only in how much of its upstream area they see."""
+        import numpy as np
+        n, core, ap = RELIEF_EXT, RELIEF_CORE, RELIEF_APRON
+        ci0, cj0 = wi * core - ap, wj * core - ap
+        recv = np.full(n * n, -1, dtype=np.int64)
+        invalid = np.zeros((n, n), dtype=bool)
+        weights = np.zeros((n, n), dtype=np.float64)
+        owner = np.zeros((n, n), dtype=np.int64)
+        for oi in range(math.floor(ci0 / core), math.floor((ci0 + n - 1) / core) + 1):
+            for oj in range(math.floor(cj0 / core), math.floor((cj0 + n - 1) / core) + 1):
+                r0, r1 = max(ci0, oi * core), min(ci0 + n, (oi + 1) * core)
+                s0, s1 = max(cj0, oj * core), min(cj0 + n, (oj + 1) * core)
+                o_recv, o_inv, o_w = self._route_window(oi, oj)
+                oa, ob = oi * core - ap, oj * core - ap          # owner window's extent origin
+                rr = o_recv.reshape(n, n)[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+                ta, tb = rr // n + oa - ci0, rr % n + ob - cj0     # receiver in this window's extent
+                inside = (rr >= 0) & (ta >= 0) & (ta < n) & (tb >= 0) & (tb < n)
+                flat = np.where(inside, ta * n + tb, -1)
+                recv.reshape(n, n)[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = flat
+                invalid[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_inv[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+                weights[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_w[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+                owner[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = (oi * 1_000_003 + oj)
+        break_seam_cycles(recv, owner.ravel())
+        return recv, invalid, weights
+
+    def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
+        """Drainage for one canonical window on the planner's final coarse height:
+        (3, EXT, EXT) = [log1p(upslope cells), river probability, D8 class (as float)].
+        Routed (cfg.routed_drainage, over the stitched graph) or the hydro sidecar's prediction."""
+        def run():
+            pred = self._hydro_pred(wi, wj)
+            if not self.cfg.routed_drainage and pred is not None:
+                return pred
+            recv, invalid, weights = self._stitched_route(wi, wj)
+            return accumulate_drainage(recv, invalid, weights, None if pred is None else pred[0], self.device)
         return self._hydro_windows.get_or((self.seed, wi, wj), run)
 
     def drainage(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
@@ -809,7 +984,7 @@ class WorldGenerator:
                          LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, m:-m, m:-m]
             climate = torch.stack([c["t0"] - LAPSE_C_PER_M * reg.clamp_min(0.0),
                                    c["tseason"], c["precip"], c["pcv"]])
-            return {"height": height, "logacc": dr["logacc"], "d8": dr.get("d8"), "climate": climate}
+            return {"height": height, "logacc": dr["logacc"], "d8": dr.get("d8"), "climate": climate, "regional": reg}
 
     # ---------------------------------------------------------------- pixels
     def _region(self, ri: int, rj: int) -> torch.Tensor:
@@ -963,6 +1138,7 @@ class WorldGenerator:
             hp = RP.HALO_PX
             a1, b1, a2, b2 = i1 - hp, j1 - hp, i2 + hp, j2 + hp
             heights = soft_cap_peaks(self.native(a1, b1, a2, b2))
+            heights = self._flatten_swamps(heights, a1, b1)
             ci0, cj0 = a1 // CP - RP.CELL_HALO, b1 // CP - RP.CELL_HALO
             ci1, cj1 = -(-a2 // CP) + RP.CELL_HALO, -(-b2 // CP) + RP.CELL_HALO
             c = self.cells(ci0, cj0, ci1 - ci0, cj1 - cj0)
@@ -977,6 +1153,33 @@ class WorldGenerator:
         """Final native terrain with rivers: (carved elevation m, water surface m / NaN dry)."""
         field, _ = self.river_field(i1, j1, i2, j2)
         return field.carved, field.top
+
+    def swamp_relief_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> tuple[torch.Tensor, torch.Tensor]:
+        """(weight, table m) of swamp_relief for cells [ci0, ci0+hc) x [cj0, cj0+wc), from canonical planner cells
+        and controls over fixed margins, so request-independent."""
+        m, mr = SR.MARGIN_CELLS, int(math.ceil(3 * LAPSE_REGIONAL_SIGMA_CELLS)) + 1
+        with self.lock:
+            cells = soft_cap_peaks(self._planner_cells(ci0 - m - mr, cj0 - m - mr, hc + 2 * (m + mr),
+                                                       wc + 2 * (m + mr))[0])
+            ctrl = procedural_controls(ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m, self.seed, self.device)
+        reg = D.blur(cells[None, None], LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, mr:-mr, mr:-mr]
+        height = cells[mr:-mr, mr:-mr]
+        climate = torch.stack([ctrl["t0"] - LAPSE_C_PER_M * reg.clamp_min(0.0),
+                               ctrl["tseason"], ctrl["precip"], ctrl["pcv"]])
+        bpc = max(1, round(CP / self.scale.px_per_block))
+        weight, table = SR.cell_fields(height, reg, climate, ci0 - m, cj0 - m, bpc)
+        return weight[m:-m, m:-m], table[m:-m, m:-m]
+
+    def _flatten_swamps(self, heights: torch.Tensor, i1: int, j1: int) -> torch.Tensor:
+        """Native heights [i1, i1+H) x [j1, j1+W) with swamp ground pulled onto its water table (swamp_relief)."""
+        h, w = heights.shape
+        ci0, cj0 = i1 // CP - 1, j1 // CP - 1
+        hc, wc = (i1 + h - 1) // CP + 2 - ci0, (j1 + w - 1) // CP + 2 - cj0
+        weight, table = self.swamp_relief_cells(ci0, cj0, hc, wc)
+        if not bool((weight > 0).any()):
+            return heights
+        oi, oj = i1 - ci0 * CP, j1 - cj0 * CP
+        return SR.flatten(heights, SR.upsample(weight, CP, oi, oj, h, w), SR.upsample(table, CP, oi, oj, h, w))
 
     def regional_elevation(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
         """(H, W) metres at native pixels [i1, i2) x [j1, j2): the planner's coarse height blurred by

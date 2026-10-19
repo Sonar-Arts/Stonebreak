@@ -26,6 +26,10 @@ on:
       - ".github/workflows/cenda-native.yml"
   workflow_dispatch:
 
+# Checkout + build + test only: the job never writes to the repo, issues or packages.
+permissions:
+  contents: read
+
 jobs:
   native:
     strategy:

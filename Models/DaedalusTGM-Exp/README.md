@@ -35,7 +35,7 @@ frames over its stdin/stdout (see [`../README.md`](../README.md)).
 Run everything from this folder (`Models/DaedalusTGM-Exp/`).
 
 ```bash
-# Environment (Python 3.12, torch cu128)
+# Environment (Python 3.12, torch cu129)
 uv sync
 
 # Tests (154; GPU tests pick cuda:1 when two GPUs are present)
@@ -50,9 +50,9 @@ that shows each step (Java `ModelSetup` + `ModelSetupScreen`):
 
 1. checks for an NVIDIA GPU (`nvidia-smi`; without one nothing is downloaded and standard terrain still works),
 2. finds `uv` (PATH, or a pinned release it downloads into `Models/tools/uv/`),
-3. runs `uv sync --frozen` here (Python 3.12, CUDA PyTorch, Triton: a few GB the first time),
-4. runs `python -m terrain_slm.tgmpipe.warmup`: loads the model on the GPU and compiles the custom
-   kernels into `Models/triton_cache/`.
+3. runs `uv sync --frozen` here (Python 3.12, CUDA PyTorch: a few GB the first time),
+4. runs `python -m terrain_slm.tgmpipe.warmup`: loads the model on the GPU and compiles the project's
+   own kernels (CUDA via NVRTC, C++ via the system compiler) into `Models/kernel_cache/`.
 
 A stamp in `.venv/.stonebreak-setup` records what was set up, so later launches skip all of it and
 show nothing. The player can continue to the menu while it runs. Log: `Models/logs/setup.log`.

@@ -1,31 +1,31 @@
-"""Custom GPU kernels (Triton) for DaedalusTGM-Exp inference.
+"""The project's own native kernels for DaedalusTGM-Exp inference (no Triton, no nvcc, no torch extension).
 
-  controls.py   procedural controls as one kernel, bit-identical to the torch version
-  conv.py       fused implicit-GEMM convolution (prologue/epilogue fusion of the UNet glue)
-  unet.py       the detail / relief flow samplers as one CUDA graph of fused convolutions
+  native.py         build + load: NVRTC -> cubin -> CUDA driver API for csrc/*.cu, the system C++
+                    compiler -> ctypes for csrc/*.cpp; both cached in Models/kernel_cache/
+  cuda_controls.py  procedural controls as one CUDA kernel, bit-identical to the torch version
+  cuda_conv.py      fused implicit-GEMM fp16 tensor-core convolution (csrc/conv.cu): packing, configs
+  cuda_unet.py      the detail / relief flow samplers as one CUDA graph of fused convolutions
+  hydro.py          drainage routing (priority-flood fill, D8, accumulation, seam cycles) in C++,
+                    bit-identical to the numba / numpy reference
+  cpu_sampler.py    the detail / relief samplers on the CPU (C++, AVX2 + FMA, fp32, Winograd)
+  controls_cpu.py   procedural controls in C++ for the CPU (same op order; CPU expf differs by ~1 ulp)
 
-On by default on CUDA devices with Triton; `TGM_KERNELS=0` (or `GenConfig.fused_kernels=False`)
-runs the plain torch path everywhere. The controls kernel is exact, so it never changes a tile;
-the fused samplers are numerically close to (not identical with) the autocast samplers, so the
-generator marks its model_id when they are in use (tile caches keep the two apart).
+On by default; `TGM_KERNELS=0` (or `GenConfig.fused_kernels=False` for the samplers) runs the plain
+torch / numpy paths everywhere. Controls and routing are exact, so they never change a tile; the
+native samplers differ (closer to fp32) from the autocast samplers, so the generator marks its
+model_id when they are in use (tile caches keep the two apart).
 """
 from __future__ import annotations
 
-import os
-
-import torch
+from terrain_slm.kernels import native
 
 
 def available(device) -> bool:
-    """Triton kernels usable on `device`: a CUDA device, Triton importable, not disabled by env."""
-    if os.getenv("TGM_KERNELS", "1").strip().lower() in ("0", "false", "off", "no"):
-        return False
-    dev = torch.device(device)
-    if dev.type != "cuda" or not torch.cuda.is_available():
-        return False
-    try:
-        import triton  # noqa: F401
-    except ImportError:
-        return False
-    # bf16 tensor-core mma (tl.dot on bf16) needs sm_80+.
-    return torch.cuda.get_device_capability(dev) >= (8, 0)
+    """Native CUDA kernels usable on `device` (an sm_80+ CUDA device, NVRTC + libcuda, not disabled)."""
+    return native.cuda_available(device)
+
+
+def cpu_available(device) -> bool:
+    """Native CPU kernels usable on `device` (the CPU, a C++ compiler, not disabled)."""
+    import torch
+    return torch.device(device).type == "cpu" and native.cpu_available()

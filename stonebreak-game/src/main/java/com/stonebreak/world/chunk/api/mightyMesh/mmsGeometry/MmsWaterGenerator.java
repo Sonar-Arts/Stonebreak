@@ -258,6 +258,7 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         int solidCount = 0;
         int sourceCount = 0;
         int sourcesBelow = 0;
+        boolean columnContinues = false;
 
         // The 4 voxels adjacent to this corner in block-space.
         for (int dx = -1; dx <= 0; dx++) {
@@ -271,6 +272,9 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
                     maxWaterHeight = Math.max(maxWaterHeight, h);
                     if (world.getWaterLevelAt(bx, blockY, bz) == ChunkWaterLayer.SOURCE) {
                         sourceCount++;
+                    }
+                    if (!Float.isNaN(resolveWaterHeight(bx, blockY + 1, bz))) {
+                        columnContinues = true;
                     }
                 } else {
                     BlockType bt = world.getBlockAt(bx, blockY, bz);
@@ -292,6 +296,14 @@ public class MmsWaterGenerator extends MmsCuboidGenerator {
         // Any source voxel at this corner pins the surface to the full
         // source height — this is the invariant that keeps open ocean flat.
         if (sourceCount > 0) {
+            return clampWaterHeight(MAX_WATER_HEIGHT);
+        }
+
+        // Water above one of the voxels: the column carries on upward, and the
+        // cell above starts its side faces at this cell's full height. Pulling
+        // the corner down (the waterfall pull below) would open a window into
+        // the column between the two — a falling column landing in a pool.
+        if (columnContinues) {
             return clampWaterHeight(MAX_WATER_HEIGHT);
         }
 

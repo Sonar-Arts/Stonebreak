@@ -40,10 +40,11 @@ import java.util.stream.Stream;
  *   <li><b>Package manager</b> — {@code uv}: the one this game downloaded before, one on the PATH, or a
  *       pinned release downloaded into {@code Models/tools/uv/} ({@link UvTool}).</li>
  *   <li><b>Python environment</b> — {@code uv sync --frozen} in {@code Models/DaedalusTGM-Exp/} (Python,
- *       CUDA PyTorch, Triton: several GB the first time, seconds afterwards).</li>
+ *       CUDA PyTorch: several GB the first time, seconds afterwards).</li>
  *   <li><b>Model check</b> and <b>GPU kernels</b> — {@code python -m terrain_slm.tgmpipe.warmup}: loads the
- *       model on the GPU and compiles the custom kernels into {@code Models/triton_cache/}, where the
- *       TGMPipe service finds them, so the first world never waits on a compiler.</li>
+ *       model on the GPU and compiles the project's own kernels (CUDA through NVRTC, C++ through the
+ *       system compiler) into {@code Models/kernel_cache/}, where the TGMPipe service finds them, so the
+ *       first world never waits on a compiler.</li>
  * </ol>
  *
  * <p>It runs on its own thread from the moment the game starts (under the intro). A stamp in the
@@ -275,7 +276,7 @@ public final class ModelSetup {
         String kernelHash = kernelHash(p);
         boolean envOk = !force && Files.isExecutable(p.python) && envHash.equals(stamp.getProperty("env"));
         boolean kernelsOk = !force && envOk && kernelHash.equals(stamp.getProperty("kernels"))
-                && Files.isDirectory(p.tritonCache);
+                && Files.isDirectory(p.kernelCache);
         boolean knownUnavailable = Files.exists(p.slmDir.resolve(UNAVAILABLE_MARKER));
         synchronized (lock) {
             unavailableKnownBefore = knownUnavailable;
@@ -342,7 +343,7 @@ public final class ModelSetup {
         Map<String, Double> sizes = new LinkedHashMap<>();
         List<String> done = new ArrayList<>();
         int exit = runProcess(List.of(uv.toString(), "sync", "--frozen", "--color", "never"), p.slmDir,
-                Map.of("TRITON_CACHE_DIR", p.tritonCache.toString()), log, line -> {
+                Map.of("TGM_KERNEL_CACHE", p.kernelCache.toString()), log, line -> {
                     String l = line.strip();
                     if (l.isEmpty()) return;
                     Matcher start = DL_START.matcher(l);
@@ -395,7 +396,7 @@ public final class ModelSetup {
         List<String> cmd = List.of(p.python.toString(), "-m", "terrain_slm.tgmpipe.warmup",
                 System.getProperty("stonebreak.tgmpipe.model", TGMPipe.DEFAULT_MODEL),
                 "--device", System.getProperty("stonebreak.tgmpipe.device", "cuda"));
-        int exit = runProcess(cmd, p.slmDir, Map.of("TRITON_CACHE_DIR", p.tritonCache.toString()), log, line -> {
+        int exit = runProcess(cmd, p.slmDir, Map.of("TGM_KERNEL_CACHE", p.kernelCache.toString()), log, line -> {
             if (!line.startsWith("{")) {
                 if (!line.isBlank()) activity(line.strip());
                 return;
@@ -518,12 +519,14 @@ public final class ModelSetup {
                 : String.format("%.0f MB", bytes / (1024.0 * 1024));
     }
 
+    /** Kernel sources (Python, CUDA, C++), the tuned launch configs and the warm-up: any change means
+     *  the warm-up must compile again. */
     private static String kernelHash(Paths p) {
         Path dir = p.slmDir.resolve("terrain_slm/kernels");
         List<Path> files = new ArrayList<>();
         if (Files.isDirectory(dir)) {
-            try (Stream<Path> s = Files.list(dir)) {
-                s.filter(f -> f.toString().endsWith(".py")).sorted().forEach(files::add);
+            try (Stream<Path> s = Files.walk(dir)) {
+                s.filter(f -> f.toString().matches(".*\\.(py|cu|cuh|cpp|h|json)$")).sorted().forEach(files::add);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -583,11 +586,11 @@ public final class ModelSetup {
     }
 
     private static Paths paths() {
-        return new Paths(TGMPipe.slmDir(), TGMPipe.pythonExe(), TGMPipe.tritonCacheDir(),
+        return new Paths(TGMPipe.slmDir(), TGMPipe.pythonExe(), TGMPipe.kernelCacheDir(),
                 TGMPipe.modelsDir().resolve("tools"), TGMPipe.logDir().resolve("setup.log"));
     }
 
-    private record Paths(Path slmDir, Path python, Path tritonCache, Path toolsDir, Path logFile) {
+    private record Paths(Path slmDir, Path python, Path kernelCache, Path toolsDir, Path logFile) {
         Path venv() {
             return slmDir.resolve(".venv");
         }

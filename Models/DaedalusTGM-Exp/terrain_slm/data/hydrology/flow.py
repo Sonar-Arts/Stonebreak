@@ -45,6 +45,15 @@ _DIST = np.array([1.0, 1.0, 1.0, 1.0, np.sqrt(2.0), np.sqrt(2.0), np.sqrt(2.0), 
 D8_DY, D8_DX = _DY, _DX
 
 
+def _native():
+    """kernels/hydro.py when the native routing library is usable (C++ compiler, TGM_KERNELS not 0), else None."""
+    try:
+        from terrain_slm.kernels import hydro
+    except ImportError:
+        return None
+    return hydro if hydro.available() else None
+
+
 def d8_receivers(filled: np.ndarray, invalid: np.ndarray) -> np.ndarray:
     """Steepest-descent D8 receiver for every cell.
 
@@ -57,6 +66,14 @@ def d8_receivers(filled: np.ndarray, invalid: np.ndarray) -> np.ndarray:
         cell is terminal -- ocean, or land that discharges to sea or off the tile edge.
         The result is a forest: every edge strictly descends, so it cannot contain a cycle.
     """
+    nat = _native()
+    if nat is not None:   # csrc/hydro.cpp, bit-identical
+        return nat.d8(filled, invalid)
+    return d8_receivers_reference(filled, invalid)
+
+
+def d8_receivers_reference(filled: np.ndarray, invalid: np.ndarray) -> np.ndarray:
+    """The numpy definition of `d8_receivers` (the native one must match it exactly)."""
     h, w = filled.shape
     z = np.asarray(filled, dtype=np.float64)
 
@@ -175,6 +192,14 @@ def flow_accumulation(
     Returns:
         (H, W) float64 accumulation. Ocean cells are 0.
     """
+    nat = _native()
+    if nat is not None:   # csrc/hydro.cpp: same levels, same summation order, bit-identical
+        return nat.flow_accumulation(recv, valid, weights)
+    return flow_accumulation_reference(recv, valid, weights)
+
+
+def flow_accumulation_reference(recv: np.ndarray, valid: np.ndarray, weights: np.ndarray | None = None) -> np.ndarray:
+    """The numpy definition of `flow_accumulation` (the native one must match it exactly)."""
     if weights is None:
         acc = valid.astype(np.float64).ravel().copy()
     else:

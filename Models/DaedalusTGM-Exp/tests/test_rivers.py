@@ -7,7 +7,7 @@ import torch
 from terrain_slm.river import pipeline as RP
 from terrain_slm.river.banks import BankNet, LearnedBanks, LeveeBanks
 from terrain_slm.river.field import Drainage, RiverConfig, RiverContext, RiverField
-from terrain_slm.river.geometry import CP, ridge_lines
+from terrain_slm.river.geometry import CP, prune_spurs, ridge_lines
 from terrain_slm.river.scale import BlockScale
 
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
@@ -145,3 +145,80 @@ def test_water_never_rises_downstream_over_a_bump():
     t = col_top[run]
     assert bool((t[1:] <= t[:-1] + 1e-3).all()), f"water rose downstream by {float((t[1:] - t[:-1]).max()):.3f} m"
     assert _spills(f) == 0
+
+
+def test_a_lone_river_just_above_the_threshold_runs_unbroken():
+    """Real drainage arrives as ~3-cell-wide bands (3x3-dilated). A lone band only just above the
+    threshold, over a low background, lost its crest to the ridge smoothing and the river vanished
+    (it came back wherever a tributary propped the crest up: rivers that stopped and started)."""
+    heights, _ = _valley()
+    hc, wc = heights.shape[0] // CP, heights.shape[1] // CP
+    logacc = torch.full((hc, wc), 2.0, device=DEV)
+    logacc[hc // 2 - 2 : hc // 2 + 1] = THR + 0.2      # the band around the valley's centre row
+    (f, _), _ = _run(heights, logacc)
+    wet = f.wet[HP:-HP, HP:-HP]
+    assert wet.any(dim=0).float().mean() > 0.95, "the river should run the whole valley"
+    assert _spills(f) == 0
+
+
+def test_a_sub_sea_level_pit_beside_a_lowland_river_does_not_dry_it():
+    """Ground below sea level holds sea water in the game. Treated as dry ground at its own depth,
+    one such pit capped the channel beside it, every dried pixel then capped its neighbour at its
+    bed, and the whole river dried. Now the pit caps the water at the sea's surface, and the river
+    cuts into it rather than drying."""
+    heights, logacc = _valley(peak=THR + 2.0, slope=0.3)
+    heights = heights - 290.0                                   # a lowland valley ~10 m above the sea
+    h, w = heights.shape
+    rows = torch.arange(h, device=DEV).view(-1, 1)
+    cols = torch.arange(w, device=DEV).view(1, -1)
+    pit = ((rows - (h // 2 + 4)).abs() <= 3) & ((cols - w // 2).abs() <= 3)
+    heights = torch.where(pit, torch.full_like(heights, -12.0), heights)
+    (f, _), _ = _run(heights, logacc)
+    line, wet = f.line[HP:-HP, HP:-HP], f.wet[HP:-HP, HP:-HP]
+    assert wet[line].float().mean() > 0.95, "the pit dried the river"
+    sea_top = float(SCALE.to_metres(torch.tensor([float(SCALE.sea_level)], device=DEV)))   # 0 m
+    for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        nb_wet = torch.roll(f.wet, (di, dj), (0, 1))
+        nb_ground = torch.roll(f.carved, (di, dj), (0, 1))
+        sea = nb_ground < 0.0
+        bad = f.wet & ~nb_wet & torch.where(sea, f.top >= sea_top, nb_ground < f.top - 1e-3)
+        assert int(bad[HP:-HP, HP:-HP].sum()) == 0, "water stands above its dry (or sea) neighbour"
+
+
+def test_a_river_meeting_standing_water_joins_it_water_to_water():
+    """The real junction: a shallow lowland channel whose bed sits in block sea_level (0-25 m) runs
+    into ground below sea level (the sea, or a lake the game fills to sea level). The touching
+    pixels must end level with the sea's surface, bed cut into block sea_level - 1: a sea-filled
+    column, water to water. Capping at the top of block sea_level instead left bed 64 / water 65 --
+    a river perched a block above the sea, walled off by BlockContainment."""
+    from terrain_slm.river.blocks import BlockQuantize, pool_to_blocks
+    from terrain_slm.river.contain import NoSpill
+    h, w = 8, 16
+    ground = torch.full((h, w), 40.0, device=DEV)
+    channel = torch.zeros(h, w, dtype=torch.bool, device=DEV)
+    channel[2:6, :12] = True
+    ground[:, 12:] = -15.0                                   # standing water past the channel's end
+    f = RiverField(ground=ground, channel=channel)
+    f.carved = torch.where(channel, torch.full_like(ground, 5.0), ground)   # bed in block 64
+    f.level = torch.full_like(ground, 30.0)                                  # water up in block 65
+    ctx = RiverContext(SCALE, RiverConfig(log_threshold=THR), Drainage(torch.zeros(1, 2, device=DEV), (0, 0)), (0, 0))
+    f = NoSpill()(f, ctx)
+    assert bool(f.wet[2:6, 11].all())
+    assert float(f.top[2:6, 11].max()) <= 0.0, "water beside standing water must stand at the sea's surface"
+    assert float(f.carved[2:6, 11].max()) < 0.0, "its bed is cut below sea level"
+    cols = BlockQuantize()(None, pool_to_blocks(f, 2, (0, 0), None), ctx)
+    sea = SCALE.sea_level
+    # Ground below sea level: the tile builder fills it to the sea's level, like the water beside it.
+    assert int(cols.height[1:3, 5].max()) < sea
+    assert int(cols.water[1:3, :5].min()) > sea, "upstream the river still stands above the sea"
+
+
+def test_prune_spurs_drops_short_dead_ends_but_keeps_real_river_ends():
+    line = torch.zeros(64, 96, dtype=torch.bool, device=DEV)
+    line[32, 10:90] = True             # the river, ends at 10 and 89
+    line[24:32, 50] = True             # an 8 px spur off its middle
+    line[2:32, 30] = True              # a 30 px tributary
+    out = prune_spurs(line, 12)
+    assert bool(out[32, 10:90].all()), "the river (and its ends) must survive"
+    assert not bool(out[24:31, 50].any()), "the short spur should be pruned"
+    assert bool(out[2:32, 30].all()), "a long tributary is not a spur"

@@ -186,11 +186,17 @@ class BankGuard:
             ctx.stats["guard_raised_px"] = 0
             return f
         ring = dilate(f.channel, 1) & ~f.channel & (f.ground > 0.5)
-        need = f.level + GUARD_MARGIN_BLOCKS * ctx.scale.rate(f.level)
+        # The highest water actually touching each ring pixel -- not the pixel's own (spread) level:
+        # that is a blur reaching ~12 px along the river, so beside a steep reach it averaged in the
+        # lower water downstream, stood below its neighbour, and NoSpill dried the stretch (a gap).
+        touching = F.max_pool2d(torch.where(f.channel, f.level, torch.full_like(f.level, float("-inf")))[None, None],
+                                3, 1, 1)[0, 0]
+        water = torch.where(ring, torch.maximum(f.level, touching), f.level)
+        need = water + GUARD_MARGIN_BLOCKS * ctx.scale.rate(water)
         low = ring & (f.carved < need)
         ctx.stats["guard_raised_px"] = int(low.sum())
         ctx.stats["bank_ring_px"] = int(ring.sum())
-        lift = ((need - f.carved) / ctx.scale.rate(f.level))[low]
+        lift = ((need - f.carved) / ctx.scale.rate(water))[low]
         ctx.stats["guard_mean_lift_blocks"] = float(lift.mean()) if lift.numel() else 0.0
         ctx.stats["guard_lift_over_half_block_px"] = int((lift > 0.5).sum())
         f.carved = torch.where(low, need, f.carved)

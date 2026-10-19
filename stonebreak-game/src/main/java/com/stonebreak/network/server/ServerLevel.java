@@ -136,9 +136,11 @@ public final class ServerLevel {
         // is never the world spawn, or every death respawned at the last save spot (#302).
         Vector3f spawn;
         if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
-            // Saved / user-chosen spawn: keep the column, but snap it onto the real (carved)
-            // surface so a pre-issue-#250 saved pit doesn't drop the player. A chosen spawn is
-            // deliberately never moved elsewhere.
+            // Saved / user-chosen spawn: keep the column when its real (carved) surface is
+            // usable. A column picked on the map inside a ravine, sinkhole, cave mouth or under
+            // water would snap onto the pit floor / lakebed, so it is redirected to the nearest
+            // usable surface column instead; only if none is in reach does it fall back to the
+            // column's own floor.
             Vector3f saved = worldData.getSpawnPosition();
             // the column that holds the saved point (round would move a block-centred x.5 spawn
             // one block on every load)
@@ -147,7 +149,16 @@ public final class ServerLevel {
             int height = world.terrain().getFinalTerrainHeightAt(x, z);
             Vector3f candidate = new Vector3f(x, height + 1, z);
             pregenSpawnArea(world, candidate);
-            spawn = resolveSurfaceSpawn(world, candidate);
+            Vector3f surface = SpawnLocator.nearestSafeSurface(world, x, z, CHOSEN_SPAWN_SEARCH_RADIUS);
+            if (surface == null) {
+                spawn = resolveSurfaceSpawn(world, candidate);
+            } else {
+                spawn = surface;
+                if ((int) Math.floor(surface.x) != x || (int) Math.floor(surface.z) != z) {
+                    System.out.println("[SERVER-LEVEL] Chosen spawn column (" + x + ", " + z
+                        + ") is a pit or flooded; moved to nearest surface " + surface);
+                }
+            }
         } else {
             // Locate a safe surface spawn, rejecting columns a ravine or sinkhole has carved
             // into a pit well below the pre-carve rim (issue #250).
@@ -182,6 +193,12 @@ public final class ServerLevel {
      * giving up and snapping the last one to its floor.
      */
     private static final int MAX_SPAWN_ATTEMPTS = 256;
+
+    /**
+     * How far (blocks) a chosen spawn may be redirected off a pit or flooded column. Stays inside
+     * the {@link #PREGEN_RADIUS} chunk disc, the only terrain resident when the search runs.
+     */
+    private static final int CHOSEN_SPAWN_SEARCH_RADIUS = PREGEN_RADIUS * 16 - 1;
 
     /**
      * Locates a world spawn that is not a carved pit (issue #250). Draws noise-sampled

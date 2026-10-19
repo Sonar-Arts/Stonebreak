@@ -85,6 +85,16 @@ public class VegetationGenerator {
         return surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER;
     }
 
+    /**
+     * Every surface {@link #probeTree} plants on in some biome, so coarse samplers can skip a
+     * cell without looking its biome up. Kept beside probeTree: a surface missing here is a
+     * tree kind that never shows past the finest LOD band (cypress once was).
+     */
+    public static boolean growsTreeOn(BlockType surfaceBlock) {
+        return surfaceBlock == BlockType.GRASS || surfaceBlock == BlockType.SNOWY_DIRT
+            || isCypressGround(surfaceBlock);
+    }
+
     /** Probability roll that accepts values >1 (saturating to always-true). */
     private static boolean rolls(DeterministicRandom rng, int worldX, int worldZ,
                                  String feature, float probability) {

@@ -55,7 +55,13 @@ def pool_to_blocks(f: RiverField, d: int, block_origin: tuple[int, int], drainag
     top_n = torch.where(wet_n, f.top, torch.full_like(f.ground, float("inf")))
     top = minpool(top_n)
     ground = torch.where(wet, minpool(f.carved), pool(f.carved))
-    wet = wet & torch.isfinite(top) & (ground > 0.5)
+    # A river block is wet while its WATER stands above the sea's surface (0 m), whatever its bed:
+    # lowland channels cut their beds below sea level, and testing the bed (`ground > 0.5`) dropped
+    # their middles out of the river -- sea-level trenches the tile builder filled as still water,
+    # a block below the river's own edges, which then read as ocean (sand, beach rings). Where the
+    # water itself is at or below the sea (NoSpill caps it there beside standing water), the block
+    # is left to the sea fill: the river runs into the sea or lake water to water.
+    wet = wet & torch.isfinite(top) & (top > 0.0)
     half = F.max_pool2d((f.half_px * (f.channel if f.channel is not None else 0))[None, None], d)[0, 0] if f.half_px is not None \
         else torch.zeros_like(ground)
     flow_log = pool(f.flow) if f.flow is not None else None

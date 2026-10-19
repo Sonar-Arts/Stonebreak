@@ -154,9 +154,10 @@ public final class TGMPipe {
         return resolve(root(), "stonebreak.tgmpipe.logDir", MODELS_DIR + "/logs");
     }
 
-    /** Compiled GPU kernels, shared by the setup's warm-up and the service (ignored by git). */
-    static Path tritonCacheDir() {
-        return modelsDir().resolve("triton_cache");
+    /** Compiled native kernels (NVRTC cubins, C++ libraries), shared by the setup's warm-up and the service
+     *  (ignored by git; the model's own default, passed explicitly so both always agree). */
+    static Path kernelCacheDir() {
+        return modelsDir().resolve("kernel_cache");
     }
 
     private static Path resolve(Path root, String property, String defaultRelative) {
@@ -301,7 +302,7 @@ public final class TGMPipe {
             ProcessBuilder pb = new ProcessBuilder(command)
                     .directory(workingDir.toFile())
                     .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
-            pb.environment().put("TRITON_CACHE_DIR", tritonCacheDir().toString());
+            pb.environment().put("TGM_KERNEL_CACHE", kernelCacheDir().toString());
             p = pb.start();
         } catch (IOException e) {
             throw new TGMPipeException("failed to launch " + command + " in " + workingDir, e);

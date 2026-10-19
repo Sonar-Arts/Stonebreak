@@ -7,11 +7,13 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the vanilla-Minecraft biome id -> Stonebreak {@link BiomeType} table
- * (plan.md Phase 4), including the water-level-keyed beach override (Phase 9)
- * and unknown-id fallback.
+ * (plan.md Phase 4), including the sea-keyed beach override (beaches only beside
+ * true-ocean columns; lakes and rivers keep their land biome) and unknown-id fallback.
  */
 class DiffusionBiomeMapperTest {
 
@@ -49,7 +51,7 @@ class DiffusionBiomeMapperTest {
 
     @Test
     void oceanIdsMapToOceanNotBeach() {
-        // Ocean columns are submerged, so a real caller's nearbyWaterLevel is SEA_LEVEL here too. Oceans are
+        // Ocean columns are submerged, so a real caller's nearbySeaLevel is SEA_LEVEL here too. Oceans are
         // their own biome (gravel sea floor): mapping them to BEACH painted every sea as a giant beach.
         assertEquals(BiomeType.OCEAN, DiffusionBiomeMapper.map((short) 41, SEA_LEVEL - 20, SEA_LEVEL)); // warm_ocean
         assertEquals(BiomeType.OCEAN, DiffusionBiomeMapper.map((short) 44, SEA_LEVEL - 20, SEA_LEVEL)); // ocean
@@ -74,12 +76,20 @@ class DiffusionBiomeMapperTest {
     }
 
     @Test
-    void inlandLakeShoreGetsTheSameBeachTreatmentAsTheOcean() {
-        int lakeLevel = SEA_LEVEL + 340; // an inland lake surface, well above sea level
-        assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 1, lakeLevel, lakeLevel));
-        assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 1, lakeLevel + 7, lakeLevel));
-        assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, lakeLevel + 8, lakeLevel)); // outside the band
-        assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, SEA_LEVEL, lakeLevel)); // near sea level but the water nearby is the lake's, far above
+    void inlandWaterAboveSeaLevelNeverMakesABeach() {
+        int riverLevel = SEA_LEVEL + 12;
+        assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, riverLevel, riverLevel));
+        assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, riverLevel + 3, riverLevel));
+    }
+
+    @Test
+    void onlyTheClassifiersOceanIdsCountAsSea() {
+        for (short id : new short[] {41, 44, 46, 48}) {
+            assertTrue(DiffusionBiomeMapper.isOceanId(id), "ocean id " + id);
+        }
+        for (short id : new short[] {1, 5, 6, 8, 15, 29, 205}) {
+            assertFalse(DiffusionBiomeMapper.isOceanId(id), "land id " + id);
+        }
     }
 
     @Test

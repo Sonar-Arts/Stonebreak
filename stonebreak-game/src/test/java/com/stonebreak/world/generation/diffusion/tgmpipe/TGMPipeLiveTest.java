@@ -77,6 +77,12 @@ class TGMPipeLiveTest {
         }
         String status = service.status().get(10, TimeUnit.SECONDS);
         assertTrue(status.contains(TGMPipe.MODEL_NAME), status);
+        // The F3 screen's Daedalus section: the service reports its own GPU memory.
+        TGMPipeVram.Reading vram = TGMPipeVram.parse(status, 0);
+        assertTrue(vram != null && vram.device() != null, status);
+        if (vram.onGpu()) {
+            assertTrue(vram.allocatedBytes() > 0 && vram.peakBytes() >= vram.allocatedBytes(), status);
+        }
         // FastLOD's node store is keyed on it: without it every world's LOD cache is thrown away.
         String namespace = TGMPipe.getInstance().cacheNamespace();
         assertTrue(namespace != null && namespace.matches("[0-9a-f]{16}"), "cache namespace: " + namespace);

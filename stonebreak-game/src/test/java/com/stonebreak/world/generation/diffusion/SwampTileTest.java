@@ -41,10 +41,13 @@ class SwampTileTest {
                 for (int lz = 0; lz < CHUNK; lz++) {
                     int i = lx * CHUNK + lz;
                     if (result.profile().biomes()[i] != BiomeType.SWAMP) {
-                        continue;   // shoreline band: BEACH
+                        continue;
                     }
                     swampColumns++;
                     int height = result.profile().heights()[i];
+                    if (result.profile().waterLevels()[i] > height) {
+                        continue;   // under a lake: a lake bed (LakeBed), not grass
+                    }
                     BlockType top = chunk.getBlock(lx, height - 1, lz);
                     if (top != BlockType.AIR && top != BlockType.WATER) {
                         assertEquals(BlockType.SWAMPY_GRASS, top, "surface at " + c[0] + "," + c[1] + " " + lx + "," + lz);

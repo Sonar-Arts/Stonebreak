@@ -292,6 +292,15 @@ def cap_basins(z: np.ndarray, filled: np.ndarray, max_raise: float) -> np.ndarra
     return np.where(wet, np.maximum(z, levels[labels]), filled)
 
 
+def _native():
+    """kernels/hydro.py when the native routing library is usable (C++ compiler, TGM_KERNELS not 0), else None."""
+    try:
+        from terrain_slm.kernels import hydro
+    except ImportError:
+        return None
+    return hydro if hydro.available() else None
+
+
 def ocean_mask(z: np.ndarray) -> np.ndarray:
     """Cells that are sea, not land. Upstream's convention: NaN or elevation <= 0."""
     return np.isnan(z) | (z <= 0.0)
@@ -336,6 +345,10 @@ def fill_depressions(
     inv = ocean_mask(z64) if invalid is None else np.ascontiguousarray(invalid, dtype=np.bool_)
     if inv.shape != z64.shape:
         raise ValueError(f"invalid mask shape {inv.shape} != elevation shape {z64.shape}")
+
+    if max_raise is None and _native() is not None:
+        # csrc/hydro.cpp: the same flood, bit for bit (tests/test_hydro_native.py), ~4x faster.
+        return _native().fill(z64, inv, float(epsilon), epsilon_field)
 
     # NaN would poison the heap comparisons; the mask already excludes those cells,
     # but the array still has to hold a finite value for them.
