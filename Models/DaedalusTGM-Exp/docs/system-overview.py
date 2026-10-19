@@ -1,0 +1,144 @@
+"""Renders system-overview.png (DaedalusTGM-Exp v4). Run from docs/: ../.venv/bin/python system-overview.py"""
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import FancyBboxPatch, Patch
+
+OUT = Path(__file__).with_name("system-overview.png")
+LEARNED = "#fff1dc"   # trained model stages
+MIXED = "#f3ecff"     # stage chains that include a learned piece
+SERVICE = "#fffbe6"
+W, H = 18.0, 34.6
+
+fig, ax = plt.subplots(figsize=(W, H))
+ax.set_xlim(0, W)
+ax.set_ylim(0, H)
+ax.axis("off")
+
+
+def group(x, y, w, h, title, fc, ec):
+    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.02,rounding_size=0.25", fc=fc, ec=ec, lw=2))
+    ax.text(x + 0.3, y + h - 0.3, title, fontsize=18, fontweight="bold", va="top", color=ec)
+
+
+def box(cx, cy, title, detail="", w=5.6, h=1.1, fc="white"):
+    ax.add_patch(FancyBboxPatch((cx - w / 2, cy - h / 2), w, h, boxstyle="round,pad=0.02,rounding_size=0.12",
+                                fc=fc, ec="#333", lw=1.6))
+    if detail:
+        n = detail.count("\n") + 1
+        top = cy + (0.28 + 0.08 + n * 0.245) / 2
+        ax.text(cx, top - 0.14, title, ha="center", va="center", fontsize=14.5, fontweight="bold")
+        ax.text(cx, top - 0.36, detail, ha="center", va="top", fontsize=12.5, color="#333", linespacing=1.4)
+    else:
+        ax.text(cx, cy, title, ha="center", va="center", fontsize=14.5, fontweight="bold")
+    return dict(cx=cx, cy=cy, w=w, h=h, l=cx - w / 2, r=cx + w / 2, t=cy + h / 2, b=cy - h / 2)
+
+
+def arrow(p0, p1, label=None, dashed=False, color="#333", conn="arc3,rad=0", loff=(0.15, 0.0), ha="left"):
+    ax.annotate("", xy=p1, xytext=p0, arrowprops=dict(arrowstyle="-|>", lw=1.8 if dashed else 2.1, color=color,
+                mutation_scale=22, ls="--" if dashed else "-", shrinkA=1, shrinkB=1, connectionstyle=conn))
+    if label:
+        mx, my = (p0[0] + p1[0]) / 2 + loff[0], (p0[1] + p1[1]) / 2 + loff[1]
+        ax.text(mx, my, label, fontsize=12, va="center", ha=ha, family="monospace",
+                bbox=dict(fc="#eeeeee", ec="none", pad=3))
+
+
+def path_arrow(points, color="#333", dashed=False, label=None, label_at=0, loff=(0.12, 0.0)):
+    """Poly-line through `points`, arrowhead on the last segment."""
+    xs, ys = zip(*points)
+    ax.plot(xs[:-1], ys[:-1], color=color, lw=2.1 if not dashed else 1.8, ls="--" if dashed else "-",
+            solid_capstyle="round")
+    arrow(points[-2], points[-1], color=color, dashed=dashed)
+    if label:
+        (x0, y0), (x1, y1) = points[label_at], points[label_at + 1]
+        ax.text((x0 + x1) / 2 + loff[0], (y0 + y1) / 2 + loff[1], label, fontsize=11.5, family="monospace",
+                va="center", ha="left", bbox=dict(fc="#eeeeee", ec="none", pad=2))
+
+
+ax.text(W / 2, 34.15, "DaedalusTGM-Exp — system overview (v4)", ha="center", va="center", fontsize=25,
+        fontweight="bold")
+
+# ---------------------------------------------------------------- game (Java)
+group(0.4, 26.9, 17.2, 6.75, "Stonebreak (Java)", "#fbeefe", "#a23fb0")
+sl = box(4.2, 32.55, "ServerLevel.createAndLoad", w=5.6, h=0.85)
+tg = box(12.8, 32.55, "TerrainGenerationSystem", w=5.6, h=0.85)
+pm = box(4.2, 30.9, "TGMPipe", "one child process · checkpoints/v4 · restarts on crash", w=6.8, h=1.15)
+dc = box(13.2, 30.9, "DiffusionTileCache (seed · lod · priority)", "TGMPipeProtocol: 6 int16 planes → TerrainTile",
+         w=7.6, h=1.15)
+ts = box(4.6, 28.2, "TerrainScale + WorldConfiguration", "60 m blocks · 256 tall, sea y 64\ncurve 48/16/24/38 m/block",
+         w=5.6, h=1.5)
+hm = box(10.7, 28.2, "HeightMapGenerator → chunk fill", "river floor/roof: undercuts, overhangs\nflow octants: river water markers",
+         w=5.6, h=1.5)
+arrow((sl["r"], sl["cy"]), (tg["l"], tg["cy"]))
+arrow((tg["l"] + 0.8, tg["b"]), (pm["cx"] + 1.5, pm["t"]))
+arrow((tg["cx"] + 0.4, tg["b"]), (dc["cx"], dc["t"]))
+arrow((ts["cx"], ts["t"]), (ts["cx"], pm["b"]), "world config (handshake)", loff=(0.2, 0.0))
+arrow((dc["l"] + 1.6, dc["b"]), (hm["cx"] + 0.8, hm["t"]))
+
+# ---------------------------------------------------------------- services
+br = box(12.9, 25.0, "stdin/stdout frames · terrain protocol v1",
+         "any seed per request · priority queue · cancel · pushed when done\n"
+         "disk cache keyed on world config + model id + generator source",
+         w=9.4, h=1.75, fc=SERVICE)
+srv = box(12.9, 22.0, "TGMPipe · DaedalusTGM-Exp on cuda:1",
+          "python -m terrain_slm.tgmpipe · world/tiles.py: generator + block stages\n"
+          "blocks: height, biome, water, river floor/roof/flow",
+          w=9.4, h=1.75, fc=SERVICE)
+arrow((16.3, dc["b"]), (16.3, br["t"]))
+ax.text(16.15, 26.35, "TILE (seed, x, z, lod, prio)", fontsize=12, va="center", ha="right", family="monospace",
+        bbox=dict(fc="#eeeeee", ec="none", pad=3))
+arrow((br["cx"], br["b"]), (br["cx"], srv["t"]), "one process: no ports", loff=(-0.15, 0.0), ha="right")
+for tgt in (srv,):
+    arrow((1.1, pm["b"]), (tgt["l"], tgt["cy"]), dashed=True, color="#777", conn="angle,angleA=-90,angleB=180,rad=0")
+ax.text(1.25, 26.2, "launches\n(one child)", fontsize=13, color="#555", style="italic", va="center")
+
+# ---------------------------------------------------------------- world generator
+group(0.4, 0.4, 17.2, 20.0, "DaedalusTGM-Exp WorldGenerator — per request", "#e8fbf6", "#1b8f73")
+X, BW = 5.0, 8.2
+controls = box(X, 18.9, "Procedural controls v3", "continents · mountain ranges · hilliness provinces · wildness · climate",
+               w=BW + 0.4, h=1.1)
+relief = box(X, 17.35, "Relief sampler  (2.54M, flow matching)", "240 m cells · 448-cell windows → sampled valley networks",
+             w=BW, h=1.1, fc=LEARNED)
+planner = box(X, 15.8, "Planner R2  (4.83M ViT)", "coarse height from the valley-rich trend", w=BW, h=1.1, fc=LEARNED)
+detail = box(X, 13.35, "Detail sampler  (49.4M, flow matching)",
+             "60 m samples = blocks · 512-sample windows, cross-faded\n"
+             "everything from 120 m to ~4 km, valleys under the rivers\n"
+             "guard: unstable window → smoother base / climate off", w=BW, h=2.0, fc=LEARNED)
+cap = box(X, 11.45, "Summit soft cap", "above 4300 m → approaches 5150 m (y ≈ 254)", w=BW, h=1.05)
+river = box(X, 9.05, "River pipeline (terrain_slm.river) · 30 m px",
+            "centrelines → channel 3–16 blocks → level, never rising downstream\n"
+            "(gorges through bumps) → learned banks (0.24M) → guard\n→ U-bed → no-spill → monotone top", w=BW, h=2.3, fc=MIXED)
+blocks = box(X, 6.35, "Block stages · 2×2 → 60 m blocks",
+             "quantise → flow octants (consensus) → (flatten ⇄ monotone,\n"
+             "≤ 1-block cascades) ×2 → contain → undercuts → overhangs", w=BW, h=1.75, fc=MIXED)
+biome = box(X, 4.3, "Biome sidecar  (1.10M conv net)", "on pre-river ground · coherent regions → 6 tile planes",
+            w=BW, h=1.2, fc=LEARNED)
+chain = [controls, relief, planner, detail, cap, river, blocks, biome]
+for a, b in zip(chain, chain[1:]):
+    arrow((X, a["b"]), (X, b["t"]))
+path_arrow([(srv["cx"], srv["b"]), (srv["cx"], controls["cy"]), (controls["r"], controls["cy"])])
+
+drain = box(14.3, 15.3, "Routed drainage", "per 448-cell window: fill (meandering\nflats) → D8 → rain-weighted flow\n"
+            "hydro sidecar (0.40M): edge inflow", w=5.4, h=2.1, fc=MIXED)
+arrow((planner["r"], planner["cy"]), (drain["l"], planner["cy"]), "height", loff=(-0.35, 0.28))
+fy = (drain["b"] + detail["t"]) / 2
+arrow((drain["l"], fy), (detail["r"], fy), "flow + rivers", loff=(-1.25, 0.28))
+path_arrow([(drain["r"] - 0.4, drain["b"]), (drain["r"] - 0.4, river["cy"]), (river["r"], river["cy"])],
+           label="drainage + D8", label_at=1, loff=(-1.3, 0.25))
+
+ck = box(14.4, 5.4, "checkpoints/v4  (~131 MB)",
+         "detail 49.4M (bf16) · planner 4.83M · relief 2.54M\nbiome 1.10M · hydro 0.40M · bank 0.24M",
+         w=5.6, h=1.75, fc=LEARNED)
+tr = box(14.4, 2.6, "Offline training", "24 GLO-30 regions (333 tiles) + water masks\n"
+         "train_{detail,planner,relief,hydro,banks,biomes}", w=5.6, h=1.6)
+arrow((tr["cx"], tr["t"]), (ck["cx"], ck["b"]))
+
+ax.legend(handles=[Patch(fc=LEARNED, ec="#333", label="learned model"),
+                   Patch(fc=MIXED, ec="#333", label="stage chain with a learned piece"),
+                   Patch(fc="white", ec="#333", label="procedural / deterministic")],
+          loc="lower left", bbox_to_anchor=(0.03, 0.02), fontsize=13, frameon=False)
+
+plt.savefig(OUT, dpi=100, bbox_inches="tight", facecolor="white")
+print(OUT)

@@ -1,8 +1,8 @@
 package com.stonebreak.ui;
 
 /**
- * Single source of truth for the 5-tab strip (Inventory / Character / Classes /
- * Skills / Feats) shared by the inventory screen and the character sheet screen.
+ * Single source of truth for the 4-tab strip (Inventory / Character / Talents)
+ * shared by the inventory screen and the character sheet screen.
  *
  * <p>The two screens are separate GameStates that each draw their own copy of
  * the strip; clicking a tab swaps screens. Computing the strip geometry here —
@@ -12,7 +12,7 @@ package com.stonebreak.ui;
  */
 public final class TabStripLayout {
 
-    public static final int TAB_COUNT = 5;
+    public static final int TAB_COUNT = 4;
     public static final int TAB_WIDTH = 84;
     public static final int TAB_HEIGHT = 28;
     public static final int TAB_GAP = 4;

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import org.joml.Matrix4f;
@@ -88,8 +89,8 @@ final class GlowCubeRenderer {
                 0.0f, new Vector3f(0.1f, 0.3f, 0.5f),
                 entity, false); // emissive — never world-lit
 
-        Matrix4f modelMatrix = new Matrix4f()
-                .translate(entity.getPosition())
+        Matrix4f modelMatrix = RenderOrigin
+                .modelAt(entity.getPosition().x, entity.getPosition().y, entity.getPosition().z)
                 .rotateY((float) Math.toRadians(entity.getRotation().y))
                 .scale(entity.getScale());
         pipeline.setModel(modelMatrix);
@@ -110,8 +111,8 @@ final class GlowCubeRenderer {
             // held items mid-flight, that "last VAO" becomes the new held item's
             // mesh, so the glow quads sample its vertex buffer and stretch the bolt
             // across the screen toward the hand position (issue #177).
-            Matrix4f glowMatrix = new Matrix4f()
-                    .translate(entity.getPosition())
+            Matrix4f glowMatrix = RenderOrigin
+                    .modelAt(entity.getPosition().x, entity.getPosition().y, entity.getPosition().z)
                     .rotateY((float) Math.toRadians(entity.getRotation().y))
                     .scale(new Vector3f(entity.getScale()).mul(glowScale));
             pipeline.setModel(glowMatrix);

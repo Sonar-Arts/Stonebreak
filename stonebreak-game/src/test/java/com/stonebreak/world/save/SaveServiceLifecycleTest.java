@@ -5,6 +5,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.repository.FileSaveRepository;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -104,7 +105,7 @@ class SaveServiceLifecycleTest {
         ChunkData chunk = ChunkData.builder()
             .chunkX(3)
             .chunkZ(4)
-            .blocks(CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR))
+            .blocks(CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR))
             .lastModified(FIXED_TIME)
             .build();
 
@@ -182,7 +183,7 @@ class SaveServiceLifecycleTest {
                 futures[idx] = executor.submit(() -> {
                     try {
                         CcoPalettedChunkStorage blocks =
-                            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+                            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
                         blocks.set(0, 0, 0, type);
 
                         ChunkData chunk = ChunkData.builder()

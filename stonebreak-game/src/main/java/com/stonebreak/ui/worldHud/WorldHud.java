@@ -1,5 +1,6 @@
 package com.stonebreak.ui.worldHud;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.core.Game;
 import com.stonebreak.ui.runtime.GameUiHost;
 import com.stonebreak.ui.runtime.screens.DocumentScreen;
@@ -51,9 +52,12 @@ public final class WorldHud {
         }
     }
 
-    /** Every world marker this frame, in paint order. */
+    /**
+     * Every world marker this frame, in paint order. {@code view} is render-space (relative to
+     * {@link RenderOrigin}); the markers project WORLD positions, so the combined matrix is rebased to take them.
+     */
     public static List<WorldMarker> collect(Matrix4f projection, Matrix4f view, int width, int height) {
-        Matrix4f vp = new Matrix4f(projection).mul(view);
+        Matrix4f vp = RenderOrigin.acceptWorldSpace(new Matrix4f(projection).mul(view));
         List<WorldMarker> out = new ArrayList<>();
         DamageNumbers.getInstance().collect(vp, width, height, out);
         QuarryMarkers.getInstance().collect(vp, width, height, out);

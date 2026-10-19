@@ -14,17 +14,17 @@ import java.util.concurrent.CompletableFuture;
 /**
  * The inventory screen's own contracts (#300): {@code stonebreak:player.character} 1, root
  * {@code character} ({@link CharacterRecord}: the side columns' level, vitals and ability scores), and
- * {@code stonebreak:screen.inventory} 1, action {@code .tab {tab}} switching to one of the character
- * sheet's tabs ({@link #TABS}) as the legacy tab strip did. Slots and crafting are the shared
+ * {@code stonebreak:screen.inventory} 2 (v2: the Daedalus strip, Inventory / Character / Talents), action
+ * {@code .tab {tab}} switching to one of the character sheet's tabs ({@link #TABS}) as the legacy tab strip did. Slots and crafting are the shared
  * {@code stonebreak:inventory} / {@code stonebreak:crafting} contracts.
  */
 public final class InventoryContracts {
 
     public static final HostContract CHARACTER = HostContract.of("stonebreak:player.character", 1);
-    public static final HostContract SCREEN = HostContract.of("stonebreak:screen.inventory", 1);
+    public static final HostContract SCREEN = HostContract.of("stonebreak:screen.inventory", 2);
 
     /** The tab strip's tabs a click can switch to (the first, Inventory, is the screen itself). */
-    public static final List<String> TABS = List.of("character", "classes", "skills", "feats");
+    public static final List<String> TABS = List.of("character", "talents");
 
     /** The game behind the screen; actions return null on success or why they refused. */
     public interface Services {

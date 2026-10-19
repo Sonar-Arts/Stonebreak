@@ -7,7 +7,8 @@ import com.openmason.engine.voxel.IVoxelChunkData;
 import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.api.voxel.ChunkDataAdapter;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,7 @@ class VoxelChunkBulkCodecTest {
 
     @Test
     void bulkEncodeIsByteIdenticalAndBulkDecodeCellIdentical() {
-        var chunk = new TerrainGenerationSystem(555L).generateTerrainOnly(4, -9).chunk();
+        var chunk = new DiffusionTerrainGenerator(555L).generateTerrainOnly(4, -9).chunk();
         ChunkDataAdapter bulkView = new ChunkDataAdapter(chunk);
 
         // Per-cell view: same data, but WITHOUT the sections interface, so the
@@ -53,17 +54,17 @@ class VoxelChunkBulkCodecTest {
         // Decode the same payload through both sink paths.
         GameBlockTypeResolver resolver = GameBlockTypeResolver.INSTANCE;
         CcoPalettedChunkStorage bulkStorage =
-            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         VoxelChunkCodec.decodeInto(bulkPayload, new StorageBlockSetter(bulkStorage), resolver);
 
         CcoPalettedChunkStorage perCellStorage =
-            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         StorageBlockSetter inner = new StorageBlockSetter(perCellStorage);
         BlockSetter perCellOnly = inner::setBlock; // lambda: bulk defaults return false
         VoxelChunkCodec.decodeInto(bulkPayload, perCellOnly, resolver);
 
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     BlockType original = chunk.getBlock(x, y, z);
                     assertEquals(original, bulkStorage.get(x, y, z), "bulk decode @" + x + "/" + y + "/" + z);

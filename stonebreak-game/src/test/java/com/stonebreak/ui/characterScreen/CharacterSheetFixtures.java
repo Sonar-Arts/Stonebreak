@@ -6,6 +6,7 @@ import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillRegistry;
@@ -31,8 +32,9 @@ public final class CharacterSheetFixtures {
 
     public static final List<String> STATES = List.of("overview-busy", "classes", "classes-shown", "classes-scrolled",
         "skills", "feats", "feats-selected", "feats-filtered");
-    public static final List<String> HOVERS = List.of("hover-tab0", "hover-tab3", "hover-tile1", "hover-plus2",
-        "hover-cls1", "hover-invest3", "hover-feat0", "hover-level", "hover-general", "hover-acquire");
+    public static final List<String> HOVERS = List.of("hover-tab0", "hover-tab2", "hover-tile1", "hover-plus2",
+        "hover-talent1", "hover-cls1", "hover-invest3", "hover-feat0", "hover-level", "hover-general",
+        "hover-acquire");
 
     public static List<FidelityCase> cases() {
         List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("character-sheet", List.of("overview"),
@@ -57,7 +59,7 @@ public final class CharacterSheetFixtures {
         String t = hover(variant);
         if (t.isEmpty()) return variant;
         if (t.startsWith("tile") || t.startsWith("plus")) return "overview";
-        if (t.startsWith("cls")) return "classes-shown";
+        if (t.startsWith("cls") || t.startsWith("talent")) return "classes-shown";
         if (t.startsWith("invest")) return "skills";
         if (t.startsWith("acquire")) return "feats-selected";
         if (t.startsWith("feat") || t.equals("level") || t.equals("general")) return "feats";
@@ -89,33 +91,38 @@ public final class CharacterSheetFixtures {
                     stats.investSkillPoint(SkillRegistry.ALL.get(0).id());
                 }
             }
-            case "classes" -> controller.setActiveTab(CharacterPanelTab.CLASSES);
+            case "classes" -> talents(controller, TalentSubTab.CLASS_ABILITIES);
             case "classes-shown" -> {
-                controller.setActiveTab(CharacterPanelTab.CLASSES);
+                talents(controller, TalentSubTab.CLASS_ABILITIES);
                 rc.classes().selectClass(ClassRegistry.ALL.get(0).id());
                 rc.classes().spend(stats, 0);
             }
             case "classes-scrolled" -> {
-                controller.setActiveTab(CharacterPanelTab.CLASSES);
+                talents(controller, TalentSubTab.CLASS_ABILITIES);
                 rc.classes().selectClass(ClassRegistry.ALL.get(2).id()); // Monk: five abilities
                 rc.classes().spend(stats, 4);
             }
             case "skills" -> {
-                controller.setActiveTab(CharacterPanelTab.SKILLS);
+                talents(controller, TalentSubTab.SKILLS);
                 stats.investSkillPoint(SkillRegistry.ALL.get(1).id());
             }
-            case "feats" -> controller.setActiveTab(CharacterPanelTab.FEATS);
+            case "feats" -> talents(controller, TalentSubTab.FEATS);
             case "feats-selected" -> {
-                controller.setActiveTab(CharacterPanelTab.FEATS);
+                talents(controller, TalentSubTab.FEATS);
                 rc.feats().selectFeat(FeatRegistry.filter(0, false).get(0).id());
             }
             case "feats-filtered" -> {
-                controller.setActiveTab(CharacterPanelTab.FEATS);
+                talents(controller, TalentSubTab.FEATS);
                 rc.feats().cycleLevel(1);
                 rc.feats().toggleGeneral();
             }
             default -> throw new IllegalArgumentException(variant);
         }
+    }
+
+    private static void talents(CharacterController controller, TalentSubTab sub) {
+        controller.setActiveTab(CharacterPanelTab.TALENTS);
+        controller.setTalentSubTab(sub);
     }
 
     /** After the document's first poll: the scrolls the wheel reaches (the clamp needs the clip it publishes). */
@@ -136,12 +143,22 @@ public final class CharacterSheetFixtures {
         int tabH = TabStripLayout.tabHeight();
         int tabY = TabStripLayout.tabY(Math.round(p[1]));
         int startX = TabStripLayout.startX(w);
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 3; i++) {
             out.put("tab" + i, new float[]{startX + TabStripLayout.stride() * i, tabY, tabW, tabH});
         }
         CharacterController rc = screen.getController();
-        switch (screen.getController().getActiveTab()) {
-            case OVERVIEW -> {
+        if (rc.getActiveTab() == CharacterPanelTab.TALENTS) {
+            // the legacy MTabBar: (600 - 20) s wide, 10 s in, 16 s down, 28 s high; slots split it, 2 px apart
+            float barW = (600f - 20f) * s;
+            float slotW = barW / 3f;
+            for (int i = 0; i < 3; i++) {
+                out.put("talent" + i, new float[]{p[0] + 10f * s + i * slotW, p[1] + 16f * s,
+                    slotW - (i < 2 ? 2f : 0f), 28f * s});
+            }
+            p = new float[]{p[0], p[1] + 50f * s, p[2], p[3]}; // the panes start under the bar
+        }
+        switch (com.stonebreak.ui.runtime.contracts.CharacterSheetContracts.pane(rc)) {
+            case "OVERVIEW" -> {
                 float leftColX = p[0] + 16 * s;
                 float leftColW = p[2] * 0.38f;
                 float rightColX = leftColX + leftColW + 12f * s;
@@ -156,20 +173,20 @@ public final class CharacterSheetFixtures {
                     out.put("plus" + i, new float[]{tx + 64f * s - 16f * s - 2f, ty + 34f * s, 16f * s, 14f * s});
                 }
             }
-            case CLASSES -> {
+            case "CLASSES" -> {
                 float clipTop = p[1] + 20f * s + 30f * s;
                 for (int i = 0; i < ClassRegistry.ALL.size(); i++) {
                     out.put("cls" + i, new float[]{p[0] + 10f * s + 1f, clipTop + i * (22f * s + 2f * s)
                         - rc.classes().leftScroll(), 163f * s, 22f * s});
                 }
             }
-            case SKILLS -> {
+            case "SKILLS" -> {
                 for (int i = 0; i < SkillRegistry.ALL.size(); i++) {
                     out.put("invest" + i, new float[]{p[0] + 490f * s, p[1] + 48f * s + i * (24f * s) + 1f, 86f * s,
                         22f * s});
                 }
             }
-            case FEATS -> {
+            case "FEATS" -> {
                 var feats = FeatRegistry.filter(rc.feats().filterLevel(), rc.feats().filterGeneral());
                 for (int i = 0; i < feats.size(); i++) {
                     out.put("feat" + i, new float[]{p[0] + 10f * s, p[1] + 58f * s + i * (24f * s)
@@ -180,7 +197,7 @@ public final class CharacterSheetFixtures {
                 out.put("level", new float[]{barX + 6f * s, btnY, 100f * s, 22f * s});
                 out.put("general", new float[]{barX + (6f + 108f) * s, btnY, 84f * s, 22f * s});
                 if (rc.feats().selectedFeatId() != null) {
-                    out.put("acquire", new float[]{p[0] + 396f * s + (194f * s - 140f * s) / 2f, p[1] + 430f * s,
+                    out.put("acquire", new float[]{p[0] + 396f * s + (194f * s - 140f * s) / 2f, p[1] + 400f * s,
                         140f * s, 26f * s});
                 }
             }

@@ -16,6 +16,7 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 // Project Imports
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 
 /**
@@ -40,8 +41,23 @@ public class CloudRenderer {
     private static final float COVERAGE = 0.45f;
     /** Seed for the (fixed) cloud formation pattern. */
     private static final long PATTERN_SEED = 20260517L;
-    /** Altitude of the cloud layer, in world units (world is 256 tall). */
-    private static final float CLOUD_Y = 192.0f;
+    /** Altitude of the cloud layer's base, in world units. Deliberately half a block off
+     *  the integer grid: cells are 4 tall, so the bottom (192.5) and top (196.5) faces sit
+     *  mid-block and can never be coplanar with a terrain face that pokes into the layer. */
+    private static final float CLOUD_Y = 192.5f;
+    /** Horizontal shift of the tile lattice off the block grid. Cell edges land on
+     *  multiples of 12 otherwise, which are exactly block faces, so Z-facing cloud sides
+     *  z-fought any terrain wall they intersected. Half a block keeps them clear by more
+     *  than the 24-bit depth precision out to the fade distance. */
+    private static final float LATTICE_OFFSET = 0.5f;
+    /** Pushes cloud depth slightly away from the camera. The X-facing sides drift, so they
+     *  sweep through block faces continuously and no static offset clears them; biasing
+     *  the clouds back makes terrain win every coplanar tie instead of flickering. */
+    private static final float POLYGON_OFFSET_FACTOR = 1.0f;
+    private static final float POLYGON_OFFSET_UNITS = 1.0f;
+
+    /** Scratch for the render-space camera position uniform. */
+    private final Vector3f scratchCameraPos = new Vector3f();
     /** Horizontal drift speed of the cloud layer, in units per second. */
     private static final float DRIFT_SPEED = 0.6f;
     /** Base opacity of the clouds. */
@@ -140,6 +156,9 @@ public class CloudRenderer {
         boolean blendEnabled = glIsEnabled(GL_BLEND);
         boolean depthMaskEnabled = glGetBoolean(GL_DEPTH_WRITEMASK);
         int currentDepthFunc = glGetInteger(GL_DEPTH_FUNC);
+        boolean polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL);
+        float currentOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR);
+        float currentOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS);
         int currentBlendSrc = glGetInteger(GL_BLEND_SRC);
         int currentBlendDst = glGetInteger(GL_BLEND_DST);
 
@@ -151,11 +170,15 @@ public class CloudRenderer {
         glCullFace(GL_BACK);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(POLYGON_OFFSET_FACTOR, POLYGON_OFFSET_UNITS);
 
         cloudShaderProgram.bind();
         cloudShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         cloudShaderProgram.setUniform("viewMatrix", viewMatrix);
-        cloudShaderProgram.setUniform("cameraPosition", cameraPosition);
+        // Render space: the fragment stage differences this against a model-matrix
+        // world position, which drawCloudTiles emits relative to RenderOrigin.
+        cloudShaderProgram.setUniform("cameraPosition", RenderOrigin.toRender(cameraPosition, scratchCameraPos));
         cloudShaderProgram.setUniform("cloudColor", computeCloudColor(ambientLightLevel));
         cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
 
@@ -180,6 +203,12 @@ public class CloudRenderer {
         } else {
             glDisable(GL_BLEND);
         }
+        if (polygonOffsetEnabled) {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+        } else {
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+        glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
         glDepthMask(depthMaskEnabled);
         glDepthFunc(currentDepthFunc);
     }
@@ -203,6 +232,9 @@ public class CloudRenderer {
         boolean blendEnabled = glIsEnabled(GL_BLEND);
         boolean depthMaskEnabled = glGetBoolean(GL_DEPTH_WRITEMASK);
         int currentDepthFunc = glGetInteger(GL_DEPTH_FUNC);
+        boolean polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL);
+        float currentOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR);
+        float currentOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS);
 
         // Depth-only: write cloud depth, but mask out all color so the visible image is
         // unchanged. Depth-test against the world so clouds behind terrain don't stamp.
@@ -213,11 +245,16 @@ public class CloudRenderer {
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
+        // Same bias as the color pass so the stamped depth matches what was drawn.
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(POLYGON_OFFSET_FACTOR, POLYGON_OFFSET_UNITS);
 
         cloudShaderProgram.bind();
         cloudShaderProgram.setUniform("projectionMatrix", projectionMatrix);
         cloudShaderProgram.setUniform("viewMatrix", viewMatrix);
-        cloudShaderProgram.setUniform("cameraPosition", cameraPosition);
+        // Render space: the fragment stage differences this against a model-matrix
+        // world position, which drawCloudTiles emits relative to RenderOrigin.
+        cloudShaderProgram.setUniform("cameraPosition", RenderOrigin.toRender(cameraPosition, scratchCameraPos));
         // Color is masked, but the program still needs valid uniform values.
         cloudShaderProgram.setUniform("cloudColor", cloudColor.set(1.0f, 1.0f, 1.0f));
         cloudShaderProgram.setUniform("cloudAlpha", CLOUD_ALPHA);
@@ -243,6 +280,12 @@ public class CloudRenderer {
         } else {
             glDisable(GL_DEPTH_TEST);
         }
+        if (polygonOffsetEnabled) {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+        } else {
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+        glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
         glDepthMask(depthMaskEnabled);
         glDepthFunc(currentDepthFunc);
     }
@@ -255,15 +298,21 @@ public class CloudRenderer {
     private void drawCloudTiles(Vector3f cameraPosition, float totalTime) {
         // Drift wraps at the tile extent so the toroidal pattern stays seamless.
         float drift = (totalTime * DRIFT_SPEED) % TILE_EXTENT;
-        float baseX = (float) Math.floor((cameraPosition.x - drift) / TILE_EXTENT) * TILE_EXTENT;
-        float baseZ = (float) Math.floor(cameraPosition.z / TILE_EXTENT) * TILE_EXTENT;
+        // The tile lattice is snapped in WORLD space and drawn in render space.
+        // Snapping it in render space instead would translate the whole field by
+        // (origin mod TILE_EXTENT) every time RenderOrigin steps, which reads as
+        // the clouds jumping; the lattice has to stay anchored to the world.
+        float ox = RenderOrigin.x();
+        float oz = RenderOrigin.z();
+        float baseX = (float) Math.floor((cameraPosition.x - drift) / TILE_EXTENT) * TILE_EXTENT + LATTICE_OFFSET;
+        float baseZ = (float) Math.floor(cameraPosition.z / TILE_EXTENT) * TILE_EXTENT + LATTICE_OFFSET;
 
         glBindVertexArray(cloudVAO);
         for (int ti = -1; ti <= 1; ti++) {
             for (int tj = -1; tj <= 1; tj++) {
                 float originX = baseX + ti * TILE_EXTENT + drift;
                 float originZ = baseZ + tj * TILE_EXTENT;
-                modelMatrix.identity().translate(originX, CLOUD_Y, originZ);
+                modelMatrix.identity().translate(originX - ox, CLOUD_Y, originZ - oz);
                 cloudShaderProgram.setUniform("modelMatrix", modelMatrix);
                 glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
             }

@@ -18,8 +18,8 @@ class MmsLodQuadCodecTest {
 
     private static ByteBuffer record(int x, int yHalf, int z, int face, int wHalf, int hHalf) {
         ByteBuffer b = ByteBuffer.allocate(MmsLodQuadCodec.QUAD_BYTES).order(ByteOrder.LITTLE_ENDIAN);
-        b.putInt(0, MmsLodQuadCodec.word0(x, z, yHalf, face, false, true));
-        b.putInt(4, MmsLodQuadCodec.word1(wHalf, hHalf, 7, false));
+        b.putInt(0, MmsLodQuadCodec.word0(x, z, yHalf, face));
+        b.putInt(4, MmsLodQuadCodec.word1(wHalf, hHalf, 7, false, false, true));
         return b;
     }
 

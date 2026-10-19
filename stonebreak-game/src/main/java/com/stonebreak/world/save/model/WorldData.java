@@ -3,6 +3,7 @@ package com.stonebreak.world.save.model;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import org.joml.Vector3f;
 import java.time.LocalDateTime;
 
@@ -22,6 +23,13 @@ public final class WorldData {
     private final long worldTimeTicks;
     private final boolean cheatsEnabled;
     private final int formatVersion;
+    private final TerrainGeneratorType generatorType;
+
+    /**
+     * Saves from before the generator choice existed were all made by the diffusion
+     * generator, so a missing field keeps them generating the terrain they started with.
+     */
+    public static final TerrainGeneratorType LEGACY_GENERATOR = TerrainGeneratorType.DIFFUSION;
 
     @JsonCreator
     private WorldData(
@@ -34,7 +42,17 @@ public final class WorldData {
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
             @JsonProperty("worldTimeTicks") long worldTimeTicks,
             @JsonProperty("cheatsEnabled") boolean cheatsEnabled,
-            @JsonProperty("formatVersion") int formatVersion) {
+            @JsonProperty("formatVersion") int formatVersion,
+            @JsonProperty("generatorType") String generatorType) {
+        this(seed, worldName, spawnPosition, hasExplicitSpawn, createdTime, lastPlayed, totalPlayTimeMillis,
+             worldTimeTicks, cheatsEnabled, formatVersion,
+             TerrainGeneratorType.parse(generatorType, LEGACY_GENERATOR));
+    }
+
+    private WorldData(long seed, String worldName, Vector3f spawnPosition, boolean hasExplicitSpawn,
+                      LocalDateTime createdTime, LocalDateTime lastPlayed, long totalPlayTimeMillis,
+                      long worldTimeTicks, boolean cheatsEnabled, int formatVersion,
+                      TerrainGeneratorType generatorType) {
         this.seed = seed;
         this.worldName = worldName;
         this.spawnPosition = new Vector3f(spawnPosition);
@@ -45,12 +63,14 @@ public final class WorldData {
         this.worldTimeTicks = worldTimeTicks;
         this.cheatsEnabled = cheatsEnabled;
         this.formatVersion = formatVersion;
+        this.generatorType = generatorType;
     }
 
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
              builder.hasExplicitSpawn, builder.createdTime, builder.lastPlayed,
-             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion);
+             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion,
+             builder.generatorType);
     }
 
     // Getters
@@ -64,6 +84,7 @@ public final class WorldData {
     public long getWorldTimeTicks() { return worldTimeTicks; }
     public boolean isCheatsEnabled() { return cheatsEnabled; }
     public int getFormatVersion() { return formatVersion; }
+    public TerrainGeneratorType getGeneratorType() { return generatorType; }
 
     /**
      * Creates a new WorldData with updated last played time.
@@ -117,6 +138,7 @@ public final class WorldData {
         private long worldTimeTicks = 6000; // Default to NOON
         private boolean cheatsEnabled = false;
         private int formatVersion = 1;
+        private TerrainGeneratorType generatorType = TerrainGeneratorType.STANDARD;
 
         public Builder() {}
 
@@ -131,6 +153,7 @@ public final class WorldData {
             this.worldTimeTicks = data.worldTimeTicks;
             this.cheatsEnabled = data.cheatsEnabled;
             this.formatVersion = data.formatVersion;
+            this.generatorType = data.generatorType;
         }
 
         public Builder seed(long seed) {
@@ -180,6 +203,11 @@ public final class WorldData {
 
         public Builder formatVersion(int formatVersion) {
             this.formatVersion = formatVersion;
+            return this;
+        }
+
+        public Builder generatorType(TerrainGeneratorType generatorType) {
+            this.generatorType = generatorType;
             return this;
         }
 

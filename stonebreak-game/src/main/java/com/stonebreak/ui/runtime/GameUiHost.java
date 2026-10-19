@@ -83,17 +83,19 @@ import java.util.function.Consumer;
  *       {@code recipeGrid}, {@code recipeDetail}; {@code stonebreak:screen.recipe-book.category}, {@code .press},
  *       {@code .variant}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.RecipeBookContracts}, #301)</td></tr>
- *   <tr><td>{@code stonebreak:screen.terrain-mapper} 1</td><td>root {@code terrainMapper};
+ *   <tr><td>{@code stonebreak:screen.model-setup} 1</td><td>root {@code modelSetup}; {@code .press {id}}
+ *       ({@link com.stonebreak.ui.runtime.contracts.ModelSetupContracts}, Daedalus)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.terrain-mapper} 2</td><td>root {@code terrainMapper};
  *       {@code stonebreak:screen.terrain-mapper.button}, {@code .field}, {@code .map-press}, {@code .release},
  *       {@code .move}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.TerrainMapperContracts}, #301)</td></tr>
- *   <tr><td>{@code stonebreak:screen.character-creation} 1</td><td>root {@code characterCreation}, collections
+ *   <tr><td>{@code stonebreak:screen.character-creation} 2</td><td>root {@code characterCreation}, collections
  *       {@code ccBackgrounds}, {@code ccClasses}, {@code ccAbilities}, {@code ccSkills}, {@code ccFeats},
  *       {@code ccHair}, {@code ccHats}; {@code stonebreak:screen.character-creation.tab}, {@code .nav},
  *       {@code .background}, {@code .ability}, {@code .class}, {@code .spend}, {@code .skill}, {@code .feat},
  *       {@code .hair}, {@code .hat}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.CharacterCreationContracts}, #301)</td></tr>
- *   <tr><td>{@code stonebreak:screen.character-sheet} 1</td><td>root {@code characterSheet};
+ *   <tr><td>{@code stonebreak:screen.character-sheet} 2</td><td>root {@code characterSheet};
  *       {@code stonebreak:screen.character-sheet.tab}, {@code .ability}, {@code .class}, {@code .spend},
  *       {@code .skill}, {@code .level-filter}, {@code .general}, {@code .feat}, {@code .acquire}, {@code .wheel}
  *       ({@link com.stonebreak.ui.runtime.contracts.CharacterSheetContracts}, #301)</td></tr>
@@ -116,13 +118,16 @@ import java.util.function.Consumer;
  *   <tr><td>{@code stonebreak:player.stats} 1</td><td>root {@code stats}: the local player's activity
  *       statistics ({@link StatsRecord}) and each written as the statistics screen writes it ({@code text})</td></tr>
  *   <tr><td>{@code stonebreak:screen.statistics} 1</td><td>{@code stonebreak:screen.statistics.back}</td></tr>
- *   <tr><td>{@code stonebreak:screen.loading} 1</td><td>root {@code loading}: {@code stage}, {@code progress}
- *       (0-1) and {@code percent} of the world loading screen ({@link LoadingRecord})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.loading} 2</td><td>root {@code loading}: {@code stage}, {@code detail},
+ *       {@code progress} (0-1) and {@code percent} of the world loading screen ({@link LoadingRecord})</td></tr>
  *   <tr><td>{@code stonebreak:screen.glossary} 1</td><td>roots {@code glossary} (with the sidebar's
  *       {@code entries}), {@code glossaryAbilities} ({@link GlossaryView}, published while the glossary is open);
  *       {@code .select {index}}, {@code .cycle {delta}}, {@code .back}</td></tr>
  *   <tr><td>{@code stonebreak:screen.death} 1</td><td>{@code stonebreak:screen.death.respawn} (refused
  *       unless the death menu is up, #299)</td></tr>
+ *   <tr><td>{@code stonebreak:screen.save-changes} 1</td><td>{@code .yes} (keep the panel's point allocations
+ *       and leave), {@code .no} (revert them and leave), {@code .cancel} (stay); refused unless the
+ *       "Save changes?" dialog is up</td></tr>
  *   <tr><td>{@code stonebreak:screen.multiplayer}, {@code .host-world}, {@code .join-world} 1</td><td>the
  *       multiplayer screens ({@link MultiplayerContracts})</td></tr>
  *   <tr><td>{@code stonebreak:screen.main-menu} 1</td><td>the main menu ({@link MainMenuContracts})</td></tr>
@@ -151,9 +156,10 @@ public final class GameUiHost {
     public static final HostContract PAUSE = HostContract.of("stonebreak:screen.pause", 1);
     public static final HostContract STATS = HostContract.of("stonebreak:player.stats", 1);
     public static final HostContract STATISTICS = HostContract.of("stonebreak:screen.statistics", 1);
-    public static final HostContract LOADING = HostContract.of("stonebreak:screen.loading", 1);
+    public static final HostContract LOADING = HostContract.of("stonebreak:screen.loading", 2);
     public static final HostContract GLOSSARY = HostContract.of("stonebreak:screen.glossary", 1);
     public static final HostContract DEATH = HostContract.of("stonebreak:screen.death", 1);
+    public static final HostContract SAVE_CHANGES = HostContract.of("stonebreak:screen.save-changes", 1);
     public static final HostContract RESYNC = HostContract.of("stonebreak:network.resync", 1);
     public static final HostContract INVENTORY = HostContract.of("stonebreak:inventory", 1);
     public static final HostContract HOTBAR = HostContract.of("stonebreak:hotbar", 1);
@@ -212,6 +218,7 @@ public final class GameUiHost {
             com.stonebreak.ui.runtime.contracts.ChatContracts.Services,
             com.stonebreak.ui.runtime.contracts.RecipeBookContracts.Services,
             com.stonebreak.ui.runtime.contracts.TerrainMapperContracts.Services,
+            com.stonebreak.ui.runtime.contracts.ModelSetupContracts.Services,
             com.stonebreak.ui.runtime.contracts.CharacterCreationContracts.Services,
             com.stonebreak.ui.runtime.contracts.CharacterSheetContracts.Services,
             com.stonebreak.ui.runtime.contracts.BattleHudContracts.Services {
@@ -232,6 +239,15 @@ public final class GameUiHost {
          */
         default String respawn() {
             return "no death menu is showing";
+        }
+
+        /**
+         * The "Save changes?" dialog's buttons: {@code yes}, {@code no} or {@code cancel}.
+         *
+         * @return null, or why it was refused (no dialog showing)
+         */
+        default String saveChanges(String choice) {
+            return "no save-changes dialog is showing";
         }
 
         /** @return chunks audited, or -1 when not connected */
@@ -338,6 +354,7 @@ public final class GameUiHost {
     private final com.stonebreak.ui.runtime.contracts.ChatContracts chat;
     private final com.stonebreak.ui.runtime.contracts.RecipeBookContracts recipeBook;
     private final com.stonebreak.ui.runtime.contracts.TerrainMapperContracts terrainMapper;
+    private final com.stonebreak.ui.runtime.contracts.ModelSetupContracts modelSetup;
     private final com.stonebreak.ui.runtime.contracts.CharacterCreationContracts characterCreation;
     private final com.stonebreak.ui.runtime.contracts.CharacterSheetContracts characterSheet;
     private final com.stonebreak.ui.runtime.contracts.BattleHudContracts battleHud;
@@ -382,6 +399,7 @@ public final class GameUiHost {
         chat = new com.stonebreak.ui.runtime.contracts.ChatContracts(host, services);
         recipeBook = new com.stonebreak.ui.runtime.contracts.RecipeBookContracts(host, services);
         terrainMapper = new com.stonebreak.ui.runtime.contracts.TerrainMapperContracts(host, services);
+        modelSetup = new com.stonebreak.ui.runtime.contracts.ModelSetupContracts(host, services);
         characterCreation = new com.stonebreak.ui.runtime.contracts.CharacterCreationContracts(host, services);
         characterSheet = new com.stonebreak.ui.runtime.contracts.CharacterSheetContracts(host, services);
         battleHud = new com.stonebreak.ui.runtime.contracts.BattleHudContracts(host, services);
@@ -409,6 +427,11 @@ public final class GameUiHost {
     /** Character creation's data (#301). */
     public com.stonebreak.ui.runtime.contracts.CharacterCreationContracts characterCreation() {
         return characterCreation;
+    }
+
+    /** The terrain model setup's data (Daedalus). */
+    public com.stonebreak.ui.runtime.contracts.ModelSetupContracts modelSetup() {
+        return modelSetup;
     }
 
     /** The terrain mapper's data (#301). */
@@ -604,6 +627,7 @@ public final class GameUiHost {
         chat.poll();
         recipeBook.poll();
         terrainMapper.poll();
+        modelSetup.poll();
         characterCreation.poll();
         characterSheet.poll();
         battleHud.poll();
@@ -718,6 +742,9 @@ public final class GameUiHost {
         pause("settings", services::openSettings);
         pause("quit", services::quitToMenu);
         screenAction(DEATH, "respawn", services::respawn);
+        for (String choice : new String[] {"yes", "no", "cancel"}) {
+            screenAction(SAVE_CHANGES, choice, () -> services.saveChanges(choice));
+        }
         screenAction(STATISTICS, "back", services::closeStatistics);
         screenAction(GLOSSARY, "back", services::closeGlossary);
         glossaryAction("select", DataType.object("index", DataType.integer()),
@@ -948,6 +975,21 @@ public final class GameUiHost {
         }
 
         @Override
+        public String saveChanges(String choice) {
+            Game game = Game.getInstance();
+            var dialog = game == null ? null : game.getSaveChangesDialog();
+            if (dialog == null || !dialog.isVisible()) {
+                return "no save-changes dialog is showing";
+            }
+            switch (choice) {
+                case "yes" -> game.confirmSaveChanges();
+                case "no" -> game.confirmDiscardChanges();
+                default -> game.cancelSaveChanges();
+            }
+            return null;
+        }
+
+        @Override
         public String respawn() {
             Game game = Game.getInstance();
             com.stonebreak.ui.DeathMenu death = game == null ? null : game.getDeathMenu();
@@ -1100,6 +1142,13 @@ public final class GameUiHost {
         }
 
         @Override
+        public com.stonebreak.ui.modelSetup.ModelSetupScreen modelSetup() {
+            Game game = Game.getInstance();
+            return game == null || game.getState() != com.stonebreak.core.GameState.MODEL_SETUP ? null
+                : game.getModelSetupScreen();
+        }
+
+        @Override
         public com.stonebreak.ui.terrainMapper.TerrainMapperScreen terrainMapper() {
             Game game = Game.getInstance();
             return game == null || game.getState() != com.stonebreak.core.GameState.TERRAIN_MAPPER ? null
@@ -1159,13 +1208,11 @@ public final class GameUiHost {
             if (carrying()) {
                 return "a stack is on the cursor"; // the legacy strip ignored tabs while dragging
             }
-            // the legacy tab strip: close the inventory, then open the sheet on the tab
-            game.toggleInventoryScreen();
+            // the legacy tab strip: straight to the sheet (no save prompt: the panel session carries over)
             if ("character".equals(tab)) {
-                game.toggleCharacterScreen();
+                game.switchToCharacter();
             } else {
-                game.openCharacterTab(com.stonebreak.rpg.CharacterPanelTab.valueOf(
-                    tab.toUpperCase(java.util.Locale.ROOT)));
+                game.openCharacterTab(com.stonebreak.rpg.CharacterPanelTab.TALENTS);
             }
             return null;
         }

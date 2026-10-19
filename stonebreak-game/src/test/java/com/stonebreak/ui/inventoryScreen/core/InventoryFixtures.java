@@ -79,7 +79,7 @@ public final class InventoryFixtures {
 
     /**
      * The legacy renderer's geometry (the frozen captures' oracle) at the current UI scale: {@code panel} (all
-     * three columns), {@code tab0..4}, {@code craft0..3}, {@code output}, {@code main0..26}, {@code hot0..8}, the buttons
+     * three columns), {@code tab0..2} (the drawn tabs of TabStripLayout's four slots), {@code craft0..3}, {@code output}, {@code main0..26}, {@code hot0..8}, the buttons
      * {@code recipes}, {@code sort} and (while the grid makes something) {@code craftall}, and the left
      * column's {@code equip0..9} and {@code status0..5}.
      */
@@ -94,7 +94,7 @@ public final class InventoryFixtures {
         out.put("panel", new float[]{l3.panelStartX, l3.panelStartY, l3.totalPanelWidth, l3.totalPanelHeight});
         int tw = TabStripLayout.tabWidth();
         int th = TabStripLayout.tabHeight();
-        for (int i = 0; i < TabStripLayout.TAB_COUNT; i++) {
+        for (int i = 0; i < 3; i++) { // Inventory, Character, Talents: the strip centres on TAB_COUNT 4
             out.put("tab" + i, new float[]{TabStripLayout.startX(w) + i * TabStripLayout.stride(),
                 TabStripLayout.tabY(l3.panelStartY), tw, th});
         }

@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.handlers;
 
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
@@ -41,6 +42,8 @@ public final class TerrainActionHandler {
     }
 
     public void goBack() {
+        // Leaving without a world: nothing needs the Diffusion services this screen started.
+        state.stopGeneratorServices();
         state.reset();
         Game.getInstance().setState(GameState.WORLD_SELECT);
     }
@@ -55,6 +58,11 @@ public final class TerrainActionHandler {
 
     /** Returns true if the world was created and generation was kicked off. */
     public boolean createWorld() {
+        TerrainGeneratorType generator = state.getSelectedGenerator();
+        if (generator == null) {
+            state.setErrorMessage("Choose a terrain generator.");
+            return false;
+        }
         String name = state.getWorldName().trim();
         String validationError = discovery.validateWorldName(name);
         if (validationError != null) {
@@ -76,6 +84,7 @@ public final class TerrainActionHandler {
                         state.hasSpawnPoint() ? (float) state.spawnWorldZ() : 0f
                 ))
                 .hasExplicitSpawn(state.hasSpawnPoint())
+                .generatorType(generator)
                 .createdTime(LocalDateTime.now())
                 .lastPlayed(LocalDateTime.now())
                 .totalPlayTimeMillis(0L)
@@ -101,6 +110,13 @@ public final class TerrainActionHandler {
 
         state.setErrorMessage(null);
         state.reset();
+        // Leave this screen immediately: state.reset() above already blanked the world-name
+        // field and randomized the seed for the mapper's own next use, and until GameState
+        // moves off TERRAIN_MAPPER the screen keeps rendering and ticking — which would start
+        // sampling that throwaway seed, queueing preview tiles beside the world we just asked
+        // to start. LoadingScreen.show() is idempotent; startClientWorld
+        // calls it again once WelcomeS2C actually arrives.
+        Game.getInstance().getLoadingScreen().show();
         // Two-world model: start the integrated server (it will load the just-written world)
         // + local client. The client builds the render world from WelcomeS2C.
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);

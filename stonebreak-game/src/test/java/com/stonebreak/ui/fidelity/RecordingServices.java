@@ -175,6 +175,12 @@ public class RecordingServices implements GameUiHost.Services {
     }
 
     @Override
+    public String saveChanges(String choice) {
+        calls.add("stonebreak:screen.save-changes." + choice);
+        return null;
+    }
+
+    @Override
     public String respawn() {
         calls.add("stonebreak:screen.death.respawn");
         return null;

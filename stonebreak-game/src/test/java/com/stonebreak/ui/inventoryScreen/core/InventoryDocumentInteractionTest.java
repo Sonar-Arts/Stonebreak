@@ -149,18 +149,18 @@ class InventoryDocumentInteractionTest {
         try (DocumentInventoryCapture.Stage doc = new DocumentInventoryCapture.Stage(
                 GameUiDocuments.readScreen(InventoryScreen.DOCUMENT_ID), W, H, 1f, player())) {
             String before = state(doc.player, doc.input);
-            for (String target : List.of("tab0", "tab1", "tab4", "recipes")) {
+            for (String target : List.of("tab0", "tab1", "tab2", "recipes")) {
                 float[] at = doc.centre(target);
                 doc.click(at[0], at[1], ContainerParity.LEFT, ContainerParity.SHIFT);
                 doc.click(at[0], at[1], ContainerParity.RIGHT, 0);
             }
             assertTrue(doc.requests.isEmpty(), "shift or right presses never switch tabs: " + doc.requests);
-            for (String target : List.of("tab0", "tab1", "tab2", "tab3", "tab4", "recipes")) {
+            for (String target : List.of("tab0", "tab1", "tab2", "recipes")) {
                 float[] at = doc.centre(target);
                 doc.click(at[0], at[1], ContainerParity.LEFT, 0);
             }
             // the first tab is the inventory itself: the legacy strip never hit-tested it
-            assertEquals(List.of("tab:character", "tab:classes", "tab:skills", "tab:feats", "recipes"), doc.requests);
+            assertEquals(List.of("tab:character", "tab:talents", "recipes"), doc.requests);
             assertEquals(before, state(doc.player, doc.input), "switching moves nothing");
         }
     }

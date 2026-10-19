@@ -4,6 +4,7 @@ import com.openmason.engine.format.sbui.SbuiArchive;
 import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillRegistry;
@@ -63,7 +64,8 @@ class CharacterSheetDocumentInteractionTest {
                 assertEquals(str + 1, stats.getAbilityScores()[2]);
 
                 click(stage, "tab2");
-                assertEquals(CharacterPanelTab.CLASSES, controller.getActiveTab());
+                assertEquals(CharacterPanelTab.TALENTS, controller.getActiveTab());
+                assertEquals(TalentSubTab.CLASS_ABILITIES, controller.getTalentSubTab());
                 click(stage, "cls2");
                 assertEquals(ClassRegistry.ALL.get(2).id(), screen.getController().classes().displayedClassId());
                 int cp = stats.getRemainingCp();
@@ -83,13 +85,15 @@ class CharacterSheetDocumentInteractionTest {
                 stage.settle();
                 assertEquals(0f, screen.getController().classes().rightScroll());
 
-                click(stage, "tab3");
+                click(stage, "talent1");
+                assertEquals(TalentSubTab.SKILLS, controller.getTalentSubTab());
                 String skill = SkillRegistry.ALL.get(4).id();
                 int level = stats.getSkillLevel(skill);
                 click(stage, "invest4");
                 assertEquals(level + 1, stats.getSkillLevel(skill));
 
-                click(stage, "tab4");
+                click(stage, "talent2");
+                assertEquals(TalentSubTab.FEATS, controller.getTalentSubTab());
                 var feats = screen.getController().feats();
                 click(stage, "level");
                 assertEquals(1, feats.filterLevel());
@@ -105,8 +109,13 @@ class CharacterSheetDocumentInteractionTest {
                 click(stage, "acquire");
                 assertTrue(stats.hasFeat(first));
 
+                click(stage, "talent0");
+                assertEquals(TalentSubTab.CLASS_ABILITIES, controller.getTalentSubTab());
                 click(stage, "tab1");
                 assertEquals(CharacterPanelTab.OVERVIEW, controller.getActiveTab());
+                click(stage, "tab2");
+                assertEquals(TalentSubTab.CLASS_ABILITIES, controller.getTalentSubTab(),
+                    "the Talents tab reopens on the sub-tab last shown");
             }
         }
     }

@@ -20,6 +20,12 @@ public final class MTooltip {
      */
     public static void draw(MasonryUI ui, String text, float x, float y,
                             int screenWidth, int screenHeight) {
+        draw(ui, text, x, y, screenWidth, screenHeight, MStyle.TEXT_PRIMARY);
+    }
+
+    /** As above, with the text in {@code textColor} — e.g. {@link MStyle#TEXT_ERROR} for a warning. */
+    public static void draw(MasonryUI ui, String text, float x, float y,
+                            int screenWidth, int screenHeight, int textColor) {
         if (ui == null || text == null || text.isEmpty()) return;
         Canvas canvas = ui.canvas();
         if (canvas == null) return;
@@ -43,6 +49,6 @@ public final class MTooltip {
         // Center the cap-height inside the box (≈ FONT_ITEM * 0.7 for cap height).
         float baseline = by + boxH / 2f + MStyle.FONT_ITEM * 0.35f;
         MPainter.drawCenteredStringWithShadow(canvas, text, bx + boxW / 2f, baseline,
-                font, MStyle.TEXT_PRIMARY, MStyle.TEXT_SHADOW);
+                font, textColor, MStyle.TEXT_SHADOW);
     }
 }

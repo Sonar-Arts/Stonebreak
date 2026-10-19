@@ -9,6 +9,7 @@ import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillRegistry;
@@ -80,6 +81,8 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(dex, stats.getAbilityScores()[1]);
 
                 click(stage, "tab2");
+                assertEquals(CharacterCreationTab.TALENTS, screen.state().getActiveTab());
+                assertEquals(TalentSubTab.CLASS_ABILITIES, screen.state().getTalentSubTab());
                 click(stage, "cls0");
                 assertEquals(0, screen.state().getSelectedClassIndex());
                 int cp = stats.getRemainingCp();
@@ -87,7 +90,8 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(cp - 1, stats.getRemainingCp());
                 assertEquals(1, stats.getSpentCp(ClassRegistry.ALL.get(0).id() + ":1"));
 
-                click(stage, "tab3");
+                click(stage, "talent1");
+                assertEquals(TalentSubTab.SKILLS, screen.state().getTalentSubTab());
                 String skill = SkillRegistry.ALL.get(3).id();
                 int level = stats.getSkillLevel(skill);
                 click(stage, "invest3");
@@ -99,9 +103,23 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(SkillRegistry.ALL.size() * 42f - 320f, screen.state().getSkillScroll(), 1e-4,
                     "ten notches down, clamped at the list's end");
 
-                click(stage, "tab4");
+                click(stage, "talent2");
+                assertEquals(TalentSubTab.FEATS, screen.state().getTalentSubTab());
                 click(stage, "acquire0");
                 assertTrue(stats.hasFeat(FeatRegistry.ALL.get(0).id()));
+
+                // Undo takes the allocations back, newest first, and does nothing once they are all gone
+                click(stage, "undo");
+                assertFalse(stats.hasFeat(FeatRegistry.ALL.get(0).id()), "the feat comes off first");
+                click(stage, "undo");
+                assertEquals(level, stats.getSkillLevel(skill), "then the skill point");
+                while (stats.canUndo()) {
+                    click(stage, "undo");
+                }
+                assertEquals(0, stats.getSpentCp(ClassRegistry.ALL.get(0).id() + ":1"), "and the class ability's CP");
+                int[] scores = stats.getAbilityScores();
+                click(stage, "undo"); // disabled: takes the press, changes nothing
+                assertEquals(java.util.Arrays.toString(scores), java.util.Arrays.toString(stats.getAbilityScores()));
             } finally {
                 screen.dispose();
             }
@@ -134,7 +152,7 @@ class CharacterCreationDocumentInteractionTest {
             });
             CharacterCreationScreen screen = new CharacterCreationScreen(fonts.backend());
             try (DocumentStage stage = DocumentCharacterCreationCapture.stage(shipped, screen, 1920, 1080, 1f)) {
-                click(stage, "tab5");
+                click(stage, "tab3");
                 assertEquals(CharacterCreationTab.LOOKS, screen.state().getActiveTab());
                 // rows: None, Male Hair 1 (equipped), Male Hair 2
                 assertTrue(DocumentCharacterCreationCapture.element(stage, "equip1").isCollapsed(),
@@ -144,7 +162,7 @@ class CharacterCreationDocumentInteractionTest {
                 click(stage, "equip0");
                 assertEquals(List.of("hair MALE_HAIR_2", "hair NONE"), equipped);
 
-                click(stage, "tab6");
+                click(stage, "tab4");
                 assertEquals(CharacterCreationTab.CLOTHING, screen.state().getActiveTab());
                 // rows: No Hat, Top Hat (equipped)
                 assertTrue(DocumentCharacterCreationCapture.element(stage, "equip1").isCollapsed(),

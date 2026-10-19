@@ -1,9 +1,11 @@
 package com.stonebreak.mobs.entities;
 
+import com.openmason.engine.voxel.lighting.ChunkHeightMap;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
+import com.stonebreak.world.lighting.BlockOpacity;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 
@@ -74,9 +76,6 @@ public class EntitySpawner {
     private static final int MAX_CAP_DESPAWNS_PER_SWEEP = 8;
     /** Slack (blocks) beyond a player's view radius before a mob is distance-despawned. */
     private static final int DESPAWN_MARGIN_BLOCKS = 16;
-
-    private static final int MIN_SPAWN_HEIGHT = 60;
-    private static final int MAX_SPAWN_HEIGHT = 120;
 
     /** The passive types this spawner manages. */
     private static final EntityType[] PASSIVE_SPAWN_TYPES =
@@ -357,37 +356,65 @@ public class EntitySpawner {
     }
 
     /**
-     * The lowest-priced valid standable position in the column at {@code (x,z)}, scanning down from
-     * {@link #MAX_SPAWN_HEIGHT}. Gated on the chunk being resident + feature-populated so mobs never
-     * land on unloaded/half-baked terrain where they'd fall through the world.
+     * The sky-exposed standable position in the column at {@code (x,z)}, or null.
+     *
+     * <p>The stand height comes from the chunk's own {@link ChunkHeightMap}, which stores
+     * {@code topOpaqueY + 1} per column — exactly a mob's feet position on the surface. Reusing it
+     * beats re-deriving the height from the terrain generator: it costs no I/O on the server tick
+     * (a {@code terrain().getFinalTerrainHeightAt} call can block on a diffusion tile fetch), and it
+     * describes the world as it actually is — post-carve, with features placed and player edits
+     * applied — rather than the generator's pre-carve column height. Deliberately height-agnostic:
+     * the surface Y is a property of the terrain, never a constant in this class.
+     *
+     * <p>Gated on the chunk being resident + feature-populated so mobs never land on
+     * unloaded/half-baked terrain where they'd fall through the world.
      */
     private Vector3f findStandableColumn(int x, int z) {
-        if (!isChunkReadyForSpawn(Math.floorDiv(x, 16), Math.floorDiv(z, 16))) {
+        var chunk = world.getChunkIfLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+        if (chunk == null || !chunk.areFeaturesPopulated()) {
             return null;
         }
-        for (int y = MAX_SPAWN_HEIGHT; y >= MIN_SPAWN_HEIGHT; y--) {
-            if (isStandableColumn(world.getBlockAt(x, y, z),
-                                  world.getBlockAt(x, y + 1, z),
-                                  world.getBlockAt(x, y + 2, z))) {
-                return new Vector3f(x + 0.5f, y + 1, z + 0.5f);
-            }
+        ChunkHeightMap heightMap = chunk.getHeightMap();
+        if (!heightMap.isPopulated()) {
+            return null;
         }
-        return null;
+        int standY = heightMap.getHeight(Math.floorMod(x, 16), Math.floorMod(z, 16));
+        if (!isStandable(standY, y -> world.getBlockAt(x, y, z))) {
+            return null;
+        }
+        return new Vector3f(x + 0.5f, standY, z + 0.5f);
+    }
+
+    /** Column block lookup, injected so the standability rule is testable without a live World. */
+    @FunctionalInterface
+    interface ColumnBlocks {
+        BlockType at(int y);
     }
 
     /**
-     * A chunk is ready for a spawn iff it's resident in the store AND its features have been
-     * populated. Both conditions together mean the chunk is part of the server's working set and
-     * its blocks are final.
+     * True if a passive mob can stand with its feet at {@code standY} — solid footing below, two
+     * cells of body space at and above it. The single gate shared by the spawn finder and
+     * {@link #isValidSpawnLocation}, so a spot can't be found and then rejected.
      */
-    private boolean isChunkReadyForSpawn(int chunkX, int chunkZ) {
-        var chunk = world.getChunkIfLoaded(chunkX, chunkZ);
-        return chunk != null && chunk.areFeaturesPopulated();
+    static boolean isStandable(int standY, ColumnBlocks column) {
+        if (standY <= 0 || standY + 1 >= WorldConfiguration.WORLD_HEIGHT) return false;
+        return isGround(column.at(standY - 1))
+            && isPassable(column.at(standY))
+            && isPassable(column.at(standY + 1));
     }
 
-    private static boolean isStandableColumn(BlockType ground, BlockType head, BlockType above) {
-        if (ground == null || ground == BlockType.AIR || ground == BlockType.WATER) return false;
-        return (head == null || head == BlockType.AIR) && (above == null || above == BlockType.AIR);
+    /**
+     * Standable footing: occludes sky, and is not a tree trunk. {@link BlockOpacity#isOpaque}
+     * already excludes air, water, ice, snow, flowers and leaves, so the only way to land on a tree
+     * is its trunk top — {@code isLog} closes that.
+     */
+    private static boolean isGround(BlockType b) {
+        return b != null && BlockOpacity.isOpaque(b) && !b.isLog();
+    }
+
+    /** Body space: air, or the non-colliding cover a mob stands in (flowers, snow layers). */
+    private static boolean isPassable(BlockType b) {
+        return b == null || b == BlockType.AIR || b.isFlower() || b == BlockType.SNOW;
     }
 
     // ─── Validation ───────────────────────────────────────────────────────────
@@ -407,15 +434,7 @@ public class EntitySpawner {
     }
 
     private boolean isValidGroundSpawn(int x, int y, int z, Vector3f position) {
-        BlockType ground = world.getBlockAt(x, y - 1, z);
-        if (ground == null || ground == BlockType.AIR || ground == BlockType.WATER) return false;
-
-        BlockType head = world.getBlockAt(x, y, z);
-        BlockType above = world.getBlockAt(x, y + 1, z);
-        if (head != null && head != BlockType.AIR) return false;
-        if (above != null && above != BlockType.AIR) return false;
-
-        return !isOvercrowded(position);
+        return isStandable(y, yy -> world.getBlockAt(x, yy, z)) && !isOvercrowded(position);
     }
 
     private boolean isOvercrowded(Vector3f position) {

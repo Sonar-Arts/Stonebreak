@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.mobs.entities.Entity;
 import org.joml.Matrix4f;
@@ -30,6 +31,9 @@ final class SimpleCubePipeline {
     private int simpleCubeVBO;
     private int simpleCubeTexVBO;
 
+    /** Scratch for the render-space camera position uniform. */
+    private final Vector3f scratchCameraPos = new Vector3f();
+
     void initialize() {
         createShader();
         createSimpleCubeModel();
@@ -50,7 +54,8 @@ final class SimpleCubePipeline {
         shader.setUniform("textureSampler", 0);
         shader.setUniform("view", viewMatrix);
         shader.setUniform("projection", projectionMatrix);
-        shader.setUniform("cameraPos", cameraPos);
+        // Render space — differenced against a render-space fragment position.
+        shader.setUniform("cameraPos", RenderOrigin.toRender(cameraPos, scratchCameraPos));
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
         applySimpleLighting(entity, lit);

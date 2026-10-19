@@ -32,7 +32,7 @@ import java.util.List;
 public final class CendaChunkGenerator {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int SECTION_VOLUME = 4096;
     private static final int SECTION_COUNT = WORLD_HEIGHT / 16;
 
@@ -170,6 +170,9 @@ public final class CendaChunkGenerator {
         if (nonAir < 0) {
             return null;
         }
+        for (int i = 0; i < heightmap.length; i++) {
+            heightmap[i] += StandardTerrain.Y_OFFSET;
+        }
         return new Result(buildStorage(blocks), heightmap);
     }
 
@@ -181,8 +184,8 @@ public final class CendaChunkGenerator {
      * mixed sections go through {@link CcoPaletteSection#fromPaletteData}.
      */
     private static CcoBlockStorage buildStorage(short[] blocks) {
-        CcoPalettedChunkStorage storage = CcoPalettedChunkStorage.createEmpty(
-            CHUNK_SIZE, WORLD_HEIGHT, CHUNK_SIZE, BlockType.AIR);
+        // The kernel emits the Standard frame; it lands SECTION_OFFSET sections up.
+        CcoPalettedChunkStorage storage = StandardTerrain.newLiftedStorage();
         short airId = (short) BlockType.AIR.getId();
         short[] paletteIds = new short[16];
         // Small-palette sections pack into the nibble tier, which copies — so the
@@ -201,7 +204,7 @@ public final class CendaChunkGenerator {
             }
             if (uniform) {
                 if (first != airId) {
-                    storage.replaceSection(section,
+                    storage.replaceSection(section + StandardTerrain.SECTION_OFFSET,
                         new CcoPaletteSection(CHUNK_SIZE * CHUNK_SIZE, BlockType.getById(first)));
                 }
                 continue;
@@ -237,10 +240,19 @@ public final class CendaChunkGenerator {
             for (int p = 0; p < paletteSize; p++) {
                 palette[p] = BlockType.getById(paletteIds[p]);
             }
-            storage.replaceSection(section,
+            storage.replaceSection(section + StandardTerrain.SECTION_OFFSET,
                 CcoPaletteSection.fromPaletteData(CHUNK_SIZE * CHUNK_SIZE, palette, indices));
             if (!CcoPaletteSection.packsToNibbles(paletteSize)) {
                 scratch = null; // the section kept this array; next one needs a fresh one
+            }
+        }
+        // The kernel's y = 0 bedrock floor is interior rock once lifted. With no lift
+        // (a 256-tall world, where the frame IS the world) it is the real floor: keep it.
+        for (int x = 0; StandardTerrain.Y_OFFSET > 0 && x < CHUNK_SIZE; x++) {
+            for (int z = 0; z < CHUNK_SIZE; z++) {
+                if (storage.get(x, StandardTerrain.Y_OFFSET, z) == BlockType.BEDROCK) {
+                    storage.set(x, StandardTerrain.Y_OFFSET, z, BlockType.STONE);
+                }
             }
         }
         return storage;

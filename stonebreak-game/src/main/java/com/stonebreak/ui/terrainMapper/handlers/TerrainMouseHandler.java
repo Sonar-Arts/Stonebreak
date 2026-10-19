@@ -3,10 +3,13 @@ package com.stonebreak.ui.terrainMapper.handlers;
 import com.openmason.engine.ui.masonry.MCategoryButton;
 import com.stonebreak.ui.terrainMapper.TerrainMapperLayout;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
+import com.stonebreak.ui.terrainMapper.managers.PreviewSnapshot;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.ActiveField;
+import com.stonebreak.ui.terrainMapper.managers.TerrainPreviewLoader;
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 /**
  * The terrain mapper's pointer rules, addressed by target: the document's actions (#301) press a
@@ -31,10 +34,20 @@ public final class TerrainMouseHandler {
 
     /**
      * A press on a named control: {@code back}, {@code character}, {@code create}, {@code simulate},
-     * {@code spawn}, {@code center} or {@code mode:<VisualizerKind>}. A disabled button takes the press
-     * and does nothing. @return false for an unknown name
+     * {@code spawn}, {@code center}, {@code generator:<TerrainGeneratorType>} or
+     * {@code mode:<VisualizerKind>}. A disabled button takes the press and does nothing.
+     * @return false for an unknown name
      */
     public boolean pressButton(String name) {
+        if (name.startsWith("generator:")) {
+            for (MCategoryButton<TerrainGeneratorType> generator : state.getGeneratorButtons()) {
+                if (generator.tag().name().equals(name.substring(10))) {
+                    generator.click();
+                    return true;
+                }
+            }
+            return false;
+        }
         if (name.startsWith("mode:")) {
             for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
                 if (mode.tag().name().equals(name.substring(5))) {
@@ -78,7 +91,7 @@ public final class TerrainMouseHandler {
             float dx = x - pressStartX;
             float dy = y - pressStartY;
             if (dx * dx + dy * dy < CLICK_THRESHOLD_PX * CLICK_THRESHOLD_PX) {
-                TerrainMapperLayout.Rect map = new TerrainMapperLayout(windowWidth, windowHeight).map();
+                TerrainMapperLayout.Rect map = layout(windowWidth, windowHeight).map();
                 float cx = map.centerX();
                 float cz = map.y() + map.height() / 2f;
                 state.setSpawnPoint(
@@ -98,7 +111,7 @@ public final class TerrainMouseHandler {
             float dy = state.consumeDragDy(y);
             state.getViewport().panBy(dx, dy);
         }
-        updateHoverReadout(x, y, new TerrainMapperLayout(windowWidth, windowHeight));
+        updateHoverReadout(x, y, layout(windowWidth, windowHeight));
     }
 
     /** The wheel at window pixel {@code (x, y)}: zooms about it, on the map only. */
@@ -106,8 +119,7 @@ public final class TerrainMouseHandler {
         if (delta == 0.0) return;
         float mx = (float) mouseX;
         float my = (float) mouseY;
-        TerrainMapperLayout layout = new TerrainMapperLayout(windowWidth, windowHeight);
-        TerrainMapperLayout.Rect map = layout.map();
+        TerrainMapperLayout.Rect map = layout(windowWidth, windowHeight).map();
         if (!map.contains(mx, my)) return;
         float factor = delta > 0
                 ? TerrainMapperConfig.ZOOM_STEP
@@ -118,6 +130,11 @@ public final class TerrainMouseHandler {
 
     // ─────────────────────────────────────────────── Internals
 
+    /** The layout the document is placed by: the mode list's height depends on how many modes there are. */
+    private TerrainMapperLayout layout(int windowWidth, int windowHeight) {
+        return new TerrainMapperLayout(windowWidth, windowHeight, state.getModeButtons().size());
+    }
+
     private void updateHoverReadout(float mx, float my, TerrainMapperLayout layout) {
         TerrainMapperLayout.Rect map = layout.map();
         if (!map.contains(mx, my)) {
@@ -126,14 +143,35 @@ public final class TerrainMouseHandler {
         }
         float centerX = map.centerX();
         float centerZ = map.y() + map.height() / 2f;
-        int worldX = Math.round(state.getViewport().screenToWorldX(mx, centerX));
-        int worldZ = Math.round(state.getViewport().screenToWorldZ(my, centerZ));
-        NoiseVisualizer visualizer = state.getVisualizers().get(state.getActiveVisualizer());
-        if (visualizer == null) {
+        float worldX = state.getViewport().screenToWorldX(mx, centerX);
+        float worldZ = state.getViewport().screenToWorldZ(my, centerZ);
+        float value = drawnValueAt(worldX, worldZ);
+        if (Float.isNaN(value)) {
+            // Cursor is over map area nothing on screen speaks for — blank, not stale.
             state.clearHoverValue();
             return;
         }
-        float raw = visualizer.sample(worldX, worldZ);
-        state.setHoverValue(worldX, worldZ, raw);
+        state.setHoverValue(Math.round(worldX), Math.round(worldZ), value);
+    }
+
+    /**
+     * The value behind the drawn pixel, read through the same two layers the renderer paints:
+     * the running pass first, then the backdrop showing through wherever it hasn't reached.
+     *
+     * <p>A layer sampled by a different visualizer is skipped rather than read. Its numbers would
+     * be formatted by whichever mode is selected now — a height reported as a biome — and the
+     * renderer already dims that layer to say it isn't the answer to the question being asked.
+     */
+    private float drawnValueAt(float worldX, float worldZ) {
+        NoiseVisualizer active = state.getVisualizers().get(state.getActiveVisualizer());
+        TerrainPreviewLoader loader = state.getPreviewLoader();
+        float value = valueFrom(loader.snapshot(), active, worldX, worldZ);
+        if (!Float.isNaN(value)) return value;
+        return valueFrom(loader.backdrop(), active, worldX, worldZ);
+    }
+
+    private static float valueFrom(PreviewSnapshot layer, NoiseVisualizer active, float worldX, float worldZ) {
+        if (layer == null || layer.request().visualizer() != active) return Float.NaN;
+        return layer.valueAt(worldX, worldZ);
     }
 }

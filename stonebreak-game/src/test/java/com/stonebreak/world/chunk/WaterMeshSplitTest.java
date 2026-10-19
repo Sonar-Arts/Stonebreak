@@ -35,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>(8,11..13,8): FALLING column (3 cells)</li>
  *   <li>(11,11,2): SOURCE cell with a STONE wall to its east (12,11,2)</li>
  *   <li>(2,11,12)+(3,11,12): adjacent SOURCE pair (no face between them)</li>
+ *   <li>(13,11,13): a worldgen river surface running in octant 5</li>
  * </ul>
  */
 public class WaterMeshSplitTest {
@@ -43,6 +44,7 @@ public class WaterMeshSplitTest {
     private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
     private static final float MAX_WATER_HEIGHT = 0.875f;
     private static final float EPS = 1e-3f;
+    private static final int RIVER_OCTANT = 5;
 
     private TestWorld world;
     private com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter adapter;
@@ -76,6 +78,9 @@ public class WaterMeshSplitTest {
         // Adjacent source pair.
         chunk.setBlock(2, 11, 12, BlockType.WATER);
         chunk.setBlock(3, 11, 12, BlockType.WATER);
+        // A worldgen river surface running in octant 5.
+        chunk.setBlock(13, 11, 13, BlockType.WATER);
+        chunk.getWaterLayer().set(13, 11, 13, ChunkWaterLayer.river(RIVER_OCTANT));
 
         world.setChunk(0, 0, chunk);
     }
@@ -146,6 +151,59 @@ public class WaterMeshSplitTest {
             }
         }
         assertTrue(found, "flowing cell must emit a top face");
+    }
+
+    /**
+     * A river surface reaches the renderer as a SOURCE that also carries which
+     * way it runs.
+     *
+     * Both halves matter. The source flag and the 7/8 surface height are what
+     * keep a river looking like the full block of water it is — the marker
+     * changes no geometry. The flow code in the fourth flag slot is the only
+     * thing that distinguishes it from a pond, and it is the last seam in the
+     * chain from the kernel: if it stops arriving here, rivers silently go back
+     * to drifting like the ocean and nothing else fails.
+     *
+     * <p>The per-vertex flag bytes are normalised to [0,1], so the code (0 =
+     * still, octant + 1 otherwise) rides as eighths and the shader scales it
+     * back out. The pulled-quad path carries the same code in word3 — see
+     * {@code MmsWaterQuadCodec.flow}.
+     */
+    @Test
+    void aRiverSurfaceCarriesItsFlowDirection() {
+        MmsMeshData water = buildMesh().waterMesh();
+        float[] flow = water.getLightValues();      // water semantics: flags.w = flow code
+        float[] source = water.getTranslucentFlags();
+        float[] pos = water.getVertexPositions();
+
+        boolean sawRiver = false;
+        boolean sawStill = false;
+        for (int q = 0; q + 4 <= water.getVertexCount(); q += 4) {
+            float cx = quadCenter(pos, q, 0);
+            float cy = quadCenter(pos, q, 1);
+            float cz = quadCenter(pos, q, 2);
+            if (cy < 11 || cy > 12) {
+                continue;
+            }
+            if (cx > 13 && cx < 14 && cz > 13 && cz < 14) {
+                for (int v = q; v < q + 4; v++) {
+                    assertEquals((RIVER_OCTANT + 1) / 8.0f, flow[v], 1.0f / 255.0f,
+                            "a river vertex carries its octant as eighths");
+                    assertEquals(1.0f, source[v], EPS,
+                            "a river surface is still a source block and renders as one");
+                }
+                sawRiver = true;
+            }
+            // The isolated source next door is still water and says so.
+            if (cx > 2 && cx < 3 && cz > 2 && cz < 3) {
+                for (int v = q; v < q + 4; v++) {
+                    assertEquals(0.0f, flow[v], 1.0f / 255.0f, "still water carries no direction");
+                }
+                sawStill = true;
+            }
+        }
+        assertTrue(sawRiver, "the river cell must emit a face");
+        assertTrue(sawStill, "the still source must emit a face");
     }
 
     @Test
@@ -283,6 +341,7 @@ public class WaterMeshSplitTest {
         chunk.setBlock(11, 11, 2, BlockType.AIR);
         chunk.setBlock(2, 11, 12, BlockType.AIR);
         chunk.setBlock(3, 11, 12, BlockType.AIR);
+        chunk.setBlock(13, 11, 13, BlockType.AIR);
 
         ChunkMeshResult after = buildMesh();
         assertFalse(after.hasWaterMesh(),

@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.noise.NoiseChannel2D;
 import com.stonebreak.world.generation.noise.TerrainNoise;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -70,15 +71,15 @@ public final class CaveWaterTable {
     /** Wobble wavelength: long enough that the table reads as regional, not per-chunk. */
     private static final float SCALE = 1f / 220f;
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
+    private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
     /** @see WorldConfiguration#NO_WATER */
     private static final int NO_WATER = WorldConfiguration.NO_WATER;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final NoiseChannel2D wobble;
-    private final HeightMapGenerator heightMap;
+    private final SurfaceHeights heightMap;
 
-    public CaveWaterTable(long seed, HeightMapGenerator heightMap) {
+    public CaveWaterTable(long seed, SurfaceHeights heightMap) {
         // Seed offset distinct from Density3D (+17) and the worm channels (+41, +113).
         this.wobble = TerrainNoise.channel2D(seed + 8191, 2, 0.5, 2.0, SCALE, 0f, 0f, 0, 0);
         this.heightMap = heightMap;

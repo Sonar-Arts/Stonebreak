@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Standard Generation's sea is OCEAN: every submerged column is an
+ * Standard Generation's sea is OCEAN, as DaedalusTGM-Exp's is: every submerged column is an
  * OCEAN (or, frozen, ICE_FIELDS) column, its floor carries {@link OceanFloor}'s mix, and the
  * per-point and FastLOD paths report the floor the chunk actually holds.
  */
@@ -29,13 +29,13 @@ class StandardOceanTest {
         int baseX = chunk[0] * CHUNK_SIZE;
         int baseZ = chunk[1] * CHUNK_SIZE;
 
-        TerrainGenerationSystem.TerrainResult result = terrain.generateTerrainOnly(chunk[0], chunk[1]);
+        TerrainGenerator.TerrainResult result = terrain.generateTerrainOnly(chunk[0], chunk[1]);
         Chunk blocks = result.chunk();
         ColumnProfile profile = result.profile();
 
         int[] lodHeights = new int[CHUNK_SIZE * CHUNK_SIZE];
         BlockType[] lodSurface = new BlockType[CHUNK_SIZE * CHUNK_SIZE];
-        terrain.sampleRawColumns(baseX, baseZ, CHUNK_SIZE, 1, lodHeights, lodSurface);
+        terrain.sampleRawColumns(baseX, baseZ, CHUNK_SIZE, 1, lodHeights, null, lodSurface);
 
         int ocean = 0;
         int mixed = 0;

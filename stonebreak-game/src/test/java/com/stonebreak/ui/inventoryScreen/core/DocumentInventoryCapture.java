@@ -38,9 +38,23 @@ import java.util.Map;
 public final class DocumentInventoryCapture implements MigrationGate.Renderer {
 
     private final SbuiArchive shipped;
+    private final boolean oracleRects;
 
     public DocumentInventoryCapture(SbuiArchive shipped) {
+        this(shipped, false);
+    }
+
+    private DocumentInventoryCapture(SbuiArchive shipped, boolean oracleRects) {
         this.shipped = shipped;
+        this.oracleRects = oracleRects;
+    }
+
+    /**
+     * Re-freezing the reference after an intended visual change (the Daedalus tab strip): the document's pixels with
+     * {@link InventoryFixtures#rects}' legacy-formula geometry, an oracle independent of the document.
+     */
+    public static DocumentInventoryCapture reference() throws java.io.IOException {
+        return new DocumentInventoryCapture(GameUiDocuments.readScreen(InventoryScreen.DOCUMENT_ID), true);
     }
 
     /** What the game ships ({@code GameUiDocuments.readScreen("inventory")}). */
@@ -189,7 +203,9 @@ public final class DocumentInventoryCapture implements MigrationGate.Renderer {
                 stage.settle();
             }
             stage.paint();
-            return new MigrationGate.Capture(stage.raster.capture(), rects(stage));
+            return new MigrationGate.Capture(stage.raster.capture(), oracleRects
+                ? InventoryFixtures.rects(w, h, !stage.input.getCraftingManager().getCraftingOutputSlot().isEmpty())
+                : rects(stage));
         } catch (Exception e) {
             throw new IllegalStateException("could not capture the inventory document for " + c.id(), e);
         }
@@ -199,7 +215,7 @@ public final class DocumentInventoryCapture implements MigrationGate.Renderer {
     static Map<String, float[]> rects(Stage stage) {
         Map<String, float[]> out = new LinkedHashMap<>();
         put(out, "panel", stage.q("#panel"));
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 3; i++) {
             put(out, "tab" + i, stage.q("#tab" + i));
         }
         for (int i = 0; i < 4; i++) {

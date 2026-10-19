@@ -23,6 +23,11 @@ public final class TerrainMapperConfig {
     public static final int MAX_SEED_LENGTH = 20;
     public static final float MODE_BUTTON_HEIGHT = 34f;
     public static final float MODE_BUTTON_SPACING = 6f;
+    /** Mode buttons sit two to a row, so their labels run a size below a full-width button's. */
+    public static final float MODE_BUTTON_FONT_SIZE = 16f;
+    public static final int MODE_BUTTON_COLUMNS = 2;
+    /** Hover text on the DaedalusTGM-Exp (TerrainGeneratorType.DIFFUSION) button. */
+    public static final String DIFFUSION_WARNING = "WARNING! DaedalusTGM-Exp is experimental and starts local model services on first use";
 
     // ─────────────────────────────────────────────── Footer buttons
     public static final float FOOTER_BUTTON_WIDTH = 180f;
@@ -32,7 +37,15 @@ public final class TerrainMapperConfig {
     // ─────────────────────────────────────────────── Viewport
     /** Pixels-per-world-block at zoom 1.0. A block maps to a single pixel. */
     public static final float BASE_WORLD_SCALE = 1f;
-    public static final float ZOOM_MIN = 0.25f;
+    /**
+     * Furthest zoom-out: 1/16 means one pixel stands for 16 world blocks, so a ~1200 px map
+     * spans ~19k blocks. What bounds this is not the sample count — that is fixed by the
+     * viewport size and {@link #SAMPLE_STEP_PX} — but the number of distinct 256-block bridge
+     * tiles the samples land in, since an uncached tile costs a diffusion inference. Sampling
+     * runs off the render thread (see TerrainPreviewLoader), so a wide view degrades into a
+     * slow "Sampling terrain..." rather than a freeze.
+     */
+    public static final float ZOOM_MIN = 0.0625f;
     public static final float ZOOM_MAX = 8f;
     public static final float ZOOM_STEP = 1.15f;
 
@@ -42,7 +55,64 @@ public final class TerrainMapperConfig {
     /** Coarser sample spacing used during drag/zoom so interaction stays 60 fps. */
     public static final int SAMPLE_STEP_INTERACTIVE_PX = 6;
 
+    /**
+     * Preload margin sampled beyond every edge of the map, as a fraction of its shorter side.
+     * Panning within half of it shows terrain that is already there and starts no new work.
+     *
+     * <p>The cost is tiles: at 0.5 the margin is roughly three times the visible area again.
+     * It is only sampled after the visible map has finished, and any pan past the margin, zoom,
+     * or mode switch abandons it, so it never delays what is on screen — but it does keep the
+     * single-GPU terrain queue busy for longer on a zoomed-out view. 0 disables preloading.
+     */
+    public static final float PRELOAD_MARGIN_FRACTION = 0.5f;
+
+    /**
+     * Memory the mapper may spend remembering sampled terrain values while it is open (see
+     * PreviewSampleStore). Past it, the least recently viewed detail is forgotten and would
+     * have to be sampled again. About 43,000 chunks; a zoom-1 screen with its preload margin
+     * takes a few hundred.
+     */
+    /**
+     * Far-zoom overview: samples this many world blocks apart or more read coarse preview tiles
+     * ({@link #OVERVIEW_LOD} blocks per sample, from the model's 240 m cells) instead of full
+     * tiles. At the widest zoom a view spans ~20k blocks, i.e. thousands of full tiles; the
+     * overview serves it with a few dozen coarse ones. Detail below 8 blocks is invisible there.
+     */
+    public static final int OVERVIEW_MIN_SPACING = 8;
+    /** World blocks per overview sample: 2 model cells (480 m), one 2048-block area per tile. */
+    public static final int OVERVIEW_LOD = 8;
+
+    public static final long PREVIEW_CACHE_BUDGET_BYTES = 512L * 1024 * 1024;
+
     /** After a wheel-zoom, keep interactive quality this long before resampling at hi-res. */
     public static final long ZOOM_COOLDOWN_NANOS = 180_000_000L;
+
+    /**
+     * Quiet period after the last seed edit before the visualizers are rebuilt. The terrain
+     * service serves any seed without restarting, but every rebuild throws away the sampled
+     * picture and queues fresh tiles, so typing a seed character-by-character must not trigger
+     * one rebuild per keystroke.
+     */
+    public static final long SEED_APPLY_DELAY_NANOS = 500_000_000L;
+
+    // ─────────────────────────────────────────────── Topography visualizer
+    /**
+     * Block height that maps to the top (white) of the topography land ramp; anything higher
+     * clamps to white. Set where the highest terrain lands: the height curve
+     * ({@code terrain_slm/world/height_curve.py}, knobs from {@code TerrainScale}) puts 4500 m
+     * summits at about y 236, and the terrain model soft-caps peaks just under the build limit.
+     */
+    public static final int TOPO_LAND_CEILING = 240;
+
+    /**
+     * Blocks of contour interval to allow per block of sample-cell width. A paper map picks a
+     * coarser interval as its scale drops for exactly this reason: lines land roughly
+     * {@code interval / (slope * blocksPerSample)} samples apart, so holding the interval fixed
+     * while zooming out multiplies their on-screen density until they merge into black mush.
+     *
+     * <p>2.5 is "keep lines ~5 samples apart on a half-block-per-block slope", which reproduces
+     * the familiar 5/10-block interval at close zoom and backs off to 100/200 at ZOOM_MIN.
+     */
+    public static final float TOPO_CONTOUR_INTERVAL_SCALE = 2.5f;
 }
 

@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.serialization;
 
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
 import org.joml.Vector3f;
@@ -32,7 +33,8 @@ public class JsonWorldSerializer {
         json.append("  \"totalPlayTimeMillis\": ").append(world.getTotalPlayTimeMillis()).append(",\n");
         json.append("  \"worldTimeTicks\": ").append(world.getWorldTimeTicks()).append(",\n");
         json.append("  \"cheatsEnabled\": ").append(world.isCheatsEnabled()).append(",\n");
-        json.append("  \"formatVersion\": ").append(world.getFormatVersion()).append("\n");
+        json.append("  \"formatVersion\": ").append(world.getFormatVersion()).append(",\n");
+        json.append("  \"generatorType\": \"").append(world.getGeneratorType().name()).append("\"\n");
         json.append("}");
 
         return json.toString().getBytes(StandardCharsets.UTF_8);
@@ -53,6 +55,8 @@ public class JsonWorldSerializer {
                 .worldTimeTicks(JsonParsingUtil.extractLong(json, "worldTimeTicks", 6000L)) // Default to NOON if not present
                 .cheatsEnabled(JsonParsingUtil.extractBoolean(json, "cheatsEnabled", false))
                 .formatVersion(JsonParsingUtil.extractInt(json, "formatVersion", 1))
+                .generatorType(TerrainGeneratorType.parse(
+                    JsonParsingUtil.extractStringOptional(json, "generatorType"), WorldData.LEGACY_GENERATOR))
                 .build();
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize WorldData: " + e.getMessage(), e);

@@ -7,6 +7,7 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.openmason.engine.voxel.mms.mmsCore.MmsWaterQuadCodec;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -46,22 +47,25 @@ import java.util.Arrays;
  * instead of showing sky through terrain that only exists as a surface sheet.
  *
  * <p><b>Water mesh.</b> One flat sheet quad per submerged cell at
- * {@code SEA_LEVEL - 0.125} — the same plane native water surfaces occupy.
- * Its vertex flags follow the water-mesh semantics documented in
- * {@code shaders/water/water.vert}: flags.x = surface-height fraction
- * (0.875), flags.y = falling (0), flags.w = light (1). Because the sheet is
- * rendered by the same water shader over a real LOD seabed, fresnel
- * transparency, waves, specular and fog are all continuous with native water.
+ * {@code waterLevel - 0.125} — the same plane native water surfaces occupy at
+ * that water level (sea, river or lake alike; the ocean is one case of a
+ * per-cell water level, not a separate rule). Its vertex flags follow the
+ * water-mesh semantics documented in {@code shaders/water/water.vert}:
+ * flags.x = surface-height fraction (0.875), flags.y = falling (0), flags.w =
+ * river flow code (0 = still water — an LOD sheet never runs; 1.0 would read
+ * as a river in octant 7). Because the sheet is rendered by the same water shader over a
+ * real LOD seabed, fresnel transparency, waves, specular and fog are all
+ * continuous with native water.
  */
 public final class FastLodMesher {
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
     /**
      * Native water tops sit at blockBase + 0.875 (see shaders/water/water.vert);
-     * worldgen fills water below {@code SEA_LEVEL}, so the visible surface is
-     * SEA_LEVEL - 1 + 0.875. The LOD sea sheet uses the same height.
+     * worldgen fills water below a column's water level, so the visible surface
+     * is {@code waterLevel - 1 + 0.875}. The LOD sheet uses the same height,
+     * per cell rather than a single global plane — see {@link
+     * FastLodChunkData#waterLevelAt}.
      */
-    private static final float SEA_SURFACE_Y = SEA_LEVEL - 0.125f;
     /**
      * Cap on the water-column depth baked into a sheet, matching the near-water
      * mesher's ({@code MmsCcoAdapter.MAX_WATER_DEPTH}). The shader saturates at
@@ -69,13 +73,17 @@ public final class FastLodMesher {
      * merge below can still fold them into one rectangle.
      */
     private static final int MAX_WATER_DEPTH = 16;
+
+    private static final float WATER_SURFACE_OFFSET = -0.125f;
     /** Surface-height fraction baked into water sheet flags (water.vert). */
     private static final float WATER_SURFACE_FRACTION = 0.875f;
 
     private static final int TOP_QUAD            = 1;
-    private static final int MAX_SKIRTS_PER_CELL = 4;
+    /** Four edges, each a wall of up to three strata bands (see {@link #forEachBand}). */
+    private static final int MAX_SKIRTS_PER_CELL = 4 * 3;
     private static final int TREE_QUADS_PER_CELL = 9;   // 4 trunk + 5 canopy
-    private static final int NOTCH_QUADS_PER_CELL = 5;  // floor + 4 inward-facing walls
+    /** Floor + four inward walls of up to three bands, and three more rim tops than the one top they replace. */
+    private static final int NOTCH_QUADS_PER_CELL = 1 + 4 * 3 + 3;
 
     /**
      * Deepest a cave-mouth notch is allowed to be cut, in blocks. A ravine floor can sit 60
@@ -202,15 +210,30 @@ public final class FastLodMesher {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 BlockType surface = data.surfaceAt(ix, iz);
                 int terrainH = data.heightAt(ix, iz);
-                boolean submerged = terrainH < SEA_LEVEL;
+                int waterLevel = data.waterLevelAt(ix, iz);
+                boolean submerged = waterLevel > terrainH;
 
                 float wx = baseX + ix * cellSize;
                 float wz = baseZ + iz * cellSize;
 
+                // A cave mouth in the cell: a block-aligned square the top is cut around.
+                int floor = TerrainGenerator.NO_OPENING;
+                int[] notch = null;
+                if (notches) {
+                    floor = data.openingFloorAt(ix, iz);
+                    if (floor != TerrainGenerator.NO_OPENING && floor < terrainH) {
+                        notch = notchSquare(cellSize, data.openingCoverageAt(ix, iz));
+                    }
+                }
+
                 // Terrain top at the REAL height — the seabed under water.
                 int topLayer = textureArray.getBlockFaceLayer(surface, BlockType.Face.TOP.getIndex());
-                w.topQuadSmooth(wx, terrainH, wz, cellSize, topLayer,
-                        cornerNormals, ix, iz, cellsPerAxis);
+                if (notch == null) {
+                    w.topQuadSmooth(wx, terrainH, wz, cellSize, topLayer,
+                            cornerNormals, ix, iz, cellsPerAxis);
+                } else {
+                    emitRimTop(w, wx, wz, cellSize, terrainH, topLayer, notch);
+                }
 
                 int last = cellsPerAxis - 1;
                 emitSideQuads(w, data, ix, iz, +1, 0, surface, terrainH, wx, wz, cellSize, ix == last);
@@ -220,25 +243,23 @@ public final class FastLodMesher {
 
                 if (submerged) {
                     // Water sheet quad. Flag semantics per water.vert:
-                    // x = surface-height fraction, y = falling, w = light.
+                    // x = surface-height fraction, y = falling, w = flow code (0 = still).
                     // The layer slot carries the water-column depth in blocks
                     // (water is untextured); near water bakes the same number
                     // per cell, so the seabed fades identically on both sides
                     // of the LOD handover.
-                    ww.topQuadFlat(wx, SEA_SURFACE_Y, wz, cellSize,
-                            Math.min(SEA_LEVEL - terrainH, MAX_WATER_DEPTH), WATER_SURFACE_FRACTION);
+                    float waterSurfaceY = waterLevel + WATER_SURFACE_OFFSET;
+                    ww.topQuadFlat(wx, waterSurfaceY, wz, cellSize,
+                            Math.min(waterLevel - terrainH, MAX_WATER_DEPTH), WATER_SURFACE_FRACTION);
                 }
 
-                if (notches) {
-                    int floor = data.openingFloorAt(ix, iz);
-                    if (floor != com.stonebreak.world.generation.TerrainGenerationSystem.NO_OPENING
-                            && floor < terrainH) {
-                        emitCaveNotch(w, wx, wz, cellSize, terrainH, floor,
-                                data.openingCoverageAt(ix, iz));
-                    }
+                if (notch != null) {
+                    emitCaveNotch(w, wx, wz, notch, terrainH, floor, surface);
                 }
 
-                if (level.emitsTrees() && !submerged) {
+                // The sampler only gives a submerged cell a tree where one stands in the
+                // water: a cypress rooted on a swamp pool's bed.
+                if (level.emitsTrees()) {
                     TreeSample tree = data.treeAt(ix, iz);
                     if (tree != null) {
                         emitTree(w, wx, wz, terrainH, tree, 1);
@@ -255,8 +276,8 @@ public final class FastLodMesher {
             for (int spot : treeSpots) {
                 int lx = FastLodChunkData.spotX(spot);
                 int lz = FastLodChunkData.spotZ(spot);
+                // Spots are only ever probed on dry cells and 1-deep swamp pools (cypress).
                 int terrainH = data.heightAt(lx / cellSize, lz / cellSize);
-                if (terrainH < SEA_LEVEL) continue;
                 emitTree(w, baseX + lx, baseZ + lz, terrainH,
                         new TreeSample(FastLodChunkData.spotKind(spot), FastLodChunkData.spotTrunk(spot)), trunkWidth);
             }
@@ -359,9 +380,23 @@ public final class FastLodMesher {
         if (!hasSkirt && !nodeBorder) {
             return;
         }
-        int sideLayer = textureArray.getBlockFaceLayer(surface, faceForDirection(dx, dz).getIndex());
+        int faceIndex = faceForDirection(dx, dz).getIndex();
+        int sideLayer = textureArray.getBlockFaceLayer(surface, faceIndex);
         if (hasSkirt) {
-            w.skirtQuad(wx, wz, cellSize, dx, dz, terrainH, nH, sideLayer, 1f);
+            // A real wall shows the column's strata: every drop at L0 (one column to the next,
+            // as the native chunk it hands over to draws it) and a cut — ravine, sinkhole, cave
+            // mouth — at any level. A drop between coarse cells is otherwise a slope, a
+            // staircase of surface-topped steps, and keeps the surface's own side.
+            int nx = ix + dx, nz = iz + dz;
+            boolean interior = nx >= 0 && nz >= 0 && nx < data.level().cellsPerAxis()
+                    && nz < data.level().cellsPerAxis();
+            if (cellSize == 1 || (interior && isCutTop(data.surfaceAt(nx, nz), surface))) {
+                forEachBand(surface, terrainH, nH, (top, bottom, block) ->
+                        w.skirtQuad(wx, wz, cellSize, dx, dz, top, bottom,
+                                textureArray.getBlockFaceLayer(block, faceIndex), 1f));
+            } else {
+                w.skirtQuad(wx, wz, cellSize, dx, dz, terrainH, nH, sideLayer, 1f);
+            }
         }
         if (nodeBorder) {
             // Continue below the skirt bottom (or flush with the cell top when
@@ -380,53 +415,132 @@ public final class FastLodMesher {
         return BlockType.Face.SIDE_NORTH;
     }
 
+    /** One band of a wall: blocks {@code [bottom, top)} faced with {@code block}. */
+    @FunctionalInterface
+    interface BandSink {
+        void band(float top, float bottom, BlockType block);
+    }
+
     /**
-     * A cave mouth, drawn as a notch recessed into the cell: a floor quad with four walls
-     * facing inward, sized by how much of the cell is actually carved.
-     *
-     * <p>Additive geometry inside one cell, deliberately — the same shape of change as
-     * {@link #emitTree}. The cell keeps its own surface height and its skirts, so seams,
-     * neighbour cells, the water sheet and the greedy top merge are all untouched; the node's
-     * Y bounds pick the notch up on their own because the writer tracks them per quad.
-     *
-     * <p>Walls and floor are STONE rather than the cell's surface block. A carved column
-     * exposes stone — that is what {@code exposedBlock} gives it in real generation — and the
-     * cell's own surface block is whatever its representative probe landed on, which for a
-     * cell whose mouth the probe missed is the grass beside the hole.
+     * The strata of a wall dropping from {@code top} to {@code bottom} below a cell whose top
+     * is {@code surface}, as a real column is layered (both generators): the surface block,
+     * the three blocks of what lies under it, then stone. Adjacent bands of one block are
+     * emitted as one.
+     */
+    static void forEachBand(BlockType surface, int top, int bottom, BandSink sink) {
+        BlockType under = underlying(surface);
+        int[] cuts = {top, top - 1, top - 4, bottom};
+        BlockType[] blocks = {surface, under, BlockType.STONE};
+        int bandTop = top;
+        for (int i = 0; i < 3; i++) {
+            int bandBottom = Math.max(bottom, cuts[i + 1]);
+            boolean last = i == 2 || bandBottom <= bottom;
+            if (!last && blocks[i + 1] == blocks[i]) {
+                continue; // same block below: one band
+            }
+            if (bandBottom < bandTop) {
+                sink.band(bandTop, bandBottom, blocks[i]);
+            }
+            bandTop = bandBottom;
+            if (bandTop <= bottom) {
+                return;
+            }
+        }
+    }
+
+    /** What lies under a top block: the subsurface both generators lay below it. */
+    static BlockType underlying(BlockType surface) {
+        if (surface == BlockType.SAND || surface == BlockType.SANDSTONE) {
+            return BlockType.SANDSTONE;
+        }
+        if (surface == BlockType.RED_SAND || surface == BlockType.RED_SANDSTONE) {
+            return BlockType.RED_SANDSTONE;
+        }
+        if (surface == BlockType.GRASS || surface == BlockType.SNOWY_DIRT || surface == BlockType.SWAMPY_GRASS
+                || surface == BlockType.DIRT || surface == BlockType.GRAVEL || surface == BlockType.CLAY) {
+            return BlockType.DIRT;
+        }
+        return surface == BlockType.ICE ? BlockType.ICE : BlockType.STONE;
+    }
+
+    /**
+     * Whether a lower neighbour's top is the inside of a cut rather than ground: carving
+     * exposes what lies under the surface ({@code exposedBlock}), so a cell topped with that
+     * beside one that is not stands in a ravine, sinkhole or cave mouth.
+     */
+    private static boolean isCutTop(BlockType neighbour, BlockType own) {
+        return neighbour != own && (neighbour == BlockType.STONE || neighbour == BlockType.MAGMA
+                || neighbour == underlying(own));
+    }
+
+    /**
+     * The block-aligned square a cave mouth occupies in its cell, {@code {inset, side}} in
+     * blocks from the cell's corner, its area the carved share of the cell. Whole blocks
+     * because pulled LOD quads sit on the block grid: a fractional notch was snapped piecewise
+     * (positions to blocks, sizes to half blocks), so its floor, walls and the cell's top
+     * missed each other. Never the whole cell: a rim always survives, so the cell reads as
+     * ground with a hole in it rather than as a pit.
      *
      * @param coverage carved share of the cell footprint, 0..255
      */
-    private void emitCaveNotch(QuadWriter w, float wx, float wz, int cellSize,
-                               int terrainH, int floorY, int coverage) {
-        float depth = Math.min(terrainH - floorY, MAX_NOTCH_DEPTH);
-        float y1 = terrainH;
-        float y0 = terrainH - depth;
-
-        // Area-proportional side length: coverage is an area fraction, the notch is a square.
+    static int[] notchSquare(int cellSize, int coverage) {
         float frac = (float) Math.sqrt(coverage / 255f);
         frac = Math.max(MIN_NOTCH_FRACTION, Math.min(MAX_NOTCH_FRACTION, frac));
-        float side = cellSize * frac;
-        float inset = (cellSize - side) * 0.5f;
-        float x0 = wx + inset, x1 = x0 + side;
-        float z0 = wz + inset, z1 = z0 + side;
+        int side = Math.max(1, Math.min(cellSize - 1, (int) (cellSize * frac))); // floor: never past the cap
+        return new int[]{(cellSize - side) / 2, side};
+    }
 
-        int wallLayer = textureArray.getBlockFaceLayer(BlockType.STONE,
-                BlockType.Face.SIDE_NORTH.getIndex());
+    /** The cell's top around its cave mouth: up to four flat rectangles. */
+    private void emitRimTop(QuadWriter w, float wx, float wz, int cellSize, int y, int layer, int[] notch) {
+        int a = notch[0], b = notch[0] + notch[1];
+        rimRect(w, wx, wz, 0, 0, a, cellSize, y, layer);          // -x strip, full depth
+        rimRect(w, wx, wz, b, 0, cellSize, cellSize, y, layer);   // +x strip, full depth
+        rimRect(w, wx, wz, a, 0, b, a, y, layer);                 // -z between them
+        rimRect(w, wx, wz, a, b, b, cellSize, y, layer);          // +z between them
+    }
+
+    private static void rimRect(QuadWriter w, float wx, float wz, int x0, int z0, int x1, int z1,
+                                int y, int layer) {
+        if (x1 <= x0 || z1 <= z0) {
+            return;
+        }
+        w.axisAlignedQuad(wx + x0, y, wz + z0, wx + x1, y, wz + z0, wx + x1, y, wz + z1, wx + x0, y, wz + z1,
+                          0, 1, 0, layer, 0f);
+    }
+
+    /**
+     * A cave mouth, drawn as a pit through a hole in the cell's top ({@link #emitRimTop}): a
+     * floor quad with four walls facing inward, layered like any cut ({@link #forEachBand}).
+     *
+     * <p>Additive geometry inside one cell, deliberately — the same shape of change as
+     * {@link #emitTree}. The cell keeps its own surface height and its skirts, so seams,
+     * neighbour cells and the water sheet are untouched; the node's Y bounds pick the notch
+     * up on their own because the writer tracks them per quad.
+     */
+    private void emitCaveNotch(QuadWriter w, float wx, float wz, int[] notch,
+                               int terrainH, int floorY, BlockType surface) {
+        int y0 = terrainH - Math.min(terrainH - floorY, MAX_NOTCH_DEPTH);
+        float x0 = wx + notch[0], x1 = x0 + notch[1];
+        float z0 = wz + notch[0], z1 = z0 + notch[1];
+
         int floorLayer = textureArray.getBlockFaceLayer(BlockType.STONE,
                 BlockType.Face.TOP.getIndex());
-
         // Floor, seen from above.
         w.axisAlignedQuad(x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1,
                           0, 1, 0, floorLayer, 0f);
         // Walls face into the notch, so the far side is what you see looking down.
-        w.axisAlignedQuad(x1, y1, z1, x1, y1, z0, x1, y0, z0, x1, y0, z1,
-                          -1, 0, 0, wallLayer, 0f);
-        w.axisAlignedQuad(x0, y1, z0, x0, y1, z1, x0, y0, z1, x0, y0, z0,
-                          1, 0, 0, wallLayer, 0f);
-        w.axisAlignedQuad(x0, y1, z1, x1, y1, z1, x1, y0, z1, x0, y0, z1,
-                          0, 0, -1, wallLayer, 0f);
-        w.axisAlignedQuad(x1, y1, z0, x0, y1, z0, x0, y0, z0, x1, y0, z0,
-                          0, 0, 1, wallLayer, 0f);
+        int wallFace = BlockType.Face.SIDE_NORTH.getIndex();
+        forEachBand(surface, terrainH, y0, (top, bottom, block) -> {
+            int layer = textureArray.getBlockFaceLayer(block, wallFace);
+            w.axisAlignedQuad(x1, top, z1, x1, top, z0, x1, bottom, z0, x1, bottom, z1,
+                              -1, 0, 0, layer, 0f);
+            w.axisAlignedQuad(x0, top, z0, x0, top, z1, x0, bottom, z1, x0, bottom, z0,
+                              1, 0, 0, layer, 0f);
+            w.axisAlignedQuad(x0, top, z1, x1, top, z1, x1, bottom, z1, x0, bottom, z1,
+                              0, 0, -1, layer, 0f);
+            w.axisAlignedQuad(x1, top, z0, x0, top, z0, x0, bottom, z0, x1, bottom, z0,
+                              0, 0, 1, layer, 0f);
+        });
     }
 
     /**
@@ -523,7 +637,10 @@ public final class FastLodMesher {
         private final int[] topY, topLayer;
         private final boolean[] topPresent, topFlat;
         private final int[] topNormalPair01, topNormalPair23;
-        // Per-direction skirt buffers: [dir][kind][cell]; kind 0 = skirt, 1 = foundation
+        // Per-direction skirt buffers: [dir][slot][cell]; slots 0..2 = a wall's strata bands,
+        // top down (forEachBand), slot 3 = the node-border foundation
+        private static final int SKIRT_SLOTS = 4;
+        private static final int FOUNDATION_SLOT = SKIRT_SLOTS - 1;
         private final float[][][] skTop, skBot;
         private final int[][][] skLayer;
         private final boolean[][][] skPresent, skLit;
@@ -546,11 +663,11 @@ public final class FastLodMesher {
             topFlat = new boolean[cells];
             topNormalPair01 = new int[cells];
             topNormalPair23 = new int[cells];
-            skTop = new float[4][2][cells];
-            skBot = new float[4][2][cells];
-            skLayer = new int[4][2][cells];
-            skPresent = new boolean[4][2][cells];
-            skLit = new boolean[4][2][cells];
+            skTop = new float[4][SKIRT_SLOTS][cells];
+            skBot = new float[4][SKIRT_SLOTS][cells];
+            skLayer = new int[4][SKIRT_SLOTS][cells];
+            skPresent = new boolean[4][SKIRT_SLOTS][cells];
+            skLit = new boolean[4][SKIRT_SLOTS][cells];
         }
 
         /** Flushes the buffered cells as merged records and packs the mesh. */
@@ -568,12 +685,15 @@ public final class FastLodMesher {
             int yHalf = Math.round(yMin * 2f);
             int wHalf = Math.max(1, Math.round(w * 2f));
             int hHalf = Math.max(1, Math.round(h * 2f));
-            if (yHalf < 0 || yHalf > 511 || hHalf > 1023 || wHalf > 63) {
-                return; // outside the representable band (never for WORLD_HEIGHT 256)
+            if (yHalf < 0 || yHalf > 2047 || hHalf > 2047 || wHalf > 63) {
+                // Outside the representable band. LODQUAD16 carries y and h in 11 bits of
+                // half blocks, so this covers WORLD_HEIGHT up to 1024; raise the codec's
+                // budget, not this guard, if the world ever grows past that.
+                return;
             }
             if (!quads.addWords(
-                    MmsLodQuadCodec.word0(rx, rz, yHalf, face, smooth, lit),
-                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha),
+                    MmsLodQuadCodec.word0(rx, rz, yHalf, face),
+                    MmsLodQuadCodec.word1(wHalf, hHalf, layer, alpha, smooth, lit),
                     nPair01, nPair23)) {
                 return; // per-draw quad cap (never reached by a single LOD node)
             }
@@ -710,10 +830,15 @@ public final class FastLodMesher {
             int iz = Math.round((wz - baseZ) / cellSize);
             int cell = ix * n + iz;
             int dir = dirIndex(dx, dz);
-            // Foundations are emitted with FOUNDATION_LIGHT (0) and reach y=0; skirts are lit.
-            int kind = lightVal > 0.5f ? 0 : 1;
-            if (skPresent[dir][kind][cell]) {
-                kind = 1 - kind; // defensive: second segment of the same kind lands in the other slot
+            // Foundations are emitted with FOUNDATION_LIGHT (0) and reach y=0; skirt bands are
+            // lit and arrive top down, each taking the next slot so bands merge along a row
+            // with the same band of their neighbours.
+            int kind = FOUNDATION_SLOT;
+            if (lightVal > 0.5f) {
+                kind = 0;
+                while (kind < FOUNDATION_SLOT - 1 && skPresent[dir][kind][cell]) {
+                    kind++;
+                }
             }
             skPresent[dir][kind][cell] = true;
             skTop[dir][kind][cell] = fTop;
@@ -734,7 +859,7 @@ public final class FastLodMesher {
             for (int dir = 0; dir < 4; dir++) {
                 boolean alongZ = dir < 2; // ±x faces run along z; ±z faces run along x
                 int face = dir == 0 ? 4 : dir == 1 ? 5 : dir == 2 ? 3 : 2;
-                for (int kind = 0; kind < 2; kind++) {
+                for (int kind = 0; kind < SKIRT_SLOTS; kind++) {
                     boolean[] done = new boolean[n * n];
                     for (int line = 0; line < n; line++) {
                         for (int pos = 0; pos < n; pos++) {
@@ -869,7 +994,9 @@ public final class FastLodMesher {
             int cellY = (int) Math.floor(y) + 1; // sheet sits 0.125 below the cell's top: cell = SEA_LEVEL
             int qx = Math.round(wx - originX);
             int qz = Math.round(wz - originZ);
-            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 511) {
+            // WATERQUAD16 carries y in 10 bits of whole blocks, covering WORLD_HEIGHT 1024;
+            // a lake or river perched high in the column must not be silently dropped.
+            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 1023) {
                 return;
             }
             if (!quads.addWords(
@@ -923,15 +1050,17 @@ public final class FastLodMesher {
 
         /**
          * Flat-up top quad. Terrain never uses this anymore; the water writer
-         * emits sheets with it ({@code xFlag} = surface-height fraction).
+         * emits sheets with it ({@code xFlag} = surface-height fraction, and
+         * flags.w = 0: still water, since water.vert reads that slot as the
+         * river flow code).
          */
         void topQuadFlat(float wx, float y, float wz, int cellSize, int layer, float xFlag) {
             float x1 = wx + cellSize;
             float z1 = wz + cellSize;
-            int v0 = pushVert(wx, y, wz, 0f, 0f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(x1, y, wz, 1f, 0f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(x1, y, z1, 1f, 1f, 0, 1, 0, xFlag, 0f, 1f, layer);
-                    pushVert(wx, y, z1, 0f, 1f, 0, 1, 0, xFlag, 0f, 1f, layer);
+            int v0 = pushVert(wx, y, wz, 0f, 0f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(x1, y, wz, 1f, 0f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(x1, y, z1, 1f, 1f, 0, 1, 0, xFlag, 0f, 0f, layer);
+                    pushVert(wx, y, z1, 0f, 1f, 0, 1, 0, xFlag, 0f, 0f, layer);
             pushQuadIndices(v0);
         }
 

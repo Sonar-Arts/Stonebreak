@@ -10,6 +10,7 @@ import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import com.stonebreak.ui.characterCreation.CharacterCreationTab;
+import com.stonebreak.rpg.TalentSubTab;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,8 +23,9 @@ import java.util.Map;
  *
  * <p>Variants: {@code background}, {@code ability}, {@code classes-none}, {@code classes}, {@code classes-scrolled},
  * {@code skills}, {@code skills-scrolled}, {@code feats}, {@code feats-owned}, {@code looks}, {@code clothing}; {@code hover-<target>}
- * over the state that shows it: {@code tab3}, {@code next}, {@code back}, {@code bg1}, {@code tile2}, {@code plus0},
- * {@code minus4}, {@code cls2}, {@code spend1}, {@code invest2}, {@code acquire0}, {@code equip1}.
+ * over the state that shows it: {@code tab3}, {@code next}, {@code back}, {@code undo}, {@code bg1}, {@code tile2},
+ * {@code plus0}, {@code minus4}, {@code talent1}, {@code cls2}, {@code spend1}, {@code invest2}, {@code acquire0},
+ * {@code equip1}. Class, skill and feat states are the Talents tab on that sub-tab.
  */
 public final class CharacterCreationFixtures {
 
@@ -32,9 +34,9 @@ public final class CharacterCreationFixtures {
 
     public static final List<String> STATES = List.of("ability", "classes-none", "classes", "classes-scrolled", "skills",
         "skills-scrolled", "feats", "feats-owned", "looks", "clothing");
-    public static final List<String> HOVERS = List.of("hover-tab3", "hover-next", "hover-back", "hover-bg1",
-        "hover-tile2", "hover-plus0", "hover-minus4", "hover-cls2", "hover-spend1", "hover-invest2", "hover-acquire0",
-        "hover-equip1");
+    public static final List<String> HOVERS = List.of("hover-tab3", "hover-next", "hover-back", "hover-undo",
+        "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-spend1",
+        "hover-invest2", "hover-acquire0", "hover-equip1");
 
     public static List<FidelityCase> cases() {
         List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("character-creation", List.of("background"),
@@ -61,7 +63,7 @@ public final class CharacterCreationFixtures {
             return variant;
         }
         if (t.startsWith("tile") || t.startsWith("plus") || t.startsWith("minus")) return "ability";
-        if (t.startsWith("cls") || t.startsWith("spend")) return "classes";
+        if (t.startsWith("cls") || t.startsWith("spend") || t.startsWith("talent")) return "classes";
         if (t.startsWith("invest")) return "skills";
         if (t.startsWith("acquire")) return "feats";
         if (t.startsWith("equip")) return "looks";
@@ -79,22 +81,22 @@ public final class CharacterCreationFixtures {
         switch (base(variant)) {
             case "background" -> s.setActiveTab(CharacterCreationTab.BACKGROUND);
             case "ability" -> s.setActiveTab(CharacterCreationTab.ABILITY_SCORE);
-            case "classes-none" -> s.setActiveTab(CharacterCreationTab.CLASS_ABILITIES);
+            case "classes-none" -> talents(s, TalentSubTab.CLASS_ABILITIES);
             case "classes", "classes-scrolled" -> {
                 // Berserker: icons and multi-line descriptions; Monk: five abilities, enough to scroll
                 int cls = "classes-scrolled".equals(variant) ? 2 : 0;
-                s.setActiveTab(CharacterCreationTab.CLASS_ABILITIES);
+                talents(s, TalentSubTab.CLASS_ABILITIES);
                 a.onSelectClass(cls);
                 a.onSpendCp(ClassRegistry.ALL.get(cls).id() + ":0");
                 if ("classes-scrolled".equals(variant)) s.setClassScroll(13f);
             }
             case "skills", "skills-scrolled" -> {
-                s.setActiveTab(CharacterCreationTab.SKILLS);
+                talents(s, TalentSubTab.SKILLS);
                 a.onInvestSkill(SkillRegistry.ALL.get(2).id());
                 if ("skills-scrolled".equals(variant)) s.setSkillScroll(48f);
             }
             case "feats", "feats-owned" -> {
-                s.setActiveTab(CharacterCreationTab.FEATS);
+                talents(s, TalentSubTab.FEATS);
                 if ("feats-owned".equals(variant)) a.onAcquireFeat(FeatRegistry.ALL.get(0).id());
             }
             case "looks" -> s.setActiveTab(CharacterCreationTab.LOOKS);
@@ -110,6 +112,17 @@ public final class CharacterCreationFixtures {
         CharacterCreationLayout.Rect bar = l.tabBar(right);
         CharacterCreationLayout.Rect c = l.tabContent(right, bar);
         Map<String, float[]> out = new LinkedHashMap<>();
+        if (screen.state().getActiveTab() == CharacterCreationTab.TALENTS) {
+            // the legacy MTabBar 8 px into the content, 30 high, its slots splitting it 2 px apart; the
+            // sub-tab's pane 6 px under it
+            float barW = c.width() - 16f;
+            for (int i = 0; i < 3; i++) {
+                out.put("talent" + i, new float[]{c.x() + 8f + i * (barW / 3f), c.y() + 8f,
+                    barW / 3f - (i < 2 ? 2f : 0f), 30f});
+            }
+            float subY = c.y() + 8f + 30f + 6f;
+            c = new CharacterCreationLayout.Rect(c.x(), subY, c.width(), c.bottom() - subY);
+        }
         put(out, "left", l.leftPanel(w, h));
         put(out, "right", right);
         put(out, "footer", l.footer(w, h));
@@ -179,7 +192,31 @@ public final class CharacterCreationFixtures {
         return out;
     }
 
+    /**
+     * The footer buttons of the legacy layout: Back 16 px in, Next 16 px from the right, Undo centred, each
+     * {@code MButton.preferredWidth} wide (measured with {@code ui}'s fonts) and 44 high, 14 below the footer's top.
+     */
+    public static Map<String, float[]> footerButtons(CharacterCreationScreen screen,
+                                                     com.openmason.engine.ui.masonry.MasonryUI ui, int w, int h) {
+        CharacterCreationLayout.Rect f = screen.layout().footer(w, h);
+        CharacterCreationStateManager s = screen.state();
+        float y = f.y() + (f.height() - 44f) / 2f;
+        float back = s.getBackToWorldSelectButton().preferredWidth(ui);
+        float next = s.getTerrainMapperButton().preferredWidth(ui);
+        float undo = s.getUndoButton().preferredWidth(ui);
+        Map<String, float[]> out = new LinkedHashMap<>();
+        out.put("back", new float[]{f.x() + 16f, y, back, 44f});
+        out.put("next", new float[]{f.x() + f.width() - next - 16f, y, next, 44f});
+        out.put("undo", new float[]{f.x() + (f.width() - undo) / 2f, y, undo, 44f});
+        return out;
+    }
+
     private static void put(Map<String, float[]> out, String name, CharacterCreationLayout.Rect r) {
         out.put(name, new float[]{r.x(), r.y(), r.width(), r.height()});
+    }
+
+    private static void talents(CharacterCreationStateManager s, TalentSubTab sub) {
+        s.setActiveTab(CharacterCreationTab.TALENTS);
+        s.setTalentSubTab(sub);
     }
 }

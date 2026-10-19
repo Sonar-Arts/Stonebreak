@@ -1,6 +1,7 @@
 package com.stonebreak.world.leaves;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * The world surface the leaf-decay simulation runs against. {@link LeafDecaySystem}
@@ -24,6 +25,21 @@ public interface LeafWorld {
      * thread.
      */
     void setBlock(int x, int y, int z, BlockType type);
+
+    /**
+     * Exclusive upper Y bound worth scanning for foliage in a column, for the
+     * chunk-load rescan. Everything above the tallest tree a column can hold is
+     * open sky, and reading it back block by block costs the loading thread real
+     * time on a tall world — this world is 1024 blocks deep, four times what the
+     * rescan was originally written against.
+     *
+     * <p>Only the top is bounded, never the bottom: the rescan still sweeps from
+     * y=0, so foliage below the surface (a cave, or anything a player built there)
+     * is found exactly as before. The default scans the whole column.
+     */
+    default int foliageScanTop(int x, int z) {
+        return WorldConfiguration.WORLD_HEIGHT;
+    }
 
     /** Called once after each logical sim tick — adapters flush batched work here. */
     default void onTickComplete() {

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.blocks;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
@@ -133,8 +134,8 @@ public class BlockRenderer {
         // wraps — an absolute margin, because relative scaling is useless on
         // the door panel's 0.1-thin axis.
         final float inflate = 0.012f;
-        Matrix4f modelMatrix = new Matrix4f()
-            .translate(minX - inflate * 0.5f, minY - inflate * 0.5f, minZ - inflate * 0.5f)
+        Matrix4f modelMatrix = RenderOrigin
+            .modelAt(minX - inflate * 0.5f, minY - inflate * 0.5f, minZ - inflate * 0.5f)
             .scale(sizeX + inflate, sizeY + inflate, sizeZ + inflate);
         
         // Combine view and model matrices

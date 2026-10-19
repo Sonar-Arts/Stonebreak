@@ -90,6 +90,12 @@ public final class MmsGpuCuller implements AutoCloseable {
         this.dispatcher = CearlDispatcher.create(compileKernel());
     }
 
+    /** Frustum planes plus keep-box planes, as the kernel takes them. */
+    static final int PLANES = 10;
+    /** A plane every point passes: an unused keep-box slot. */
+    private static final float[] ALWAYS = {0f, 0f, 0f, 1f};
+    private final float[] passPlanes = new float[PLANES * 4];
+
     /**
      * Starts a cull pass: binds the compute program and uploads the pass's six
      * frustum planes ({@code planes} holds 6×4 floats). The caller's bound
@@ -97,8 +103,41 @@ public final class MmsGpuCuller implements AutoCloseable {
      * {@link #endCull} so the indirect draws render with it.
      */
     public void beginPass(float[] planes) {
+        beginPass(planes, null);
+    }
+
+    /**
+     * {@link #beginPass(float[])} that also drops every mesh whose AABB lies wholly outside
+     * the vertical box {@code keepXZ = {minX, minZ, maxX, maxZ}} (null = no box). A pass that
+     * must draw exactly what a CPU distance walk would — the camera pass, whose ring edge
+     * other renderers (FastLOD) take over — passes that walk's footprint here.
+     */
+    public void beginPass(float[] planes, float[] keepXZ) {
+        System.arraycopy(planes, 0, passPlanes, 0, 6 * 4);
+        keepBoxPlanes(keepXZ, passPlanes);
         dispatcher.begin();
-        dispatcher.uniform4fv("planes", planes);
+        dispatcher.uniform4fv("planes", passPlanes);
+    }
+
+    /** Writes planes 6..9 of {@code planes}: the keep box's four sides, or always-pass planes. */
+    static void keepBoxPlanes(float[] keepXZ, float[] planes) {
+        if (keepXZ == null) {
+            for (int p = 6; p < PLANES; p++) {
+                System.arraycopy(ALWAYS, 0, planes, p * 4, 4);
+            }
+            return;
+        }
+        setPlane(planes, 6, 1f, 0f, -keepXZ[0]);    // x >= minX
+        setPlane(planes, 7, 0f, 1f, -keepXZ[1]);    // z >= minZ
+        setPlane(planes, 8, -1f, 0f, keepXZ[2]);    // x <= maxX
+        setPlane(planes, 9, 0f, -1f, keepXZ[3]);    // z <= maxZ
+    }
+
+    private static void setPlane(float[] planes, int p, float a, float c, float d) {
+        planes[p * 4] = a;
+        planes[p * 4 + 1] = 0f;
+        planes[p * 4 + 2] = c;
+        planes[p * 4 + 3] = d;
     }
 
     /**

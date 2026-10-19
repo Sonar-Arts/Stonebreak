@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.BitSet;
@@ -28,7 +29,7 @@ import java.util.BitSet;
 public final class FormationSupport {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
 
     private FormationSupport() {
     }

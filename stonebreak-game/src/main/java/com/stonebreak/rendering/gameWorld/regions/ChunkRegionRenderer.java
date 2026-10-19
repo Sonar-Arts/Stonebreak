@@ -36,9 +36,12 @@ import java.util.Map;
  * inter-mesh order irrelevant); for the ice pass, translucent surfaces that
  * overlap ACROSS a region seam can composite slightly out of order — a known,
  * accepted approximation (Sodium orders translucents the same way). Chunks
- * whose meshes could not join a region (non-packed or u32-index meshes —
- * practically never) keep legacy per-chunk handles and are drawn after the
- * region batches.
+ * whose meshes could not join a region (non-packed, or u32-index because the
+ * mesh exceeded 65536 vertices) keep legacy per-chunk handles and are drawn
+ * after the region batches. The u32 escape hatch is not merely theoretical on
+ * this branch: at {@code WORLD_HEIGHT} 1024 a heavily cave-carved column can
+ * clear that vertex count, so expect a nonzero "legacy" figure in the F3
+ * chunk-draw row rather than treating it as a bug.
  *
  * <p>Enabled by default on a GL 3.2+ context; force the legacy per-chunk path
  * with {@code -Dstonebreak.regions=off}. On GL 4.3+ the order-independent
@@ -434,6 +437,18 @@ public final class ChunkRegionRenderer {
      * need {@link #drawLegacyOnly} afterwards.
      */
     public boolean drawLayerGpuCulled(int layer, Matrix4f viewProj) {
+        return drawLayerGpuCulled(layer, viewProj, null);
+    }
+
+    /**
+     * {@link #drawLayerGpuCulled(int, Matrix4f)} limited to the vertical box
+     * {@code keepXZ = {minX, minZ, maxX, maxZ}} (null = unlimited). The camera pass passes
+     * its render-distance square: the client keeps chunks meshed out to
+     * {@code World.clientKeepRadius()}, two chunks past it, and drawing those here put them
+     * under the FastLOD nodes that own that ring at the same depth — z-fighting wherever the
+     * two disagree on a texture (gravel and clay patches the LOD knows nothing of).
+     */
+    public boolean drawLayerGpuCulled(int layer, Matrix4f viewProj, float[] keepXZ) {
         if (gpuCullerInitFailed) {
             return false;
         }
@@ -490,7 +505,7 @@ public final class ChunkRegionRenderer {
             gpuPlanes[p * 4 + 3] = gpuPlaneTmp.w;
         }
 
-        gpuCuller.beginPass(gpuPlanes);
+        gpuCuller.beginPass(gpuPlanes, keepXZ);
         int commands = 0;
         for (int i = 0; i < gpuVisibleRegions.size(); i++) {
             commands += gpuCuller.cull(gpuVisibleRegions.get(i));
@@ -504,6 +519,21 @@ public final class ChunkRegionRenderer {
         frameGpuRegionDraws += gpuVisibleRegions.size();
         frameGpuCommands += commands;
         return true;
+    }
+
+    /**
+     * The keep box of the chunks a Chebyshev walk of {@code radius} around
+     * {@code (centerChunkX, centerChunkZ)} visits, for {@link #drawLayerGpuCulled}: half a
+     * block inside the square, so a chunk whose AABB only touches the square from outside
+     * fails the box test while every chunk inside keeps 15.5 blocks of margin.
+     */
+    public static float[] chunkSquare(int centerChunkX, int centerChunkZ, int radius, float[] out) {
+        float size = WorldConfiguration.CHUNK_SIZE;
+        out[0] = (centerChunkX - radius) * size + 0.5f;
+        out[1] = (centerChunkZ - radius) * size + 0.5f;
+        out[2] = (centerChunkX + radius + 1) * size - 0.5f;
+        out[3] = (centerChunkZ + radius + 1) * size - 0.5f;
+        return out;
     }
 
     /**

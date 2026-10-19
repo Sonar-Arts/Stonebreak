@@ -29,12 +29,12 @@ class LoadingDocumentGateTest {
 
     /** Every frozen loading capture. */
     static List<FidelityCase> cases() {
-        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("loading", List.of("caves"), FidelityCase.STANDARD));
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("loading", List.of("pregen"), FidelityCase.STANDARD));
         FidelityCase.Viewport hd = FidelityCase.STANDARD.get(0);
-        for (String v : List.of("first", "meshing", "density")) {
+        for (String v : List.of("first", "services", "stream")) {
             out.add(new FidelityCase("loading", v, hd));
         }
-        out.add(new FidelityCase("loading", "caves", new FidelityCase.Viewport(800, 600, 1f)));
+        out.add(new FidelityCase("loading", "pregen", new FidelityCase.Viewport(800, 600, 1f)));
         return out;
     }
 
@@ -53,8 +53,11 @@ class LoadingDocumentGateTest {
                 FidelityCase.STANDARD.get(0), "first")) {
             stage.paint();
             int before = stage.raster.capture().pixel(1000, 605);
-            LoadingScreen screen = DocumentLoadingCapture.screen("first");
-            screen.updateProgress("Meshing Chunk");
+            DocumentLoadingCapture.Timeline t = new DocumentLoadingCapture.Timeline();
+            LoadingScreen screen = new LoadingScreen(t.tracker);
+            screen.showProgress();
+            DocumentLoadingCapture.stream(t);
+            screen.settleProgress();
             stage.services.loading = LoadingRecord.of(screen);
             stage.settle();
             stage.paint();
@@ -67,8 +70,8 @@ class LoadingDocumentGateTest {
     void theUiScaleMovesNothing() throws Exception {
         DeathDocumentGateTest.requireLua();
         DocumentLoadingCapture capture = DocumentLoadingCapture.shipped();
-        var one = capture.render(new FidelityCase("loading", "caves", new FidelityCase.Viewport(1920, 1080, 1f))).image();
-        var two = capture.render(new FidelityCase("loading", "caves", new FidelityCase.Viewport(1920, 1080, 2f))).image();
+        var one = capture.render(new FidelityCase("loading", "pregen", new FidelityCase.Viewport(1920, 1080, 1f))).image();
+        var two = capture.render(new FidelityCase("loading", "pregen", new FidelityCase.Viewport(1920, 1080, 2f))).image();
         int differ = 0;
         for (int y = 0; y < 1080; y++) {
             for (int x = 0; x < 1920; x++) {

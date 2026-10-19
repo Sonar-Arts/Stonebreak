@@ -12,7 +12,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * Plants trees and flowers on the surface column.
  */
 public class VegetationGenerator {
-    public static final int MIN_SURFACE_Y = 64;
     public static final float TREE_CHANCE = 0.01f;
     public static final float PINE_TREE_CHANCE = 0.015f;
     public static final float TAIGA_PINE_CHANCE = 0.03f;
@@ -86,6 +85,16 @@ public class VegetationGenerator {
         return surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER;
     }
 
+    /**
+     * Every surface {@link #probeTree} plants on in some biome, so coarse samplers can skip a
+     * cell without looking its biome up. Kept beside probeTree: a surface missing here is a
+     * tree kind that never shows past the finest LOD band (cypress once was).
+     */
+    public static boolean growsTreeOn(BlockType surfaceBlock) {
+        return surfaceBlock == BlockType.GRASS || surfaceBlock == BlockType.SNOWY_DIRT
+            || isCypressGround(surfaceBlock);
+    }
+
     /** Probability roll that accepts values >1 (saturating to always-true). */
     private static boolean rolls(DeterministicRandom rng, int worldX, int worldZ,
                                  String feature, float probability) {
@@ -105,7 +114,7 @@ public class VegetationGenerator {
         for (int x = 0; x < ChunkGenerationContext.SIZE; x++) {
             for (int z = 0; z < ChunkGenerationContext.SIZE; z++) {
                 int surface = ctx.height(x, z);
-                if (surface <= MIN_SURFACE_Y || surface >= WorldConfiguration.WORLD_HEIGHT) {
+                if (surface >= WorldConfiguration.WORLD_HEIGHT || ctx.isSubmerged(x, z)) {
                     continue;
                 }
                 int worldX = ctx.worldX(x);

@@ -1,4 +1,5 @@
 package com.stonebreak.world.generation.heightmap;
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.noise.NoiseChannel3D;
 import com.stonebreak.world.generation.noise.TerrainNoise;
 
@@ -172,17 +173,17 @@ public final class PerlinWormCarver {
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     /** @see WorldConfiguration#NO_WATER */
     private static final int NO_WATER = WorldConfiguration.NO_WATER;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
 
     private final long seed;
     private final NoiseChannel3D headingNoise;
     private final NoiseChannel3D radiusNoise;
-    private final HeightMapGenerator heightMapGenerator;
+    private final SurfaceHeights heightMapGenerator;
     private final CaveWaterTable waterTable;
     private CavernCarver cavernCarver;
     private MegaCavernCarver megaCavernCarver;
 
-    public PerlinWormCarver(long seed, HeightMapGenerator heightMapGenerator) {
+    public PerlinWormCarver(long seed, SurfaceHeights heightMapGenerator) {
         this.seed = seed;
         // Heading/radius go through the TerrainNoise seam so the Java fallback walker
         // evaluates them from the SAME FastNoise2 nodes the native walker's context

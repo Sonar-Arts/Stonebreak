@@ -77,7 +77,12 @@ public class WaterRenderer {
         }
     }
 
-    /** Texture unit of the opaque-scene depth copy (5 = shadow map, 6 = point shadows, 7 = MMS quads, 8 = indirect light). */
+    /**
+     * Texture unit of the opaque-scene depth copy. Must not share a unit with any
+     * sampler point_lights.glsl pulls in (5 = sun shadow map, 6 = torch shadow
+     * array, 7 = MMS quads, 8 = torch indirect atlas): two sampler types on one
+     * unit fail every water draw with GL_INVALID_OPERATION once torches are lit.
+     */
     public static final int SCENE_DEPTH_TEXTURE_UNIT = 9;
 
     private final ShaderProgram shader;
@@ -211,7 +216,14 @@ public class WaterRenderer {
         shader.setUniform("uSunDirection", sunDirection);
         shader.setUniform("uAmbientLight", ambientLight);
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
-        shader.setUniform("uCameraPos", cameraPos);
+        // Render space, to difference against the render-space mesh position...
+        shader.setUniform("uCameraPos",
+            com.openmason.engine.rendering.RenderOrigin.toRender(cameraPos, new org.joml.Vector3f()));
+        // ...and the origin itself, for the wave/flow lattices, which are
+        // world-space functions and must not slide when the origin steps.
+        shader.setVec2("uRenderOrigin", new org.joml.Vector2f(
+            com.openmason.engine.rendering.RenderOrigin.x(),
+            com.openmason.engine.rendering.RenderOrigin.z()));
         shader.setUniform("uFogColor", fogColor);
         shader.setUniform("uFogStart", fogStart);
         shader.setUniform("uFogEnd", fogEnd);

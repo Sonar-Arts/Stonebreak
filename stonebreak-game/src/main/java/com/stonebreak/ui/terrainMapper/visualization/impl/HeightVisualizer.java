@@ -2,7 +2,7 @@ package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
-import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.generation.StandardTerrain;
 
 /**
  * Final surface height in blocks. Grayscale: black = deep valleys,
@@ -25,11 +25,12 @@ public final class HeightVisualizer implements NoiseVisualizer {
 
     @Override
     public float normalize(float raw) {
-        return Math.max(0f, Math.min(1f, raw / (float) WorldConfiguration.WORLD_HEIGHT));
+        return Math.max(0f, Math.min(1f, raw / (float) StandardTerrain.WORLD_HEIGHT));
     }
 
     @Override
     public String formatValue(float raw) {
-        return Math.round(raw) + " blocks";
+        // Sampled in the Standard frame; report the Y the player will actually see.
+        return (Math.round(raw) + StandardTerrain.Y_OFFSET) + " blocks";
     }
 }

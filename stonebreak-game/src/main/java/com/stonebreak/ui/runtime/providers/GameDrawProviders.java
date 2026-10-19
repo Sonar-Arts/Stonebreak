@@ -34,6 +34,7 @@ import java.util.function.Supplier;
  *   <li>{@value AbilityIconProvider#ID} v{@value AbilityIconProvider#VERSION}: a class or ability icon (Skia only)</li>
  *   <li>{@value WoodPanelProvider#ID} v{@value WoodPanelProvider#VERSION}: character creation's wood panel (Skia only)</li>
  *   <li>{@value PipsProvider#ID} v{@value PipsProvider#VERSION}: the character sheet's heart / diamond rows (Skia only)</li>
+ *   <li>{@value SetupIconProvider#ID} v{@value SetupIconProvider#VERSION}: a model-setup step's status disc (Skia only)</li>
  *   <li>{@value BattleHudProvider#ID} v{@value BattleHudProvider#VERSION}: a piece of the focus battle HUD (Skia only)</li>
  *   <li>{@value ChatEmojiProvider#ID} v{@value ChatEmojiProvider#VERSION}: a chat emoji, static or animated
  *       (Skia only, {@code params.emoji})</li>
@@ -64,6 +65,7 @@ public final class GameDrawProviders implements AutoCloseable {
         Map.entry(AbilityIconProvider.ID, AbilityIconProvider.VERSION),
         Map.entry(WoodPanelProvider.ID, WoodPanelProvider.VERSION),
         Map.entry(PipsProvider.ID, PipsProvider.VERSION),
+        Map.entry(SetupIconProvider.ID, SetupIconProvider.VERSION),
         Map.entry(BattleHudProvider.ID, BattleHudProvider.VERSION));
 
     private static GameDrawProviders instance;
@@ -97,10 +99,11 @@ public final class GameDrawProviders implements AutoCloseable {
         map.put(IntroSceneProvider.SONAR_ID, IntroSceneProvider.sonar(IntroSceneProvider::gameScene));
         map.put(ChatEmojiProvider.ID, new ChatEmojiProvider());
         map.put(ElmFillProvider.ID, new ElmFillProvider());
-        map.put(TerrainMapProvider.ID, new TerrainMapProvider(TerrainMapProvider::gameState));
+        map.put(TerrainMapProvider.ID, new TerrainMapProvider(TerrainMapProvider::gameState, typeface));
         map.put(AbilityIconProvider.ID, new AbilityIconProvider());
         map.put(WoodPanelProvider.ID, new WoodPanelProvider());
         map.put(PipsProvider.ID, new PipsProvider());
+        map.put(SetupIconProvider.ID, new SetupIconProvider());
         map.put(BattleHudProvider.ID, new BattleHudProvider(BattleHudProvider::gameScreen, typeface));
         this.providers = java.util.Collections.unmodifiableMap(map);
         if (!providers.keySet().equals(DECLARED.keySet())) {
@@ -160,10 +163,11 @@ public final class GameDrawProviders implements AutoCloseable {
             Map.entry(IntroSceneProvider.SONAR_ID, IntroSceneProvider.sonar(() -> null)),
             Map.entry(ChatEmojiProvider.ID, new ChatEmojiProvider()),
             Map.entry(ElmFillProvider.ID, new ElmFillProvider()),
-            Map.entry(TerrainMapProvider.ID, new TerrainMapProvider(() -> null)),
+            Map.entry(TerrainMapProvider.ID, new TerrainMapProvider(() -> null, () -> null)),
             Map.entry(AbilityIconProvider.ID, new AbilityIconProvider()),
             Map.entry(WoodPanelProvider.ID, new WoodPanelProvider()),
             Map.entry(PipsProvider.ID, new PipsProvider()),
+            Map.entry(SetupIconProvider.ID, new SetupIconProvider()),
             Map.entry(BattleHudProvider.ID, new BattleHudProvider(() -> null, () -> null)));
     }
 

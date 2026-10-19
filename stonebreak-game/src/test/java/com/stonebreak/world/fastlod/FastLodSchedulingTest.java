@@ -3,7 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,27 +66,28 @@ class FastLodSchedulingTest {
     @BeforeEach
     void setUp() {
         WorldConfiguration config = new WorldConfiguration(INNER, WORKERS, RANGE, true);
-        TerrainGenerationSystem terrain = mock(TerrainGenerationSystem.class);
-        when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenReturn(80);
+        DiffusionTerrainGenerator terrain = mock(DiffusionTerrainGenerator.class);
+        when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenReturn(336);
         when(terrain.getSurfaceBlockAt(anyInt(), anyInt())).thenReturn(BlockType.GRASS);
         when(terrain.getTreeAt(anyInt(), anyInt())).thenReturn(null);
         org.mockito.Mockito.doAnswer(inv -> {
             int count = inv.getArgument(2);
             int[] outHeights = inv.getArgument(4);
-            BlockType[] outSurface = inv.getArgument(5);
+            BlockType[] outSurface = inv.getArgument(6);
             for (int i = 0; i < count * count; i++) {
-                outHeights[i] = 80;
+                outHeights[i] = 336;
                 if (outSurface != null) outSurface[i] = BlockType.GRASS;
             }
             return null;
-        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
+        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any(), any());
 
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(7);
 
         executor = new ManualExecutor();
         manager = new FastLodManager(config, terrain, textures, null, executor,
-                mesh -> mock(MmsRenderableHandle.class));
+                mesh -> mock(MmsRenderableHandle.class),
+                TimeUnit.SECONDS.toNanos(10));
     }
 
     @AfterEach

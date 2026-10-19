@@ -9,6 +9,7 @@ import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.backgrounds.BackgroundDefinition;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassAbility;
@@ -31,16 +32,19 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Character creation ({@code stonebreak:screen.character-creation} 1, #301). {@link CharacterCreationScreen}
+ * Character creation ({@code stonebreak:screen.character-creation} 2: #301, v2 the Daedalus Talents tab and Undo). {@link CharacterCreationScreen}
  * stays the controller (its stats, the scroll offsets, every rule, Back/Next and join mode); the document shows
- * it. Root {@code characterCreation}: the active {@code tab}, the window {@code layout} (panels, tab strip,
- * content, the preview frame: float window pixels, as {@link CharacterCreationLayout} computes them), {@code tabs} (label
- * geometry measured with the game font), footer labels, the preview labels, the four point counters, the class
+ * it. Root {@code characterCreation}: the active {@code tab} and the {@code pane} shown (the tab, or inside Talents
+ * its sub-tab: CLASS_ABILITIES / SKILLS / FEATS), the window {@code layout} (panels, tab strip, content, the Talents
+ * sub-tab bar and the content under it, the preview frame: float window pixels, as {@link CharacterCreationLayout}
+ * computes them), {@code tabs} (label geometry measured with the game font), the sub-tab bar's {@code talents}
+ * (slot x/width within the bar, as MTabBar splits it) and {@code talentBaseline}, footer labels and {@code undoDisabled}, the preview labels, the four point counters, the class
  * header, the six ability {@code tiles} and the three clamped scroll offsets. Collections {@code ccBackgrounds},
  * {@code ccClasses}, {@code ccAbilities} (the selected class's), {@code ccSkills}, {@code ccFeats}, {@code ccHair},
  * {@code ccHats}.
  *
- * <p>Actions: {@code .tab {tab}}, {@code .nav {name}} (back / next), {@code .background {id}},
+ * <p>Actions: {@code .tab {tab}}, {@code .talent {sub}} (a {@link TalentSubTab} name), {@code .nav {name}}
+ * (back / next / undo: the last point allocation), {@code .background {id}},
  * {@code .ability {index, delta}}, {@code .class {id}}, {@code .spend {index}}, {@code .skill {id}},
  * {@code .feat {id}}, {@code .hair {id}}, {@code .hat {id}}, {@code .wheel {dy}}; each refuses unless the screen
  * is showing, and runs the click rule of that control (spending needs points, an equipped cosmetic or an
@@ -48,16 +52,25 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class CharacterCreationContracts {
 
-    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 1);
+    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 2);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
+    /** The Talents sub-tab bar (MTabBar, labels unscaled): inset, height, the gap above the pane under it. */
+    private static final float TALENT_BAR_PAD = 8f;
+    private static final float TALENT_BAR_H = 30f;
+    private static final float TALENT_CONTENT_GAP = 6f;
+    private static final String[] TALENT_LABELS = {"Class Abilities", "Skills", "Feats"};
 
     private static final DataType RECT = DataType.list(DataType.number(), null);
     private static final DataType.Obj ICON = DataType.object("path", DataType.string());
     public static final DataType.Obj STATE = DataType.object(
-        "tab", DataType.string(),
+        "tab", DataType.string(), "pane", DataType.string(),
         "layout", DataType.object("left", RECT, "right", RECT, "footer", RECT, "tabBar", RECT, "content", RECT,
+            "talentBar", RECT, "talentContent", RECT,
             "preview", RECT, "hasPreview", DataType.bool(), "gridX", DataType.number(), "lvlX", DataType.number()),
+        "talents", DataType.list(DataType.object("sub", DataType.string(), "label", DataType.string(),
+            "x", DataType.number(), "w", DataType.number(), "selected", DataType.bool()), "sub"),
+        "talentBaseline", DataType.number(), "undoDisabled", DataType.bool(),
         "tabs", DataType.list(DataType.object("tab", DataType.string(), "label", DataType.string(),
             "x", DataType.number(), "width", DataType.number(), "fontSize", DataType.number(),
             "baseline", DataType.number(), "active", DataType.bool()), "tab"),
@@ -125,6 +138,14 @@ public final class CharacterCreationContracts {
                 return "no such tab";
             }
         });
+        action(ui, "talent", DataType.object("sub", DataType.string()), (c, a) -> {
+            try {
+                c.state().setTalentSubTab(TalentSubTab.valueOf(str(a, "sub")));
+                return null;
+            } catch (IllegalArgumentException e) {
+                return "no such talent tab";
+            }
+        });
         action(ui, "nav", DataType.object("name", DataType.string()), (c, a) -> switch (str(a, "name")) {
             case "back" -> {
                 c.state().getBackToWorldSelectButton().click();
@@ -132,6 +153,10 @@ public final class CharacterCreationContracts {
             }
             case "next" -> {
                 c.state().getTerrainMapperButton().click();
+                yield null;
+            }
+            case "undo" -> {
+                c.state().getUndoButton().click(); // a disabled Undo (nothing to undo) takes the press, does nothing
                 yield null;
             }
             default -> "no such button";
@@ -231,6 +256,8 @@ public final class CharacterCreationContracts {
         CharacterStats stats = st == null ? new CharacterStats(null) : st.getCharacterStats();
         CharacterCreationTab active = st == null ? CharacterCreationTab.BACKGROUND : st.getActiveTab();
         m.put("tab", UiValue.of(active.name()));
+        TalentSubTab sub = st == null ? TalentSubTab.CLASS_ABILITIES : st.getTalentSubTab();
+        m.put("pane", UiValue.of(active == CharacterCreationTab.TALENTS ? sub.name() : active.name()));
 
         CharacterCreationLayout layout = c == null ? new CharacterCreationLayout() : c.layout();
         CharacterCreationLayout.Rect left = layout.leftPanel(w, h);
@@ -245,6 +272,12 @@ public final class CharacterCreationContracts {
         l.put("footer", rect(layout.footer(w, h)));
         l.put("tabBar", rect(tabBar));
         l.put("content", rect(content));
+        // the Talents tab: its sub-tab bar 8 px into the content, 30 high; the sub-tab's pane 6 px under it
+        CharacterCreationLayout.Rect bar = new CharacterCreationLayout.Rect(content.x() + TALENT_BAR_PAD,
+            content.y() + TALENT_BAR_PAD, content.width() - TALENT_BAR_PAD * 2f, TALENT_BAR_H);
+        float subY = bar.bottom() + TALENT_CONTENT_GAP;
+        l.put("talentBar", rect(bar));
+        l.put("talentContent", rect(content.x(), subY, content.width(), content.bottom() - subY));
         l.put("preview", preview == null ? rect(0, 0, 0, 0) : rect(preview.x(), preview.y(), preview.w(), preview.h()));
         l.put("hasPreview", UiValue.of(preview != null));
         // the ability tiles' centred 3 x 2 grid, the skills' level column (relative offsets)
@@ -267,6 +300,20 @@ public final class CharacterCreationContracts {
             tabs.add(new UiValue.Obj(t));
         }
         m.put("tabs", new UiValue.Arr(tabs));
+        float slotW = bar.width() / TALENT_LABELS.length;
+        List<UiValue> talents = new ArrayList<>();
+        for (int i = 0; i < TALENT_LABELS.length; i++) {
+            Map<String, UiValue> t = new LinkedHashMap<>();
+            t.put("sub", UiValue.of(TalentSubTab.values()[i].name()));
+            t.put("label", UiValue.of(TALENT_LABELS[i]));
+            t.put("x", UiValue.of(i * slotW));
+            t.put("w", UiValue.of(slotW - (i < TALENT_LABELS.length - 1 ? 2f : 0f)));
+            t.put("selected", UiValue.of(TalentSubTab.values()[i] == sub));
+            talents.add(new UiValue.Obj(t));
+        }
+        m.put("talents", new UiValue.Arr(talents));
+        m.put("talentBaseline", UiValue.of(TALENT_BAR_H / 2f + com.openmason.engine.ui.masonry.MStyle.FONT_META * 0.35f));
+        m.put("undoDisabled", UiValue.of(!stats.canUndo()));
         m.put("backLabel", UiValue.of(st == null ? "World Select" : st.getBackToWorldSelectButton().text()));
         m.put("nextLabel", UiValue.of(st == null ? "Terrain Mapper" : st.getTerrainMapperButton().text()));
 

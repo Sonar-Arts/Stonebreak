@@ -1,5 +1,8 @@
 package com.stonebreak.world.spawn;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Random;
 
 import org.joml.Vector3f;
@@ -15,8 +18,11 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * chunks — this avoids contention with the save IO executor and keeps the
  * loading screen responsive.
  *
- * "Safe" means terrain height is at or above sea level, so the player isn't
- * placed on / under water.
+ * "Safe" means the column is dry — its water level (sea, river, or lake) does not
+ * stand above its terrain height, so the player isn't placed on / under water.
+ * Checking against a global sea level alone would place spawn underwater in a
+ * submerged inland column, or reject a perfectly dry column that merely sits at
+ * the old global threshold with no water anywhere nearby.
  */
 public final class SpawnLocator {
 
@@ -45,7 +51,7 @@ public final class SpawnLocator {
             int z = random.nextInt(2 * radius + 1) - radius;
 
             int height = world.terrain().getFinalTerrainHeightAt(x, z);
-            if (height < WorldConfiguration.SEA_LEVEL) continue;
+            if (world.getGeneratedWaterLevelAt(x, z) > height) continue;
 
             int standY = height + 1;
             System.out.println("[SPAWN] Selected safe surface spawn (" + x + ", " + standY + ", " + z
@@ -97,7 +103,7 @@ public final class SpawnLocator {
      * pre-carve rim), as produced by {@link #findSafeSurfaceSpawn()}. Returns the snapped,
      * standable spawn (on the real top solid block) if the column is a usable surface, or
      * {@code null} if it should be rejected — either because it was carved into a pit well below
-     * the rim, or because the standing block sits below sea level (the column is flooded). This
+     * the rim, or because the standing block sits below its column's water level (flooded). This
      * is the reject-half of the issue #250 fix: a player should spawn on real land, not in a
      * ravine or sinkhole pit.
      */
@@ -114,10 +120,47 @@ public final class SpawnLocator {
             // Carved far below the rim: a ravine/sinkhole pit. Reject and re-pick elsewhere.
             return null;
         }
-        if (standY - 1 < WorldConfiguration.SEA_LEVEL) {
-            // The standing block is under water — a flooded/lakebed spawn. Reject.
+        if (world.getGeneratedWaterLevelAt(x, z) > standY - 1) {
+            // The standing block is under water — a flooded/lakebed spawn. Reject. Per-column
+            // water (sea, river, lake) rather than global sea level, as findSafeSurfaceSpawn does.
             return null;
         }
         return new Vector3f(x + 0.5f, standY, z + 0.5f);
+    }
+
+    /**
+     * Finds the column nearest to {@code (x,z)} — by Euclidean distance, the column itself
+     * first — that {@link #acceptIfSafeSurface} okays, and returns its snapped spawn. This is
+     * how a user-chosen spawn that lands in a ravine, sinkhole or cave mouth is redirected onto
+     * the surrounding surface instead of the pit floor. Only resident chunks are consulted
+     * (unloaded columns read as AIR and are rejected), so {@code radius} should stay inside the
+     * pre-generated spawn area. Returns {@code null} if nothing within {@code radius} qualifies.
+     */
+    public static Vector3f nearestSafeSurface(World world, int x, int z, int radius) {
+        for (int[] offset : offsetsByDistance(radius)) {
+            int cx = x + offset[0];
+            int cz = z + offset[1];
+            int noiseHeight = world.terrain().getFinalTerrainHeightAt(cx, cz);
+            Vector3f accepted = acceptIfSafeSurface(world, new Vector3f(cx, noiseHeight + 1, cz));
+            if (accepted != null) {
+                return accepted;
+            }
+        }
+        return null;
+    }
+
+    /** Every {@code (dx,dz)} within {@code radius}, nearest first (ties in scan order). */
+    private static List<int[]> offsetsByDistance(int radius) {
+        List<int[]> offsets = new ArrayList<>();
+        int r2 = radius * radius;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (dx * dx + dz * dz <= r2) {
+                    offsets.add(new int[]{dx, dz});
+                }
+            }
+        }
+        offsets.sort(Comparator.comparingInt(o -> o[0] * o[0] + o[1] * o[1]));
+        return offsets;
     }
 }

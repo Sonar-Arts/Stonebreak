@@ -22,7 +22,7 @@ class RawColumnSamplingParityTest {
             for (int stride : new int[]{8, 16}) {
                 int[] heights = new int[count * count];
                 BlockType[] surface = new BlockType[count * count];
-                terrain.sampleRawColumns(origin[0], origin[1], count, stride, heights, surface);
+                terrain.sampleRawColumns(origin[0], origin[1], count, stride, heights, null, surface);
                 for (int ix = 0; ix < count; ix++) {
                     for (int iz = 0; iz < count; iz++) {
                         int wx = origin[0] + ix * stride, wz = origin[1] + iz * stride;

@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.gameWorld.shadow;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shadow.CascadedShadowMap;
 import com.openmason.engine.rendering.shadow.PointShadowCache;
 import com.openmason.engine.rendering.shadow.PointShadowProjection;
@@ -38,6 +39,10 @@ public final class TorchShadowRenderer implements AutoCloseable {
     private final Matrix4f projection = PointShadowProjection.projection(PointLightGlsl.RADIUS, new Matrix4f());
     private final Matrix4f view = new Matrix4f();
     private final Matrix4f viewProjection = new Matrix4f();
+    // Draw-side twins of view/viewProjection: casters are drawn in render space
+    // (RenderOrigin), while culling, caching and chunk selection stay in world space.
+    private final Matrix4f viewRender = new Matrix4f();
+    private final Matrix4f viewProjectionRender = new Matrix4f();
     private final FrustumIntersection frustum = new FrustumIntersection();
     private final int[] viewport = new int[4];
     private CascadedShadowMap terrain;
@@ -123,16 +128,18 @@ public final class TorchShadowRenderer implements AutoCloseable {
                     int layer = i * PointShadowProjection.FACE_COUNT + face;
                     PointShadowProjection.view(position, face, view);
                     projection.mul(view, viewProjection);
+                    RenderOrigin.acceptRenderSpace(viewRender.set(view));
+                    projection.mul(viewRender, viewProjectionRender);
                     if (refresh) {
                         terrain.beginCascade(layer);
                         renderTerrain();
                     }
                     terrain.copyLayerTo(layer, live);
                     if (entities != null) {
-                        entities.renderShadowCasters(bodyCaster, view, projection, position, PointLightGlsl.RADIUS);
+                        entities.renderShadowCasters(bodyCaster, viewRender, projection, position, PointLightGlsl.RADIUS);
                     }
                     if (animated != null) {
-                        animated.renderShadowCasters(world, view, projection, position, PointLightGlsl.RADIUS, totalTime);
+                        animated.renderShadowCasters(world, viewRender, projection, position, PointLightGlsl.RADIUS, totalTime);
                     }
                 }
                 if (refresh) {
@@ -183,7 +190,7 @@ public final class TorchShadowRenderer implements AutoCloseable {
             }
         }
         shader.bind();
-        shader.setUniform("u_lightViewProj", viewProjection);
+        shader.setUniform("u_lightViewProj", viewProjectionRender);
         if (ChunkRegionRenderer.isEnabled()) {
             ChunkRegionRenderer.getInstance().drawChunks(faceChunks, ChunkRegionRenderer.LAYER_ATLAS);
         } else {

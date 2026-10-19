@@ -5,10 +5,12 @@ import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -40,6 +42,8 @@ public class CactusGeneratorTest {
         Chunk chunk = new Chunk(0, 0);
         int[] heights = new int[SIZE * SIZE];
         BiomeType[] biomes = new BiomeType[SIZE * SIZE];
+        int[] waterLevels = new int[SIZE * SIZE];
+        Arrays.fill(waterLevels, TerrainTile.NO_WATER);
         for (int x = 0; x < SIZE; x++) {
             for (int z = 0; z < SIZE; z++) {
                 heights[x * SIZE + z] = SURFACE;
@@ -48,7 +52,7 @@ public class CactusGeneratorTest {
             }
         }
         new CactusGenerator(new DeterministicRandom(seed)).generate(
-                new ChunkGenerationContext(null, chunk, null, heights, biomes, biome));
+                new ChunkGenerationContext(null, chunk, null, heights, biomes, waterLevels, biome));
         return new Population(chunk, heights, biomes);
     }
 
@@ -184,6 +188,8 @@ public class CactusGeneratorTest {
         Chunk chunk = new Chunk(0, 0);
         int[] heights = new int[SIZE * SIZE];
         BiomeType[] biomes = new BiomeType[SIZE * SIZE];
+        int[] waterLevels = new int[SIZE * SIZE];
+        Arrays.fill(waterLevels, TerrainTile.NO_WATER);
         for (int x = 0; x < SIZE; x++) {
             for (int z = 0; z < SIZE; z++) {
                 heights[x * SIZE + z] = SURFACE;
@@ -195,7 +201,8 @@ public class CactusGeneratorTest {
             }
         }
         new CactusGenerator(new DeterministicRandom(seed)).generate(
-                new ChunkGenerationContext(null, chunk, null, heights, biomes, BiomeType.DESERT));
+                new ChunkGenerationContext(null, chunk, null, heights, biomes, waterLevels,
+                        BiomeType.DESERT));
 
         for (int[] col : columns) {
             int x = col[0];

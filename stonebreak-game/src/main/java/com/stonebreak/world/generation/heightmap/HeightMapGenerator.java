@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.openmason.engine.util.SplineInterpolator;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -18,10 +19,10 @@ import com.stonebreak.world.operations.WorldConfiguration;
  *
  * Final height = base(C) + pv(PV) * peakStrength(E) + detail
  */
-public class HeightMapGenerator {
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+public class HeightMapGenerator implements SurfaceHeights {
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
+    private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
 
     /** Max absolute detail offset in blocks. Keeps biomes from looking samey. */
     public static final float DETAIL_AMPLITUDE = 3f;

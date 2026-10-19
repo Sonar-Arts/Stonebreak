@@ -2,7 +2,6 @@ package com.stonebreak.world.generation;
 
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.world.DeterministicRandom;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
@@ -10,8 +9,11 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.DesertGravel;
 import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.features.CactusGenerator;
+import com.stonebreak.world.generation.features.CavernOrigins;
+import com.stonebreak.world.generation.features.ColumnHeights;
 import com.stonebreak.world.generation.features.SwampPoolGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -37,19 +39,23 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import java.util.Random;
 
 /**
- * Orchestrates per-chunk terrain and feature generation by delegating to focused subsystems.
+ * Standard Generation: per-chunk terrain and features from the noise stack, delegating to
+ * focused subsystems.
+ *
+ * <p>Everything below runs in the {@link StandardTerrain} frame (256 tall, sea at 64) it was
+ * tuned in. The frame is lifted by {@link StandardTerrain#Y_OFFSET} only where it leaves this
+ * class — blocks written into the chunk, heights and water levels reported through
+ * {@link TerrainGenerator}, and the column profile handed to the shared feature passes.
  */
-public class TerrainGenerationSystem {
-    public static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
-    public static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+public class TerrainGenerationSystem implements TerrainGenerator {
+    public static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
+    public static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
+    private static final int Y_OFFSET = StandardTerrain.Y_OFFSET;
 
     /** DeterministicRandom stream + chance for deep magma pockets — shared with the fused native generator. */
     static final String MAGMA_FEATURE = "magma";
     static final float MAGMA_CHANCE = 0.6f;
-
-    /** {@code outFloor} sentinel for a cell with no cave mouth; see {@link #sampleCellOpenings}. */
-    public static final int NO_OPENING = Integer.MIN_VALUE;
 
     private final long seed;
     private final NoiseRouter noiseRouter;
@@ -60,6 +66,8 @@ public class TerrainGenerationSystem {
     private final VegetationGenerator vegetationGenerator;
     private final CactusGenerator cactusGenerator;
     private final SwampPoolGenerator swampPoolGenerator;
+    /** Terrain-pass columns behind FastLOD's swamp pools (see {@link #sampleColumns}). */
+    private final SwampPoolGenerator.ColumnOracle poolColumns = SwampPoolGenerator.ColumnOracle.of(this);
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
     private final Density3D density3D;
@@ -69,6 +77,8 @@ public class TerrainGenerationSystem {
     private final RavineCarver ravineCarver;
     private final SinkholeCarver sinkholeCarver;
     private final SurfaceProfileCache surfaceProfiles;
+    /** Caves below the lifted frame; null under a test height oracle, which it cannot follow. */
+    private final DeepCaveLayers deepCaves;
 
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
@@ -117,18 +127,20 @@ public class TerrainGenerationSystem {
             ? heightMapGenerator
             : new HeightMapGenerator(noiseRouter);
         this.biomeManager = new BiomeManager(noiseRouter, this.heightMapGenerator);
-        this.oreGenerator = new OreGenerator(deterministicRandom, this.heightMapGenerator, seed);
+        ColumnHeights worldHeights = (x, z) -> this.heightMapGenerator.generateHeight(x, z) + Y_OFFSET;
+        this.oreGenerator = new OreGenerator(deterministicRandom, worldHeights, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
         this.swampPoolGenerator = new SwampPoolGenerator(deterministicRandom);
-        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, this.heightMapGenerator, seed);
+        this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, worldHeights, seed);
         this.density3D = new Density3D(seed, this.heightMapGenerator);
         this.wormCarver = new PerlinWormCarver(seed, this.heightMapGenerator);
         this.cavernCarver = new CavernCarver(seed, this.heightMapGenerator);
         this.megaCavernCarver = new MegaCavernCarver(seed, this.heightMapGenerator);
         this.ravineCarver = new RavineCarver(seed, this.heightMapGenerator);
         this.sinkholeCarver = new SinkholeCarver(seed, this.heightMapGenerator);
-        this.limestoneGenerator = new LimestoneGenerator(seed, this.heightMapGenerator, cavernCarver, megaCavernCarver);
+        this.limestoneGenerator = new LimestoneGenerator(seed, worldHeights,
+            lifted(cavernCarver::computeCavernOrigin), lifted(megaCavernCarver::computeCavernOrigin));
         this.wormCarver.setCavernCarver(cavernCarver);
         this.wormCarver.setMegaCavernCarver(megaCavernCarver);
         // Lets a sinkhole cut to exactly the depth that opens into a real tunnel.
@@ -143,10 +155,7 @@ public class TerrainGenerationSystem {
             && com.stonebreak.world.generation.noise.TerrainNoise.backend()
                 == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE
             && !"java".equalsIgnoreCase(System.getProperty("stonebreak.carver.backend", "auto"))) {
-            carverCtx = NoiseRouter.createCarverTerrainContext(seed,
-                HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
-                HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
-            com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(this, carverCtx);
+            carverCtx = createNativeCarverContext(this, seed);
         }
         this.nativeCarverCtx = carverCtx;
 
@@ -164,6 +173,24 @@ public class TerrainGenerationSystem {
         }
         this.fusedGenCtx = fusedCtx;
         this.surfaceProfiles = new SurfaceProfileCache(this::buildSurfaceProfile);
+        this.deepCaves = ownTerrain ? null : new DeepCaveLayers(seed, noiseRouter, carverCtx != 0L);
+    }
+
+    /** A cavern-origin source whose origins are reported in world Y. */
+    private static CavernOrigins lifted(CavernOrigins standard) {
+        return (chunkX, chunkZ) -> {
+            float[] origin = standard.computeCavernOrigin(chunkX, chunkZ);
+            return origin == null ? null : new float[] {origin[0], origin[1] + Y_OFFSET, origin[2]};
+        };
+    }
+
+    /** A native worm-carver context for {@code seed}, released when {@code owner} is collected. */
+    static long createNativeCarverContext(Object owner, long seed) {
+        long ctx = NoiseRouter.createCarverTerrainContext(seed,
+            HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
+            HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
+        com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(owner, ctx);
+        return ctx;
     }
 
     /**
@@ -173,9 +200,10 @@ public class TerrainGenerationSystem {
      * any kernel failure — guarded by {@code waterLevels}, since the kernel
      * builds the same WaterGuard plane internally and an unguarded fallback
      * chunk would carve open beds and banks its guarded neighbours sealed
-     * (GitHub issue #248).
+     * (GitHub issue #248). Static so {@link DeepCaveLayers} runs its own layers through it.
      */
-    private java.util.BitSet nativeWormMask(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
+    static java.util.BitSet nativeWormMask(long carverCtx, PerlinWormCarver wormCarver,
+                                           int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         int radius = PerlinWormCarver.scanRadius();
         java.util.ArrayList<int[]> anchorChunkList = new java.util.ArrayList<>();
         java.util.ArrayList<float[]> anchorList = new java.util.ArrayList<>();
@@ -206,7 +234,7 @@ public class TerrainGenerationSystem {
         }
         long[] mask = new long[1024];
         long carved = com.openmason.engine.cenda.CendaKernels.carveWorms(
-            nativeCarverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
+            carverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
         if (carved < 0) {
             return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         }
@@ -215,6 +243,16 @@ public class TerrainGenerationSystem {
 
     public long getSeed() {
         return seed;
+    }
+
+    /**
+     * Bumped from the default {@code "standard"} when submerged columns became OCEAN: nodes
+     * sampled before that carry the old sea floor. Scoped to Standard so DaedalusTGM-Exp
+     * worlds, whose terrain did not change, keep their nodes.
+     */
+    @Override
+    public String lodCacheTag() {
+        return "standard:ocean";
     }
 
     /** True when the fused native generator owns terrain for this system (test/diagnostic hook). */
@@ -248,17 +286,22 @@ public class TerrainGenerationSystem {
 
     /** Continentalness-only base height (debug). */
     public int getBaseHeightAt(int x, int z) {
-        return heightMapGenerator.baseHeight(x, z);
+        return heightMapGenerator.baseHeight(x, z) + Y_OFFSET;
     }
 
     /** Shape with PV/erosion, no surface detail (debug). */
     public int getShapedHeightAt(int x, int z) {
-        return heightMapGenerator.shapedHeight(x, z);
+        return heightMapGenerator.shapedHeight(x, z) + Y_OFFSET;
     }
 
     /** Final terrain height as used by chunk generation. */
     public int getFinalTerrainHeightAt(int x, int z) {
-        return heightMapGenerator.generateHeight(x, z);
+        return heightMapGenerator.generateHeight(x, z) + Y_OFFSET;
+    }
+
+    @Override
+    public int getWaterLevelAt(int x, int z) {
+        return StandardTerrain.lift(heightMapGenerator.waterLevel(x, z));
     }
 
     /**
@@ -347,12 +390,14 @@ public class TerrainGenerationSystem {
      * carved away exposes stone and plants nothing, exactly as a carved top grows no tree;
      * a submerged cell plants nothing either.
      *
-     * @param cellHeights  sampled surface height per cell, {@code [ix*cells+iz]}
-     * @param cellSurface  sampled surface block per cell, {@code [ix*cells+iz]}
+     * @param cellHeights      sampled surface height per cell, {@code [ix*cells+iz]}
+     * @param cellWaterLevels  sampled water level per cell, {@code [ix*cells+iz]}
+     * @param cellSurface      sampled surface block per cell, {@code [ix*cells+iz]}
      * @return packed spots ({@code FastLodChunkData.packTreeSpot}); empty when none
      */
+    @Override
     public int[] probeCellTrees(int chunkX, int chunkZ, int cellsPerAxis, int cellSize,
-                                int[] cellHeights, BlockType[] cellSurface) {
+                                int[] cellHeights, int[] cellWaterLevels, BlockType[] cellSurface) {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         int[] out = new int[8];
@@ -360,14 +405,25 @@ public class TerrainGenerationSystem {
         for (int ix = 0; ix < cellsPerAxis; ix++) {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 int cell = ix * cellsPerAxis + iz;
-                BlockType surface = cellSurface[cell];
-                // probeTree only ever plants on these two; skip the biome lookup otherwise.
-                if (cellHeights[cell] < SEA_LEVEL
-                        || (surface != BlockType.GRASS && surface != BlockType.SNOWY_DIRT)) {
-                    continue;
-                }
                 int rep = cellSize / 2;
-                BiomeType biome = biomeManager.getBiome(baseX + ix * cellSize + rep, baseZ + iz * cellSize + rep);
+                int repX = baseX + ix * cellSize + rep;
+                int repZ = baseZ + iz * cellSize + rep;
+                BlockType surface = cellSurface[cell];
+                BiomeType biome = null;
+                if (cellWaterLevels[cell] > cellHeights[cell]) {
+                    // Standing water plants nothing, except a 1-deep swamp pool: cypress root in it.
+                    biome = biomeManager.getBiome(repX, repZ);
+                    if (!isShallowPoolCell(repX, repZ, biome, cellHeights[cell], cellWaterLevels[cell])) {
+                        continue;
+                    }
+                    surface = BlockType.WATER;
+                }
+                if (!com.stonebreak.world.generation.features.VegetationGenerator.growsTreeOn(surface)) {
+                    continue; // skips the biome lookup for most cells
+                }
+                if (biome == null) {
+                    biome = biomeManager.getBiome(repX, repZ);
+                }
                 for (int dx = 0; dx < cellSize; dx++) {
                     for (int dz = 0; dz < cellSize; dz++) {
                         int lx = ix * cellSize + dx;
@@ -383,6 +439,20 @@ public class TerrainGenerationSystem {
             }
         }
         return java.util.Arrays.copyOf(out, n);
+    }
+
+    /**
+     * Whether a submerged coarse cell is a 1-deep swamp pool rather than the sea: its probe
+     * column grows a pool whose water stands exactly where the cell's does. Probed uncarved
+     * (no carve profile); a swamp is never carved, so that only differs at its rim.
+     */
+    private boolean isShallowPoolCell(int repX, int repZ, BiomeType biome, int cellHeight, int cellWaterLevel) {
+        int rawHeight = getFinalTerrainHeightAt(repX, repZ);
+        int waterLevel = getWaterLevelAt(repX, repZ);
+        BlockType surface = exposedBlock(repX, repZ, rawHeight - Y_OFFSET, rawHeight - Y_OFFSET, biome);
+        return cellWaterLevel == rawHeight && cellHeight == rawHeight - 1
+            && SwampPoolGenerator.probePoolDepth(biome, surface, rawHeight, rawHeight, waterLevel,
+                   repX, repZ, poolColumns.uncarved(), deterministicRandom) > 0;
     }
 
     /**
@@ -447,9 +517,10 @@ public class TerrainGenerationSystem {
      */
     public void sampleColumns(int worldX0, int worldZ0, int count, int stride,
                               int[] outHeights,
+                              int[] outWaterLevels,
                               BlockType[] outSurface,
                               com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees) {
-        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outSurface, outTrees, true);
+        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, outTrees, true);
     }
 
     /**
@@ -460,13 +531,15 @@ public class TerrainGenerationSystem {
      * measured at >99% of a node's cost (~60 ms cold, ~7 ms warm, vs ~0.03 ms
      * without it). No tree samples: only the finest level draws trees.
      */
+    @Override
     public void sampleRawColumns(int worldX0, int worldZ0, int count, int stride,
-                                 int[] outHeights, BlockType[] outSurface) {
-        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outSurface, null, false);
+                                 int[] outHeights, int[] outWaterLevels, BlockType[] outSurface) {
+        sampleColumns(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, null, false);
     }
 
     private void sampleColumns(int worldX0, int worldZ0, int count, int stride,
                                int[] outHeights,
+                               int[] outWaterLevels,
                                BlockType[] outSurface,
                                com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees,
                                boolean carved) {
@@ -479,7 +552,9 @@ public class TerrainGenerationSystem {
 
         float[] tRaw = null;
         float[] mRaw = null;
-        boolean needBiomes = outSurface != null || outTrees != null;
+        // The water needs the biome and surface too: a swamp pool is water only the swamp knows of.
+        boolean needBiomes = outSurface != null || outTrees != null || outWaterLevels != null;
+        SwampPoolGenerator.ColumnOracle pools = carved ? poolColumns : poolColumns.uncarved();
         if (needBiomes) {
             tRaw = new float[cells];
             mRaw = new float[cells];
@@ -492,8 +567,9 @@ public class TerrainGenerationSystem {
                 int wx = worldX0 + ix * stride;
                 int wz = worldZ0 + iz * stride;
                 int rawHeight = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
-                int height = carved ? carvedSurfaceHeight(wx, wz) : rawHeight;
-                outHeights[idx] = height;
+                int height = (carved ? carvedSurfaceHeight(wx, wz) - Y_OFFSET : rawHeight);
+                outHeights[idx] = height + Y_OFFSET;
+                int waterLevel = rawHeight < SEA_LEVEL ? SEA_LEVEL + Y_OFFSET : WorldConfiguration.NO_WATER;
                 if (!needBiomes) {
                     continue;
                 }
@@ -508,9 +584,10 @@ public class TerrainGenerationSystem {
                     com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])),
                     rawHeight);
                 BlockType surface = exposedBlock(wx, wz, rawHeight, height, biome);
-                if (outSurface != null) {
-                    outSurface[idx] = surface;
-                }
+                // A swamp pool floods the top block (and, in a pool core, the one under it):
+                // the column shows water at its old surface over a dirt bed, as the chunk will.
+                int pool = SwampPoolGenerator.probePoolDepth(biome, surface, rawHeight + Y_OFFSET,
+                        height + Y_OFFSET, waterLevel, wx, wz, pools, deterministicRandom);
                 if (outTrees != null) {
                     // The real generator reads the block at rawHeight - 1 and every placement
                     // branch needs it to be the biome's surface block. Carved away, it is air
@@ -518,20 +595,26 @@ public class TerrainGenerationSystem {
                     // An uncarved top is the only case that reaches probeTree, and there
                     // exposedBlock IS surfaceBlock(biome) — the same block the real
                     // VegetationGenerator reads.
-                    outTrees[idx] = (rawHeight < SEA_LEVEL || height != rawHeight) ? null
+                    // A cypress also roots in a pool's water, but only on a bed: never in a core.
+                    outTrees[idx] = (rawHeight < SEA_LEVEL || height != rawHeight || pool == 2) ? null
                         : com.stonebreak.world.generation.features.VegetationGenerator.probeTree(
-                            wx, wz, biome, surface, deterministicRandom);
+                            wx, wz, biome, pool > 0 ? BlockType.WATER : surface, deterministicRandom);
+                }
+                if (pool > 0) {
+                    outHeights[idx] = height + Y_OFFSET - pool;
+                    waterLevel = rawHeight + Y_OFFSET;
+                    surface = BlockType.DIRT;
+                }
+                if (outWaterLevels != null) {
+                    outWaterLevels[idx] = waterLevel;
+                }
+                if (outSurface != null) {
+                    outSurface[idx] = surface;
                 }
             }
         }
     }
 
-    /**
-     * Result of terrain-only generation: the chunk plus the column profile
-     * (heights + biomes) so deferred feature population can reuse it instead
-     * of resampling the noise stack.
-     */
-    public record TerrainResult(Chunk chunk, ColumnProfile profile) {}
 
     /**
      * Generates terrain blocks for a chunk. Features are populated separately
@@ -539,7 +622,6 @@ public class TerrainGenerationSystem {
      */
     public TerrainResult generateTerrainOnly(int chunkX, int chunkZ) {
         long startNanos = System.nanoTime();
-        updateLoadingProgress("Generating Base Terrain Shape");
 
         int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
         int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
@@ -549,10 +631,7 @@ public class TerrainGenerationSystem {
         // The water plane rides along: the carvers guard against it so a carve never opens
         // an ocean floor or an ocean-adjacent bank into the cave network.
         heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
-        updateLoadingProgress("Determining Biomes");
         biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
-
-        updateLoadingProgress("Applying Biome Materials");
 
         // Fused native path: carve + caverns + density + block fill + sky
         // heightmap in one kernel call — intermediates never cross FFM. The
@@ -566,13 +645,14 @@ public class TerrainGenerationSystem {
                 fusedGenCtx, chunkX, chunkZ, heights, biomes,
                 surfaceCarveWords(chunkX, chunkZ, heights, waterLevels));
             if (fused != null) {
+                carveDeepCaves(fused.storage(), chunkX, chunkZ, heights);
                 paintOceanFloor(fused.storage(), chunkX, chunkZ, heights, biomes);
                 Chunk chunk = new Chunk(chunkX, chunkZ, fused.storage());
                 chunk.getHeightMap().populate(fused.heightmap());
                 chunk.getCcoDirtyTracker().markBlockChanged();
                 chunk.setFeaturesPopulated(false);
                 TerrainGenStats.record(System.nanoTime() - startNanos, TerrainGenStats.Mode.FUSED);
-                return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
+                return new TerrainResult(chunk, liftedProfile(heights, waterLevels, biomes));
             }
             if (!fusedFailureLogged) {
                 fusedFailureLogged = true;
@@ -631,7 +711,7 @@ public class TerrainGenerationSystem {
         // state removal, and incremental heightmap updates). AIR cells are
         // skipped entirely — sections above the terrain stay in their
         // near-free uniform tier. The caller recomputes the heightmap once.
-        CcoBlockStorage storage = CcoFactory.createEmptyStorage(BlockType.AIR);
+        CcoBlockStorage storage = StandardTerrain.newLiftedStorage();
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
 
@@ -662,47 +742,71 @@ public class TerrainGenerationSystem {
                         block = determineBlockType(worldX, y, worldZ, height, biome,
                             densityField, waterGuardPlane, x, z);
                     }
+                    if (y == 0 && Y_OFFSET > 0) {
+                        // The frame's floor is interior rock once lifted. Unlifted (a 256-tall
+                        // world) it is the world's floor and stays bedrock — CendaChunkGenerator
+                        // makes the same call, which FusedChunkGenParityTest pins.
+                        block = BlockType.STONE;
+                    }
                     if (block != BlockType.AIR) {
-                        storage.set(x, y, z, block);
+                        storage.set(x, y + Y_OFFSET, z, block);
                     }
                 }
             }
         }
 
+        carveDeepCaves(storage, chunkX, chunkZ, heights);
         paintOceanFloor(storage, chunkX, chunkZ, heights, biomes);
         Chunk chunk = new Chunk(chunkX, chunkZ, storage);
         // One mesh+data dirty mark replaces the per-setBlock marks. The caller
         // clears data-dirty for waterless chunks, exactly as before.
         chunk.getCcoDirtyTracker().markBlockChanged();
         chunk.setFeaturesPopulated(false);
-        return new TerrainResult(chunk, new ColumnProfile(heights, waterLevels, biomes));
+        return new TerrainResult(chunk, liftedProfile(heights, waterLevels, biomes));
+    }
+
+    private void carveDeepCaves(CcoBlockStorage storage, int chunkX, int chunkZ, int[] standardHeights) {
+        if (deepCaves != null) {
+            deepCaves.carve(storage, chunkX, chunkZ, standardHeights);
+        }
     }
 
     /**
      * Mixes dirt and clay into the sand of every {@link BiomeType#OCEAN} column's floor
-     * ({@link OceanFloor}). A pass over the finished storage rather than a branch of
+     * ({@link OceanFloor}) and lays the {@link BiomeType#DESERT}'s gravel patches ({@link DesertGravel}). A pass over the finished storage rather than a branch of
      * {@link #determineBlockType}: the fused kernel's surface table holds one block per biome,
      * so both paths lay sand and both get the same mix here, which keeps them byte-identical.
      * A floor that is not sand (carved, or anything else) is left alone.
+     *
+     * @param heights Standard-frame column heights (before {@link #liftedProfile})
      */
     private void paintOceanFloor(CcoBlockStorage storage, int chunkX, int chunkZ,
                                  int[] heights, BiomeType[] biomes) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int z = 0; z < CHUNK_SIZE; z++) {
                 int idx = x * CHUNK_SIZE + z;
-                if (biomes[idx] != BiomeType.OCEAN) {
+                if (biomes[idx] != BiomeType.OCEAN && biomes[idx] != BiomeType.DESERT) {
                     continue;
                 }
-                int y = heights[idx] - 1;
+                int y = heights[idx] - 1 + Y_OFFSET;
                 if (storage.get(x, y, z) != BlockType.SAND) {
                     continue;
                 }
-                BlockType floor = OceanFloor.block(chunkX * CHUNK_SIZE + x, chunkZ * CHUNK_SIZE + z, seed);
+                BlockType floor = surfaceBlockAt(biomes[idx], chunkX * CHUNK_SIZE + x, chunkZ * CHUNK_SIZE + z);
                 if (floor != BlockType.SAND) {
                     storage.set(x, y, z, floor);
                 }
             }
         }
+    }
+
+    /** The column profile in world Y, for the shared feature passes. Lifts the arrays in place. */
+    private static ColumnProfile liftedProfile(int[] heights, int[] waterLevels, BiomeType[] biomes) {
+        for (int i = 0; i < heights.length; i++) {
+            heights[i] += Y_OFFSET;
+            waterLevels[i] = StandardTerrain.lift(waterLevels[i]);
+        }
+        return new ColumnProfile(heights, biomes, waterLevels);
     }
 
     /**
@@ -720,7 +824,7 @@ public class TerrainGenerationSystem {
      */
     private CarveMasks buildCarveMasks(int chunkX, int chunkZ, int[] heights, int[] waterLevels) {
         BitSet caveMask = (nativeCarverCtx != 0L)
-            ? nativeWormMask(chunkX, chunkZ, heights, waterLevels)
+            ? nativeWormMask(nativeCarverCtx, wormCarver, chunkX, chunkZ, heights, waterLevels)
             : wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);
         CavernCarver.Result cavernResult =
             cavernCarver.buildForChunk(chunkX, chunkZ, heights, waterLevels);
@@ -847,8 +951,8 @@ public class TerrainGenerationSystem {
                     }
                     break;
                 }
-                profile[idx] = y + 1;
-                carved[idx] = profile[idx] < height;
+                carved[idx] = y + 1 < height;
+                profile[idx] = y + 1 + Y_OFFSET;
             }
         }
         return new SurfaceProfileCache.Profile(profile, carved);
@@ -900,31 +1004,26 @@ public class TerrainGenerationSystem {
             return;
         }
 
-        updateLoadingProgress("Adding Surface Decorations & Details");
-
-        int[] heights;
-        BiomeType[] biomes;
-        if (profile != null) {
-            // Reuse the profile computed during terrain generation — skips a
-            // full noise resampling pass per chunk.
-            heights = profile.heights();
-            biomes = profile.biomes();
-        } else {
-            heights = new int[CHUNK_SIZE * CHUNK_SIZE];
-            biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
-            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights);
+        if (profile == null) {
+            // Chunk loaded from disk without features: rebuild the profile generation made.
+            int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
+            int[] waterLevels = new int[CHUNK_SIZE * CHUNK_SIZE];
+            BiomeType[] biomes = new BiomeType[CHUNK_SIZE * CHUNK_SIZE];
+            heightMapGenerator.populateChunkHeights(chunkX, chunkZ, heights, waterLevels);
             biomeManager.populateChunkBiomes(chunkX, chunkZ, heights, biomes);
+            profile = liftedProfile(heights, waterLevels, biomes);
         }
+        BiomeType[] biomes = profile.biomes();
         BiomeType dominantBiome = biomes[(CHUNK_SIZE / 2) * CHUNK_SIZE + (CHUNK_SIZE / 2)];
 
         ChunkGenerationContext ctx = new ChunkGenerationContext(
-            world, chunk, snowLayerManager, heights, biomes, dominantBiome);
+            world, chunk, snowLayerManager, profile.heights(), biomes, profile.waterLevels(), dominantBiome);
 
         oreGenerator.generate(ctx);
         // After ores: limestone only replaces stone, so it never eats a vein.
         limestoneGenerator.generate(ctx);
         // Before vegetation: cypress trees may root in the pools.
-        swampPoolGenerator.generate(ctx);
+        swampPoolGenerator.generate(ctx, SwampPoolGenerator.ColumnOracle.of(this));
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
@@ -993,7 +1092,11 @@ public class TerrainGenerationSystem {
      * floor's per-column mix ({@link #paintOceanFloor}).
      */
     private BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ) {
-        return biome == BiomeType.OCEAN ? OceanFloor.block(worldX, worldZ, seed) : surfaceBlock(biome);
+        if (biome == BiomeType.OCEAN) {
+            return OceanFloor.block(worldX, worldZ, seed);
+        }
+        return biome == BiomeType.DESERT && DesertGravel.at(worldX, worldZ, seed) ? BlockType.GRAVEL
+            : surfaceBlock(biome);
     }
 
     /** Package-private so the fused native generator's biome tables share this single source. */
@@ -1017,10 +1120,4 @@ public class TerrainGenerationSystem {
                world.hasChunkAt(chunkX + 1, chunkZ + 1);
     }
 
-    private void updateLoadingProgress(String stageName) {
-        Game game = Game.getInstance();
-        if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-            game.getLoadingScreen().updateProgress(stageName);
-        }
-    }
 }

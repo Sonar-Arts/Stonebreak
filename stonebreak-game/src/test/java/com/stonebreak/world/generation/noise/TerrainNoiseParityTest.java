@@ -108,7 +108,7 @@ class TerrainNoiseParityTest {
         int[] heights = new int[count * count];
         var surface = new com.stonebreak.blocks.BlockType[count * count];
         var trees = new com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[count * count];
-        terrain.sampleColumns(x0, z0, count, stride, heights, surface, trees);
+        terrain.sampleColumns(x0, z0, count, stride, heights, null, surface, trees);
         for (int ix = 0; ix < count; ix++) {
             for (int iz = 0; iz < count; iz++) {
                 int idx = ix * count + iz;

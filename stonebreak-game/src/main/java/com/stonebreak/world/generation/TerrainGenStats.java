@@ -4,11 +4,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Process-wide terrain-generation timing counters, fed by
- * {@link TerrainGenerationSystem#generateTerrainOnly} and surfaced on the F3
+ * {@link TerrainGenerator#generateTerrainOnly} and surfaced on the F3
  * debug overlay (the terrain-side sibling of the mesh pipeline's
  * {@code MmsStatistics}, which stays mesh-scoped).
  *
- * <p>Static because the overlay has no path to a {@code TerrainGenerationSystem}
+ * <p>Static because the overlay has no path to a {@code TerrainGenerator}
  * instance; multiple worlds in one process (integrated server + render view)
  * share the counters, which is fine for a diagnostic average.
  */

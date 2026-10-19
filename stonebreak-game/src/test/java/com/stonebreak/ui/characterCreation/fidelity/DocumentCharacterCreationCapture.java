@@ -28,9 +28,23 @@ import java.util.Map;
 public final class DocumentCharacterCreationCapture implements MigrationGate.Renderer {
 
     private final SbuiArchive shipped;
+    private final boolean oracleRects;
 
     public DocumentCharacterCreationCapture(SbuiArchive shipped) {
+        this(shipped, false);
+    }
+
+    private DocumentCharacterCreationCapture(SbuiArchive shipped, boolean oracleRects) {
         this.shipped = shipped;
+        this.oracleRects = oracleRects;
+    }
+
+    /**
+     * Re-freezing the reference after an intended visual change (the Daedalus Talents tab and Undo): the document's
+     * pixels with the legacy-formula geometry of {@link CharacterCreationFixtures}, independent of the document.
+     */
+    public static DocumentCharacterCreationCapture reference() throws java.io.IOException {
+        return new DocumentCharacterCreationCapture(GameUiDocuments.readScreen(CharacterCreationScreen.DOCUMENT_ID), true);
     }
 
     public static DocumentCharacterCreationCapture shipped() throws java.io.IOException {
@@ -75,7 +89,15 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
                     stage.settle();
                 }
                 stage.paint();
-                return new MigrationGate.Capture(stage.raster.capture(), rects(stage, c.variant(), screen, w, h));
+                Map<String, float[]> rects;
+                if (oracleRects) {
+                    rects = new LinkedHashMap<>(CharacterCreationFixtures.rects(screen, c.variant(), w, h));
+                    rects.putAll(CharacterCreationFixtures.footerButtons(screen,
+                        new com.openmason.engine.ui.masonry.MasonryUI(fonts.backend()), w, h));
+                } else {
+                    rects = rects(stage, c.variant(), screen, w, h);
+                }
+                return new MigrationGate.Capture(stage.raster.capture(), rects);
             } finally {
                 screen.dispose();
             }
@@ -97,8 +119,9 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
         int i = digits.isEmpty() ? -1 : Integer.parseInt(digits);
         String kind = name.replaceAll("[0-9]", "");
         return switch (kind) {
-            case "left", "right", "footer", "back", "next" -> stage.q("#" + name);
+            case "left", "right", "footer", "back", "next", "undo" -> stage.q("#" + name);
             case "tab" -> doc.qAll(".cc-tab").get(i);
+            case "talent" -> doc.qAll(".talent-slot").get(i);
             case "bg" -> doc.qAll(".bg-row").get(i);
             case "tile" -> doc.qAll(".tile").get(i);
             case "plus" -> shown(doc.qAll(".mini.plus"), i);
@@ -122,7 +145,7 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
                 out.put(name, new float[]{r.x(), r.y(), r.width(), r.height()});
             }
         }
-        for (String name : new String[]{"back", "next"}) {
+        for (String name : new String[]{"back", "next", "undo"}) {
             UiRect r = element(stage, name).rect();
             out.put(name, new float[]{r.x(), r.y(), r.width(), r.height()});
         }

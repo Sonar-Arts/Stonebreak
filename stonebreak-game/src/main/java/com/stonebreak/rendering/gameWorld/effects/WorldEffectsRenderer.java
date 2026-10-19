@@ -8,6 +8,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
@@ -310,12 +311,21 @@ public final class WorldEffectsRenderer {
         shaderProgram.setUniform("u_color", new Vector4f(r, g, b, alpha));
         glPointSize(size);
         glBegin(GL_POINTS);
-        glVertex3f(x, y, z);
+        // Emitters work in world coordinates; the vertex crosses into render
+        // space here rather than through a model matrix, so nothing in this
+        // immediate-mode path can leak a non-identity modelMatrix into the
+        // passes that follow it.
+        glVertex3f(x - RenderOrigin.x(), y, z - RenderOrigin.z());
         glEnd();
     }
 
     /** The 12 edges of an axis-aligned box in immediate mode; the caller sets shader and colour. */
     private static void drawWireBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        // World-space box in, render-space vertices out — see emitPoint.
+        float ox = RenderOrigin.x();
+        float oz = RenderOrigin.z();
+        minX -= ox; maxX -= ox;
+        minZ -= oz; maxZ -= oz;
         glBegin(GL_LINES);
         // Bottom rectangle
         glVertex3f(minX, minY, minZ); glVertex3f(maxX, minY, minZ);

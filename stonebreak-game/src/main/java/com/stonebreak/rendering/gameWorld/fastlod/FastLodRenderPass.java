@@ -5,6 +5,7 @@ import com.stonebreak.rendering.gameWorld.ChunkFrustumCuller;
 import com.stonebreak.rendering.gameWorld.water.WaterRenderer;
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
 import java.util.ArrayList;
@@ -57,6 +58,14 @@ public final class FastLodRenderPass {
     static final float FADE_OUT_PER_SEC = 2.5f;
     /** Dissolve-in speed for fresh nodes and hole-cover reveals (~0.3 s). */
     static final float FADE_IN_PER_SEC = 3.5f;
+    /**
+     * Polygon offset for LOD terrain: a constant few depth units behind, no slope term. Native
+     * ground it shares a plane with differs from it only by rounding, so units suffice; a slope
+     * term pushed grazing tops back much further than the node-border foundation walls flush
+     * with them, whose top edges then drew a dark grid along every node border.
+     */
+    static final float LOD_DEPTH_SLOPE = 0.0f;
+    static final float LOD_DEPTH_UNITS = 4.0f;
     /** Clamp for frame delta so hitches don't teleport fades. */
     private static final float MAX_FRAME_DT = 0.1f;
 
@@ -119,6 +128,13 @@ public final class FastLodRenderPass {
         int inner = manager.innerRadius();
 
         shader.setUniform("u_renderPass", 0);
+        // LOD terrain sits a hair behind in depth. A node dissolving out over its native chunk
+        // draws the same ground at the same depth, and its screen-door pixels z-fought the
+        // chunk's wherever the two textures differ (gravel and clay patches, carved tops).
+        // Pushed back, the chunk always wins coplanar ground and the dissolve only shows where
+        // the shapes really differ. Distant nodes have nothing coplanar to lose to.
+        GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
+        GL11.glPolygonOffset(LOD_DEPTH_SLOPE, LOD_DEPTH_UNITS);
         float boundFade = 1.0f;
         fadingRegionNodes.clear();
 
@@ -193,6 +209,8 @@ public final class FastLodRenderPass {
             }
         }
 
+        GL11.glPolygonOffset(0f, 0f);
+        GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
         // Everything after this pass renders solid.
         if (boundFade != 1.0f) {
             shader.setUniform("u_lodFade", 1.0f);

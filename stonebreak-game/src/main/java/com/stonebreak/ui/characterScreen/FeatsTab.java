@@ -12,7 +12,8 @@ import java.util.List;
  */
 public class FeatsTab {
 
-  private static final float LIST_H = 414f;
+  /** The feat list's visible height (logical px): the Talents sub-tab bar takes 32 px of the old 414. */
+  public static final float LIST_H = 382f;
   private static final float ROW_H  = 24f;
 
   private int     filterLevel   = 0;     // 0 = All, 1-10 = specific level

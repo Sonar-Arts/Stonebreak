@@ -22,10 +22,15 @@ in float vSurfaceHeight;
 // Blocks of water between this face and the floor under it, baked per quad.
 // Only a fallback for thickness where the scene behind is sky (see main).
 flat in float vWaterDepth;
+// 0 = still water; 1..8 = a river running in octant 0..7. See water.vert.
+flat in float vFlow;
 
 uniform vec3 uSunDirection;
 uniform float uAmbientLight;
 uniform vec3 uCameraPos;
+// World XZ of the render origin — vWorldPos is render-space, and the
+// procedural lattices below are world-space functions.
+uniform vec2 uRenderOrigin;
 uniform float uTime;
 uniform bool uWavesEnabled;
 // Atmospheric distance fog — same parameters the world shader gets, so far
@@ -52,6 +57,11 @@ uniform vec4 uViewport; // x, y, width, height
 #include "/shaders/lighting/point_lights.glsl"
 
 out vec4 fragColor;
+
+// How fast a river's surface pattern travels, in lattice units per second.
+// The ambient drift is 0.06; a reach wants to read as moving without turning
+// into a conveyor belt, and this is about four times the drift.
+const float RIVER_DRIFT = 0.25;
 
 // Water density, per block of water the eye ray crosses (see main).
 // DENSITY drives opacity: 1 - exp(-0.22 * 10) — about 90% of the floor is
@@ -104,19 +114,38 @@ void main() {
     float t = uWavesEnabled ? uTime : 0.0;
     bool horizontal = abs(vNormal.y) > 0.5;
 
+    // The pattern domains below are world-space functions and have to stay
+    // anchored to the world, or the whole surface pattern would slide every
+    // time the render origin steps. Everything else here (distance fades,
+    // view vectors, point lights) is a difference against another render-space
+    // quantity and uses vWorldPos directly.
+    vec3 absPos = vWorldPos + vec3(uRenderOrigin.x, 0.0, uRenderOrigin.y);
+
     // Pattern domain per face kind.
     vec2 p;
     if (horizontal) {
         // Top/bottom: world-space XZ with a slow directional drift.
-        p = vWorldPos.xz * 0.35 + vec2(t * 0.060, t * 0.045);
+        //
+        // A river's surface drifts DOWNSTREAM instead, and faster: the whole
+        // point of the flow code is that a reach does not read like the ocean
+        // it eventually joins. The lattice itself stays anchored to the world
+        // (only the offset moves), so neighbouring cells of the same reach
+        // still share one unbroken pattern, and the direction is flat-shaded
+        // so a confluence steps between directions instead of smearing them.
+        vec2 drift = vec2(t * 0.060, t * 0.045);
+        if (vFlow > 0.5) {
+            float a = (vFlow - 1.0) * 0.78539816;  // octant -> radians
+            drift = -vec2(cos(a), sin(a)) * t * RIVER_DRIFT;
+        }
+        p = absPos.xz * 0.35 + drift;
     } else {
         // Sides: world-space face coords — U runs along the face plane,
         // V is world height. Continuous across adjacent blocks, so a wide
         // waterfall shows one unbroken pattern instead of per-column tiles.
         // Sampling V + t makes features flow DOWNWARD.
-        float u = abs(vNormal.x) > 0.5 ? vWorldPos.z : vWorldPos.x;
+        float u = abs(vNormal.x) > 0.5 ? absPos.z : absPos.x;
         float scroll = vFalling > 0.5 ? 2.2 : 0.35;
-        vec2 q = vec2(u, vWorldPos.y + t * scroll);
+        vec2 q = vec2(u, absPos.y + t * scroll);
         if (vFalling > 0.5) {
             // Stretch the lattice vertically into falling rivulet streaks.
             q = vec2(q.x * 2.4, q.y * 0.55);

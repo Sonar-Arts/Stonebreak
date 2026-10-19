@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import org.joml.Matrix4f;
@@ -160,8 +161,7 @@ public final class RemotePlayerRenderer {
 
         // Position is at body bottom, but for REMOTE_PLAYER legHeight=0 so feet = position.y.
         Vector3f pos = entity.getPosition();
-        Matrix4f model = new Matrix4f()
-                .translate(pos)
+        Matrix4f model = RenderOrigin.modelAt(pos.x, pos.y, pos.z)
                 .rotateY((float) Math.toRadians(entity.getRotation().y));
         shader.setUniform("model", model);
         shader.setUniform("tint", colorFor(entity.getPlayerId()));

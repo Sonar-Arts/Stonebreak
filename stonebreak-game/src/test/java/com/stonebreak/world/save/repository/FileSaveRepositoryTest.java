@@ -5,6 +5,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.WorldData;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -245,7 +246,7 @@ class FileSaveRepositoryTest {
 
     private static ChunkData smallChunk(int chunkX, int chunkZ) {
         CcoPalettedChunkStorage blocks =
-            CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
         blocks.set(0, 0, 0, BlockType.STONE);
         blocks.set(5, 10, 5, BlockType.DIRT);
 

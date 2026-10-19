@@ -21,6 +21,69 @@ class WaterSimTest {
     private static final int FALLING = ChunkWaterLayer.FALLING;
     private static final int SETTLE_TICKS = 4000;
 
+    // ===== 0. River markers are sources the sim must not touch =====
+
+    /**
+     * A worldgen river surface behaves EXACTLY like the source block it is.
+     *
+     * This is the whole safety argument for the marker, and it is worth an
+     * assertion rather than a comment: the water kernel's banks, its guard rail
+     * and every containment measurement behind them were taken against a sim in
+     * which worldgen water is a source. If a river value spread differently, or
+     * dissipated, or stopped protecting its own cell from being flowed into,
+     * all of that would go stale at once.
+     *
+     * Asserted against a plain source in the same world, so the two cannot
+     * drift apart silently: the marked river spreads the identical diamond, and
+     * comes out of the settle still marked.
+     */
+    @Test
+    void aRiverMarkerSpreadsExactlyAsASourceAndSurvivesTheSim() {
+        FakeFlowWorld world = new FakeFlowWorld(40, 16, 40);
+        world.fillLayer(10, BlockType.STONE);
+        WaterSim sim = new WaterSim(world);
+
+        // A plain source at one end, a marked river cell at the other, far
+        // enough apart (reach is 7) that neither reaches the other.
+        world.placeSource(sim, 8, 11, 20);
+        world.placeSource(sim, 30, 11, 20);
+        world.setWater(30, 11, 20, ChunkWaterLayer.river(3));
+        tickUntilQuiet(sim, SETTLE_TICKS);
+
+        assertEquals(ChunkWaterLayer.river(3), world.getWater(30, 11, 20),
+                "the sim never rewrites a river cell — it reads as a source, and "
+                        + "sources are not recomputed");
+        for (int dx = -9; dx <= 9; dx++) {
+            for (int dz = -9; dz <= 9; dz++) {
+                if (Math.abs(dx) + Math.abs(dz) == 0) {
+                    continue;
+                }
+                int plain = world.getBlock(8 + dx, 11, 20 + dz) == BlockType.WATER
+                        ? world.getWater(8 + dx, 11, 20 + dz) : -1;
+                int river = world.getBlock(30 + dx, 11, 20 + dz) == BlockType.WATER
+                        ? world.getWater(30 + dx, 11, 20 + dz) : -1;
+                assertEquals(plain, river,
+                        "a river cell spreads what a source spreads at (" + dx + "," + dz + ")");
+            }
+        }
+    }
+
+    /** And the cell is still source-protected: nothing may flow into it. */
+    @Test
+    void aRiverMarkerCannotBeFlowedInto() {
+        FakeFlowWorld world = new FakeFlowWorld(20, 16, 20);
+        world.fillLayer(10, BlockType.STONE);
+        WaterSim sim = new WaterSim(world);
+
+        world.placeSource(sim, 10, 11, 10);
+        world.setWater(10, 11, 10, ChunkWaterLayer.river(0));
+        world.placeSource(sim, 12, 11, 10);
+        tickUntilQuiet(sim, SETTLE_TICKS);
+
+        assertEquals(ChunkWaterLayer.river(0), world.getWater(10, 11, 10),
+                "a neighbouring source never overwrites a river cell");
+    }
+
     // ===== 1. Flat-ground diamond =====
 
     @Test

@@ -60,10 +60,42 @@ public final class CendaMesher {
     private CendaMesher() {
     }
 
+    /**
+     * World height the native {@code ck_mesh_chunk} kernel is compiled for. Its
+     * own {@code WH} constant is 256 and it CLAMPS the caller's {@code max_y} to
+     * {@code WH - 1} (mesher.cpp), so on a taller world it silently returns only
+     * the bottom 256 blocks of every column — no error, no partial flag.
+     */
+    public static final int KERNEL_WORLD_HEIGHT = 256;
+
+    /**
+     * True when the native mesher may be used for this world.
+     *
+     * <p>Declines when {@link WorldConfiguration#WORLD_HEIGHT} exceeds what the
+     * kernel can address. That is not a tuning knob: {@code MmsCcoAdapter} treats
+     * a successful kernel call as authoritative and skips the Java cube loop
+     * entirely, so a truncating kernel means everything above y=255 is never
+     * meshed. This branch runs a 1024-tall world with sea level at 320, so the
+     * whole surface would go missing while the Java-side special cells (crosses,
+     * SBO stamps, water) still drew — flowers floating over an empty world.
+     * Rebuild the kernel for the taller column to get the native path back.
+     */
     public static boolean enabled() {
-        return CendaKernels.isAvailable()
+        boolean fitsKernel = WorldConfiguration.WORLD_HEIGHT <= KERNEL_WORLD_HEIGHT;
+        boolean on = CendaKernels.isAvailable() && fitsKernel
             && !"java".equalsIgnoreCase(System.getProperty("stonebreak.mesher.backend", "auto"));
+        if (BACKEND_LOGGED.compareAndSet(false, true)) {
+            System.out.printf("[CendaMesher] backend=%s%s%n", on ? "native" : "java",
+                !fitsKernel
+                    ? " (kernel meshes only " + KERNEL_WORLD_HEIGHT + " blocks; WORLD_HEIGHT is "
+                        + WorldConfiguration.WORLD_HEIGHT + ")"
+                    : "");
+        }
+        return on;
     }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean BACKEND_LOGGED =
+        new java.util.concurrent.atomic.AtomicBoolean();
 
     /** Everything the kernel call needs, plus the special-cell worklist. */
     public static final class Snapshot {

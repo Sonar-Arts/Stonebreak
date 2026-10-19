@@ -34,6 +34,7 @@
     "recipeGrid": "stonebreak:screen.recipe-book",
     "recipeDetail": "stonebreak:screen.recipe-book",
     "terrainMapper": "stonebreak:screen.terrain-mapper",
+    "modelSetup": "stonebreak:screen.model-setup",
     "characterCreation": "stonebreak:screen.character-creation",
     "ccBackgrounds": "stonebreak:screen.character-creation",
     "ccClasses": "stonebreak:screen.character-creation",
@@ -91,7 +92,8 @@
       "maxStack": 0
     },
     "loading": {
-      "stage": "Generating Caves",
+      "stage": "Generating spawn area",
+      "detail": "Chunks 37/81",
       "progress": 0.5,
       "percent": "50%"
     },
@@ -827,51 +829,208 @@
       "seedFocused": false,
       "nameCaret": true,
       "seedCaret": false,
+      "generators": [
+        {
+          "gen": "STANDARD",
+          "label": "Standard Generation",
+          "selected": true,
+          "warn": false,
+          "y": 228
+        },
+        {
+          "gen": "DIFFUSION",
+          "label": "DaedalusTGM-Exp",
+          "selected": false,
+          "warn": true,
+          "y": 268
+        }
+      ],
       "modes": [
         {
           "mode": "HEIGHT",
           "label": "Height",
-          "selected": true
+          "selected": true,
+          "x": 20,
+          "y": 340,
+          "w": 137
         },
         {
           "mode": "CONTINENTALNESS",
           "label": "Continentalness",
-          "selected": false
+          "selected": false,
+          "x": 163,
+          "y": 340,
+          "w": 137
         },
         {
           "mode": "EROSION",
           "label": "Erosion",
-          "selected": false
+          "selected": false,
+          "x": 20,
+          "y": 380,
+          "w": 137
         },
         {
           "mode": "PEAKS_VALLEYS",
           "label": "Peaks & Valleys",
-          "selected": false
+          "selected": false,
+          "x": 163,
+          "y": 380,
+          "w": 137
         },
         {
           "mode": "TEMPERATURE",
           "label": "Temperature",
-          "selected": false
+          "selected": false,
+          "x": 20,
+          "y": 420,
+          "w": 137
         },
         {
           "mode": "MOISTURE",
           "label": "Moisture",
-          "selected": false
+          "selected": false,
+          "x": 163,
+          "y": 420,
+          "w": 137
         },
         {
           "mode": "BIOME",
           "label": "Biome",
-          "selected": false
+          "selected": false,
+          "x": 20,
+          "y": 460,
+          "w": 137
         }
       ],
+      "hasModes": true,
+      "genCaption": 204,
+      "modeCaption": 316,
+      "spawnCaption": 508,
+      "spawnY": 532,
+      "centerY": 572,
       "spawnSet": false,
       "spawnLabel": "Click map to set spawn",
+      "createEnabled": true,
+      "createDisabled": false,
+      "warning": "WARNING! DaedalusTGM-Exp is experimental and starts local model services on first use",
       "error": "",
-      "modeLabel": "Mode: Height",
+      "modeLabel": "Mode: Height   ·   Terrain: Standard Generation",
       "hover": "(137, -61) = 33 blocks"
+    },
+    "modelSetup": {
+      "open": true,
+      "logo": {
+        "x": 795.5,
+        "y": 40,
+        "w": 328.98,
+        "h": 84
+      },
+      "title": "Setting up the terrain model",
+      "subtitle": "DaedalusTGM-Exp v4  -  set up once, later launches skip this",
+      "steps": [
+        {
+          "step": "GPU",
+          "title": "Checking graphics card",
+          "detail": "NVIDIA RTX PRO 6000",
+          "status": "done",
+          "dim": false,
+          "failed": false,
+          "skipped": false,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "done",
+            "angle": 0
+          }
+        },
+        {
+          "step": "UV",
+          "title": "Getting package manager",
+          "detail": "already installed",
+          "status": "skipped",
+          "dim": true,
+          "failed": false,
+          "skipped": true,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "skipped",
+            "angle": 0
+          }
+        },
+        {
+          "step": "ENVIRONMENT",
+          "title": "Installing Python environment",
+          "detail": "1.84 GB of 4.37 GB downloaded",
+          "status": "running",
+          "dim": false,
+          "failed": false,
+          "skipped": false,
+          "bar": true,
+          "fraction": 0.42,
+          "icon": {
+            "status": "running",
+            "angle": 120
+          }
+        },
+        {
+          "step": "VERIFY",
+          "title": "Checking the model on the GPU",
+          "detail": "waiting",
+          "status": "pending",
+          "dim": true,
+          "failed": false,
+          "skipped": false,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "pending",
+            "angle": 0
+          }
+        },
+        {
+          "step": "KERNELS",
+          "title": "Compiling GPU kernels",
+          "detail": "waiting",
+          "status": "pending",
+          "dim": true,
+          "failed": false,
+          "skipped": false,
+          "bar": false,
+          "fraction": 0,
+          "icon": {
+            "status": "pending",
+            "angle": 0
+          }
+        }
+      ],
+      "lines": [
+        {
+          "line": "activity",
+          "text": "> Downloading torch (846.1MiB)",
+          "tone": "activity",
+          "small": true,
+          "gap": false
+        },
+        {
+          "line": "elapsed",
+          "text": "Elapsed 1:23  -  you can keep playing with standard terrain meanwhile",
+          "tone": "faint",
+          "small": true,
+          "gap": false
+        }
+      ],
+      "buttons": [
+        {
+          "id": "continue",
+          "label": "Continue in background"
+        }
+      ]
     },
     "characterCreation": {
       "tab": "BACKGROUND",
+      "pane": "BACKGROUND",
       "layout": {
         "left": [
           0,
@@ -903,6 +1062,18 @@
           1248,
           956
         ],
+        "talentBar": [
+          680,
+          60,
+          1232,
+          30
+        ],
+        "talentContent": [
+          672,
+          96,
+          1248,
+          912
+        ],
         "preview": [
           100.8,
           40,
@@ -933,28 +1104,10 @@
           "active": false
         },
         {
-          "tab": "CLASS_ABILITIES",
-          "label": "Class Abilities",
+          "tab": "TALENTS",
+          "label": "Talents",
           "x": 920.0,
-          "width": 144.0,
-          "fontSize": 14,
-          "baseline": 23.32,
-          "active": false
-        },
-        {
-          "tab": "SKILLS",
-          "label": "Skills",
-          "x": 1068.0,
-          "width": 72.0,
-          "fontSize": 14,
-          "baseline": 23.32,
-          "active": false
-        },
-        {
-          "tab": "FEATS",
-          "label": "Feats",
-          "x": 1144.0,
-          "width": 64.0,
+          "width": 80.0,
           "fontSize": 14,
           "baseline": 23.32,
           "active": false
@@ -962,7 +1115,7 @@
         {
           "tab": "LOOKS",
           "label": "Looks",
-          "x": 1212.0,
+          "x": 1004.0,
           "width": 64.0,
           "fontSize": 14,
           "baseline": 23.32,
@@ -971,13 +1124,38 @@
         {
           "tab": "CLOTHING",
           "label": "Clothing",
-          "x": 1280.0,
+          "x": 1072.0,
           "width": 88.0,
           "fontSize": 14,
           "baseline": 23.32,
           "active": false
         }
       ],
+      "talents": [
+        {
+          "sub": "CLASS_ABILITIES",
+          "label": "Class Abilities",
+          "x": 0.0,
+          "w": 408.6667,
+          "selected": true
+        },
+        {
+          "sub": "SKILLS",
+          "label": "Skills",
+          "x": 410.6667,
+          "w": 408.6667,
+          "selected": false
+        },
+        {
+          "sub": "FEATS",
+          "label": "Feats",
+          "x": 821.3333,
+          "w": 410.6667,
+          "selected": false
+        }
+      ],
+      "talentBaseline": 19.9,
+      "undoDisabled": true,
       "backLabel": "World Select",
       "nextLabel": "Terrain Mapper",
       "classLabel": "Class: Adventurer",
@@ -1069,7 +1247,7 @@
           "tab": "inventory",
           "label": "Inventory",
           "rect": {
-            "x": 742,
+            "x": 786,
             "y": 260,
             "w": 84,
             "h": 28
@@ -1080,7 +1258,7 @@
           "tab": "character",
           "label": "Character",
           "rect": {
-            "x": 830,
+            "x": 874,
             "y": 260,
             "w": 84,
             "h": 28
@@ -1088,32 +1266,10 @@
           "active": true
         },
         {
-          "tab": "classes",
-          "label": "Classes",
+          "tab": "talents",
+          "label": "Talents",
           "rect": {
-            "x": 918,
-            "y": 260,
-            "w": 84,
-            "h": 28
-          },
-          "active": false
-        },
-        {
-          "tab": "skills",
-          "label": "Skills",
-          "rect": {
-            "x": 1006,
-            "y": 260,
-            "w": 84,
-            "h": 28
-          },
-          "active": false
-        },
-        {
-          "tab": "feats",
-          "label": "Feats",
-          "rect": {
-            "x": 1094,
+            "x": 962,
             "y": 260,
             "w": 84,
             "h": 28
@@ -1122,6 +1278,32 @@
         }
       ],
       "tabBaseline": 19.32,
+      "talents": {
+        "slots": [
+          {
+            "sub": "class-abilities",
+            "label": "Class Abilities",
+            "x": 10.0,
+            "w": 191.3333,
+            "selected": true
+          },
+          {
+            "sub": "skills",
+            "label": "Skills",
+            "x": 203.3333,
+            "w": 191.3333,
+            "selected": false
+          },
+          {
+            "sub": "feats",
+            "label": "Feats",
+            "x": 396.6667,
+            "w": 193.3333,
+            "selected": false
+          }
+        ],
+        "baseline": 18.9
+      },
       "overview": {
         "left": {
           "x": 676,
@@ -2019,6 +2201,15 @@
     "stonebreak:screen.death.respawn": {
       "contract": "stonebreak:screen.death"
     },
+    "stonebreak:screen.save-changes.yes": {
+      "contract": "stonebreak:screen.save-changes"
+    },
+    "stonebreak:screen.save-changes.no": {
+      "contract": "stonebreak:screen.save-changes"
+    },
+    "stonebreak:screen.save-changes.cancel": {
+      "contract": "stonebreak:screen.save-changes"
+    },
     "stonebreak:screen.statistics.back": {
       "contract": "stonebreak:screen.statistics"
     },
@@ -2403,10 +2594,22 @@
         "dy": "number"
       }
     },
+    "stonebreak:screen.model-setup.press": {
+      "contract": "stonebreak:screen.model-setup",
+      "params": {
+        "id": "string"
+      }
+    },
     "stonebreak:screen.character-creation.tab": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
         "tab": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.talent": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "sub": "string"
       }
     },
     "stonebreak:screen.character-creation.nav": {
@@ -2474,6 +2677,12 @@
       "contract": "stonebreak:screen.character-sheet",
       "params": {
         "tab": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.talent": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "sub": "string"
       }
     },
     "stonebreak:screen.character-sheet.ability": {

@@ -16,9 +16,10 @@ public final class CharacterCreationMouseHandler {
 
     public void handleMouseWheel(double x, double y, double delta) {
         if (delta == 0.0) return;
+        if (state.getActiveTab() != CharacterCreationTab.TALENTS) return;
         float amount = (float) delta * SCROLL_SPEED;
 
-        switch (state.getActiveTab()) {
+        switch (state.getTalentSubTab()) {
             case CLASS_ABILITIES -> {
                 float updated = state.getClassScroll() - amount;
                 state.setClassScroll(Math.max(0f, updated));
@@ -31,7 +32,6 @@ public final class CharacterCreationMouseHandler {
                 float updated = state.getFeatScroll() - amount;
                 state.setFeatScroll(Math.max(0f, updated));
             }
-            default -> { /* BACKGROUND and ABILITY_SCORE do not scroll */ }
         }
     }
 }

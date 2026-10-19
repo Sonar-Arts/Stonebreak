@@ -21,7 +21,8 @@ public class ClassesTab {
 
   private static final float CLASS_BTN_H      = 22f;
   private static final float CLASS_BTN_GAP    = 2f;
-  private static final float SIDEBAR_CLIP_H   = 420f;
+  /** The class list's visible height (logical px): the Talents sub-tab bar takes 32 px of the old 420. */
+  public static final float SIDEBAR_CLIP_H   = 388f;
   private static final float ABILITY_ROW_H    = 64f;
   /** One Spend CP button per ability slot. */
   private static final int   MAX_ABILITIES    = 5;

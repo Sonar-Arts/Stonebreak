@@ -76,7 +76,9 @@ public final class SonarArtsIntroScreen {
 
     private void finish() {
         scene.complete();
-        Game.getInstance().setState(GameState.MAIN_MENU);
+        // The terrain model's first-launch setup (or an update) gets its own screen; otherwise straight on.
+        boolean setup = com.stonebreak.world.generation.diffusion.tgmpipe.ModelSetup.getInstance().shouldShowScreen();
+        Game.getInstance().setState(setup ? GameState.MODEL_SETUP : GameState.MAIN_MENU);
     }
 
     public boolean isComplete() { return scene.phase() == IntroScene.Phase.COMPLETE; }

@@ -9,7 +9,10 @@ import java.util.concurrent.atomic.LongAdder;
  * native {@code ck_mesh_chunk} kernel and the Java fallback emit the same
  * format): {@code [x, y, z, face, blockId, l0, l1, l2, l3]} per quad, where
  * {@code l0..l3} are the per-corner light values in face-corner order. Axis
- * ranges are chunk-local: x/z in [0,16), y in [0,256).
+ * ranges are chunk-local: x/z in [0,16), y in [0, {@link #MAX_WORLD_HEIGHT}).
+ * The plane grid is sized from the tallest quad in the stream rather than a
+ * fixed world height, so a 1024-tall world merges exactly as a 256-tall one
+ * does — see {@link #MAX_WORLD_HEIGHT}.
  *
  * <p>Adjacent coplanar quads merge into one rectangle when they have the same
  * block id and ALL EIGHT corner lights are one identical value. That is the
@@ -43,8 +46,16 @@ public final class MmsGreedyMesher {
     public static final int OUT_STRIDE = 11;
 
     private static final int CS = 16;   // chunk size (matches ck_mesh_chunk)
-    private static final int WH = 256;  // world height
-    private static final int CELLS = CS * CS * WH;
+
+    /**
+     * Ceiling on the addressable Y span. The grid is allocated to fit the
+     * tallest quad actually seen, so this only bounds a pathological input;
+     * quads above it pass through unmerged instead of forcing a huge alloc.
+     */
+    public static final int MAX_WORLD_HEIGHT = 4096;
+
+    /** Initial grid height — grown on demand for taller worlds. */
+    private static final int INITIAL_WH = 256;
 
     // Cumulative effectiveness counters (read by debug overlays).
     private static final LongAdder QUADS_IN = new LongAdder();
@@ -56,7 +67,7 @@ public final class MmsGreedyMesher {
      * and re-cleared, so the 256 KB array is never bulk-reset.
      */
     private static final class Scratch {
-        final int[] grid = new int[CELLS];
+        int[] grid = new int[CS * CS * INITIAL_WH];
         final int[][] dirQuads = new int[6][];
         final int[] dirCounts = new int[6];
         float[] out = new float[OUT_STRIDE * 4096];
@@ -89,11 +100,11 @@ public final class MmsGreedyMesher {
      * the "height" axis strides by {@link #CS}, so run extension is pointer
      * arithmetic. All three layouts address the same 65536-cell space.
      */
-    private static int cellIndex(int face, int x, int y, int z) {
+    private static int cellIndex(int face, int x, int y, int z, int wh) {
         return switch (face) {
             case 0, 1 -> (y * CS + z) * CS + x;  // width x, height z, plane y
-            case 2, 3 -> (z * WH + y) * CS + x;  // width x, height y, plane z
-            default -> (x * WH + y) * CS + z;    // width z, height y, plane x
+            case 2, 3 -> (z * wh + y) * CS + x;  // width x, height y, plane z
+            default -> (x * wh + y) * CS + z;    // width z, height y, plane x
         };
     }
 
@@ -107,8 +118,8 @@ public final class MmsGreedyMesher {
         return face <= 1 ? z : y;
     }
 
-    private static int vLimit(int face) {
-        return face <= 1 ? CS : WH;
+    private static int vLimit(int face, int wh) {
+        return face <= 1 ? CS : wh;
     }
 
     /**
@@ -136,6 +147,7 @@ public final class MmsGreedyMesher {
         // the meshers never emit such coords).
         int[] counts = s.dirCounts;
         java.util.Arrays.fill(counts, 0);
+        int maxY = 0;
         for (int qi = 0; qi < quadCount; qi++) {
             int base = qi * IN_STRIDE;
             int x = (int) quads[base];
@@ -143,9 +155,12 @@ public final class MmsGreedyMesher {
             int z = (int) quads[base + 2];
             int face = (int) quads[base + 3];
             if (face < 0 || face >= 6
-                || x < 0 || x >= CS || z < 0 || z >= CS || y < 0 || y >= WH) {
+                || x < 0 || x >= CS || z < 0 || z >= CS || y < 0 || y >= MAX_WORLD_HEIGHT) {
                 outCount = emit(out, outCount, quads, base, 1, 1);
                 continue;
+            }
+            if (y > maxY) {
+                maxY = y;
             }
             int[] list = s.dirQuads[face];
             if (counts[face] == list.length) {
@@ -155,6 +170,14 @@ public final class MmsGreedyMesher {
             list[counts[face]++] = qi;
         }
 
+        // Size the plane grid to the tallest quad in this stream. A fixed 256 here
+        // silently disabled ALL merging above y=255 (every quad fell through the
+        // bounds check unmerged), which on a 1024-tall world meant a ~256x quad
+        // explosion for surface terrain and blew MmsQuadCodec.MAX_QUADS_PER_DRAW.
+        int wh = Math.max(INITIAL_WH, maxY + 1);
+        if (s.grid.length < CS * CS * wh) {
+            s.grid = new int[CS * CS * wh];  // fresh array is all-zero, as the algorithm requires
+        }
         int[] grid = s.grid;
         for (int face = 0; face < 6; face++) {
             int[] list = s.dirQuads[face];
@@ -167,17 +190,17 @@ public final class MmsGreedyMesher {
             for (int i = 0; i < n; i++) {
                 int base = list[i] * IN_STRIDE;
                 grid[cellIndex(face, (int) quads[base], (int) quads[base + 1],
-                    (int) quads[base + 2])] = list[i] + 1;
+                    (int) quads[base + 2], wh)] = list[i] + 1;
             }
 
-            int vMax = vLimit(face);
+            int vMax = vLimit(face, wh);
             for (int i = 0; i < n; i++) {
                 int qi = list[i];
                 int base = qi * IN_STRIDE;
                 int x = (int) quads[base];
                 int y = (int) quads[base + 1];
                 int z = (int) quads[base + 2];
-                int cell = cellIndex(face, x, y, z);
+                int cell = cellIndex(face, x, y, z, wh);
                 if (grid[cell] != qi + 1) {
                     continue; // consumed by an earlier rectangle
                 }
@@ -229,7 +252,7 @@ public final class MmsGreedyMesher {
             for (int i = 0; i < n; i++) {
                 int base = list[i] * IN_STRIDE;
                 grid[cellIndex(face, (int) quads[base], (int) quads[base + 1],
-                    (int) quads[base + 2])] = 0;
+                    (int) quads[base + 2], wh)] = 0;
             }
         }
 

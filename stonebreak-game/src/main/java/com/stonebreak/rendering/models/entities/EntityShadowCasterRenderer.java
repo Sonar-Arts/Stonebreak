@@ -1,5 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import org.joml.Matrix4f;
@@ -49,13 +50,18 @@ final class EntityShadowCasterRenderer {
      * Called once per cascade by ShadowMapRenderer, with the cascade's light
      * matrices standing in for view/projection. The shadow FBO has no color
      * attachment, so only depth lands — the flat color is discarded.
+     *
+     * <p>{@code lightView} is a render-space view ({@link RenderOrigin}) — the
+     * models draw from render-space matrices — while {@code cascadeCenter} and
+     * the caster positions are world space, so the cull frustum is rebased back
+     * to world space before testing them.
      */
     void render(com.stonebreak.player.Player player,
                 Matrix4f lightView, Matrix4f lightProj,
                 Vector3f cascadeCenter, float cascadeRadius) {
         float cullRadius = cascadeRadius + 8.0f;
         float cullRadiusSq = cullRadius * cullRadius;
-        lightFrustum.set(lightProj.mul(lightView, lightViewProjection));
+        lightFrustum.set(RenderOrigin.acceptWorldSpace(lightProj.mul(lightView, lightViewProjection)));
         for (Caster caster : casters) {
             Vector3f pos = caster.position;
             float dx = pos.x - cascadeCenter.x;

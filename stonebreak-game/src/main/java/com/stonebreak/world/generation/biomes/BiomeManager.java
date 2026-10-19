@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.biomes;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.noise.MultiNoiseSample;
 import com.stonebreak.world.generation.noise.NoiseRouter;
@@ -41,7 +42,7 @@ public class BiomeManager {
 
     /** The water rule {@link HeightMapGenerator#waterLevel} applies: a surface under sea level is sea. */
     private static boolean isSubmerged(int height) {
-        return height < WorldConfiguration.SEA_LEVEL;
+        return height < StandardTerrain.SEA_LEVEL;
     }
 
     public float getMoisture(int x, int z) {

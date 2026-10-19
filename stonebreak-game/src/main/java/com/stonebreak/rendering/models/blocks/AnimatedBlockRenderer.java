@@ -112,7 +112,9 @@ public final class AnimatedBlockRenderer {
     public void renderShadowCasters(World world, Matrix4f view, Matrix4f projection,
                                     Vector3f lightPosition, float radius, float totalTime) {
         float reach = radius + 2f; // include models extending beyond their anchor cell
-        shadowFrustum.set(projection.mul(view, shadowViewProjection));
+        // view is render space (the SBE draws are); block positions are world space.
+        shadowFrustum.set(com.openmason.engine.rendering.RenderOrigin.acceptWorldSpace(
+                projection.mul(view, shadowViewProjection)));
         renderBlocks(world, view, projection, lightPosition, totalTime, reach * reach, true);
     }
 

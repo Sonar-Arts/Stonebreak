@@ -1,7 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -17,9 +17,9 @@ public final class FastLodSampler {
 
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
-    private final TerrainGenerationSystem terrain;
+    private final TerrainGenerator terrain;
 
-    public FastLodSampler(TerrainGenerationSystem terrain) {
+    public FastLodSampler(TerrainGenerator terrain) {
         this.terrain = terrain;
     }
 
@@ -38,22 +38,25 @@ public final class FastLodSampler {
         // per-point samples. Values are bit-identical to the per-point API.
         int origin = -cellSize + representativeOffset(cellSize);
         int[] heights = new int[level.heightCount()];
+        int[] gridWaterLevels = new int[level.heightCount()];
         BlockType[] gridSurface = new BlockType[stride * stride];
         TreeSample[] gridTrees  = level.emitsTrees() ? new TreeSample[stride * stride] : null;
         if (key.carved()) {
             terrain.sampleColumns(baseX + origin, baseZ + origin, stride, cellSize,
-                heights, gridSurface, gridTrees);
+                heights, gridWaterLevels, gridSurface, gridTrees);
         } else {
             terrain.sampleRawColumns(baseX + origin, baseZ + origin, stride, cellSize,
-                heights, gridSurface);
+                heights, gridWaterLevels, gridSurface);
         }
 
+        int[] waterLevels = new int[level.cellCount()];
         BlockType[] surface = new BlockType[level.cellCount()];
         TreeSample[] trees  = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
         for (int ix = 0; ix < cellsPerAxis; ix++) {
             for (int iz = 0; iz < cellsPerAxis; iz++) {
                 int idx = ix * cellsPerAxis + iz;
                 int gridIdx = (ix + 1) * stride + (iz + 1);
+                waterLevels[idx] = gridWaterLevels[gridIdx];
                 surface[idx] = gridSurface[gridIdx];
                 if (trees != null) {
                     trees[idx] = gridTrees[gridIdx];
@@ -62,7 +65,7 @@ public final class FastLodSampler {
         }
 
         // Cave mouths, aggregated over each cell's footprint rather than point-probed —
-        // see TerrainGenerationSystem.sampleCellOpenings for why the heights cannot carry
+        // see TerrainGenerator.sampleCellOpenings for why the heights cannot carry
         // this. Skipped at L0, where a cell is one column and its carve is already the
         // height, so the finest band pays nothing and draws exactly what it drew before.
         // Also skipped at the uncarved coarse levels: aggregating openings reads
@@ -92,10 +95,10 @@ public final class FastLodSampler {
                 }
             }
             treeSpots = terrain.probeCellTrees(key.chunkX(), key.chunkZ(), cellsPerAxis, cellSize,
-                    cellHeights, surface);
+                    cellHeights, waterLevels, surface);
         }
 
-        return new FastLodChunkData(key, heights, surface, trees,
+        return new FastLodChunkData(key, heights, waterLevels, surface, trees,
                 openingFloor, openingCoverage, treeSpots);
     }
 

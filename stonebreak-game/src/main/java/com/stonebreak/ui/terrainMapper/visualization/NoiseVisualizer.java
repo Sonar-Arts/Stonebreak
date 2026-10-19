@@ -17,6 +17,15 @@ public interface NoiseVisualizer {
     /** Raw sample at a world position. Cheap — must be safe to call per-pixel. */
     float sample(int worldX, int worldZ);
 
+    /**
+     * The cached channel {@link #sample} reads, so the preview can serve it from
+     * {@link PreviewSampleStore} instead of the terrain. Must return exactly what
+     * {@link #sample} would. Null means "not cached": every pass calls {@link #sample} directly.
+     */
+    default PreviewChannel channel() {
+        return null;
+    }
+
     /** Map a raw sample to [0, 1]; default assumes already in range. */
     default float normalize(float raw) {
         return Math.max(0f, Math.min(1f, raw));
@@ -31,5 +40,21 @@ public interface NoiseVisualizer {
     /** Human-readable value shown in the footer tooltip. */
     default String formatValue(float raw) {
         return String.format("%.3f", raw);
+    }
+
+    /**
+     * Optional whole-grid pass run after every pixel has been colored. Default is a no-op.
+     *
+     * <p>Exists because {@link #colorFor(float)} only ever sees one sample: features that
+     * depend on neighbours — contour lines, hillshading — cannot be expressed per-pixel.
+     * {@code raw} holds the pre-normalize samples in the same row-major order as
+     * {@code pixels}, so an implementation can compare a sample against the one to its left
+     * or above and overwrite pixels accordingly.
+     *
+     * @param blocksPerSample world blocks covered by one sample cell; lets an implementation
+     *                        drop detail that would be unreadable at the current zoom.
+     */
+    default void postProcess(float[] raw, int[] pixels, int width, int height, float blocksPerSample) {
+        // no-op
     }
 }

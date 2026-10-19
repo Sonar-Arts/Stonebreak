@@ -21,6 +21,7 @@ import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.multiplayerMenu.HostWorldScreen;
 import com.stonebreak.ui.multiplayerMenu.JoinWorldScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.settingsMenu.SettingsMenu;
 import com.stonebreak.ui.startupIntro.SonarArtsIntroScreen;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
@@ -45,6 +46,7 @@ public final class GameScreens {
     private DeathMenu deathMenu;
     private StatisticsScreen statisticsScreen;
     private GlossaryScreen glossaryScreen;
+    private SaveChangesDialog saveChangesDialog;
     private MainMenu mainMenu;
     private SettingsMenu settingsMenu;
     private HostWorldScreen hostWorldScreen;
@@ -54,6 +56,7 @@ public final class GameScreens {
     private CharacterCreationScreen characterCreationScreen;
     private TerrainMapperScreen terrainMapperScreen;
     private SonarArtsIntroScreen startupIntroScreen;
+    private com.stonebreak.ui.modelSetup.ModelSetupScreen modelSetupScreen;
     private com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattleScreen;
 
     // In-world screens — rebuilt per world, so they stay null outside one.
@@ -85,6 +88,10 @@ public final class GameScreens {
         glossaryScreen.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
                 GlossaryScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
                 com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
+        saveChangesDialog = new SaveChangesDialog();
+        saveChangesDialog.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(
+                SaveChangesDialog.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
+                com.stonebreak.ui.runtime.screens.DocumentScreen.Options.screen()));
         deathMenu = new DeathMenu();
         // The shipped OMUI/SBUI death screen (#299).
         deathMenu.setPresentation(new com.stonebreak.ui.runtime.screens.PresentedDocument(DeathMenu.DOCUMENT_ID,
@@ -110,6 +117,9 @@ public final class GameScreens {
         stateDocument(com.stonebreak.core.GameState.WORLD_SELECT, "world_select");
         characterCreationScreen = new CharacterCreationScreen(skija);
         stateDocument(com.stonebreak.core.GameState.CHARACTER_CREATION, CharacterCreationScreen.DOCUMENT_ID); // #301
+        modelSetupScreen = new com.stonebreak.ui.modelSetup.ModelSetupScreen();
+        // The terrain model's launch setup (Daedalus): its shipped document follows MODEL_SETUP.
+        stateDocument(com.stonebreak.core.GameState.MODEL_SETUP, com.stonebreak.ui.modelSetup.ModelSetupScreen.DOCUMENT_ID);
         terrainMapperScreen = new TerrainMapperScreen();
         // The shipped terrain mapper (#301): the screen keeps the keyboard (MenuInputRouter routes it).
         stateDocument(com.stonebreak.core.GameState.TERRAIN_MAPPER, TerrainMapperScreen.DOCUMENT_ID);
@@ -184,6 +194,10 @@ public final class GameScreens {
         return pauseMenu;
     }
 
+    public SaveChangesDialog saveChangesDialog() {
+        return saveChangesDialog;
+    }
+
     public DeathMenu deathMenu() {
         return deathMenu;
     }
@@ -230,6 +244,10 @@ public final class GameScreens {
 
     public SonarArtsIntroScreen startupIntroScreen() {
         return startupIntroScreen;
+    }
+
+    public com.stonebreak.ui.modelSetup.ModelSetupScreen modelSetupScreen() {
+        return modelSetupScreen;
     }
 
     public com.stonebreak.ui.focusBattle.FocusBattleScreen focusBattleScreen() {

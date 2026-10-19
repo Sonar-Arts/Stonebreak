@@ -7,7 +7,7 @@ import org.joml.Vector3f;
 
 import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.fastlod.FastLodStore;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -18,12 +18,12 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 final class FastLodLifecycle {
     private final WorldConfiguration config;
-    private final TerrainGenerationSystem terrainSystem;
+    private final TerrainGenerator terrainSystem;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
     private volatile FastLodManager fastLodManager;
 
-    FastLodLifecycle(WorldConfiguration config, TerrainGenerationSystem terrainSystem) {
+    FastLodLifecycle(WorldConfiguration config, TerrainGenerator terrainSystem) {
         this.config = config;
         this.terrainSystem = terrainSystem;
     }
@@ -42,12 +42,12 @@ final class FastLodLifecycle {
         if (fastLodManager != null || textureArray == null || terrainSystem == null) return;
         synchronized (this) {
             if (fastLodManager != null) return;
-            FastLodStore store = openStoreIfPossible();
+            FastLodStore store = openStoreIfPossible(terrainSystem.lodCacheTag());
             fastLodManager = new FastLodManager(config, terrainSystem, textureArray, store);
         }
     }
 
-    private static FastLodStore openStoreIfPossible() {
+    private static FastLodStore openStoreIfPossible(String terrainTag) {
         // Resolves the save directory without coupling World to how save state
         // is plumbed. Any failure (no save path, SQLite driver missing) falls
         // through to pure in-memory LOD.
@@ -76,7 +76,7 @@ final class FastLodLifecycle {
             }
             if (worldPath == null || worldPath.isEmpty()) return null;
             Path dbPath = Paths.get(worldPath, "fastlod", "cache.sqlite");
-            return FastLodStore.open(dbPath);
+            return FastLodStore.open(dbPath, terrainTag);
         } catch (Exception e) {
             System.err.println("[World] FastLod store setup failed: " + e.getMessage());
             return null;
@@ -88,7 +88,7 @@ final class FastLodLifecycle {
      * this, but render-only worlds skip the chunk manager entirely (chunks stream from the
      * server), so without this call the LOD manager is created by the render pass yet never
      * schedules a single node — distant terrain simply never appears. The sampler reads the
-     * local deterministic TerrainGenerationSystem (seeded from the server's WelcomeS2C world
+     * local deterministic TerrainGenerator (seeded from the server's WelcomeS2C world
      * seed), so client-side LOD matches server terrain without any chunk streaming. Runs on
      * the same logic-thread executor that ticks full-world updateRing — threading contract
      * unchanged.

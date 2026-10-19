@@ -8,7 +8,6 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
 import com.openmason.engine.voxel.sbo.SBORenderData;
-import com.stonebreak.core.Game;
 import com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
@@ -78,12 +77,6 @@ final class ChunkMeshLifecycle {
      */
     void buildAndPrepareMeshData(Chunk chunk, World world) {
         try {
-            // Update loading progress
-            Game game = Game.getInstance();
-            if (game != null && game.getLoadingScreen() != null && game.getLoadingScreen().isVisible()) {
-                game.getLoadingScreen().updateProgress("Meshing Chunk");
-            }
-
             // Generate mesh data using MMS API
             if (!MmsAPI.isInitialized()) {
                 logger.log(Level.SEVERE, "MMS API not initialized for chunk (" + x + ", " + z + ")");

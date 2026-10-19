@@ -2,6 +2,7 @@ package com.stonebreak.world.save.serialization;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.model.WorldData;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -228,5 +229,46 @@ class JsonWorldSerializerTest {
         assertThrows(IllegalStateException.class, () -> WorldData.builder()
             .seed(1L)
             .build());
+    }
+
+    /* ---------- generatorType ---------- */
+
+    @Test
+    void generatorTypeRoundTrips() {
+        for (TerrainGeneratorType type : TerrainGeneratorType.values()) {
+            WorldData data = WorldData.builder().seed(1L).worldName("TestWorld").generatorType(type).build();
+            assertEquals(type, serializer.deserialize(serializer.serialize(data)).getGeneratorType());
+        }
+    }
+
+    @Test
+    void newWorldsDefaultToStandard() {
+        assertEquals(TerrainGeneratorType.STANDARD,
+            WorldData.builder().seed(1L).worldName("TestWorld").build().getGeneratorType());
+    }
+
+    @Test
+    void savesWithoutAGeneratorLoadAsDiffusion() {
+        // Every save written before the choice existed was made by the diffusion generator.
+        String legacy = """
+            {
+              "seed": 42,
+              "worldName": "Old",
+              "spawnPosition": { "x": 0.0, "y": 100.0, "z": 0.0 },
+              "creationTime": "2026-09-01T10:00:00",
+              "lastPlayed": "2026-09-01T10:00:00",
+              "totalPlayTimeMillis": 0,
+              "formatVersion": 1
+            }
+            """;
+        WorldData data = serializer.deserialize(legacy.getBytes(StandardCharsets.UTF_8));
+        assertEquals(TerrainGeneratorType.DIFFUSION, data.getGeneratorType());
+    }
+
+    @Test
+    void withersKeepTheGenerator() {
+        WorldData data = WorldData.builder().seed(1L).worldName("TestWorld")
+            .generatorType(TerrainGeneratorType.DIFFUSION).build();
+        assertEquals(TerrainGeneratorType.DIFFUSION, data.withWorldTime(100L).getGeneratorType());
     }
 }

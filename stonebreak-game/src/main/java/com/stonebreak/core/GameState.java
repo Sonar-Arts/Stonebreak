@@ -2,6 +2,7 @@ package com.stonebreak.core;
 
 public enum GameState {
     STARTUP_INTRO,       // Sonar Arts boot animation, runs once before MAIN_MENU
+    MODEL_SETUP,         // Terrain model setup (install + kernel compile), shown after the intro when there is work
     MAIN_MENU,
     WORLD_SELECT,        // State for world selection screen
     CHARACTER_CREATION,  // Character creation screen (shown before terrain mapper for new worlds)

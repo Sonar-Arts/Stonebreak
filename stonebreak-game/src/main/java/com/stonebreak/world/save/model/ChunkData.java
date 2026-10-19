@@ -1,6 +1,7 @@
 package com.stonebreak.world.save.model;
 
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
+import com.stonebreak.world.operations.WorldConfiguration;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.HashMap;
@@ -133,7 +134,7 @@ public final class ChunkData {
         }
 
         public ChunkData build() {
-            if (blocks == null || blocks.getSizeX() != 16 || blocks.getSizeY() != 256 || blocks.getSizeZ() != 16) {
+            if (blocks == null || blocks.getSizeX() != 16 || blocks.getSizeY() != WorldConfiguration.WORLD_HEIGHT || blocks.getSizeZ() != 16) {
                 throw new IllegalStateException("Invalid chunk block storage dimensions");
             }
             return new ChunkData(this);

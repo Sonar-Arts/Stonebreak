@@ -2,6 +2,8 @@ package com.stonebreak.network.server;
 
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntitySpawner;
+import com.stonebreak.ui.LoadProgressTracker;
+import com.stonebreak.ui.LoadingScreen;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -11,7 +13,9 @@ import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.spawn.SpawnLocator;
 import org.joml.Vector3f;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * The authoritative, headless server world — the Minecraft {@code ServerLevel} analog. Owns
@@ -39,6 +43,8 @@ public final class ServerLevel {
 
     /** Spawn-area chunk radius to pre-generate so the server has terrain to stream/collide. */
     private static final int PREGEN_RADIUS = 4;
+    /** How often the pre-gen wait refreshes the loading screen's chunk count. */
+    private static final long PREGEN_PROGRESS_POLL_MILLIS = 100L;
 
     private final long seed;
     private final World world;
@@ -96,7 +102,15 @@ public final class ServerLevel {
             timeTicks = TimeOfDay.NOON;
         }
 
-        World world = World.createHeadless(new WorldConfiguration(), seed);
+        // A first visit (spawn search + pre-gen) loads very differently from a return to saved
+        // player data, so each gets its own timing history for the loading screen's estimate.
+        // Keyed on player data, not on the world existing: the terrain mapper writes world.json
+        // before the first boot, so a brand-new world already "exists" here.
+        boolean returning = existing && lr.getPlayerData() != null;
+        String loadProfile = worldData.getGeneratorType() + "." + (returning ? "returning" : "new");
+        LoadingScreen.report(t -> t.setProfile(loadProfile));
+
+        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
         if (worldData.getSpawnPosition() != null) {
             world.setSpawnPosition(worldData.getSpawnPosition());
         }
@@ -119,9 +133,11 @@ public final class ServerLevel {
         // is never the world spawn, or every death respawned at the last save spot (#302).
         Vector3f spawn;
         if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
-            // Saved / user-chosen spawn: keep the column, but snap it onto the real (carved)
-            // surface so a pre-issue-#250 saved pit doesn't drop the player. A chosen spawn is
-            // deliberately never moved elsewhere.
+            // Saved / user-chosen spawn: keep the column when its real (carved) surface is
+            // usable. A column picked on the map inside a ravine, sinkhole, cave mouth or under
+            // water would snap onto the pit floor / lakebed, so it is redirected to the nearest
+            // usable surface column instead; only if none is in reach does it fall back to the
+            // column's own floor.
             Vector3f saved = worldData.getSpawnPosition();
             // the column that holds the saved point (round would move a block-centred x.5 spawn
             // one block on every load)
@@ -130,7 +146,16 @@ public final class ServerLevel {
             int height = world.terrain().getFinalTerrainHeightAt(x, z);
             Vector3f candidate = new Vector3f(x, height + 1, z);
             pregenSpawnArea(world, candidate);
-            spawn = resolveSurfaceSpawn(world, candidate);
+            Vector3f surface = SpawnLocator.nearestSafeSurface(world, x, z, CHOSEN_SPAWN_SEARCH_RADIUS);
+            if (surface == null) {
+                spawn = resolveSurfaceSpawn(world, candidate);
+            } else {
+                spawn = surface;
+                if ((int) Math.floor(surface.x) != x || (int) Math.floor(surface.z) != z) {
+                    System.out.println("[SERVER-LEVEL] Chosen spawn column (" + x + ", " + z
+                        + ") is a pit or flooded; moved to nearest surface " + surface);
+                }
+            }
         } else {
             // Locate a safe surface spawn, rejecting columns a ravine or sinkhole has carved
             // into a pit well below the pre-carve rim (issue #250).
@@ -165,6 +190,12 @@ public final class ServerLevel {
     private static final int MAX_SPAWN_ATTEMPTS = 256;
 
     /**
+     * How far (blocks) a chosen spawn may be redirected off a pit or flooded column. Stays inside
+     * the {@link #PREGEN_RADIUS} chunk disc, the only terrain resident when the search runs.
+     */
+    private static final int CHOSEN_SPAWN_SEARCH_RADIUS = PREGEN_RADIUS * 16 - 1;
+
+    /**
      * Locates a world spawn that is not a carved pit (issue #250). Draws noise-sampled
      * candidate columns from a single {@link SpawnLocator} (so its internal random advances
      * between draws), loads each candidate's chunk just long enough to validate its real
@@ -177,7 +208,15 @@ public final class ServerLevel {
     private static Vector3f findSafeSurfaceSpawn(World world) {
         SpawnLocator locator = new SpawnLocator(world);
         Vector3f last = null;
+        LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.SPAWN_SEARCH));
         for (int attempt = 0; attempt < MAX_SPAWN_ATTEMPTS; attempt++) {
+            // The attempt count is open-ended, so the fraction halves the remaining gap per
+            // rejected candidate: it keeps moving and never claims the search is finished.
+            int tried = attempt;
+            LoadingScreen.report(t -> {
+                t.setPhaseFraction(1.0 - Math.pow(0.5, tried));
+                t.setPhaseDetail(tried == 0 ? null : "Candidate " + (tried + 1));
+            });
             last = locator.findSafeSurfaceSpawn();
             loadSpawnChunk(world, last);
             Vector3f accepted = SpawnLocator.acceptIfSafeSurface(world, last);
@@ -207,6 +246,7 @@ public final class ServerLevel {
      * resident before anything collides with it.
      */
     private static void pregenSpawnArea(World world, Vector3f spawn) {
+        LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.PREGEN));
         int pcx = (int) Math.floor(spawn.x / 16.0);
         int pcz = (int) Math.floor(spawn.z / 16.0);
         for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
@@ -214,11 +254,42 @@ public final class ServerLevel {
                 world.getChunkAt(pcx + dx, pcz + dz);
             }
         }
+        CompletableFuture<Void> pending = world.awaitPendingChunkLoads();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         try {
-            world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+            while (true) {
+                reportPregenProgress(world, pcx, pcz);
+                try {
+                    pending.get(PREGEN_PROGRESS_POLL_MILLIS, TimeUnit.MILLISECONDS);
+                    break;
+                } catch (TimeoutException stillLoading) {
+                    if (System.nanoTime() >= deadline) {
+                        throw stillLoading;
+                    }
+                }
+            }
+            reportPregenProgress(world, pcx, pcz);
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] Spawn-area pre-gen wait failed: " + e.getMessage());
         }
+    }
+
+    private static void reportPregenProgress(World world, int pcx, int pcz) {
+        int side = 2 * PREGEN_RADIUS + 1;
+        int total = side * side;
+        int loaded = 0;
+        for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
+            for (int dz = -PREGEN_RADIUS; dz <= PREGEN_RADIUS; dz++) {
+                if (world.getChunkIfLoaded(pcx + dx, pcz + dz) != null) {
+                    loaded++;
+                }
+            }
+        }
+        int done = loaded;
+        LoadingScreen.report(t -> {
+            t.setPhaseFraction((double) done / total);
+            t.setPhaseDetail("Chunks " + done + "/" + total);
+        });
     }
 
     /**

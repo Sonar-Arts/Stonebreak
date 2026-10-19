@@ -10,6 +10,7 @@ import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassAbility;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
@@ -32,25 +33,37 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The in-game character sheet ({@code stonebreak:screen.character-sheet} 1, #301). {@link CharacterScreen}'s
+ * The in-game character sheet ({@code stonebreak:screen.character-sheet} 2: #301, v2 the Talents tab). {@link CharacterScreen}'s
  * controller and its tab states are the sheet's state (stats, the class shown, scrolls, feat filters and selection);
- * the document shows them. One root {@code characterSheet}: the active {@code tab}, the {@code panel} and the shared
- * five-tab strip in window pixels, and one record per tab with the sheet's derived values (a scaled column split,
- * wrapped description lines, the dirt pane, scrollbars, labels) — offsets that are plain multiples of the UI scale are
- * the document's own.
+ * the document shows them. One root {@code characterSheet}: the pane shown ({@code tab}: OVERVIEW, or the Talents
+ * tab's CLASSES / SKILLS / FEATS), the {@code panel}, the shared tab strip (Inventory / Character / Talents) in window
+ * pixels, the Talents tab's sub-tab bar ({@code talents}) and one record per pane with the sheet's derived values (a
+ * scaled column split, wrapped description lines, the dirt pane, scrollbars, labels) — offsets that are plain
+ * multiples of the UI scale are the document's own. The Talents panes sit {@link #TALENT_CONTENT_OFFSET} below the
+ * panel top, under the sub-tab bar; their values are relative to that.
  *
- * <p>Actions: {@code .tab {tab}} (inventory, character, classes, skills, feats), {@code .ability {index, delta}},
+ * <p>Actions: {@code .tab {tab}} (inventory, character, talents), {@code .talent {sub}} (class-abilities, skills,
+ * feats), {@code .ability {index, delta}},
  * {@code .class {id}}, {@code .spend {index}}, {@code .skill {index}}, {@code .level-filter {direction}},
  * {@code .general}, {@code .feat {id}}, {@code .acquire}, {@code .wheel {dy, sidebar}}; each refuses unless the sheet
  * is showing and runs that control's rule.
  */
 public final class CharacterSheetContracts {
 
-    public static final HostContract SHEET = HostContract.of("stonebreak:screen.character-sheet", 1);
+    public static final HostContract SHEET = HostContract.of("stonebreak:screen.character-sheet", 2);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
-    private static final String[] TAB_KEYS = {"inventory", "character", "classes", "skills", "feats"};
-    private static final String[] TAB_LABELS = {"Inventory", "Character", "Classes", "Skills", "Feats"};
+    private static final String[] TAB_KEYS = {"inventory", "character", "talents"};
+    private static final String[] TAB_LABELS = {"Inventory", "Character", "Talents"};
+    private static final String[] TALENT_KEYS = {"class-abilities", "skills", "feats"};
+    private static final String[] TALENT_LABELS = {"Class Abilities", "Skills", "Feats"};
+
+    /** The Talents sub-tab bar: its top below the panel top, its height and its side inset (logical px). */
+    static final float TALENT_SUB_BAR_Y = 16f;
+    static final float TALENT_SUB_BAR_H = 28f;
+    static final float TALENT_SUB_BAR_INSET = 10f;
+    /** Where the Talents panes start below the panel top: the sub-tab bar plus its margins. */
+    static final float TALENT_CONTENT_OFFSET = TALENT_SUB_BAR_Y + TALENT_SUB_BAR_H + 6f;
 
     /** The game behind the sheet. */
     public interface Services {
@@ -79,13 +92,19 @@ public final class CharacterSheetContracts {
             switch (str(a, "tab")) {
                 case "inventory" -> c.getController().openInventory();
                 case "character" -> controller.setActiveTab(CharacterPanelTab.OVERVIEW);
-                case "classes" -> controller.setActiveTab(CharacterPanelTab.CLASSES);
-                case "skills" -> controller.setActiveTab(CharacterPanelTab.SKILLS);
-                case "feats" -> controller.setActiveTab(CharacterPanelTab.FEATS);
+                case "talents" -> controller.setActiveTab(CharacterPanelTab.TALENTS);
                 default -> {
                     return "no such tab";
                 }
             }
+            return null;
+        });
+        action(ui, "talent", DataType.object("sub", DataType.string()), (c, a) -> {
+            int i = java.util.Arrays.asList(TALENT_KEYS).indexOf(str(a, "sub"));
+            if (i < 0) {
+                return "no such talent tab";
+            }
+            c.getController().setTalentSubTab(TalentSubTab.values()[i]);
             return null;
         });
         action(ui, "ability", DataType.object("index", DataType.number(), "delta", DataType.number()), (c, a) -> {
@@ -123,10 +142,10 @@ public final class CharacterSheetContracts {
         action(ui, "wheel", DataType.object("dy", DataType.number(), "sidebar", DataType.bool()), (c, a) -> {
             float s = com.stonebreak.config.Settings.getInstance().getUiScale();
             float dy = (float) num(a, "dy");
-            switch (c.getController().getActiveTab()) {
-                case CLASSES -> c.getController().classes().scroll(dy, a.get("sidebar") instanceof UiValue.Bool b
+            switch (pane(c.getController())) {
+                case "CLASSES" -> c.getController().classes().scroll(dy, a.get("sidebar") instanceof UiValue.Bool b
                     && b.value(), s);
-                case FEATS -> c.getController().feats().handleScroll(dy, s);
+                case "FEATS" -> c.getController().feats().handleScroll(dy, s);
                 default -> {
                 }
             }
@@ -158,7 +177,8 @@ public final class CharacterSheetContracts {
         float[] p = CharacterController.panel(w, h, s);
         Map<String, UiValue> m = new LinkedHashMap<>();
         CharacterPanelTab tab = screen.getController().getActiveTab();
-        m.put("tab", UiValue.of(tab.name()));
+        String pane = pane(rc);
+        m.put("tab", UiValue.of(pane));
         m.put("open", UiValue.of(true));
         m.put("panel", rect(p[0], p[1], p[2], p[3]));
 
@@ -169,12 +189,10 @@ public final class CharacterSheetContracts {
         int stride = TabStripLayout.stride();
         int activeIndex = switch (tab) {
             case OVERVIEW -> 1;
-            case CLASSES -> 2;
-            case SKILLS -> 3;
-            case FEATS -> 4;
+            case TALENTS -> 2;
         };
         List<UiValue> tabs = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < TAB_KEYS.length; i++) {
             Map<String, UiValue> t = new LinkedHashMap<>();
             t.put("tab", UiValue.of(TAB_KEYS[i]));
             t.put("label", UiValue.of(TAB_LABELS[i]));
@@ -185,14 +203,48 @@ public final class CharacterSheetContracts {
         m.put("tabs", new UiValue.Arr(tabs));
         m.put("tabBaseline", UiValue.of(tabH * 0.5f + MStyle.FONT_META * 0.38f * s));
 
+        m.put("talents", talentBar(rc.getTalentSubTab(), s));
+
         Font meta = rc.fonts().getScaled(MStyle.FONT_META);
-        switch (tab) {
-            case OVERVIEW -> m.put("overview", overview(stats, p, s, meta));
-            case CLASSES -> m.put("classes", classes(rc.classes(), stats, p, s, meta));
-            case SKILLS -> m.put("skills", skills(stats, s));
-            case FEATS -> m.put("feats", feats(rc.feats(), stats, p, s));
+        switch (pane) {
+            case "OVERVIEW" -> m.put("overview", overview(stats, p, s, meta));
+            case "CLASSES" -> m.put("classes", classes(rc.classes(), stats, p, s, meta));
+            case "SKILLS" -> m.put("skills", skills(stats, s));
+            case "FEATS" -> m.put("feats", feats(rc.feats(), stats, p, s));
+            default -> {
+            }
         }
         return new UiValue.Obj(m);
+    }
+
+    /** The pane shown: OVERVIEW, or the Talents tab's sub-tab (CLASSES, SKILLS, FEATS). */
+    public static String pane(CharacterController controller) {
+        if (controller.getActiveTab() == CharacterPanelTab.OVERVIEW) {
+            return "OVERVIEW";
+        }
+        return switch (controller.getTalentSubTab()) {
+            case CLASS_ABILITIES -> "CLASSES";
+            case SKILLS -> "SKILLS";
+            case FEATS -> "FEATS";
+        };
+    }
+
+    /**
+     * The Talents sub-tab bar (MTabBar): its slots split the bar's width evenly, 2 px apart (the last takes no gap);
+     * x and width relative to the panel, plus the selected tab and the label baseline below the bar's top.
+     */
+    private static UiValue talentBar(TalentSubTab selected, float s) {
+        float barW = (CharacterController.PANEL_WIDTH - 2f * TALENT_SUB_BAR_INSET) * s;
+        float slotW = barW / TALENT_KEYS.length;
+        List<UiValue> slots = new ArrayList<>();
+        for (int i = 0; i < TALENT_KEYS.length; i++) {
+            float w = slotW - (i < TALENT_KEYS.length - 1 ? 2f : 0f);
+            slots.add(obj("sub", TALENT_KEYS[i], "label", TALENT_LABELS[i], "x", TALENT_SUB_BAR_INSET * s + i * slotW,
+                "w", w, "selected", i == selected.ordinal()));
+        }
+        float h = TALENT_SUB_BAR_H * s;
+        // MTabBar draws its labels unscaled (scaleText off): FONT_META device px, baseline 0.35 of it below the middle
+        return obj("slots", new UiValue.Arr(slots), "baseline", h / 2f + MStyle.FONT_META * 0.35f);
     }
 
     private static UiValue overview(CharacterStats stats, float[] p, float s, Font meta) {
@@ -268,7 +320,7 @@ public final class CharacterSheetContracts {
         String shown = r.displayedClassId();
         float btnH = 22f * s;
         float btnG = 2f * s;
-        float clipH = 420f * s;
+        float clipH = ClassesTab.SIDEBAR_CLIP_H * s;
         List<UiValue> rows = new ArrayList<>();
         for (PlayerClassDefinition cls : ClassRegistry.ALL) {
             int cp = cls.id() == null ? 0 : stats.getTotalCpSpentForClass(cls.id());
@@ -295,7 +347,7 @@ public final class CharacterSheetContracts {
         float lastBaseline = descY + Math.max(0, desc.size() - 1) * 16f * s;
         float ruleY = lastBaseline + 10f * s;
         float dirtY = ruleY + 6f * s;
-        float dirtH = Math.max(150f * s, cy + 452f * s - dirtY);
+        float dirtH = Math.max(150f * s, cy + 420f * s - dirtY);
         o.put("ruleY", UiValue.of(ruleY));
         o.put("dirtY", UiValue.of(dirtY));
         o.put("dirtH", UiValue.of(dirtH));
@@ -329,10 +381,10 @@ public final class CharacterSheetContracts {
         List<SkillDefinition> all = SkillRegistry.ALL;
         for (int i = 0; i < all.size(); i++) {
             SkillDefinition sk = all.get(i);
-            // the hint strip sits at the panel's foot (480 s - 34 s), drawn from this row (48 s + 24 s i)
+            // the hint strip sits at the pane's foot (450 s - 34 s), drawn from this row (48 s + 24 s i)
             rows.add(obj("skill", "s" + i, "name", sk.name(), "level", "Lvl: " + stats.getSkillLevel(sk.id()),
                 "description", sk.description(), "canInvest", stats.getRemainingSkillPoints() > 0,
-                "tipTop", (480f * s - 34f * s) - (48f * s + i * (24f * s))));
+                "tipTop", (450f * s - 34f * s) - (48f * s + i * (24f * s))));
         }
         o.put("rows", new UiValue.Arr(rows));
         return new UiValue.Obj(o);
@@ -350,7 +402,7 @@ public final class CharacterSheetContracts {
         }
         o.put("rows", new UiValue.Arr(rows));
         o.put("scroll", UiValue.of(r.scrollOffset()));
-        o.put("bar", scrollbar(58f * s, 414f * s, r.scrollOffset(), list.size() * 24f * s));
+        o.put("bar", scrollbar(58f * s, FeatsTab.LIST_H * s, r.scrollOffset(), list.size() * 24f * s));
         FeatDefinition sel = r.selectedFeatId() == null ? null
             : FeatRegistry.ALL.stream().filter(f -> f.id().equals(r.selectedFeatId())).findFirst().orElse(null);
         o.put("hasSelection", UiValue.of(sel != null));

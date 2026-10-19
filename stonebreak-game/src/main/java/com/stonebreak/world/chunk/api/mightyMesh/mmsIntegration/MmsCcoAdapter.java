@@ -23,6 +23,7 @@ import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
 import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.slf4j.Logger;
@@ -527,7 +528,7 @@ public class MmsCcoAdapter {
             int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
             int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
             if (orient >= 0 && layer >= 0 && layer <= 65535
-                    && qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && ly >= 0 && ly <= 511
+                    && qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && ly >= 0 && ly <= 1023
                     && w >= 1 && w <= 16 && h >= 1 && h <= 16
                     && quads.addQuad(qx, ly, qz, face, w, h, orient, alphaFlags[0] != 0f, false, layer,
                         l0, l1, l2, l3)) {
@@ -701,22 +702,23 @@ public class MmsCcoAdapter {
      * faces share the (v0,v1,v2,v3) = (·,·,top,top) order below; the bottom
      * face winds the other way.
      */
-    private static final float[] WATER_UVS_TOP_AND_SIDES = {0, 1, 1, 1, 1, 0, 0, 0};
-    private static final float[] WATER_UVS_BOTTOM = {0, 0, 1, 0, 1, 1, 0, 1};
-
     /**
      * How far down {@link #waterColumnDepth} counts. The water shader treats
      * everything past 12 blocks as equally deep.
      */
     private static final int MAX_WATER_DEPTH = 16;
 
+    private static final float[] WATER_UVS_TOP_AND_SIDES = {0, 1, 1, 1, 1, 0, 0, 0};
+    private static final float[] WATER_UVS_BOTTOM = {0, 0, 1, 0, 1, 1, 0, 1};
+
     /**
      * Adds a water block to the WATER mesh builder with face culling and
      * variable height geometry. Water-mesh vertex semantics (consumed by the
      * dedicated water shader, not the world shader): tex = face-local UV,
      * flags.x = surface-height fraction, flags.y = falling flag,
-     * flags.z = source flag, flags.w = light, layer = water-column depth in
-     * blocks (water is untextured, so the texture-layer slot carries it).
+     * flags.z = source flag, flags.w = the river flow code in eighths
+     * (0 = still water, k/8 = octant k-1), layer = the water-column depth in
+     * whole blocks (water carries no texture layer).
      */
     private void addWaterBlockWithCulling(MmsMeshBuilder builder,
                                          int lx, int ly, int lz, int chunkX, int chunkZ,
@@ -735,10 +737,20 @@ public class MmsCcoAdapter {
         int blockZ = (int) Math.floor(worldZ);
 
         // Per-cell flow state from the chunk-owned water layer (the sim SOT).
-        int flowValue = world != null ? world.getWaterLevelAt(blockX, blockY, blockZ)
-                                      : com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+        // ONE raw read answers both questions about the cell — how much water it
+        // holds, and which way that water runs — because they are two halves of
+        // the same stored value. Asking World for each separately walked the
+        // chunk map twice for every water block in the chunk.
+        int waterValue = world != null ? world.getWaterValueAt(blockX, blockY, blockZ)
+                                       : com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+        int flowValue = waterValue < 0
+                ? -1
+                : com.stonebreak.world.chunk.ChunkWaterLayer.level(waterValue);
         float fallingFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING ? 1.0f : 0.0f;
         float sourceFlag = flowValue == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE ? 1.0f : 0.0f;
+        // Which way a worldgen river runs over this cell, -1 for still water.
+        // Purely a look: the cell is a source and renders at source height.
+        int riverFlow = World.riverFlowOf(waterValue);
 
         // How deep the water stands here — the shader hides the seabed with it.
         // Scanned at most once per cell, and only once a face of it actually
@@ -770,12 +782,12 @@ public class MmsCcoAdapter {
                 // order is the cuboid corner order, so corner i = vertex i.
                 int qx = blockX - (int) waterQuads.originX();
                 int qz = blockZ - (int) waterQuads.originZ();
-                if (qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && blockY >= 0 && blockY <= 511
+                if (qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && blockY >= 0 && blockY <= 1023
                         && waterQuads.addWords(
                             MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
                             MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
                             MmsWaterQuadCodec.word2(waterFlags[0], waterFlags[1], waterFlags[2], waterFlags[3]),
-                            MmsWaterQuadCodec.word3(1, 1, MmsWaterQuadCodec.NO_FLOW, columnDepth))) {
+                            MmsWaterQuadCodec.word3(1, 1, riverFlow, columnDepth))) {
                     continue;
                 }
                 // Out of range / full: fall back to the per-vertex water mesh below.
@@ -791,9 +803,12 @@ public class MmsCcoAdapter {
                     vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
+                    // The per-vertex flags are packed as [0,1] bytes, so the
+                    // flow code (0 = still, 1..8 = octant + 1) rides as eighths
+                    // and the shader multiplies it back out.
                     // Water is untextured, so the layer slot carries the
                     // column depth (see water.vert's location 4).
-                    waterFlags[i], fallingFlag, sourceFlag, 1.0f, columnDepth
+                    waterFlags[i], fallingFlag, sourceFlag, (riverFlow + 1) / 8.0f, columnDepth
                 );
             }
             builder.endFace();
@@ -866,6 +881,10 @@ public class MmsCcoAdapter {
     }
 
     /**
+     * Determines if a water face should be rendered based on adjacent blocks.
+     * Water has special culling rules to prevent water-to-water culling.
+     */
+    /**
      * Depth of the water column at a cell, in whole blocks: the cell itself
      * plus every water cell straight below it, stopping at the first block
      * that isn't water. Capped at {@link #MAX_WATER_DEPTH} — the shader
@@ -883,10 +902,6 @@ public class MmsCcoAdapter {
         return depth;
     }
 
-    /**
-     * Determines if a water face should be rendered based on adjacent blocks.
-     * Water has special culling rules to prevent water-to-water culling.
-     */
     private boolean shouldRenderWaterFace(int lx, int ly, int lz, int face, CcoChunkData chunkData) {
         // Get adjacent block coordinates
         int adjX = lx + getFaceOffsetX(face);
@@ -956,6 +971,16 @@ public class MmsCcoAdapter {
 
         // Get adjacent block (handles chunk boundaries via world)
         BlockType adjacentBlock = getAdjacentBlock(adjX, adjY, adjZ, chunkData);
+
+        // A shaped neighbour (stair, stalagmite) that doesn't fill the shared
+        // plane can't hide this face — culling it opens a see-through hole
+        // around the shape. Only a full-plane neighbour culls. Mirrors
+        // MmsFaceCullingService's one-way occlusion rule and the Cenda class
+        // table's shaped-is-transparent flag — keep in lockstep.
+        if (sboStampEmitter != null
+                && !sboStampEmitter.getCache().occludesFace(adjacentBlock, SBOFaceConventions.opposite(face))) {
+            return true;
+        }
 
         // Face culling logic
         return shouldRenderAgainst(blockType, adjacentBlock);
@@ -1069,7 +1094,7 @@ public class MmsCcoAdapter {
         }
         int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
         int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
-        if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || ly < 0 || ly > 511) {
+        if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || ly < 0 || ly > 1023) {
             return false;
         }
         boolean translucent = emitter.isTranslucent(blockType);

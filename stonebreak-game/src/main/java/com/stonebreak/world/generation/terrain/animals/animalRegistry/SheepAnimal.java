@@ -63,8 +63,9 @@ public class SheepAnimal implements Animal {
                     worldZ + 0.5f
                 );
 
-                // Defense-in-depth: reuse the modern spawner's anti-cave/overhang
-                // (sky-exposure) guard so the legacy path can't place sheep underground.
+                // Defense-in-depth: reuse the modern spawner's footing/headroom guard
+                // (solid non-trunk block below, two passable cells above) so the legacy
+                // path can't place sheep inside terrain, in water, or in a tree.
                 com.stonebreak.mobs.entities.EntitySpawner spawner = world.getEntitySpawner();
                 if (spawner != null && !spawner.isValidSpawnLocation(spawnPos, EntityType.SHEEP)) {
                     continue;

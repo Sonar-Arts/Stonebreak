@@ -6,6 +6,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.io.ChunkCodec;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -187,7 +188,7 @@ public final class SaveSystemDiagnostics {
     private static int countNonAirBlocks(Chunk chunk) {
         int count = 0;
         for (int x = 0; x < 16; x++) {
-            for (int y = 0; y < 256; y++) {
+            for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
                 for (int z = 0; z < 16; z++) {
                     if (chunk.getBlock(x, y, z) != BlockType.AIR) {
                         count++;

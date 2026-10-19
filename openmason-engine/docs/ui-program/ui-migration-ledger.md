@@ -152,6 +152,7 @@ These apply to every row unless the row says otherwise.
 | world-select-create-dialog | dialog | `ui.worldSelect.WorldSelectScreen` (deleted) | shell-persistent (unreachable) | retired |
 | character-creation | screen | `ui.characterCreation.CharacterCreationScreen` | shell-persistent | migrated |
 | terrain-mapper | screen | `ui.terrainMapper.TerrainMapperScreen` | shell-persistent | migrated |
+| model-setup | screen | `ui.modelSetup.ModelSetupScreen` (Daedalus) | shell-persistent | migrated |
 | loading-screen | screen | `ui.LoadingScreen` | shell-persistent | migrated |
 | settings | screen | `ui.settingsMenu.SettingsMenu` | shell-persistent | migrated |
 | settings-ui-scale-confirm | dialog | `ui.settingsMenu.SettingsMenu` | shell-persistent | migrated |
@@ -163,6 +164,7 @@ These apply to every row unless the row says otherwise.
 | pause-menu-online | dialog | `ui.PauseMenu` + `ui.pauseMenu.PauseDocument` (Resync variant) | shell-persistent | migrated |
 | pause-menu-over-battle | dialog | `ui.PauseMenu` + `ui.pauseMenu.PauseDocument`, painted by `FR.renderFocusBattle` | shell-persistent | migrated |
 | death-menu | dialog | `ui.DeathMenu` | shell-persistent | migrated |
+| save-changes | dialog | `ui.saveChanges.SaveChangesDialog` (Daedalus) | shell-persistent | migrated |
 | statistics | screen | `ui.statisticsScreen.StatisticsScreen` | shell-persistent | migrated |
 | glossary | screen | `ui.glossaryScreen.GlossaryScreen` | shell-persistent | migrated |
 | inventory | screen | `ui.inventoryScreen.InventoryScreen` | per-world | migrated |
@@ -484,7 +486,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Scrolled-out Skills/Feats/ClassAbilities buttons stay clickable.
   - ClassAbilities hit-tests five spend slots regardless of the class.
   - `handleClick` recomputes the layout from `Game.getWindowWidth/Height` rather than its parameters.
-- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-clothing_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-spend1_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1920x1080_s1`
+- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-clothing_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-spend1_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-talent1_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-hover-undo_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1`
 - **Migration (#301; migrated, legacy removed in #302):** shipped as `ui/documents/character_creation.sbui`
   (`UI/stonebreak/ui/screens/character_creation.omui`); legacy renderer removed in #302. A state
   document (`GameScreens.stateDocument(CHARACTER_CREATION, ...)`); the keyboard stays dead, as before.
@@ -507,6 +509,11 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
     player with hair and hat; GL, replacing the raw-GL pass after the Skija frame). New engine surfaces `tab-dim`,
     `tab-disabled`, `mini-button(-hover/-disabled)` and `slot` (the item-slot frame on any element). Lists scroll by
     moving the list inside a clipping box (`top: -scroll`).
+- **Daedalus:** five tabs (Background / Ability Score / **Talents** / Looks / Clothing); inside Talents an MTabBar
+  (8 px in, 30 high) over the Class Abilities / Skills / Feats panes (6 px under it), and a centred **Undo** in the footer
+  (`CharacterStats.undoLastAllocation`; disabled with nothing to undo). Contract `stonebreak:screen.character-creation` 2
+  (`pane`, `layout.talentBar/talentContent`, `talents`, `undoDisabled`, `.talent {sub}`, `.nav {name: undo}`). Re-frozen
+  from the document with `CharacterCreationFixtures.rects` / `footerButtons` (legacy formulas) as the rect oracle.
 - **Gate:** `ui.characterCreation.fidelity.CharacterCreationDocumentGateTest` (28 cases: Background at every standard
   viewport; Ability Score, Class Abilities with no class / Berserker (icons, multi-line descriptions) / Monk scrolled,
   Skills plain and scrolled, Feats unowned and owned, Looks, Clothing at 1920x1080, Class Abilities also at 1280x720;
@@ -538,7 +545,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Fixtures:** none.
 - **Performance:** the preview rebuild uses a parallel stream but blocks the render thread (`TerrainPreviewCache.java:92-112`) and allocates a new `byte[]` + `Image` per rebuild (≈400k samples at 1080p).
 - **Notes:** a blank seed previews seed 0 but creates a random seed (StateManager :240-241 vs ActionHandler :65-69).
-- **Fidelity:** `terrain-mapper/terrain-mapper-blink-off_1920x1080_s1` `terrain-mapper/terrain-mapper-default_1280x720_s0_75` `terrain-mapper/terrain-mapper-default_1920x1080_s1` `terrain-mapper/terrain-mapper-default_1921x1081_s1_25` `terrain-mapper/terrain-mapper-default_3840x2160_s2` `terrain-mapper/terrain-mapper-error_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-character_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-character_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-create_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-create_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-map_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-map_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-mode3_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-mode3_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-name_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-name_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-spawn_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-spawn_1921x1081_s1_25` `terrain-mapper/terrain-mapper-spawn_1920x1080_s1` `terrain-mapper/terrain-mapper-typed_1920x1080_s1` `terrain-mapper/terrain-mapper-zoomed_1920x1080_s1`
+- **Fidelity:** `terrain-mapper/terrain-mapper-blink-off_1920x1080_s1` `terrain-mapper/terrain-mapper-default_1280x720_s0_75` `terrain-mapper/terrain-mapper-default_1920x1080_s1` `terrain-mapper/terrain-mapper-default_1921x1081_s1_25` `terrain-mapper/terrain-mapper-default_3840x2160_s2` `terrain-mapper/terrain-mapper-error_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-character_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-character_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-create_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-create_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-gen0_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-gen0_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-gen1_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-gen1_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-map_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-map_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-mode3_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-mode3_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-name_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-name_1921x1081_s1_25` `terrain-mapper/terrain-mapper-hover-spawn_1920x1080_s1` `terrain-mapper/terrain-mapper-hover-spawn_1921x1081_s1_25` `terrain-mapper/terrain-mapper-spawn_1920x1080_s1` `terrain-mapper/terrain-mapper-standard_1920x1080_s1` `terrain-mapper/terrain-mapper-typed_1920x1080_s1` `terrain-mapper/terrain-mapper-zoomed_1920x1080_s1`
 - **Migration (#301; migrated, legacy removed in #302):** shipped as `ui/documents/terrain_mapper.sbui` (`UI/stonebreak/ui/screens/terrain_mapper.omui`); legacy renderer removed in #302. A state document (`GameScreens.stateDocument(TERRAIN_MAPPER, ...)`).
   - **Controller unchanged:** `TerrainMapperScreen` keeps the keyboard: the document has no text entry, and
     `MenuInputRouter.keepsKeyboard(TERRAIN_MAPPER)` still routes keys and characters to `TerrainInputHandler`
@@ -555,6 +562,13 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
     spawn waypoint, hover crosshair, frame). Fields: a 3 px rounded fill plus a square 1.5 px stroke centred on the edge;
     the caret after a hidden measuring copy of the typed text. New engine symbols `nav-left`/`nav-right`
     (`MPainter.navArrow`, the `MButton.Arrow` glyph, two-pass with the house shadow) for the Character button.
+- **Daedalus:** the sidebar picks the **terrain generator** (Standard Generation / DaedalusTGM-Exp; hovering the
+  experimental one shows its warning tooltip) before the chosen generator's Map Mode grid (two columns, 16 px labels; none
+  before a pick), and the spawn section follows the mode rows (`TerrainMapperLayout(w, h, modeCount)`). Create waits for
+  a generator; the footer reads "Mode: … · Terrain: …". The map is the branch's preview loader (asynchronous sampling), so
+  captures keep the real map only while no generator is picked (its prompt) and stand in the empty map otherwise.
+  Contract `stonebreak:screen.terrain-mapper` 2. Re-frozen from the document with `TerrainMapperFixtures.rects` as the
+  rect oracle.
 - **Gate:** `ui.terrainMapper.TerrainMapperDocumentGateTest` (21 cases: the default screen at every standard viewport;
   caret off, typed + seed focused + Biome, spawn set + Temperature, zoomed and panned, an error at 1920x1080; hovers over
   the map (crosshair + readout), Create, Character, a view mode, the disabled spawn button and a field at 1920x1080@1 and
@@ -586,7 +600,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Fixtures:** `ui/fidelity/LegacyLoadingBaselineTest` + `LegacyLoadingCapture` (#299): the real renderer on the
   raster stage, which now carries the menu logo (`UiRaster` serves `getStonebreakLogo`); stages `first`,
   `caves`, `meshing`, `density` (an alias); a check that the UI scale moves nothing.
-- **Fidelity:** `loading/loading-caves_1920x1080_s1` `loading/loading-caves_1280x720_s0_75` `loading/loading-caves_3840x2160_s2` `loading/loading-caves_1921x1081_s1_25` `loading/loading-caves_800x600_s1` `loading/loading-first_1920x1080_s1` `loading/loading-meshing_1920x1080_s1` `loading/loading-density_1920x1080_s1`
+- **Fidelity:** `loading/loading-first_1920x1080_s1` `loading/loading-pregen_1280x720_s0_75` `loading/loading-pregen_1920x1080_s1` `loading/loading-pregen_1921x1081_s1_25` `loading/loading-pregen_3840x2160_s2` `loading/loading-pregen_800x600_s1` `loading/loading-services_1920x1080_s1` `loading/loading-stream_1920x1080_s1`
 - **Migration (#299; migrated, legacy removed in #302):** shipped as `ui/documents/loading.sbui` + the shared image
   `stonebreak:ui/images/stonebreak_logo` (`ui/shared/stonebreak/ui/images/stonebreak_logo.png`), authored in Open Mason
   ("Stonebreak Menus": `UI/stonebreak/ui/screens/loading.omui`). Contract `stonebreak:screen.loading` 1 publishes
@@ -597,6 +611,10 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   in the document (nothing sets them). **Changed:** leaving LOADING by any route other than `hide()` (a failed
   build, a disconnect) now `dismiss()`es the screen (`GameStateController.setState`), so neither presentation lingers.
   Legacy renderer removed in #302.
+- **Daedalus:** the bar follows the branch's `LoadProgressTracker` (phases, a detail line such as "Chunks 37/81",
+  eased fill; no fill under 4 px), the bar 55 px under the middle. Contract `stonebreak:screen.loading` 2 (`detail`).
+  Fixtures drive the tracker on a hand-moved clock (`DocumentLoadingCapture.Timeline`). Re-frozen from the document with
+  `DocumentLoadingCapture.rects` as the rect oracle.
 - **Gate:** `ui.fidelity.LoadingDocumentGateTest` (all 8 cases at `FLOAT_EXACT` + `EXACT`: 0 pixels differ, logo and
   shadow included; the bar follows reports; clicks do nothing).
 
@@ -971,7 +989,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Tab 0 is not hit-tested.
   - `handlers/InventoryMouseHandler.java` is dead.
 
-- **Fidelity:** `inventory/inventory-empty_1920x1080_s1` `inventory/inventory-empty_1280x720_s0_75` `inventory/inventory-empty_3840x2160_s2` `inventory/inventory-empty_1921x1081_s1_25` `inventory/inventory-empty_800x600_s2` `inventory/inventory-stocked_1920x1080_s1` `inventory/inventory-stocked_1280x720_s0_75` `inventory/inventory-stocked_3840x2160_s2` `inventory/inventory-stocked_1921x1081_s1_25` `inventory/inventory-empty-hover-tab1_1920x1080_s1` `inventory/inventory-empty-hover-tab0_1920x1080_s1` `inventory/inventory-empty-hover-equip0_1920x1080_s1` `inventory/inventory-empty-hover-status5_1920x1080_s1` `inventory/inventory-empty-hover-recipes_1920x1080_s1` `inventory/inventory-stocked-hover-craftall_1920x1080_s1` `inventory/inventory-empty-hover-sort_1920x1080_s1`
+- **Fidelity:** `inventory/inventory-empty-hover-equip0_1920x1080_s1` `inventory/inventory-empty-hover-recipes_1920x1080_s1` `inventory/inventory-empty-hover-sort_1920x1080_s1` `inventory/inventory-empty-hover-status5_1920x1080_s1` `inventory/inventory-empty-hover-tab0_1920x1080_s1` `inventory/inventory-empty-hover-tab1_1920x1080_s1` `inventory/inventory-empty_1280x720_s0_75` `inventory/inventory-empty_1920x1080_s1` `inventory/inventory-empty_1921x1081_s1_25` `inventory/inventory-empty_3840x2160_s2` `inventory/inventory-empty_800x600_s2` `inventory/inventory-stocked-hover-craft3_1920x1080_s1` `inventory/inventory-stocked-hover-craftall_1920x1080_s1` `inventory/inventory-stocked-hover-hot2_1920x1080_s1` `inventory/inventory-stocked-hover-main0_1920x1080_s1` `inventory/inventory-stocked-hover-main4_1921x1081_s1_25` `inventory/inventory-stocked-hover-output_1920x1080_s1` `inventory/inventory-stocked_1280x720_s0_75` `inventory/inventory-stocked_1920x1080_s1` `inventory/inventory-stocked_1920x1080_s1_8` `inventory/inventory-stocked_1921x1081_s1_25` `inventory/inventory-stocked_3840x2160_s2`
 - **Fixed before the migration (#300):** a stack released over the side columns or the tab strip went into the
   world (the drop test used the centre column's bounds); it now goes back to its slot, only beyond all three
   columns and the strip is it dropped (`InventoryInputManager.isOutsidePanel`). `update` ran twice per frame in
@@ -990,6 +1008,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   with an empty hand on a tab (not the first) or a button runs it; anything else is a `panel` (on the columns or
   the strip) or `outside` press. Equipment, status and resistances stay placeholders, as in the legacy screen.
   Legacy renderer removed in #302.
+- **Daedalus:** the tab strip is Inventory / Character / Talents (the sheet's Talents tab), centred as four slots.
+  Contract `stonebreak:screen.inventory` 2 (`.tab {tab}`: character, talents). Re-frozen from the document with
+  `InventoryFixtures.rects` as the rect oracle.
 - **Gate:** `ui.fidelity.InventoryDocumentGateTest` (22 cases, `FLOAT_EXACT` + `EXACT`, 0 px) and
   `ui.inventoryScreen.core.InventoryDocumentInteractionTest` (a 25-step script incl. presses on the side columns
   and the tab strip: same inventory, grid, output, cursor stack and world drops after every step as the legacy
@@ -1213,7 +1234,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Stale hitboxes stay live.
   - "Spend N CP" spends 1.
   - `acquireFeat` ignores the level requirement.
-- **Fidelity:** `character-sheet/character-sheet-classes_1920x1080_s1` `character-sheet/character-sheet-classes-scrolled_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1921x1081_s1_25` `character-sheet/character-sheet-feats_1920x1080_s1` `character-sheet/character-sheet-feats-filtered_1920x1080_s1` `character-sheet/character-sheet-feats-selected_1280x720_s0_75` `character-sheet/character-sheet-feats-selected_1920x1080_s1` `character-sheet/character-sheet-hover-acquire_1920x1080_s1` `character-sheet/character-sheet-hover-cls1_1920x1080_s1` `character-sheet/character-sheet-hover-feat0_1920x1080_s1` `character-sheet/character-sheet-hover-general_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1921x1081_s1_25` `character-sheet/character-sheet-hover-level_1920x1080_s1` `character-sheet/character-sheet-hover-plus2_1920x1080_s1` `character-sheet/character-sheet-hover-tab0_1920x1080_s1` `character-sheet/character-sheet-hover-tab3_1920x1080_s1` `character-sheet/character-sheet-hover-tile1_1920x1080_s1` `character-sheet/character-sheet-overview_1280x720_s0_75` `character-sheet/character-sheet-overview_1920x1080_s1` `character-sheet/character-sheet-overview_1921x1081_s1_25` `character-sheet/character-sheet-overview_3840x2160_s2` `character-sheet/character-sheet-overview-busy_1920x1080_s1` `character-sheet/character-sheet-skills_1920x1080_s1`
+- **Fidelity:** `character-sheet/character-sheet-classes-scrolled_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1921x1081_s1_25` `character-sheet/character-sheet-classes_1920x1080_s1` `character-sheet/character-sheet-feats-filtered_1920x1080_s1` `character-sheet/character-sheet-feats-selected_1280x720_s0_75` `character-sheet/character-sheet-feats-selected_1920x1080_s1` `character-sheet/character-sheet-feats_1920x1080_s1` `character-sheet/character-sheet-hover-acquire_1920x1080_s1` `character-sheet/character-sheet-hover-cls1_1920x1080_s1` `character-sheet/character-sheet-hover-feat0_1920x1080_s1` `character-sheet/character-sheet-hover-general_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1921x1081_s1_25` `character-sheet/character-sheet-hover-level_1920x1080_s1` `character-sheet/character-sheet-hover-plus2_1920x1080_s1` `character-sheet/character-sheet-hover-tab0_1920x1080_s1` `character-sheet/character-sheet-hover-tab2_1920x1080_s1` `character-sheet/character-sheet-hover-talent1_1920x1080_s1` `character-sheet/character-sheet-hover-tile1_1920x1080_s1` `character-sheet/character-sheet-overview-busy_1920x1080_s1` `character-sheet/character-sheet-overview_1280x720_s0_75` `character-sheet/character-sheet-overview_1920x1080_s1` `character-sheet/character-sheet-overview_1921x1081_s1_25` `character-sheet/character-sheet-overview_3840x2160_s2` `character-sheet/character-sheet-skills_1920x1080_s1`
 - **Migration (#301; migrated, legacy removed in #302):** shipped as `ui/documents/character_sheet.sbui`
   (`UI/stonebreak/ui/screens/character_sheet.omui`); legacy renderer removed in #302. A presented
   screen shown while the sheet is open in CHARACTER_SHEET_UI (`CharacterScreen.syncPresentation`, from
@@ -1235,11 +1256,52 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
     `stonebreak:pips` (the HP hearts / MP diamonds, `CharacterRenderCoordinator.drawHeart/drawDiamond`),
     `stonebreak:ability-icon`, `stonebreak:entity-preview` (the Overview's orbiting player). New engine surfaces `dirt`,
     `tip-strip`, `filter-bar`.
+- **Daedalus (Project-Daedalus, main #302 merge):** the branch's sheet merges Classes / Skills / Feats into one
+  **Talents** tab (`rpg.TalentSubTab`) with an MTabBar of Class Abilities / Skills / Feats inside it: the strip is
+  Inventory / Character / Talents on `TabStripLayout`'s four slots, the Talents panes sit 50 s lower (bar 16 s down, 28 s
+  high, labels unscaled as MTabBar draws them) and their lists are 32 s shorter (`ClassesTab.SIDEBAR_CLIP_H` 388,
+  `FeatsTab.LIST_H` 382, Acquire at 400, the skills hint at 450). Contract `stonebreak:screen.character-sheet` 2 (`tab`
+  is the pane shown, `talents` bar, `.talent {sub}`). The frozen captures were re-frozen from the document after review,
+  with the rects taken from `CharacterSheetFixtures.rects` (the branch legacy formulas) so `FLOAT_EXACT` still checks the
+  document against an independent oracle.
 - **Gate:** `ui.characterScreen.CharacterSheetDocumentGateTest` (25 cases: Overview at every standard viewport and
   busy (scores, xp, a feat); Classes empty / Berserker shown (also at 1921x1081@1.25) / Monk; Skills; Feats plain,
   selected (also at 1280x720@0.75), filtered; hovers over two tabs, a tile, [+], a class row, +1 SP (also at 1.25), a
   feat row, both filters and Acquire; geometry `FLOAT_EXACT`, pixels `EXACT`; the 3D preview is GL and absent on both
   raster sides), `CharacterSheetDocumentInteractionTest`.
+
+### model-setup
+- **Kind:** screen (Project-Daedalus only).
+- **Owner:** `com.stonebreak.ui.modelSetup.ModelSetupScreen` over `world.generation.diffusion.tgmpipe.ModelSetup`.
+  - The branch drew it with its own Skija renderer (`ModelSetupScreen.render`, deleted in the main #302 merge).
+- **Entry:** after the intro, when `ModelSetup.shouldShowScreen()` (something to install or compile). Never otherwise.
+- **Exits:** setup done (held 1.6 s, then the main menu), Continue / Continue without it, Escape (the menu; setup carries
+  on in the background).
+- **Layout:** a centred column: logo (84 s), title (30 s), subtitle (14 s), a steps panel (680 s wide at most, 54 s per
+  step: status disc, title 17 s, detail 13 s, a bar under a measured running step), footer lines, buttons (280 x 44 s)
+  90 s above the foot. Every length scales with the UI.
+- **Fidelity:** `model-setup/model-setup-failed_1280x800_s1` `model-setup/model-setup-failed_1920x1080_s1` `model-setup/model-setup-hover-0-running_1920x1080_s1` `model-setup/model-setup-hover-1-failed_1920x1080_s1` `model-setup/model-setup-ready_1921x1081_s1_25` `model-setup/model-setup-running_1280x720_s0_75` `model-setup/model-setup-running_1920x1080_s1` `model-setup/model-setup-running_1921x1081_s1_25` `model-setup/model-setup-running_3840x2160_s2` `model-setup/model-setup-unavailable_1280x720_s0_75`
+- **Migration (Daedalus):** `ui/documents/model_setup.sbui` (`UI/stonebreak/ui/screens/model_setup.omui` in the OM
+  project "Stonebreak Menus Daedalus"), state document of MODEL_SETUP. Contract `stonebreak:screen.model-setup` 1
+  (`ui.runtime.contracts.ModelSetupContracts`: the logo rect in the legacy float maths, steps, footer lines, buttons;
+  `.press {id}`), provider `stonebreak:setup-icon` (the status discs; the spinner on the UI wall clock).
+- **Gate:** `ui.modelSetup.ModelSetupDocumentGateTest` (10 cases, the legacy render test's four states, two hovers;
+  `FLOAT_EXACT` + `EXACT`, 0 px, against captures frozen from the branch's legacy renderer before it was deleted),
+  `ModelSetupDocumentTest`.
+
+### save-changes
+- **Kind:** dialog (Project-Daedalus only).
+- **Owner:** `com.stonebreak.ui.saveChanges.SaveChangesDialog`; the session is `GameStateController`'s (snapshot on
+  entering the inventory / character panel, `confirmSaveChanges` / `confirmDiscardChanges` / `cancelSaveChanges`).
+  - The branch drew it with `SkijaSaveChangesDialogRenderer` (deleted in the main #302 merge).
+- **Entry:** leaving the inventory / character sheet with unspent point allocations made since the panel opened.
+- **Exits:** Yes (keep), No (revert), Escape (stay; `UiToggleKeyHandler`).
+- **Layout:** a dim over the window, a 400 x 170 s stone panel centred, "Save changes?" 30 s accent, Yes / No 130 x 42 s.
+- **Fidelity:** `save-changes/save-changes-hover-no_1920x1080_s1` `save-changes/save-changes-hover-no_1921x1081_s1_25` `save-changes/save-changes-hover-yes_1920x1080_s1` `save-changes/save-changes-plain_1280x720_s0_75` `save-changes/save-changes-plain_1920x1080_s1` `save-changes/save-changes-plain_1921x1081_s1_25` `save-changes/save-changes-plain_3840x2160_s2`
+- **Migration (Daedalus):** `ui/documents/save_changes.sbui`, a modal menu painted in `FrameRenderer.renderModalMenus`'s
+  stack order. Contract `stonebreak:screen.save-changes` 1 (`.yes`, `.no`, `.cancel`).
+- **Gate:** `ui.saveChanges.SaveChangesDocumentGateTest` (7 cases, `FLOAT_EXACT` + `EXACT`, 0 px, against captures frozen
+  from the branch's legacy renderer), `SaveChangesDocumentTest`.
 
 ### hotbar
 - **Kind:** hud.

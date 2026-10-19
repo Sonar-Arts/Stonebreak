@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.noise;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -22,7 +23,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 public final class NoiseRouter {
 
-    private static final int SEA_LEVEL = WorldConfiguration.SEA_LEVEL;
+    private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
     /** Blocks above sea level per unit temperature drop. */
     private static final float ALTITUDE_CHILL_FACTOR = 200f;
 

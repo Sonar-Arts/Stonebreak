@@ -41,7 +41,9 @@ public final class ShadowUniforms {
         shader.setVec3("u_cascadeSplits", new Vector3f(
                 cascades[0].splitFar, cascades[1].splitFar, cascades[2].splitFar));
         for (int i = 0; i < cascades.length; i++) {
-            shader.setMat4("u_lightSpaceMatrices[" + i + "]", cascades[i].lightViewProj);
+            // Receivers hand csmShadowFactor a render-space fragment position,
+            // so they need the render-space form of the cascade matrix.
+            shader.setMat4("u_lightSpaceMatrices[" + i + "]", cascades[i].lightViewProjRender);
             shader.setFloat("u_shadowTexelWorld[" + i + "]", cascades[i].texelWorldSize);
         }
     }

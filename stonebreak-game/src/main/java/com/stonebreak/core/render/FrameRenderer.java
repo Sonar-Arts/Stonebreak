@@ -108,7 +108,7 @@ public final class FrameRenderer {
                 if (loading != null) loading.render(width, height);
             }
             // Only their documents (StateScreens, painted above) show these states.
-            case STARTUP_INTRO, MAIN_MENU, WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, SETTINGS,
+            case STARTUP_INTRO, MODEL_SETUP, MAIN_MENU, WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, SETTINGS,
                  MULTIPLAYER_MENU, HOST_WORLD_SELECT, JOIN_WORLD_SCREEN -> { }
             case FOCUS_BATTLE -> renderFocusBattle(game, renderer);
             default -> renderInGame(game, renderer);
@@ -194,9 +194,14 @@ public final class FrameRenderer {
         com.stonebreak.ui.focusBattle.FocusBattleScreen battleScreen = game.getFocusBattleScreen();
         if (battleScreen != null && renderer != null) {
             // Projection x view of the live (cinematic) camera: world-anchored HUD elements follow every cut.
+            // The anchors are BattleStageLayout points in absolute world coordinates, so this is the
+            // absolute view matrix, not the RenderOrigin-rebased one the scene passes use — otherwise
+            // every world-anchored element (target cursor, damage floaters) misses by a 64-block grid
+            // step whenever the shot's eye leaves the origin's cell.
             Player player = game.getPlayer();
             org.joml.Matrix4f viewProjection = player == null ? null
-                    : new org.joml.Matrix4f(renderer.getProjectionMatrix()).mul(player.getViewMatrix());
+                    : new org.joml.Matrix4f(renderer.getProjectionMatrix())
+                            .mul(player.getCamera().getAbsoluteViewMatrix());
             com.stonebreak.battle.stage.FocusBattle.guardHud("hud render",
                     () -> battleScreen.render(width(), height(), viewProjection));
         }
@@ -467,6 +472,11 @@ public final class FrameRenderer {
         DeathMenu deathMenu = game.getDeathMenu();
         if (deathMenu != null && deathMenu.isVisible()) {
             menus.add(new ModalMenu(DeathMenu.DOCUMENT_ID, () -> deathMenu.render(width, height)));
+        }
+        com.stonebreak.ui.saveChanges.SaveChangesDialog saveDialog = game.getSaveChangesDialog();
+        if (saveDialog != null && saveDialog.isVisible()) {
+            menus.add(new ModalMenu(com.stonebreak.ui.saveChanges.SaveChangesDialog.DOCUMENT_ID,
+                    () -> saveDialog.render(width, height)));
         }
 
         com.stonebreak.ui.runtime.screens.DocumentScreenHost host = com.stonebreak.ui.runtime.screens.DocumentScreenHost.get();

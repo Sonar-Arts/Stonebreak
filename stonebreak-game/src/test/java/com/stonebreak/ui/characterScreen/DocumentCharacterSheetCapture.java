@@ -26,13 +26,28 @@ import java.util.Map;
 public final class DocumentCharacterSheetCapture implements MigrationGate.Renderer {
 
     private final SbuiArchive shipped;
+    private final boolean oracleRects;
 
     public DocumentCharacterSheetCapture(SbuiArchive shipped) {
+        this(shipped, false);
+    }
+
+    private DocumentCharacterSheetCapture(SbuiArchive shipped, boolean oracleRects) {
         this.shipped = shipped;
+        this.oracleRects = oracleRects;
     }
 
     public static DocumentCharacterSheetCapture shipped() throws java.io.IOException {
         return new DocumentCharacterSheetCapture(GameUiDocuments.readScreen(CharacterScreen.DOCUMENT_ID));
+    }
+
+    /**
+     * For re-freezing the reference after an intended visual change (the Daedalus Talents tab): the document's
+     * pixels with {@link CharacterSheetFixtures#rects}' legacy-formula geometry, so the frozen rects stay an
+     * independent oracle for {@code FLOAT_EXACT}.
+     */
+    public static DocumentCharacterSheetCapture reference() throws java.io.IOException {
+        return new DocumentCharacterSheetCapture(GameUiDocuments.readScreen(CharacterScreen.DOCUMENT_ID), true);
     }
 
     public static DocumentStage stage(SbuiArchive sbui, CharacterScreen screen, int w, int h, float uiScale)
@@ -75,8 +90,9 @@ public final class DocumentCharacterSheetCapture implements MigrationGate.Render
                     stage.settle();
                 }
                 stage.paint();
+                Map<String, float[]> oracle = CharacterSheetFixtures.rects(screen, c.variant(), w, h);
                 return new MigrationGate.Capture(stage.raster.capture(),
-                    rects(stage, CharacterSheetFixtures.rects(screen, c.variant(), w, h).keySet()));
+                    oracleRects ? oracle : rects(stage, oracle.keySet()));
             }
         } catch (Exception e) {
             throw new IllegalStateException("could not capture the character sheet document for " + c.id(), e);
@@ -97,6 +113,7 @@ public final class DocumentCharacterSheetCapture implements MigrationGate.Render
             case "tab" -> doc.qAll(".sheet-tab").get(i);
             case "tile" -> doc.qAll(".tile").get(i);
             case "plus" -> shown(doc.qAll(".mini.plus"), i);
+            case "talent" -> doc.qAll(".talent-slot").get(i);
             case "cls" -> doc.qAll(".cls-face").get(i);
             case "invest" -> shown(doc.qAll(".invest"), i);
             case "feat" -> doc.qAll(".feat-row").get(i);

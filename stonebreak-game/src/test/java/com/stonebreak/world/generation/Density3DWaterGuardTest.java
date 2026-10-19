@@ -117,7 +117,7 @@ public class Density3DWaterGuardTest {
 
         for (int cx = 0; cx < REGION; cx++) {
             for (int cz = 0; cz < REGION; cz++) {
-                ColumnProfile profile = terrain.generateTerrainOnly(cx, cz).profile();
+                ColumnProfile profile = StandardFrame.lower(terrain.generateTerrainOnly(cx, cz).profile());
                 int[] heights = profile.heights();
                 int[] waterLevels = profile.waterLevels();
                 BiomeType[] biomes = profile.biomes();
@@ -187,8 +187,8 @@ public class Density3DWaterGuardTest {
      */
     private static final class CoastHeightMap extends HeightMapGenerator {
 
-        private static final int OCEAN_BASE = WorldConfiguration.SEA_LEVEL - 10;
-        private static final int BANK_BASE = WorldConfiguration.SEA_LEVEL + 40;
+        private static final int OCEAN_BASE = StandardTerrain.SEA_LEVEL - 10;
+        private static final int BANK_BASE = StandardTerrain.SEA_LEVEL + 40;
         private static final int STRIP = 16;
         private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 

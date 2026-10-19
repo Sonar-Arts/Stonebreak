@@ -11,7 +11,11 @@ import com.stonebreak.ui.terrainMapper.TerrainMapperScreen;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.renderers.TerrainMapRenderer;
 import io.github.humbleui.skija.Canvas;
+import io.github.humbleui.skija.Font;
+import io.github.humbleui.skija.Typeface;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -20,18 +24,24 @@ import java.util.function.Supplier;
  * current pan/zoom/mode/seed, the spawn waypoint, the hover crosshair and the 2 px frame. No params: the map
  * is game state. Pure Skia. Without a game (the editor preview) it shows the empty map: background and frame.
  */
-public final class TerrainMapProvider implements UiPaintHost.UiDrawProvider {
+public final class TerrainMapProvider implements UiPaintHost.UiDrawProvider, AutoCloseable {
 
     public static final String ID = "stonebreak:terrain-map";
     public static final int VERSION = 1;
 
     private final Supplier<TerrainMapperStateManager> state;
+    private final Supplier<Typeface> typeface;
+    private final Map<Float, Font> fonts = new HashMap<>();
     private TerrainMapperStateManager painted;
     private TerrainMapRenderer renderer;
 
-    /** @param state the screen to draw; null from it shows the empty map */
-    public TerrainMapProvider(Supplier<TerrainMapperStateManager> state) {
+    /**
+     * @param state the screen to draw; null from it shows the empty map
+     * @param typeface the face of the map's status line; null from it draws no text
+     */
+    public TerrainMapProvider(Supplier<TerrainMapperStateManager> state, Supplier<Typeface> typeface) {
         this.state = state;
+        this.typeface = typeface;
     }
 
     /** The game's terrain mapper, or null. */
@@ -54,6 +64,27 @@ public final class TerrainMapProvider implements UiPaintHost.UiDrawProvider {
             painted = s;
             renderer = new TerrainMapRenderer(s);
         }
-        renderer.paint(canvas, r);
+        renderer.paint(canvas, r, this::font);
+    }
+
+    /** The status line's font at an unscaled size, as the legacy {@code MFonts.get} gave it. */
+    private Font font(float size) {
+        Font cached = fonts.get(size);
+        if (cached != null) {
+            return cached;
+        }
+        Typeface face = typeface == null ? null : typeface.get();
+        if (face == null) {
+            return null;
+        }
+        Font font = new Font(face, size);
+        fonts.put(size, font);
+        return font;
+    }
+
+    @Override
+    public void close() {
+        fonts.values().forEach(Font::close);
+        fonts.clear();
     }
 }

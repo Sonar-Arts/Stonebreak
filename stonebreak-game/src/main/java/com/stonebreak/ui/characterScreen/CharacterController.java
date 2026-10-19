@@ -4,6 +4,7 @@ import com.openmason.engine.ui.masonry.MFonts;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 
 /**
@@ -14,7 +15,7 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 public class CharacterController {
 
   /** The sheet's own panel width; its top edge and height are the inventory panel's. */
-  private static final int PANEL_WIDTH = 600;
+  public static final int PANEL_WIDTH = 600;
 
   private final CharacterStats stats;
   private final MFonts fonts;
@@ -24,6 +25,7 @@ public class CharacterController {
 
   private boolean visible = false;
   private CharacterPanelTab activeTab = CharacterPanelTab.OVERVIEW;
+  private TalentSubTab talentSubTab = TalentSubTab.CLASS_ABILITIES;
 
   /** @param fonts the UI fonts the sheet's text is measured with */
   public CharacterController(CharacterStats stats, MFonts fonts) {
@@ -51,6 +53,14 @@ public class CharacterController {
     this.activeTab = tab;
   }
 
+  public TalentSubTab getTalentSubTab() {
+    return talentSubTab;
+  }
+
+  public void setTalentSubTab(TalentSubTab subTab) {
+    this.talentSubTab = subTab;
+  }
+
   public CharacterStats stats() { return stats; }
   public MFonts fonts() { return fonts; }
   public ClassesTab classes() { return classes; }
@@ -59,8 +69,7 @@ public class CharacterController {
 
   /** The Inventory tab: closes the sheet and opens the inventory. */
   public void openInventory() {
-    setVisible(false);
-    Game.getInstance().toggleInventoryScreen();
+    Game.getInstance().switchToInventory();
   }
 
   /** An ability tile's [+] ({@code delta > 0}) or [-]. */

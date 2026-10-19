@@ -54,6 +54,10 @@ public class CharacterScreen {
     if (game != null) syncPresentation(game.getState()); // a close that keeps the state still hides it
   }
 
+  public void setVisible(boolean visible) {
+    controller.setVisible(visible);
+  }
+
   public boolean isVisible() {
     return controller.isVisible();
   }

@@ -38,16 +38,20 @@ class FastLodRingTickLabTest {
 
     private static void measure(int inner, int range) {
         TerrainGenerationSystem terrain = mock(TerrainGenerationSystem.class, org.mockito.Mockito.withSettings().stubOnly());
-        org.mockito.Mockito.doAnswer(inv -> {
+        org.mockito.stubbing.Answer<Void> flat = inv -> {
             int count = inv.getArgument(2);
             int[] h = inv.getArgument(4);
-            BlockType[] s = inv.getArgument(5);
+            BlockType[] s = inv.getArgument(6);
             for (int i = 0; i < count * count; i++) {
                 h[i] = 80;
                 if (s != null) s[i] = BlockType.GRASS;
             }
             return null;
-        }).when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
+        };
+        org.mockito.Mockito.doAnswer(flat)
+            .when(terrain).sampleColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any(), any());
+        org.mockito.Mockito.doAnswer(flat)
+            .when(terrain).sampleRawColumns(anyInt(), anyInt(), anyInt(), anyInt(), any(), any(), any());
         BlockTextureArray textures = mock(BlockTextureArray.class, org.mockito.Mockito.withSettings().stubOnly());
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(1);
         MmsRenderableHandle shared = mock(MmsRenderableHandle.class, org.mockito.Mockito.withSettings().stubOnly());

@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.heightmap;
 
+import com.stonebreak.world.generation.StandardTerrain;
 import com.stonebreak.world.generation.NoiseGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -65,15 +66,15 @@ public final class SinkholeCarver {
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     /** @see WorldConfiguration#NO_WATER */
     private static final int NO_WATER = WorldConfiguration.NO_WATER;
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int WATER_CLEARANCE = (int) Math.ceil(MOUTH_RADIUS_MAX) + 2;
 
     private final long seed;
-    private final HeightMapGenerator heightMapGenerator;
+    private final SurfaceHeights heightMapGenerator;
     private final NoiseGenerator rimNoise;
     private PerlinWormCarver wormCarver;
 
-    public SinkholeCarver(long seed, HeightMapGenerator heightMapGenerator) {
+    public SinkholeCarver(long seed, SurfaceHeights heightMapGenerator) {
         this.seed = seed;
         this.heightMapGenerator = heightMapGenerator;
         this.rimNoise = new NoiseGenerator(seed + 911, 1, 0.5, 2.0);

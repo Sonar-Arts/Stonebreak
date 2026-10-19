@@ -7,9 +7,6 @@ import com.stonebreak.blocks.stairs.StairState;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.ChunkGenerationContext;
 import com.stonebreak.world.generation.NoiseGenerator;
-import com.stonebreak.world.generation.heightmap.CavernCarver;
-import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
-import com.stonebreak.world.generation.heightmap.MegaCavernCarver;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.ArrayList;
@@ -108,9 +105,9 @@ public class LimestoneGenerator {
     private static final byte AIR = 2;
 
     private final long seed;
-    private final HeightMapGenerator heightMapGenerator;
-    private final CavernCarver cavernCarver;
-    private final MegaCavernCarver megaCavernCarver;
+    private final ColumnHeights heightMapGenerator;
+    private final CavernOrigins cavernCarver;
+    private final CavernOrigins megaCavernCarver;
     private final NoiseGenerator patchNoise;
     private final NoiseGenerator regionNoise;
     private final NoiseGenerator warpNoise;
@@ -119,8 +116,8 @@ public class LimestoneGenerator {
     private final ThreadLocal<byte[]> cellScratch =
             ThreadLocal.withInitial(() -> new byte[CHUNK * CHUNK * WORLD_HEIGHT]);
 
-    public LimestoneGenerator(long seed, HeightMapGenerator heightMapGenerator,
-                              CavernCarver cavernCarver, MegaCavernCarver megaCavernCarver) {
+    public LimestoneGenerator(long seed, ColumnHeights heightMapGenerator,
+                              CavernOrigins cavernCarver, CavernOrigins megaCavernCarver) {
         this.seed = seed;
         this.heightMapGenerator = heightMapGenerator;
         this.cavernCarver = cavernCarver;
