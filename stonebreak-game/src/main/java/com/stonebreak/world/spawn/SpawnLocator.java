@@ -1,5 +1,8 @@
 package com.stonebreak.world.spawn;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Random;
 
 import org.joml.Vector3f;
@@ -123,5 +126,41 @@ public final class SpawnLocator {
             return null;
         }
         return new Vector3f(x + 0.5f, standY, z + 0.5f);
+    }
+
+    /**
+     * Finds the column nearest to {@code (x,z)} — by Euclidean distance, the column itself
+     * first — that {@link #acceptIfSafeSurface} okays, and returns its snapped spawn. This is
+     * how a user-chosen spawn that lands in a ravine, sinkhole or cave mouth is redirected onto
+     * the surrounding surface instead of the pit floor. Only resident chunks are consulted
+     * (unloaded columns read as AIR and are rejected), so {@code radius} should stay inside the
+     * pre-generated spawn area. Returns {@code null} if nothing within {@code radius} qualifies.
+     */
+    public static Vector3f nearestSafeSurface(World world, int x, int z, int radius) {
+        for (int[] offset : offsetsByDistance(radius)) {
+            int cx = x + offset[0];
+            int cz = z + offset[1];
+            int noiseHeight = world.terrain().getFinalTerrainHeightAt(cx, cz);
+            Vector3f accepted = acceptIfSafeSurface(world, new Vector3f(cx, noiseHeight + 1, cz));
+            if (accepted != null) {
+                return accepted;
+            }
+        }
+        return null;
+    }
+
+    /** Every {@code (dx,dz)} within {@code radius}, nearest first (ties in scan order). */
+    private static List<int[]> offsetsByDistance(int radius) {
+        List<int[]> offsets = new ArrayList<>();
+        int r2 = radius * radius;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (dx * dx + dz * dz <= r2) {
+                    offsets.add(new int[]{dx, dz});
+                }
+            }
+        }
+        offsets.sort(Comparator.comparingInt(o -> o[0] * o[0] + o[1] * o[1]));
+        return offsets;
     }
 }

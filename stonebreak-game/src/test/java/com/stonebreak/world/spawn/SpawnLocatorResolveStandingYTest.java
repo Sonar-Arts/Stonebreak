@@ -115,6 +115,64 @@ public class SpawnLocatorResolveStandingYTest {
             "a column carved into a deep pit must be rejected, not spawned on the floor");
     }
 
+    /**
+     * A spawn chosen on the terrain map inside a ravine / cave mouth must be redirected to the
+     * nearest surface column, not snapped onto the pit floor.
+     */
+    @Test
+    public void redirectsChosenPitSpawnToNearestSurface() throws Exception {
+        World world = new TestWorld(new WorldConfiguration(), SEED, true);
+        for (int cx = -1; cx <= 1; cx++) {
+            for (int cz = -1; cz <= 1; cz++) {
+                world.getChunkAt(cx, cz);
+            }
+        }
+        world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+
+        int[] col = findAcceptableColumn(world);
+        int x = col[0];
+        int z = col[2];
+        Vector3f unchanged = SpawnLocator.nearestSafeSurface(world, x, z, 16);
+        assertNotNull(unchanged, "precondition: an intact column resolves");
+        assertEquals(x, (int) Math.floor(unchanged.x), "an intact chosen column is kept");
+        assertEquals(z, (int) Math.floor(unchanged.z), "an intact chosen column is kept");
+
+        // Carve a 5x5 shaft 40 deep around the chosen column, as a ravine would.
+        int pit = 2;
+        for (int dx = -pit; dx <= pit; dx++) {
+            for (int dz = -pit; dz <= pit; dz++) {
+                int top = topSolidY(world, x + dx, z + dz);
+                for (int i = 0; i < 40; i++) {
+                    world.setBlockAt(x + dx, top - i, z + dz, BlockType.AIR);
+                }
+            }
+        }
+        assertNull(SpawnLocator.acceptIfSafeSurface(world,
+                new Vector3f(x, world.terrain().getFinalTerrainHeightAt(x, z) + 1, z)),
+            "precondition: the chosen column is now a pit");
+
+        Vector3f moved = SpawnLocator.nearestSafeSurface(world, x, z, 16);
+        assertNotNull(moved, "surface around the pit must be found");
+        int mx = (int) Math.floor(moved.x);
+        int mz = (int) Math.floor(moved.z);
+        assertTrue(Math.abs(mx - x) > pit || Math.abs(mz - z) > pit, "the redirect must leave the pit");
+        assertEquals(SpawnLocator.resolveStandingY(world, mx, mz, TOP), (int) Math.floor(moved.y),
+            "the redirect lands on the real surface");
+
+        // Nearest: no closer column would have been accepted.
+        int d2 = (mx - x) * (mx - x) + (mz - z) * (mz - z);
+        for (int dx = -16; dx <= 16; dx++) {
+            for (int dz = -16; dz <= 16; dz++) {
+                if (dx * dx + dz * dz >= d2) continue;
+                int cx = x + dx;
+                int cz = z + dz;
+                assertNull(SpawnLocator.acceptIfSafeSurface(world,
+                        new Vector3f(cx, world.terrain().getFinalTerrainHeightAt(cx, cz) + 1, cz)),
+                    "a closer acceptable column (" + cx + "," + cz + ") was skipped");
+            }
+        }
+    }
+
     @Test
     public void rejectsUnderwaterColumn() throws Exception {
         World world = new TestWorld(new WorldConfiguration(), SEED, true);
