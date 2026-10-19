@@ -259,6 +259,55 @@ class SwampPoolGeneratorTest {
         assertTrue(leaks.isEmpty(), () -> leaks.size() + " leaking cells, e.g. " + leaks.subList(0, Math.min(8, leaks.size())));
     }
 
+    /** FastLOD's probe draws exactly the pools a generated chunk holds, cores included. */
+    @Test
+    void probedPoolsMatchGeneratedPools() {
+        int pools = 0;
+        int cores = 0;
+        for (long n = 0; n < 30; n++) {
+            // World-like seeds: small ones never lift the pool field over the core threshold
+            // across one chunk at the origin.
+            long seed = n * 0x9E3779B97F4A7C15L + 0x5DEECE66DL;
+            Random bumps = new Random(n);
+            int[][] noise = new int[SIZE + 2][SIZE + 2];
+            for (int[] row : noise) for (int i = 0; i < row.length; i++) row[i] = bumps.nextInt(10) == 0 ? 1 : 0;
+            Terrain terrain = (x, z) -> BASE + (x >= 8 ? 1 : 0) + noise[x + 1][z + 1];
+            SwampPoolGenerator.ColumnOracle columns = oracle(terrain, terrain, (x, z) -> -1);
+            Chunk chunk = generate(terrain, BiomeType.SWAMP, seed, columns).chunk();
+            for (int x = 0; x < SIZE; x++) {
+                for (int z = 0; z < SIZE; z++) {
+                    int h = terrain.height(x, z);
+                    int generated = chunk.getBlock(x, h - 1, z) != BlockType.WATER ? 0
+                        : chunk.getBlock(x, h - 2, z) == BlockType.WATER ? 2 : 1;
+                    int probed = SwampPoolGenerator.probePoolDepth(BiomeType.SWAMP, BlockType.SWAMPY_GRASS,
+                        h, h, -1, x, z, columns, new DeterministicRandom(seed));
+                    assertEquals(generated, probed, "seed #" + n + " (" + x + "," + z + ")");
+                    if (probed > 0) pools++;
+                    if (probed == 2) cores++;
+                }
+            }
+        }
+        assertTrue(pools > 500 && cores > 50, "pools " + pools + ", cores " + cores);
+    }
+
+    @Test
+    void probeGrowsNoPoolOffTheSwampsDrySurface() {
+        SwampPoolGenerator.ColumnOracle flat = oracle((x, z) -> BASE, (x, z) -> BASE, (x, z) -> -1);
+        for (int x = 0; x < SIZE; x++) {
+            for (int z = 0; z < SIZE; z++) {
+                DeterministicRandom rng = new DeterministicRandom(5);
+                assertEquals(0, SwampPoolGenerator.probePoolDepth(BiomeType.PLAINS, BlockType.SWAMPY_GRASS,
+                    BASE, BASE, -1, x, z, flat, rng));
+                assertEquals(0, SwampPoolGenerator.probePoolDepth(BiomeType.SWAMP, BlockType.DIRT,
+                    BASE, BASE, -1, x, z, flat, rng));
+                assertEquals(0, SwampPoolGenerator.probePoolDepth(BiomeType.SWAMP, BlockType.SWAMPY_GRASS,
+                    BASE, BASE - 3, -1, x, z, flat, rng), "carved top");
+                assertEquals(0, SwampPoolGenerator.probePoolDepth(BiomeType.SWAMP, BlockType.SWAMPY_GRASS,
+                    BASE, BASE, BASE + 2, x, z, flat, rng), "under a lake");
+            }
+        }
+    }
+
     @Test
     void onlySwampsGetPools() {
         Terrain flat = (x, z) -> BASE;

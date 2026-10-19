@@ -86,16 +86,14 @@ public final class FastLodSerializer {
      * dry column its probe landed on — so its height, water level and surface all
      * moved.
      *
-     * <p>12: appends the coarse-level tree-spot section. It only appends, so v11
-     * blobs (no coarse trees) still read — see {@link #TREELESS_VERSION}.
+     * <p>12: appends the coarse-level tree-spot section.
+     *
+     * <p>13: swamp pools are sampled ({@code SwampPoolGenerator.probePoolDepth}): a pool
+     * cell's height drops to its bed under a water level, and cypress stand in 1-deep pools
+     * and at every coarse level. Same layout as v12, but v11 and v12 nodes show swamps as dry
+     * ground with no cypress past the finest band, so they no longer load.
      */
-    public static final int VERSION = 12;
-    /**
-     * The last version without the spot section; still read for tree-less keys.
-     * Coarse nodes that draw trees live in their own store rows, so a v11 blob is
-     * never asked to stand in for one.
-     */
-    private static final int TREELESS_VERSION = 11;
+    public static final int VERSION = 13;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -200,7 +198,7 @@ public final class FastLodSerializer {
 
         if (buf.getInt() != MAGIC) return null;
         int version = buf.get() & 0xFF;
-        if (version != VERSION && version != TREELESS_VERSION) return null;
+        if (version != VERSION) return null;
         int levelIdx = buf.get() & 0xFF;
         if (levelIdx != expected.level().index()) return null;
 
@@ -267,19 +265,15 @@ public final class FastLodSerializer {
             }
         }
 
-        int[] spots = null;
-        if (version > TREELESS_VERSION) {
-            if (buf.remaining() < 2) return null;
-            int spotCount = buf.getShort() & 0xFFFF;
-            if (buf.remaining() < spotCount * 2) return null;
-            spots = new int[spotCount];
-            for (int i = 0; i < spotCount; i++) {
-                spots[i] = buf.getShort() & 0xFFFF;
-                if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
-            }
+        if (buf.remaining() < 2) return null;
+        int spotCount = buf.getShort() & 0xFFFF;
+        if (buf.remaining() < spotCount * 2) return null;
+        int[] spots = new int[spotCount];
+        for (int i = 0; i < spotCount; i++) {
+            spots[i] = buf.getShort() & 0xFFFF;
+            if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
         }
         if (!expected.coarseTrees()) spots = null;
-        else if (spots == null) return null;
 
         if (level.emitsTrees() && trees == null) return null;
         if (!level.emitsTrees() && trees != null) trees = null;

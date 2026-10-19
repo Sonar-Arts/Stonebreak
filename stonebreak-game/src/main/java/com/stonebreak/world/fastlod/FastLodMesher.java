@@ -245,7 +245,9 @@ public final class FastLodMesher {
                     }
                 }
 
-                if (level.emitsTrees() && !submerged) {
+                // The sampler only gives a submerged cell a tree where one stands in the
+                // water: a cypress rooted on a swamp pool's bed.
+                if (level.emitsTrees()) {
                     TreeSample tree = data.treeAt(ix, iz);
                     if (tree != null) {
                         emitTree(w, wx, wz, terrainH, tree, 1);
@@ -262,8 +264,8 @@ public final class FastLodMesher {
             for (int spot : treeSpots) {
                 int lx = FastLodChunkData.spotX(spot);
                 int lz = FastLodChunkData.spotZ(spot);
+                // Spots are only ever probed on dry cells and 1-deep swamp pools (cypress).
                 int terrainH = data.heightAt(lx / cellSize, lz / cellSize);
-                if (data.waterLevelAt(lx / cellSize, lz / cellSize) > terrainH) continue;
                 emitTree(w, baseX + lx, baseZ + lz, terrainH,
                         new TreeSample(FastLodChunkData.spotKind(spot), FastLodChunkData.spotTrunk(spot)), trunkWidth);
             }

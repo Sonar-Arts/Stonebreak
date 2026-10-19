@@ -70,6 +70,8 @@ public interface TerrainGenerator {
      * Batched column probe for FastLOD over a {@code count x count} grid at
      * {@code (worldX0 + ix*stride, worldZ0 + iz*stride)}, indexed {@code [ix*count + iz]}.
      * Heights are the carved surface. Every output but {@code outHeights} is nullable.
+     * Columns report the swamp pools their chunks will grow
+     * ({@code SwampPoolGenerator.probePoolDepth}) when water levels or surfaces are asked for.
      *
      * <p>With {@code stride > 1} each probe stands for the {@code stride x stride} footprint
      * {@code [p - stride/2, p - stride/2 + stride)} around it on both axes, and an implementation
@@ -94,7 +96,8 @@ public interface TerrainGenerator {
     /**
      * Every tree the real generator plants inside a coarse FastLOD node, for drawing past the
      * finest band: each column of each cell probed against the cell's biome and sampled
-     * surface block. A submerged cell, or one whose surface no tree grows on, plants nothing.
+     * surface block. A submerged cell, or one whose surface no tree grows on, plants nothing —
+     * except a 1-deep swamp pool, which cypress root in as they do in the chunk.
      *
      * @param cellHeights      sampled surface height per cell, {@code [ix*cells+iz]}
      * @param cellWaterLevels  sampled water level per cell, {@code [ix*cells+iz]}

@@ -141,23 +141,23 @@ class FastLodSerializerTest {
      * guard rail before it was cut to a 12-step reach capped at three blocks of lift — so
      * a v8 bank stands where no bank stands now; v9 roofs ground too thin to carry a
      * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
-     * a coarse cell's footprint holds a river. The version bump forces the resample.
-     * (v11 differs from v12 only by the appended tree-spot section and still loads; see
-     * {@link #version11BlobsLoadOnlyForTreelessNodes}.)
+     * a coarse cell's footprint holds a river; v11 has no coarse tree spots; v11 and v12 show
+     * swamps dry, with no pools and no cypress past the finest band. The version bump forces
+     * the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(12, blob[4], "version byte moved; update this test and the note above");
-        for (byte older = 4; older < 11; older++) {
+        assertEquals(13, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 13; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");
         }
     }
 
-    /** v12 appends coarse-level tree spots; they survive the round trip in order. */
+    /** Coarse-level tree spots (since v12) survive the round trip in order. */
     @Test
     void roundTripCarriesCoarseTreeSpots() {
         FastLodLevel level = FastLodLevel.L2;
@@ -177,21 +177,6 @@ class FastLodSerializerTest {
         assertEquals(9, FastLodChunkData.spotZ(restored.treeSpots()[1]));
         assertEquals(TreeKind.PINE, FastLodChunkData.spotKind(restored.treeSpots()[1]));
         assertEquals(31, FastLodChunkData.spotTrunk(restored.treeSpots()[2]));
-    }
-
-    /**
-     * v11 blobs (no spot section) still load for nodes that draw no coarse trees —
-     * a cache written before v12 stays warm — but can never stand in for a node
-     * that should show them.
-     */
-    @Test
-    void version11BlobsLoadOnlyForTreelessNodes() {
-        FastLodChunkData data = makeData(FastLodLevel.L2, false);
-        byte[] v12 = FastLodSerializer.serialize(data);
-        byte[] v11 = Arrays.copyOf(v12, v12.length - 2);   // drop the empty spot count
-        v11[4] = 11;
-        assertNotNull(FastLodSerializer.deserialize(data.key(), v11));
-        assertNull(FastLodSerializer.deserialize(FastLodKey.of(FastLodLevel.L2, 3, -7, true, true), v11));
     }
 
     @Test

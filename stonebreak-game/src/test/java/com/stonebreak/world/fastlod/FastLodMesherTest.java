@@ -322,23 +322,30 @@ class FastLodMesherTest {
         assertEquals(0f, result.minY(), EPS);
     }
 
+    /**
+     * The sampler decides where trees stand (none on the sea or a river; a cypress in a
+     * 1-deep swamp pool), so a tree it gives a submerged cell rises from the cell's bed
+     * through the water, as the cypress does in the chunk.
+     */
     @Test
-    void treeOnSubmergedCellIsSuppressed() {
+    void cypressInASwampPoolRisesFromItsBed() {
         FastLodLevel level = FastLodLevel.L0;
-        int[] heights = filled(level.heightCount(), (SEA_LEVEL - 14));
-        int[] waterLevels = filled(level.cellCount(), SEA_LEVEL);
+        int bed = SEA_LEVEL + 5;
+        int[] heights = filled(level.heightCount(), bed);
+        int[] waterLevels = filled(level.cellCount(), bed + 1);
         BlockType[] surface = new BlockType[level.cellCount()];
-        Arrays.fill(surface, BlockType.SAND);
+        Arrays.fill(surface, BlockType.DIRT);
         TreeSample[] trees = new TreeSample[level.cellCount()];
-        trees[0] = new TreeSample(TreeKind.PINE, 6);
+        trees[0] = new TreeSample(TreeKind.CYPRESS, 16);
         FastLodChunkData data = new FastLodChunkData(
                 FastLodKey.of(level, 0, 0), heights, waterLevels, surface, trees);
 
         FastLodMesher.Result result = mesher.build(data);
-        assertEquals((256 + 64) * 4, result.mesh().getVertexCount(),
-                "seabed tops + border foundations only, no tree");
+        assertEquals((256 + 9 + 64) * 4, result.mesh().getVertexCount(),
+                "pool-bed tops + one tree + border foundations");
         assertEquals(256 * 4, result.waterMesh().getVertexCount(), "full sheet cover");
-        assertEquals(SEA_SURFACE_Y, result.maxY(), EPS, "sheet above the flat seabed");
+        // Canopy top: trunkTop(bed + 16) + 1 + CANOPY_HALF_HEIGHT(1.5).
+        assertEquals(bed + 18.5f, result.maxY(), EPS);
     }
 
     @Test
