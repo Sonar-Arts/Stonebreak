@@ -98,8 +98,14 @@ class Service:
             self.scheduler.submit(req_id, key, priority)
 
     def _status(self, token: int) -> None:
+        from terrain_slm.tgmpipe import gpu_memory
+        device = str(self.info.get("device", "cpu"))
+        try:
+            vram = gpu_memory.snapshot(device)
+        except Exception as e:  # noqa: BLE001 - diagnostics only; the status itself must still answer
+            vram = {"device": device, "error": f"{type(e).__name__}: {e}"}
         self.out.send(W.status_reply(token, {**self.info, "queue": self.scheduler.depth(),
-                                             "cache": self.cache.stats(), **self.stats}))
+                                             "cache": self.cache.stats(), "vram": vram, **self.stats}))
 
     # ------------------------------------------------------------------ GPU
     def _gpu_loop(self) -> None:

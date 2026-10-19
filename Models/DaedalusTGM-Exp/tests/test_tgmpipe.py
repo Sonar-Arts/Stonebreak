@@ -10,6 +10,7 @@ import time
 
 import numpy as np
 import pytest
+import torch
 
 from terrain_slm.tgmpipe import protocol as W
 from terrain_slm.tgmpipe.scheduler import Scheduler, TileKey
@@ -228,3 +229,15 @@ def test_status_reports_queue_and_cache(svc):
     import json
     status = json.loads(body[4:])
     assert status["name"] == "fake" and status["queue"] == 0 and "cache" in status
+    assert status["vram"] == {"device": "cpu"}   # the F3 screen's Daedalus section (no device: CPU, no VRAM)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_gpu_memory_snapshot_reports_this_process():
+    from terrain_slm.tgmpipe import gpu_memory
+    x = torch.zeros(64, 1024, 1024, device="cuda")   # 256 MB
+    snap = gpu_memory.snapshot("cuda")
+    assert snap["allocated_bytes"] >= x.numel() * 4 and snap["peak_bytes"] >= snap["allocated_bytes"]
+    if "process_bytes" in snap:   # NVML present: the whole process, context included, holds at least the tensor
+        assert snap["process_bytes"] >= x.numel() * 4
+        assert 0 < snap["device_used_bytes"] <= snap["device_total_bytes"]
