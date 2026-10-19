@@ -16,6 +16,7 @@ import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.api.commonChunkOperations.CcoFactory;
 import com.stonebreak.world.generation.diffusion.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
+import com.stonebreak.world.generation.biomes.LakeBed;
 import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
@@ -283,7 +284,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * not a separate rule.
      */
     public BlockType getSurfaceBlockAt(int worldX, int worldZ) {
-        return surfaceBlockAt(biomeManager.getBiome(worldX, worldZ), worldX, worldZ, seed);
+        int depth = heightMapGenerator.waterLevel(worldX, worldZ) - heightMapGenerator.generateHeight(worldX, worldZ);
+        return surfaceBlockAt(biomeManager.getBiome(worldX, worldZ), worldX, worldZ, seed, depth);
     }
 
     /** Deterministic RNG for shared probing logic (tree placement, etc.). */
@@ -377,7 +379,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                                   com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees,
                                   boolean carved) {
         boolean needBiomes = outSurface != null || outTrees != null;
-        boolean needWater = outWaterLevels != null || outTrees != null;
+        boolean needWater = outWaterLevels != null || needBiomes; // a submerged surface is its lake bed
         for (int ix = 0; ix < count; ix++) {
             for (int iz = 0; iz < count; iz++) {
                 int idx = ix * count + iz;
@@ -403,7 +405,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
                 // Biome is resolved for submerged columns too — their surface
                 // is the real seabed block (see getSurfaceBlockAt).
                 BiomeType biome = biomeManager.getBiome(wx, wz);
-                BlockType surface = exposedBlock(rawHeight, height, biome, wx, wz, seed);
+                BlockType surface = exposedBlock(rawHeight, height, waterLevel, biome, wx, wz, seed);
                 if (outSurface != null) {
                     outSurface[idx] = surface;
                 }
@@ -806,7 +808,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * {@link #determineBlockType}. Uncarved columns get the biome's surface block as
      * before; a ravine wall gets stone rather than a sheet of grass laid over the cut.
      */
-    private static BlockType exposedBlock(int rawHeight, int carvedHeight, BiomeType biome, int worldX, int worldZ, long seed) {
+    private static BlockType exposedBlock(int rawHeight, int carvedHeight, int waterLevel, BiomeType biome,
+                                          int worldX, int worldZ, long seed) {
         int y = carvedHeight - 1;
         if (y < rawHeight - 4) {
             return BlockType.STONE;
@@ -814,7 +817,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         if (y < rawHeight - 1) {
             return subsurfaceBlock(biome);
         }
-        return surfaceBlockAt(biome, worldX, worldZ, seed);
+        return surfaceBlockAt(biome, worldX, worldZ, seed, waterLevel - rawHeight);
     }
 
     /**
@@ -911,7 +914,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             return subsurfaceBlock(biome);
         }
         if (y < height) {
-            return surfaceBlockAt(biome, worldX, worldZ, seed);
+            return surfaceBlockAt(biome, worldX, worldZ, seed, waterLevel - height);
         }
         // Was `y < SEA_LEVEL`. The ocean is now one case of a per-column water surface
         // rather than a global constant, so a river or a lake several hundred blocks up
@@ -939,9 +942,24 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         };
     }
 
-    /** Per-column surface: the biome's surface block, except the sea floor mixes in dirt and clay ({@link OceanFloor}). */
+    /** Per-column surface of a dry column: the biome's surface block, except the sea floor ({@link OceanFloor}). */
     static BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ, long seed) {
-        return biome == BiomeType.OCEAN ? OceanFloor.block(worldX, worldZ, seed) : surfaceBlock(biome);
+        return surfaceBlockAt(biome, worldX, worldZ, seed, 0);
+    }
+
+    /**
+     * Per-column surface: the sea floor mixes in dirt and clay ({@link OceanFloor}); ground under
+     * inland water — a lake or a river, {@code waterDepth} blocks of it — is a lake bed of sand and
+     * dirt ({@link LakeBed}) instead of grass; dry ground is the biome's surface block.
+     *
+     * @param waterDepth {@code waterLevel - height}; zero or less for a dry column
+     */
+    static BlockType surfaceBlockAt(BiomeType biome, int worldX, int worldZ, long seed, int waterDepth) {
+        if (biome == BiomeType.OCEAN) {
+            return OceanFloor.block(worldX, worldZ, seed);
+        }
+        BlockType surface = surfaceBlock(biome);
+        return waterDepth > 0 ? LakeBed.block(biome, waterDepth, worldX, worldZ, seed, surface) : surface;
     }
 
     private static BlockType surfaceBlock(BiomeType biome) {

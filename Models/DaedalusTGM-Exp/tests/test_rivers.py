@@ -164,7 +164,8 @@ def test_a_lone_river_just_above_the_threshold_runs_unbroken():
 def test_a_sub_sea_level_pit_beside_a_lowland_river_does_not_dry_it():
     """Ground below sea level holds sea water in the game. Treated as dry ground at its own depth,
     one such pit capped the channel beside it, every dried pixel then capped its neighbour at its
-    bed, and the whole river dried. Now the pit caps the water flush with the sea's water block."""
+    bed, and the whole river dried. Now the pit caps the water at the sea's surface, and the river
+    cuts into it rather than drying."""
     heights, logacc = _valley(peak=THR + 2.0, slope=0.3)
     heights = heights - 290.0                                   # a lowland valley ~10 m above the sea
     h, w = heights.shape
@@ -175,13 +176,41 @@ def test_a_sub_sea_level_pit_beside_a_lowland_river_does_not_dry_it():
     (f, _), _ = _run(heights, logacc)
     line, wet = f.line[HP:-HP, HP:-HP], f.wet[HP:-HP, HP:-HP]
     assert wet[line].float().mean() > 0.95, "the pit dried the river"
-    sea_top = float(SCALE.to_metres(torch.tensor([SCALE.sea_level + 1.0], device=DEV)))
+    sea_top = float(SCALE.to_metres(torch.tensor([float(SCALE.sea_level)], device=DEV)))   # 0 m
     for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         nb_wet = torch.roll(f.wet, (di, dj), (0, 1))
         nb_ground = torch.roll(f.carved, (di, dj), (0, 1))
         sea = nb_ground < 0.0
         bad = f.wet & ~nb_wet & torch.where(sea, f.top >= sea_top, nb_ground < f.top - 1e-3)
         assert int(bad[HP:-HP, HP:-HP].sum()) == 0, "water stands above its dry (or sea) neighbour"
+
+
+def test_a_river_meeting_standing_water_joins_it_water_to_water():
+    """The real junction: a shallow lowland channel whose bed sits in block sea_level (0-25 m) runs
+    into ground below sea level (the sea, or a lake the game fills to sea level). The touching
+    pixels must end level with the sea's surface, bed cut into block sea_level - 1: a sea-filled
+    column, water to water. Capping at the top of block sea_level instead left bed 64 / water 65 --
+    a river perched a block above the sea, walled off by BlockContainment."""
+    from terrain_slm.river.blocks import BlockQuantize, pool_to_blocks
+    from terrain_slm.river.contain import NoSpill
+    h, w = 8, 16
+    ground = torch.full((h, w), 40.0, device=DEV)
+    channel = torch.zeros(h, w, dtype=torch.bool, device=DEV)
+    channel[2:6, :12] = True
+    ground[:, 12:] = -15.0                                   # standing water past the channel's end
+    f = RiverField(ground=ground, channel=channel)
+    f.carved = torch.where(channel, torch.full_like(ground, 5.0), ground)   # bed in block 64
+    f.level = torch.full_like(ground, 30.0)                                  # water up in block 65
+    ctx = RiverContext(SCALE, RiverConfig(log_threshold=THR), Drainage(torch.zeros(1, 2, device=DEV), (0, 0)), (0, 0))
+    f = NoSpill()(f, ctx)
+    assert bool(f.wet[2:6, 11].all())
+    assert float(f.top[2:6, 11].max()) <= 0.0, "water beside standing water must stand at the sea's surface"
+    assert float(f.carved[2:6, 11].max()) < 0.0, "its bed is cut below sea level"
+    cols = BlockQuantize()(None, pool_to_blocks(f, 2, (0, 0), None), ctx)
+    sea = SCALE.sea_level
+    # Ground below sea level: the tile builder fills it to the sea's level, like the water beside it.
+    assert int(cols.height[1:3, 5].max()) < sea
+    assert int(cols.water[1:3, :5].min()) > sea, "upstream the river still stands above the sea"
 
 
 def test_prune_spurs_drops_short_dead_ends_but_keeps_real_river_ends():

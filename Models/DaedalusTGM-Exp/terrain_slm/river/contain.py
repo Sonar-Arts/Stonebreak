@@ -1,12 +1,14 @@
 """Containment at model resolution: water never stands above adjacent dry ground.
 
 Every dry pixel caps its 8 neighbours' water top. Ground below sea level is not dry ground at
-its (sea-floor) height: the tile builder fills it with sea water, so it caps the river at the top
-of the sea's water block -- flush with the sea, or with the pond an inland pit becomes. Where the
-cap leaves less than MIN_WATER_M over the bed, the bed is cut instead of the water drying: a
-dried pixel used to cap its neighbours at its own bed, which dried the next one, and so on --
-a single pixel beside a sub-sea-level pit dried up to 512 px of river (rivers that stopped and
-started again). Cutting inside the channel never opens a leak, and lowering water never spills.
+its (sea-floor) height: the tile builder fills it with water up to the sea's surface (0 m, the top
+of block sea_level - 1), so it caps the river AT that surface: a river reaching the sea or a lake
+cuts its last reach below sea level and runs into it water to water. (Capping at the top of block
+sea_level instead perched every river mouth one block above the sea, and BlockContainment then
+walled it off with a dry column.) Where the cap leaves less than MIN_WATER_M over the bed, the
+bed is cut instead of the water drying: a dried pixel used to cap its neighbours at its own bed,
+which dried the next one, and so on -- a single pixel beside a sub-sea-level pit dried up to
+512 px of river (rivers that stopped and started again). Cutting inside the channel never opens a leak, and lowering water never spills.
 The block-level stage (blocks.BlockContainment) re-checks after quantisation.
 """
 from __future__ import annotations
@@ -32,8 +34,7 @@ class NoSpill:
         wet = f.channel & (f.ground > 0.5)
         sc = ctx.scale
         sea_level_m = float(sc.to_metres(torch.tensor([float(sc.sea_level)], device=carved.device)))
-        sea_top_m = float(sc.to_metres(torch.tensor([float(sc.sea_level + 1)], device=carved.device)))
-        wall = torch.where(carved < sea_level_m, torch.full_like(carved, sea_top_m), carved)
+        wall = torch.where(carved < sea_level_m, torch.full_like(carved, sea_level_m), carved)
         wall = torch.where(wet, torch.full_like(carved, float("inf")), wall)
         top = torch.minimum(f.level, -F.max_pool2d(-wall[None, None], 3, 1, 1)[0, 0] - 0.05)
         cut = wet & (top < carved + MIN_WATER_M)

@@ -5,8 +5,9 @@ for chunks, larger for the terrain mapper zoomed out). Each sample averages `dow
 native 30 m pixels per axis. Six int16 planes, row = x, column = z:
 
   0 block height   ground occupies y < height
-  1 biome id       game-compatible ids (terrain_slm.biomes)
-  2 water level    first non-water y, -1 = dry; the sea fills every column below sea level
+  1 biome id       game-compatible ids (terrain_slm.biomes); ocean ids only on TRUE ocean (world/ocean.py)
+  2 water level    first non-water y, -1 = dry; every column below sea level fills to sea level
+                   (the sea, or a lake: the biome plane tells them apart)
   3 tunnel floor   river tunnel floor (stone) under an overhang, -1 = none
   4 tunnel roof    river tunnel roof (stone), -1 = none
   5 flow octant    river flow direction 0..7 (0 = +x, toward +z), -1 = none
@@ -25,6 +26,7 @@ import torch.nn.functional as F
 from terrain_slm import biomes as B
 from terrain_slm.models import biomenet as BN
 from terrain_slm.world import generator as G
+from terrain_slm.world import ocean as O
 
 # Biome climate is lapse-adjusted by the REGIONAL elevation (generator.regional_elevation): with each
 # column's own height, hard classifier thresholds made biome boundaries follow every hill's contours
@@ -93,6 +95,12 @@ class TileBuilder:
         field, ctx = gen.river_field(n1, m1, n2, m2)
         cols = gen.river.columns(field, ctx, d)
         elev = gen.scale.to_metres(cols.height.float() + 0.5)  # biomes read mid-block metres
+        # Sub-sea columns off the true ocean -- lakes, and river reaches whose beds dip under sea level --
+        # are classified as the land around them (no ocean ids, so the game draws no beach and lays a
+        # lake bed), over tile + margin like everything below. The ocean grows through still water only.
+        sub = cols.height < self.world.sea_level
+        sea = O.sea_mask_for_samples(gen, i1 - mb, j1 - mb, sub.shape[0], sub.shape[1], d)
+        elev = O.classify_elev(elev, sub & ~O.ocean_columns(sub & ~cols.wet, sea))
         regional = gen.regional_elevation(n1, m1, n2, m2)
         lapse_elev = regional if REGIONAL_LAPSE else field.carved
         climate = F.avg_pool2d(gen.climate_native(n1, m1, n2, m2, lapse_elev)[None], d)[0]
@@ -169,6 +177,13 @@ class TileBuilder:
             cls = c["d8"].flatten()[idx[0, 0].flatten()].view(elev.shape).clamp(0, 8)
             flow = torch.where(wet, torch.tensor(_D8_OCTANT, device=elev.device)[cls], flow)
         elev_m = sc.to_metres(hb.float() + 0.5)
+        # Lakes as in full tiles, against the cell sea mask alone (a sample is a cell or more). Built from the
+        # cells fetched above rather than a margin-padded second fetch (that doubled the planner windows a far
+        # tile thrashes through), so growth from a seed outside this frame is missed: previews only.
+        ci0, cj0 = (i1 - 1) * k, (j1 - 1) * k
+        sea = O.sea_cells(c["height"], G.continent_land(ci0, cj0, (h + 2) * k, (w + 2) * k, gen.seed, elev.device))
+        sea = F.max_pool2d(sea.float()[None, None], k)[0, 0] > 0.5
+        elev_m = O.classify_elev(elev_m, (hb < self.world.sea_level) & ~sea)
         crop = lambda x: x[..., 1:-1, 1:-1]
         biome = B._classify_biome(crop(elev_m), crop(pool(c["climate"])), i1, j1, elev_padded=elev_m,
                                   pixel_size_m=NATIVE_M * d)

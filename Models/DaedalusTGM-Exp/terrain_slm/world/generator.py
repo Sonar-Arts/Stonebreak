@@ -254,6 +254,23 @@ HILL_HOME_MIN = 0.55          # hilliness floor around spawn (0 disables)
 HILL_ROUGH = 0.55             # extra roughness in hill country: band-3 ~2.7 m -> ~14 m
 
 
+def _continent(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> tuple[torch.Tensor, torch.Tensor]:
+    """(continent field, land weight in [0, 1]) at cell coordinates: the controls' land/sea split."""
+    continent = _fbm(ci, cj, 900.0, seed, 1, octaves=4)
+    # "Home continent": a broad bump around the world origin so spawn is always on land.
+    continent = continent + 0.7 * torch.exp(-(ci**2 + cj**2) / (2 * HOME_RADIUS_CELLS**2))
+    land = _smoothstep((continent + 0.35) / 0.2)  # no cliffs at the coast
+    return continent, land
+
+
+def continent_land(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> torch.Tensor:
+    """(hc, wc) land weight of cells [ci0, ci0+hc) x [cj0, cj0+wc): 0 is open ocean in the controls
+    (trend -300 m), 1 is continent. Pointwise, so any window of it is exact."""
+    ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
+    cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
+    return _continent(ci, cj, seed)[1]
+
+
 def procedural_controls(ci0: int, cj0: int, hc: int, wc: int, seed: int, device) -> dict:
     """Per-cell control fields for cells [ci0, ci0+hc) x [cj0, cj0+wc).
 
@@ -273,10 +290,7 @@ def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, d
     change both together, and the kernel's `_check_constants`)."""
     ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
     cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
-    continent = _fbm(ci, cj, 900.0, seed, 1, octaves=4)
-    # "Home continent": a broad bump around the world origin so spawn is always on land.
-    continent = continent + 0.7 * torch.exp(-(ci**2 + cj**2) / (2 * HOME_RADIUS_CELLS**2))
-    land = _smoothstep((continent + 0.35) / 0.2)  # no cliffs at the coast
+    continent, land = _continent(ci, cj, seed)
     wi = ci + RANGE_WARP_CELLS * _fbm(ci, cj, 400.0, seed, 4, octaves=2)
     wj = cj + RANGE_WARP_CELLS * _fbm(ci, cj, 400.0, seed, 5, octaves=2)
     n_range = _fbm(wi, wj, RANGE_PERIOD_CELLS, seed, 2, octaves=2) / _FBM2_STD
