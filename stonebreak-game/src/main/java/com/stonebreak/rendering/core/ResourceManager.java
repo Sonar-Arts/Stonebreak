@@ -82,6 +82,9 @@ public class ResourceManager {
         shaderProgram.createUniform("u_underwaterFogColor");
         shaderProgram.createUniform("u_ambientLight");
         shaderProgram.createUniform("u_sunDirection");
+        // Key light colour × strength (SceneLight.keyLight): white unless the world pass sets moonlight.
+        shaderProgram.createUniform("u_keyLight");
+        shaderProgram.setUniform("u_keyLight", new org.joml.Vector3f(1f, 1f, 1f));
         shaderProgram.createUniform("u_viewPos");
         shaderProgram.createUniform("u_playerLight");
         // Default to -1 so terrain (which never sets this) falls through to the per-vertex light.

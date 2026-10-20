@@ -36,7 +36,8 @@ uniform vec3 u_cameraPos;
 uniform float u_underwaterFogDensity;
 uniform vec3 u_underwaterFogColor;
 uniform float u_ambientLight;
-uniform vec3 u_sunDirection;
+uniform vec3 u_sunDirection;   // the key light: the sun by day, the moon by night
+uniform vec3 u_keyLight;       // its colour × strength: white by day, faint blue moonlight
 uniform vec3 u_viewPos;
 uniform float u_playerLight;
 // Atmospheric distance fog (fog-to-sky at the LOD outer ring).
@@ -137,7 +138,7 @@ void main() {
         float diff = max(dot(norm, lightDir), 0.0);
         // Only apply full diffuse during daytime
         float diffuseStrength = 0.6 * u_ambientLight;
-        vec3 diffuse = diff * diffuseStrength * shadowFactor * textureColor.rgb;
+        vec3 diffuse = diff * diffuseStrength * shadowFactor * u_keyLight * textureColor.rgb;
 
         // Specular component (shiny highlights)
         float specularStrength = 0.3;
@@ -145,7 +146,7 @@ void main() {
         float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
         // Only ice gets strong specular (water has its own shader now)
         float specularIntensity = (v_isTranslucent > 0.5) ? 0.5 : 0.1;
-        vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * shadowFactor * vec3(1.0);
+        vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * shadowFactor * u_keyLight;
 
         // Combine lighting components
         vec3 result = ambient + diffuse + specular;

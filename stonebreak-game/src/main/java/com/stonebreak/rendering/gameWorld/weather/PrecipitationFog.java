@@ -17,7 +17,7 @@ import static org.lwjgl.opengl.GL11.*;
 
 /**
  * Rain and snow fog as a volume in the world. It hangs under every raining
- * cloud, from the ground up to the cloud's base, so an approaching storm shows
+ * cloud, from the ground up to the cloud's underside as drawn, so an approaching storm shows
  * from kilometres off as a grey curtain, and the air above the clouds is clear.
  *
  * <p>Each frame {@link #prepare} renders the precipitation map: a camera-centred
@@ -37,13 +37,22 @@ public final class PrecipitationFog {
     private static final float SPAN = MAP_SIZE * TEXEL_BLOCKS;
 
     /**
-     * Blocks the fog reaches up into its cloud. It thins out inside the cloud's
-     * ragged underside, which hides where it ends: stopped at the base, it ended
-     * in a flat line under the cloud, plainest with the eye level with it.
+     * Blocks the fog reaches up into its cloud. It is full up to the cloud's
+     * base and thins out above it, inside the cloud, which hides where it ends:
+     * stopped at the base, it ended in a flat line under the cloud, plainest
+     * with the eye level with it; thinned below the base, it stopped short of
+     * the cloud. Also the band {@link WeatherEffects} thins the camera's fog over.
      */
     public static final float RISE = 32f;
-    /** Highest base of a cloud type that rains, plus {@link #RISE}: there is no fog above it. */
-    public static final float TOP = highestRainingBase() + RISE;
+    /** Highest base of a cloud type that rains. */
+    public static final float BASE = highestRainingBase();
+    /**
+     * Highest above its column's base the map looks for the cloud's underside:
+     * the noise carves a cloud's bottom ragged, so it starts above the base.
+     */
+    private static final float UNDERSIDE_REACH = 48f;
+    /** No fog above this: the highest underside, plus {@link #RISE}. */
+    public static final float TOP = BASE + UNDERSIDE_REACH + RISE;
 
     private final ShaderProgram mapShader;
     private final ShaderProgram skyShader;
@@ -120,8 +129,11 @@ public final class PrecipitationFog {
         map.bind();
         mapShader.bind();
         clouds.applyTo(mapShader);
+        clouds.applyShapeTo(mapShader);
         mapShader.setVec2("u_mapOrigin", origin);
         mapShader.setFloat("u_mapSpan", SPAN);
+        mapShader.setFloat("u_mapTexel", TEXEL_BLOCKS);
+        mapShader.setFloat("u_undersideReach", UNDERSIDE_REACH);
         mapShader.setVec2("u_mapCentre", new Vector2f(origin).add(SPAN / 2f, SPAN / 2f));
         mapShader.setFloat("u_mapReach", this.reach);
         mapShader.setFloat("u_rateExponent", WeatherEffects.RATE_EXPONENT);

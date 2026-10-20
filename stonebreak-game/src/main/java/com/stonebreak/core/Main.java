@@ -250,6 +250,7 @@ public class Main {
 
     // ─── Dev: -Dstonebreak.autoview=<x>:<y|top[+n]>:<z>:<yaw>:<pitch>[:<bob>[:<period>]] ─
     //          -Dstonebreak.autolod=<LOW|MEDIUM|HIGH|ULTRA>[:<lodDistance>]
+    //          -Dstonebreak.autotime=<absolute ticks> (day × 24000 + tick: picks the moon's phase too)
 
     private boolean autoViewArmed;
     private long autoViewStartNanos = -1;
@@ -271,6 +272,14 @@ public class Main {
         }
         if (!autoViewArmed) {
             autoViewArmed = true;
+            String time = System.getProperty("stonebreak.autotime");
+            if (time != null && !time.isBlank()) {
+                long ticks = Long.parseLong(time.trim());
+                // The integrated server owns the clock, so set it there as /timeset does.
+                com.stonebreak.network.MultiplayerSession.requestServerTimeSet(ticks);
+                if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(ticks);
+                System.out.println("[autoview] time set to " + ticks);
+            }
             String lod = System.getProperty("stonebreak.autolod");
             if (lod != null && !lod.isBlank()) {
                 String[] p = lod.split(":");
@@ -444,8 +453,10 @@ public class Main {
         if (java.util.Arrays.asList(parts).contains("night")) {
             // The integrated server owns the clock (TimeSyncS2C snaps the client
             // back), so route through the same path as /timeset.
-            com.stonebreak.network.MultiplayerSession.requestServerTimeSet(18000L);
-            if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(18000L);
+            long day = Game.getTimeOfDay() != null ? Game.getTimeOfDay().getDay() : 0L;
+            long midnight = day * com.stonebreak.world.TimeOfDay.TICKS_PER_DAY + 18000L;
+            com.stonebreak.network.MultiplayerSession.requestServerTimeSet(midnight);
+            if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(midnight);
         }
         autoTorchLookX = px + 4.5f;
         autoTorchLookY = py + 0.6f;

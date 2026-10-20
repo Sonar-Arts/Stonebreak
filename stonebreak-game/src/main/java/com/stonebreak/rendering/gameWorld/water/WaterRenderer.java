@@ -104,6 +104,7 @@ public class WaterRenderer {
             shader.createUniform("uWavesEnabled");
             shader.createUniform("uWaveFadeEnd");
             shader.createUniform("uSunDirection");
+            shader.createUniform("uKeyLight");
             shader.createUniform("uAmbientLight");
             shader.createUniform("uCameraPos");
             shader.createUniform("uFogColor");
@@ -137,7 +138,7 @@ public class WaterRenderer {
      * @param view              camera view matrix
      * @param cameraPos         camera world position
      * @param time              total elapsed time in seconds (drives waves/flow)
-     * @param sunDirection      normalized sun direction (world shader convention)
+     * @param sunDirection      normalized key light direction: the sun, or the moon at night
      * @param ambientLight      ambient light level 0..1 from TimeOfDay
      * @param wavesEnabled      water animation setting (freezes waves + scroll)
      * @param fogColor          atmospheric fog color (sky color from TimeOfDay)
@@ -222,6 +223,7 @@ public class WaterRenderer {
             com.stonebreak.config.Settings.getInstance().getRenderDistance()
                 * (float) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
         shader.setUniform("uSunDirection", sunDirection);
+        shader.setUniform("uKeyLight", com.stonebreak.rendering.lighting.SceneLight.keyLight());
         shader.setUniform("uAmbientLight", ambientLight);
         com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
         clouds.applyTo(shader);

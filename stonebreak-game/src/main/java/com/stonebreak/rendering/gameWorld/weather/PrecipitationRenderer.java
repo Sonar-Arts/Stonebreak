@@ -37,9 +37,8 @@ public final class PrecipitationRenderer {
 
     /** Lanes drawn around the camera, in blocks. */
     static final int RADIUS = 20;
-    /** How far below and above the camera lanes reach. */
+    /** How far below the camera lanes reach; above, they reach the cloud. */
     private static final float BELOW = 24f;
-    private static final float ABOVE = 32f;
     /**
      * Blocks between lane slots in cloud space: four lanes per block, each
      * raining or not on its own. Divides the cloud map period, so the slot
@@ -131,6 +130,7 @@ public final class PrecipitationRenderer {
 
         shader.bind();
         clouds.applyTo(shader);
+        clouds.applyShapeTo(shader);
         shader.setMat4("uProjection", projection);
         shader.setMat4("uView", view);
         shader.setVec3("uCameraPos", RenderOrigin.toRender(cameraWorldPos, renderCamera));
@@ -140,7 +140,6 @@ public final class PrecipitationRenderer {
         shader.setVec2("uLaneWidth", LANE_WIDTH);
         shader.setFloat("uRadius", RADIUS);
         shader.setFloat("uBelow", BELOW);
-        shader.setFloat("uAbove", ABOVE);
         shader.setInt("uGround", GROUND_TEXTURE_UNIT);
         shader.setVec2("uGroundOrigin", groundOrigin);
         shader.setFloat("uTime", time);

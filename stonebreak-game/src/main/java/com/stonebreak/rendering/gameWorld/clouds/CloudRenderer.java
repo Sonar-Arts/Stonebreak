@@ -7,13 +7,13 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.stonebreak.rendering.gameWorld.SceneDepthCopy;
 import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
+import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.world.weather.CloudField;
 import com.stonebreak.world.weather.CloudType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
 
@@ -40,9 +40,6 @@ public final class CloudRenderer {
 
     /** Unit for this renderer's own samplers (scene depth, then the cloud buffer). */
     private static final int SCRATCH_TEXTURE_UNIT = 11;
-    /** Units of the shape and detail noise volumes, read only by the cloud march. */
-    private static final int SHAPE_TEXTURE_UNIT = 12;
-    private static final int DETAIL_TEXTURE_UNIT = 13;
     /** Unit for the cloud history read by the temporal pass; its binding is restored. */
     private static final int HISTORY_TEXTURE_UNIT = 14;
     /** Unit for the march's cloud distances read by the temporal pass; its binding is restored. */
@@ -94,11 +91,16 @@ public final class CloudRenderer {
     /** The maps are current this frame (weather exists), whether or not clouds draw. */
     private boolean mapsReady;
     private boolean drawnThisFrame;
-    private float shapeRise;
-    private float detailRise;
 
     private final Matrix4f invViewProj = new Matrix4f();
     private final Vector3f sunColor = new Vector3f();
+    private static final Vector3f DEFAULT_SUN = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
+    /** Daytime storm grey the deck's sky light dims toward (the old clouds' night tint). */
+    private static final Vector3f STORM_TINT = new Vector3f(0.16f, 0.17f, 0.24f);
+    /** Night sky light on the cloud as a share of the horizon's colour. */
+    static final float NIGHT_SHARE = 0.9f;
+    /** Moonlight on the deck relative to the key light it casts on the ground. */
+    private static final float MOONLIT_CLOUD = 0.3f;
     private final Vector3f ambientColor = new Vector3f();
     private final int[] viewportBuf = new int[4];
 
@@ -141,8 +143,9 @@ public final class CloudRenderer {
         }
         double s = weather.seconds();
         // Wrapped to a tile in double precision, so float precision never runs out.
-        shapeRise = (float) (s * SHAPE_RISE_SPEED % CloudNoiseTextures.SHAPE_TILE_BLOCKS);
-        detailRise = (float) (s * DETAIL_RISE_SPEED % CloudNoiseTextures.DETAIL_TILE_BLOCKS);
+        uniforms.prepareShape(noise.shape(), noise.detail(),
+                (float) (s * SHAPE_RISE_SPEED % CloudNoiseTextures.SHAPE_TILE_BLOCKS),
+                (float) (s * DETAIL_RISE_SPEED % CloudNoiseTextures.DETAIL_TILE_BLOCKS));
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.CLOUD_MAP_TEXTURE_UNIT);
         map.update(weather.field(), CloudField.cellX(cameraWorldPos.x, s), CloudField.cellZ(cameraWorldPos.z, s));
@@ -175,13 +178,15 @@ public final class CloudRenderer {
      * opaque scene depth (translucent passes draw after). No-op unless {@link #prepareFrame} enabled them.
      *
      * @param renderCameraPos camera position in render space
+     * @param sky             this frame's sky (null outside a world: plain daylight)
+     * @param skyColor        the sky colour as the weather tints it, for the haze
      * @param flashes         lightning flash points (render-space xyz, intensity w; 0 = unused),
      *                        each lighting only the cloud around it
      * @param fog             rain and snow fog, which hides the cloud behind it
      * @param reach           blocks to the terrain's horizon: no cloud hangs beyond it
      */
     public void render(Matrix4f projection, Matrix4f view, Vector3f renderCameraPos,
-                       Vector3f sunDirection, Vector3f skyColor, float ambientLight, Vector4f[] flashes,
+                       SkyLight sky, Vector3f skyColor, float ambientLight, Vector4f[] flashes,
                        PrecipitationFog fog, float reach) {
         if (!prepared) return;
 
@@ -220,9 +225,6 @@ public final class CloudRenderer {
         }
         // (Re)creating the target unbinds the active unit's texture.
         glBindTexture(GL_TEXTURE_2D, sceneDepth.texture());
-        bindNoise(SHAPE_TEXTURE_UNIT, noise.shape());
-        bindNoise(DETAIL_TEXTURE_UNIT, noise.detail());
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SCRATCH_TEXTURE_UNIT);
 
         glDisable(GL_DEPTH_TEST);
         glDepthMask(false);
@@ -233,19 +235,18 @@ public final class CloudRenderer {
         target.bind();
         marchShader.bind();
         uniforms.applyTo(marchShader);
+        uniforms.applyShapeTo(marchShader);
         marchShader.setInt("u_sceneDepth", SCRATCH_TEXTURE_UNIT);
-        marchShader.setInt("u_shapeNoise", SHAPE_TEXTURE_UNIT);
-        marchShader.setInt("u_detailNoise", DETAIL_TEXTURE_UNIT);
-        marchShader.setFloat("u_shapeTile", CloudNoiseTextures.SHAPE_TILE_BLOCKS);
-        marchShader.setFloat("u_detailTile", CloudNoiseTextures.DETAIL_TILE_BLOCKS);
-        marchShader.setFloat("u_shapeRise", shapeRise);
-        marchShader.setFloat("u_detailRise", detailRise);
         marchShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
         marchShader.setVec3("u_camPos", renderCameraPos);
         marchShader.setInt("u_frame", frame++);
-        marchShader.setVec3("u_sunDir", sunDirection);
-        marchShader.setVec3("u_sunColor", sunColor(sunDirection));
-        marchShader.setVec3("u_ambientColor", ambientColor(skyColor, ambientLight));
+        // The key light: the sun, or the moon at night, which lines the deck in silver.
+        Vector3f keyDirection = sky != null ? sky.keyDir() : DEFAULT_SUN;
+        marchShader.setVec3("u_sunDir", keyDirection);
+        marchShader.setVec3("u_sunColor", sky != null && sky.keyIsMoon()
+                ? sunColor.set(sky.keyLight()).mul(MOONLIT_CLOUD)
+                : sunColor(keyDirection));
+        marchShader.setVec3("u_ambientColor", ambientColor(sky, skyColor, ambientLight, ambientColor));
         marchShader.setVec3("u_hazeColor", skyColor);
         fog.applyTo(marchShader);
         marchShader.setFloat("u_slabBottom", CloudType.slabBottom());
@@ -350,11 +351,6 @@ public final class CloudRenderer {
     }
 
     /** Binds a noise volume on its own unit, which nothing else samples, so it is left bound. */
-    private static void bindNoise(int unit, int texture) {
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
-        glBindTexture(GL12.GL_TEXTURE_3D, texture);
-    }
-
     /** Warm and dim near the horizon, white overhead, gone below it. */
     private Vector3f sunColor(Vector3f sun) {
         float up = sun.y;
@@ -366,13 +362,28 @@ public final class CloudRenderer {
                 strength * (0.32f + 0.58f * white));
     }
 
-    /** Sky-tinted by day, dim blue-grey by night (the old clouds' night tint). */
-    private Vector3f ambientColor(Vector3f sky, float ambient) {
+    /**
+     * The sky's light on the cloud, into {@code dest}. By day it is sky-tinted and
+     * dims toward a storm grey as the weather darkens the ambient. With the sun
+     * down it is the horizon's own colour, a little under it, so the deck never
+     * glows brighter than the sky it hangs in: indigo under a full moon, near
+     * black under a new one.
+     */
+    static Vector3f ambientColor(SkyLight sky, Vector3f skyTint, float ambient, Vector3f dest) {
         float a = Math.clamp(ambient, 0f, 1f);
-        return ambientColor.set(
-                lerp(0.16f, 0.85f * (0.6f + 0.4f * sky.x), a),
-                lerp(0.17f, 0.85f * (0.6f + 0.4f * sky.y), a),
-                lerp(0.24f, 0.85f * (0.6f + 0.4f * sky.z), a));
+        float day = sky != null ? sky.daylight() : 1f;
+        float fx = STORM_TINT.x, fy = STORM_TINT.y, fz = STORM_TINT.z;
+        if (sky != null) {
+            Vector3f h = sky.horizon();
+            fx = lerp(h.x * NIGHT_SHARE, fx, day);
+            fy = lerp(h.y * NIGHT_SHARE, fy, day);
+            fz = lerp(h.z * NIGHT_SHARE, fz, day);
+        }
+        float t = a * day;
+        return dest.set(
+                lerp(fx, 0.85f * (0.6f + 0.4f * skyTint.x), t),
+                lerp(fy, 0.85f * (0.6f + 0.4f * skyTint.y), t),
+                lerp(fz, 0.85f * (0.6f + 0.4f * skyTint.z), t));
     }
 
     private static float lerp(float a, float b, float t) {

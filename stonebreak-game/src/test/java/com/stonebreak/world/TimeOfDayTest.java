@@ -60,14 +60,39 @@ class TimeOfDayTest {
     @Test
     void nudgeTakesShortestPathAcrossMidnightWrap() {
         TimeOfDay t = new TimeOfDay(23_950);
-        t.nudgeTo(50); // wrapped delta is +100, not -23900 — must converge forward, not snap
+        t.nudgeTo(24_050); // day 1, tick 50: delta is +100 — must converge forward, not snap
         long after = t.getTicks();
         assertTrue(after >= 23_950 || after <= 50,
             "expected forward wrap convergence, got " + after);
+        assertEquals(0, t.getDay(), "still on day 0 until the clock crosses midnight");
         for (int i = 0; i < 200; i++) {
-            t.nudgeTo(50);
+            t.nudgeTo(24_050);
         }
         assertEquals(50, t.getTicks());
+        assertEquals(1, t.getDay());
+        assertEquals(24_050, t.getTotalTicks());
+    }
+
+    @Test
+    void updateCountsDaysAcrossTheWrap() {
+        TimeOfDay t = new TimeOfDay(TimeOfDay.TICKS_PER_DAY - 10);
+        t.update(10f / TICK_RATE + 0.01f);
+        assertEquals(1, t.getDay());
+        assertTrue(t.getTicks() < 10);
+    }
+
+    @Test
+    void absoluteTicksSplitIntoDayAndTick() {
+        TimeOfDay old = new TimeOfDay(6_000); // a save from before the day count
+        assertEquals(0, old.getDay());
+        assertEquals(6_000, old.getTicks());
+
+        TimeOfDay t = new TimeOfDay(3L * TimeOfDay.TICKS_PER_DAY + 18_000);
+        assertEquals(3, t.getDay());
+        assertEquals(18_000, t.getTicks());
+        t.setTimeOfDayTicks(TimeOfDay.NOON);
+        assertEquals(3, t.getDay(), "setting the time of day keeps the day");
+        assertEquals(3L * TimeOfDay.TICKS_PER_DAY + TimeOfDay.NOON, t.getTotalTicks());
     }
 
     @Test

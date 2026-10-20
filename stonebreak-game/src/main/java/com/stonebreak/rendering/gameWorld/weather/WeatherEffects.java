@@ -1,6 +1,7 @@
 package com.stonebreak.rendering.gameWorld.weather;
 
 import com.stonebreak.rendering.lighting.SceneLight;
+import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.world.World;
 import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.world.weather.WeatherSurface;
@@ -55,8 +56,6 @@ public final class WeatherEffects {
      */
     private static final float RAIN_SHADE_MIN = 0.4f;
     private static final float SNOW_SHADE_MIN = 0.8f;
-    /** Blocks under the fog's top over which it thins out, as precip_fog.glsl thins it. */
-    private static final float BASE_BAND = 48f;
     /**
      * Fog brightness as a share of the time of day's ambient light: about what a
      * pale surface in that light reflects. Tied to the light the terrain gets,
@@ -64,8 +63,13 @@ public final class WeatherEffects {
      * light instead of laying a bright sheet over it at dusk.
      */
     private static final float FOG_BRIGHTNESS = 0.72f;
-    /** How much of the sky's hue the fog takes: orange at sunset, blue-grey by day. */
+    /** How much of the sky's hue the fog takes by day: blue-grey. */
     private static final float SKY_HUE = 0.5f;
+    /**
+     * How much it takes with the sun down. Twilight and moonlit air are blue but
+     * dim, and fog in them reads as indigo-grey, not as saturated colour.
+     */
+    private static final float NIGHT_SKY_HUE = 0.3f;
 
     private float storminess;
     private float snow;
@@ -96,7 +100,8 @@ public final class WeatherEffects {
         lastTime = totalTime;
         this.flash = flash;
         // Rain and snow fall from the cloud base down; above the clouds the air is clear.
-        float under = smoothstep(Math.clamp((PrecipitationFog.TOP - cameraPos.y) / BASE_BAND, 0f, 1f));
+        float under = smoothstep(Math.clamp(
+                (PrecipitationFog.BASE + PrecipitationFog.RISE - cameraPos.y) / PrecipitationFog.RISE, 0f, 1f));
         extinction = extinction(storminess, snow) * under;
         SceneLight.setWeather(1f - MAX_DIMMING * storminess, flash);
     }
@@ -177,27 +182,44 @@ public final class WeatherEffects {
 
     /**
      * Sets {@link #fogColor()}: the light the fog scatters toward the eye.
-     * {@code sky} and {@code ambient} are the time of day's own, before any
-     * storm: the map shades the fog by the cloud over each place, so the storm
-     * over the camera must not darken a distant shower too.
+     * {@code sky} is the time of day's own, before any storm: the map shades the
+     * fog by the cloud over each place, so the storm over the camera must not
+     * darken a distant shower too.
+     *
+     * <p>Fog is lit by the sky, so from the sun's setting to its rising it is never
+     * brighter than the sky's horizon. Before this rule, pre-dawn fog took a
+     * fixed night ambient against an almost black sky, and glowed orange above
+     * the cloud deck.
      */
-    public void updateFogColor(Vector3f sky, float ambient) {
-        float lum = Math.max(luminance(sky), 1e-3f);
-        float brightness = FOG_BRIGHTNESS * ambient;
+    public void updateFogColor(SkyLight sky) {
+        // The fog's hue comes from the zenith, the light pouring down on it. That
+        // is blue at twilight; the orange sunrise is only a band toward the sun.
+        Vector3f hue = sky.zenith();
+        float lum = Math.max(luminance(hue), 1e-3f);
+        float brightness = FOG_BRIGHTNESS * sky.ambient();
         // The sky's hue at unit brightness, partly greyed: rain is grey, but it
-        // is lit by the sunset like everything else.
-        float hr = 1f + (sky.x / lum - 1f) * SKY_HUE;
-        float hg = 1f + (sky.y / lum - 1f) * SKY_HUE;
-        float hb = 1f + (sky.z / lum - 1f) * SKY_HUE;
+        // is lit by the sky like everything else.
+        float share = NIGHT_SKY_HUE + (SKY_HUE - NIGHT_SKY_HUE) * sky.daylight();
+        float hr = 1f + (hue.x / lum - 1f) * share;
+        float hg = 1f + (hue.y / lum - 1f) * share;
+        float hb = 1f + (hue.z / lum - 1f) * share;
         // Rain fog is a cool grey. Snow scatters far more, and its bright
         // flakes push the air toward white.
         float rainR = brightness * hr * 0.94f, rainG = brightness * hg, rainB = brightness * hb * 1.07f;
         float bright = Math.min(brightness * 1.3f, 0.95f);
         float snowR = bright * hr * 0.97f, snowG = bright * hg * 0.99f, snowB = bright * hb * 1.04f;
         float glow = FLASH_IN_FOG * flash;
-        fogColor.set(rainR + (snowR - rainR) * snow + glow * 0.85f,
-                rainG + (snowG - rainG) * snow + glow * 0.88f,
-                rainB + (snowB - rainB) * snow + glow);
+        fogColor.set(rainR + (snowR - rainR) * snow,
+                rainG + (snowG - rainG) * snow,
+                rainB + (snowB - rainB) * snow);
+        // No brighter than the horizon behind it while the sun is down; by full
+        // day the cap has faded out, so daylight snow fog may still go white.
+        float cap = luminance(sky.horizon());
+        float fogLum = luminance(fogColor);
+        if (fogLum > cap) {
+            fogColor.mul(1f + (cap / fogLum - 1f) * (1f - sky.daylight()));
+        }
+        fogColor.add(glow * 0.85f, glow * 0.88f, glow);
     }
 
     private static float luminance(Vector3f c) {

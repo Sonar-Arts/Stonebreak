@@ -10,6 +10,7 @@ import com.stonebreak.world.weather.WeatherBias;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
+import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
 
 import static org.lwjgl.opengl.GL11.GL_TEXTURE_2D;
@@ -37,6 +38,9 @@ public final class CloudUniforms {
     public static final int WEATHER_MAP_TEXTURE_UNIT = 15;
     public static final int TERRAIN_MAP_TEXTURE_UNIT = 16;
     public static final int TERRAIN_FLOW_TEXTURE_UNIT = 17;
+    /** Units of the shape and detail noise volumes ({@link #applyShapeTo}): the cloud passes' own. */
+    static final int SHAPE_NOISE_TEXTURE_UNIT = 12;
+    static final int DETAIL_NOISE_TEXTURE_UNIT = 13;
     /** Blocks per wrap of {@code u_cloudOffset} (and of the cloud map). */
     public static final int MAP_PERIOD_BLOCKS = CloudMap.PERIOD_BLOCKS;
 
@@ -77,6 +81,10 @@ public final class CloudUniforms {
     private int weatherTexture;
     private int terrainTexture;
     private int terrainFlowTexture;
+    private int shapeNoise;
+    private int detailNoise;
+    private float shapeRise;
+    private float detailRise;
 
     void prepare(int mapTexture, int weatherTexture, int terrainTexture, int terrainFlowTexture,
                  double renderToCloudX, double renderToCloudZ, double renderToWorldX, double renderToWorldZ,
@@ -92,6 +100,14 @@ public final class CloudUniforms {
         worldOffset.set((float) wrap(renderToWorldX), (float) wrap(renderToWorldZ));
         this.sunDir.set(sunDirection).normalize();
         this.shadowsEnabled = shadowsEnabled;
+    }
+
+    /** The noise that carves the cloud's body this frame, and how far each has risen. */
+    void prepareShape(int shapeNoise, int detailNoise, float shapeRise, float detailRise) {
+        this.shapeNoise = shapeNoise;
+        this.detailNoise = detailNoise;
+        this.shapeRise = shapeRise;
+        this.detailRise = detailRise;
     }
 
     private static final WeatherBias NO_BIAS = new WeatherBias(0f, 0f);
@@ -148,5 +164,26 @@ public final class CloudUniforms {
         shader.setBool("u_cloudShadowsEnabled", shadowsEnabled && mapTexture != 0);
         shader.setVec3("u_cloudSunDir", sunDir);
         shader.setFloat("u_cloudShadowY", SHADOW_Y);
+    }
+
+    /**
+     * Applies the {@code cloud_shape.glsl} uniforms (the cloud's body, not just
+     * its columns) to a BOUND shader that {@link #applyTo} also set up, and
+     * binds the noise volumes on their units.
+     */
+    public void applyShapeTo(ShaderProgram shader) {
+        int previous = org.lwjgl.opengl.GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + SHAPE_NOISE_TEXTURE_UNIT);
+        glBindTexture(GL12.GL_TEXTURE_3D, shapeNoise);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + DETAIL_NOISE_TEXTURE_UNIT);
+        glBindTexture(GL12.GL_TEXTURE_3D, detailNoise);
+        GL13.glActiveTexture(previous);
+
+        shader.setInt("u_shapeNoise", SHAPE_NOISE_TEXTURE_UNIT);
+        shader.setInt("u_detailNoise", DETAIL_NOISE_TEXTURE_UNIT);
+        shader.setFloat("u_shapeTile", CloudNoiseTextures.SHAPE_TILE_BLOCKS);
+        shader.setFloat("u_detailTile", CloudNoiseTextures.DETAIL_TILE_BLOCKS);
+        shader.setFloat("u_shapeRise", shapeRise);
+        shader.setFloat("u_detailRise", detailRise);
     }
 }

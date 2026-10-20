@@ -132,7 +132,7 @@ public class SaveService implements AutoCloseable {
         // model; falls back to the Game singleton's clock when none is injected).
         com.stonebreak.world.TimeOfDay timeSource = resolveWorldTimeSource();
         if (timeSource != null) {
-            updatedWorld = updatedWorld.withWorldTime(timeSource.getTicks());
+            updatedWorld = updatedWorld.withWorldTime(timeSource.getTotalTicks());
         }
         com.stonebreak.world.weather.WeatherState weather = weatherSource;
         if (weather != null) {

@@ -5,10 +5,13 @@
 // lane asks the cloud field (the same one the clouds are drawn from) how much
 // falls at its own position, so a cloud's edge crossing a block rains on part
 // of it. A lane is a quad turned to face the camera about the vertical axis,
-// from its ground up to the cloud base (or the top of the falling range); a
-// lane with nothing to drop collapses to nothing.
+// from its ground up to the cloud's underside; a
+// lane with nothing to drop collapses to nothing. It falls from the underside
+// of the cloud as drawn (cloud_shape.glsl), so the rain's top follows the
+// cloud's ragged bottom instead of ending at one flat altitude.
 
 #include "/shaders/clouds/cloud_field.glsl"
+#include "/shaders/clouds/cloud_shape.glsl"
 
 layout (location = 0) in vec2 aCorner;   // (0..1, 0..1)
 
@@ -20,8 +23,7 @@ uniform int uLaneGrid;      // slots per side of the grid around the camera
 uniform int uLanePeriod;    // slots per wrap of u_cloudOffset: the slot hash repeats with it
 uniform vec2 uLaneWidth;    // quad width, blocks: rain, snow
 uniform float uRadius;      // lanes reach this far from the camera
-uniform float uBelow;       // and fall no further than this below it...
-uniform float uAbove;       // ...nor start higher than this above it
+uniform float uBelow;       // and fall no further than this below it
 // RG: ground height (very low where unknown), snow (0 or 1), per block column;
 // texel (i, j) is the block whose corner is uGroundOrigin + (i, j).
 uniform sampler2D uGround;
@@ -31,6 +33,10 @@ out vec2 vUv;        // x across the lane, y = world height
 out vec2 vParams;    // intensity, snow
 out float vSeed;
 out float vDist;
+
+// Blocks the underside search filters the cloud's noise over: lanes are near,
+// so the full detail the march draws there.
+const float LANE_FOOTPRINT = 1.0;
 
 // Integer hash (pcg2d, Jarzynski & Olano 2020).
 uvec2 pcg2d(uvec2 v) {
@@ -76,8 +82,8 @@ void main() {
     ivec2 g = clamp(ivec2(floor(lane - uGroundOrigin)), ivec2(0), textureSize(uGround, 0) - 1);
     vec2 ground = texelFetch(uGround, g, 0).rg;
     float bottom = max(ground.r, uCameraPos.y - uBelow);
-    // Falls from the cloud base: nothing above it, nothing when the camera is above it.
-    float top = min(uCameraPos.y + uAbove, col.base);
+    // Falls from the cloud's underside: nothing above it, nothing when the camera is above it.
+    float top = cloudUnderside(lane, col, col.top, LANE_FOOTPRINT, true);
     if (top <= bottom) { collapse(); return; }
 
     float snow = ground.g;

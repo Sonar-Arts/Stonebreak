@@ -10,6 +10,8 @@ import io.netty.buffer.ByteBuf;
  * next {@code TimeSyncS2C} — so the command must route here. The server validates (host-only
  * for now), applies to {@code ServerLevel.timeOfDay()}, and broadcasts an immediate
  * {@code TimeSyncS2C} so every client snaps to the new time at once.
+ *
+ * <p>{@code ticks} is absolute (day × ticks-per-day + tick), so a set can move the moon's phase.
  */
 public record TimeSetC2S(long ticks) implements Packet {
 

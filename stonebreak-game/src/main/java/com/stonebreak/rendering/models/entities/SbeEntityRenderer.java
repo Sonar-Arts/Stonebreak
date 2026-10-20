@@ -559,7 +559,7 @@ public final class SbeEntityRenderer {
 
     /**
      * Pushes the per-frame lighting environment to the (bound) entity shader:
-     * time-of-day ambient + sun direction, the sampled sky light at the entity's
+     * the sky's ambient + key light direction (sun, or moon at night), the sampled sky light at the entity's
      * position (so mobs darken in caves and at night), and this frame's shadow
      * cascade state. Falls back to fully lit outside the world pipeline.
      */
@@ -567,7 +567,7 @@ public final class SbeEntityRenderer {
         com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
         if (timeOfDay != null) {
             shader.setFloat("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
-            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+            shader.setVec3("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
         } else {
             shader.setFloat("u_ambientLight", 1.0f);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());

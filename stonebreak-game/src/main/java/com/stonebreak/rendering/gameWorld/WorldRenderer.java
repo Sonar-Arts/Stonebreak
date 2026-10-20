@@ -25,7 +25,9 @@ import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.openmason.engine.rendering.sky.SkyParams;
 import com.openmason.engine.rendering.sky.SkyRenderer;
+import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.rendering.gameWorld.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
@@ -187,15 +189,27 @@ public class WorldRenderer {
         Vector3f sunDirection;
         Vector3f skyColor;
         float ambientLightLevel;
+        // The light that lights faces and casts shadows: the sun, or the moon at night.
+        Vector3f keyDirection;
+        SkyParams skyParams;
         if (timeOfDay != null) {
-            sunDirection = timeOfDay.getSunDirection();
-            skyColor = weatherEffects.tintSky(timeOfDay.getSkyColor(), new Vector3f());
-            weatherEffects.updateFogColor(timeOfDay.getSkyColor(), timeOfDay.getAmbientLightLevel());
+            SkyLight sky = SkyLight.of(timeOfDay);
+            sunDirection = sky.sunDir();
+            keyDirection = sky.keyDir();
+            skyColor = weatherEffects.tintSky(sky.skyColor(), new Vector3f());
+            weatherEffects.updateFogColor(sky);
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
+            skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
+                    weatherEffects.tintSky(sky.zenith(), new Vector3f()),
+                    weatherEffects.tintSky(sky.horizon(), new Vector3f()),
+                    new Vector3f(sky.sunGlow()).mul(1f - weatherEffects.storminess()), sky.daylight());
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
+            keyDirection = sunDirection;
             skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
             ambientLightLevel = 1.0f;
+            skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
+                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), 1f);
         }
 
         // Region-batched chunk rendering: publish last frame's stats and prune
@@ -215,7 +229,7 @@ public class WorldRenderer {
         // so it is safe even when the post-fx scene FBO is already bound.
         if (entityRenderer != null) entityRenderer.prepareShadowCasters(world);
         torchIndirectLighting.update(world);
-        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer, reusableLoadedChunks);
+        shadowMapRenderer.renderShadowPass(world, player, keyDirection, entityRenderer, reusableLoadedChunks);
         torchShadowRenderer.render(world, player, reusableLoadedChunks, entityRenderer, animatedBlockRenderer, totalTime);
         checkGLError("After shadow depth pre-pass");
 
@@ -230,7 +244,7 @@ public class WorldRenderer {
             weather.focus(cameraPos.x, cameraPos.z, world.terrain());
         }
         // Clouds resolve before any receiver of cloud shadows is set up.
-        cloudRenderer.prepareFrame(weather, cameraPos, sunDirection,
+        cloudRenderer.prepareFrame(weather, cameraPos, keyDirection,
                 com.stonebreak.config.Settings.getInstance().getCloudsEnabled());
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
@@ -259,7 +273,7 @@ public class WorldRenderer {
             glClearColor(previousClear[0], previousClear[1], previousClear[2], previousClear[3]);
         } else {
             // Render sky first (before world geometry for proper depth testing)
-            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
+            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), skyParams);
             precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
         }
         checkGLError("After sky rendering");
@@ -369,7 +383,7 @@ public class WorldRenderer {
             // bolt hides it and cloud behind it doesn't paint over it.
             lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
-                    sunDirection, skyColor,
+                    timeOfDay != null ? SkyLight.of(timeOfDay) : null, skyColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
                     lightningRenderer.flashes(), precipitationFog, weatherReach);
             checkGLError("After cloud rendering");
@@ -406,7 +420,7 @@ public class WorldRenderer {
         // passes (fire bolts, particles) are occluded by water in front of
         // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
-                player.getCamera().getPosition(), totalTime, sunDirection,
+                player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
                 cloudRenderer.transmittanceTexture(), precipitationFog);
@@ -489,11 +503,13 @@ public class WorldRenderer {
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
         if (timeOfDay != null) {
             shaderProgram.setUniform("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
-            shaderProgram.setUniform("u_sunDirection", timeOfDay.getSunDirection());
+            shaderProgram.setUniform("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
+            shaderProgram.setUniform("u_keyLight", com.stonebreak.rendering.lighting.SceneLight.keyLight());
         } else {
             // Fallback to default lighting if TimeOfDay not initialized
             shaderProgram.setUniform("u_ambientLight", 1.0f);
             shaderProgram.setUniform("u_sunDirection", new Vector3f(0.5f, 1.0f, 0.3f).normalize());
+            shaderProgram.setUniform("u_keyLight", new Vector3f(1f));
         }
 
         // Set view position for specular lighting calculations. Render space —

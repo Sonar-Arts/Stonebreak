@@ -252,7 +252,7 @@ public final class IntegratedServer {
         if (level == null || level.timeOfDay() == null) {
             return;
         }
-        long ticks = Math.floorMod(ts.ticks(), com.stonebreak.world.TimeOfDay.TICKS_PER_DAY);
+        long ticks = Math.max(0L, ts.ticks()); // absolute: the day carries the moon's phase
         level.timeOfDay().setTicks(ticks);
         TimeSyncS2C sync = currentTimeSync();
         if (sync != null) {
@@ -327,7 +327,7 @@ public final class IntegratedServer {
             return null;
         }
         var time = level.timeOfDay();
-        return new TimeSyncS2C(time.getTicks(), time.getTimeSpeed(), time.isFrozen());
+        return new TimeSyncS2C(time.getTotalTicks(), time.getTimeSpeed(), time.isFrozen());
     }
 
     // ─── Inbound dispatch (tick thread) ───────────────────────────────────────────

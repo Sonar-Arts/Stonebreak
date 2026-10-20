@@ -25,7 +25,8 @@ flat in float vWaterDepth;
 // 0 = still water; 1..8 = a river running in octant 0..7. See water.vert.
 flat in float vFlow;
 
-uniform vec3 uSunDirection;
+uniform vec3 uSunDirection;   // the key light: the sun, or the moon at night
+uniform vec3 uKeyLight;       // its colour × strength (white by day)
 uniform float uAmbientLight;
 uniform vec3 uCameraPos;
 // World XZ of the render origin — vWorldPos is render-space, and the
@@ -220,11 +221,11 @@ void main() {
     vec3 L = normalize(uSunDirection);
 
     float ambient = uAmbientLight * 0.55;
-    // Direct sun only: dimmed by whatever cloud lies between it and the water.
-    float sunLight = uAmbientLight * cloudShadow(vWorldPos);
-    float diffuse = max(dot(N, L), 0.0) * 0.6 * sunLight;
+    // Direct sun (or moon) only: dimmed by whatever cloud lies between it and the water.
+    vec3 sunLight = uAmbientLight * cloudShadow(vWorldPos) * uKeyLight;
+    vec3 diffuse = max(dot(N, L), 0.0) * 0.6 * sunLight;
     vec3 H = normalize(L + V);
-    float spec = pow(max(dot(N, H), 0.0), 64.0) * 0.6 * sunLight * (0.35 + 0.65 * detail);
+    vec3 spec = pow(max(dot(N, H), 0.0), 64.0) * 0.6 * sunLight * (0.35 + 0.65 * detail);
 
     // White rivulet highlights on falling sheets.
     float streaks = smoothstep(0.60, 0.85, n) * vFalling * 0.30 * uAmbientLight;
@@ -242,7 +243,7 @@ void main() {
     // nothing behind enough of it comes through.
     alpha = max(clamp(alpha + streaks * 0.4, 0.0, 0.92), mix(SURFACE_ALPHA, 1.0, opacity));
 
-    vec3 color = baseColor * (ambient + diffuse) + vec3(1.0) * spec + vec3(streaks);
+    vec3 color = baseColor * (ambient + diffuse) + spec + vec3(streaks);
     // Torchlight on the water surface.
     color = applyPointLight(color, baseColor,
             pointLightContribution(vWorldPos, N, pointLightWeight(uAmbientLight, 1.0, 1.0)));

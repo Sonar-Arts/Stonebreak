@@ -36,6 +36,10 @@ public class TimeOfDay {
     // Current time in ticks
     private long ticks = DAWN;
 
+    // Whole days elapsed since the world began. Only the moon reads it: the
+    // day/night cycle itself is the same every day.
+    private long day = 0;
+
     // Fractional-tick carry between updates. Without it, sub-tick updates (ticksToAdd < 1,
     // i.e. any step shorter than 1/tick-rate seconds — every frame, and the 20 Hz server
     // step since the day was lengthened past 20 ticks/s) truncate to zero and time never
@@ -56,10 +60,11 @@ public class TimeOfDay {
     }
 
     /**
-     * Creates a new TimeOfDay system starting at the specified time.
+     * Creates a new TimeOfDay system starting at the specified absolute time
+     * (day × {@link #TICKS_PER_DAY} + tick; anything under a day is day 0).
      */
     public TimeOfDay(long startTicks) {
-        this.ticks = startTicks % TICKS_PER_DAY;
+        setTicks(startTicks);
     }
 
     /**
@@ -75,7 +80,7 @@ public class TimeOfDay {
 
             long whole = (long) ticksToAdd;
             subTick = ticksToAdd - whole;
-            ticks = (ticks + whole) % TICKS_PER_DAY;
+            setTicks(getTotalTicks() + whole);
         }
     }
 
@@ -85,12 +90,17 @@ public class TimeOfDay {
     private static final float CONVERGE_FRACTION = 0.10f;
 
     /**
-     * Corrects this (client) clock toward an authoritative server sample. Large error
-     * (join, long stall) snaps outright; small error converges a fraction per call so the
-     * sky/lighting never visibly jumps while 20 Hz drift is steered out.
+     * Corrects this (client) clock toward an authoritative server sample (absolute ticks).
+     * Large error (join, long stall) snaps outright; small error converges a fraction per
+     * call so the sky/lighting never visibly jumps while 20 Hz drift is steered out.
+     * The day follows the server's: whichever day puts this clock nearest its sample.
      */
     public void nudgeTo(long serverTicks) {
-        long target = Math.floorMod(serverTicks, TICKS_PER_DAY);
+        nudgeTickTo(Math.floorMod(serverTicks, TICKS_PER_DAY));
+        day = Math.floorDiv(serverTicks - ticks + TICKS_PER_DAY / 2, TICKS_PER_DAY);
+    }
+
+    private void nudgeTickTo(long target) {
         long delta = target - ticks;
         // Shortest wrapped distance, so 23900 -> 100 converges forward across midnight.
         if (delta > TICKS_PER_DAY / 2) {
@@ -118,10 +128,27 @@ public class TimeOfDay {
     }
 
     /**
-     * Sets the current time in ticks.
+     * Sets the current absolute time: day × {@link #TICKS_PER_DAY} + tick. A value under
+     * one day keeps the world on day 0, which is what saves from before the day count hold.
      */
     public void setTicks(long ticks) {
-        this.ticks = ticks % TICKS_PER_DAY;
+        this.ticks = Math.floorMod(ticks, TICKS_PER_DAY);
+        this.day = Math.floorDiv(ticks, TICKS_PER_DAY);
+    }
+
+    /** Sets the time of day, staying on the current day. */
+    public void setTimeOfDayTicks(long ticks) {
+        this.ticks = Math.floorMod(ticks, TICKS_PER_DAY);
+    }
+
+    /** Whole days elapsed since the world began. */
+    public long getDay() {
+        return day;
+    }
+
+    /** Absolute time: day × {@link #TICKS_PER_DAY} + tick. What saves and the network carry. */
+    public long getTotalTicks() {
+        return day * TICKS_PER_DAY + ticks;
     }
 
     /**
@@ -170,40 +197,29 @@ public class TimeOfDay {
      * - Midnight (18000 ticks): Sun below horizon (night)
      */
     public Vector3f getSunDirection() {
-        // Normalize ticks to 0-1 range
-        float dayProgress = getNormalizedTime();
+        return directionAt(getNormalizedTime());
+    }
 
-        // Convert day progress to angle for sun's arc across sky
-        // We want a simple sine wave for elevation:
-        // 0.0 (dawn/0 ticks) → 0° elevation (horizon)
-        // 0.25 (noon/6000 ticks) → 90° elevation (zenith/directly overhead)
-        // 0.5 (dusk/12000 ticks) → 0° elevation (horizon)
-        // 0.75 (midnight/18000 ticks) → -90° elevation (below horizon)
-
-        // Map dayProgress to a 0-180 degree arc for daytime (first half of cycle)
-        // Then 180-360 for nighttime (second half below horizon)
-        float sunAngle = dayProgress * 360.0f; // 0-360 degrees
+    /**
+     * Direction to a body on the sun's path at {@code dayProgress} through its own
+     * day (0 = rising in the east, 0.25 = overhead, 0.5 = setting in the west,
+     * 0.75 = straight below). The moon travels the same path, lagging the sun.
+     */
+    public static Vector3f directionAt(float dayProgress) {
+        dayProgress -= (float) Math.floor(dayProgress);
 
         // Elevation follows sine wave: sin(0°)=0, sin(90°)=1, sin(180°)=0, sin(270°)=-1
-        // We want: 0° at dawn, 90° at noon, 0° at dusk, -90° at midnight
-        // This is exactly: sin(sunAngle) * 90°
-        float elevationAngle = (float) Math.sin(Math.toRadians(sunAngle)) * 90.0f;
-
-        // Clamp to reasonable range
-        elevationAngle = Math.max(-90.0f, Math.min(90.0f, elevationAngle));
+        float elevationAngle = (float) Math.sin(Math.toRadians(dayProgress * 360.0f)) * 90.0f;
 
         // Calculate azimuth (compass direction) - sun moves from east to west
         // dayProgress 0.0 (dawn) → -90° (east)
         // dayProgress 0.25 (noon) → 0° (south)
         // dayProgress 0.5 (dusk) → 90° (west)
-        // Map 0.0-0.5 to -90° to +90° (east through south to west)
         float azimuthAngle = (dayProgress * 2.0f - 0.5f) * 180.0f;
 
-        // Convert to radians
         float elevRad = (float) Math.toRadians(elevationAngle);
         float azimRad = (float) Math.toRadians(azimuthAngle);
 
-        // Convert spherical to Cartesian
         float y = (float) Math.sin(elevRad); // Height (up/down)
         float horizontalDistance = (float) Math.cos(elevRad);
 
@@ -254,71 +270,6 @@ public class TimeOfDay {
         }
 
         return 0.3f; // Default fallback
-    }
-
-    /**
-     * Gets the sky color based on time of day.
-     * @return RGB color vector for the sky
-     */
-    public Vector3f getSkyColor() {
-        long t = ticks;
-
-        // Day sky (bright blue)
-        Vector3f daySky = new Vector3f(0.53f, 0.81f, 0.92f); // Light blue
-
-        // Sunset/sunrise sky (orange/pink)
-        Vector3f sunsetSky = new Vector3f(1.0f, 0.5f, 0.3f); // Orange
-
-        // Night sky (dark blue)
-        Vector3f nightSky = new Vector3f(0.01f, 0.01f, 0.05f); // Very dark blue
-
-        // Transition during sunrise
-        if (t >= DAWN && t < SUNRISE + 1000) {
-            float progress = (t - DAWN) / 2000.0f; // 0 to 1
-            return lerp(sunsetSky, daySky, progress);
-        }
-
-        // Full day
-        if (t >= SUNRISE + 1000 && t <= SUNSET - 1000) {
-            return new Vector3f(daySky);
-        }
-
-        // Transition during sunset
-        if (t > SUNSET - 1000 && t <= DUSK + 1000) {
-            float progress = (t - (SUNSET - 1000)) / 2000.0f; // 0 to 1
-            return lerp(daySky, sunsetSky, progress);
-        }
-
-        // Transition to night
-        if (t > DUSK + 1000 && t <= DUSK + 2000) {
-            float progress = (t - (DUSK + 1000)) / 1000.0f; // 0 to 1
-            return lerp(sunsetSky, nightSky, progress);
-        }
-
-        // Night time
-        if (t > DUSK + 2000 && t < TICKS_PER_DAY - 2000) {
-            return new Vector3f(nightSky);
-        }
-
-        // Transition from night to sunrise
-        if (t >= TICKS_PER_DAY - 2000) {
-            float progress = (t - (TICKS_PER_DAY - 2000)) / 2000.0f; // 0 to 1
-            return lerp(nightSky, sunsetSky, progress);
-        }
-
-        return new Vector3f(daySky); // Default
-    }
-
-    /**
-     * Linear interpolation between two colors.
-     */
-    private Vector3f lerp(Vector3f a, Vector3f b, float t) {
-        t = Math.max(0.0f, Math.min(1.0f, t)); // Clamp to 0-1
-        return new Vector3f(
-            a.x + (b.x - a.x) * t,
-            a.y + (b.y - a.y) * t,
-            a.z + (b.z - a.z) * t
-        );
     }
 
     /**
