@@ -199,7 +199,8 @@ public final class WeatherEffects {
         float brightness = FOG_BRIGHTNESS * sky.ambient();
         // The sky's hue at unit brightness, partly greyed: rain is grey, but it
         // is lit by the sky like everything else.
-        float share = NIGHT_SKY_HUE + (SKY_HUE - NIGHT_SKY_HUE) * sky.daylight();
+        // Full colour by day and through the evening's sunset, as before the moon.
+        float share = NIGHT_SKY_HUE + (SKY_HUE - NIGHT_SKY_HUE) * Math.max(sky.daylight(), sky.evening());
         float hr = 1f + (hue.x / lum - 1f) * share;
         float hg = 1f + (hue.y / lum - 1f) * share;
         float hb = 1f + (hue.z / lum - 1f) * share;

@@ -192,24 +192,34 @@ public class WorldRenderer {
         // The light that lights faces and casts shadows: the sun, or the moon at night.
         Vector3f keyDirection;
         SkyParams skyParams;
+        // The distance fog away from any sunset gold, and the gold at the horizon.
+        Vector3f clearFogColor;
+        Vector3f horizonGold = new Vector3f();
+        float sunsetCoverage = -1f;
         if (timeOfDay != null) {
             SkyLight sky = SkyLight.of(timeOfDay);
             sunDirection = sky.sunDir();
             keyDirection = sky.keyDir();
             skyColor = weatherEffects.tintSky(sky.skyColor(), new Vector3f());
+            clearFogColor = weatherEffects.tintSky(
+                    new Vector3f(sky.clearZenith()).lerp(sky.clearHorizon(), 0.5f), new Vector3f());
+            weatherEffects.tintSky(new Vector3f(sky.sunsetColor()).mul(1.2f), horizonGold);
+            sunsetCoverage = sky.sunsetCoverage();
             weatherEffects.updateFogColor(sky);
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
             skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
-                    weatherEffects.tintSky(sky.zenith(), new Vector3f()),
-                    weatherEffects.tintSky(sky.horizon(), new Vector3f()),
+                    weatherEffects.tintSky(sky.clearZenith(), new Vector3f()),
+                    weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
+                    weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
                     new Vector3f(sky.sunGlow()).mul(1f - weatherEffects.storminess()), sky.daylight());
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
             skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
+            clearFogColor = skyColor;
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
-                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), 1f);
+                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(), 1f);
         }
 
         // Region-batched chunk rendering: publish last frame's stats and prune
@@ -295,7 +305,9 @@ public class WorldRenderer {
         // full-screen blue tint overlay alone doesn't shrink view distance.
         com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
         float fogStart = 0f, fogEnd = 0f;
-        Vector3f fogColor = skyColor;
+        Vector3f fogColor = clearFogColor;
+        // The evening gold fogs land on the sun's side; underwater the murk is all there is.
+        SunsetFog.set(cameraUnderwater ? new Vector3f() : horizonGold, sunsetCoverage, sunDirection);
         // Underwater the fog is a VOLUME around the eye, so it is measured as a
         // sphere; the atmospheric fog keeps its horizontal measure, which is
         // what makes a distant peak fade with its base instead of pulling clear
@@ -535,6 +547,7 @@ public class WorldRenderer {
 
         // Atmospheric distance fog toward the sky color (fogEnd <= fogStart disables).
         shaderProgram.setUniform("u_fogColor", skyColor);
+        SunsetFog.applyTo(shaderProgram);
         shaderProgram.setUniform("u_fogStart", fogStart);
         shaderProgram.setUniform("u_fogEnd", fogEnd);
         shaderProgram.setUniform("u_fogSpherical", fogSpherical);

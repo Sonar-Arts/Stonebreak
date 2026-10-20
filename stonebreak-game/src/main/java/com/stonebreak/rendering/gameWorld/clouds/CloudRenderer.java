@@ -380,10 +380,27 @@ public final class CloudRenderer {
             fz = lerp(h.z * NIGHT_SHARE, fz, day);
         }
         float t = a * day;
-        return dest.set(
+        if (sky != null) {
+            // Through the evening the deck is lit as it was before the moon: the
+            // sunset sky's tint, dimming toward the storm grey with the ambient.
+            fx = lerp(fx, STORM_TINT.x, sky.evening());
+            fy = lerp(fy, STORM_TINT.y, sky.evening());
+            fz = lerp(fz, STORM_TINT.z, sky.evening());
+            t = lerp(t, a, sky.evening());
+        }
+        dest.set(
                 lerp(fx, 0.85f * (0.6f + 0.4f * skyTint.x), t),
                 lerp(fy, 0.85f * (0.6f + 0.4f * skyTint.y), t),
                 lerp(fz, 0.85f * (0.6f + 0.4f * skyTint.z), t));
+        if (sky != null && day <= 0f) {
+            // With the sun down, never brighter than the horizon behind the deck.
+            float cap = SkyLight.luminance(sky.horizon());
+            float lum = SkyLight.luminance(dest);
+            if (lum > cap) {
+                dest.mul(cap / lum);
+            }
+        }
+        return dest;
     }
 
     private static float lerp(float a, float b, float t) {

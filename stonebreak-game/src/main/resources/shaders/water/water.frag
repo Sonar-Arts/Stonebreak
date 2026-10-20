@@ -60,6 +60,7 @@ uniform vec4 uViewport; // x, y, width, height
 // The clouds are composited BEFORE water draws; this keeps it behind them.
 #include "/shaders/clouds/clouds_in_front.glsl"
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/sunset_fog.glsl"
 
 out vec4 fragColor;
 
@@ -260,7 +261,8 @@ void main() {
                 : length(vWorldPos.xz - uCameraPos.xz);
         fogF = smoothstep(uFogStart, uFogEnd, fogDist);
     }
-    color = applyPrecipFog(color, uCameraPos, vWorldPos - uCameraPos, uFogColor, fogF);
+    color = applyPrecipFog(color, uCameraPos, vWorldPos - uCameraPos,
+            horizonFogColor(uFogColor, vWorldPos - uCameraPos), fogF);
 
     // Behind the cloud in front of the surface (seen from above the clouds).
     color = behindClouds(color, uCameraPos, vWorldPos);

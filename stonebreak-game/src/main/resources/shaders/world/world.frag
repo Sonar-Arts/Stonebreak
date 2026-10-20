@@ -18,6 +18,7 @@ out vec4 fragColor;
 // Ice and glass draw after the clouds are composited; this keeps them behind them.
 #include "/shaders/clouds/clouds_in_front.glsl"
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/sunset_fog.glsl"
 
 uniform sampler2D texture_sampler;
 // Block texture array — sampled when u_useTextureArray is true.
@@ -215,7 +216,8 @@ void main() {
             }
             // With the rain and snow in front of the fragment, and the sky's
             // own where the distance fog dissolves it into the sky.
-            fragColor.rgb = applyPrecipFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos, u_fogColor, fogF);
+            fragColor.rgb = applyPrecipFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos,
+                    horizonFogColor(u_fogColor, fragPos - u_viewPos), fogF);
             // Only the translucent pass turns this on (WorldRenderer).
             fragColor.rgb = behindClouds(fragColor.rgb, u_viewPos, fragPos);
         }

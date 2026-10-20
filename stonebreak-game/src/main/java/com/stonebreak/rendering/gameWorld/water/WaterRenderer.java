@@ -236,6 +236,7 @@ public class WaterRenderer {
             com.openmason.engine.rendering.RenderOrigin.x(),
             com.openmason.engine.rendering.RenderOrigin.z()));
         shader.setUniform("uFogColor", fogColor);
+        com.stonebreak.rendering.gameWorld.SunsetFog.applyTo(shader);
         shader.setUniform("uFogStart", fogStart);
         shader.setUniform("uFogEnd", fogEnd);
         shader.setUniform("uFogSpherical", fogSpherical);

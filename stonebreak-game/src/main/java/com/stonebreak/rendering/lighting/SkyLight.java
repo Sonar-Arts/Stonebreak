@@ -24,6 +24,15 @@ import org.joml.Vector3f;
  *       full-moon sky is indigo; a new-moon sky is close to black.</li>
  * </ul>
  *
+ * <p>The evening keeps the warm gold Stonebreak's sunset had before the moon
+ * (the README logo's golden hour), but as a region of the sky, not the whole
+ * dome. From 4 PM the gold grows in until, as the sun touches the horizon at
+ * 6 PM, it covers the sky (a little thinner opposite the sun). Then it draws back:
+ * the anti-sun horizon goes to the blue hour first, then the zenith, and last
+ * the sun's own side, before the moonlit night. {@link #sunsetWeight} is the
+ * shape; the sky shader draws it per pixel, and {@code zenith}/{@code horizon}
+ * here already include it for the fog and clouds.
+ *
  * <p>Vectors are shared and must not be modified; copy one to change it.
  */
 public record SkyLight(
@@ -33,14 +42,24 @@ public record SkyLight(
         float moonPhase,
         /* Moonlight relative to a full moon overhead: phase curve × altitude, 0 once the moon sets. */
         float moonLight,
+        /* Sky colour overhead and at the horizon, sunset gold included (what fog and clouds read). */
         Vector3f zenith,
         Vector3f horizon,
+        /* The same without the sunset: the sky shader draws the gold itself, per direction. */
+        Vector3f clearZenith,
+        Vector3f clearHorizon,
+        /* Sunset gold × how far it has grown in (0..1); black outside the evening. */
+        Vector3f sunsetColor,
+        /* How much of the sky the gold covers, as a {@link #sunsetWeight} threshold. */
+        float sunsetCoverage,
         /* Warm light low on the horizon toward the sun, premultiplied by its strength. */
         Vector3f sunGlow,
         /* What fog, haze and distance fog fade toward: between zenith and horizon. */
         Vector3f skyColor,
         /* 0 with the sun below the horizon, 1 once it is 10° up. */
         float daylight,
+        /* 0..1: how much the sunset gold holds the sky overhead (the evening). */
+        float evening,
         /* Ambient light level for rendering, the same scale as TimeOfDay's (1 = full day). */
         float ambient,
         /* The light that casts shadows and lights faces: the sun, or the moon at night. */
@@ -61,6 +80,19 @@ public record SkyLight(
     private static final Vector3f NEW_MOON_ZENITH = new Vector3f(0.008f, 0.010f, 0.028f);
     private static final Vector3f NEW_MOON_HORIZON = new Vector3f(0.016f, 0.020f, 0.040f);
     private static final Vector3f GLOW = new Vector3f(1.0f, 0.55f, 0.30f);
+    /** The pre-moon sunset sky, whole-sky orange; its horizon was 1.2× it. */
+    private static final Vector3f SUNSET = new Vector3f(1.0f, 0.5f, 0.3f);
+    private static final float SUNSET_HORIZON = 1.2f;
+    /**
+     * The evening's ticks: the gold grows in from 4 PM to 6 PM (as the pre-moon sky
+     * did), and from sunset at 6 PM draws back toward the sun until 8 PM.
+     */
+    private static final long EVENING_START = 10_000, SUNSET_FULL = 12_000, RETREAT_START = 12_000,
+            EVENING_END = 14_000;
+    /** At its height the gold covers the sky, about 85% strength on the horizon opposite the sun. */
+    static final float PEAK_COVERAGE = 1.15f;
+    /** Width of the gold's soft edge, in {@link #sunsetWeight}'s distance units. */
+    static final float SUNSET_SOFTNESS = 0.3f;
     /** Moonlight on the ground: desaturated cool blue (see the class comment). */
     private static final Vector3f MOONLIGHT = new Vector3f(0.70f, 0.80f, 1.0f);
 
@@ -91,7 +123,7 @@ public record SkyLight(
             return cached;
         }
         SkyLight sky = compute(time.getSunDirection(), MoonCycle.direction(time), MoonCycle.phase(time),
-                time.getAmbientLightLevel());
+                time.getAmbientLightLevel(), time.getTicks());
         last = sky;
         lastTicks = ticks;
         return sky;
@@ -100,8 +132,9 @@ public record SkyLight(
     /**
      * @param dayAmbient {@link TimeOfDay#getAmbientLightLevel()}: the daytime ambient,
      *                   used while the sun is up
+     * @param tick       the time of day, 0..23999 (the evening palette is set in ticks)
      */
-    static SkyLight compute(Vector3f sunDir, Vector3f moonDir, float phase, float dayAmbient) {
+    static SkyLight compute(Vector3f sunDir, Vector3f moonDir, float phase, float dayAmbient, long tick) {
         float sunElevation = (float) Math.toDegrees(Math.asin(Math.clamp(sunDir.y, -1f, 1f)));
 
         // The moon lights the sky only while it is up, and fully only once clear of the horizon.
@@ -112,8 +145,25 @@ public record SkyLight(
         Vector3f zenith = ramp(sunElevation, nightZenith, NAUTICAL_ZENITH, CIVIL_ZENITH, DAY_ZENITH);
         Vector3f horizon = ramp(sunElevation, nightHorizon, NAUTICAL_HORIZON, CIVIL_HORIZON, DAY_HORIZON);
         float glow = smoothstep(-8f, -1f, sunElevation) * (1f - smoothstep(4f, 14f, sunElevation));
-        Vector3f sunGlow = new Vector3f(GLOW).mul(0.8f * glow);
         Vector3f skyColor = lerp(zenith, horizon, 0.5f);
+
+        // The evening's gold: grown in like the pre-moon sunset, then drawn back toward the sun.
+        Vector3f clearZenith = zenith, clearHorizon = horizon;
+        float sunset = 0f, coverage = -SUNSET_SOFTNESS;
+        if (tick >= EVENING_START && tick < EVENING_END) {
+            sunset = Math.min(1f, (tick - EVENING_START) / (float) (SUNSET_FULL - EVENING_START));
+            float retreat = Math.clamp((tick - RETREAT_START) / (float) (EVENING_END - RETREAT_START), 0f, 1f);
+            coverage = lerp(PEAK_COVERAGE, -SUNSET_SOFTNESS, retreat);
+        }
+        Vector3f sunsetColor = new Vector3f(SUNSET).mul(sunset);
+        // Overhead sits half-way round from the sun; the horizon averages its ring.
+        float evening = sunset * sunsetWeight(coverage, 0.5f);
+        float horizonShare = sunset * Math.clamp(coverage, 0f, 1f);
+        zenith = lerp(clearZenith, SUNSET, evening);
+        horizon = lerp(clearHorizon, new Vector3f(SUNSET).mul(SUNSET_HORIZON), horizonShare);
+        skyColor = lerp(lerp(zenith, horizon, 0.5f), zenith, evening);
+        // While the gold holds the sky it is the glow; the band returns as it goes.
+        Vector3f sunGlow = new Vector3f(GLOW).mul(0.8f * glow * (1f - sunset));
 
         float daylight = smoothstep(0f, DAY, sunElevation);
         float nightAmbient = NIGHT_AMBIENT + MOON_AMBIENT * moonLight;
@@ -134,8 +184,21 @@ public record SkyLight(
             keyLight = new Vector3f(1f);
         }
         return new SkyLight(new Vector3f(sunDir), new Vector3f(moonDir), phase, moonLight,
-                zenith, horizon, sunGlow, skyColor, daylight, ambient, keyDir, keyLight, keyIsMoon);
+                zenith, horizon, clearZenith, clearHorizon, sunsetColor, coverage,
+                sunGlow, skyColor, daylight, evening, ambient, keyDir, keyLight, keyIsMoon);
     }
+
+    /**
+     * How golden the sky is in a direction, 0..1. {@code fromSun} runs 0 at the
+     * horizon under the sun, through 0.5 overhead (and at the horizon to either
+     * side), to 1 at the horizon opposite it: 0.5 − 0.5·dot(view, sun's compass
+     * direction). As {@code coverage} falls, the gold leaves the high values first.
+     * sky.frag mirrors this.
+     */
+    public static float sunsetWeight(float coverage, float fromSun) {
+        return 1f - smoothstep(coverage - SUNSET_SOFTNESS, coverage + SUNSET_SOFTNESS, fromSun);
+    }
+
 
     /** Night → nautical → civil → day across the sun's elevation in degrees. */
     private static Vector3f ramp(float elevation, Vector3f night, Vector3f nautical, Vector3f civil, Vector3f day) {

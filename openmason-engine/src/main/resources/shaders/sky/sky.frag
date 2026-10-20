@@ -10,6 +10,8 @@ uniform float moonLight;      // moonlight relative to a full moon overhead (0..
 uniform vec3 zenithColor;
 uniform vec3 horizonColor;
 uniform vec3 sunGlow;         // warm horizon band toward the sun, premultiplied
+uniform vec3 sunsetColor;     // evening gold × strength (0 = none)
+uniform float sunsetCoverage; // how far round from the sun the gold reaches
 uniform float daylight;       // 0 sun down .. 1 full day
 uniform sampler2D moonTexture; // 64x64 pixel art, alpha = disc
 
@@ -23,6 +25,8 @@ const float MOON_INTENSITY = 1.05;
 // Earth lit by the sun lights the moon's night side (earthshine), most at new moon.
 const float EARTHSHINE = 0.035;
 const vec3 MOON_HALO = vec3(0.55, 0.62, 0.80);
+// Soft edge of the sunset gold; SkyLight.SUNSET_SOFTNESS.
+const float SUNSET_SOFTNESS = 0.3;
 
 vec3 getTimedSkyColor(vec3 direction) {
     float elevation = direction.y;
@@ -50,6 +54,23 @@ vec3 getTimedSkyColor(vec3 direction) {
         vec3 color = mix(groundColor, horizon, t);
         return mix(horizon * 0.85, color, edgeFade * 0.7 + 0.3);
     }
+}
+
+// The evening gold over `sky`. It reaches `sunsetCoverage` round from the sun:
+// 0 is the horizon under the sun, 0.5 overhead, 1 the horizon opposite. As the
+// coverage falls the gold leaves the opposite horizon first and ends at the sun.
+// SkyLight.sunsetWeight mirrors this for the fog and clouds.
+vec3 applySunset(vec3 direction, vec3 sky) {
+    vec2 flatSun = sunDirection.xz / max(length(sunDirection.xz), 1e-4);
+    float fromSun = 0.5 - 0.5 * dot(direction, vec3(flatSun.x, 0.0, flatSun.y));
+    float weight = 1.0 - smoothstep(sunsetCoverage - SUNSET_SOFTNESS, sunsetCoverage + SUNSET_SOFTNESS, fromSun);
+    // The same gradient the pre-moon sunset had: 1.2x at the horizon, darker below it.
+    float up = smoothstep(0.0, 1.0, max(direction.y, 0.0));
+    vec3 gold = direction.y >= 0.0
+            ? mix(sunsetColor * 1.2, sunsetColor, up * 0.8 + 0.2 * smoothstep(0.0, 0.4, direction.y))
+            : mix(sunsetColor * 0.8, sunsetColor * 1.2, smoothstep(-0.3, 0.0, direction.y));
+    float strength = max(sunsetColor.r, max(sunsetColor.g, sunsetColor.b));
+    return mix(sky, gold / max(strength, 1e-4), weight * strength);
 }
 
 vec3 getSunContribution(vec3 direction) {
@@ -121,6 +142,7 @@ void main() {
     vec3 direction = normalize(viewDirection);
 
     vec3 finalColor = getTimedSkyColor(direction);
+    finalColor = applySunset(direction, finalColor);
     finalColor = applyMoon(direction, finalColor);
     finalColor += getSunContribution(direction);
 
