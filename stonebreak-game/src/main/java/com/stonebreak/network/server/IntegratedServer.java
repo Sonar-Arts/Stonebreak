@@ -122,15 +122,16 @@ public final class IntegratedServer {
         level.world().serverSinks().setWaterSink(blockHandler::onServerWaterChange);
         // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
         // The registry dedups (fires only on actual string change), so idle furnaces are free.
+        // Queued behind the block batches: a placement's first state write happens in the
+        // same tick as its block change, and an echo that overtook the block change would be
+        // wiped by it on every other client (issue #362 removed the re-stream that hid this).
         if (level.world().getFurnaceRegistry() != null) {
             level.world().getFurnaceRegistry().setStateChangeListener((pos, state) ->
-                ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
-                    pos.x(), pos.y(), pos.z(), state), false));
+                blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
         }
         // Crafting-table grid changes (issue #307) → BlockStateS2C, same dedup-at-source rule.
         level.world().getWorkbenchRegistry().setStateChangeListener((pos, state) ->
-            ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
-                pos.x(), pos.y(), pos.z(), state), false));
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
 
         networkServer.start(localAddress, tcpAddress);
         chunkHandler.onSessionStart();

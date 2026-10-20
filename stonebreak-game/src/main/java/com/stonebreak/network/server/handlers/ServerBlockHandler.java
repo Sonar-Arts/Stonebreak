@@ -60,10 +60,13 @@ public final class ServerBlockHandler {
      *  same-tick WATER block change lands before its level meta. */
     private final Map<Long, SectionBatch> pendingWaterByTick = new LinkedHashMap<>();
 
-    /** Block-state echoes (door placement facing) queued behind this tick's block batches
-     *  so a state packet can never overtake — and be wiped by — its own block change. */
-    private final java.util.List<com.stonebreak.network.packet.world.BlockStateS2C> pendingStateEchoes =
-            new java.util.ArrayList<>();
+    /** Cells whose block state must be echoed behind this tick's block batches, so a state
+     *  packet can never overtake — and be wiped by — its own block change (a client's
+     *  {@code Chunk.setBlock} drops the cell's state on a type change). The state is read
+     *  from the world at flush time: a later same-tick change wins, a broken block sends
+     *  nothing. Insertion-ordered; a cell queued twice is echoed once. */
+    private final java.util.Set<com.openmason.engine.util.BlockPos> pendingStateEchoes =
+            new java.util.LinkedHashSet<>();
 
     public ServerBlockHandler(ServerChunkHandler chunkHandler) {
         this.chunkHandler = chunkHandler;
@@ -110,7 +113,13 @@ public final class ServerBlockHandler {
         applyAccepted(sp, c, incoming, prev, world, ctx);
     }
 
-    /** Post-apply effects of an accepted edit: break drops/cleanup, version bump, broadcast. */
+    /**
+     * Post-apply effects of an accepted edit: break drops/cleanup, broadcast. The edit and
+     * every side effect reach clients as per-block packets (block batches, state echoes,
+     * snow/water meta), so the chunk version is NOT bumped — a bump would re-stream the whole
+     * chunk to every viewer, and the stale snapshot would briefly undo the editor's newer
+     * predictions (issue #362). Only the audit hash is dropped.
+     */
     private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
                                World world, ServerWorldContext ctx) {
         // Break (non-air → air): spawn drops authoritatively and run per-break cleanup. The
@@ -154,8 +163,7 @@ public final class ServerBlockHandler {
             com.stonebreak.blocks.door.DoorState placed =
                     com.stonebreak.blocks.door.DoorState.placed(sp.x(), sp.z(), c.x(), c.z());
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
-            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
-                    c.x(), c.y(), c.z(), placed.toStateString()));
+            queueStateEcho(c.x(), c.y(), c.z());
         }
         // Stair placement: the facing is authoritative too — it decides the
         // baked orientation every client meshes and the step profile every
@@ -164,8 +172,7 @@ public final class ServerBlockHandler {
             String placed = com.stonebreak.blocks.stairs.StairState
                     .placedFromYaw(sp.yaw()).toStateString();
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
-            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
-                    c.x(), c.y(), c.z(), placed));
+            queueStateEcho(c.x(), c.y(), c.z());
         }
         // Torch placement: Ground/Side + facing depend on which FACE the placer
         // clicked, which only the client knows — it proposes the state in the
@@ -185,8 +192,7 @@ public final class ServerBlockHandler {
                 return;
             }
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
-            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
-                    c.x(), c.y(), c.z(), placed.toStateString()));
+            queueStateEcho(c.x(), c.y(), c.z());
         }
         // Stalagmite placement: hanging and facing come from the client's proposal (only it knows
         // which face was clicked); a missing or unreadable one stands upright facing the placer's
@@ -198,8 +204,7 @@ public final class ServerBlockHandler {
                     : new com.stonebreak.blocks.stalagmite.StalagmiteState(1, false,
                             com.stonebreak.blocks.stairs.StairState.Facing.fromYaw(sp.yaw()));
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
-            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
-                    c.x(), c.y(), c.z(), placed.toStateString()));
+            queueStateEcho(c.x(), c.y(), c.z());
         }
         // Torches held up by the block that just changed pop off with it (a break, or
         // any edit leaving a non-solid cell) — issue #247. The World.setBlockAt funnel
@@ -223,7 +228,7 @@ public final class ServerBlockHandler {
                         new Vector3f(a.x + 0.5f, a.y + 0.5f, a.z + 0.5f), BlockType.LIMESTONE_STALAGMITE);
             }
             for (org.joml.Vector3i r : fell.removed()) {
-                chunkHandler.markChunkModified(Math.floorDiv(r.x, 16), Math.floorDiv(r.z, 16));
+                chunkHandler.invalidateHash(Math.floorDiv(r.x, 16), Math.floorDiv(r.z, 16));
                 queueOutgoing(r.x, r.y, r.z, (short) BlockType.AIR.getId());
             }
         }
@@ -238,7 +243,18 @@ public final class ServerBlockHandler {
                 world.getSnowLayerManager().removeSnowLayers(c.x(), c.y(), c.z());
             }
         }
-        chunkHandler.markChunkModified(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
+        // Water placement: send the cell's level. A bucket poured into flowing water arrives
+        // as AIR then WATER, which the section batch coalesces to one WATER change; a client
+        // whose cell is already WATER applies that as a no-op and would keep the old flow
+        // level. The meta flushes after the block batches, so it also lands correctly where
+        // the client cell was not water.
+        if (incoming == BlockType.WATER) {
+            int water = world.getWaterValueAt(c.x(), c.y(), c.z());
+            if (water >= 0) {
+                onServerWaterChange(c.x(), c.y(), c.z(), water);
+            }
+        }
+        chunkHandler.invalidateHash(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
         queueOutgoing(c.x(), c.y(), c.z(), c.blockTypeId());
     }
 
@@ -399,9 +415,8 @@ public final class ServerBlockHandler {
             queueOutgoing(newCell.x, newCell.y, newCell.z, (short) BlockType.LIMESTONE_STALAGMITE.getId());
         }
         for (org.joml.Vector3i w : written) {
-            chunkHandler.markChunkModified(Math.floorDiv(w.x, 16), Math.floorDiv(w.z, 16));
-            pendingStateEchoes.add(new com.stonebreak.network.packet.world.BlockStateS2C(
-                    w.x, w.y, w.z, world.getBlockStateAt(w.x, w.y, w.z)));
+            chunkHandler.invalidateHash(Math.floorDiv(w.x, 16), Math.floorDiv(w.z, 16));
+            queueStateEcho(w.x, w.y, w.z);
         }
     }
 
@@ -478,7 +493,7 @@ public final class ServerBlockHandler {
     /** Host-originated edit (wired from {@code World.setBlockAt} in the lifecycle phase). */
     public void onLocalBlockChange(int x, int y, int z, BlockType type, ServerWorldContext ctx) {
         short id = (short) (type == null ? 0 : type.getId());
-        chunkHandler.markChunkModified(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
+        chunkHandler.invalidateHash(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
             Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
         queueOutgoing(x, y, z, id);
     }
@@ -514,7 +529,7 @@ public final class ServerBlockHandler {
         }
         simEditsThisTick++;
         // Sim edits change chunk contents without a version bump, so the audit hash cache
-        // must be invalidated here (player edits invalidate via markChunkModified).
+        // must be invalidated here (player edits do the same in applyAccepted).
         chunkHandler.invalidateHash(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
             Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
         queueOutgoing(x, y, z, (short) (type == null ? 0 : type.getId()));
@@ -560,14 +575,30 @@ public final class ServerBlockHandler {
             }
             pendingWaterByTick.clear();
         }
-        // AFTER the block batches: state echoes for blocks placed this tick
+        // AFTER the block batches: state echoes for cells changed this tick
         // (see pendingStateEchoes — order matters, block apply clears state).
         if (!pendingStateEchoes.isEmpty()) {
-            for (com.stonebreak.network.packet.world.BlockStateS2C echo : pendingStateEchoes) {
-                ctx.broadcast(echo, false);
+            World world = ctx.world();
+            if (world != null) {
+                for (com.openmason.engine.util.BlockPos p : pendingStateEchoes) {
+                    String state = world.getBlockStateAt(p.x(), p.y(), p.z());
+                    if (state != null && !state.isEmpty()) {
+                        ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
+                                p.x(), p.y(), p.z(), state), false);
+                    }
+                }
             }
             pendingStateEchoes.clear();
         }
+    }
+
+    /**
+     * Echo the cell's block state to every client after this tick's block batches. Used for
+     * placement states and for the furnace/workbench registries' change listeners, whose
+     * first write lands in the same tick as the block that created them.
+     */
+    public void queueStateEcho(int x, int y, int z) {
+        pendingStateEchoes.add(new com.openmason.engine.util.BlockPos(x, y, z));
     }
 
     // ─── Outgoing batching ─────────────────────────────────────────────────────────

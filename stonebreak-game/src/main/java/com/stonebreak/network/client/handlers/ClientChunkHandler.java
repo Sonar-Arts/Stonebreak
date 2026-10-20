@@ -38,6 +38,8 @@ public final class ClientChunkHandler {
 
     /** Raw payloads that arrived before the client world existed (rebuild/rejoin). */
     private final Deque<ChunkDataS2C> pending = new ArrayDeque<>();
+    /** Chunk keys with a payload in {@link #pending}; their edits wait like any pending install. */
+    private final java.util.Set<Long> pendingKeys = new java.util.HashSet<>();
 
     private record DecodedChunk(int chunkX, int chunkZ, long seq,
                                 CcoPalettedChunkStorage storage, int[] heights,
@@ -67,10 +69,14 @@ public final class ClientChunkHandler {
      * returns false and the caller applies immediately. Deferred actions are
      * DROPPED if the install fails — the resync that failure triggers streams
      * a fresh snapshot that already contains their effects.
+     *
+     * <p>A snapshot still parked in {@link #pending} (client world rebuilding)
+     * counts as pending too: the server re-streams a chunk only when something
+     * forgets it, so an edit lost here would stay lost.
      */
     public boolean runAfterPendingInstall(int cx, int cz, Runnable action) {
         long k = key(cx, cz);
-        if (!latestSeq.containsKey(k)) {
+        if (!latestSeq.containsKey(k) && !pendingKeys.contains(k)) {
             return false;
         }
         deferredActions.computeIfAbsent(k, unused -> new java.util.ArrayList<>()).add(action);
@@ -100,6 +106,7 @@ public final class ClientChunkHandler {
         // would silently lose the chunk (the server marks it sent exactly once).
         if (!Game.isClientWorldReady()) {
             pending.add(cd);
+            pendingKeys.add(key(cd.chunkX(), cd.chunkZ()));
             return;
         }
         submitDecode(cd);
@@ -129,6 +136,7 @@ public final class ClientChunkHandler {
             while ((cd = pending.poll()) != null) {
                 submitDecode(cd);
             }
+            pendingKeys.clear(); // every parked chunk now has a latestSeq entry
         }
         if (ready.isEmpty() || !worldReady) {
             return;
@@ -175,6 +183,7 @@ public final class ClientChunkHandler {
 
     public void onSessionEnd() {
         pending.clear();
+        pendingKeys.clear();
         ready.clear();
         latestSeq.clear();
         deferredActions.clear();
