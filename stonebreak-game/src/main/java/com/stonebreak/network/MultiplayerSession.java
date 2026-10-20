@@ -177,18 +177,18 @@ public final class MultiplayerSession {
     }
 
     /** Furnace slot intent: the open furnace UI's slots changed (see {@code FurnaceSlotsC2S}). */
-    public static void sendFurnaceSlots(int x, int y, int z, String slots) {
+    public static void sendFurnaceSlots(int x, int y, int z, int seq, String slots) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendFurnaceSlots(x, y, z, slots);
+            c.sendFurnaceSlots(x, y, z, seq, slots);
         }
     }
 
     /** Crafting-table grid intent: the open workbench UI's grid changed (see {@code WorkbenchSlotsC2S}). */
-    public static void sendWorkbenchSlots(int x, int y, int z, String slots) {
+    public static void sendWorkbenchSlots(int x, int y, int z, int seq, String slots) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendWorkbenchSlots(x, y, z, slots);
+            c.sendWorkbenchSlots(x, y, z, seq, slots);
         }
     }
 

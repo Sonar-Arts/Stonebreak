@@ -56,7 +56,7 @@ class FurnaceDocumentLifecycleTest {
         FurnaceController controller = new FurnaceController(null, null, DocumentFurnaceCapture.smelting());
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         controller.setInputManager(input);
-        controller.setSlotSink((p, s) -> { });
+        controller.setSlotSink((p, seq, s) -> { });
         controller.setFurnaceAt(p -> true);
         boolean[] open = {false};
         GameUiHost host = new GameUiHost(services(input, inv, open), MultiplayerSession.Mode.SINGLEPLAYER);

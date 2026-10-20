@@ -101,4 +101,71 @@ class WorkbenchStateTest {
         }
         assertFalse(s.isEmpty());
     }
+
+    /* ── Issue #353: echoes older than the last send never roll the grid back ── */
+
+    private static String grid(ItemStack... cells) {
+        WorkbenchState g = new WorkbenchState(POS);
+        for (int i = 0; i < cells.length; i++) {
+            if (cells[i] != null) g.getSlots()[i] = cells[i];
+        }
+        return g.toStateString();
+    }
+
+    @Test
+    void anEchoOlderThanTheLastSendKeepsTheLocalGrid() {
+        // Right-drag into A then B: snapshots {A} (seq 1) and {A,B} (seq 2) go out.
+        WorkbenchState s = new WorkbenchState(POS);
+        s.getSlots()[0] = new ItemStack(BlockType.DIRT, 1);
+        s.markSent(1);
+        s.getSlots()[1] = new ItemStack(BlockType.DIRT, 1);
+        s.markSent(2);
+        String local = s.encodeSlots();
+
+        // The {A} echo arrives late: B's item must not vanish.
+        s.applyStateString(grid(new ItemStack(BlockType.DIRT, 1)), 1);
+        assertEquals(local, s.encodeSlots());
+        assertNull(s.consumePreEchoSlots(), "a dropped echo is not an echo for the UI");
+        assertTrue(s.awaitingAck());
+
+        // Drag into C (seq 3); the server applies {A,B} then {A,B,C} and acks 3.
+        s.getSlots()[2] = new ItemStack(BlockType.DIRT, 1);
+        s.markSent(3);
+        s.applyStateString(grid(new ItemStack(BlockType.DIRT, 1)), 2); // {A,B} echo, still stale
+        assertEquals(1, s.getSlots()[1].getCount(), "B survives");
+        String server = s.toStateString();
+        s.applyStateString(server, 3);
+        assertFalse(s.awaitingAck());
+        assertEquals(server, s.toStateString());
+    }
+
+    @Test
+    void anEchoAcknowledgingTheLastSendCorrectsTheGrid() {
+        WorkbenchState s = new WorkbenchState(POS);
+        s.getSlots()[0] = new ItemStack(BlockType.DIRT, 1);
+        s.markSent(5);
+        // The server changed it (another player's edit landed after ours): the echo wins.
+        String server = grid(null, new ItemStack(ItemType.STICK, 4));
+        s.applyStateString(server, 5);
+        assertEquals(server, s.toStateString());
+        assertTrue(s.consumePreEchoSlots() != null, "the UI re-baselines on it");
+    }
+
+    @Test
+    void echoesWithoutAnAckWaitForTheInFlightSnapshot() {
+        // A chunk re-stream carries no ack: applied when nothing is in flight, ignored otherwise.
+        WorkbenchState s = new WorkbenchState(POS);
+        String restream = grid(new ItemStack(BlockType.DIRT, 3));
+        s.applyStateString(restream);
+        assertEquals(restream, s.toStateString());
+
+        s.getSlots()[0] = com.stonebreak.items.ItemStackStateCodec.empty();
+        s.markSent(7);
+        s.applyStateString(restream);
+        assertTrue(s.getSlots()[0].isEmpty());
+
+        s.applyStateString(grid(), 7);
+        s.applyStateString(restream);
+        assertEquals(restream, s.toStateString(), "acked: re-streams apply again");
+    }
 }

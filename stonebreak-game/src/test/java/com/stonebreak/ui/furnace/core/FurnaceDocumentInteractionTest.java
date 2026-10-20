@@ -94,7 +94,7 @@ class FurnaceDocumentInteractionTest {
         FurnaceController legacy = new FurnaceController(null, null, DocumentFurnaceCapture.smelting());
         FurnaceInputManager legacyInput = new FurnaceInputManager(null, legacyInv, legacy);
         legacy.setInputManager(legacyInput);
-        legacy.setSlotSink((p, s) -> { });
+        legacy.setSlotSink((p, seq, s) -> { });
         legacy.bind(legacyFurnace);
         List<String> legacyDrops = new ArrayList<>();
         legacyInput.setWorldDrop(d -> {

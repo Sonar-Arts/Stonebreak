@@ -41,7 +41,7 @@ class FurnaceSlotAddressTest {
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         controller.setInputManager(input);
         List<String> sent = new ArrayList<>();
-        controller.setSlotSink((pos, slots) -> sent.add(slots));
+        controller.setSlotSink((pos, seq, slots) -> sent.add(slots));
         FurnaceState furnace = new FurnaceState(new BlockPos(0, 64, 0));
         controller.bind(furnace);
 

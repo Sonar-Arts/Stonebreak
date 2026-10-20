@@ -106,10 +106,11 @@ public class WorkbenchController extends InventoryController {
         // the per-frame dirty check catches it and ships the full grid to the server, whose
         // BlockStateS2C echo then confirms/corrects it.
         //
-        // An echo is NOT intent: one that left the server before our last edit arrived puts
-        // the old grid back locally, and re-sending that would undo the edit. So when an echo
-        // landed since the last frame, first flush any edit made before it (the pre-echo
-        // snapshot), then adopt the echoed grid as the baseline. (Same rule as the furnace.)
+        // An echo is NOT intent. One that left the server before our last snapshot arrived
+        // carries an older ack, and the state keeps our grid (issue #353). One that
+        // acknowledges it may still overwrite an edit made since the last frame, so when an
+        // echo landed, first flush any edit made before it (the pre-echo snapshot), then adopt
+        // the echoed grid as the baseline. (Same rule as the furnace.)
         String preEcho = state.consumePreEchoSlots();
         if (preEcho != null) {
             if (!preEcho.equals(lastSentSlots)) {
@@ -131,8 +132,10 @@ public class WorkbenchController extends InventoryController {
 
     private void sendSlots(String slots) {
         lastSentSlots = slots;
+        int seq = com.stonebreak.network.SlotIntentSeq.next();
+        state.markSent(seq);
         BlockPos p = state.getPos();
-        com.stonebreak.network.MultiplayerSession.sendWorkbenchSlots(p.x(), p.y(), p.z(), slots);
+        com.stonebreak.network.MultiplayerSession.sendWorkbenchSlots(p.x(), p.y(), p.z(), seq, slots);
     }
 
     private boolean isTableStillThere() {

@@ -55,10 +55,23 @@ public class FurnaceStateRegistry {
     /**
      * Applies an authoritative server state (from {@code BlockStateS2C}) onto the LOCAL
      * registry entry in place — same object identity, so an open furnace UI bound to this
-     * state sees contents/progress update live. Client-side only.
+     * state sees contents/progress update live. {@code ack} is the echo's acknowledgement of
+     * our own slot intents ({@link FurnaceState#applyStateString(String, int)}). Client-side only.
      */
-    public void applyAuthoritativeState(BlockPos pos, String stateString) {
-        getOrCreate(pos).applyStateString(stateString);
+    public void applyAuthoritativeState(BlockPos pos, String stateString, int ack) {
+        getOrCreate(pos).applyStateString(stateString, ack);
+    }
+
+    /**
+     * Applies a player's slot snapshot onto the authoritative furnace and persists it at once
+     * (the change listener echoes it), rather than at the next tick: the echo queued for the
+     * sender's ack must carry the state that includes this snapshot. Server-side; the caller
+     * validates reach and that the block is still a furnace.
+     */
+    public void applySlots(World world, BlockPos pos, String encodedSlots) {
+        FurnaceState s = getOrCreate(pos);
+        s.applySlots(encodedSlots);
+        writeChunkState(world, pos, s.toStateString());
     }
 
     /** Look up the furnace at {@code pos}, or {@code null} if none. */

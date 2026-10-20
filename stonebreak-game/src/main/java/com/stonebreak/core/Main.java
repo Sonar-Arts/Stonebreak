@@ -616,7 +616,8 @@ public class Main {
         state.setIngredient(new com.stonebreak.items.ItemStack(recipes.getFirst().getInput().getItem(), 8));
         state.setFuel(new com.stonebreak.items.ItemStack(fuel, 8));
         String slots = state.encodeSlots();
-        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(fx, fy, fz, slots);
+        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(fx, fy, fz,
+            com.stonebreak.network.SlotIntentSeq.next(), slots);
         autoFurnaceX = fx;
         autoFurnaceY = fy;
         autoFurnaceZ = fz;

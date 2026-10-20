@@ -493,18 +493,18 @@ public final class ClientWorldView {
     }
 
     /** Furnace slot intent from the open furnace UI (see {@code FurnaceSlotsC2S}). */
-    public void sendFurnaceSlots(int x, int y, int z, String slots) {
+    public void sendFurnaceSlots(int x, int y, int z, int seq, String slots) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive() && slots != null) {
-            conn.send(new com.stonebreak.network.packet.world.FurnaceSlotsC2S(x, y, z, slots), false);
+            conn.send(new com.stonebreak.network.packet.world.FurnaceSlotsC2S(x, y, z, seq, slots), false);
         }
     }
 
     /** Crafting-table grid intent from the open workbench UI (see {@code WorkbenchSlotsC2S}). */
-    public void sendWorkbenchSlots(int x, int y, int z, String slots) {
+    public void sendWorkbenchSlots(int x, int y, int z, int seq, String slots) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive() && slots != null) {
-            conn.send(new com.stonebreak.network.packet.world.WorkbenchSlotsC2S(x, y, z, slots), false);
+            conn.send(new com.stonebreak.network.packet.world.WorkbenchSlotsC2S(x, y, z, seq, slots), false);
         }
     }
 

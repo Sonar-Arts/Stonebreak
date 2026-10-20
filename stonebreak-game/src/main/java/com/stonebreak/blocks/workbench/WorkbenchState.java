@@ -38,6 +38,11 @@ public final class WorkbenchState {
     /** Slot snapshot taken just before the first server echo since the last poll; null if none. */
     private String preEchoSlots;
 
+    /** Client display copy only: seq of the newest slot intent sent for this grid (0 = none). */
+    private volatile int sentSeq;
+    /** Client display copy only: newest {@code BlockStateS2C.ack} received for this grid. */
+    private volatile int ackedSeq;
+
     public WorkbenchState(BlockPos pos) {
         this.pos = pos;
         for (int i = 0; i < SLOT_COUNT; i++) {
@@ -107,11 +112,40 @@ public final class WorkbenchState {
     }
 
     /**
+     * Records that the UI sent a slot snapshot numbered {@code seq}: until an echo acknowledges
+     * it, echoes describe the grid from before it and must not overwrite the local grid.
+     */
+    public void markSent(int seq) {
+        sentSeq = seq;
+    }
+
+    /** True while a sent slot snapshot has not been acknowledged by an echo yet. */
+    public boolean awaitingAck() {
+        return ackedSeq < sentSeq;
+    }
+
+    /**
+     * Applies a server echo (or a re-streamed chunk state) that carries no ack: treated as of
+     * the newest ack already seen, so it is ignored while a snapshot is in flight.
+     */
+    public void applyStateString(String raw) {
+        applyStateString(raw, ackedSeq);
+    }
+
+    /**
      * Applies an authoritative server echo in place, first remembering what the grid looked
      * like so an open UI can tell its own un-sent edits apart from the server's corrections
      * (see {@link #consumePreEchoSlots()}).
+     *
+     * <p>{@code ack} is the last of OUR slot intents the server had processed when it built
+     * the echo. If we have sent a newer one since, the echo is stale (issue #353): the server
+     * will apply that snapshot over it, so adopting the echo would roll back edits the player
+     * already made — losing an item that left the cursor, or bringing back one that went to
+     * the inventory. Its grid is dropped; the echo that acknowledges our latest send corrects us.
      */
-    public void applyStateString(String raw) {
+    public void applyStateString(String raw, int ack) {
+        if (ack > ackedSeq) ackedSeq = ack;
+        if (ack < sentSeq) return;
         if (preEchoSlots == null) preEchoSlots = encodeSlots();
         loadStateString(raw);
     }

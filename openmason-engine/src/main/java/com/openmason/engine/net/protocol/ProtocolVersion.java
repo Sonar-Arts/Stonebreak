@@ -18,8 +18,10 @@ public final class ProtocolVersion {
      *  an unknown packet id).
      *  5 = per-block crafting-table grids (WorkbenchSlotsC2S — issue #307).
      *  6 = server-authoritative per-world cheats flag (CheatsSetC2S, CheatsStateS2C —
-     *  issue #318). */
-    public static final int CURRENT = 6;
+     *  issue #318).
+     *  7 = furnace/workbench slot intents carry a sequence number that BlockStateS2C
+     *  acknowledges per recipient (issue #353). */
+    public static final int CURRENT = 7;
 
     private ProtocolVersion() {}
 }

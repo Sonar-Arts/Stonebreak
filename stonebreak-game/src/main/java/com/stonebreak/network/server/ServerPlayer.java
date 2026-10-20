@@ -191,6 +191,23 @@ public final class ServerPlayer {
         sentChunkVersions.removeIf(predicate);
     }
 
+    // ─── Slot-intent acks (issue #353) ─────────────────────────────────────────
+    /** Per furnace/workbench this player edited: seq of the last slot intent processed. One
+     *  entry per block the player ever opened and edited this session — tiny. */
+    private final java.util.Map<com.openmason.engine.util.BlockPos, Integer> slotIntentSeqs =
+            new java.util.HashMap<>();
+
+    /** Records that the slot intent numbered {@code seq} for {@code pos} was processed
+     *  (applied or refused): the next echo of that block to this player acknowledges it. */
+    public void recordSlotIntent(com.openmason.engine.util.BlockPos pos, int seq) {
+        slotIntentSeqs.put(pos, seq);
+    }
+
+    /** Seq of the last slot intent from this player processed at {@code pos}; 0 if none. */
+    public int slotIntentAck(com.openmason.engine.util.BlockPos pos) {
+        return slotIntentSeqs.getOrDefault(pos, 0);
+    }
+
     // ─── Transport convenience ────────────────────────────────────────────────
     public boolean send(Packet packet, boolean droppable) { return connection.send(packet, droppable); }
     public boolean send(Packet packet) { return connection.send(packet, false); }

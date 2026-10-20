@@ -37,7 +37,7 @@ class FurnaceCloseSyncTest {
         controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
-        controller.setSlotSink((pos, slots) -> sent.add(slots));
+        controller.setSlotSink((pos, seq, slots) -> sent.add(slots));
         furnace = new FurnaceState(new BlockPos(0, 64, 0));
         furnace.setFuel(new ItemStack(STONE, 5));
         controller.bind(furnace);

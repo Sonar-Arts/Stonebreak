@@ -27,8 +27,8 @@ public class FurnaceController {
     private String lastSentSlots;
 
     /** Where slot snapshots go: the server, through the multiplayer session. */
-    private SlotSink slotSink = (pos, slots) ->
-        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(pos.x(), pos.y(), pos.z(), slots);
+    private SlotSink slotSink = (pos, seq, slots) ->
+        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(pos.x(), pos.y(), pos.z(), seq, slots);
 
     /** Where the bound furnace's block is checked; tests substitute it. */
     private java.util.function.Predicate<BlockPos> furnaceAt = FurnaceController::worldHasFurnace;
@@ -96,11 +96,11 @@ public class FurnaceController {
         // per-frame dirty check catches it and ships the full slot snapshot to the server.
         // BlockStateS2C echoes then confirm/correct — including the smelting results.
         //
-        // Echoes are NOT intent: the server streams state every cook tick, so an echo that
-        // left before our last intent arrived restores the old slots locally. Re-sending that
-        // would tell the server to put back what the player just took (duplicating shift-
-        // clicked output). So when an echo landed since the last frame, first flush any edit
-        // made before it (the pre-echo snapshot), then adopt the echoed slots as the baseline.
+        // Echoes are NOT intent. One that left before our last intent arrived carries an older
+        // ack, and the state keeps our slots (issue #353). One that acknowledges it may still
+        // overwrite an edit made since the last frame, so when an echo landed, first flush any
+        // edit made before it (the pre-echo snapshot), then adopt the echoed slots as the
+        // baseline; re-sending the echo itself would undo the player's edit.
         if (visible && state != null) {
             syncSlots();
         }
@@ -156,13 +156,15 @@ public class FurnaceController {
 
     private void sendSlots(String slots) {
         lastSentSlots = slots;
-        slotSink.send(state.getPos(), slots);
+        int seq = com.stonebreak.network.SlotIntentSeq.next();
+        state.markSent(seq);
+        slotSink.send(state.getPos(), seq, slots);
     }
 
-    /** Receives slot snapshots bound for the server. */
+    /** Receives slot snapshots bound for the server, each numbered for the echo's ack. */
     @FunctionalInterface
     interface SlotSink {
-        void send(BlockPos pos, String slots);
+        void send(BlockPos pos, int seq, String slots);
     }
 
     /** Test seam: capture slot snapshots instead of sending them. */

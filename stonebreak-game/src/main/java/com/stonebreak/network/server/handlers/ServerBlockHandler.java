@@ -293,9 +293,13 @@ public final class ServerBlockHandler {
     /**
      * C2S: the player edited the slots of an open furnace UI. Validates (reach, furnace
      * exists on the server world), then applies SLOTS ONLY onto the authoritative
-     * {@code FurnaceState} — burn/cook timers stay server-owned. The registry's next tick
-     * writes the new state string, whose change listener broadcasts the {@code BlockStateS2C}
-     * echo that corrects everyone (originator included).
+     * {@code FurnaceState} — burn/cook timers stay server-owned — and writes the new state
+     * string at once.
+     *
+     * <p>Every intent that reaches a valid cell is acknowledged (issue #353): its seq is
+     * recorded and an echo is queued even when nothing changed or reach refused it, so the
+     * sender always gets an echo stamped with its latest seq. Without one, it would keep
+     * treating every later echo as stale.
      */
     public void handleFurnaceSlots(ServerPlayer sp, com.stonebreak.network.packet.world.FurnaceSlotsC2S f,
                                    ServerWorldContext ctx) {
@@ -306,27 +310,24 @@ public final class ServerBlockHandler {
         if (f.y() < 0 || f.y() >= WorldConfiguration.WORLD_HEIGHT) {
             return;
         }
-        if (sp.lastStateNs() != 0L) {
-            float dx = (f.x() + 0.5f) - sp.x();
-            float dy = (f.y() + 0.5f) - sp.y();
-            float dz = (f.z() + 0.5f) - sp.z();
-            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
-                return;
-            }
+        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(f.x(), f.y(), f.z());
+        sp.recordSlotIntent(pos, f.seq());
+        queueStateEcho(f.x(), f.y(), f.z());
+        if (!withinReach(sp, f.x(), f.y(), f.z())) {
+            return;
         }
         if (world.getBlockAt(f.x(), f.y(), f.z()) != BlockType.FURNACE) {
             return;
         }
-        world.getFurnaceRegistry()
-            .getOrCreate(new com.openmason.engine.util.BlockPos(f.x(), f.y(), f.z()))
-            .applySlots(f.slots());
+        world.getFurnaceRegistry().applySlots(world, pos, f.slots());
     }
 
     /**
      * C2S: the player edited the grid of an open crafting-table UI (issue #307). Validates
      * (reach, the block is still a workbench on the server world), then persists the grid on
-     * the authoritative {@code WorkbenchState}; the registry's change listener broadcasts the
-     * {@code BlockStateS2C} echo that corrects everyone (originator included).
+     * the authoritative {@code WorkbenchState}; the queued {@code BlockStateS2C} echo
+     * corrects everyone (originator included). Acknowledged like
+     * {@link #handleFurnaceSlots} (issue #353).
      */
     public void handleWorkbenchSlots(ServerPlayer sp, com.stonebreak.network.packet.world.WorkbenchSlotsC2S w,
                                      ServerWorldContext ctx) {
@@ -337,19 +338,27 @@ public final class ServerBlockHandler {
         if (w.y() < 0 || w.y() >= WorldConfiguration.WORLD_HEIGHT) {
             return;
         }
-        if (sp.lastStateNs() != 0L) {
-            float dx = (w.x() + 0.5f) - sp.x();
-            float dy = (w.y() + 0.5f) - sp.y();
-            float dz = (w.z() + 0.5f) - sp.z();
-            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
-                return;
-            }
+        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(w.x(), w.y(), w.z());
+        sp.recordSlotIntent(pos, w.seq());
+        queueStateEcho(w.x(), w.y(), w.z());
+        if (!withinReach(sp, w.x(), w.y(), w.z())) {
+            return;
         }
         if (world.getBlockAt(w.x(), w.y(), w.z()) != BlockType.WORKBENCH) {
             return;
         }
-        world.getWorkbenchRegistry().applySlots(world,
-            new com.openmason.engine.util.BlockPos(w.x(), w.y(), w.z()), w.slots());
+        world.getWorkbenchRegistry().applySlots(world, pos, w.slots());
+    }
+
+    /** Container-intent reach check; a player that has not reported a position yet passes. */
+    private static boolean withinReach(ServerPlayer sp, int x, int y, int z) {
+        if (sp.lastStateNs() == 0L) {
+            return true;
+        }
+        float dx = (x + 0.5f) - sp.x();
+        float dy = (y + 0.5f) - sp.y();
+        float dz = (z + 0.5f) - sp.z();
+        return dx * dx + dy * dy + dz * dz <= MAX_REACH_SQ;
     }
 
     /**
@@ -583,12 +592,39 @@ public final class ServerBlockHandler {
                 for (com.openmason.engine.util.BlockPos p : pendingStateEchoes) {
                     String state = world.getBlockStateAt(p.x(), p.y(), p.z());
                     if (state != null && !state.isEmpty()) {
-                        ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
-                                p.x(), p.y(), p.z(), state), false);
+                        sendStateEcho(p, state, ctx);
                     }
                 }
             }
             pendingStateEchoes.clear();
+        }
+    }
+
+    /**
+     * Sends one block's state echo to every connection, each stamped with the ack of that
+     * player's own slot intents at this block (issue #353). Players that never edited this
+     * block share one ack-0 packet; the common case (nobody did) stays a single broadcast.
+     */
+    private void sendStateEcho(com.openmason.engine.util.BlockPos p, String state, ServerWorldContext ctx) {
+        com.stonebreak.network.packet.world.BlockStateS2C plain =
+                new com.stonebreak.network.packet.world.BlockStateS2C(p.x(), p.y(), p.z(), state);
+        java.util.Map<com.openmason.engine.net.server.ServerConnection, Integer> acks = null;
+        for (ServerPlayer sp : ctx.players()) {
+            int ack = sp.slotIntentAck(p);
+            if (ack != 0) {
+                if (acks == null) acks = new java.util.HashMap<>();
+                acks.put(sp.connection(), ack);
+            }
+        }
+        if (acks == null) {
+            ctx.broadcast(plain, false);
+            return;
+        }
+        for (com.openmason.engine.net.server.ServerConnection c : ctx.connections().all()) {
+            Integer ack = acks.get(c);
+            c.send(ack == null ? plain
+                    : new com.stonebreak.network.packet.world.BlockStateS2C(p.x(), p.y(), p.z(), state, ack),
+                    false);
         }
     }
 
