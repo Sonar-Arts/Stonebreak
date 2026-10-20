@@ -122,6 +122,23 @@ class FileSaveRepositoryTest {
     }
 
     @Test
+    void setPlayerFileAsideNeverOverwritesEarlierCopies() throws IOException {
+        String worldPath = tempDir.resolve("world").toString();
+        FileSaveRepository repo = new FileSaveRepository(worldPath);
+        Path playerFile = Path.of(worldPath, "player.json");
+
+        repo.savePlayer(PlayerData.createDefault("w"));
+        assertEquals(Path.of(worldPath, "player.json.corrupt"), repo.setPlayerFileAside());
+        assertFalse(Files.exists(playerFile));
+
+        repo.savePlayer(PlayerData.createDefault("w"));
+        assertEquals(Path.of(worldPath, "player.json.corrupt.1"), repo.setPlayerFileAside());
+        assertTrue(Files.exists(Path.of(worldPath, "player.json.corrupt")));
+
+        repo.close();
+    }
+
+    @Test
     void chunkPathsFollowRegionFormula() throws IOException {
         String worldPath = tempDir.resolve("world").toString();
         FileSaveRepository repo = new FileSaveRepository(worldPath);

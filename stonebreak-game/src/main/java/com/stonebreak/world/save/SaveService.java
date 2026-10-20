@@ -241,15 +241,37 @@ public class SaveService implements AutoCloseable {
                     return new LoadResult(false, "World metadata not found", null, null);
                 }
                 WorldData data = worldOpt.get();
-                var playerOpt = repository.loadPlayer();
-                PlayerData playerData = playerOpt.orElse(null);
                 System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
-                return new LoadResult(true, null, data, playerData);
+                return loadPlayerInto(data);
             } catch (IOException e) {
                 System.err.printf("[LOAD] Failed in %dms: %s%n", System.currentTimeMillis() - start, e.getMessage());
                 return new LoadResult(false, e.getMessage(), null, null);
             }
         }, loadPool);
+    }
+
+    /**
+     * Loads {@code player.json} apart from the world metadata, so a damaged player file can never
+     * make the world look new (issue #358). An unreadable file is moved aside and the player
+     * starts fresh in the loaded world; the result's {@link LoadResult#getPlayerNotice} says so.
+     */
+    private LoadResult loadPlayerInto(WorldData data) {
+        try {
+            return new LoadResult(true, null, data, repository.loadPlayer().orElse(null));
+        } catch (IOException | RuntimeException e) {
+            System.err.println("[LOAD] player.json is unreadable: " + e.getMessage());
+            String notice;
+            try {
+                java.nio.file.Path aside = repository.setPlayerFileAside();
+                notice = "Your saved player data could not be read; it was kept as "
+                    + aside.getFileName() + " and you start fresh.";
+            } catch (IOException moveFailure) {
+                notice = "Your saved player data could not be read or set aside ("
+                    + moveFailure.getMessage() + "); the next save will replace it.";
+            }
+            System.err.println("[LOAD] " + notice);
+            return new LoadResult(true, null, data, null, notice);
+        }
     }
 
     /** Completed future when no save of that chunk is in flight; else the save to chain after. */
@@ -484,12 +506,19 @@ public class SaveService implements AutoCloseable {
         private final String error;
         private final WorldData worldData;
         private final PlayerData playerData;
+        private final String playerNotice;
 
         public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData) {
+            this(success, error, worldData, playerData, null);
+        }
+
+        public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData,
+                          String playerNotice) {
             this.success = success;
             this.error = error;
             this.worldData = worldData;
             this.playerData = playerData;
+            this.playerNotice = playerNotice;
         }
 
         public boolean isSuccess() {
@@ -506,6 +535,11 @@ public class SaveService implements AutoCloseable {
 
         public PlayerData getPlayerData() {
             return playerData;
+        }
+
+        /** Message for the player when their saved data could not be restored, else null. */
+        public String getPlayerNotice() {
+            return playerNotice;
         }
     }
 }

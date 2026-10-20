@@ -55,10 +55,12 @@ public final class ServerLevel {
     private volatile WorldData worldData;
     private final Vector3f spawn;
     private final PlayerData loadedPlayerData;
+    private final String playerLoadNotice;
 
     private ServerLevel(long seed, World world, EntityManager entityManager,
                         EntitySpawner entitySpawner, long worldTimeTicks, SaveService saveService,
-                        WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData) {
+                        WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData,
+                        String playerLoadNotice) {
         this.seed = seed;
         this.world = world;
         this.entityManager = entityManager;
@@ -68,6 +70,7 @@ public final class ServerLevel {
         this.worldData = worldData;
         this.spawn = spawn;
         this.loadedPlayerData = loadedPlayerData;
+        this.playerLoadNotice = playerLoadNotice;
     }
 
     /**
@@ -173,7 +176,7 @@ public final class ServerLevel {
         }
 
         ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-            save, worldData, spawn, playerData);
+            save, worldData, spawn, playerData, existing ? lr.getPlayerNotice() : null);
         save.setWorldTimeSource(level.timeOfDay);
 
         save.startAutoSave();
@@ -335,6 +338,9 @@ public final class ServerLevel {
 
     /** Loaded player data for an integrated server, or null for a fresh world / dedicated boot. */
     public PlayerData loadedPlayerData() { return loadedPlayerData; }
+
+    /** Why the saved player data could not be restored (it was set aside, #358), else null. */
+    public String playerLoadNotice() { return playerLoadNotice; }
 
     /**
      * Register the in-process local player so the save service persists its inventory/position.

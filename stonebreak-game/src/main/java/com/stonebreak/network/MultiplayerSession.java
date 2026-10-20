@@ -608,6 +608,16 @@ public final class MultiplayerSession {
                 player.giveStartingItems();
                 System.out.println("[NET] New world — gave the local player starting items.");
             }
+            String notice = level.playerLoadNotice();
+            if (notice != null) {
+                Game game = Game.getInstance();
+                game.runOnMainThread(() -> {
+                    var chat = game.getChatSystem();
+                    if (chat != null) {
+                        chat.addMessage(notice, new float[]{1.0f, 0.35f, 0.35f, 1.0f});
+                    }
+                });
+            }
             level.registerLocalPlayer(player);
             localPlayerRestored = true;
             return;
