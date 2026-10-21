@@ -94,21 +94,12 @@ class FurnaceDocumentInteractionTest {
         FurnaceController legacy = new FurnaceController(null, null, DocumentFurnaceCapture.smelting());
         FurnaceInputManager legacyInput = new FurnaceInputManager(null, legacyInv, legacy);
         legacy.setInputManager(legacyInput);
-        legacy.setSlotSink((p, seq, s) -> { });
         legacy.bind(legacyFurnace);
         List<String> legacyDrops = new ArrayList<>();
-        legacyInput.setWorldDrop(d -> {
-            legacyDrops.add(stack(d.draggedItemStack));
-            d.clear();
-        });
 
         try (DocumentFurnaceCapture.Stage doc = new DocumentFurnaceCapture.Stage(GameUiDocuments.readScreen("furnace"),
                 W, H, 1f, new FurnaceState(new BlockPos(0, 64, 0)), inventory())) {
             List<String> docDrops = new ArrayList<>();
-            doc.input.setWorldDrop(d -> {
-                docDrops.add(stack(d.draggedItemStack));
-                d.clear();
-            });
             int total = total(legacyInv, legacyFurnace, legacyInput);
             assertEquals(snapshot(legacyInv, legacyFurnace, legacyInput), snapshot(doc.inventory, doc.furnace, doc.input));
 

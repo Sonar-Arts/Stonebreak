@@ -13,6 +13,9 @@ import java.util.Map;
 public class ChatCommandExecutor {
     private final Map<String, ChatCommand> commands;
     private final ChatMessageManager messageManager;
+    /** Whether a server-executed command has a client to go through (test seam). */
+    private java.util.function.BooleanSupplier hasServerSession =
+            () -> com.stonebreak.network.MultiplayerSession.getClient() != null;
 
     public ChatCommandExecutor(ChatMessageManager messageManager) {
         this.messageManager = messageManager;
@@ -71,10 +74,24 @@ public class ChatCommandExecutor {
 
         ChatCommand command = commands.get(commandName);
         if (command != null) {
-            command.execute(args, messageManager);
+            if (command.executedOnServer() && hasServerSession.getAsBoolean()) {
+                // Server-executed command (issue #334): forward the raw line; the SERVER's
+                // cheats flag decides, and only the sender sees the reply.
+                com.stonebreak.network.MultiplayerSession.submitChat(commandString);
+            } else {
+                // Local command — or a server command with no client to forward it to
+                // (battle test, menus): its own execute() reports that instead of the line
+                // vanishing into a no-op submitChat.
+                command.execute(args, messageManager);
+            }
         } else {
             messageManager.addMessage("Unknown command: /" + commandName, ChatColors.RED);
         }
+    }
+
+    /** Test seam: replaces the "is there a client to forward server commands to" check. */
+    void setServerSessionCheck(java.util.function.BooleanSupplier check) {
+        this.hasServerSession = check;
     }
 
     /**

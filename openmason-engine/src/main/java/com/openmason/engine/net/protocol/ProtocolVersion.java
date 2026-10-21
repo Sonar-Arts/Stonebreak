@@ -20,8 +20,13 @@ public final class ProtocolVersion {
      *  6 = server-authoritative per-world cheats flag (CheatsSetC2S, CheatsStateS2C —
      *  issue #318).
      *  7 = furnace/workbench slot intents carry a sequence number that BlockStateS2C
-     *  acknowledges per recipient (issue #353). */
-    public static final int CURRENT = 7;
+     *  acknowledges per recipient (issue #353).
+     *  8 = server-owned inventory: InventorySyncS2C, ContainerActionC2S, HotbarSelectC2S,
+     *  PlayerPrefsC2S and DeathDropC2S added; PlayerHeldItemC2S (3), PlayerDataC2S (7),
+     *  FurnaceSlotsC2S (13) and WorkbenchSlotsC2S (22) retired without id reuse (issue #334).
+     *  9 = server-owned progression echo (ProgressS2C — issue #334): level/xp/point pools
+     *  are granted and echoed by the server only. */
+    public static final int CURRENT = 9;
 
     private ProtocolVersion() {}
 }

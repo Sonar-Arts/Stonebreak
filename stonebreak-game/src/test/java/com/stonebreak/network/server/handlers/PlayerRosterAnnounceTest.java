@@ -101,7 +101,7 @@ class PlayerRosterAnnounceTest {
         ServerPlayer requester = newPlayer(requesterConn, 1, "Rejoiner");
         ServerPlayer reported = newPlayer(mock(ServerConnection.class), 2, "Host");
         reported.updateState(100f, 65f, -3f, 0f, 0f);
-        reported.setHeldItemId(5);
+        reported.inventory().add(5, 1); // held item 5 in hotbar slot 0 (server-derived now)
         ServerPlayer unreported = newPlayer(mock(ServerConnection.class), 3, "Fresh");
         ctx.addPlayer(requester);
         ctx.addPlayer(reported);
