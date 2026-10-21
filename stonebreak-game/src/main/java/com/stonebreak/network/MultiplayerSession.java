@@ -8,6 +8,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.client.ClientWorldView;
+import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.ServerLevel;
 import com.stonebreak.network.server.ServerPlayer;
@@ -519,14 +520,32 @@ public final class MultiplayerSession {
         if (s == null) {
             return false;
         }
-        // Nearest-player-wins: when several players stand in range, the closest one gets the
-        // stack (roster iteration order is arbitrary and previously decided ties unfairly).
+        ServerPlayer nearest = nearestEligiblePickupCandidate(s.worldContext().players(), pos, range);
+        if (nearest == null) {
+            return false;
+        }
+        s.giveItemTo(nearest.playerId(), itemId, count);
+        return true;
+    }
+
+    /**
+     * Nearest-player-wins pickup selection: when several players stand in range, the closest
+     * one gets the stack (roster iteration order is arbitrary and previously decided ties
+     * unfairly). Players reporting {@link PlayerStateFlags#DEAD} are skipped (#357) — a dead
+     * player must not collect its own death drops or anything else while on the death screen;
+     * the drop stays in the world for other players or the post-respawn pickup.
+     */
+    static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
+                                                       Vector3f pos, float range) {
         float rangeSq = range * range;
         ServerPlayer nearest = null;
         float nearestSq = Float.MAX_VALUE;
-        for (ServerPlayer sp : s.worldContext().players()) {
+        for (ServerPlayer sp : players) {
             if (!sp.handshakeDone() || sp.lastStateNs() == 0L) {
                 continue; // no reported position yet — (0,0,0) default must not win pickups
+            }
+            if (PlayerStateFlags.has(sp.stateFlags(), PlayerStateFlags.DEAD)) {
+                continue;
             }
             float dx = pos.x - sp.x();
             float dy = pos.y - sp.y();
@@ -537,11 +556,7 @@ public final class MultiplayerSession {
                 nearestSq = distSq;
             }
         }
-        if (nearest == null) {
-            return false;
-        }
-        s.giveItemTo(nearest.playerId(), itemId, count);
-        return true;
+        return nearest;
     }
 
     // ─── Per-tick pump (called from the game loop) ───────────────────────────────

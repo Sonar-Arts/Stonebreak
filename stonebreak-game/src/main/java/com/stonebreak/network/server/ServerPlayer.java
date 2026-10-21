@@ -32,6 +32,8 @@ public final class ServerPlayer {
     private long lastStateNs = 0L;
     /** Last reported held block/item id. 0 = empty/air. */
     private int heldItemId = 0;
+    /** Flags byte of the last accepted PlayerStateC2S (see {@code PlayerStateFlags}). */
+    private byte stateFlags = 0;
 
     /** Nanos of this player's last authoritative shear request (containment rate limit). */
     private long lastShearNanos = 0L;
@@ -91,6 +93,10 @@ public final class ServerPlayer {
 
     public int heldItemId() { return heldItemId; }
     public void setHeldItemId(int id) { this.heldItemId = id; }
+
+    /** Flags byte of the last accepted state report (e.g. {@code PlayerStateFlags.DEAD}). */
+    public byte stateFlags() { return stateFlags; }
+    public void cacheStateFlags(byte flags) { this.stateFlags = flags; }
 
     public long lastShearNanos() { return lastShearNanos; }
     public void markShearRequest(long nanos) { this.lastShearNanos = nanos; }

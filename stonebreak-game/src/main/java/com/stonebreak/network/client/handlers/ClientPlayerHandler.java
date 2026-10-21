@@ -103,6 +103,13 @@ public final class ClientPlayerHandler {
         if (local == null || local.getInventory() == null) {
             return;
         }
+        // #357: the server may still address us while we're dead (it learns about death only
+        // from our state stream). It has already despawned the drop, so re-drop the stack
+        // instead of letting a death drop ride out respawn in our inventory.
+        if (local.isDead()) {
+            com.stonebreak.network.MultiplayerSession.sendDropItem(g.itemId(), g.count());
+            return;
+        }
         // Capacity-aware add: anything that doesn't fit is returned to the server as a
         // re-drop at our position instead of silently vanishing into a full inventory.
         // The packet has no state yet (#342), so the stack arrives in the item's default

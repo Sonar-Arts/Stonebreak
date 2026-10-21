@@ -17,6 +17,12 @@ public final class PlayerStateFlags {
     public static final int ATTACKING = 1 << 5;
     /** Body touching water (not just eyes) — drives remote splash/ripple triggering. */
     public static final int PARTIALLY_IN_WATER = 1 << 6;
+    /**
+     * Local player is dead (death screen). Set by the client in {@code PlayerStateC2S} while
+     * dead; the server caches it and gates drop pickup on it (#357) so a dead player doesn't
+     * collect its own death drops. Cleared naturally by the first post-respawn state report.
+     */
+    public static final int DEAD = 1 << 7;
 
     private PlayerStateFlags() {}
 

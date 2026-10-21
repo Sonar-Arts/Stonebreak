@@ -153,6 +153,7 @@ public final class ServerPlayerHandler {
         // Per-packet velocity / no-teleport anti-cheat is intentionally NOT applied — naive
         // caps cause permanent desync on legitimate teleports (respawn, world-load, /tp).
         sp.updateState(ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
+        sp.cacheStateFlags(ps.flags());
         return true;
     }
 }

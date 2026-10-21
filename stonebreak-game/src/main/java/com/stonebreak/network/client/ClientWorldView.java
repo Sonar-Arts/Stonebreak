@@ -424,6 +424,7 @@ public final class ClientWorldView {
         if (!p.isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
         if (p.isOnGround())  flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
         if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
+        if (p.isDead())      flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DEAD;
         connection.send(new PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch, flags), true);
 
         if (p.getInventory() != null) {
