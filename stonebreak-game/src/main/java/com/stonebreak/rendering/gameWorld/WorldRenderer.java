@@ -426,6 +426,9 @@ public class WorldRenderer {
         if (!translucentAfterWater) {
             renderTranslucentSolids(visibleChunks, cameraUnderwater);
         }
+        // The drops and crack overlay below set world-shader uniforms without
+        // binding it; the clouds may have left their own program bound.
+        shaderProgram.bind();
 
         // Transparent drops and the crack overlay draw BEFORE water: the water
         // pass depth-prepasses its nearest surface into the depth buffer (to
