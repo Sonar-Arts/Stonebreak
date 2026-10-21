@@ -19,8 +19,9 @@ import java.util.function.Supplier;
  */
 public final class EntityReplicationListener implements EntityManager.Listener {
 
-    /** Supplier, not a direct reference: during teardown the field is nulled before detach, so
-     *  an in-flight callback must see null rather than a torn-down server. */
+    /** Supplier, not a direct reference: shutdown detaches the listener and then nulls the
+     *  server field, so a callback already in flight on another thread reads the field when
+     *  it fires and becomes a no-op instead of reaching a torn-down server. */
     private final Supplier<IntegratedServer> server;
 
     public EntityReplicationListener(Supplier<IntegratedServer> server) {

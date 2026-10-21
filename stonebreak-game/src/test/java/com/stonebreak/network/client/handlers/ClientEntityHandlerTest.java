@@ -59,33 +59,43 @@ class ClientEntityHandlerTest {
         }
     }
 
+    /**
+     * The world-build thread can flip readiness between ANY two reads the drain makes, so
+     * every flip point is tried: the drain must never throw, never lose a record, and never
+     * lose a record's queued anim — the remainder drains on a later tick.
+     */
     @Test
-    void midDrainWorldSwapKeepsRemainingSpawnAndItsQueuedAnim() {
-        World world = mock(World.class);
-        EntityManager em = mock(EntityManager.class);
-        try (MockedStatic<Game> game = mockStatic(Game.class)) {
-            game.when(Game::getWorld).thenReturn(world);
-            game.when(Game::getEntityManager).thenReturn(em);
-            ClientEntityHandler handler = new ClientEntityHandler();
+    void aWorldSwapAtAnyPointOfTheDrainLosesNothing() {
+        for (int readyReads = 1; readyReads <= 6; readyReads++) {
+            World world = mock(World.class);
+            EntityManager em = mock(EntityManager.class);
+            try (MockedStatic<Game> game = mockStatic(Game.class)) {
+                game.when(Game::getWorld).thenReturn(world);
+                game.when(Game::getEntityManager).thenReturn(em);
+                ClientEntityHandler handler = new ClientEntityHandler();
 
-            game.when(Game::isClientWorldReady).thenReturn(false);
-            handler.applySpawn(sheepSpawn(1));
-            handler.applySpawn(sheepSpawn(2));
-            handler.applyAnim(2, "Grazing");
+                game.when(Game::isClientWorldReady).thenReturn(false);
+                handler.applySpawn(sheepSpawn(1));
+                handler.applySpawn(sheepSpawn(2));
+                handler.applySpawn(sheepSpawn(3));
+                handler.applyAnim(3, "Grazing");
 
-            // Ready on tick entry and for the first record, then the world swaps mid-drain:
-            // the drain must stop before the second record can be re-buffered without its anim.
-            game.when(Game::isClientWorldReady).thenReturn(true, true, true, false);
-            handler.tick();
-            verify(em, times(1)).addEntity(any());
+                // Ready for the first readyReads reads of this tick, then the world swaps.
+                int[] reads = {0};
+                int limit = readyReads;
+                game.when(Game::isClientWorldReady).thenAnswer(inv -> reads[0]++ < limit);
+                handler.tick();
 
-            // The swap completes; the still-buffered record keeps its queued anim and drains.
-            game.when(Game::isClientWorldReady).thenReturn(true);
-            handler.tick();
-            ArgumentCaptor<Entity> added = ArgumentCaptor.forClass(Entity.class);
-            verify(em, times(2)).addEntity(added.capture());
-            Sheep second = assertInstanceOf(Sheep.class, added.getAllValues().get(1));
-            assertEquals(MobBehaviorState.GRAZING, second.getAI().getCurrentState());
+                // The swap completes; whatever is still buffered drains with its state.
+                game.when(Game::isClientWorldReady).thenReturn(true);
+                handler.tick();
+                ArgumentCaptor<Entity> added = ArgumentCaptor.forClass(Entity.class);
+                verify(em, times(3)).addEntity(added.capture());
+                assertEquals(3, handler.trackedShadowCount(), "flip after read " + readyReads);
+                Sheep third = assertInstanceOf(Sheep.class, added.getAllValues().get(2));
+                assertEquals(MobBehaviorState.GRAZING, third.getAI().getCurrentState(),
+                        "flip after read " + readyReads);
+            }
         }
     }
 

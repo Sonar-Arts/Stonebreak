@@ -13,7 +13,6 @@ import com.stonebreak.network.packet.entity.EntityTeleportS2C;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
@@ -246,16 +245,13 @@ public final class ClientEntityHandler {
         if (pendingSpawns.isEmpty() || !Game.isClientWorldReady()) {
             return;
         }
-        Iterator<PendingSpawn> it = pendingSpawns.iterator();
-        while (it.hasNext()) {
-            // Re-check ready per record: a mid-drain world swap must stop the drain BEFORE
-            // applyBuffered can re-buffer the record — re-adding into this live iterator
-            // would lose the record's queued anim/variant.
-            if (!Game.isClientWorldReady()) {
-                break;
-            }
-            applyBuffered(it.next());
-            it.remove();
+        // Drain a snapshot: the world-build thread can flip readiness between any two reads,
+        // and applyBuffered re-buffers a record (with its queued anim/variant) when it does.
+        // Re-buffering into the list being iterated threw ConcurrentModificationException.
+        List<PendingSpawn> batch = new ArrayList<>(pendingSpawns);
+        pendingSpawns.clear();
+        for (PendingSpawn p : batch) {
+            applyBuffered(p);
         }
     }
 
