@@ -33,10 +33,11 @@ public final class GameShutdown {
         // Before the world and entity manager go away: the final save must include anything
         // left in the inventory's crafting grid (issue #307).
         com.stonebreak.core.world.WorldLifecycle.returnCraftingGridsToPlayer(game);
-        // Flush the integrated server's SaveService (player.json + dirty chunks) and send a
-        // join client's final PlayerDataC2S — the same teardown Quit to Menu runs
-        // (GameStateController), so closing the window doesn't lose the last autosave window
-        // of edits (issue #364). No-op-safe when no session is active.
+        // Flush the integrated server's SaveService (player.json + dirty chunks) — the same
+        // teardown Quit to Menu runs (GameStateController), so closing the window doesn't
+        // lose the last autosave window of edits (issue #364). A join client's view sends a
+        // final PlayerPrefsC2S (only when the server can accept prefs) followed by
+        // DisconnectC2S. No-op-safe when no session is active.
         com.stonebreak.network.MultiplayerSession.shutdown();
         logger.debug("Starting Game cleanup...");
 
