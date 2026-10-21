@@ -440,7 +440,9 @@ public final class GameStateController {
      * Death hook (issue #351): returns every panel-held stack (the inventory's cursor stack and
      * 2x2 crafting grid, the workbench's and furnace's carried stacks) to the player's inventory
      * and force-closes the item-holding panels, so {@code DeathHandler.dropAllItems()} sweeps
-     * them up with the rest of the inventory. Must run before that drop. A pending
+     * them up with the rest of the inventory. Must run before that drop. The character sheet
+     * holds no items but is hidden too: the state ends in PLAYING, and a sheet still flagged
+     * visible there is undrawn yet swallows world clicks, scroll and Escape. A pending
      * "Save changes?" prompt is dismissed rather than run: death is not a panel exit the player
      * chose, so nothing is saved or reverted.
      */
@@ -450,6 +452,10 @@ public final class GameStateController {
         if (inventoryScreen != null) {
             inventoryScreen.returnHeldItemsToPlayer(); // safe when nothing is held
             inventoryScreen.setVisible(false);
+        }
+        CharacterScreen characterScreen = game.getCharacterScreen();
+        if (characterScreen != null) {
+            characterScreen.setVisible(false);
         }
         closeWorkbenchScreen();
         closeFurnaceScreen();

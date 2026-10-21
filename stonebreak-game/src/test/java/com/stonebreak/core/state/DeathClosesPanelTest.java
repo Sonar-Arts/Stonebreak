@@ -13,6 +13,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.Player;
+import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.furnace.FurnaceScreen;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
@@ -124,6 +125,50 @@ class DeathClosesPanelTest {
         verify(dialog).setVisible(false);
         verify(inventoryScreen).returnHeldItemsToPlayer();
         verify(inventoryScreen).setVisible(false);
+        assertEquals(GameState.PLAYING, states.getState());
+    }
+
+    @Test
+    void deathWithCharacterSheetOpenHidesIt() {
+        CharacterScreen characterScreen = mock(CharacterScreen.class);
+        when(game.getCharacterScreen()).thenReturn(characterScreen);
+        states.openCharacterScreen();
+        assertEquals(GameState.CHARACTER_SHEET_UI, states.getState());
+
+        states.onPlayerDied();
+
+        // Left flagged visible in PLAYING, the undrawn sheet would swallow world clicks.
+        verify(characterScreen).setVisible(false);
+        assertEquals(GameState.PLAYING, states.getState());
+        assertFalse(states.isPaused());
+    }
+
+    @Test
+    void deathDismissesSaveChangesPromptOverCharacterSheet() {
+        Player player = mock(Player.class);
+        CharacterStats stats = mock(CharacterStats.class);
+        CharacterStats.RpgSnapshot snapshot = new CharacterStats.RpgSnapshot(
+                null, Map.of(), Map.of(), java.util.Set.of(), new int[0], 0, 0, 0, 0, 1, 0);
+        when(player.getCharacterStats()).thenReturn(stats);
+        when(stats.snapshotRpgState()).thenReturn(snapshot);
+        when(stats.hasChangedSince(snapshot)).thenReturn(true);
+        gameStatic.when(Game::getPlayer).thenReturn(player);
+
+        CharacterScreen characterScreen = mock(CharacterScreen.class);
+        when(characterScreen.isVisible()).thenReturn(true);
+        when(game.getCharacterScreen()).thenReturn(characterScreen);
+        SaveChangesDialog dialog = mock(SaveChangesDialog.class);
+        when(game.getSaveChangesDialog()).thenReturn(dialog);
+
+        states.openCharacterScreen();
+        states.closeCharacterScreen(); // intercepted by the "Save changes?" prompt
+        verify(dialog).setVisible(true);
+        assertEquals(GameState.CHARACTER_SHEET_UI, states.getState(), "the prompt keeps the sheet up");
+
+        states.onPlayerDied();
+
+        verify(dialog).setVisible(false);
+        verify(characterScreen).setVisible(false);
         assertEquals(GameState.PLAYING, states.getState());
     }
 
