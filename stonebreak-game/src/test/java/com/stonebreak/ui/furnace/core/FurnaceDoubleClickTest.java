@@ -14,9 +14,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Issue #352: the furnace screen's double-click detection used a fixed 40 px radius, so at small
- * UI scales a quick pick-up-then-place on the next inventory slot was swallowed instead of
- * dropping the stack there. Double-clicks are counted on the same slot only.
+ * Issue #352: the furnace screen's double-click detection used a fixed 40 px radius and did
+ * nothing when it fired, so a quick pick-up-then-place on the same or (at small UI scales) the
+ * next slot was swallowed. The furnace has no double-click rule now: a quick second press drops.
  */
 class FurnaceDoubleClickTest {
 
@@ -65,5 +65,18 @@ class FurnaceDoubleClickTest {
         assertFalse(input.getDragState().isDragging(), "the stack was dropped into main:1");
         assertEquals(10, inventory.getMainInventorySlot(1).getCount());
         assertTrue(inventory.getMainInventorySlot(0).isEmpty());
+    }
+
+    @Test
+    void quickClickBackOnTheSameSlotPutsTheStackBack() {
+        inventory.setMainInventorySlot(0, new ItemStack(DIRT, 10));
+        float[] slot = centre("main:0");
+
+        press(slot[0], slot[1]);
+        assertTrue(input.getDragState().isDragging());
+
+        press(slot[0], slot[1]);
+        assertFalse(input.getDragState().isDragging(), "the second press put the stack back");
+        assertEquals(10, inventory.getMainInventorySlot(0).getCount());
     }
 }
