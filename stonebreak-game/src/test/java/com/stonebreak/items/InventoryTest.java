@@ -126,4 +126,46 @@ class InventoryTest {
                 "a different state opens its own stack");
         assertEquals(east, inventory.getHotbarSlot(1).getState());
     }
+
+    /**
+     * Issue #350: an id-only pickup carries no state, so it is a default-state (empty) bucket and
+     * must not merge into a water bucket — it used to, turning the empty bucket into water.
+     */
+    @Test
+    void anIdOnlyBucketPickupNeverMergesIntoWaterBuckets() {
+        inventory.setHotbarSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
+        inventory.setHotbarSlot(1, new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
+
+        assertEquals(1, inventory.addItemsAndReturnCount(ItemType.WOODEN_BUCKET.getId(), 1));
+
+        assertEquals(1, inventory.getHotbarSlot(0).getCount(), "the water bucket stack is untouched");
+        assertEquals(ItemType.BUCKET_STATE_WATER, inventory.getHotbarSlot(0).getState());
+        assertEquals(2, inventory.getHotbarSlot(1).getCount(), "it joins the empty buckets");
+        assertEquals(ItemType.BUCKET_STATE_EMPTY, inventory.getHotbarSlot(1).getState());
+    }
+
+    @Test
+    void anIdOnlyBucketPickupOpensItsOwnSlotBesideWaterBuckets() {
+        inventory.setHotbarSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
+
+        assertTrue(inventory.addItem(ItemType.WOODEN_BUCKET.getId(), 1));
+
+        assertEquals(1, inventory.getHotbarSlot(0).getCount());
+        assertEquals(1, inventory.getHotbarSlot(1).getCount());
+        assertEquals(ItemType.BUCKET_STATE_EMPTY, inventory.getHotbarSlot(1).getEffectiveState());
+    }
+
+    /** Issue #350: a crafted bucket (no state) and an emptied one (the default state) are one kind. */
+    @Test
+    void craftedAndEmptiedBucketsStack() {
+        assertTrue(inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1)));
+        assertTrue(inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY)));
+
+        assertEquals(2, inventory.getHotbarSlot(0).getCount());
+        assertTrue(inventory.getHotbarSlot(1).isEmpty());
+
+        ItemStack crafted = new ItemStack(ItemType.WOODEN_BUCKET, 1);
+        assertTrue(crafted.canStackWith(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY)));
+        assertFalse(crafted.canStackWith(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER)));
+    }
 }

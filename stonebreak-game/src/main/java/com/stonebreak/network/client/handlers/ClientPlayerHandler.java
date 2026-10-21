@@ -2,6 +2,7 @@ package com.stonebreak.network.client.handlers;
 
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
+import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.network.client.NetworkInterpolator;
@@ -104,7 +105,10 @@ public final class ClientPlayerHandler {
         }
         // Capacity-aware add: anything that doesn't fit is returned to the server as a
         // re-drop at our position instead of silently vanishing into a full inventory.
-        int added = local.getInventory().addItemsAndReturnCount(g.itemId(), g.count());
+        // The packet has no state yet (#342), so the stack arrives in the item's default
+        // state and only merges with default-state stacks, never a water bucket (#350).
+        int added = local.getInventory().addItemAndReturnCount(
+                new ItemStack(g.itemId(), g.count()));
         int leftover = g.count() - added;
         if (leftover > 0) {
             com.stonebreak.network.MultiplayerSession.sendDropItem(g.itemId(), leftover);

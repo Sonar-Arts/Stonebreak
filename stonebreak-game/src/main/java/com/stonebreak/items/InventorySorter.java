@@ -20,7 +20,7 @@ public final class InventorySorter {
     static final Comparator<ItemStack> COMPARATOR =
         Comparator.comparing(ItemStack::getCategory)
                   .thenComparing(ItemStack::getName, String.CASE_INSENSITIVE_ORDER)
-                  .thenComparing(s -> s.getState() == null ? "" : s.getState());
+                  .thenComparing(s -> Objects.requireNonNullElse(s.getEffectiveState(), ""));
 
     /**
      * Sorts a region array in place: merges partial stacks of the same item
@@ -39,7 +39,7 @@ public final class InventorySorter {
             for (int g = 0; g < groupReps.size(); g++) {
                 ItemStack rep = groupReps.get(g);
                 if (rep.getItem().isSameType(stack.getItem())
-                        && Objects.equals(rep.getState(), stack.getState())) {
+                        && ItemStack.statesMatch(rep.getItem(), rep.getState(), stack.getState())) {
                     groupIndex = g;
                     break;
                 }

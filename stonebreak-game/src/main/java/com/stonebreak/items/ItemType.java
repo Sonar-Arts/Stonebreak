@@ -261,6 +261,21 @@ public final class ItemType implements Item {
         return enumName;
     }
 
+    /**
+     * The SBO default state (1.3+) a stack with no state shows, or {@code null}
+     * when the item declares no states.
+     */
+    public String getDefaultState() {
+        String objectId = OBJECT_ID_BY_ENUM_NAME.get(enumName);
+        if (objectId == null) {
+            return null;
+        }
+        return ItemRegistry.getInstance().get(objectId)
+                .filter(ItemRegistry.ItemEntry::hasStates)
+                .map(ItemRegistry.ItemEntry::defaultState)
+                .orElse(null);
+    }
+
     @Override
     public int getId() {
         return id;
