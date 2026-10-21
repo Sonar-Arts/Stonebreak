@@ -30,8 +30,8 @@ public final class ServerPlayer {
     // Last reported transform (cached from PlayerStateC2S) for reach checks + chunk targeting.
     private float x, y, z, yaw, pitch;
     private long lastStateNs = 0L;
-    /** Flags byte of the last accepted PlayerStateC2S (see {@code PlayerStateFlags}). */
-    private byte stateFlags = 0;
+    /** Last death/respawn edge the client reported (PlayerLifeC2S, reliable — #357). */
+    private boolean dead = false;
 
     /** Nanos of this player's last authoritative shear request (containment rate limit). */
     private long lastShearNanos = 0L;
@@ -96,9 +96,20 @@ public final class ServerPlayer {
     public float pitch() { return pitch; }
     public long lastStateNs() { return lastStateNs; }
 
-    /** Flags byte of the last accepted state report (e.g. {@code PlayerStateFlags.DEAD}). */
-    public byte stateFlags() { return stateFlags; }
-    public void cacheStateFlags(byte flags) { this.stateFlags = flags; }
+    /** True between this player's reported death and its respawn (#357). */
+    public boolean isDead() { return dead; }
+    public void setDead(boolean dead) { this.dead = dead; }
+
+    /**
+     * True when this player stands in the world as a live body: handshake done, a real
+     * position reported (not the {@code (0,0,0)} default), and not dead. The one predicate
+     * for roster loops that act on a player's body — drop pickup, mob spawning around it
+     * (#357). A dead player still counts for what it SEES (chunk streaming, entity interest,
+     * despawn radius): the world stays on screen behind the death menu.
+     */
+    public boolean isLiveInWorld() {
+        return handshakeDone && lastStateNs != 0L && !dead;
+    }
 
     public void updateState(float x, float y, float z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;

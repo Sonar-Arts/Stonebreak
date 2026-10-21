@@ -14,6 +14,7 @@ import com.stonebreak.network.packet.player.HotbarSelectC2S;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
+import com.stonebreak.network.packet.player.PlayerLifeC2S;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
 import com.stonebreak.network.server.ServerInventory;
@@ -76,6 +77,22 @@ public final class ServerPlayerHandler {
         }
         ctx.broadcastExcept(sp,
             new PlayerStateS2C(sp.playerId(), ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch(), ps.flags()), true);
+    }
+
+    /**
+     * Death / respawn edge (#357). The flag is applied unconditionally — a client whose
+     * position fails validation must not keep a stale dead/alive state. The edge's position
+     * replaces the cached one only for a real transition of a player that has already
+     * reported: on respawn the server must not hold a live player at the corpse until the
+     * droppable state stream catches up, while a redundant "alive" (a dead save respawned on
+     * load) carries a position the state stream has not vouched for.
+     */
+    public void handlePlayerLife(ServerPlayer sp, PlayerLifeC2S l) {
+        boolean transition = sp.isDead() != l.dead();
+        sp.setDead(l.dead());
+        if (transition && sp.lastStateNs() != 0L && isValidPosition(l.x(), l.y(), l.z())) {
+            sp.updateState(l.x(), l.y(), l.z(), sp.yaw(), sp.pitch());
+        }
     }
 
     /** Upper bound on one DropItemC2S so a buggy/hostile client can't spawn item mountains. */
@@ -317,17 +334,18 @@ public final class ServerPlayerHandler {
     // ─── Validation ──────────────────────────────────────────────────────────────
 
     private static boolean validateAndCache(ServerPlayer sp, PlayerStateC2S ps) {
-        if (!Float.isFinite(ps.x()) || !Float.isFinite(ps.y()) || !Float.isFinite(ps.z())
+        if (!isValidPosition(ps.x(), ps.y(), ps.z())
             || !Float.isFinite(ps.yaw()) || !Float.isFinite(ps.pitch())) {
-            return false;
-        }
-        if (ps.y() < -64f || ps.y() > WorldConfiguration.WORLD_HEIGHT + 64f) {
             return false;
         }
         // Per-packet velocity / no-teleport anti-cheat is intentionally NOT applied — naive
         // caps cause permanent desync on legitimate teleports (respawn, world-load, /tp).
         sp.updateState(ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
-        sp.cacheStateFlags(ps.flags());
         return true;
+    }
+
+    private static boolean isValidPosition(float x, float y, float z) {
+        return Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z)
+            && y >= -64f && y <= WorldConfiguration.WORLD_HEIGHT + 64f;
     }
 }

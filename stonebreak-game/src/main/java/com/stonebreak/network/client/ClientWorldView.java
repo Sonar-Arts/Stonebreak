@@ -492,7 +492,6 @@ public final class ClientWorldView {
         if (!p.isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
         if (p.isOnGround())  flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
         if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
-        if (p.isDead())      flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DEAD;
         connection.send(new PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch, flags), true);
 
         if (p.getInventory() != null) {
@@ -584,6 +583,14 @@ public final class ClientWorldView {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             conn.send(d, false);
+        }
+    }
+
+    /** Death / respawn edge (see {@code PlayerLifeC2S}) — reliable, never the state stream. */
+    public void sendPlayerLife(com.stonebreak.network.packet.player.PlayerLifeC2S l) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(l, false);
         }
     }
 

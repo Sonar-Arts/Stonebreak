@@ -108,14 +108,6 @@ public final class ClientPlayerHandler {
         // difference would re-enter the debit path with a duplicated spawn. The packet has no
         // state yet (#342), so the stack arrives in the item's default state and only merges
         // with default-state stacks, never a water bucket (#350).
-        // #357: the server may still address us while we're dead (it learns about death only
-        // from our state stream). It already despawned the drop and credited its replica, so
-        // refuse the stack: the debit below removes it from the replica and respawns it in
-        // the world instead of letting a death drop ride out respawn in our inventory.
-        if (local.isDead()) {
-            com.stonebreak.network.MultiplayerSession.sendDropItem(g.itemId(), g.count());
-            return;
-        }
         local.getInventory().addItemAndReturnCount(new ItemStack(g.itemId(), g.count()));
         SoundSystem ss = Game.getInstance().getSoundSystem();
         if (ss != null) {

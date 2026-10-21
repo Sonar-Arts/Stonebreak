@@ -10,7 +10,6 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.client.ClientWorldView;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.DeathDropC2S;
-import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.ServerLevel;
 import com.stonebreak.network.server.ServerPlayer;
@@ -227,6 +226,18 @@ public final class MultiplayerSession {
         }
         c.sendDeathDrop(new DeathDropC2S());
         return true;
+    }
+
+    /**
+     * Death ({@code dead}) or respawn edge of the local player at {@code pos}, on the reliable
+     * channel: the server's only source for which players are dead (drop pickup, mob spawning
+     * — #357). No-op without a live session.
+     */
+    public static void sendPlayerLife(boolean dead, Vector3f pos) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendPlayerLife(new com.stonebreak.network.packet.player.PlayerLifeC2S(dead, pos.x, pos.y, pos.z));
+        }
     }
 
     /**
@@ -448,10 +459,11 @@ public final class MultiplayerSession {
 
         // Robustly capture the local player's CURRENT inventory before teardown. The server
         // thread is now stopped, so this can't race the sim. Re-registering points the save
-        // service at the live player so the close-flush below writes its latest state — this is
-        // independent of whether the restore/registration happened earlier in the session, which
-        // is what previously let an exit drop the inventory.
-        if (server != null && hasIntegratedServer()) {
+        // service at the live player so the close-flush below writes its latest state. Only do
+        // this when the restore actually ran: Game.getPlayer() may still be a stale player from
+        // a previous world (or the empty one created before the build failure), and registering
+        // it would write the wrong player's data over this world's player.json (#366).
+        if (server != null && hasIntegratedServer() && localPlayerRestored) {
             ServerLevel level = server.worldContext().serverLevel();
             Player local = Game.getPlayer();
             if (level != null && local != null) {
@@ -567,9 +579,10 @@ public final class MultiplayerSession {
     /**
      * Nearest-player-wins pickup selection: when several players stand in range, the closest
      * one gets the stack (roster iteration order is arbitrary and previously decided ties
-     * unfairly). Players reporting {@link PlayerStateFlags#DEAD} are skipped (#357) — a dead
-     * player must not collect its own death drops or anything else while on the death screen;
-     * the drop stays in the world for other players or the post-respawn pickup.
+     * unfairly). Only {@link ServerPlayer#isLiveInWorld() live} players qualify: one that has
+     * not reported a position yet would win at the {@code (0,0,0)} default, and a dead one
+     * would collect its own death drops from the death screen (#357) — the drop stays in the
+     * world for other players or the post-respawn pickup.
      */
     static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
                                                        Vector3f pos, float range) {
@@ -577,10 +590,7 @@ public final class MultiplayerSession {
         ServerPlayer nearest = null;
         float nearestSq = Float.MAX_VALUE;
         for (ServerPlayer sp : players) {
-            if (!sp.handshakeDone() || sp.lastStateNs() == 0L) {
-                continue; // no reported position yet — (0,0,0) default must not win pickups
-            }
-            if (PlayerStateFlags.has(sp.stateFlags(), PlayerStateFlags.DEAD)) {
+            if (!sp.isLiveInWorld()) {
                 continue;
             }
             float dx = pos.x - sp.x();
