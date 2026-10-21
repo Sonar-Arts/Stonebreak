@@ -66,10 +66,17 @@ public class SaveService implements AutoCloseable {
         new java.util.concurrent.ConcurrentHashMap<>();
 
     private ScheduledFuture<?> autoSaveTask;
+    /** Once true, close() has started: no further autosave may snapshot or submit. */
+    private final AtomicBoolean closed = new AtomicBoolean();
+    /** The autosave currently past its in-progress gate, so close() can join it before the final flush. */
+    private volatile CompletableFuture<Void> inFlightAutoSave;
     private volatile WorldData worldData;
     private volatile Player player;
     private volatile World world;
-    private volatile long lastAutoSaveTime;
+    /** Wall clock the play time is measured on (milliseconds); a test seam. */
+    private final java.util.function.LongSupplier clock;
+    /** Clock reading up to which play time is already in {@link #worldData}; guarded by {@code this}. */
+    private long lastAutoSaveTime;
 
     // World-time source for save snapshots. In the two-world model the authoritative clock is
     // the server's TimeOfDay (a render-only client's clock is frozen), so it is injected here.
@@ -77,32 +84,41 @@ public class SaveService implements AutoCloseable {
     private volatile com.stonebreak.world.TimeOfDay worldTimeSource;
 
     public SaveService(String worldPath) {
+        this(worldPath,
+            Executors.newFixedThreadPool(SAVE_THREADS, namedDaemonFactory("Save-IO")),
+            Executors.newFixedThreadPool(LOAD_THREADS, namedDaemonFactory("Load-IO")));
+    }
+
+    /** Test seam: inject the save/load pools so tests can stall or observe IO ordering. */
+    SaveService(String worldPath, ExecutorService savePool, ExecutorService loadPool) {
+        this(worldPath, savePool, loadPool, System::currentTimeMillis);
+    }
+
+    /** Test seam: also inject the play-time clock so tests never depend on wall-clock sleeps. */
+    SaveService(String worldPath, ExecutorService savePool, ExecutorService loadPool,
+                java.util.function.LongSupplier clock) {
         this.worldPath = Objects.requireNonNull(worldPath, "worldPath");
         this.repository = new FileSaveRepository(worldPath);
-        java.util.concurrent.atomic.AtomicInteger saveId = new java.util.concurrent.atomic.AtomicInteger();
-        this.savePool = Executors.newFixedThreadPool(SAVE_THREADS, r -> {
-            Thread t = new Thread(r, "Save-IO-" + saveId.getAndIncrement());
-            t.setDaemon(true);
-            return t;
-        });
-        java.util.concurrent.atomic.AtomicInteger loadId = new java.util.concurrent.atomic.AtomicInteger();
-        this.loadPool = Executors.newFixedThreadPool(LOAD_THREADS, r -> {
-            Thread t = new Thread(r, "Load-IO-" + loadId.getAndIncrement());
-            t.setDaemon(true);
-            return t;
-        });
-        this.autoSaveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "AutoSave");
-            t.setDaemon(true);
-            return t;
-        });
-        this.lastAutoSaveTime = System.currentTimeMillis();
+        this.savePool = savePool;
+        this.loadPool = loadPool;
+        this.autoSaveScheduler = Executors.newSingleThreadScheduledExecutor(namedDaemonFactory("AutoSave"));
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.lastAutoSaveTime = clock.getAsLong();
 
         try {
             repository.ensureWorldDirectory();
         } catch (IOException e) {
             throw new RuntimeException("Failed to create world directory: " + worldPath, e);
         }
+    }
+
+    private static java.util.concurrent.ThreadFactory namedDaemonFactory(String prefix) {
+        java.util.concurrent.atomic.AtomicInteger id = new java.util.concurrent.atomic.AtomicInteger();
+        return r -> {
+            Thread t = new Thread(r, prefix + "-" + id.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        };
     }
 
     public void initialize(WorldData worldData, Player player, World world) {
@@ -113,6 +129,18 @@ public class SaveService implements AutoCloseable {
         // the chunk store reaching into the Game singleton's save service.
         if (world != null) {
             world.setSaveService(this);
+        }
+    }
+
+    /**
+     * Rebinds the player this service persists (e.g. when the local player registers with an
+     * integrated server) without touching {@link WorldData} — {@link #initialize} must never
+     * run again once autosaves have begun, because it would replace the accumulated play time
+     * and runtime edits with the caller's (stale) copy. No-op before the service is initialized.
+     */
+    public void bindPlayer(Player player) {
+        if (worldData != null) {
+            this.player = player;
         }
     }
 
@@ -133,9 +161,13 @@ public class SaveService implements AutoCloseable {
      * Stamps the accumulated play time and the authoritative world time into the in-memory
      * {@link WorldData} and returns the snapshot to persist. Synchronized with
      * {@link #updateWorldData} so a concurrent edit can't be lost between read and write.
+     * The interval is marked counted here, in the same step that adds it: the in-memory
+     * {@code WorldData} owns the play time, so an overlapping save or one taken right after a
+     * failed write never adds the same interval twice, and a failed write loses nothing.
      */
     private synchronized WorldData advanceWorldDataForSave(long now) {
         WorldData updatedWorld = worldData.withAddedPlayTime(now - lastAutoSaveTime);
+        lastAutoSaveTime = now;
 
         // Capture current world time from the authoritative clock (server-owned in the two-world
         // model; falls back to the Game singleton's clock when none is injected).
@@ -213,7 +245,7 @@ public class SaveService implements AutoCloseable {
             );
         }
 
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         WorldData updatedWorld = advanceWorldDataForSave(now);
 
         // Convert player to data model
@@ -224,8 +256,7 @@ public class SaveService implements AutoCloseable {
         return submitSave(work)
             .whenComplete((ignored, throwable) -> {
                 if (throwable == null) {
-                    lastAutoSaveTime = now;
-                    System.out.printf("[SAVE] Complete save finished in %dms%n", System.currentTimeMillis() - now);
+                    System.out.printf("[SAVE] Complete save finished in %dms%n", clock.getAsLong() - now);
                 }
             });
     }
@@ -411,13 +442,55 @@ public class SaveService implements AutoCloseable {
 
     @Override
     public void close() {
+        // First, and atomically: any autosave not yet past its in-progress gate bails instead of
+        // submitting, and a second (or concurrent) close() returns without a second teardown.
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         stopAutoSave();
+        awaitInFlightAutoSave();
         flushSavesBlocking("service close");
         autoSaveScheduler.shutdown();
-        savePool.shutdown();
-        loadPool.shutdown();
+        shutdownAndAwait(savePool, "save");
+        shutdownAndAwait(loadPool, "load");
         repository.close();
         System.out.println("[SAVE] SaveService closed");
+    }
+
+    /**
+     * Drains an autosave that is already executing ({@code cancel(false)} cannot stop it) before
+     * the final flush, so its older snapshot can never land after — and overwrite — the flush.
+     */
+    private void awaitInFlightAutoSave() {
+        long deadline = System.currentTimeMillis() + 15_000L;
+        while (autoSaveInProgress.get() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        CompletableFuture<Void> inFlight = inFlightAutoSave;
+        if (inFlight != null) {
+            try {
+                inFlight.get(15, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                System.err.println("[SAVE] Waiting for the in-flight auto-save failed: " + e.getMessage());
+            }
+        }
+    }
+
+    private void shutdownAndAwait(ExecutorService pool, String name) {
+        pool.shutdown();
+        try {
+            if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                System.err.println("[SAVE] " + name + " pool did not terminate within 30s; continuing close");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("[SAVE] Interrupted while awaiting " + name + " pool termination");
+        }
     }
 
     private List<ChunkSaveTask> collectDirtyChunkTasks() {
@@ -515,33 +588,62 @@ public class SaveService implements AutoCloseable {
         return run;
     }
 
-    private void performAutoSave() {
-        if (worldData == null || player == null || world == null) {
+    void performAutoSave() {
+        if (closed.get() || worldData == null || player == null || world == null) {
             return;
         }
         if (!autoSaveInProgress.compareAndSet(false, true)) {
             return;
         }
+        if (closed.get()) {
+            // close() started between the entry check and the CAS: bail before any snapshot
+            // or submit, or this older autosave would land after the final flush.
+            autoSaveInProgress.set(false);
+            return;
+        }
 
-        long started = System.currentTimeMillis();
-        WorldData updatedWorld = advanceWorldDataForSave(started);
+        // Published before the snapshot, so a close() that gives up waiting on the in-progress
+        // flag still joins this autosave rather than a previous, already completed one.
+        CompletableFuture<Void> inFlight = new CompletableFuture<>();
+        inFlightAutoSave = inFlight;
+        long started = clock.getAsLong();
+        int chunkCount;
+        CompletableFuture<Void> write;
+        try {
+            WorldData updatedWorld = advanceWorldDataForSave(started);
 
-        // Convert player to data model
-        PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
-        List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
+            // Convert player to data model
+            PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
+            List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
+            chunkCount = chunkTasks.size();
+            write = submitSave(new SaveWork(updatedWorld, playerData, chunkTasks, "auto"));
+        } catch (RuntimeException e) {
+            // Never leave the gate set: every later autosave would skip, and close() would wait
+            // out its full deadline. Not rethrown, so the fixed-rate schedule keeps running.
+            autoSaveInProgress.set(false);
+            inFlight.completeExceptionally(e);
+            System.err.println("[AUTO-SAVE] Failed before writing: " + e);
+            return;
+        }
 
-        submitSave(new SaveWork(updatedWorld, playerData, chunkTasks, "auto"))
-            .whenComplete((ignored, throwable) -> {
-                autoSaveInProgress.set(false);
-                if (throwable == null) {
-                    lastAutoSaveTime = started;
-                    long duration = System.currentTimeMillis() - started;
-                    System.out.printf("[AUTO-SAVE] Completed in %dms (%d chunks)%n", duration, chunkTasks.size());
-                    if (duration > 5000) {
-                        System.err.printf("[AUTO-SAVE] WARNING: Save took %dms%n", duration);
-                    }
+        write.whenComplete((ignored, throwable) -> {
+            autoSaveInProgress.set(false);
+            if (throwable == null) {
+                inFlight.complete(null);
+                long duration = clock.getAsLong() - started;
+                System.out.printf("[AUTO-SAVE] Completed in %dms (%d chunks)%n", duration, chunkCount);
+                if (duration > 5000) {
+                    System.err.printf("[AUTO-SAVE] WARNING: Save took %dms%n", duration);
                 }
-            });
+            } else {
+                inFlight.completeExceptionally(throwable);
+            }
+        });
+    }
+
+    /** Test view of the autosave currently in flight (null when none). Package-private. */
+    CompletableFuture<Void> inFlightAutoSaveForTesting() {
+        return inFlightAutoSave;
     }
 
     private record ChunkSaveTask(Chunk chunk, ChunkData data) { }
