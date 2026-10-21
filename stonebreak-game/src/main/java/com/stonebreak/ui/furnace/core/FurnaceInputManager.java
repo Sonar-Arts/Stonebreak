@@ -22,9 +22,8 @@ public class FurnaceInputManager implements ContainerSlotInput {
     protected final FurnaceController controller;
 
     private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
-    private static final float DOUBLE_CLICK_RADIUS = 40f;
     private long lastClickTimeMs = 0L;
-    private float lastClickX = 0f, lastClickY = 0f;
+    private String lastClickSlot;
 
     /** Drops a carried stack at the player's feet; tests observe it. */
     private java.util.function.Consumer<InventoryDragDropHandler.DragState> worldDrop =
@@ -145,12 +144,12 @@ public class FurnaceInputManager implements ContainerSlotInput {
     private void handleLeftClick(float mouseX, float mouseY,
                                  InventoryLayoutCalculator.InventoryLayout layout) {
         if (dragState.isDragging()) {
-            if (isDoubleClick(mouseX, mouseY)) {
-                recordClick(mouseX, mouseY);
+            if (isDoubleClick(mouseX, mouseY, layout)) {
+                recordClick(mouseX, mouseY, layout);
                 return;
             }
             if (tryDropToFurnaceSlots(mouseX, mouseY, layout)) {
-                recordClick(mouseX, mouseY);
+                recordClick(mouseX, mouseY, layout);
                 return;
             }
             if (!tryDropToInventory(mouseX, mouseY, layout) && !tryDropToHotbar(mouseX, mouseY, layout)) {
@@ -178,14 +177,14 @@ public class FurnaceInputManager implements ContainerSlotInput {
                     }
                 }
             }
-            recordClick(mouseX, mouseY);
+            recordClick(mouseX, mouseY, layout);
             return;
         }
 
         if (tryPickUpFromFurnaceSlots(mouseX, mouseY, layout) ||
             tryPickUpFromInventory(mouseX, mouseY, layout) ||
             tryPickUpFromHotbar(mouseX, mouseY, layout)) {
-            recordClick(mouseX, mouseY);
+            recordClick(mouseX, mouseY, layout);
         }
     }
 
@@ -425,19 +424,48 @@ public class FurnaceInputManager implements ContainerSlotInput {
         return false;
     }
 
-    /* ── Double-click helpers (YAGNI placeholder) ────────── */
+    /* ── Double-click helpers (same-slot no-op, #352) ────── */
 
-    private boolean isDoubleClick(float x, float y) {
-        long now = System.currentTimeMillis();
-        float dx = x - lastClickX, dy = y - lastClickY;
-        return (now - lastClickTimeMs < DOUBLE_CLICK_THRESHOLD_MS &&
-                dx * dx + dy * dy < DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS);
+    private boolean isDoubleClick(float x, float y,
+                                  InventoryLayoutCalculator.InventoryLayout layout) {
+        // Same slot only (#352): the old distance radius swallowed a drop on the next slot
+        // once the slot pitch dropped below the radius at small UI scales.
+        String slot = slotAddressAt(x, y, layout);
+        return slot != null && slot.equals(lastClickSlot) &&
+               System.currentTimeMillis() - lastClickTimeMs < DOUBLE_CLICK_THRESHOLD_MS;
     }
 
-    private void recordClick(float x, float y) {
+    private void recordClick(float x, float y,
+                             InventoryLayoutCalculator.InventoryLayout layout) {
         lastClickTimeMs = System.currentTimeMillis();
-        lastClickX = x;
-        lastClickY = y;
+        lastClickSlot = slotAddressAt(x, y, layout);
+    }
+
+    /**
+     * The slot address ({@code ingredient}, {@code fuel}, {@code output}, {@code main:<i>},
+     * {@code hotbar:<i>}) whose rect contains the point, or null when it is on no slot —
+     * the same geometry the pick-up and drop hit tests above use.
+     */
+    private String slotAddressAt(float mouseX, float mouseY,
+                                 InventoryLayoutCalculator.InventoryLayout layout) {
+        FurnaceLayout.Slots f = FurnaceLayout.compute(layout);
+        if (isOverSlot(mouseX, mouseY, f.ingredientX, f.ingredientY)) return "ingredient";
+        if (isOverSlot(mouseX, mouseY, f.fuelX, f.fuelY)) return "fuel";
+        if (isOverSlot(mouseX, mouseY, f.outputX, f.outputY)) return "output";
+        int ss  = InventoryLayoutCalculator.getSlotSize();
+        int pad = InventoryLayoutCalculator.getSlotPadding();
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int row = i / Inventory.MAIN_INVENTORY_COLS;
+            int col = i % Inventory.MAIN_INVENTORY_COLS;
+            int sx = layout.inventorySectionStartX + pad + col * (ss + pad);
+            int sy = layout.mainInvContentStartY + pad + row * (ss + pad);
+            if (isOverSlot(mouseX, mouseY, sx, sy)) return "main:" + i;
+        }
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int sx = layout.inventorySectionStartX + pad + i * (ss + pad);
+            if (isOverSlot(mouseX, mouseY, sx, layout.hotbarRowY)) return "hotbar:" + i;
+        }
+        return null;
     }
 
     /* ── Read/write furnace slots ────────────────────────── */

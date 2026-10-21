@@ -619,6 +619,38 @@ public class InventorySlotManager {
         }
     }
 
+    /**
+     * The address ({@code main:<i>}, {@code hotbar:<i>}, {@code craft:<i>}, {@code craft-output})
+     * whose slot rect contains the point — the inverse of {@link #slotOrigin(String,
+     * InventoryLayoutCalculator.InventoryLayout)}. Null when the point is on no slot (issue #352:
+     * double-clicks are counted per slot, not per distance).
+     */
+    public String slotAt(float mouseX, float mouseY, InventoryLayoutCalculator.InventoryLayout layout) {
+        if (isMouseOverCraftingOutput(mouseX, mouseY, layout)) {
+            return "craft-output";
+        }
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int[] o = slotOrigin("main:" + i, layout);
+            if (isMouseOverSlot(mouseX, mouseY, o[0], o[1])) {
+                return "main:" + i;
+            }
+        }
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int[] o = slotOrigin("hotbar:" + i, layout);
+            if (isMouseOverSlot(mouseX, mouseY, o[0], o[1])) {
+                return "hotbar:" + i;
+            }
+        }
+        int size = craftingManager.getCraftingGridSize();
+        for (int i = 0; i < size * size; i++) {
+            int[] o = slotOrigin("craft:" + i, layout);
+            if (isMouseOverSlot(mouseX, mouseY, o[0], o[1])) {
+                return "craft:" + i;
+            }
+        }
+        return null;
+    }
+
     private boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {
         return mouseX >= slotX && mouseX <= slotX + InventoryLayoutCalculator.getSlotSize() &&
                mouseY >= slotY && mouseY <= slotY + InventoryLayoutCalculator.getSlotSize();

@@ -31,11 +31,10 @@ public class InventoryInputManager implements ContainerSlotInput {
     // Pointer of the frame being handled
     private float pointerX, pointerY;
 
-    // Double-click detection
+    // Double-click detection (#352): two presses on the same slot within the window
     private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
-    private static final float DOUBLE_CLICK_RADIUS = 40f;
     private long lastClickTimeMs = 0L;
-    private float lastClickX = 0f, lastClickY = 0f;
+    private String lastClickSlot;
 
     // Right-click drag state
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
@@ -173,9 +172,9 @@ public class InventoryInputManager implements ContainerSlotInput {
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isDoubleClick(mouseX, mouseY)) {
+            if (isDoubleClick(mouseX, mouseY, layout)) {
                 handleDoubleClickGather();
-                recordClick(mouseX, mouseY);
+                recordClick(mouseX, mouseY, layout);
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
@@ -187,7 +186,7 @@ public class InventoryInputManager implements ContainerSlotInput {
         if (dragState.draggedItemStack == null) {
             // Try to pick up item
             if (tryPickUpItem(mouseX, mouseY, layout)) {
-                recordClick(mouseX, mouseY);
+                recordClick(mouseX, mouseY, layout);
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
@@ -347,18 +346,19 @@ public class InventoryInputManager implements ContainerSlotInput {
         return false;
     }
 
-    private boolean isDoubleClick(float mouseX, float mouseY) {
-        long now = System.currentTimeMillis();
-        if (now - lastClickTimeMs > DOUBLE_CLICK_THRESHOLD_MS) return false;
-        float dx = mouseX - lastClickX;
-        float dy = mouseY - lastClickY;
-        return dx * dx + dy * dy <= DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS;
+    private boolean isDoubleClick(float mouseX, float mouseY,
+                                  InventoryLayoutCalculator.InventoryLayout layout) {
+        if (System.currentTimeMillis() - lastClickTimeMs > DOUBLE_CLICK_THRESHOLD_MS) return false;
+        // Same slot only (#352): a distance radius misread a click on the next slot as a
+        // double-click once the slot pitch dropped below the radius at small UI scales.
+        String slot = slotManager.slotAt(mouseX, mouseY, layout);
+        return slot != null && slot.equals(lastClickSlot);
     }
 
-    private void recordClick(float mouseX, float mouseY) {
+    private void recordClick(float mouseX, float mouseY,
+                             InventoryLayoutCalculator.InventoryLayout layout) {
         lastClickTimeMs = System.currentTimeMillis();
-        lastClickX = mouseX;
-        lastClickY = mouseY;
+        lastClickSlot = slotManager.slotAt(mouseX, mouseY, layout);
     }
 
     private void handleDoubleClickGather() {

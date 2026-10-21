@@ -179,6 +179,45 @@ class ContainerSlotRulesRegressionTest {
     }
 
     /**
+     * Issue #352: at small UI scales the next slot's centre is closer than the old fixed 40 px
+     * double-click radius, so a quick pick-up-then-place gathered instead of placing. Double-clicks
+     * are counted on the same slot only, so the second press places the stack.
+     */
+    @Test
+    void quickClickOnTheNextSlotPlacesInsteadOfGathering() {
+        Settings.getInstance().setUiScale(0.75f);
+        InventoryInputManager inv = inventoryScreen();
+        inventory.setMainInventorySlot(0, new ItemStack(BlockType.DIRT, 10));
+        inventory.setMainInventorySlot(1, new ItemStack(BlockType.DIRT, 10));
+        float[] first = inv.slotCentre("main:0", W, H);
+        float[] second = inv.slotCentre("main:1", W, H);
+
+        press(inv, first[0], first[1], 0);
+        press(inv, second[0], second[1], 0);
+
+        assertFalse(inv.getDragState().isDragging(), "the stack was placed, not gathered");
+        assertEquals(20, inventory.getMainInventorySlot(1).getCount(), "merged into the second slot");
+        assertEquals(20, countOf(inventory, BlockType.DIRT), "nothing created or lost");
+    }
+
+    /** The legitimate double-click gather survives at small scales when both presses are on one slot. */
+    @Test
+    void quickSecondClickOnTheSameSlotStillGathers() {
+        Settings.getInstance().setUiScale(0.75f);
+        InventoryInputManager inv = inventoryScreen();
+        inventory.setMainInventorySlot(2, new ItemStack(BlockType.DIRT, 10));
+        inventory.setMainInventorySlot(5, new ItemStack(BlockType.DIRT, 5));
+        float[] centre = inv.slotCentre("main:2", W, H);
+
+        press(inv, centre[0], centre[1], 0);
+        press(inv, centre[0], centre[1], 0);
+
+        assertTrue(inv.getDragState().isDragging(), "the gathered stack stays on the cursor");
+        assertEquals(15, inv.getDragState().draggedItemStack.getCount());
+        assertEquals(0, countOf(inventory, BlockType.DIRT), "every matching stack was gathered");
+    }
+
+    /**
      * Issue #350: shift-clicking a crafting cell moved items by id, so water buckets merged into an
      * empty-bucket stack (and became empty). Both grids: the inventory's 2x2 and the workbench's 3x3.
      */
