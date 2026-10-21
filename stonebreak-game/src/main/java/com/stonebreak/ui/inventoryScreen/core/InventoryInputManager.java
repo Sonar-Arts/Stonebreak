@@ -151,10 +151,11 @@ public class InventoryInputManager implements ContainerSlotInput {
                                    InventoryLayoutCalculator.InventoryLayout layout) {
         if (slotManager.tryBalanceCraftingSlot(mouseX, mouseY, layout)) {
             craftingManager.updateCraftingOutput();
-        } else if (!dragState.isDragging()) {
-            // Never sort mid-drag: it re-populates the drag's source slot and
-            // corrupts the later swap-by-index placement.
-            inventory.sortInventory();
+        } else {
+            // Never sort mid-drag (handleSort guards): it re-populates the drag's source slot
+            // and corrupts the later swap-by-index placement. The sort ships as SORT like the
+            // Sort button's — a local-only sort would be undone by the next sync (#334).
+            handleSort();
         }
     }
 
@@ -246,6 +247,7 @@ public class InventoryInputManager implements ContainerSlotInput {
     private void handleSort() {
         if (dragState.isDragging()) return; // never mid-drag: it would re-populate the drag's source slot
         inventory.sortInventory();
+        slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.SORT);
     }
 
     private boolean tryPickUpItem(float mouseX, float mouseY,
@@ -267,6 +269,10 @@ public class InventoryInputManager implements ContainerSlotInput {
             ItemStack batch = craftingManager.takeCraftBatch();
             if (batch != null) {
                 slotManager.startDragFromCraftingOutput(batch, dragState);
+                // The SERVER computes the result and consumes the inputs (issue #334);
+                // this local take is the prediction.
+                slotManager.actions.send(slotManager.craftOutRegion, (byte) 0,
+                        com.stonebreak.network.packet.player.ContainerActionC2S.Action.TAKE_OUTPUT);
                 return true;
             }
         }
@@ -303,6 +309,8 @@ public class InventoryInputManager implements ContainerSlotInput {
             return false;
         }
         dragged.incrementCount(batch.getCount());
+        slotManager.actions.send(slotManager.craftOutRegion, (byte) 0,
+                com.stonebreak.network.packet.player.ContainerActionC2S.Action.TAKE_OUTPUT);
         return true;
     }
 
@@ -389,7 +397,8 @@ public class InventoryInputManager implements ContainerSlotInput {
                                                 craftingManager.getCraftingInputSlots(),
                                                 mousePos, layout,
                                                 isOutsidePanel(mousePos.x, mousePos.y, lastScreenWidth, lastScreenHeight),
-                                                craftingManager::updateCraftingOutput);
+                                                craftingManager::updateCraftingOutput,
+                                                slotManager.actions, slotManager.craftGridRegion);
     }
 
     /**
@@ -413,16 +422,32 @@ public class InventoryInputManager implements ContainerSlotInput {
         return dragState;
     }
 
+    /** The slot manager owning the region bindings + action sink (issue #334). */
+    public InventorySlotManager getSlotManager() {
+        return slotManager;
+    }
+
     /**
      * Handles dragged items when closing the screen.
      * Attempts to return items to original slots or player inventory.
      */
     public void handleCloseWithDraggedItems() {
+        closeWithDraggedItems();
+    }
+
+    /**
+     * The close return of the carried stack; true when it sent DEPOSIT_CARRIED. Every local
+     * step is mirrored by the matching action (issue #334): the return to the origin slot —
+     * a crafting-grid origin included — as PUT_ALL/MERGE, the rest as DEPOSIT_CARRIED.
+     */
+    private boolean closeWithDraggedItems() {
+        boolean deposited = false;
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             // Try to return to original slot first
             InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory,
                                                             craftingManager.getCraftingInputSlots(),
-                                                            craftingManager::updateCraftingOutput);
+                                                            craftingManager::updateCraftingOutput,
+                                                            slotManager.actions, slotManager.craftGridRegion);
 
             // If still dragging after trying to return, try to add to player inventory
             if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
@@ -430,7 +455,15 @@ public class InventoryInputManager implements ContainerSlotInput {
                 // (dropping the whole stack after a partial add duplicated the difference).
                 ItemStack held = dragState.draggedItemStack;
                 held.setCount(held.getCount() - inventory.addItemAndReturnCount(held));
-                if (!held.isEmpty()) {
+                // The SERVER deposits the carried stack into the replica and drops whatever
+                // does not fit at the player (issue #334); the local add above is the
+                // prediction only. With a live session the client must NOT also drop the
+                // remainder — DropItemC2S debits the 36 slots, not the server cursor, so it
+                // would consume unrelated stock. Without a session the local drop is the
+                // only one (issue #307: closing a screen never destroys items).
+                slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED);
+                deposited = true;
+                if (!held.isEmpty() && !com.stonebreak.network.MultiplayerSession.isClient()) {
                     InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
                 }
             }
@@ -438,6 +471,51 @@ public class InventoryInputManager implements ContainerSlotInput {
             // Clear drag state
             clearDraggedItemState();
         }
+        return deposited;
+    }
+
+    /**
+     * Closes a block container screen (the crafting table) whose grid STAYS in the block
+     * (issue #307): the carried stack goes back as above, and — whenever this screen sent
+     * any action since it opened, so the server's cursor may still hold a stack the
+     * prediction thinks is placed — one DEPOSIT_CARRIED hands it back (issue #334). The grid
+     * itself is never quick-moved out (that is the inventory's 2×2 rule).
+     */
+    public void closeBlockContainer() {
+        boolean mayCarry = slotManager.actions.hasSentSinceBind();
+        closeWithDraggedItems();
+        if (mayCarry && slotManager.actions.lastAction()
+                != com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED) {
+            slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED);
+        }
+    }
+
+    /** A sync rewrote the grid (issue #334): recompute what it makes, so no stale output shows. */
+    @Override
+    public void refreshCraftingOutput() {
+        craftingManager.updateCraftingOutput();
+    }
+
+    /**
+     * Returns the SERVER's copy of this screen's held items on close (issue #334): one
+     * QUICK_MOVE per non-empty craft-grid cell into the replica's 36 slots (what does not
+     * fit stays in the cell, as tryShiftClickCraftingInput predicts), then DEPOSIT_CARRIED,
+     * which for kind INVENTORY returns the server cursor AND grid cells 0..3 to the
+     * inventory and drops only the overflow at the player. Without
+     * this the local return empties only the client's prediction — the next
+     * InventorySyncS2C would overwrite the mirror without those items and the ephemeral
+     * server grid would strand them. Sends no-op without a live session; local-only play
+     * relies on the direct return in the controller.
+     */
+    public void sendCloseReturnOps() {
+        ItemStack[] cells = craftingManager.getCraftingInputSlots();
+        for (int i = 0; i < cells.length; i++) {
+            if (cells[i] != null && !cells[i].isEmpty()) {
+                slotManager.actions.send(slotManager.craftGridRegion, (byte) i,
+                        com.stonebreak.network.packet.player.ContainerActionC2S.Action.QUICK_MOVE);
+            }
+        }
+        slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED);
     }
 
     public InventoryCraftingManager getCraftingManager() {
