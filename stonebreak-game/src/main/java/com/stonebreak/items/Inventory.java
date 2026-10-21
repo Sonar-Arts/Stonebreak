@@ -121,106 +121,62 @@ public class Inventory {
         if (itemStack == null || itemStack.isEmpty()) {
             return 0;
         }
-        
-        int remainingCount = itemStack.getCount();
-        Item item = itemStack.getItem();
-        String state = itemStack.getState();
-
-        // First, try to stack with existing items in hotbar (state must match)
-        for (ItemStack stack : hotbarSlots) {
-            if (remainingCount == 0) break;
-            if (!stack.isEmpty()
-                    && stack.getItem().isSameType(item)
-                    && ItemStack.statesMatch(item, stack.getState(), state)
-                    && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
-                remainingCount -= canAdd;
-            }
-        }
-
-        // Then, try to stack with existing items in main inventory (state must match)
-        for (ItemStack stack : mainInventorySlots) {
-            if (remainingCount == 0) break;
-            if (!stack.isEmpty()
-                    && stack.getItem().isSameType(item)
-                    && ItemStack.statesMatch(item, stack.getState(), state)
-                    && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
-                remainingCount -= canAdd;
-            }
-        }
-
-        // If still items left, try to fill empty slots in hotbar
-        if (remainingCount > 0) {
-            for (int i = 0; i < hotbarSlots.length; i++) {
-                if (remainingCount == 0) break;
-                if (hotbarSlots[i].isEmpty()) {
-                    int canAdd = Math.min(remainingCount, itemStack.getMaxStackSize());
-                    // Replace the empty stack with a new one containing our item (preserve SBO state)
-                    hotbarSlots[i] = new ItemStack(item, canAdd, state);
-                    remainingCount -= canAdd;
-                }
-            }
-        }
-
-        // Then, try to fill empty slots in main inventory
-        if (remainingCount > 0) {
-            for (int i = 0; i < mainInventorySlots.length; i++) {
-                if (remainingCount == 0) break;
-                if (mainInventorySlots[i].isEmpty()) {
-                    int canAdd = Math.min(remainingCount, itemStack.getMaxStackSize());
-                    // Replace the empty stack with a new one containing our item (preserve SBO state)
-                    mainInventorySlots[i] = new ItemStack(item, canAdd, state);
-                    remainingCount -= canAdd;
-                }
-            }
-        }
-        
-        return itemStack.getCount() - remainingCount;
+        return itemStack.getCount() - place(itemStack, true);
     }
 
     /**
-     * Non-mutating capacity check mirroring {@link #addItemAndReturnCount}'s rules:
-     * state-matched stacking first, then empty hotbar slots, then empty main slots.
+     * Non-mutating capacity check: a dry run of {@link #addItemAndReturnCount}'s placement,
+     * so the answer cannot drift from what an add would really do.
      * @return True if the entire stack would fit right now.
      */
     public boolean canAddItem(ItemStack itemStack) {
         if (itemStack == null || itemStack.isEmpty()) {
             return true;
         }
+        return place(itemStack, false) == 0;
+    }
 
+    /**
+     * The one placement rule behind {@link #addItemAndReturnCount} and {@link #canAddItem}:
+     * stack onto state-matched stacks (hotbar, then main), then fill empty slots (hotbar,
+     * then main). Writes the slots only when {@code apply}. Returns the count left over.
+     */
+    private int place(ItemStack itemStack, boolean apply) {
         int remainingCount = itemStack.getCount();
         Item item = itemStack.getItem();
         String state = itemStack.getState();
 
-        for (ItemStack stack : hotbarSlots) {
-            if (remainingCount == 0) break;
-            if (!stack.isEmpty()
-                    && stack.getItem().isSameType(item)
-                    && ItemStack.statesMatch(item, stack.getState(), state)
-                    && stack.getCount() < stack.getMaxStackSize()) {
-                remainingCount -= Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-            }
-        }
-        for (ItemStack stack : mainInventorySlots) {
-            if (remainingCount == 0) break;
-            if (!stack.isEmpty()
-                    && stack.getItem().isSameType(item)
-                    && ItemStack.statesMatch(item, stack.getState(), state)
-                    && stack.getCount() < stack.getMaxStackSize()) {
-                remainingCount -= Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-            }
-        }
+        // First, stack with existing items (state must match): hotbar, then main inventory
         for (ItemStack[] slots : new ItemStack[][] {hotbarSlots, mainInventorySlots}) {
-            for (int i = 0; i < slots.length && remainingCount > 0; i++) {
-                if (slots[i].isEmpty()) {
-                    remainingCount -= Math.min(remainingCount, itemStack.getMaxStackSize());
+            for (ItemStack stack : slots) {
+                if (remainingCount == 0) break;
+                if (!stack.isEmpty()
+                        && stack.getItem().isSameType(item)
+                        && ItemStack.statesMatch(item, stack.getState(), state)
+                        && stack.getCount() < stack.getMaxStackSize()) {
+                    int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+                    if (apply) {
+                        stack.incrementCount(canAdd);
+                    }
+                    remainingCount -= canAdd;
                 }
             }
         }
-        return remainingCount == 0;
+
+        // Then fill empty slots: hotbar, then main inventory
+        for (ItemStack[] slots : new ItemStack[][] {hotbarSlots, mainInventorySlots}) {
+            for (int i = 0; i < slots.length && remainingCount > 0; i++) {
+                if (slots[i].isEmpty()) {
+                    int canAdd = Math.min(remainingCount, itemStack.getMaxStackSize());
+                    if (apply) {
+                        // Replace the empty stack with a new one containing our item (preserve SBO state)
+                        slots[i] = new ItemStack(item, canAdd, state);
+                    }
+                    remainingCount -= canAdd;
+                }
+            }
+        }
+        return remainingCount;
     }
 
     /**

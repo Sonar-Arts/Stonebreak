@@ -108,8 +108,8 @@ class BucketStacksTest {
             total += bucketsIn(inventory.getHotbarSlot(i));
         }
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
-                total += bucketsIn(inventory.getMainInventorySlot(i));
-            }
+            total += bucketsIn(inventory.getMainInventorySlot(i));
+        }
         return total;
     }
 

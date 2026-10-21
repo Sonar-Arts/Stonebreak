@@ -5,7 +5,10 @@ package com.stonebreak.items;
  * (issue #354): with a single bucket the slot's state swaps in place; with a stack the
  * slot gives up one bucket of the other state. The overflow bucket must have somewhere
  * to go — checked with {@link #canConvertHeld} BEFORE the world is touched — or the
- * action is refused instead of silently deleting it.
+ * action is refused instead of silently deleting it. A refused use sends nothing. The
+ * server (which owns the inventory since #334) applies the same stack rule and, when its
+ * replica is full while ours had room, drops the converted bucket at the player's feet
+ * with its state ({@code ServerBlockHandler.convertOneBucket}).
  */
 public final class BucketStacks {
 
