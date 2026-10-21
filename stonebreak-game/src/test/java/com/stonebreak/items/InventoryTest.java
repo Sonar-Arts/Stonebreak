@@ -168,4 +168,45 @@ class InventoryTest {
         assertTrue(crafted.canStackWith(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY)));
         assertFalse(crafted.canStackWith(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER)));
     }
+
+    /**
+     * Issue #354: the non-mutating capacity check that bucket conversions run before
+     * touching the world. It must mirror {@code addItem}'s stacking rules without
+     * changing anything.
+     */
+    @Test
+    void canAddItemSeesRoomInARoomyStateMatchedStack() {
+        inventory.setHotbarSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
+
+        assertTrue(inventory.canAddItem(
+                new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER)));
+        assertEquals(1, inventory.getHotbarSlot(0).getCount(), "the check is non-mutating");
+    }
+
+    @Test
+    void canAddItemSeesRoomInAnEmptySlot() {
+        assertTrue(inventory.canAddItem(new ItemStack(STONE, 1)));
+        assertTrue(inventory.getHotbarSlot(0).isEmpty(), "the check is non-mutating");
+    }
+
+    @Test
+    void canAddItemRefusesACompletelyFullInventory() {
+        inventory.addItem(STONE, capacity);
+
+        assertFalse(inventory.canAddItem(new ItemStack(STONE, 1)));
+    }
+
+    @Test
+    void canAddItemRefusesWhenOnlyMismatchedOrFullStacksExist() {
+        int bucketMaxStack = new ItemStack(ItemType.WOODEN_BUCKET, 1).getMaxStackSize();
+        inventory.setHotbarSlot(0,
+                new ItemStack(ItemType.WOODEN_BUCKET, bucketMaxStack, ItemType.BUCKET_STATE_WATER));
+        inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, bucketMaxStack,
+                ItemType.BUCKET_STATE_EMPTY));
+        inventory.addItem(STONE, (Inventory.TOTAL_SLOTS - 2) * maxStack);
+
+        assertFalse(inventory.canAddItem(
+                new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER)),
+                "a full water stack is not a destination; no empty slot exists either");
+    }
 }
