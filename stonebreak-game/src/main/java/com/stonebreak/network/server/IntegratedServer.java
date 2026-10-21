@@ -149,20 +149,25 @@ public final class IntegratedServer {
         return ctx;
     }
 
+    private List<EntitySpawner.SpawnAnchor> collectPlayerSpawnAnchors() {
+        return spawnAnchorsFor(ctx.players());
+    }
+
     /**
      * Snapshots a spawn anchor (position + view distance) for every player that has both completed
      * the handshake AND reported a position (so the dynamic mob cap sizes itself to each player's
      * actual loaded area, not the {@code (0,0,0)} default before the first PlayerStateC2S). Supplied
      * to the entity spawner so continuous spawning/despawning consider all players, not just the local one.
+     * A dead player's anchor keeps its area for despawning (the world stays on screen behind the
+     * death menu) but spawns nothing around the corpse (#357).
      */
-    private List<EntitySpawner.SpawnAnchor> collectPlayerSpawnAnchors() {
-        Collection<ServerPlayer> roster = ctx.players();
+    static List<EntitySpawner.SpawnAnchor> spawnAnchorsFor(Collection<ServerPlayer> roster) {
         if (roster.isEmpty()) return List.of();
         List<EntitySpawner.SpawnAnchor> out = new ArrayList<>(roster.size());
         for (ServerPlayer sp : roster) {
             if (!sp.handshakeDone() || sp.lastStateNs() == 0L) continue;
             out.add(new EntitySpawner.SpawnAnchor(
-                new Vector3f(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks()));
+                new Vector3f(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld()));
         }
         return out;
     }
@@ -357,6 +362,7 @@ public final class IntegratedServer {
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
+            case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> playerHandler.handlePlayerLife(sp, pl);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
