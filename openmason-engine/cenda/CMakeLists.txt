@@ -28,6 +28,35 @@ endif()
 
 option(CENDA_BUILD_KERNELS "Build the native chunk-kernels shared lib (FastNoise2 via FetchContent)" ON)
 
+# FastNoise2/zstd/Yoga are fetched as git clones. Anywhere inside this checkout, IDEs pick them up
+# as nested VCS roots and list their branches/remotes as the project's, so refuse an in-tree deps
+# dir (FetchContent's default is <build>/_deps). The presets use ~/.cache/cenda-deps*, CI runner.temp.
+if(CENDA_BUILD_KERNELS)
+    set(_cenda_deps_dir "${CMAKE_BINARY_DIR}/_deps")
+    if(FETCHCONTENT_BASE_DIR)
+        set(_cenda_deps_dir "${FETCHCONTENT_BASE_DIR}")
+    endif()
+    cmake_path(ABSOLUTE_PATH _cenda_deps_dir BASE_DIRECTORY "${CMAKE_BINARY_DIR}" NORMALIZE)
+    set(_cenda_checkout "${CMAKE_SOURCE_DIR}")
+    while(NOT EXISTS "${_cenda_checkout}/.git")
+        cmake_path(GET _cenda_checkout PARENT_PATH _cenda_parent)
+        if(_cenda_parent STREQUAL _cenda_checkout)
+            set(_cenda_checkout "${CMAKE_SOURCE_DIR}")
+            break()
+        endif()
+        set(_cenda_checkout "${_cenda_parent}")
+    endwhile()
+    cmake_path(IS_PREFIX _cenda_checkout "${_cenda_deps_dir}" NORMALIZE _cenda_deps_in_tree)
+    if(_cenda_deps_in_tree)
+        message(FATAL_ERROR
+                "FETCHCONTENT_BASE_DIR (${_cenda_deps_dir}) is inside the git checkout "
+                "(${_cenda_checkout}); the dependency clones would show up as nested repos in IDEs. "
+                "Configure with a preset (cmake --preset release), or pass "
+                "-DFETCHCONTENT_BASE_DIR=<dir outside the repo>. A stale CMakeCache.txt keeps the old "
+                "value: add --fresh.")
+    endif()
+endif()
+
 include(CTest)
 
 add_subdirectory(libomformat)
