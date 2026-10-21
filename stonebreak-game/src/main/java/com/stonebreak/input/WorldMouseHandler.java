@@ -72,8 +72,8 @@ final class WorldMouseHandler {
         }
     }
 
-    /** Right press: held-item actions first (bow/staff/rod/food), then block interaction/placement. */
-    private void handleUse(Player player) {
+    /** Right press: held-item actions first (bow/staff/rod/food), then block interaction/placement. Package-private for tests. */
+    void handleUse(Player player) {
         ItemStack held = player.getInventory().getSelectedHotbarSlot();
 
         // Bow → start drawing (no attack swing).
@@ -99,10 +99,12 @@ final class WorldMouseHandler {
             ItemType foodType = held.asItemType();
             if (foodType != null && foodType.getHealAmount() > 0) {
                 player.heal(foodType.getHealAmount());
-                held.decrementCount(1);
-                if (held.getCount() <= 0) {
-                    held.clear();
-                }
+                // Consume via removeItem so its depletion auto-switch moves the
+                // next matching stack into the selected slot (#64/#355); the server
+                // replays the same debit + switch on its replica (#334).
+                int foodId = held.getBlockTypeId();
+                player.getInventory().removeItem(held.getItem(), 1);
+                MultiplayerSession.sendConsumeHeld(foodId);
                 return;
             }
         }

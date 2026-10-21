@@ -62,6 +62,10 @@ public class DeathHandler {
             }
         }
 
+        // #357: tell the server first, on the reliable channel, so it stops handing drops to
+        // this player before the death scatter below lands at the corpse.
+        com.stonebreak.network.MultiplayerSession.sendPlayerLife(true, position);
+
         // #351: return panel-held stacks (cursor, crafting grids, furnace carried stack) to the
         // inventory and close the panels, so the drop below sweeps them up with everything else.
         Game.getInstance().getStateController().onPlayerDied();
@@ -140,6 +144,10 @@ public class DeathHandler {
 
         Vector3f p = state.getPosition();
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+
+        // #357: alive again, AT the respawn point — the server must not resume pickups for a
+        // body it still places at the corpse, beside the death drops.
+        com.stonebreak.network.MultiplayerSession.sendPlayerLife(false, p);
 
         System.out.println("DEBUG: Respawn complete");
     }

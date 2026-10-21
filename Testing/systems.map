@@ -40,6 +40,7 @@ blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/wat
 water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test,com/stonebreak/world/chunk/ChunkWaterLayerTest,com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/chunk/WaterSurfaceClosureTest
 core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test,com/stonebreak/world/TimeOfDayTest,com/stonebreak/world/DeterministicRandomTest,com/stonebreak/world/SnowLayerManagerTest
 items	stonebreak-game	com/stonebreak/items/**/*Test
+input	stonebreak-game	com/stonebreak/input/**/*Test
 crafting	stonebreak-game	com/stonebreak/crafting/**/*Test
 mobs	stonebreak-game	com/stonebreak/mobs/**/*Test,com/stonebreak/rendering/models/**/*Test
 player	stonebreak-game	com/stonebreak/player/**/*Test,com/stonebreak/rpg/**/*Test,com/stonebreak/rendering/player/**/*Test,com/stonebreak/battletest/**/*Test
