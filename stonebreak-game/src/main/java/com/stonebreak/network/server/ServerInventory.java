@@ -124,9 +124,11 @@ public final class ServerInventory {
     }
 
     /**
-     * Removes {@code count} of {@code itemId} (hotbar first, mirroring
-     * {@code Inventory.removeItem}). Returns false when the replica does not hold
-     * enough — the caller must treat false as "nothing was removed".
+     * Removes {@code count} of {@code itemId} — the selected hotbar slot first, then the
+     * rest of the hotbar, then main, mirroring {@code Inventory.removeItem}. State-blind:
+     * used for placement/ammo debits whose items carry no meaningful state. Returns false
+     * when the replica does not hold enough — the caller must treat false as "nothing was
+     * removed".
      */
     public boolean debit(int itemId, int count) {
         if (itemId == BlockType.AIR.getId() || count <= 0) {
@@ -136,7 +138,8 @@ public final class ServerInventory {
             return false;
         }
         int remaining = count;
-        for (int i = 0; i < TOTAL_SLOTS && remaining > 0; i++) {
+        for (int k = 0; k < TOTAL_SLOTS && remaining > 0; k++) {
+            int i = debitOrder(k);
             ItemStack s = slots[i];
             if (!s.isEmpty() && s.getBlockTypeId() == itemId) {
                 int take = Math.min(remaining, s.getCount());
@@ -148,6 +151,73 @@ public final class ServerInventory {
             }
         }
         return true;
+    }
+
+    /**
+     * Debits a toss (issue #334): {@code count} of {@code itemId} taken as ONE stack kind.
+     * The source is the selected hotbar slot when it holds {@code itemId} (Q always tosses
+     * from there), else the first slot holding it (hotbar first); only stacks whose state
+     * matches the source's ({@link ItemStack#statesMatch}) are debited, so tossing a water
+     * bucket never consumes an empty one. Returns the removed stack WITH its state (the
+     * caller spawns exactly that), or null — nothing removed — when the replica does not
+     * hold {@code count} of that kind.
+     */
+    public ItemStack debitStack(int itemId, int count) {
+        if (itemId == BlockType.AIR.getId() || count <= 0) {
+            return null;
+        }
+        ItemStack source = null;
+        for (int k = 0; k < TOTAL_SLOTS && source == null; k++) {
+            ItemStack s = slots[debitOrder(k)];
+            if (!s.isEmpty() && s.getBlockTypeId() == itemId) {
+                source = s;
+            }
+        }
+        if (source == null) {
+            return null;
+        }
+        Item item = source.getItem();
+        String state = source.getState();
+        int available = 0;
+        for (ItemStack s : slots) {
+            if (sameKind(s, item, state)) {
+                available += s.getCount();
+            }
+        }
+        if (available < count) {
+            return null;
+        }
+        int remaining = count;
+        for (int k = 0; k < TOTAL_SLOTS && remaining > 0; k++) {
+            int i = debitOrder(k);
+            ItemStack s = slots[i];
+            if (sameKind(s, item, state)) {
+                int take = Math.min(remaining, s.getCount());
+                s.decrementCount(take);
+                remaining -= take;
+                if (s.isEmpty()) {
+                    slots[i] = ItemStackStateCodec.empty();
+                }
+            }
+        }
+        return new ItemStack(item, count, state);
+    }
+
+    /** k-th slot in debit order: the selected hotbar slot, the other hotbar slots, then main. */
+    private int debitOrder(int k) {
+        if (k == 0) {
+            return selectedHotbarSlot;
+        }
+        return k <= selectedHotbarSlot ? k - 1 : k;
+    }
+
+    /**
+     * The client's stacking identity (issue #334/#350): same item type and the same state,
+     * with no state meaning the item's default state ({@link ItemStack#statesMatch}).
+     */
+    private static boolean sameKind(ItemStack s, Item item, String state) {
+        return !s.isEmpty() && s.getItem().isSameType(item)
+                && ItemStack.statesMatch(item, s.getState(), state);
     }
 
     /**
@@ -173,9 +243,9 @@ public final class ServerInventory {
 
         for (ItemStack s : slots) {
             if (remaining == 0) break;
-            if (!s.isEmpty() && s.getBlockTypeId() == itemId
-                    && java.util.Objects.equals(s.getState(), state)
-                    && s.getCount() < maxStack) {
+            // Stacking matches the client's Inventory.addItemAndReturnCount: no state ==
+            // the item's default state, so crafted (null) and emptied buckets merge (#350).
+            if (sameKind(s, item, state) && s.getCount() < maxStack) {
                 int canAdd = Math.min(remaining, maxStack - s.getCount());
                 s.incrementCount(canAdd);
                 remaining -= canAdd;
@@ -259,6 +329,25 @@ public final class ServerInventory {
             }
         }
         // The final field is the derived held id — informational, recomputed live.
+    }
+
+    /**
+     * The 36 slots as they should be PERSISTED (issue #334), without mutating the replica:
+     * copies of the slots with the carried stack and then the 2×2 craft grid folded in by the
+     * normal stacking rule — the same order the close/leave return uses, so a periodic save
+     * taken mid-drag records what the player would have after closing the screen. Whatever
+     * does not fit is simply absent from this snapshot; the live replica keeps it.
+     */
+    public ItemStack[] persistedSlots() {
+        ServerInventory folded = new ServerInventory();
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
+            folded.slots[i] = slots[i].isEmpty() ? ItemStackStateCodec.empty() : slots[i].copy();
+        }
+        folded.addStack(carried);
+        for (ItemStack cell : craftGrid) {
+            folded.addStack(cell);
+        }
+        return folded.slots;
     }
 
     /** Seeds the replica from a save-model inventory array (36 entries, may be shorter). */

@@ -75,6 +75,18 @@ public final class ServerPlayer {
     public byte[] characterCreationBlob() { return characterCreationBlob; }
     public void setCharacterCreationBlob(byte[] blob) { this.characterCreationBlob = blob; }
 
+    /** This player's saved record, read (and parse-checked) once at handshake — or handed
+     *  over in memory from the session it replaced — and consumed by the replica seed. Null
+     *  for a player with no saved data (issue #334). */
+    private volatile byte[] savedBlob;
+    public byte[] savedBlob() { return savedBlob; }
+    public void setSavedBlob(byte[] blob) { this.savedBlob = blob; }
+
+    /** One-shot notice delivered to the player after the welcome (e.g. a save set aside). */
+    private volatile String joinNotice;
+    public String joinNotice() { return joinNotice; }
+    public void setJoinNotice(String notice) { this.joinNotice = notice; }
+
     public float x() { return x; }
     public float y() { return y; }
     public float z() { return z; }
@@ -85,6 +97,17 @@ public final class ServerPlayer {
     public void updateState(float x, float y, float z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
         this.lastStateNs = System.nanoTime();
+    }
+
+    /**
+     * Seeds the transform from the player's stored record (or the spawn, for a fresh one)
+     * when the replica is seeded (issue #334), WITHOUT counting as a client report
+     * ({@link #lastStateNs} stays 0, so spawn anchors and roster bootstraps still wait for
+     * the first PlayerStateC2S). A save taken before that first report keeps the stored
+     * position instead of writing (0,0,0).
+     */
+    public void seedTransform(float x, float y, float z, float yaw, float pitch) {
+        this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
     }
 
     public long lastShearNanos() { return lastShearNanos; }
@@ -157,6 +180,20 @@ public final class ServerPlayer {
     // ─── Server-owned inventory + progression (issue #334) ──────────────────────
     /** The authoritative replica of this player's inventory + carried stack + hotbar slot. */
     private final ServerInventory inventory = new ServerInventory();
+    /** Seq of the newest numbered container action processed from this player (#334/#353). */
+    private int lastActionSeq;
+
+    /** Records a processed (accepted or refused) action's seq; syncs acknowledge the newest. */
+    public void recordActionSeq(int seq) {
+        if (seq > lastActionSeq) {
+            lastActionSeq = seq;
+        }
+    }
+
+    /** This player's inventory sync, acknowledging the newest action processed from them. */
+    public com.stonebreak.network.packet.player.InventorySyncS2C inventorySync() {
+        return new com.stonebreak.network.packet.player.InventorySyncS2C(inventory.encode(), lastActionSeq);
+    }
 
     /** The last ACCEPTED progression/prefs state (parsed PlayerPrefsC2S, the creation blob,
      *  or the loaded save). The server-built persistence blob and every validation compare
@@ -197,12 +234,24 @@ public final class ServerPlayer {
                 baseline.getRemainingAp(), baseline.getLevel(), baseline.getXp());
     }
 
-    /** Sends the client the server-authoritative progression fields (ProgressS2C). */
+    /** Seq of the last PlayerPrefsC2S processed (accepted or refused); 0 before the first. */
+    private int prefsAck = 0;
+    public int prefsAck() { return prefsAck; }
+    /** Records that the prefs report numbered {@code seq} was processed (issue #334). */
+    public void recordPrefsAck(int seq) { this.prefsAck = seq; }
+
+    /** Sends the client the server-authoritative progression fields (ProgressS2C), acking
+     *  the last processed prefs report. */
     public void sendProgression() {
-        send(new com.stonebreak.network.packet.player.ProgressS2C(
+        send(buildProgression());
+    }
+
+    /** The ProgressS2C {@link #sendProgression} sends (package-private for tests). */
+    com.stonebreak.network.packet.player.ProgressS2C buildProgression() {
+        return new com.stonebreak.network.packet.player.ProgressS2C(prefsAck,
                 serverStats.getLevel(), serverStats.getXp(),
                 serverStats.getRemainingCp(), serverStats.getRemainingSkillPoints(),
-                serverStats.getRemainingFeatPoints(), serverStats.getRemainingAp()));
+                serverStats.getRemainingFeatPoints(), serverStats.getRemainingAp());
     }
 
     public com.stonebreak.world.save.model.PlayerData progressionBaseline() { return progressionBaseline; }
@@ -288,6 +337,23 @@ public final class ServerPlayer {
     /** Forget every sent chunk whose packed key matches the predicate (left the keep radius). */
     public void forgetChunksMatching(java.util.function.LongPredicate predicate) {
         sentChunkVersions.removeIf(predicate);
+    }
+
+    // ─── Slot-intent acks (issue #353) ─────────────────────────────────────────
+    /** Per furnace/workbench this player edited: seq of the last slot intent processed. One
+     *  entry per block the player ever opened and edited this session — tiny. */
+    private final java.util.Map<com.openmason.engine.util.BlockPos, Integer> slotIntentSeqs =
+            new java.util.HashMap<>();
+
+    /** Records that the slot intent numbered {@code seq} for {@code pos} was processed
+     *  (applied or refused): the next echo of that block to this player acknowledges it. */
+    public void recordSlotIntent(com.openmason.engine.util.BlockPos pos, int seq) {
+        slotIntentSeqs.put(pos, seq);
+    }
+
+    /** Seq of the last slot intent from this player processed at {@code pos}; 0 if none. */
+    public int slotIntentAck(com.openmason.engine.util.BlockPos pos) {
+        return slotIntentSeqs.getOrDefault(pos, 0);
     }
 
     // ─── Transport convenience ────────────────────────────────────────────────

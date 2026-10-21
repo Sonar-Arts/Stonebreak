@@ -123,12 +123,26 @@ public final class ClientWorldView {
     private volatile byte[] restoreBlob;
     private boolean restoreApplied = false;
     private long lastPlayerPrefsSendNs = 0L;
+    /** Numbers prefs reports and filters stale progression echoes (issue #334). */
+    private final PrefsSequencer prefsSequencer = new PrefsSequencer();
 
     /** Connect (Local or TCP) and send the handshake. */
     public void connect(NetAddress address, String username) throws InterruptedException {
         this.remote = address.type() == com.openmason.engine.net.transport.TransportType.TCP;
         connection = networkClient.connect(address);
+        // A new server acknowledges only this session's actions (issue #334, #353).
+        com.stonebreak.network.SlotIntentSeq.markSessionStart();
+        InventorySyncApplier.resetSession();
         connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username));
+        if (!remote) {
+            // The in-process host created its character in the menu, before the server
+            // existed. Hand it over right behind the handshake (the channel is FIFO): when the
+            // world has no saved player the server waits for it and builds its record from
+            // it — the same character this client plays — instead of a default one (issue
+            // #334). Ignored by the server when the world already has a saved player.
+            connection.send(new com.stonebreak.network.packet.player.CharacterCreationC2S(
+                    hostCreationJson()), false);
+        }
         // Report our render distance right after the handshake (channel is FIFO, so the
         // server processes the handshake first). Without this the server streams its
         // default view radius no matter what the user's setting says.
@@ -335,6 +349,15 @@ public final class ClientWorldView {
         }
     }
 
+    /** The host's menu-created character (what {@code Game.initWorldComponents} applies to
+     *  the local player), or a default character when no creation screen exists. */
+    private static byte[] hostCreationJson() {
+        com.stonebreak.ui.characterCreation.CharacterCreationScreen ccs =
+                Game.getInstance() != null ? Game.getInstance().getCharacterCreationScreen() : null;
+        com.stonebreak.player.CharacterStats stats = ccs != null ? ccs.getCharacterStats() : null;
+        return (stats != null ? stats : new com.stonebreak.player.CharacterStats(null)).toCreationJson();
+    }
+
     /** True once the server's PlayerData blob has arrived (remote restore can be applied). */
     public boolean isRestoreReceived() { return restoreReceived; }
 
@@ -370,10 +393,10 @@ public final class ClientWorldView {
         }
         // A welcome-time InventorySyncS2C that raced the world build: the replica state
         // (starting items included) is authoritative over whatever the restore produced.
-        String sync = pendingInventorySync;
+        InventorySyncS2C sync = pendingInventorySync;
         pendingInventorySync = null;
         if (sync != null) {
-            InventorySyncApplier.apply(p, sync);
+            InventorySyncApplier.applyServerSync(p, sync.payload(), sync.ack());
         }
         restoreApplied = true;
     }
@@ -413,10 +436,38 @@ public final class ClientWorldView {
             byte[] json = playerSerializer.serialize(
                     com.stonebreak.world.save.util.StateConverter.toPlayerData(
                             p, Game.getInstance().getCurrentWorldName()));
-            connection.send(new PlayerPrefsC2S(new String(json,
-                    java.nio.charset.StandardCharsets.UTF_8)), false);
+            String text = new String(json, java.nio.charset.StandardCharsets.UTF_8);
+            if (!PlayerPrefsC2S.fits(text)) {
+                // Bounded in bytes, the unit the server's decoder checks; an oversized report
+                // would only be refused, so do not spend a seq on it.
+                System.err.println("[CLIENT] Player prefs exceed " + PlayerPrefsC2S.MAX_JSON_BYTES
+                        + " bytes; not sent.");
+                return;
+            }
+            int seq = prefsSequencer.nextSeq(p.getCharacterStats().getLedgerVersion());
+            connection.send(new PlayerPrefsC2S(seq, text), false);
         } catch (Exception e) {
             System.err.println("[CLIENT] Failed to send player prefs: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Server progression echo (issue #334). Level/xp always apply; the point pools only when
+     * the echo answers our latest prefs report and our ledger has not changed since — see
+     * {@link PrefsSequencer}. A stale echo's pools are replaced by our own current ones.
+     */
+    private void applyProgress(com.stonebreak.network.packet.player.ProgressS2C pr) {
+        Player p = Game.getPlayer();
+        if (p == null) {
+            return;
+        }
+        com.stonebreak.player.CharacterStats cs = p.getCharacterStats();
+        if (prefsSequencer.poolsCurrent(pr.ackSeq(), cs.getLedgerVersion())) {
+            playerHandler.handleProgress(pr);
+        } else {
+            playerHandler.handleProgress(new com.stonebreak.network.packet.player.ProgressS2C(
+                    pr.ackSeq(), pr.level(), pr.xp(), cs.getRemainingCp(),
+                    cs.getRemainingSkillPoints(), cs.getRemainingFeatPoints(), cs.getRemainingAp()));
         }
     }
 
@@ -470,14 +521,14 @@ public final class ClientWorldView {
         welcomeSyncSeen = true;
         Player p = Game.getPlayer();
         if (p == null || p.getInventory() == null) {
-            pendingInventorySync = s.payload();
+            pendingInventorySync = s;
             return;
         }
-        InventorySyncApplier.apply(p, s.payload());
+        InventorySyncApplier.applyServerSync(p, s.payload(), s.ack());
     }
 
     /** Latest sync that landed before the local player existed; null once applied. */
-    private volatile String pendingInventorySync;
+    private volatile InventorySyncS2C pendingInventorySync;
 
     /** True once the server's welcome InventorySyncS2C arrived (seeding is done). */
     private volatile boolean welcomeSyncSeen;
@@ -670,7 +721,7 @@ public final class ClientWorldView {
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
             case InventorySyncS2C s -> applyInventorySync(s);
             case com.stonebreak.network.packet.player.KillCreditS2C kc -> playerHandler.handleKillCredit(kc);
-            case com.stonebreak.network.packet.player.ProgressS2C pr -> playerHandler.handleProgress(pr);
+            case com.stonebreak.network.packet.player.ProgressS2C pr -> applyProgress(pr);
             case com.stonebreak.network.packet.player.PlayerDataS2C pd -> {
                 restoreBlob = pd.json();
                 restoreReceived = true;

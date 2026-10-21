@@ -1,5 +1,6 @@
 package com.stonebreak.network.packet.player;
 
+import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
 import io.netty.buffer.ByteBuf;
@@ -14,11 +15,23 @@ import io.netty.buffer.ByteBuf;
  * computed server-side.
  *
  * <p>For {@link ContainerKind#INVENTORY} the position is unused (0,0,0).
+ *
+ * <p>{@code seq} numbers furnace/workbench actions (issue #353, {@code SlotIntentSeq}); the
+ * server acknowledges it per recipient in {@code BlockStateS2C.ack}, so an echo built before
+ * the action arrived cannot roll back the client's predicted slots. 0 = not numbered (the
+ * inventory screen, whose grid is not a block state).
  */
 public record ContainerActionC2S(int x, int y, int z,
                                  byte containerKind, byte region, byte slot,
                                  byte originRegion, byte originSlot,
-                                 byte action, short count, boolean shift) implements Packet {
+                                 byte action, short count, boolean shift, int seq) implements Packet {
+
+    /** An un-numbered action (seq 0). */
+    public ContainerActionC2S(int x, int y, int z, byte containerKind, byte region, byte slot,
+                              byte originRegion, byte originSlot,
+                              byte action, short count, boolean shift) {
+        this(x, y, z, containerKind, region, slot, originRegion, originSlot, action, count, shift, 0);
+    }
 
     /** Actions that carry no drag-origin (no swap-back semantics). */
     public ContainerActionC2S(int x, int y, int z, byte containerKind, byte region, byte slot,
@@ -87,13 +100,14 @@ public record ContainerActionC2S(int x, int y, int z,
             out.writeByte(p.action());
             out.writeShort(p.count());
             out.writeBoolean(p.shift());
+            ByteBufIO.writeVarInt(out, p.seq());
         }
 
         @Override
         public ContainerActionC2S decode(ByteBuf in) {
             return new ContainerActionC2S(in.readInt(), in.readInt(), in.readInt(),
                 in.readByte(), in.readByte(), in.readByte(), in.readByte(), in.readByte(),
-                in.readByte(), in.readShort(), in.readBoolean());
+                in.readByte(), in.readShort(), in.readBoolean(), ByteBufIO.readVarInt(in));
         }
     };
 }

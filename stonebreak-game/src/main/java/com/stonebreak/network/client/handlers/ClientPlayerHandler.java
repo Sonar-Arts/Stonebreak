@@ -2,6 +2,7 @@ package com.stonebreak.network.client.handlers;
 
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.core.Game;
+import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.network.client.NetworkInterpolator;
@@ -104,8 +105,10 @@ public final class ClientPlayerHandler {
         }
         // The server already capped the count to what fit its replica and re-dropped any
         // overflow itself (issue #334) — adding here can never overflow, and re-dropping the
-        // difference would re-enter the debit path with a duplicated spawn.
-        local.getInventory().addItemsAndReturnCount(g.itemId(), g.count());
+        // difference would re-enter the debit path with a duplicated spawn. The packet has no
+        // state yet (#342), so the stack arrives in the item's default state and only merges
+        // with default-state stacks, never a water bucket (#350).
+        local.getInventory().addItemAndReturnCount(new ItemStack(g.itemId(), g.count()));
         SoundSystem ss = Game.getInstance().getSoundSystem();
         if (ss != null) {
             ss.playSound("blockpickup");

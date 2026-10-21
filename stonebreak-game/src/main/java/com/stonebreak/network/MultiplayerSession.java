@@ -193,10 +193,15 @@ public final class MultiplayerSession {
     public static void sendContainerAction(int x, int y, int z, byte containerKind, byte region,
                                            byte slot, byte originRegion, byte originSlot,
                                            byte action, short count, boolean shift) {
+        sendContainerAction(new ContainerActionC2S(x, y, z, containerKind, region, slot,
+                originRegion, originSlot, action, count, shift));
+    }
+
+    /** Sends a built container action; no-op without a live session. */
+    public static void sendContainerAction(ContainerActionC2S action) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendContainerAction(new ContainerActionC2S(x, y, z, containerKind, region, slot,
-                    originRegion, originSlot, action, count, shift));
+            c.sendContainerAction(action);
         }
     }
 
@@ -638,6 +643,16 @@ public final class MultiplayerSession {
             } else {
                 player.giveStartingItems();
                 System.out.println("[NET] New world — gave the local player starting items.");
+            }
+            String notice = level.playerLoadNotice();
+            if (notice != null) {
+                Game game = Game.getInstance();
+                game.runOnMainThread(() -> {
+                    var chat = game.getChatSystem();
+                    if (chat != null) {
+                        chat.addMessage(notice, new float[]{1.0f, 0.35f, 0.35f, 1.0f});
+                    }
+                });
             }
             level.registerLocalPlayer(player);
             localPlayerRestored = true;

@@ -151,6 +151,37 @@ class InventorySortTest {
         assertTrue(sawWaterState);
     }
 
+    /** Issue #350: no state is the default state, so a crafted and an emptied bucket merge. */
+    @Test
+    void craftedAndEmptiedBucketsMergeWhenSorted() {
+        Inventory inv = new Inventory();
+        inv.setMainInventorySlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1));
+        inv.setMainInventorySlot(1,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
+        inv.setMainInventorySlot(2,
+            new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
+
+        inv.sortMainInventory();
+
+        int emptyBuckets = 0;
+        int waterBuckets = 0;
+        int stacks = 0;
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            ItemStack stack = inv.getMainInventorySlot(i);
+            if (stack.isEmpty()) continue;
+            stacks++;
+            if (ItemType.BUCKET_STATE_WATER.equals(stack.getEffectiveState())) {
+                waterBuckets += stack.getCount();
+            } else {
+                assertEquals(ItemType.BUCKET_STATE_EMPTY, stack.getEffectiveState());
+                emptyBuckets += stack.getCount();
+            }
+        }
+        assertEquals(2, stacks, "one empty-bucket stack and one water-bucket stack");
+        assertEquals(2, emptyBuckets);
+        assertEquals(1, waterBuckets);
+    }
+
     @Test
     void sortIsIdempotent() {
         Inventory inv = new Inventory();

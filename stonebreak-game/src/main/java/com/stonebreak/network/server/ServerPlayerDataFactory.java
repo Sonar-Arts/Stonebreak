@@ -29,10 +29,10 @@ public final class ServerPlayerDataFactory {
                 ? sp.progressionBaseline()
                 : PlayerData.createDefault(worldName);
         ServerInventory inv = sp.inventory();
-        ItemStack[] slots = new ItemStack[ServerInventory.TOTAL_SLOTS];
-        for (int i = 0; i < ServerInventory.TOTAL_SLOTS; i++) {
-            slots[i] = inv.slot(i).copy();
-        }
+        // The save format holds only the 36 slots: a carried stack and the ephemeral 2×2 craft
+        // grid are folded into a COPY of them (issue #334), so no save — periodic ones taken
+        // mid-drag included — loses them and none mutates the live replica.
+        ItemStack[] slots = inv.persistedSlots();
         return new PlayerData.Builder(baseline)
                 .position(new Vector3f(sp.x(), sp.y(), sp.z()))
                 .rotation(new Vector2f(sp.yaw(), sp.pitch()))

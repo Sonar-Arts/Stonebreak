@@ -82,17 +82,17 @@ public final class StonebreakProtocol {
         // ── serverbound (C2S) ──────────────────────────────────────────────
         r.register(PLAY, SERVERBOUND, 1, BlockChangeC2S.class, BlockChangeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 2, PlayerStateC2S.class, PlayerStateC2S.CODEC);
-        // id 3 retired (PlayerHeldItemC2S — held item is server-derived now; removed in protocol v7).
+        // id 3 retired (PlayerHeldItemC2S — held item is server-derived now; removed in protocol v8).
         r.register(PLAY, SERVERBOUND, 4, ChatMessageC2S.class, ChatMessageC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 5, DisconnectC2S.class, DisconnectC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 6, HandshakeC2S.class, HandshakeC2S.CODEC);
-        // id 7 retired (PlayerDataC2S — replaced by the validated PlayerPrefsC2S; v7).
+        // id 7 retired (PlayerDataC2S — replaced by the validated PlayerPrefsC2S; v8).
         r.register(PLAY, SERVERBOUND, 8, ViewDistanceC2S.class, ViewDistanceC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 9, EntityDamageC2S.class, EntityDamageC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 10, KeepAliveC2S.class, KeepAliveC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 11, ChunkResyncRequestC2S.class, ChunkResyncRequestC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 12, SnowLayerC2S.class, SnowLayerC2S.CODEC);
-        // id 13 retired (FurnaceSlotsC2S — replaced by ContainerActionC2S; v7).
+        // id 13 retired (FurnaceSlotsC2S — replaced by ContainerActionC2S; v8).
         r.register(PLAY, SERVERBOUND, 14, ProjectileSpawnC2S.class, ProjectileSpawnC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 15, ChunkHashesC2S.class, ChunkHashesC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 16, DropItemC2S.class, DropItemC2S.CODEC);
@@ -101,7 +101,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 19, BlockToggleC2S.class, BlockToggleC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 20, CharacterCreationC2S.class, CharacterCreationC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 21, EntityShearC2S.class, EntityShearC2S.CODEC);
-        // id 22 retired (WorkbenchSlotsC2S — replaced by ContainerActionC2S; v7).
+        // id 22 retired (WorkbenchSlotsC2S — replaced by ContainerActionC2S; v8).
         r.register(PLAY, SERVERBOUND, 23, CheatsSetC2S.class, CheatsSetC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 24, ContainerActionC2S.class, ContainerActionC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 25, HotbarSelectC2S.class, HotbarSelectC2S.CODEC);

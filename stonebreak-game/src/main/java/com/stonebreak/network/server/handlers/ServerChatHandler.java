@@ -22,7 +22,8 @@ public final class ServerChatHandler {
             return;
         }
         // Server-side commands (/obtain — issue #334): checked against the SERVER's cheats
-        // flag, answered to the sender only. Everything else relays to everyone.
+        // flag, answered to the sender only. Everything else — '/' lines included, as on
+        // main before #334 — relays to everyone.
         if (commands.handleCommand(sp, text, ctx)) {
             return;
         }

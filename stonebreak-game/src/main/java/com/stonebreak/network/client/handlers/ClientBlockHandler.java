@@ -205,11 +205,11 @@ public final class ClientBlockHandler {
                 && s.state() != null
                 && s.state().startsWith(com.stonebreak.blocks.furnace.FurnaceState.STATE_PREFIX)) {
             world.getFurnaceRegistry().applyAuthoritativeState(
-                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state());
+                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state(), s.ack());
         }
         if (com.stonebreak.blocks.workbench.WorkbenchState.isWorkbenchState(s.state())) {
             world.getWorkbenchRegistry().applyAuthoritativeState(
-                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state());
+                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state(), s.ack());
         }
     }
 

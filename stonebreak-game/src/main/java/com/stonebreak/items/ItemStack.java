@@ -175,15 +175,45 @@ public class ItemStack {
      * Checks if this ItemStack can be stacked with another ItemStack. Two
      * stacks may only merge if they share both the item type AND the state
      * — empty buckets and water buckets do not stack even though both are
-     * the same item.
+     * the same item. No state counts as the item's default state (see
+     * {@link #statesMatch}).
      */
     public boolean canStackWith(ItemStack other) {
         if (other == null || other.isEmpty() || this.isEmpty()) {
             return false;
         }
         return this.item.isSameType(other.item)
-                && java.util.Objects.equals(this.state, other.state)
+                && statesMatch(this.item, this.state, other.state)
                 && this.count < getMaxStackSize();
+    }
+
+    /**
+     * True when two states of {@code item} are the same state for stacking.
+     * {@code null} means the item's default state, so a freshly crafted bucket
+     * (no state) and an emptied one ({@code BUCKET_STATE_EMPTY}) match. Every
+     * stack-merge rule (inventory adds, sorting, slot clicks) goes through here.
+     */
+    public static boolean statesMatch(Item item, String a, String b) {
+        if (java.util.Objects.equals(a, b)) {
+            return true;
+        }
+        return java.util.Objects.equals(effectiveState(item, a), effectiveState(item, b));
+    }
+
+    /** {@code state}, or the item's default state when {@code state} is null. */
+    static String effectiveState(Item item, String state) {
+        if (state != null || !(item instanceof ItemType itemType)) {
+            return state;
+        }
+        return itemType.getDefaultState();
+    }
+
+    /**
+     * This stack's state with no state resolved to the item's default state —
+     * the value stacking compares.
+     */
+    public String getEffectiveState() {
+        return effectiveState(item, state);
     }
 
     /**

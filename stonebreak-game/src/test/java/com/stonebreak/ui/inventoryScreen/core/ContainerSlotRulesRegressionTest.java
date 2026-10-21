@@ -177,4 +177,34 @@ class ContainerSlotRulesRegressionTest {
         assertEquals(3, inv.getDragState().draggedItemStack.getCount());
         assertTrue(inventory.getMainInventorySlot(0).isEmpty());
     }
+
+    /**
+     * Issue #350: shift-clicking a crafting cell moved items by id, so water buckets merged into an
+     * empty-bucket stack (and became empty). Both grids: the inventory's 2x2 and the workbench's 3x3.
+     */
+    @Test
+    void shiftClickingAGridCellKeepsTheBucketState() {
+        InventoryCraftingManager small = new InventoryCraftingManager(new CraftingManager());
+        assertShiftClickKeepsState(small, InventoryLayoutCalculator.calculateLayout(W, H));
+        inventory = emptyInventory();
+        InventoryCraftingManager large = new InventoryCraftingManager(new CraftingManager(),
+            InventoryLayoutCalculator.getWorkbenchCraftingGridSize());
+        assertShiftClickKeepsState(large, InventoryLayoutCalculator.calculateWorkbenchLayout(W, H));
+    }
+
+    private void assertShiftClickKeepsState(InventoryCraftingManager grid, InventoryLayout layout) {
+        InventorySlotManager slots = new InventorySlotManager(inventory, grid);
+        inventory.setHotbarSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
+        grid.setCraftingInputSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 2, ItemType.BUCKET_STATE_WATER));
+        int ss = InventoryLayoutCalculator.getSlotSize();
+
+        assertTrue(slots.tryShiftClickCraftingInput(layout.craftingElementsStartX + ss / 2f,
+            layout.craftingGridStartY + ss / 2f, layout));
+
+        assertEquals(1, inventory.getHotbarSlot(0).getCount(), "the empty bucket is not joined");
+        assertEquals(ItemType.BUCKET_STATE_EMPTY, inventory.getHotbarSlot(0).getState());
+        assertEquals(2, inventory.getHotbarSlot(1).getCount(), "the water buckets keep their own stack");
+        assertEquals(ItemType.BUCKET_STATE_WATER, inventory.getHotbarSlot(1).getState());
+        assertTrue(grid.getCraftingInputSlots()[0].isEmpty(), "the cell was emptied");
+    }
 }

@@ -620,9 +620,12 @@ public class Main {
         // actions a player's clicks would (see autoFurnaceWatch). BlockStateS2C echoes
         // drive the display registry from there.
         com.stonebreak.network.MultiplayerSession.requestServerCheatsSet(true);
+        // The server splits the line on whitespace, so send the one-word identifier its
+        // parser accepts (ItemLookup: stonebreak:<enum name>), not the display name —
+        // "Iron Ore" would arrive as item "Iron" with count "Ore".
         com.stonebreak.network.MultiplayerSession.submitChat("/obtain "
-            + recipes.getFirst().getInput().getItem().getName() + " 8");
-        com.stonebreak.network.MultiplayerSession.submitChat("/obtain " + fuel.getName() + " 8");
+            + obtainId(recipes.getFirst().getInput().getItem()) + " 8");
+        com.stonebreak.network.MultiplayerSession.submitChat("/obtain " + obtainId(fuel) + " 8");
         // Give the server a beat to grant the items, then the watch loop ships the
         // TAKE/PUT action pairs once the synced inventory actually holds them.
         autoFurnaceInputItem = recipes.getFirst().getInput().getItem();
@@ -635,6 +638,23 @@ public class Main {
         System.out.println("[autofurnace] placed furnace at " + fx + "," + fy + "," + fz
             + " fuel=" + fuel.getName() + " input=" + recipes.getFirst().getInput().getItem().getName()
             + " — waiting for /obtain to land before filling slots");
+    }
+
+    /**
+     * The /obtain identifier for {@code item}: {@code stonebreak:<enum name>} (lower case), a
+     * single token that {@code ItemLookup.find} resolves by enum name. Display names may hold
+     * spaces, and the server splits the command line on whitespace.
+     */
+    static String obtainId(com.stonebreak.items.Item item) {
+        String name;
+        if (item instanceof com.stonebreak.blocks.BlockType b) {
+            name = b.name();
+        } else if (item instanceof com.stonebreak.items.ItemType t) {
+            name = t.name();
+        } else {
+            name = item.getName().trim().replace(' ', '_');
+        }
+        return "stonebreak:" + name.toLowerCase(java.util.Locale.ROOT);
     }
 
     /**

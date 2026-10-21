@@ -46,8 +46,9 @@ public class InventoryController {
      * copy ({@link InventoryInputManager#sendCloseReturnOps()}): the local return below
      * is the prediction, the sends are the authority — otherwise the next
      * InventorySyncS2C would overwrite the mirror without the grid's items (issue #334).
-     * The SERVER's QUICK_MOVE overflow already drops at the player, so with a session
-     * the local overflow drops here would duplicate it as slot debits and are skipped.
+     * The SERVER's closing DEPOSIT_CARRIED returns the grid's leftovers and drops their
+     * overflow at the player, so with a session the local overflow drops here would
+     * duplicate it as slot debits and are skipped.
      */
     public void returnHeldItemsToPlayer() {
         if (inputManager != null) {

@@ -68,6 +68,8 @@ public class WorkbenchController extends InventoryController {
                 table.getPos().x(), table.getPos().y(), table.getPos().z(),
                 com.stonebreak.network.packet.player.ContainerActionC2S.Region.WORKBENCH_GRID,
                 com.stonebreak.network.packet.player.ContainerActionC2S.Region.WORKBENCH_OUT);
+        // Numbered actions: echoes built before the server saw one keep our grid (#353).
+        getInputManager().getSlotManager().actions.onNumbered(table::markSent);
         // An echo that landed while the UI was closed is not an edit of ours — drop its
         // marker, and baseline on the grid as it stands (already what the server knows).
         state.consumePreEchoSlots();
@@ -104,7 +106,8 @@ public class WorkbenchController extends InventoryController {
             return;
         }
         // Grid mutations ship as atomic actions the moment the input manager applies them
-        // (issue #334) — there is no per-frame grid snapshot to flush. An echo re-baselines
+        // (issue #334) — there is no per-frame grid snapshot to flush. An echo older than our
+        // last numbered action is dropped (issue #353); one acknowledging it re-baselines
         // via the pre-echo machinery; the output preview is recomputed from the (local)
         // grid, and the AUTHORITATIVE result comes from the server's TAKE_OUTPUT.
         if (state.consumePreEchoSlots() != null) {
@@ -156,7 +159,9 @@ public class WorkbenchController extends InventoryController {
         // The controller delegates to the InputManager for drag state management
         InventoryInputManager inputManager = getInputManager();
         if (inputManager != null) {
-            inputManager.handleCloseWithDraggedItems();
+            // Return the cursor stack, and deposit whatever the server may still carry
+            // (issue #334). The grid stays in the table, so it is not quick-moved out.
+            inputManager.closeBlockContainer();
         }
     }
 }

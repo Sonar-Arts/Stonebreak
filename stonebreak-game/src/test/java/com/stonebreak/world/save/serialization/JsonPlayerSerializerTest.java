@@ -199,7 +199,7 @@ class JsonPlayerSerializerTest {
     }
 
     @Test
-    void missingLastSavedThrows() {
+    void missingLastSavedFallsBackToNow() {
         String json = "{" +
             "\"position\": {\"x\": 0, \"y\": 100, \"z\": 0}," +
             "\"rotation\": {\"x\": 0, \"y\": 0}," +
@@ -207,8 +207,66 @@ class JsonPlayerSerializerTest {
             "\"inventory\": []" +
             "}";
 
+        LocalDateTime before = LocalDateTime.now();
+        PlayerData result = serializer.deserialize(json.getBytes(StandardCharsets.UTF_8));
+        assertFalse(result.getLastSaved().isBefore(before));
+    }
+
+    @Test
+    void blankLastSavedKeepsTheInventory() {
+        // Issue #358: a blank lastSaved used to fail the whole world load.
+        String json = new String(serializer.serialize(PlayerData.builder()
+            .inventory(stoneInSlotZero())
+            .lastSaved(TIMESTAMP)
+            .build()), StandardCharsets.UTF_8)
+            .replace("\"lastSaved\": \"2024-03-15T10:30:45\"", "\"lastSaved\": \"\"");
+        assertTrue(json.contains("\"lastSaved\": \"\""));
+
+        PlayerData result = serializer.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(BlockType.STONE.getId(), result.getInventory()[0].getBlockTypeId());
+        assertEquals(5, result.getInventory()[0].getCount());
+    }
+
+    @Test
+    void malformedScalarsFallBackToDefaults() {
+        String json = "{" +
+            "\"health\": -.," +
+            "\"level\": 99999999999," +
+            "\"lastSaved\": \"not a date\"," +
+            "\"inventory\": [{\"id\": " + BlockType.STONE.getId() + ", \"count\": 5}]" +
+            "}";
+
+        PlayerData result = serializer.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(20.0f, result.getHealth());
+        assertEquals(1, result.getLevel());
+        assertEquals(5, result.getInventory()[0].getCount());
+    }
+
+    @Test
+    void missingInventoryThrows() {
+        String json = "{\"health\": 20, \"lastSaved\": \"2024-03-15T10:30:45\"}";
+
         assertThrows(RuntimeException.class, () ->
             serializer.deserialize(json.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void damagedInventorySlotThrows() {
+        String json = "{\"inventory\": [{\"id\": 1, \"count\": 5}, {\"id\": 1, \"count\": }]}";
+
+        assertThrows(RuntimeException.class, () ->
+            serializer.deserialize(json.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static ItemStack[] stoneInSlotZero() {
+        ItemStack[] inventory = new ItemStack[36];
+        for (int i = 0; i < inventory.length; i++) {
+            inventory[i] = new ItemStack(BlockType.AIR.getId(), 0);
+        }
+        inventory[0] = new ItemStack(BlockType.STONE.getId(), 5);
+        return inventory;
     }
 
     @Test

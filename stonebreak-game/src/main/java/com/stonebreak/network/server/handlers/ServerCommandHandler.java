@@ -17,7 +17,12 @@ public final class ServerCommandHandler {
 
     private static final int MAX_OBTAIN_COUNT = 999;
 
-    /** Handles a leading-'/' chat line; returns true when it was a command (and consumed). */
+    /**
+     * Handles a leading-'/' chat line naming a command the SERVER owns; returns true when it
+     * did (the line is consumed). Any other line — including '/' lines the server has no
+     * command for — returns false and relays as ordinary chat, as before #334 (the client
+     * runs its own commands locally and forwards only the server-executed ones).
+     */
     public boolean handleCommand(ServerPlayer sp, String text, ServerWorldContext ctx) {
         if (text == null || !text.startsWith("/")) {
             return false;
@@ -28,7 +33,9 @@ public final class ServerCommandHandler {
         }
         switch (parts[0].toLowerCase()) {
             case "obtain" -> handleObtain(sp, parts, ctx);
-            default -> reply(sp, "Unknown server command: /" + parts[0]);
+            default -> {
+                return false;
+            }
         }
         return true;
     }
@@ -72,8 +79,7 @@ public final class ServerCommandHandler {
         }
         int added = sp.inventory().add(item.getId(), count);
         if (added > 0) {
-            sp.send(new com.stonebreak.network.packet.player.InventorySyncS2C(
-                sp.inventory().encode()), false);
+            sp.send(sp.inventorySync(), false);
         }
         if (added < count) {
             reply(sp, "Could not add all items — inventory may be full (added " + added + " of "

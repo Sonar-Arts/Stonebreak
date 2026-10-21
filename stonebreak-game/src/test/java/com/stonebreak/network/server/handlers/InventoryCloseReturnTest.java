@@ -84,9 +84,10 @@ class InventoryCloseReturnTest {
     }
 
     @Test
-    void gridOverflowDropsServerSideInsteadOfStranding() {
+    void gridOverflowKeepsItsRemainderThenTheCloseDepositDropsIt() {
         // 35 full stone slots + one part-filled stick slot: a 10-stick grid cell stacks 4
-        // into the stick slot and the 6-leftover overflow must drop, not strand.
+        // into the stick slot. QUICK_MOVE keeps the 6 left over in the cell, exactly like the
+        // client's shift-click; the close's DEPOSIT_CARRIED then drops them, never strands.
         for (int i = 0; i < ServerInventory.TOTAL_SLOTS - 1; i++) {
             sp.inventory().setSlot(i, new ItemStack(com.stonebreak.blocks.BlockType.STONE.getId(), 64));
         }
@@ -95,11 +96,18 @@ class InventoryCloseReturnTest {
 
         handler.handleContainerAction(sp, gridMove(1), ctx);
 
-        verify(em).addEntity(argThat(e -> e instanceof ItemDrop d && d.getStackCount() == 6));
-        assertTrue(sp.inventory().craftSlot(1).isEmpty(),
-            "the ephemeral grid never keeps a remainder — it would strand there");
+        assertEquals(6, sp.inventory().craftSlot(1).getCount(),
+            "the remainder stays in the cell (client tryShiftClickCraftingInput rule)");
         assertEquals(64, sp.inventory().slot(ServerInventory.TOTAL_SLOTS - 1).getCount(),
             "the fit portion stacked into the replica slot");
+
+        handler.handleContainerAction(sp, new ContainerActionC2S(0, 0, 0,
+                ContainerActionC2S.ContainerKind.INVENTORY, ContainerActionC2S.Region.PLAYER_HOTBAR,
+                (byte) 0, ContainerActionC2S.Action.DEPOSIT_CARRIED, (short) 0, false), ctx);
+
+        verify(em).addEntity(argThat(e -> e instanceof ItemDrop d && d.getStackCount() == 6));
+        assertTrue(sp.inventory().craftSlot(1).isEmpty(),
+            "closing the inventory returns the ephemeral grid — nothing strands there");
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.stonebreak.blocks.workbench.WorkbenchState;
 import com.stonebreak.blocks.workbench.WorkbenchStateRegistry;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.crafting.Recipe;
+import com.stonebreak.items.InventorySorter;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
@@ -56,7 +57,8 @@ public final class ContainerActionProcessor {
      * On refusal this sends the refusal echoes itself.
      */
     public boolean apply(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
-        if (!validRanges(a)) {
+        recordIntent(sp, a, ctx);
+        if (!validRanges(a) || !regionsMatchKind(a) || !plausibleOrigin(a)) {
             refuse(sp, a, ctx);
             return false;
         }
@@ -109,8 +111,12 @@ public final class ContainerActionProcessor {
             case ContainerActionC2S.Action.GATHER -> gather(inv);
             case ContainerActionC2S.Action.BALANCE -> balance(target);
             case ContainerActionC2S.Action.SORT -> sortInventory(inv);
+            // Closing the inventory screen returns its 2×2 grid along with the cursor
+            // (issue #334): the grid is ephemeral, so nothing may stay behind in it.
             case ContainerActionC2S.Action.DEPOSIT_CARRIED ->
-                    ServerPlayerHandler.depositCarriedToInventoryOrWorld(sp, inv, ctx);
+                    a.containerKind() == ContainerActionC2S.ContainerKind.INVENTORY
+                            ? ServerPlayerHandler.returnHeldToInventoryOrWorld(sp, inv, ctx)
+                            : ServerPlayerHandler.depositCarriedToInventoryOrWorld(sp, inv, ctx);
             case ContainerActionC2S.Action.DROP_CARRIED -> dropCarried(sp, inv, a, ctx);
             default -> false;
         };
@@ -119,29 +125,78 @@ public final class ContainerActionProcessor {
             return false;
         }
         // Workbench grids are not ticked: an accepted edit persists + echoes explicitly
-        // (the chunk write fires the registry's change listener — issue #307, #334).
+        // (the chunk write fires the registry's change listener — issue #307, #334). Furnaces
+        // persist at once too rather than at their next tick, so every echo built after this
+        // action — the ones acknowledging it — carries its slots (issue #353).
         if (a.containerKind() == ContainerActionC2S.ContainerKind.WORKBENCH
                 && ctx.world() != null && ctx.world().getWorkbenchRegistry() != null) {
             ctx.world().getWorkbenchRegistry().persist(ctx.world(),
                     new BlockPos(a.x(), a.y(), a.z()));
+        } else if (a.containerKind() == ContainerActionC2S.ContainerKind.FURNACE
+                && ctx.world() != null && ctx.world().getFurnaceRegistry() != null) {
+            ctx.world().getFurnaceRegistry().persist(ctx.world(),
+                    new BlockPos(a.x(), a.y(), a.z()));
+        }
+        // A numbered action is always acknowledged, even when nothing changed: without the
+        // ack the sender would treat every later echo of this block as stale.
+        if (a.seq() != 0) {
+            echoContainer(sp, a, ctx);
         }
         return accepted;
+    }
+
+    /**
+     * Records a numbered furnace/workbench action (issue #353), accepted or refused, so every
+     * later echo of that block to this player carries its seq as the ack. Only cells that hold
+     * the named container are recorded, which bounds the per-player map to real containers.
+     */
+    private static void recordIntent(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
+        if (a.seq() != 0 && isContainerCell(a, ctx)) {
+            sp.recordSlotIntent(new BlockPos(a.x(), a.y(), a.z()), a.seq());
+        }
+    }
+
+    /** True when the action's cell holds the furnace/workbench its kind names. */
+    private static boolean isContainerCell(ContainerActionC2S a, ServerWorldContext ctx) {
+        BlockType expected = switch (a.containerKind()) {
+            case ContainerActionC2S.ContainerKind.FURNACE -> BlockType.FURNACE;
+            case ContainerActionC2S.ContainerKind.WORKBENCH -> BlockType.WORKBENCH;
+            default -> null;
+        };
+        return expected != null && ctx.world() != null
+                && a.y() >= 0 && a.y() < com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT
+                && ctx.world().getBlockAt(a.x(), a.y(), a.z()) == expected;
     }
 
     // ─── Refusal echo: sync, no mutation ─────────────────────────────────────────
 
     private void refuse(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
-        sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+        sp.send(sp.inventorySync(), false);
+        echoContainer(sp, a, ctx);
+    }
+
+    /**
+     * Sends the actor the container's current state, stamped with the action's seq (issue
+     * #353) so the client adopts it over its prediction. An unreachable container still
+     * answers a numbered action from the chunk's state string, so the ack is never lost.
+     */
+    private void echoContainer(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
+        String state = null;
         if (a.containerKind() == ContainerActionC2S.ContainerKind.FURNACE) {
-            FurnaceState state = furnaceAt(sp, a, ctx);
-            if (state != null) {
-                sp.send(new BlockStateS2C(a.x(), a.y(), a.z(), state.toStateString()), false);
-            }
+            FurnaceState s = furnaceAt(sp, a, ctx);
+            state = s == null ? null : s.toStateString();
         } else if (a.containerKind() == ContainerActionC2S.ContainerKind.WORKBENCH) {
-            WorkbenchState state = workbenchAt(sp, a, ctx);
-            if (state != null) {
-                sp.send(new BlockStateS2C(a.x(), a.y(), a.z(), state.toStateString()), false);
-            }
+            WorkbenchState s = workbenchAt(sp, a, ctx);
+            state = s == null ? null : s.toStateString();
+        } else {
+            return;
+        }
+        if (state == null && a.seq() != 0 && isContainerCell(a, ctx)) {
+            // The same string every viewer already receives in this block's broadcasts.
+            state = ctx.world().getBlockStateAt(a.x(), a.y(), a.z());
+        }
+        if (state != null && !state.isEmpty()) {
+            sp.send(new BlockStateS2C(a.x(), a.y(), a.z(), state, a.seq()), false);
         }
     }
 
@@ -195,17 +250,20 @@ public final class ContainerActionProcessor {
     /**
      * carried ↔ slot. The displaced stack returns to the drag's ORIGIN slot when the client
      * says there is one (mirroring the client's swap-back prediction); otherwise it stays
-     * carried (a furnace-sourced drag keeps the displaced item on the cursor).
+     * carried (a furnace-sourced drag keeps the displaced item on the cursor). The origin is
+     * always a player slot ({@link #plausibleOrigin}) and is written only while it is empty
+     * — an occupied origin (a split pickup left part of the stack there) keeps the
+     * displaced stack on the cursor instead of overwriting the remainder.
      */
     private boolean swap(ServerInventory inv, SlotView slot, SlotView origin) {
         ItemStack carried = inv.carried();
         ItemStack s = slot.get();
-        if (carried.isEmpty() || s.isEmpty() || s.canStackWith(carried)) {
-            return false; // swaps only happen between different items
+        if (carried.isEmpty() || s.isEmpty() || sameKind(s, carried)) {
+            return false; // swaps only happen between different items (a full stack included)
         }
         ItemStack displaced = s.copy();
         slot.set(carried.copy());
-        if (origin != null && origin != slot && origin.get().isEmpty()) {
+        if (origin != null && origin.get().isEmpty()) {
             origin.set(displaced);
             inv.setCarried(ItemStackStateCodec.empty());
         } else {
@@ -292,23 +350,18 @@ public final class ContainerActionProcessor {
             }
             return true;
         }
-        // Container region → player inventory; overflow spawns as a drop at the player.
+        // Container region → player inventory: whatever fits moves, the remainder stays in
+        // its slot — the client's shift-click rule for every container slot, the inventory
+        // screen's 2×2 grid included (InventorySlotManager.tryShiftClickCraftingInput). A
+        // grid remainder cannot strand: closing the screen (DEPOSIT_CARRIED on the inventory)
+        // and leaving the server both return the grid, dropping what does not fit (#334).
         int added = inv.addStack(s);
         if (added <= 0) {
             return false;
         }
-        int overflow = s.getCount() - added;
-        // The inventory screen's 2×2 grid is per-player and ephemeral (never persisted,
-        // invisible once the screen closes) — a remainder would strand there, so the cell
-        // drains fully and the overflow spawns as a drop at the player. Furnace/workbench
-        // slots keep their remainder in place (spawn-AND-keep would mint items).
-        if (a.region() == ContainerActionC2S.Region.INV_CRAFT_GRID) {
-            if (overflow > 0) {
-                ServerPlayerHandler.spawnTossDrop(sp, ctx, s.getBlockTypeId(), overflow, s.getState());
-            }
-            slot.set(ItemStackStateCodec.empty());
-        } else if (overflow > 0) {
-            s.setCount(overflow);
+        int left = s.getCount() - added;
+        if (left > 0) {
+            s.setCount(left);
         } else {
             slot.set(ItemStackStateCodec.empty());
         }
@@ -367,10 +420,14 @@ public final class ContainerActionProcessor {
     /** The Craft All button: repeat TAKE_OUTPUT into the player inventory; overflow drops. */
     private boolean craftAll(ServerPlayer sp, ServerInventory inv, ContainerActionC2S a,
                              ServerWorldContext ctx) {
-        SlotView grid = viewFor(sp, a, ContainerActionC2S.Region.WORKBENCH_GRID, a.slot(), ctx);
-        if (grid == null) {
-            grid = viewFor(sp, a, ContainerActionC2S.Region.INV_CRAFT_GRID, a.slot(), ctx);
-        }
+        // The grid is the one the action's container names: a workbench's, or the inventory
+        // screen's 2×2 — never "whichever resolves" (issue #334).
+        byte gridRegion = switch (a.containerKind()) {
+            case ContainerActionC2S.ContainerKind.WORKBENCH -> ContainerActionC2S.Region.WORKBENCH_GRID;
+            case ContainerActionC2S.ContainerKind.INVENTORY -> ContainerActionC2S.Region.INV_CRAFT_GRID;
+            default -> ContainerActionC2S.Region.NONE;
+        };
+        SlotView grid = viewFor(sp, a, gridRegion, 0, ctx);
         if (grid == null) {
             return false;
         }
@@ -401,7 +458,11 @@ public final class ContainerActionProcessor {
         return crafted > 0;
     }
 
-    /** Double-click gather: matching stacks from hotbar + main fill the carried stack. */
+    /**
+     * Double-click gather: matching stacks fill the carried stack — main inventory first,
+     * then the hotbar, full stacks included, exactly as the client's
+     * {@code InventorySlotManager.gatherMatchingItemsToStack} predicts (issue #334).
+     */
     private boolean gather(ServerInventory inv) {
         ItemStack carried = inv.carried();
         if (carried.isEmpty()) {
@@ -409,9 +470,10 @@ public final class ContainerActionProcessor {
         }
         int max = carried.getMaxStackSize();
         boolean moved = false;
-        for (int i = 0; i < ServerInventory.TOTAL_SLOTS && carried.getCount() < max; i++) {
+        for (int k = 0; k < ServerInventory.TOTAL_SLOTS && carried.getCount() < max; k++) {
+            int i = (k + ServerInventory.HOTBAR_SIZE) % ServerInventory.TOTAL_SLOTS; // main, then hotbar
             ItemStack s = inv.slot(i);
-            if (!s.isEmpty() && s.canStackWith(carried)) {
+            if (sameKind(s, carried)) {
                 int canAdd = Math.min(max - carried.getCount(), s.getCount());
                 carried.incrementCount(canAdd);
                 s.decrementCount(canAdd);
@@ -435,7 +497,7 @@ public final class ContainerActionProcessor {
         int total = 0;
         for (int i = 0; i < cells.length; i++) {
             ItemStack cell = cells[i];
-            if (cell != null && !cell.isEmpty() && cell.canStackWith(clicked)) {
+            if (cell != null && sameKind(cell, clicked)) {
                 matching.add(i);
                 total += cell.getCount();
             }
@@ -452,46 +514,29 @@ public final class ContainerActionProcessor {
         return true;
     }
 
-    /** Sort button: collapse matching stacks and order the 36 slots by item id. */
+    /**
+     * Sort button: the client's own pure rule ({@code Inventory.sortInventory} →
+     * {@link InventorySorter#sortRegion}) run over the replica — hotbar and main sorted
+     * separately (items never cross between them), stacks of the same type + state merged,
+     * ordered by category, name, then state — so the result is exactly the client's
+     * prediction (issue #334). The hotbar re-selection the client does after sorting reaches
+     * the server as its own {@code HotbarSelectC2S}, sent before this action.
+     */
     private boolean sortInventory(ServerInventory inv) {
-        boolean moved = false;
-        // Consolidate: move every later matching stack into the earliest one.
-        for (int i = 0; i < ServerInventory.TOTAL_SLOTS; i++) {
-            ItemStack a = inv.slot(i);
-            if (a.isEmpty()) {
-                continue;
-            }
-            for (int j = i + 1; j < ServerInventory.TOTAL_SLOTS; j++) {
-                ItemStack b = inv.slot(j);
-                if (!b.isEmpty() && b.canStackWith(a) && a.getCount() < a.getMaxStackSize()) {
-                    int canAdd = a.getMaxStackSize() - a.getCount();
-                    int toAdd = Math.min(canAdd, b.getCount());
-                    a.incrementCount(toAdd);
-                    b.decrementCount(toAdd);
-                    if (b.isEmpty()) {
-                        inv.setSlot(j, ItemStackStateCodec.empty());
-                    }
-                    moved = true;
-                }
-            }
+        sortRange(inv, 0, ServerInventory.HOTBAR_SIZE);
+        sortRange(inv, ServerInventory.HOTBAR_SIZE, ServerInventory.TOTAL_SLOTS);
+        return true; // sorting an already sorted inventory is a valid no-op
+    }
+
+    private static void sortRange(ServerInventory inv, int from, int to) {
+        ItemStack[] region = new ItemStack[to - from];
+        for (int i = 0; i < region.length; i++) {
+            region[i] = inv.slot(from + i);
         }
-        // Order by item id, hotbar first (a stable, deterministic order both sides can predict).
-        List<ItemStack> stacks = new ArrayList<>();
-        for (int i = 0; i < ServerInventory.TOTAL_SLOTS; i++) {
-            if (!inv.slot(i).isEmpty()) {
-                stacks.add(inv.slot(i));
-            }
+        InventorySorter.sortRegion(region);
+        for (int i = 0; i < region.length; i++) {
+            inv.setSlot(from + i, region[i]);
         }
-        stacks.sort(java.util.Comparator.comparingInt(ItemStack::getBlockTypeId));
-        for (int i = 0; i < ServerInventory.TOTAL_SLOTS; i++) {
-            ItemStack next = i < stacks.size() ? stacks.get(i) : ItemStackStateCodec.empty();
-            if (!next.getItem().isSameType(inv.slot(i).getItem())
-                    || next.getCount() != inv.slot(i).getCount()) {
-                inv.setSlot(i, next.copy());
-                moved = true;
-            }
-        }
-        return moved;
     }
 
     /** Carried stack tossed into the world (container-screen drop beyond the panel). */
@@ -697,6 +742,62 @@ public final class ContainerActionProcessor {
         return a.region() == ContainerActionC2S.Region.FURNACE_FUEL
                 ? smeltingManager.getBurnTimePerUnit(carried.getItem()) > 0
                 : smeltingManager.getRecipe(carried) != null;
+    }
+
+    /**
+     * The client's stacking identity (issue #334/#350): same item type and same state, no
+     * state meaning the item's default ({@link ItemStack#statesMatch}). Unlike
+     * {@link ItemStack#canStackWith} a full stack still counts as the same kind.
+     */
+    private static boolean sameKind(ItemStack s, ItemStack other) {
+        return s != null && !s.isEmpty() && other != null && !other.isEmpty()
+                && s.getItem().isSameType(other.getItem())
+                && ItemStack.statesMatch(s.getItem(), s.getState(), other.getState());
+    }
+
+    /**
+     * Every addressed region must belong to the action's container (issue #334): player
+     * slots are valid on every screen; furnace regions only with FURNACE, workbench regions
+     * only with WORKBENCH, the 2×2 grid/result only with INVENTORY. Otherwise a furnace edit
+     * sent under kind INVENTORY would skip the persist + acknowledgement.
+     */
+    private static boolean regionsMatchKind(ContainerActionC2S a) {
+        return regionMatchesKind(a.region(), a.containerKind())
+                && (a.originRegion() == ContainerActionC2S.Region.NONE
+                    || regionMatchesKind(a.originRegion(), a.containerKind()));
+    }
+
+    private static boolean regionMatchesKind(byte region, byte kind) {
+        return switch (region) {
+            case ContainerActionC2S.Region.PLAYER_HOTBAR, ContainerActionC2S.Region.PLAYER_MAIN ->
+                    kind == ContainerActionC2S.ContainerKind.FURNACE
+                            || kind == ContainerActionC2S.ContainerKind.WORKBENCH
+                            || kind == ContainerActionC2S.ContainerKind.INVENTORY;
+            case ContainerActionC2S.Region.FURNACE_ING, ContainerActionC2S.Region.FURNACE_FUEL,
+                 ContainerActionC2S.Region.FURNACE_OUT ->
+                    kind == ContainerActionC2S.ContainerKind.FURNACE;
+            case ContainerActionC2S.Region.WORKBENCH_GRID, ContainerActionC2S.Region.WORKBENCH_OUT ->
+                    kind == ContainerActionC2S.ContainerKind.WORKBENCH;
+            case ContainerActionC2S.Region.INV_CRAFT_GRID, ContainerActionC2S.Region.INV_CRAFT_OUT ->
+                    kind == ContainerActionC2S.ContainerKind.INVENTORY;
+            default -> false;
+        };
+    }
+
+    /**
+     * A drag ORIGIN is only ever a player slot (the client's {@code originRegionOf} sends
+     * hotbar/main or NONE). SWAP writes the displaced stack
+     * into the origin, so a furnace origin would bypass the fuel/smeltable restriction
+     * (TAKE_ALL the fuel, then SWAP onto dirt with origin FURNACE_FUEL put the dirt in the
+     * fuel slot) — refused outright (issue #334).
+     */
+    private static boolean plausibleOrigin(ContainerActionC2S a) {
+        byte origin = a.originRegion();
+        if (origin == ContainerActionC2S.Region.NONE) {
+            return true;
+        }
+        return origin == ContainerActionC2S.Region.PLAYER_HOTBAR
+                || origin == ContainerActionC2S.Region.PLAYER_MAIN;
     }
 
     private static boolean isOutputWrite(byte action) {

@@ -188,7 +188,7 @@ class ServerInventoryDebitTest {
     }
 
     @Test
-    void waterPlacementFromBucketConvertsTheSelectedStack() {
+    void waterPlacementFromBucketEmptiesOneBucketOfTheSelectedStack() {
         Fakes f = fakes();
         ServerBlockHandler blocks = new ServerBlockHandler(new ServerChunkHandler());
         ServerPlayer sp = newPlayer();
@@ -199,10 +199,11 @@ class ServerInventoryDebitTest {
         blocks.handleBlockChange(sp, new BlockChangeC2S(10, 65, 10,
                 (short) BlockType.WATER.getId(), (short) BlockType.AIR.getId()), f.ctx());
 
-        assertEquals(0, countState(sp, ItemType.WOODEN_BUCKET.getId(), ItemType.BUCKET_STATE_WATER),
-            "the water bucket stock was consumed");
-        assertEquals(2, countState(sp, ItemType.WOODEN_BUCKET.getId(), ItemType.BUCKET_STATE_EMPTY),
-            "the whole selected stack converted to empty buckets");
+        // One pour empties one bucket — BlockPlacer.handleWaterBucket's stack rule.
+        assertEquals(1, countState(sp, ItemType.WOODEN_BUCKET.getId(), ItemType.BUCKET_STATE_WATER),
+            "one water bucket remains");
+        assertEquals(1, countState(sp, ItemType.WOODEN_BUCKET.getId(), ItemType.BUCKET_STATE_EMPTY),
+            "exactly one bucket was emptied");
     }
 
     @Test

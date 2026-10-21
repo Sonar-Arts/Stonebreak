@@ -57,6 +57,8 @@ public class FurnaceController {
         // Slot actions are addressed to THIS furnace (issue #334).
         actions.bind(com.stonebreak.network.packet.player.ContainerActionC2S.ContainerKind.FURNACE,
                 furnace.getPos().x(), furnace.getPos().y(), furnace.getPos().z());
+        // Numbered actions: echoes built before the server saw one keep our slots (#353).
+        actions.onNumbered(furnace::markSent);
         if (inputManager != null) {
             inputManager.bindActions(actions);
         }
@@ -89,8 +91,10 @@ public class FurnaceController {
         // UI is bound to the client display registry, updated by BlockStateS2C echoes.
         //
         // Slot mutations ship as atomic actions the moment the input manager applies them
-        // (issue #334) — there is no per-frame slot snapshot to flush any more. Echoes
-        // re-baseline via the pre-echo machinery in applyStateString.
+        // (issue #334) — there is no per-frame slot snapshot to flush any more. Each action
+        // is numbered, and an echo that left the server before it arrived carries an older
+        // ack, so the state keeps our predicted slots (issue #353); the echo acknowledging
+        // it re-baselines via the pre-echo machinery in applyStateString.
     }
 
     private static boolean worldHasFurnace(BlockPos p) {

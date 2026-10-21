@@ -404,8 +404,7 @@ public final class ServerEntityHandler {
                 // An arrow costs one ARROW from the server-owned inventory (issue #334);
                 // a refusal spawns nothing and syncs the sender.
                 if (!sp.inventory().debit(com.stonebreak.items.ItemType.ARROW.getId(), 1)) {
-                    sp.send(new com.stonebreak.network.packet.player.InventorySyncS2C(
-                            sp.inventory().encode()), false);
+                    sp.send(sp.inventorySync(), false);
                     yield null;
                 }
                 if (v.length() > MAX_ARROW_SPEED) {

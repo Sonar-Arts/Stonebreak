@@ -279,4 +279,13 @@ class PlayerPrefsValidationTest {
         assertNotNull(accepted);
         assertEquals(40, accepted.getAbilityScores()[0]);
     }
+
+    @Test
+    void theCreationRecordSurvivesTheStrictSaveReader() {
+        // #358 made the reader throw without an inventory array; the server parses the
+        // late-join creation blob with it, so a blob without one fell back to defaults.
+        PlayerData parsed = new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                .deserialize(new CharacterStats(null).toCreationJson());
+        assertNotNull(PlayerPrefsValidator.normalizeCreation(parsed));
+    }
 }

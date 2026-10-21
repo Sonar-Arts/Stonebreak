@@ -22,6 +22,33 @@ public final class InventorySyncApplier {
     }
 
     public static void apply(Player player, String payload) {
+        apply(player, payload, true);
+    }
+
+    /**
+     * Applies a server sync stamped {@code ack} (issue #334, #353): skipped while a newer
+     * slot action of ours is in flight — the sync predates it and would roll back its
+     * prediction; the sync answering that action corrects us. The selected hotbar slot is
+     * the client's own intent ({@code HotbarSelectC2S}), so it is taken only from the first
+     * applied sync of a session (the seeded value): a later sync built before our last
+     * selection change would otherwise revert it.
+     */
+    public static void applyServerSync(Player player, String payload, int ack) {
+        if (!com.stonebreak.network.SlotIntentSeq.isCurrent(ack)) {
+            return;
+        }
+        apply(player, payload, !selectionSeeded);
+        selectionSeeded = true;
+    }
+
+    /** Session start: the next applied sync seeds the hotbar selection again. */
+    public static void resetSession() {
+        selectionSeeded = false;
+    }
+
+    private static volatile boolean selectionSeeded;
+
+    private static void apply(Player player, String payload, boolean applySelection) {
         if (player == null || payload == null || payload.isEmpty()) {
             return;
         }
@@ -49,11 +76,14 @@ public final class InventorySyncApplier {
                     for (int i = 0; i < 4; i++) {
                         craft[i] = decode(parts[37 + i]);
                     }
+                    // The output preview is derived from the grid: recompute it, or a stale
+                    // output from the predicted grid stays clickable (a ghost craft).
+                    open.refreshCraftingOutput();
                 }
             }
         }
         // 42 tokens: 36 slots + carried + 4 craft + selected slot + held id.
-        if (parts.length >= 42) {
+        if (applySelection && parts.length >= 42) {
             try {
                 inventory.setSelectedHotbarSlotIndex(
                         Integer.parseInt(parts[41].trim()));

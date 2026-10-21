@@ -15,10 +15,13 @@ import com.stonebreak.world.chunk.api.voxel.ChunkDataAdapter;
  * #1), so the server ships <b>every</b> in-view chunk the client hasn't yet received — not
  * just modified ones — generating it on demand via {@code world.getChunkAt}.
  *
- * <p>Chunks carry a server-side <b>version</b> bumped by {@link #markChunkModified} (player
- * edits, and any server mutation that routes through it). Each player records the version it
- * last received per chunk, so a changed chunk is re-streamed. This self-heals client
- * divergence for changes not covered by the per-block change feed.
+ * <p>Chunks carry a server-side <b>version</b> bumped by {@link #markChunkModified}. Each
+ * player records the version it last received per chunk, so a bumped chunk is re-streamed to
+ * every viewer. Edits that reach clients as per-block packets (player edits, sim edits) do
+ * NOT bump it — they only {@link #invalidateHash} — because a re-stream per edit costs an
+ * encode per viewer, a decode + five-chunk remesh per client, and its snapshot briefly undoes
+ * the editor's newer predictions (issue #362). A bump is reserved for the sim-edit overflow
+ * guard; the hash audit and resync requests forget a chunk per player instead.
  *
  * <p>Per-player "sent version" state lives on {@link ServerPlayer}, so it is cleaned up
  * automatically when a player disconnects.
@@ -65,19 +68,19 @@ public final class ServerChunkHandler {
     private boolean versionsDirty = false;
 
     /** Lazily-computed content hash per chunk for the desync audit. Invalidated on ANY
-     *  server-side mutation (player edits via markChunkModified, sim edits via
-     *  {@link #invalidateHash}); recomputed only when a client audit asks. */
+     *  server-side mutation ({@link #invalidateHash}, {@link #markChunkModified});
+     *  recomputed only when a client audit asks. */
     private final LongIntHashMap chunkHashes = new LongIntHashMap();
     /** Sentinel for "no cached hash" — a real hash colliding with it merely recomputes. */
     private static final int NO_HASH = Integer.MIN_VALUE;
 
-    /** Server tick counter driving the sim-edit audit grace window. */
+    /** Server tick counter driving the edit audit grace window. */
     private int tickCounter = 0;
-    /** Last tick a SIMULATION edit (water flow etc.) touched each chunk. A chunk that is
-     *  being actively mutated by the sim is guaranteed to fail the hash audit — the client's
-     *  hash is at least a round-trip stale against live sim state — so comparing it would
-     *  re-stream a perfectly-synced chunk every audit round for as long as the water flows
-     *  (a re-stream storm over settling water). The per-block sim batches keep clients
+    /** Last tick a per-block-replicated edit (player edit, water flow, ...) touched each
+     *  chunk. A chunk that is being actively mutated is likely to fail the hash audit — the
+     *  client's hash is up to a round-trip stale against live state — so comparing it would
+     *  re-stream a perfectly-synced chunk every audit round for as long as the water flows or
+     *  the player keeps mining (a re-stream storm). The per-block batches keep clients
      *  current there; auditing resumes once the chunk goes quiet. */
     private final LongIntHashMap lastSimEditTick = new LongIntHashMap();
     /** "Never sim-edited" default; far enough in the past to always be outside the grace. */
@@ -95,11 +98,16 @@ public final class ServerChunkHandler {
     private static final int EVICT_PERIOD_TICKS = 100; // 5 s at 20 Hz
     private static final int EVICT_KEEP_MARGIN = 6;
     private static final int MAX_EVICTIONS_PER_SWEEP = 256;
-    /** Grace (ticks) after a sim edit before the audit trusts a mismatch again — a little
+    /** Grace (ticks) after an edit before the audit trusts a mismatch again — a little
      *  over the client's 10 s audit period, so the client has re-hashed post-settle state. */
     private static final int SIM_EDIT_AUDIT_GRACE_TICKS = 240; // 12 s at 20 Hz
 
-    /** Mark a chunk changed so every player re-receives its snapshot within view. */
+    /**
+     * Re-stream a chunk to every player that holds it. Expensive (an encode per viewer and a
+     * full install + neighbour remesh per client); use it only when per-block packets could
+     * not carry the change (the sim-edit overflow guard). Ordinary edits use
+     * {@link #invalidateHash}.
+     */
     public void markChunkModified(int cx, int cz) {
         long key = packKey(cx, cz);
         chunkVersions.put(key, chunkVersions.get(key, 0) + 1);
@@ -107,11 +115,19 @@ public final class ServerChunkHandler {
         chunkHashes.remove(key);
     }
 
-    /** Drop a chunk's cached audit hash (server-side content changed without a version bump). */
+    /**
+     * A chunk's contents changed and the change went out as per-block packets: drop the cached
+     * audit hash and start the audit grace window. No re-stream.
+     */
     public void invalidateHash(int cx, int cz) {
         long key = packKey(cx, cz);
         chunkHashes.remove(key);
         lastSimEditTick.put(key, tickCounter);
+    }
+
+    /** Current version of a chunk (0 = never bumped). Package-private for tests. */
+    int chunkVersion(int cx, int cz) {
+        return chunkVersions.get(packKey(cx, cz), 0);
     }
 
     public void onSessionStart() {

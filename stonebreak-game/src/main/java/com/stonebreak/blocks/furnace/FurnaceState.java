@@ -192,18 +192,54 @@ public final class FurnaceState {
         return s;
     }
 
+    /** Client display copy only: seq of the newest slot intent sent for this furnace (0 = none). */
+    private volatile int sentSeq;
+    /** Client display copy only: newest {@code BlockStateS2C.ack} received for this furnace. */
+    private volatile int ackedSeq;
+
+    /**
+     * Records that the UI sent a slot snapshot numbered {@code seq}: until an echo acknowledges
+     * it, echoes carry the slots from before it and must not overwrite the local slots.
+     */
+    public void markSent(int seq) {
+        sentSeq = seq;
+    }
+
+    /** True while a sent slot snapshot has not been acknowledged by an echo yet. */
+    public boolean awaitingAck() {
+        return ackedSeq < sentSeq;
+    }
+
+    /**
+     * Applies a server echo that carries no ack: treated as of the newest ack already seen,
+     * so its slots are ignored while a snapshot is in flight (its timers always apply).
+     */
+    public void applyStateString(String raw) {
+        applyStateString(raw, ackedSeq);
+    }
+
     /**
      * Overwrites this state IN PLACE from a state string (server echo) — same object
      * identity, so an open furnace UI bound to this state sees the update live.
+     *
+     * <p>{@code ack} is the last of OUR slot intents the server had processed when it built
+     * the echo. If we have sent a newer one since, the echo's slots are stale (issue #353) —
+     * the server will apply our snapshot over them — so only the server-owned timers are
+     * taken; adopting the slots would roll back the player's edits (losing a placed stack, or
+     * re-filling an output slot already shift-clicked into the inventory).
      */
-    public void applyStateString(String raw) {
+    public void applyStateString(String raw, int ack) {
+        if (ack > ackedSeq) ackedSeq = ack;
+        boolean slotsCurrent = ack >= sentSeq;
         // Remember what the slots looked like before this echo clobbers them, so an open UI
         // can tell its own un-sent edits apart from the server's corrections.
-        if (preEchoSlots == null) preEchoSlots = encodeSlots();
+        if (slotsCurrent && preEchoSlots == null) preEchoSlots = encodeSlots();
         FurnaceState parsed = fromStateString(pos, raw);
-        this.ingredient = parsed.ingredient;
-        this.fuel = parsed.fuel;
-        this.output = parsed.output;
+        if (slotsCurrent) {
+            this.ingredient = parsed.ingredient;
+            this.fuel = parsed.fuel;
+            this.output = parsed.output;
+        }
         this.burnTimeRemaining = parsed.burnTimeRemaining;
         this.currentBurnUnitTotal = parsed.currentBurnUnitTotal;
         this.cookProgress = parsed.cookProgress;

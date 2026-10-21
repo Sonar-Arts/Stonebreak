@@ -22,40 +22,51 @@ import java.nio.charset.StandardCharsets;
  *
  * <p>Sent on the old PlayerDataC2S cadence (~3 s) and on disconnect. A refused packet
  * keeps the accepted baseline and re-asserts {@link PlayerDataS2C} to the sender.
+ *
+ * <p>{@code seq} numbers each report (issue #334): every processed report — accepted or
+ * refused — is answered with a {@link ProgressS2C} carrying it as {@code ackSeq}, so the
+ * client can tell an echo of an older report from the answer to its latest one.
+ *
+ * <p>The payload is bounded in UTF-8 BYTES, the unit the decoder checks: an oversized JSON is
+ * encoded as an empty payload (which the server refuses and answers) instead of a frame the
+ * decoder would reject by closing the connection, or a character-truncated, invalid JSON.
  */
-public record PlayerPrefsC2S(String json) implements Packet {
+public record PlayerPrefsC2S(int seq, String json) implements Packet {
 
-    /** Matches the old PlayerDataC2S budget. */
-    private static final int MAX_JSON = 64 * 1024;
+    /** Matches the old PlayerDataC2S budget (UTF-8 bytes). */
+    public static final int MAX_JSON_BYTES = 64 * 1024;
 
     public PlayerPrefsC2S {
-        json = truncate(json);
+        json = json == null ? "" : json;
     }
 
-    private static String truncate(String s) {
-        if (s == null) {
-            return "";
-        }
-        return s.length() > MAX_JSON ? s.substring(0, MAX_JSON) : s;
+    /** True when {@code json} fits the wire budget (UTF-8 bytes). */
+    public static boolean fits(String json) {
+        return json == null || json.getBytes(StandardCharsets.UTF_8).length <= MAX_JSON_BYTES;
     }
 
     public static final PacketCodec<PlayerPrefsC2S> CODEC = new PacketCodec<>() {
         @Override
         public void encode(ByteBuf out, PlayerPrefsC2S p) {
             byte[] bytes = p.json().getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > MAX_JSON_BYTES) {
+                bytes = new byte[0]; // never a frame the decoder rejects; the server refuses it
+            }
+            out.writeInt(p.seq());
             out.writeInt(bytes.length);
             out.writeBytes(bytes);
         }
 
         @Override
         public PlayerPrefsC2S decode(ByteBuf in) {
+            int seq = in.readInt();
             int len = in.readInt();
-            if (len < 0 || len > MAX_JSON) {
+            if (len < 0 || len > MAX_JSON_BYTES) {
                 throw new IllegalArgumentException("PlayerPrefsC2S payload out of range: " + len);
             }
             byte[] bytes = new byte[len];
             in.readBytes(bytes);
-            return new PlayerPrefsC2S(new String(bytes, StandardCharsets.UTF_8));
+            return new PlayerPrefsC2S(seq, new String(bytes, StandardCharsets.UTF_8));
         }
     };
 }

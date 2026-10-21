@@ -3,7 +3,6 @@ package com.stonebreak.items;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 
-import java.util.Objects;
 
 
 /**
@@ -96,58 +95,9 @@ public class Inventory {
      * @return True if all items were successfully added, false if inventory is full or couldn't add all.
      */
     public final boolean addItem(int blockTypeId, int count) {
-        if (blockTypeId == BlockType.AIR.getId() || count <= 0) {
-            return true; // Or false, depending on desired behavior for adding air/zero
-        }
-
-        int remainingCount = count;
-
-        // First, try to stack with existing items in hotbar
-        for (ItemStack stack : hotbarSlots) {
-            if (remainingCount == 0) break;
-            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
-                remainingCount -= canAdd;
-            }
-        }
-
-        // Then, try to stack with existing items in main inventory
-        for (ItemStack stack : mainInventorySlots) {
-            if (remainingCount == 0) break;
-            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
-                remainingCount -= canAdd;
-            }
-        }
-
-        // If still items left, try to fill empty slots in hotbar
-        if (remainingCount > 0) {
-            for (ItemStack stack : hotbarSlots) {
-                if (remainingCount == 0) break;
-                if (stack.isEmpty()) {
-                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
-                    stack.setBlockTypeId(blockTypeId);
-                    stack.setCount(canAdd);
-                    remainingCount -= canAdd;
-                }
-            }
-        }
-
-        // Then, try to fill empty slots in main inventory
-        if (remainingCount > 0) {
-            for (ItemStack stack : mainInventorySlots) {
-                if (remainingCount == 0) break;
-                if (stack.isEmpty()) {
-                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
-                    stack.setBlockTypeId(blockTypeId);
-                    stack.setCount(canAdd);
-                    remainingCount -= canAdd;
-                }
-            }
-        }
-        return remainingCount == 0;
+        // An id carries no state, so the items arrive in the default state and
+        // only merge with default-state stacks (issue #350).
+        return addItem(new ItemStack(blockTypeId, count));
     }
 /**
      * Adds an entire ItemStack to the inventory.
@@ -179,8 +129,9 @@ public class Inventory {
         // First, try to stack with existing items in hotbar (state must match)
         for (ItemStack stack : hotbarSlots) {
             if (remainingCount == 0) break;
-            if (stack.getItem().isSameType(item)
-                    && java.util.Objects.equals(stack.getState(), state)
+            if (!stack.isEmpty()
+                    && stack.getItem().isSameType(item)
+                    && ItemStack.statesMatch(item, stack.getState(), state)
                     && stack.getCount() < stack.getMaxStackSize()) {
                 int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
                 stack.incrementCount(canAdd);
@@ -191,8 +142,9 @@ public class Inventory {
         // Then, try to stack with existing items in main inventory (state must match)
         for (ItemStack stack : mainInventorySlots) {
             if (remainingCount == 0) break;
-            if (stack.getItem().isSameType(item)
-                    && java.util.Objects.equals(stack.getState(), state)
+            if (!stack.isEmpty()
+                    && stack.getItem().isSameType(item)
+                    && ItemStack.statesMatch(item, stack.getState(), state)
                     && stack.getCount() < stack.getMaxStackSize()) {
                 int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
                 stack.incrementCount(canAdd);
@@ -236,59 +188,7 @@ public class Inventory {
      * @return The number of items that were actually added to the inventory.
      */
     public int addItemsAndReturnCount(int blockTypeId, int count) {
-        if (blockTypeId == BlockType.AIR.getId() || count <= 0) {
-            return 0;
-        }
-
-        int remainingCount = count;
-
-        // First, try to stack with existing items in hotbar
-        for (ItemStack stack : hotbarSlots) {
-            if (remainingCount == 0) break;
-            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
-                remainingCount -= canAdd;
-            }
-        }
-
-        // Then, try to stack with existing items in main inventory
-        for (ItemStack stack : mainInventorySlots) {
-            if (remainingCount == 0) break;
-            if (stack.getBlockTypeId() == blockTypeId && stack.getCount() < stack.getMaxStackSize()) {
-                int canAdd = Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
-                stack.incrementCount(canAdd);
-                remainingCount -= canAdd;
-            }
-        }
-
-        // If still items left, try to fill empty slots in hotbar
-        if (remainingCount > 0) {
-            for (ItemStack stack : hotbarSlots) {
-                if (remainingCount == 0) break;
-                if (stack.isEmpty()) {
-                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
-                    stack.setBlockTypeId(blockTypeId);
-                    stack.setCount(canAdd);
-                    remainingCount -= canAdd;
-                }
-            }
-        }
-
-        // Then, try to fill empty slots in main inventory
-        if (remainingCount > 0) {
-            for (ItemStack stack : mainInventorySlots) {
-                if (remainingCount == 0) break;
-                if (stack.isEmpty()) {
-                    int canAdd = Math.min(remainingCount, new ItemStack(blockTypeId, 0).getMaxStackSize());
-                    stack.setBlockTypeId(blockTypeId);
-                    stack.setCount(canAdd);
-                    remainingCount -= canAdd;
-                }
-            }
-        }
-        
-        return count - remainingCount; // Return how many items were actually added
+        return addItemAndReturnCount(new ItemStack(blockTypeId, count));
     }
 
     /**
@@ -388,7 +288,7 @@ public class Inventory {
                 if (i == selectedHotbarSlotIndex) continue;
                 ItemStack other = hotbarSlots[i];
                 if (other.getItem().isSameType(depletedItem)
-                        && java.util.Objects.equals(other.getState(), depletedState)
+                        && ItemStack.statesMatch(depletedItem, other.getState(), depletedState)
                         && !other.isEmpty()) {
                     hotbarSlots[selectedHotbarSlotIndex] = other;
                     hotbarSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
@@ -400,7 +300,7 @@ public class Inventory {
                 for (int i = 0; i < MAIN_INVENTORY_SIZE && !switched; i++) {
                     ItemStack mainStack = mainInventorySlots[i];
                     if (mainStack.getItem().isSameType(depletedItem)
-                            && java.util.Objects.equals(mainStack.getState(), depletedState)
+                            && ItemStack.statesMatch(depletedItem, mainStack.getState(), depletedState)
                             && !mainStack.isEmpty()) {
                         hotbarSlots[selectedHotbarSlotIndex] = mainStack;
                         mainInventorySlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
@@ -722,7 +622,7 @@ public class Inventory {
             for (int i = 0; i < HOTBAR_SIZE; i++) {
                 ItemStack stack = hotbarSlots[i];
                 if (!stack.isEmpty() && stack.getItem().isSameType(selectedItem)
-                        && Objects.equals(stack.getState(), selectedState)) {
+                        && ItemStack.statesMatch(selectedItem, stack.getState(), selectedState)) {
                     if (i != selectedHotbarSlotIndex) {
                         setSelectedHotbarSlotIndex(i);
                     }

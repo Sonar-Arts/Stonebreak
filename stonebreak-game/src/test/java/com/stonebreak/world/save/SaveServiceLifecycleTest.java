@@ -65,6 +65,32 @@ class SaveServiceLifecycleTest {
     }
 
     @Test
+    void unreadablePlayerFileKeepsWorldMetadataAndIsSetAside() throws Exception {
+        // Issue #358: a damaged player.json must not make the world load as new.
+        String worldPath = tempDir.resolve("w-corrupt-player").toString();
+        FileSaveRepository repo = new FileSaveRepository(worldPath);
+        repo.saveWorld(WorldData.builder()
+            .seed(42L)
+            .worldName("TestWorld")
+            .createdTime(FIXED_TIME)
+            .lastPlayed(FIXED_TIME)
+            .build());
+        Path playerFile = Path.of(worldPath, "player.json");
+        Files.writeString(playerFile, "{\"lastSaved\": \"\", \"inventory\": [{\"id\": 1, \"count\": }]}");
+
+        try (SaveService svc = new SaveService(worldPath)) {
+            SaveService.LoadResult result = svc.loadWorld().get(10, TimeUnit.SECONDS);
+
+            assertTrue(result.isSuccess());
+            assertEquals(42L, result.getWorldData().getSeed());
+            assertNull(result.getPlayerData());
+            assertNotNull(result.getPlayerNotice());
+        }
+        assertFalse(Files.exists(playerFile));
+        assertTrue(Files.readString(Path.of(worldPath, "player.json.corrupt")).contains("\"count\": }"));
+    }
+
+    @Test
     void loadWorldReportsMissingMetadataThenSucceedsAfterSave() throws Exception {
         String worldPath = tempDir.resolve("w4").toString();
         FileSaveRepository repo = new FileSaveRepository(worldPath);

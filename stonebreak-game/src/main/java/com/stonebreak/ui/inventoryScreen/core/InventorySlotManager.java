@@ -179,7 +179,7 @@ public class InventorySlotManager {
             ItemStack slot = slots[i];
             if (slot != null && !slot.isEmpty()
                     && slot.getItem().isSameType(clickedItem)
-                    && java.util.Objects.equals(slot.getState(), clickedState)) {
+                    && ItemStack.statesMatch(slot.getItem(), slot.getState(), clickedState)) {
                 matching.add(i);
                 total += slot.getCount();
             }
@@ -266,13 +266,9 @@ public class InventorySlotManager {
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
                 if (craftingInputSlots[i] != null && !craftingInputSlots[i].isEmpty()) {
                     ItemStack itemInInputSlot = craftingInputSlots[i];
-                    int typeId = itemInInputSlot.getBlockTypeId();
-                    int countInInputSlot = itemInInputSlot.getCount();
-
-                    int itemsOfTypeInInventoryBefore = inventory.getItemCount(typeId);
-                    inventory.addItem(typeId, countInInputSlot);
-                    int itemsOfTypeInInventoryAfter = inventory.getItemCount(typeId);
-                    int numAdded = itemsOfTypeInInventoryAfter - itemsOfTypeInInventoryBefore;
+                    // Add the stack itself so its state travels with it and only
+                    // merges with matching stacks (issue #350).
+                    int numAdded = inventory.addItemAndReturnCount(itemInInputSlot);
 
                     if (numAdded > 0) {
                         itemInInputSlot.decrementCount(numAdded);
@@ -375,7 +371,7 @@ public class InventorySlotManager {
         for (int i = 0; i < Inventory.HOTBAR_SIZE && remaining > 0; i++) {
             ItemStack slot = inventory.getHotbarSlot(i);
             if (!slot.isEmpty() && slot.getItem().isSameType(item) 
-                    && java.util.Objects.equals(slot.getState(), state)
+                    && ItemStack.statesMatch(slot.getItem(), slot.getState(), state)
                     && slot.getCount() < slot.getMaxStackSize()) {
                 int canAdd = Math.min(remaining, slot.getMaxStackSize() - slot.getCount());
                 slot.incrementCount(canAdd);
@@ -410,7 +406,7 @@ public class InventorySlotManager {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE && remaining > 0; i++) {
             ItemStack slot = inventory.getMainInventorySlot(i);
             if (!slot.isEmpty() && slot.getItem().isSameType(item) 
-                    && java.util.Objects.equals(slot.getState(), state)
+                    && ItemStack.statesMatch(slot.getItem(), slot.getState(), state)
                     && slot.getCount() < slot.getMaxStackSize()) {
                 int canAdd = Math.min(remaining, slot.getMaxStackSize() - slot.getCount());
                 slot.incrementCount(canAdd);
@@ -599,7 +595,7 @@ public class InventorySlotManager {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE && dragged.getCount() < maxStack; i++) {
             ItemStack slot = inventory.getMainInventorySlot(i);
             if (!slot.isEmpty() && slot.getItem().isSameType(draggedItem)
-                    && java.util.Objects.equals(slot.getState(), draggedState)) {
+                    && ItemStack.statesMatch(slot.getItem(), slot.getState(), draggedState)) {
                 int canTake = Math.min(slot.getCount(), maxStack - dragged.getCount());
                 dragged.incrementCount(canTake);
                 slot.decrementCount(canTake);
@@ -613,7 +609,7 @@ public class InventorySlotManager {
         for (int i = 0; i < Inventory.HOTBAR_SIZE && dragged.getCount() < maxStack; i++) {
             ItemStack slot = inventory.getHotbarSlot(i);
             if (!slot.isEmpty() && slot.getItem().isSameType(draggedItem)
-                    && java.util.Objects.equals(slot.getState(), draggedState)) {
+                    && ItemStack.statesMatch(slot.getItem(), slot.getState(), draggedState)) {
                 int canTake = Math.min(slot.getCount(), maxStack - dragged.getCount());
                 dragged.incrementCount(canTake);
                 slot.decrementCount(canTake);

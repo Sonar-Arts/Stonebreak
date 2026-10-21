@@ -55,6 +55,16 @@ public class SaveService implements AutoCloseable {
     private final java.util.concurrent.ConcurrentHashMap<Long, CompletableFuture<Void>> pendingChunkSaves =
         new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * In-flight write per remote player name — the same ordering gate as
+     * {@link #pendingChunkSaves}, for {@code players/<name>.json}: a write chains behind that
+     * player's previous one (the save pool has several threads), and a load or set-aside of
+     * the name waits for it. Without it a quick re-login read the pre-quit file while the
+     * quit save was still in flight — items dropped just before quitting came back (#334).
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<Void>> pendingNamedSaves =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     private ScheduledFuture<?> autoSaveTask;
     private volatile WorldData worldData;
     private volatile Player player;
@@ -241,15 +251,37 @@ public class SaveService implements AutoCloseable {
                     return new LoadResult(false, "World metadata not found", null, null);
                 }
                 WorldData data = worldOpt.get();
-                var playerOpt = repository.loadPlayer();
-                PlayerData playerData = playerOpt.orElse(null);
                 System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
-                return new LoadResult(true, null, data, playerData);
+                return loadPlayerInto(data);
             } catch (IOException e) {
                 System.err.printf("[LOAD] Failed in %dms: %s%n", System.currentTimeMillis() - start, e.getMessage());
                 return new LoadResult(false, e.getMessage(), null, null);
             }
         }, loadPool);
+    }
+
+    /**
+     * Loads {@code player.json} apart from the world metadata, so a damaged player file can never
+     * make the world look new (issue #358). An unreadable file is moved aside and the player
+     * starts fresh in the loaded world; the result's {@link LoadResult#getPlayerNotice} says so.
+     */
+    private LoadResult loadPlayerInto(WorldData data) {
+        try {
+            return new LoadResult(true, null, data, repository.loadPlayer().orElse(null));
+        } catch (IOException | RuntimeException e) {
+            System.err.println("[LOAD] player.json is unreadable: " + e.getMessage());
+            String notice;
+            try {
+                java.nio.file.Path aside = repository.setPlayerFileAside();
+                notice = "Your saved player data could not be read; it was kept as "
+                    + aside.getFileName() + " and you start fresh.";
+            } catch (IOException moveFailure) {
+                notice = "Your saved player data could not be read or set aside ("
+                    + moveFailure.getMessage() + "); the next save will replace it.";
+            }
+            System.err.println("[LOAD] " + notice);
+            return new LoadResult(true, null, data, null, notice);
+        }
     }
 
     /** Completed future when no save of that chunk is in flight; else the save to chain after. */
@@ -299,34 +331,74 @@ public class SaveService implements AutoCloseable {
 
     /**
      * Persist a remote player's serialized PlayerData blob under players/&lt;username&gt;.json.
-     * Opaque to the save service — the bytes come straight from the client. Runs on the IO thread.
+     * Opaque to the save service — the bytes are the server-built record. Runs on the IO
+     * thread, ordered behind this player's previous write ({@link #pendingNamedSaves}).
      */
     public CompletableFuture<Void> saveNamedPlayer(String username, byte[] json) {
         if (username == null || json == null || json.length == 0) {
             return CompletableFuture.completedFuture(null);
         }
-        return CompletableFuture.runAsync(() -> {
+        return chainNamed(username, () -> {
             try {
                 repository.saveNamedPlayerBytes(username, json);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to save player '" + username + "'", e);
             }
-        }, savePool).exceptionally(t -> {
+        }).exceptionally(t -> {
             System.err.println("[SAVE] Failed to save player '" + username + "': " + t.getMessage());
             return null;
         });
     }
 
-    /** Load a remote player's serialized PlayerData blob, or null if none saved. IO thread. */
+    /**
+     * Load a remote player's serialized PlayerData blob, or null if none is saved. Waits for
+     * any in-flight write of that player first. An I/O failure completes the future
+     * EXCEPTIONALLY — it is not "no saved data": treating it as a new player would let the
+     * next save overwrite the real file (#358's rule, applied to remote players; #334).
+     */
     public CompletableFuture<byte[]> loadNamedPlayer(String username) {
-        return CompletableFuture.supplyAsync(() -> {
+        return namedGate(username).thenApplyAsync(ignored -> {
             try {
                 return repository.loadNamedPlayerBytes(username).orElse(null);
             } catch (IOException e) {
                 System.err.println("[LOAD] Failed to load player '" + username + "': " + e.getMessage());
-                return null;
+                throw new java.io.UncheckedIOException(e);
             }
         }, loadPool);
+    }
+
+    /**
+     * Moves an unreadable {@code players/<username>.json} aside (to {@code .corrupt[.N]}) so
+     * the player's next save starts a fresh file instead of overwriting it (#358's rule for
+     * remote players; #334). Ordered behind that player's in-flight writes; completes with the
+     * new path, or exceptionally when the file could not be moved.
+     */
+    public CompletableFuture<java.nio.file.Path> setNamedPlayerAside(String username) {
+        CompletableFuture<java.nio.file.Path> result = new CompletableFuture<>();
+        chainNamed(username, () -> {
+            try {
+                result.complete(repository.setNamedPlayerFileAside(username));
+            } catch (IOException | RuntimeException e) {
+                result.completeExceptionally(e);
+            }
+        });
+        return result;
+    }
+
+    /** Completed when no write of {@code username} is in flight; else that write (errors swallowed). */
+    private CompletableFuture<Void> namedGate(String username) {
+        CompletableFuture<Void> pending = username == null ? null : pendingNamedSaves.get(username);
+        return pending == null ? CompletableFuture.completedFuture(null)
+            : pending.exceptionally(t -> null);
+    }
+
+    /** Runs {@code work} on the save pool after {@code username}'s previous write. */
+    private CompletableFuture<Void> chainNamed(String username, Runnable work) {
+        CompletableFuture<Void> next = pendingNamedSaves.compute(username, (k, prev) ->
+            (prev == null ? CompletableFuture.<Void>completedFuture(null) : prev.exceptionally(t -> null))
+                .thenRunAsync(work, savePool));
+        next.whenComplete((v, t) -> pendingNamedSaves.remove(username, next));
+        return next;
     }
 
     public String getWorldPath() {
@@ -484,12 +556,19 @@ public class SaveService implements AutoCloseable {
         private final String error;
         private final WorldData worldData;
         private final PlayerData playerData;
+        private final String playerNotice;
 
         public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData) {
+            this(success, error, worldData, playerData, null);
+        }
+
+        public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData,
+                          String playerNotice) {
             this.success = success;
             this.error = error;
             this.worldData = worldData;
             this.playerData = playerData;
+            this.playerNotice = playerNotice;
         }
 
         public boolean isSuccess() {
@@ -506,6 +585,11 @@ public class SaveService implements AutoCloseable {
 
         public PlayerData getPlayerData() {
             return playerData;
+        }
+
+        /** Message for the player when their saved data could not be restored, else null. */
+        public String getPlayerNotice() {
+            return playerNotice;
         }
     }
 }

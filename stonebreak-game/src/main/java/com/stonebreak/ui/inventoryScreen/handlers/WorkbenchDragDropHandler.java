@@ -47,37 +47,33 @@ public class WorkbenchDragDropHandler {
         boolean placed = false;
 
         // Try to place in main inventory
-        placed = tryPlaceInMainInventory(dragState, inventory, layout, mouseX, mouseY, sink);
+        placed = tryPlaceInMainInventory(dragState, inventory, craftingInputSlots, layout, mouseX, mouseY,
+                updateCraftingOutput, sink, craftGridRegion);
 
         // Try to place in hotbar if not placed
         if (!placed) {
-            placed = tryPlaceInHotbar(dragState, inventory, layout, mouseX, mouseY, sink);
+            placed = tryPlaceInHotbar(dragState, inventory, craftingInputSlots, layout, mouseX, mouseY,
+                    updateCraftingOutput, sink, craftGridRegion);
         }
 
         // Try to place in crafting input slots if not placed
         if (!placed) {
-            placed = tryPlaceInWorkbenchCraftingSlots(dragState, craftingInputSlots, layout, mouseX, mouseY,
+            placed = tryPlaceInWorkbenchCraftingSlots(dragState, inventory, craftingInputSlots, layout, mouseX, mouseY,
                     updateCraftingOutput, sink, craftGridRegion);
         }
 
-        // Handle placement results
+        // Handle placement results. What a placement leaves on the cursor (a partial merge's
+        // remainder, a swap's displaced stack whose origin is occupied) stays there, as the
+        // server's MERGE / SWAP leave it carried (issue #334).
         if (placed && !dragState.isDragging()) {
             dragState.clear();
         } else if (!placed && dragState.isDragging()) {
             if (isMouseOutsideInventoryBounds(mouseX, mouseY, layout)) {
-                if (sink != null) {
-                    short n = (short) dragState.draggedItemStack.getCount();
-                    dragState.clear();
-                    sink.sendWithCount(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DROP_CARRIED, n);
-                } else {
-                    dropEntireStackIntoWorld(dragState);
-                }
+                InventoryDragDropHandler.tossCarried(dragState, sink);
             } else {
-                tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, layout, updateCraftingOutput, sink);
+                tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, layout, updateCraftingOutput, sink,
+                        craftGridRegion);
             }
-        } else if (placed && dragState.isDragging()) {
-            // Swap happened, try to place the new dragged item back
-            tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, layout, updateCraftingOutput, sink);
         }
 
         // Final cleanup
@@ -88,28 +84,26 @@ public class WorkbenchDragDropHandler {
         return placed;
     }
 
-    /** Return-to-origin with emission (see InventoryDragDropHandler's sink overload). */
+    /**
+     * Return-to-origin with emission (see InventoryDragDropHandler's sink overload); a stack
+     * taken from the 3×3 grid goes back to its {@code craftGridRegion} cell and is sent too.
+     */
+    public static void tryReturnToOriginalSlot(InventoryDragDropHandler.DragState dragState,
+                                             Inventory inventory, ItemStack[] craftingInputSlots,
+                                             InventoryLayoutCalculator.InventoryLayout layout,
+                                             Runnable updateCraftingOutput, SlotActionSink sink,
+                                             byte craftGridRegion) {
+        InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots,
+                updateCraftingOutput, sink, craftGridRegion);
+    }
+
+    /** As above, for the workbench grid region. */
     public static void tryReturnToOriginalSlot(InventoryDragDropHandler.DragState dragState,
                                              Inventory inventory, ItemStack[] craftingInputSlots,
                                              InventoryLayoutCalculator.InventoryLayout layout,
                                              Runnable updateCraftingOutput, SlotActionSink sink) {
-        byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, sink);
-        byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
-        ItemStack carried = dragState.draggedItemStack;
-        ItemStack originStack = null;
-        if (originRegion == com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_HOTBAR) {
-            originStack = inventory.getHotbarSlot(dragState.draggedItemOriginalSlotIndex);
-        } else if (originRegion == com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_MAIN) {
-            originStack = inventory.getMainInventorySlot(dragState.draggedItemOriginalSlotIndex);
-        }
-        byte action = (originStack == null || originStack.isEmpty())
-                ? com.stonebreak.network.packet.player.ContainerActionC2S.Action.PUT_ALL
-                : com.stonebreak.network.packet.player.ContainerActionC2S.Action.MERGE;
-        InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput);
-        if (sink != null && originRegion != com.stonebreak.network.packet.player.ContainerActionC2S.Region.NONE
-                && carried != null && !carried.isEmpty()) {
-            sink.send(originRegion, originSlot, action);
-        }
+        tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, layout, updateCraftingOutput, sink,
+                com.stonebreak.network.packet.player.ContainerActionC2S.Region.WORKBENCH_GRID);
     }
 
     /**
@@ -135,10 +129,10 @@ public class WorkbenchDragDropHandler {
     // Private helper methods that work with the workbench 3x3 grid
 
     private static boolean tryPlaceInMainInventory(InventoryDragDropHandler.DragState dragState,
-                                                 Inventory inventory,
+                                                 Inventory inventory, ItemStack[] craftingInputSlots,
                                                  InventoryLayoutCalculator.InventoryLayout layout,
-                                                 float mouseX, float mouseY, SlotActionSink sink) {
-        // Reuse the main inventory placement logic
+                                                 float mouseX, float mouseY, Runnable updateCraftingOutput,
+                                                 SlotActionSink sink, byte craftGridRegion) {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             final int slotIndex = i;
             int row = slotIndex / Inventory.MAIN_INVENTORY_COLS;
@@ -149,13 +143,18 @@ public class WorkbenchDragDropHandler {
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                byte action = InventoryDragDropHandler.placementAction(dragState,
-                        inventory.getMainInventorySlot(slotIndex));
-                boolean placed = handleMainInventorySlotPlacement(dragState, inventory, slotIndex);
+                ItemStack target = inventory.getMainInventorySlot(slotIndex);
+                // Captured before the placement mutates the drag state (issue #334). Swap
+                // origins are player slots only: a grid-sourced drag sends NONE.
+                byte action = InventoryDragDropHandler.placementAction(dragState, target);
+                byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, sink);
+                byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
+                boolean placed = InventoryDragDropHandler.handleSlotPlacement(dragState, target,
+                        (stack) -> inventory.setMainInventorySlot(slotIndex, stack),
+                        inventory, craftingInputSlots, updateCraftingOutput);
                 if (placed && sink != null) {
                     sink.send(com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_MAIN,
-                            (byte) slotIndex, InventoryDragDropHandler.originRegionOf(dragState, sink),
-                            InventoryDragDropHandler.originSlotOf(dragState), action, false);
+                            (byte) slotIndex, originRegion, originSlot, action, false);
                 }
                 return placed;
             }
@@ -164,10 +163,10 @@ public class WorkbenchDragDropHandler {
     }
 
     private static boolean tryPlaceInHotbar(InventoryDragDropHandler.DragState dragState,
-                                          Inventory inventory,
+                                          Inventory inventory, ItemStack[] craftingInputSlots,
                                           InventoryLayoutCalculator.InventoryLayout layout,
-                                          float mouseX, float mouseY, SlotActionSink sink) {
-        // Reuse the hotbar placement logic
+                                          float mouseX, float mouseY, Runnable updateCraftingOutput,
+                                          SlotActionSink sink, byte craftGridRegion) {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             final int slotIndex = i;
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
@@ -176,13 +175,16 @@ public class WorkbenchDragDropHandler {
             int slotY = layout.hotbarRowY;
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                byte action = InventoryDragDropHandler.placementAction(dragState,
-                        inventory.getHotbarSlot(slotIndex));
-                boolean placed = handleHotbarSlotPlacement(dragState, inventory, slotIndex);
+                ItemStack target = inventory.getHotbarSlot(slotIndex);
+                byte action = InventoryDragDropHandler.placementAction(dragState, target);
+                byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, sink);
+                byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
+                boolean placed = InventoryDragDropHandler.handleSlotPlacement(dragState, target,
+                        (stack) -> inventory.setHotbarSlot(slotIndex, stack),
+                        inventory, craftingInputSlots, updateCraftingOutput);
                 if (placed && sink != null) {
                     sink.send(com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_HOTBAR,
-                            (byte) slotIndex, InventoryDragDropHandler.originRegionOf(dragState, sink),
-                            InventoryDragDropHandler.originSlotOf(dragState), action, false);
+                            (byte) slotIndex, originRegion, originSlot, action, false);
                 }
                 return placed;
             }
@@ -191,7 +193,7 @@ public class WorkbenchDragDropHandler {
     }
 
     private static boolean tryPlaceInWorkbenchCraftingSlots(InventoryDragDropHandler.DragState dragState,
-                                                          ItemStack[] craftingInputSlots,
+                                                          Inventory inventory, ItemStack[] craftingInputSlots,
                                                           InventoryLayoutCalculator.InventoryLayout layout,
                                                           float mouseX, float mouseY,
                                                           Runnable updateCraftingOutput,
@@ -201,6 +203,7 @@ public class WorkbenchDragDropHandler {
         int totalSlots = gridSize * gridSize;
 
         for (int i = 0; i < totalSlots; i++) {
+            final int slotIndex = i;
             int r = i / gridSize;
             int c = i % gridSize;
             int slotX = layout.craftingElementsStartX + c * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
@@ -208,12 +211,17 @@ public class WorkbenchDragDropHandler {
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
                 byte action = InventoryDragDropHandler.placementAction(dragState, craftingInputSlots[i]);
-                boolean placed = handleCraftingSlotPlacement(dragState, craftingInputSlots, i);
+                byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, sink);
+                byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
+                boolean placed = InventoryDragDropHandler.handleSlotPlacement(dragState, craftingInputSlots[i],
+                        (stack) -> craftingInputSlots[slotIndex] = stack,
+                        inventory, craftingInputSlots, updateCraftingOutput);
                 if (placed) {
-                    updateCraftingOutput.run();
+                    if (updateCraftingOutput != null) {
+                        updateCraftingOutput.run();
+                    }
                     if (sink != null) {
-                        sink.send(craftGridRegion, (byte) i, InventoryDragDropHandler.originRegionOf(dragState, sink),
-                                InventoryDragDropHandler.originSlotOf(dragState), action, false);
+                        sink.send(craftGridRegion, (byte) i, originRegion, originSlot, action, false);
                     }
                 }
                 return placed;
@@ -230,50 +238,5 @@ public class WorkbenchDragDropHandler {
     private static boolean isMouseOutsideInventoryBounds(float mouseX, float mouseY, InventoryLayoutCalculator.InventoryLayout layout) {
         return mouseX < layout.panelStartX || mouseX > layout.panelStartX + layout.inventoryPanelWidth ||
                mouseY < layout.panelStartY || mouseY > layout.panelStartY + layout.inventoryPanelHeight;
-    }
-
-    private static boolean handleMainInventorySlotPlacement(InventoryDragDropHandler.DragState dragState, Inventory inventory, int slotIndex) {
-        ItemStack currentSlot = inventory.getMainInventorySlot(slotIndex);
-        return handleSlotPlacement(dragState, currentSlot, (stack) -> inventory.setMainInventorySlot(slotIndex, stack));
-    }
-
-    private static boolean handleHotbarSlotPlacement(InventoryDragDropHandler.DragState dragState, Inventory inventory, int slotIndex) {
-        ItemStack currentSlot = inventory.getHotbarSlot(slotIndex);
-        return handleSlotPlacement(dragState, currentSlot, (stack) -> inventory.setHotbarSlot(slotIndex, stack));
-    }
-
-    private static boolean handleCraftingSlotPlacement(InventoryDragDropHandler.DragState dragState, ItemStack[] craftingInputSlots, int slotIndex) {
-        ItemStack currentSlot = craftingInputSlots[slotIndex];
-        return handleSlotPlacement(dragState, currentSlot, (stack) -> craftingInputSlots[slotIndex] = stack);
-    }
-
-    private static boolean handleSlotPlacement(InventoryDragDropHandler.DragState dragState, ItemStack currentSlot, java.util.function.Consumer<ItemStack> slotSetter) {
-        if (currentSlot.isEmpty()) {
-            // Place entire stack in empty slot
-            slotSetter.accept(dragState.draggedItemStack);
-            dragState.clear();
-            return true;
-        } else if (currentSlot.canStackWith(dragState.draggedItemStack)) {
-            // Stack compatible items
-            int spaceAvailable = currentSlot.getMaxStackSize() - currentSlot.getCount();
-            int amountToAdd = Math.min(spaceAvailable, dragState.draggedItemStack.getCount());
-
-            if (amountToAdd > 0) {
-                currentSlot.incrementCount(amountToAdd);
-                dragState.draggedItemStack.decrementCount(amountToAdd);
-
-                if (dragState.draggedItemStack.isEmpty()) {
-                    dragState.clear();
-                }
-                return true;
-            }
-        } else {
-            // Swap items
-            ItemStack temp = currentSlot.copy();
-            slotSetter.accept(dragState.draggedItemStack);
-            dragState.draggedItemStack = temp;
-            return true;
-        }
-        return false;
     }
 }

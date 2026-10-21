@@ -94,16 +94,20 @@ public final class ServerPlayerHandler {
     public void handleDropItem(ServerPlayer sp, DropItemC2S d, ServerWorldContext ctx) {
         if (d.count() <= 0 || ctx.world() == null || ctx.entityManager() == null
                 || sp.lastStateNs() == 0L || !sp.allowDrop()) {
-            sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+            sp.send(sp.inventorySync(), false);
             return;
         }
         int count = Math.min(d.count(), MAX_DROP_COUNT);
-        if (!sp.inventory().debit(d.itemId(), count)) {
-            sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+        // The packet names only the item id: the toss comes from the SELECTED slot when it
+        // holds that id (Q tosses from there), and only stacks of the same state are debited;
+        // the drop carries the debited state — a water bucket tossed stays a water bucket.
+        ItemStack tossed = sp.inventory().debitStack(d.itemId(), count);
+        if (tossed == null) {
+            sp.send(sp.inventorySync(), false);
             return;
         }
-        spawnTossDrop(sp, ctx, d.itemId(), count, null);
-        sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+        spawnTossDrop(sp, ctx, tossed.getBlockTypeId(), tossed.getCount(), tossed.getState());
+        sp.send(sp.inventorySync(), false);
     }
 
     /**
@@ -117,7 +121,7 @@ public final class ServerPlayerHandler {
     public void handleDeathDrop(ServerPlayer sp, DeathDropC2S d, ServerWorldContext ctx) {
         ServerInventory inv = sp.inventory();
         if (ctx.world() == null || ctx.entityManager() == null || sp.lastStateNs() == 0L) {
-            sp.send(new InventorySyncS2C(inv.encode()), false);
+            sp.send(sp.inventorySync(), false);
             return;
         }
         for (int i = 0; i < ServerInventory.TOTAL_SLOTS; i++) {
@@ -137,7 +141,7 @@ public final class ServerPlayerHandler {
             }
         }
         inv.clear();
-        sp.send(new InventorySyncS2C(inv.encode()), false);
+        sp.send(sp.inventorySync(), false);
     }
 
     /**
@@ -212,6 +216,42 @@ public final class ServerPlayerHandler {
     }
 
     /**
+     * Returns EVERYTHING a closing inventory screen holds (issue #334): the carried stack,
+     * then the 2×2 craft grid cells in order — the order of the client's close prediction
+     * ({@code InventoryController.returnHeldItemsToPlayer}). Each goes into the 36 slots by the
+     * normal stacking rule and whatever does not fit drops at the player; without a spawnable
+     * world a remainder stays where it was (never destroyed). Used by {@code DEPOSIT_CARRIED}
+     * on the inventory screen and by the leave paths (disconnect, takeover, shutdown) — the
+     * grid is never persisted, so anything left there would be lost. Returns true when
+     * anything was held.
+     */
+    public static boolean returnHeldToInventoryOrWorld(ServerPlayer sp, ServerInventory inv,
+                                                       ServerWorldContext ctx) {
+        boolean held = depositCarriedToInventoryOrWorld(sp, inv, ctx);
+        boolean spawnable = ctx.world() != null && ctx.entityManager() != null
+                && sp.lastStateNs() != 0L;
+        for (int i = 0; i < ServerInventory.CRAFT_GRID_SIZE; i++) {
+            ItemStack cell = inv.craftSlot(i);
+            if (cell.isEmpty()) {
+                continue;
+            }
+            held = true;
+            int added = inv.addStack(cell);
+            if (added > 0) {
+                cell.decrementCount(added);
+            }
+            if (!cell.isEmpty() && spawnable) {
+                spawnTossDrop(sp, ctx, cell.getBlockTypeId(), cell.getCount(), cell.getState());
+                cell.decrementCount(cell.getCount());
+            }
+            if (cell.isEmpty()) {
+                inv.setCraftSlot(i, ItemStackStateCodec.empty());
+            }
+        }
+        return held;
+    }
+
+    /**
      * Player selected a hotbar slot (number keys / scroll / UI). The server stores the
      * selection; the held item is derived from the replica, so tool-specific drops and the
      * shears check read a server-derived value (issue #334). Out-of-range slots are refused
@@ -219,7 +259,7 @@ public final class ServerPlayerHandler {
      */
     public void handleHotbarSelect(ServerPlayer sp, HotbarSelectC2S h, ServerWorldContext ctx) {
         if (h.slot() < 0 || h.slot() >= 9) {
-            sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+            sp.send(sp.inventorySync(), false);
             return;
         }
         sp.inventory().selectHotbarSlot(h.slot());
@@ -230,14 +270,16 @@ public final class ServerPlayerHandler {
 
     /** Container action from an open furnace / workbench / inventory screen. */
     public void handleContainerAction(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
+        // Every action is answered with a sync acknowledging it, accepted or refused (#353).
+        sp.recordActionSeq(a.seq());
         // Toss/craft overflow inside the processor spawns entities; without a spawnable
         // world every action is refused whole so no debit can outrun its spawn.
         if (ctx.world() == null || ctx.entityManager() == null || sp.lastStateNs() == 0L) {
-            sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+            sp.send(sp.inventorySync(), false);
             return;
         }
         if (containerActions.apply(sp, a, ctx)) {
-            sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+            sp.send(sp.inventorySync(), false);
         }
         // A refusal already echoed the sync + container state from the processor.
     }

@@ -1,6 +1,10 @@
 package com.stonebreak.items;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The shared new-character starting inventory. Used by both sides so the client's
@@ -25,6 +29,26 @@ public final class StartingItems {
 
     private StartingItems() {
         throw new UnsupportedOperationException("Utility class");
+    }
+
+    /**
+     * The extra stacks a background grants at character creation (issue #334). Shared by the
+     * client's first spawn and the server's fresh-player replica seed, so the authoritative
+     * inventory includes them and the next sync no longer wipes them. Unknown item names are
+     * skipped (logged); an unknown/null background grants nothing.
+     */
+    public static List<Entry> backgroundEntries(String backgroundId) {
+        List<Entry> out = new ArrayList<>();
+        BackgroundRegistry.findById(backgroundId).ifPresent(bg -> {
+            for (String itemName : bg.extraItemNames()) {
+                try {
+                    out.add(new Entry(ItemType.valueOf(itemName).getId(), 1));
+                } catch (IllegalArgumentException e) {
+                    System.err.println("[SPAWN] Unknown background item: " + itemName);
+                }
+            }
+        });
+        return out;
     }
 
     /** Adds every starting stack to {@code inventory}. */

@@ -11,8 +11,18 @@ import io.netty.buffer.ByteBuf;
  * — the server emits only when the string actually changed — so an idle furnace costs
  * nothing. Clients write it into the chunk state map (remeshing on render-state change)
  * and feed their display furnace registry so open UIs track live.
+ *
+ * <p>{@code ack} is the {@code seq} of the last furnace/workbench slot intent the server
+ * processed FROM THE RECIPIENT at this block (0 if none), so the same echo can carry a
+ * different ack per client (issue #353). A client whose latest slot snapshot is newer than
+ * the ack knows the echo predates it and keeps its own slots.
  */
-public record BlockStateS2C(int x, int y, int z, String state) implements Packet {
+public record BlockStateS2C(int x, int y, int z, String state, int ack) implements Packet {
+
+    /** An echo that acknowledges no slot intent (doors, stairs, other players' views). */
+    public BlockStateS2C(int x, int y, int z, String state) {
+        this(x, y, z, state, 0);
+    }
 
     /** Bound on one state string; furnace states run ~100 chars. */
     public static final int MAX_STATE_LENGTH = 512;
@@ -24,13 +34,15 @@ public record BlockStateS2C(int x, int y, int z, String state) implements Packet
             out.writeInt(p.y());
             out.writeInt(p.z());
             ByteBufIO.writeString(out, p.state(), MAX_STATE_LENGTH);
+            ByteBufIO.writeVarInt(out, p.ack());
         }
 
         @Override
         public BlockStateS2C decode(ByteBuf in) {
             return new BlockStateS2C(
                 in.readInt(), in.readInt(), in.readInt(),
-                ByteBufIO.readString(in, MAX_STATE_LENGTH));
+                ByteBufIO.readString(in, MAX_STATE_LENGTH),
+                ByteBufIO.readVarInt(in));
         }
     };
 }
