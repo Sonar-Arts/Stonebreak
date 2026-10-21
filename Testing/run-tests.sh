@@ -86,7 +86,7 @@ elif [[ -n "${JAVA_HOME:-}" ]]; then
   CAND="$JAVA_HOME"
 fi
 
-if [[ -z "${CAND:-}" ]] || ! "$CAND/bin/java" -version 2>&1 | grep -q 'version "25'; then
+if [[ -z "${CAND:-}" ]] || ! "$CAND/bin/java" -version 2>&1 | grep 'version "25' >/dev/null; then
   echo "No JDK 25 found. Set STONEBREAK_JDK to a JDK 25 installation." >&2
   exit 2
 fi
@@ -96,8 +96,11 @@ export PATH="$JAVA_HOME/bin:$PATH"
 
 # ── Resolve scope ───────────────────────────────────────────────────
 RESOLVED="$(python3 "$HARNESS" resolve --scope "$SCOPE")"
-MODULES_LINE="$(echo "$RESOLVED" | head -n1)"
-SECOND_LINE="$(echo "$RESOLVED" | sed -n '2p')"
+# Split with mapfile, not `echo | head`: under pipefail the early-exiting
+# reader SIGPIPEs echo once the TESTS line outgrows a write chunk (exit 141).
+mapfile -t RESOLVED_LINES <<<"$RESOLVED"
+MODULES_LINE="${RESOLVED_LINES[0]:-}"
+SECOND_LINE="${RESOLVED_LINES[1]:-}"
 
 # Strip leading keyword from each line
 MODULES_STR="${MODULES_LINE#MODULES }"
