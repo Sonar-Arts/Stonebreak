@@ -1,6 +1,9 @@
 package com.stonebreak.network.server.handlers;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemStackStateCodec;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
@@ -89,6 +92,16 @@ public final class ServerBlockHandler {
             return;
         }
         BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
+        // Placement debits the server-owned inventory (issue #334): a non-air edit costs one
+        // of that block unless the SERVER's cheats flag is on AND the player's accepted game
+        // mode is creative. A refusal reverts the optimistic client edit — no world mutation.
+        if (incoming != null && incoming != BlockType.AIR && !placementDebitExempt(sp, ctx)
+                && !debitForPlacement(sp, incoming)) {
+            sp.send(new com.stonebreak.network.packet.player.InventorySyncS2C(
+                    sp.inventory().encode()), false);
+            sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+            return;
+        }
         // Use the CLIENT-reported prev as the source of truth for "what the player broke" —
         // the server's own world snapshot can lag under burst load (esp. for fast non-host
         // edits arriving between server ticks), causing the server's getBlockAt to read the
@@ -108,6 +121,79 @@ public final class ServerBlockHandler {
             return;
         }
         applyAccepted(sp, c, incoming, prev, world, ctx);
+        if (incoming == BlockType.AIR && serverPrev == BlockType.WATER) {
+            // Bucket scoop (mirrors BlockPlacer.handleEmptyBucket): removing a water source
+            // with any non-water bucket selected fills that bucket server-side. Gated on the
+            // SERVER's pre-apply snapshot — clientPrev is trusted only for drop selection, so
+            // a modified client cannot mint water by claiming prev=WATER at any reach-valid
+            // cell; a legit scoop raced by server-side flow simply re-scoops (#334).
+            convertSelectedBucket(sp, null, ItemType.BUCKET_STATE_WATER, false);
+        }
+    }
+
+    /**
+     * The placement debit for one block (issue #334). Most blocks debit their own id, but
+     * the torch ITEM places the torch BLOCK (ids differ — a stack may hold either: crafted
+     * torches carry the item id, picked-up ones the block id), and water is placed only
+     * from a water bucket, which converts to an empty one (mirrors
+     * {@code BlockPlacer.handleWaterBucket}).
+     */
+    private static boolean debitForPlacement(ServerPlayer sp, BlockType incoming) {
+        if (incoming == BlockType.WATER) {
+            // Water can be held as plain WATER blocks (starting items) or placed from a
+            // water bucket, which converts to an empty one (mirrors
+            // BlockPlacer.handleWaterBucket). Either way exactly one item is consumed.
+            return sp.inventory().debit(incoming.getId(), 1)
+                    || convertSelectedBucket(sp, ItemType.BUCKET_STATE_WATER,
+                        ItemType.BUCKET_STATE_EMPTY, true);
+        }
+        if (incoming == BlockType.TORCH_PLACED) {
+            ItemType torch = com.stonebreak.blocks.torch.TorchBlock.item();
+            if (torch != null && sp.inventory().debit(torch.getId(), 1)) {
+                return true;
+            }
+        }
+        return sp.inventory().debit(incoming.getId(), 1);
+    }
+
+    /**
+     * Consumes buckets of {@code fromState} from the SELECTED hotbar slot (the only slot
+     * the client's bucket logic uses) and grants matching {@code toState} buckets; false
+     * when the selected slot holds no such bucket, so nothing is granted and nothing
+     * consumed. Placing water converts the WHOLE selected stack (mirrors
+     * {@code BlockPlacer.handleWaterBucket}); a scoop fills exactly one (mirrors
+     * {@code handleEmptyBucket}). A null {@code fromState} matches ANY bucket state —
+     * the scoop path (the client scoops with any non-water bucket).
+     */
+    private static boolean convertSelectedBucket(ServerPlayer sp, String fromState, String toState,
+                                                 boolean wholeStack) {
+        ItemType bucket = ItemType.WOODEN_BUCKET;
+        if (bucket == null) {
+            return false;
+        }
+        ItemStack s = sp.inventory().slot(sp.inventory().selectedHotbarSlot());
+        if (s.isEmpty() || s.getBlockTypeId() != bucket.getId()
+                || (fromState != null && !fromState.equals(s.getState()))) {
+            return false;
+        }
+        do {
+            s.decrementCount(1);
+            sp.inventory().add(bucket.getId(), 1, toState);
+        } while (wholeStack && !s.isEmpty());
+        if (s.isEmpty()) {
+            sp.inventory().setSlot(sp.inventory().selectedHotbarSlot(),
+                    ItemStackStateCodec.empty());
+        }
+        return true;
+    }
+
+    /**
+     * Placement is free only when the SERVER's cheats flag is on AND this player's accepted
+     * game mode is creative — the client's own cheats state is never trusted (issue #334).
+     */
+    private static boolean placementDebitExempt(ServerPlayer sp, ServerWorldContext ctx) {
+        com.stonebreak.network.server.ServerLevel level = ctx.serverLevel();
+        return level != null && level.cheatsEnabled() && sp.gameMode() == 1;
     }
 
     /** Post-apply effects of an accepted edit: break drops/cleanup, version bump, broadcast. */
@@ -129,7 +215,9 @@ public final class ServerBlockHandler {
             // The breaker's last-reported held item selects per-tool drop overrides
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
             // block simply resolves to no tool.
-            com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.heldItemId());
+            // The breaker's held item comes from the server's replica (issue #334) — the client
+            // cannot forge a tool id to unlock per-tool drop overrides.
+            com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.inventory().heldItemId());
             // Issue #225: the breaker's position biases which adjacent passable cell the
             // drops spawn into (nearest to the player) and the direction they spit out.
             com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool, 0,
@@ -270,70 +358,27 @@ public final class ServerBlockHandler {
         if (layers == 0) {
             world.getSnowLayerManager().removeSnowLayers(s.x(), s.y(), s.z());
         } else if (world.getBlockAt(s.x(), s.y(), s.z()) == BlockType.SNOW) {
+            // Raising the layer count consumes one SNOW block from the server-owned
+            // inventory (issue #334); a refusal syncs and mutates nothing.
+            int current = world.getSnowLayerManager().getSnowLayers(s.x(), s.y(), s.z());
+            if (layers > current && !placementDebitExempt(sp, ctx)
+                    && !sp.inventory().debit(BlockType.SNOW.getId(), 1)) {
+                sp.send(new com.stonebreak.network.packet.player.InventorySyncS2C(
+                        sp.inventory().encode()), false);
+                // Re-assert the cell's actual layer count so an over-optimistic client reverts.
+                int sx = Math.floorDiv(s.x(), 16);
+                int sy = Math.floorDiv(s.y(), 16);
+                int sz = Math.floorDiv(s.z(), 16);
+                int lx = s.x() - sx * 16;
+                int ly = s.y() - sy * 16;
+                int lz = s.z() - sz * 16;
+                sp.send(new com.stonebreak.network.packet.world.BlockMetaS2C(sx, sy, sz,
+                        com.stonebreak.network.packet.world.BlockMetaS2C.KIND_SNOW_LAYERS,
+                        new int[]{(((lx << 8) | (ly << 4) | lz) << 16) | current}), false);
+                return;
+            }
             world.getSnowLayerManager().setSnowLayers(s.x(), s.y(), s.z(), layers);
         }
-    }
-
-    /**
-     * C2S: the player edited the slots of an open furnace UI. Validates (reach, furnace
-     * exists on the server world), then applies SLOTS ONLY onto the authoritative
-     * {@code FurnaceState} — burn/cook timers stay server-owned. The registry's next tick
-     * writes the new state string, whose change listener broadcasts the {@code BlockStateS2C}
-     * echo that corrects everyone (originator included).
-     */
-    public void handleFurnaceSlots(ServerPlayer sp, com.stonebreak.network.packet.world.FurnaceSlotsC2S f,
-                                   ServerWorldContext ctx) {
-        World world = ctx.world();
-        if (world == null || world.getFurnaceRegistry() == null) {
-            return;
-        }
-        if (f.y() < 0 || f.y() >= WorldConfiguration.WORLD_HEIGHT) {
-            return;
-        }
-        if (sp.lastStateNs() != 0L) {
-            float dx = (f.x() + 0.5f) - sp.x();
-            float dy = (f.y() + 0.5f) - sp.y();
-            float dz = (f.z() + 0.5f) - sp.z();
-            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
-                return;
-            }
-        }
-        if (world.getBlockAt(f.x(), f.y(), f.z()) != BlockType.FURNACE) {
-            return;
-        }
-        world.getFurnaceRegistry()
-            .getOrCreate(new com.openmason.engine.util.BlockPos(f.x(), f.y(), f.z()))
-            .applySlots(f.slots());
-    }
-
-    /**
-     * C2S: the player edited the grid of an open crafting-table UI (issue #307). Validates
-     * (reach, the block is still a workbench on the server world), then persists the grid on
-     * the authoritative {@code WorkbenchState}; the registry's change listener broadcasts the
-     * {@code BlockStateS2C} echo that corrects everyone (originator included).
-     */
-    public void handleWorkbenchSlots(ServerPlayer sp, com.stonebreak.network.packet.world.WorkbenchSlotsC2S w,
-                                     ServerWorldContext ctx) {
-        World world = ctx.world();
-        if (world == null) {
-            return;
-        }
-        if (w.y() < 0 || w.y() >= WorldConfiguration.WORLD_HEIGHT) {
-            return;
-        }
-        if (sp.lastStateNs() != 0L) {
-            float dx = (w.x() + 0.5f) - sp.x();
-            float dy = (w.y() + 0.5f) - sp.y();
-            float dz = (w.z() + 0.5f) - sp.z();
-            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
-                return;
-            }
-        }
-        if (world.getBlockAt(w.x(), w.y(), w.z()) != BlockType.WORKBENCH) {
-            return;
-        }
-        world.getWorkbenchRegistry().applySlots(world,
-            new com.openmason.engine.util.BlockPos(w.x(), w.y(), w.z()), w.slots());
     }
 
     /**
@@ -468,7 +513,14 @@ public final class ServerBlockHandler {
                     ? clientPrev : serverPrev;
                 applyAccepted(pe.sp, c, incoming, prev, world, ctx);
             } else if (--pe.ticksLeft <= 0) {
+                // The debit was taken when the edit was validated; give it back on expiry.
+                BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
+                if (incoming != null && incoming != BlockType.AIR) {
+                    pe.sp.inventory().add(incoming.getId(), 1);
+                }
                 sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
+                pe.sp.send(new com.stonebreak.network.packet.player.InventorySyncS2C(
+                        pe.sp.inventory().encode()), false);
             } else {
                 retryQueue.add(pe); // still loading — try again next tick
             }

@@ -41,14 +41,25 @@ public class InventoryController {
      * on the cursor, then the crafting grid. Whatever the inventory cannot take is
      * dropped at the player's feet, so closing a crafting screen never destroys
      * items (issue #307). Safe to call when nothing is held.
+     *
+     * <p>With a live session the same return also runs on the SERVER's authoritative
+     * copy ({@link InventoryInputManager#sendCloseReturnOps()}): the local return below
+     * is the prediction, the sends are the authority — otherwise the next
+     * InventorySyncS2C would overwrite the mirror without the grid's items (issue #334).
+     * The SERVER's QUICK_MOVE overflow already drops at the player, so with a session
+     * the local overflow drops here would duplicate it as slot debits and are skipped.
      */
     public void returnHeldItemsToPlayer() {
         if (inputManager != null) {
             inputManager.handleCloseWithDraggedItems();
+            inputManager.sendCloseReturnOps();
         }
         if (craftingManager == null) return;
+        boolean sessionLive = com.stonebreak.network.MultiplayerSession.isClient();
         for (ItemStack overflow : craftingManager.returnInputsTo(inventory)) {
-            DropUtil.dropItemFromPlayer(Game.getPlayer(), overflow);
+            if (!sessionLive) {
+                DropUtil.dropItemFromPlayer(Game.getPlayer(), overflow);
+            }
         }
     }
 

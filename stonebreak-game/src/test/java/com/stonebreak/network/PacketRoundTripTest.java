@@ -20,11 +20,12 @@ import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.network.packet.player.DropItemC2S;
+import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
+import com.stonebreak.network.packet.player.HotbarSelectC2S;
+import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.KillCreditS2C;
-import com.stonebreak.network.packet.player.PlayerDataC2S;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
-import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
@@ -39,11 +40,9 @@ import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.packet.world.ChunkHashesC2S;
 import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
-import com.stonebreak.network.packet.world.FurnaceSlotsC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
-import com.stonebreak.network.packet.world.WorkbenchSlotsC2S;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.junit.jupiter.api.Tag;
@@ -90,7 +89,12 @@ class PacketRoundTripTest {
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0)));
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF)));
         assertEquals(new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (byte) 0x3F), roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (byte) 0x3F)));
-        assertEquals(new PlayerHeldItemC2S(5), roundTrip(PlayerHeldItemC2S.CODEC, new PlayerHeldItemC2S(5)));
+        assertEquals(new HotbarSelectC2S(5), roundTrip(HotbarSelectC2S.CODEC, new HotbarSelectC2S(5)));
+        assertEquals(new ContainerActionC2S(10, 64, -5, ContainerActionC2S.ContainerKind.FURNACE,
+                ContainerActionC2S.Region.FURNACE_ING, (byte) 0, ContainerActionC2S.Action.PUT_ALL, (short) 8, true),
+            roundTrip(ContainerActionC2S.CODEC, new ContainerActionC2S(10, 64, -5,
+                ContainerActionC2S.ContainerKind.FURNACE, ContainerActionC2S.Region.FURNACE_ING,
+                (byte) 0, ContainerActionC2S.Action.PUT_ALL, (short) 8, true)));
         assertEquals(new PlayerHeldItemS2C(2, 5), roundTrip(PlayerHeldItemS2C.CODEC, new PlayerHeldItemS2C(2, 5)));
         assertEquals(new GiveItemS2C(3, 64), roundTrip(GiveItemS2C.CODEC, new GiveItemS2C(3, 64)));
         assertEquals(new PlayerJoinS2C(2, "bob", 1f, 2f, 3f), roundTrip(PlayerJoinS2C.CODEC, new PlayerJoinS2C(2, "bob", 1f, 2f, 3f)));
@@ -123,15 +127,18 @@ class PacketRoundTripTest {
         assertEquals(new SnowLayerC2S(0, 0, 0, (byte) 0), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(0, 0, 0, (byte) 0)));
         assertEquals(new BlockStateS2C(10, 64, -5, "furnace:state=Lit;ing=B:1:3;fuel=I:20:2;out=B:5:1;burn=100;burnTotal=200;cook=40"),
             roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(10, 64, -5, "furnace:state=Lit;ing=B:1:3;fuel=I:20:2;out=B:5:1;burn=100;burnTotal=200;cook=40")));
-        assertEquals(new FurnaceSlotsC2S(10, 64, -5, "B:1:3|I:20:2|B:0:0"),
-            roundTrip(FurnaceSlotsC2S.CODEC, new FurnaceSlotsC2S(10, 64, -5, "B:1:3|I:20:2|B:0:0")));
-        String grid = "B:1:3|I:20:2:sb_wooden_bucket_water|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|B:0:0|I:7:64";
-        assertEquals(new WorkbenchSlotsC2S(10, 64, -5, grid),
-            roundTrip(WorkbenchSlotsC2S.CODEC, new WorkbenchSlotsC2S(10, 64, -5, grid)));
+        assertEquals(new InventorySyncS2C("B:1:3|I:20:2|B:0:0"),
+            roundTrip(InventorySyncS2C.CODEC, new InventorySyncS2C("B:1:3|I:20:2|B:0:0")));
         assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
         assertEquals(new KillCreditS2C(2, 7.5f, true, 15), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15)));
         assertEquals(new KillCreditS2C(0, 1f, false, 0), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
+        assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(),
+            roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,
+                new com.stonebreak.network.packet.player.DeathDropC2S()));
+        assertEquals(new com.stonebreak.network.packet.player.PlayerPrefsC2S("{\"k\":1}"),
+            roundTrip(com.stonebreak.network.packet.player.PlayerPrefsC2S.CODEC,
+                new com.stonebreak.network.packet.player.PlayerPrefsC2S("{\"k\":1}")));
     }
 
     @Test
@@ -201,7 +208,6 @@ class PacketRoundTripTest {
         // PlayerData{C2S,S2C} carry an opaque JSON blob; byte[] needs array equality (record
         // equals() compares array identity, so assertEquals would falsely fail here).
         byte[] blob = "{\"inv\":[1,2,3]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        assertArrayEquals(blob, roundTrip(PlayerDataC2S.CODEC, new PlayerDataC2S(blob)).json());
         assertArrayEquals(blob, roundTrip(PlayerDataS2C.CODEC, new PlayerDataS2C(blob)).json());
         // Empty blob (S2C "no saved data" sentinel) must survive the round-trip too.
         assertArrayEquals(new byte[0], roundTrip(PlayerDataS2C.CODEC, new PlayerDataS2C(new byte[0])).json());
@@ -233,6 +239,9 @@ class PacketRoundTripTest {
             viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.world.CheatsSetC2S(true)));
         assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(true),
             viaRegistry(reg, PLAY, CLIENTBOUND, new com.stonebreak.network.packet.world.CheatsStateS2C(true)));
+        assertEquals(new com.stonebreak.network.packet.player.ProgressS2C(3, 40, 1, 2, 1, 5),
+            viaRegistry(reg, PLAY, CLIENTBOUND,
+                new com.stonebreak.network.packet.player.ProgressS2C(3, 40, 1, 2, 1, 5)));
     }
 
     /** Encode/decode through the registry exactly as the pipeline does (id varint + codec). */

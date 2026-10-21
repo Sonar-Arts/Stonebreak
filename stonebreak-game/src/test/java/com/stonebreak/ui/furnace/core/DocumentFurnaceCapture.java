@@ -82,7 +82,6 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
             controller = new FurnaceController(null, null, smelting());
             input = new FurnaceInputManager(null, inventory, controller);
             controller.setInputManager(input);
-            controller.setSlotSink((pos, slots) -> { });
             controller.setFurnaceAt(p -> true);
             controller.bind(furnace);
             host = new GameUiHost(services(input, inventory, w, h), MultiplayerSession.Mode.SINGLEPLAYER);

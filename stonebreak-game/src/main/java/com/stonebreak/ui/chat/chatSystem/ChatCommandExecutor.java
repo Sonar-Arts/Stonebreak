@@ -71,7 +71,13 @@ public class ChatCommandExecutor {
 
         ChatCommand command = commands.get(commandName);
         if (command != null) {
-            command.execute(args, messageManager);
+            if (command.executedOnServer()) {
+                // Server-executed command (issue #334): forward the raw line; the SERVER's
+                // cheats flag decides, and only the sender sees the reply.
+                com.stonebreak.network.MultiplayerSession.submitChat(commandString);
+            } else {
+                command.execute(args, messageManager);
+            }
         } else {
             messageManager.addMessage("Unknown command: /" + commandName, ChatColors.RED);
         }

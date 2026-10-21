@@ -58,16 +58,7 @@ public class Inventory {
      * Called explicitly for new players only (not when loading from save).
      */
     public void initializeStartingItems() {
-        // Start with some basic blocks
-        addItem(BlockType.GRASS, 10);
-        addItem(BlockType.DIRT, 10);
-        addItem(BlockType.STONE, 10);
-        addItem(BlockType.WOOD, 10);
-        addItem(BlockType.WATER, 5); // Add water blocks for testing
-        
-        // Add some tools and materials
-        addItem(ItemType.STICK, 5);
-        addItem(ItemType.WOODEN_PICKAXE, 1);
+        StartingItems.applyTo(this);
 
         // Initial tooltip will be triggered by Game.init() after setInventoryScreen is called.
     }    /**
@@ -617,6 +608,11 @@ public class Inventory {
         if (selectedHotbarSlotIndex >= 0 && selectedHotbarSlotIndex < HOTBAR_SIZE) {
             boolean changed = this.selectedHotbarSlotIndex != selectedHotbarSlotIndex;
             this.selectedHotbarSlotIndex = selectedHotbarSlotIndex;
+            if (changed) {
+                // The server derives the held item from its own replica (issue #334); every
+                // selection path funnels through here, and this is a no-op without a session.
+                com.stonebreak.network.MultiplayerSession.sendHotbarSelect(selectedHotbarSlotIndex);
+            }
             if (changed && inventoryScreen != null) {
                 ItemStack newItem = hotbarSlots[this.selectedHotbarSlotIndex];
                 // Support all item types, not just BlockType

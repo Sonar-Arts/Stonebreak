@@ -60,6 +60,22 @@ public class InventoryDragDropHandler {
     public static boolean placeDraggedItem(DragState dragState, Inventory inventory, ItemStack[] craftingInputSlots,
                                          Vector2f mousePos, InventoryLayoutCalculator.InventoryLayout layout,
                                          boolean outsidePanel, Runnable updateCraftingOutput) {
+        return placeDraggedItem(dragState, inventory, craftingInputSlots, mousePos, layout,
+                outsidePanel, updateCraftingOutput, null,
+                com.stonebreak.network.packet.player.ContainerActionC2S.Region.INV_CRAFT_GRID);
+    }
+
+    /**
+     * As above, for a server-authoritative screen (issue #334): every placement outcome also
+     * emits the matching atomic {@code ContainerActionC2S} through {@code sink} (null = no
+     * session semantics / tests). {@code craftGridRegion} maps the crafting grid (inventory
+     * 2×2 vs workbench 3×3).
+     */
+    public static boolean placeDraggedItem(DragState dragState, Inventory inventory, ItemStack[] craftingInputSlots,
+                                         Vector2f mousePos, InventoryLayoutCalculator.InventoryLayout layout,
+                                         boolean outsidePanel, Runnable updateCraftingOutput,
+                                         SlotActionSink sink,
+                                         byte craftGridRegion) {
         if (!dragState.isDragging()) return false;
 
         float mouseX = mousePos.x;
@@ -68,16 +84,17 @@ public class InventoryDragDropHandler {
         boolean placed = false;
 
         // Try to place in main inventory
-        placed = tryPlaceInMainInventory(dragState, inventory, layout, mouseX, mouseY);
+        placed = tryPlaceInMainInventory(dragState, inventory, layout, mouseX, mouseY, sink);
 
         // Try to place in hotbar if not placed
         if (!placed) {
-            placed = tryPlaceInHotbar(dragState, inventory, layout, mouseX, mouseY);
+            placed = tryPlaceInHotbar(dragState, inventory, layout, mouseX, mouseY, sink);
         }
 
         // Try to place in crafting input slots if not placed
         if (!placed) {
-            placed = tryPlaceInCraftingSlots(dragState, craftingInputSlots, layout, mouseX, mouseY, updateCraftingOutput);
+            placed = tryPlaceInCraftingSlots(dragState, craftingInputSlots, layout, mouseX, mouseY,
+                    updateCraftingOutput, sink, craftGridRegion);
         }
 
         // Handle placement results
@@ -85,13 +102,21 @@ public class InventoryDragDropHandler {
             dragState.clear();
         } else if (!placed && dragState.isDragging()) {
             if (outsidePanel) {
-                dropEntireStackIntoWorld(dragState);
+                if (sink != null) {
+                    // Server toss: the carried stack lives in the server replica's cursor,
+                    // not in the inventory mirror — DROP_CARRIED is the debit path.
+                    short n = (short) dragState.draggedItemStack.getCount();
+                    dragState.clear();
+                    sink.sendWithCount(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DROP_CARRIED, n);
+                } else {
+                    dropEntireStackIntoWorld(dragState);
+                }
             } else {
-                tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput);
+                tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput, sink);
             }
         } else if (placed && dragState.isDragging()) {
             // Swap happened, try to place the new dragged item back
-            tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput);
+            tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput, sink);
         }
 
         // Final cleanup
@@ -104,7 +129,7 @@ public class InventoryDragDropHandler {
 
     private static boolean tryPlaceInMainInventory(DragState dragState, Inventory inventory,
                                                  InventoryLayoutCalculator.InventoryLayout layout,
-                                                 float mouseX, float mouseY) {
+                                                 float mouseX, float mouseY, SlotActionSink sink) {
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
             int row = slotIndex / Inventory.MAIN_INVENTORY_COLS;
@@ -115,8 +140,15 @@ public class InventoryDragDropHandler {
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                return handleSlotPlacement(dragState, inventory.getMainInventorySlot(slotIndex),
+                ItemStack target = inventory.getMainInventorySlot(slotIndex);
+                byte action = placementAction(dragState, target);
+                boolean placed = handleSlotPlacement(dragState, target,
                                          (stack) -> inventory.setMainInventorySlot(slotIndex, stack), slotIndex, inventory);
+                if (placed && sink != null) {
+                    sink.send(com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_MAIN,
+                            (byte) slotIndex, originRegionOf(dragState, sink), originSlotOf(dragState), action, false);
+                }
+                return placed;
             }
         }
         return false;
@@ -124,7 +156,7 @@ public class InventoryDragDropHandler {
 
     private static boolean tryPlaceInHotbar(DragState dragState, Inventory inventory,
                                           InventoryLayoutCalculator.InventoryLayout layout,
-                                          float mouseX, float mouseY) {
+                                          float mouseX, float mouseY, SlotActionSink sink) {
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             final int slotIndex = i; // Make effectively final for lambda
             int col = slotIndex % Inventory.MAIN_INVENTORY_COLS;
@@ -133,8 +165,15 @@ public class InventoryDragDropHandler {
             int slotY = layout.hotbarRowY;
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                return handleSlotPlacement(dragState, inventory.getHotbarSlot(slotIndex),
+                ItemStack target = inventory.getHotbarSlot(slotIndex);
+                byte action = placementAction(dragState, target);
+                boolean placed = handleSlotPlacement(dragState, target,
                                          (stack) -> inventory.setHotbarSlot(slotIndex, stack), slotIndex, inventory);
+                if (placed && sink != null) {
+                    sink.send(com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_HOTBAR,
+                            (byte) slotIndex, originRegionOf(dragState, sink), originSlotOf(dragState), action, false);
+                }
+                return placed;
             }
         }
         return false;
@@ -142,7 +181,8 @@ public class InventoryDragDropHandler {
 
     private static boolean tryPlaceInCraftingSlots(DragState dragState, ItemStack[] craftingInputSlots,
                                                  InventoryLayoutCalculator.InventoryLayout layout,
-                                                 float mouseX, float mouseY, Runnable updateCraftingOutput) {
+                                                 float mouseX, float mouseY, Runnable updateCraftingOutput,
+                                                 SlotActionSink sink, byte craftGridRegion) {
         for (int i = 0; i < InventoryLayoutCalculator.getCraftingGridSize() * InventoryLayoutCalculator.getCraftingGridSize(); i++) {
             int r = i / InventoryLayoutCalculator.getCraftingGridSize();
             int c = i % InventoryLayoutCalculator.getCraftingGridSize();
@@ -150,8 +190,15 @@ public class InventoryDragDropHandler {
             int slotY = layout.craftingGridStartY + r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
+                byte action = placementAction(dragState, craftingInputSlots[i]);
                 boolean placed = handleCraftingSlotPlacement(dragState, craftingInputSlots, i);
-                if (placed) updateCraftingOutput.run();
+                if (placed) {
+                    updateCraftingOutput.run();
+                    if (sink != null) {
+                        sink.send(craftGridRegion, (byte) i, originRegionOf(dragState, sink),
+                                originSlotOf(dragState), action, false);
+                    }
+                }
                 return placed;
             }
         }
@@ -231,6 +278,38 @@ public class InventoryDragDropHandler {
     }
 
     public static void tryReturnToOriginalSlot(DragState dragState, Inventory inventory,
+                                             ItemStack[] craftingInputSlots, Runnable updateCraftingOutput) {
+        tryReturnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput, null);
+    }
+
+    /**
+     * Return-to-origin with a server sink (issue #334): the local return is the prediction;
+     * the server replays it as PUT_ALL (empty origin) or MERGE (stackable origin) against
+     * the replica's carried stack.
+     */
+    public static void tryReturnToOriginalSlot(DragState dragState, Inventory inventory,
+                                             ItemStack[] craftingInputSlots, Runnable updateCraftingOutput,
+                                             SlotActionSink sink) {
+        byte originRegion = originRegionOf(dragState, sink);
+        byte originSlot = originSlotOf(dragState);
+        ItemStack carried = dragState.draggedItemStack;
+        ItemStack originStack = null;
+        if (originRegion == com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_HOTBAR) {
+            originStack = inventory.getHotbarSlot(dragState.draggedItemOriginalSlotIndex);
+        } else if (originRegion == com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_MAIN) {
+            originStack = inventory.getMainInventorySlot(dragState.draggedItemOriginalSlotIndex);
+        }
+        byte action = (originStack == null || originStack.isEmpty())
+                ? com.stonebreak.network.packet.player.ContainerActionC2S.Action.PUT_ALL
+                : com.stonebreak.network.packet.player.ContainerActionC2S.Action.MERGE;
+        returnToOriginalSlot(dragState, inventory, craftingInputSlots, updateCraftingOutput);
+        if (sink != null && originRegion != com.stonebreak.network.packet.player.ContainerActionC2S.Region.NONE
+                && carried != null && !carried.isEmpty()) {
+            sink.send(originRegion, originSlot, action);
+        }
+    }
+
+    private static void returnToOriginalSlot(DragState dragState, Inventory inventory,
                                              ItemStack[] craftingInputSlots, Runnable updateCraftingOutput) {
         if (!dragState.isDragging() || dragState.draggedItemOriginalSlotIndex == -1) {
             if (dragState.draggedItemStack != null) dragState.draggedItemStack = null;
@@ -322,6 +401,39 @@ public class InventoryDragDropHandler {
         java.util.function.Consumer<ItemStack> previous = worldDrop;
         worldDrop = sink;
         return () -> worldDrop = previous;
+    }
+
+    /** The atomic action a placement onto {@code target} maps to (issue #334). */
+    public static byte placementAction(DragState dragState, ItemStack target) {
+        if (target == null || target.isEmpty()) {
+            return com.stonebreak.network.packet.player.ContainerActionC2S.Action.PUT_ALL;
+        }
+        return target.canStackWith(dragState.draggedItemStack)
+                ? com.stonebreak.network.packet.player.ContainerActionC2S.Action.MERGE
+                : com.stonebreak.network.packet.player.ContainerActionC2S.Action.SWAP;
+    }
+
+    /** The region the carried stack came from (for the server's swap-back), or NONE. */
+    public static byte originRegionOf(DragState dragState, SlotActionSink sink) {
+        if (sink == null || !dragState.isDragging()) {
+            return com.stonebreak.network.packet.player.ContainerActionC2S.Region.NONE;
+        }
+        return switch (dragState.dragSource) {
+            case HOTBAR -> com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_HOTBAR;
+            case MAIN_INVENTORY -> com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_MAIN;
+            default -> com.stonebreak.network.packet.player.ContainerActionC2S.Region.NONE;
+        };
+    }
+
+    /** The slot index within {@code originRegionOf} the carried stack came from, or -1. */
+    public static byte originSlotOf(DragState dragState) {
+        if (!dragState.isDragging()) {
+            return -1;
+        }
+        return switch (dragState.dragSource) {
+            case HOTBAR, MAIN_INVENTORY -> (byte) dragState.draggedItemOriginalSlotIndex;
+            default -> -1;
+        };
     }
 
     private static boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {

@@ -6,6 +6,7 @@ import com.openmason.engine.net.server.NetworkServer;
 import com.openmason.engine.net.server.ServerConnection;
 import com.openmason.engine.net.server.ServerInboundQueue;
 import com.openmason.engine.net.transport.NetAddress;
+import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntitySpawner;
 import com.stonebreak.blocks.BlockType;
@@ -23,10 +24,13 @@ import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.DropItemC2S;
+import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
-import com.stonebreak.network.packet.player.PlayerDataC2S;
+import com.stonebreak.network.packet.player.ContainerActionC2S;
+import com.stonebreak.network.packet.player.HotbarSelectC2S;
+import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
-import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
+import com.stonebreak.network.packet.player.PlayerPrefsC2S;
 import com.stonebreak.network.packet.player.ViewDistanceC2S;
 import com.stonebreak.network.packet.player.CharacterCreationC2S;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
@@ -198,7 +202,6 @@ public final class IntegratedServer {
             level.tick(TICK_PERIOD_NS / 1_000_000_000f);
         }
         blockHandler.tick(ctx);
-        playerHandler.tick(ctx);
         entityHandler.tick(ctx);
         chunkHandler.tick(ctx);
 
@@ -326,8 +329,7 @@ public final class IntegratedServer {
         switch (packet) {
             case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx);
             case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
-            case com.stonebreak.network.packet.world.FurnaceSlotsC2S f -> blockHandler.handleFurnaceSlots(sp, f, ctx);
-            case com.stonebreak.network.packet.world.WorkbenchSlotsC2S w -> blockHandler.handleWorkbenchSlots(sp, w, ctx);
+            case ContainerActionC2S ca -> playerHandler.handleContainerAction(sp, ca, ctx);
             case com.stonebreak.network.packet.world.BlockToggleC2S bt -> blockHandler.handleBlockToggle(sp, bt, ctx);
             case com.stonebreak.network.packet.world.ChunkResyncRequestC2S cr ->
                 chunkHandler.handleResyncRequest(sp, cr.chunkX(), cr.chunkZ());
@@ -342,17 +344,18 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
-            case PlayerHeldItemC2S h -> playerHandler.handleHeldItem(sp, h, ctx);
+            case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
             case com.stonebreak.network.packet.entity.EntityShearC2S es ->
                 entityHandler.handleEntityShear(sp, es, ctx);
             case com.stonebreak.network.packet.entity.ProjectileSpawnC2S ps2 ->
                 entityHandler.handleProjectileSpawn(sp, ps2, ctx);
-            case PlayerDataC2S pd -> { if (!sp.isLocal()) sp.setPlayerDataBlob(pd.json()); }
+            case PlayerPrefsC2S pp -> handlePlayerPrefs(sp, pp);
             case ViewDistanceC2S vd -> sp.setViewDistanceChunks(vd.chunks());
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
+            case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
@@ -493,7 +496,9 @@ public final class IntegratedServer {
         // Store the validated blob so we can send it back to the client and persist it.
         sp.setCharacterCreationBlob(json);
         sp.setWaitingForCharacterCreation(false);
-        // Complete the welcome sequence.
+        // Complete the welcome sequence — sendInitialPlayerData seeds the replica from the
+        // creation baseline + the shared StartingItems (the creation blob's inventory field
+        // is ignored; the server owns the inventory — issue #334).
         sendWelcomeSnapshot(sp);
         // Send the character creation data as PlayerData so the client can apply it.
         sp.send(new com.stonebreak.network.packet.player.PlayerDataS2C(json), false);
@@ -504,6 +509,15 @@ public final class IntegratedServer {
     /** Validate character creation JSON. Returns null on success, or an error message. */
     private String validateCharacterCreation(byte[] json) {
         String s = new String(json, java.nio.charset.StandardCharsets.UTF_8);
+
+        // Validate remaining AP (bounds the score budget check below)
+        String apPattern = "\"remainingAp\"\\s*:\\s*(-?\\d+)";
+        java.util.regex.Matcher apM = java.util.regex.Pattern.compile(apPattern).matcher(s);
+        int ap = 27;
+        if (apM.find()) {
+            ap = Integer.parseInt(apM.group(1));
+            if (ap < 0 || ap > 27) return "remainingAp out of range (0-27), got " + ap;
+        }
 
         // Validate ability scores
         String scoresPattern = "\"abilityScores\"\\s*:\\s*\\[([^\\]]+)\\]";
@@ -522,16 +536,14 @@ public final class IntegratedServer {
             // 6*10 = 60 base + 27 AP = 87 max total
             if (sum > 87) return "ability scores sum too high (" + sum + "), max is 87";
             if (sum < 60) return "ability scores sum too low (" + sum + "), min is 60";
+            // Score budget (issue #334): scores + unspent AP can never exceed the ceiling
+            // that the largest background bonus allows, so no spend/undo cycle can grow it.
+            if (sum + ap > PlayerPrefsValidator.MAX_SCORE_BUDGET) {
+                return "ability scores + remaining AP too high (" + (sum + ap) + "), max is "
+                        + PlayerPrefsValidator.MAX_SCORE_BUDGET;
+            }
         } else {
             return "missing abilityScores";
-        }
-
-        // Validate remaining AP
-        String apPattern = "\"remainingAp\"\\s*:\\s*(-?\\d+)";
-        java.util.regex.Matcher apM = java.util.regex.Pattern.compile(apPattern).matcher(s);
-        if (apM.find()) {
-            int ap = Integer.parseInt(apM.group(1));
-            if (ap < 0 || ap > 27) return "remainingAp out of range (0-27), got " + ap;
         }
 
         // Validate remaining CP
@@ -600,38 +612,171 @@ public final class IntegratedServer {
         return null; // valid
     }
 
-    /** Load a remote player's saved PlayerData blob from per-username storage and send it. */
+    /**
+     * Seed a player's server-owned inventory replica and progression baseline, then send the
+     * client its saved {@code PlayerData} (restores client-side presentation) plus the
+     * authoritative {@code InventorySyncS2C}. Applies to remote and local players alike —
+     * everyone's debits go through the replica (issue #334).
+     */
     private void sendInitialPlayerData(ServerPlayer sp) {
-        if (sp.isLocal()) {
-            return; // local player restored same-JVM (player.json)
-        }
-        byte[] blob = new byte[0];
         ServerLevel level = ctx.serverLevel();
-        if (level != null && level.saveService() != null) {
+        byte[] blob = null;
+        if (sp.characterCreationBlob() != null) {
+            // Late-join character creation: baseline = the validated creation progression
+            // (level/xp/pools re-owned by the server — the client's claims are overwritten;
+            // issue #334), inventory = the shared StartingItems (the blob's inventory field
+            // is ignored; the server owns the inventory).
+            com.stonebreak.world.save.model.PlayerData creation;
             try {
-                byte[] loaded = level.saveService().loadNamedPlayer(sp.username())
+                creation = PlayerPrefsValidator.normalizeCreation(
+                        new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                                .deserialize(sp.characterCreationBlob()));
+            } catch (Exception e) {
+                creation = null;
+            }
+            if (creation == null) {
+                creation = com.stonebreak.world.save.model.PlayerData.createDefault(
+                        level != null ? level.worldData().getWorldName() : null);
+            }
+            sp.acceptBaseline(creation);
+            ServerInventory inv = sp.inventory();
+            inv.clear();
+            for (com.stonebreak.items.StartingItems.Entry e : com.stonebreak.items.StartingItems.ENTRIES) {
+                inv.add(e.itemId(), e.count());
+            }
+            if (!sp.isLocal()) {
+                sp.send(new PlayerDataS2C(sp.characterCreationBlob()), false);
+            }
+            sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+            sp.markInventorySeeded();
+            return;
+        }
+        if (!sp.isLocal() && level != null && level.saveService() != null) {
+            try {
+                blob = level.saveService().loadNamedPlayer(sp.username())
                         .get(5, java.util.concurrent.TimeUnit.SECONDS);
-                if (loaded != null) {
-                    blob = loaded;
-                }
             } catch (Exception e) {
                 System.err.println("[SERVER] Failed to load saved data for "
                         + sp.username() + ": " + e.getMessage());
             }
+        } else if (sp.isLocal() && level != null) {
+            blob = level.loadedPlayerData() != null
+                    ? new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                            .serialize(level.loadedPlayerData())
+                    : null;
         }
-        sp.send(new PlayerDataS2C(blob), false);
+        seedFromBlob(sp, blob);
+        if (!sp.isLocal()) {
+            sp.send(new PlayerDataS2C(blob == null ? new byte[0] : blob), false);
+        }
+        sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
+        sp.markInventorySeeded();
     }
 
-    /** Persist one remote player's last-reported PlayerData blob (async). No-op for local. */
+    /** Parses a saved blob into the replica + progression baseline; empty → starting items. */
+    private void seedFromBlob(ServerPlayer sp, byte[] blob) {
+        ServerInventory inv = sp.inventory();
+        inv.clear();
+        if (blob == null || blob.length == 0) {
+            // Fresh character on this server: the shared starting inventory.
+            for (com.stonebreak.items.StartingItems.Entry e : com.stonebreak.items.StartingItems.ENTRIES) {
+                inv.add(e.itemId(), e.count());
+            }
+            ServerLevel level = ctx.serverLevel();
+            sp.acceptBaseline(com.stonebreak.world.save.model.PlayerData.createDefault(
+                    level != null ? level.worldData().getWorldName() : null));
+            return;
+        }
+        try {
+            com.stonebreak.world.save.model.PlayerData data =
+                    new com.stonebreak.world.save.serialization.JsonPlayerSerializer().deserialize(blob);
+            List<ItemStack> slots = new ArrayList<>(ServerInventory.TOTAL_SLOTS);
+            for (ItemStack s : data.getInventory()) {
+                slots.add(s);
+            }
+            inv.loadFrom(slots);
+            inv.selectHotbarSlot(data.getSelectedHotbarSlot());
+            sp.acceptBaseline(data);
+            sp.setHealth(data.getHealth());
+            sp.setFlightEnabled(data.isFlightEnabled());
+            sp.setFlying(data.isFlying());
+            sp.setSpectator(data.isSpectator());
+            sp.setGameMode(data.getGameMode());
+        } catch (Exception e) {
+            System.err.println("[SERVER] Failed to parse saved data for " + sp.username()
+                    + ": " + e.getMessage());
+            ServerLevel level = ctx.serverLevel();
+            sp.acceptBaseline(com.stonebreak.world.save.model.PlayerData.createDefault(
+                    level != null ? level.worldData().getWorldName() : null));
+        }
+    }
+
+    /** Persist one remote player's SERVER-BUILT PlayerData blob (async). No-op for local. */
     private void persistPlayer(ServerPlayer sp) {
         if (sp == null || sp.isLocal()) {
             return;
         }
-        byte[] blob = sp.playerDataBlob();
         ServerLevel level = ctx.serverLevel();
-        if (blob != null && level != null && level.saveService() != null) {
-            level.saveService().saveNamedPlayer(sp.username(), blob);
+        if (level == null || level.saveService() == null || !sp.isInventorySeeded()) {
+            return;
         }
+        // Safety net (issue #307/#334): the DEPOSIT_CARRIED close path normally empties the
+        // carried stack; a disconnect mid-screen would otherwise strand it (the save blob
+        // holds only the 36 slots), so deposit-or-drop it here first.
+        com.stonebreak.network.server.handlers.ServerPlayerHandler
+                .depositCarriedToInventoryOrWorld(sp, sp.inventory(), ctx);
+        byte[] blob = new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                .serialize(com.stonebreak.network.server.ServerPlayerDataFactory.build(sp,
+                        level.worldData().getWorldName()));
+        level.saveService().saveNamedPlayer(sp.username(), blob);
+    }
+
+    /**
+     * C2S: the client's spend-ledger + cosmetic report (issue #334). Level/xp/pools are
+     * SERVER-owned and overwritten from {@link ServerPlayer#serverStats()}; spends are
+     * validated against the server-granted pools, cosmetics must be monotone/append-only,
+     * and the inventory field is ignored entirely. A refusal keeps the accepted baseline
+     * and re-asserts both it and the authoritative progression to the sender.
+     */
+    private void handlePlayerPrefs(ServerPlayer sp, PlayerPrefsC2S pp) {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null || pp.json() == null || pp.json().isEmpty()) {
+            return;
+        }
+        com.stonebreak.world.save.model.PlayerData candidate;
+        try {
+            candidate = new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                    .deserialize(pp.json().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            refusePrefs(sp);
+            return;
+        }
+        com.stonebreak.world.save.model.PlayerData accepted =
+                PlayerPrefsValidator.normalize(sp.serverStats(), sp.progressionBaseline(), candidate);
+        if (accepted == null) {
+            System.out.println("[SERVER] Refused prefs from " + sp.username());
+            refusePrefs(sp);
+            return;
+        }
+        sp.acceptBaseline(accepted);
+        sp.setHealth(PlayerPrefsValidator.acceptedHealth(sp.serverStats(), accepted.getHealth()));
+        // Cheats-gated prefs: flight/spectator/creative only when the SERVER's flag is on.
+        if (level.cheatsEnabled()) {
+            sp.setFlightEnabled(accepted.isFlightEnabled());
+            sp.setFlying(accepted.isFlying());
+            sp.setSpectator(accepted.isSpectator());
+            sp.setGameMode(accepted.getGameMode());
+        }
+        // Echo the authoritative progression so the client mirror cannot drift from it.
+        sp.sendProgression();
+    }
+
+    private void refusePrefs(ServerPlayer sp) {
+        if (sp.progressionBaseline() != null) {
+            sp.send(new PlayerDataS2C(new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                    .serialize(sp.progressionBaseline())), false);
+        }
+        sp.sendProgression();
     }
 
     private void handleDisconnect(ServerConnection conn) {
@@ -683,10 +828,29 @@ public final class IntegratedServer {
         if (count <= 0) {
             return;
         }
-        ServerPlayer sp = ctx.player(playerId);
-        if (sp != null) {
-            sp.send(new GiveItemS2C(itemId, count), false);
+        giveToPlayer(ctx.player(playerId), ctx, itemId, count);
+    }
+
+    /** The give ledger (issue #334): only what fits the replica is granted; the overflow
+     *  re-drops here as a world drop and the sync is the client's reconciliation point.
+     *  Package-private so the ledger rules are unit-testable without a live server. */
+    void giveToPlayer(ServerPlayer sp, ServerWorldContext ctx, int itemId, int count) {
+        if (sp == null) {
+            return;
         }
+        // The SERVER's replica is the ledger (issue #334): only what actually fits is given,
+        // the overflow re-drops here as a world drop, and the sync that follows is the
+        // client's reconciliation point. No client-side re-drop path exists any more.
+        int added = sp.inventory().add(itemId, count);
+        int overflow = count - added;
+        if (overflow > 0) {
+            com.stonebreak.network.server.handlers.ServerPlayerHandler.spawnTossDrop(
+                    sp, ctx, itemId, overflow, null);
+        }
+        if (added > 0) {
+            sp.send(new GiveItemS2C(itemId, added), false);
+        }
+        sp.send(new InventorySyncS2C(sp.inventory().encode()), false);
     }
 
     public void shutdown() {
@@ -709,8 +873,15 @@ public final class IntegratedServer {
         }
         java.util.List<java.util.concurrent.CompletableFuture<Void>> futures = new java.util.ArrayList<>();
         for (ServerPlayer sp : ctx.players()) {
-            if (!sp.isLocal() && sp.playerDataBlob() != null) {
-                futures.add(level.saveService().saveNamedPlayer(sp.username(), sp.playerDataBlob()));
+            if (!sp.isLocal() && sp.isInventorySeeded()) {
+                // Same safety net as persistPlayer (issue #307/#334): never persist a
+                // stranded carried stack — deposit it, dropping whatever does not fit.
+                com.stonebreak.network.server.handlers.ServerPlayerHandler
+                        .depositCarriedToInventoryOrWorld(sp, sp.inventory(), ctx);
+                byte[] blob = new com.stonebreak.world.save.serialization.JsonPlayerSerializer()
+                        .serialize(com.stonebreak.network.server.ServerPlayerDataFactory.build(sp,
+                                level.worldData().getWorldName()));
+                futures.add(level.saveService().saveNamedPlayer(sp.username(), blob));
             }
         }
         if (futures.isEmpty()) {

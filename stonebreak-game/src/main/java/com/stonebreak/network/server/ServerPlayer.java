@@ -30,8 +30,6 @@ public final class ServerPlayer {
     // Last reported transform (cached from PlayerStateC2S) for reach checks + chunk targeting.
     private float x, y, z, yaw, pitch;
     private long lastStateNs = 0L;
-    /** Last reported held block/item id. 0 = empty/air. */
-    private int heldItemId = 0;
 
     /** Nanos of this player's last authoritative shear request (containment rate limit). */
     private long lastShearNanos = 0L;
@@ -88,9 +86,6 @@ public final class ServerPlayer {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
         this.lastStateNs = System.nanoTime();
     }
-
-    public int heldItemId() { return heldItemId; }
-    public void setHeldItemId(int id) { this.heldItemId = id; }
 
     public long lastShearNanos() { return lastShearNanos; }
     public void markShearRequest(long nanos) { this.lastShearNanos = nanos; }
@@ -159,11 +154,115 @@ public final class ServerPlayer {
         return ++resyncCount <= MAX_RESYNCS_PER_WINDOW;
     }
 
-    // Latest serialized PlayerData (inventory + position + stats) reported by a REMOTE client,
-    // persisted per username on disconnect / autosave / shutdown. Null until the client sends one.
-    private volatile byte[] playerDataBlob;
-    public byte[] playerDataBlob() { return playerDataBlob; }
-    public void setPlayerDataBlob(byte[] blob) { this.playerDataBlob = blob; }
+    // ─── Server-owned inventory + progression (issue #334) ──────────────────────
+    /** The authoritative replica of this player's inventory + carried stack + hotbar slot. */
+    private final ServerInventory inventory = new ServerInventory();
+
+    /** The last ACCEPTED progression/prefs state (parsed PlayerPrefsC2S, the creation blob,
+     *  or the loaded save). The server-built persistence blob and every validation compare
+     *  against this. Never null after join. */
+    private volatile com.stonebreak.world.save.model.PlayerData progressionBaseline;
+
+    /** Mirrored prefs from the accepted PlayerPrefsC2S (cheats-gated server-side). */
+    private volatile float health = 20.0f;
+    private volatile boolean flightEnabled = false;
+    private volatile boolean flying = false;
+    private volatile boolean spectator = false;
+    private volatile int gameMode = 0;
+
+    /** True once the replica has been seeded (welcome/creation) — syncs are meaningful after this. */
+    private volatile boolean inventorySeeded = false;
+
+    /** The server's own progression state (issue #334): level/xp advance ONLY through
+     *  server-granted kill XP — a client report can never move them. Kept in lockstep
+     *  with the accepted baseline via {@link #acceptBaseline}. */
+    private final com.stonebreak.player.CharacterStats serverStats =
+            new com.stonebreak.player.CharacterStats(null);
+
+    public com.stonebreak.player.CharacterStats serverStats() { return serverStats; }
+
+    public ServerInventory inventory() { return inventory; }
+
+    /**
+     * Publishes an accepted progression baseline and re-seeds the server stats from it,
+     * so validation anchors (scores, AP pool, level) stay in lockstep with the accepted
+     * state (issue #334).
+     */
+    public void acceptBaseline(com.stonebreak.world.save.model.PlayerData baseline) {
+        this.progressionBaseline = baseline;
+        serverStats.restore(baseline.getSelectedClassId(), baseline.getSpentAbilityCp(),
+                baseline.getSkillLevels(), baseline.getAcquiredFeatIds(),
+                baseline.getRemainingCp(), baseline.getRemainingSkillPoints(),
+                baseline.getRemainingFeatPoints(), baseline.getAbilityScores(),
+                baseline.getRemainingAp(), baseline.getLevel(), baseline.getXp());
+    }
+
+    /** Sends the client the server-authoritative progression fields (ProgressS2C). */
+    public void sendProgression() {
+        send(new com.stonebreak.network.packet.player.ProgressS2C(
+                serverStats.getLevel(), serverStats.getXp(),
+                serverStats.getRemainingCp(), serverStats.getRemainingSkillPoints(),
+                serverStats.getRemainingFeatPoints(), serverStats.getRemainingAp()));
+    }
+
+    public com.stonebreak.world.save.model.PlayerData progressionBaseline() { return progressionBaseline; }
+
+    /**
+     * Re-derives the progression baseline from the server's own stats (issue #334): XP and the
+     * level-up point pools granted server-side since the last accepted prefs commit must reach
+     * disk and stay the validation anchor. Cosmetics/prefs sections keep their last accepted
+     * values. No-op before a baseline exists.
+     */
+    public void refreshProgressionBaseline() {
+        com.stonebreak.world.save.model.PlayerData base = progressionBaseline;
+        if (base == null) {
+            return;
+        }
+        acceptBaseline(new com.stonebreak.world.save.model.PlayerData.Builder(base)
+                .selectedClassId(serverStats.getSelectedClassId())
+                .spentAbilityCp(serverStats.getSpentAbilityCp())
+                .skillLevels(serverStats.getSkillLevels())
+                .acquiredFeatIds(serverStats.getAcquiredFeatIds())
+                .remainingCp(serverStats.getRemainingCp())
+                .remainingSp(serverStats.getRemainingSkillPoints())
+                .remainingFp(serverStats.getRemainingFeatPoints())
+                .abilityScores(serverStats.getAbilityScores())
+                .remainingAp(serverStats.getRemainingAp())
+                .level(serverStats.getLevel())
+                .xp(serverStats.getXp())
+                .build());
+    }
+
+    public boolean isInventorySeeded() { return inventorySeeded; }
+    public void markInventorySeeded() { this.inventorySeeded = true; }
+
+    public float health() { return health; }
+    public void setHealth(float health) { this.health = Math.max(0f, Math.min(1024f, health)); }
+    public boolean flightEnabled() { return flightEnabled; }
+    public void setFlightEnabled(boolean flightEnabled) { this.flightEnabled = flightEnabled; }
+    public boolean flying() { return flying; }
+    public void setFlying(boolean flying) { this.flying = flying; }
+    public boolean spectator() { return spectator; }
+    public void setSpectator(boolean spectator) { this.spectator = spectator; }
+    public int gameMode() { return gameMode; }
+    public void setGameMode(int gameMode) { this.gameMode = gameMode; }
+
+    // ─── Toss rate limiting (DropItemC2S is a debit request now) ────────────────
+    /** Max toss requests per rolling window (hostile/buggy client containment). */
+    private static final int MAX_DROPS_PER_WINDOW = 20;
+    private static final long DROP_WINDOW_NS = 10_000_000_000L; // 10 s
+    private long dropWindowStartNs = 0L;
+    private int dropCount = 0;
+
+    /** Debits one toss permit; false = over budget, refuse the request. */
+    public boolean allowDrop() {
+        long now = System.nanoTime();
+        if (now - dropWindowStartNs > DROP_WINDOW_NS) {
+            dropWindowStartNs = now;
+            dropCount = 0;
+        }
+        return ++dropCount <= MAX_DROPS_PER_WINDOW;
+    }
 
     /** True for the in-process (host/singleplayer) player on the in-JVM Local channel. Its state
      *  is persisted same-JVM, so it is excluded from the network player-data sync. */

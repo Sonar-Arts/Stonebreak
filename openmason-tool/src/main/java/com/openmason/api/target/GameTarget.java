@@ -1,5 +1,6 @@
 package com.openmason.api.target;
 
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -25,8 +26,8 @@ public record GameTarget(String id, String displayName, String defaultNamespace,
 
     public GameTarget {
         Objects.requireNonNull(id, "id");
-        if (id.isBlank()) {
-            throw new IllegalArgumentException("A game target needs an id");
+        if (id.isBlank() || !id.equals(id.toLowerCase(Locale.ROOT)) || id.contains(":")) {
+            throw new IllegalArgumentException("Game target id must be lowercase without ':' (" + id + ")");
         }
         Objects.requireNonNull(resources, "resources");
         if (displayName == null || displayName.isBlank()) {

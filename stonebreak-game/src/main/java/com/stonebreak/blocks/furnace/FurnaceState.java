@@ -256,19 +256,6 @@ public final class FurnaceState {
         return encodeStack(ingredient) + "|" + encodeStack(fuel) + "|" + encodeStack(output);
     }
 
-    /** Applies a client slot intent onto this (authoritative) state — slots only, never
-     *  timers; burn/cook progress stays server-owned. Malformed input leaves slots empty. */
-    public void applySlots(String encoded) {
-        String[] parts = encoded != null ? encoded.split("\\|", -1) : new String[0];
-        this.ingredient = parts.length > 0 ? clampStack(decodeStack(parts[0])) : new ItemStack(0, 0);
-        this.fuel       = parts.length > 1 ? clampStack(decodeStack(parts[1])) : new ItemStack(0, 0);
-        this.output     = parts.length > 2 ? clampStack(decodeStack(parts[2])) : new ItemStack(0, 0);
-    }
-
-    private static ItemStack clampStack(ItemStack s) {
-        return ItemStackStateCodec.clamp(s);
-    }
-
     /** Returns just the renderable state name ({@code "Lit"} / {@code "Unlit"}). */
     public static String extractRenderState(String raw) {
         if (raw == null || !raw.startsWith(STATE_PREFIX)) return null;

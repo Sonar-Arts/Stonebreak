@@ -10,6 +10,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import com.stonebreak.network.packet.player.ContainerActionC2S;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,7 +31,7 @@ class FurnaceAbandonTest {
     private static final int STONE = BlockType.STONE.getId();
     private static final int DIRT = BlockType.DIRT.getId();
 
-    private final List<String> sent = new ArrayList<>();
+    private final List<ContainerActionC2S> sent = new ArrayList<>();
     private Inventory inventory;
     private FurnaceController controller;
     private FurnaceInputManager input;
@@ -41,7 +43,7 @@ class FurnaceAbandonTest {
         controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
-        controller.setSlotSink((pos, slots) -> sent.add(slots));
+        controller.actions().setCapture(sent::add);
         controller.setFurnaceAt(p -> true);
         furnace = new FurnaceState(new BlockPos(0, 64, 0));
         furnace.setFuel(new ItemStack(STONE, 5));
@@ -59,10 +61,18 @@ class FurnaceAbandonTest {
         assertTrue(furnace.getFuel().isEmpty(), "nothing is put back into the dead furnace");
         assertEquals(5, count(STONE), "the carried stack is the player's again");
         assertFalse(input.getDragState().isDragging());
-        assertTrue(sent.isEmpty(), "no snapshot reaches the broken furnace's position");
+        assertTrue(sent.stream().noneMatch(a -> a.region()
+                        == ContainerActionC2S.Region.FURNACE_ING
+                    || a.region() == ContainerActionC2S.Region.FURNACE_FUEL
+                    || a.region() == ContainerActionC2S.Region.FURNACE_OUT),
+            "no action reaches the broken furnace's slots");
 
         controller.update(0f);
-        assertTrue(sent.isEmpty(), "nor later");
+        assertTrue(sent.stream().noneMatch(a -> a.region()
+                        == ContainerActionC2S.Region.FURNACE_ING
+                    || a.region() == ContainerActionC2S.Region.FURNACE_FUEL
+                    || a.region() == ContainerActionC2S.Region.FURNACE_OUT),
+            "nor later");
     }
 
     @Test
@@ -83,16 +93,15 @@ class FurnaceAbandonTest {
         furnace.setFuel(new ItemStack(STONE, 64));
         pickUpFuel();
         furnace.setFuel(new ItemStack(DIRT, 1)); // the origin slot refilled: the stack cannot go back
-        int[] dropped = {0};
-        input.setWorldDrop(d -> {
-            dropped[0] += d.draggedItemStack.getCount();
-            d.clear();
+        int[] deposited = {0};
+        controller.actions().setCapture(a -> {
+            if (a.action() == ContainerActionC2S.Action.DEPOSIT_CARRIED) deposited[0]++;
         });
 
         controller.close();
 
-        assertEquals(64, count(STONE), "exactly the 10 that fit went in");
-        assertEquals(54, dropped[0], "only the rest is dropped: 10 + 54 = the 64 carried, never 10 + 64");
+        assertEquals(64, count(STONE), "exactly the 10 that fit went in (local prediction)");
+        assertEquals(1, deposited[0], "the server is asked to deposit the carried stack once");
         assertFalse(input.getDragState().isDragging());
     }
 

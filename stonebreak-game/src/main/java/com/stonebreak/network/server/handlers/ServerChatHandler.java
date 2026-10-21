@@ -14,9 +14,16 @@ import com.stonebreak.network.server.ServerWorldContext;
  */
 public final class ServerChatHandler {
 
+    private final ServerCommandHandler commands = new ServerCommandHandler();
+
     public void handleChat(ServerPlayer sp, ChatMessageC2S c, ServerWorldContext ctx) {
         String text = sanitize(c.text());
         if (text.isEmpty()) {
+            return;
+        }
+        // Server-side commands (/obtain — issue #334): checked against the SERVER's cheats
+        // flag, answered to the sender only. Everything else relays to everyone.
+        if (commands.handleCommand(sp, text, ctx)) {
             return;
         }
         ctx.broadcast(new ChatMessageS2C(sp.playerId(), sp.username(), text), false);

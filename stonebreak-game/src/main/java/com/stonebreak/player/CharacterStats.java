@@ -431,6 +431,22 @@ public class CharacterStats {
     if (player != null) player.updateDerivedStats();
   }
 
+  /**
+   * Applies server-authoritative progression (issue #334): the server owns level/xp and
+   * the four point pools — they advance only through server-granted play — while the
+   * spend ledger (abilities, skills, feats, scores) was validated server-side and is
+   * carried by the client's own state.
+   */
+  public void applyServerProgression(int level, int xp, int cp, int sp, int fp, int ap) {
+    this.level = Math.max(1, level);
+    this.xp    = Math.max(0, xp);
+    this.remainingCp = Math.max(0, cp);
+    this.remainingSp = Math.max(0, sp);
+    this.remainingFp = Math.max(0, fp);
+    this.remainingAp = Math.max(0, ap);
+    if (player != null) player.updateDerivedStats();
+  }
+
   /** True when the spendable RPG state differs from the given snapshot. */
   public boolean hasChangedSince(RpgSnapshot s) {
     if (s == null) return true;

@@ -23,12 +23,9 @@ public class FurnaceController {
     private FurnaceState state;
     private boolean visible;
 
-    /** Last slot snapshot sent to the server, for the per-frame dirty check. */
-    private String lastSentSlots;
-
-    /** Where slot snapshots go: the server, through the multiplayer session. */
-    private SlotSink slotSink = (pos, slots) ->
-        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(pos.x(), pos.y(), pos.z(), slots);
+    /** Where slot actions go: the server, through the multiplayer session (issue #334). */
+    private final com.stonebreak.ui.inventoryScreen.handlers.SlotActionSink actions =
+            new com.stonebreak.ui.inventoryScreen.handlers.SlotActionSink();
 
     /** Where the bound furnace's block is checked; tests substitute it. */
     private java.util.function.Predicate<BlockPos> furnaceAt = FurnaceController::worldHasFurnace;
@@ -57,23 +54,22 @@ public class FurnaceController {
     void bind(FurnaceState furnace) {
         this.state = furnace;
         this.visible = true;
+        // Slot actions are addressed to THIS furnace (issue #334).
+        actions.bind(com.stonebreak.network.packet.player.ContainerActionC2S.ContainerKind.FURNACE,
+                furnace.getPos().x(), furnace.getPos().y(), furnace.getPos().z());
+        if (inputManager != null) {
+            inputManager.bindActions(actions);
+        }
         // Echoes keep arriving while the UI is closed (every cook tick), and the first one
         // leaves a pre-echo snapshot that nothing consumes. It is not an edit of ours: left in
-        // place, the first update() would send that stale snapshot and roll the furnace back.
+        // place, the first update() would treat that stale snapshot as an edit of ours.
         state.consumePreEchoSlots();
-        // Baseline for the slot dirty check: the state as it stands when the UI opens is
-        // already what the server knows (streamed/echoed), so don't re-send it.
-        this.lastSentSlots = state.encodeSlots();
         // UI documents bound to `furnace` follow this state by notification (#289).
         com.stonebreak.ui.runtime.GameUiHost.ifPresent(h -> h.furnaceOpened(furnace));
     }
 
     public void close() {
         if (inputManager != null) inputManager.handleCloseWithDraggedItems();
-        // A carried stack may just have gone back into a furnace slot. Ship that
-        // to the server now: once `state` is null the per-frame dirty check never
-        // runs again, and the next echo would overwrite the restore (#320).
-        if (state != null) syncSlots();
         // Do NOT dump contents or clear state — the registry owns it and keeps ticking.
         this.visible = false;
         this.state = null;
@@ -91,19 +87,10 @@ public class FurnaceController {
         }
         // Smelting is ticked by the AUTHORITATIVE (server-world) FurnaceStateRegistry; this
         // UI is bound to the client display registry, updated by BlockStateS2C echoes.
-
-        // Slot intent: whatever mutation path the UI took (drag, split, place, take), the
-        // per-frame dirty check catches it and ships the full slot snapshot to the server.
-        // BlockStateS2C echoes then confirm/correct — including the smelting results.
         //
-        // Echoes are NOT intent: the server streams state every cook tick, so an echo that
-        // left before our last intent arrived restores the old slots locally. Re-sending that
-        // would tell the server to put back what the player just took (duplicating shift-
-        // clicked output). So when an echo landed since the last frame, first flush any edit
-        // made before it (the pre-echo snapshot), then adopt the echoed slots as the baseline.
-        if (visible && state != null) {
-            syncSlots();
-        }
+        // Slot mutations ship as atomic actions the moment the input manager applies them
+        // (issue #334) — there is no per-frame slot snapshot to flush any more. Echoes
+        // re-baseline via the pre-echo machinery in applyStateString.
     }
 
     private static boolean worldHasFurnace(BlockPos p) {
@@ -116,10 +103,9 @@ public class FurnaceController {
         return furnaceAt.test(state.getPos());
     }
 
-    /**
-     * The furnace was broken (by another player) while this UI was open. The server already dropped
+    /** The furnace was broken (by another player) while this UI was open. The server already dropped
      * the contents it knew about, so the displayed slots are dead: detach from them first, so no
-     * later edit or snapshot can reach that furnace again, then give the player back only the stack
+     * later edit or action can reach that furnace again, then give the player back only the stack
      * on the cursor (inventory first, the world for what does not fit), and close.
      */
     void abandonBrokenFurnace() {
@@ -139,35 +125,9 @@ public class FurnaceController {
         this.furnaceAt = test;
     }
 
-    /** Sends the slot snapshot if it changed since the last send (see {@link #update}). */
-    private void syncSlots() {
-        String preEcho = state.consumePreEchoSlots();
-        if (preEcho != null) {
-            if (!preEcho.equals(lastSentSlots)) {
-                sendSlots(preEcho);
-            }
-            lastSentSlots = state.encodeSlots();
-        }
-        String slots = state.encodeSlots();
-        if (!slots.equals(lastSentSlots)) {
-            sendSlots(slots);
-        }
-    }
-
-    private void sendSlots(String slots) {
-        lastSentSlots = slots;
-        slotSink.send(state.getPos(), slots);
-    }
-
-    /** Receives slot snapshots bound for the server. */
-    @FunctionalInterface
-    interface SlotSink {
-        void send(BlockPos pos, String slots);
-    }
-
-    /** Test seam: capture slot snapshots instead of sending them. */
-    void setSlotSink(SlotSink sink) {
-        this.slotSink = sink;
+    /** The container-action sink this screen's slot rules emit through (test seam). */
+    com.stonebreak.ui.inventoryScreen.handlers.SlotActionSink actions() {
+        return actions;
     }
 
     public void handleCloseRequest() {

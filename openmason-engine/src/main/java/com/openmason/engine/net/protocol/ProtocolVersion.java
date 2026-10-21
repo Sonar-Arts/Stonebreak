@@ -18,8 +18,13 @@ public final class ProtocolVersion {
      *  an unknown packet id).
      *  5 = per-block crafting-table grids (WorkbenchSlotsC2S — issue #307).
      *  6 = server-authoritative per-world cheats flag (CheatsSetC2S, CheatsStateS2C —
-     *  issue #318). */
-    public static final int CURRENT = 6;
+     *  issue #318).
+     *  7 = server-owned inventory: InventorySyncS2C, ContainerActionC2S, HotbarSelectC2S,
+     *  PlayerPrefsC2S and DeathDropC2S added; PlayerHeldItemC2S (3), PlayerDataC2S (7),
+     *  FurnaceSlotsC2S (13) and WorkbenchSlotsC2S (22) retired without id reuse (issue #334).
+     *  8 = server-owned progression echo (ProgressS2C — issue #334): level/xp/point pools
+     *  are granted and echoed by the server only. */
+    public static final int CURRENT = 8;
 
     private ProtocolVersion() {}
 }

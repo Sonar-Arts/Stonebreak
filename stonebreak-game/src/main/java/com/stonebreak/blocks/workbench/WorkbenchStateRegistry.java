@@ -63,14 +63,15 @@ public class WorkbenchStateRegistry {
     }
 
     /**
-     * Applies a player's slot snapshot onto the authoritative grid and persists it (the
-     * change listener echoes it to every client). Server-side; the caller validates reach
-     * and that the block is still a workbench.
+     * Persists the CURRENT grid of {@code pos} into its chunk and echoes it if it changed
+     * (issue #334): the atomic container actions mutate the state in place, so persistence +
+     * echo is an explicit follow-up step instead of a side effect of a slot snapshot.
      */
-    public void applySlots(World world, BlockPos pos, String encodedSlots) {
-        WorkbenchState s = getOrCreate(pos);
-        s.applySlots(encodedSlots);
-        writeChunkState(world, pos, s.toStateString());
+    public void persist(World world, BlockPos pos) {
+        WorkbenchState s = states.get(pos);
+        if (s != null) {
+            writeChunkState(world, pos, s.toStateString());
+        }
     }
 
     /* ── Lifecycle hooks ─────────────────────────────────────── */
