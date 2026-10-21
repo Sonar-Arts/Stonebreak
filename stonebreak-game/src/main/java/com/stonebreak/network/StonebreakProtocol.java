@@ -30,6 +30,7 @@ import com.stonebreak.network.packet.player.HotbarSelectC2S;
 import com.stonebreak.network.packet.player.PlayerPrefsC2S;
 import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.PlayerLifeC2S;
+import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
@@ -109,6 +110,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 26, PlayerPrefsC2S.class, PlayerPrefsC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 27, DeathDropC2S.class, DeathDropC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 28, PlayerLifeC2S.class, PlayerLifeC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 29, ConsumeHeldC2S.class, ConsumeHeldC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

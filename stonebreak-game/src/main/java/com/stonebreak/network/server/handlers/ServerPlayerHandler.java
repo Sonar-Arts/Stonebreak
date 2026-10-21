@@ -7,6 +7,7 @@ import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.DropItemC2S;
@@ -283,6 +284,17 @@ public final class ServerPlayerHandler {
         // Always broadcast: the client also re-sends the selection when the ITEM in the
         // selected slot changed (pickup into the held slot), not just the slot itself.
         ctx.broadcast(new PlayerHeldItemS2C(sp.playerId(), sp.inventory().heldItemId()), false);
+    }
+
+    /**
+     * The player ate one item from the selected hotbar slot (issue #355): debit the replica
+     * with the client's depletion auto-switch, then sync. Answered like a container action —
+     * accepted or refused, the sync acknowledges the seq, so a refusal corrects the mirror.
+     */
+    public void handleConsumeHeld(ServerPlayer sp, ConsumeHeldC2S c) {
+        sp.recordActionSeq(c.seq());
+        sp.inventory().consumeHeldFood(c.itemId());
+        sp.send(sp.inventorySync(), false);
     }
 
     /** Container action from an open furnace / workbench / inventory screen. */

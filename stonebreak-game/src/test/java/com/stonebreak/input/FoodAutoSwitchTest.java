@@ -91,6 +91,20 @@ class FoodAutoSwitchTest {
         }
     }
 
+    @Test
+    void eatingIsReportedToTheServer() {
+        try (PlayerSession session = new PlayerSession();
+             MockedStatic<com.stonebreak.network.MultiplayerSession> net =
+                     mockStatic(com.stonebreak.network.MultiplayerSession.class)) {
+            session.player.getInventory().setHotbarSlot(0, new ItemStack(ItemType.BANANA, 1));
+
+            eat(session.player);
+
+            // The server owns the inventory (#334): without this the next sync restores the banana.
+            net.verify(() -> com.stonebreak.network.MultiplayerSession.sendConsumeHeld(ItemType.BANANA.getId()));
+        }
+    }
+
     /** Pre-damages the player so heal(4) is observable (heal clamps at max health), then uses the held food. */
     private void eat(Player player) {
         player.setHealth(player.getMaxHealth() - 10f);

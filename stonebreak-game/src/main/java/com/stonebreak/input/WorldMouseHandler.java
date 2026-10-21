@@ -100,8 +100,11 @@ final class WorldMouseHandler {
             if (foodType != null && foodType.getHealAmount() > 0) {
                 player.heal(foodType.getHealAmount());
                 // Consume via removeItem so its depletion auto-switch moves the
-                // next matching stack into the selected slot (#64/#355).
+                // next matching stack into the selected slot (#64/#355); the server
+                // replays the same debit + switch on its replica (#334).
+                int foodId = held.getBlockTypeId();
                 player.getInventory().removeItem(held.getItem(), 1);
+                MultiplayerSession.sendConsumeHeld(foodId);
                 return;
             }
         }
