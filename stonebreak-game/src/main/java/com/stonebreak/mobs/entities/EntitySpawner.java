@@ -102,9 +102,14 @@ public class EntitySpawner {
     /**
      * A point of interest for spawning: a player's position and the view distance (in chunks) they
      * have loaded around it. The view distance defines both the eligible-chunk square and the
-     * spawn/despawn radius for this anchor.
+     * spawn/despawn radius for this anchor. {@code spawnsMobs} is false for a dead player: its area
+     * still bounds despawning, but no new mobs are placed around the corpse.
      */
-    public record SpawnAnchor(Vector3f position, int viewDistanceChunks) {}
+    public record SpawnAnchor(Vector3f position, int viewDistanceChunks, boolean spawnsMobs) {
+        public SpawnAnchor(Vector3f position, int viewDistanceChunks) {
+            this(position, viewDistanceChunks, true);
+        }
+    }
 
     public EntitySpawner(World world, EntityManager entityManager) {
         this.world = world;
@@ -188,7 +193,7 @@ public class EntitySpawner {
     // ─── Continuous spawning (the only spawn path) ────────────────────────────
 
     private void performContinuousSpawning() {
-        List<SpawnAnchor> anchors = collectAnchors();
+        List<SpawnAnchor> anchors = spawningAnchors(collectAnchors());
         if (anchors.isEmpty()) {
             return;
         }
@@ -337,6 +342,17 @@ public class EntitySpawner {
     private List<SpawnAnchor> collectAnchors() {
         List<SpawnAnchor> result = anchorSource.get();
         return result != null ? result : Collections.emptyList();
+    }
+
+    /** The anchors new mobs may be placed around (live players only). */
+    static List<SpawnAnchor> spawningAnchors(List<SpawnAnchor> anchors) {
+        List<SpawnAnchor> out = new ArrayList<>(anchors.size());
+        for (SpawnAnchor anchor : anchors) {
+            if (anchor.spawnsMobs()) {
+                out.add(anchor);
+            }
+        }
+        return out;
     }
 
     // ─── Spawn-location finders ───────────────────────────────────────────────

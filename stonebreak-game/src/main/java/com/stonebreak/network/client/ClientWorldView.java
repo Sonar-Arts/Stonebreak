@@ -586,6 +586,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** Death / respawn edge (see {@code PlayerLifeC2S}) — reliable, never the state stream. */
+    public void sendPlayerLife(com.stonebreak.network.packet.player.PlayerLifeC2S l) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(l, false);
+        }
+    }
+
     /** /timeset intent: ask the server to set the authoritative world clock. */
     public void sendTimeSet(long ticks) {
         ClientConnection conn = connection;
