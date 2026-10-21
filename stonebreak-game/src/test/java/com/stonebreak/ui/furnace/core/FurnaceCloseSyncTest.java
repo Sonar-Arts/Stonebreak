@@ -10,6 +10,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import com.stonebreak.network.packet.player.ContainerActionC2S;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,7 +28,7 @@ class FurnaceCloseSyncTest {
 
     private static final int STONE = BlockType.STONE.getId();
 
-    private final List<String> sent = new ArrayList<>();
+    private final List<ContainerActionC2S> sent = new ArrayList<>();
     private FurnaceController controller;
     private FurnaceInputManager input;
     private FurnaceState furnace;
@@ -37,33 +39,34 @@ class FurnaceCloseSyncTest {
         controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
-        controller.setSlotSink((pos, seq, slots) -> sent.add(slots));
         furnace = new FurnaceState(new BlockPos(0, 64, 0));
         furnace.setFuel(new ItemStack(STONE, 5));
         controller.bind(furnace);
+        controller.actions().setCapture(sent::add);
     }
 
     @Test
     void closingWhileCarryingAFurnaceStackSendsTheRestoredSlot() {
-        String withFuel = furnace.encodeSlots();
-        pickUpFuel();
-        controller.update(0f); // the pickup reaches the server: fuel slot empty
-        assertEquals(1, sent.size());
-        assertFalse(sent.get(0).equals(withFuel));
+        pickUpFuel(); // helper mirrors the pickup's local effect; the real click path also
+                      // emits TAKE_ALL through the bound sink (FurnaceSlotAddressTest covers it)
+        assertTrue(sent.isEmpty());
 
         controller.close();
 
         assertEquals(5, furnace.getFuel().getCount(), "the stack goes back to its slot");
-        assertEquals(2, sent.size(), "the restore must be sent before the UI lets go of the state");
-        assertEquals(withFuel, sent.get(1));
+        assertEquals(1, sent.size(), "the restore must be sent before the UI lets go of the state");
+        assertEquals(ContainerActionC2S.Action.PUT_ALL, sent.get(0).action());
+        assertEquals(ContainerActionC2S.Region.FURNACE_FUEL, sent.get(0).region());
         assertFalse(controller.isVisible());
     }
 
     @Test
     void closingInTheSameFrameAsThePickupSendsNothingRedundant() {
         pickUpFuel();
-        controller.close(); // restored before any update: the server never saw the pickup
-        assertTrue(sent.isEmpty(), "slots match what the server already has");
+        controller.close(); // restored before any update
+        assertEquals(1, sent.size());
+        assertEquals(ContainerActionC2S.Action.PUT_ALL, sent.get(0).action(),
+            "the restore is the one atomic action the server needs");
         assertEquals(5, furnace.getFuel().getCount());
     }
 

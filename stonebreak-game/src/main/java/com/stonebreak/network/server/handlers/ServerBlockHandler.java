@@ -1,6 +1,9 @@
 package com.stonebreak.network.server.handlers;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemStackStateCodec;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
@@ -48,8 +51,14 @@ public final class ServerBlockHandler {
     private static final class PendingEdit {
         final ServerPlayer sp;
         final BlockChangeC2S change;
+        /** What the placement took when it was validated — refunded exactly on expiry. */
+        final PlacementDebit debit;
         int ticksLeft = RETRY_TTL_TICKS;
-        PendingEdit(ServerPlayer sp, BlockChangeC2S change) { this.sp = sp; this.change = change; }
+        PendingEdit(ServerPlayer sp, BlockChangeC2S change, PlacementDebit debit) {
+            this.sp = sp;
+            this.change = change;
+            this.debit = debit;
+        }
     }
 
     /** Snow-layer changes buffered this tick, per section — flushed as {@code BlockMetaS2C}. */
@@ -92,6 +101,20 @@ public final class ServerBlockHandler {
             return;
         }
         BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
+        // Placement debits the server-owned inventory (issue #334): a non-air edit costs one
+        // of that block unless the SERVER's cheats flag is on AND the player's accepted game
+        // mode is creative. A refusal reverts the optimistic client edit — no world mutation.
+        // The debit records exactly what it took, so a later refusal or retry expiry refunds
+        // that and nothing else.
+        PlacementDebit debit = PlacementDebit.NONE;
+        if (incoming != null && incoming != BlockType.AIR && !placementDebitExempt(sp, ctx)) {
+            debit = debitForPlacement(sp, incoming, ctx);
+            if (debit == null) {
+                syncInventory(sp);
+                sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+                return;
+            }
+        }
         // Use the CLIENT-reported prev as the source of truth for "what the player broke" —
         // the server's own world snapshot can lag under burst load (esp. for fast non-host
         // edits arriving between server ticks), causing the server's getBlockAt to read the
@@ -100,6 +123,7 @@ public final class ServerBlockHandler {
         // the server's view.
         BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
         BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
+        boolean scoop = isScoop(world, c, incoming, serverPrev); // pre-apply snapshot
         BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR) ? clientPrev : serverPrev;
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
@@ -107,10 +131,192 @@ public final class ServerBlockHandler {
             // so it's a load race, not garbage). Kick off the load and retry for a bounded
             // window; expiry reverts the originator instead of silently diverging.
             world.getChunkAt(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
-            retryQueue.add(new PendingEdit(sp, c));
+            retryQueue.add(new PendingEdit(sp, c, debit));
             return;
         }
-        applyAccepted(sp, c, incoming, prev, world, ctx);
+        completeEdit(sp, c, incoming, prev, scoop, debit, world, ctx);
+    }
+
+    /**
+     * Everything that follows a successful world apply — shared by the direct path and the
+     * chunk-load retry path, so a retried edit gets the same effects (issue #334).
+     */
+    private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
+                              boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
+        applyAccepted(sp, c, incoming, prev, debit, world, ctx);
+        if (scoop) {
+            // Bucket scoop (mirrors BlockPlacer.handleEmptyBucket): removing a water SOURCE
+            // with a non-water bucket selected fills exactly one of them server-side.
+            int sel = sp.inventory().selectedHotbarSlot();
+            if (isBucket(sp.inventory().slot(sel), false)
+                    && !convertOneBucket(sp, sel, ItemType.BUCKET_STATE_WATER, ctx)) {
+                syncInventory(sp); // nowhere to put the filled bucket — the client's copy is wrong
+            }
+        }
+    }
+
+    /**
+     * Whether an edit is a bucket scoop: AIR over a water SOURCE (flowing water is never
+     * scooped — BlockPlacer.handleEmptyBucket refuses it, and a bucket poured into flowing
+     * water arrives as AIR then WATER, whose AIR half must not fill the pouring bucket).
+     * Gated on the SERVER's pre-apply snapshot — clientPrev is trusted only for drop
+     * selection, so a modified client cannot mint water by claiming prev=WATER at any
+     * reach-valid cell; a legit scoop raced by server-side flow simply re-scoops (#334).
+     */
+    private static boolean isScoop(World world, BlockChangeC2S c, BlockType incoming, BlockType serverPrev) {
+        if (incoming != BlockType.AIR || serverPrev != BlockType.WATER) {
+            return false;
+        }
+        int value = world.getWaterValueAt(c.x(), c.y(), c.z());
+        return value >= 0 && com.stonebreak.world.chunk.ChunkWaterLayer.level(value)
+                == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
+    }
+
+    /**
+     * Exactly what a placement debit took from the server inventory (issue #334): one item
+     * of {@code itemId} carrying {@code state}, or — {@code bucketPoured} — one water bucket
+     * emptied. A later refusal or retry expiry refunds this record, never the placed block's
+     * id, and nothing for a free (creative + cheats) placement or a break.
+     */
+    private record PlacementDebit(int itemId, String state, boolean bucketPoured) {
+        static final PlacementDebit NONE = new PlacementDebit(0, null, false);
+    }
+
+    /**
+     * The placement debit for one block (issue #334), or null when the player does not hold
+     * what the placement costs (nothing taken). Most blocks debit their own id, but the torch
+     * ITEM places the torch BLOCK (ids differ — a stack may hold either: crafted torches carry
+     * the item id, picked-up ones the block id), and water poured from a selected water bucket
+     * empties exactly one bucket (mirrors {@code BlockPlacer.handleWaterBucket}).
+     */
+    private static PlacementDebit debitForPlacement(ServerPlayer sp, BlockType incoming,
+                                                    ServerWorldContext ctx) {
+        if (incoming == BlockType.WATER) {
+            // The client pours from the bucket whenever a water bucket is selected; otherwise
+            // water is held as plain WATER blocks (starting items).
+            int sel = sp.inventory().selectedHotbarSlot();
+            if (isBucket(sp.inventory().slot(sel), true)) {
+                return convertOneBucket(sp, sel, ItemType.BUCKET_STATE_EMPTY, ctx)
+                        ? new PlacementDebit(ItemType.WOODEN_BUCKET.getId(), null, true) : null;
+            }
+            return takeOne(sp, incoming.getId());
+        }
+        if (incoming == BlockType.TORCH_PLACED) {
+            ItemType torch = com.stonebreak.blocks.torch.TorchBlock.item();
+            PlacementDebit taken = torch != null ? takeOne(sp, torch.getId()) : null;
+            if (taken != null) {
+                return taken;
+            }
+        }
+        return takeOne(sp, incoming.getId());
+    }
+
+    /**
+     * Removes one {@code itemId} ({@code ServerInventory.debitStack}: the selected slot first)
+     * and records the state of the unit taken; null when none is held.
+     */
+    private static PlacementDebit takeOne(ServerPlayer sp, int itemId) {
+        // The held (selected) stack first, like the client's Inventory.removeItem.
+        ItemStack taken = sp.inventory().debitStack(itemId, 1);
+        return taken == null ? null : new PlacementDebit(itemId, taken.getState(), false);
+    }
+
+    /** Gives back exactly what {@code debit} took, then syncs the player (issue #334). */
+    private static void refund(ServerPlayer sp, PlacementDebit debit, ServerWorldContext ctx) {
+        if (debit == null || debit == PlacementDebit.NONE) {
+            return;
+        }
+        if (debit.bucketPoured()) {
+            // Refill one emptied bucket — the selected slot first, where the pour emptied it.
+            // If the player no longer holds any empty bucket there is nothing to refill;
+            // granting a fresh water bucket would mint one.
+            int slot = findBucketSlot(sp, false);
+            if (slot >= 0) {
+                convertOneBucket(sp, slot, ItemType.BUCKET_STATE_WATER, ctx);
+            }
+        } else {
+            giveOrDrop(sp, ctx, debit.itemId(), debit.state());
+        }
+        syncInventory(sp);
+    }
+
+    /** True for a wooden bucket stack holding water ({@code water}) or not (any other state). */
+    private static boolean isBucket(ItemStack s, boolean water) {
+        ItemType bucket = ItemType.WOODEN_BUCKET;
+        return bucket != null && s != null && !s.isEmpty() && s.getBlockTypeId() == bucket.getId()
+                && ItemType.BUCKET_STATE_WATER.equals(s.getState()) == water;
+    }
+
+    /** The selected slot if it holds a matching bucket, else the first slot that does; -1 if none. */
+    private static int findBucketSlot(ServerPlayer sp, boolean water) {
+        int sel = sp.inventory().selectedHotbarSlot();
+        if (isBucket(sp.inventory().slot(sel), water)) {
+            return sel;
+        }
+        for (int i = 0; i < com.stonebreak.network.server.ServerInventory.TOTAL_SLOTS; i++) {
+            if (isBucket(sp.inventory().slot(i), water)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Converts ONE bucket in {@code slot} to {@code toState}, with the client's stack rule
+     * ({@code BlockPlacer.handleWaterBucket}/{@code handleEmptyBucket}): a lone bucket is
+     * replaced in place; from a larger stack one leaves and the converted bucket is added
+     * (stacking first, then an empty slot), dropping beside the player when it fits nowhere.
+     * Never loses or mints a bucket: when the converted one can neither be stored nor dropped
+     * the stack is restored and false returned. The caller has checked the slot holds a bucket.
+     */
+    private static boolean convertOneBucket(ServerPlayer sp, int slot, String toState,
+                                            ServerWorldContext ctx) {
+        ItemType bucket = ItemType.WOODEN_BUCKET;
+        ItemStack s = sp.inventory().slot(slot);
+        if (bucket == null || s.isEmpty() || s.getBlockTypeId() != bucket.getId()) {
+            return false;
+        }
+        if (s.getCount() == 1) {
+            // Replaced in place: a decrement-then-add would land the new bucket in this very
+            // (now empty) slot whenever every slot before it is occupied.
+            sp.inventory().setSlot(slot, new ItemStack(bucket, 1, toState));
+            return true;
+        }
+        s.decrementCount(1);
+        if (sp.inventory().add(bucket.getId(), 1, toState) == 1) {
+            return true;
+        }
+        if (!canDrop(sp, ctx)) {
+            s.incrementCount(1);
+            return false;
+        }
+        ServerPlayerHandler.spawnTossDrop(sp, ctx, bucket.getId(), 1, toState);
+        return true;
+    }
+
+    /** Adds one item back, dropping it beside the player when the inventory is full. */
+    private static void giveOrDrop(ServerPlayer sp, ServerWorldContext ctx, int itemId, String state) {
+        if (sp.inventory().add(itemId, 1, state) == 0) {
+            ServerPlayerHandler.spawnTossDrop(sp, ctx, itemId, 1, state);
+        }
+    }
+
+    /** The guard {@link ServerPlayerHandler#spawnTossDrop} applies before spawning. */
+    private static boolean canDrop(ServerPlayer sp, ServerWorldContext ctx) {
+        return ctx.world() != null && ctx.entityManager() != null && sp.lastStateNs() != 0L;
+    }
+
+    private static void syncInventory(ServerPlayer sp) {
+        sp.send(sp.inventorySync(), false);
+    }
+
+    /**
+     * Placement is free only when the SERVER's cheats flag is on AND this player's accepted
+     * game mode is creative — the client's own cheats state is never trusted (issue #334).
+     */
+    private static boolean placementDebitExempt(ServerPlayer sp, ServerWorldContext ctx) {
+        com.stonebreak.network.server.ServerLevel level = ctx.serverLevel();
+        return level != null && level.cheatsEnabled() && sp.gameMode() == 1;
     }
 
     /**
@@ -121,7 +327,7 @@ public final class ServerBlockHandler {
      * predictions (issue #362). Only the audit hash is dropped.
      */
     private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
-                               World world, ServerWorldContext ctx) {
+                               PlacementDebit debit, World world, ServerWorldContext ctx) {
         // Break (non-air → air): spawn drops authoritatively and run per-break cleanup. The
         // EntityManager listener broadcasts the resulting drop entities (see ServerEntityHandler).
         if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
@@ -138,7 +344,9 @@ public final class ServerBlockHandler {
             // The breaker's last-reported held item selects per-tool drop overrides
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
             // block simply resolves to no tool.
-            com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.heldItemId());
+            // The breaker's held item comes from the server's replica (issue #334) — the client
+            // cannot forge a tool id to unlock per-tool drop overrides.
+            com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.inventory().heldItemId());
             // Issue #225: the breaker's position biases which adjacent passable cell the
             // drops spawn into (nearest to the player) and the direction they spit out.
             com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool, 0,
@@ -180,7 +388,8 @@ public final class ServerBlockHandler {
         // must be able to hold a torch — canHoldTorch, full-cube solids; foliage
         // and the door's swinging panel are ruled out — issue #247; the underside
         // of a block is never accepted).
-        // Rejected proposals revert the cell for the placer.
+        // Rejected proposals revert the cell for the placer and refund the torch the
+        // placement debited (issue #334).
         if (com.stonebreak.blocks.torch.TorchBlock.isTorch(incoming)) {
             com.stonebreak.blocks.torch.TorchState placed = c.hasPlacementState()
                     ? com.stonebreak.blocks.torch.TorchBlock.validatePlacement(
@@ -189,6 +398,7 @@ public final class ServerBlockHandler {
             if (placed == null) {
                 world.setBlockAt(c.x(), c.y(), c.z(), BlockType.AIR, false);
                 sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+                refund(sp, debit, ctx);
                 return;
             }
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
@@ -286,79 +496,29 @@ public final class ServerBlockHandler {
         if (layers == 0) {
             world.getSnowLayerManager().removeSnowLayers(s.x(), s.y(), s.z());
         } else if (world.getBlockAt(s.x(), s.y(), s.z()) == BlockType.SNOW) {
+            // Raising the layer count consumes one SNOW block PER LAYER added from the
+            // server-owned inventory (issue #334) — breaking the cell drops one SNOW per
+            // layer (DropUtil), so anything cheaper would duplicate snow. A refusal syncs
+            // and mutates nothing.
+            int current = world.getSnowLayerManager().getSnowLayers(s.x(), s.y(), s.z());
+            int added = layers - current;
+            if (added > 0 && !placementDebitExempt(sp, ctx)
+                    && !sp.inventory().debit(BlockType.SNOW.getId(), added)) {
+                syncInventory(sp);
+                // Re-assert the cell's actual layer count so an over-optimistic client reverts.
+                int sx = Math.floorDiv(s.x(), 16);
+                int sy = Math.floorDiv(s.y(), 16);
+                int sz = Math.floorDiv(s.z(), 16);
+                int lx = s.x() - sx * 16;
+                int ly = s.y() - sy * 16;
+                int lz = s.z() - sz * 16;
+                sp.send(new com.stonebreak.network.packet.world.BlockMetaS2C(sx, sy, sz,
+                        com.stonebreak.network.packet.world.BlockMetaS2C.KIND_SNOW_LAYERS,
+                        new int[]{(((lx << 8) | (ly << 4) | lz) << 16) | current}), false);
+                return;
+            }
             world.getSnowLayerManager().setSnowLayers(s.x(), s.y(), s.z(), layers);
         }
-    }
-
-    /**
-     * C2S: the player edited the slots of an open furnace UI. Validates (reach, furnace
-     * exists on the server world), then applies SLOTS ONLY onto the authoritative
-     * {@code FurnaceState} — burn/cook timers stay server-owned — and writes the new state
-     * string at once.
-     *
-     * <p>Every intent that reaches a valid cell is acknowledged (issue #353): its seq is
-     * recorded and an echo is queued even when nothing changed or reach refused it, so the
-     * sender always gets an echo stamped with its latest seq. Without one, it would keep
-     * treating every later echo as stale.
-     */
-    public void handleFurnaceSlots(ServerPlayer sp, com.stonebreak.network.packet.world.FurnaceSlotsC2S f,
-                                   ServerWorldContext ctx) {
-        World world = ctx.world();
-        if (world == null || world.getFurnaceRegistry() == null) {
-            return;
-        }
-        if (f.y() < 0 || f.y() >= WorldConfiguration.WORLD_HEIGHT) {
-            return;
-        }
-        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(f.x(), f.y(), f.z());
-        sp.recordSlotIntent(pos, f.seq());
-        queueStateEcho(f.x(), f.y(), f.z());
-        if (!withinReach(sp, f.x(), f.y(), f.z())) {
-            return;
-        }
-        if (world.getBlockAt(f.x(), f.y(), f.z()) != BlockType.FURNACE) {
-            return;
-        }
-        world.getFurnaceRegistry().applySlots(world, pos, f.slots());
-    }
-
-    /**
-     * C2S: the player edited the grid of an open crafting-table UI (issue #307). Validates
-     * (reach, the block is still a workbench on the server world), then persists the grid on
-     * the authoritative {@code WorkbenchState}; the queued {@code BlockStateS2C} echo
-     * corrects everyone (originator included). Acknowledged like
-     * {@link #handleFurnaceSlots} (issue #353).
-     */
-    public void handleWorkbenchSlots(ServerPlayer sp, com.stonebreak.network.packet.world.WorkbenchSlotsC2S w,
-                                     ServerWorldContext ctx) {
-        World world = ctx.world();
-        if (world == null) {
-            return;
-        }
-        if (w.y() < 0 || w.y() >= WorldConfiguration.WORLD_HEIGHT) {
-            return;
-        }
-        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(w.x(), w.y(), w.z());
-        sp.recordSlotIntent(pos, w.seq());
-        queueStateEcho(w.x(), w.y(), w.z());
-        if (!withinReach(sp, w.x(), w.y(), w.z())) {
-            return;
-        }
-        if (world.getBlockAt(w.x(), w.y(), w.z()) != BlockType.WORKBENCH) {
-            return;
-        }
-        world.getWorkbenchRegistry().applySlots(world, pos, w.slots());
-    }
-
-    /** Container-intent reach check; a player that has not reported a position yet passes. */
-    private static boolean withinReach(ServerPlayer sp, int x, int y, int z) {
-        if (sp.lastStateNs() == 0L) {
-            return true;
-        }
-        float dx = (x + 0.5f) - sp.x();
-        float dy = (y + 0.5f) - sp.y();
-        float dz = (z + 0.5f) - sp.z();
-        return dx * dx + dy * dy + dz * dz <= MAX_REACH_SQ;
     }
 
     /**
@@ -386,7 +546,7 @@ public final class ServerBlockHandler {
         }
         BlockType target = world.getBlockAt(t.x(), t.y(), t.z());
         if (target == BlockType.LIMESTONE_STALAGMITE) {
-            growStalagmite(world, t.x(), t.y(), t.z(), ctx);
+            growStalagmite(sp, world, t.x(), t.y(), t.z(), ctx);
             return;
         }
         if (target != BlockType.OAK_DOOR) {
@@ -413,12 +573,27 @@ public final class ServerBlockHandler {
     /**
      * The toggle intent on a stalagmite is the water-bucket use: grow it one size. The new
      * upper cell goes out on the block batch and both states ride the queued echo, so a state
-     * packet can never overtake the block change that would clear it. The bucket itself is
-     * client inventory, emptied by the client that sent the intent.
+     * packet can never overtake the block change that would clear it.
+     *
+     * <p>The water costs one water bucket from the server-owned inventory (issue #334): the
+     * selected slot must hold one (as {@code StalagmiteInteraction.tryGrow} requires) and one
+     * bucket of it is emptied with the pour's stack rule — free only for the placement-exempt
+     * (creative + cheats). A refusal, or a stalagmite the server says cannot grow, syncs the
+     * sender, whose client already emptied its own copy.
      */
-    private void growStalagmite(World world, int x, int y, int z, ServerWorldContext ctx) {
-        java.util.List<org.joml.Vector3i> written = com.stonebreak.blocks.stalagmite.Stalagmite.grow(
-                com.stonebreak.blocks.stalagmite.Stalagmite.of(world), x, y, z);
+    private void growStalagmite(ServerPlayer sp, World world, int x, int y, int z, ServerWorldContext ctx) {
+        com.stonebreak.blocks.stalagmite.Stalagmite.Cells cells =
+                com.stonebreak.blocks.stalagmite.Stalagmite.of(world);
+        int sel = sp.inventory().selectedHotbarSlot();
+        if (!isBucket(sp.inventory().slot(sel), true)
+                || !com.stonebreak.blocks.stalagmite.Stalagmite.canGrow(cells, x, y, z)
+                || (!placementDebitExempt(sp, ctx)
+                    && !convertOneBucket(sp, sel, ItemType.BUCKET_STATE_EMPTY, ctx))) {
+            syncInventory(sp);
+            return;
+        }
+        java.util.List<org.joml.Vector3i> written =
+                com.stonebreak.blocks.stalagmite.Stalagmite.grow(cells, x, y, z);
         if (!written.isEmpty()) {
             org.joml.Vector3i newCell = written.get(0);
             queueOutgoing(newCell.x, newCell.y, newCell.z, (short) BlockType.LIMESTONE_STALAGMITE.getId());
@@ -485,14 +660,18 @@ public final class ServerBlockHandler {
             }
             BlockChangeC2S c = pe.change;
             BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
+            BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
             BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z()); // before apply
+            boolean scoop = isScoop(world, c, incoming, serverPrev);
             if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
-                BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
                 BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR)
                     ? clientPrev : serverPrev;
-                applyAccepted(pe.sp, c, incoming, prev, world, ctx);
+                completeEdit(pe.sp, c, incoming, prev, scoop, pe.debit, world, ctx);
             } else if (--pe.ticksLeft <= 0) {
+                // The debit was taken when the edit was validated; give back exactly what it
+                // took (nothing for an exempt placement or a break) and sync (issue #334).
                 sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
+                refund(pe.sp, pe.debit, ctx);
             } else {
                 retryQueue.add(pe); // still loading — try again next tick
             }

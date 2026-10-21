@@ -106,6 +106,10 @@ class BlockEditReplicationTest {
     }
 
     private void edit(int x, int y, int z, BlockType to, BlockType from) {
+        if (to != BlockType.AIR) {
+            // Placement debits the placer's server inventory (issue #334): hold the block.
+            player.inventory().add(to.getId(), 1);
+        }
         try (MockedStatic<DropUtil> drops = mockStatic(DropUtil.class)) {
             blockHandler.handleBlockChange(player,
                     new BlockChangeC2S(x, y, z, (short) to.getId(), (short) from.getId()), ctx);

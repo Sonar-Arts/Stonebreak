@@ -63,15 +63,16 @@ public class FurnaceStateRegistry {
     }
 
     /**
-     * Applies a player's slot snapshot onto the authoritative furnace and persists it at once
-     * (the change listener echoes it), rather than at the next tick: the echo queued for the
-     * sender's ack must carry the state that includes this snapshot. Server-side; the caller
-     * validates reach and that the block is still a furnace.
+     * Persists the CURRENT state of {@code pos} into its chunk at once (the change listener
+     * echoes it), rather than at the next tick: a container action mutates the state in place
+     * (issue #334), and the echo queued for the actor's ack must carry the state that
+     * includes it (issue #353). Server-side.
      */
-    public void applySlots(World world, BlockPos pos, String encodedSlots) {
-        FurnaceState s = getOrCreate(pos);
-        s.applySlots(encodedSlots);
-        writeChunkState(world, pos, s.toStateString());
+    public void persist(World world, BlockPos pos) {
+        FurnaceState s = states.get(pos);
+        if (s != null) {
+            writeChunkState(world, pos, s.toStateString());
+        }
     }
 
     /** Look up the furnace at {@code pos}, or {@code null} if none. */

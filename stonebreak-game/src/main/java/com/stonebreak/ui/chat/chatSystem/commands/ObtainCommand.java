@@ -1,21 +1,20 @@
 package com.stonebreak.ui.chat.chatSystem.commands;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
-import com.stonebreak.items.Inventory;
-import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.player.Player;
 import com.stonebreak.ui.chat.chatSystem.ChatMessageManager;
 import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
-import com.stonebreak.ui.chat.chatSystem.commands.util.CommandValidator;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Command to spawn items and blocks in the player's inventory.
+ * Command to spawn items in the player's inventory — executed ON THE SERVER (issue #334):
+ * the client forwards the raw line, the server checks its own cheats flag, resolves the
+ * item name ({@link com.stonebreak.items.ItemLookup}) and adds to the server-owned
+ * inventory replica.
+ *
  * Usage: /obtain <stonebreak:item_name|item_name> [count]
  *
  * Examples:
@@ -27,63 +26,16 @@ import java.util.List;
 public class ObtainCommand implements ChatCommand {
 
     private static final String PREFIX = "stonebreak:";
-    private static final int DEFAULT_COUNT = 1;
+    /** Largest count the server accepts (mirrors ServerCommandHandler.MAX_OBTAIN_COUNT). */
     private static final int MAX_COUNT = 999;
 
     @Override
     public void execute(String[] args, ChatMessageManager messageManager) {
-        if (!CommandValidator.validateCheatCommand(messageManager)) {
-            return;
-        }
-
-        if (args.length == 0) {
-            showUsage(messageManager);
-            return;
-        }
-
-        Player player = Game.getPlayer();
-        Inventory inventory = player.getInventory();
-
-        // Parse item name
-        String itemName = parseItemName(args[0]);
-
-        // Parse count (default to 1)
-        int count = DEFAULT_COUNT;
-        if (args.length >= 2) {
-            try {
-                count = Integer.parseInt(args[1]);
-                if (count <= 0) {
-                    messageManager.addMessage("Count must be greater than 0!", ChatColors.RED);
-                    return;
-                }
-                if (count > MAX_COUNT) {
-                    messageManager.addMessage("Count too large! Maximum is " + MAX_COUNT, ChatColors.RED);
-                    return;
-                }
-            } catch (NumberFormatException e) {
-                messageManager.addMessage("Invalid count: " + args[1], ChatColors.RED);
-                return;
-            }
-        }
-
-        // Try to find the item
-        Item item = findItem(itemName);
-
-        if (item == null) {
-            messageManager.addMessage("Unknown item: " + itemName, ChatColors.RED);
-            messageManager.addMessage("Try using the enum name (e.g., GRASS) or display name (e.g., \"Grass\")", ChatColors.ORANGE);
-            return;
-        }
-
-        // Add item to inventory
-        boolean success = inventory.addItem(item, count);
-
-        if (success) {
-            messageManager.addMessage("Gave " + count + "x " + item.getName() + " to player", ChatColors.GREEN);
-        } else {
-            messageManager.addMessage("Could not add all items - inventory may be full", ChatColors.ORANGE);
-            messageManager.addMessage("Some items may have been added", ChatColors.ORANGE);
-        }
+        // Not reached in-world: executedOnServer() forwards the raw line and the SERVER
+        // executes it against its own cheats flag and inventory (issue #334). Kept as a
+        // fallback for no-session contexts only.
+        messageManager.addMessage("No server session — /obtain runs on the server.",
+                ChatColors.RED);
     }
 
     @Override
@@ -101,107 +53,11 @@ public class ObtainCommand implements ChatCommand {
         return true;
     }
 
-    /**
-     * Parse item name by removing stonebreak: prefix if present
-     */
-    private String parseItemName(String input) {
-        if (input.toLowerCase().startsWith(PREFIX)) {
-            input = input.substring(PREFIX.length());
-        }
-        return input;
+    @Override
+    public boolean executedOnServer() {
+        return true;
     }
 
-    /**
-     * Find an item by name, checking both BlockType and ItemType.
-     * Supports enum names (GRASS, WOODEN_PICKAXE) and display names (Grass, Wooden Pickaxe).
-     */
-    private Item findItem(String name) {
-        if (name == null || name.isEmpty()) {
-            return null;
-        }
-
-        // Try as enum name first (e.g., GRASS, WOODEN_PICKAXE)
-        try {
-            BlockType blockType = BlockType.valueOf(name.toUpperCase());
-            if (blockType != null) {
-                return blockType;
-            }
-        } catch (IllegalArgumentException e) {
-            // Not a valid enum name, continue
-        }
-
-        try {
-            ItemType itemType = ItemType.valueOf(name.toUpperCase());
-            if (itemType != null) {
-                return itemType;
-            }
-        } catch (IllegalArgumentException e) {
-            // Not a valid enum name, continue
-        }
-
-        // Try as display name (e.g., "Grass", "Wooden Pickaxe")
-        BlockType blockByName = BlockType.getByName(name);
-        if (blockByName != null) {
-            return blockByName;
-        }
-
-        ItemType itemByName = ItemType.getByName(name);
-        if (itemByName != null) {
-            return itemByName;
-        }
-
-        // Try converting underscores to spaces (e.g., "wooden_pickaxe" -> "Wooden Pickaxe")
-        String convertedName = convertUnderscoresToSpaces(name);
-        blockByName = BlockType.getByName(convertedName);
-        if (blockByName != null) {
-            return blockByName;
-        }
-
-        itemByName = ItemType.getByName(convertedName);
-        if (itemByName != null) {
-            return itemByName;
-        }
-
-        return null;
-    }
-
-    /**
-     * Convert underscores to spaces and capitalize words
-     * Example: "wooden_pickaxe" -> "Wooden Pickaxe"
-     */
-    private String convertUnderscoresToSpaces(String input) {
-        if (input == null || input.isEmpty()) {
-            return input;
-        }
-
-        String[] words = input.split("_");
-        StringBuilder result = new StringBuilder();
-
-        for (int i = 0; i < words.length; i++) {
-            String word = words[i];
-            if (!word.isEmpty()) {
-                // Capitalize first letter, lowercase rest
-                result.append(Character.toUpperCase(word.charAt(0)));
-                if (word.length() > 1) {
-                    result.append(word.substring(1).toLowerCase());
-                }
-
-                if (i < words.length - 1) {
-                    result.append(" ");
-                }
-            }
-        }
-
-        return result.toString();
-    }
-
-    private void showUsage(ChatMessageManager messageManager) {
-        messageManager.addMessage("Usage: /obtain <stonebreak:item> [count]", ChatColors.RED);
-        messageManager.addMessage("Examples:", ChatColors.ORANGE);
-        messageManager.addMessage("  /obtain stonebreak:grass", ChatColors.ORANGE);
-        messageManager.addMessage("  /obtain grass 64", ChatColors.ORANGE);
-        messageManager.addMessage("  /obtain WOODEN_PICKAXE 1", ChatColors.ORANGE);
-    }
 
     /**
      * Common count presets offered when the count argument is being typed.

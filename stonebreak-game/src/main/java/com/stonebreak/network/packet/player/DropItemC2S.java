@@ -11,11 +11,10 @@ import io.netty.buffer.ByteBuf;
  *   <li><b>Manual toss</b> (Q / inventory drop): the item leaves the client inventory and the
  *       server spawns the authoritative drop entity — replicated to everyone. (Previously the
  *       toss spawned a client-local drop that only the tosser could see.)</li>
- *   <li><b>Give overflow</b>: a {@code GiveItemS2C} that didn't fully fit the inventory is
- *       returned so the excess re-drops at the player instead of vanishing.</li>
  * </ul>
- * The server clamps count and spawns with a toss pickup-delay so the dropper doesn't
- * instantly re-collect.
+ * A DEBIT request: the server drops only what its own replica holds, clamped to 64 per
+ * packet, with a toss pickup-delay so the dropper doesn't instantly re-collect. Give
+ * overflow never rides this packet — the server re-drops it itself (issue #334).
  */
 public record DropItemC2S(int itemId, int count) implements Packet {
 

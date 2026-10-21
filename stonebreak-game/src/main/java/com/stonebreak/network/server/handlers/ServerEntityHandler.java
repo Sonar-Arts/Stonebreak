@@ -281,15 +281,14 @@ public final class ServerEntityHandler {
         le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
-            boolean killed = !le.isAlive();
-            sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
-                le.getType().ordinal(), dealt, killed, killed ? le.getXpReward() : 0), false);
+            sendKillCredit(sp, le, dealt, !le.isAlive());
         }
     }
 
     /**
-     * Authoritative shear application. Validates species/range, the held item (from the
-     * cached {@code PlayerHeldItemC2S} relay) and a per-player rate limit, then shears
+     * Authoritative shear application. Validates species/range, the held item (derived
+     * by the server from the player's selected hotbar slot and inventory replica) and a
+     * per-player rate limit, then shears
      * the real sheep; the variant change replicates to interested players via
      * {@code broadcastVariantIfChanged} on the next tick.
      *
@@ -313,9 +312,9 @@ public final class ServerEntityHandler {
             return; // rate-limited
         }
         sp.markShearRequest(now);
-        // Server-side shears requirement: the held item comes from the cached
-        // PlayerHeldItemC2S relay (the client relays held-item changes).
-        if (sp.heldItemId() != com.stonebreak.items.ItemType.SHEARS.getId()) {
+        // Server-side shears requirement: the held item is derived from the server's own
+        // inventory replica via HotbarSelectC2S (issue #334) — it cannot be forged.
+        if (sp.inventory().heldItemId() != com.stonebreak.items.ItemType.SHEARS.getId()) {
             sp.send(new EntityVariantS2C(pkt.targetNetworkId(), sheep.getTextureVariant()), false);
             return;
         }
@@ -338,12 +337,20 @@ public final class ServerEntityHandler {
     }
 
     /**
-     * Server-side hit credit from an OWNED projectile (see {@code ProjectileDamage}):
-     * forwards the stat/XP grant to the launching player's client.
+     * Server-side kill credit from an OWNED hit or projectile (see {@code ProjectileDamage}):
+     * grants the victim's XP reward to the player's SERVER-owned progression (issue #334 —
+     * level/xp can only come from server-granted kills) and forwards the stat credit to
+     * the client. The packet's {@code xpReward} is display-only; the client mirror is
+     * corrected by the ProgressS2C echo on level-up.
      */
     public void sendKillCredit(ServerPlayer sp, LivingEntity victim, float dealt, boolean killed) {
+        int xp = killed ? victim.getXpReward() : 0;
+        if (xp > 0) {
+            sp.serverStats().addXp(xp);
+            sp.sendProgression();
+        }
         sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
-            victim.getType().ordinal(), dealt, killed, killed ? victim.getXpReward() : 0), false);
+            victim.getType().ordinal(), dealt, killed, xp), false);
     }
 
     /** Spawn position must be near the claiming player (zones cast at range get more slack). */
@@ -392,6 +399,12 @@ public final class ServerEntityHandler {
         Entity spawned = switch (pkt.kind()) {
             case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW -> {
                 if (v.lengthSquared() < 1e-6f) {
+                    yield null;
+                }
+                // An arrow costs one ARROW from the server-owned inventory (issue #334);
+                // a refusal spawns nothing and syncs the sender.
+                if (!sp.inventory().debit(com.stonebreak.items.ItemType.ARROW.getId(), 1)) {
+                    sp.send(sp.inventorySync(), false);
                     yield null;
                 }
                 if (v.length() > MAX_ARROW_SPEED) {

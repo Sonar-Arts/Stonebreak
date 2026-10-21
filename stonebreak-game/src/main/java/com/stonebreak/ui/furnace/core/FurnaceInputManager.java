@@ -7,8 +7,12 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
+import com.stonebreak.ui.inventoryScreen.handlers.SlotActionSink;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
 import org.lwjgl.glfw.GLFW;
+
+import static com.stonebreak.network.packet.player.ContainerActionC2S.Action;
+import static com.stonebreak.network.packet.player.ContainerActionC2S.Region;
 
 /**
  * Handles mouse input for the furnace screen: clicking furnace slots,
@@ -21,17 +25,30 @@ public class FurnaceInputManager implements ContainerSlotInput {
     protected final InventoryDragDropHandler.DragState dragState;
     protected final FurnaceController controller;
 
-    private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
-    private static final float DOUBLE_CLICK_RADIUS = 40f;
-    private long lastClickTimeMs = 0L;
-    private float lastClickX = 0f, lastClickY = 0f;
-
     /** Drops a carried stack at the player's feet; tests observe it. */
     private java.util.function.Consumer<InventoryDragDropHandler.DragState> worldDrop =
         InventoryDragDropHandler::dropEntireStackIntoWorld;
 
     // Right-click drag state
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
+
+    /** Where slot actions go (issue #334) — bound by FurnaceController when the UI opens. */
+    private SlotActionSink actions = new SlotActionSink();
+
+    /** Binds the container-action sink for the open furnace (test seam re-binds too). */
+    public void bindActions(SlotActionSink sink) {
+        this.actions = sink;
+    }
+
+    /** Furnace slot id → its container region. */
+    private static byte regionOf(int slotId) {
+        return switch (slotId) {
+            case FurnaceController.SLOT_INGREDIENT -> Region.FURNACE_ING;
+            case FurnaceController.SLOT_FUEL -> Region.FURNACE_FUEL;
+            case FurnaceController.SLOT_OUTPUT -> Region.FURNACE_OUT;
+            default -> Region.NONE;
+        };
+    }
 
     public FurnaceInputManager(InputHandler inputHandler, Inventory inventory,
                                FurnaceController controller) {
@@ -145,47 +162,33 @@ public class FurnaceInputManager implements ContainerSlotInput {
     private void handleLeftClick(float mouseX, float mouseY,
                                  InventoryLayoutCalculator.InventoryLayout layout) {
         if (dragState.isDragging()) {
-            if (isDoubleClick(mouseX, mouseY)) {
-                recordClick(mouseX, mouseY);
-                return;
-            }
             if (tryDropToFurnaceSlots(mouseX, mouseY, layout)) {
-                recordClick(mouseX, mouseY);
                 return;
             }
             if (!tryDropToInventory(mouseX, mouseY, layout) && !tryDropToHotbar(mouseX, mouseY, layout)) {
                 if (dragState.isDragging()) {
-                    // Return inventory/hotbar-sourced items to their origin
-                    InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
+                    // Back to where it came from — an inventory/hotbar slot or its furnace
+                    // slot — each step sent as the matching action (issue #334).
+                    returnCarriedHome();
 
-                    // Return furnace-sourced items (index >= 3000) to their furnace slot
-                    if (dragState.isDragging() && dragState.draggedItemOriginalSlotIndex >= 3000) {
-                        int slotId = dragState.draggedItemOriginalSlotIndex - 3000;
-                        ItemStack current = getFurnaceSlot(slotId);
-                        if (current.isEmpty()) {
-                            setFurnaceSlot(slotId, dragState.draggedItemStack.copy());
-                            dragState.clear();
-                        }
-                    }
-
-                    // Click outside the panel bounds → drop into world
+                    // Click outside the panel bounds → drop into world (DROP_CARRIED when
+                    // the server owns the carried stack)
                     if (dragState.isDragging() &&
                         (mouseX < layout.panelStartX ||
                          mouseX > layout.panelStartX + layout.inventoryPanelWidth ||
                          mouseY < layout.panelStartY ||
                          mouseY > layout.panelStartY + layout.inventoryPanelHeight)) {
-                        InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
+                        InventoryDragDropHandler.tossCarried(dragState, actions);
                     }
                 }
             }
-            recordClick(mouseX, mouseY);
             return;
         }
 
-        if (tryPickUpFromFurnaceSlots(mouseX, mouseY, layout) ||
-            tryPickUpFromInventory(mouseX, mouseY, layout) ||
-            tryPickUpFromHotbar(mouseX, mouseY, layout)) {
-            recordClick(mouseX, mouseY);
+        // No double-click rule here (#352): a quick second press always drops or swaps.
+        if (!tryPickUpFromFurnaceSlots(mouseX, mouseY, layout) &&
+            !tryPickUpFromInventory(mouseX, mouseY, layout)) {
+            tryPickUpFromHotbar(mouseX, mouseY, layout);
         }
     }
 
@@ -200,16 +203,24 @@ public class FurnaceInputManager implements ContainerSlotInput {
 
     /**
      * Moves a furnace slot's stack into the inventory. Only what fits moves:
-     * an ingredient/fuel remainder stays in its slot; output overflow keeps its
-     * drop-at-feet behaviour, but only the overflow is dropped (#319 — the old
-     * code cleared the slot regardless, deleting the remainder, and dropped the
-     * whole output stack after a partial add, duplicating it).
+     * an ingredient/fuel remainder stays in its slot; output overflow drops at
+     * the feet in local-only play, but only the overflow is dropped (#319 — the
+     * old code cleared the slot regardless, deleting the remainder, and dropped
+     * the whole output stack after a partial add, duplicating it). With a live
+     * session the SERVER keeps the output overflow in the slot instead (issue #334).
      */
     void shiftClickSlot(int slotId) {
         ItemStack item = getFurnaceSlot(slotId);
         if (item.isEmpty()) return;
+        // The SERVER moves the stack into the replica (issue #334); this local move is the
+        // prediction. The SERVER keeps the output overflow IN the slot (quickMove), so with
+        // a live session the remainder stays there and the BlockStateS2C echo re-baselines
+        // — dropping it here would send a slot debit for a stack that lives in the furnace,
+        // not the inventory. Local-only play keeps the #319 drop-at-feet behaviour.
+        actions.send(regionOf(slotId), (byte) slotId, Action.QUICK_MOVE, true);
         ItemStack remainder = FurnaceShiftTransfer.intoInventory(item, inventory);
-        if (slotId == FurnaceController.SLOT_OUTPUT && !remainder.isEmpty()) {
+        if (slotId == FurnaceController.SLOT_OUTPUT && !remainder.isEmpty()
+                && !com.stonebreak.network.MultiplayerSession.isClient()) {
             com.stonebreak.player.Player player = Game.getPlayer();
             if (player != null) {
                 com.stonebreak.util.DropUtil.dropItemFromPlayer(player, remainder);
@@ -234,6 +245,7 @@ public class FurnaceInputManager implements ContainerSlotInput {
                 if (s.isEmpty()) setFurnaceSlot(slot.id, new ItemStack(0, 0));
                 dragState.draggedItemOriginalSlotIndex = 3000 + slot.id;
                 dragState.dragSource = InventoryDragDropHandler.DragSource.NONE;
+                actions.send(regionOf(slot.id), (byte) slot.id, Action.TAKE_ONE);
             }
         }
     }
@@ -255,22 +267,26 @@ public class FurnaceInputManager implements ContainerSlotInput {
             if (isOverSlot(mouseX, mouseY, sx, sy) && !rightDragVisitedSlots.contains(i)) {
                 ItemStack target = inventory.getMainInventorySlot(i);
                 if (canPlaceOne(target)) {
-                    placeOne(target);
+                    placeOne(target, i);
                     rightDragVisitedSlots.add(i);
+                    actions.send(Region.PLAYER_MAIN, (byte) i, Action.DROP_ONE);
                 }
                 break;
             }
         }
     }
 
+    /** The server's DROP_ONE rule: an empty slot, or a stackable one with room. */
     private boolean canPlaceOne(ItemStack target) {
-        return target.isEmpty() || target.canStackWith(dragState.draggedItemStack);
+        return target.isEmpty() || (target.canStackWith(dragState.draggedItemStack)
+                && target.getCount() < target.getMaxStackSize());
     }
 
-    private void placeOne(ItemStack target) {
+    private void placeOne(ItemStack target, int mainSlot) {
         if (target.isEmpty()) {
-            target.setBlockTypeId(dragState.draggedItemStack.getBlockTypeId());
-            target.setCount(1);
+            // one of THIS stack (state included), as the server's DROP_ONE writes it
+            inventory.setMainInventorySlot(mainSlot, new ItemStack(dragState.draggedItemStack.getItem(), 1,
+                    dragState.draggedItemStack.getState()));
         } else {
             target.incrementCount(1);
         }
@@ -322,6 +338,7 @@ public class FurnaceInputManager implements ContainerSlotInput {
         setFurnaceSlot(slot.id, new ItemStack(0, 0));
         dragState.draggedItemOriginalSlotIndex = 3000 + slot.id;
         dragState.dragSource = InventoryDragDropHandler.DragSource.NONE;
+        actions.send(regionOf(slot.id), (byte) slot.id, Action.TAKE_ALL);
         return true;
     }
 
@@ -333,10 +350,9 @@ public class FurnaceInputManager implements ContainerSlotInput {
         if (slot == null) return false;
         if (slot.id == FurnaceController.SLOT_OUTPUT) return false; // can't drop into output
 
-        // Fuel slot — check burn time
+        // Fuel slot — check burn time (the SERVER re-checks with its own SmeltingManager).
         if (slot.id == FurnaceController.SLOT_FUEL) {
-            int burn = controller.getSmeltingManager().getBurnTimePerUnit(dragState.draggedItemStack.getItem());
-            if (burn <= 0) return false;
+            if (!furnaceAccepts(FurnaceController.SLOT_FUEL, dragState.draggedItemStack)) return false;
 
             ItemStack fuel = controller.getFuelSlot();
             if (!fuel.isEmpty()) {
@@ -347,6 +363,7 @@ public class FurnaceInputManager implements ContainerSlotInput {
                     fuel.incrementCount(toAdd);
                     dragState.draggedItemStack.decrementCount(toAdd);
                     if (dragState.draggedItemStack.isEmpty()) dragState.draggedItemStack = null;
+                    actions.send(Region.FURNACE_FUEL, (byte) slot.id, Action.MERGE);
                     return true;
                 }
                 return false;
@@ -356,27 +373,39 @@ public class FurnaceInputManager implements ContainerSlotInput {
             // so removing the stack mid-burn only refunds un-started items.
             controller.setFuelSlot(dragState.draggedItemStack.copy());
             dragState.draggedItemStack = null;
+            actions.send(Region.FURNACE_FUEL, (byte) slot.id, Action.PUT_ALL);
             return true;
         }
 
-        // Ingredient slot
+        // Ingredient slot — smeltables only (the SERVER refuses anything else, so placing
+        // it here would be a prediction the next echo reverts).
+        if (!furnaceAccepts(FurnaceController.SLOT_INGREDIENT, dragState.draggedItemStack)) return false;
         ItemStack current = getFurnaceSlot(slot.id);
         if (current.isEmpty()) {
             setFurnaceSlot(slot.id, dragState.draggedItemStack.copy());
             dragState.draggedItemStack = null;
+            actions.send(Region.FURNACE_ING, (byte) slot.id, Action.PUT_ALL);
             return true;
-        } else if (current.canStackWith(dragState.draggedItemStack)) {
+        } else if (InventoryDragDropHandler.sameKind(current, dragState.draggedItemStack)) {
             int canAdd = current.getMaxStackSize() - current.getCount();
             int toAdd = Math.min(canAdd, dragState.draggedItemStack.getCount());
+            if (toAdd <= 0) return false;
             current.incrementCount(toAdd);
             dragState.draggedItemStack.decrementCount(toAdd);
             if (dragState.draggedItemStack.isEmpty()) dragState.draggedItemStack = null;
+            actions.send(Region.FURNACE_ING, (byte) slot.id, Action.MERGE);
             return true;
         } else {
-            // Swap
-            ItemStack temp = current.copy();
-            setFurnaceSlot(slot.id, dragState.draggedItemStack.copy());
-            dragState.draggedItemStack = temp;
+            // Swap, by the server's rule (issue #334): the displaced stack goes to the drag's
+            // origin slot when that is an empty inventory/hotbar slot, otherwise (a
+            // furnace-sourced drag, or an occupied origin) it stays on the cursor.
+            byte action = InventoryDragDropHandler.placementAction(dragState, current);
+            byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, actions);
+            byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
+            final int ingredientSlot = slot.id;
+            InventoryDragDropHandler.swapIntoSlot(dragState, current, st -> setFurnaceSlot(ingredientSlot, st),
+                    inventory, null, null);
+            actions.send(Region.FURNACE_ING, (byte) slot.id, originRegion, originSlot, action, false);
             return true;
         }
     }
@@ -399,6 +428,7 @@ public class FurnaceInputManager implements ContainerSlotInput {
                 inventory.setMainInventorySlot(i, new ItemStack(0, 0));
                 dragState.draggedItemOriginalSlotIndex = i;
                 dragState.dragSource = InventoryDragDropHandler.DragSource.MAIN_INVENTORY;
+                actions.send(Region.PLAYER_MAIN, (byte) i, Action.TAKE_ALL);
                 return true;
             }
         }
@@ -419,25 +449,11 @@ public class FurnaceInputManager implements ContainerSlotInput {
                 inventory.setHotbarSlot(i, new ItemStack(0, 0));
                 dragState.draggedItemOriginalSlotIndex = i;
                 dragState.dragSource = InventoryDragDropHandler.DragSource.HOTBAR;
+                actions.send(Region.PLAYER_HOTBAR, (byte) i, Action.TAKE_ALL);
                 return true;
             }
         }
         return false;
-    }
-
-    /* ── Double-click helpers (YAGNI placeholder) ────────── */
-
-    private boolean isDoubleClick(float x, float y) {
-        long now = System.currentTimeMillis();
-        float dx = x - lastClickX, dy = y - lastClickY;
-        return (now - lastClickTimeMs < DOUBLE_CLICK_THRESHOLD_MS &&
-                dx * dx + dy * dy < DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS);
-    }
-
-    private void recordClick(float x, float y) {
-        lastClickTimeMs = System.currentTimeMillis();
-        lastClickX = x;
-        lastClickY = y;
     }
 
     /* ── Read/write furnace slots ────────────────────────── */
@@ -472,25 +488,30 @@ public class FurnaceInputManager implements ContainerSlotInput {
             int sy = layout.mainInvContentStartY + pad + row * (ss + pad);
             if (isOverSlot(mouseX, mouseY, sx, sy)) {
                 ItemStack target = inventory.getMainInventorySlot(i);
+                byte action = InventoryDragDropHandler.placementAction(dragState, target);
+                byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, actions);
+                byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
                 if (target.isEmpty()) {
                     inventory.setMainInventorySlot(i, dragState.draggedItemStack.copy());
                     dragState.draggedItemStack = null;
-                } else if (target.canStackWith(dragState.draggedItemStack)) {
+                } else if (InventoryDragDropHandler.sameKind(target, dragState.draggedItemStack)) {
                     int canAdd = target.getMaxStackSize() - target.getCount();
                     int toAdd = Math.min(canAdd, dragState.draggedItemStack.getCount());
+                    if (toAdd <= 0) return true; // full: nothing moves, nothing to send
                     target.incrementCount(toAdd);
                     dragState.draggedItemStack.decrementCount(toAdd);
                     if (dragState.draggedItemStack.isEmpty()) dragState.draggedItemStack = null;
                 } else {
-                    ItemStack temp = target.copy();
-                    inventory.setMainInventorySlot(i, dragState.draggedItemStack.copy());
-                    if (dragState.dragSource == InventoryDragDropHandler.DragSource.MAIN_INVENTORY) {
-                        inventory.setMainInventorySlot(dragState.draggedItemOriginalSlotIndex, temp);
-                        dragState.clear();
-                    } else if (dragState.dragSource == InventoryDragDropHandler.DragSource.HOTBAR) {
-                        inventory.setHotbarSlot(dragState.draggedItemOriginalSlotIndex, temp);
-                        dragState.clear();
+                    if (dragState.dragSource == InventoryDragDropHandler.DragSource.MAIN_INVENTORY
+                            || dragState.dragSource == InventoryDragDropHandler.DragSource.HOTBAR) {
+                        // The server's swap (issue #334): displaced → the origin slot when it
+                        // is empty, else it stays carried (never overwrites the origin).
+                        final int idx = i;
+                        InventoryDragDropHandler.swapIntoSlot(dragState, target,
+                                st -> inventory.setMainInventorySlot(idx, st), inventory, null, null);
                     } else {
+                        ItemStack temp = target.copy();
+                        inventory.setMainInventorySlot(i, dragState.draggedItemStack.copy());
                         // DragSource.NONE (furnace-sourced) — leave displaced item on cursor
                         // so user can place it in a furnace slot
                         dragState.draggedItemStack = temp;
@@ -498,6 +519,7 @@ public class FurnaceInputManager implements ContainerSlotInput {
                         dragState.dragSource = InventoryDragDropHandler.DragSource.MAIN_INVENTORY;
                     }
                 }
+                actions.send(Region.PLAYER_MAIN, (byte) i, originRegion, originSlot, action, false);
                 return true;
             }
         }
@@ -513,31 +535,36 @@ public class FurnaceInputManager implements ContainerSlotInput {
             int sy = layout.hotbarRowY;
             if (isOverSlot(mouseX, mouseY, sx, sy)) {
                 ItemStack target = inventory.getHotbarSlot(i);
+                byte action = InventoryDragDropHandler.placementAction(dragState, target);
+                byte originRegion = InventoryDragDropHandler.originRegionOf(dragState, actions);
+                byte originSlot = InventoryDragDropHandler.originSlotOf(dragState);
                 if (target.isEmpty()) {
                     inventory.setHotbarSlot(i, dragState.draggedItemStack.copy());
                     dragState.draggedItemStack = null;
-                } else if (target.canStackWith(dragState.draggedItemStack)) {
+                } else if (InventoryDragDropHandler.sameKind(target, dragState.draggedItemStack)) {
                     int canAdd = target.getMaxStackSize() - target.getCount();
                     int toAdd = Math.min(canAdd, dragState.draggedItemStack.getCount());
+                    if (toAdd <= 0) return true; // full: nothing moves, nothing to send
                     target.incrementCount(toAdd);
                     dragState.draggedItemStack.decrementCount(toAdd);
                     if (dragState.draggedItemStack.isEmpty()) dragState.draggedItemStack = null;
                 } else {
-                    ItemStack temp = target.copy();
-                    inventory.setHotbarSlot(i, dragState.draggedItemStack.copy());
-                    if (dragState.dragSource == InventoryDragDropHandler.DragSource.HOTBAR) {
-                        inventory.setHotbarSlot(dragState.draggedItemOriginalSlotIndex, temp);
-                        dragState.clear();
-                    } else if (dragState.dragSource == InventoryDragDropHandler.DragSource.MAIN_INVENTORY) {
-                        inventory.setMainInventorySlot(dragState.draggedItemOriginalSlotIndex, temp);
-                        dragState.clear();
+                    if (dragState.dragSource == InventoryDragDropHandler.DragSource.MAIN_INVENTORY
+                            || dragState.dragSource == InventoryDragDropHandler.DragSource.HOTBAR) {
+                        // The server's swap (issue #334), as above.
+                        final int idx = i;
+                        InventoryDragDropHandler.swapIntoSlot(dragState, target,
+                                st -> inventory.setHotbarSlot(idx, st), inventory, null, null);
                     } else {
+                        ItemStack temp = target.copy();
+                        inventory.setHotbarSlot(i, dragState.draggedItemStack.copy());
                         // DragSource.NONE (furnace-sourced) — leave displaced item on cursor
                         dragState.draggedItemStack = temp;
                         dragState.draggedItemOriginalSlotIndex = i;
                         dragState.dragSource = InventoryDragDropHandler.DragSource.HOTBAR;
                     }
                 }
+                actions.send(Region.PLAYER_HOTBAR, (byte) i, originRegion, originSlot, action, false);
                 return true;
             }
         }
@@ -552,9 +579,71 @@ public class FurnaceInputManager implements ContainerSlotInput {
     void returnCarriedToPlayer() {
         if (!dragState.isDragging()) return;
         if (dragState.draggedItemOriginalSlotIndex < 3000) {
-            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
+            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null, actions);
         }
+        // A furnace-sourced carried stack cannot go home (the furnace is dead): the single
+        // DEPOSIT_CARRIED below puts it into the replica (issue #334).
         intoInventoryOrWorld();
+    }
+
+    /**
+     * Puts the carried stack back where it came from, sending each step as the action the
+     * server replays to the same outcome (issue #334): an inventory/hotbar origin as
+     * PUT_ALL/MERGE (InventoryDragDropHandler's sink return), a furnace slot likewise.
+     */
+    private void returnCarriedHome() {
+        if (!dragState.isDragging()) return;
+        if (dragState.draggedItemOriginalSlotIndex >= 3000) {
+            returnToFurnaceSlot(dragState.draggedItemOriginalSlotIndex - 3000);
+        } else {
+            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null, actions);
+        }
+    }
+
+    /**
+     * A furnace-sourced carried stack back into its slot: PUT_ALL into an empty slot, MERGE
+     * into a stackable one with room. The output slot is TAKE-only on the server, so with a
+     * replaying sink an output stack never goes back (it stays carried; close deposits it);
+     * local-only play keeps the old put-back-into-an-empty-output rule.
+     */
+    private void returnToFurnaceSlot(int slotId) {
+        ItemStack carried = dragState.draggedItemStack;
+        if (slotId == FurnaceController.SLOT_OUTPUT) {
+            if (!actions.live() && getFurnaceSlot(slotId).isEmpty()) {
+                setFurnaceSlot(slotId, carried.copy());
+                dragState.clear();
+            }
+            return;
+        }
+        if (!furnaceAccepts(slotId, carried)) return;
+        ItemStack current = getFurnaceSlot(slotId);
+        if (current.isEmpty()) {
+            setFurnaceSlot(slotId, carried.copy());
+            dragState.clear();
+            actions.send(regionOf(slotId), (byte) slotId, Action.PUT_ALL);
+        } else if (InventoryDragDropHandler.sameKind(current, carried)
+                && current.getCount() < current.getMaxStackSize()) {
+            int toAdd = Math.min(current.getMaxStackSize() - current.getCount(), carried.getCount());
+            current.incrementCount(toAdd);
+            carried.decrementCount(toAdd);
+            if (carried.isEmpty()) dragState.clear();
+            actions.send(regionOf(slotId), (byte) slotId, Action.MERGE);
+        }
+    }
+
+    /**
+     * Whether a furnace input slot takes {@code stack} — the server's furnaceDepositAllowed
+     * rule (fuels only in the fuel slot, smeltables only in the ingredient slot). Without a
+     * smelting manager (tests) every stack is accepted.
+     */
+    private boolean furnaceAccepts(int slotId, ItemStack stack) {
+        com.stonebreak.crafting.SmeltingManager m = controller.getSmeltingManager();
+        if (m == null || stack == null || stack.isEmpty()) return true;
+        return switch (slotId) {
+            case FurnaceController.SLOT_FUEL -> m.getBurnTimePerUnit(stack.getItem()) > 0;
+            case FurnaceController.SLOT_INGREDIENT -> m.getRecipe(stack) != null;
+            default -> true;
+        };
     }
 
     /**
@@ -563,8 +652,14 @@ public class FurnaceInputManager implements ContainerSlotInput {
      */
     private void intoInventoryOrWorld() {
         if (!dragState.isDragging()) return;
+        // The SERVER deposits the carried stack into the replica and drops whatever does
+        // not fit at the player (issue #334); the local pass below is the prediction —
+        // its remainder is discarded from the mirror and the next sync repairs it. Without
+        // a session the local drop is the only one (issue #307: closing never destroys
+        // items), so the remainder goes to the world here.
+        actions.send(Action.DEPOSIT_CARRIED);
         ItemStack rest = FurnaceShiftTransfer.intoInventory(dragState.draggedItemStack, inventory);
-        if (rest.isEmpty()) {
+        if (rest.isEmpty() || actions.live()) {
             dragState.clear();
         } else {
             dragState.draggedItemStack = rest;
@@ -577,27 +672,22 @@ public class FurnaceInputManager implements ContainerSlotInput {
         this.worldDrop = drop;
     }
 
+    /**
+     * Closing: the carried stack goes back to its slot (furnace or inventory), else into the
+     * inventory (DEPOSIT_CARRIED), else the world. Whenever this screen sent any action since
+     * it opened, the server's cursor may still hold a stack the prediction placed (a refused
+     * action), so the close always ends with a DEPOSIT_CARRIED then (issue #334).
+     */
     public void handleCloseWithDraggedItems() {
-        if (!dragState.isDragging()) return;
-
-        // Try to return to furnace slot of origin
-        if (dragState.draggedItemOriginalSlotIndex >= 3000) {
-            int slotId = dragState.draggedItemOriginalSlotIndex - 3000;
-            ItemStack current = getFurnaceSlot(slotId);
-            if (current.isEmpty()) {
-                setFurnaceSlot(slotId, dragState.draggedItemStack.copy());
-                dragState.clear();
-                return;
-            }
-        }
-
-        // Try returning to original inventory/hotbar slot
+        boolean mayCarry = actions.hasSentSinceBind();
         if (dragState.isDragging()) {
-            InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory, new ItemStack[0], null);
+            returnCarriedHome();
+            // Then any inventory space; only what does not fit is dropped
+            intoInventoryOrWorld();
         }
-
-        // Then any inventory space; only what does not fit is dropped
-        intoInventoryOrWorld();
+        if (mayCarry && actions.lastAction() != Action.DEPOSIT_CARRIED) {
+            actions.send(Action.DEPOSIT_CARRIED);
+        }
     }
 
     record FurnaceSlot(int id, int x, int y) {}

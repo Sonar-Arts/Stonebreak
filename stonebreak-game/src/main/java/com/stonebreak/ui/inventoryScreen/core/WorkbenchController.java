@@ -24,9 +24,6 @@ public class WorkbenchController extends InventoryController {
      */
     private WorkbenchState state;
 
-    /** Last grid snapshot sent to the server, for the per-frame dirty check. */
-    private String lastSentSlots;
-
     public WorkbenchController(Game game,
                               Inventory inventory,
                               InventoryInputManager inputManager,
@@ -65,10 +62,17 @@ public class WorkbenchController extends InventoryController {
      */
     void bind(WorkbenchState table) {
         this.state = table;
+        // Slot actions are addressed to THIS table (issue #334).
+        getInputManager().getSlotManager().bindContainer(
+                com.stonebreak.network.packet.player.ContainerActionC2S.ContainerKind.WORKBENCH,
+                table.getPos().x(), table.getPos().y(), table.getPos().z(),
+                com.stonebreak.network.packet.player.ContainerActionC2S.Region.WORKBENCH_GRID,
+                com.stonebreak.network.packet.player.ContainerActionC2S.Region.WORKBENCH_OUT);
+        // Numbered actions: echoes built before the server saw one keep our grid (#353).
+        getInputManager().getSlotManager().actions.onNumbered(table::markSent);
         // An echo that landed while the UI was closed is not an edit of ours — drop its
         // marker, and baseline on the grid as it stands (already what the server knows).
         state.consumePreEchoSlots();
-        this.lastSentSlots = state.encodeSlots();
         getCraftingManager().bindInputSlots(state.getSlots());
         setVisible(true);
     }
@@ -80,7 +84,6 @@ public class WorkbenchController extends InventoryController {
     public void close() {
         if (state != null) {
             handleDraggedItemsOnClose();
-            flushSlots();
             getCraftingManager().unbindInputSlots();
             state = null;
         }
@@ -102,40 +105,14 @@ public class WorkbenchController extends InventoryController {
             abandonBrokenTable();
             return;
         }
-        // Grid intent: whatever mutation path the UI took (drag, split, place, take, craft),
-        // the per-frame dirty check catches it and ships the full grid to the server, whose
-        // BlockStateS2C echo then confirms/corrects it.
-        //
-        // An echo is NOT intent. One that left the server before our last snapshot arrived
-        // carries an older ack, and the state keeps our grid (issue #353). One that
-        // acknowledges it may still overwrite an edit made since the last frame, so when an
-        // echo landed, first flush any edit made before it (the pre-echo snapshot), then adopt
-        // the echoed grid as the baseline. (Same rule as the furnace.)
-        String preEcho = state.consumePreEchoSlots();
-        if (preEcho != null) {
-            if (!preEcho.equals(lastSentSlots)) {
-                sendSlots(preEcho);
-            }
-            lastSentSlots = state.encodeSlots();
+        // Grid mutations ship as atomic actions the moment the input manager applies them
+        // (issue #334) — there is no per-frame grid snapshot to flush. An echo older than our
+        // last numbered action is dropped (issue #353); one acknowledging it re-baselines
+        // via the pre-echo machinery; the output preview is recomputed from the (local)
+        // grid, and the AUTHORITATIVE result comes from the server's TAKE_OUTPUT.
+        if (state.consumePreEchoSlots() != null) {
             getCraftingManager().updateCraftingOutput();
         }
-        flushSlots();
-    }
-
-    /** Sends the grid if it changed since the last send. */
-    private void flushSlots() {
-        String slots = state.encodeSlots();
-        if (!slots.equals(lastSentSlots)) {
-            sendSlots(slots);
-        }
-    }
-
-    private void sendSlots(String slots) {
-        lastSentSlots = slots;
-        int seq = com.stonebreak.network.SlotIntentSeq.next();
-        state.markSent(seq);
-        BlockPos p = state.getPos();
-        com.stonebreak.network.MultiplayerSession.sendWorkbenchSlots(p.x(), p.y(), p.z(), seq, slots);
     }
 
     private boolean isTableStillThere() {
@@ -182,7 +159,9 @@ public class WorkbenchController extends InventoryController {
         // The controller delegates to the InputManager for drag state management
         InventoryInputManager inputManager = getInputManager();
         if (inputManager != null) {
-            inputManager.handleCloseWithDraggedItems();
+            // Return the cursor stack, and deposit whatever the server may still carry
+            // (issue #334). The grid stays in the table, so it is not quick-moved out.
+            inputManager.closeBlockContainer();
         }
     }
 }

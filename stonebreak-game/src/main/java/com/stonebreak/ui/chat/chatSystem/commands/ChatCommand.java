@@ -43,6 +43,15 @@ public interface ChatCommand {
     }
 
     /**
+     * True when this command executes on the SERVER (issue #334): the client forwards the raw
+     * command line through the chat channel and the server's cheats state decides. The
+     * client-side {@link #execute} is never called for such commands.
+     */
+    default boolean executedOnServer() {
+        return false;
+    }
+
+    /**
      * Get autocomplete suggestions for command arguments
      * @param args Current arguments (excluding command name)
      * @param currentArg The argument currently being typed

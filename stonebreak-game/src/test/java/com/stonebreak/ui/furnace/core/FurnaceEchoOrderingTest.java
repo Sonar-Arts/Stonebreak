@@ -5,6 +5,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.network.packet.player.ContainerActionC2S;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -16,8 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * #353: an echo the server built before our latest slot snapshot arrived must not roll the
+ * #353: an echo the server built before our latest slot action arrived must not roll the
  * open furnace back — the shift-clicked output would come back and could be taken twice.
+ * Actions are the numbered {@link ContainerActionC2S}s of issue #334.
  */
 @Tag("regression")
 class FurnaceEchoOrderingTest {
@@ -25,9 +27,7 @@ class FurnaceEchoOrderingTest {
     private static final int STONE = BlockType.STONE.getId();
     private static final BlockPos POS = new BlockPos(0, 64, 0);
 
-    private record Sent(int seq, String slots) {}
-
-    private final List<Sent> sent = new ArrayList<>();
+    private final List<ContainerActionC2S> sent = new ArrayList<>();
     private Inventory inventory;
     private FurnaceInputManager input;
     private FurnaceController controller;
@@ -39,7 +39,7 @@ class FurnaceEchoOrderingTest {
         controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
-        controller.setSlotSink((pos, seq, slots) -> sent.add(new Sent(seq, slots)));
+        controller.actions().setCapture(sent::add);
         controller.setFurnaceAt(p -> true);
         furnace = new FurnaceState(POS);
         furnace.setOutput(new ItemStack(STONE, 10));
@@ -66,9 +66,9 @@ class FurnaceEchoOrderingTest {
         assertEquals(10, stoneInInventory());
         assertEquals(1, sent.size(), "nothing new to send");
 
-        // The echo acknowledging our snapshot settles it.
+        // The echo acknowledging our action settles it.
         FurnaceState server = FurnaceState.fromStateString(POS, serverBefore);
-        server.applySlots(sent.get(0).slots());
+        server.setOutput(new ItemStack(0, 0)); // the server's QUICK_MOVE
         furnace.applyStateString(server.toStateString(), seq);
         controller.update(0f);
         assertTrue(furnace.getOutput().isEmpty());

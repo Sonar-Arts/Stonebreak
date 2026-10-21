@@ -1,6 +1,7 @@
 package com.stonebreak.player.combat;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Camera;
@@ -61,6 +62,10 @@ public class DeathHandler {
             }
         }
 
+        // #351: return panel-held stacks (cursor, crafting grids, furnace carried stack) to the
+        // inventory and close the panels, so the drop below sweeps them up with everything else.
+        Game.getInstance().getStateController().onPlayerDied();
+
         dropAllItems();
         state.getVelocity().set(0, 0, 0);
 
@@ -69,31 +74,35 @@ public class DeathHandler {
 
     private void dropAllItems() {
         System.out.println("DEBUG: dropAllItems() called - dropping all inventory items on death");
+        // Session play: ONE death-drain request. The server spawns every drop from its own
+        // authoritative replica — no toss rate limit — and the InventorySyncS2C confirms the
+        // cleared mirror; the local clear below is only the prediction.
+        boolean serverDrains = com.stonebreak.network.MultiplayerSession.sendDeathDrop();
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             ItemStack stack = inventory.getHotbarSlot(i);
             if (stack != null && !stack.isEmpty()) {
-                dropItemStack(stack);
+                if (!serverDrains) {
+                    dropItemStack(stack);
+                }
                 stack.clear();
             }
         }
         for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
             ItemStack stack = inventory.getMainInventorySlot(i);
             if (stack != null && !stack.isEmpty()) {
-                dropItemStack(stack);
+                if (!serverDrains) {
+                    dropItemStack(stack);
+                }
                 stack.clear();
             }
         }
     }
 
     private void dropItemStack(ItemStack stack) {
-        // Death drops are server-authoritative like every other drop: the toss intent makes
-        // the SERVER spawn + replicate the entity. The local paths below spawn into the
-        // passed world's EntityManager, which on a client render world is null — death drops
-        // would silently vanish in the two-world model.
-        if (com.stonebreak.network.MultiplayerSession.sendDropItem(
-                stack.getBlockTypeId(), stack.getCount())) {
-            return;
-        }
+        // No-session fallback only (battle-test / headless): with a live session,
+        // dropAllItems sends ONE DeathDropC2S and the server scatters the replica instead.
+        // The local paths spawn into the passed world's EntityManager, which on a client
+        // render world is null — death drops would silently vanish in the two-world model.
         Vector3f p = state.getPosition();
         Vector3f dropPosition = new Vector3f(p.x, p.y + 0.5f, p.z);
         if (stack.isPlaceable()) {
