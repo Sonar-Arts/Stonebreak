@@ -31,11 +31,12 @@ public class InventoryInputManager implements ContainerSlotInput {
     // Pointer of the frame being handled
     private float pointerX, pointerY;
 
-    // Double-click detection
+    // Double-click gather (#352): a second press, within the window, on the slot the held stack
+    // was just picked up from. Every other press clears it, so only a pick-up arms the gather.
     private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
-    private static final float DOUBLE_CLICK_RADIUS = 40f;
-    private long lastClickTimeMs = 0L;
-    private float lastClickX = 0f, lastClickY = 0f;
+    private java.util.function.LongSupplier clock = System::currentTimeMillis;
+    private long pickUpTimeMs = 0L;
+    private String pickUpSlot;
 
     // Right-click drag state
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
@@ -70,6 +71,10 @@ public class InventoryInputManager implements ContainerSlotInput {
         boolean leftMouseButtonPressed = pointer.leftPressed();
         boolean rightMouseButtonPressed = pointer.rightPressed();
         boolean rightMouseButtonDown = pointer.rightDown();
+
+        if (pointer.middlePressed() || rightMouseButtonPressed) {
+            pickUpSlot = null; // not a pick-up: the next left press never gathers
+        }
 
         // Middle click: balance the crafting grid when aimed at a cell, otherwise sort.
         if (tryHandleMiddleClick(pointer.middlePressed(), mouseX, mouseY, layout)) {
@@ -161,6 +166,9 @@ public class InventoryInputManager implements ContainerSlotInput {
 
     protected void handleLeftClick(float mouseX, float mouseY, boolean shiftDown,
                                   InventoryLayoutCalculator.InventoryLayout layout) {
+        String slot = slotManager.slotAt(mouseX, mouseY, layout);
+        boolean doubleClick = isDoubleClick(slot);
+        pickUpSlot = null;
         if (shiftDown) {
             handleShiftClickTransfer(mouseX, mouseY, layout);
             consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
@@ -174,9 +182,9 @@ public class InventoryInputManager implements ContainerSlotInput {
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isDoubleClick(mouseX, mouseY)) {
+            if (doubleClick) {
                 handleDoubleClickGather();
-                recordClick(mouseX, mouseY);
+                recordPickUp(slot);
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
@@ -188,7 +196,7 @@ public class InventoryInputManager implements ContainerSlotInput {
         if (dragState.draggedItemStack == null) {
             // Try to pick up item
             if (tryPickUpItem(mouseX, mouseY, layout)) {
-                recordClick(mouseX, mouseY);
+                recordPickUp(slot);
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
@@ -355,18 +363,25 @@ public class InventoryInputManager implements ContainerSlotInput {
         return false;
     }
 
-    private boolean isDoubleClick(float mouseX, float mouseY) {
-        long now = System.currentTimeMillis();
-        if (now - lastClickTimeMs > DOUBLE_CLICK_THRESHOLD_MS) return false;
-        float dx = mouseX - lastClickX;
-        float dy = mouseY - lastClickY;
-        return dx * dx + dy * dy <= DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS;
+    /**
+     * Whether a press on {@code slot} gathers: it is the slot the held stack was just picked up
+     * from, within the window. Same slot only (#352): a distance radius misread a click on the next
+     * slot as a double-click once the slot pitch dropped below it at small UI scales. The crafting
+     * output never gathers; a press there that cannot craft another batch places as usual.
+     */
+    private boolean isDoubleClick(String slot) {
+        return slot != null && slot.equals(pickUpSlot) && !"craft-output".equals(slot)
+            && clock.getAsLong() - pickUpTimeMs <= DOUBLE_CLICK_THRESHOLD_MS;
     }
 
-    private void recordClick(float mouseX, float mouseY) {
-        lastClickTimeMs = System.currentTimeMillis();
-        lastClickX = mouseX;
-        lastClickY = mouseY;
+    private void recordPickUp(String slot) {
+        pickUpTimeMs = clock.getAsLong();
+        pickUpSlot = slot;
+    }
+
+    /** Test seam: the clock the double-click window is measured on, in milliseconds. */
+    void useClock(java.util.function.LongSupplier clock) {
+        this.clock = clock;
     }
 
     private void handleDoubleClickGather() {

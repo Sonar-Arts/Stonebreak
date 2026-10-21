@@ -25,11 +25,6 @@ public class FurnaceInputManager implements ContainerSlotInput {
     protected final InventoryDragDropHandler.DragState dragState;
     protected final FurnaceController controller;
 
-    private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
-    private static final float DOUBLE_CLICK_RADIUS = 40f;
-    private long lastClickTimeMs = 0L;
-    private float lastClickX = 0f, lastClickY = 0f;
-
     /** Drops a carried stack at the player's feet; tests observe it. */
     private java.util.function.Consumer<InventoryDragDropHandler.DragState> worldDrop =
         InventoryDragDropHandler::dropEntireStackIntoWorld;
@@ -167,12 +162,7 @@ public class FurnaceInputManager implements ContainerSlotInput {
     private void handleLeftClick(float mouseX, float mouseY,
                                  InventoryLayoutCalculator.InventoryLayout layout) {
         if (dragState.isDragging()) {
-            if (isDoubleClick(mouseX, mouseY)) {
-                recordClick(mouseX, mouseY);
-                return;
-            }
             if (tryDropToFurnaceSlots(mouseX, mouseY, layout)) {
-                recordClick(mouseX, mouseY);
                 return;
             }
             if (!tryDropToInventory(mouseX, mouseY, layout) && !tryDropToHotbar(mouseX, mouseY, layout)) {
@@ -192,14 +182,13 @@ public class FurnaceInputManager implements ContainerSlotInput {
                     }
                 }
             }
-            recordClick(mouseX, mouseY);
             return;
         }
 
-        if (tryPickUpFromFurnaceSlots(mouseX, mouseY, layout) ||
-            tryPickUpFromInventory(mouseX, mouseY, layout) ||
-            tryPickUpFromHotbar(mouseX, mouseY, layout)) {
-            recordClick(mouseX, mouseY);
+        // No double-click rule here (#352): a quick second press always drops or swaps.
+        if (!tryPickUpFromFurnaceSlots(mouseX, mouseY, layout) &&
+            !tryPickUpFromInventory(mouseX, mouseY, layout)) {
+            tryPickUpFromHotbar(mouseX, mouseY, layout);
         }
     }
 
@@ -465,21 +454,6 @@ public class FurnaceInputManager implements ContainerSlotInput {
             }
         }
         return false;
-    }
-
-    /* ── Double-click helpers (YAGNI placeholder) ────────── */
-
-    private boolean isDoubleClick(float x, float y) {
-        long now = System.currentTimeMillis();
-        float dx = x - lastClickX, dy = y - lastClickY;
-        return (now - lastClickTimeMs < DOUBLE_CLICK_THRESHOLD_MS &&
-                dx * dx + dy * dy < DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS);
-    }
-
-    private void recordClick(float x, float y) {
-        lastClickTimeMs = System.currentTimeMillis();
-        lastClickX = x;
-        lastClickY = y;
     }
 
     /* ── Read/write furnace slots ────────────────────────── */
