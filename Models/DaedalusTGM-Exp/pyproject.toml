@@ -11,7 +11,7 @@ dependencies = [
     "rasterio>=1.4",
     "pyfastnoiselite==0.0.6",
     "matplotlib>=3.9",
-    "pillow>=10.0",
+    "pillow>=13.0",  # >= 13.0: JPEG/TIFF/GIF/EPS/PDF decoder CVEs fixed in 13.0.0 (Dependabot #11-#19)
     "requests>=2.32",
     "tqdm>=4.66",
 ]
@@ -21,6 +21,10 @@ dev = ["pytest>=8.3"]
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
+# Transitive floors for security fixes (not direct imports).
+constraint-dependencies = [
+    "certifi>=2026.10.19",  # emSign roots with compromised intermediates removed (Dependabot #10)
+]
 
 [[tool.uv.index]]
 name = "pytorch-cu129"

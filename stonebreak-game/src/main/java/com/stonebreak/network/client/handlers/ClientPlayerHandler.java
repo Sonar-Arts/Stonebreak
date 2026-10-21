@@ -103,35 +103,32 @@ public final class ClientPlayerHandler {
         if (local == null || local.getInventory() == null) {
             return;
         }
+        // The server already capped the count to what fit its replica and re-dropped any
+        // overflow itself (issue #334) — adding here can never overflow, and re-dropping the
+        // difference would re-enter the debit path with a duplicated spawn. The packet has no
+        // state yet (#342), so the stack arrives in the item's default state and only merges
+        // with default-state stacks, never a water bucket (#350).
         // #357: the server may still address us while we're dead (it learns about death only
-        // from our state stream). It has already despawned the drop, so re-drop the stack
-        // instead of letting a death drop ride out respawn in our inventory.
+        // from our state stream). It already despawned the drop and credited its replica, so
+        // refuse the stack: the debit below removes it from the replica and respawns it in
+        // the world instead of letting a death drop ride out respawn in our inventory.
         if (local.isDead()) {
             com.stonebreak.network.MultiplayerSession.sendDropItem(g.itemId(), g.count());
             return;
         }
-        // Capacity-aware add: anything that doesn't fit is returned to the server as a
-        // re-drop at our position instead of silently vanishing into a full inventory.
-        // The packet has no state yet (#342), so the stack arrives in the item's default
-        // state and only merges with default-state stacks, never a water bucket (#350).
-        int added = local.getInventory().addItemAndReturnCount(
-                new ItemStack(g.itemId(), g.count()));
-        int leftover = g.count() - added;
-        if (leftover > 0) {
-            com.stonebreak.network.MultiplayerSession.sendDropItem(g.itemId(), leftover);
-        }
-        if (added > 0) {
-            SoundSystem ss = Game.getInstance().getSoundSystem();
-            if (ss != null) {
-                ss.playSound("blockpickup");
-            }
+        local.getInventory().addItemAndReturnCount(new ItemStack(g.itemId(), g.count()));
+        SoundSystem ss = Game.getInstance().getSoundSystem();
+        if (ss != null) {
+            ss.playSound("blockpickup");
         }
     }
 
     /**
-     * Server-attributed hit/kill credit: apply the stat/XP grant to the LOCAL player. This
-     * replaces the old server-side local-credit path (which could only ever credit the
-     * host); every client — host included — is credited through this uniform packet.
+     * Server-attributed hit/kill credit: apply the stat counters to the LOCAL player.
+     * This replaces the old server-side local-credit path (which could only ever credit
+     * the host); every client — host included — is credited through this uniform packet.
+     * XP is NOT applied here: level/xp are server-owned (issue #334) and arrive via the
+     * {@code ProgressS2C} echo.
      */
     public void handleKillCredit(com.stonebreak.network.packet.player.KillCreditS2C k) {
         Player local = Game.getPlayer();
@@ -145,10 +142,17 @@ public final class ClientPlayerHandler {
             if (k.entityTypeOrdinal() >= 0 && k.entityTypeOrdinal() < types.length) {
                 local.getStats().incrementKillsForType(types[k.entityTypeOrdinal()]);
             }
-            if (k.xpReward() > 0) {
-                local.getCharacterStats().addXp(k.xpReward());
-            }
         }
+    }
+
+    /** Server-authoritative progression echo (issue #334): level/xp/point pools only. */
+    public void handleProgress(com.stonebreak.network.packet.player.ProgressS2C p) {
+        Player local = Game.getPlayer();
+        if (local == null) {
+            return;
+        }
+        local.getCharacterStats().applyServerProgression(
+            p.level(), p.xp(), p.remainingCp(), p.remainingSp(), p.remainingFp(), p.remainingAp());
     }
 
     public void onSessionEnd() {

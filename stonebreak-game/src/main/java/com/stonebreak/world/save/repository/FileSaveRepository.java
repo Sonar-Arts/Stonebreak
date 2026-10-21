@@ -100,6 +100,21 @@ public class FileSaveRepository {
         return Optional.of(Files.readAllBytes(file));
     }
 
+    /**
+     * Moves an unreadable {@code players/<username>.json} aside, exactly like
+     * {@link #setPlayerFileAside()} does for {@code player.json} (issue #358, applied to
+     * remote players by #334). Returns where it went.
+     */
+    public Path setNamedPlayerFileAside(String username) throws IOException {
+        Path file = playersDir().resolve(sanitize(username) + ".json");
+        Path aside = file.resolveSibling(file.getFileName() + ".corrupt");
+        for (int n = 1; Files.exists(aside); n++) {
+            aside = file.resolveSibling(file.getFileName() + ".corrupt." + n);
+        }
+        Files.move(file, aside);
+        return aside;
+    }
+
     private Path playersDir() {
         return worldRoot.resolve("players");
     }

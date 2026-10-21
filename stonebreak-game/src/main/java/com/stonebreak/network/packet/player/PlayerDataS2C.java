@@ -13,15 +13,18 @@ import io.netty.buffer.ByteBuf;
  */
 public record PlayerDataS2C(byte[] json) implements Packet {
 
+    /** Matches the old PlayerDataC2S budget this payload shares its JSON shape with. */
+    public static final int MAX_PLAYER_BYTES = 64 * 1024;
+
     public static final PacketCodec<PlayerDataS2C> CODEC = new PacketCodec<>() {
         @Override
         public void encode(ByteBuf out, PlayerDataS2C p) {
-            ByteBufIO.writeByteArray(out, p.json(), PlayerDataC2S.MAX_PLAYER_BYTES);
+            ByteBufIO.writeByteArray(out, p.json(), MAX_PLAYER_BYTES);
         }
 
         @Override
         public PlayerDataS2C decode(ByteBuf in) {
-            return new PlayerDataS2C(ByteBufIO.readByteArray(in, PlayerDataC2S.MAX_PLAYER_BYTES));
+            return new PlayerDataS2C(ByteBufIO.readByteArray(in, MAX_PLAYER_BYTES));
         }
     };
 }

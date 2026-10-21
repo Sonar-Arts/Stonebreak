@@ -521,6 +521,10 @@ public class Main {
     private boolean autoFurnaceDone;
     private int autoFurnaceX, autoFurnaceY, autoFurnaceZ;
     private boolean autoFurnacePlaced;
+    /** Server-owned inventory (issue #334): the /obtain'd items still awaiting slot actions. */
+    private boolean autoFurnaceFillPending;
+    private com.stonebreak.items.Item autoFurnaceInputItem;
+    private com.stonebreak.items.Item autoFurnaceFuelItem;
     private int autoFurnaceFrames;
     private String autoFurnaceLastState;
 
@@ -611,20 +615,99 @@ public class Main {
         if (fr != null) {
             fr.onBlockPlaced(world, fx, fy, fz, com.stonebreak.blocks.BlockType.FURNACE);
         }
-        var state = new com.stonebreak.blocks.furnace.FurnaceState(
-            new com.openmason.engine.util.BlockPos(fx, fy, fz));
-        state.setIngredient(new com.stonebreak.items.ItemStack(recipes.getFirst().getInput().getItem(), 8));
-        state.setFuel(new com.stonebreak.items.ItemStack(fuel, 8));
-        String slots = state.encodeSlots();
-        com.stonebreak.network.MultiplayerSession.sendFurnaceSlots(fx, fy, fz,
-            com.stonebreak.network.SlotIntentSeq.next(), slots);
+        // Server-owned inventory (issue #334): fill the furnace THROUGH the server by
+        // requesting the items (/cheats + /obtain), then shipping the same atomic slot
+        // actions a player's clicks would (see autoFurnaceWatch). BlockStateS2C echoes
+        // drive the display registry from there.
+        com.stonebreak.network.MultiplayerSession.requestServerCheatsSet(true);
+        // The server splits the line on whitespace, so send the one-word identifier its
+        // parser accepts (ItemLookup: stonebreak:<enum name>), not the display name —
+        // "Iron Ore" would arrive as item "Iron" with count "Ore".
+        com.stonebreak.network.MultiplayerSession.submitChat("/obtain "
+            + obtainId(recipes.getFirst().getInput().getItem()) + " 8");
+        com.stonebreak.network.MultiplayerSession.submitChat("/obtain " + obtainId(fuel) + " 8");
+        // Give the server a beat to grant the items, then the watch loop ships the
+        // TAKE/PUT action pairs once the synced inventory actually holds them.
+        autoFurnaceInputItem = recipes.getFirst().getInput().getItem();
+        autoFurnaceFuelItem = fuel;
+        autoFurnaceFillPending = true;
         autoFurnaceX = fx;
         autoFurnaceY = fy;
         autoFurnaceZ = fz;
         autoFurnacePlaced = true;
         System.out.println("[autofurnace] placed furnace at " + fx + "," + fy + "," + fz
             + " fuel=" + fuel.getName() + " input=" + recipes.getFirst().getInput().getItem().getName()
-            + " slots=" + slots);
+            + " — waiting for /obtain to land before filling slots");
+    }
+
+    /**
+     * The /obtain identifier for {@code item}: {@code stonebreak:<enum name>} (lower case), a
+     * single token that {@code ItemLookup.find} resolves by enum name. Display names may hold
+     * spaces, and the server splits the command line on whitespace.
+     */
+    static String obtainId(com.stonebreak.items.Item item) {
+        String name;
+        if (item instanceof com.stonebreak.blocks.BlockType b) {
+            name = b.name();
+        } else if (item instanceof com.stonebreak.items.ItemType t) {
+            name = t.name();
+        } else {
+            name = item.getName().trim().replace(' ', '_');
+        }
+        return "stonebreak:" + name.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * Server-owned inventory (issue #334): once the /obtain'd items landed in the synced
+     * mirror, ship the same atomic slot actions a player's clicks would — TAKE_ALL from the
+     * slot they sit in, PUT_ALL into the furnace's ingredient/fuel slot.
+     */
+    private void maybeAutoFurnaceFill(com.stonebreak.player.Player player) {
+        if (!autoFurnaceFillPending) {
+            return;
+        }
+        var inv = player.getInventory();
+        if (inv == null) {
+            return;
+        }
+        // Trigger: the /obtain'd stacks are visible in the synced mirror (the /obtain round
+        // trip landed). The client's furnace display state stays empty until the server's
+        // BlockStateS2C echoes the accepted slot actions.
+        if (autoFurnaceInputItem == null || autoFurnaceFuelItem == null
+                || inv.getItemCount(autoFurnaceInputItem) < 8
+                || inv.getItemCount(autoFurnaceFuelItem) < 8) {
+            return;
+        }
+        byte kind = com.stonebreak.network.packet.player.ContainerActionC2S.ContainerKind.FURNACE;
+        fillFromInventory(inv, autoFurnaceInputItem, (byte) 0, kind);
+        fillFromInventory(inv, autoFurnaceFuelItem, (byte) 1, kind);
+        autoFurnaceFillPending = false;
+        System.out.println("[autofurnace] slot actions sent for ingredient+fuel");
+    }
+
+    /** TAKE_ALL the first stack of {@code item} in the mirror, PUT_ALL it into furnace slot. */
+    private void fillFromInventory(com.stonebreak.items.Inventory inv,
+                                   com.stonebreak.items.Item item, byte furnaceSlot, byte kind) {
+        for (int i = 0; i < com.stonebreak.items.Inventory.TOTAL_SLOTS; i++) {
+            var s = i < 9 ? inv.getHotbarSlot(i) : inv.getMainInventorySlot(i - 9);
+            if (s != null && !s.isEmpty() && s.getItem() == item) {
+                byte region = i < 9
+                        ? com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_HOTBAR
+                        : com.stonebreak.network.packet.player.ContainerActionC2S.Region.PLAYER_MAIN;
+                byte idx = (byte) (i < 9 ? i : i - 9);
+                com.stonebreak.network.MultiplayerSession.sendContainerAction(
+                        autoFurnaceX, autoFurnaceY, autoFurnaceZ, kind, region, idx,
+                        com.stonebreak.network.packet.player.ContainerActionC2S.Action.TAKE_ALL);
+                com.stonebreak.network.MultiplayerSession.sendContainerAction(
+                        autoFurnaceX, autoFurnaceY, autoFurnaceZ, kind,
+                        furnaceSlot == 0
+                                ? com.stonebreak.network.packet.player.ContainerActionC2S.Region.FURNACE_ING
+                                : com.stonebreak.network.packet.player.ContainerActionC2S.Region.FURNACE_FUEL,
+                        furnaceSlot,
+                        com.stonebreak.network.packet.player.ContainerActionC2S.Action.PUT_ALL);
+                return;
+            }
+        }
     }
 
     /** Keeps the camera on the placed furnace and logs its client-side state whenever it changes. */
@@ -634,6 +717,7 @@ public class Main {
         if (world == null || player == null) {
             return;
         }
+        maybeAutoFurnaceFill(player);
         org.joml.Vector3f pos = player.getPosition();
         float dx = autoFurnaceX + 0.5f - pos.x;
         float dz = autoFurnaceZ + 0.5f - pos.z;

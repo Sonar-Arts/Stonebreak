@@ -8,6 +8,8 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.client.ClientWorldView;
+import com.stonebreak.network.packet.player.ContainerActionC2S;
+import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.ServerLevel;
@@ -177,20 +179,54 @@ public final class MultiplayerSession {
         }
     }
 
-    /** Furnace slot intent: the open furnace UI's slots changed (see {@code FurnaceSlotsC2S}). */
-    public static void sendFurnaceSlots(int x, int y, int z, int seq, String slots) {
+    /**
+     * One atomic slot action on an open container screen (furnace / crafting table / the
+     * player's own inventory screen) — see {@code ContainerActionC2S} (issue #334). The
+     * server replays the click against its own state and syncs back.
+     */
+    public static void sendContainerAction(int x, int y, int z, byte containerKind, byte region,
+                                           byte slot, byte action) {
+        sendContainerAction(x, y, z, containerKind, region, slot,
+                ContainerActionC2S.Region.NONE, (byte) -1, action, (short) 0, false);
+    }
+
+    /** Full overload — carries the drag origin (swap-back) and count/shift for bulk actions. */
+    public static void sendContainerAction(int x, int y, int z, byte containerKind, byte region,
+                                           byte slot, byte originRegion, byte originSlot,
+                                           byte action, short count, boolean shift) {
+        sendContainerAction(new ContainerActionC2S(x, y, z, containerKind, region, slot,
+                originRegion, originSlot, action, count, shift));
+    }
+
+    /** Sends a built container action; no-op without a live session. */
+    public static void sendContainerAction(ContainerActionC2S action) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendFurnaceSlots(x, y, z, seq, slots);
+            c.sendContainerAction(action);
         }
     }
 
-    /** Crafting-table grid intent: the open workbench UI's grid changed (see {@code WorkbenchSlotsC2S}). */
-    public static void sendWorkbenchSlots(int x, int y, int z, int seq, String slots) {
+    /** Hotbar selection intent (see {@code HotbarSelectC2S}); no-op without a live session. */
+    public static void sendHotbarSelect(int slot) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendWorkbenchSlots(x, y, z, seq, slots);
+            c.sendHotbarSelect(slot);
         }
+    }
+
+    /**
+     * Death scatter as ONE request (see {@code DeathDropC2S}): the server spawns the
+     * dying player's drops from its own replica — no toss rate limit — and syncs the
+     * mirror. Returns false when there is no live client connection (caller falls back to
+     * the local scatter).
+     */
+    public static boolean sendDeathDrop() {
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendDeathDrop(new DeathDropC2S());
+        return true;
     }
 
     /**

@@ -127,6 +127,17 @@ public class CharacterStats {
   private final Deque<UndoOp> undoHistory = new ArrayDeque<>();
 
   /**
+   * Bumped by every change to the spend ledger (class, ability CP, skills, feats, scores)
+   * and by every bulk restore. The client stamps each PlayerPrefsC2S with it so a
+   * server progression echo can tell whether the pools it carries were computed from the
+   * ledger the client still holds (issue #334).
+   */
+  private int ledgerVersion = 0;
+
+  /** See {@link #ledgerVersion}. */
+  public int getLedgerVersion() { return ledgerVersion; }
+
+  /**
    * Reverses the most recent point allocation (CP/SP/FP/AP). Returns false when
    * there is nothing to undo. Used by character creation so a player can back
    * out an allocation before the world is created.
@@ -136,6 +147,7 @@ public class CharacterStats {
     if (op == null) {
       return false;
     }
+    ledgerVersion++;
     switch (op.kind()) {
       case CP -> {
         remainingCp++;
@@ -190,6 +202,7 @@ public class CharacterStats {
     if (remainingAp <= 0 || index < 0 || index >= 6) return;
     remainingAp--;
     abilityScores[index]++;
+    ledgerVersion++;
     if (player != null) player.updateDerivedStats();
     undoHistory.addLast(new UndoOp(UndoKind.AP, null, index, null));
   }
@@ -199,6 +212,7 @@ public class CharacterStats {
     if (index < 0 || index >= 6 || abilityScores[index] <= 1) return;
     abilityScores[index]--;
     remainingAp++;
+    ledgerVersion++;
     if (player != null) player.updateDerivedStats();
   }
 
@@ -208,10 +222,23 @@ public class CharacterStats {
   /** Applies background ability bonuses on top of point-buy scores. Called once at first spawn. */
   public void applyBackgroundBonuses(int[] bonuses) {
     if (bonuses == null || bonuses.length != 6) return;
-    for (int i = 0; i < 6; i++) {
-      abilityScores[i] = Math.max(1, abilityScores[i] + bonuses[i]);
-    }
+    abilityScores = withBackgroundBonuses(abilityScores, bonuses);
+    ledgerVersion++;
     if (player != null) player.updateDerivedStats();
+  }
+
+  /**
+   * The one background-bonus rule, shared by the client's first spawn and the server's
+   * fresh-character record (issue #334) so both sides land on the same scores: each bonus is
+   * added and the result floored at 1. A null/short bonus array leaves the scores unchanged.
+   */
+  public static int[] withBackgroundBonuses(int[] scores, int[] bonuses) {
+    int[] out = java.util.Arrays.copyOf(scores, 6);
+    if (bonuses == null || bonuses.length != 6) return out;
+    for (int i = 0; i < 6; i++) {
+      out[i] = Math.max(1, out[i] + bonuses[i]);
+    }
+    return out;
   }
 
   // ─────────────────────────────────────────────── Class / progression (stubs)
@@ -264,6 +291,7 @@ public class CharacterStats {
   /** Selects the given class. Does not cost any points. */
   public void selectClass(String classId) {
     this.selectedClassId = classId;
+    ledgerVersion++;
   }
 
   public String getSelectedClassId() {
@@ -293,6 +321,7 @@ public class CharacterStats {
       return;
     }
     remainingCp--;
+    ledgerVersion++;
     String prevClassId = selectedClassId;
     spentAbilityCp.merge(key, 1, Integer::sum);
     // Auto-select the class when the first point is spent in it
@@ -332,6 +361,7 @@ public class CharacterStats {
       return;
     }
     remainingSp--;
+    ledgerVersion++;
     skillLevels.merge(skillId, 1, Integer::sum);
     undoHistory.addLast(new UndoOp(UndoKind.SP, skillId, -1, null));
   }
@@ -356,6 +386,7 @@ public class CharacterStats {
       return;
     }
     remainingFp--;
+    ledgerVersion++;
     acquiredFeatIds.add(featId);
     undoHistory.addLast(new UndoOp(UndoKind.FP, featId, -1, null));
   }
@@ -414,6 +445,7 @@ public class CharacterStats {
   /** Restores a previously captured RPG state ("discard changes"). */
   public void restoreRpgState(RpgSnapshot s) {
     if (s == null) return;
+    ledgerVersion++;
     selectedClassId = s.classId();
     spentAbilityCp.clear();
     spentAbilityCp.putAll(s.spentAbilityCp());
@@ -428,6 +460,22 @@ public class CharacterStats {
     remainingFp = s.remainingFp();
     level = s.level();
     xp = s.xp();
+    if (player != null) player.updateDerivedStats();
+  }
+
+  /**
+   * Applies server-authoritative progression (issue #334): the server owns level/xp and
+   * the four point pools — they advance only through server-granted play — while the
+   * spend ledger (abilities, skills, feats, scores) was validated server-side and is
+   * carried by the client's own state.
+   */
+  public void applyServerProgression(int level, int xp, int cp, int sp, int fp, int ap) {
+    this.level = Math.max(1, level);
+    this.xp    = Math.max(0, xp);
+    this.remainingCp = Math.max(0, cp);
+    this.remainingSp = Math.max(0, sp);
+    this.remainingFp = Math.max(0, fp);
+    this.remainingAp = Math.max(0, ap);
     if (player != null) player.updateDerivedStats();
   }
 
@@ -459,6 +507,7 @@ public class CharacterStats {
                         int cp, int sp, int fp,
                         int[] scores, int ap,
                         int level, int xp) {
+        ledgerVersion++;
         this.selectedClassId = classId;
         this.spentAbilityCp.clear();
         this.spentAbilityCp.putAll(abilityCp);
@@ -489,7 +538,12 @@ public class CharacterStats {
         StringBuilder sb = new StringBuilder();
         sb.append("{");
         sb.append("\"background\":\"").append(escapeJson(selectedBackground)).append("\",");
-        sb.append("\"class\":").append(selectedClassId != null ? "\"" + escapeJson(selectedClassId) + "\"" : "null");
+        // "characterClass" is the save reader's key (JsonPlayerSerializer): the server parses
+        // this blob with it, and a "class" key was silently dropped from the record.
+        sb.append("\"characterClass\":").append(selectedClassId != null ? "\"" + escapeJson(selectedClassId) + "\"" : "null");
+        // The server owns the inventory and ignores this one, but its save reader requires the
+        // array (issue #358) and would otherwise reject the whole creation record.
+        sb.append(",\"inventory\":[]");
 
         // Ability scores
         sb.append(",\"abilityScores\":[");
@@ -551,8 +605,10 @@ public class CharacterStats {
         String bg = extractString(s, "background");
         if (bg != null) this.selectedBackground = bg;
 
+        ledgerVersion++;
+
         // Class
-        String cls = extractString(s, "class");
+        String cls = extractString(s, "characterClass");
         if (cls != null && !"null".equals(cls)) {
             this.selectedClassId = cls;
         }

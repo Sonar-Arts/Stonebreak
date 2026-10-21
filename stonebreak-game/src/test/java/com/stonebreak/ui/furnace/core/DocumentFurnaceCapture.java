@@ -58,6 +58,10 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
     static SmeltingManager smelting() {
         SmeltingManager m = new SmeltingManager();
         m.registerFuel(BlockType.COAL_ORE, 1600);
+        // the ingredient slot takes smeltables only (the server's furnace rule, #334)
+        m.registerRecipe(new com.stonebreak.crafting.SmeltingRecipe("test:iron_ore",
+            new com.stonebreak.items.ItemStack(BlockType.IRON_ORE, 1),
+            new com.stonebreak.items.ItemStack(BlockType.STONE, 1)));
         return m;
     }
 
@@ -82,7 +86,6 @@ public final class DocumentFurnaceCapture implements MigrationGate.Renderer {
             controller = new FurnaceController(null, null, smelting());
             input = new FurnaceInputManager(null, inventory, controller);
             controller.setInputManager(input);
-            controller.setSlotSink((pos, seq, slots) -> { });
             controller.setFurnaceAt(p -> true);
             controller.bind(furnace);
             host = new GameUiHost(services(input, inventory, w, h), MultiplayerSession.Mode.SINGLEPLAYER);

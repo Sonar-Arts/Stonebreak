@@ -112,10 +112,20 @@ class InventoryDocumentInteractionTest {
         List<String> docDrops = new ArrayList<>();
         @SuppressWarnings("unchecked")
         List<String>[] sink = new List[]{legacyDrops};
+        // Server-authoritative screens (issue #334): a stack dropped beyond the panel ships
+        // as DROP_CARRIED instead of a local world drop — count it in the same drops ledger.
+        java.util.function.Consumer<com.stonebreak.network.packet.player.ContainerActionC2S> legacyCapture =
+            a -> { if (a.action() == com.stonebreak.network.packet.player.ContainerActionC2S.Action.DROP_CARRIED)
+                legacyDrops.add("carriedx" + a.count()); };
+        java.util.function.Consumer<com.stonebreak.network.packet.player.ContainerActionC2S> docCapture =
+            a -> { if (a.action() == com.stonebreak.network.packet.player.ContainerActionC2S.Action.DROP_CARRIED)
+                docDrops.add("carriedx" + a.count()); };
+        legacy.getSlotManager().actions.setCapture(legacyCapture);
 
         try (AutoCloseable drops = InventoryDragDropHandler.redirectWorldDrops(s -> sink[0].add(ContainerParity.stack(s)));
              DocumentInventoryCapture.Stage doc = new DocumentInventoryCapture.Stage(
                  GameUiDocuments.readScreen(InventoryScreen.DOCUMENT_ID), W, H, 1f, player())) {
+            doc.input.getSlotManager().actions.setCapture(docCapture);
             assertEquals(state(legacyPlayer, legacy), state(doc.player, doc.input));
             for (int i = 0; i < SCRIPT.size(); i++) {
                 Step step = SCRIPT.get(i).getKey();
