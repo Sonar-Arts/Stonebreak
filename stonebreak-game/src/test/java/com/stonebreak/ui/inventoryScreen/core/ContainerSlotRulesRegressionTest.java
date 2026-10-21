@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.config.Settings;
 import com.stonebreak.crafting.CraftingManager;
+import com.stonebreak.crafting.Recipe;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -18,6 +19,7 @@ import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.Inventor
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.InventoryLayout3Col;
 import com.stonebreak.ui.inventoryScreen.handlers.ContainerSlotInput;
 import com.stonebreak.ui.inventoryScreen.handlers.PointerFrame;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,7 @@ class ContainerSlotRulesRegressionTest {
 
     private float previousScale;
     private Inventory inventory;
+    private long now = 1_000L;
 
     @BeforeEach
     void setUp() {
@@ -61,8 +64,19 @@ class ContainerSlotRulesRegressionTest {
     }
 
     private InventoryInputManager inventoryScreen() {
-        InventoryCraftingManager grid = new InventoryCraftingManager(new CraftingManager());
+        return inventoryScreen(new CraftingManager());
+    }
+
+    private InventoryInputManager inventoryScreen(CraftingManager recipes) {
+        InventoryCraftingManager grid = new InventoryCraftingManager(recipes);
         return new InventoryInputManager(null, inventory, new InventorySlotManager(inventory, grid), grid);
+    }
+
+    /** An inventory screen whose double-click window is measured on {@link #now}, not the wall clock. */
+    private InventoryInputManager clockedInventoryScreen(CraftingManager recipes) {
+        InventoryInputManager inv = inventoryScreen(recipes);
+        inv.useClock(() -> now);
+        return inv;
     }
 
     private static void press(ContainerSlotInput screen, float x, float y, int button) {
@@ -176,6 +190,106 @@ class ContainerSlotRulesRegressionTest {
         assertEquals("worn=2", placed.getState(), "one of the held stack, state and all");
         assertEquals(3, inv.getDragState().draggedItemStack.getCount());
         assertTrue(inventory.getMainInventorySlot(0).isEmpty());
+    }
+
+    /**
+     * Issue #352: at small UI scales the next slot's centre is closer than the old fixed 40 px
+     * double-click radius, so a quick pick-up-then-place gathered instead of placing. Double-clicks
+     * are counted on the same slot only, so the second press places the stack.
+     */
+    @Test
+    void quickClickOnTheNextSlotPlacesInsteadOfGathering() {
+        Settings.getInstance().setUiScale(0.75f);
+        InventoryInputManager inv = clockedInventoryScreen(new CraftingManager());
+        inventory.setMainInventorySlot(0, new ItemStack(BlockType.DIRT, 10));
+        inventory.setMainInventorySlot(1, new ItemStack(BlockType.DIRT, 10));
+        float[] first = inv.slotCentre("main:0", W, H);
+        float[] second = inv.slotCentre("main:1", W, H);
+
+        press(inv, first[0], first[1], 0);
+        press(inv, second[0], second[1], 0);
+
+        assertFalse(inv.getDragState().isDragging(), "the stack was placed, not gathered");
+        assertEquals(20, inventory.getMainInventorySlot(1).getCount(), "merged into the second slot");
+        assertEquals(20, countOf(inventory, BlockType.DIRT), "nothing created or lost");
+    }
+
+    /** The legitimate double-click gather survives at small scales when both presses are on one slot. */
+    @Test
+    void quickSecondClickOnTheSameSlotStillGathers() {
+        Settings.getInstance().setUiScale(0.75f);
+        InventoryInputManager inv = clockedInventoryScreen(new CraftingManager());
+        inventory.setMainInventorySlot(2, new ItemStack(BlockType.DIRT, 10));
+        inventory.setMainInventorySlot(5, new ItemStack(BlockType.DIRT, 5));
+        float[] centre = inv.slotCentre("main:2", W, H);
+
+        press(inv, centre[0], centre[1], 0);
+        press(inv, centre[0], centre[1], 0);
+
+        assertTrue(inv.getDragState().isDragging(), "the gathered stack stays on the cursor");
+        assertEquals(15, inv.getDragState().draggedItemStack.getCount());
+        assertEquals(0, countOf(inventory, BlockType.DIRT), "every matching stack was gathered");
+    }
+
+    /** Past the window a second press on the same slot is an ordinary click: the stack goes back. */
+    @Test
+    void slowSecondClickOnTheSameSlotPutsTheStackBack() {
+        InventoryInputManager inv = clockedInventoryScreen(new CraftingManager());
+        inventory.setMainInventorySlot(2, new ItemStack(BlockType.DIRT, 10));
+        inventory.setMainInventorySlot(5, new ItemStack(BlockType.DIRT, 5));
+        float[] centre = inv.slotCentre("main:2", W, H);
+
+        press(inv, centre[0], centre[1], 0);
+        now += 351;
+        press(inv, centre[0], centre[1], 0);
+
+        assertFalse(inv.getDragState().isDragging());
+        assertEquals(10, inventory.getMainInventorySlot(2).getCount(), "put back");
+        assertEquals(5, inventory.getMainInventorySlot(5).getCount(), "nothing gathered");
+    }
+
+    /**
+     * Issue #352 review: only the pick-up arms a double-click. Picking up from main:0, right-clicking
+     * one item back into main:0 and left-clicking main:0 inside the window sets the rest down; before,
+     * the left press still matched the pick-up's slot and gathered every matching stack instead.
+     */
+    @Test
+    void placeOneThenPlaceTheRestOnTheOriginDoesNotGather() {
+        InventoryInputManager inv = clockedInventoryScreen(new CraftingManager());
+        inventory.setMainInventorySlot(0, new ItemStack(BlockType.DIRT, 10));
+        inventory.setMainInventorySlot(7, new ItemStack(BlockType.DIRT, 4));
+        float[] origin = inv.slotCentre("main:0", W, H);
+
+        press(inv, origin[0], origin[1], 0);
+        press(inv, origin[0], origin[1], 1);
+        assertEquals(9, inv.getDragState().draggedItemStack.getCount(), "one placed back");
+        press(inv, origin[0], origin[1], 0);
+
+        assertFalse(inv.getDragState().isDragging(), "the rest was placed, not gathered");
+        assertEquals(10, inventory.getMainInventorySlot(0).getCount());
+        assertEquals(4, inventory.getMainInventorySlot(7).getCount(), "the other stack was not gathered");
+    }
+
+    /**
+     * Issue #352 review: a quick second press on the crafting output that cannot craft another
+     * batch (here the grid is used up) does not gather the inventory's matching stacks.
+     */
+    @Test
+    void quickSecondClickOnTheCraftOutputNeverGathers() {
+        CraftingManager recipes = new CraftingManager();
+        recipes.registerRecipe(new Recipe("dirtToSticks",
+            List.of(List.of(new ItemStack(BlockType.DIRT, 1))), new ItemStack(ItemType.STICK, 4)));
+        InventoryInputManager inv = clockedInventoryScreen(recipes);
+        inv.getCraftingManager().setCraftingInputSlot(0, new ItemStack(BlockType.DIRT, 1));
+        inv.getCraftingManager().updateCraftingOutput();
+        inventory.setMainInventorySlot(4, new ItemStack(ItemType.STICK, 8));
+        float[] output = inv.slotCentre("craft-output", W, H);
+
+        press(inv, output[0], output[1], 0);
+        assertEquals(4, inv.getDragState().draggedItemStack.getCount(), "one batch taken");
+        press(inv, output[0], output[1], 0);
+
+        assertEquals(8, inventory.getMainInventorySlot(4).getCount(), "the stick stack was not gathered");
     }
 
     /**
