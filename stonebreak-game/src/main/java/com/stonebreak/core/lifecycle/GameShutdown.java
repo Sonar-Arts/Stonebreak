@@ -1,18 +1,16 @@
 package com.stonebreak.core.lifecycle;
 
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import com.stonebreak.core.Game;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Orchestrates {@link Game} shutdown: cleans up per-instance subsystems,
- * flushes the save service, terminates the world-update executor, and
- * tears down static resources (MMS API).
+ * Orchestrates {@link Game} shutdown: tears down the network session (flushing the
+ * integrated server's save service), cleans up per-instance subsystems, terminates
+ * the world-update executor, and tears down static resources (MMS API).
  * Extracted from {@code Game.cleanup()} / {@code Game.cleanupStaticResources()}.
  */
 public final class GameShutdown {
@@ -35,6 +33,11 @@ public final class GameShutdown {
         // Before the world and entity manager go away: the final save must include anything
         // left in the inventory's crafting grid (issue #307).
         com.stonebreak.core.world.WorldLifecycle.returnCraftingGridsToPlayer(game);
+        // Flush the integrated server's SaveService (player.json + dirty chunks) and send a
+        // join client's final PlayerDataC2S — the same teardown Quit to Menu runs
+        // (GameStateController), so closing the window doesn't lose the last autosave window
+        // of edits (issue #364). No-op-safe when no session is active.
+        com.stonebreak.network.MultiplayerSession.shutdown();
         logger.debug("Starting Game cleanup...");
 
         if (Game.getWorld() != null) {
@@ -54,26 +57,6 @@ public final class GameShutdown {
         }
         if (Game.getEntityManager() != null) {
             Game.getEntityManager().cleanup();
-        }
-
-        if (game.getSaveService() != null) {
-            try {
-                logger.debug("Performing final save before shutdown...");
-                CompletableFuture<Void> saveOperation = game.getSaveService().saveAll();
-                saveOperation.get(5, TimeUnit.SECONDS);
-                logger.debug("Final save completed successfully");
-            } catch (TimeoutException e) {
-                logger.warn("Final save timed out after 5 seconds - proceeding with shutdown");
-            } catch (Exception e) {
-                logger.error("Error during final save", e);
-            }
-
-            try {
-                logger.debug("Closing SaveService...");
-                game.getSaveService().close();
-            } catch (Exception e) {
-                logger.error("Error closing SaveService", e);
-            }
         }
 
         logger.debug("Shutting down world update executor...");
