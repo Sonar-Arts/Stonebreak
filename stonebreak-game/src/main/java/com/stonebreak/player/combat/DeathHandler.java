@@ -1,6 +1,7 @@
 package com.stonebreak.player.combat;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Camera;
@@ -60,6 +61,10 @@ public class DeathHandler {
                 System.out.println("  Hotbar slot " + i + " HAS ITEMS: " + stack.getCount());
             }
         }
+
+        // #351: return panel-held stacks (cursor, crafting grids, furnace carried stack) to the
+        // inventory and close the panels, so the drop below sweeps them up with everything else.
+        Game.getInstance().getStateController().onPlayerDied();
 
         dropAllItems();
         state.getVelocity().set(0, 0, 0);
