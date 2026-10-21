@@ -1,0 +1,45 @@
+package com.stonebreak.core.lifecycle;
+
+import static org.mockito.Mockito.*;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import com.stonebreak.core.Game;
+import com.stonebreak.core.world.WorldLifecycle;
+import com.stonebreak.network.MultiplayerSession;
+import com.stonebreak.world.World;
+import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
+import org.mockito.MockedStatic;
+
+/**
+ * Regression test for issue #364: closing the game window must tear down the
+ * {@link MultiplayerSession} during {@link GameShutdown#shutdown}, so the integrated
+ * server's SaveService is flushed exactly like Quit to Menu does. The session shutdown
+ * must run after the crafting-grid return (issue #307) and before the world cleanup,
+ * or the final save is missing data.
+ */
+class GameShutdownTest {
+
+    @Test
+    void shutdownFlushesSessionBetweenCraftingGridsAndWorldCleanup() {
+        Game game = mock(Game.class);
+        World world = mock(World.class);
+        try (MockedStatic<Game> globals = mockStatic(Game.class);
+             MockedStatic<WorldLifecycle> lifecycle = mockStatic(WorldLifecycle.class);
+             MockedStatic<MultiplayerSession> net = mockStatic(MultiplayerSession.class);
+             ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            globals.when(Game::getWorld).thenReturn(world);
+
+            GameShutdown.shutdown(game, executor);
+
+            // Static mocks join an InOrder by their class, then verify through the handle.
+            InOrder order = inOrder(WorldLifecycle.class, MultiplayerSession.class, world);
+            order.verify(lifecycle, () -> WorldLifecycle.returnCraftingGridsToPlayer(game));
+            order.verify(net, MultiplayerSession::shutdown);
+            order.verify(world).cleanup();
+            net.verify(MultiplayerSession::shutdown, times(1));
+        }
+    }
+}

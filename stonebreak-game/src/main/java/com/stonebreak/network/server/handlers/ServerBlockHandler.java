@@ -268,6 +268,9 @@ public final class ServerBlockHandler {
      * (stacking first, then an empty slot), dropping beside the player when it fits nowhere.
      * Never loses or mints a bucket: when the converted one can neither be stored nor dropped
      * the stack is restored and false returned. The caller has checked the slot holds a bucket.
+     * An honest client refuses the use up front when its mirror has no room
+     * ({@code BucketStacks.canConvertHeld}, #354), so the drop only covers a replica that
+     * filled up while the intent was in flight.
      */
     private static boolean convertOneBucket(ServerPlayer sp, int slot, String toState,
                                             ServerWorldContext ctx) {

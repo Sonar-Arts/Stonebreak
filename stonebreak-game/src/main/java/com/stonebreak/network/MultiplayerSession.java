@@ -229,6 +229,31 @@ public final class MultiplayerSession {
     }
 
     /**
+     * The local player ate one {@code itemId} from the selected hotbar slot (issue #355).
+     * Numbered like a slot action, so a sync built before the server applied it cannot roll
+     * back the local prediction. No-op without a live session.
+     */
+    public static void sendConsumeHeld(int itemId) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendConsumeHeld(new com.stonebreak.network.packet.player.ConsumeHeldC2S(
+                    itemId, SlotIntentSeq.next()));
+        }
+    }
+
+    /**
+     * Death ({@code dead}) or respawn edge of the local player at {@code pos}, on the reliable
+     * channel: the server's only source for which players are dead (drop pickup, mob spawning
+     * — #357). No-op without a live session.
+     */
+    public static void sendPlayerLife(boolean dead, Vector3f pos) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendPlayerLife(new com.stonebreak.network.packet.player.PlayerLifeC2S(dead, pos.x, pos.y, pos.z));
+        }
+    }
+
+    /**
      * Toggleable-block interaction intent (door open/close — see {@code BlockToggleC2S}).
      * The server flips the authoritative state and echoes {@code BlockStateS2C} to all
      * clients. Returns false when there is no live connection (caller flips locally).
@@ -447,10 +472,11 @@ public final class MultiplayerSession {
 
         // Robustly capture the local player's CURRENT inventory before teardown. The server
         // thread is now stopped, so this can't race the sim. Re-registering points the save
-        // service at the live player so the close-flush below writes its latest state — this is
-        // independent of whether the restore/registration happened earlier in the session, which
-        // is what previously let an exit drop the inventory.
-        if (server != null && hasIntegratedServer()) {
+        // service at the live player so the close-flush below writes its latest state. Only do
+        // this when the restore actually ran: Game.getPlayer() may still be a stale player from
+        // a previous world (or the empty one created before the build failure), and registering
+        // it would write the wrong player's data over this world's player.json (#366).
+        if (server != null && hasIntegratedServer() && localPlayerRestored) {
             ServerLevel level = server.worldContext().serverLevel();
             Player local = Game.getPlayer();
             if (level != null && local != null) {
@@ -555,14 +581,30 @@ public final class MultiplayerSession {
         if (s == null) {
             return false;
         }
-        // Nearest-player-wins: when several players stand in range, the closest one gets the
-        // stack (roster iteration order is arbitrary and previously decided ties unfairly).
+        ServerPlayer nearest = nearestEligiblePickupCandidate(s.worldContext().players(), pos, range);
+        if (nearest == null) {
+            return false;
+        }
+        s.giveItemTo(nearest.playerId(), itemId, count);
+        return true;
+    }
+
+    /**
+     * Nearest-player-wins pickup selection: when several players stand in range, the closest
+     * one gets the stack (roster iteration order is arbitrary and previously decided ties
+     * unfairly). Only {@link ServerPlayer#isLiveInWorld() live} players qualify: one that has
+     * not reported a position yet would win at the {@code (0,0,0)} default, and a dead one
+     * would collect its own death drops from the death screen (#357) — the drop stays in the
+     * world for other players or the post-respawn pickup.
+     */
+    static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
+                                                       Vector3f pos, float range) {
         float rangeSq = range * range;
         ServerPlayer nearest = null;
         float nearestSq = Float.MAX_VALUE;
-        for (ServerPlayer sp : s.worldContext().players()) {
-            if (!sp.handshakeDone() || sp.lastStateNs() == 0L) {
-                continue; // no reported position yet — (0,0,0) default must not win pickups
+        for (ServerPlayer sp : players) {
+            if (!sp.isLiveInWorld()) {
+                continue;
             }
             float dx = pos.x - sp.x();
             float dy = pos.y - sp.y();
@@ -573,11 +615,7 @@ public final class MultiplayerSession {
                 nearestSq = distSq;
             }
         }
-        if (nearest == null) {
-            return false;
-        }
-        s.giveItemTo(nearest.playerId(), itemId, count);
-        return true;
+        return nearest;
     }
 
     // ─── Per-tick pump (called from the game loop) ───────────────────────────────

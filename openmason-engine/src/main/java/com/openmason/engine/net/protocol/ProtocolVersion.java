@@ -25,8 +25,11 @@ public final class ProtocolVersion {
      *  PlayerPrefsC2S and DeathDropC2S added; PlayerHeldItemC2S (3), PlayerDataC2S (7),
      *  FurnaceSlotsC2S (13) and WorkbenchSlotsC2S (22) retired without id reuse (issue #334).
      *  9 = server-owned progression echo (ProgressS2C — issue #334): level/xp/point pools
-     *  are granted and echoed by the server only. */
-    public static final int CURRENT = 9;
+     *  are granted and echoed by the server only.
+     *  10 = PlayerLifeC2S: death/respawn edges on the reliable channel, so the server
+     *  knows which players are dead (issue #357).
+     *  11 = ConsumeHeldC2S: eating debits the server-owned inventory (issue #355). */
+    public static final int CURRENT = 11;
 
     private ProtocolVersion() {}
 }

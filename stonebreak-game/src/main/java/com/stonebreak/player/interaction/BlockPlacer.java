@@ -2,6 +2,7 @@ package com.stonebreak.player.interaction;
 
 import com.stonebreak.audio.BlockSounds;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.items.BucketStacks;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -176,21 +177,10 @@ public class BlockPlacer {
         BlockType blockType = world.getBlockAt(targetBlock.x, targetBlock.y, targetBlock.z);
         if (blockType != BlockType.WATER) return;
         if (!world.isWaterSourceAt(targetBlock.x, targetBlock.y, targetBlock.z)) return;
+        if (!BucketStacks.canConvertHeld(inventory, selectedItem, ItemType.BUCKET_STATE_WATER)) return;
 
         world.setBlockAt(targetBlock.x, targetBlock.y, targetBlock.z, BlockType.AIR, true);
-
-        int currentSlot = inventory.getSelectedHotbarSlotIndex();
-        int currentCount = selectedItem.getCount();
-        if (currentCount == 1) {
-            inventory.setHotbarSlot(currentSlot,
-                    new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
-        } else {
-            inventory.setHotbarSlot(currentSlot,
-                    new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1, ItemType.BUCKET_STATE_EMPTY));
-            // addItem doesn't carry state; place a water bucket directly into
-            // the inventory by stacking via the explicit-state ItemStack path.
-            inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_WATER));
-        }
+        BucketStacks.convertHeld(inventory, selectedItem, ItemType.BUCKET_STATE_WATER);
     }
 
     private void handleWaterBucket(ItemStack selectedItem) {
@@ -204,6 +194,7 @@ public class BlockPlacer {
 
         BlockType blockAtPos = world.getBlockAt(placePos.x, placePos.y, placePos.z);
         if (blockAtPos != BlockType.AIR && blockAtPos != BlockType.WATER) return;
+        if (!BucketStacks.canConvertHeld(inventory, selectedItem, ItemType.BUCKET_STATE_EMPTY)) return;
 
         if (blockAtPos == BlockType.WATER) {
             if (world.isWaterSourceAt(placePos.x, placePos.y, placePos.z)) return;
@@ -213,16 +204,7 @@ public class BlockPlacer {
             if (!world.setBlockAt(placePos.x, placePos.y, placePos.z, BlockType.WATER, true)) return;
         }
 
-        int currentSlot = inventory.getSelectedHotbarSlotIndex();
-        int currentCount = selectedItem.getCount();
-        if (currentCount == 1) {
-            inventory.setHotbarSlot(currentSlot,
-                    new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
-        } else {
-            inventory.setHotbarSlot(currentSlot,
-                    new ItemStack(ItemType.WOODEN_BUCKET, currentCount - 1, ItemType.BUCKET_STATE_WATER));
-            inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
-        }
+        BucketStacks.convertHeld(inventory, selectedItem, ItemType.BUCKET_STATE_EMPTY);
     }
 
     private void handleSnowStacking(ItemStack selectedItem, Vector3i placePos) {
