@@ -8,6 +8,9 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.inventoryScreen.handlers.InventoryDragDropHandler;
 
+import static com.stonebreak.network.packet.player.ContainerActionC2S.Action;
+import static com.stonebreak.network.packet.player.ContainerActionC2S.Region;
+
 /**
  * Manages slot operations for the inventory screen.
  * Abstracts slot interaction logic following Single Responsibility Principle.
@@ -17,9 +20,28 @@ public class InventorySlotManager {
     private final Inventory inventory;
     private final InventoryCraftingManager craftingManager;
 
+    /** Where slot actions go (issue #334) — one atomic action per mutation. */
+    final com.stonebreak.ui.inventoryScreen.handlers.SlotActionSink actions =
+            new com.stonebreak.ui.inventoryScreen.handlers.SlotActionSink();
+    /** Which container regions the crafting grid/output map to (inventory vs workbench). */
+    byte craftGridRegion = com.stonebreak.network.packet.player.ContainerActionC2S.Region.INV_CRAFT_GRID;
+    byte craftOutRegion = com.stonebreak.network.packet.player.ContainerActionC2S.Region.INV_CRAFT_OUT;
+
     public InventorySlotManager(Inventory inventory, InventoryCraftingManager craftingManager) {
         this.inventory = inventory;
         this.craftingManager = craftingManager;
+    }
+
+    /**
+     * Binds this manager to the container the screen just opened: the inventory screen uses
+     * kind {@code INVENTORY} at (0,0,0) with its 2×2 grid; the workbench binds its block
+     * position and the 3×3 grid regions.
+     */
+    public void bindContainer(byte containerKind, int x, int y, int z,
+                              byte craftGridRegion, byte craftOutRegion) {
+        actions.bind(containerKind, x, y, z);
+        this.craftGridRegion = craftGridRegion;
+        this.craftOutRegion = craftOutRegion;
     }
 
     public boolean tryPickUpFromMainInventory(float mouseX, float mouseY,
@@ -41,6 +63,7 @@ public class InventorySlotManager {
                     inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(), 0));
                     dragState.draggedItemOriginalSlotIndex = i;
                     dragState.dragSource = InventoryDragDropHandler.DragSource.MAIN_INVENTORY;
+                    actions.send(Region.PLAYER_MAIN, (byte) i, Action.TAKE_ALL);
                     return true;
                 }
             }
@@ -64,6 +87,7 @@ public class InventorySlotManager {
                     inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(), 0));
                     dragState.draggedItemOriginalSlotIndex = i;
                     dragState.dragSource = InventoryDragDropHandler.DragSource.HOTBAR;
+                    actions.send(Region.PLAYER_HOTBAR, (byte) i, Action.TAKE_ALL);
                     return true;
                 }
             }
@@ -92,6 +116,7 @@ public class InventorySlotManager {
                     craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
                     dragState.draggedItemOriginalSlotIndex = InventoryDragDropHandler.getCraftingInputSlotStartIndex() + i;
                     dragState.dragSource = InventoryDragDropHandler.DragSource.CRAFTING_INPUT;
+                    actions.send(craftGridRegion, (byte) i, Action.TAKE_ALL);
                     return true;
                 }
             }
@@ -127,6 +152,7 @@ public class InventorySlotManager {
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
                 balanceCraftingCells(slots, i);
+                actions.send(craftGridRegion, (byte) i, Action.BALANCE);
                 return true;
             }
         }
@@ -202,14 +228,21 @@ public class InventorySlotManager {
 
     /**
      * Adds every crafted stack to the player inventory, dropping (into the world)
-     * whatever does not fit, so no crafted items are ever lost.
+     * whatever does not fit, so no crafted items are ever lost. The SERVER computes and
+     * consumes the batches (CRAFT_ALL, issue #334) and drops its own overflow at the
+     * player — with a live session the local drops below would duplicate it as a slot
+     * debit, so they run only without a session; the local pass is the prediction.
      */
     void depositCraftedStacks(java.util.List<ItemStack> crafted) {
+        if (!crafted.isEmpty()) {
+            actions.send(craftOutRegion, (byte) 0, Action.CRAFT_ALL, true);
+        }
         Player player = Game.getPlayer();
+        boolean sessionLive = com.stonebreak.network.MultiplayerSession.isClient();
         for (ItemStack stack : crafted) {
             int added = inventory.addItemAndReturnCount(stack);
             int remainder = stack.getCount() - added;
-            if (remainder > 0 && player != null) {
+            if (remainder > 0 && player != null && !sessionLive) {
                 com.stonebreak.util.DropUtil.dropItemFromPlayer(player,
                     new ItemStack(stack.getItem(), remainder, stack.getState()));
             }
@@ -242,6 +275,7 @@ public class InventorySlotManager {
                         if (itemInInputSlot.isEmpty()) {
                             craftingInputSlots[i] = new ItemStack(BlockType.AIR.getId(), 0);
                         }
+                        actions.send(craftGridRegion, (byte) i, Action.QUICK_MOVE, true);
                         return true;
                     }
                 }
@@ -278,6 +312,7 @@ public class InventorySlotManager {
                         if (currentStack.isEmpty()) {
                             inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(), 0));
                         }
+                        actions.send(Region.PLAYER_MAIN, (byte) i, Action.QUICK_MOVE, true);
                         return true;
                     }
                 }
@@ -311,6 +346,7 @@ public class InventorySlotManager {
                         if (currentStack.isEmpty()) {
                             inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(), 0));
                         }
+                        actions.send(Region.PLAYER_HOTBAR, (byte) i, Action.QUICK_MOVE, true);
                         return true;
                     }
                 }
@@ -404,9 +440,11 @@ public class InventorySlotManager {
                        row * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                return attemptDropOneToSlot(inventory.getMainInventorySlot(slotIndex),
+                boolean placed = attemptDropOneToSlot(inventory.getMainInventorySlot(slotIndex),
                                           (stack) -> inventory.setMainInventorySlot(slotIndex, stack),
                                           false, dragState);
+                if (placed) actions.send(Region.PLAYER_MAIN, (byte) slotIndex, Action.DROP_ONE);
+                return placed;
             }
         }
         return false;
@@ -423,9 +461,11 @@ public class InventorySlotManager {
             int slotY = layout.hotbarRowY;
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                return attemptDropOneToSlot(inventory.getHotbarSlot(slotIndex),
+                boolean placed = attemptDropOneToSlot(inventory.getHotbarSlot(slotIndex),
                                           (stack) -> inventory.setHotbarSlot(slotIndex, stack),
                                           false, dragState);
+                if (placed) actions.send(Region.PLAYER_HOTBAR, (byte) slotIndex, Action.DROP_ONE);
+                return placed;
             }
         }
         return false;
@@ -448,9 +488,11 @@ public class InventorySlotManager {
                        r * (InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding());
 
             if (isMouseOverSlot(mouseX, mouseY, slotX, slotY)) {
-                return attemptDropOneToSlot(craftingInputSlots[slotIndex],
+                boolean placed = attemptDropOneToSlot(craftingInputSlots[slotIndex],
                                           (stack) -> craftingInputSlots[slotIndex] = stack,
                                           true, dragState);
+                if (placed) actions.send(craftGridRegion, (byte) slotIndex, Action.DROP_ONE);
+                return placed;
             }
         }
         return false;
@@ -479,7 +521,10 @@ public class InventorySlotManager {
                         inventory.getMainInventorySlot(idx),
                         stack -> inventory.setMainInventorySlot(idx, stack),
                         false, dragState);
-                if (placed) visitedSlots.add(slotId);
+                if (placed) {
+                    visitedSlots.add(slotId);
+                    actions.send(Region.PLAYER_MAIN, (byte) idx, Action.DROP_ONE);
+                }
                 return placed;
             }
         }
@@ -498,7 +543,10 @@ public class InventorySlotManager {
                         inventory.getHotbarSlot(idx),
                         stack -> inventory.setHotbarSlot(idx, stack),
                         false, dragState);
-                if (placed) visitedSlots.add(slotId);
+                if (placed) {
+                    visitedSlots.add(slotId);
+                    actions.send(Region.PLAYER_HOTBAR, (byte) idx, Action.DROP_ONE);
+                }
                 return placed;
             }
         }
@@ -523,7 +571,10 @@ public class InventorySlotManager {
                         craftingInputSlots[idx],
                         stack -> craftingInputSlots[idx] = stack,
                         true, dragState);
-                if (placed) visitedSlots.add(slotId);
+                if (placed) {
+                    visitedSlots.add(slotId);
+                    actions.send(craftGridRegion, (byte) idx, Action.DROP_ONE);
+                }
                 return placed;
             }
         }
@@ -533,7 +584,7 @@ public class InventorySlotManager {
 
     public void gatherMatchingItemsToStack(InventoryDragDropHandler.DragState dragState) {
         if (dragState.draggedItemStack == null || dragState.draggedItemStack.isEmpty()) return;
-
+        boolean movedAnything = false;
         ItemStack dragged = dragState.draggedItemStack;
         int maxStack = dragged.getMaxStackSize();
         if (dragged.getCount() >= maxStack) return;
@@ -551,6 +602,7 @@ public class InventorySlotManager {
                 if (slot.isEmpty()) {
                     inventory.setMainInventorySlot(i, new ItemStack(BlockType.AIR.getId(), 0));
                 }
+                movedAnything = true;
             }
         }
 
@@ -564,7 +616,11 @@ public class InventorySlotManager {
                 if (slot.isEmpty()) {
                     inventory.setHotbarSlot(i, new ItemStack(BlockType.AIR.getId(), 0));
                 }
+                movedAnything = true;
             }
+        }
+        if (movedAnything) {
+            actions.send(Action.GATHER);
         }
     }
 
@@ -574,8 +630,6 @@ public class InventorySlotManager {
      * pointer synthesized there (#289) lands on that slot. Null for an unknown address.
      */
     public int[] slotOrigin(String slot, InventoryLayoutCalculator.InventoryLayout layout) {
-        int ss = InventoryLayoutCalculator.getSlotSize();
-        int pad = InventoryLayoutCalculator.getSlotPadding();
         if ("craft-output".equals(slot)) {
             return new int[]{layout.outputSlotX, layout.outputSlotY};
         }
@@ -591,32 +645,69 @@ public class InventorySlotManager {
         }
         switch (slot.substring(0, colon)) {
             case "main" -> {
-                if (i < 0 || i >= Inventory.MAIN_INVENTORY_SIZE) {
-                    return null;
-                }
-                int startX = InventoryLayoutCalculator.gridStartX(layout);
-                return new int[]{startX + (i % Inventory.MAIN_INVENTORY_COLS) * (ss + pad),
-                    layout.mainInvContentStartY + pad + (i / Inventory.MAIN_INVENTORY_COLS) * (ss + pad)};
+                return i < 0 || i >= Inventory.MAIN_INVENTORY_SIZE ? null : mainOrigin(i, layout);
             }
             case "hotbar" -> {
-                if (i < 0 || i >= Inventory.HOTBAR_SIZE) {
-                    return null;
-                }
-                int startX = InventoryLayoutCalculator.gridStartX(layout);
-                return new int[]{startX + i * (ss + pad), layout.hotbarRowY};
+                return i < 0 || i >= Inventory.HOTBAR_SIZE ? null : hotbarOrigin(i, layout);
             }
             case "craft" -> {
                 int size = craftingManager.getCraftingGridSize();
-                if (i < 0 || i >= size * size) {
-                    return null;
-                }
-                return new int[]{layout.craftingElementsStartX + (i % size) * (ss + pad),
-                    layout.craftingGridStartY + (i / size) * (ss + pad)};
+                return i < 0 || i >= size * size ? null : craftOrigin(i, size, layout);
             }
             default -> {
                 return null;
             }
         }
+    }
+
+    private static int[] mainOrigin(int i, InventoryLayoutCalculator.InventoryLayout layout) {
+        int pitch = InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
+        return new int[]{InventoryLayoutCalculator.gridStartX(layout) + (i % Inventory.MAIN_INVENTORY_COLS) * pitch,
+            layout.mainInvContentStartY + InventoryLayoutCalculator.getSlotPadding()
+                + (i / Inventory.MAIN_INVENTORY_COLS) * pitch};
+    }
+
+    private static int[] hotbarOrigin(int i, InventoryLayoutCalculator.InventoryLayout layout) {
+        int pitch = InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
+        return new int[]{InventoryLayoutCalculator.gridStartX(layout) + i * pitch, layout.hotbarRowY};
+    }
+
+    private static int[] craftOrigin(int i, int size, InventoryLayoutCalculator.InventoryLayout layout) {
+        int pitch = InventoryLayoutCalculator.getSlotSize() + InventoryLayoutCalculator.getSlotPadding();
+        return new int[]{layout.craftingElementsStartX + (i % size) * pitch,
+            layout.craftingGridStartY + (i / size) * pitch};
+    }
+
+    /**
+     * The address ({@code main:<i>}, {@code hotbar:<i>}, {@code craft:<i>}, {@code craft-output})
+     * whose slot rect contains the point — the inverse of {@link #slotOrigin(String,
+     * InventoryLayoutCalculator.InventoryLayout)}. Null when the point is on no slot (issue #352:
+     * double-clicks are counted per slot, not per distance).
+     */
+    public String slotAt(float mouseX, float mouseY, InventoryLayoutCalculator.InventoryLayout layout) {
+        if (isMouseOverCraftingOutput(mouseX, mouseY, layout)) {
+            return "craft-output";
+        }
+        for (int i = 0; i < Inventory.MAIN_INVENTORY_SIZE; i++) {
+            int[] o = mainOrigin(i, layout);
+            if (isMouseOverSlot(mouseX, mouseY, o[0], o[1])) {
+                return "main:" + i;
+            }
+        }
+        for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
+            int[] o = hotbarOrigin(i, layout);
+            if (isMouseOverSlot(mouseX, mouseY, o[0], o[1])) {
+                return "hotbar:" + i;
+            }
+        }
+        int size = craftingManager.getCraftingGridSize();
+        for (int i = 0; i < size * size; i++) {
+            int[] o = craftOrigin(i, size, layout);
+            if (isMouseOverSlot(mouseX, mouseY, o[0], o[1])) {
+                return "craft:" + i;
+            }
+        }
+        return null;
     }
 
     private boolean isMouseOverSlot(float mouseX, float mouseY, int slotX, int slotY) {

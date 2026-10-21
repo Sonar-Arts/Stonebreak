@@ -75,9 +75,9 @@ public final class WorkbenchState {
     }
 
     /**
-     * Applies a slot snapshot in place. Used both for untrusted client intents on the server
-     * (stacks are clamped to their max size) and for re-hydration. Missing or malformed slots
-     * become empty.
+     * Applies a slot snapshot in place. Used for re-hydration from persisted chunk state
+     * (stacks are clamped to their max size); live container edits go through the validated
+     * {@code ContainerActionC2S} ops instead. Missing or malformed slots become empty.
      */
     public void applySlots(String encoded) {
         String[] parts = encoded != null ? encoded.split("\\|", -1) : new String[0];

@@ -51,6 +51,13 @@ public interface ContainerSlotInput {
         return null;
     }
 
+    /**
+     * Recomputes the crafting output from the grid after something other than the screen's
+     * own rules rewrote it (an InventorySyncS2C, issue #334). No-op without a grid.
+     */
+    default void refreshCraftingOutput() {
+    }
+
     /** Runs the screen's Sort rule; false when the screen has none. */
     default boolean sort() {
         return false;

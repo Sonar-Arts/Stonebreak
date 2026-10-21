@@ -31,6 +31,7 @@ public class WorkbenchInputManager extends InventoryInputManager {
         Vector2f mousePos = pointerPosition();
         WorkbenchDragDropHandler.placeDraggedItem(dragState, inventory,
                                                 craftingManager.getCraftingInputSlots(),
-                                                mousePos, layout, craftingManager::updateCraftingOutput);
+                                                mousePos, layout, craftingManager::updateCraftingOutput,
+                                                slotManager.actions, slotManager.craftGridRegion);
     }
 }

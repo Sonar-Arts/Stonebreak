@@ -31,11 +31,12 @@ public class InventoryInputManager implements ContainerSlotInput {
     // Pointer of the frame being handled
     private float pointerX, pointerY;
 
-    // Double-click detection
+    // Double-click gather (#352): a second press, within the window, on the slot the held stack
+    // was just picked up from. Every other press clears it, so only a pick-up arms the gather.
     private static final long DOUBLE_CLICK_THRESHOLD_MS = 350L;
-    private static final float DOUBLE_CLICK_RADIUS = 40f;
-    private long lastClickTimeMs = 0L;
-    private float lastClickX = 0f, lastClickY = 0f;
+    private java.util.function.LongSupplier clock = System::currentTimeMillis;
+    private long pickUpTimeMs = 0L;
+    private String pickUpSlot;
 
     // Right-click drag state
     private final java.util.Set<Integer> rightDragVisitedSlots = new java.util.HashSet<>();
@@ -70,6 +71,10 @@ public class InventoryInputManager implements ContainerSlotInput {
         boolean leftMouseButtonPressed = pointer.leftPressed();
         boolean rightMouseButtonPressed = pointer.rightPressed();
         boolean rightMouseButtonDown = pointer.rightDown();
+
+        if (pointer.middlePressed() || rightMouseButtonPressed) {
+            pickUpSlot = null; // not a pick-up: the next left press never gathers
+        }
 
         // Middle click: balance the crafting grid when aimed at a cell, otherwise sort.
         if (tryHandleMiddleClick(pointer.middlePressed(), mouseX, mouseY, layout)) {
@@ -151,15 +156,19 @@ public class InventoryInputManager implements ContainerSlotInput {
                                    InventoryLayoutCalculator.InventoryLayout layout) {
         if (slotManager.tryBalanceCraftingSlot(mouseX, mouseY, layout)) {
             craftingManager.updateCraftingOutput();
-        } else if (!dragState.isDragging()) {
-            // Never sort mid-drag: it re-populates the drag's source slot and
-            // corrupts the later swap-by-index placement.
-            inventory.sortInventory();
+        } else {
+            // Never sort mid-drag (handleSort guards): it re-populates the drag's source slot
+            // and corrupts the later swap-by-index placement. The sort ships as SORT like the
+            // Sort button's — a local-only sort would be undone by the next sync (#334).
+            handleSort();
         }
     }
 
     protected void handleLeftClick(float mouseX, float mouseY, boolean shiftDown,
                                   InventoryLayoutCalculator.InventoryLayout layout) {
+        String slot = slotManager.slotAt(mouseX, mouseY, layout);
+        boolean doubleClick = isDoubleClick(slot);
+        pickUpSlot = null;
         if (shiftDown) {
             handleShiftClickTransfer(mouseX, mouseY, layout);
             consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
@@ -173,9 +182,9 @@ public class InventoryInputManager implements ContainerSlotInput {
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
-            if (isDoubleClick(mouseX, mouseY)) {
+            if (doubleClick) {
                 handleDoubleClickGather();
-                recordClick(mouseX, mouseY);
+                recordPickUp(slot);
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 return;
             }
@@ -187,7 +196,7 @@ public class InventoryInputManager implements ContainerSlotInput {
         if (dragState.draggedItemStack == null) {
             // Try to pick up item
             if (tryPickUpItem(mouseX, mouseY, layout)) {
-                recordClick(mouseX, mouseY);
+                recordPickUp(slot);
                 consumePress(GLFW.GLFW_MOUSE_BUTTON_LEFT);
             }
         }
@@ -246,6 +255,7 @@ public class InventoryInputManager implements ContainerSlotInput {
     private void handleSort() {
         if (dragState.isDragging()) return; // never mid-drag: it would re-populate the drag's source slot
         inventory.sortInventory();
+        slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.SORT);
     }
 
     private boolean tryPickUpItem(float mouseX, float mouseY,
@@ -267,6 +277,10 @@ public class InventoryInputManager implements ContainerSlotInput {
             ItemStack batch = craftingManager.takeCraftBatch();
             if (batch != null) {
                 slotManager.startDragFromCraftingOutput(batch, dragState);
+                // The SERVER computes the result and consumes the inputs (issue #334);
+                // this local take is the prediction.
+                slotManager.actions.send(slotManager.craftOutRegion, (byte) 0,
+                        com.stonebreak.network.packet.player.ContainerActionC2S.Action.TAKE_OUTPUT);
                 return true;
             }
         }
@@ -303,6 +317,8 @@ public class InventoryInputManager implements ContainerSlotInput {
             return false;
         }
         dragged.incrementCount(batch.getCount());
+        slotManager.actions.send(slotManager.craftOutRegion, (byte) 0,
+                com.stonebreak.network.packet.player.ContainerActionC2S.Action.TAKE_OUTPUT);
         return true;
     }
 
@@ -347,18 +363,25 @@ public class InventoryInputManager implements ContainerSlotInput {
         return false;
     }
 
-    private boolean isDoubleClick(float mouseX, float mouseY) {
-        long now = System.currentTimeMillis();
-        if (now - lastClickTimeMs > DOUBLE_CLICK_THRESHOLD_MS) return false;
-        float dx = mouseX - lastClickX;
-        float dy = mouseY - lastClickY;
-        return dx * dx + dy * dy <= DOUBLE_CLICK_RADIUS * DOUBLE_CLICK_RADIUS;
+    /**
+     * Whether a press on {@code slot} gathers: it is the slot the held stack was just picked up
+     * from, within the window. Same slot only (#352): a distance radius misread a click on the next
+     * slot as a double-click once the slot pitch dropped below it at small UI scales. The crafting
+     * output never gathers; a press there that cannot craft another batch places as usual.
+     */
+    private boolean isDoubleClick(String slot) {
+        return slot != null && slot.equals(pickUpSlot) && !"craft-output".equals(slot)
+            && clock.getAsLong() - pickUpTimeMs <= DOUBLE_CLICK_THRESHOLD_MS;
     }
 
-    private void recordClick(float mouseX, float mouseY) {
-        lastClickTimeMs = System.currentTimeMillis();
-        lastClickX = mouseX;
-        lastClickY = mouseY;
+    private void recordPickUp(String slot) {
+        pickUpTimeMs = clock.getAsLong();
+        pickUpSlot = slot;
+    }
+
+    /** Test seam: the clock the double-click window is measured on, in milliseconds. */
+    void useClock(java.util.function.LongSupplier clock) {
+        this.clock = clock;
     }
 
     private void handleDoubleClickGather() {
@@ -389,7 +412,8 @@ public class InventoryInputManager implements ContainerSlotInput {
                                                 craftingManager.getCraftingInputSlots(),
                                                 mousePos, layout,
                                                 isOutsidePanel(mousePos.x, mousePos.y, lastScreenWidth, lastScreenHeight),
-                                                craftingManager::updateCraftingOutput);
+                                                craftingManager::updateCraftingOutput,
+                                                slotManager.actions, slotManager.craftGridRegion);
     }
 
     /**
@@ -413,16 +437,32 @@ public class InventoryInputManager implements ContainerSlotInput {
         return dragState;
     }
 
+    /** The slot manager owning the region bindings + action sink (issue #334). */
+    public InventorySlotManager getSlotManager() {
+        return slotManager;
+    }
+
     /**
      * Handles dragged items when closing the screen.
      * Attempts to return items to original slots or player inventory.
      */
     public void handleCloseWithDraggedItems() {
+        closeWithDraggedItems();
+    }
+
+    /**
+     * The close return of the carried stack; true when it sent DEPOSIT_CARRIED. Every local
+     * step is mirrored by the matching action (issue #334): the return to the origin slot —
+     * a crafting-grid origin included — as PUT_ALL/MERGE, the rest as DEPOSIT_CARRIED.
+     */
+    private boolean closeWithDraggedItems() {
+        boolean deposited = false;
         if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
             // Try to return to original slot first
             InventoryDragDropHandler.tryReturnToOriginalSlot(dragState, inventory,
                                                             craftingManager.getCraftingInputSlots(),
-                                                            craftingManager::updateCraftingOutput);
+                                                            craftingManager::updateCraftingOutput,
+                                                            slotManager.actions, slotManager.craftGridRegion);
 
             // If still dragging after trying to return, try to add to player inventory
             if (dragState.draggedItemStack != null && !dragState.draggedItemStack.isEmpty()) {
@@ -430,7 +470,15 @@ public class InventoryInputManager implements ContainerSlotInput {
                 // (dropping the whole stack after a partial add duplicated the difference).
                 ItemStack held = dragState.draggedItemStack;
                 held.setCount(held.getCount() - inventory.addItemAndReturnCount(held));
-                if (!held.isEmpty()) {
+                // The SERVER deposits the carried stack into the replica and drops whatever
+                // does not fit at the player (issue #334); the local add above is the
+                // prediction only. With a live session the client must NOT also drop the
+                // remainder — DropItemC2S debits the 36 slots, not the server cursor, so it
+                // would consume unrelated stock. Without a session the local drop is the
+                // only one (issue #307: closing a screen never destroys items).
+                slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED);
+                deposited = true;
+                if (!held.isEmpty() && !com.stonebreak.network.MultiplayerSession.isClient()) {
                     InventoryDragDropHandler.dropEntireStackIntoWorld(dragState);
                 }
             }
@@ -438,6 +486,51 @@ public class InventoryInputManager implements ContainerSlotInput {
             // Clear drag state
             clearDraggedItemState();
         }
+        return deposited;
+    }
+
+    /**
+     * Closes a block container screen (the crafting table) whose grid STAYS in the block
+     * (issue #307): the carried stack goes back as above, and — whenever this screen sent
+     * any action since it opened, so the server's cursor may still hold a stack the
+     * prediction thinks is placed — one DEPOSIT_CARRIED hands it back (issue #334). The grid
+     * itself is never quick-moved out (that is the inventory's 2×2 rule).
+     */
+    public void closeBlockContainer() {
+        boolean mayCarry = slotManager.actions.hasSentSinceBind();
+        closeWithDraggedItems();
+        if (mayCarry && slotManager.actions.lastAction()
+                != com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED) {
+            slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED);
+        }
+    }
+
+    /** A sync rewrote the grid (issue #334): recompute what it makes, so no stale output shows. */
+    @Override
+    public void refreshCraftingOutput() {
+        craftingManager.updateCraftingOutput();
+    }
+
+    /**
+     * Returns the SERVER's copy of this screen's held items on close (issue #334): one
+     * QUICK_MOVE per non-empty craft-grid cell into the replica's 36 slots (what does not
+     * fit stays in the cell, as tryShiftClickCraftingInput predicts), then DEPOSIT_CARRIED,
+     * which for kind INVENTORY returns the server cursor AND grid cells 0..3 to the
+     * inventory and drops only the overflow at the player. Without
+     * this the local return empties only the client's prediction — the next
+     * InventorySyncS2C would overwrite the mirror without those items and the ephemeral
+     * server grid would strand them. Sends no-op without a live session; local-only play
+     * relies on the direct return in the controller.
+     */
+    public void sendCloseReturnOps() {
+        ItemStack[] cells = craftingManager.getCraftingInputSlots();
+        for (int i = 0; i < cells.length; i++) {
+            if (cells[i] != null && !cells[i].isEmpty()) {
+                slotManager.actions.send(slotManager.craftGridRegion, (byte) i,
+                        com.stonebreak.network.packet.player.ContainerActionC2S.Action.QUICK_MOVE);
+            }
+        }
+        slotManager.actions.send(com.stonebreak.network.packet.player.ContainerActionC2S.Action.DEPOSIT_CARRIED);
     }
 
     public InventoryCraftingManager getCraftingManager() {
