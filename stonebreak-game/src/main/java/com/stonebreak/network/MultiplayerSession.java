@@ -411,10 +411,11 @@ public final class MultiplayerSession {
 
         // Robustly capture the local player's CURRENT inventory before teardown. The server
         // thread is now stopped, so this can't race the sim. Re-registering points the save
-        // service at the live player so the close-flush below writes its latest state — this is
-        // independent of whether the restore/registration happened earlier in the session, which
-        // is what previously let an exit drop the inventory.
-        if (server != null && hasIntegratedServer()) {
+        // service at the live player so the close-flush below writes its latest state. Only do
+        // this when the restore actually ran: Game.getPlayer() may still be a stale player from
+        // a previous world (or the empty one created before the build failure), and registering
+        // it would write the wrong player's data over this world's player.json (#366).
+        if (server != null && hasIntegratedServer() && localPlayerRestored) {
             ServerLevel level = server.worldContext().serverLevel();
             Player local = Game.getPlayer();
             if (level != null && local != null) {
