@@ -12,11 +12,12 @@ import com.stonebreak.network.packet.entity.EntitySpawnS2C;
 import com.stonebreak.network.packet.entity.EntityTeleportS2C;
 import org.joml.Vector3f;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 /**
  * Client-side replication of non-player entities: creates "shadow" entities for inbound
@@ -28,8 +29,22 @@ public final class ClientEntityHandler {
 
     /** Network id → local shadow entity. Concurrent: session-end teardown can race the tick. */
     private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
-    /** Spawn packets that arrived before the local world/entity manager was ready. */
-    private final Deque<EntitySpawnS2C> pendingSpawns = new ArrayDeque<>();
+    /** Spawns that arrived before the local world/entity manager was ready, plus any anim/
+     *  variant state that arrived for them while buffered (last-wins per field — both packets
+     *  carry absolute state, not deltas). */
+    private final List<PendingSpawn> pendingSpawns = new ArrayList<>();
+
+    private record PendingSpawn(EntitySpawnS2C spawn, String animState, String variant) {
+        PendingSpawn(EntitySpawnS2C spawn) {
+            this(spawn, null, null);
+        }
+        PendingSpawn withAnim(String animState) {
+            return new PendingSpawn(spawn, animState, variant);
+        }
+        PendingSpawn withVariant(String variant) {
+            return new PendingSpawn(spawn, animState, variant);
+        }
+    }
 
     /** Moves for unknown ids in the current window — a sustained burst means the shadow map
      *  diverged (a spawn was somehow lost), so ask for a full entity resync. Occasional
@@ -51,14 +66,23 @@ public final class ClientEntityHandler {
     }
 
     public void applySpawn(EntitySpawnS2C s) {
+        applyBuffered(new PendingSpawn(s));
+    }
+
+    private void applyBuffered(PendingSpawn p) {
         // isClientWorldReady (not bare null checks): during a world REBUILD (rejoin) the
         // old world/manager are still non-null — spawning into them orphans the shadow in
         // an entity manager that is about to be replaced (permanently invisible entity).
         if (!Game.isClientWorldReady()) {
-            pendingSpawns.add(s);
+            pendingSpawns.add(p);
             return;
         }
-        if (byNetworkId.containsKey(s.networkId())) {
+        EntitySpawnS2C s = p.spawn();
+        Entity existing = byNetworkId.get(s.networkId());
+        if (existing != null) {
+            // Duplicate of a live shadow (interest flap while loading): forward any anim/
+            // variant queued behind the buffered copy instead of discarding the record.
+            applyQueuedState(existing, p);
             return;
         }
         EntityType[] types = EntityType.values();
@@ -91,13 +115,24 @@ public final class ClientEntityHandler {
         entity.setInterpolator(interp);
         Game.getEntityManager().addEntity(entity);
         byNetworkId.put(s.networkId(), entity);
+        applyQueuedState(entity, p);
+    }
+
+    /** Applies a buffered record's queued anim/variant to a fresh shadow or a live duplicate. */
+    private static void applyQueuedState(Entity e, PendingSpawn p) {
+        if (p.animState() != null) {
+            e.applyNetworkState(p.animState());
+        }
+        if (p.variant() != null && e instanceof com.stonebreak.mobs.entities.LivingEntity le) {
+            le.setTextureVariant(p.variant());
+        }
     }
 
     public void applyDespawn(int networkId) {
         // A despawn can arrive while its spawn is still buffered (world rebuild, or a fast
         // interest enter/exit flap) — drop the buffered spawn too or it would later create
         // a ghost the server considers gone.
-        pendingSpawns.removeIf(s -> s.networkId() == networkId);
+        pendingSpawns.removeIf(p -> p.spawn().networkId() == networkId);
         Entity e = byNetworkId.remove(networkId);
         if (e != null && Game.getEntityManager() != null) {
             Game.getEntityManager().removeEntity(e);
@@ -146,7 +181,10 @@ public final class ClientEntityHandler {
         Entity e = byNetworkId.get(networkId);
         if (e != null) {
             e.applyNetworkState(sbeState);
+            return;
         }
+        // The spawn may still be buffered (world build) — keep the state for the drain.
+        queueForPendingSpawn(networkId, p -> p.withAnim(sbeState));
     }
 
     /**
@@ -156,10 +194,31 @@ public final class ClientEntityHandler {
      * unknown variants fall back to the base model in the renderer.
      */
     public void applyVariant(int networkId, String variant) {
-        Entity e = byNetworkId.get(networkId);
-        if (e instanceof com.stonebreak.mobs.entities.LivingEntity le
-                && variant != null && !variant.isBlank()) {
-            le.setTextureVariant(variant);
+        if (variant != null && !variant.isBlank()) {
+            Entity e = byNetworkId.get(networkId);
+            if (e instanceof com.stonebreak.mobs.entities.LivingEntity le) {
+                le.setTextureVariant(variant);
+                return;
+            }
+            if (e == null) {
+                // The spawn may still be buffered (world build) — keep the variant for the
+                // drain; it does not self-heal (the periodic teleport resync resends anim
+                // state but no variant).
+                queueForPendingSpawn(networkId, p -> p.withVariant(variant));
+            }
+        }
+    }
+
+    /** Replaces the first pending spawn for {@code networkId} with {@code update} applied. */
+    private void queueForPendingSpawn(int networkId,
+            Function<PendingSpawn, PendingSpawn> update) {
+        ListIterator<PendingSpawn> lit = pendingSpawns.listIterator();
+        while (lit.hasNext()) {
+            PendingSpawn p = lit.next();
+            if (p.spawn().networkId() == networkId) {
+                lit.set(update.apply(p));
+                return;
+            }
         }
     }
 
@@ -186,10 +245,13 @@ public final class ClientEntityHandler {
         if (pendingSpawns.isEmpty() || !Game.isClientWorldReady()) {
             return;
         }
-        Iterator<EntitySpawnS2C> it = pendingSpawns.iterator();
-        while (it.hasNext()) {
-            applySpawn(it.next());
-            it.remove();
+        // Drain a snapshot: the world-build thread can flip readiness between any two reads,
+        // and applyBuffered re-buffers a record (with its queued anim/variant) when it does.
+        // Re-buffering into the list being iterated threw ConcurrentModificationException.
+        List<PendingSpawn> batch = new ArrayList<>(pendingSpawns);
+        pendingSpawns.clear();
+        for (PendingSpawn p : batch) {
+            applyBuffered(p);
         }
     }
 

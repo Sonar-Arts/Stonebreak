@@ -721,16 +721,10 @@ public final class MultiplayerSession {
             listenerTarget.removeListener(entityListener);
         }
         listenerTarget = em;
-        entityListener = new EntityManager.Listener() {
-            @Override public void onEntityAdded(Entity e) {
-                IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
-                if (s != null) s.onEntitySpawned(e);
-            }
-            @Override public void onEntityRemoved(Entity e) {
-                IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
-                if (s != null) s.onEntityDespawned(e);
-            }
-        };
+        // Unconditional delegation: the listener is bound to the saved world's EntityManager and
+        // the battletest arena has its own — an isActive() check here would drop a spawn/despawn
+        // fired by a server tick straddling the /battletest enter/leave flag flip (issue #375).
+        entityListener = new EntityReplicationListener(() -> server);
         em.addListener(entityListener);
     }
 
