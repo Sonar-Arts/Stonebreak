@@ -1,14 +1,11 @@
 package com.stonebreak.rendering.gameWorld.weather;
 
-import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.postfx.FullscreenQuad;
 import com.openmason.engine.rendering.postfx.RenderTarget;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
-import com.stonebreak.rendering.gameWorld.clouds.CloudUniforms;
 import com.stonebreak.world.weather.CloudType;
 import org.joml.Matrix4f;
-import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
@@ -16,67 +13,52 @@ import org.lwjgl.opengl.GL30;
 import static org.lwjgl.opengl.GL11.*;
 
 /**
- * Rain and snow fog as a volume in the world. It hangs under every raining
- * cloud, from the ground up to the cloud's underside as drawn, so an approaching storm shows
- * from kilometres off as a grey curtain, and the air above the clouds is clear.
+ * Rain and snow fog: a haze around the camera while it is in the weather, as
+ * thick as the rain or snow there ({@link WeatherEffects#extinction}) and gone
+ * above the clouds. Shaders that include {@code precip_fog.glsl} take it
+ * ({@link #applyTo}): terrain, water and clouds. {@link #renderSky} veils the
+ * sky, and {@link #sunVisibility} tells the god rays how much sky shows through it.
  *
- * <p>Each frame {@link #prepare} renders the precipitation map: a camera-centred
- * texture of what every column of the cloud field drops, the light that comes
- * through the cloud above it, and the cloud's base. Shaders that include
- * {@code precip_fog.glsl} march their view rays through it ({@link #applyTo}):
- * terrain, water and clouds. {@link #renderSky} fogs the sky. Entities, which
- * are never far away, take the fog around the camera instead ({@link WeatherFog}).
+ * <p>It used to hang under every distant raining cloud as a volume, but seen
+ * from outside those shafts were hard-edged grey columns; the user had them
+ * removed (2026-10-20). A distant storm shows as its cloud and its rain.
  */
 public final class PrecipitationFog {
 
-    /** Unit the map is bound on for receivers; no other pass uses it. */
-    public static final int MAP_TEXTURE_UNIT = 22;
-    private static final int MAP_SIZE = 256;
-    /** Blocks per map texel: the map reaches 3 km from the camera, the farthest the fog can. */
-    private static final float TEXEL_BLOCKS = 24f;
-    private static final float SPAN = MAP_SIZE * TEXEL_BLOCKS;
-
     /**
-     * Blocks the fog reaches up into its cloud. It is full up to the cloud's
-     * base and thins out above it, inside the cloud, which hides where it ends:
-     * stopped at the base, it ended in a flat line under the cloud, plainest
-     * with the eye level with it; thinned below the base, it stopped short of
-     * the cloud. Also the band {@link WeatherEffects} thins the camera's fog over.
+     * Blocks above the highest raining base over which the camera's fog thins
+     * out as it climbs into the clouds ({@link WeatherEffects}).
      */
     public static final float RISE = 32f;
     /** Highest base of a cloud type that rains. */
     public static final float BASE = highestRainingBase();
     /**
-     * Highest above its column's base the map looks for the cloud's underside:
-     * the noise carves a cloud's bottom ragged, so it starts above the base.
+     * Deepest the fog reaches, in blocks: the veil over the sky. Twice the
+     * heaviest rain's visibility, so in a downpour the sky is hidden and in a
+     * drizzle it shows through.
      */
-    private static final float UNDERSIDE_REACH = 48f;
-    /** No fog above this: the highest underside, plus {@link #RISE}. */
-    public static final float TOP = BASE + UNDERSIDE_REACH + RISE;
+    private static final float DEPTH = 2f * WeatherEffects.HEAVY_RAIN_VISIBILITY;
 
-    private final ShaderProgram mapShader;
     private final ShaderProgram skyShader;
+    private final ShaderProgram visibilityShader;
+    private RenderTarget visibility;
     private final FullscreenQuad quad = new FullscreenQuad();
-    private RenderTarget map;
     private boolean enabled;
-    private final Vector2f origin = new Vector2f();
+    private float density;
     private final Vector3f color = new Vector3f();
-    private float heavy;
-    private float reach;
-    private float shadeMin;
     private final Matrix4f invViewProj = new Matrix4f();
     private final int[] viewport = new int[4];
 
     public PrecipitationFog() {
         String vert = load("/shaders/postfx/fullscreen.vert");
-        mapShader = new ShaderProgram();
-        mapShader.createVertexShader(vert);
-        mapShader.createFragmentShader(load("/shaders/weather/precip_fog_map.frag"));
-        mapShader.link();
         skyShader = new ShaderProgram();
         skyShader.createVertexShader(vert);
         skyShader.createFragmentShader(load("/shaders/weather/precip_fog_sky.frag"));
         skyShader.link();
+        visibilityShader = new ShaderProgram();
+        visibilityShader.createVertexShader(vert);
+        visibilityShader.createFragmentShader(load("/shaders/weather/sun_visibility.frag"));
+        visibilityShader.link();
     }
 
     /** Lambda (not a method reference) so the caller-sensitive lookup happens in this module. */
@@ -93,59 +75,14 @@ public final class PrecipitationFog {
     }
 
     /**
-     * Renders this frame's precipitation map around the camera. With
-     * {@code active} false (no cloud field yet, or the camera underwater, where
-     * the murk replaces it) the fog is off everywhere.
-     *
-     * @param reach blocks from the camera the fog ends at: the terrain's
-     *              horizon, so no rain hangs over land that isn't drawn
+     * Takes this frame's fog from the weather around the camera. With
+     * {@code active} false (the camera underwater, where the murk replaces it)
+     * there is none.
      */
-    public void prepare(CloudUniforms clouds, boolean active, Vector3f cameraWorldPos, float reach,
-                        WeatherEffects effects) {
-        enabled = active;
-        if (!active) return;
-        this.reach = Math.min(reach, SPAN / 2f);
-        heavy = effects.heavyExtinction();
-        shadeMin = effects.shadeMin();
-        color.set(effects.fogColor());
-
-        // Anchored to the world's texel grid, so the map doesn't swim as the camera moves.
-        double minX = Math.floor(cameraWorldPos.x / TEXEL_BLOCKS) * TEXEL_BLOCKS - SPAN / 2.0;
-        double minZ = Math.floor(cameraWorldPos.z / TEXEL_BLOCKS) * TEXEL_BLOCKS - SPAN / 2.0;
-        origin.set((float) (minX - RenderOrigin.x()), (float) (minZ - RenderOrigin.z()));
-
-        int previousFbo = glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
-        int previousReadFbo = glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-        glGetIntegerv(GL_VIEWPORT, viewport);
-        boolean depthTest = glIsEnabled(GL_DEPTH_TEST);
-        boolean blend = glIsEnabled(GL_BLEND);
-        int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + MAP_TEXTURE_UNIT);
-        if (map == null) map = new RenderTarget(MAP_SIZE, MAP_SIZE, false, GL30.GL_RGBA16F);
-        GL13.glActiveTexture(previousUnit);
-
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_BLEND);
-        map.bind();
-        mapShader.bind();
-        clouds.applyTo(mapShader);
-        clouds.applyShapeTo(mapShader);
-        mapShader.setVec2("u_mapOrigin", origin);
-        mapShader.setFloat("u_mapSpan", SPAN);
-        mapShader.setFloat("u_mapTexel", TEXEL_BLOCKS);
-        mapShader.setFloat("u_undersideReach", UNDERSIDE_REACH);
-        mapShader.setVec2("u_mapCentre", new Vector2f(origin).add(SPAN / 2f, SPAN / 2f));
-        mapShader.setFloat("u_mapReach", this.reach);
-        mapShader.setFloat("u_rateExponent", WeatherEffects.RATE_EXPONENT);
-        mapShader.setFloat("u_topRise", RISE);
-        quad.draw();
-        mapShader.unbind();
-
-        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousFbo);
-        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
-        glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-        if (depthTest) glEnable(GL_DEPTH_TEST);
-        if (blend) glEnable(GL_BLEND);
+    public void prepare(boolean active, WeatherEffects effects) {
+        density = active ? effects.extinction() : 0f;
+        enabled = density > 0f;
+        effects.localFogColor(color);
     }
 
     /** Fogs the sky just drawn: each pixel by its whole ray through the fog. */
@@ -174,28 +111,65 @@ public final class PrecipitationFog {
         glDepthMask(depthMask);
     }
 
-    /** Sets the {@code precip_fog.glsl} uniforms on a BOUND shader and binds the map. */
+    /**
+     * How much of the sky's light reaches the eye at each pixel through the cloud
+     * and the fog in front of it, for screen-space effects such as god rays: a
+     * texture (alpha) at half the current viewport's resolution. With no fog it is
+     * the cloud's own transmittance texture (0 for none); call after the clouds.
+     */
+    public int sunVisibility(int cloudTransmittance, Matrix4f projection, Matrix4f view, Vector3f cameraRenderPos) {
+        if (!enabled) return cloudTransmittance;
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        int width = Math.max(1, viewport[2] / 2), height = Math.max(1, viewport[3] / 2);
+        int previousFbo = glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int previousReadFbo = glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        boolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+        boolean blend = glIsEnabled(GL_BLEND);
+        int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        if (visibility == null) {
+            visibility = new RenderTarget(width, height, false, GL_RGBA8);
+        } else {
+            visibility.resize(width, height);
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        visibility.bind();
+        visibilityShader.bind();
+        applyTo(visibilityShader);
+        visibilityShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
+        visibilityShader.setVec3("u_camPos", cameraRenderPos);
+        glBindTexture(GL_TEXTURE_2D, cloudTransmittance);
+        visibilityShader.setInt("u_cloudTransmittance", 0);
+        visibilityShader.setBool("u_hasClouds", cloudTransmittance != 0);
+        quad.draw();
+        visibilityShader.unbind();
+
+        glBindTexture(GL_TEXTURE_2D, previousTexture);
+        GL13.glActiveTexture(previousUnit);
+        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previousFbo);
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, previousReadFbo);
+        glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        if (depthTest) glEnable(GL_DEPTH_TEST);
+        if (blend) glEnable(GL_BLEND);
+        return visibility.getColorTexture();
+    }
+
+    /** Sets the {@code precip_fog.glsl} uniforms on a BOUND shader. */
     public void applyTo(ShaderProgram shader) {
         shader.setBool("u_precipFogEnabled", enabled);
         if (!enabled) return;
-        int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + MAP_TEXTURE_UNIT);
-        glBindTexture(GL_TEXTURE_2D, map.getColorTexture());
-        GL13.glActiveTexture(previousUnit);
-        shader.setInt("u_precipFogMap", MAP_TEXTURE_UNIT);
-        shader.setVec2("u_precipFogOrigin", origin);
-        shader.setFloat("u_precipFogSpan", SPAN);
-        shader.setFloat("u_precipFogReach", reach);
-        shader.setFloat("u_precipFogHeavy", heavy);
-        shader.setFloat("u_precipFogTop", TOP);
-        shader.setFloat("u_precipFogShadeMin", shadeMin);
+        shader.setFloat("u_precipFogDensity", density);
+        shader.setFloat("u_precipFogDepth", DEPTH);
         shader.setVec3("u_precipFogColor", color);
     }
 
     public void cleanup() {
         quad.cleanup();
-        mapShader.cleanup();
         skyShader.cleanup();
-        if (map != null) map.cleanup();
+        visibilityShader.cleanup();
+        if (visibility != null) visibility.cleanup();
     }
 }

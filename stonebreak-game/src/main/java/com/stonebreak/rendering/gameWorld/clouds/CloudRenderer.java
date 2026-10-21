@@ -245,7 +245,7 @@ public final class CloudRenderer {
         marchShader.setVec3("u_sunDir", keyDirection);
         marchShader.setVec3("u_sunColor", sky != null && sky.keyIsMoon()
                 ? sunColor.set(sky.keyLight()).mul(MOONLIT_CLOUD)
-                : sunColor(keyDirection));
+                : sunColor(sky, keyDirection));
         marchShader.setVec3("u_ambientColor", ambientColor(sky, skyColor, ambientLight, ambientColor));
         marchShader.setVec3("u_hazeColor", skyColor);
         fog.applyTo(marchShader);
@@ -351,15 +351,10 @@ public final class CloudRenderer {
     }
 
     /** Binds a noise volume on its own unit, which nothing else samples, so it is left bound. */
-    /** Warm and dim near the horizon, white overhead, gone below it. */
-    private Vector3f sunColor(Vector3f sun) {
-        float up = sun.y;
-        float strength = smoothstep(-0.05f, 0.12f, up) * 0.85f;
-        float white = smoothstep(0.0f, 0.35f, up);
-        return sunColor.set(
-                strength,
-                strength * (0.55f + 0.42f * white),
-                strength * (0.32f + 0.58f * white));
+    /** Sunlight's hue ({@link SkyLight#sunColor}), dim near the horizon and gone below it. */
+    private Vector3f sunColor(SkyLight sky, Vector3f sun) {
+        float strength = smoothstep(-0.05f, 0.12f, sun.y) * 0.85f;
+        return sky != null ? sunColor.set(sky.sunColor()).mul(strength) : sunColor.set(strength);
     }
 
     /**

@@ -36,7 +36,7 @@ public final class SceneLight {
         return time != null ? SkyLight.of(time).keyDir() : DEFAULT_KEY;
     }
 
-    /** That light's colour × strength: (1, 1, 1) by day, a faint blue by moonlight. */
+    /** That light's colour × strength: white at noon, gold to orange low in the sky, a faint blue by moonlight. */
     public static Vector3f keyLight() {
         TimeOfDay time = Game.getTimeOfDay();
         return time != null ? SkyLight.of(time).keyLight() : WHITE;

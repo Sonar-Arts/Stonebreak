@@ -554,14 +554,19 @@ public class Renderer {
             return;
         }
 
+        // Shafts take the sun's colour: white by day, reddening as it sets.
+        org.joml.Vector3f sunColor = timeOfDay != null
+                ? com.stonebreak.rendering.lighting.SkyLight.of(timeOfDay).sunColor()
+                : new org.joml.Vector3f(1f);
         postPipeline.beginFrame();
         worldRenderer.renderWorld(world, player, totalTime);
         postPipeline.endFrame(new PostFxFrameParams(
                 player.getViewMatrix(),
                 configManager.getProjectionMatrix(),
                 sunDirection,
+                sunColor,
                 godRayStrength,
-                worldRenderer.cloudTransmittanceTexture()));
+                worldRenderer.skyTransmittanceTexture(player)));
     }
 
     /**

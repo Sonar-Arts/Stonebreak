@@ -155,6 +155,10 @@ public class SkyRenderer {
             skyShaderProgram.createUniform("sunGlow");
             skyShaderProgram.createUniform("sunsetColor");
             skyShaderProgram.createUniform("sunsetCoverage");
+            skyShaderProgram.createUniform("sunColor");
+            skyShaderProgram.createUniform("earthShadowColor");
+            skyShaderProgram.createUniform("earthShadowHeight");
+            skyShaderProgram.createUniform("twilightBand");
             skyShaderProgram.createUniform("daylight");
             skyShaderProgram.createUniform("moonTexture");
 
@@ -224,6 +228,10 @@ public class SkyRenderer {
         skyShaderProgram.setUniform("sunGlow", sky.sunGlow());
         skyShaderProgram.setUniform("sunsetColor", sky.sunsetColor());
         skyShaderProgram.setUniform("sunsetCoverage", sky.sunsetCoverage());
+        skyShaderProgram.setUniform("sunColor", sky.sunColor());
+        skyShaderProgram.setUniform("earthShadowColor", sky.earthShadowColor());
+        skyShaderProgram.setUniform("earthShadowHeight", sky.earthShadowHeight());
+        skyShaderProgram.setUniform("twilightBand", sky.twilightBand());
         skyShaderProgram.setUniform("daylight", sky.daylight());
         skyShaderProgram.setUniform("moonTexture", MOON_TEXTURE_UNIT);
 

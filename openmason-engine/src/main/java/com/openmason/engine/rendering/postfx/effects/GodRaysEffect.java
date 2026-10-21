@@ -25,9 +25,11 @@ import static org.lwjgl.opengl.GL30.glBindFramebuffer;
  * Pass B radially blurs the mask toward the sun's projected screen position and composites it
  * additively onto the default framebuffer.</p>
  *
- * <p>Clouds come in as a transmittance texture ({@link PostFxFrameParams#cloudTexture()}):
- * the mask is scaled by how much light the cloud in front lets through, so thin cloud dims
- * the rays and gaps between clouds let shafts through. Water does not write depth, so
+ * <p>Whatever veils the sky (cloud, rain) comes in as a transmittance texture
+ * ({@link PostFxFrameParams#skyTransmittanceTexture()}): the mask is scaled by how much of the
+ * sky's light reaches the eye, so thin cloud dims the rays, gaps between clouds let shafts
+ * through, and sky seen through a storm's rain sends none. Rays take the sun's colour,
+ * so they redden with it at sunset. Water does not write depth, so
  * rays shine through it (accepted behavior). The effect fades out as the sun approaches the
  * screen edge and is skipped entirely when the sun is behind the camera.</p>
  */
@@ -65,8 +67,9 @@ public class GodRaysEffect implements PostProcessingEffect {
         occlusionProgram.createUniform("depthTex");
         occlusionProgram.createUniform("sunUv");
         occlusionProgram.createUniform("aspect");
-        occlusionProgram.createUniform("cloudTex");
-        occlusionProgram.createUniform("hasClouds");
+        occlusionProgram.createUniform("skyTransmittance");
+        occlusionProgram.createUniform("hasTransmittance");
+        occlusionProgram.createUniform("sunColor");
 
         blurProgram = new ShaderProgram();
         blurProgram.createVertexShader(fullscreenVert);
@@ -130,9 +133,10 @@ public class GodRaysEffect implements PostProcessingEffect {
         occlusionProgram.setUniform("sunUv", sunUv);
         occlusionProgram.setUniform("aspect", (float) outputWidth / (float) outputHeight);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, params.cloudTexture());
-        occlusionProgram.setUniform("cloudTex", 1);
-        occlusionProgram.setUniform("hasClouds", params.cloudTexture() != 0);
+        glBindTexture(GL_TEXTURE_2D, params.skyTransmittanceTexture());
+        occlusionProgram.setUniform("skyTransmittance", 1);
+        occlusionProgram.setUniform("hasTransmittance", params.skyTransmittanceTexture() != 0);
+        occlusionProgram.setUniform("sunColor", params.sunColor());
         quad.draw();
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);

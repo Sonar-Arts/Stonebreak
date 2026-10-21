@@ -4,9 +4,8 @@ import org.joml.Vector3f;
 
 /**
  * This frame's rain and snow fog right around the camera, for the entity
- * passes: they take it as their exponential fog instead of marching the
- * precipitation map ({@link PrecipitationFog}), since an entity is never far
- * enough away for the fog to change between it and the eye. Published once per
+ * passes: they take it as their exponential fog, the same haze
+ * {@link PrecipitationFog} gives the world. Published once per
  * frame by the world renderer, in the way {@code SceneLight} publishes the
  * ambient light.
  */

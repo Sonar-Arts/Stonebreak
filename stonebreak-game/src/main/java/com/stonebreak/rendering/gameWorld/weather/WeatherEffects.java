@@ -10,8 +10,8 @@ import org.joml.Vector3f;
 /**
  * How the weather around the camera changes the look of the scene: under rain
  * and storm cloud the light dims and the sky goes grey, and this sets how thick
- * and what colour the rain and snow fog is ({@link PrecipitationFog} places it
- * in the world). Driven by the same {@link ClientWeather} field the clouds and
+ * and what colour the rain and snow fog around the camera is
+ * ({@link PrecipitationFog}). Driven by the same {@link ClientWeather} field the clouds and
  * rain come from, eased over a few seconds so walking under a cloud edge
  * doesn't pop.
  *
@@ -47,7 +47,7 @@ public final class WeatherEffects {
      * precipitation therefore already hazes the view, rather than fog
      * appearing only at the peak of a storm.
      */
-    static final float RATE_EXPONENT = 0.7f;
+    private static final float RATE_EXPONENT = 0.7f;
     /** How much lightning lights up the fog, as a share of the flash. */
     private static final float FLASH_IN_FOG = 0.6f;
     /**
@@ -143,17 +143,9 @@ public final class WeatherEffects {
         return storminess;
     }
 
-    /**
-     * Fog extinction right around the camera, per block: for the passes that
-     * cannot march the precipitation map (entities). 0 above the clouds.
-     */
+    /** Fog extinction right around the camera, per block ({@link PrecipitationFog}). 0 above the clouds. */
     public float extinction() {
         return extinction;
-    }
-
-    /** Extinction at the heaviest rate, per block, for the snow share around the camera. */
-    public float heavyExtinction() {
-        return extinction(1f, snow);
     }
 
     /** Light left in the fog under the thickest cloud, for the snow share around the camera. */

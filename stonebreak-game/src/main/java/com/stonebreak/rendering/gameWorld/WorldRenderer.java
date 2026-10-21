@@ -196,6 +196,10 @@ public class WorldRenderer {
         Vector3f clearFogColor;
         Vector3f horizonGold = new Vector3f();
         float sunsetCoverage = -1f;
+        // The Earth's shadow on the land opposite the sun, and the sun's aureole toward it.
+        Vector3f earthShadow = new Vector3f();
+        float earthShadowHeight = 0f, twilightBand = 0f;
+        Vector3f sunAureole = new Vector3f();
         if (timeOfDay != null) {
             SkyLight sky = SkyLight.of(timeOfDay);
             sunDirection = sky.sunDir();
@@ -205,13 +209,20 @@ public class WorldRenderer {
                     new Vector3f(sky.clearZenith()).lerp(sky.clearHorizon(), 0.5f), new Vector3f());
             weatherEffects.tintSky(new Vector3f(sky.sunsetColor()).mul(1.2f), horizonGold);
             sunsetCoverage = sky.sunsetCoverage();
+            // Overcast hides the sun and the twilight bands it casts on the sky.
+            float clear = 1f - weatherEffects.storminess();
+            weatherEffects.tintSky(sky.earthShadowColor(), earthShadow);
+            earthShadowHeight = sky.earthShadowHeight();
+            twilightBand = sky.twilightBand() * clear;
+            SunsetFog.sunAureole(sky, clear, sunAureole);
             weatherEffects.updateFogColor(sky);
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
             skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
                     weatherEffects.tintSky(sky.clearZenith(), new Vector3f()),
                     weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
                     weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
-                    new Vector3f(sky.sunGlow()).mul(1f - weatherEffects.storminess()), sky.daylight());
+                    new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
+                    earthShadow, earthShadowHeight, twilightBand, sky.daylight());
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
@@ -219,7 +230,8 @@ public class WorldRenderer {
             clearFogColor = skyColor;
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
-                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(), 1f);
+                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
+                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f);
         }
 
         // Region-batched chunk rendering: publish last frame's stats and prune
@@ -261,8 +273,7 @@ public class WorldRenderer {
         // Rain and snow fog for every pass this frame; underwater the murk replaces it.
         com.stonebreak.rendering.gameWorld.weather.WeatherFog.set(
                 cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
-        precipitationFog.prepare(cloudRenderer.uniforms(), cloudRenderer.mapsReady() && !cameraUnderwater,
-                cameraPos, weatherReach, weatherEffects);
+        precipitationFog.prepare(!cameraUnderwater, weatherEffects);
 
         if (cameraUnderwater) {
             // Fog alone cannot hide the horizon, because it only tints pixels
@@ -308,6 +319,8 @@ public class WorldRenderer {
         Vector3f fogColor = clearFogColor;
         // The evening gold fogs land on the sun's side; underwater the murk is all there is.
         SunsetFog.set(cameraUnderwater ? new Vector3f() : horizonGold, sunsetCoverage, sunDirection);
+        SunsetFog.setTwilight(earthShadow, earthShadowHeight, cameraUnderwater ? 0f : twilightBand,
+                cameraUnderwater ? new Vector3f() : sunAureole);
         // Underwater the fog is a VOLUME around the eye, so it is measured as a
         // sphere; the atmospheric fog keeps its horizontal measure, which is
         // what makes a distant peak fade with its base instead of pulling clear
@@ -401,15 +414,18 @@ public class WorldRenderer {
             checkGLError("After cloud rendering");
         }
 
-        // Render transparent pass (translucent solids like ice)
-        // Ice blended over the clouds would paint over the cloud in front of
-        // it; the shader composites it behind that cloud instead.
-        shaderProgram.bind();
-        int previousCloudTexture = com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.enable(
-                shaderProgram, cameraUnderwater ? 0 : cloudRenderer.transmittanceTexture());
-        renderTransparentPass(visibleChunks, player);
-        shaderProgram.bind();
-        com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.disable(shaderProgram, previousCloudTexture);
+        // Translucent solids (ice, glass) write depth, so whatever draws after
+        // them is hidden behind them. Above water they go AFTER the water pass:
+        // water behind a window or under lake ice is drawn first and the glass
+        // or ice blends over it (drawn before, the water was depth-rejected —
+        // invisible through glass, and ice showed the bare lakebed). Underwater
+        // the ice lies beyond the water surface, so the old order still holds:
+        // ice first, then the water blends over it.
+        sortChunksBackToFront(visibleChunks, player);
+        boolean translucentAfterWater = !cameraUnderwater;
+        if (!translucentAfterWater) {
+            renderTranslucentSolids(visibleChunks, cameraUnderwater);
+        }
 
         // Transparent drops and the crack overlay draw BEFORE water: the water
         // pass depth-prepasses its nearest surface into the depth buffer (to
@@ -425,8 +441,8 @@ public class WorldRenderer {
         renderWorldOverlays(player);
 
         // Dedicated water pass — draws every chunk's water mesh with the water
-        // shader, in the compositing slot the old water sub-pass held (after
-        // ice). Reuses the back-to-front order renderTransparentPass computed.
+        // shader — before ice and glass above water, after them underwater
+        // (see translucentAfterWater). Reuses the back-to-front order sorted above.
         // State-neutral (saves/restores all GL state it touches), but leaves
         // the nearest water surface's depth in the depth buffer, so later
         // passes (fire bolts, particles) are occluded by water in front of
@@ -437,6 +453,13 @@ public class WorldRenderer {
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
                 cloudRenderer.transmittanceTexture(), precipitationFog);
         checkGLError("After water pass");
+
+        if (translucentAfterWater) {
+            shaderProgram.bind();
+            shaderProgram.setUniform("u_useTextureArray", true);
+            renderTranslucentSolids(visibleChunks, cameraUnderwater);
+            restoreGLStateAfterPasses();
+        }
 
         if (!cameraUnderwater) {
             // Rain and snow fall below the clouds and in front of them.
@@ -457,11 +480,14 @@ public class WorldRenderer {
     }
     
     /**
-     * The half-resolution cloud buffer drawn this frame (alpha = transmittance),
-     * for screen-space effects such as god rays; 0 when no clouds were drawn.
+     * How much of the sky's light reaches the eye at each pixel through this
+     * frame's cloud and rain (alpha), for screen-space effects such as god rays;
+     * 0 when nothing veils the sky. Call after {@link #renderWorld}.
      */
-    public int cloudTransmittanceTexture() {
-        return cloudRenderer.transmittanceTexture();
+    public int skyTransmittanceTexture(Player player) {
+        int clouds = cloudRenderer.transmittanceTexture();
+        return precipitationFog.sunVisibility(clouds, projectionMatrix, player.getViewMatrix(),
+                player.getRenderPosition(new Vector3f()));
     }
 
     /**
@@ -721,16 +747,27 @@ public class WorldRenderer {
     private static int debugSBOPassCount = 0;
 
     /**
-     * Render transparent pass (water parts of chunks).
+     * Translucent solids (ice, glass), composited behind the cloud in front of
+     * them: blended over the clouds they would paint over that cloud.
      */
-    private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
+    private void renderTranslucentSolids(List<Chunk> visibleChunks, boolean cameraUnderwater) {
+        shaderProgram.bind();
+        int previousCloudTexture = com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.enable(
+                shaderProgram, cameraUnderwater ? 0 : cloudRenderer.transmittanceTexture());
+        renderTransparentPass(visibleChunks);
+        shaderProgram.bind();
+        com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.disable(shaderProgram, previousCloudTexture);
+    }
+
+    /**
+     * Render transparent pass (translucent solids) over the chunks
+     * {@link #sortChunksBackToFront} ordered this frame.
+     */
+    private void renderTransparentPass(List<Chunk> visibleChunks) {
         shaderProgram.bind(); // re-bind in case entity rendering left a different shader active
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent pass
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
-
-        // Sort chunks from back to front for transparent pass
-        sortChunksBackToFront(visibleChunks, player);
 
         // Translucent solids (e.g. ice) only. Depth-write ON so they occlude
         // any farther translucent surface. Water no longer lives in the atlas

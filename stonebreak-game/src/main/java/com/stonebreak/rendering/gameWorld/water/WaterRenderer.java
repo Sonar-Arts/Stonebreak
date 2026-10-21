@@ -25,9 +25,9 @@ import static org.lwjgl.opengl.GL11.*;
  * alongside the atlas handle. The surface pattern is fully procedural in the
  * fragment shader — no texture binds, no CPU tile animation.
  *
- * <p>Invoked by {@code WorldRenderer} immediately after the transparent
- * (ice/translucent-solid) pass, before transparent drops — the same
- * compositing slot the old water sub-pass occupied. Owns its shader, saves/restores all GL state
+ * <p>Invoked by {@code WorldRenderer} after transparent drops; above water it
+ * draws before the ice/glass pass (which blends over it), underwater after
+ * it. Owns its shader, saves/restores all GL state
  * it touches. Face culling is disabled so the surface is visible from below
  * ({@code gl_FrontFacing} flips the normal in the fragment shader).
  *

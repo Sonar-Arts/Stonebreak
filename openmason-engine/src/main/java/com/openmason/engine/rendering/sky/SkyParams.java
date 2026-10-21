@@ -14,11 +14,16 @@ import org.joml.Vector3f;
  * @param sunsetColor    sunset gold × its strength (black for none), drawn over the sky's sun side
  * @param sunsetCoverage how far round from the sun the gold reaches: 1.15 covers the sky,
  *                       about 85% on the opposite horizon; below 0 none (see {@code sky.frag})
- * @param sunGlow        warm light low on the horizon toward the sun, premultiplied by strength
+ * @param sunGlow        the afterglow: red light low on the horizon toward the sun, premultiplied by strength
+ * @param sunColor       sunlight's hue (brightest channel 1): the disc and its glow take it
+ * @param earthShadowColor  the Earth's shadow, the band rising opposite the sun after sunset
+ * @param earthShadowHeight its edge's height straight opposite the sun (sine of elevation)
+ * @param twilightBand   0..1: how strongly the shadow and the pink Belt of Venus above it show
  * @param daylight       0 with the sun down, 1 in full day: fades the haze in and washes the moon out
  */
 public record SkyParams(Vector3f sunDirection, Vector3f moonDirection, float moonLight,
                         Vector3f zenithColor, Vector3f horizonColor,
                         Vector3f sunsetColor, float sunsetCoverage, Vector3f sunGlow,
-                        float daylight) {
+                        Vector3f sunColor, Vector3f earthShadowColor, float earthShadowHeight,
+                        float twilightBand, float daylight) {
 }

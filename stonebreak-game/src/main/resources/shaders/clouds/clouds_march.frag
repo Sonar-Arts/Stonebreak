@@ -290,9 +290,9 @@ void main() {
     // is already fogged along this whole stretch (terrain itself, the sky by
     // precip_fog_sky.frag), and the composite gives scene * T + light. So the
     // cloud's light is dimmed by the fog in front, and the fog's own light is
-    // added here for the share of the scene the cloud hides. From above the
-    // cloud the rain is behind it, and the fogged scene already holds it.
-    if (ro.y < u_precipFogTop && transmittance < 1.0) {
+    // added here for the share of the scene the cloud hides. Above the clouds
+    // there is no fog (WeatherEffects), so the rain stays behind the cloud.
+    if (transmittance < 1.0) {
         vec4 fog = precipFog(ro, rd, tNear);
         light = light * fog.a + fog.rgb * (1.0 - transmittance);
     }
