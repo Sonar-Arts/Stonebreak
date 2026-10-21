@@ -182,6 +182,48 @@ public class Inventory {
     }
 
     /**
+     * Non-mutating capacity check mirroring {@link #addItemAndReturnCount}'s rules:
+     * state-matched stacking first, then empty hotbar slots, then empty main slots.
+     * @return True if the entire stack would fit right now.
+     */
+    public boolean canAddItem(ItemStack itemStack) {
+        if (itemStack == null || itemStack.isEmpty()) {
+            return true;
+        }
+
+        int remainingCount = itemStack.getCount();
+        Item item = itemStack.getItem();
+        String state = itemStack.getState();
+
+        for (ItemStack stack : hotbarSlots) {
+            if (remainingCount == 0) break;
+            if (!stack.isEmpty()
+                    && stack.getItem().isSameType(item)
+                    && ItemStack.statesMatch(item, stack.getState(), state)
+                    && stack.getCount() < stack.getMaxStackSize()) {
+                remainingCount -= Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+            }
+        }
+        for (ItemStack stack : mainInventorySlots) {
+            if (remainingCount == 0) break;
+            if (!stack.isEmpty()
+                    && stack.getItem().isSameType(item)
+                    && ItemStack.statesMatch(item, stack.getState(), state)
+                    && stack.getCount() < stack.getMaxStackSize()) {
+                remainingCount -= Math.min(remainingCount, stack.getMaxStackSize() - stack.getCount());
+            }
+        }
+        for (ItemStack[] slots : new ItemStack[][] {hotbarSlots, mainInventorySlots}) {
+            for (int i = 0; i < slots.length && remainingCount > 0; i++) {
+                if (slots[i].isEmpty()) {
+                    remainingCount -= Math.min(remainingCount, itemStack.getMaxStackSize());
+                }
+            }
+        }
+        return remainingCount == 0;
+    }
+
+    /**
      * Adds multiple items of the given block type to the inventory.
      * @param blockTypeId The ID of the block type to add.
      * @param count The number of items to add.
