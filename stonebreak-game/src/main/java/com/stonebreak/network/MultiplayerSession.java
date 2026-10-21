@@ -229,6 +229,19 @@ public final class MultiplayerSession {
     }
 
     /**
+     * The local player ate one {@code itemId} from the selected hotbar slot (issue #355).
+     * Numbered like a slot action, so a sync built before the server applied it cannot roll
+     * back the local prediction. No-op without a live session.
+     */
+    public static void sendConsumeHeld(int itemId) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendConsumeHeld(new com.stonebreak.network.packet.player.ConsumeHeldC2S(
+                    itemId, SlotIntentSeq.next()));
+        }
+    }
+
+    /**
      * Death ({@code dead}) or respawn edge of the local player at {@code pos}, on the reliable
      * channel: the server's only source for which players are dead (drop pickup, mob spawning
      * — #357). No-op without a live session.

@@ -586,6 +586,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** Ate one held item (see {@code ConsumeHeldC2S}): the server debits its replica. */
+    public void sendConsumeHeld(com.stonebreak.network.packet.player.ConsumeHeldC2S c) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(c, false);
+        }
+    }
+
     /** Death / respawn edge (see {@code PlayerLifeC2S}) — reliable, never the state stream. */
     public void sendPlayerLife(com.stonebreak.network.packet.player.PlayerLifeC2S l) {
         ClientConnection conn = connection;

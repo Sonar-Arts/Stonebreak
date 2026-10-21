@@ -363,6 +363,7 @@ public final class IntegratedServer {
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
             case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> playerHandler.handlePlayerLife(sp, pl);
+            case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }

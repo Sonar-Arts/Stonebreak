@@ -203,6 +203,36 @@ public final class ServerInventory {
         return new ItemStack(item, count, state);
     }
 
+    /**
+     * Eats one food item from the selected hotbar slot (issue #355) and, when that empties
+     * it, moves the next stack of the same kind into it: the other hotbar slots first, then
+     * main — the auto-switch {@code Inventory.removeItem} predicts on the client, so the
+     * mirror converges. Returns false, changing nothing, unless the selected slot holds
+     * {@code itemId} and it is food.
+     */
+    public boolean consumeHeldFood(int itemId) {
+        ItemStack held = slots[selectedHotbarSlot];
+        if (held.isEmpty() || held.getBlockTypeId() != itemId || !held.isFood()
+                || held.asItemType().getHealAmount() <= 0) {
+            return false;
+        }
+        Item item = held.getItem();
+        String state = held.getState();
+        held.decrementCount(1);
+        if (!held.isEmpty()) {
+            return true;
+        }
+        slots[selectedHotbarSlot] = ItemStackStateCodec.empty();
+        for (int i = 0; i < TOTAL_SLOTS; i++) {
+            if (i != selectedHotbarSlot && sameKind(slots[i], item, state)) {
+                slots[selectedHotbarSlot] = slots[i];
+                slots[i] = ItemStackStateCodec.empty();
+                break;
+            }
+        }
+        return true;
+    }
+
     /** k-th slot in debit order: the selected hotbar slot, the other hotbar slots, then main. */
     private int debitOrder(int k) {
         if (k == 0) {
