@@ -159,6 +159,66 @@ class CloudFieldTest {
     }
 
     /**
+     * Where a storm system is organised, its towers merge into one supercell
+     * instead of a scatter of small storm cells; where it is not, scattered
+     * cells remain. Measured on the tall columns, the towers that are seen.
+     */
+    @Test
+    void organisedStormsMergeIntoSupercells() {
+        CloudField field = new CloudField(SEED);
+        WeatherBias bias = WeatherMode.STORM.fixedBias();
+        int n = 768;
+        boolean[] tower = new boolean[n * n];
+        for (int z = 0; z < n; z++)
+            for (int x = 0; x < n; x++) {
+                CloudColumn col = CloudField.resolve(field.raw(x, z), bias);
+                tower[z * n + x] = col.topY() - col.baseY() >= TOWER_HEIGHT;
+            }
+        int[] sizes = componentSizes(tower, n);
+        long total = 0, inGiants = 0;
+        int largest = 0, small = 0;
+        for (int size : sizes) {
+            total += size;
+            largest = Math.max(largest, size);
+            if (size >= GIANT_CELLS) inGiants += size;
+            if (size < 100) small++;
+        }
+        assertTrue(total > 0, "STORM grows towers");
+        assertTrue(largest >= 4 * GIANT_CELLS, "largest storm only " + largest + " cells");
+        assertTrue(inGiants > 0.6 * total, "only " + inGiants + " of " + total + " tower cells are in supercells");
+        assertTrue(small > 0, "scattered storm cells should still occur");
+    }
+
+    /** A column at least this tall (blocks) is a tower. */
+    private static final int TOWER_HEIGHT = 72;
+    /** A tower patch of at least this many cells (about 380 blocks across) is a supercell. */
+    private static final int GIANT_CELLS = 1000;
+
+    /** Sizes of the 4-connected patches of {@code set} cells in an {@code n}² grid. */
+    private static int[] componentSizes(boolean[] set, int n) {
+        boolean[] seen = new boolean[set.length];
+        int[] stack = new int[set.length];
+        java.util.List<Integer> sizes = new java.util.ArrayList<>();
+        for (int start = 0; start < set.length; start++) {
+            if (!set[start] || seen[start]) continue;
+            int sp = 0, size = 0;
+            stack[sp++] = start;
+            seen[start] = true;
+            while (sp > 0) {
+                int k = stack[--sp];
+                size++;
+                int x = k % n, z = k / n;
+                if (x > 0 && set[k - 1] && !seen[k - 1]) { seen[k - 1] = true; stack[sp++] = k - 1; }
+                if (x < n - 1 && set[k + 1] && !seen[k + 1]) { seen[k + 1] = true; stack[sp++] = k + 1; }
+                if (z > 0 && set[k - n] && !seen[k - n]) { seen[k - n] = true; stack[sp++] = k - n; }
+                if (z < n - 1 && set[k + n] && !seen[k + n]) { seen[k + n] = true; stack[sp++] = k + n; }
+            }
+            sizes.add(size);
+        }
+        return sizes.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    /**
      * Rain follows the cloud block by block: the smooth field changes only a
      * little between neighbouring blocks (the old cell lookup jumped every
      * {@link CloudField#CELL} blocks), and somewhere it does rain.

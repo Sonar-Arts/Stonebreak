@@ -251,6 +251,7 @@ public class Main {
     // ─── Dev: -Dstonebreak.autoview=<x>:<y|top[+n]>:<z>:<yaw>:<pitch>[:<bob>[:<period>]] ─
     //          -Dstonebreak.autolod=<LOW|MEDIUM|HIGH|ULTRA>[:<lodDistance>]
     //          -Dstonebreak.autotime=<absolute ticks> (day × 24000 + tick: picks the moon's phase too)
+    //          -Dstonebreak.autoweather=<clear|cloudy|rain|storm|auto> (the whole world, as /weather <mode> world)
 
     private boolean autoViewArmed;
     private long autoViewStartNanos = -1;
@@ -279,6 +280,13 @@ public class Main {
                 com.stonebreak.network.MultiplayerSession.requestServerTimeSet(ticks);
                 if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(ticks);
                 System.out.println("[autoview] time set to " + ticks);
+            }
+            String weather = System.getProperty("stonebreak.autoweather");
+            if (weather != null && !weather.isBlank()) {
+                var mode = com.stonebreak.world.weather.WeatherMode.parse(weather);
+                if (mode != null && com.stonebreak.network.MultiplayerSession.requestServerWeatherSet(mode, true)) {
+                    System.out.println("[autoview] weather set to " + mode);
+                }
             }
             String lod = System.getProperty("stonebreak.autolod");
             if (lod != null && !lod.isBlank()) {
@@ -319,12 +327,6 @@ public class Main {
             double t = (System.nanoTime() - autoViewStartNanos) / 1e9;
             y += (float) (Float.parseFloat(p[5]) * Math.sin(2.0 * Math.PI * t / period));
         }
-        { // TEMP leaf-shell probe
-            var w = Game.getWorld(); var g = com.stonebreak.blocks.BlockType.LEAVES;
-            int bx=(int)Math.floor(x), by=(int)Math.floor(y), bz=(int)Math.floor(z);
-            if (w != null && !autoProbeBuilt) { autoProbeBuilt = true; for (int dx=-4;dx<=4;dx++) for (int dy=-6;dy<=6;dy++) for (int dz=-4;dz<=4;dz++)
-                if (Math.max(Math.abs(dx),Math.abs(dz))==4 && ((dx+dy+dz)&1)==0) w.setBlockAt(bx+dx,by+dy,bz+dz,g); }
-        }
         player.setPosition(x, y, z);
         player.setVelocity(new org.joml.Vector3f());
         player.getCamera().setYaw(Float.parseFloat(p[3]));
@@ -335,7 +337,6 @@ public class Main {
      * {@code top[+n]}: stand on the highest block of the column (n blocks above it),
      * re-evaluated every frame so the camera rises as the column streams in.
      */
-    private static boolean autoProbeBuilt;
     private static float autoViewTopY(float x, float z, String spec) {
         float above = spec.length() > 3 ? Float.parseFloat(spec.substring(4)) : 0f;
         var world = Game.getWorld();

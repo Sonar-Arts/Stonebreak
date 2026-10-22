@@ -4,15 +4,19 @@ import com.stonebreak.world.weather.TerrainRelief;
 import org.lwjgl.BufferUtils;
 
 import java.nio.FloatBuffer;
+import java.util.Arrays;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL30.GL_R16F;
 import static org.lwjgl.opengl.GL30.GL_RGBA16F;
 
 /**
  * The GPU copy of the {@link TerrainRelief} around the camera: two textures of
  * {@link TerrainRelief#PERIOD_TILES}² tiles, addressed toroidally in world
- * space (texel = cell mod size, wrap mode REPEAT) — RGBA = height, smoothed
- * height, slope x, slope z; and RGBA = pile-up, steering shift x, z, steer. Each frame the tile slots in the
+ * space (texel = cell mod size, wrap mode REPEAT) — R = height; and RGBA =
+ * pile-up, steering shift x, z, steer. (The smoothed height and slope only
+ * feed the steering {@link TerrainRelief} bakes, so they stay on the CPU.)
+ * Each frame the tile slots in the
  * window are compared with the relief's ready tiles; changed ones are uploaded
  * (a few per frame) and slots whose tile isn't ready are cleared to flat.
  */
@@ -23,27 +27,27 @@ final class TerrainMap {
     private static final int UPLOADS_PER_FRAME = 4;
     private static final long EMPTY = Long.MIN_VALUE;
 
-    private final int shapeTexture;
+    private final int heightTexture;
     private final int flowTexture;
     private final long[] slotTile = new long[TerrainRelief.PERIOD_TILES * TerrainRelief.PERIOD_TILES];
     /** Whether each slot holds a ready tile (else it is flat, waiting for one). */
     private final boolean[] slotReady = new boolean[slotTile.length];
-    private final FloatBuffer shape = BufferUtils.createFloatBuffer(TerrainRelief.TILE_CELLS * TerrainRelief.TILE_CELLS * 4);
+    private final FloatBuffer height = BufferUtils.createFloatBuffer(TerrainRelief.TILE_CELLS * TerrainRelief.TILE_CELLS);
     private final FloatBuffer flow = BufferUtils.createFloatBuffer(TerrainRelief.TILE_CELLS * TerrainRelief.TILE_CELLS * 4);
     private TerrainRelief relief;
 
     TerrainMap() {
-        shapeTexture = create(GL_RGBA16F, GL_RGBA);
-        flowTexture = create(GL_RGBA16F, GL_RGBA);
-        java.util.Arrays.fill(slotTile, EMPTY);
+        heightTexture = create(GL_R16F, GL_RED, 1);
+        flowTexture = create(GL_RGBA16F, GL_RGBA, 4);
+        Arrays.fill(slotTile, EMPTY);
     }
 
-    private static int create(int internal, int format) {
+    private static int create(int internal, int format, int channels) {
         int t = glGenTextures();
         glBindTexture(GL_TEXTURE_2D, t);
         // Zero-filled: flat ground, which leaves clouds alone.
         glTexImage2D(GL_TEXTURE_2D, 0, internal, SIZE, SIZE, 0, format, GL_FLOAT,
-                BufferUtils.createFloatBuffer(SIZE * SIZE * 4));
+                BufferUtils.createFloatBuffer(SIZE * SIZE * channels));
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -96,47 +100,46 @@ final class TerrainMap {
 
     private void upload(int slot, TerrainRelief.Tile tile) {
         int n = TerrainRelief.TILE_CELLS;
-        shape.clear();
+        height.clear();
         flow.clear();
         for (int j = 0; j < n; j++) {
             for (int i = 0; i < n; i++) {
-                shape.put(tile.at(TerrainRelief.HEIGHT, i, j)).put(tile.at(TerrainRelief.SMOOTH, i, j))
-                        .put(tile.at(TerrainRelief.GRAD_X, i, j)).put(tile.at(TerrainRelief.GRAD_Z, i, j));
+                height.put(tile.at(TerrainRelief.HEIGHT, i, j));
                 flow.put(tile.at(TerrainRelief.PILEUP, i, j)).put(tile.at(TerrainRelief.SHIFT_X, i, j))
                         .put(tile.at(TerrainRelief.SHIFT_Z, i, j)).put(tile.at(TerrainRelief.STEER, i, j));
             }
         }
-        shape.flip();
+        height.flip();
         flow.flip();
-        write(slot, shape, flow);
+        write(slot, height, flow);
     }
 
     private void clear(int slot) {
-        shape.clear();
+        height.clear();
         flow.clear();
         int n = TerrainRelief.TILE_CELLS * TerrainRelief.TILE_CELLS;
         for (int i = 0; i < n; i++) {
-            shape.put(0f).put(0f).put(0f).put(0f);
+            height.put(0f);
             flow.put(0f).put(0f).put(0f).put(0f);
         }
-        shape.flip();
+        height.flip();
         flow.flip();
-        write(slot, shape, flow);
+        write(slot, height, flow);
         slotReady[slot] = false;
     }
 
-    private void write(int slot, FloatBuffer shapeData, FloatBuffer flowData) {
+    private void write(int slot, FloatBuffer heightData, FloatBuffer flowData) {
         int p = TerrainRelief.PERIOD_TILES, n = TerrainRelief.TILE_CELLS;
         int x = (slot % p) * n, z = (slot / p) * n;
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        glBindTexture(GL_TEXTURE_2D, shapeTexture);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, x, z, n, n, GL_RGBA, GL_FLOAT, shapeData);
+        glBindTexture(GL_TEXTURE_2D, heightTexture);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, z, n, n, GL_RED, GL_FLOAT, heightData);
         glBindTexture(GL_TEXTURE_2D, flowTexture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, x, z, n, n, GL_RGBA, GL_FLOAT, flowData);
     }
 
-    int shapeTexture() {
-        return shapeTexture;
+    int heightTexture() {
+        return heightTexture;
     }
 
     int flowTexture() {
@@ -144,7 +147,7 @@ final class TerrainMap {
     }
 
     void cleanup() {
-        glDeleteTextures(shapeTexture);
+        glDeleteTextures(heightTexture);
         glDeleteTextures(flowTexture);
     }
 }

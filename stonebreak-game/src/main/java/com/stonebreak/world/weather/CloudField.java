@@ -2,6 +2,8 @@ package com.stonebreak.world.weather;
 
 import com.stonebreak.world.generation.NoiseGenerator;
 
+import java.util.List;
+
 /**
  * The deterministic cloud field: every system that cares where clouds are (the
  * renderer, cloud shadows, rain, lightning) asks this. It is a pure function of
@@ -59,11 +61,30 @@ public final class CloudField {
      * clear stretches between them instead of an even scatter.
      */
     private static final float ORGANISATION_SCALE = 1f / 160f;
-    /** Share of the organisation in the coverage channel; the rest is cumulus. */
+    /** Share of the organisation in the coverage of an unorganised sky; the rest is cumulus. */
     public static final float ORGANISATION_WEIGHT = 0.5f;
+    /**
+     * Share of the organisation in the coverage of a fully organised system
+     * ({@link #organised}): the cumulus noise only frays its edges, so the
+     * clouds inside merge into one mass instead of a scatter of cells.
+     * Applied only where it adds cover (see {@code coverage}).
+     */
+    public static final float ORGANISED_WEIGHT = 0.75f;
+    /** Organisation channel over which a system goes from scattered cells to one mass. */
+    public static final float ORGANISED_LO = 0.5f;
+    public static final float ORGANISED_HI = 0.75f;
+    /**
+     * How far a fair-weather system organises, against a storm system's 1:
+     * cumulus fields clump into broad masses, but only storms fuse into one
+     * supercell.
+     */
+    public static final float FAIR_ORGANISATION = 0.25f;
+    /** Coverage and wetness an organised storm gains: its merged core grows to full height. */
+    public static final float ORGANISED_COVERAGE_LIFT = 0.12f;
+    public static final float ORGANISED_WETNESS_LIFT = 0.1f;
     private static final float WETNESS_SCALE = 1f / 200f;
     /** Share of the cumulus noise in the wetness channel. */
-    static final float WETNESS_CELL_WEIGHT = 0.3f;
+    public static final float WETNESS_CELL_WEIGHT = 0.3f;
     /** Smooth across cells, so tops vary gently instead of stepping per cell. */
     private static final float DETAIL_SCALE = 1f / 9f;
     /** Spreads the fractal noise (which clusters near 0) over most of [0, 1]. */
@@ -86,7 +107,7 @@ public final class CloudField {
      */
     private static final float AUTO_COVERAGE_MEAN = 0.3f;
     private static final float AUTO_COVERAGE_SWING = 5.0f;
-    private static final float AUTO_WETNESS_MEAN = -0.37f;
+    private static final float AUTO_WETNESS_MEAN = -0.39f;
     private static final float AUTO_WETNESS_FOLLOW = 0.35f;
     private static final float AUTO_WETNESS_SWING = 0.22f;
 
@@ -126,33 +147,29 @@ public final class CloudField {
     // --- Raw channels ----------------------------------------------------------
 
     /**
-     * The channels of a cloud field position, each 0..1.
+     * The channels of a cloud field position, each 0..1. They are the separate
+     * noises, not yet mixed: {@link #resolve} mixes them by how organised the
+     * system is, which depends on the weather.
      *
-     * @param coverage where clouds are and how far each has grown
-     * @param wetness  which type they are
-     * @param detail   gentle variation of the tops
-     * @param mass     the cloud system's organisation alone (the coverage
-     *                 without its cumulus blobs): smooth over kilometres, so
-     *                 {@link #mass} never changes sharply between neighbours
+     * @param cumulus      individual clouds, a few hundred blocks across
+     * @param wetness      large-scale moisture: which type the clouds are
+     * @param detail       gentle variation of the tops
+     * @param organisation mesoscale organisation: smooth over kilometres, so
+     *                     {@link #mass} never changes sharply between neighbours
      */
-    public record Channels(float coverage, float wetness, float detail, float mass) {}
+    public record Channels(float cumulus, float wetness, float detail, float organisation) {}
 
     /**
      * The noise channels of a cloud-space cell, quantised to bytes and packed
-     * as {@code 0xAABBGGRR} (R = coverage, G = wetness, B = detail, A = mass;
-     * see {@link Channels}) — the exact bytes the GPU map holds, so CPU and GPU
-     * resolve the same values.
+     * as {@code 0xAABBGGRR} (R = cumulus, G = wetness, B = detail,
+     * A = organisation; see {@link Channels}) — the exact bytes the GPU map
+     * holds, so CPU and GPU resolve the same values.
      */
     public int raw(int cellX, int cellZ) {
-        float cumulus = coverage.noise(cellX * COVERAGE_SCALE, cellZ * COVERAGE_SCALE);
-        float fields = organisation.noise(cellX * ORGANISATION_SCALE, cellZ * ORGANISATION_SCALE);
-        int c = toByte(ORGANISATION_WEIGHT * fields + (1f - ORGANISATION_WEIGHT) * cumulus);
-        // Wetness follows the cumulus blobs a little, so storm towers rise as
-        // separate cells out of a rain area instead of one solid deck.
-        float wet = wetness.noise(cellX * WETNESS_SCALE, cellZ * WETNESS_SCALE);
-        int w = toByte((1f - WETNESS_CELL_WEIGHT) * wet + WETNESS_CELL_WEIGHT * cumulus);
+        int c = toByte(coverage.noise(cellX * COVERAGE_SCALE, cellZ * COVERAGE_SCALE));
+        int w = toByte(wetness.noise(cellX * WETNESS_SCALE, cellZ * WETNESS_SCALE));
         int d = toByte(detail.noise(cellX * DETAIL_SCALE, cellZ * DETAIL_SCALE));
-        int m = toByte(fields);
+        int m = toByte(organisation.noise(cellX * ORGANISATION_SCALE, cellZ * ORGANISATION_SCALE));
         return c | (w << 8) | (d << 16) | (m << 24);
     }
 
@@ -214,19 +231,65 @@ public final class CloudField {
     }
 
     /**
+     * How far the cloud system here has organised into one mass under
+     * {@code bias}, 0..1. Where the organisation channel is high the clouds
+     * merge: a fair-weather field clumps into broad cloud masses
+     * ({@link #FAIR_ORGANISATION}), and a storm system fuses its towers into
+     * one supercell. Elsewhere storms stay scattered cells. Reads only the
+     * smooth channels, so a whole system organises together. Mirrored inside
+     * {@code cloudResolve} in cloud_field.glsl.
+     */
+    public static float organised(Channels ch, WeatherBias bias) {
+        return smoothstep(ORGANISED_LO, ORGANISED_HI, ch.organisation())
+                * (FAIR_ORGANISATION + (1f - FAIR_ORGANISATION) * storminess(ch, bias));
+    }
+
+    /** How far the large-scale moisture here makes a storm system, 0..1: none below rain, full at storm. */
+    private static float storminess(Channels ch, WeatherBias bias) {
+        return smoothstep(CloudType.NIMBOSTRATUS_MIN_WETNESS, CloudType.CUMULONIMBUS_MIN_WETNESS,
+                ch.wetness() + bias.wetness());
+    }
+
+    /**
+     * How far the system here is an organised storm, 0..1: the share of
+     * {@link #organised} that comes from storminess, which lifts its cover and
+     * moisture so the merged core grows into one full tower.
+     */
+    private static float organisedStorm(Channels ch, WeatherBias bias) {
+        return smoothstep(ORGANISED_LO, ORGANISED_HI, ch.organisation()) * storminess(ch, bias);
+    }
+
+    /**
+     * Coverage noise of a system organised by {@code organised}, for cumulus
+     * noise {@code cumulus}. Scattered cells lean on the cumulus; organising
+     * leans on the smooth organisation instead, but only ever fills in: it
+     * merges the clouds of a system into one mass and never clears a cloud the
+     * cumulus already grew.
+     */
+    private static float coverage(float cumulus, float organisation, float organised) {
+        float scattered = ORGANISATION_WEIGHT * organisation + (1f - ORGANISATION_WEIGHT) * cumulus;
+        float merged = ORGANISED_WEIGHT * organisation + (1f - ORGANISED_WEIGHT) * cumulus;
+        return scattered + organised * Math.max(0f, merged - scattered);
+    }
+
+    /**
      * Resolves channels under {@code bias}. Mirrored by {@code cloudResolve}
      * in {@code shaders/clouds/cloud_field.glsl} — change both together.
      */
     public static CloudColumn resolve(Channels ch, WeatherBias bias) {
-        float c = ch.coverage();
-        float w = ch.wetness();
-        float d = ch.detail();
+        float org = organised(ch, bias);
+        float storm = organisedStorm(ch, bias);
+        float c = coverage(ch.cumulus(), ch.organisation(), org) + ORGANISED_COVERAGE_LIFT * storm;
 
         float t = coverageThreshold(bias);
         float density = smoothstep(t, t + COVERAGE_EDGE, c);
         if (density <= 0f) return CloudColumn.CLEAR;
 
-        float wet = w + bias.wetness();
+        // Scattered storms follow the cumulus blobs a little, so their towers
+        // rise as separate cells out of a rain area; an organised system is one
+        // type throughout, and an organised storm one tower.
+        float cellular = (1f - WETNESS_CELL_WEIGHT) * ch.wetness() + WETNESS_CELL_WEIGHT * ch.cumulus();
+        float wet = cellular + (ch.wetness() - cellular) * org + ORGANISED_WETNESS_LIFT * storm + bias.wetness();
         CloudType type = CloudType.forWetness(wet);
         float height = type.maxHeight;
         if (type.storm) {
@@ -235,7 +298,7 @@ public final class CloudField {
             height = floor + (height - floor) * smoothstep(min, min + TOWER_RAMP, wet);
         }
         float dome = smoothstep(t, t + DOME_RAMP, c);
-        float build = dome * dome * (0.75f + 0.25f * d);
+        float build = dome * dome * (0.75f + 0.25f * ch.detail());
         int voxels = Math.max(1, (int) Math.floor(height / VOXEL * build + 0.5f));
         return new CloudColumn(density, type, type.baseY, type.baseY + voxels * VOXEL, build, wet);
     }
@@ -243,16 +306,17 @@ public final class CloudField {
     /**
      * How much cloud the system here has clumped up under {@code bias}, 0..1:
      * the dome {@link #resolve} builds height from, for a cloud of average
-     * cumulus noise in this system. It reads only the organisation, so it is
-     * smooth over kilometres: a whole cloud mass decides together whether it
-     * rides over a mountain, rather than its core going over while its fringe
-     * is steered aside (that tore clouds apart). Mirrored by {@code cloudMass}
-     * in cloud_field.glsl.
+     * cumulus noise in an unorganised system. It reads only the organisation,
+     * so it is smooth over kilometres: a whole cloud mass decides together
+     * whether it rides over a mountain, rather than its core going over while
+     * its fringe is steered aside (that tore clouds apart). Organising is left
+     * out on purpose: it changes faster across the sky than the steering may.
+     * Mirrored by {@code cloudMass} in cloud_field.glsl.
      */
     public static float mass(Channels ch, WeatherBias bias) {
         float t = coverageThreshold(bias);
-        // The coverage channel is ORGANISATION_WEIGHT of this plus the rest of cumulus noise, whose mean is 0.5.
-        float c = ORGANISATION_WEIGHT * ch.mass() + (1f - ORGANISATION_WEIGHT) * 0.5f;
+        // Cumulus noise averages 0.5.
+        float c = coverage(0.5f, ch.organisation(), 0f);
         return smoothstep(t, t + DOME_RAMP, c);
     }
 
@@ -296,7 +360,7 @@ public final class CloudField {
      * The weather at a world column: the world's {@code mode}, with each zone
      * that reaches it blended over on top.
      */
-    public WeatherBias bias(WeatherMode mode, java.util.List<WeatherZone> zones,
+    public WeatherBias bias(WeatherMode mode, List<WeatherZone> zones,
                             double worldX, double worldZ, double weatherSeconds) {
         WeatherBias b = bias(mode, worldX, worldZ, weatherSeconds);
         for (WeatherZone zone : zones) {

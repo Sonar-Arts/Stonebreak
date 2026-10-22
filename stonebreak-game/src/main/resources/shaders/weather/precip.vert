@@ -1,101 +1,65 @@
 #version 330 core
 
-// Rain and snow fall from the cloud: one thin lane per slot of a grid fixed in
-// CLOUD space, so the pattern rides the wind with the cloud above it. Each
-// lane asks the cloud field (the same one the clouds are drawn from) how much
-// falls at its own position, so a cloud's edge crossing a block rains on part
-// of it. A lane is a quad turned to face the camera about the vertical axis,
-// from its ground up to the cloud's underside; a
-// lane with nothing to drop collapses to nothing. It falls from the underside
-// of the cloud as drawn (cloud_shape.glsl), so the rain's top follows the
-// cloud's ragged bottom instead of ending at one flat altitude.
+// Rain and snow lanes (precip_lanes.glsl), each a quad turned to face the camera
+// about the vertical axis, spanning what precip_lane_field.frag found for it:
+// from the underside of the cloud drawn above down to the ground. A dry lane
+// collapses to nothing. Far from the camera the quad widens to cover a few
+// pixels, so a streak never thins to nothing before it reaches the cloud;
+// precip.frag keeps its brightness by thinning its alpha to match.
 
-#include "/shaders/clouds/cloud_field.glsl"
-#include "/shaders/clouds/cloud_shape.glsl"
+uniform vec2 u_cloudOffset;
+#include "/shaders/weather/precip_lanes.glsl"
 
 layout (location = 0) in vec2 aCorner;   // (0..1, 0..1)
 
 uniform mat4 uProjection;
 uniform mat4 uView;
-uniform vec3 uCameraPos;    // render space
-uniform float uLaneSpacing; // blocks between lane slots, in cloud space
-uniform int uLaneGrid;      // slots per side of the grid around the camera
-uniform int uLanePeriod;    // slots per wrap of u_cloudOffset: the slot hash repeats with it
+uniform sampler2D uLanes;   // precip_lane_field.frag's output for this ring
 uniform vec2 uLaneWidth;    // quad width, blocks: rain, snow
-uniform float uRadius;      // lanes reach this far from the camera
-uniform float uBelow;       // and fall no further than this below it
-// RG: ground height (very low where unknown), snow (0 or 1), per block column;
-// texel (i, j) is the block whose corner is uGroundOrigin + (i, j).
-uniform sampler2D uGround;
-uniform vec2 uGroundOrigin; // render space
+uniform float uPixelAngle;  // radians one screen pixel spans
 
-out vec2 vUv;        // x across the lane, y = world height
+out vec2 vUv;        // x = blocks from the lane's centre, y = world height
 out vec2 vParams;    // intensity, snow
+out vec2 vSize;      // quad width, pixel width (blocks) at this point
 out float vSeed;
-out float vDist;
+out float vDist;     // horizontal distance to the camera
+out float vEyeDist;  // distance to the camera
 
-// Blocks the underside search filters the cloud's noise over: lanes are near,
-// so the full detail the march draws there.
-const float LANE_FOOTPRINT = 1.0;
-
-// Integer hash (pcg2d, Jarzynski & Olano 2020).
-uvec2 pcg2d(uvec2 v) {
-    v = v * 1664525u + 1013904223u;
-    v.x += v.y * 1664525u;
-    v.y += v.x * 1664525u;
-    v = v ^ (v >> 16u);
-    v.x += v.y * 1664525u;
-    v.y += v.x * 1664525u;
-    v = v ^ (v >> 16u);
-    return v;
-}
+// Pixels a streak is widened to cover, at least.
+const float MIN_PIXELS = 1.5;
 
 void collapse() {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // every corner at one point outside the view
     vUv = vec2(0.0);
     vParams = vec2(0.0);
+    vSize = vec2(1.0);
     vSeed = 0.0;
     vDist = 0.0;
+    vEyeDist = 0.0;
 }
 
 void main() {
-    ivec2 cell = ivec2(gl_InstanceID % uLaneGrid, gl_InstanceID / uLaneGrid) - uLaneGrid / 2;
-    ivec2 slot = ivec2(floor((uCameraPos.xz + u_cloudOffset) / uLaneSpacing)) + cell;
-    // Wrapped with the offset, so a lane keeps its seed when the offset wraps.
-    // (GLSL's % is undefined for negative operands, so floor division.)
-    ivec2 wrapped = slot - uLanePeriod * ivec2(floor(vec2(slot) / float(uLanePeriod)));
-    uvec2 h = pcg2d(uvec2(wrapped));
-    vec2 jitter = vec2(h >> 8u) / 16777216.0;
-    vec2 lane = (vec2(slot) + jitter) * uLaneSpacing - u_cloudOffset; // render space
-    float seed = float((h.x ^ h.y) >> 8u) / 16777216.0;
+    ivec2 index = ivec2(gl_InstanceID % uLaneGrid, gl_InstanceID / uLaneGrid);
+    vec4 field = texelFetch(uLanes, index, 0);
+    if (field.x <= 0.0) { collapse(); return; }
+    Lane lane = laneAt(index);
 
-    vec2 toCam = uCameraPos.xz - lane;
+    vec2 toCam = uCameraPos.xz - lane.xz;
     float dist = length(toCam);
-    if (dist > uRadius) { collapse(); return; }
-
-    vec2 shift;
-    CloudColumn col = cloudColumnAt(lane, shift);
-    float intensity = cloudPrecipitation(col);
-    // Light rain fills fewer lanes.
-    if (intensity <= 0.0 || fract(seed * 31.7) > intensity + 0.25) { collapse(); return; }
-
-    ivec2 g = clamp(ivec2(floor(lane - uGroundOrigin)), ivec2(0), textureSize(uGround, 0) - 1);
-    vec2 ground = texelFetch(uGround, g, 0).rg;
-    float bottom = max(ground.r, uCameraPos.y - uBelow);
-    // Falls from the cloud's underside: nothing above it, nothing when the camera is above it.
-    float top = cloudUnderside(lane, col, col.top, LANE_FOOTPRINT, true);
-    if (top <= bottom) { collapse(); return; }
-
-    float snow = ground.g;
+    float snow = field.w;
+    float y = mix(field.z, field.y, aCorner.y);
+    float eyeDist = length(vec3(lane.xz.x, y, lane.xz.y) - uCameraPos);
+    float pixel = eyeDist * uPixelAngle;
+    float width = max(mix(uLaneWidth.x, uLaneWidth.y, snow), pixel * MIN_PIXELS * 2.0);
     vec2 facing = dist > 1e-3 ? toCam / dist : vec2(0.0, 1.0);
     vec2 right = vec2(-facing.y, facing.x);
-    float width = mix(uLaneWidth.x, uLaneWidth.y, snow);
-    float y = mix(bottom, top, aCorner.y);
-    vec2 xz = lane + right * (aCorner.x - 0.5) * width;
+    vec2 xz = lane.xz + right * (aCorner.x - 0.5) * width;
 
-    vUv = vec2(aCorner.x, y);
-    vParams = vec2(intensity, snow);
-    vSeed = seed;
+    vUv = vec2((aCorner.x - 0.5) * width, y);
+    vParams = vec2(field.x, snow);
+    vSize = vec2(width, pixel);
+    vSeed = lane.seed;
     vDist = dist;
+    vEyeDist = eyeDist;
     gl_Position = uProjection * uView * vec4(xz.x, y, xz.y, 1.0);
 }

@@ -5,6 +5,7 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.stonebreak.world.World;
 import com.stonebreak.world.weather.ClientWeather;
+import com.stonebreak.world.weather.CloudColumn;
 import com.stonebreak.world.weather.CloudType;
 import com.stonebreak.world.weather.LightningScheduler;
 import com.stonebreak.world.weather.WeatherSurface;
@@ -49,7 +50,8 @@ public final class LightningRenderer {
     /** Ground assumed under a strike whose chunk isn't loaded. */
     private static final int FALLBACK_GROUND = 64;
 
-    private record Bolt(LightningScheduler.Strike strike, float groundY, double distance) {}
+    /** @param cloudY base of the cloud the bolt leaves, where its column is known */
+    private record Bolt(LightningScheduler.Strike strike, float groundY, float cloudY, double distance) {}
 
     private final List<Bolt> bolts = new ArrayList<>();
     private double lastSeconds = Double.NaN;
@@ -113,7 +115,11 @@ public final class LightningRenderer {
                         ? WeatherSurface.groundY(world, (int) Math.floor(s.x()), (int) Math.floor(s.z()))
                         : WeatherSurface.UNKNOWN;
                 double d = Math.hypot(s.x() - cameraWorldPos.x, s.z() - cameraWorldPos.z);
-                bolts.add(new Bolt(s, ground == WeatherSurface.UNKNOWN ? FALLBACK_GROUND : ground, d));
+                // The bolt leaves the cloud it struck from: its base, as the
+                // ground trims it, not a fixed storm altitude.
+                CloudColumn col = weather.columnAt(s.x(), s.z(), s.seconds());
+                float cloudY = col.isClear() ? CloudType.CUMULONIMBUS.baseY : col.baseY();
+                bolts.add(new Bolt(s, ground == WeatherSurface.UNKNOWN ? FALLBACK_GROUND : ground, cloudY, d));
                 if (bolts.size() > MAX_BOLTS) bolts.removeFirst();
             }
         }
@@ -136,7 +142,7 @@ public final class LightningRenderer {
             // Bolts are in strike order, so the ring keeps the newest flashes.
             flashes[flashIndex++ % MAX_FLASHES].set(
                     (float) bolt.strike().x() - RenderOrigin.x(),
-                    CloudType.CUMULONIMBUS.baseY + FLASH_DEPTH,
+                    bolt.cloudY() + FLASH_DEPTH,
                     (float) bolt.strike().z() - RenderOrigin.z(),
                     glow);
         }
@@ -200,7 +206,7 @@ public final class LightningRenderer {
     private int buildRibbon(Bolt bolt, float alpha, Vector3f cam) {
         LightningScheduler.Strike s = bolt.strike();
         Random rng = new Random(s.seed());
-        float top = CloudType.CUMULONIMBUS.baseY;
+        float top = bolt.cloudY();
         float bottom = Math.min(bolt.groundY(), top - 1f);
         float width = Math.max(0.7f, (float) bolt.distance() * 0.004f);
         float ox = RenderOrigin.x(), oz = RenderOrigin.z();

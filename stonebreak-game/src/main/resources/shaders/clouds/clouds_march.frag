@@ -92,17 +92,18 @@ const vec3 FLASH_COLOR = vec3(0.75, 0.8, 1.0);
 // Lowest sun elevation the sun march is aimed at, so it never runs flat along the slab.
 const float MIN_SUN_Y = 0.15;
 
-// Optical depth from p toward the sun, through the cloud above and around it.
-// How much of the sky a point sees: two short samples straight up. In shade
-// (inside a storm, under a deck) skylight is the only light, and without this
-// every crease and bulge got the same amount, so the face read as a flat wall.
-float skyVisibility(vec3 p, float footprint) {
+// How much of the sky a point at height y over `site` sees: two short samples
+// straight up the same column. In shade (inside a storm, under a deck)
+// skylight is the only light, and without this every crease and bulge got the
+// same amount, so the face read as a flat wall.
+float skyVisibility(CloudSite site, float y, float footprint) {
     bool covered;
-    float od = extinction(cloudAt(p + vec3(0.0, SKY_PROBE, 0.0), footprint, false, covered)) * SKY_PROBE
-             + extinction(cloudAt(p + vec3(0.0, 3.0 * SKY_PROBE, 0.0), footprint, false, covered)) * 2.0 * SKY_PROBE;
+    float od = extinction(cloudBodyAt(site, y + SKY_PROBE, footprint, false, covered)) * SKY_PROBE
+             + extinction(cloudBodyAt(site, y + 3.0 * SKY_PROBE, footprint, false, covered)) * 2.0 * SKY_PROBE;
     return exp(-SKY_OCCLUSION * od);
 }
 
+// Optical depth from p toward the sun, through the cloud above and around it.
 float sunOpticalDepth(vec3 p, vec3 dir, float footprint) {
     float od = 0.0;
     float t = 0.0;
@@ -248,7 +249,8 @@ void main() {
         vec3 p = ro + rd * t;
         float footprint = t * pixelAngle;
         bool covered;
-        CloudSample s = cloudAt(p, footprint, true, covered);
+        CloudSite site = cloudSiteAt(p.xz);
+        CloudSample s = cloudBodyAt(site, p.y, footprint, true, covered);
         // A stride out of clear air landed in cloud: back up to a plain step
         // past the clear sample, or how deep a pixel enters the cloud depends
         // on its dither and the grain shows through as light.
@@ -265,7 +267,7 @@ void main() {
             float powder = mix(1.0, 1.0 - exp(-ext * 16.0), powderAmount);
             // Skylight: the base of a cloud sees less of the sky than its top.
             float skyLit = mix(0.35, 1.0, sqrt(clamp(s.height, 0.0, 1.0)))
-                    * mix(1.0 - SKY_OCCLUSION_MAX, 1.0, skyVisibility(p, footprint));
+                    * mix(1.0 - SKY_OCCLUSION_MAX, 1.0, skyVisibility(site, p.y, footprint));
             vec3 lit = s.albedo * (u_sunColor * sun * powder + u_ambientColor * skyLit);
             lit += FLASH_COLOR * flashAt(p);
             lit = 1.0 - exp(-EXPOSURE * lit);

@@ -165,3 +165,6 @@ QWEN.md
 
 # Stray mirror of the absolute repo path (tool writing absolute paths as relative)
 /mnt/
+
+# Written to the working directory by the game on a crash
+crash_log.txt

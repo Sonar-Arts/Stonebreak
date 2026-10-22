@@ -1,5 +1,8 @@
 package com.stonebreak.world.weather;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * A region of the world held at a fixed {@link WeatherMode} by {@code /weather}:
  * a disc fixed in world space (the weather there does not blow away), whose
@@ -25,7 +28,7 @@ public record WeatherZone(double x, double z, float radius, WeatherMode mode) {
     }
 
     /** Zones as one save-file string, {@code "x,z,radius,MODE;..."}; see {@link #parseAll}. */
-    public static String formatAll(java.util.List<WeatherZone> zones) {
+    public static String formatAll(List<WeatherZone> zones) {
         StringBuilder sb = new StringBuilder();
         for (WeatherZone z : zones) {
             if (!sb.isEmpty()) sb.append(';');
@@ -35,9 +38,9 @@ public record WeatherZone(double x, double z, float radius, WeatherMode mode) {
     }
 
     /** Reads {@link #formatAll}'s string; null, blank and malformed entries give no zone. */
-    public static java.util.List<WeatherZone> parseAll(String text) {
-        if (text == null || text.isBlank()) return java.util.List.of();
-        java.util.List<WeatherZone> out = new java.util.ArrayList<>();
+    public static List<WeatherZone> parseAll(String text) {
+        if (text == null || text.isBlank()) return List.of();
+        List<WeatherZone> out = new ArrayList<>();
         for (String entry : text.split(";")) {
             String[] f = entry.split(",");
             if (f.length != 4) continue;
@@ -50,7 +53,7 @@ public record WeatherZone(double x, double z, float radius, WeatherMode mode) {
                 // a hand-edited entry; drop it
             }
         }
-        return java.util.List.copyOf(out);
+        return List.copyOf(out);
     }
 
     /** Whether ({@code worldX}, {@code worldZ}) feels this zone at all. */

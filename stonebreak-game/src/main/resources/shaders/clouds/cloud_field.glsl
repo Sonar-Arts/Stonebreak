@@ -5,7 +5,7 @@
 // them together. Every number they use arrives as a uniform from
 // CloudUniforms, so the tuning lives only in Java.
 
-// RGBA8, GL_REPEAT: R = coverage, G = wetness, B = detail, A = mass (see CloudField.raw).
+// RGBA8, GL_REPEAT: R = cumulus, G = wetness, B = detail, A = organisation (see CloudField.raw).
 // Texel (i, j) holds cloud-space cell (i, j) modulo the map size.
 uniform sampler2D u_cloudMap;
 // Render-space XZ + this = cloud-space XZ, wrapped to the map period so it
@@ -17,7 +17,13 @@ uniform float u_cloudThreshold;     // coverage noise where cloud starts at zero
 uniform float u_cloudBiasSpan;      // how far one unit of coverage bias moves it
 uniform float u_cloudEdge;          // noise range from wisp to full density
 uniform float u_cloudDomeRamp;      // noise range from flat to full height
-uniform float u_cloudOrganisation;  // share of the organisation (the A channel) in the coverage
+uniform float u_cloudOrganisation;  // share of the organisation (the A channel) in unorganised coverage
+// Organised systems (CloudField.organised): x = organisation share when fully
+// organised, y/z = organisation channel from scattered to organised, w = how
+// far a fair-weather system organises.
+uniform vec4 u_cloudOrganised;
+uniform vec2 u_cloudOrganisedLift;  // coverage, wetness an organised storm gains
+uniform float u_cloudCellWetness;   // share of the cumulus in a scattered system's wetness
 uniform float u_cloudTowerRamp;     // wetness range from storm floor to full tower
 uniform vec3 u_cloudWetSplits;      // stratus max, nimbostratus min, cumulonimbus min
 // Per type, indexed by CloudType ordinal.
@@ -36,8 +42,7 @@ uniform float u_weatherTexel;       // blocks per texel
 // Render-space XZ + this = world XZ, wrapped to the maps' shared period.
 uniform vec2 u_worldOffset;
 // Terrain relief (TerrainRelief), world-anchored cells of u_cloudCell blocks:
-// RGBA = height, smoothed height, smoothed slope x, z; and RGBA = pile-up,
-// baked steering shift x, z (blocks), steer.
+// R = height; and RGBA = pile-up, baked steering shift x, z (blocks), steer.
 uniform sampler2D u_terrainMap;
 uniform sampler2D u_terrainFlowMap;
 uniform float u_flowClipSink;
@@ -72,12 +77,27 @@ int cloudTypeOf(float wetness) {
     return 0;                                    // CUMULUS
 }
 
-// bias: x = coverage, y = wetness, as WeatherBias.
+// CloudField.storminess: 0 below rain, 1 at storm, from the large-scale moisture.
+float cloudStorminess(vec4 raw, vec2 bias) {
+    return smoothstep(u_cloudWetSplits.y, u_cloudWetSplits.z, raw.g + bias.y);
+}
+
+// bias: x = coverage, y = wetness, as WeatherBias. Mirrors CloudField.resolve.
 CloudColumn cloudResolve(vec4 raw, vec2 bias) {
     CloudColumn col;
+    float organisation = smoothstep(u_cloudOrganised.y, u_cloudOrganised.z, raw.a);
+    float storminess = cloudStorminess(raw, bias);
+    float organised = organisation * mix(u_cloudOrganised.w, 1.0, storminess);
+    float organisedStorm = organisation * storminess;
+    // Organising only fills in, never clears what the cumulus grew (CloudField.coverage).
+    float scattered = mix(raw.r, raw.a, u_cloudOrganisation);
+    float merged = mix(raw.r, raw.a, u_cloudOrganised.x);
+    float coverage = scattered + organised * max(0.0, merged - scattered)
+            + u_cloudOrganisedLift.x * organisedStorm;
     float threshold = u_cloudThreshold - u_cloudBiasSpan * bias.x;
-    col.density = smoothstep(threshold, threshold + u_cloudEdge, raw.r);
-    float wet = raw.g + bias.y;
+    col.density = smoothstep(threshold, threshold + u_cloudEdge, coverage);
+    float cellular = mix(raw.g, raw.r, u_cloudCellWetness);
+    float wet = mix(cellular, raw.g, organised) + u_cloudOrganisedLift.y * organisedStorm + bias.y;
     col.wet = wet;
     col.type = cloudTypeOf(wet);
     col.base = u_cloudTypeBase[col.type];
@@ -87,7 +107,7 @@ CloudColumn cloudResolve(vec4 raw, vec2 bias) {
         height = floorH + (height - floorH)
                 * smoothstep(u_cloudWetSplits.z, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
     }
-    float dome = smoothstep(threshold, threshold + u_cloudDomeRamp, raw.r);
+    float dome = smoothstep(threshold, threshold + u_cloudDomeRamp, coverage);
     col.build = dome * dome * (0.75 + 0.25 * raw.b);
     float voxels = max(1.0, floor(height / u_cloudVoxel * col.build + 0.5));
     col.top = col.base + voxels * u_cloudVoxel;
@@ -143,8 +163,8 @@ float cloudPileup(CloudRelief r) {
 }
 
 // CloudField.mass: how much the cloud system here has clumped up, 0..1. Reads
-// only the smooth organisation channel, so a whole cloud mass rides over a
-// mountain or goes around it together.
+// only the smooth organisation channel (organising left out, as in Java), so a
+// whole cloud mass rides over a mountain or goes around it together.
 float cloudMass(vec4 raw, vec2 bias) {
     float threshold = u_cloudThreshold - u_cloudBiasSpan * bias.x;
     float c = u_cloudOrganisation * raw.a + (1.0 - u_cloudOrganisation) * 0.5;
@@ -172,11 +192,10 @@ vec2 cloudWeatherAt(vec2 renderXZ) {
 }
 
 // The cloud over render-space column xz, smoothly filtered (no cell steps),
-// under the local weather, piled up and steered around the terrain
+// under the local weather, piled up and steered around the terrain `r` there
 // (ClientWeather.columnAt). `shift` is how far the terrain moved the lookup:
 // sample the cloud's noise there too, so a steered cloud keeps its own billows.
-CloudColumn cloudColumnAt(vec2 xz, out vec2 shift) {
-    CloudRelief r = cloudReliefAt(xz);
+CloudColumn cloudColumnOver(vec2 xz, CloudRelief r, out vec2 shift) {
     vec2 bias = cloudWeatherAt(xz) + vec2(cloudPileup(r), 0.0);
     vec2 cloudXZ = xz + u_cloudOffset;
     vec4 raw = cloudMapCubic(cloudXZ);
@@ -189,11 +208,16 @@ CloudColumn cloudColumnAt(vec2 xz, out vec2 shift) {
     return cloudResolve(raw, bias);
 }
 
+CloudColumn cloudColumnAt(vec2 xz, out vec2 shift) {
+    return cloudColumnOver(xz, cloudReliefAt(xz), shift);
+}
+
 // cloudColumnAt at render-space p, plus `clip`: how much of it survives the
 // ground there (multiply it into density).
 CloudColumn cloudColumnLocal(vec3 p, out float clip, out vec2 shift) {
-    clip = cloudTerrainClip(cloudReliefAt(p.xz), p.y);
-    return cloudColumnAt(p.xz, shift);
+    CloudRelief r = cloudReliefAt(p.xz);
+    clip = cloudTerrainClip(r, p.y);
+    return cloudColumnOver(p.xz, r, shift);
 }
 
 // CloudColumn.precipitation: rain or snow falling from a column, 0..1.

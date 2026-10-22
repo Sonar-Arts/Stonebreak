@@ -54,6 +54,12 @@ public final class CloudUniforms {
     private static final Vector4f TYPE_RAIN = new Vector4f();
     private static final Vector2f FLOW_COVER = new Vector2f(TerrainFlow.CONVERGE, TerrainFlow.PILEUP_COVERAGE);
     private static final Vector2f FLOW_PASS = new Vector2f(TerrainFlow.PASS_MASS_LO, TerrainFlow.PASS_MASS_HI);
+    private static final Vector4f ORGANISED = new Vector4f(CloudField.ORGANISED_WEIGHT,
+            CloudField.ORGANISED_LO, CloudField.ORGANISED_HI, CloudField.FAIR_ORGANISATION);
+    private static final Vector2f ORGANISED_LIFT = new Vector2f(CloudField.ORGANISED_COVERAGE_LIFT,
+            CloudField.ORGANISED_WETNESS_LIFT);
+    /** The weather is applied on the GPU; the threshold uniform is the unbiased one. */
+    private static final WeatherBias NO_BIAS = new WeatherBias(0f, 0f);
     private static final Vector3f WET_SPLITS = new Vector3f(
             CloudType.STRATUS_MAX_WETNESS,
             CloudType.NIMBOSTRATUS_MIN_WETNESS,
@@ -110,8 +116,6 @@ public final class CloudUniforms {
         this.detailRise = detailRise;
     }
 
-    private static final WeatherBias NO_BIAS = new WeatherBias(0f, 0f);
-
     private static void bind(int unit, int texture) {
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, texture);
@@ -119,6 +123,11 @@ public final class CloudUniforms {
 
     private static double wrap(double blocks) {
         return blocks - Math.floor(blocks / CloudMap.PERIOD_BLOCKS) * CloudMap.PERIOD_BLOCKS;
+    }
+
+    /** Render-space XZ + this = cloud-space XZ, wrapped to the map period ({@code u_cloudOffset}). */
+    public Vector2f cloudOffset() {
+        return offset;
     }
 
     /** No clouds this frame: receivers skip the shadow lookup. */
@@ -152,6 +161,9 @@ public final class CloudUniforms {
         shader.setFloat("u_cloudEdge", CloudField.COVERAGE_EDGE);
         shader.setFloat("u_cloudDomeRamp", CloudField.DOME_RAMP);
         shader.setFloat("u_cloudOrganisation", CloudField.ORGANISATION_WEIGHT);
+        shader.setVec4("u_cloudOrganised", ORGANISED);
+        shader.setVec2("u_cloudOrganisedLift", ORGANISED_LIFT);
+        shader.setFloat("u_cloudCellWetness", CloudField.WETNESS_CELL_WEIGHT);
         shader.setFloat("u_cloudTowerRamp", CloudField.TOWER_RAMP);
         shader.setVec3("u_cloudWetSplits", WET_SPLITS);
         shader.setVec4("u_cloudTypeBase", TYPE_BASE);

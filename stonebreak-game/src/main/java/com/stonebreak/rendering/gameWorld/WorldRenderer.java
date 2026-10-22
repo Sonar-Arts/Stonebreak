@@ -29,6 +29,13 @@ import com.openmason.engine.rendering.sky.SkyParams;
 import com.openmason.engine.rendering.sky.SkyRenderer;
 import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.rendering.gameWorld.clouds.CloudRenderer;
+import com.stonebreak.rendering.gameWorld.clouds.CloudsInFront;
+import com.stonebreak.rendering.gameWorld.weather.LightningRenderer;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationRenderer;
+import com.stonebreak.rendering.gameWorld.weather.WeatherEffects;
+import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
+import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
@@ -51,13 +58,13 @@ public class WorldRenderer {
     private final AnimatedBlockRenderer animatedBlockRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
-    private final com.stonebreak.rendering.gameWorld.weather.PrecipitationFog precipitationFog;
+    private final PrecipitationFog precipitationFog;
     /** How much a full lightning flash adds to the scene's ambient light. */
     private static final float LIGHTNING_AMBIENT = 0.6f;
-    private final com.stonebreak.rendering.gameWorld.weather.WeatherEffects weatherEffects =
-            new com.stonebreak.rendering.gameWorld.weather.WeatherEffects();
-    private final com.stonebreak.rendering.gameWorld.weather.PrecipitationRenderer precipitationRenderer;
-    private final com.stonebreak.rendering.gameWorld.weather.LightningRenderer lightningRenderer;
+    private final WeatherEffects weatherEffects =
+            new WeatherEffects();
+    private final PrecipitationRenderer precipitationRenderer;
+    private final LightningRenderer lightningRenderer;
     private final com.stonebreak.rendering.gameWorld.water.WaterRenderer waterRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.TorchShadowRenderer torchShadowRenderer;
@@ -105,9 +112,9 @@ public class WorldRenderer {
         this.animatedBlockRenderer = animatedBlockRenderer;
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
-        this.precipitationFog = new com.stonebreak.rendering.gameWorld.weather.PrecipitationFog();
-        this.precipitationRenderer = new com.stonebreak.rendering.gameWorld.weather.PrecipitationRenderer();
-        this.lightningRenderer = new com.stonebreak.rendering.gameWorld.weather.LightningRenderer();
+        this.precipitationFog = new PrecipitationFog();
+        this.precipitationRenderer = new PrecipitationRenderer();
+        this.lightningRenderer = new LightningRenderer();
         this.shadowMapRenderer =
                 new com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer(projectionMatrix, blockTextureArray);
         if (entityRenderer != null) {
@@ -192,6 +199,7 @@ public class WorldRenderer {
         // The light that lights faces and casts shadows: the sun, or the moon at night.
         Vector3f keyDirection;
         SkyParams skyParams;
+        SkyLight sky = timeOfDay != null ? SkyLight.of(timeOfDay) : null;
         // The distance fog away from any sunset gold, and the gold at the horizon.
         Vector3f clearFogColor;
         Vector3f horizonGold = new Vector3f();
@@ -200,8 +208,7 @@ public class WorldRenderer {
         Vector3f earthShadow = new Vector3f();
         float earthShadowHeight = 0f, twilightBand = 0f;
         Vector3f sunAureole = new Vector3f();
-        if (timeOfDay != null) {
-            SkyLight sky = SkyLight.of(timeOfDay);
+        if (sky != null) {
             sunDirection = sky.sunDir();
             keyDirection = sky.keyDir();
             skyColor = weatherEffects.tintSky(sky.skyColor(), new Vector3f());
@@ -261,7 +268,7 @@ public class WorldRenderer {
 
         // The local weather and terrain relief follow the camera; rain and
         // lightning read them even with clouds switched off.
-        com.stonebreak.world.weather.ClientWeather weather = Game.getWeather();
+        ClientWeather weather = Game.getWeather();
         if (weather != null) {
             weather.focus(cameraPos.x, cameraPos.z, world.terrain());
         }
@@ -271,7 +278,7 @@ public class WorldRenderer {
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
         // Rain and snow fog for every pass this frame; underwater the murk replaces it.
-        com.stonebreak.rendering.gameWorld.weather.WeatherFog.set(
+        WeatherFog.set(
                 cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
         precipitationFog.prepare(!cameraUnderwater, weatherEffects);
 
@@ -408,7 +415,7 @@ public class WorldRenderer {
             // bolt hides it and cloud behind it doesn't paint over it.
             lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
-                    timeOfDay != null ? SkyLight.of(timeOfDay) : null, skyColor,
+                    sky, skyColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
                     lightningRenderer.flashes(), precipitationFog, weatherReach);
             checkGLError("After cloud rendering");
@@ -467,8 +474,8 @@ public class WorldRenderer {
         if (!cameraUnderwater) {
             // Rain and snow fall below the clouds and in front of them.
             if (cloudRenderer.mapsReady()) {
-                precipitationRenderer.render(world, cloudRenderer.uniforms(), projectionMatrix,
-                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel);
+                precipitationRenderer.render(world, cloudRenderer.uniforms(), precipitationFog, projectionMatrix,
+                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel, weatherEffects.snow());
             }
             checkGLError("After precipitation rendering");
         }
@@ -566,7 +573,7 @@ public class WorldRenderer {
         shadowMapRenderer.applyToShader(shaderProgram);
         // Cloud shadows (sunlight dimmed by the cloud above, Beer-Lambert).
         cloudRenderer.uniforms().applyTo(shaderProgram);
-        com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.bindSampler(shaderProgram);
+        CloudsInFront.bindSampler(shaderProgram);
         shaderProgram.setBool("u_cloudsInFront", false);
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
@@ -755,11 +762,11 @@ public class WorldRenderer {
      */
     private void renderTranslucentSolids(List<Chunk> visibleChunks, boolean cameraUnderwater) {
         shaderProgram.bind();
-        int previousCloudTexture = com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.enable(
+        int previousCloudTexture = CloudsInFront.enable(
                 shaderProgram, cameraUnderwater ? 0 : cloudRenderer.transmittanceTexture());
         renderTransparentPass(visibleChunks);
         shaderProgram.bind();
-        com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.disable(shaderProgram, previousCloudTexture);
+        CloudsInFront.disable(shaderProgram, previousCloudTexture);
     }
 
     /**

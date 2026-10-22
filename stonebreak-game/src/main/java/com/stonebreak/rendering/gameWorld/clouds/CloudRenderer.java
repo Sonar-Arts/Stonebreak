@@ -155,7 +155,7 @@ public final class CloudRenderer {
         terrainMap.update(weather.relief(), cameraWorldPos.x, cameraWorldPos.z);
         GL13.glActiveTexture(previousUnit);
         // cloud = world - drift = render + origin - drift
-        uniforms.prepare(map.texture(), weatherMap.texture(), terrainMap.shapeTexture(), terrainMap.flowTexture(),
+        uniforms.prepare(map.texture(), weatherMap.texture(), terrainMap.heightTexture(), terrainMap.flowTexture(),
                 RenderOrigin.x() - CloudField.driftX(s),
                 RenderOrigin.z() - CloudField.driftZ(s),
                 RenderOrigin.x(), RenderOrigin.z(),
@@ -350,7 +350,6 @@ public final class CloudRenderer {
         return drawnThisFrame && target != null ? history[1 - historyIndex].getColorTexture() : 0;
     }
 
-    /** Binds a noise volume on its own unit, which nothing else samples, so it is left bound. */
     /** Sunlight's hue ({@link SkyLight#sunColor}), dim near the horizon and gone below it. */
     private Vector3f sunColor(SkyLight sky, Vector3f sun) {
         float strength = smoothstep(-0.05f, 0.12f, sun.y) * 0.85f;

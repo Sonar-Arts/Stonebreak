@@ -143,6 +143,11 @@ public final class WeatherEffects {
         return storminess;
     }
 
+    /** Share of the ground around the camera where it snows instead of rains, 0..1. */
+    public float snow() {
+        return snow;
+    }
+
     /** Fog extinction right around the camera, per block ({@link PrecipitationFog}). 0 above the clouds. */
     public float extinction() {
         return extinction;

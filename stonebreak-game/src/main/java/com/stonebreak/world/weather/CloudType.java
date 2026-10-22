@@ -14,7 +14,7 @@ package com.stonebreak.world.weather;
  */
 public enum CloudType {
     //            baseY  maxHeight  sigma   albedo  rain   storm
-    CUMULUS      (176,   48,        0.060f, 1.00f,  0f,    false),
+    CUMULUS      (176,   64,        0.060f, 1.00f,  0f,    false),
     STRATUS      (200,   8,         0.025f, 0.95f,  0f,    false),
     NIMBOSTRATUS (160,   48,        0.090f, 0.62f,  0.7f,  false),
     CUMULONIMBUS (152,   136,       0.140f, 0.52f,  1f,    true);
