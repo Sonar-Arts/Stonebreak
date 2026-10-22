@@ -135,10 +135,17 @@ public final class ServerPlayerHandler {
      * budget), then clears the replica and syncs. Nothing is client-supplied. When the
      * world/entities aren't spawnable yet, nothing is drained and the sync returns the
      * inventory intact — no debit without a spawn.
+     *
+     * <p>Only a player the server holds dead (the reliable {@code PlayerLifeC2S} edge, which
+     * the client sends first) may drain, once per death and at most once per toss window
+     * ({@link ServerPlayer#claimDeathDrop}, #420); anything else is refused with a sync, so a
+     * living client cannot dump its inventory past the toss limit.
      */
     public void handleDeathDrop(ServerPlayer sp, DeathDropC2S d, ServerWorldContext ctx) {
         ServerInventory inv = sp.inventory();
-        if (ctx.world() == null || ctx.entityManager() == null || sp.lastStateNs() == 0L) {
+        // Spawnability first: a death that cannot drain yet must not use up its claim.
+        if (ctx.world() == null || ctx.entityManager() == null || sp.lastStateNs() == 0L
+                || !sp.claimDeathDrop()) {
             sp.send(sp.inventorySync(), false);
             return;
         }

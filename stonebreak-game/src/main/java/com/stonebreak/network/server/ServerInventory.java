@@ -291,6 +291,34 @@ public final class ServerInventory {
         return count - remaining;
     }
 
+    /**
+     * How many of {@code count} state-less {@code itemId} {@link #add} would accept right
+     * now, without changing anything — the pickup check (#372): a full inventory takes
+     * nothing, so the drop stays where it lies.
+     */
+    public int roomFor(int itemId, int count) {
+        if (itemId == BlockType.AIR.getId() || count <= 0) {
+            return 0;
+        }
+        Item item = resolveItem(itemId);
+        if (item == null) {
+            return 0;
+        }
+        int maxStack = new ItemStack(item, 1, null).getMaxStackSize();
+        int room = 0;
+        for (ItemStack s : slots) {
+            if (s.isEmpty()) {
+                room += maxStack;
+            } else if (sameKind(s, item, null) && s.getCount() < maxStack) {
+                room += maxStack - s.getCount();
+            }
+            if (room >= count) {
+                return count;
+            }
+        }
+        return room;
+    }
+
     /** Item ids never collide between blocks and items; items win the lookup. */
     private static Item resolveItem(int itemId) {
         Item item = com.stonebreak.items.ItemType.getById(itemId);

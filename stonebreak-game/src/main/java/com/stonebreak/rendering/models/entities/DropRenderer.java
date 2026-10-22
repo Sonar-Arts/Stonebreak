@@ -116,10 +116,6 @@ public class DropRenderer {
 
         for (Entity drop : drops) {
             if (!drop.isAlive()) continue;
-            boolean shouldRender = true;
-            if (drop instanceof com.stonebreak.mobs.entities.BlockDrop bd) shouldRender = bd.shouldRender();
-            else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop id) shouldRender = id.shouldRender();
-            if (!shouldRender) continue;
 
             // Opaque block drops + all item drops go in this pass
             if (drop instanceof com.stonebreak.mobs.entities.BlockDrop bd) {
@@ -195,13 +191,11 @@ public class DropRenderer {
         for (Entity drop : drops) {
             if (!drop.isAlive()) continue;
             if (drop instanceof com.stonebreak.mobs.entities.BlockDrop bd) {
-                if (!bd.shouldRender()) continue;
                 BlockType bt = bd.getBlockType();
                 if (bt == null || !isTransparentBlock(bt)) continue; // only transparent blocks
                 renderDrop(drop, shaderProgram, viewMatrix, world);
-            } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop id) {
+            } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop) {
                 // Item drops carrying a transparent block stack render here too.
-                if (!id.shouldRender()) continue;
                 BlockType stackBlock = getBlockTypeFromDrop(drop);
                 if (stackBlock == BlockType.AIR || !isTransparentBlock(stackBlock)) continue; // only transparent block stacks
                 renderDrop(drop, shaderProgram, viewMatrix, world);
@@ -294,20 +288,10 @@ public class DropRenderer {
 
         // Note: Blending will be handled per-drop based on transparency requirements
 
-        // Render each drop (skip compressed ones)
+        // Render each drop
         for (Entity drop : drops) {
             if (drop.isAlive() && isDropEntity(drop)) {
-                // Only render if it's not compressed into another drop
-                boolean shouldRender = true;
-                if (drop instanceof com.stonebreak.mobs.entities.BlockDrop blockDrop) {
-                    shouldRender = blockDrop.shouldRender();
-                } else if (drop instanceof com.stonebreak.mobs.entities.ItemDrop itemDrop) {
-                    shouldRender = itemDrop.shouldRender();
-                }
-
-                if (shouldRender) {
-                    renderDrop(drop, shaderProgram, viewMatrix, world);
-                }
+                renderDrop(drop, shaderProgram, viewMatrix, world);
             }
         }
 

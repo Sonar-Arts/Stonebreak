@@ -98,7 +98,12 @@ public final class ServerPlayer {
 
     /** True between this player's reported death and its respawn (#357). */
     public boolean isDead() { return dead; }
-    public void setDead(boolean dead) { this.dead = dead; }
+    public void setDead(boolean dead) {
+        this.dead = dead;
+        if (!dead) {
+            deathDropClaimed = false; // respawned: the next death may drain again (#420)
+        }
+    }
 
     /**
      * True when this player stands in the world as a live body: handshake done, a real
@@ -328,6 +333,30 @@ public final class ServerPlayer {
             dropCount = 0;
         }
         return ++dropCount <= MAX_DROPS_PER_WINDOW;
+    }
+
+    // ─── Death drain latch (#420) ────────────────────────────────────────────────
+    /** True once this death's DeathDropC2S drained the replica; cleared by the respawn edge. */
+    private boolean deathDropClaimed = false;
+    private long lastDeathDropNs = Long.MIN_VALUE;
+
+    /**
+     * Claims this death's single inventory drain: true only while the player is dead, once
+     * per death, and at most once per toss window. Until #343 the server learns deaths from
+     * the client's own PlayerLifeC2S, so the window is what keeps a client toggling
+     * dead/alive from scattering its inventory faster than {@link #allowDrop} allows tosses.
+     */
+    public boolean claimDeathDrop() {
+        if (!dead || deathDropClaimed) {
+            return false;
+        }
+        long now = System.nanoTime();
+        if (lastDeathDropNs != Long.MIN_VALUE && now - lastDeathDropNs <= DROP_WINDOW_NS) {
+            return false;
+        }
+        deathDropClaimed = true;
+        lastDeathDropNs = now;
+        return true;
     }
 
     /** True for the in-process (host/singleplayer) player on the in-JVM Local channel. Its state

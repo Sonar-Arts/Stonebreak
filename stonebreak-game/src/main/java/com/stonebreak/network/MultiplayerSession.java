@@ -571,34 +571,38 @@ public final class MultiplayerSession {
     }
 
     /**
-     * Server-authoritative drop pickup. Called from a drop entity on the server tick: if any
-     * connected player (local or remote) is within {@code range}, give them the stack (over the
-     * wire; the local client adds it on receipt) and report the pickup so the drop despawns.
-     * Returns false when there is no server or nobody is close enough.
+     * Server-authoritative drop pickup. Called from a drop entity on the server tick: the
+     * nearest player within {@code range} with room for the item gets as much of the stack as
+     * fits (over the wire; the local client adds it on receipt). Returns how many were taken
+     * — the drop keeps the rest where it lies (#372; re-dropping the overflow used to throw it
+     * ahead of a full-inventory player on every step). 0 when there is no server or no one in
+     * range has room.
      */
-    public static boolean tryServerPickup(Vector3f pos, float range, int itemId, int count) {
+    public static int tryServerPickup(Vector3f pos, float range, int itemId, int count) {
         IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
-        if (s == null) {
-            return false;
+        if (s == null || count <= 0) {
+            return 0;
         }
-        ServerPlayer nearest = nearestEligiblePickupCandidate(s.worldContext().players(), pos, range);
+        ServerPlayer nearest = nearestEligiblePickupCandidate(s.worldContext().players(), pos, range, itemId);
         if (nearest == null) {
-            return false;
+            return 0;
         }
-        s.giveItemTo(nearest.playerId(), itemId, count);
-        return true;
+        int taken = nearest.inventory().roomFor(itemId, count);
+        s.giveItemTo(nearest.playerId(), itemId, taken);
+        return taken;
     }
 
     /**
      * Nearest-player-wins pickup selection: when several players stand in range, the closest
      * one gets the stack (roster iteration order is arbitrary and previously decided ties
-     * unfairly). Only {@link ServerPlayer#isLiveInWorld() live} players qualify: one that has
-     * not reported a position yet would win at the {@code (0,0,0)} default, and a dead one
-     * would collect its own death drops from the death screen (#357) — the drop stays in the
-     * world for other players or the post-respawn pickup.
+     * unfairly). Only {@link ServerPlayer#isLiveInWorld() live} players with room for at least
+     * one {@code itemId} qualify: one that has not reported a position yet would win at the
+     * {@code (0,0,0)} default, a dead one would collect its own death drops from the death
+     * screen (#357) — the drop stays in the world for other players or the post-respawn
+     * pickup — and a full one would take the drop away from a player who can hold it (#372).
      */
     static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
-                                                       Vector3f pos, float range) {
+                                                       Vector3f pos, float range, int itemId) {
         float rangeSq = range * range;
         ServerPlayer nearest = null;
         float nearestSq = Float.MAX_VALUE;
@@ -610,7 +614,7 @@ public final class MultiplayerSession {
             float dy = pos.y - sp.y();
             float dz = pos.z - sp.z();
             float distSq = dx * dx + dy * dy + dz * dz;
-            if (distSq <= rangeSq && distSq < nearestSq) {
+            if (distSq <= rangeSq && distSq < nearestSq && sp.inventory().roomFor(itemId, 1) > 0) {
                 nearest = sp;
                 nearestSq = distSq;
             }
