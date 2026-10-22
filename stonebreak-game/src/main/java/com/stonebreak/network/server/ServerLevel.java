@@ -56,10 +56,12 @@ public final class ServerLevel {
     private volatile WorldData worldData;
     private final Vector3f spawn;
     private final PlayerData loadedPlayerData;
+    private final String playerLoadNotice;
 
     private ServerLevel(long seed, World world, EntityManager entityManager,
                         EntitySpawner entitySpawner, long worldTimeTicks, SaveService saveService,
-                        WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData) {
+                        WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData,
+                        String playerLoadNotice) {
         this.seed = seed;
         this.world = world;
         this.entityManager = entityManager;
@@ -71,6 +73,7 @@ public final class ServerLevel {
         this.worldData = worldData;
         this.spawn = spawn;
         this.loadedPlayerData = loadedPlayerData;
+        this.playerLoadNotice = playerLoadNotice;
     }
 
     /**
@@ -168,15 +171,16 @@ public final class ServerLevel {
 
         // The located spawn is a fresh-world choice (or, for a world saved before spawns were
         // persisted, a first one); persist it so respawns stay put. The save service was
-        // initialized before spawn resolution, so refresh its WorldData reference (initialize
-        // doubles as a refresh — see registerLocalPlayer).
+        // initialized before spawn resolution, so refresh its WorldData reference (this is
+        // still during creation, before any autosave — later refreshes must go through
+        // SaveService.updateWorldData, never initialize).
         if (worldData != null && !worldData.hasExplicitSpawn()) {
             worldData = new WorldData.Builder(worldData).spawnPosition(spawn).hasExplicitSpawn(true).build();
             save.initialize(worldData, null, world);
         }
 
         ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-            save, worldData, spawn, playerData);
+            save, worldData, spawn, playerData, existing ? lr.getPlayerNotice() : null);
         save.setWorldTimeSource(level.timeOfDay);
         save.setWeatherSource(level.weather);
         entitySpawner.setNightSource(level.timeOfDay::isNight);
@@ -343,13 +347,17 @@ public final class ServerLevel {
     /** Loaded player data for an integrated server, or null for a fresh world / dedicated boot. */
     public PlayerData loadedPlayerData() { return loadedPlayerData; }
 
+    /** Why the saved player data could not be restored (it was set aside, #358), else null. */
+    public String playerLoadNotice() { return playerLoadNotice; }
+
     /**
      * Register the in-process local player so the save service persists its inventory/position.
-     * Called from the cutover once the Local client has created the player. Same-JVM only.
+     * Rebinds the player only: the service's {@link WorldData} — with the play time accumulated
+     * since load and runtime edits — is never replaced here. Same-JVM only.
      */
     public void registerLocalPlayer(com.stonebreak.player.Player player) {
         if (saveService != null) {
-            saveService.initialize(worldData, player, world);
+            saveService.bindPlayer(player);
         }
     }
 

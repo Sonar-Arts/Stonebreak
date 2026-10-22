@@ -1,6 +1,7 @@
 package com.stonebreak.blocks.stalagmite;
 
 import com.stonebreak.core.Game;
+import com.stonebreak.items.BucketStacks;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -39,24 +40,14 @@ public final class StalagmiteInteraction {
         if (!Stalagmite.canGrow(cells, x, y, z)) {
             return true; // still a watering attempt — don't pour the bucket out beside it
         }
+        if (!BucketStacks.canConvertHeld(inventory, held, ItemType.BUCKET_STATE_EMPTY)) {
+            return true; // full inventory — refuse rather than delete the emptied bucket
+        }
         if (!MultiplayerSession.sendBlockToggle(x, y, z)) {
             // No live connection (bare/test world) — grow locally.
             Stalagmite.grow(cells, x, y, z);
         }
-        emptyHeldBucket(inventory, held);
+        BucketStacks.convertHeld(inventory, held, ItemType.BUCKET_STATE_EMPTY);
         return true;
-    }
-
-    /** Same stack rule as pouring water: a stack of full buckets gives up one. */
-    private static void emptyHeldBucket(Inventory inventory, ItemStack held) {
-        int slot = inventory.getSelectedHotbarSlotIndex();
-        int count = held.getCount();
-        if (count == 1) {
-            inventory.setHotbarSlot(slot, new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
-        } else {
-            inventory.setHotbarSlot(slot,
-                    new ItemStack(ItemType.WOODEN_BUCKET, count - 1, ItemType.BUCKET_STATE_WATER));
-            inventory.addItem(new ItemStack(ItemType.WOODEN_BUCKET, 1, ItemType.BUCKET_STATE_EMPTY));
-        }
     }
 }

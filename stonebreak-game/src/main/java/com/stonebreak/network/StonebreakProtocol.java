@@ -22,13 +22,18 @@ import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.CharacterCreationC2S;
 import com.stonebreak.network.packet.player.DropItemC2S;
+import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
+import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.KillCreditS2C;
-import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
+import com.stonebreak.network.packet.player.HotbarSelectC2S;
+import com.stonebreak.network.packet.player.PlayerPrefsC2S;
+import com.stonebreak.network.packet.player.DeathDropC2S;
+import com.stonebreak.network.packet.player.PlayerLifeC2S;
+import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
-import com.stonebreak.network.packet.player.PlayerDataC2S;
 import com.stonebreak.network.packet.player.PlayerDataS2C;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
@@ -41,8 +46,6 @@ import com.stonebreak.network.packet.world.BlockToggleC2S;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.packet.world.ChunkHashesC2S;
 import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
-import com.stonebreak.network.packet.world.FurnaceSlotsC2S;
-import com.stonebreak.network.packet.world.WorkbenchSlotsC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.CheatsSetC2S;
@@ -83,17 +86,17 @@ public final class StonebreakProtocol {
         // ── serverbound (C2S) ──────────────────────────────────────────────
         r.register(PLAY, SERVERBOUND, 1, BlockChangeC2S.class, BlockChangeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 2, PlayerStateC2S.class, PlayerStateC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 3, PlayerHeldItemC2S.class, PlayerHeldItemC2S.CODEC);
+        // id 3 retired (PlayerHeldItemC2S — held item is server-derived now; removed in protocol v8).
         r.register(PLAY, SERVERBOUND, 4, ChatMessageC2S.class, ChatMessageC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 5, DisconnectC2S.class, DisconnectC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 6, HandshakeC2S.class, HandshakeC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 7, PlayerDataC2S.class, PlayerDataC2S.CODEC);
+        // id 7 retired (PlayerDataC2S — replaced by the validated PlayerPrefsC2S; v8).
         r.register(PLAY, SERVERBOUND, 8, ViewDistanceC2S.class, ViewDistanceC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 9, EntityDamageC2S.class, EntityDamageC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 10, KeepAliveC2S.class, KeepAliveC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 11, ChunkResyncRequestC2S.class, ChunkResyncRequestC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 12, SnowLayerC2S.class, SnowLayerC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 13, FurnaceSlotsC2S.class, FurnaceSlotsC2S.CODEC);
+        // id 13 retired (FurnaceSlotsC2S — replaced by ContainerActionC2S; v8).
         r.register(PLAY, SERVERBOUND, 14, ProjectileSpawnC2S.class, ProjectileSpawnC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 15, ChunkHashesC2S.class, ChunkHashesC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 16, DropItemC2S.class, DropItemC2S.CODEC);
@@ -102,9 +105,15 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 19, BlockToggleC2S.class, BlockToggleC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 20, CharacterCreationC2S.class, CharacterCreationC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 21, EntityShearC2S.class, EntityShearC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 22, WorkbenchSlotsC2S.class, WorkbenchSlotsC2S.CODEC);
+        // id 22 retired (WorkbenchSlotsC2S — replaced by ContainerActionC2S; v8).
         r.register(PLAY, SERVERBOUND, 23, CheatsSetC2S.class, CheatsSetC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 24, WeatherSetC2S.class, WeatherSetC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 24, ContainerActionC2S.class, ContainerActionC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 25, HotbarSelectC2S.class, HotbarSelectC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 26, PlayerPrefsC2S.class, PlayerPrefsC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 27, DeathDropC2S.class, DeathDropC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 28, PlayerLifeC2S.class, PlayerLifeC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 29, ConsumeHeldC2S.class, ConsumeHeldC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 30, WeatherSetC2S.class, WeatherSetC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
@@ -133,7 +142,10 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 24, NeedsCharacterCreationS2C.class, NeedsCharacterCreationS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 25, EntityVariantS2C.class, EntityVariantS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 26, CheatsStateS2C.class, CheatsStateS2C.CODEC);
-        r.register(PLAY, CLIENTBOUND, 27, WeatherSyncS2C.class, WeatherSyncS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 27, InventorySyncS2C.class, InventorySyncS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 28, com.stonebreak.network.packet.player.ProgressS2C.class,
+                com.stonebreak.network.packet.player.ProgressS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 29, WeatherSyncS2C.class, WeatherSyncS2C.CODEC);
 
         return r;
     }

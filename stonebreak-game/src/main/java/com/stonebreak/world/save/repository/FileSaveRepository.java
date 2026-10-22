@@ -68,6 +68,20 @@ public class FileSaveRepository {
         return Optional.of(playerSerializer.deserialize(payload));
     }
 
+    /**
+     * Moves an unreadable {@code player.json} to {@code player.json.corrupt} (or
+     * {@code player.json.corrupt.N} when earlier copies exist) so the next save writes a fresh
+     * file instead of overwriting the player's data (issue #358). Returns where it went.
+     */
+    public Path setPlayerFileAside() throws IOException {
+        Path aside = playerFile.resolveSibling(playerFile.getFileName() + ".corrupt");
+        for (int n = 1; Files.exists(aside); n++) {
+            aside = playerFile.resolveSibling(playerFile.getFileName() + ".corrupt." + n);
+        }
+        Files.move(playerFile, aside);
+        return aside;
+    }
+
     // ── Per-username player blobs (remote multiplayer players) ──────────────────
     // The host persists every connected player's serialized PlayerData under
     // players/<sanitized-username>.json. The in-process local player keeps using player.json.
@@ -84,6 +98,21 @@ public class FileSaveRepository {
             return Optional.empty();
         }
         return Optional.of(Files.readAllBytes(file));
+    }
+
+    /**
+     * Moves an unreadable {@code players/<username>.json} aside, exactly like
+     * {@link #setPlayerFileAside()} does for {@code player.json} (issue #358, applied to
+     * remote players by #334). Returns where it went.
+     */
+    public Path setNamedPlayerFileAside(String username) throws IOException {
+        Path file = playersDir().resolve(sanitize(username) + ".json");
+        Path aside = file.resolveSibling(file.getFileName() + ".corrupt");
+        for (int n = 1; Files.exists(aside); n++) {
+            aside = file.resolveSibling(file.getFileName() + ".corrupt." + n);
+        }
+        Files.move(file, aside);
+        return aside;
     }
 
     private Path playersDir() {

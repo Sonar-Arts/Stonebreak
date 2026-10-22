@@ -40,10 +40,10 @@ class FurnaceSlotAddressTest {
         FurnaceController controller = new FurnaceController(null, null, null);
         FurnaceInputManager input = new FurnaceInputManager(null, inv, controller);
         controller.setInputManager(input);
-        List<String> sent = new ArrayList<>();
-        controller.setSlotSink((pos, slots) -> sent.add(slots));
+        List<com.stonebreak.network.packet.player.ContainerActionC2S> sent = new ArrayList<>();
         FurnaceState furnace = new FurnaceState(new BlockPos(0, 64, 0));
         controller.bind(furnace);
+        controller.actions().setCapture(sent::add);
 
         GameUiHost game = new GameUiHost(new GameUiHost.Services() {
             @Override public void resume() { }
@@ -67,8 +67,9 @@ class FurnaceSlotAddressTest {
         scope.invoke("stonebreak:inventory.slot-click", new UiValue.Obj(Map.of("slot", UiValue.of("ingredient"))), site);
         assertEquals(4, furnace.getIngredient().getCount(), "placed by the furnace's own drop rule");
 
-        controller.update(0f);
-        assertEquals(1, sent.size(), "the edit reaches the server through the controller's slot sync");
+        assertEquals(2, sent.size(), "pickup + place ship as atomic actions");
+        assertEquals(com.stonebreak.network.packet.player.ContainerActionC2S.Action.TAKE_ALL, sent.get(0).action());
+        assertEquals(com.stonebreak.network.packet.player.ContainerActionC2S.Action.PUT_ALL, sent.get(1).action());
 
         game.drain();
         UiValue v = game.host().data().root("furnace").source().state().valueOrNull();

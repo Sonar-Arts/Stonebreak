@@ -435,7 +435,15 @@ public class TerrainMeshConsistencyTest {
     private static final class StubTextureMapper implements MmsTextureMapper {
         @Override
         public float[] generateFaceTextureCoordinates(IBlockType blockType, int face) {
-            return new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+            // Identity unit-square frame per face (the shape the real mapper produces).
+            float[] uv = new float[MmsBufferLayout.TEXTURE_SIZE * MmsBufferLayout.VERTICES_PER_QUAD];
+            int ua = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.uAxis(face);
+            int va = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.vAxis(face);
+            for (int c = 0; c < 4; c++) {
+                uv[c * 2] = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.cornerOffset(face, c, ua);
+                uv[c * 2 + 1] = com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator.cornerOffset(face, c, va);
+            }
+            return uv;
         }
 
         @Override

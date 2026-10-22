@@ -56,21 +56,24 @@ public class WorkbenchStateRegistry {
 
     /**
      * Applies an authoritative server state (from {@code BlockStateS2C}) onto the LOCAL entry
-     * in place, so an open workbench UI sees the change live. Client-side only.
+     * in place, so an open workbench UI sees the change live. {@code ack} is the echo's
+     * acknowledgement of our own slot intents ({@link WorkbenchState#applyStateString(String, int)}).
+     * Client-side only.
      */
-    public void applyAuthoritativeState(BlockPos pos, String stateString) {
-        getOrCreate(pos).applyStateString(stateString);
+    public void applyAuthoritativeState(BlockPos pos, String stateString, int ack) {
+        getOrCreate(pos).applyStateString(stateString, ack);
     }
 
     /**
-     * Applies a player's slot snapshot onto the authoritative grid and persists it (the
-     * change listener echoes it to every client). Server-side; the caller validates reach
-     * and that the block is still a workbench.
+     * Persists the CURRENT grid of {@code pos} into its chunk and echoes it if it changed
+     * (issue #334): the atomic container actions mutate the state in place, so persistence +
+     * echo is an explicit follow-up step instead of a side effect of a slot snapshot.
      */
-    public void applySlots(World world, BlockPos pos, String encodedSlots) {
-        WorkbenchState s = getOrCreate(pos);
-        s.applySlots(encodedSlots);
-        writeChunkState(world, pos, s.toStateString());
+    public void persist(World world, BlockPos pos) {
+        WorkbenchState s = states.get(pos);
+        if (s != null) {
+            writeChunkState(world, pos, s.toStateString());
+        }
     }
 
     /* ── Lifecycle hooks ─────────────────────────────────────── */
@@ -115,7 +118,8 @@ public class WorkbenchStateRegistry {
                 LocalBlockKey.y(key),
                 cz * CHUNK_SIZE + LocalBlockKey.z(key));
             // In place when already tracked (a client re-stream of this chunk) so an open UI
-            // stays bound to the same grid; treated like an echo so the UI re-baselines.
+            // stays bound to the same grid; treated like an echo so the UI re-baselines. A
+            // re-stream carries no ack, so it is ignored while one of our snapshots is in flight.
             states.compute(pos, (p, existing) -> {
                 if (existing == null) return WorkbenchState.fromStateString(p, value);
                 existing.applyStateString(value);

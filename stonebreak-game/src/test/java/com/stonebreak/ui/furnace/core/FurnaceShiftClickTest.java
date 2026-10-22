@@ -34,7 +34,6 @@ class FurnaceShiftClickTest {
         FurnaceController controller = new FurnaceController(null, null, null);
         input = new FurnaceInputManager(null, inventory, controller);
         controller.setInputManager(input);
-        controller.setSlotSink((pos, slots) -> { });
         furnace = new FurnaceState(new BlockPos(0, 64, 0));
         controller.bind(furnace);
     }

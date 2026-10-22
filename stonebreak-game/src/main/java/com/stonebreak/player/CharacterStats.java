@@ -155,6 +155,17 @@ public class CharacterStats {
   private final Deque<UndoOp> undoHistory = new ArrayDeque<>();
 
   /**
+   * Bumped by every change to the spend ledger (class, ability CP, skills, feats, scores)
+   * and by every bulk restore. The client stamps each PlayerPrefsC2S with it so a
+   * server progression echo can tell whether the pools it carries were computed from the
+   * ledger the client still holds (issue #334).
+   */
+  private int ledgerVersion = 0;
+
+  /** See {@link #ledgerVersion}. */
+  public int getLedgerVersion() { return ledgerVersion; }
+
+  /**
    * Reverses the most recent point allocation (CP/SP/FP/AP). Returns false when
    * there is nothing to undo. Used by character creation so a player can back
    * out an allocation before the world is created.
@@ -164,6 +175,7 @@ public class CharacterStats {
     if (op == null) {
       return false;
     }
+    ledgerVersion++;
     switch (op.kind()) {
       case CP -> {
         int before = derivedSpentCp();
@@ -225,6 +237,7 @@ public class CharacterStats {
     if (remainingAp <= 0 || index < 0 || index >= 6) return;
     remainingAp--;
     abilityScores[index]++;
+    ledgerVersion++;
     if (player != null) player.updateDerivedStats();
     undoHistory.addLast(new UndoOp(UndoKind.AP, null, index, null));
   }
@@ -234,6 +247,7 @@ public class CharacterStats {
     if (index < 0 || index >= 6 || abilityScores[index] <= 1) return;
     abilityScores[index]--;
     remainingAp++;
+    ledgerVersion++;
     if (player != null) player.updateDerivedStats();
   }
 
@@ -243,10 +257,23 @@ public class CharacterStats {
   /** Applies background ability bonuses on top of point-buy scores. Called once at first spawn. */
   public void applyBackgroundBonuses(int[] bonuses) {
     if (bonuses == null || bonuses.length != 6) return;
-    for (int i = 0; i < 6; i++) {
-      abilityScores[i] = Math.max(1, abilityScores[i] + bonuses[i]);
-    }
+    abilityScores = withBackgroundBonuses(abilityScores, bonuses);
+    ledgerVersion++;
     if (player != null) player.updateDerivedStats();
+  }
+
+  /**
+   * The one background-bonus rule, shared by the client's first spawn and the server's
+   * fresh-character record (issue #334) so both sides land on the same scores: each bonus is
+   * added and the result floored at 1. A null/short bonus array leaves the scores unchanged.
+   */
+  public static int[] withBackgroundBonuses(int[] scores, int[] bonuses) {
+    int[] out = java.util.Arrays.copyOf(scores, 6);
+    if (bonuses == null || bonuses.length != 6) return out;
+    for (int i = 0; i < 6; i++) {
+      out[i] = Math.max(1, out[i] + bonuses[i]);
+    }
+    return out;
   }
 
   // ─────────────────────────────────────────────── Class / progression (stubs)
@@ -299,6 +326,7 @@ public class CharacterStats {
   /** Selects the given class. Does not cost any points. */
   public void selectClass(String classId) {
     this.selectedClassId = classId;
+    ledgerVersion++;
   }
 
   public String getSelectedClassId() {
@@ -323,6 +351,7 @@ public class CharacterStats {
    */
   public boolean addRank(String key) {
     if (!canAddRank(key)) return false;
+    ledgerVersion++;
     String classId = ClassRegistry.classIdOf(key);
     String prevClassId = selectedClassId;
     int before = derivedSpentCp();
@@ -422,6 +451,7 @@ public class CharacterStats {
    */
   public boolean removeRank(String key) {
     if (!canRemoveRank(key)) return false;
+    ledgerVersion++;
     int before = derivedSpentCp();
     spentAbilityCp.merge(key, -1, Integer::sum);
     spentAbilityCp.remove(key, 0);
@@ -487,14 +517,38 @@ public class CharacterStats {
   public int getCpCostPerRank(String classId) {
     int slot = classInvestmentOrder.indexOf(classId);
     if (slot < 0) slot = classInvestmentOrder.size();
+    return cpCostForSlot(slot);
+  }
+
+  /** CP per rank for a class at investment slot {@code slot} (0 = primary). */
+  public static int cpCostForSlot(int slot) {
     return 1 + Math.max(0, slot - 1) * PlayerConstants.MULTICLASS_PENALTY;
   }
 
   /** CP the current ranks cost at today's slot prices. */
   public int derivedSpentCp() {
+    return cpCostOf(spentAbilityCp, classInvestmentOrder);
+  }
+
+  /**
+   * CP a rank ledger costs at the slot prices of {@code order} — the one pricing rule, shared
+   * with the server's prefs validation. Ranks in classes missing from {@code order} cost nothing
+   * here; callers that accept outside ledgers check the order covers every ranked class.
+   */
+  public static int cpCostOf(Map<String, Integer> ranks, List<String> order) {
     int sum = 0;
-    for (String id : classInvestmentOrder) {
-      sum += getClassRanks(id) * getCpCostPerRank(id);
+    for (int slot = 0; slot < order.size(); slot++) {
+      sum += classRanksIn(ranks, order.get(slot)) * cpCostForSlot(slot);
+    }
+    return sum;
+  }
+
+  /** Total ranks a ledger holds in the class's paths. */
+  public static int classRanksIn(Map<String, Integer> ranks, String classId) {
+    String prefix = classId + ":";
+    int sum = 0;
+    for (Map.Entry<String, Integer> e : ranks.entrySet()) {
+      if (e.getKey().startsWith(prefix) && e.getValue() != null) sum += e.getValue();
     }
     return sum;
   }
@@ -537,9 +591,14 @@ public class CharacterStats {
    * {@code min(ranks / WTP_CLASS_RANKS_PER_POINT, WTP_MAX_PER_CLASS)}. Counted per class, not pooled.
    */
   public int earnedWtp() {
+    return earnedWtp(spentAbilityCp, classInvestmentOrder);
+  }
+
+  /** {@link #earnedWtp()} for any rank ledger and investment order. */
+  public static int earnedWtp(Map<String, Integer> ranks, List<String> order) {
     int sum = PlayerConstants.WTP_STARTING_GRANT;
-    for (String id : classInvestmentOrder) {
-      sum += Math.min(getClassRanks(id) / PlayerConstants.WTP_CLASS_RANKS_PER_POINT,
+    for (String id : order) {
+      sum += Math.min(classRanksIn(ranks, id) / PlayerConstants.WTP_CLASS_RANKS_PER_POINT,
           PlayerConstants.WTP_MAX_PER_CLASS);
     }
     return sum;
@@ -547,8 +606,15 @@ public class CharacterStats {
 
   /** WTP spent: one per proficiency rank above Untrained, across all weapon groups. */
   public int spentWtp() {
+    return spentWtp(skillLevels);
+  }
+
+  /** {@link #spentWtp()} for any skill ledger. */
+  public static int spentWtp(Map<String, Integer> skills) {
     int sum = 0;
-    for (WeaponGroup g : WeaponGroup.values()) sum += getProficiency(g).ordinal();
+    for (WeaponGroup g : WeaponGroup.values()) {
+      sum += ProficiencyRank.fromLevel(skills.getOrDefault(WeaponProficiency.skillId(g), 0)).ordinal();
+    }
     return sum;
   }
 
@@ -582,6 +648,7 @@ public class CharacterStats {
       return;
     }
     remainingSp--;
+    ledgerVersion++;
     skillLevels.merge(skillId, 1, Integer::sum);
     undoHistory.addLast(new UndoOp(UndoKind.SP, skillId, -1, null));
   }
@@ -601,6 +668,7 @@ public class CharacterStats {
    * (debug / future class grants).
    */
   public void setProficiency(WeaponGroup group, ProficiencyRank rank) {
+    ledgerVersion++;
     String id = WeaponProficiency.skillId(group);
     if (rank == ProficiencyRank.UNTRAINED) {
       skillLevels.remove(id);
@@ -624,6 +692,7 @@ public class CharacterStats {
       return;
     }
     remainingFp--;
+    ledgerVersion++;
     acquiredFeatIds.add(featId);
     undoHistory.addLast(new UndoOp(UndoKind.FP, featId, -1, null));
   }
@@ -684,6 +753,7 @@ public class CharacterStats {
   /** Restores a previously captured RPG state ("discard changes"). */
   public void restoreRpgState(RpgSnapshot s) {
     if (s == null) return;
+    ledgerVersion++;
     selectedClassId = s.classId();
     classInvestmentOrder.clear();
     classInvestmentOrder.addAll(s.classInvestmentOrder());
@@ -700,6 +770,22 @@ public class CharacterStats {
     remainingFp = s.remainingFp();
     level = s.level();
     xp = s.xp();
+    if (player != null) player.updateDerivedStats();
+  }
+
+  /**
+   * Applies server-authoritative progression (issue #334): the server owns level/xp and
+   * the four point pools — they advance only through server-granted play — while the
+   * spend ledger (abilities, skills, feats, scores) was validated server-side and is
+   * carried by the client's own state.
+   */
+  public void applyServerProgression(int level, int xp, int cp, int sp, int fp, int ap) {
+    this.level = Math.max(1, level);
+    this.xp    = Math.max(0, xp);
+    this.remainingCp = Math.max(0, cp);
+    this.remainingSp = Math.max(0, sp);
+    this.remainingFp = Math.max(0, fp);
+    this.remainingAp = Math.max(0, ap);
     if (player != null) player.updateDerivedStats();
   }
 
@@ -737,6 +823,7 @@ public class CharacterStats {
                         int cp, int sp, int fp,
                         int[] scores, int ap,
                         int level, int xp) {
+        ledgerVersion++;
         this.selectedClassId = classId;
         this.spentAbilityCp.clear();
         this.spentAbilityCp.putAll(abilityCp);
@@ -776,7 +863,12 @@ public class CharacterStats {
         StringBuilder sb = new StringBuilder();
         sb.append("{");
         sb.append("\"background\":\"").append(escapeJson(selectedBackground)).append("\",");
-        sb.append("\"class\":").append(selectedClassId != null ? "\"" + escapeJson(selectedClassId) + "\"" : "null");
+        // "characterClass" is the save reader's key (JsonPlayerSerializer): the server parses
+        // this blob with it, and a "class" key was silently dropped from the record.
+        sb.append("\"characterClass\":").append(selectedClassId != null ? "\"" + escapeJson(selectedClassId) + "\"" : "null");
+        // The server owns the inventory and ignores this one, but its save reader requires the
+        // array (issue #358) and would otherwise reject the whole creation record.
+        sb.append(",\"inventory\":[]");
 
         // Class investment order (sets each class's CP cost per rank)
         sb.append(",\"classOrder\":[");
@@ -846,8 +938,10 @@ public class CharacterStats {
         String bg = extractString(s, "background");
         if (bg != null) this.selectedBackground = bg;
 
+        ledgerVersion++;
+
         // Class
-        String cls = extractString(s, "class");
+        String cls = extractString(s, "characterClass");
         if (cls != null && !"null".equals(cls)) {
             this.selectedClassId = cls;
         }

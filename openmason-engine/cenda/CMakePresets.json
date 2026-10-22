@@ -15,7 +15,10 @@
       "name": "debug",
       "displayName": "Debug",
       "inherits": "base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "FETCHCONTENT_BASE_DIR": "$env{HOME}/.cache/cenda-deps-${presetName}"
+      }
     },
     {
       "name": "release",

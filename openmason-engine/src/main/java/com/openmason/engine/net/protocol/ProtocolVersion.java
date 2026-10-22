@@ -19,8 +19,18 @@ public final class ProtocolVersion {
      *  5 = per-block crafting-table grids (WorkbenchSlotsC2S — issue #307).
      *  6 = server-authoritative per-world cheats flag (CheatsSetC2S, CheatsStateS2C —
      *  issue #318).
-     *  7 = weather zones (WeatherSyncS2C carries them, WeatherSetC2S a world/local scope). */
-    public static final int CURRENT = 7;
+     *  7 = furnace/workbench slot intents carry a sequence number that BlockStateS2C
+     *  acknowledges per recipient (issue #353).
+     *  8 = server-owned inventory: InventorySyncS2C, ContainerActionC2S, HotbarSelectC2S,
+     *  PlayerPrefsC2S and DeathDropC2S added; PlayerHeldItemC2S (3), PlayerDataC2S (7),
+     *  FurnaceSlotsC2S (13) and WorkbenchSlotsC2S (22) retired without id reuse (issue #334).
+     *  9 = server-owned progression echo (ProgressS2C — issue #334): level/xp/point pools
+     *  are granted and echoed by the server only.
+     *  10 = PlayerLifeC2S: death/respawn edges on the reliable channel, so the server
+     *  knows which players are dead (issue #357).
+     *  11 = ConsumeHeldC2S: eating debits the server-owned inventory (issue #355).
+     *  12 = weather zones (WeatherSyncS2C carries them, WeatherSetC2S a world/local scope). */
+    public static final int CURRENT = 12;
 
     private ProtocolVersion() {}
 }

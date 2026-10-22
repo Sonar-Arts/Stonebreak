@@ -53,32 +53,33 @@ class WorkbenchStateRegistryTest {
         registry.setStateChangeListener((pos, state) -> echoes.add(state));
     }
 
-    private static String grid(ItemStack... firstSlots) {
-        WorkbenchState s = new WorkbenchState(new BlockPos(0, 0, 0));
-        for (int i = 0; i < firstSlots.length; i++) {
-            s.getSlots()[i] = firstSlots[i];
+    /** Seeds {@code slots} into the table at {@code pos} and persists it (issue #334 path). */
+    private void seed(World world, WorkbenchStateRegistry registry, BlockPos pos, ItemStack... slots) {
+        WorkbenchState s = registry.getOrCreate(pos);
+        for (int i = 0; i < slots.length; i++) {
+            s.getSlots()[i] = slots[i];
         }
-        return s.encodeSlots();
+        registry.persist(world, pos);
     }
 
     @Test
     void editsArePersistedIntoTheChunkAndEchoed() {
         BlockPos pos = new BlockPos(3, Y, 5);
-        registry.applySlots(world, pos, grid(new ItemStack(BlockType.DIRT, 4)));
+        seed(world, registry, pos, new ItemStack(BlockType.DIRT, 4));
 
         String stored = chunk.getBlockState(3, Y, 5);
         assertTrue(WorkbenchState.isWorkbenchState(stored), "the grid is in the chunk's saved states");
         assertEquals(List.of(stored), echoes);
 
         // Re-applying the same grid is not a change: nothing to broadcast.
-        registry.applySlots(world, pos, grid(new ItemStack(BlockType.DIRT, 4)));
+        seed(world, registry, pos, new ItemStack(BlockType.DIRT, 4));
         assertEquals(1, echoes.size());
     }
 
     @Test
     void theGridSurvivesAChunkUnloadAndReload() {
         BlockPos pos = new BlockPos(3, Y, 5);
-        registry.applySlots(world, pos, grid(new ItemStack(ItemType.STICK, 6)));
+        seed(world, registry, pos, new ItemStack(ItemType.STICK, 6));
 
         registry.onChunkUnloaded(chunk);
         assertNull(registry.get(pos), "unload releases the in-memory entry");
@@ -95,7 +96,7 @@ class WorkbenchStateRegistryTest {
     void eachTableHasItsOwnGrid() {
         BlockPos a = new BlockPos(1, Y, 1);
         BlockPos b = new BlockPos(9, Y, 9);
-        registry.applySlots(world, a, grid(new ItemStack(BlockType.DIRT, 2)));
+        seed(world, registry, a, new ItemStack(BlockType.DIRT, 2));
 
         assertTrue(registry.getOrCreate(b).isEmpty(), "table B must not show table A's items");
         assertNotSame(registry.getOrCreate(a), registry.getOrCreate(b));

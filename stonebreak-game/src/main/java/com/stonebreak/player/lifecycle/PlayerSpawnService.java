@@ -1,7 +1,7 @@
 package com.stonebreak.player.lifecycle;
 
 import com.stonebreak.items.Inventory;
-import com.stonebreak.items.ItemType;
+import com.stonebreak.items.StartingItems;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.combat.AttackController;
@@ -77,16 +77,16 @@ public class PlayerSpawnService {
             if (camera != null) camera.reset();
             if (inventory != null) inventory.resetToStartingItems();
 
-            BackgroundRegistry.findById(characterStats.getSelectedBackground()).ifPresent(bg -> {
-                characterStats.applyBackgroundBonuses(bg.abilityScoreBonuses());
-                for (String itemName : bg.extraItemNames()) {
-                    try {
-                        inventory.addItem(ItemType.valueOf(itemName));
-                    } catch (IllegalArgumentException ignored) {
-                        System.err.println("[SPAWN] Unknown background item: " + itemName);
-                    }
+            // The same bonus + item rules the server applies to its fresh-character record
+            // (issue #334): the replica sync that follows then agrees with this mirror.
+            BackgroundRegistry.findById(characterStats.getSelectedBackground()).ifPresent(bg ->
+                    characterStats.applyBackgroundBonuses(bg.abilityScoreBonuses()));
+            if (inventory != null) {
+                for (StartingItems.Entry e : StartingItems.backgroundEntries(
+                        characterStats.getSelectedBackground())) {
+                    inventory.addItem(e.itemId(), e.count());
                 }
-            });
+            }
 
             health.enableSpawnProtection();
             System.out.println("Spawn protection enabled for new world - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");

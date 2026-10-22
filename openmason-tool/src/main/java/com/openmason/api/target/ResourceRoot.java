@@ -76,12 +76,16 @@ public final class ResourceRoot {
         if (fixed != null) {
             return Files.isDirectory(fixed) ? fixed : null;
         }
-        Path cwd = Path.of("").toAbsolutePath();
-        for (Path dir = cwd; dir != null; dir = dir.getParent()) {
+        return locateFrom(Path.of("").toAbsolutePath());
+    }
+
+    /** The first search path that exists under {@code start} or one of its ancestors, or null. */
+    public Path locateFrom(Path start) {
+        for (Path dir = start.toAbsolutePath(); dir != null; dir = dir.getParent()) {
             for (String rel : searchPaths) {
                 Path candidate = dir.resolve(rel);
                 if (Files.isDirectory(candidate)) {
-                    return candidate.normalize();
+                    return candidate.toAbsolutePath().normalize();
                 }
             }
         }

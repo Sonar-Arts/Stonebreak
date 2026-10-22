@@ -55,11 +55,28 @@ public class SaveService implements AutoCloseable {
     private final java.util.concurrent.ConcurrentHashMap<Long, CompletableFuture<Void>> pendingChunkSaves =
         new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * In-flight write per remote player name — the same ordering gate as
+     * {@link #pendingChunkSaves}, for {@code players/<name>.json}: a write chains behind that
+     * player's previous one (the save pool has several threads), and a load or set-aside of
+     * the name waits for it. Without it a quick re-login read the pre-quit file while the
+     * quit save was still in flight — items dropped just before quitting came back (#334).
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<Void>> pendingNamedSaves =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     private ScheduledFuture<?> autoSaveTask;
+    /** Once true, close() has started: no further autosave may snapshot or submit. */
+    private final AtomicBoolean closed = new AtomicBoolean();
+    /** The autosave currently past its in-progress gate, so close() can join it before the final flush. */
+    private volatile CompletableFuture<Void> inFlightAutoSave;
     private volatile WorldData worldData;
     private volatile Player player;
     private volatile World world;
-    private volatile long lastAutoSaveTime;
+    /** Wall clock the play time is measured on (milliseconds); a test seam. */
+    private final java.util.function.LongSupplier clock;
+    /** Clock reading up to which play time is already in {@link #worldData}; guarded by {@code this}. */
+    private long lastAutoSaveTime;
 
     // World-time source for save snapshots. In the two-world model the authoritative clock is
     // the server's TimeOfDay (a render-only client's clock is frozen), so it is injected here.
@@ -68,32 +85,41 @@ public class SaveService implements AutoCloseable {
     private volatile com.stonebreak.world.weather.WeatherState weatherSource;
 
     public SaveService(String worldPath) {
+        this(worldPath,
+            Executors.newFixedThreadPool(SAVE_THREADS, namedDaemonFactory("Save-IO")),
+            Executors.newFixedThreadPool(LOAD_THREADS, namedDaemonFactory("Load-IO")));
+    }
+
+    /** Test seam: inject the save/load pools so tests can stall or observe IO ordering. */
+    SaveService(String worldPath, ExecutorService savePool, ExecutorService loadPool) {
+        this(worldPath, savePool, loadPool, System::currentTimeMillis);
+    }
+
+    /** Test seam: also inject the play-time clock so tests never depend on wall-clock sleeps. */
+    SaveService(String worldPath, ExecutorService savePool, ExecutorService loadPool,
+                java.util.function.LongSupplier clock) {
         this.worldPath = Objects.requireNonNull(worldPath, "worldPath");
         this.repository = new FileSaveRepository(worldPath);
-        java.util.concurrent.atomic.AtomicInteger saveId = new java.util.concurrent.atomic.AtomicInteger();
-        this.savePool = Executors.newFixedThreadPool(SAVE_THREADS, r -> {
-            Thread t = new Thread(r, "Save-IO-" + saveId.getAndIncrement());
-            t.setDaemon(true);
-            return t;
-        });
-        java.util.concurrent.atomic.AtomicInteger loadId = new java.util.concurrent.atomic.AtomicInteger();
-        this.loadPool = Executors.newFixedThreadPool(LOAD_THREADS, r -> {
-            Thread t = new Thread(r, "Load-IO-" + loadId.getAndIncrement());
-            t.setDaemon(true);
-            return t;
-        });
-        this.autoSaveScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "AutoSave");
-            t.setDaemon(true);
-            return t;
-        });
-        this.lastAutoSaveTime = System.currentTimeMillis();
+        this.savePool = savePool;
+        this.loadPool = loadPool;
+        this.autoSaveScheduler = Executors.newSingleThreadScheduledExecutor(namedDaemonFactory("AutoSave"));
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.lastAutoSaveTime = clock.getAsLong();
 
         try {
             repository.ensureWorldDirectory();
         } catch (IOException e) {
             throw new RuntimeException("Failed to create world directory: " + worldPath, e);
         }
+    }
+
+    private static java.util.concurrent.ThreadFactory namedDaemonFactory(String prefix) {
+        java.util.concurrent.atomic.AtomicInteger id = new java.util.concurrent.atomic.AtomicInteger();
+        return r -> {
+            Thread t = new Thread(r, prefix + "-" + id.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        };
     }
 
     public void initialize(WorldData worldData, Player player, World world) {
@@ -104,6 +130,18 @@ public class SaveService implements AutoCloseable {
         // the chunk store reaching into the Game singleton's save service.
         if (world != null) {
             world.setSaveService(this);
+        }
+    }
+
+    /**
+     * Rebinds the player this service persists (e.g. when the local player registers with an
+     * integrated server) without touching {@link WorldData} — {@link #initialize} must never
+     * run again once autosaves have begun, because it would replace the accumulated play time
+     * and runtime edits with the caller's (stale) copy. No-op before the service is initialized.
+     */
+    public void bindPlayer(Player player) {
+        if (worldData != null) {
+            this.player = player;
         }
     }
 
@@ -124,9 +162,13 @@ public class SaveService implements AutoCloseable {
      * Stamps the accumulated play time and the authoritative world time into the in-memory
      * {@link WorldData} and returns the snapshot to persist. Synchronized with
      * {@link #updateWorldData} so a concurrent edit can't be lost between read and write.
+     * The interval is marked counted here, in the same step that adds it: the in-memory
+     * {@code WorldData} owns the play time, so an overlapping save or one taken right after a
+     * failed write never adds the same interval twice, and a failed write loses nothing.
      */
     private synchronized WorldData advanceWorldDataForSave(long now) {
         WorldData updatedWorld = worldData.withAddedPlayTime(now - lastAutoSaveTime);
+        lastAutoSaveTime = now;
 
         // Capture current world time from the authoritative clock (server-owned in the two-world
         // model; falls back to the Game singleton's clock when none is injected).
@@ -213,7 +255,7 @@ public class SaveService implements AutoCloseable {
             );
         }
 
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         WorldData updatedWorld = advanceWorldDataForSave(now);
 
         // Convert player to data model
@@ -224,8 +266,7 @@ public class SaveService implements AutoCloseable {
         return submitSave(work)
             .whenComplete((ignored, throwable) -> {
                 if (throwable == null) {
-                    lastAutoSaveTime = now;
-                    System.out.printf("[SAVE] Complete save finished in %dms%n", System.currentTimeMillis() - now);
+                    System.out.printf("[SAVE] Complete save finished in %dms%n", clock.getAsLong() - now);
                 }
             });
     }
@@ -251,15 +292,37 @@ public class SaveService implements AutoCloseable {
                     return new LoadResult(false, "World metadata not found", null, null);
                 }
                 WorldData data = worldOpt.get();
-                var playerOpt = repository.loadPlayer();
-                PlayerData playerData = playerOpt.orElse(null);
                 System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
-                return new LoadResult(true, null, data, playerData);
+                return loadPlayerInto(data);
             } catch (IOException e) {
                 System.err.printf("[LOAD] Failed in %dms: %s%n", System.currentTimeMillis() - start, e.getMessage());
                 return new LoadResult(false, e.getMessage(), null, null);
             }
         }, loadPool);
+    }
+
+    /**
+     * Loads {@code player.json} apart from the world metadata, so a damaged player file can never
+     * make the world look new (issue #358). An unreadable file is moved aside and the player
+     * starts fresh in the loaded world; the result's {@link LoadResult#getPlayerNotice} says so.
+     */
+    private LoadResult loadPlayerInto(WorldData data) {
+        try {
+            return new LoadResult(true, null, data, repository.loadPlayer().orElse(null));
+        } catch (IOException | RuntimeException e) {
+            System.err.println("[LOAD] player.json is unreadable: " + e.getMessage());
+            String notice;
+            try {
+                java.nio.file.Path aside = repository.setPlayerFileAside();
+                notice = "Your saved player data could not be read; it was kept as "
+                    + aside.getFileName() + " and you start fresh.";
+            } catch (IOException moveFailure) {
+                notice = "Your saved player data could not be read or set aside ("
+                    + moveFailure.getMessage() + "); the next save will replace it.";
+            }
+            System.err.println("[LOAD] " + notice);
+            return new LoadResult(true, null, data, null, notice);
+        }
     }
 
     /** Completed future when no save of that chunk is in flight; else the save to chain after. */
@@ -309,34 +372,74 @@ public class SaveService implements AutoCloseable {
 
     /**
      * Persist a remote player's serialized PlayerData blob under players/&lt;username&gt;.json.
-     * Opaque to the save service — the bytes come straight from the client. Runs on the IO thread.
+     * Opaque to the save service — the bytes are the server-built record. Runs on the IO
+     * thread, ordered behind this player's previous write ({@link #pendingNamedSaves}).
      */
     public CompletableFuture<Void> saveNamedPlayer(String username, byte[] json) {
         if (username == null || json == null || json.length == 0) {
             return CompletableFuture.completedFuture(null);
         }
-        return CompletableFuture.runAsync(() -> {
+        return chainNamed(username, () -> {
             try {
                 repository.saveNamedPlayerBytes(username, json);
             } catch (IOException e) {
                 throw new RuntimeException("Failed to save player '" + username + "'", e);
             }
-        }, savePool).exceptionally(t -> {
+        }).exceptionally(t -> {
             System.err.println("[SAVE] Failed to save player '" + username + "': " + t.getMessage());
             return null;
         });
     }
 
-    /** Load a remote player's serialized PlayerData blob, or null if none saved. IO thread. */
+    /**
+     * Load a remote player's serialized PlayerData blob, or null if none is saved. Waits for
+     * any in-flight write of that player first. An I/O failure completes the future
+     * EXCEPTIONALLY — it is not "no saved data": treating it as a new player would let the
+     * next save overwrite the real file (#358's rule, applied to remote players; #334).
+     */
     public CompletableFuture<byte[]> loadNamedPlayer(String username) {
-        return CompletableFuture.supplyAsync(() -> {
+        return namedGate(username).thenApplyAsync(ignored -> {
             try {
                 return repository.loadNamedPlayerBytes(username).orElse(null);
             } catch (IOException e) {
                 System.err.println("[LOAD] Failed to load player '" + username + "': " + e.getMessage());
-                return null;
+                throw new java.io.UncheckedIOException(e);
             }
         }, loadPool);
+    }
+
+    /**
+     * Moves an unreadable {@code players/<username>.json} aside (to {@code .corrupt[.N]}) so
+     * the player's next save starts a fresh file instead of overwriting it (#358's rule for
+     * remote players; #334). Ordered behind that player's in-flight writes; completes with the
+     * new path, or exceptionally when the file could not be moved.
+     */
+    public CompletableFuture<java.nio.file.Path> setNamedPlayerAside(String username) {
+        CompletableFuture<java.nio.file.Path> result = new CompletableFuture<>();
+        chainNamed(username, () -> {
+            try {
+                result.complete(repository.setNamedPlayerFileAside(username));
+            } catch (IOException | RuntimeException e) {
+                result.completeExceptionally(e);
+            }
+        });
+        return result;
+    }
+
+    /** Completed when no write of {@code username} is in flight; else that write (errors swallowed). */
+    private CompletableFuture<Void> namedGate(String username) {
+        CompletableFuture<Void> pending = username == null ? null : pendingNamedSaves.get(username);
+        return pending == null ? CompletableFuture.completedFuture(null)
+            : pending.exceptionally(t -> null);
+    }
+
+    /** Runs {@code work} on the save pool after {@code username}'s previous write. */
+    private CompletableFuture<Void> chainNamed(String username, Runnable work) {
+        CompletableFuture<Void> next = pendingNamedSaves.compute(username, (k, prev) ->
+            (prev == null ? CompletableFuture.<Void>completedFuture(null) : prev.exceptionally(t -> null))
+                .thenRunAsync(work, savePool));
+        next.whenComplete((v, t) -> pendingNamedSaves.remove(username, next));
+        return next;
     }
 
     public String getWorldPath() {
@@ -349,13 +452,55 @@ public class SaveService implements AutoCloseable {
 
     @Override
     public void close() {
+        // First, and atomically: any autosave not yet past its in-progress gate bails instead of
+        // submitting, and a second (or concurrent) close() returns without a second teardown.
+        if (!closed.compareAndSet(false, true)) {
+            return;
+        }
         stopAutoSave();
+        awaitInFlightAutoSave();
         flushSavesBlocking("service close");
         autoSaveScheduler.shutdown();
-        savePool.shutdown();
-        loadPool.shutdown();
+        shutdownAndAwait(savePool, "save");
+        shutdownAndAwait(loadPool, "load");
         repository.close();
         System.out.println("[SAVE] SaveService closed");
+    }
+
+    /**
+     * Drains an autosave that is already executing ({@code cancel(false)} cannot stop it) before
+     * the final flush, so its older snapshot can never land after — and overwrite — the flush.
+     */
+    private void awaitInFlightAutoSave() {
+        long deadline = System.currentTimeMillis() + 15_000L;
+        while (autoSaveInProgress.get() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        CompletableFuture<Void> inFlight = inFlightAutoSave;
+        if (inFlight != null) {
+            try {
+                inFlight.get(15, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                System.err.println("[SAVE] Waiting for the in-flight auto-save failed: " + e.getMessage());
+            }
+        }
+    }
+
+    private void shutdownAndAwait(ExecutorService pool, String name) {
+        pool.shutdown();
+        try {
+            if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                System.err.println("[SAVE] " + name + " pool did not terminate within 30s; continuing close");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("[SAVE] Interrupted while awaiting " + name + " pool termination");
+        }
     }
 
     private List<ChunkSaveTask> collectDirtyChunkTasks() {
@@ -453,33 +598,62 @@ public class SaveService implements AutoCloseable {
         return run;
     }
 
-    private void performAutoSave() {
-        if (worldData == null || player == null || world == null) {
+    void performAutoSave() {
+        if (closed.get() || worldData == null || player == null || world == null) {
             return;
         }
         if (!autoSaveInProgress.compareAndSet(false, true)) {
             return;
         }
+        if (closed.get()) {
+            // close() started between the entry check and the CAS: bail before any snapshot
+            // or submit, or this older autosave would land after the final flush.
+            autoSaveInProgress.set(false);
+            return;
+        }
 
-        long started = System.currentTimeMillis();
-        WorldData updatedWorld = advanceWorldDataForSave(started);
+        // Published before the snapshot, so a close() that gives up waiting on the in-progress
+        // flag still joins this autosave rather than a previous, already completed one.
+        CompletableFuture<Void> inFlight = new CompletableFuture<>();
+        inFlightAutoSave = inFlight;
+        long started = clock.getAsLong();
+        int chunkCount;
+        CompletableFuture<Void> write;
+        try {
+            WorldData updatedWorld = advanceWorldDataForSave(started);
 
-        // Convert player to data model
-        PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
-        List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
+            // Convert player to data model
+            PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
+            List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
+            chunkCount = chunkTasks.size();
+            write = submitSave(new SaveWork(updatedWorld, playerData, chunkTasks, "auto"));
+        } catch (RuntimeException e) {
+            // Never leave the gate set: every later autosave would skip, and close() would wait
+            // out its full deadline. Not rethrown, so the fixed-rate schedule keeps running.
+            autoSaveInProgress.set(false);
+            inFlight.completeExceptionally(e);
+            System.err.println("[AUTO-SAVE] Failed before writing: " + e);
+            return;
+        }
 
-        submitSave(new SaveWork(updatedWorld, playerData, chunkTasks, "auto"))
-            .whenComplete((ignored, throwable) -> {
-                autoSaveInProgress.set(false);
-                if (throwable == null) {
-                    lastAutoSaveTime = started;
-                    long duration = System.currentTimeMillis() - started;
-                    System.out.printf("[AUTO-SAVE] Completed in %dms (%d chunks)%n", duration, chunkTasks.size());
-                    if (duration > 5000) {
-                        System.err.printf("[AUTO-SAVE] WARNING: Save took %dms%n", duration);
-                    }
+        write.whenComplete((ignored, throwable) -> {
+            autoSaveInProgress.set(false);
+            if (throwable == null) {
+                inFlight.complete(null);
+                long duration = clock.getAsLong() - started;
+                System.out.printf("[AUTO-SAVE] Completed in %dms (%d chunks)%n", duration, chunkCount);
+                if (duration > 5000) {
+                    System.err.printf("[AUTO-SAVE] WARNING: Save took %dms%n", duration);
                 }
-            });
+            } else {
+                inFlight.completeExceptionally(throwable);
+            }
+        });
+    }
+
+    /** Test view of the autosave currently in flight (null when none). Package-private. */
+    CompletableFuture<Void> inFlightAutoSaveForTesting() {
+        return inFlightAutoSave;
     }
 
     private record ChunkSaveTask(Chunk chunk, ChunkData data) { }
@@ -494,12 +668,19 @@ public class SaveService implements AutoCloseable {
         private final String error;
         private final WorldData worldData;
         private final PlayerData playerData;
+        private final String playerNotice;
 
         public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData) {
+            this(success, error, worldData, playerData, null);
+        }
+
+        public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData,
+                          String playerNotice) {
             this.success = success;
             this.error = error;
             this.worldData = worldData;
             this.playerData = playerData;
+            this.playerNotice = playerNotice;
         }
 
         public boolean isSuccess() {
@@ -516,6 +697,11 @@ public class SaveService implements AutoCloseable {
 
         public PlayerData getPlayerData() {
             return playerData;
+        }
+
+        /** Message for the player when their saved data could not be restored, else null. */
+        public String getPlayerNotice() {
+            return playerNotice;
         }
     }
 }

@@ -30,10 +30,13 @@ import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.GiveItemS2C;
-import com.stonebreak.network.packet.player.PlayerHeldItemC2S;
+import com.stonebreak.network.packet.player.DeathDropC2S;
+import com.stonebreak.network.packet.player.HotbarSelectC2S;
+import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
+import com.stonebreak.network.packet.player.PlayerPrefsC2S;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
@@ -69,6 +72,7 @@ public final class ClientWorldView {
     private final ClientChatHandler chatHandler = new ClientChatHandler();
 
     private int localPlayerId = -1;
+    private int lastBroadcastHotbarSlot = -1;
     private int lastBroadcastHeldItemId = -1;
 
     private long lastTickNs = 0L;
@@ -111,24 +115,36 @@ public final class ClientWorldView {
     private int auditCounter = 0;
     private int auditCursor = 0;
 
-    // Remote (TCP) player-data sync. The in-process local player is persisted same-JVM and does
-    // NOT use this path. A remote client first receives its saved PlayerData (PlayerDataS2C),
-    // applies it, THEN periodically sends its own (PlayerDataC2S) — so an empty inventory can't
-    // overwrite the save before the restore lands.
-    private static final long PLAYER_DATA_SEND_PERIOD_NS = 3_000_000_000L; // 3s
+    // Remote player-prefs sync (validated server-side, issue #334). The inventory is NOT in
+    // here any more — the server owns it (InventorySyncS2C flows the other way).
+    private static final long PLAYER_PREFS_SEND_PERIOD_NS = 3_000_000_000L; // 3s
     private final com.stonebreak.world.save.serialization.JsonPlayerSerializer playerSerializer =
             new com.stonebreak.world.save.serialization.JsonPlayerSerializer();
     private volatile boolean remote = false;
     private volatile boolean restoreReceived = false;
     private volatile byte[] restoreBlob;
     private boolean restoreApplied = false;
-    private long lastPlayerDataSendNs = 0L;
+    private long lastPlayerPrefsSendNs = 0L;
+    /** Numbers prefs reports and filters stale progression echoes (issue #334). */
+    private final PrefsSequencer prefsSequencer = new PrefsSequencer();
 
     /** Connect (Local or TCP) and send the handshake. */
     public void connect(NetAddress address, String username) throws InterruptedException {
         this.remote = address.type() == com.openmason.engine.net.transport.TransportType.TCP;
         connection = networkClient.connect(address);
+        // A new server acknowledges only this session's actions (issue #334, #353).
+        com.stonebreak.network.SlotIntentSeq.markSessionStart();
+        InventorySyncApplier.resetSession();
         connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username));
+        if (!remote) {
+            // The in-process host created its character in the menu, before the server
+            // existed. Hand it over right behind the handshake (the channel is FIFO): when the
+            // world has no saved player the server waits for it and builds its record from
+            // it — the same character this client plays — instead of a default one (issue
+            // #334). Ignored by the server when the world already has a saved player.
+            connection.send(new com.stonebreak.network.packet.player.CharacterCreationC2S(
+                    hostCreationJson()), false);
+        }
         // Report our render distance right after the handshake (channel is FIFO, so the
         // server processes the handshake first). Without this the server streams its
         // default view radius no matter what the user's setting says.
@@ -209,7 +225,7 @@ public final class ClientWorldView {
         entityHandler.tick();
         playerHandler.tick();
         sendLocalPlayerState();
-        sendPlayerDataIfDue();
+        sendPlayerPrefsIfDue();
         if (++auditCounter >= AUDIT_PERIOD_TICKS) {
             auditCounter = 0;
             sendChunkHashAudit();
@@ -337,6 +353,15 @@ public final class ClientWorldView {
         }
     }
 
+    /** The host's menu-created character (what {@code Game.initWorldComponents} applies to
+     *  the local player), or a default character when no creation screen exists. */
+    private static byte[] hostCreationJson() {
+        com.stonebreak.ui.characterCreation.CharacterCreationScreen ccs =
+                Game.getInstance() != null ? Game.getInstance().getCharacterCreationScreen() : null;
+        com.stonebreak.player.CharacterStats stats = ccs != null ? ccs.getCharacterStats() : null;
+        return (stats != null ? stats : new com.stonebreak.player.CharacterStats(null)).toCreationJson();
+    }
+
     /** True once the server's PlayerData blob has arrived (remote restore can be applied). */
     public boolean isRestoreReceived() { return restoreReceived; }
 
@@ -370,6 +395,13 @@ public final class ClientWorldView {
             p.giveStartingItems(); // first time on this server
             System.out.println("[CLIENT] New player on this server — gave starting items.");
         }
+        // A welcome-time InventorySyncS2C that raced the world build: the replica state
+        // (starting items included) is authoritative over whatever the restore produced.
+        InventorySyncS2C sync = pendingInventorySync;
+        pendingInventorySync = null;
+        if (sync != null) {
+            InventorySyncApplier.applyServerSync(p, sync.payload(), sync.ack());
+        }
         restoreApplied = true;
     }
 
@@ -379,20 +411,27 @@ public final class ClientWorldView {
         return s.contains("\"background\"");
     }
 
-    /** Periodically push our full inventory/stats to the server so it can persist them (remote). */
-    private void sendPlayerDataIfDue() {
-        if (!remote || !restoreApplied || connection == null) {
+    /** True once the server has seeded our authoritative state and can accept prefs. */
+    private boolean serverCanAcceptPrefs() {
+        // Remote: after our restored data is applied. Local: after the welcome sync
+        // (the server has seeded our baseline; pushing earlier would just be refused).
+        return connection != null && isRestoreApplied() && (remote || welcomeSyncSeen);
+    }
+
+    /** Periodically push our prefs + progression so the server can validate them. */
+    private void sendPlayerPrefsIfDue() {
+        if (!serverCanAcceptPrefs()) {
             return;
         }
         long now = System.nanoTime();
-        if (now - lastPlayerDataSendNs < PLAYER_DATA_SEND_PERIOD_NS) {
+        if (now - lastPlayerPrefsSendNs < PLAYER_PREFS_SEND_PERIOD_NS) {
             return;
         }
-        lastPlayerDataSendNs = now;
-        sendPlayerDataNow();
+        lastPlayerPrefsSendNs = now;
+        sendPlayerPrefsNow();
     }
 
-    private void sendPlayerDataNow() {
+    private void sendPlayerPrefsNow() {
         Player p = Game.getPlayer();
         if (p == null || connection == null) {
             return;
@@ -401,9 +440,38 @@ public final class ClientWorldView {
             byte[] json = playerSerializer.serialize(
                     com.stonebreak.world.save.util.StateConverter.toPlayerData(
                             p, Game.getInstance().getCurrentWorldName()));
-            connection.send(new com.stonebreak.network.packet.player.PlayerDataC2S(json), false);
+            String text = new String(json, java.nio.charset.StandardCharsets.UTF_8);
+            if (!PlayerPrefsC2S.fits(text)) {
+                // Bounded in bytes, the unit the server's decoder checks; an oversized report
+                // would only be refused, so do not spend a seq on it.
+                System.err.println("[CLIENT] Player prefs exceed " + PlayerPrefsC2S.MAX_JSON_BYTES
+                        + " bytes; not sent.");
+                return;
+            }
+            int seq = prefsSequencer.nextSeq(p.getCharacterStats().getLedgerVersion());
+            connection.send(new PlayerPrefsC2S(seq, text), false);
         } catch (Exception e) {
-            System.err.println("[CLIENT] Failed to send player data: " + e.getMessage());
+            System.err.println("[CLIENT] Failed to send player prefs: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Server progression echo (issue #334). Level/xp always apply; the point pools only when
+     * the echo answers our latest prefs report and our ledger has not changed since — see
+     * {@link PrefsSequencer}. A stale echo's pools are replaced by our own current ones.
+     */
+    private void applyProgress(com.stonebreak.network.packet.player.ProgressS2C pr) {
+        Player p = Game.getPlayer();
+        if (p == null) {
+            return;
+        }
+        com.stonebreak.player.CharacterStats cs = p.getCharacterStats();
+        if (prefsSequencer.poolsCurrent(pr.ackSeq(), cs.getLedgerVersion())) {
+            playerHandler.handleProgress(pr);
+        } else {
+            playerHandler.handleProgress(new com.stonebreak.network.packet.player.ProgressS2C(
+                    pr.ackSeq(), pr.level(), pr.xp(), cs.getRemainingCp(),
+                    cs.getRemainingSkillPoints(), cs.getRemainingFeatPoints(), cs.getRemainingAp()));
         }
     }
 
@@ -431,13 +499,43 @@ public final class ClientWorldView {
         connection.send(new PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch, flags), true);
 
         if (p.getInventory() != null) {
+            int slot = p.getInventory().getSelectedHotbarSlotIndex();
             int held = p.getInventory().getSelectedBlockTypeId();
-            if (held != lastBroadcastHeldItemId) {
+            // The slot OR the item in it re-announces: picking an item into the selected
+            // slot changes the held item without a selection change (issue #334).
+            if (slot != lastBroadcastHotbarSlot || held != lastBroadcastHeldItemId) {
+                lastBroadcastHotbarSlot = slot;
                 lastBroadcastHeldItemId = held;
-                connection.send(new PlayerHeldItemC2S(held), false);
+                connection.send(new HotbarSelectC2S(slot), false);
             }
         }
     }
+
+    /**
+     * Server-owned inventory (issue #334): replace the local mirror with the authoritative
+     * replica state — 36 slots, the carried cursor stack and the selected hotbar slot.
+     * Optimistic UI edits continue locally; this sync is the reconciliation point. A sync
+     * that arrives before the local player exists (the welcome burst races the async world
+     * build) is buffered and applied by {@link #applyRestoreTo}.
+     */
+    private void applyInventorySync(InventorySyncS2C s) {
+        // The server sends its first sync only after seeding this player's authoritative
+        // state (welcome/creation) — its arrival is the local player's "server is ready"
+        // signal, the analogue of the remote restore gate.
+        welcomeSyncSeen = true;
+        Player p = Game.getPlayer();
+        if (p == null || p.getInventory() == null) {
+            pendingInventorySync = s;
+            return;
+        }
+        InventorySyncApplier.applyServerSync(p, s.payload(), s.ack());
+    }
+
+    /** Latest sync that landed before the local player existed; null once applied. */
+    private volatile InventorySyncS2C pendingInventorySync;
+
+    /** True once the server's welcome InventorySyncS2C arrived (seeding is done). */
+    private volatile boolean welcomeSyncSeen;
 
     // ─── Local intents (wired from game systems in the lifecycle phase) ──────────
 
@@ -460,15 +558,51 @@ public final class ClientWorldView {
         connection.send(new BlockChangeC2S(x, y, z, id, prevId, placementState), false);
     }
 
-    /**
-     * Toss an item (Q / inventory drop) or return give-overflow: the server spawns the
-     * authoritative drop entity, replicated to everyone including us. No local spawn — a
-     * client-local drop would be invisible to other players.
-     */
+    /** Toss an item (Q / inventory drop / death scatter): a DEBIT request the server validates. */
     public void sendDropItem(int itemId, int count) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive() && itemId > 0 && count > 0) {
             conn.send(new com.stonebreak.network.packet.player.DropItemC2S(itemId, count), false);
+        }
+    }
+
+    /** One atomic container-screen slot action (see {@code ContainerActionC2S}). */
+    public void sendContainerAction(com.stonebreak.network.packet.player.ContainerActionC2S a) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(a, false);
+        }
+    }
+
+    /** Hotbar selection intent (see {@code HotbarSelectC2S}). */
+    public void sendHotbarSelect(int slot) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new HotbarSelectC2S(slot), false);
+        }
+    }
+
+    /** Death drain request (see {@code DeathDropC2S}): the server scatters the replica. */
+    public void sendDeathDrop(DeathDropC2S d) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(d, false);
+        }
+    }
+
+    /** Ate one held item (see {@code ConsumeHeldC2S}): the server debits its replica. */
+    public void sendConsumeHeld(com.stonebreak.network.packet.player.ConsumeHeldC2S c) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(c, false);
+        }
+    }
+
+    /** Death / respawn edge (see {@code PlayerLifeC2S}) — reliable, never the state stream. */
+    public void sendPlayerLife(com.stonebreak.network.packet.player.PlayerLifeC2S l) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(l, false);
         }
     }
 
@@ -501,22 +635,6 @@ public final class ClientWorldView {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             conn.send(new com.stonebreak.network.packet.world.SnowLayerC2S(x, y, z, (byte) layers), false);
-        }
-    }
-
-    /** Furnace slot intent from the open furnace UI (see {@code FurnaceSlotsC2S}). */
-    public void sendFurnaceSlots(int x, int y, int z, String slots) {
-        ClientConnection conn = connection;
-        if (conn != null && conn.isActive() && slots != null) {
-            conn.send(new com.stonebreak.network.packet.world.FurnaceSlotsC2S(x, y, z, slots), false);
-        }
-    }
-
-    /** Crafting-table grid intent from the open workbench UI (see {@code WorkbenchSlotsC2S}). */
-    public void sendWorkbenchSlots(int x, int y, int z, String slots) {
-        ClientConnection conn = connection;
-        if (conn != null && conn.isActive() && slots != null) {
-            conn.send(new com.stonebreak.network.packet.world.WorkbenchSlotsC2S(x, y, z, slots), false);
         }
     }
 
@@ -577,9 +695,9 @@ public final class ClientWorldView {
     public void shutdown() {
         if (connection != null) {
             try {
-                // Final inventory flush before leaving so the latest state persists (remote only).
-                if (remote && restoreApplied) {
-                    sendPlayerDataNow();
+                // Final prefs flush before leaving so the latest validated state is on record.
+                if (serverCanAcceptPrefs()) {
+                    sendPlayerPrefsNow();
                 }
                 connection.send(new DisconnectC2S("client_quit"));
             } catch (RuntimeException ignored) {
@@ -632,10 +750,12 @@ public final class ClientWorldView {
             case PlayerLeaveS2C l -> playerHandler.handleLeave(l);
             case PlayerHeldItemS2C h -> playerHandler.handleHeldItem(localPlayerId, h);
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
+            case InventorySyncS2C s -> applyInventorySync(s);
             case com.stonebreak.network.packet.player.KillCreditS2C kc -> {
                 playerHandler.handleKillCredit(kc);
                 entityHandler.showConfirmedHit(kc);
             }
+            case com.stonebreak.network.packet.player.ProgressS2C pr -> applyProgress(pr);
             case com.stonebreak.network.packet.player.PlayerDataS2C pd -> {
                 restoreBlob = pd.json();
                 restoreReceived = true;

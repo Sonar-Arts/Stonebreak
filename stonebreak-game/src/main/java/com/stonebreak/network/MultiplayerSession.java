@@ -8,6 +8,8 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.client.ClientWorldView;
+import com.stonebreak.network.packet.player.ContainerActionC2S;
+import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.ServerLevel;
 import com.stonebreak.network.server.ServerPlayer;
@@ -182,19 +184,78 @@ public final class MultiplayerSession {
         }
     }
 
-    /** Furnace slot intent: the open furnace UI's slots changed (see {@code FurnaceSlotsC2S}). */
-    public static void sendFurnaceSlots(int x, int y, int z, String slots) {
+    /**
+     * One atomic slot action on an open container screen (furnace / crafting table / the
+     * player's own inventory screen) — see {@code ContainerActionC2S} (issue #334). The
+     * server replays the click against its own state and syncs back.
+     */
+    public static void sendContainerAction(int x, int y, int z, byte containerKind, byte region,
+                                           byte slot, byte action) {
+        sendContainerAction(x, y, z, containerKind, region, slot,
+                ContainerActionC2S.Region.NONE, (byte) -1, action, (short) 0, false);
+    }
+
+    /** Full overload — carries the drag origin (swap-back) and count/shift for bulk actions. */
+    public static void sendContainerAction(int x, int y, int z, byte containerKind, byte region,
+                                           byte slot, byte originRegion, byte originSlot,
+                                           byte action, short count, boolean shift) {
+        sendContainerAction(new ContainerActionC2S(x, y, z, containerKind, region, slot,
+                originRegion, originSlot, action, count, shift));
+    }
+
+    /** Sends a built container action; no-op without a live session. */
+    public static void sendContainerAction(ContainerActionC2S action) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendFurnaceSlots(x, y, z, slots);
+            c.sendContainerAction(action);
         }
     }
 
-    /** Crafting-table grid intent: the open workbench UI's grid changed (see {@code WorkbenchSlotsC2S}). */
-    public static void sendWorkbenchSlots(int x, int y, int z, String slots) {
+    /** Hotbar selection intent (see {@code HotbarSelectC2S}); no-op without a live session. */
+    public static void sendHotbarSelect(int slot) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendWorkbenchSlots(x, y, z, slots);
+            c.sendHotbarSelect(slot);
+        }
+    }
+
+    /**
+     * Death scatter as ONE request (see {@code DeathDropC2S}): the server spawns the
+     * dying player's drops from its own replica — no toss rate limit — and syncs the
+     * mirror. Returns false when there is no live client connection (caller falls back to
+     * the local scatter).
+     */
+    public static boolean sendDeathDrop() {
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendDeathDrop(new DeathDropC2S());
+        return true;
+    }
+
+    /**
+     * The local player ate one {@code itemId} from the selected hotbar slot (issue #355).
+     * Numbered like a slot action, so a sync built before the server applied it cannot roll
+     * back the local prediction. No-op without a live session.
+     */
+    public static void sendConsumeHeld(int itemId) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendConsumeHeld(new com.stonebreak.network.packet.player.ConsumeHeldC2S(
+                    itemId, SlotIntentSeq.next()));
+        }
+    }
+
+    /**
+     * Death ({@code dead}) or respawn edge of the local player at {@code pos}, on the reliable
+     * channel: the server's only source for which players are dead (drop pickup, mob spawning
+     * — #357). No-op without a live session.
+     */
+    public static void sendPlayerLife(boolean dead, Vector3f pos) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendPlayerLife(new com.stonebreak.network.packet.player.PlayerLifeC2S(dead, pos.x, pos.y, pos.z));
         }
     }
 
@@ -434,10 +495,11 @@ public final class MultiplayerSession {
 
         // Robustly capture the local player's CURRENT inventory before teardown. The server
         // thread is now stopped, so this can't race the sim. Re-registering points the save
-        // service at the live player so the close-flush below writes its latest state — this is
-        // independent of whether the restore/registration happened earlier in the session, which
-        // is what previously let an exit drop the inventory.
-        if (server != null && hasIntegratedServer()) {
+        // service at the live player so the close-flush below writes its latest state. Only do
+        // this when the restore actually ran: Game.getPlayer() may still be a stale player from
+        // a previous world (or the empty one created before the build failure), and registering
+        // it would write the wrong player's data over this world's player.json (#366).
+        if (server != null && hasIntegratedServer() && localPlayerRestored) {
             ServerLevel level = server.worldContext().serverLevel();
             Player local = Game.getPlayer();
             if (level != null && local != null) {
@@ -545,14 +607,30 @@ public final class MultiplayerSession {
         if (s == null) {
             return false;
         }
-        // Nearest-player-wins: when several players stand in range, the closest one gets the
-        // stack (roster iteration order is arbitrary and previously decided ties unfairly).
+        ServerPlayer nearest = nearestEligiblePickupCandidate(s.worldContext().players(), pos, range);
+        if (nearest == null) {
+            return false;
+        }
+        s.giveItemTo(nearest.playerId(), itemId, count);
+        return true;
+    }
+
+    /**
+     * Nearest-player-wins pickup selection: when several players stand in range, the closest
+     * one gets the stack (roster iteration order is arbitrary and previously decided ties
+     * unfairly). Only {@link ServerPlayer#isLiveInWorld() live} players qualify: one that has
+     * not reported a position yet would win at the {@code (0,0,0)} default, and a dead one
+     * would collect its own death drops from the death screen (#357) — the drop stays in the
+     * world for other players or the post-respawn pickup.
+     */
+    static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
+                                                       Vector3f pos, float range) {
         float rangeSq = range * range;
         ServerPlayer nearest = null;
         float nearestSq = Float.MAX_VALUE;
-        for (ServerPlayer sp : s.worldContext().players()) {
-            if (!sp.handshakeDone() || sp.lastStateNs() == 0L) {
-                continue; // no reported position yet — (0,0,0) default must not win pickups
+        for (ServerPlayer sp : players) {
+            if (!sp.isLiveInWorld()) {
+                continue;
             }
             float dx = pos.x - sp.x();
             float dy = pos.y - sp.y();
@@ -563,11 +641,7 @@ public final class MultiplayerSession {
                 nearestSq = distSq;
             }
         }
-        if (nearest == null) {
-            return false;
-        }
-        s.giveItemTo(nearest.playerId(), itemId, count);
-        return true;
+        return nearest;
     }
 
     // ─── Per-tick pump (called from the game loop) ───────────────────────────────
@@ -633,6 +707,16 @@ public final class MultiplayerSession {
             } else {
                 player.giveStartingItems();
                 System.out.println("[NET] New world — gave the local player starting items.");
+            }
+            String notice = level.playerLoadNotice();
+            if (notice != null) {
+                Game game = Game.getInstance();
+                game.runOnMainThread(() -> {
+                    var chat = game.getChatSystem();
+                    if (chat != null) {
+                        chat.addMessage(notice, new float[]{1.0f, 0.35f, 0.35f, 1.0f});
+                    }
+                });
             }
             level.registerLocalPlayer(player);
             localPlayerRestored = true;

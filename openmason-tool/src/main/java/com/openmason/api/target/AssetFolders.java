@@ -40,9 +40,13 @@ public final class AssetFolders {
         return key == null ? null : folders.get(key.toLowerCase(Locale.ROOT));
     }
 
-    /** The folder for {@code type} assets of manifest type {@code subtype}, or null when undeclared. */
+    /**
+     * The folder {@code type} assets of manifest type {@code subtype} ship from: the subtype's
+     * folder when one is declared, else the type's base folder; null when neither is.
+     */
     public String folderFor(String type, String subtype) {
-        return subtype == null || subtype.isBlank() ? null : folder(key(type, subtype));
+        String specific = subtype == null || subtype.isBlank() ? null : folder(key(type, subtype));
+        return specific != null ? specific : folder(type);
     }
 
     /** Every folder {@code type} assets live in: its base folder, then its subtypes', no repeats. */
@@ -61,27 +65,19 @@ public final class AssetFolders {
         return out;
     }
 
-    /**
-     * The subtype whose folder holds {@code folder} ({@code sbe/Mobs} or a folder beneath it), or
-     * null when it is no subtype's.
-     */
+    /** The subtype whose folder is exactly {@code folder} ({@code sbe/Mobs} → {@code mob}), or null. */
     public String subtypeOf(String type, String folder) {
         if (folder == null) {
             return null;
         }
         String f = trimSlashes(folder);
         String prefix = type.toLowerCase(Locale.ROOT) + ".";
-        String best = null;
-        int bestLength = -1;
         for (Map.Entry<String, String> e : folders.entrySet()) {
-            String dir = e.getValue();
-            if (e.getKey().startsWith(prefix) && dir.length() > bestLength
-                    && (f.equalsIgnoreCase(dir) || f.toLowerCase(Locale.ROOT).startsWith(dir.toLowerCase(Locale.ROOT) + "/"))) {
-                best = e.getKey().substring(prefix.length());
-                bestLength = dir.length();
+            if (e.getKey().startsWith(prefix) && e.getValue().equalsIgnoreCase(f)) {
+                return e.getKey().substring(prefix.length());
             }
         }
-        return best;
+        return null;
     }
 
     private static String key(String type, String subtype) {

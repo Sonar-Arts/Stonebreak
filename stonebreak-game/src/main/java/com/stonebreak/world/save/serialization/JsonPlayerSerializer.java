@@ -9,6 +9,7 @@ import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -16,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * JSON serializer for PlayerData.
@@ -23,6 +25,8 @@ import java.util.Set;
  */
 public class JsonPlayerSerializer {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
+    private static final java.util.regex.Pattern INVENTORY_PATTERN =
+        java.util.regex.Pattern.compile("\"inventory\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.DOTALL);
 
     public byte[] serialize(PlayerData player) {
         StringBuilder json = new StringBuilder();
@@ -191,69 +195,52 @@ public class JsonPlayerSerializer {
         return json.toString().getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Reads a {@code player.json}. Every scalar field is optional and falls back to its default
+     * when missing or malformed (a blank {@code lastSaved} used to fail the whole world load,
+     * issue #358). The inventory is the one part that must read cleanly: a missing or damaged
+     * inventory throws, so the caller can set the file aside instead of letting the next save
+     * replace the player's items with an empty bag.
+     */
     public PlayerData deserialize(byte[] data) {
         String json = new String(data, StandardCharsets.UTF_8);
 
         try {
             PlayerData.Builder builder = PlayerData.builder()
-                .position(JsonParsingUtil.extractVector3f(json, "position"))
-                .rotation(JsonParsingUtil.extractVector2f(json, "rotation"))
-                .health(JsonParsingUtil.extractFloat(json, "health", 20.0f))
+                .position(tolerant("position", () -> JsonParsingUtil.extractVector3f(json, "position"),
+                    new Vector3f(0, 100, 0)))
+                .rotation(tolerant("rotation", () -> JsonParsingUtil.extractVector2f(json, "rotation"),
+                    new Vector2f(0, 0)))
+                .health(tolerant("health", () -> JsonParsingUtil.extractFloat(json, "health", 20.0f), 20.0f))
                 .flightEnabled(JsonParsingUtil.extractBoolean(json, "flightEnabled", false))
                 .flying(JsonParsingUtil.extractBoolean(json, "isFlying", false))
                 .spectator(JsonParsingUtil.extractBoolean(json, "spectator", false))
-                .gameMode(JsonParsingUtil.extractInt(json, "gameMode", 1))
-                .selectedHotbarSlot(JsonParsingUtil.extractInt(json, "selectedHotbarSlot", 0))
-                .lastSaved(JsonParsingUtil.extractDateTime(json, "lastSaved"));
+                .gameMode(intOrDefault(json, "gameMode", 1))
+                .selectedHotbarSlot(intOrDefault(json, "selectedHotbarSlot", 0))
+                .lastSaved(tolerant("lastSaved", () -> JsonParsingUtil.extractDateTime(json, "lastSaved"),
+                    LocalDateTime.now()));
 
             String worldName = JsonParsingUtil.extractStringOptional(json, "worldName");
             if (worldName != null) {
                 builder.worldName(worldName);
             }
 
-            // Deserialize inventory
-            ItemStack[] inventory = new ItemStack[36];
-            String invPattern = "\"inventory\"\\s*:\\s*\\[(.*?)\\]";
-            java.util.regex.Pattern p = java.util.regex.Pattern.compile(invPattern, java.util.regex.Pattern.DOTALL);
-            java.util.regex.Matcher m = p.matcher(json);
-
-            if (m.find()) {
-                String invJson = m.group(1);
-                String[] items = invJson.split("\\}\\s*,?\\s*");
-
-                for (int i = 0; i < Math.min(36, items.length); i++) {
-                    String item = items[i];
-                    int id = JsonParsingUtil.extractIntFromObject(item, "id", BlockType.AIR.getId());
-                    int count = JsonParsingUtil.extractIntFromObject(item, "count", 0);
-                    ItemStack stack = new ItemStack(id, count);
-                    String state = extractStateFromItem(item);
-                    if (state != null) {
-                        stack.setState(state);
-                    }
-                    inventory[i] = stack;
-                }
-            }
-
-            // Fill remaining slots with AIR
-            for (int i = 0; i < 36; i++) {
-                if (inventory[i] == null) {
-                    inventory[i] = new ItemStack(BlockType.AIR.getId(), 0);
-                }
-            }
-
-            builder.inventory(inventory);
+            builder.inventory(readInventory(json));
 
             // RPG / character progression (gracefully absent in old saves)
             String characterClass = JsonParsingUtil.extractStringOptional(json, "characterClass");
             if (characterClass != null) {
                 builder.selectedClassId(characterClass);
             }
-            builder.remainingCp(JsonParsingUtil.extractInt(json, "remainingCp", 100));
-            builder.remainingSp(JsonParsingUtil.extractInt(json, "remainingSp", 100));
-            builder.remainingFp(JsonParsingUtil.extractInt(json, "remainingFp", 100));
-            builder.classInvestmentOrder(JsonParsingUtil.extractStringListOrNull(json, "classInvestmentOrder"));
-            builder.spentAbilityCp(JsonParsingUtil.extractStringIntMap(json, "spentAbilityCp"));
-            builder.skillLevels(JsonParsingUtil.extractStringIntMap(json, "skillLevels"));
+            builder.remainingCp(intOrDefault(json, "remainingCp", 100));
+            builder.remainingSp(intOrDefault(json, "remainingSp", 100));
+            builder.remainingFp(intOrDefault(json, "remainingFp", 100));
+            builder.classInvestmentOrder(tolerant("classInvestmentOrder",
+                () -> JsonParsingUtil.extractStringListOrNull(json, "classInvestmentOrder"), null));
+            builder.spentAbilityCp(tolerant("spentAbilityCp",
+                () -> JsonParsingUtil.extractStringIntMap(json, "spentAbilityCp"), Map.of()));
+            builder.skillLevels(tolerant("skillLevels",
+                () -> JsonParsingUtil.extractStringIntMap(json, "skillLevels"), Map.of()));
             builder.acquiredFeatIds(JsonParsingUtil.extractStringSet(json, "acquiredFeats"));
 
             // Ability scores (backward-compat: missing → all 10)
@@ -269,36 +256,109 @@ public class JsonPlayerSerializer {
                 }
             }
             builder.abilityScores(abilityScores);
-            builder.remainingAp(JsonParsingUtil.extractInt(json, "remainingAp", 27));
-            builder.level(JsonParsingUtil.extractInt(json, "level", 1));
-            builder.xp(JsonParsingUtil.extractInt(json, "xp", 0));
+            builder.remainingAp(intOrDefault(json, "remainingAp", 27));
+            builder.level(intOrDefault(json, "level", 1));
+            builder.xp(intOrDefault(json, "xp", 0));
 
             // Statistics (backward-compat: missing block → all 0)
             if (json.contains("\"statistics\"")) {
-                PlayerStats ps = new PlayerStats();
-                ps.restore(
-                    (long) JsonParsingUtil.extractDoubleFromObject(json, "statistics", "entitiesKilled"),
-                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "damageDealt"),
-                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "totalDistance"),
-                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceWalked"),
-                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceSprinted"),
-                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceInAir"),
-                    JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeInAir")
-                );
-                ps.restoreKillsByType(extractKillsByEntityType(json));
-                builder.stats(ps);
+                builder.stats(tolerant("statistics", () -> readStatistics(json), new PlayerStats()));
             }
 
             // Discoveries (backward-compat: missing block → empty)
             if (json.contains("\"discoveries\"")) {
-                builder.discoveredVariantsByEntityType(extractVariantsSeen(json));
-                builder.discoveredWeaknessEntityTypes(extractWeaknessesDiscovered(json));
+                builder.discoveredVariantsByEntityType(tolerant("discoveries.variantsSeen",
+                    () -> extractVariantsSeen(json), Map.of()));
+                builder.discoveredWeaknessEntityTypes(tolerant("discoveries.weaknessesDiscovered",
+                    () -> extractWeaknessesDiscovered(json), Set.of()));
             }
 
             return builder.build();
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize PlayerData: " + e.getMessage(), e);
+        }
+    }
+
+    private static PlayerStats readStatistics(String json) {
+        PlayerStats ps = new PlayerStats();
+        ps.restore(
+            (long) JsonParsingUtil.extractDoubleFromObject(json, "statistics", "entitiesKilled"),
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "damageDealt"),
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "totalDistance"),
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceWalked"),
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceSprinted"),
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceInAir"),
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeInAir")
+        );
+        ps.restoreKillsByType(extractKillsByEntityType(json));
+        return ps;
+    }
+
+    /**
+     * Strict inventory read: the {@code inventory} array must exist and every non-empty slot
+     * must carry an integer {@code id} and {@code count}. Anything else throws, because silently
+     * reading a damaged slot as AIR would lose the item on the next save.
+     */
+    private static ItemStack[] readInventory(String json) {
+        java.util.regex.Matcher m = INVENTORY_PATTERN.matcher(json);
+        if (!m.find()) {
+            throw new IllegalArgumentException("inventory array is missing");
+        }
+        ItemStack[] inventory = new ItemStack[36];
+        String invJson = m.group(1);
+        if (!invJson.isBlank()) {
+            String[] items = invJson.split("\\}\\s*,?\\s*");
+            for (int i = 0; i < Math.min(36, items.length); i++) {
+                String item = items[i];
+                if (item.isBlank()) {
+                    continue;
+                }
+                int id = requireInt(item, "id", i);
+                int count = requireInt(item, "count", i);
+                ItemStack stack = new ItemStack(id, count);
+                String state = extractStateFromItem(item);
+                if (state != null) {
+                    stack.setState(state);
+                }
+                inventory[i] = stack;
+            }
+        }
+
+        // Fill remaining slots with AIR
+        for (int i = 0; i < 36; i++) {
+            if (inventory[i] == null) {
+                inventory[i] = new ItemStack(BlockType.AIR.getId(), 0);
+            }
+        }
+        return inventory;
+    }
+
+    private static int requireInt(String item, String key, int slot) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+            "\"" + key + "\"\\s*:\\s*(-?\\d+)").matcher(item);
+        if (!m.find()) {
+            throw new IllegalArgumentException("inventory slot " + slot + " has no readable " + key);
+        }
+        try {
+            return Integer.parseInt(m.group(1));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("inventory slot " + slot + " has an invalid " + key, e);
+        }
+    }
+
+    private static int intOrDefault(String json, String key, int defaultValue) {
+        return tolerant(key, () -> JsonParsingUtil.extractInt(json, key, defaultValue), defaultValue);
+    }
+
+    /** Reads an optional field, logging and falling back to {@code defaultValue} if it is malformed. */
+    private static <T> T tolerant(String field, Supplier<T> read, T defaultValue) {
+        try {
+            return read.get();
+        } catch (RuntimeException e) {
+            System.err.println("[LOAD] player.json: unreadable '" + field + "' (" + e.getMessage()
+                + "); using the default");
+            return defaultValue;
         }
     }
 
