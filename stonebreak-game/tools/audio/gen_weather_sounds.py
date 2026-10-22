@@ -9,7 +9,11 @@ rain_loop.wav: a seamless 24 s loop of steady rain, built from
   - slow swells whose periods divide the loop length, so they wrap cleanly.
 The tail is crossfaded into the head (equal power), so the loop has no seam.
 
-Also fades in the thunder clips' first 5 ms, which start mid-waveform and click.
+Also fades in the thunder clips' first 5 ms, which start mid-waveform and click,
+and strips their crackle: everything above the rumble (a zero-phase low-pass,
+flat to 450 Hz and gone by 800 Hz) — the lightning's crack and fizz, which the
+user did not want, while the rumble that is thunder stays. Both thunder steps
+work in place on the shipped clips: run them once per new clip.
 
 Stdlib only, deterministic (fixed seed). Run from anywhere:
     python3 stonebreak-game/tools/audio/gen_weather_sounds.py
@@ -107,8 +111,65 @@ def fade_in_thunder(path, seconds=0.005):
         w.writeframes(struct.pack("<%dh" % len(data), *data))
 
 
+CRACKLE_PASS_HZ = 450.0
+CRACKLE_STOP_HZ = 800.0
+
+
+def strip_crackle(path):
+    """Low-passes a clip in place with a raised-cosine edge, zero-phase (no smearing of the onset)."""
+    with wave.open(str(path), "rb") as w:
+        params = w.getparams()
+        frames = w.readframes(w.getnframes())
+    data = [x / 32768.0 for x in struct.unpack("<%dh" % (len(frames) // 2), frames)]
+    n = len(data)
+    size = 1
+    while size < 2 * n:  # zero-padded, so the filter never wraps the tail into the onset
+        size *= 2
+    spectrum = fft(data + [0.0] * (size - n))
+    for k in range(size):
+        hz = min(k, size - k) * params.framerate / size
+        if hz >= CRACKLE_STOP_HZ:
+            spectrum[k] = 0j
+        elif hz > CRACKLE_PASS_HZ:
+            t = (hz - CRACKLE_PASS_HZ) / (CRACKLE_STOP_HZ - CRACKLE_PASS_HZ)
+            spectrum[k] *= 0.5 + 0.5 * math.cos(math.pi * t)
+    out = [v.real / size for v in fft([c.conjugate() for c in spectrum])][:n]
+    with wave.open(str(path), "wb") as w:
+        w.setparams(params)
+        w.writeframes(struct.pack("<%dh" % n, *(int(max(-1.0, min(1.0, x)) * 32767) for x in out)))
+
+
+def fft(values):
+    """Iterative radix-2 FFT (len a power of two); stdlib only, like the rest of this script."""
+    a = [complex(v) for v in values]
+    n = len(a)
+    j = 0
+    for i in range(1, n):
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            a[i], a[j] = a[j], a[i]
+    length = 2
+    while length <= n:
+        step = complex(math.cos(-2 * math.pi / length), math.sin(-2 * math.pi / length))
+        for start in range(0, n, length):
+            w = 1 + 0j
+            for k in range(length // 2):
+                u = a[start + k]
+                v = a[start + k + length // 2] * w
+                a[start + k] = u + v
+                a[start + k + length // 2] = u - v
+                w *= step
+        length <<= 1
+    return a
+
+
 if __name__ == "__main__":
     write(OUT / "rain_loop.wav", rain_loop())
     for name in ("thunder_1.wav", "thunder_2.wav"):
+        strip_crackle(OUT / name)
         fade_in_thunder(OUT / name)
     print("wrote", OUT)

@@ -350,6 +350,15 @@ public final class CloudRenderer {
         return drawnThisFrame && target != null ? history[1 - historyIndex].getColorTexture() : 0;
     }
 
+    /**
+     * Each half-resolution pixel's distance to the cloud it shows (R32F;
+     * negative where the ray met none), drawn with {@link #transmittanceTexture}
+     * this frame; 0 when no cloud was drawn.
+     */
+    public int distanceTexture() {
+        return drawnThisFrame && target != null ? target.getExtraColorTexture() : 0;
+    }
+
     /** Sunlight's hue ({@link SkyLight#sunColor}), dim near the horizon and gone below it. */
     private Vector3f sunColor(SkyLight sky, Vector3f sun) {
         float strength = smoothstep(-0.05f, 0.12f, sun.y) * 0.85f;

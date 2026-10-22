@@ -33,8 +33,6 @@ const float MIN_THICKNESS = 12.0;
 // horizon. Their cells are this many times wider than a cumulus billow, as
 // real sheet clouds' are.
 const float SHEET_STRETCH = 4.0;
-// Depth of a cumulonimbus anvil below the top of the tower, blocks.
-const float ANVIL_DEPTH = 30.0;
 
 float remap(float v, float lo, float hi, float newLo, float newHi) {
     return newLo + (v - lo) / (hi - lo) * (newHi - newLo);
@@ -47,7 +45,7 @@ float heightProfile(int type, float h) {
     if (type == 1) return smoothstep(0.0, 0.3, h) * (1.0 - smoothstep(0.5, 1.0, h));
     // A thick deck: ragged underside, flat top.
     if (type == 2) return smoothstep(0.0, 0.18, h) * (1.0 - smoothstep(0.75, 1.0, h));
-    // A storm tower: flat base, near-vertical walls up to its anvil. Tapered
+    // A storm tower: flat base, near-vertical walls, a flattened top. Tapered
     // from 40% like a cumulus, the erosion ate its upper half and every storm
     // read as a squat heap however tall its column was.
     if (type == 3) return smoothstep(0.0, 0.04, h) * (1.0 - smoothstep(0.7, 1.0, h));
@@ -74,7 +72,8 @@ struct CloudSite {
     vec4 heights;   // each type's band height; a storm's ramps up with wetness
     float sigma;
     float albedo;
-    float anvil;    // 0..1 how far a mature storm spreads an anvil here
+    float bottom;   // the column's cloud base and top: each type's, weighted by its share
+    float top;
 };
 
 CloudSite cloudSiteAt(vec2 renderXZ) {
@@ -98,7 +97,9 @@ CloudSite cloudSiteAt(vec2 renderXZ) {
     vec4 h = u_cloudTypeHeight;
     float storm = smoothstep(u_cloudWetSplits.z, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
     site.heights = vec4(h.x, h.y, h.z, h.z + (h.w - h.z) * storm);
-    site.anvil = smoothstep(u_cloudWetSplits.z - 0.02, u_cloudWetSplits.z + u_cloudTowerRamp, wet);
+    vec4 tops = u_cloudTypeBase + max(site.heights * site.col.build, vec4(MIN_THICKNESS));
+    site.bottom = dot(site.weights, u_cloudTypeBase);
+    site.top = max(dot(site.weights, tops), site.bottom + MIN_THICKNESS);
     return site;
 }
 
@@ -121,44 +122,29 @@ CloudSample cloudBodyAt(CloudSite site, float y, float footprint, bool detail, o
     CloudColumn c = site.col;
     float clip = smoothstep(site.ground - u_flowClipSink, site.ground, y);
 
-    // Each type the column holds, in its own altitude band, faded by its share.
-    // Where two types' bands overlap, height and sheetness are averaged by
-    // each type's share of the cover. Taking them from whichever type covers
-    // most flipped them at the altitude where the profiles cross, and skylight
-    // (which follows height) drew a hard horizontal line across the cloud.
+    // One cloud per column: its base, top and vertical profile are each type's,
+    // blended by the type's share, and the profile is read at one height
+    // fraction through that blended extent. Drawing each type in its own fixed
+    // altitude band (and taking the max) stepped the cover down wherever one
+    // band ended inside another (nimbostratus tops at 208 inside a storm
+    // tower), and the erosion carved those steps into level shelves at the
+    // same altitudes on every mixed cloud. Blended, a sheet thickens smoothly
+    // into a heap across a type boundary instead.
+    float through = (y - site.bottom) / (site.top - site.bottom);
     float body = 0.0;
-    float sum = 0.0;
-    float frac = 0.0;
-    float sheet = 0.0; // how much of the cover is sheet cloud
+    float sheet = site.weights.y + site.weights.z; // how much of the cover is sheet cloud
     if (c.density > 0.0) {
         for (int t = 0; t < 4; t++) {
-            if (site.weights[t] <= 0.0) continue;
-            float f = (y - u_cloudTypeBase[t]) / max(site.heights[t] * c.build, MIN_THICKNESS);
-            float b = site.weights[t] * heightProfile(t, f);
-            body = max(body, b);
-            sum += b;
-            frac += b * clamp(f, 0.0, 1.0);
-            sheet += (t == 1 || t == 2) ? b : 0.0;
+            if (site.weights[t] > 0.0) body += site.weights[t] * heightProfile(t, through);
         }
         body *= c.density * clip;
     }
 
-    // Anvil: a mature storm's updraft hits the top of the troposphere and
-    // spreads sideways into a flat sheet wider than the tower beneath it.
-    float anvil = 0.0;
-    if (site.anvil > 0.0) {
-        float a = (u_cloudTypeBase.w + u_cloudTypeHeight.w - y) / ANVIL_DEPTH; // 0 at the top, 1 at the anvil's base
-        anvil = site.anvil * smoothstep(0.0, 0.2, a) * (1.0 - smoothstep(0.5, 1.0, a));
-    }
-
-    float cover = max(body, anvil * clip);
-    covered = cover > 0.0;
+    // No anvil sheet: any flat layer at a fixed altitude reads as a level band
+    // across every storm seen from the side.
+    covered = body > 0.0;
     if (!covered) return s;
-    // The anvil counts as cloud top (it sees the sky), blended in by its share
-    // rather than switched on where it overtakes the tower.
-    float anvilW = anvil / (anvil + body + 1e-6);
-    s.height = mix(frac / max(sum, 1e-6), 1.0, anvilW);
-    sheet = sheet / max(sum, 1e-6) * (1.0 - anvilW);
+    s.height = clamp(through, 0.0, 1.0);
 
     // Billows: the noise sets the floor the cover must clear (erosion), so the
     // dense heart of a cloud stays solid and only its thinner fringe is carved
@@ -175,7 +161,7 @@ CloudSample cloudBodyAt(CloudSite site, float y, float footprint, bool detail, o
         shape = mix(shape, sheetShape, sheet);
     }
     float floorAt = (1.0 - shape) * SHAPE_EROSION;
-    float d = clamp((cover - floorAt) / EROSION_EDGE, 0.0, 1.0);
+    float d = clamp((body - floorAt) / EROSION_EDGE, 0.0, 1.0);
     if (detail && d > 0.0) {
         float n = textureLod(u_detailNoise, vec3(site.xz.x, y - u_detailRise, site.xz.y) / u_detailTile,
                 noiseLod(u_detailNoise, u_detailTile, footprint)).r;
@@ -208,20 +194,14 @@ const int UNDERSIDE_REFINE = 3;
 const float NO_UNDERSIDE = -1.0;
 
 // Altitude of the underside of the cloud over `site`: the lowest point where
-// it is drawn solid, searched up through every band the column holds (the
-// bottommost layer wins). NO_UNDERSIDE where the noise carved the column clear,
-// as it does at the thin fringe of a cloud: nothing is drawn there to fall
-// from. (Falling back to the column's top made rain stream out of clear sky
-// beside every cloud, and down through the body of the cloud above.)
+// it is drawn solid, searched up through the column. NO_UNDERSIDE where the
+// noise carved the column clear, as it does at the thin fringe of a cloud:
+// nothing is drawn there to fall from. (Falling back to the column's top made
+// rain stream out of clear sky beside every cloud, and down through the body
+// of the cloud above.)
 float cloudUnderside(CloudSite site, float footprint, bool detail) {
-    float lo = 1e9, hi = -1e9;
-    for (int t = 0; t < 4; t++) {
-        if (site.weights[t] <= 0.0) continue;
-        float base = u_cloudTypeBase[t];
-        lo = min(lo, base);
-        hi = max(hi, base + max(site.heights[t] * site.col.build, MIN_THICKNESS));
-    }
-    if (site.col.density <= 0.0 || hi <= lo) return NO_UNDERSIDE;
+    float lo = site.bottom, hi = site.top;
+    if (site.col.density <= 0.0) return NO_UNDERSIDE;
     int steps = min(int(ceil((hi - lo) / UNDERSIDE_STEP)), UNDERSIDE_MAX_STEPS);
     bool covered;
     for (int i = 0; i <= steps; i++) {

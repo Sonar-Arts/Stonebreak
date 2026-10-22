@@ -42,7 +42,7 @@ const int QUAD_UAXIS[6] = int[6](0, 0, 0, 0, 2, 2);
 const int QUAD_VAXIS[6] = int[6](2, 2, 1, 1, 1, 1);
 
 void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
-                   out bool sheet, out float depth) {
+                   out bool sheet, out float depth, out bool inset) {
     int qi = gl_VertexID >> 2;
     int corner = gl_VertexID & 3;
     uvec4 q = texelFetch(u_quads, qi);
@@ -72,6 +72,8 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     float flow = float((q.w >> 8u) & 15u);
     // word3 bits 12..19: water-column depth in whole blocks (MmsWaterQuadCodec).
     depth = float((q.w >> 12u) & 255u);
+    // word3 bit 20: the face touches glass or ice and sits inside its cell.
+    inset = ((q.w >> 20u) & 1u) != 0u;
     flags = vec4(surface, falling, source, flow);
 }
 
@@ -124,8 +126,9 @@ void main() {
     bool sheet = false;
     float flowCode;
     float depth;
+    bool inset = false; // per-vertex meshes are inset on the CPU
     if (aOrigin.w < -2.5) {
-        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet, depth);
+        pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet, depth, inset);
         pos += aOrigin.xyz;
         flowCode = flagsIn.w;
     } else {
@@ -187,6 +190,9 @@ void main() {
             pos.y = max(target, blockBase + normalizedHeight * MIN_WATER_SURFACE);
         }
     }
+
+    // MmsWaterQuadCodec.INSET: behind the glass or ice face it touches, never coplanar with it.
+    if (inset) pos -= nrmIn * (1.0 / 64.0);
 
     gl_Position = uProjection * uView * vec4(pos, 1.0);
     vWorldPos = pos;

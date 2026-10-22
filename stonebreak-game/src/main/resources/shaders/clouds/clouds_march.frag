@@ -9,7 +9,7 @@
 //    to ride over, and reaches down to the ground but never into it;
 //  - a vertical profile per type: cumulus have flat bases and domed tops,
 //    stratus are thin sheets, nimbostratus thick decks with ragged undersides,
-//    and cumulonimbus are towers that spread into a flat anvil at the top;
+//    and cumulonimbus are towers with near-vertical walls and flattened tops;
 //  - 3D Perlin-Worley noise breaks the body into billows, and finer Worley
 //    noise frays its edges: wisps at the base, cauliflower at the top.
 // Lighting is a short march toward the sun (Beer-Lambert), a two-lobe

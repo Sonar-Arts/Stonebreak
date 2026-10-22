@@ -7,8 +7,14 @@
 //     color' = T * color + cloud
 // at the surface's UNCHANGED alpha gives exactly
 //     cloud + T * (alpha * color + (1 - alpha) * scene)
-// — the surface composited behind the cloud. Set by CloudsInFront (Java).
+// — the surface composited behind the cloud. Only the cloud nearer than the
+// surface is in front of it: the buffer holds every cloud along the ray, and
+// compositing cloud lying BEHIND a window or lake in front of it drew the cloud
+// over the glass and water. The march's cloud distance (clouds_march.frag's
+// second output) says which side of the surface the cloud is on. Set by
+// CloudsInFront (Java).
 uniform sampler2D u_cloudBuffer;
+uniform sampler2D u_cloudDistanceBuffer; // NO_CLOUD (-1) / OCCLUDED (-2) where none
 uniform bool u_cloudsInFront;       // a cloud buffer is bound for this pass
 uniform vec4 u_cloudViewport;       // x, y, width, height of the scene
 uniform float u_cloudSlabBottom;
@@ -28,6 +34,12 @@ vec3 behindClouds(vec3 color, vec3 eye, vec3 pos) {
     } else if (eye.y > u_cloudSlabTop) {
         if (dy >= -1e-5 || d * dy > u_cloudSlabTop - eye.y) return color;
     }
-    vec4 cloud = texture(u_cloudBuffer, (gl_FragCoord.xy - u_cloudViewport.xy) / u_cloudViewport.zw);
-    return color * cloud.a + cloud.rgb;
+    vec2 uv = (gl_FragCoord.xy - u_cloudViewport.xy) / u_cloudViewport.zw;
+    float cloudDist = texture(u_cloudDistanceBuffer, uv).r;
+    if (cloudDist < 0.0) return color;
+    // Soft across a few percent of the distance, so a cloud wrapped around the
+    // surface fades from in front to behind instead of snapping per pixel.
+    float inFront = 1.0 - smoothstep(d * 0.95, d * 1.05, cloudDist);
+    vec4 cloud = texture(u_cloudBuffer, uv);
+    return mix(color, color * cloud.a + cloud.rgb, inFront);
 }

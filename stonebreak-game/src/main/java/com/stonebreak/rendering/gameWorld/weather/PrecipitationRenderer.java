@@ -5,7 +5,9 @@ import com.openmason.engine.rendering.postfx.FullscreenQuad;
 import com.openmason.engine.rendering.postfx.RenderTarget;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
+import com.stonebreak.rendering.gameWorld.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.clouds.CloudUniforms;
+import com.stonebreak.rendering.gameWorld.clouds.CloudsInFront;
 import com.stonebreak.world.World;
 import com.stonebreak.world.weather.WeatherSurface;
 import org.joml.Matrix4f;
@@ -151,15 +153,16 @@ public final class PrecipitationRenderer {
 
     /**
      * Draws this frame's rain and snow over the bound framebuffer (depth-tested,
-     * no depth writes). {@code clouds} must hold this frame's cloud field
-     * ({@code CloudRenderer.mapsReady()}).
+     * no depth writes), behind any cloud drawn nearer than a lane. {@code clouds}
+     * must hold this frame's cloud field ({@code CloudRenderer.mapsReady()}).
      *
      * @param snow share of the ground around the camera where it snows (far lanes)
      * @param fog  the rain fog between the eye and each lane
      */
-    public void render(World world, CloudUniforms clouds, PrecipitationFog fog, Matrix4f projection, Matrix4f view,
-                       Vector3f cameraWorldPos, float time, float ambientLight, float snow) {
-        if (world == null || clouds == null) return;
+    public void render(World world, CloudRenderer cloudRenderer, PrecipitationFog fog, Matrix4f projection,
+                       Matrix4f view, Vector3f cameraWorldPos, float time, float ambientLight, float snow) {
+        if (world == null || cloudRenderer == null) return;
+        CloudUniforms clouds = cloudRenderer.uniforms();
 
         int previousFbo = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING);
         int previousReadFbo = glGetInteger(GL_READ_FRAMEBUFFER_BINDING);
@@ -208,6 +211,8 @@ public final class PrecipitationRenderer {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         shader.bind();
+        CloudsInFront.bindSampler(shader);
+        CloudsInFront.Bindings previousClouds = CloudsInFront.enable(shader, cloudRenderer);
         shader.setVec2("u_cloudOffset", clouds.cloudOffset());
         fog.applyTo(shader);
         shader.setMat4("uProjection", projection);
@@ -230,6 +235,7 @@ public final class PrecipitationRenderer {
             glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, ring.grid() * ring.grid());
         }
         glBindVertexArray(0);
+        CloudsInFront.disable(shader, previousClouds);
         shader.unbind();
 
         glBindTexture(GL_TEXTURE_2D, previousLanes);

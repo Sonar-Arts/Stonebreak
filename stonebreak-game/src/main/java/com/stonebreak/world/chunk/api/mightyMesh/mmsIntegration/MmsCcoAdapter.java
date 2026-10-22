@@ -767,6 +767,8 @@ public class MmsCcoAdapter {
                 columnDepth = waterColumnDepth(lx, ly, lz, chunkData);
             }
 
+            boolean inset = isInsetWaterFace(lx, ly, lz, face, chunkData);
+
             // Generate water-specific geometry with variable heights
             float[] vertices = waterGenerator.generateFaceVertices(face, worldX, worldY, worldZ);
             float[] normals = waterGenerator.generateFaceNormals(face);
@@ -787,20 +789,23 @@ public class MmsCcoAdapter {
                             MmsWaterQuadCodec.word0(qx, blockY, qz, face, fallingFlag > 0.5f, sourceFlag > 0.5f),
                             MmsWaterQuadCodec.word1(blockY, vertices[1], vertices[4], vertices[7], vertices[10]),
                             MmsWaterQuadCodec.word2(waterFlags[0], waterFlags[1], waterFlags[2], waterFlags[3]),
-                            MmsWaterQuadCodec.word3(1, 1, riverFlow, columnDepth))) {
+                            MmsWaterQuadCodec.word3(1, 1, riverFlow, columnDepth, inset))) {
                     continue;
                 }
                 // Out of range / full: fall back to the per-vertex water mesh below.
             }
 
             // Add face to builder
+            float pull = inset ? MmsWaterQuadCodec.INSET : 0f;
             builder.beginFace();
             for (int i = 0; i < 4; i++) {
                 int vIdx = i * 3;
                 int tIdx = i * 2;
 
                 builder.addVertex(
-                    vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
+                    vertices[vIdx] - normals[vIdx] * pull,
+                    vertices[vIdx + 1] - normals[vIdx + 1] * pull,
+                    vertices[vIdx + 2] - normals[vIdx + 2] * pull,
                     texCoords[tIdx], texCoords[tIdx + 1],
                     normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
                     // The per-vertex flags are packed as [0,1] bytes, so the
@@ -902,6 +907,12 @@ public class MmsCcoAdapter {
         return depth;
     }
 
+    /** Whether a water face that renders touches a translucent block, and so is inset into its cell. */
+    private boolean isInsetWaterFace(int lx, int ly, int lz, int face, CcoChunkData chunkData) {
+        return getAdjacentBlock(lx + getFaceOffsetX(face), ly + getFaceOffsetY(face), lz + getFaceOffsetZ(face),
+                chunkData).isTranslucent();
+    }
+
     private boolean shouldRenderWaterFace(int lx, int ly, int lz, int face, CcoChunkData chunkData) {
         // Get adjacent block coordinates
         int adjX = lx + getFaceOffsetX(face);
@@ -933,11 +944,11 @@ public class MmsCcoAdapter {
             // Never render faces between water blocks - they blend seamlessly
             return false;
         } else if (adjacentBlock.isTranslucent()) {
-            // Treat translucent cubes (ice, glass) as opaque from water's POV:
-            // both surfaces are drawn in the blended pass without depth
-            // writes, so a water face coplanar with the block's face would
-            // only z-fight with it.
-            return false;
+            // Glass and ice are see-through, so the water behind them must have
+            // a surface there (culling it made water vanish behind glass). The
+            // face is inset into the water cell (isInsetWaterFace) so it never
+            // z-fights the block's own coplanar face.
+            return true;
         } else {
             // Water vs non-water: render top face when adjacent to opaque blocks,
             // other faces when transparent (but not water)

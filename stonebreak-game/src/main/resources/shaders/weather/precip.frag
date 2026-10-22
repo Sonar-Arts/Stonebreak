@@ -4,9 +4,11 @@
 // scrolling down the world-height axis. No textures. A streak narrower than a
 // pixel is drawn a pixel wide at proportionally lower alpha, so distant rain
 // keeps its brightness instead of flickering out, and fades into the rain fog
-// between it and the eye like everything else.
+// between it and the eye like everything else. Cloud nearer than the lane
+// hides it (clouds_in_front.glsl): rain drew over the clouds before.
 
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/clouds/clouds_in_front.glsl"
 
 in vec2 vUv;
 in vec2 vParams;
@@ -14,7 +16,10 @@ in vec2 vSize;
 in float vSeed;
 in float vDist;
 in float vEyeDist;
+in vec3 vPos;
 out vec4 fragColor;
+
+uniform vec3 uCameraPos;    // render space
 
 uniform float uTime;
 uniform float uAmbient;
@@ -48,5 +53,5 @@ void main() {
     if (alpha < 0.01) discard;
 
     vec3 color = mix(vec3(0.62, 0.68, 0.78), vec3(0.96), snow) * mix(0.25, 1.0, clamp(uAmbient, 0.0, 1.0));
-    fragColor = vec4(color, min(alpha, 1.0));
+    fragColor = vec4(behindClouds(color, uCameraPos, vPos), min(alpha, 1.0));
 }

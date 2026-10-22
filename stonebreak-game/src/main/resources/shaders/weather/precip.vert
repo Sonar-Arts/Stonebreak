@@ -24,6 +24,7 @@ out vec2 vSize;      // quad width, pixel width (blocks) at this point
 out float vSeed;
 out float vDist;     // horizontal distance to the camera
 out float vEyeDist;  // distance to the camera
+out vec3 vPos;       // render space
 
 // Pixels a streak is widened to cover, at least.
 const float MIN_PIXELS = 1.5;
@@ -36,6 +37,7 @@ void collapse() {
     vSeed = 0.0;
     vDist = 0.0;
     vEyeDist = 0.0;
+    vPos = vec3(0.0);
 }
 
 void main() {
@@ -61,5 +63,6 @@ void main() {
     vSeed = lane.seed;
     vDist = dist;
     vEyeDist = eyeDist;
+    vPos = vec3(xz.x, y, xz.y);
     gl_Position = uProjection * uView * vec4(xz.x, y, xz.y, 1.0);
 }

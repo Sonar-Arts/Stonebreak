@@ -155,9 +155,9 @@ public class WaterRenderer {
      * @param lodStamp          the batcher cycle stamp returned by this frame's
      *                          {@code FastLodRenderPass.render}
      * @param clouds            this frame's cloud-shadow uniforms
-     * @param cloudBuffer       the cloud buffer already composited over the
-     *                          scene this frame (alpha = transmittance), or 0
-     *                          when no clouds were drawn
+     * @param cloudBuffer       the clouds already composited over the scene
+     *                          this frame (CloudsInFront reads their buffer and
+     *                          cloud distances), or null when none apply
      * @param precipitationFog  rain and snow fog in front of the water
      */
     public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
@@ -168,7 +168,7 @@ public class WaterRenderer {
                        com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
                        int lodStamp,
                        com.stonebreak.rendering.gameWorld.clouds.CloudUniforms clouds,
-                       int cloudBuffer,
+                       com.stonebreak.rendering.gameWorld.clouds.CloudRenderer cloudBuffer,
                        com.stonebreak.rendering.gameWorld.weather.PrecipitationFog precipitationFog) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
@@ -209,7 +209,7 @@ public class WaterRenderer {
         // The clouds are already over the scene, so water blending on top would
         // paint over cloud lying in front of it (seen from above the clouds);
         // the shader composites itself behind that cloud instead.
-        int previousCloudTexture =
+        var previousCloudTexture =
                 com.stonebreak.rendering.gameWorld.clouds.CloudsInFront.enable(shader, cloudBuffer);
         shader.setUniform("uProjection", projection);
         shader.setUniform("uInvProjection", invProjection.set(projection).invert());

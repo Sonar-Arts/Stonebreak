@@ -461,23 +461,26 @@ public class WorldRenderer {
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
-                cloudRenderer.transmittanceTexture(), precipitationFog);
+                cloudRenderer, precipitationFog);
         checkGLError("After water pass");
+
+        if (!cameraUnderwater) {
+            // Rain and snow fall below the clouds and in front of them. Before
+            // glass and ice: those write depth, so rain drawn after them vanished
+            // behind every window; drawn first, it shows through them, tinted by
+            // them. (Rain in front of a pane takes the pane's faint tint too.)
+            if (cloudRenderer.mapsReady()) {
+                precipitationRenderer.render(world, cloudRenderer, precipitationFog, projectionMatrix,
+                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel, weatherEffects.snow());
+            }
+            checkGLError("After precipitation rendering");
+        }
 
         if (translucentAfterWater) {
             shaderProgram.bind();
             shaderProgram.setUniform("u_useTextureArray", true);
             renderTranslucentSolids(visibleChunks, cameraUnderwater);
             restoreGLStateAfterPasses();
-        }
-
-        if (!cameraUnderwater) {
-            // Rain and snow fall below the clouds and in front of them.
-            if (cloudRenderer.mapsReady()) {
-                precipitationRenderer.render(world, cloudRenderer.uniforms(), precipitationFog, projectionMatrix,
-                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel, weatherEffects.snow());
-            }
-            checkGLError("After precipitation rendering");
         }
 
         // Ability and player VFX go after the water pass: effects in front of water draw over it,
@@ -762,8 +765,8 @@ public class WorldRenderer {
      */
     private void renderTranslucentSolids(List<Chunk> visibleChunks, boolean cameraUnderwater) {
         shaderProgram.bind();
-        int previousCloudTexture = CloudsInFront.enable(
-                shaderProgram, cameraUnderwater ? 0 : cloudRenderer.transmittanceTexture());
+        CloudsInFront.Bindings previousCloudTexture = CloudsInFront.enable(
+                shaderProgram, cameraUnderwater ? null : cloudRenderer);
         renderTransparentPass(visibleChunks);
         shaderProgram.bind();
         CloudsInFront.disable(shaderProgram, previousCloudTexture);

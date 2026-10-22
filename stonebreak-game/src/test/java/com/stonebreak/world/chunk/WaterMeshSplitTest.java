@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>(11,11,2): SOURCE cell with a STONE wall to its east (12,11,2)</li>
  *   <li>(2,11,12)+(3,11,12): adjacent SOURCE pair (no face between them)</li>
  *   <li>(13,11,13): a worldgen river surface running in octant 5</li>
+ *   <li>(5,11,11): SOURCE cell with an ICE block to its east (6,11,11)</li>
  * </ul>
  */
 public class WaterMeshSplitTest {
@@ -82,6 +83,10 @@ public class WaterMeshSplitTest {
         chunk.setBlock(13, 11, 13, BlockType.WATER);
         chunk.getWaterLayer().set(13, 11, 13, ChunkWaterLayer.river(RIVER_OCTANT));
 
+        // Source with a translucent block to its east.
+        chunk.setBlock(5, 11, 11, BlockType.WATER);
+        chunk.setBlock(6, 11, 11, BlockType.ICE);
+
         world.setChunk(0, 0, chunk);
     }
 
@@ -112,6 +117,33 @@ public class WaterMeshSplitTest {
         // The water mesh must carry the 7/8-height source surface.
         assertTrue(anyVertexAtHeight(result.waterMesh(), 11 + MAX_WATER_HEIGHT),
                 "water mesh must contain source-surface vertices at y=11.875");
+    }
+
+    /**
+     * Water seen through glass or ice must have a surface there: the face
+     * against the translucent block is drawn (culling it made the water vanish
+     * behind glass), pulled {@link MmsWaterQuadCodec#INSET} into the water cell
+     * so it never z-fights the block's own face.
+     */
+    @Test
+    void waterFaceAgainstTranslucentBlockIsDrawnInset() {
+        MmsMeshData water = buildMesh().waterMesh();
+        float[] pos = water.getVertexPositions();
+        float insetX = 6 - com.openmason.engine.voxel.mms.mmsCore.MmsWaterQuadCodec.INSET;
+        boolean found = false;
+        for (int q = 0; q + 4 <= water.getVertexCount(); q += 4) {
+            float cz = quadCenter(pos, q, 2);
+            float cy = quadCenter(pos, q, 1);
+            if (cz < 11 || cz > 12 || cy < 11 || cy > 12) continue;
+            boolean inset = true, onIce = true;
+            for (int v = q; v < q + 4; v++) {
+                inset &= Math.abs(pos[v * 3] - insetX) < 1e-4f;
+                onIce &= Math.abs(pos[v * 3] - 6f) < 1e-4f;
+            }
+            found |= inset;
+            assertFalse(onIce, "no water face may sit on the ice's own face plane x=6 (it would z-fight)");
+        }
+        assertTrue(found, "the water cell must emit its east face against the ice, at x=" + insetX);
     }
 
     @Test
@@ -342,6 +374,7 @@ public class WaterMeshSplitTest {
         chunk.setBlock(2, 11, 12, BlockType.AIR);
         chunk.setBlock(3, 11, 12, BlockType.AIR);
         chunk.setBlock(13, 11, 13, BlockType.AIR);
+        chunk.setBlock(5, 11, 11, BlockType.AIR);
 
         ChunkMeshResult after = buildMesh();
         assertFalse(after.hasWaterMesh(),
