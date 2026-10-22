@@ -366,17 +366,29 @@ class BlockEditInventoryTest {
     }
 
     @Test
-    void anExpiredExemptPlacementRefundsNothing() {
+    void placementCostsABlockEvenWithCheatsAndCreativeSaveMode() {
+        // Saves default to gameMode 1 and /obtain needs cheats on; the client always pays for
+        // a placement, so a free one here left the replica full and the next sync (a toss,
+        // an /obtain) handed every placed block back.
         when(level.cheatsEnabled()).thenReturn(true);
         player.setGameMode(1);
-        chunksLoaded = false;
+        inv().setSlot(0, new ItemStack(BlockType.STONE, 10));
 
         edit(0, 64, 2, BlockType.STONE, BlockType.AIR);
-        for (int i = 0; i < 25; i++) {
-            tick();
-        }
 
-        assertEquals(0, inv().countOf(BlockType.STONE.getId()), "a free placement is not paid back");
+        assertEquals(9, inv().countOf(BlockType.STONE.getId()));
+    }
+
+    @Test
+    void placingTheLastHeldBlockRefillsTheSelectedSlot() {
+        // Mirrors Inventory.removeItem's auto-switch, so the next sync doesn't move the stack back.
+        inv().setSlot(0, new ItemStack(BlockType.STONE, 1));
+        inv().setSlot(12, new ItemStack(BlockType.STONE, 20));
+
+        edit(0, 64, 2, BlockType.STONE, BlockType.AIR);
+
+        assertEquals(20, inv().slot(0).getCount(), "the next stack moved into the held slot");
+        assertTrue(inv().slot(12).isEmpty());
     }
 
     @Test

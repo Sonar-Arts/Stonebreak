@@ -219,18 +219,42 @@ public final class ServerInventory {
         Item item = held.getItem();
         String state = held.getState();
         held.decrementCount(1);
-        if (!held.isEmpty()) {
-            return true;
+        if (held.isEmpty()) {
+            refillSelected(item, state);
         }
+        return true;
+    }
+
+    /**
+     * Debits one placed block's {@code itemId} ({@link #debitStack}: the selected slot first)
+     * and, when that empties the selected slot, refills it with the next stack of the same
+     * kind — the auto-switch {@code Inventory.removeItem} predicts when {@code BlockPlacer}
+     * places, so the mirror's slot layout converges. Returns the removed unit WITH its state,
+     * or null when nothing was removed.
+     */
+    public ItemStack debitPlaced(int itemId) {
+        ItemStack held = slots[selectedHotbarSlot];
+        boolean fromHeld = !held.isEmpty() && held.getBlockTypeId() == itemId;
+        ItemStack taken = debitStack(itemId, 1);
+        if (taken != null && fromHeld && slots[selectedHotbarSlot].isEmpty()) {
+            refillSelected(taken.getItem(), taken.getState());
+        }
+        return taken;
+    }
+
+    /**
+     * Moves the first stack of the given kind (hotbar first, then main) into the emptied
+     * selected slot — the client's auto-switch order.
+     */
+    private void refillSelected(Item item, String state) {
         slots[selectedHotbarSlot] = ItemStackStateCodec.empty();
         for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (i != selectedHotbarSlot && sameKind(slots[i], item, state)) {
                 slots[selectedHotbarSlot] = slots[i];
                 slots[i] = ItemStackStateCodec.empty();
-                break;
+                return;
             }
         }
-        return true;
     }
 
     /** k-th slot in debit order: the selected hotbar slot, the other hotbar slots, then main. */
