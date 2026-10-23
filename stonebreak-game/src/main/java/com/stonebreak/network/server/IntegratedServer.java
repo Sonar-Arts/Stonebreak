@@ -307,7 +307,7 @@ public final class IntegratedServer {
     private void dispatch(ServerInboundQueue.Envelope e) {
         switch (e.kind()) {
             case CONNECT -> handleConnect(e.connection());
-            case PACKET -> handlePacket(e.connection(), e.packet());
+            case PACKET -> handlePacket(e.connection(), e.packet(), e.receivedNanos());
             case DISCONNECT -> handleDisconnect(e.connection());
         }
     }
@@ -319,7 +319,7 @@ public final class IntegratedServer {
         System.out.println("[SERVER] Connection opened, provisional id " + id);
     }
 
-    private void handlePacket(ServerConnection conn, Packet packet) {
+    private void handlePacket(ServerConnection conn, Packet packet, long receivedNs) {
         ServerPlayer sp = conn.attachment();
         if (sp == null) {
             return;
@@ -333,10 +333,12 @@ public final class IntegratedServer {
             }
             return; // ignore anything else until the handshake is accepted
         }
-        routePlay(sp, packet);
+        routePlay(sp, packet, receivedNs);
     }
 
-    private void routePlay(ServerPlayer sp, Packet packet) {
+    /** {@code receivedNs}: when the packet arrived on the event loop — break timing measures
+     *  the start→finish interval with it (issue #333). */
+    private void routePlay(ServerPlayer sp, Packet packet, long receivedNs) {
         // A numbered intent is recorded on arrival, whatever its handler then decides — every
         // sync built from here on reflects it, so the client may stop skipping syncs older
         // than it. Handlers that debit, refuse or queue all act within this dispatch.
@@ -344,7 +346,9 @@ public final class IntegratedServer {
             sp.recordActionSeq(intent.seq());
         }
         switch (packet) {
-            case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx);
+            case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx, receivedNs);
+            case com.stonebreak.network.packet.world.BlockBreakStartC2S bs ->
+                blockHandler.handleBreakStart(sp, bs, receivedNs);
             case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
             case ContainerActionC2S ca -> playerHandler.handleContainerAction(sp, ca, ctx);
             case com.stonebreak.network.packet.world.BlockToggleC2S bt -> blockHandler.handleBlockToggle(sp, bt, ctx);

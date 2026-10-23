@@ -7,6 +7,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
+import com.stonebreak.network.server.ServerInventory;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
 import com.stonebreak.world.World;
@@ -53,13 +54,39 @@ public final class ServerBlockHandler {
         final BlockChangeC2S change;
         /** What the placement took when it was validated — refunded exactly on expiry. */
         final PlacementDebit debit;
+        /** When the edit arrived — a break waiting for its chunk is timed from this (#333). */
+        final long receivedNs;
+        /** The break timing already passed (a deferred break that then met an unloaded chunk). */
+        final boolean timed;
         int ticksLeft = RETRY_TTL_TICKS;
-        PendingEdit(ServerPlayer sp, BlockChangeC2S change, PlacementDebit debit) {
+        PendingEdit(ServerPlayer sp, BlockChangeC2S change, PlacementDebit debit, long receivedNs,
+                    boolean timed) {
             this.sp = sp;
             this.change = change;
             this.debit = debit;
+            this.receivedNs = receivedNs;
+            this.timed = timed;
         }
     }
+
+    /**
+     * Slack a break finish may arrive before the server's own clock says the block broke
+     * (issue #333): frame quantisation and network jitter between the start and the finish.
+     * A finish earlier than this waits instead of being refused.
+     */
+    static final long BREAK_TOLERANCE_NS = 100_000_000L;
+    /** Breaks one player may have waiting at once; more early finishes than this are refused. */
+    static final int MAX_DEFERRED_BREAKS = 4;
+
+    /** A break whose finish arrived before the block would really have broken: it applies at
+     *  {@code dueNs}, exactly as if it had arrived then. */
+    private record DeferredBreak(ServerPlayer sp, BlockChangeC2S change, long dueNs) {}
+
+    /** Breaks waiting for their due time, in arrival order. */
+    private final java.util.ArrayDeque<DeferredBreak> deferredBreaks = new java.util.ArrayDeque<>();
+
+    /** How {@link #timeBreak} decided. */
+    private enum BreakTiming { GO, WAIT, REFUSE }
 
     /** Snow-layer changes buffered this tick, per section — flushed as {@code BlockMetaS2C}. */
     private final Map<Long, SectionBatch> pendingSnowByTick = new LinkedHashMap<>();
@@ -87,11 +114,18 @@ public final class ServerBlockHandler {
         pendingWaterByTick.clear();
         pendingStateEchoes.clear();
         retryQueue.clear();
+        deferredBreaks.clear();
     }
 
     // ─── Inbound (client edit) ───────────────────────────────────────────────────
 
     public void handleBlockChange(ServerPlayer sp, BlockChangeC2S c, ServerWorldContext ctx) {
+        handleBlockChange(sp, c, ctx, System.nanoTime());
+    }
+
+    /** As {@link #handleBlockChange(ServerPlayer, BlockChangeC2S, ServerWorldContext)}, with
+     *  the time the packet arrived ({@code Envelope.receivedNanos}) for break timing. */
+    public void handleBlockChange(ServerPlayer sp, BlockChangeC2S c, ServerWorldContext ctx, long receivedNs) {
         World world = ctx.world();
         if (world == null) {
             return;
@@ -105,12 +139,23 @@ public final class ServerBlockHandler {
         // cleanup and the scoop all read it. An unloaded chunk reads AIR here, which never
         // conflicts; such an edit waits in the retry queue and is checked again once loaded.
         BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
-        if (chunkLoaded(world, c.x(), c.z()) && conflictsWithServerCell(c, incoming, serverPrev)) {
+        boolean loaded = chunkLoaded(world, c.x(), c.z());
+        if (loaded && conflictsWithServerCell(c, incoming, serverPrev)) {
             // Someone else changed the cell first: nothing is taken, the placer sees the real
             // block, and the sync undoes whatever their mirror spent on the edit.
             sendRevert(sp, c.x(), c.y(), c.z(), ctx);
             syncInventory(sp);
             return;
+        }
+        if (loaded) {
+            BreakTiming timing = timeBreak(sp, c, incoming, serverPrev, receivedNs, ctx);
+            if (timing == BreakTiming.REFUSE) {
+                sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+                return;
+            }
+            if (timing == BreakTiming.WAIT) {
+                return; // applies when due (tick → drainDeferredBreaks)
+            }
         }
         // Placement debits the server-owned inventory (issue #334): a non-air edit costs one
         // of that block unless the SERVER's cheats flag is on AND the player's accepted game
@@ -133,7 +178,7 @@ public final class ServerBlockHandler {
             // so it's a load race, not garbage). Kick off the load and retry for a bounded
             // window; expiry reverts the originator instead of silently diverging.
             world.getChunkAt(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
-            retryQueue.add(new PendingEdit(sp, c, debit));
+            retryQueue.add(new PendingEdit(sp, c, debit, receivedNs, loaded));
             return;
         }
         completeEdit(sp, c, incoming, serverPrev, scoop, debit, world, ctx);
@@ -160,6 +205,133 @@ public final class ServerBlockHandler {
             return false;
         }
         return clientPrev != serverPrev;
+    }
+
+    /**
+     * C2S: mining started on a block (issue #333) — the first half of a break, timed against
+     * the finish ({@link #timeBreak}). Out-of-reach starts, and starts from a player that has
+     * not reported a position yet, are ignored: their finish then has no start and is refused.
+     */
+    public void handleBreakStart(ServerPlayer sp, com.stonebreak.network.packet.world.BlockBreakStartC2S s,
+                                 long receivedNs) {
+        if (s.y() < 0 || s.y() >= WorldConfiguration.WORLD_HEIGHT || !inReach(sp, s.x(), s.y(), s.z())) {
+            return;
+        }
+        sp.startBreak(s.x(), s.y(), s.z(), receivedNs);
+    }
+
+    /**
+     * Server-side break timing (issue #333): a break of a block that takes time to mine needs a
+     * {@code BlockBreakStartC2S} for that cell, and the finish must arrive no earlier than the
+     * block's break time ({@link ToolMiningRules#breakSeconds} with the held tool the server
+     * knows) after it, less {@link #BREAK_TOLERANCE_NS}. An earlier finish is not refused — it
+     * WAITs until the block would really have broken, as a vanilla server does — so jitter
+     * never reverts an honest break, and a fast client gains nothing: breaks are sequential
+     * ({@link ServerPlayer#startBreak}) and at most {@link #MAX_DEFERRED_BREAKS} may wait.
+     *
+     * <p>Not timed: placements, fluids (scoops, the air half of a pour), a cell that is already
+     * air (a no-op break), blocks that break instantly, and creative players on a server with
+     * cheats on (the placement-debit exemption). An unbreakable block is refused.
+     */
+    private BreakTiming timeBreak(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType serverPrev,
+                                  long receivedNs, ServerWorldContext ctx) {
+        if (incoming != BlockType.AIR || serverPrev == BlockType.AIR || serverPrev == BlockType.WATER
+                || placementDebitExempt(sp, ctx)) {
+            return BreakTiming.GO;
+        }
+        if (!serverPrev.isBreakable()) {
+            return BreakTiming.REFUSE;
+        }
+        ServerInventory inv = sp.inventory();
+        float seconds = com.stonebreak.items.ToolMiningRules.breakSeconds(
+                inv.slot(inv.selectedHotbarSlot()), serverPrev);
+        if (Float.isNaN(seconds) || Float.isInfinite(seconds)) {
+            return BreakTiming.REFUSE;
+        }
+        if (seconds <= 0f) {
+            return BreakTiming.GO;
+        }
+        if (!sp.isBreaking(c.x(), c.y(), c.z())) {
+            return BreakTiming.REFUSE; // no start for this cell: the client never mined it
+        }
+        long dueNs = sp.breakStartNs() + (long) (seconds * 1_000_000_000d) - BREAK_TOLERANCE_NS;
+        if (receivedNs >= dueNs) {
+            sp.finishBreak(receivedNs);
+            return BreakTiming.GO;
+        }
+        if (deferredBreaksOf(sp) >= MAX_DEFERRED_BREAKS) {
+            sp.finishBreak(dueNs);
+            return BreakTiming.REFUSE;
+        }
+        deferredBreaks.add(new DeferredBreak(sp, c, dueNs));
+        sp.finishBreak(dueNs);
+        return BreakTiming.WAIT;
+    }
+
+    private int deferredBreaksOf(ServerPlayer sp) {
+        int n = 0;
+        for (DeferredBreak d : deferredBreaks) {
+            if (d.sp() == sp) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * Applies the breaks whose time has come, as if their finish arrived now: the cell is
+     * checked again (someone may have changed it while it waited), and a chunk that unloaded
+     * meanwhile sends the edit through the retry queue. A player who left drops theirs.
+     */
+    private void drainDeferredBreaks(ServerWorldContext ctx, long nowNs) {
+        if (deferredBreaks.isEmpty()) {
+            return;
+        }
+        World world = ctx.world();
+        if (world == null) {
+            deferredBreaks.clear();
+            return;
+        }
+        java.util.Collection<ServerPlayer> online = ctx.players();
+        int n = deferredBreaks.size();
+        for (int i = 0; i < n; i++) {
+            DeferredBreak d = deferredBreaks.poll();
+            if (d == null) {
+                break;
+            }
+            if (!online.contains(d.sp())) {
+                continue;
+            }
+            if (d.dueNs() > nowNs) {
+                deferredBreaks.add(d);
+                continue;
+            }
+            BlockChangeC2S c = d.change();
+            BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
+            if (!chunkLoaded(world, c.x(), c.z())) {
+                world.getChunkAt(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
+                retryQueue.add(new PendingEdit(d.sp(), c, PlacementDebit.NONE, d.dueNs(), true));
+            } else if (conflictsWithServerCell(c, BlockType.AIR, serverPrev)) {
+                sendRevert(d.sp(), c.x(), c.y(), c.z(), ctx);
+            } else if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
+                completeEdit(d.sp(), c, BlockType.AIR, serverPrev, false, PlacementDebit.NONE, world, ctx);
+            }
+        }
+    }
+
+    /**
+     * Whether {@code (x, y, z)} is within reach of the player's last reported position. A player
+     * that has not reported one yet reaches nothing (issue #333): its edits would otherwise be
+     * accepted at any coordinate, and start chunk generation anywhere through the retry queue.
+     */
+    private static boolean inReach(ServerPlayer sp, int x, int y, int z) {
+        if (sp.lastStateNs() == 0L) {
+            return false;
+        }
+        float dx = (x + 0.5f) - sp.x();
+        float dy = (y + 0.5f) - sp.y();
+        float dz = (z + 0.5f) - sp.z();
+        return dx * dx + dy * dy + dz * dz <= MAX_REACH_SQ;
     }
 
     /**
@@ -552,15 +724,10 @@ public final class ServerBlockHandler {
         if (layers < 0 || layers > 8 || s.y() < 0 || s.y() >= WorldConfiguration.WORLD_HEIGHT) {
             return;
         }
-        if (sp.lastStateNs() != 0L) {
-            float dx = (s.x() + 0.5f) - sp.x();
-            float dy = (s.y() + 0.5f) - sp.y();
-            float dz = (s.z() + 0.5f) - sp.z();
-            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
-                sendSnowRevert(sp, s.x(), s.y(), s.z(), world); // undo the client's prediction (#363)
-                syncInventory(sp); // ...and the SNOW its mirror spent on it
-                return;
-            }
+        if (!inReach(sp, s.x(), s.y(), s.z())) {
+            sendSnowRevert(sp, s.x(), s.y(), s.z(), world); // undo the client's prediction (#363)
+            syncInventory(sp); // ...and the SNOW its mirror spent on it
+            return;
         }
         if (layers == 0) {
             world.getSnowLayerManager().removeSnowLayers(s.x(), s.y(), s.z());
@@ -609,13 +776,11 @@ public final class ServerBlockHandler {
         if (t.y() < 0 || t.y() >= WorldConfiguration.WORLD_HEIGHT) {
             return;
         }
-        if (sp.lastStateNs() != 0L) {
-            float dx = (t.x() + 0.5f) - sp.x();
-            float dy = (t.y() + 0.5f) - sp.y();
-            float dz = (t.z() + 0.5f) - sp.z();
-            if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
-                return;
+        if (!inReach(sp, t.x(), t.y(), t.z())) {
+            if (world.getBlockAt(t.x(), t.y(), t.z()) == BlockType.LIMESTONE_STALAGMITE) {
+                syncInventory(sp); // the client already emptied its bucket on the growth
             }
+            return;
         }
         BlockType target = world.getBlockAt(t.x(), t.y(), t.z());
         if (target == BlockType.LIMESTONE_STALAGMITE) {
@@ -744,6 +909,19 @@ public final class ServerBlockHandler {
                 }
                 continue;
             }
+            if (!pe.timed && chunkLoaded(world, c.x(), c.z())) {
+                // The chunk was not loaded when the break arrived, so it is timed now — from
+                // its arrival, exactly as it would have been then (issue #333).
+                BreakTiming timing = timeBreak(pe.sp, c, incoming, serverPrev, pe.receivedNs, ctx);
+                if (timing == BreakTiming.REFUSE) {
+                    sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
+                    refund(pe.sp, pe.debit, ctx);
+                    continue;
+                }
+                if (timing == BreakTiming.WAIT) {
+                    continue; // now in deferredBreaks
+                }
+            }
             boolean scoop = isScoop(world, c, incoming, serverPrev);
             if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
                 completeEdit(pe.sp, c, incoming, serverPrev, scoop, pe.debit, world, ctx);
@@ -811,7 +989,13 @@ public final class ServerBlockHandler {
     // ─── Per-tick flush ──────────────────────────────────────────────────────────
 
     public void tick(ServerWorldContext ctx) {
+        tick(ctx, System.nanoTime());
+    }
+
+    /** {@link #tick(ServerWorldContext)} on an explicit clock (deferred breaks fall due by it). */
+    void tick(ServerWorldContext ctx, long nowNs) {
         simEditsThisTick = 0;
+        drainDeferredBreaks(ctx, nowNs);
         drainRetries(ctx);
         if (!pendingByTick.isEmpty()) {
             for (SectionBatch sb : pendingByTick.values()) {
@@ -954,13 +1138,7 @@ public final class ServerBlockHandler {
         if (BlockType.getById(c.blockTypeId() & 0xFFFF) == null) {
             return false;
         }
-        if (sp.lastStateNs() == 0L) {
-            return true; // no position reported yet — accept conservatively
-        }
-        float dx = (c.x() + 0.5f) - sp.x();
-        float dy = (c.y() + 0.5f) - sp.y();
-        float dz = (c.z() + 0.5f) - sp.z();
-        return (dx * dx + dy * dy + dz * dz) <= MAX_REACH_SQ;
+        return inReach(sp, c.x(), c.y(), c.z());
     }
 
     /**

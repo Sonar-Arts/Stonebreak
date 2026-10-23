@@ -291,6 +291,8 @@ class PacketRoundTripTest {
         assertEquals(new DropItemC2S(3, 5), viaRegistry(reg, PLAY, SERVERBOUND, new DropItemC2S(3, 5)));
         assertEquals(new com.stonebreak.network.packet.player.InventoryResyncC2S(),
             viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.player.InventoryResyncC2S()));
+        assertEquals(new com.stonebreak.network.packet.world.BlockBreakStartC2S(-7, 300, 12),
+            viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.world.BlockBreakStartC2S(-7, 300, 12)));
         assertEquals(new KeepAliveS2C(42L, 17), viaRegistry(reg, PLAY, CLIENTBOUND, new KeepAliveS2C(42L, 17)));
         assertEquals(new TimeSyncS2C(6000L, 1f, false), viaRegistry(reg, PLAY, CLIENTBOUND, new TimeSyncS2C(6000L, 1f, false)));
         assertEquals(new com.stonebreak.network.packet.world.CheatsSetC2S(true),

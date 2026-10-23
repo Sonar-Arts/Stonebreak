@@ -177,6 +177,14 @@ public final class MultiplayerSession {
         }
     }
 
+    /** Started mining a block (see {@code BlockBreakStartC2S}); no-op without a live session. */
+    public static void sendBreakStart(int x, int y, int z) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendBreakStart(x, y, z);
+        }
+    }
+
     /** Snow-layer intent (the increment-on-existing-snow case with no block change). */
     public static void sendSnowLayer(int x, int y, int z, int layers) {
         ClientWorldView c = getClient();

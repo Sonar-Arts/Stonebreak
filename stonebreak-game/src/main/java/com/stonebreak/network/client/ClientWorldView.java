@@ -685,6 +685,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** Mining started on a block (see {@code BlockBreakStartC2S}): the server times the break. */
+    public void sendBreakStart(int x, int y, int z) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.world.BlockBreakStartC2S(x, y, z), false);
+        }
+    }
+
     /** Snow-layer intent for a layer change with no block change (see {@code SnowLayerC2S}). */
     public void sendSnowLayer(int x, int y, int z, int layers) {
         ClientConnection conn = connection;

@@ -33,8 +33,9 @@ public final class ProtocolVersion {
      *  sent-record matches what the client holds (issue #363).
      *  13 = every inventory-predicting intent (BlockChangeC2S, DropItemC2S, SnowLayerC2S,
      *  BlockToggleC2S, ProjectileSpawnC2S, DeathDropC2S) carries a slot-intent seq that
-     *  InventorySyncS2C acknowledges, plus InventoryResyncC2S for a skipped stale sync. */
-    public static final int CURRENT = 13;
+     *  InventorySyncS2C acknowledges, plus InventoryResyncC2S for a skipped stale sync.
+     *  14 = BlockBreakStartC2S: breaks are a start/finish pair the server times (issue #333). */
+    public static final int CURRENT = 14;
 
     private ProtocolVersion() {}
 }

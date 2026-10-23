@@ -249,6 +249,42 @@ public final class ServerPlayer {
         return new com.stonebreak.network.packet.player.InventorySyncS2C(inventory.encode(), lastActionSeq);
     }
 
+    // ─── Break timing (issue #333) ─────────────────────────────────────────────
+    /** The block this player is mining ({@code BlockBreakStartC2S}); null when none. */
+    private com.openmason.engine.util.BlockPos breakTarget;
+    /** When mining {@link #breakTarget} started on the server's clock. */
+    private long breakStartNs;
+    /** Until when an earlier break that arrived early is still "being mined": breaks are
+     *  sequential, so the next block's clock cannot start before this. */
+    private long miningBusyUntilNs;
+
+    /**
+     * Mining started on {@code (x, y, z)} at arrival time {@code nowNs}. Its clock starts no
+     * earlier than the end of a break still waiting to complete — a player mines one block at
+     * a time, however early its finishes arrive.
+     */
+    public void startBreak(int x, int y, int z, long nowNs) {
+        breakTarget = new com.openmason.engine.util.BlockPos(x, y, z);
+        breakStartNs = Math.max(nowNs, miningBusyUntilNs);
+    }
+
+    /** Whether the player's current break is on {@code (x, y, z)}. */
+    public boolean isBreaking(int x, int y, int z) {
+        com.openmason.engine.util.BlockPos t = breakTarget;
+        return t != null && t.x() == x && t.y() == y && t.z() == z;
+    }
+
+    /** When the current break's clock started (valid while {@link #isBreaking}). */
+    public long breakStartNs() {
+        return breakStartNs;
+    }
+
+    /** The current break was finished; the next one's clock starts no earlier than {@code busyUntilNs}. */
+    public void finishBreak(long busyUntilNs) {
+        breakTarget = null;
+        miningBusyUntilNs = Math.max(miningBusyUntilNs, busyUntilNs);
+    }
+
     /** Notes an {@code InventoryResyncC2S}; answered by {@link #flushInventoryResync}. */
     public void requestInventoryResync() {
         inventoryResyncRequested = true;

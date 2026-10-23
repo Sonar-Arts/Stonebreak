@@ -19,21 +19,28 @@ public final class ServerInboundQueue {
 
     public enum Kind { CONNECT, PACKET, DISCONNECT }
 
-    /** One queued event. {@code packet} is set only for {@code PACKET}; {@code cause} only for {@code DISCONNECT}. */
-    public record Envelope(Kind kind, ServerConnection connection, Packet packet, Throwable cause) {}
+    /**
+     * One queued event. {@code packet} is set only for {@code PACKET}; {@code cause} only for
+     * {@code DISCONNECT}. {@code receivedNanos} is the {@link System#nanoTime()} at which the
+     * event-loop thread queued it — when the packet arrived, independent of how late the tick
+     * thread drains it (a hitch on the tick thread must not bunch the arrival times handlers
+     * measure intervals with).
+     */
+    public record Envelope(Kind kind, ServerConnection connection, Packet packet, Throwable cause,
+                           long receivedNanos) {}
 
     private final Queue<Envelope> queue = new ConcurrentLinkedQueue<>();
 
     public void postConnect(ServerConnection c) {
-        queue.add(new Envelope(Kind.CONNECT, c, null, null));
+        queue.add(new Envelope(Kind.CONNECT, c, null, null, System.nanoTime()));
     }
 
     public void postPacket(ServerConnection c, Packet p) {
-        queue.add(new Envelope(Kind.PACKET, c, p, null));
+        queue.add(new Envelope(Kind.PACKET, c, p, null, System.nanoTime()));
     }
 
     public void postDisconnect(ServerConnection c, Throwable cause) {
-        queue.add(new Envelope(Kind.DISCONNECT, c, null, cause));
+        queue.add(new Envelope(Kind.DISCONNECT, c, null, cause, System.nanoTime()));
     }
 
     /** Drain all currently-queued envelopes, isolating handler errors per envelope. */

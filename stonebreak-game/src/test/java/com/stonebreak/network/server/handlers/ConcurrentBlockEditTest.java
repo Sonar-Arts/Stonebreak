@@ -109,9 +109,19 @@ class ConcurrentBlockEditTest {
         drops.close();
     }
 
+    /** The server's arrival clock for the packets these tests send. */
+    private long now = 1_000_000_000L;
+
     private void edit(BlockType to, BlockType clientSaw) {
         handler.handleBlockChange(player,
-                new BlockChangeC2S(X, Y, Z, (short) to.getId(), (short) clientSaw.getId()), ctx);
+                new BlockChangeC2S(X, Y, Z, (short) to.getId(), (short) clientSaw.getId()), ctx, now);
+    }
+
+    /** A whole honest break (issue #333): the start, a minute of mining, then the finish. */
+    private void mine(BlockType clientSaw) {
+        handler.handleBreakStart(player, new com.stonebreak.network.packet.world.BlockBreakStartC2S(X, Y, Z), now);
+        now += 60_000_000_000L;
+        edit(BlockType.AIR, clientSaw);
     }
 
     private BlockType cell() {
@@ -187,7 +197,7 @@ class ConcurrentBlockEditTest {
     void twoPlayersBreakingOneBlockDropItOnce() {
         blocks.put(key(X, Y, Z), BlockType.STONE);
 
-        edit(BlockType.AIR, BlockType.STONE); // player A
+        mine(BlockType.STONE); // player A
         edit(BlockType.AIR, BlockType.STONE); // player B, who had not seen A's break yet
 
         assertEquals(BlockType.AIR, cell());
@@ -226,7 +236,7 @@ class ConcurrentBlockEditTest {
     void anUnknownPrevBreaksWhatTheServerHolds() {
         blocks.put(key(X, Y, Z), BlockType.STONE);
 
-        edit(BlockType.AIR, BlockType.AIR);
+        mine(BlockType.AIR);
 
         assertEquals(BlockType.AIR, cell());
         verifyDropsFor(BlockType.STONE, 1);
@@ -238,7 +248,7 @@ class ConcurrentBlockEditTest {
     void aFurnaceBrokenTwiceDropsItsContentsOnce() {
         blocks.put(key(X, Y, Z), BlockType.FURNACE);
 
-        edit(BlockType.AIR, BlockType.FURNACE);
+        mine(BlockType.FURNACE);
         edit(BlockType.AIR, BlockType.FURNACE);
 
         verify(furnaces, times(1)).onBlockBroken(any(), eq(X), eq(Y), eq(Z));
@@ -256,7 +266,7 @@ class ConcurrentBlockEditTest {
 
         blocks.put(key(X, Y, Z), BlockType.STONE);
         chunksLoaded = true;
-        handler.tick(ctx);
+        handler.tick(ctx, now);
 
         assertEquals(BlockType.STONE, cell(), "the waiting placement did not overwrite");
         assertEquals(5, player.inventory().slot(0).getCount(), "refunded exactly");
@@ -266,11 +276,11 @@ class ConcurrentBlockEditTest {
     @Test
     void aBreakWaitingForItsChunkDropsTheServersBlock() {
         chunksLoaded = false;
-        edit(BlockType.AIR, BlockType.STONE);
+        mine(BlockType.STONE);
 
         blocks.put(key(X, Y, Z), BlockType.STONE);
         chunksLoaded = true;
-        handler.tick(ctx);
+        handler.tick(ctx, now);
 
         assertEquals(BlockType.AIR, cell());
         verifyDropsFor(BlockType.STONE, 1);
