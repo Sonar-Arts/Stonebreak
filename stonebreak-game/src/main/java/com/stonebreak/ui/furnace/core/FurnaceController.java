@@ -111,6 +111,10 @@ public class FurnaceController {
      * the contents it knew about, so the displayed slots are dead: detach from them first, so no
      * later edit or action can reach that furnace again, then give the player back only the stack
      * on the cursor (inventory first, the world for what does not fit), and close.
+     *
+     * <p>An action still in flight at the break is refused at the dead cell, so its stack is
+     * still on the server's cursor; the close's DEPOSIT_CARRIED (sent whenever this screen sent
+     * anything) drains it, and that sync replaces the predicted mirror (issue #407).
      */
     void abandonBrokenFurnace() {
         this.state = null;

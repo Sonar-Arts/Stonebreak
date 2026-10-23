@@ -46,6 +46,7 @@ class ContainerActionServerTest {
     private ServerPlayer alice;
     private ServerPlayer bob;
     private ServerWorldContext ctx;
+    private World world;
     private FurnaceState furnace;
     private WorkbenchState workbench;
     private ContainerActionProcessor processor;
@@ -61,7 +62,7 @@ class ContainerActionServerTest {
         WorkbenchStateRegistry workbenchRegistry = new WorkbenchStateRegistry();
         workbench = workbenchRegistry.getOrCreate(BENCH_POS);
 
-        World world = mock(World.class);
+        world = mock(World.class);
         FurnaceStateRegistry furnaceRegistry = new FurnaceStateRegistry(null) {
             @Override
             public FurnaceState getOrCreate(BlockPos pos) {
@@ -307,5 +308,113 @@ class ContainerActionServerTest {
                 .addEntity(org.mockito.ArgumentMatchers.any());
         assertTrue(alice.inventory().carried().isEmpty(), "the stack went into a slot");
         assertEquals(8, alice.inventory().countOf(BlockType.STONE.getId()), "nothing was lost");
+    }
+
+    // ─── Container broken mid-edit (issue #407) ───────────────────────────────────
+
+    private static ContainerActionC2S benchAction(byte region, int slot, byte act, int seq) {
+        return new ContainerActionC2S(BENCH_POS.x(), BENCH_POS.y(), BENCH_POS.z(),
+                ContainerActionC2S.ContainerKind.WORKBENCH, region, (byte) slot,
+                ContainerActionC2S.Region.NONE, (byte) -1, act, (short) 0, false, seq);
+    }
+
+    private static ContainerActionC2S furnaceAction(byte region, int slot, byte act, int seq) {
+        return new ContainerActionC2S(POS.x(), POS.y(), POS.z(),
+                ContainerActionC2S.ContainerKind.FURNACE, region, (byte) slot,
+                ContainerActionC2S.Region.NONE, (byte) -1, act, (short) 0, false, seq);
+    }
+
+    /** What the server's break drops: the grid it holds at that moment. Then the cell is air. */
+    private int breakWorkbench() {
+        int dropped = 0;
+        for (ItemStack s : workbench.getSlots()) {
+            dropped += s.isEmpty() ? 0 : s.getCount();
+        }
+        when(world.getBlockAt(BENCH_POS.x(), BENCH_POS.y(), BENCH_POS.z())).thenReturn(BlockType.AIR);
+        return dropped;
+    }
+
+    @Test
+    void workbenchBrokenMidDragAccountsForEveryItemOnce() {
+        // Bob right-drags 8 wood across the grid; Alice breaks the table after his first two
+        // cells landed. The last two DROP_ONEs were in flight and arrive at a dead cell.
+        seedPlayer(bob, BlockType.WOOD.getId(), 8);
+        int seq = 0;
+        assertTrue(processor.apply(bob, benchAction(ContainerActionC2S.Region.PLAYER_HOTBAR, 0,
+                ContainerActionC2S.Action.TAKE_ALL, ++seq), ctx));
+        assertTrue(processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 0,
+                ContainerActionC2S.Action.DROP_ONE, ++seq), ctx));
+        assertTrue(processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 1,
+                ContainerActionC2S.Action.DROP_ONE, ++seq), ctx));
+
+        int dropped = breakWorkbench();
+
+        assertTrue(!processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 2,
+                ContainerActionC2S.Action.DROP_ONE, ++seq), ctx), "a dead table takes nothing");
+        assertTrue(!processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 3,
+                ContainerActionC2S.Action.DROP_ONE, ++seq), ctx));
+        assertEquals(6, bob.inventory().carried().getCount(),
+            "a refused deposit never left the server's cursor");
+
+        // The client abandons the screen: the cursor goes home, the dead grid cells are
+        // quick-moved (refused), and the close ends with DEPOSIT_CARRIED.
+        processor.apply(bob, benchAction(ContainerActionC2S.Region.PLAYER_HOTBAR, 0,
+                ContainerActionC2S.Action.PUT_ALL, ++seq), ctx);
+        processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 2,
+                ContainerActionC2S.Action.QUICK_MOVE, ++seq), ctx);
+        processor.apply(bob, benchAction(ContainerActionC2S.Region.PLAYER_HOTBAR, 0,
+                ContainerActionC2S.Action.DEPOSIT_CARRIED, ++seq), ctx);
+
+        assertEquals(2, dropped, "the break dropped exactly the cells the server applied");
+        assertTrue(bob.inventory().carried().isEmpty(), "nothing strands on the server cursor");
+        assertEquals(8, bob.inventory().countOf(BlockType.WOOD.getId()) + dropped,
+            "every item is either dropped or back in Bob's inventory, exactly once");
+    }
+
+    @Test
+    void workbenchBrokenWhileTakingFromTheGridNeverDuplicates() {
+        // The mirror case: Bob takes from the grid. The take that landed is his; the one that
+        // arrived after the break is refused, because the server dropped that cell.
+        seedPlayer(bob, 0, 0);
+        workbench.getSlots()[0] = new ItemStack(BlockType.WOOD, 3);
+        workbench.getSlots()[1] = new ItemStack(BlockType.WOOD, 5);
+        int seq = 0;
+        assertTrue(processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 0,
+                ContainerActionC2S.Action.TAKE_ALL, ++seq), ctx));
+
+        int dropped = breakWorkbench();
+
+        assertTrue(!processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 1,
+                ContainerActionC2S.Action.TAKE_ONE, ++seq), ctx));
+        // Abandon: the cursor "returns" to its grid origin (refused), then is deposited.
+        processor.apply(bob, benchAction(ContainerActionC2S.Region.WORKBENCH_GRID, 0,
+                ContainerActionC2S.Action.PUT_ALL, ++seq), ctx);
+        processor.apply(bob, benchAction(ContainerActionC2S.Region.PLAYER_HOTBAR, 0,
+                ContainerActionC2S.Action.DEPOSIT_CARRIED, ++seq), ctx);
+
+        assertEquals(5, dropped);
+        assertEquals(3, bob.inventory().countOf(BlockType.WOOD.getId()));
+        assertTrue(bob.inventory().carried().isEmpty());
+        assertEquals(8, bob.inventory().countOf(BlockType.WOOD.getId()) + dropped,
+            "no stack is both dropped and given back");
+    }
+
+    @Test
+    void furnaceBrokenWithAnUnappliedDepositGivesTheStackBack() {
+        seedPlayer(bob, BlockType.WOOD.getId(), 8);
+        int seq = 0;
+        assertTrue(processor.apply(bob, furnaceAction(ContainerActionC2S.Region.PLAYER_HOTBAR, 0,
+                ContainerActionC2S.Action.TAKE_ALL, ++seq), ctx));
+
+        when(world.getBlockAt(POS.x(), POS.y(), POS.z())).thenReturn(BlockType.AIR);
+
+        assertTrue(!processor.apply(bob, furnaceAction(ContainerActionC2S.Region.FURNACE_FUEL, 1,
+                ContainerActionC2S.Action.PUT_ALL, ++seq), ctx), "the fuel never reached a furnace");
+        processor.apply(bob, furnaceAction(ContainerActionC2S.Region.PLAYER_HOTBAR, 0,
+                ContainerActionC2S.Action.DEPOSIT_CARRIED, ++seq), ctx);
+
+        assertTrue(furnace.getFuel().isEmpty(), "nothing was written into the broken furnace");
+        assertTrue(bob.inventory().carried().isEmpty());
+        assertEquals(8, bob.inventory().countOf(BlockType.WOOD.getId()), "the stack is Bob's again");
     }
 }

@@ -76,6 +76,25 @@ class FurnaceAbandonTest {
     }
 
     @Test
+    void aFurnaceBrokenAfterAnUnansweredDepositEndsWithDepositCarried() {
+        // #407: a stack put into the furnace may not have reached the server before the break;
+        // the server then still carries it, so the abandon must ask for it back even though the
+        // client is not dragging anything.
+        inventory.setHotbarSlot(0, new ItemStack(STONE, 8));
+        controller.actions().send(ContainerActionC2S.Region.PLAYER_HOTBAR, (byte) 0,
+                ContainerActionC2S.Action.TAKE_ALL);
+        controller.actions().send(ContainerActionC2S.Region.FURNACE_ING, (byte) 0,
+                ContainerActionC2S.Action.PUT_ALL);
+        controller.setFurnaceAt(p -> false);
+
+        controller.update(0f);
+
+        assertFalse(controller.isVisible());
+        assertEquals(ContainerActionC2S.Action.DEPOSIT_CARRIED, sent.get(sent.size() - 1).action(),
+            "the close drains the server cursor last");
+    }
+
+    @Test
     void aStandingFurnaceIsKept() {
         controller.update(0f);
         assertTrue(controller.isVisible());

@@ -128,6 +128,11 @@ public class WorkbenchController extends InventoryController {
      * The table was broken (by another player) while this UI was open. The server already
      * dropped the grid it knew about, so the displayed grid is dead: detach from it, and give
      * the player back only what they were holding on the cursor.
+     *
+     * <p>Actions still in flight at the break are refused at the dead cell, so their items
+     * never left the server's inventory or cursor. The DEPOSIT_CARRIED that ends this return
+     * drains that cursor, and its sync (the newest ack) replaces the predicted mirror, so every
+     * item is either dropped by the break or back with the player, exactly once (issue #407).
      */
     private void abandonBrokenTable() {
         getCraftingManager().unbindInputSlots();
