@@ -37,6 +37,7 @@ public final class StateManager {
     private MButton musicEnabledButton;
     private MSlider crosshairSizeSlider;
     private MButton playerNameTagsButton;
+    private MButton pauseWorldButton;
     private MButton leafTransparencyButton;
     private MButton waterShaderButton;
     private MButton cloudsButton;
@@ -72,6 +73,7 @@ public final class StateManager {
             case CROSSHAIR_STYLE  -> crosshairStyleButton;
             case CROSSHAIR_SIZE   -> crosshairSizeSlider;
             case PLAYER_NAME_TAGS -> playerNameTagsButton;
+            case PAUSE_WORLD      -> pauseWorldButton;
             case LEAF_TRANSPARENCY -> leafTransparencyButton;
             case WATER_SHADER     -> waterShaderButton;
             case CLOUDS_ENABLED   -> cloudsButton;
@@ -237,6 +239,7 @@ public final class StateManager {
         crosshairSizeSlider.size(sw, sh);
 
         playerNameTagsButton = new MButton(playerNameTagsLabel()).size(bw, bh);
+        pauseWorldButton = new MButton(pauseWorldLabel()).size(bw, bh);
 
         leafTransparencyButton = new MButton(leafTransparencyLabel()).size(bw, bh);
         waterShaderButton = new MButton(waterShaderLabel()).size(bw, bh);
@@ -292,7 +295,7 @@ public final class StateManager {
         // Text on every settings widget tracks the UI scale (opt-in; persists across resizeWidgets).
         for (MWidget w : new MWidget[]{
                 applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
-                volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, leafTransparencyButton, waterShaderButton,
+                volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, pauseWorldButton, leafTransparencyButton, waterShaderButton,
                 cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
                 smoothLightingButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
                 lodQualityButton, vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
@@ -323,6 +326,7 @@ public final class StateManager {
         musicEnabledButton.size(bw, bh);
         crosshairSizeSlider.size(sw, sh);
         playerNameTagsButton.size(bw, bh);
+        pauseWorldButton.size(bw, bh);
         leafTransparencyButton.size(bw, bh);
         waterShaderButton.size(bw, bh);
         cloudsButton.size(bw, bh);
@@ -356,6 +360,7 @@ public final class StateManager {
                              Runnable musicEnabledAction,
                              java.util.function.Consumer<Float> crosshairSizeAction,
                              Runnable playerNameTagsAction,
+                             Runnable pauseWorldAction,
                              Runnable leafTransparencyAction, Runnable waterShaderAction,
                              Runnable cloudsAction, Runnable godRaysAction, Runnable shadowsAction,
                              Runnable shadowQualityAction,
@@ -380,6 +385,7 @@ public final class StateManager {
         musicEnabledButton.setOnClick(musicEnabledAction);
         crosshairSizeSlider.setOnChange(crosshairSizeAction);
         playerNameTagsButton.setOnClick(playerNameTagsAction);
+        pauseWorldButton.setOnClick(pauseWorldAction);
         leafTransparencyButton.setOnClick(leafTransparencyAction);
         waterShaderButton.setOnClick(waterShaderAction);
         cloudsButton.setOnClick(cloudsAction);
@@ -427,6 +433,7 @@ public final class StateManager {
         musicEnabledButton.setSelected(false);
         crosshairSizeSlider.setSelected(false);
         playerNameTagsButton.setSelected(false);
+        pauseWorldButton.setSelected(false);
         applyButton.setSelected(false);
         backButton.setSelected(false);
         leafTransparencyButton.setSelected(false);
@@ -494,6 +501,7 @@ public final class StateManager {
         crosshairStyleButton.setText("Crosshair: " + SettingsConfig.CROSSHAIR_STYLE_NAMES[selectedCrosshairStyleIndex]);
         musicEnabledButton.setText(musicEnabledLabel());
         playerNameTagsButton.setText(playerNameTagsLabel());
+        pauseWorldButton.setText(pauseWorldLabel());
         leafTransparencyButton.setText(leafTransparencyLabel());
         waterShaderButton.setText(waterShaderLabel());
         cloudsButton.setText(cloudsLabel());
@@ -517,6 +525,10 @@ public final class StateManager {
 
     private String playerNameTagsLabel() {
         return "Player Name Tags: " + (settings.getPlayerNameTagsEnabled() ? "ON" : "OFF");
+    }
+
+    private String pauseWorldLabel() {
+        return "Pause World (Singleplayer): " + (settings.getPauseSingleplayerWorld() ? "ON" : "OFF");
     }
 
     private String leafTransparencyLabel() {
@@ -638,6 +650,7 @@ public final class StateManager {
     public MButton getMusicEnabledButton() { return musicEnabledButton; }
     public MSlider getCrosshairSizeSlider() { return crosshairSizeSlider; }
     public MButton getPlayerNameTagsButton() { return playerNameTagsButton; }
+    public MButton getPauseWorldButton() { return pauseWorldButton; }
     public MButton getLeafTransparencyButton() { return leafTransparencyButton; }
     public MButton getWaterShaderButton() { return waterShaderButton; }
     public MButton getCloudsButton() { return cloudsButton; }

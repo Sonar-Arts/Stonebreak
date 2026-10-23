@@ -80,11 +80,8 @@ public final class JoinWorldScreen {
         s.setMultiplayerUsername(userText);
         s.saveSettings();
 
-        try {
-            MultiplayerSession.joinServer(hostText.trim(), port, userText.trim());
-            statusMessage = "Connecting to " + hostText + ":" + port + " ...";
-        } catch (Exception ex) {
-            statusMessage = "Connect failed: " + ex.getMessage();
-        }
+        statusMessage = "Connecting to " + hostText + ":" + port + " ...";
+        MultiplayerSession.joinServerAsync(hostText.trim(), port, userText.trim(),
+                reason -> statusMessage = "Connect failed: " + reason);
     }
 }

@@ -218,6 +218,32 @@ class PacketRoundTripTest {
         int[] tooMany = new int[(ChunkUnloadC2S.MAX_CHUNKS + 1) * 2];
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
             () -> roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(tooMany)));
+        ChunkUnloadC2S centred = roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(coords, 40, -7));
+        org.junit.jupiter.api.Assertions.assertEquals(40, centred.centerX());
+        org.junit.jupiter.api.Assertions.assertEquals(-7, centred.centerZ());
+    }
+
+    @Test
+    void chunkAckRoundTripsAndRejectsHostileValues() {
+        var ack = roundTrip(com.stonebreak.network.packet.world.ChunkAckC2S.CODEC,
+            new com.stonebreak.network.packet.world.ChunkAckC2S(12, 9.5f));
+        org.junit.jupiter.api.Assertions.assertEquals(12, ack.processed());
+        org.junit.jupiter.api.Assertions.assertEquals(9.5f, ack.desiredChunksPerTick());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> roundTrip(com.stonebreak.network.packet.world.ChunkAckC2S.CODEC,
+                new com.stonebreak.network.packet.world.ChunkAckC2S(-1, 1f)));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> roundTrip(com.stonebreak.network.packet.world.ChunkAckC2S.CODEC,
+                new com.stonebreak.network.packet.world.ChunkAckC2S(1, Float.NaN)));
+    }
+
+    @Test
+    void entityKnockbackRoundTrips() {
+        var kb = roundTrip(com.stonebreak.network.packet.entity.EntityKnockbackC2S.CODEC,
+            new com.stonebreak.network.packet.entity.EntityKnockbackC2S(7, 0.6f, -0.8f, 9f, 4f));
+        org.junit.jupiter.api.Assertions.assertEquals(7, kb.targetNetworkId());
+        org.junit.jupiter.api.Assertions.assertEquals(-0.8f, kb.dirZ());
+        org.junit.jupiter.api.Assertions.assertEquals(4f, kb.vertical());
     }
 
     @Test

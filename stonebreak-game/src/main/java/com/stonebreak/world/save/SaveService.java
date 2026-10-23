@@ -72,11 +72,23 @@ public class SaveService implements AutoCloseable {
     /** The autosave currently past its in-progress gate, so close() can join it before the final flush. */
     private volatile CompletableFuture<Void> inFlightAutoSave;
     private volatile WorldData worldData;
-    private volatile Player player;
     /**
-     * Runs work on the thread that owns {@link #player} (the client main thread for the local
-     * player). The autosave takes its player snapshot there so it never reads an inventory the
-     * main thread is sorting or editing (#356). Direct by default (tests, headless binds).
+     * Builds the player record this service persists as {@code player.json}. For an integrated
+     * server's host it reads the server's own {@code ServerPlayer} — the authoritative record,
+     * as Minecraft's integrated server writes the host's level.dat {@code Player} tag from the
+     * server-side player, never from the client's predicted copy.
+     */
+    @FunctionalInterface
+    public interface PlayerSource {
+        PlayerData snapshot(String worldName);
+    }
+
+    private volatile PlayerSource player;
+    /**
+     * Runs work on the thread that owns {@link #player} (the server tick thread for a host's
+     * server record; the client main thread for a bound client {@link Player}). Saves take the
+     * player snapshot there so they never read state that thread is mutating (#356). Direct by
+     * default (tests, headless binds).
      */
     private volatile java.util.concurrent.Executor playerOwner = Runnable::run;
     /** The autosave's player snapshot still waiting for the owner thread; close() cancels it. */
@@ -132,7 +144,7 @@ public class SaveService implements AutoCloseable {
 
     public void initialize(WorldData worldData, Player player, World world) {
         this.worldData = worldData;
-        this.player = player;
+        this.player = sourceOf(player);
         this.world = world;
         // Bind this service to the world so its chunk store persists through it, instead of
         // the chunk store reaching into the Game singleton's save service.
@@ -157,10 +169,23 @@ public class SaveService implements AutoCloseable {
      * player through it instead of reading it from the AutoSave thread (#356).
      */
     public void bindPlayer(Player player, java.util.concurrent.Executor owner) {
+        bindPlayerSource(sourceOf(player), owner);
+    }
+
+    /**
+     * Binds the record {@code player.json} is written from, snapshotted on {@code owner}'s
+     * thread. An integrated server binds its host's {@code ServerPlayer} here with its tick
+     * executor. No-op before the service is initialized.
+     */
+    public void bindPlayerSource(PlayerSource source, java.util.concurrent.Executor owner) {
         if (worldData != null) {
             this.playerOwner = Objects.requireNonNull(owner, "owner");
-            this.player = player;
+            this.player = source;
         }
+    }
+
+    private static PlayerSource sourceOf(Player player) {
+        return player == null ? null : worldName -> StateConverter.toPlayerData(player, worldName);
     }
 
     /**
@@ -240,9 +265,18 @@ public class SaveService implements AutoCloseable {
     }
 
     public void flushSavesBlocking(String reason) {
+        flushSavesBlocking(reason, false);
+    }
+
+    /**
+     * @param snapshotInline take the player snapshot on this thread — the close flush: by then
+     *                       the owner thread has stopped (server teardown) or is this one (it
+     *                       could not run the snapshot while blocked here)
+     */
+    private void flushSavesBlocking(String reason, boolean snapshotInline) {
         CompletableFuture<Void> future;
-        if (worldData != null && player != null && world != null) {
-            future = saveAll();
+        if (worldData != null && world != null) {
+            future = saveAll(snapshotInline);
         } else if (world != null) {
             future = saveDirtyChunks();
         } else {
@@ -257,8 +291,18 @@ public class SaveService implements AutoCloseable {
         }
     }
 
+    /**
+     * Saves world metadata, every dirty chunk and — when one is bound — the player, snapshotted
+     * on its owner thread (an owner that has stopped running tasks runs it inline, so a close
+     * after the server thread exits still saves the host). No bound player: everything else
+     * is still saved.
+     */
     public CompletableFuture<Void> saveAll() {
-        if (worldData == null || player == null || world == null) {
+        return saveAll(false);
+    }
+
+    private CompletableFuture<Void> saveAll(boolean snapshotInline) {
+        if (worldData == null || world == null) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("Save service not initialized")
             );
@@ -266,13 +310,14 @@ public class SaveService implements AutoCloseable {
 
         long now = clock.getAsLong();
         WorldData updatedWorld = advanceWorldDataForSave(now);
+        PlayerSource source = player;
+        CompletableFuture<PlayerData> playerData = source == null
+            ? CompletableFuture.completedFuture(null)
+            : CompletableFuture.supplyAsync(() -> source.snapshot(updatedWorld.getWorldName()),
+                    snapshotInline ? Runnable::run : playerOwner);
 
-        // Convert player to data model
-        PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
-        List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
-
-        SaveWork work = new SaveWork(updatedWorld, playerData, chunkTasks, "manual/full");
-        return submitSave(work)
+        return playerData.thenCompose(pd -> submitSave(
+                new SaveWork(updatedWorld, pd, collectDirtyChunkTasks(), "manual/full")))
             .whenComplete((ignored, throwable) -> {
                 if (throwable == null) {
                     System.out.printf("[SAVE] Complete save finished in %dms%n", clock.getAsLong() - now);
@@ -474,7 +519,7 @@ public class SaveService implements AutoCloseable {
             snapshot.cancel(false);
         }
         awaitInFlightAutoSave();
-        flushSavesBlocking("service close");
+        flushSavesBlocking("service close", true);
         autoSaveScheduler.shutdown();
         shutdownAndAwait(savePool, "save");
         shutdownAndAwait(loadPool, "load");
@@ -614,7 +659,7 @@ public class SaveService implements AutoCloseable {
     }
 
     void performAutoSave() {
-        if (closed.get() || worldData == null || player == null || world == null) {
+        if (closed.get() || worldData == null || world == null) {
             return;
         }
         if (!autoSaveInProgress.compareAndSet(false, true)) {
@@ -635,8 +680,11 @@ public class SaveService implements AutoCloseable {
         int chunkCount;
         CompletableFuture<Void> write;
         try {
-            PlayerData playerData = snapshotPlayerOnOwner(worldData.getWorldName());
-            if (playerData == null) {
+            // A missing snapshot (no bound player, owner thread busy, close cancelled it) skips
+            // only player.json: chunks and world time still save. It used to skip the whole
+            // autosave — every chunk of a host world went unsaved while the player was unbound.
+            PlayerData playerData = player == null ? null : snapshotPlayerOnOwner(worldData.getWorldName());
+            if (playerData == null && closed.get()) {
                 autoSaveInProgress.set(false);
                 inFlight.complete(null);
                 return;
@@ -672,13 +720,13 @@ public class SaveService implements AutoCloseable {
     /**
      * Converts the bound player on its owner thread and waits for the result here (the AutoSave
      * thread). Null when the snapshot was cancelled by {@link #close} or the owner thread did not
-     * get to it in time — this autosave is then skipped, and the next one (or the close flush)
-     * saves the player.
+     * get to it in time — this autosave then saves everything but the player, and the next one
+     * (or the close flush) saves the player.
      */
     private PlayerData snapshotPlayerOnOwner(String worldName) {
-        Player bound = player;
+        PlayerSource bound = player;
         CompletableFuture<PlayerData> snapshot = CompletableFuture.supplyAsync(
-            () -> StateConverter.toPlayerData(bound, worldName), playerOwner);
+            () -> bound.snapshot(worldName), playerOwner);
         pendingPlayerSnapshot = snapshot;
         try {
             if (closed.get()) {
@@ -689,7 +737,7 @@ public class SaveService implements AutoCloseable {
             return null;
         } catch (java.util.concurrent.TimeoutException e) {
             snapshot.cancel(false);
-            System.err.println("[AUTO-SAVE] Skipped: the player's thread did not snapshot it within "
+            System.err.println("[AUTO-SAVE] Player not saved this round: its thread did not snapshot it within "
                 + PLAYER_SNAPSHOT_TIMEOUT_SECONDS + "s");
             return null;
         } catch (InterruptedException e) {

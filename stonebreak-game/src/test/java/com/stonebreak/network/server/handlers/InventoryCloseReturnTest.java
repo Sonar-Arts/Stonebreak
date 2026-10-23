@@ -72,6 +72,7 @@ class InventoryCloseReturnTest {
 
         handler.handleContainerAction(sp, gridMove(0), ctx);
         handler.handleContainerAction(sp, gridMove(3), ctx);
+        sp.flushInventoryResync(); // a drain's accepted actions share one sync
 
         assertEquals(5, sp.inventory().countOf(ItemType.STICK.getId()),
             "both grid cells were deposited into the 36 slots");

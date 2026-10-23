@@ -117,6 +117,10 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.player.InventoryResyncC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 32, com.stonebreak.network.packet.world.BlockBreakStartC2S.class,
                 com.stonebreak.network.packet.world.BlockBreakStartC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 33, com.stonebreak.network.packet.world.ChunkAckC2S.class,
+                com.stonebreak.network.packet.world.ChunkAckC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 34, com.stonebreak.network.packet.entity.EntityKnockbackC2S.class,
+                com.stonebreak.network.packet.entity.EntityKnockbackC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

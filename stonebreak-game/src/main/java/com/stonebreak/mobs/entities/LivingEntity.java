@@ -418,6 +418,13 @@ public abstract class LivingEntity extends Entity {
      * {@code horizontalDirection} need not be normalized; only its horizontal (XZ) component is used.
      */
     public void applyKnockback(Vector3f horizontalDirection, float horizontalForce, float verticalForce) {
+        if (isNetworkShadow()) {
+            // A shadow never integrates velocity: send the push to the real entity (the server
+            // takes it only right after our hit on it), like damage().
+            com.stonebreak.network.MultiplayerSession.onLocalEntityKnockback(
+                    this, horizontalDirection, horizontalForce, verticalForce);
+            return;
+        }
         locomotion.applyKnockback(horizontalDirection, horizontalForce, verticalForce);
     }
 

@@ -561,6 +561,8 @@
         "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
         "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
         "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ],
         "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
       },
       "hits" : {
@@ -574,7 +576,9 @@
         "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
         "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
         "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
-        "row2" : [ 860.0, 565.0, 400.0, 40.0 ]
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
+        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ]
       },
       "actions" : {
         "apply" : "stonebreak:screen.settings.press apply",
@@ -587,7 +591,9 @@
         "category5" : "stonebreak:screen.settings.press category5",
         "row0" : "stonebreak:screen.settings.press row0",
         "row1" : "stonebreak:screen.settings.press row1",
-        "row2" : "stonebreak:screen.settings.press row2"
+        "row2" : "stonebreak:screen.settings.press row2",
+        "row3" : "stonebreak:screen.settings.press row3",
+        "scrollbar" : "stonebreak:screen.settings.scrollbar"
       }
     },
     "settings-audio_1920x1080_s1" : {

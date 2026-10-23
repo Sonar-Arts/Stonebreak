@@ -607,8 +607,13 @@ public final class ServerBlockHandler {
         // batches, and a state packet overtaking its block change would be wiped when the
         // late-arriving block apply clears the cell's state entry.
         if (incoming == BlockType.OAK_DOOR) {
-            com.stonebreak.blocks.door.DoorState placed =
-                    com.stonebreak.blocks.door.DoorState.placed(sp.x(), sp.z(), c.x(), c.z());
+            // The placer's proposed facing (any edge is legitimate — it is where they stood);
+            // a door is always placed closed. No proposal: derive it from their position.
+            com.stonebreak.blocks.door.DoorState placed = c.hasPlacementState()
+                    && com.stonebreak.blocks.door.DoorState.isDoorState(c.placementState())
+                    ? new com.stonebreak.blocks.door.DoorState(com.stonebreak.blocks.door.DoorState.CLOSED,
+                            com.stonebreak.blocks.door.DoorState.parse(c.placementState()).facing())
+                    : com.stonebreak.blocks.door.DoorState.placed(sp.x(), sp.z(), c.x(), c.z());
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
             queueStateEcho(c.x(), c.y(), c.z());
         }
@@ -616,8 +621,11 @@ public final class ServerBlockHandler {
         // baked orientation every client meshes and the step profile every
         // body collides with. Echoed on the same queued path as the door.
         if (incoming != null && incoming.isStairs()) {
-            String placed = com.stonebreak.blocks.stairs.StairState
-                    .placedFromYaw(sp.yaw()).toStateString();
+            // The placer's proposed facing (any of the four is legitimate); none: their yaw.
+            String placed = (c.hasPlacementState()
+                    && com.stonebreak.blocks.stairs.StairState.isStairState(c.placementState())
+                    ? com.stonebreak.blocks.stairs.StairState.parse(c.placementState())
+                    : com.stonebreak.blocks.stairs.StairState.placedFromYaw(sp.yaw())).toStateString();
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
             queueStateEcho(c.x(), c.y(), c.z());
         }
@@ -1092,6 +1100,10 @@ public final class ServerBlockHandler {
             return;
         }
         for (com.openmason.engine.net.server.ServerConnection c : ctx.connections().all()) {
+            ServerPlayer viewer = c.attachment();
+            if (viewer != null && !viewer.handshakeDone()) {
+                continue; // not in the world yet (the broadcast path filters these too)
+            }
             Integer ack = acks.get(c);
             c.send(ack == null ? plain
                     : new com.stonebreak.network.packet.world.BlockStateS2C(p.x(), p.y(), p.z(), state, ack),
@@ -1184,14 +1196,29 @@ public final class ServerBlockHandler {
 
         SectionBatch(int sx, int sy, int sz) { this.sx = sx; this.sy = sy; this.sz = sz; }
 
+        /** Past this many cells, repeat edits are found through {@link #slotOf}, not a scan. */
+        private static final int INDEX_THRESHOLD = 16;
+        /** Cell (lx<<8|ly<<4|lz) → entry index + 1; built once the batch is large (a water
+         *  flood or a big sim tick), where the linear coalescing scan went quadratic. */
+        private short[] slotOf;
+
         void add(int lx, int ly, int lz, short blockId) {
             int posBits = ((lx & 0xF) << 24) | ((ly & 0xF) << 20) | ((lz & 0xF) << 16);
             int v = posBits | (blockId & 0xFFFF);
-            int posMask = 0x0FFF0000;
-            for (int i = 0; i < n; i++) {
-                if ((packed[i] & posMask) == (v & posMask)) {
-                    packed[i] = v; // coalesce repeated edits to the same cell
+            int cell = ((lx & 0xF) << 8) | ((ly & 0xF) << 4) | (lz & 0xF);
+            if (slotOf != null) {
+                int slot = slotOf[cell];
+                if (slot != 0) {
+                    packed[slot - 1] = v; // coalesce repeated edits to the same cell
                     return;
+                }
+            } else {
+                int posMask = 0x0FFF0000;
+                for (int i = 0; i < n; i++) {
+                    if ((packed[i] & posMask) == (v & posMask)) {
+                        packed[i] = v; // coalesce repeated edits to the same cell
+                        return;
+                    }
                 }
             }
             if (n == packed.length) {
@@ -1200,6 +1227,15 @@ public final class ServerBlockHandler {
                 packed = grown;
             }
             packed[n++] = v;
+            if (slotOf != null) {
+                slotOf[cell] = (short) n;
+            } else if (n >= INDEX_THRESHOLD) {
+                slotOf = new short[4096];
+                for (int i = 0; i < n; i++) {
+                    int e = packed[i];
+                    slotOf[(((e >>> 24) & 0xF) << 8) | (((e >>> 20) & 0xF) << 4) | ((e >>> 16) & 0xF)] = (short) (i + 1);
+                }
+            }
         }
 
         int size() { return n; }

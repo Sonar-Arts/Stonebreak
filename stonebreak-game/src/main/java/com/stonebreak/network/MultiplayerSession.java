@@ -39,6 +39,13 @@ public final class MultiplayerSession {
     /** How often the dedicated server thread pumps {@code server.tick()} (inbound drain runs at
      *  this rate; the authoritative sim runs at 20 Hz via the tick's internal accumulator). */
     private static final long SERVER_POLL_MS = 5;
+    /** Longer than the host's own player-load timeout, so a slow read is never cut short here. */
+    private static final long RESTORE_WAIT_MS =
+            (com.stonebreak.network.server.IntegratedServer.PLAYER_LOAD_TIMEOUT_SECONDS + 15) * 1000L;
+    /** How long a stop waits for the server's tick in progress to finish before interrupting. */
+    private static final long SERVER_STOP_WAIT_MS = 15_000;
+    /** Between the two shutdown drains: lets a packet sent just before the stop arrive. */
+    private static final long SHUTDOWN_DRAIN_GRACE_MS = 20;
 
     private static volatile Mode mode = Mode.MENU;
     private static volatile IntegratedServer server;
@@ -426,6 +433,12 @@ public final class MultiplayerSession {
                     }
                     Thread.sleep(SERVER_POLL_MS);
                 }
+                // Stop requested: apply what the client sent last (shutdown() pushed a final
+                // prefs report) before the host's record is saved from this server's state.
+                s.drainInboundForShutdown();
+                Thread.sleep(SHUTDOWN_DRAIN_GRACE_MS); // local-channel delivery is one event-loop hop
+                s.drainInboundForShutdown();
+                s.stopTicking();
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt(); // shutdown requested
             } catch (Exception e) {
@@ -435,9 +448,15 @@ public final class MultiplayerSession {
                 if (server == null && s != null) {
                     teardownServer(s); // never published — clean up our own instance
                 }
-                // The loading screen went up before the boot; don't leave the player stranded on it.
+                // Leave the session for real (it stayed in HOST/SINGLEPLAYER mode with no client,
+                // issue #338) and don't strand the player on the loading screen. Only if no newer
+                // session replaced this one meanwhile.
                 Game game = Game.getInstance();
+                Thread self = Thread.currentThread();
                 game.runOnMainThread(() -> {
+                    if (serverThread == self) {
+                        shutdown();
+                    }
                     if (game.getState() == GameState.LOADING) {
                         game.setState(GameState.MAIN_MENU);
                     }
@@ -449,20 +468,72 @@ public final class MultiplayerSession {
         t.start();
     }
 
-    /** Join a remote host: client only (the host owns the authoritative world + persistence). */
-    public static synchronized void joinServer(String host, int port, String username) throws InterruptedException {
+    /**
+     * Whether the singleplayer pause menu freezes the world ("Pause World" setting). Main thread,
+     * every frame; the integrated server reads it on its tick. Ignored unless SINGLEPLAYER.
+     */
+    public static void setWorldPausedByMenu(boolean paused) {
+        IntegratedServer s = server;
+        if (s != null) {
+            s.setPausedByHost(paused && mode == Mode.SINGLEPLAYER);
+        }
+    }
+
+    /** Bumped by every join attempt and shutdown: a connect that finishes late sees it moved on. */
+    private static volatile long joinGeneration;
+
+    /**
+     * Join a remote host: client only (the host owns the authoritative world + persistence).
+     * Connects on a background thread — an unreachable host used to freeze the window for
+     * Netty's 30 s default while holding the session lock every frame's tick takes. The session
+     * goes live on the main thread once connected; {@code onFailure} gets the reason otherwise
+     * (main thread). Main thread.
+     */
+    public static synchronized void joinServerAsync(String host, int port, String username,
+                                                    java.util.function.Consumer<String> onFailure) {
         if (mode != Mode.MENU) {
             shutdown();
         }
         localPlayerRestored = false;
-        ClientWorldView c = new ClientWorldView();
-        c.connect(NetAddress.tcp(host, port), username);
-        client = c;
-        setMode(Mode.JOIN);
-        System.out.println("[NET] Joining " + host + ":" + port);
+        long generation = ++joinGeneration;
+        Game game = Game.getInstance();
+        Thread t = new Thread(() -> {
+            ClientWorldView c = new ClientWorldView();
+            try {
+                c.connect(NetAddress.tcp(host, port), username);
+            } catch (Exception e) {
+                c.shutdown();
+                String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                game.runOnMainThread(() -> {
+                    if (generation == joinGeneration) {
+                        onFailure.accept(reason);
+                    }
+                });
+                return;
+            }
+            game.runOnMainThread(() -> {
+                synchronized (MultiplayerSession.class) {
+                    if (generation != joinGeneration || mode != Mode.MENU) {
+                        c.shutdown(); // cancelled (left the screen, started another session)
+                        return;
+                    }
+                    client = c;
+                    setMode(Mode.JOIN);
+                }
+                System.out.println("[NET] Joining " + host + ":" + port);
+            });
+        }, "Server-Connect");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** Abandons a join still connecting (its late success is closed instead of entered). */
+    public static void cancelPendingJoin() {
+        joinGeneration++;
     }
 
     public static synchronized void shutdown() {
+        joinGeneration++; // a connect still in flight must not revive the session after this
         com.stonebreak.battletest.BattleTestSession.leave();
         // Abort any in-flight client-world build FIRST: a stale "ClientWorld-Build" thread
         // finishing after this teardown would flip the game back to PLAYING with no session
@@ -472,32 +543,35 @@ public final class MultiplayerSession {
             game.cancelClientWorldBuild();
         }
 
-        // Stop the server tick thread before tearing down its world/connections.
+        // The host's player.json is written from the server's record of it, which takes the
+        // client-owned parts (progression, stats, discoveries) from its last prefs report:
+        // send one now so nothing changed in the last few seconds is lost.
+        if (client != null && hasIntegratedServer() && localPlayerRestored) {
+            client.flushPlayerPrefs();
+        }
+
+        // Stop the server tick thread before tearing down its world/connections. Not an
+        // interrupt first: the loop exits on the flag and drains its last packets (above);
+        // interrupting only if it does not stop in time.
         serverRunning = false;
         Thread t = serverThread;
-        if (t != null) {
-            t.interrupt();
+        if (t != null && t != Thread.currentThread()) {
+            // Wait for the tick in progress to finish (a heavy generation tick can take a while):
+            // tearing the world down under a running tick was issue #338. Interrupt only a
+            // thread that is truly stuck.
             try {
-                t.join(3000);
+                t.join(SERVER_STOP_WAIT_MS);
+                if (t.isAlive()) {
+                    System.err.println("[NET] Server thread still busy after "
+                            + SERVER_STOP_WAIT_MS + " ms; interrupting it.");
+                    t.interrupt();
+                    t.join(2000);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            serverThread = null;
         }
-
-        // Robustly capture the local player's CURRENT inventory before teardown. The server
-        // thread is now stopped, so this can't race the sim. Re-registering points the save
-        // service at the live player so the close-flush below writes its latest state. Only do
-        // this when the restore actually ran: Game.getPlayer() may still be a stale player from
-        // a previous world (or the empty one created before the build failure), and registering
-        // it would write the wrong player's data over this world's player.json (#366).
-        if (server != null && hasIntegratedServer() && localPlayerRestored) {
-            ServerLevel level = server.worldContext().serverLevel();
-            Player local = Game.getPlayer();
-            if (level != null && local != null) {
-                level.registerLocalPlayer(local, Game.getInstance()::runOnMainThread);
-            }
-        }
+        serverThread = null;
 
         detachEntityListener();
         if (client != null) {
@@ -510,6 +584,44 @@ public final class MultiplayerSession {
         }
         localPlayerRestored = false;
         setMode(Mode.MENU);
+    }
+
+    static {
+        // A kill or crash that still runs shutdown hooks (SIGTERM, System.exit elsewhere) used
+        // to lose everything since the last autosave: the server thread is a daemon (#337).
+        Runtime.getRuntime().addShutdownHook(new Thread(MultiplayerSession::flushOnJvmExit,
+                "Session-Exit-Flush"));
+    }
+
+    /**
+     * JVM exit with a server still up: stop its tick and flush its saves (players + world).
+     * Deliberately not {@link #shutdown()} — no session lock, no client or GL teardown, which
+     * a hook must not wait on.
+     */
+    private static void flushOnJvmExit() {
+        IntegratedServer s = server;
+        if (s == null) {
+            return;
+        }
+        System.out.println("[NET] JVM exiting with a live world — flushing its save.");
+        serverRunning = false;
+        Thread t = serverThread;
+        if (t != null) {
+            try {
+                t.join(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        try {
+            ServerLevel level = s.worldContext().serverLevel();
+            s.shutdown();
+            if (level != null && level.saveService() != null) {
+                level.saveService().close();
+            }
+        } catch (RuntimeException e) {
+            System.err.println("[NET] Exit flush failed: " + e);
+        }
     }
 
     /** Shut down a server instance and its level (flush + close the save service, free the world). */
@@ -549,6 +661,15 @@ public final class MultiplayerSession {
      * Hook from {@code LivingEntity.damage} when the local player hits a network-shadow
      * entity — forwards the damage intent to the authoritative server via the local client.
      */
+    /** Local ability knockback on a replicated entity: forward it to the authoritative server. */
+    public static void onLocalEntityKnockback(Entity target, org.joml.Vector3f direction,
+                                              float horizontal, float vertical) {
+        ClientWorldView c = getClient();
+        if (c != null && target != null && target.getNetworkId() >= 0 && direction != null) {
+            c.sendEntityKnockback(target.getNetworkId(), direction.x, direction.z, horizontal, vertical);
+        }
+    }
+
     public static void onLocalEntityDamage(Entity target, float amount,
                                            com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
         ClientWorldView c = getClient();
@@ -711,7 +832,8 @@ public final class MultiplayerSession {
                     }
                 });
             }
-            level.registerLocalPlayer(player, Game.getInstance()::runOnMainThread);
+            // Not bound to the save service: the host is persisted from the server's own record
+            // of it (IntegratedServer binds that once the local player is seeded).
             localPlayerRestored = true;
             return;
         }
@@ -720,14 +842,21 @@ public final class MultiplayerSession {
             if (c == null) {
                 return;
             }
-            // Wait for the host to send our saved data, then apply it to THIS player.
-            long deadline = System.currentTimeMillis() + 5000L;
+            // Wait for the host to send our saved data, then apply it to THIS player. The host
+            // reads it off its tick and may take a while (it refuses the join rather than
+            // guessing); giving up after a few seconds used to hand a returning player the
+            // starter kit (issue #337) — so wait as long as the host may, then leave.
+            long deadline = System.currentTimeMillis() + RESTORE_WAIT_MS;
             while (!c.isRestoreReceived() && !c.isDisconnected()
                     && System.currentTimeMillis() < deadline) {
                 try { Thread.sleep(50); } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 }
+            }
+            if (!c.isRestoreReceived()) {
+                c.failRestore("The host did not send your player data in time.");
+                return;
             }
             c.applyRestoreTo(player);
         }

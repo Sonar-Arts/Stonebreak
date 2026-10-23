@@ -115,6 +115,21 @@ public class BlockPlacer {
                     .placed(hanging, look.x, look.z).toStateString();
         }
 
+        // Stairs and doors: the facing comes from how the placer looks/stands right NOW. It is
+        // proposed in the packet (as torches do) rather than re-derived by the server from a
+        // position/yaw sample up to a tick old — a quick turn while placing used to flip the
+        // block when the server's echo arrived.
+        if (selectedBlockType.isStairs()) {
+            Vector3f look = raycastEngine.eyeDirection();
+            placementState = com.stonebreak.blocks.stairs.StairState
+                    .placedFromLook(look.x, look.z).toStateString();
+        }
+        if (selectedBlockType == BlockType.OAK_DOOR) {
+            Vector3f playerPos = state.getPosition();
+            placementState = com.stonebreak.blocks.door.DoorState
+                    .placed(playerPos.x, playerPos.z, placePos.x, placePos.z).toStateString();
+        }
+
         BlockPlacementValidator.PlacementValidationResult validationResult =
                 placementService.validatePlacement(placePos, state.getPosition(), selectedBlockType, state.isOnGround());
         if (!validationResult.canPlace()) return;
@@ -147,26 +162,6 @@ public class BlockPlacer {
             if (selectedBlockType == BlockType.WORKBENCH) {
                 // Predictive: a new table starts empty, even where a broken one held items.
                 world.getWorkbenchRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
-            }
-            if (selectedBlockType.isStairs()) {
-                // Predictive local state: ascending the way the placer looks.
-                // The authoritative server derives the same facing from the
-                // placer's yaw and echoes it via BlockStateS2C.
-                Vector3f look = raycastEngine.eyeDirection();
-                world.setBlockStateAt(placePos.x, placePos.y, placePos.z,
-                        com.stonebreak.blocks.stairs.StairState
-                                .placedFromLook(look.x, look.z)
-                                .toStateString());
-            }
-            if (selectedBlockType == BlockType.OAK_DOOR) {
-                // Predictive local state: closed, panel on the placer's edge. The
-                // authoritative server derives the same state from the placement
-                // packet and echoes it via BlockStateS2C.
-                Vector3f playerPos = state.getPosition();
-                world.setBlockStateAt(placePos.x, placePos.y, placePos.z,
-                        com.stonebreak.blocks.door.DoorState
-                                .placed(playerPos.x, playerPos.z, placePos.x, placePos.z)
-                                .toStateString());
             }
         }
     }

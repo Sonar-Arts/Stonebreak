@@ -115,6 +115,8 @@ public final class SettingsContract {
             (s, v) -> s.setShadowsEnabled(b(v)), null, Live.READ_LIVE);
         add("playerNameTagsEnabled", DataType.bool(), s -> UiValue.of(s.getPlayerNameTagsEnabled()),
             (s, v) -> s.setPlayerNameTagsEnabled(b(v)), null, Live.READ_LIVE);
+        add("pauseSingleplayerWorld", DataType.bool(), s -> UiValue.of(s.getPauseSingleplayerWorld()),
+            (s, v) -> s.setPauseSingleplayerWorld(b(v)), null, Live.READ_LIVE);
         add("shadowQuality", DataType.string(), s -> UiValue.of(s.getShadowQuality()),
             (s, v) -> s.setShadowQuality(str(v)), oneOf("shadow quality", SettingsConfig.SHADOW_QUALITY_VALUES),
             Live.READ_LIVE);

@@ -299,6 +299,7 @@ class ServerInventoryDebitTest {
         }
 
         new IntegratedServer().giveToPlayer(sp, f.ctx(), ItemType.STICK.getId(), 10);
+        sp.flushInventoryResync(); // pickups' syncs coalesce to one per tick
 
         assertTrue(sent(sp).stream().noneMatch(p -> p instanceof GiveItemS2C),
             "nothing fit, so the client is told it got nothing");

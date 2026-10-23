@@ -62,6 +62,22 @@ public final class ServerChunkHandler {
      */
     private static final int LOCAL_PUSH_PER_TICK = 1024;
 
+    // Flow control, after Minecraft's chunk batching: the client reports how many snapshots it
+    // installs per tick (ChunkAckC2S) and acknowledges what it processed. The server streams at
+    // that rate and keeps at most a window of unacknowledged snapshots in flight, so a client
+    // that stalls (hitch, minimised window) is not buried under a backlog it then installs in
+    // one frame. Rates until the first ack, and the most a client may ask for:
+    private static final float LOCAL_DEFAULT_RATE = 64f;
+    private static final float REMOTE_DEFAULT_RATE = 9f;   // Minecraft's initial batch rate
+    private static final float LOCAL_MAX_RATE = 256f;
+    private static final float REMOTE_MAX_RATE = 64f;
+    private static final float MIN_RATE = 0.5f;
+    /** Unacknowledged snapshots allowed in flight. */
+    private static final int LOCAL_WINDOW = 512;
+    private static final int REMOTE_WINDOW = 96;
+    /** Snapshots in flight with no ack for this long (5 s): reopen the window. */
+    private static final int CHUNK_ACK_WATCHDOG_TICKS = 100;
+
     /** Current version per chunk key; bumped on modification so clients re-receive it.
      *  Primitive-keyed: the view scan probes this per ring cell, and a boxed
      *  {@code Map<Long, Integer>} allocated a Long per probe. */
@@ -162,8 +178,20 @@ public final class ServerChunkHandler {
      * stale with no block changes reaching it.
      */
     public void handleChunksUnloaded(ServerPlayer sp, int[] coords) {
-        int pcx = (int) Math.floor(sp.x() / 16.0);
-        int pcz = (int) Math.floor(sp.z() / 16.0);
+        handleChunksUnloaded(sp, coords, com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER,
+                com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER);
+    }
+
+    /**
+     * {@link #handleChunksUnloaded(ServerPlayer, int[])} judged from the chunk the client stood
+     * in when it dropped them. After a teleport the server's position sample still names the
+     * old area, so every dropped chunk counted as in view and the whole old view re-streamed —
+     * only for the client to discard and report it again.
+     */
+    public void handleChunksUnloaded(ServerPlayer sp, int[] coords, int clientCx, int clientCz) {
+        boolean reported = clientCx != com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER;
+        int pcx = reported ? clientCx : (int) Math.floor(sp.x() / 16.0);
+        int pcz = reported ? clientCz : (int) Math.floor(sp.z() / 16.0);
         int viewDistance = sp.viewDistanceChunks();
         boolean inView = false;
         for (int i = 0; i + 1 < coords.length; i += 2) {
@@ -214,6 +242,28 @@ public final class ServerChunkHandler {
         }
     }
 
+    /** C2S ChunkAckC2S: the client processed {@code processed} snapshots; its install rate. */
+    public void handleChunkAck(ServerPlayer sp, int processed, float desiredPerTick) {
+        float max = sp.isLocal() ? LOCAL_MAX_RATE : REMOTE_MAX_RATE;
+        sp.onChunkAck(processed, Math.max(MIN_RATE, Math.min(max, desiredPerTick)));
+        if (processed > 0) {
+            sp.markViewScanPending(); // the window opened — resume a scan it paused
+        }
+    }
+
+    /** Refills this tick's streaming quota from the client's rate. */
+    private static void refillChunkQuota(ServerPlayer sp) {
+        float rate = sp.chunkRate();
+        if (Float.isNaN(rate)) {
+            rate = sp.isLocal() ? LOCAL_DEFAULT_RATE : REMOTE_DEFAULT_RATE;
+        }
+        sp.setChunkQuota(Math.min(sp.chunkQuota() + rate, Math.max(1f, rate)));
+        if (sp.chunkAckOverdue(CHUNK_ACK_WATCHDOG_TICKS)) {
+            System.err.println("[SERVER-CHUNK] No chunk ack from player " + sp.playerId()
+                + " for " + CHUNK_ACK_WATCHDOG_TICKS + " ticks — reopening its stream window.");
+        }
+    }
+
     public void tick(ServerWorldContext ctx) {
         tickCounter++;
         World world = ctx.world();
@@ -229,6 +279,7 @@ public final class ServerChunkHandler {
         versionsDirty = false;
 
         for (ServerPlayer sp : ctx.players()) {
+            refillChunkQuota(sp);
             sp.drainDeferredChunkResyncs(key -> {
                 sp.forgetChunk(key);
                 sp.markViewScanPending();
@@ -280,7 +331,12 @@ public final class ServerChunkHandler {
             // version — any deferral (gen in flight, features pending, budget exhausted)
             // keeps the scan armed for next tick.
             boolean viewComplete = true;
-            int budget = sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK;
+            int window = (sp.isLocal() ? LOCAL_WINDOW : REMOTE_WINDOW) - sp.chunksInFlight();
+            int budget = Math.min(sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK,
+                    Math.min((int) sp.chunkQuota(), window));
+            if (budget <= 0) {
+                continue; // paced: the scan stays armed and resumes as quota/acks arrive
+            }
             outer:
             for (int r = 0; r <= viewDistance; r++) {
                 for (int dz = -r; dz <= r; dz++) {
@@ -319,6 +375,7 @@ public final class ServerChunkHandler {
                         byte[] metaPayload = encodeChunkMeta(world, chunk, cx + dx, cz + dz);
                         sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload, metaPayload), false);
                         sp.markChunkSent(key, version);
+                        sp.onChunkStreamed();
                         com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.increment();
                         if (--budget <= 0) {
                             viewComplete = false; // runaway guard — outer rings unverified

@@ -22,6 +22,8 @@ public final class NetClient {
 
     private static final int WRITE_LOW_WATER  = 32 * 1024;
     private static final int WRITE_HIGH_WATER = 256 * 1024;
+    /** TCP connect timeout: an unreachable host fails in seconds, not Netty's default 30 s. */
+    private static final int CONNECT_TIMEOUT_MILLIS = 5_000;
 
     private final PacketRegistry registry;
     private final PacketDirection inboundDirection;
@@ -50,11 +52,19 @@ public final class NetClient {
                 .channel(NioSocketChannel.class)
                 .option(ChannelOption.TCP_NODELAY, true)
                 .option(ChannelOption.SO_KEEPALIVE, true)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECT_TIMEOUT_MILLIS)
                 .option(ChannelOption.WRITE_BUFFER_WATER_MARK,
                     new WriteBufferWaterMark(WRITE_LOW_WATER, WRITE_HIGH_WATER));
         }
         b.handler(new NetChannelInitializer(address.type(), registry, inboundDirection, outboundDirection, sink));
-        return b.connect(address.socketAddress()).sync().channel();
+        try {
+            return b.connect(address.socketAddress()).sync().channel();
+        } catch (InterruptedException | RuntimeException e) {
+            // A failed connect must not leave the event-loop group's threads running.
+            group.shutdownGracefully();
+            group = null;
+            throw e;
+        }
     }
 
     public synchronized void close() {

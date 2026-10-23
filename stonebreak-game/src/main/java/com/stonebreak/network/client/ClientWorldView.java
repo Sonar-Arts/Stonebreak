@@ -61,6 +61,11 @@ public final class ClientWorldView {
 
     private static final long TICK_PERIOD_NS = 50_000_000L;        // 20 Hz
     private static final long MAX_ACCUMULATOR_NS = TICK_PERIOD_NS * 5;
+    /** Least time between two InventoryResyncC2S requests. */
+    private static final long RESYNC_REQUEST_INTERVAL_NS = 250_000_000L;
+    private long lastInventoryResyncNs = Long.MIN_VALUE / 2;
+    /** Per-frame time for applying inbound packets; the rest wait for the next frame. */
+    private static final long INBOUND_DRAIN_BUDGET_NS = 8_000_000L;
 
     private final NetworkClient networkClient = new NetworkClient(StonebreakProtocol.registry());
     private volatile ClientConnection connection;
@@ -194,7 +199,9 @@ public final class ClientWorldView {
     }
 
     public void tick() {
-        networkClient.inboundQueue().drain(this::dispatch);
+        // Budgeted: after a stall the backlog spreads over a few frames instead of one long
+        // one (and past a deep backlog the queue pauses network reads — engine backpressure).
+        networkClient.inboundQueue().drain(this::dispatch, INBOUND_DRAIN_BUDGET_NS);
         applyPendingInventorySync();
 
         // Install pump runs PER FRAME, not on the 20 Hz client tick: decoded
@@ -224,20 +231,44 @@ public final class ClientWorldView {
         }
         while (tickAccumulatorNs >= TICK_PERIOD_NS) {
             tickAccumulatorNs -= TICK_PERIOD_NS;
-            clientTick();
+            clientTick(tickAccumulatorNs < TICK_PERIOD_NS);
         }
     }
 
-    private void clientTick() {
+    /**
+     * @param last the final tick of this frame's catch-up: only it reports the player's state —
+     *             catching up after a hitch used to send up to five identical PlayerStateC2S.
+     */
+    private void clientTick(boolean last) {
         entityHandler.tick();
         playerHandler.tick();
-        sendLocalPlayerState();
+        if (last) {
+            sendLocalPlayerState();
+        }
+        sendChunkAck();
         sendPlayerPrefsIfDue();
         if (++auditCounter >= AUDIT_PERIOD_TICKS) {
             auditCounter = 0;
             sendChunkHashAudit();
         }
     }
+
+    /** Chunk flow control: what this client processed since the last ack, and its install rate. */
+    private void sendChunkAck() {
+        ClientConnection conn = connection;
+        if (conn == null || !conn.isActive()) {
+            return;
+        }
+        int processed = chunkHandler.takeProcessedCount();
+        float desired = chunkHandler.desiredChunksPerTick();
+        if (processed == 0 && Math.abs(desired - lastSentChunkRate) < 0.5f) {
+            return;
+        }
+        lastSentChunkRate = desired;
+        conn.send(new com.stonebreak.network.packet.world.ChunkAckC2S(processed, desired), false);
+    }
+
+    private float lastSentChunkRate = Float.NaN;
 
     /**
      * Chunk-hash desync audit: hash a small round-robin batch of resident chunks around the
@@ -306,11 +337,18 @@ public final class ClientWorldView {
         }
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
+            // Where we stand now, so the server judges "still in view" from here (#363 follow-up:
+            // after a teleport its own position sample still names the old area).
+            Player p = Game.getPlayer();
+            int ccx = p == null ? com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER
+                    : (int) Math.floor(p.getPosition().x / 16.0);
+            int ccz = p == null ? com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER
+                    : (int) Math.floor(p.getPosition().z / 16.0);
             int maxPerPacket = com.stonebreak.network.packet.world.ChunkUnloadC2S.MAX_CHUNKS * 2;
             for (int from = 0; from < drained.length; from += maxPerPacket) {
                 int to = Math.min(drained.length, from + maxPerPacket);
                 conn.send(new com.stonebreak.network.packet.world.ChunkUnloadC2S(
-                    java.util.Arrays.copyOfRange(drained, from, to)), false);
+                    java.util.Arrays.copyOfRange(drained, from, to), ccx, ccz), false);
             }
         }
     }
@@ -405,8 +443,35 @@ public final class ClientWorldView {
 
     /** The server's restore blob ({@code PlayerDataS2C}); package-private for tests. */
     void onPlayerData(byte[] json) {
+        if (restoreApplied || (!remote && welcomeSyncSeen)) {
+            // Mid-session, the server only sends this to refuse a prefs report: it re-asserts the
+            // progression it last accepted. Roll ours back to it — the refused spends/feats used
+            // to stay in our stats, were re-sent and refused every 3 s, and blocked every other
+            // part of the report (stats, cosmetics) for the rest of the session.
+            rollBackRefusedProgression(json);
+            return;
+        }
         restoreBlob = json;
         restoreReceived = true;
+    }
+
+    private void rollBackRefusedProgression(byte[] json) {
+        Player p = Game.getPlayer();
+        if (p == null || json == null || json.length == 0) {
+            return;
+        }
+        try {
+            com.stonebreak.world.save.util.StateConverter.applyProgression(p, playerSerializer.deserialize(json));
+            System.out.println("[CLIENT] The server refused our progression; rolled back to its record.");
+        } catch (RuntimeException e) {
+            System.err.println("[CLIENT] Could not apply the server's progression record: " + e.getMessage());
+        }
+    }
+
+    /** Leave the session with {@code reason}: the restore this join depends on never came. */
+    public void failRestore(String reason) {
+        kickReason = reason;
+        disconnected = true;
     }
 
     /** True once the server's PlayerData blob has arrived (remote restore can be applied). */
@@ -484,6 +549,13 @@ public final class ClientWorldView {
         }
         lastPlayerPrefsSendNs = now;
         sendPlayerPrefsNow();
+    }
+
+    /** Sends a prefs report now (session ending: the host's save is built from the last one). */
+    public void flushPlayerPrefs() {
+        if (serverCanAcceptPrefs()) {
+            sendPlayerPrefsNow();
+        }
     }
 
     private void sendPlayerPrefsNow() {
@@ -601,6 +673,14 @@ public final class ClientWorldView {
         if (!com.stonebreak.network.SlotIntentSeq.skippedSyncNeedsResync()) {
             return; // our newest intent is answered with a sync anyway
         }
+        // While the player keeps acting faster than a round trip, every answer is stale again
+        // and asked for again — a full sync per placement. A few per second is plenty: the
+        // answer to the last intent always arrives (each intent is answered with a sync).
+        long now = System.nanoTime();
+        if (now - lastInventoryResyncNs < RESYNC_REQUEST_INTERVAL_NS) {
+            return;
+        }
+        lastInventoryResyncNs = now;
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             conn.send(new com.stonebreak.network.packet.player.InventoryResyncC2S(), false);
@@ -769,6 +849,14 @@ public final class ClientWorldView {
             return;
         }
         connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal()), false);
+    }
+
+    public void sendEntityKnockback(int targetNetworkId, float dirX, float dirZ, float horizontal, float vertical) {
+        if (connection == null || targetNetworkId < 0) {
+            return;
+        }
+        connection.send(new com.stonebreak.network.packet.entity.EntityKnockbackC2S(
+                targetNetworkId, dirX, dirZ, horizontal, vertical), false);
     }
 
     /** Local shear on a replicated sheep: forward the shear intent to the authoritative server. */

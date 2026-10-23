@@ -268,6 +268,12 @@ public abstract class Entity {
     public void applyNetworkState(String sbeStateName) { }
 
     /**
+     * Discrete visual state a non-mob entity replicates through {@code EntityAnimS2C} (a fire
+     * bolt's impact), or null. Mobs replicate their AI behaviour state instead.
+     */
+    public String networkVisualState() { return null; }
+
+    /**
      * Advance client-only visual clocks for a network shadow each frame. Shadows skip the full
      * {@link #update}, so mobs override this to keep their animation controller (and any one-shot
      * clip timers) running while the server drives position and discrete state. No-op by default.

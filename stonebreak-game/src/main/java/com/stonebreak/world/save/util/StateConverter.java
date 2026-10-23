@@ -82,6 +82,27 @@ public final class StateConverter {
             .build();
     }
 
+    /**
+     * Applies only the RPG progression of {@code data} (class, spends, skills, feats, pools,
+     * ability scores, level, xp) — what a refused prefs report rolls back to.
+     */
+    public static void applyProgression(Player player, PlayerData data) {
+        CharacterStats cs = player.getCharacterStats();
+        cs.restore(
+            data.getSelectedClassId(),
+            new HashMap<>(data.getSpentAbilityCp()),
+            new HashMap<>(data.getSkillLevels()),
+            new HashSet<>(data.getAcquiredFeatIds()),
+            data.getRemainingCp(),
+            data.getRemainingSkillPoints(),
+            data.getRemainingFeatPoints(),
+            data.getAbilityScores(),
+            data.getRemainingAp(),
+            data.getLevel(),
+            data.getXp()
+        );
+    }
+
     private static ItemStack copyOf(ItemStack stack) {
         return stack == null ? null : stack.copy();
     }
@@ -169,20 +190,7 @@ public final class StateConverter {
         player.getStats().restoreKillsByType(killsByType);
 
         // Restore RPG / character progression
-        CharacterStats cs = player.getCharacterStats();
-        cs.restore(
-            data.getSelectedClassId(),
-            new HashMap<>(data.getSpentAbilityCp()),
-            new HashMap<>(data.getSkillLevels()),
-            new HashSet<>(data.getAcquiredFeatIds()),
-            data.getRemainingCp(),
-            data.getRemainingSkillPoints(),
-            data.getRemainingFeatPoints(),
-            data.getAbilityScores(),
-            data.getRemainingAp(),
-            data.getLevel(),
-            data.getXp()
-        );
+        applyProgression(player, data);
 
         // Restore entity glossary discoveries
         Map<EntityType, Set<String>> variantsRestored = new EnumMap<>(EntityType.class);

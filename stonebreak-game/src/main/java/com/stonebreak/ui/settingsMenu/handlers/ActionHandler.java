@@ -51,6 +51,7 @@ public class ActionHandler {
             case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggle();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case PLAYER_NAME_TAGS -> togglePlayerNameTags();
+            case PAUSE_WORLD -> togglePauseWorld();
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
@@ -292,6 +293,14 @@ public class ActionHandler {
         boolean currentValue = settings.getPlayerNameTagsEnabled();
         settings.setPlayerNameTagsEnabled(!currentValue);
         System.out.println("Player name tags toggled to: " + (!currentValue ? "ON" : "OFF"));
+    }
+
+    /**
+     * Toggles freezing the singleplayer world while the pause menu is open (off: the world keeps
+     * running behind the menu, as in multiplayer). Never applies to a hosted world.
+     */
+    public void togglePauseWorld() {
+        settings.setPauseSingleplayerWorld(!settings.getPauseSingleplayerWorld());
     }
 
     /**

@@ -22,12 +22,19 @@ public class FireBolt extends Entity {
     // Sub-stepping the per-frame move at this granularity stops fast bolts from
     // tunnelling through thin blocks or skipping past mobs at low frame rates.
     private static final float COLLISION_STEP = 0.25f;
+    /** How long an impacted bolt stays (at least): the longest trail/burst particle's life. */
+    private static final float IMPACT_LINGER = 0.75f;
+    /** Replicated (EntityAnimS2C) when the bolt hits, so a client shadow bursts and hides its core. */
+    static final String IMPACT_STATE = "Impact";
 
     private final Vector3f direction;
     // Once true the bolt has hit something and stops moving; it stays alive only
     // long enough for its trail/impact particles to fade out before despawning.
     private boolean impacted = false;
+    private float impactAge;
     public final FireTrailParticles particles = new FireTrailParticles();
+    /** Shadow only: last interpolated position, to aim the trail behind its motion. */
+    private final Vector3f lastShadowPos = new Vector3f(Float.NaN, 0f, 0f);
 
     public FireBolt(World world, Vector3f position, Vector3f direction) {
         super(world, position);
@@ -49,11 +56,14 @@ public class FireBolt extends Entity {
         velocity.set(0, 0, 0);
         onGround = false;
 
-        // After impact the bolt no longer moves — just let the particles drain,
-        // then despawn once they are all gone (or the TTL expires as a backstop).
+        // After impact the bolt no longer moves — it stays long enough for the trail and burst
+        // to fade (on clients too: their shadow goes when this does), then despawns.
         if (impacted) {
-            particles.update(deltaTime);
-            if (particles.isEmpty() || age > MAX_AGE + 2.0f) {
+            impactAge += deltaTime;
+            if (drawsParticles()) {
+                particles.update(deltaTime);
+            }
+            if ((impactAge >= IMPACT_LINGER && particles.isEmpty()) || age > MAX_AGE + 2.0f) {
                 alive = false;
             }
             return;
@@ -102,10 +112,45 @@ public class FireBolt extends Entity {
             }
         }
 
-        // Spawn fire trail particles behind the bolt
-        Vector3f backDir = new Vector3f(direction).negate();
-        particles.spawn(position, backDir);
+        // Spawn fire trail particles behind the bolt — only where it is drawn: the server world's
+        // copy is never rendered (clients draw their shadow's own trail).
+        if (drawsParticles()) {
+            Vector3f backDir = new Vector3f(direction).negate();
+            particles.spawn(position, backDir);
+            particles.update(deltaTime);
+        }
+    }
+
+    private boolean drawsParticles() {
+        return world == null || world.isRenderOnly();
+    }
+
+    /**
+     * Client shadow: the server's bolt makes no particles for us, so trail behind the
+     * interpolated motion here, and burst when the impact state arrives.
+     */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        if (!impacted && !Float.isNaN(lastShadowPos.x)) {
+            Vector3f moved = new Vector3f(position).sub(lastShadowPos);
+            if (moved.lengthSquared() > 1e-6f) {
+                particles.spawn(position, moved.negate().normalize());
+            }
+        }
+        lastShadowPos.set(position);
         particles.update(deltaTime);
+    }
+
+    @Override
+    public void applyNetworkState(String state) {
+        if (IMPACT_STATE.equals(state)) {
+            impact();
+        }
+    }
+
+    @Override
+    public String networkVisualState() {
+        return impacted ? IMPACT_STATE : null;
     }
 
     /**

@@ -23,6 +23,6 @@ public final class EntityAnimResolver {
         if (entity instanceof LivingEntity living && living.getAI() != null) {
             return MobStateMapping.sbeState(living.getType(), living.getAI().getCurrentState());
         }
-        return null;
+        return entity.networkVisualState();
     }
 }

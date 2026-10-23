@@ -289,12 +289,45 @@ public final class ServerEntityHandler {
         // the HOST's player object regardless of attacker). Credit routes back to the
         // actual attacker via KillCreditS2C — uniform for host (Local channel) and remotes.
         float healthBefore = le.getHealth();
+        sp.recordHit(pkt.targetNetworkId(), System.nanoTime());
         le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             sendKillCredit(sp, le, dealt, !le.isAlive());
         }
     }
+
+    /**
+     * An ability's knockback on an entity this player just hit (EntityKnockbackC2S). Only right
+     * after an accepted hit from them on that target — knockback never lands on its own — with
+     * the forces clamped to the strongest ability's.
+     */
+    public void handleEntityKnockback(ServerPlayer sp, com.stonebreak.network.packet.entity.EntityKnockbackC2S pkt) {
+        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        if (!(e instanceof LivingEntity le) || !le.isAlive()) {
+            return;
+        }
+        if (!sp.hitRecently(pkt.targetNetworkId(), System.nanoTime(), KNOCKBACK_AFTER_HIT_NANOS)) {
+            return;
+        }
+        float dx = pkt.dirX();
+        float dz = pkt.dirZ();
+        float len = (float) Math.sqrt(dx * dx + dz * dz);
+        if (!(len > 1e-4f) || !Float.isFinite(pkt.horizontal()) || !Float.isFinite(pkt.vertical())) {
+            return;
+        }
+        float horizontal = Math.max(0f, Math.min(MAX_KNOCKBACK_HORIZONTAL, pkt.horizontal()));
+        float vertical = Math.max(0f, Math.min(MAX_KNOCKBACK_VERTICAL, pkt.vertical()));
+        le.applyKnockback(new Vector3f(dx / len, 0f, dz / len), horizontal, vertical);
+    }
+
+    /** A knockback intent must follow this player's accepted hit on the target within this window. */
+    private static final long KNOCKBACK_AFTER_HIT_NANOS = 500_000_000L;
+    /** Strongest ability knockback (Rampage T3); a client asking for more is clamped. */
+    private static final float MAX_KNOCKBACK_HORIZONTAL =
+            com.stonebreak.player.PlayerConstants.RAMPAGE_KNOCKBACK_HORIZONTAL;
+    private static final float MAX_KNOCKBACK_VERTICAL =
+            com.stonebreak.player.PlayerConstants.RAMPAGE_KNOCKBACK_VERTICAL;
 
     /**
      * Authoritative shear application. Validates species/range, the held item (derived

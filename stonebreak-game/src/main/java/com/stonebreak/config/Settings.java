@@ -58,6 +58,10 @@ public class Settings {
     // HUD / multiplayer — show floating username tags above remote players' heads.
     private boolean playerNameTagsEnabled = true;
 
+    // Singleplayer only: freeze the world (both the client view and the integrated server) while
+    // the pause menu is open. Off by default — the world keeps running, as it does in multiplayer.
+    private boolean pauseSingleplayerWorld = false;
+
     // Lighting quality — shadow map tier ("LOW"/"MEDIUM"/"HIGH"), shadow reach in
     // blocks, and baked smooth lighting (per-vertex AO + soft sky gradients).
     // Shadow quality/distance are read live by the shadow pass each frame; smooth
@@ -172,6 +176,7 @@ public class Settings {
             boolField("godRaysEnabled", Settings::getGodRaysEnabled, Settings::setGodRaysEnabled),
             boolField("shadowsEnabled", Settings::getShadowsEnabled, Settings::setShadowsEnabled),
             boolField("playerNameTagsEnabled", Settings::getPlayerNameTagsEnabled, Settings::setPlayerNameTagsEnabled),
+            boolField("pauseSingleplayerWorld", Settings::getPauseSingleplayerWorld, Settings::setPauseSingleplayerWorld),
             stringField("shadowQuality", Settings::getShadowQuality, Settings::setShadowQuality),
             intField("shadowDistance", Settings::getShadowDistance, Settings::setShadowDistance),
             boolField("smoothLightingEnabled", Settings::getSmoothLightingEnabled, Settings::setSmoothLightingEnabled),
@@ -348,6 +353,7 @@ public class Settings {
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
     public boolean getShadowsEnabled() { return shadowsEnabled; }
     public boolean getPlayerNameTagsEnabled() { return playerNameTagsEnabled; }
+    public boolean getPauseSingleplayerWorld() { return pauseSingleplayerWorld; }
     public String getShadowQuality() { return shadowQuality; }
     public int getShadowDistance() { return shadowDistance; }
     public boolean getSmoothLightingEnabled() { return smoothLightingEnabled; }
@@ -463,6 +469,10 @@ public class Settings {
 
     public void setPlayerNameTagsEnabled(boolean playerNameTagsEnabled) {
         this.playerNameTagsEnabled = playerNameTagsEnabled;
+    }
+
+    public void setPauseSingleplayerWorld(boolean pauseSingleplayerWorld) {
+        this.pauseSingleplayerWorld = pauseSingleplayerWorld;
     }
 
     /** Shadow map quality tier; invalid values fall back to MEDIUM. Read live by the shadow pass. */

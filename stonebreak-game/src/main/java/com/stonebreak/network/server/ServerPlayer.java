@@ -72,6 +72,22 @@ public final class ServerPlayer {
     public boolean handshakeDone() { return handshakeDone; }
     public void markHandshakeDone() { this.handshakeDone = true; }
 
+    /** The entity this player last hit (accepted damage) and when — gates ability knockback. */
+    private int lastHitTarget = -1;
+    private long lastHitNanos;
+    public void recordHit(int targetNetworkId, long nowNanos) {
+        lastHitTarget = targetNetworkId;
+        lastHitNanos = nowNanos;
+    }
+    public boolean hitRecently(int targetNetworkId, long nowNanos, long windowNanos) {
+        return lastHitTarget == targetNetworkId && nowNanos - lastHitNanos <= windowNanos;
+    }
+
+    /** A handshake arrived (its saved record may still be loading); a repeat is ignored. */
+    private boolean handshakeRequested;
+    public boolean handshakeRequested() { return handshakeRequested; }
+    public void markHandshakeRequested() { this.handshakeRequested = true; }
+
     public boolean waitingForCharacterCreation() { return waitingForCharacterCreation; }
     public void setWaitingForCharacterCreation(boolean waiting) { this.waitingForCharacterCreation = waiting; }
     public byte[] characterCreationBlob() { return characterCreationBlob; }
@@ -291,6 +307,15 @@ public final class ServerPlayer {
     }
 
     /**
+     * Owes this player a sync, sent once at the next flush (after the inbound drain, and at the
+     * end of each tick) however many changes queued it: a right-drag over nine slots or a tick
+     * of drop pickups used to send a full 36-slot sync per action.
+     */
+    public void queueInventorySync() {
+        inventoryResyncRequested = true;
+    }
+
+    /**
      * Sends the requested sync, if no sync went out since the request (that one already
      * answered it). Called once per inbound drain, so a burst of requests costs one sync.
      */
@@ -458,6 +483,52 @@ public final class ServerPlayer {
         this.lastCx = cx;
         this.lastCz = cz;
     }
+    // ─── Chunk flow control (after Minecraft's chunk batching) ─────────────────
+    /** Client-reported install rate (chunks per tick); NaN until its first ChunkAckC2S. */
+    private float chunkRate = Float.NaN;
+    /** Chunks this tick may still stream; refilled by the rate each tick, capped at one tick's worth. */
+    private float chunkQuota;
+    /** Snapshots sent but not yet acknowledged as processed by the client. */
+    private int chunksInFlight;
+    /** Ticks since the last ack while snapshots were in flight (a lost-ack watchdog). */
+    private int ticksSinceChunkAck;
+
+    public float chunkRate() { return chunkRate; }
+    public float chunkQuota() { return chunkQuota; }
+    public void setChunkQuota(float quota) { this.chunkQuota = quota; }
+    public int chunksInFlight() { return chunksInFlight; }
+
+    /** One snapshot streamed: spends quota, joins the in-flight window. */
+    public void onChunkStreamed() {
+        chunkQuota -= 1f;
+        chunksInFlight++;
+    }
+
+    /** C2S ChunkAckC2S: {@code processed} snapshots left the client's queue; its new rate. */
+    public void onChunkAck(int processed, float desiredPerTick) {
+        chunksInFlight = Math.max(0, chunksInFlight - processed);
+        chunkRate = desiredPerTick;
+        ticksSinceChunkAck = 0;
+    }
+
+    /**
+     * Advances the lost-ack watchdog; true (and the window reopens) when snapshots have been
+     * in flight for {@code limit} ticks with no ack — streaming must never stall for good on a
+     * count that drifted.
+     */
+    public boolean chunkAckOverdue(int limit) {
+        if (chunksInFlight == 0) {
+            ticksSinceChunkAck = 0;
+            return false;
+        }
+        if (++ticksSinceChunkAck < limit) {
+            return false;
+        }
+        chunksInFlight = 0;
+        ticksSinceChunkAck = 0;
+        return true;
+    }
+
     /** Version of {@code key} last sent to this player, or -1 if never sent. */
     public int sentChunkVersion(long key) { return sentChunkVersions.get(key, -1); }
     public void markChunkSent(long key, int version) { sentChunkVersions.put(key, version); }
@@ -491,6 +562,10 @@ public final class ServerPlayer {
     public void setPhase(ProtocolPhase phase) { connection.setPhase(phase); }
     public ProtocolPhase phase() { return connection.phase(); }
     public void disconnect() { connection.close(); }
+    /** Kicks with {@code reason}: the connection closes once the KickS2C has been flushed. */
+    public void kick(String reason) {
+        connection.sendAndClose(new com.stonebreak.network.packet.handshake.KickS2C(reason));
+    }
 
     @Override
     public String toString() {

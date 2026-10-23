@@ -48,13 +48,6 @@ public class WorldChunkStore {
     // Async chunk loading support - tracks chunks being loaded to prevent duplicate requests
     private final Map<ChunkPosition, CompletableFuture<Chunk>> pendingChunkLoads = new ConcurrentHashMap<>();
 
-    // Loads whose future has completed (on a load-IO or generation worker) but that are not yet
-    // in {@link #chunks}. Installing — map put, queued tree placement, load listeners (water,
-    // leaf decay, sapling growth, registries) — happens on the world's OWNING thread via
-    // {@link #installCompletedLoads()} (server: tick thread), never on the worker: those systems
-    // are single-threaded and the tick iterates them.
-    private final Queue<ChunkPosition> completedLoads = new ConcurrentLinkedQueue<>();
-
     // Terrain generation worker pool. Generation used to ride the disk-load future's
     // continuation onto SaveService's single io thread, serializing every chunk's noise
     // sampling and carving behind disk traffic. The generation stack is stateless per
@@ -180,25 +173,26 @@ public class WorldChunkStore {
 
         // Start async chunk load. The worker only produces the chunk; the owning thread
         // installs it (installCompletedLoads / the branch above).
-        CompletableFuture<Chunk> loadFuture = loadOrGenerateAsync(x, z);
-        pendingChunkLoads.put(pos, loadFuture);
-        loadFuture.whenComplete((c, t) -> completedLoads.offer(pos));
+        pendingChunkLoads.put(pos, loadOrGenerateAsync(x, z));
 
         // Return null - chunk will be available once installed
         return null;
     }
 
     /**
-     * Installs every load that has finished since the last call: puts the chunk in the map,
-     * places features queued against it and fires the load listener. Call from the thread
-     * that owns this world (the server tick, or the pre-tick level build).
+     * Installs every load that has finished: puts the chunk in the map, places features queued
+     * against it and fires the load listener. Loads finish on load-IO/generation workers, but
+     * installing happens here, on the thread that owns this world (the server tick, or the
+     * pre-tick level build) — never on the worker: water, leaf decay, sapling growth and the
+     * registries are single-threaded and the tick iterates them.
      */
     public void installCompletedLoads() {
-        ChunkPosition pos;
-        while ((pos = completedLoads.poll()) != null) {
-            CompletableFuture<Chunk> future = pendingChunkLoads.get(pos);
-            if (future != null && future.isDone()) {
-                installCompletedLoad(pos, future);
+        if (pendingChunkLoads.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<ChunkPosition, CompletableFuture<Chunk>> e : pendingChunkLoads.entrySet()) {
+            if (e.getValue().isDone()) {
+                installCompletedLoad(e.getKey(), e.getValue());
             }
         }
     }
@@ -377,7 +371,6 @@ public class WorldChunkStore {
         // Cancel any pending chunk loads
         pendingChunkLoads.values().forEach(future -> future.cancel(true));
         pendingChunkLoads.clear();
-        completedLoads.clear();
 
         // Stop the generation workers (same pattern as ChunkManager.shutdown):
         // graceful drain, then force after a timeout.

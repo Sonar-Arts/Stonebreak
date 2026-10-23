@@ -315,7 +315,7 @@ public final class ServerPlayerHandler {
             return;
         }
         if (containerActions.apply(sp, a, ctx)) {
-            sp.send(sp.inventorySync(), false);
+            sp.queueInventorySync(); // one sync per drain however many actions (a drag)
         }
         // A refusal already echoed the sync + container state from the processor.
     }

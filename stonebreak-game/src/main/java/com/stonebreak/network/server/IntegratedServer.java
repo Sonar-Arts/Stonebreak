@@ -20,7 +20,6 @@ import com.stonebreak.network.packet.handshake.DisconnectC2S;
 import com.stonebreak.network.packet.handshake.HandshakeC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveC2S;
 import com.stonebreak.network.packet.handshake.KeepAliveS2C;
-import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.DropItemC2S;
@@ -86,10 +85,27 @@ public final class IntegratedServer {
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
+    /** Rate-limits the overload warning (the clamp drops wall time — say so, but not every tick). */
+    private static final long OVERLOAD_WARN_INTERVAL_NS = 15_000_000_000L;
+    private long lastOverloadWarnNs = Long.MIN_VALUE / 2;
+
+    /** Work handed to the tick thread from other threads (save snapshots of server state). */
+    private final java.util.concurrent.ConcurrentLinkedQueue<Runnable> tickTasks =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    /** The thread running {@link #tick}; null before the first tick. */
+    private volatile Thread tickThread;
+    /** False once the tick loop has stopped for good: tasks then run inline on the caller. */
+    private volatile boolean ticking = true;
+    /** Singleplayer host has the pause menu open with "Pause World" on: no simulation. */
+    private volatile boolean pausedByHost;
+    private boolean wasPausedByHost;
 
     public IntegratedServer() {
         this.networkServer = new NetworkServer(StonebreakProtocol.registry());
         this.ctx = new ServerWorldContext(networkServer.connections());
+        // World traffic only reaches players past the handshake (not one still handshaking or
+        // creating a character — unauthenticated, and not in the world yet).
+        networkServer.connections().setBroadcastFilter(IntegratedServer::inWorld);
         this.chunkHandler = new ServerChunkHandler();
         this.blockHandler = new ServerBlockHandler(chunkHandler);
         this.entityHandler = new ServerEntityHandler();
@@ -174,7 +190,87 @@ public final class IntegratedServer {
 
     // ─── Per-frame pump (host game thread) ────────────────────────────────────────
 
+    /** A connection whose player is past the handshake (one not yet attached is let through). */
+    static boolean inWorld(ServerConnection c) {
+        ServerPlayer sp = c.attachment();
+        return sp == null || sp.handshakeDone();
+    }
+
+    /**
+     * Runs {@code task} on the tick thread (next tick), or inline when called from it or once
+     * the loop has stopped — so a save that snapshots server state never reads it mid-tick,
+     * and a final flush after the server thread exits still completes.
+     */
+    public void executeOnTick(Runnable task) {
+        if (!ticking || Thread.currentThread() == tickThread) {
+            task.run();
+            return;
+        }
+        tickTasks.add(task);
+        if (!ticking && tickTasks.remove(task)) {
+            task.run(); // the loop stopped between the check and the add
+        }
+    }
+
+    /** The tick loop has exited for good (called on the server thread as it ends). */
+    public void stopTicking() {
+        ticking = false;
+        drainTickTasks();
+    }
+
+    private void drainTickTasks() {
+        Runnable task;
+        while ((task = tickTasks.poll()) != null) {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                System.err.println("[SERVER] Tick task failed: " + e);
+            }
+        }
+    }
+
+    /**
+     * Last packets before the server thread exits: intents the client sent just before quitting
+     * (a placement, a toss, the final prefs report) are applied, so the host's saved record —
+     * built from this server's state — includes them.
+     */
+    public void drainInboundForShutdown() {
+        tickThread = Thread.currentThread();
+        networkServer.inboundQueue().drain(this::dispatch);
+        drainTickTasks();
+    }
+
+    /** Main thread: the singleplayer pause menu freezes (true) or releases (false) the world. */
+    public void setPausedByHost(boolean paused) {
+        this.pausedByHost = paused;
+    }
+
     public void tick() {
+        tickThread = Thread.currentThread();
+        drainTickTasks();
+        if (pausedByHost) {
+            // Like Minecraft's integrated server: a paused singleplayer world does not tick, and
+            // is saved once as it pauses. Packets still drain (the client's last intents land).
+            if (!wasPausedByHost) {
+                wasPausedByHost = true;
+                ServerLevel level = ctx.serverLevel();
+                if (level != null && level.saveService() != null) {
+                    System.out.println("[SERVER] Saving and pausing the world...");
+                    level.saveService().saveAll().exceptionally(t -> {
+                        System.err.println("[SERVER] Pause save failed: " + t.getMessage());
+                        return null;
+                    });
+                }
+            }
+            networkServer.inboundQueue().drain(this::dispatch);
+            for (ServerPlayer sp : ctx.players()) {
+                sp.flushInventoryResync();
+            }
+            lastTickNs = System.nanoTime();
+            tickAccumulatorNs = 0; // resume without a catch-up burst
+            return;
+        }
+        wasPausedByHost = false;
         // The command-only local arena suspends the saved singleplayer world, including replication.
         if (com.stonebreak.battletest.BattleTestSession.isActive()) {
             lastTickNs = System.nanoTime();
@@ -196,11 +292,25 @@ public final class IntegratedServer {
         tickAccumulatorNs += now - lastTickNs;
         lastTickNs = now;
         if (tickAccumulatorNs > MAX_ACCUMULATOR_NS) {
+            long skipped = (tickAccumulatorNs - MAX_ACCUMULATOR_NS) / TICK_PERIOD_NS;
             tickAccumulatorNs = MAX_ACCUMULATOR_NS;
+            if (skipped > 0 && now - lastOverloadWarnNs > OVERLOAD_WARN_INTERVAL_NS) {
+                lastOverloadWarnNs = now;
+                System.err.println("[SERVER] Can't keep up! Skipping " + skipped + " tick(s).");
+            }
         }
         while (tickAccumulatorNs >= TICK_PERIOD_NS) {
             tickAccumulatorNs -= TICK_PERIOD_NS;
             replicationTick();
+            if (tickAccumulatorNs >= TICK_PERIOD_NS) {
+                // Catching up: packets that arrived during the last tick apply before the next
+                // one (as Minecraft runs its queued tasks between ticks), so input isn't held
+                // back for a whole catch-up burst.
+                queue.drain(this::dispatch);
+                for (ServerPlayer sp : ctx.players()) {
+                    sp.flushInventoryResync();
+                }
+            }
         }
     }
 
@@ -208,13 +318,15 @@ public final class IntegratedServer {
         // Authoritative world simulation on the headless server world: water/furnace/features,
         // entity AI + physics, mob spawning, and time. Replication handlers then ship the
         // resulting state to clients.
+        // Each step isolated (issue #337): one that throws used to skip every step after it,
+        // on every tick, for as long as it kept throwing.
         ServerLevel level = ctx.serverLevel();
         if (level != null) {
-            level.tick(TICK_PERIOD_NS / 1_000_000_000f);
+            runTickStep("world", () -> level.tick(TICK_PERIOD_NS / 1_000_000_000f));
         }
-        blockHandler.tick(ctx);
-        entityHandler.tick(ctx);
-        chunkHandler.tick(ctx);
+        runTickStep("blocks", () -> blockHandler.tick(ctx));
+        runTickStep("entities", () -> entityHandler.tick(ctx));
+        runTickStep("chunks", () -> chunkHandler.tick(ctx));
 
         // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
         // too (free RTT signal) but are exempt from the silence kick — a same-JVM stall
@@ -239,12 +351,26 @@ public final class IntegratedServer {
             }
         }
 
+        // Syncs the tick itself queued (pickups) — one per player.
+        for (ServerPlayer sp : ctx.players()) {
+            sp.flushInventoryResync();
+        }
+
         // Periodically persist connected remote players' inventories (crash safety).
         if (++remotePlayerSaveCounter >= REMOTE_PLAYER_SAVE_INTERVAL_TICKS) {
             remotePlayerSaveCounter = 0;
             for (ServerPlayer sp : ctx.players()) {
                 persistPlayerSnapshot(sp);
             }
+        }
+    }
+
+    private static void runTickStep(String name, Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException e) {
+            System.err.println("[SERVER] Tick step '" + name + "' failed: " + e);
+            e.printStackTrace();
         }
     }
 
@@ -363,7 +489,9 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.world.ChunkHashesC2S ch ->
                 chunkHandler.handleChunkHashes(sp, ch.entries(), ctx);
             case com.stonebreak.network.packet.world.ChunkUnloadC2S cu ->
-                chunkHandler.handleChunksUnloaded(sp, cu.coords());
+                chunkHandler.handleChunksUnloaded(sp, cu.coords(), cu.centerX(), cu.centerZ());
+            case com.stonebreak.network.packet.world.ChunkAckC2S ack ->
+                chunkHandler.handleChunkAck(sp, ack.processed(), ack.desiredChunksPerTick());
             case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
                 if (sp.allowResync()) {
                     entityHandler.onPeerResync(sp, ctx); // idempotent client-side (known ids ignored)
@@ -376,6 +504,8 @@ public final class IntegratedServer {
             case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
+            case com.stonebreak.network.packet.entity.EntityKnockbackC2S kb ->
+                entityHandler.handleEntityKnockback(sp, kb);
             case com.stonebreak.network.packet.entity.EntityShearC2S es ->
                 entityHandler.handleEntityShear(sp, es, ctx);
             case com.stonebreak.network.packet.entity.ProjectileSpawnC2S ps2 ->
@@ -398,10 +528,13 @@ public final class IntegratedServer {
             String msg = "Protocol mismatch (server=" + ProtocolVersion.CURRENT
                 + ", client=" + hs.protocolVersion() + ")";
             System.out.println("[SERVER] Rejecting " + sp.playerId() + ": " + msg);
-            sp.send(new KickS2C(msg));
-            sp.disconnect();
+            sp.kick(msg);
             return;
         }
+        if (sp.handshakeRequested()) {
+            return; // a repeat while this one's saved record is still loading
+        }
+        sp.markHandshakeRequested();
         sp.setUsername(hs.username());
 
         // Stable identity: the id is derived from the username, so the same player keeps
@@ -409,17 +542,56 @@ public final class IntegratedServer {
         // client rosters keyed by id all survive a rejoin).
         int stableId = ServerWorldContext.stablePlayerIdFor(hs.username());
         ServerPlayer existing = ctx.player(stableId);
+        if (sp.isLocal() || (existing != null && existing.username().equals(hs.username()))) {
+            // The host has no players/<name> file; a takeover continues from the live record.
+            completeHandshake(sp, stableId, null);
+            return;
+        }
+
+        // A remote player's saved record is read (and parse-checked) ONCE, before they join
+        // the roster: a save that cannot be loaded right now refuses the join — it is never
+        // mistaken for "no saved data", which would let the next persist overwrite it (#358's
+        // rule for remote players; issue #334). The read runs OFF the tick (a busy save queue
+        // used to stall the whole server for up to 10 s, issue #337); the join completes on
+        // the tick when it returns.
+        com.stonebreak.world.save.SaveService saves =
+                ctx.serverLevel() != null ? ctx.serverLevel().saveService() : null;
+        java.util.concurrent.CompletableFuture
+                .supplyAsync(() -> loadSavedRecord(saves, hs.username()), PLAYER_LOAD_EXECUTOR)
+                .exceptionally(t -> new SavedRecord(null, null, UNLOADABLE_SAVE))
+                .thenAccept(saved -> executeOnTick(() -> completeHandshake(sp, stableId, saved)));
+    }
+
+    /** Reads joining players' saved records; daemon, so a stuck read never holds the JVM. */
+    private static final java.util.concurrent.ExecutorService PLAYER_LOAD_EXECUTOR =
+            java.util.concurrent.Executors.newCachedThreadPool(r -> {
+                Thread t = new Thread(r, "Player-Load");
+                t.setDaemon(true);
+                return t;
+            });
+
+    /**
+     * Second half of the handshake, on the tick thread: session takeover or id collision (checked
+     * again — another session may have joined while this one's record loaded), the saved record,
+     * then the roster and the welcome (or character creation). {@code saved} is null for the host
+     * and for a takeover, which continues from the live record.
+     */
+    private void completeHandshake(ServerPlayer sp, int stableId, SavedRecord saved) {
+        if (!sp.connection().isActive()) {
+            return; // left while their record loaded
+        }
+        String username = sp.username();
+        ServerPlayer existing = ctx.player(stableId);
         byte[] handedOver = null;
         if (existing != null) {
-            if (existing.username().equals(hs.username())) {
+            if (existing.username().equals(username)) {
                 // Session takeover: the same player reconnected before their old channel
                 // died (or is deliberately re-logging). Kick the stale session cleanly so
                 // the roster and every client's remote-player figure converge on the new
                 // one. The old channel's late DISCONNECT is instance-guarded in
                 // handleDisconnect/removePlayer and can't evict the new session.
-                System.out.println("[SERVER] " + hs.username()
+                System.out.println("[SERVER] " + username
                     + " reconnected — replacing the previous session (id " + stableId + ").");
-                existing.send(new KickS2C("You logged in from another location."));
                 persistPlayer(existing);
                 // The new session continues from the old one's IN-MEMORY record rather than
                 // re-reading the file the save above is still writing (issue #334): a load
@@ -428,30 +600,34 @@ public final class IntegratedServer {
                 ctx.removePlayer(existing);
                 entityHandler.onPeerLeft(existing);
                 ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
-                existing.disconnect();
+                existing.kick("You logged in from another location.");
             } else {
                 // Different name hashing to the same id — refuse the newcomer clearly
                 // rather than corrupting the roster.
-                sp.send(new KickS2C("That name is unavailable on this server (id collision with '"
-                    + existing.username() + "')."));
-                sp.disconnect();
+                sp.kick("That name is unavailable on this server (id collision with '"
+                    + existing.username() + "').");
                 return;
             }
         }
 
-        // A remote player's saved record is read (and parse-checked) ONCE, before they join
-        // the roster: a save that cannot be loaded right now refuses the join — it is never
-        // mistaken for "no saved data", which would let the next persist overwrite it (#358's
-        // rule for remote players; issue #334).
         if (!sp.isLocal()) {
-            SavedRecord saved = handedOver != null
-                    ? new SavedRecord(handedOver, null, null)
-                    : loadSavedRecord(ctx.serverLevel() != null ? ctx.serverLevel().saveService() : null,
-                            hs.username());
+            if (handedOver != null) {
+                saved = new SavedRecord(handedOver, null, null);
+            } else if (saved == null) {
+                // The live session this one was taking over left meanwhile: read the file now
+                // (its leave just saved it; the named-save gate orders the read behind that).
+                int id = stableId;
+                com.stonebreak.world.save.SaveService saves =
+                        ctx.serverLevel() != null ? ctx.serverLevel().saveService() : null;
+                java.util.concurrent.CompletableFuture
+                        .supplyAsync(() -> loadSavedRecord(saves, username), PLAYER_LOAD_EXECUTOR)
+                        .exceptionally(t -> new SavedRecord(null, null, UNLOADABLE_SAVE))
+                        .thenAccept(rec -> executeOnTick(() -> completeHandshake(sp, id, rec)));
+                return;
+            }
             if (saved.refusal() != null) {
-                System.err.println("[SERVER] Refusing " + hs.username() + ": " + saved.refusal());
-                sp.send(new KickS2C(saved.refusal()));
-                sp.disconnect();
+                System.err.println("[SERVER] Refusing " + username + ": " + saved.refusal());
+                sp.kick(saved.refusal());
                 return;
             }
             sp.setSavedBlob(saved.blob());
@@ -469,7 +645,7 @@ public final class IntegratedServer {
             if (!sp.isLocal()) {
                 sp.send(new NeedsCharacterCreationS2C(sp.playerId(), ctx.worldSeed()));
             }
-            System.out.println("[SERVER] " + hs.username() + " (id " + sp.playerId()
+            System.out.println("[SERVER] " + username + " (id " + sp.playerId()
                     + ") — no saved data, waiting for character creation.");
             return;
         }
@@ -477,7 +653,7 @@ public final class IntegratedServer {
         // Standard welcome flow (player has saved data).
         sendWelcomeSnapshot(sp);
 
-        System.out.println("[SERVER] " + hs.username() + " joined as id " + sp.playerId());
+        System.out.println("[SERVER] " + username + " joined as id " + sp.playerId());
     }
 
     /** A remote player's saved record as read at handshake: the blob (null = none), an
@@ -506,8 +682,10 @@ public final class IntegratedServer {
         }
         byte[] blob;
         try {
+            // Off the tick (Player-Load): a slow disk or a long save queue may take a while;
+            // only a read that truly hangs refuses the join.
             blob = saves.loadNamedPlayer(username)
-                    .get(5, java.util.concurrent.TimeUnit.SECONDS);
+                    .get(PLAYER_LOAD_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new SavedRecord(null, null, UNLOADABLE_SAVE);
@@ -542,6 +720,8 @@ public final class IntegratedServer {
         }
     }
 
+    /** How long a joining player's saved record may take to read (off the tick). */
+    public static final long PLAYER_LOAD_TIMEOUT_SECONDS = 30;
     private static final String UNLOADABLE_SAVE =
             "Your saved player data could not be loaded right now. Please try again.";
     private static final String UNREADABLE_SAVE =
@@ -648,8 +828,7 @@ public final class IntegratedServer {
         }
         if (error != null) {
             if (!sp.isLocal()) {
-                sp.send(new KickS2C("Invalid character data: " + error));
-                sp.disconnect();
+                sp.kick("Invalid character data: " + error);
                 return false;
             }
             // Never kick the host out of its own world: start from the default character.
@@ -860,8 +1039,7 @@ public final class IntegratedServer {
             if (!seedFromBlob(sp, blob)) {
                 // Unreadable after all: never mark this player seeded — a seeded player is
                 // persisted, and that would overwrite the save we could not read (#358).
-                sp.send(new KickS2C(UNREADABLE_SAVE));
-                sp.disconnect();
+                sp.kick(UNREADABLE_SAVE);
                 return;
             }
             restore = blob;
@@ -871,6 +1049,13 @@ public final class IntegratedServer {
         }
         sp.send(sp.inventorySync(), false);
         sp.markInventorySeeded();
+        if (sp.isLocal() && level != null && level.saveService() != null) {
+            // The host is saved from this record (player.json), like a remote player is from
+            // theirs — never from the client's predicted copy, which can hold intents the
+            // server refused or never received.
+            level.saveService().bindPlayerSource(
+                    worldName -> ServerPlayerDataFactory.build(sp, worldName), this::executeOnTick);
+        }
         if (sp.joinNotice() != null) {
             sp.send(new com.stonebreak.network.packet.chat.ChatMessageS2C(
                     sp.playerId(), "Server", sp.joinNotice()), false);
@@ -1086,10 +1271,12 @@ public final class IntegratedServer {
         if (added > 0) {
             sp.send(new GiveItemS2C(itemId, added), false);
         }
-        sp.send(sp.inventorySync(), false);
+        sp.queueInventorySync(); // a tick of pickups (a death pile) is one sync, at tick end
     }
 
     public void shutdown() {
+        ticking = false;
+        drainTickTasks();
         persistAllRemotePlayersBlocking();
         blockHandler.onSessionEnd();
         entityHandler.onSessionEnd();

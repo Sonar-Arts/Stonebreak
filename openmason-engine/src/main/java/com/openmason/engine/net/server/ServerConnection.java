@@ -66,6 +66,17 @@ public final class ServerConnection {
         return true;
     }
 
+    /**
+     * Sends {@code packet} and closes the connection once it has been flushed — a kick's
+     * reason reaches the client before the channel goes, instead of racing the close.
+     */
+    public void sendAndClose(Packet packet) {
+        if (!channel.isActive()) {
+            return;
+        }
+        channel.writeAndFlush(packet).addListener(io.netty.channel.ChannelFutureListener.CLOSE);
+    }
+
     /** Send critical traffic (never dropped). */
     public boolean send(Packet packet) {
         return send(packet, false);

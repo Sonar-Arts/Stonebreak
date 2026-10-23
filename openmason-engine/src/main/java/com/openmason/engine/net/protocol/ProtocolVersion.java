@@ -34,8 +34,11 @@ public final class ProtocolVersion {
      *  13 = every inventory-predicting intent (BlockChangeC2S, DropItemC2S, SnowLayerC2S,
      *  BlockToggleC2S, ProjectileSpawnC2S, DeathDropC2S) carries a slot-intent seq that
      *  InventorySyncS2C acknowledges, plus InventoryResyncC2S for a skipped stale sync.
-     *  14 = BlockBreakStartC2S: breaks are a start/finish pair the server times (issue #333). */
-    public static final int CURRENT = 14;
+     *  14 = BlockBreakStartC2S: breaks are a start/finish pair the server times (issue #333).
+     *  15 = chunk flow control: ChunkAckC2S (processed count + desired chunks per tick), and
+     *  ChunkUnloadC2S carries the chunk the client stood in; EntityKnockbackC2S forwards ability
+     *  knockback on a replicated entity. */
+    public static final int CURRENT = 15;
 
     private ProtocolVersion() {}
 }
