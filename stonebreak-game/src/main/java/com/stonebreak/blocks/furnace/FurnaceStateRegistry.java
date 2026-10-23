@@ -130,9 +130,16 @@ public class FurnaceStateRegistry {
                 cx * CHUNK_SIZE + LocalBlockKey.x(key),
                 LocalBlockKey.y(key),
                 cz * CHUNK_SIZE + LocalBlockKey.z(key));
-            FurnaceState s = FurnaceState.fromStateString(pos, value);
+            // In place when already tracked (a client re-stream of this chunk, #369) so an open
+            // furnace UI stays bound to the same object and re-reads it, like an echo. A
+            // re-stream carries no ack, so its slots are ignored while one of our snapshots is
+            // in flight; the timers always apply.
+            FurnaceState s = states.compute(pos, (p, existing) -> {
+                if (existing == null) return FurnaceState.fromStateString(p, value);
+                existing.applyStateString(value);
+                return existing;
+            });
             s.markEchoed(value); // clients get this value with the chunk itself
-            states.put(pos, s);
         }
     }
 

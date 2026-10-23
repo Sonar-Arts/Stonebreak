@@ -13,7 +13,9 @@ import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.player.combat.rogue.RogueAbilityController;
 import com.stonebreak.player.combat.stealth.StealthController;
+import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.interaction.RaycastEngine;
@@ -200,7 +202,25 @@ public class Player {
     public Vector3f getRenderPosition(Vector3f dest) { return camera.getRenderPosition(dest); }
 
     // Fishing
-    public com.stonebreak.mobs.entities.FishingBobber getActiveBobber() { return activeBobber; }
+    /**
+     * This player's bobber: the replicated shadow of the server bobber it owns (#341). Looked up
+     * only while the held rod shows "cast" — the rod state the server syncs — and cached until
+     * the shadow despawns, so an idle frame costs nothing.
+     */
+    public com.stonebreak.mobs.entities.FishingBobber getActiveBobber() {
+        if (activeBobber != null && activeBobber.isAlive()) {
+            return activeBobber;
+        }
+        activeBobber = null;
+        com.stonebreak.items.ItemStack held = inventory.getSelectedHotbarSlot();
+        if (held != null && !held.isEmpty() && held.getItem() == com.stonebreak.items.ItemType.FISHING_ROD
+                && com.stonebreak.items.ItemType.FISHING_ROD_STATE_CAST.equals(held.getState())) {
+            activeBobber = com.stonebreak.mobs.entities.FishingBobber.findOwnedBy(
+                    com.stonebreak.core.Game.getEntityManager(),
+                    com.stonebreak.network.MultiplayerSession.localPlayerId());
+        }
+        return activeBobber;
+    }
     public void setActiveBobber(com.stonebreak.mobs.entities.FishingBobber b) { activeBobber = b; }
 
     // RPG
@@ -362,18 +382,28 @@ public class Player {
     }
 
     /**
-     * Resolves a melee hit on {@code target}: applies Rage-scaled damage, grants Rage for
-     * the hit dealt, and — at Rage T3 — heals the player via lifesteal. Centralizes melee
-     * combat resolution so Berserker bonuses apply uniformly regardless of caller.
+     * Resolves a melee hit on {@code target}: applies Rage-scaled damage and, once the hit
+     * has landed ({@link #onMeleeHitLanded}), grants Rage, builds the Ranger's Quarry and — at
+     * Rage T3 — heals the player via lifesteal. Centralizes melee combat resolution so
+     * Berserker bonuses apply uniformly regardless of caller.
+     *
+     * <p>Targets that cannot take damage get nothing ({@link #isCombatTarget}, #374). On a
+     * network shadow the hit is only an intent: the server decides, and its result
+     * ({@code KillCreditS2C}) calls {@link #onMeleeHitLanded} with what it applied.
      */
     public void attackEntity(LivingEntity target) {
+        if (!isCombatTarget(target)) {
+            return;
+        }
         float damageDealt = getAttackDamage() * getMeleeDamageMultiplier();
 
         // Stealth opener: striking an unaware enemy leaves it flat-footed (so the crit roll below,
-        // and any follow-up hit within the window, gains bonus crit chance).
+        // and any follow-up hit within the window, gains bonus crit chance). On a shadow the
+        // effect goes to the server, so this hit's own roll reads the opener directly.
         AwarenessController awareness = target.getAwareness();
-        if (awareness != null
-                && awareness.getState() == AwarenessController.AwarenessState.UNAWARE) {
+        boolean opener = awareness != null
+                && awareness.getState() == AwarenessController.AwarenessState.UNAWARE;
+        if (opener) {
             target.applyStatusEffect(StatusEffectType.FLAT_FOOTED,
                     c.stealth.getFlatFootedDuration(this), 0f);
         }
@@ -381,21 +411,55 @@ public class Player {
         // Crit-chance roll. Base chance is 0 today; a flat-footed target adds the class crit bonus
         // (Rogue = 1.0 → guaranteed). On a crit, scale by the generic crit multiplier, then let the
         // Rogue's Momentum (if any) amplify it further and apply its tier debuff.
-        float critChance = target.hasStatusEffect(StatusEffectType.FLAT_FOOTED)
+        float critChance = opener || target.hasStatusEffect(StatusEffectType.FLAT_FOOTED)
                 ? c.stealth.getFlatFootedCritBonus(this) : 0f;
         if (critChance > 0f && critRandom.nextFloat() < critChance) {
             damageDealt *= PlayerConstants.PLAYER_CRIT_MULTIPLIER;
             damageDealt *= c.rogueAbilities.onCritLanded(this, target);
         }
 
-        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER);
-        c.berserkerAbilities.getRage().onMeleeHitDealt();
-        c.rangerAbilities.onPlayerMeleeHit(this, target);
         c.stealth.onAttack(this); // attacking breaks stealth instantly
-
-        if (c.berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
-            heal(damageDealt * RAGE_T3_LIFESTEAL_PCT);
+        if (target.isNetworkShadow()) {
+            target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, HitKind.MELEE);
+            return; // the server's result lands the hit's effects
         }
+        float healthBefore = target.getHealth();
+        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, HitKind.MELEE);
+        float dealt = healthBefore - Math.max(0f, target.getHealth());
+        if (dealt > 0f) {
+            onMeleeHitLanded(target, dealt);
+        }
+    }
+
+    /**
+     * A melee hit that actually dealt {@code dealt} damage: grants Rage, registers the hit for
+     * the Ranger's Quarry and, at Rage T3, heals by lifesteal. {@code target} may be null when
+     * the copy is already gone (the Rage and lifesteal still apply).
+     */
+    public void onMeleeHitLanded(LivingEntity target, float dealt) {
+        c.berserkerAbilities.getRage().onMeleeHitDealt();
+        if (target != null) {
+            c.rangerAbilities.onPlayerMeleeHit(this, target);
+        }
+        if (c.berserkerAbilities.getRage().getTier().atLeast(RageTier.T3)) {
+            heal(dealt * RAGE_T3_LIFESTEAL_PCT);
+        }
+    }
+
+    /**
+     * Whether a swing or ability may resolve against {@code entity}: alive, and not a
+     * player-shaped entity (remote players, decoys) — hits on those never deal damage until PvP
+     * exists (#343), so they must not pay out Rage, lifesteal, Quarry or stealth effects (#374),
+     * and the server refuses them too.
+     */
+    public static boolean isCombatTarget(LivingEntity entity) {
+        return entity != null && entity.isAlive() && !(entity instanceof RemotePlayer);
+    }
+
+    /** The entities in {@code entityManager} an ability may hit ({@link #isCombatTarget}). */
+    public static java.util.List<LivingEntity> combatTargets(
+            com.stonebreak.mobs.entities.EntityManager entityManager) {
+        return entityManager.getLivingEntities().stream().filter(Player::isCombatTarget).toList();
     }
 
     // Berserker

@@ -105,10 +105,13 @@ public final class ClientPlayerHandler {
         }
         // The server already capped the count to what fit its replica and re-dropped any
         // overflow itself (issue #334) — adding here can never overflow, and re-dropping the
-        // difference would re-enter the debit path with a duplicated spawn. The packet has no
-        // state yet (#342), so the stack arrives in the item's default state and only merges
-        // with default-state stacks, never a water bucket (#350).
-        local.getInventory().addItemAndReturnCount(new ItemStack(g.itemId(), g.count()));
+        // difference would re-enter the debit path with a duplicated spawn. The stack keeps its
+        // state (#342) and merges only with stacks of the same state (#350).
+        ItemStack given = g.stack().toItemStack();
+        if (given.isEmpty()) {
+            return;
+        }
+        local.getInventory().addItemAndReturnCount(given);
         SoundSystem ss = Game.getInstance().getSoundSystem();
         if (ss != null) {
             ss.playSound("blockpickup");
@@ -121,12 +124,27 @@ public final class ClientPlayerHandler {
      * the host); every client — host included — is credited through this uniform packet.
      * XP is NOT applied here: level/xp are server-owned (issue #334) and arrive via the
      * {@code ProgressS2C} echo.
+     *
+     * <p>Also the hit's feedback and on-hit effects ({@code HitResultFeedback}, #371/#374).
+     *
+     * @param target the hit entity's shadow on this client (by the credit's network id), or null
      */
-    public void handleKillCredit(com.stonebreak.network.packet.player.KillCreditS2C k) {
+    public void handleKillCredit(com.stonebreak.network.packet.player.KillCreditS2C k,
+                                 com.stonebreak.mobs.entities.Entity target) {
         Player local = Game.getPlayer();
         if (local == null) {
             return;
         }
+        com.stonebreak.mobs.entities.LivingEntity.DamageSource[] sources =
+                com.stonebreak.mobs.entities.LivingEntity.DamageSource.values();
+        com.stonebreak.mobs.entities.LivingEntity.DamageSource source =
+                k.sourceOrdinal() >= 0 && k.sourceOrdinal() < sources.length
+                        ? sources[k.sourceOrdinal()]
+                        : com.stonebreak.mobs.entities.LivingEntity.DamageSource.UNKNOWN;
+        com.stonebreak.player.combat.HitResultFeedback.apply(local,
+                target instanceof com.stonebreak.mobs.entities.LivingEntity le ? le : null,
+                source, com.stonebreak.mobs.entities.HitKind.fromWire(k.hitKind()),
+                k.damageDealt(), k.killed());
         local.getStats().addDamageDealt(k.damageDealt());
         if (k.killed()) {
             local.getStats().incrementEntitiesKilled();

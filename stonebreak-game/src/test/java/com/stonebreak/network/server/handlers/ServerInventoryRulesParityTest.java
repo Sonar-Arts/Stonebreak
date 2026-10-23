@@ -271,11 +271,16 @@ class ServerInventoryRulesParityTest {
         sp.inventory().setSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1, WATER));
         sp.inventory().selectHotbarSlot(0);
 
-        handler.handleDropItem(sp, new DropItemC2S(ItemType.WOODEN_BUCKET.getId(), 1), ctx);
+        handler.handleDropItem(sp, new DropItemC2S(bucket(WATER), 0), ctx);
 
         verify(em).addEntity(argThat(e -> e instanceof ItemDrop d
                 && WATER.equals(d.getItemStack().getState())));
         assertTrue(sp.inventory().slot(0).isEmpty());
+    }
+
+    /** The toss names its stack (#342): one water bucket. */
+    private static com.stonebreak.network.packet.NetItemStack bucket(String state) {
+        return new com.stonebreak.network.packet.NetItemStack(ItemType.WOODEN_BUCKET.getId(), 1, state);
     }
 
     @Test
@@ -284,12 +289,28 @@ class ServerInventoryRulesParityTest {
         sp.inventory().setSlot(3, new ItemStack(ItemType.WOODEN_BUCKET, 1, EMPTY));
         sp.inventory().selectHotbarSlot(3);
 
-        handler.handleDropItem(sp, new DropItemC2S(ItemType.WOODEN_BUCKET.getId(), 1), ctx);
+        handler.handleDropItem(sp, new DropItemC2S(bucket(EMPTY), 0), ctx);
 
         assertTrue(sp.inventory().slot(3).isEmpty(), "the held empty bucket was tossed");
         assertEquals(WATER, sp.inventory().slot(0).getState(), "the water bucket stayed");
         verify(em).addEntity(argThat(e -> e instanceof ItemDrop d
                 && EMPTY.equals(d.getItemStack().getEffectiveState())));
+    }
+
+    @Test
+    void aTossFromTheInventoryScreenTakesTheNamedStateNotTheHeldOne() {
+        // #342: the water bucket in slot 0 is tossed from the inventory screen while an empty
+        // bucket is in the hand — the packet's state picks the stack.
+        sp.inventory().setSlot(0, new ItemStack(ItemType.WOODEN_BUCKET, 1, WATER));
+        sp.inventory().setSlot(3, new ItemStack(ItemType.WOODEN_BUCKET, 1, EMPTY));
+        sp.inventory().selectHotbarSlot(3);
+
+        handler.handleDropItem(sp, new DropItemC2S(bucket(WATER), 0), ctx);
+
+        assertTrue(sp.inventory().slot(0).isEmpty(), "the water bucket was tossed");
+        assertEquals(EMPTY, sp.inventory().slot(3).getState(), "the held empty bucket stayed");
+        verify(em).addEntity(argThat(e -> e instanceof ItemDrop d
+                && WATER.equals(d.getItemStack().getState())));
     }
 
     @Test

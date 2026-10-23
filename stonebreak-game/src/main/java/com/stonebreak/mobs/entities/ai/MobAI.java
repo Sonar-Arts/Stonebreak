@@ -34,9 +34,9 @@ public final class MobAI {
     private MobBehaviorState currentState = MobBehaviorState.IDLE;
     private float stateTimer;
 
-    /** The usual case: reacts to the local player, seeded from the shared random. */
+    /** The usual case: reacts to the players sharing the mob's world, seeded from the shared random. */
     public MobAI(LivingEntity entity, Steering steering, Behavior... behaviors) {
-        this(entity, new PathAgent(entity, steering), PlayerLocator.LOCAL, new Random(),
+        this(entity, new PathAgent(entity, steering), PlayerLocator.ofWorld(entity), new Random(),
                 List.of(behaviors));
     }
 
@@ -100,8 +100,13 @@ public final class MobAI {
         return currentState.isOneShot() ? stateTimer : totalAnimationTime;
     }
 
-    /** Damage hook — reaches every behaviour, so the one that reacts need not be running. */
+    /**
+     * Damage hook — reaches every behaviour, so the one that reacts need not be running. The hit's
+     * attacker, when the damage source knew one, rides along on the context: a fleeing mob runs
+     * from whoever hit it, not from whichever player happens to be nearest.
+     */
     public void onDamaged(float damage) {
+        context.setAttacker(entity.getLastAttackerPosition());
         controller.onDamaged(context, damage);
     }
 

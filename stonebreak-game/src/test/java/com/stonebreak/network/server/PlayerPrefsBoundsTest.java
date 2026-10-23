@@ -52,7 +52,8 @@ class PlayerPrefsBoundsTest {
     }
 
     private static PlayerData normalize(PlayerData candidate) {
-        return PlayerPrefsValidator.normalize(statsFor(baseline()), baseline(), candidate);
+        return PlayerPrefsValidator.normalize(
+                statsFor(baseline()), baseline(), SpendFloor.NONE, candidate);
     }
 
     // ── #3: overflow ──────────────────────────────────────────────────────────

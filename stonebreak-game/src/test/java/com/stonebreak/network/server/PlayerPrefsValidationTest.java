@@ -49,7 +49,7 @@ class PlayerPrefsValidationTest {
     @Test
     void identicalStatePasses() {
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), baseline());
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, baseline());
         assertNotNull(accepted);
         assertEquals(3, accepted.getLevel());
         assertEquals(40, accepted.getXp());
@@ -69,7 +69,7 @@ class PlayerPrefsValidationTest {
                 .remainingFp(500)
                 .build();
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate);
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate);
         assertNotNull(accepted);
         assertEquals(3, accepted.getLevel(), "level is server-owned");
         assertEquals(40, accepted.getXp(), "xp is server-owned");
@@ -84,7 +84,7 @@ class PlayerPrefsValidationTest {
                 .spentAbilityCp(Map.of("warrior:0", 50))   // grantedCp(3) == 3
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate));
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
     }
 
     @Test
@@ -93,7 +93,7 @@ class PlayerPrefsValidationTest {
                 .skillLevels(Map.of("mining", 10))   // grantedSp(3) == 5
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate));
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
     }
 
     @Test
@@ -104,7 +104,7 @@ class PlayerPrefsValidationTest {
                 .acquiredFeatIds(Set.of("double_jump", "strong", "swift", "lucky"))
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate));
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
     }
 
     @Test
@@ -113,7 +113,7 @@ class PlayerPrefsValidationTest {
                 .acquiredFeatIds(Set.of("not-a-feat"))
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate));
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
     }
 
     @Test
@@ -125,7 +125,7 @@ class PlayerPrefsValidationTest {
                 .remainingSp(30)
                 .build();
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                serverStatsFor(legacy), legacy, legacy);
+                serverStatsFor(legacy), legacy, SpendFloor.NONE, legacy);
         assertNotNull(accepted);
         assertEquals(50, accepted.getRemainingCp());
         assertEquals(30, accepted.getRemainingSkillPoints());
@@ -140,7 +140,7 @@ class PlayerPrefsValidationTest {
                 .skillLevels(Map.of())
                 .build();
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate);
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate);
         assertNotNull(accepted);
         assertEquals(3, accepted.getRemainingCp(), "held pool 1 + refunded ledger 2");
         assertEquals(4, accepted.getRemainingSkillPoints(), "held pool 2 + refunded ledger 2");
@@ -153,7 +153,7 @@ class PlayerPrefsValidationTest {
                 .abilityScores(new int[]{18, 10, 11, 10, 10, 10})
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate));
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
     }
 
     @Test
@@ -162,7 +162,7 @@ class PlayerPrefsValidationTest {
                 .abilityScores(new int[]{11, 10, 11, 10, 10, 10})   // one point un-done
                 .build();
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate);
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate);
         assertNotNull(accepted);
         assertEquals(6, accepted.getRemainingAp());
     }
@@ -176,7 +176,7 @@ class PlayerPrefsValidationTest {
                 .abilityScores(new int[]{1, 1, 1, 1, 1, 1})
                 .build();
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate);
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate);
         assertNotNull(accepted);
         assertEquals(62, accepted.getRemainingAp());
         assertEquals(68, 6 + accepted.getRemainingAp());   // budget unchanged
@@ -191,7 +191,7 @@ class PlayerPrefsValidationTest {
                 .stats(stats)
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
-                serverStatsFor(baseline()), baseline(), candidate));
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
     }
 
     @Test
@@ -202,7 +202,8 @@ class PlayerPrefsValidationTest {
         PlayerData candidate = new PlayerData.Builder(baseline)
                 .discoveredWeaknessEntityTypes(Set.of())
                 .build();
-        assertNull(PlayerPrefsValidator.normalize(serverStatsFor(baseline), baseline, candidate));
+        assertNull(PlayerPrefsValidator.normalize(
+                serverStatsFor(baseline), baseline, SpendFloor.NONE, candidate));
     }
 
     // ── Health clamping ─────────────────────────────────────────────────────────

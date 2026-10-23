@@ -30,6 +30,8 @@ public final class PlayerData {
     private final int selectedHotbarSlot;
     private final LocalDateTime lastSaved;
     private final String worldName;
+    /** Remote player's join secret (issue #335); null for the host and for saves made before it. */
+    private final String clientSecret;
 
     // RPG / character progression
     private final String selectedClassId;
@@ -70,6 +72,7 @@ public final class PlayerData {
         this.selectedHotbarSlot = builder.selectedHotbarSlot;
         this.lastSaved = builder.lastSaved;
         this.worldName = builder.worldName;
+        this.clientSecret = builder.clientSecret;
         this.selectedClassId = builder.selectedClassId;
         this.spentAbilityCp = Collections.unmodifiableMap(new HashMap<>(builder.spentAbilityCp));
         this.skillLevels = Collections.unmodifiableMap(new HashMap<>(builder.skillLevels));
@@ -105,6 +108,7 @@ public final class PlayerData {
     public int getSelectedHotbarSlot() { return selectedHotbarSlot; }
     public LocalDateTime getLastSaved() { return lastSaved; }
     public String getWorldName() { return worldName; }
+    public String getClientSecret() { return clientSecret; }
     public String getSelectedClassId() { return selectedClassId; }
     public Map<String, Integer> getSpentAbilityCp() { return spentAbilityCp; }
     public Map<String, Integer> getSkillLevels() { return skillLevels; }
@@ -164,6 +168,7 @@ public final class PlayerData {
         private int selectedHotbarSlot = 0;
         private LocalDateTime lastSaved = LocalDateTime.now();
         private String worldName;
+        private String clientSecret;
         private String selectedClassId = null;
         private Map<String, Integer> spentAbilityCp = new HashMap<>();
         private Map<String, Integer> skillLevels = new HashMap<>();
@@ -207,6 +212,7 @@ public final class PlayerData {
             this.selectedHotbarSlot = data.selectedHotbarSlot;
             this.lastSaved = data.lastSaved;
             this.worldName = data.worldName;
+            this.clientSecret = data.clientSecret;
             this.selectedClassId = data.selectedClassId;
             this.spentAbilityCp = new HashMap<>(data.spentAbilityCp);
             this.skillLevels = new HashMap<>(data.skillLevels);
@@ -285,6 +291,11 @@ public final class PlayerData {
 
         public Builder worldName(String worldName) {
             this.worldName = worldName;
+            return this;
+        }
+
+        public Builder clientSecret(String clientSecret) {
+            this.clientSecret = clientSecret;
             return this;
         }
 

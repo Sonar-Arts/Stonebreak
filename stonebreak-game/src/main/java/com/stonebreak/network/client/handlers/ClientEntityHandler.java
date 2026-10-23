@@ -9,6 +9,7 @@ import com.stonebreak.network.client.NetworkInterpolator;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
+import com.stonebreak.network.packet.entity.EntityStatusS2C;
 import com.stonebreak.network.packet.entity.EntityTeleportS2C;
 import org.joml.Vector3f;
 
@@ -30,25 +31,29 @@ public final class ClientEntityHandler {
     /** Network id → local shadow entity. Concurrent: session-end teardown can race the tick. */
     private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
     /** Spawns that arrived before the local world/entity manager was ready, plus any anim/
-     *  variant state that arrived for them while buffered (last-wins per field — both packets
-     *  carry absolute state, not deltas). */
+     *  variant/status state that arrived for them while buffered (last-wins per field — the
+     *  packets carry absolute state, not deltas). */
     private final List<PendingSpawn> pendingSpawns = new ArrayList<>();
 
-    private record PendingSpawn(EntitySpawnS2C spawn, String animState, String variant) {
+    private record PendingSpawn(EntitySpawnS2C spawn, String animState, String variant,
+                                EntityStatusS2C status) {
         PendingSpawn(EntitySpawnS2C spawn) {
-            this(spawn, null, null);
+            this(spawn, null, null, null);
         }
         PendingSpawn withAnim(String animState) {
-            return new PendingSpawn(spawn, animState, variant);
+            return new PendingSpawn(spawn, animState, variant, status);
         }
         PendingSpawn withVariant(String variant) {
-            return new PendingSpawn(spawn, animState, variant);
+            return new PendingSpawn(spawn, animState, variant, status);
+        }
+        PendingSpawn withStatus(EntityStatusS2C status) {
+            return new PendingSpawn(spawn, animState, variant, status);
         }
         /** The entity moved while its spawn waited: spawn it where it is now. */
         PendingSpawn movedTo(float x, float y, float z, float yaw) {
             EntitySpawnS2C s = spawn;
             return new PendingSpawn(new EntitySpawnS2C(s.networkId(), s.entityTypeOrdinal(),
-                    x, y, z, yaw, s.metadata()), animState, variant);
+                    x, y, z, yaw, s.metadata()), animState, variant, status);
         }
     }
 
@@ -130,13 +135,18 @@ public final class ClientEntityHandler {
         applyQueuedState(entity, p);
     }
 
-    /** Applies a buffered record's queued anim/variant to a fresh shadow or a live duplicate. */
+    /** Applies a buffered record's queued anim/variant/status to a fresh shadow or a live duplicate. */
     private static void applyQueuedState(Entity e, PendingSpawn p) {
         if (p.animState() != null) {
             e.applyNetworkState(p.animState());
         }
-        if (p.variant() != null && e instanceof com.stonebreak.mobs.entities.LivingEntity le) {
-            le.setTextureVariant(p.variant());
+        if (e instanceof com.stonebreak.mobs.entities.LivingEntity le) {
+            if (p.variant() != null) {
+                le.setTextureVariant(p.variant());
+            }
+            if (p.status() != null) {
+                le.applyNetworkStatus(p.status().healthFraction(), p.status().statusBits());
+            }
         }
     }
 
@@ -146,8 +156,13 @@ public final class ClientEntityHandler {
         // a ghost the server considers gone.
         pendingSpawns.removeIf(p -> p.spawn().networkId() == networkId);
         Entity e = byNetworkId.remove(networkId);
-        if (e != null && Game.getEntityManager() != null) {
-            Game.getEntityManager().removeEntity(e);
+        if (e != null) {
+            // The copy is gone for good — a returning mob gets a new copy object — so anything
+            // still holding it (Quarry mark, Doubt targets) must see it as dead (#371).
+            e.setAlive(false);
+            if (Game.getEntityManager() != null) {
+                Game.getEntityManager().removeEntity(e);
+            }
         }
     }
 
@@ -244,6 +259,28 @@ public final class ClientEntityHandler {
     }
 
     /**
+     * Applies the server's replicated health fraction and status-effect set to a shadow
+     * (#371), so class mechanics reading them off the copy (low-HP prey, Flat-Footed crits,
+     * the Quarry gauge) see the real mob's state.
+     */
+    public void applyStatus(EntityStatusS2C status) {
+        Entity e = byNetworkId.get(status.networkId());
+        if (e instanceof com.stonebreak.mobs.entities.LivingEntity le) {
+            le.applyNetworkStatus(status.healthFraction(), status.statusBits());
+            return;
+        }
+        if (e == null) {
+            // The spawn may still be buffered (world build); status is only resent on change.
+            queueForPendingSpawn(status.networkId(), p -> p.withStatus(status));
+        }
+    }
+
+    /** The live shadow with {@code networkId}, or null (unknown / despawned / not yet spawned). */
+    public Entity shadow(int networkId) {
+        return networkId >= 0 ? byNetworkId.get(networkId) : null;
+    }
+
+    /**
      * Replaces the first pending spawn for {@code networkId} with {@code update} applied;
      * false when no spawn for it is buffered.
      */
@@ -298,6 +335,7 @@ public final class ClientEntityHandler {
         if (em != null) {
             for (Entity e : byNetworkId.values()) {
                 if (e.isNetworkShadow()) {
+                    e.setAlive(false);
                     em.removeEntity(e);
                 }
             }

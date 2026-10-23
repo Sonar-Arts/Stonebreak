@@ -4,19 +4,24 @@ import com.openmason.engine.net.protocol.codec.EntityDeltaCodec;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.sbe.EntityAnimResolver;
+import com.stonebreak.mobs.entities.status.StatusEffectBits;
+import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.network.packet.entity.EntityAnimS2C;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
 import com.stonebreak.network.packet.entity.EntitySpawnS2C;
+import com.stonebreak.network.packet.entity.EntityStatusS2C;
 import com.stonebreak.network.packet.entity.EntityTeleportS2C;
 import com.stonebreak.network.packet.entity.EntityVariantS2C;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
+import com.stonebreak.network.server.combat.CombatRules;
 import com.openmason.engine.net.protocol.Packet;
 import org.joml.Vector3f;
 
@@ -56,11 +61,6 @@ public final class ServerEntityHandler {
      *  enter at the view distance itself. Package-private for the interest tests. */
     static final int INTEREST_EXIT_MARGIN_CHUNKS = 2;
 
-    /** Lenient hit-range gate (arrows/fire bolts land at distance); rejects absurd claims. */
-    private static final float MAX_DAMAGE_RANGE_SQ = 64f * 64f;
-    /** Upper bound on a single client-reported hit, to contain buggy/hostile clients. */
-    private static final float MAX_DAMAGE_AMOUNT = 100f;
-
     /** Tolerant shear-range gate — the client raycast owns the precise targeting. */
     private static final float MAX_SHEAR_RANGE_SQ = 8f * 8f;
     /** Per-player shear rate limit, to contain buggy/hostile EntityShearC2S spam. */
@@ -75,6 +75,8 @@ public final class ServerEntityHandler {
 
     /** Last appearance variant broadcast per entity, so we only resend on change. */
     private final Map<Integer, String> lastVariantState = new ConcurrentHashMap<>();
+    /** Last health/status state broadcast per living entity ({@link #statusKey}), resent on change (#371). */
+    private final Map<Integer, Long> lastStatusState = new ConcurrentHashMap<>();
     /** playerId → network ids this player has been sent a spawn for (their interest set). */
     private final Map<Integer, Set<Integer>> interestByPlayer = new ConcurrentHashMap<>();
 
@@ -86,6 +88,7 @@ public final class ServerEntityHandler {
         ticksSinceResync.clear();
         lastAnimState.clear();
         lastVariantState.clear();
+        lastStatusState.clear();
         interestByPlayer.clear();
         EntityManager em = ctx.entityManager();
         if (em != null) {
@@ -103,6 +106,7 @@ public final class ServerEntityHandler {
         ticksSinceResync.clear();
         lastAnimState.clear();
         lastVariantState.clear();
+        lastStatusState.clear();
         interestByPlayer.clear();
     }
 
@@ -138,6 +142,7 @@ public final class ServerEntityHandler {
         ticksSinceResync.remove(id);
         lastAnimState.remove(id);
         lastVariantState.remove(id);
+        lastStatusState.remove(id);
         for (Set<Integer> known : interestByPlayer.values()) {
             known.remove(id);
         }
@@ -198,6 +203,8 @@ public final class ServerEntityHandler {
             broadcastAnimIfChanged(e, ctx);
             // Replicate appearance variant on change (shear swap, wool regrowth via grazing).
             broadcastVariantIfChanged(e, ctx);
+            // Replicate health fraction + status effects on change (#371).
+            broadcastStatusIfChanged(e, ctx);
 
             int id = e.getNetworkId();
             float[] last = lastBroadcast.get(id);
@@ -262,39 +269,113 @@ public final class ServerEntityHandler {
 
     /**
      * C2S: a player claims to have damaged entity {@code targetNetworkId}. Validates the
-     * claim (entity exists + alive, plausible range, sane amount/source) and applies the
-     * damage on the authoritative entity. Death then flows through the normal listener
-     * chain (EntityManager removal → {@link EntityDespawnS2C} + replicated drops).
+     * claim against the server's own state by its {@code HitKind} ({@link CombatRules}):
+     * <ul>
+     *   <li>MELEE — the target's box within reach of the player's server-known position,
+     *       the swing cooldown, a cap from the server-known held weapon; always PLAYER damage.</li>
+     *   <li>ABILITY — the player's class has an ability-hit profile with an unlocked ability,
+     *       the profile's range, damage cap and hit budget; PLAYER or ARCANE damage.</li>
+     * </ul>
+     * Projectile hits are simulated here and never claimed. Then applies the damage on the
+     * authoritative entity and answers the attacker with the applied result
+     * ({@code KillCreditS2C}). Death flows through the normal listener chain (EntityManager
+     * removal → {@link EntityDespawnS2C} + replicated drops).
      */
     public void handleEntityDamage(ServerPlayer sp, EntityDamageC2S pkt, ServerWorldContext ctx) {
         Entity e = byNetworkId.get(pkt.targetNetworkId());
         if (!(e instanceof LivingEntity le) || !le.isAlive()) {
             return; // unknown id (despawn raced the hit) or already dead — drop silently
         }
-        Vector3f p = e.getPosition();
-        float dx = p.x - sp.x();
-        float dy = p.y - sp.y();
-        float dz = p.z - sp.z();
-        if (dx * dx + dy * dy + dz * dz > MAX_DAMAGE_RANGE_SQ) {
-            return;
+        if (le instanceof RemotePlayer) {
+            return; // players and their decoys take no player hits until PvP exists (#343/#374)
+        }
+        if (!sp.isLiveInWorld()) {
+            return; // no reported position to measure from, or dead
         }
         float amount = pkt.amount();
-        if (!(amount > 0f)) { // also rejects NaN
+        if (!(amount > 0f) || !Float.isFinite(amount)) { // also rejects NaN
             return;
         }
-        amount = Math.min(amount, MAX_DAMAGE_AMOUNT);
-
+        HitKind kind = HitKind.fromWire(pkt.hitKind());
         LivingEntity.DamageSource source = decodeSource(pkt.sourceOrdinal());
+        long now = System.nanoTime();
+        float cap;
+        if (kind == HitKind.MELEE) {
+            if (!CombatRules.withinMeleeReach(sp.x(), sp.y(), sp.z(), le.getBoundingBox())
+                    || !sp.combat().tryMelee(now)) {
+                return;
+            }
+            cap = CombatRules.maxMeleeDamage(sp.inventory().heldItemId(),
+                    sp.serverStats().getSelectedClassId());
+            source = LivingEntity.DamageSource.PLAYER;
+        } else if (kind == HitKind.ABILITY) {
+            CombatRules.AbilityHitProfile profile =
+                    CombatRules.abilityProfile(sp.serverStats().getSelectedClassId());
+            if (profile == null || !profile.unlockedFor(sp.serverStats())
+                    || distanceSq(sp, le) > profile.maxRange() * profile.maxRange()
+                    || !sp.combat().tryAbilityHit(profile, now)) {
+                return;
+            }
+            cap = profile.maxDamage();
+            if (source != LivingEntity.DamageSource.ARCANE) {
+                source = LivingEntity.DamageSource.PLAYER;
+            }
+        } else {
+            return; // PROJECTILE (server-simulated, never claimed) or an unknown kind
+        }
+        amount = Math.min(amount, cap);
+
         // Never credit through the local-player path (on the server thread that would be
         // the HOST's player object regardless of attacker). Credit routes back to the
         // actual attacker via KillCreditS2C — uniform for host (Local channel) and remotes.
         float healthBefore = le.getHealth();
-        sp.recordHit(pkt.targetNetworkId(), System.nanoTime());
+        sp.recordHit(pkt.targetNetworkId(), now);
         le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
-            sendKillCredit(sp, le, dealt, !le.isAlive());
+            sendKillCredit(sp, le, dealt, !le.isAlive(), source, kind);
         }
+    }
+
+    /**
+     * C2S: one of the player's abilities put a status effect on a replicated entity (#339).
+     * Applied to the REAL entity — where it ticks, expires and acts on the AI — only when
+     * the effect may come from a client at all, the player's class may apply it, the target
+     * is within the effect's range of the player's server-known position, and the player's
+     * status budget allows; duration and magnitude are clamped to the effect's legal maximum.
+     * The result replicates to every interested client through {@code EntityStatusS2C}.
+     */
+    public void handleEntityStatusEffect(ServerPlayer sp,
+                                         com.stonebreak.network.packet.entity.EntityStatusEffectC2S pkt) {
+        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        if (!(e instanceof LivingEntity le) || !le.isAlive() || !sp.isLiveInWorld()
+                || le instanceof RemotePlayer) { // no PvP effects either (#374)
+            return;
+        }
+        StatusEffectType type = StatusEffectBits.fromWireId(pkt.effectId());
+        CombatRules.StatusIntentRule rule = CombatRules.statusRule(type);
+        if (rule == null || !rule.allowsClass(sp.serverStats().getSelectedClassId())) {
+            return;
+        }
+        float duration = pkt.duration();
+        float magnitude = pkt.magnitude();
+        if (!(duration > 0f) || !Float.isFinite(duration) || !Float.isFinite(magnitude)) {
+            return;
+        }
+        if (distanceSq(sp, le) > rule.maxRange() * rule.maxRange()
+                || !sp.combat().tryStatusIntent(System.nanoTime())) {
+            return;
+        }
+        le.applyStatusEffect(type, Math.min(duration, rule.maxDuration()),
+                clamp(magnitude, 0f, rule.maxMagnitude()));
+    }
+
+    private static float distanceSq(ServerPlayer sp, Entity e) {
+        Vector3f p = e.getPosition();
+        float dx = p.x - sp.x();
+        float dy = p.y - sp.y();
+        float dz = p.z - sp.z();
+        return dx * dx + dy * dy + dz * dz;
     }
 
     /**
@@ -387,14 +468,18 @@ public final class ServerEntityHandler {
      * the client. The packet's {@code xpReward} is display-only; the client mirror is
      * corrected by the ProgressS2C echo on level-up.
      */
-    public void sendKillCredit(ServerPlayer sp, LivingEntity victim, float dealt, boolean killed) {
+    public void sendKillCredit(ServerPlayer sp, LivingEntity victim, float dealt, boolean killed,
+                               LivingEntity.DamageSource source, HitKind kind) {
         int xp = killed ? victim.getXpReward() : 0;
         if (xp > 0) {
             sp.serverStats().addXp(xp);
             sp.sendProgression();
         }
+        // Carries the target's network id, source and kind: the attacker's damage number,
+        // hurt sound, Rage/lifesteal (melee) and Quarry (arrows) run off this result (#371/#374).
         sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
-            victim.getType().ordinal(), dealt, killed, xp), false);
+            victim.getType().ordinal(), dealt, killed, xp,
+            victim.getNetworkId(), (byte) source.ordinal(), kind.wireId()), false);
     }
 
     /** Spawn position must be near the claiming player (zones cast at range get more slack). */
@@ -426,16 +511,32 @@ public final class ServerEntityHandler {
                 return;
             }
         }
-        if (sp.lastStateNs() != 0L) {
-            float dx = pkt.x() - sp.x();
-            float dy = pkt.y() - sp.y();
-            float dz = pkt.z() - sp.z();
-            float distSq = dx * dx + dy * dy + dz * dz;
-            boolean zoneKind = pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH
-                || pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP;
-            if (distSq > (zoneKind ? MAX_ZONE_SPAWN_DIST_SQ : MAX_PROJECTILE_SPAWN_DIST_SQ)) {
-                return;
-            }
+        // The client already took an arrow out of its mirror: every refusal of an arrow
+        // syncs the sender so the mirror gets it back.
+        boolean arrow = pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW;
+        CombatRules.ProjectileRule rule = CombatRules.projectileRule(pkt.kind());
+        if (rule == null || !sp.isLiveInWorld()) {
+            // Unknown kind, or no reported position yet (never skip the position check) / dead.
+            refuseSpawn(sp, arrow);
+            return;
+        }
+        float dx = pkt.x() - sp.x();
+        float dy = pkt.y() - sp.y();
+        float dz = pkt.z() - sp.z();
+        float distSq = dx * dx + dy * dy + dz * dz;
+        boolean zoneKind = pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH
+            || pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP;
+        if (distSq > (zoneKind ? MAX_ZONE_SPAWN_DIST_SQ : MAX_PROJECTILE_SPAWN_DIST_SQ)) {
+            refuseSpawn(sp, arrow);
+            return;
+        }
+        // Held item / class + unlocked ability, live cap per owner, then the spawn budget
+        // (mirrors the client cooldown) — #339.
+        if (!rule.allows(sp.inventory().heldItemId(), sp.serverStats())
+                || countOwned(em, sp.playerId(), rule.liveType()) >= rule.maxLive()
+                || !sp.combat().tryProjectile(pkt.kind(), rule, System.nanoTime())) {
+            refuseSpawn(sp, arrow);
+            return;
         }
         Vector3f pos = new Vector3f(pkt.x(), pkt.y(), pkt.z());
         Vector3f v = new Vector3f(pkt.vx(), pkt.vy(), pkt.vz());
@@ -487,7 +588,8 @@ public final class ServerEntityHandler {
                 if (params.length < 1) {
                     yield null;
                 }
-                yield em.spawnCaltropCluster(pos, clamp(params[0], 1f, MAX_PARAM_DURATION));
+                yield em.spawnCaltropCluster(pos,
+                    clamp(params[0], 1f, com.stonebreak.player.PlayerConstants.CALTROP_DURATION));
             }
             default -> null;
         };
@@ -495,6 +597,23 @@ public final class ServerEntityHandler {
             // Route hit/kill credit for this projectile back to the launching player.
             spawned.setOwnerPlayerId(sp.playerId());
         }
+    }
+
+    private static void refuseSpawn(ServerPlayer sp, boolean arrow) {
+        if (arrow) {
+            sp.send(sp.inventorySync(), false);
+        }
+    }
+
+    /** Live entities of {@code type} launched by {@code playerId} — queued spawns included (a caltrop fan lands in one tick). */
+    private static int countOwned(EntityManager em, int playerId, EntityType type) {
+        int n = 0;
+        for (Entity e : em.getAllEntitiesIncludingPending()) {
+            if (e.getType() == type && e.getOwnerPlayerId() == playerId && e.isAlive()) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private static float clamp(float v, float min, float max) {
@@ -508,7 +627,7 @@ public final class ServerEntityHandler {
         }
         LivingEntity.DamageSource source = values[ordinal];
         return switch (source) { // allow-list of client-originated sources
-            case PLAYER, ARROW, FIRE -> source;
+            case PLAYER, ARROW, FIRE, ARCANE -> source; // ARCANE keeps its type (#339)
             default -> LivingEntity.DamageSource.UNKNOWN;
         };
     }
@@ -571,6 +690,14 @@ public final class ServerEntityHandler {
         if (anim != null) {
             sp.send(anim, false);
         }
+        // Health/status when not the default a fresh shadow starts with (full, no effects).
+        if (e instanceof LivingEntity le) {
+            EntityStatusS2C status = statusPacketFor(le);
+            if (status.statusBits() != 0
+                    || EntityStatusS2C.quantize(status.healthFraction()) != EntityStatusS2C.quantize(1f)) {
+                sp.send(status, false);
+            }
+        }
     }
 
     /** Sends to every player who knows {@code networkId}; false if any send was dropped. */
@@ -624,13 +751,16 @@ public final class ServerEntityHandler {
             // carried — otherwise the first tick broadcasts one redundant variant
             // packet per living entity.
             lastVariantState.put(e.getNetworkId(), le.getTextureVariant());
+            // Likewise the status tracker: the spawn path sends any non-default state itself.
+            lastStatusState.put(e.getNetworkId(), statusKey(statusPacketFor(le)));
         }
     }
 
     private static boolean isReplicable(Entity e) {
-        // RemotePlayer subclasses (IllusionDecoy) report their own type; the instanceof
-        // guard keeps any player-shaped display entity off the entity channel regardless.
-        return e != null && !(e instanceof RemotePlayer) && e.getType().replicates();
+        // The instanceof guard keeps player-shaped display entities off the entity channel;
+        // the server-spawned illusion decoy (#341) is the one RemotePlayer subclass that rides it.
+        return e != null && (!(e instanceof RemotePlayer) || e instanceof com.stonebreak.mobs.entities.IllusionDecoy)
+                && e.getType().replicates();
     }
 
     /** Send an {@link EntityAnimS2C} to interested players when an entity's SBE state changed. */
@@ -663,6 +793,38 @@ public final class ServerEntityHandler {
             lastVariantState.put(id, variant);
             sendToInterested(ctx, id, new EntityVariantS2C(id, variant), false);
         }
+    }
+
+    /**
+     * Replicates a living entity's health fraction and active status effects on change as
+     * {@link EntityStatusS2C} (#371): class mechanics read both off the client's shadow (low-HP
+     * prey, the Quarry gauge, Flat-Footed crits, Spellmarked/Amplified), and a shadow never
+     * simulates either. Change is judged on the quantized wire value, so sub-step regeneration
+     * does not resend.
+     */
+    private void broadcastStatusIfChanged(Entity e, ServerWorldContext ctx) {
+        if (!(e instanceof LivingEntity le)) {
+            return;
+        }
+        EntityStatusS2C status = statusPacketFor(le);
+        long key = statusKey(status);
+        int id = e.getNetworkId();
+        Long last = lastStatusState.get(id);
+        if (last == null || last != key) {
+            lastStatusState.put(id, key);
+            sendToInterested(ctx, id, status, false);
+        }
+    }
+
+    private static EntityStatusS2C statusPacketFor(LivingEntity le) {
+        float max = le.getMaxHealth();
+        float fraction = max > 0f ? Math.max(0f, le.getHealth()) / max : 0f;
+        return new EntityStatusS2C(le.getNetworkId(), fraction, le.getStatusEffectBits());
+    }
+
+    /** Change key of a status packet: what actually goes on the wire. */
+    private static long statusKey(EntityStatusS2C s) {
+        return ((long) EntityStatusS2C.quantize(s.healthFraction()) << 32) | (s.statusBits() & 0xFFFFL);
     }
 
     /** The current animation-state packet for an entity, or null if it has no AI-driven state. */

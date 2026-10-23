@@ -11,7 +11,8 @@ import java.util.EnumSet;
  *
  * <p>Damage arming comes through {@link #onDamaged}, which is delivered to every behaviour whether
  * it is running or not: the behaviour that reacts to a hit is by definition not the one that was
- * running when it landed. Proximity is the other trigger, for skittish mobs that bolt before
+ * running when it landed. A hit runs from the attacker that landed it ({@link AiContext#attacker}),
+ * which in multiplayer need not be the nearest player. Proximity is the other trigger, for skittish mobs that bolt before
  * anything touches them, and it is hysteretic — once running, it keeps running until the player is
  * past {@code safeRange}, so a mob does not stutter in and out of panic at the threshold.
  *
@@ -36,6 +37,8 @@ public final class FleeBehavior implements Behavior {
     private final Vector3f threat = new Vector3f();
     private final Vector3f target = new Vector3f();
     private boolean threatKnown;
+    /** The threat came from a hit, which already says who to run from. */
+    private boolean hitArmed;
     private float remaining;
 
     /**
@@ -71,15 +74,17 @@ public final class FleeBehavior implements Behavior {
 
     @Override
     public void onDamaged(AiContext context, float damage) {
-        Vector3f player = context.nearestPlayer();
+        Vector3f attacker = context.attacker();
+        Vector3f player = attacker != null ? attacker : context.nearestPlayer();
         if (player != null) {
+            // Whoever landed the hit; only when the source did not say, the nearest player.
             threat.set(player);
-            threatKnown = true;
         } else {
             // Hurt by something we cannot see: run the way we happen to be facing.
             threat.set(context.entity().getPosition()).sub(context.entity().getForwardDirection());
-            threatKnown = true;
         }
+        threatKnown = true;
+        hitArmed = true;
         remaining = durationSeconds;
     }
 
@@ -99,7 +104,9 @@ public final class FleeBehavior implements Behavior {
 
     @Override
     public void start(AiContext context) {
-        rememberThreat(context);
+        if (!hitArmed) {
+            rememberThreat(context); // a proximity flight runs from the player that set it off
+        }
         pickRetreat(context);
     }
 
@@ -136,6 +143,7 @@ public final class FleeBehavior implements Behavior {
     public void stop(AiContext context) {
         remaining = 0.0f;
         threatKnown = false;
+        hitArmed = false;
         context.nav().stop();
     }
 

@@ -195,8 +195,8 @@ public class BlockDrop extends Entity {
         // with room takes what fits — the local client adds it on receipt of GiveItemS2C — and
         // the rest stays here (#372); the drop despawns once it is empty.
         if (isNetworkShadow()) return;
-        int taken = com.stonebreak.network.MultiplayerSession.tryServerPickup(
-                position, PICKUP_RANGE, blockType.getId(), stackCount);
+        int taken = com.stonebreak.network.MultiplayerSession.tryServerPickup(position, PICKUP_RANGE,
+                new com.stonebreak.network.packet.NetItemStack(blockType.getId(), stackCount));
         if (taken >= stackCount) {
             alive = false;
         } else if (taken > 0) {

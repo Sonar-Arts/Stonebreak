@@ -208,8 +208,7 @@ public class DropUtil {
         // and replicates it to every client (including us, as a normal shadow). Spawning
         // locally here would create a client-only drop no other player can see —
         // Game.getEntityManager() is the render world's manager in the two-world model.
-        if (com.stonebreak.network.MultiplayerSession.sendDropItem(
-                itemStack.getBlockTypeId(), itemStack.getCount())) {
+        if (com.stonebreak.network.MultiplayerSession.sendDropItem(itemStack)) {
             return;
         }
 

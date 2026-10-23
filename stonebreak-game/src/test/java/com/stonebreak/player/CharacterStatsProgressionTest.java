@@ -80,7 +80,7 @@ class CharacterStatsProgressionTest {
         CharacterStats cs = stats();
         cs.spendCpOnAbility("ranger:0");
         cs.investSkillPoint("mining");
-        cs.acquireFeat("someFeat");
+        cs.acquireFeat("double_jump");
 
         cs.addXp(400); // levels 2 and 3
         assertEquals(3, cs.getLevel());
@@ -155,13 +155,13 @@ class CharacterStatsProgressionTest {
     @Test
     void undoReversesAFeatAcquisition() {
         CharacterStats cs = stats();
-        cs.acquireFeat("tough");
+        cs.acquireFeat("double_jump");
         assertEquals(0, cs.getRemainingFeatPoints());
-        assertTrue(cs.hasFeat("tough"));
+        assertTrue(cs.hasFeat("double_jump"));
 
         cs.undoLastAllocation();
         assertEquals(1, cs.getRemainingFeatPoints());
-        assertFalse(cs.hasFeat("tough"));
+        assertFalse(cs.hasFeat("double_jump"));
     }
 
     @Test
@@ -181,18 +181,18 @@ class CharacterStatsProgressionTest {
     void undoIsLastInFirstOut() {
         CharacterStats cs = stats();
         cs.investSkillPoint("mining");   // 3 -> 2
-        cs.acquireFeat("tough");         // 1 -> 0
+        cs.acquireFeat("double_jump");         // 1 -> 0
         cs.investSkillPoint("alchemy");  // 2 -> 1
 
         cs.undoLastAllocation(); // un-invest alchemy
         assertEquals(2, cs.getRemainingSkillPoints());
         assertEquals(1, cs.getSkillLevel("mining"));
         assertEquals(0, cs.getSkillLevel("alchemy"));
-        assertTrue(cs.hasFeat("tough"));
+        assertTrue(cs.hasFeat("double_jump"));
 
         cs.undoLastAllocation(); // un-acquire tough
         assertEquals(1, cs.getRemainingFeatPoints());
-        assertFalse(cs.hasFeat("tough"));
+        assertFalse(cs.hasFeat("double_jump"));
     }
 
     @Test
@@ -210,12 +210,12 @@ class CharacterStatsProgressionTest {
     void clearUndoHistoryDropsAllAllocations() {
         CharacterStats cs = stats();
         cs.investSkillPoint("mining");
-        cs.acquireFeat("tough");
+        cs.acquireFeat("double_jump");
         cs.clearUndoHistory();
         assertFalse(cs.canUndo());
         // History gone, but the allocations themselves remain (this is used at world creation).
         assertEquals(1, cs.getSkillLevel("mining"));
-        assertTrue(cs.hasFeat("tough"));
+        assertTrue(cs.hasFeat("double_jump"));
     }
 
     // ─────────────────────────────── In-game session snapshot
@@ -225,7 +225,7 @@ class CharacterStatsProgressionTest {
         CharacterStats cs = stats();
         cs.spendCpOnAbility("ranger:0");
         cs.investSkillPoint("mining");
-        cs.acquireFeat("tough");
+        cs.acquireFeat("double_jump");
         cs.incrementAbilityScore(0);
         CharacterStats.RpgSnapshot baseline = cs.snapshotRpgState();
 
@@ -243,7 +243,7 @@ class CharacterStatsProgressionTest {
         assertEquals(1, cs.getSpentCp("ranger:0"));
         assertEquals(1, cs.getSkillLevel("mining"));
         assertEquals(0, cs.getSkillLevel("alchemy"));
-        assertTrue(cs.hasFeat("tough"));
+        assertTrue(cs.hasFeat("double_jump"));
         assertFalse(cs.hasFeat("quick"));
     }
 

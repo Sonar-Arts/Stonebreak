@@ -1,7 +1,6 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
@@ -55,23 +54,16 @@ public class Arrow extends Entity {
         // Entity collision — damage the first living entity struck. Use the OWNING world's
         // manager: server-spawned arrows must scan the server's entities (the Game singleton
         // resolves to the client render manager in the two-world model).
-        EntityManager em = world.getEntityManager();
-        if (em == null) {
-            em = Game.getEntityManager();
-        }
+        EntityManager em = OwningEntityManager.of(this);
         if (em != null) {
             for (Entity e : em.getEntitiesInRange(position, HIT_RADIUS)) {
                 if (e == this) continue;
                 if (e instanceof LivingEntity le) {
                     float speedRatio = launchSpeed > 0 ? Math.min(launchSpeed / 45.0f, 1.0f) : 0.0f;
                     float damage = BASE_DAMAGE + (MAX_DAMAGE - BASE_DAMAGE) * speedRatio;
+                    // The hit result goes to the shooter (KillCreditS2C with the target's
+                    // network id and ARROW source); their client builds Quarry/Study from it.
                     ProjectileDamage.deal(this, le, damage, LivingEntity.DamageSource.ARROW);
-                    // Ranger Quarry marking is a local-player concern (local-fallback only);
-                    // server-side there is no local player figure — a follow-up.
-                    com.stonebreak.player.Player player = Game.getPlayer();
-                    if (player != null && Game.getWorld() == world) {
-                        player.getRangerAbilities().onPlayerArrowHit(player, le);
-                    }
                     alive = false;
                     return;
                 }

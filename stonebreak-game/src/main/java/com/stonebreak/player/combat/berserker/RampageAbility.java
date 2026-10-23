@@ -147,7 +147,7 @@ public class RampageAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive() || hitEntities.contains(entity)) continue;
 
             Vector3f rel = entity.getPosition().sub(currentPos);
@@ -195,7 +195,7 @@ public class RampageAbility {
         if (trailZones.isEmpty()) return;
 
         EntityManager entityManager = Game.getEntityManager();
-        List<LivingEntity> living = entityManager != null ? entityManager.getLivingEntities() : List.of();
+        List<LivingEntity> living = entityManager != null ? Player.combatTargets(entityManager) : List.of();
 
         var it = trailZones.iterator();
         while (it.hasNext()) {

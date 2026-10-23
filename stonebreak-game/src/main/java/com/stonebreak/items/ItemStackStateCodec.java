@@ -20,8 +20,13 @@ public final class ItemStackStateCodec {
     /** The token for an empty slot. */
     public static final String EMPTY_TOKEN = "B:0:0";
 
-    /** 32 chars keeps a full 9-slot crafting grid under {@code BlockStateS2C}'s 512-char bound. */
-    private static final Pattern SAFE_STATE = Pattern.compile("[A-Za-z0-9_.-]{1,32}");
+    /**
+     * 32 chars keeps a full 9-slot crafting grid under {@code BlockStateS2C}'s 512-char bound.
+     * Single interior spaces are allowed — SBO state names may be words ("Reeled in") — and
+     * collide with none of the separators.
+     */
+    private static final Pattern SAFE_STATE =
+            Pattern.compile("(?=.{1,32}$)[A-Za-z0-9_.-]+(?: [A-Za-z0-9_.-]+)*");
 
     private ItemStackStateCodec() {
         throw new UnsupportedOperationException("Utility class");

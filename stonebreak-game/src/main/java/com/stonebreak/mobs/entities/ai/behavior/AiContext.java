@@ -27,6 +27,8 @@ public final class AiContext {
     private final PlayerLocator players;
 
     private final Vector3f playerScratch = new Vector3f();
+    private final Vector3f attacker = new Vector3f();
+    private boolean attackerKnown;
     private float deltaTime;
 
     public AiContext(LivingEntity entity, PathAgent nav, Random random, PlayerLocator players) {
@@ -87,5 +89,25 @@ public final class AiContext {
     /** Whether the nearest player is sprinting — skittish mobs notice that from further off. */
     public boolean nearestPlayerSprinting() {
         return players.nearestPlayerSprinting(entity.getPosition());
+    }
+
+    /**
+     * Where the hit being reported came from, or {@code null} when its source did not say (a
+     * status effect ticking, an unattributed projectile). Meaningful inside
+     * {@link Behavior#onDamaged}; the returned vector is owned by this context.
+     */
+    public Vector3f attacker() {
+        return attackerKnown ? attacker : null;
+    }
+
+    /**
+     * Records the attacker of the hit about to be reported to the behaviours. Copied, never
+     * retained: a damage source may pass a live position (cactus contact passes the mob's own).
+     */
+    public void setAttacker(Vector3f attackerPosition) {
+        attackerKnown = attackerPosition != null;
+        if (attackerKnown) {
+            attacker.set(attackerPosition);
+        }
     }
 }

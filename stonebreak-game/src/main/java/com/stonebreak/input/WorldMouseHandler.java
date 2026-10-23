@@ -10,8 +10,6 @@ import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.mobs.entities.FishingBobber;
-import com.stonebreak.mobs.entities.FishingManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.sheep.SheepShearing;
 import com.stonebreak.network.MultiplayerSession;
@@ -35,9 +33,6 @@ final class WorldMouseHandler {
     // with projectiles. Minimum 0.4s between casts.
     private static final long STAFF_CAST_COOLDOWN_NANOS = 400_000_000L;
     private long lastFireBoltCastNanos = 0L;
-
-    // Resolves fishing catches (loot roll + drop spawn) when a bobber is reeled in.
-    private final FishingManager fishingManager = new FishingManager();
 
     /** Handles a mouse button event that reached the world (no UI consumed it, state is PLAYING). */
     void handleMouseButton(int button, int action) {
@@ -65,7 +60,10 @@ final class WorldMouseHandler {
         player.startAttackAnimation();
         EntityManager em = Game.getEntityManager();
         if (em != null) {
-            LivingEntity target = player.getRaycastEngine().raycastEntity(em.getLivingEntities());
+            // Remote players and decoys are not melee targets until PvP exists (#343/#374):
+            // a swing passes through them to whatever stands behind.
+            LivingEntity target = player.getRaycastEngine().raycastEntity(
+                    em.getLivingEntities().stream().filter(Player::isCombatTarget).toList());
             if (target != null) {
                 player.attackEntity(target);
             }
@@ -134,24 +132,23 @@ final class WorldMouseHandler {
         lastFireBoltCastNanos = now;
     }
 
-    /** Fishing rod: recall an active bobber (rolling for a catch) or cast a fresh one. */
+    /**
+     * Fishing rod: the SERVER casts a bobber or reels the out one in, rolling for a catch it
+     * spawns in the server world (#341) — the bobber and any catch reach us as replicated
+     * entities. The rod's cast/reeled-in flip is predicted on the mirror; the server's answering
+     * sync confirms it (or undoes a refused use). Without a session there is no server, so the
+     * rod does nothing.
+     */
     private void useFishingRod(Player player, ItemStack rod) {
-        EntityManager em = Game.getEntityManager();
-        if (em == null) {
+        Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
+        Vector3f pos = new Vector3f(player.getCamera().getPosition());
+        if (!MultiplayerSession.sendFishingRodUse(pos, dir)) {
             return;
         }
-        FishingBobber existing = player.getActiveBobber();
-        if (existing != null && existing.isAlive()) {
-            fishingManager.tryCatch(player, existing);
-            existing.setAlive(false);
-            player.setActiveBobber(null);
-            rod.setState(ItemType.FISHING_ROD_STATE_REELED_IN);
-        } else {
-            Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-            Vector3f pos = new Vector3f(player.getCamera().getPosition());
-            FishingBobber bobber = em.spawnBobber(pos, dir);
-            player.setActiveBobber(bobber);
-            rod.setState(ItemType.FISHING_ROD_STATE_CAST);
+        boolean cast = ItemType.FISHING_ROD_STATE_CAST.equals(rod.getState());
+        rod.setState(cast ? ItemType.FISHING_ROD_STATE_REELED_IN : ItemType.FISHING_ROD_STATE_CAST);
+        if (cast) {
+            player.setActiveBobber(null); // the server retires it; the line goes at once
         }
     }
 

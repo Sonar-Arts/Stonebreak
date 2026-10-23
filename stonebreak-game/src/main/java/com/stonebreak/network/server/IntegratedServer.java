@@ -14,6 +14,7 @@ import com.stonebreak.network.StonebreakProtocol;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
+import com.stonebreak.network.packet.NetItemStack;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.handshake.DisconnectC2S;
@@ -41,6 +42,8 @@ import com.stonebreak.network.server.handlers.ServerBlockHandler;
 import com.stonebreak.network.server.handlers.ServerChatHandler;
 import com.stonebreak.network.server.handlers.ServerChunkHandler;
 import com.stonebreak.network.server.handlers.ServerEntityHandler;
+import com.stonebreak.network.server.handlers.ServerFishingHandler;
+import com.stonebreak.network.server.handlers.ServerIllusionHandler;
 import com.stonebreak.network.server.handlers.ServerPlayerHandler;
 import org.joml.Vector3f;
 
@@ -82,6 +85,8 @@ public final class IntegratedServer {
     private final ServerEntityHandler entityHandler;
     private final ServerPlayerHandler playerHandler;
     private final ServerChatHandler chatHandler;
+    private final ServerFishingHandler fishingHandler = new ServerFishingHandler();
+    private final ServerIllusionHandler illusionHandler = new ServerIllusionHandler();
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
@@ -129,6 +134,9 @@ public final class IntegratedServer {
         // (not in ServerLevel) so the mobs.entities package never imports network classes —
         // the dependency flows network -> mobs, not the reverse.
         level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
+        // Same direction for mob AI: the world's mobs flee from / pursue the connected roster,
+        // remote players included, instead of the client's local player (#340).
+        level.world().setPlayerLocator(new ServerPlayerLocator(ctx.players()));
 
         // Replication funnel for authoritative SIM block mutations (water flow etc.):
         // installed on the HEADLESS world only, so server-side chunk.setBlock writes reach
@@ -326,6 +334,8 @@ public final class IntegratedServer {
         }
         runTickStep("blocks", () -> blockHandler.tick(ctx));
         runTickStep("entities", () -> entityHandler.tick(ctx));
+        runTickStep("fishing", () -> fishingHandler.tick(ctx));
+        runTickStep("decoys", () -> illusionHandler.tick(ctx, TICK_PERIOD_NS / 1_000_000_000f));
         runTickStep("chunks", () -> chunkHandler.tick(ctx));
 
         // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
@@ -477,6 +487,10 @@ public final class IntegratedServer {
         if (packet instanceof com.stonebreak.network.packet.SequencedIntent intent) {
             sp.recordActionSeq(intent.seq());
         }
+        if (isCombatIntent(packet)) {
+            // Fighting closes any respec window: spends used in combat are committed (#421).
+            sp.commitSpends();
+        }
         switch (packet) {
             case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx, receivedNs);
             case com.stonebreak.network.packet.world.BlockBreakStartC2S bs ->
@@ -506,6 +520,8 @@ public final class IntegratedServer {
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
             case com.stonebreak.network.packet.entity.EntityKnockbackC2S kb ->
                 entityHandler.handleEntityKnockback(sp, kb);
+            case com.stonebreak.network.packet.entity.EntityStatusEffectC2S se ->
+                entityHandler.handleEntityStatusEffect(sp, se);
             case com.stonebreak.network.packet.entity.EntityShearC2S es ->
                 entityHandler.handleEntityShear(sp, es, ctx);
             case com.stonebreak.network.packet.entity.ProjectileSpawnC2S ps2 ->
@@ -518,12 +534,35 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> playerHandler.handlePlayerLife(sp, pl);
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
+            case com.stonebreak.network.packet.player.FishingRodC2S fr -> fishingHandler.handleRodUse(sp, fr, ctx);
+            case com.stonebreak.network.packet.entity.DecoyCastC2S dc -> illusionHandler.handleDecoyCast(sp, dc, ctx);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
     }
 
-    private void handleHandshake(ServerPlayer sp, HandshakeC2S hs) {
+    /**
+     * Intents the player acts with right now using the character's build (attacks, projectiles,
+     * a decoy cast). Status-effect intents are left out: a lingering ability zone (Rampage trail,
+     * Skull Crusher crater) re-forwards them with no input, also while the character sheet is
+     * open, and committing then would make a legitimate Discard be refused.
+     */
+    static boolean isCombatIntent(Packet packet) {
+        return packet instanceof EntityDamageC2S
+                || packet instanceof com.stonebreak.network.packet.entity.EntityKnockbackC2S
+                || packet instanceof com.stonebreak.network.packet.entity.ProjectileSpawnC2S
+                || packet instanceof com.stonebreak.network.packet.entity.DecoyCastC2S;
+    }
+
+    void handleHandshake(ServerPlayer sp, HandshakeC2S hs) {
+        // One handshake per connection (#335): a repeat — while the first one's saved record is
+        // still loading, during character creation, or after a refusal — is never processed (it
+        // used to add the same connection to the roster again under a second name).
+        if (sp.handshakeRequested()) {
+            System.out.println("[SERVER] Ignoring a repeated handshake on connection id " + sp.playerId());
+            return;
+        }
+        sp.markHandshakeRequested();
         if (hs.protocolVersion() != ProtocolVersion.CURRENT) {
             String msg = "Protocol mismatch (server=" + ProtocolVersion.CURRENT
                 + ", client=" + hs.protocolVersion() + ")";
@@ -531,19 +570,22 @@ public final class IntegratedServer {
             sp.kick(msg);
             return;
         }
-        if (sp.handshakeRequested()) {
-            return; // a repeat while this one's saved record is still loading
+        // The host is never refused its own world; its name is coerced before it connects.
+        if (!sp.isLocal() && !com.stonebreak.network.PlayerNames.isValid(hs.username())) {
+            System.out.println("[SERVER] Rejecting " + sp.playerId() + ": invalid name");
+            sp.kick("Invalid name. " + com.stonebreak.network.PlayerNames.RULE);
+            return;
         }
-        sp.markHandshakeRequested();
         sp.setUsername(hs.username());
+        sp.setPresentedSecret(hs.clientSecret());
 
         // Stable identity: the id is derived from the username, so the same player keeps
         // the same id across reconnects and server restarts (saves, kill credit, and
         // client rosters keyed by id all survive a rejoin).
         int stableId = ServerWorldContext.stablePlayerIdFor(hs.username());
-        ServerPlayer existing = ctx.player(stableId);
-        if (sp.isLocal() || (existing != null && existing.username().equals(hs.username()))) {
-            // The host has no players/<name> file; a takeover continues from the live record.
+        if (sp.isLocal() || ctx.player(stableId) != null) {
+            // The host has no players/<name> file; a takeover continues from the live record,
+            // and a refused one never reads the save (completeHandshake decides which).
             completeHandshake(sp, stableId, null);
             return;
         }
@@ -571,10 +613,10 @@ public final class IntegratedServer {
             });
 
     /**
-     * Second half of the handshake, on the tick thread: session takeover or id collision (checked
-     * again — another session may have joined while this one's record loaded), the saved record,
-     * then the roster and the welcome (or character creation). {@code saved} is null for the host
-     * and for a takeover, which continues from the live record.
+     * Second half of the handshake, on the tick thread: who holds the name (checked again —
+     * another session may have joined while this one's record loaded; see {@link NameClaims}),
+     * the saved record, then the roster and the welcome (or character creation). {@code saved}
+     * is null for the host and for a takeover, which continues from the live record.
      */
     private void completeHandshake(ServerPlayer sp, int stableId, SavedRecord saved) {
         if (!sp.connection().isActive()) {
@@ -583,36 +625,40 @@ public final class IntegratedServer {
         String username = sp.username();
         ServerPlayer existing = ctx.player(stableId);
         byte[] handedOver = null;
+        String handedOverSecret = null;
         if (existing != null) {
-            if (existing.username().equals(username)) {
-                // Session takeover: the same player reconnected before their old channel
-                // died (or is deliberately re-logging). Kick the stale session cleanly so
-                // the roster and every client's remote-player figure converge on the new
-                // one. The old channel's late DISCONNECT is instance-guarded in
-                // handleDisconnect/removePlayer and can't evict the new session.
-                System.out.println("[SERVER] " + username
-                    + " reconnected — replacing the previous session (id " + stableId + ").");
-                persistPlayer(existing);
+            String refusal = NameClaims.takeoverRefusal(existing, sp);
+            if (refusal != null) {
+                // The host's session, a live session whose secret was not presented, or a
+                // different name hashing to the same id: refuse the newcomer, keep the roster.
+                System.out.println("[SERVER] Refusing " + username + " (id " + stableId + "): " + refusal);
+                sp.kick(refusal);
+                return;
+            }
+            // Session takeover (the same player reconnecting before their old channel died),
+            // or the host claiming its name from a remote that held it. Kick the stale session
+            // cleanly so the roster and every client's remote-player figure converge on the new
+            // one. The old channel's late DISCONNECT is instance-guarded in
+            // handleDisconnect/removePlayer and can't evict the new session.
+            System.out.println("[SERVER] " + username
+                + " — replacing the previous session of '" + existing.username() + "' (id " + stableId + ").");
+            persistPlayer(existing);
+            if (!sp.isLocal()) {
                 // The new session continues from the old one's IN-MEMORY record rather than
                 // re-reading the file the save above is still writing (issue #334): a load
                 // racing that save could restore the pre-drop inventory — a dupe.
                 handedOver = handOverRecord(existing);
-                ctx.removePlayer(existing);
-                entityHandler.onPeerLeft(existing);
-                ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
-                existing.kick("You logged in from another location.");
-            } else {
-                // Different name hashing to the same id — refuse the newcomer clearly
-                // rather than corrupting the roster.
-                sp.kick("That name is unavailable on this server (id collision with '"
-                    + existing.username() + "').");
-                return;
+                handedOverSecret = existing.clientSecret();
             }
+            ctx.removePlayer(existing);
+            entityHandler.onPeerLeft(existing);
+            ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
+            existing.kick(sp.isLocal() ? NameClaims.HOST_NAME : "You logged in from another location.");
         }
 
         if (!sp.isLocal()) {
             if (handedOver != null) {
-                saved = new SavedRecord(handedOver, null, null);
+                saved = new SavedRecord(handedOver, null, null, handedOverSecret);
             } else if (saved == null) {
                 // The live session this one was taking over left meanwhile: read the file now
                 // (its leave just saved it; the named-save gate orders the read behind that).
@@ -632,6 +678,7 @@ public final class IntegratedServer {
             }
             sp.setSavedBlob(saved.blob());
             sp.setJoinNotice(saved.notice());
+            sp.setClientSecret(NameClaims.secretFor(sp.presentedSecret(), saved.secret()));
         }
         sp.assignPlayerId(stableId);
         ctx.addPlayer(sp);
@@ -657,8 +704,13 @@ public final class IntegratedServer {
     }
 
     /** A remote player's saved record as read at handshake: the blob (null = none), an
-     *  optional notice for the player, or a refusal reason (join refused). */
-    record SavedRecord(byte[] blob, String notice, String refusal) {}
+     *  optional notice for the player, or a refusal reason (join refused), and the join secret
+     *  stored with it (null = none, #335). */
+    record SavedRecord(byte[] blob, String notice, String refusal, String secret) {
+        SavedRecord(byte[] blob, String notice, String refusal) {
+            this(blob, notice, refusal, null);
+        }
+    }
 
     /** True when this player has no saved character and must create one before the welcome. */
     private boolean needsCharacterCreation(ServerPlayer sp) {
@@ -697,8 +749,9 @@ public final class IntegratedServer {
             return new SavedRecord(null, null, null);
         }
         try {
-            new com.stonebreak.world.save.serialization.JsonPlayerSerializer().deserialize(blob);
-            return new SavedRecord(blob, null, null);
+            com.stonebreak.world.save.model.PlayerData data =
+                    new com.stonebreak.world.save.serialization.JsonPlayerSerializer().deserialize(blob);
+            return new SavedRecord(blob, null, null, data.getClientSecret());
         } catch (RuntimeException unreadable) {
             System.err.println("[SERVER] Saved data for " + username + " is unreadable: "
                     + unreadable.getMessage());
@@ -749,7 +802,8 @@ public final class IntegratedServer {
         Vector3f spawn = ctx.spawn();
 
         // 1. Welcome: who you are + the seed + the authoritative spawn.
-        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), spawn.x, spawn.y, spawn.z));
+        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), spawn.x, spawn.y, spawn.z,
+                sp.clientSecret()));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);
@@ -822,8 +876,9 @@ public final class IntegratedServer {
         if (error == null) {
             fresh = freshFromCreation(json, background);
             if (fresh == null) {
-                error = "spends exceed the level-1 grants, or ability scores + remaining AP"
-                        + " exceed the creation budget (" + PlayerPrefsValidator.CREATION_BUDGET + ")";
+                error = "spends exceed the level-1 grants, a feat needs a higher level, or ability"
+                        + " scores + remaining AP exceed the creation budget ("
+                        + PlayerPrefsValidator.CREATION_BUDGET + ")";
             }
         }
         if (error != null) {
@@ -1154,8 +1209,30 @@ public final class IntegratedServer {
      * validated against the server-granted pools, cosmetics must be monotone/append-only,
      * and the inventory field is ignored entirely. A refusal keeps the accepted baseline
      * and re-asserts both it and the authoritative progression to the sender.
+     *
+     * <p>Refunds reach back only to the committed {@link SpendFloor} (issue #421): a
+     * provisional report (character panel open) opens the respec window, a closing report is
+     * judged against the floor and then commits whatever the baseline now holds.
      */
     private void handlePlayerPrefs(ServerPlayer sp, PlayerPrefsC2S pp) {
+        withRespecWindow(sp, pp.provisional(), () -> judgePlayerPrefs(sp, pp));
+    }
+
+    /** Runs {@code judge} inside the report's respec-window transition (package-private for tests). */
+    static void withRespecWindow(ServerPlayer sp, boolean provisional, Runnable judge) {
+        if (provisional) {
+            sp.openRespecWindow();
+        }
+        try {
+            judge.run();
+        } finally {
+            if (!provisional) {
+                sp.commitSpends();
+            }
+        }
+    }
+
+    private void judgePlayerPrefs(ServerPlayer sp, PlayerPrefsC2S pp) {
         // Every report is answered with a ProgressS2C acking its seq — accepted, refused or
         // unreadable — so the client can tell this answer from echoes of older reports.
         sp.recordPrefsAck(pp.seq());
@@ -1173,7 +1250,8 @@ public final class IntegratedServer {
             return;
         }
         com.stonebreak.world.save.model.PlayerData accepted =
-                PlayerPrefsValidator.normalize(sp.serverStats(), sp.progressionBaseline(), candidate);
+                PlayerPrefsValidator.normalize(sp.serverStats(), sp.progressionBaseline(),
+                        sp.spendFloor(), candidate);
         if (accepted == null) {
             System.out.println("[SERVER] Refused prefs from " + sp.username());
             refusePrefs(sp);
@@ -1237,39 +1315,80 @@ public final class IntegratedServer {
 
     /** Server-side: forward projectile hit/kill credit to the launching player's client. */
     public void sendKillCreditTo(int playerId, com.stonebreak.mobs.entities.LivingEntity victim,
-                                 float dealt, boolean killed) {
+                                 float dealt, boolean killed,
+                                 com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
         ServerPlayer sp = ctx.player(playerId);
         if (sp != null) {
-            entityHandler.sendKillCredit(sp, victim, dealt, killed);
+            entityHandler.sendKillCredit(sp, victim, dealt, killed, source,
+                    com.stonebreak.mobs.entities.HitKind.PROJECTILE);
         }
     }
 
-    /** Server-side: hand a connected client an item stack (drop pickup, command-give). */
-    public void giveItemTo(int playerId, int itemId, int count) {
-        if (count <= 0) {
+    /**
+     * Server-side: hand a connected client an item stack, state included (drop pickup,
+     * command-give). Server thread only: {@link ServerPlayer} state is not thread-safe, so a
+     * call from any other thread is refused (and reported once) instead of racing the tick.
+     */
+    public void giveItemTo(int playerId, NetItemStack stack) {
+        if (stack == null || stack.isEmpty() || !requireTickThread("giveItemTo")) {
             return;
         }
-        giveToPlayer(ctx.player(playerId), ctx, itemId, count);
+        giveToPlayer(ctx.player(playerId), ctx, stack);
+    }
+
+    /**
+     * True on the thread running {@link #tick} — and before the first tick or once the loop
+     * has stopped, when no other thread can be mid-tick.
+     */
+    public boolean isTickThread() {
+        Thread t = tickThread;
+        return t == null || !ticking || Thread.currentThread() == t;
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean OFF_THREAD_REPORTED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * Guard for server-thread-only entry points (#341): false — the caller must do nothing —
+     * when called from another thread, with a stack trace the first time so the stray
+     * caller is easy to find.
+     */
+    public boolean requireTickThread(String what) {
+        if (isTickThread()) {
+            return true;
+        }
+        if (OFF_THREAD_REPORTED.compareAndSet(false, true)) {
+            new IllegalStateException("[SERVER] " + what + " called off the server thread ("
+                    + Thread.currentThread().getName() + "); refused").printStackTrace();
+        }
+        return false;
+    }
+
+    /** {@link #giveToPlayer(ServerPlayer, ServerWorldContext, NetItemStack)} for default-state stacks. */
+    void giveToPlayer(ServerPlayer sp, ServerWorldContext ctx, int itemId, int count) {
+        giveToPlayer(sp, ctx, new NetItemStack(itemId, count));
     }
 
     /** The give ledger (issue #334): only what fits the replica is granted; the overflow
      *  re-drops here as a world drop and the sync is the client's reconciliation point.
-     *  Package-private so the ledger rules are unit-testable without a live server. */
-    void giveToPlayer(ServerPlayer sp, ServerWorldContext ctx, int itemId, int count) {
-        if (sp == null) {
+     *  The stack keeps its state end to end (issue #342). Package-private so the ledger
+     *  rules are unit-testable without a live server. */
+    void giveToPlayer(ServerPlayer sp, ServerWorldContext ctx, NetItemStack stack) {
+        if (sp == null || stack.isEmpty()) {
             return;
         }
         // The SERVER's replica is the ledger (issue #334): only what actually fits is given,
         // the overflow re-drops here as a world drop, and the sync that follows is the
         // client's reconciliation point. No client-side re-drop path exists any more.
-        int added = sp.inventory().add(itemId, count);
-        int overflow = count - added;
+        int added = sp.inventory().add(stack.itemId(), stack.count(), stack.state());
+        int overflow = stack.count() - added;
         if (overflow > 0) {
             com.stonebreak.network.server.handlers.ServerPlayerHandler.spawnTossDrop(
-                    sp, ctx, itemId, overflow, null);
+                    sp, ctx, stack.itemId(), overflow, stack.state());
         }
         if (added > 0) {
-            sp.send(new GiveItemS2C(itemId, added), false);
+            sp.send(new GiveItemS2C(new NetItemStack(
+                    stack.itemId(), added, stack.state())), false);
         }
         sp.queueInventorySync(); // a tick of pickups (a death pile) is one sync, at tick end
     }
@@ -1280,6 +1399,8 @@ public final class IntegratedServer {
         persistAllRemotePlayersBlocking();
         blockHandler.onSessionEnd();
         entityHandler.onSessionEnd();
+        fishingHandler.onSessionEnd();
+        illusionHandler.onSessionEnd();
         networkServer.shutdown();
         System.out.println("[SERVER] Shut down.");
     }

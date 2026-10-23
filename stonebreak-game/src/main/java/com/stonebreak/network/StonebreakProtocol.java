@@ -121,6 +121,12 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.world.ChunkAckC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 34, com.stonebreak.network.packet.entity.EntityKnockbackC2S.class,
                 com.stonebreak.network.packet.entity.EntityKnockbackC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 35, com.stonebreak.network.packet.entity.EntityStatusEffectC2S.class,
+                com.stonebreak.network.packet.entity.EntityStatusEffectC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 36, com.stonebreak.network.packet.player.FishingRodC2S.class,
+                com.stonebreak.network.packet.player.FishingRodC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 37, com.stonebreak.network.packet.entity.DecoyCastC2S.class,
+                com.stonebreak.network.packet.entity.DecoyCastC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
@@ -152,6 +158,8 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 27, InventorySyncS2C.class, InventorySyncS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 28, com.stonebreak.network.packet.player.ProgressS2C.class,
                 com.stonebreak.network.packet.player.ProgressS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 29, com.stonebreak.network.packet.entity.EntityStatusS2C.class,
+                com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC);
 
         return r;
     }

@@ -1,7 +1,6 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.effects.FireTrailParticles;
 import com.stonebreak.world.World;
@@ -77,10 +76,7 @@ public class FireBolt extends Entity {
         // Advance the bolt in small sub-steps so collision is checked along the
         // whole travel segment rather than only at the destination point.
         float remaining = BOLT_SPEED * deltaTime;
-        EntityManager em = world.getEntityManager(); // server-spawned: scan the OWNING world
-        if (em == null) {
-            em = Game.getEntityManager();
-        }
+        EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         while (remaining > 0.0f && !impacted) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
             remaining -= stepLen;

@@ -192,10 +192,11 @@ public class ItemDrop extends Entity {
         // Drops are authoritative SERVER entities; the client holds only render shadows, which
         // must never self-collect. Pickup is server-authoritative: the nearest player in range
         // with room takes what fits — the local client adds it on receipt of GiveItemS2C — and
-        // the rest stays here (#372); the drop despawns once it is empty.
+        // the rest stays here (#372); the drop despawns once it is empty. The stack's state
+        // goes with it (#342): a picked-up water bucket is still full.
         if (isNetworkShadow()) return;
-        int taken = com.stonebreak.network.MultiplayerSession.tryServerPickup(
-                position, PICKUP_RANGE, itemStack.getItem().getId(), stackCount);
+        int taken = com.stonebreak.network.MultiplayerSession.tryServerPickup(position, PICKUP_RANGE,
+                com.stonebreak.network.packet.NetItemStack.of(itemStack, stackCount));
         if (taken >= stackCount) {
             alive = false;
         } else if (taken > 0) {

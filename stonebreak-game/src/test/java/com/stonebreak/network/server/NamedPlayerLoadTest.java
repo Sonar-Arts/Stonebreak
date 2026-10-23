@@ -2,6 +2,7 @@ package com.stonebreak.network.server;
 
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.model.PlayerData;
+import com.stonebreak.world.save.repository.PlayerSaveNames;
 import com.stonebreak.world.save.serialization.JsonPlayerSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -53,7 +54,7 @@ class NamedPlayerLoadTest {
     void anUnloadableSaveRefusesTheJoin() throws Exception {
         Path world = tempDir.resolve("w");
         try (SaveService svc = new SaveService(world.toString())) {
-            Files.createDirectories(world.resolve("players").resolve("Bob.json"));   // I/O error
+            Files.createDirectories(world.resolve("players").resolve(PlayerSaveNames.stem("Bob") + ".json"));   // I/O error
             IntegratedServer.SavedRecord r = IntegratedServer.loadSavedRecord(svc, "Bob");
             assertNotNull(r.refusal(), "an I/O failure used to read as 'no saved data'");
             assertNull(r.blob());
@@ -70,10 +71,10 @@ class NamedPlayerLoadTest {
             assertNull(r.refusal());
             assertNull(r.blob(), "starts fresh");
             assertNotNull(r.notice());
-            Path aside = world.resolve("players").resolve("Carol.json.corrupt");
+            Path aside = world.resolve("players").resolve(PlayerSaveNames.stem("Carol") + ".json.corrupt");
             assertTrue(Files.exists(aside), "the damaged file is kept");
             assertArrayEquals(damaged, Files.readAllBytes(aside));
-            assertEquals(false, Files.exists(world.resolve("players").resolve("Carol.json")));
+            assertEquals(false, Files.exists(world.resolve("players").resolve(PlayerSaveNames.stem("Carol") + ".json")));
         }
     }
 }

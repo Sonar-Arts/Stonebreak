@@ -116,10 +116,10 @@ public final class ServerPlayerHandler {
             return;
         }
         int count = Math.min(d.count(), MAX_DROP_COUNT);
-        // The packet names only the item id: the toss comes from the SELECTED slot when it
-        // holds that id (Q tosses from there), and only stacks of the same state are debited;
-        // the drop carries the debited state — a water bucket tossed stays a water bucket.
-        ItemStack tossed = sp.inventory().debitStack(d.itemId(), count);
+        // The packet names the stack's state (issue #342): only stacks of exactly that kind
+        // are debited, the selected slot first (Q tosses from there), and the drop carries the
+        // debited state — a water bucket tossed stays a water bucket.
+        ItemStack tossed = sp.inventory().debitStack(d.itemId(), count, d.stack().state());
         if (tossed == null) {
             sp.send(sp.inventorySync(), false);
             return;
@@ -360,6 +360,7 @@ public final class ServerPlayerHandler {
         // Per-packet velocity / no-teleport anti-cheat is intentionally NOT applied — naive
         // caps cause permanent desync on legitimate teleports (respawn, world-load, /tp).
         sp.updateState(ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch());
+        sp.setMovementFlags(ps.flags()); // sprinting is what server-side mobs notice (#340)
         return true;
     }
 

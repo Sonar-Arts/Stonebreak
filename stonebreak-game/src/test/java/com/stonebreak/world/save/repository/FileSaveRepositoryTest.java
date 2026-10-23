@@ -217,18 +217,19 @@ class FileSaveRepositoryTest {
         byte[] bytes = "hello".getBytes();
         repo.saveNamedPlayerBytes("Bob/../x", bytes);
 
+        // Encoded, never a path (issue #335 replaced the lossy sanitizing; see PlayerSaveNamesTest).
         Path worldRoot = Path.of(worldPath);
-        assertTrue(Files.exists(worldRoot.resolve("players/Bob_.._x.json")));
+        assertTrue(Files.exists(worldRoot.resolve("players/@_bob_.002f_.002e_.002e_.002fx.json")));
 
         Optional<byte[]> loaded = repo.loadNamedPlayerBytes("Bob/../x");
         assertTrue(loaded.isPresent());
         assertArrayEquals(bytes, loaded.get());
 
         repo.saveNamedPlayerBytes(null, bytes);
-        assertTrue(Files.exists(worldRoot.resolve("players/_anonymous.json")));
+        assertTrue(Files.exists(worldRoot.resolve("players/@.json")));
 
         repo.saveNamedPlayerBytes("   ", bytes);
-        assertTrue(Files.exists(worldRoot.resolve("players/_anonymous.json")));
+        assertTrue(Files.exists(worldRoot.resolve("players/@_.0020_.0020_.0020.json")));
 
         assertTrue(repo.loadNamedPlayerBytes("Nobody").isEmpty());
 

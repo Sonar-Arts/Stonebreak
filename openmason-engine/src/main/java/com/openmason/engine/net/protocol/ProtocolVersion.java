@@ -37,8 +37,14 @@ public final class ProtocolVersion {
      *  14 = BlockBreakStartC2S: breaks are a start/finish pair the server times (issue #333).
      *  15 = chunk flow control: ChunkAckC2S (processed count + desired chunks per tick), and
      *  ChunkUnloadC2S carries the chunk the client stood in; EntityKnockbackC2S forwards ability
-     *  knockback on a replicated entity. */
-    public static final int CURRENT = 15;
+     *  knockback on a replicated entity.
+     *  16 = client/server sync pass: PlayerPrefsC2S carries a provisional (respec window) flag
+     *  (#421); HandshakeC2S/WelcomeS2C carry a per-client join secret (#335); EntityDamageC2S a hit
+     *  kind and KillCreditS2C the target/source/hit kind, plus EntityStatusEffectC2S and
+     *  EntityStatusS2C (status effects and health fraction on shadows, #339/#371/#374);
+     *  GiveItemS2C/DropItemC2S and item-drop spawn metadata carry the stack state (#342);
+     *  FishingRodC2S and DecoyCastC2S, with bobber/decoy spawn metadata (#341). */
+    public static final int CURRENT = 16;
 
     private ProtocolVersion() {}
 }

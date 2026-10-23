@@ -414,7 +414,10 @@ public final class CharacterCreationContracts {
             FeatDefinition f = all.get(i);
             out.add(obj("id", f.id(), "name", f.name(), "description", f.description(),
                 "acquired", stats != null && stats.hasFeat(f.id()),
-                "canAfford", stats != null && stats.getRemainingFeatPoints() > 0, "rule", i < all.size() - 1));
+                // an FP left AND the feat's level reachable at creation (#421)
+                "canAfford", stats != null && stats.getRemainingFeatPoints() > 0
+                    && FeatRegistry.isAvailableAt(f.id(), stats.getLevel()),
+                "rule", i < all.size() - 1));
         }
         return out;
     }

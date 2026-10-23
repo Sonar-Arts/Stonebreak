@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.stonebreak.core.Game;
-import com.stonebreak.core.GameState;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.LoadProgressTracker;
@@ -217,11 +216,13 @@ public final class ClientWorldBuilder {
         }
         // The render world is unusable and Game.getWorld() still points at the PREVIOUS session's
         // world — clearing the pending flag here would let the client handlers drain buffered
-        // chunks/spawns into it. Tear the session down and return to the menu instead (mirrors the
-        // disconnect path; the session shutdown also cancels this builder).
+        // chunks/spawns into it. Leave to the menu instead, the same way Quit to menu does (#368;
+        // the session shutdown also cancels this builder). Re-checked on the main thread: a newer
+        // build may have started meanwhile.
         game.runOnMainThread(() -> {
-            MultiplayerSession.shutdown();
-            game.setState(GameState.MAIN_MENU);
+            if (stillCurrent(buildGeneration)) {
+                game.leaveWorldToMenu();
+            }
         });
     }
 }

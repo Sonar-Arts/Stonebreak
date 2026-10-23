@@ -2,6 +2,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.StubMob;
+import com.stonebreak.mobs.entities.ai.nav.PathAgent;
+import com.stonebreak.mobs.entities.ai.nav.Steering;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -108,6 +110,43 @@ class FleeBehaviorTest {
         placid.onDamaged(context, 2.0f);
         assertTrue(placid.canStart(context), "being hit arms the flight");
         assertTrue(placid.shouldContinue(context), "and the panic timer keeps it running");
+    }
+
+    /**
+     * In multiplayer the player who hit the mob need not be the nearest one (#340): the old flight
+     * ran from whoever stood closest — in practice always the host — even when someone else
+     * landed the hit. The retreat must lead away from the attacker.
+     */
+    @Test
+    void aHitRunsFromTheAttackerNotTheNearestPlayer() {
+        AiContext navigating = new AiContext(
+                mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
+        players.position = new Vector3f(3, 64, 0);   // a bystander, east and closest
+        navigating.setAttacker(new Vector3f(-8, 64, 0)); // the archer who hit it, west
+
+        FleeBehavior placid = new FleeBehavior(16.0f, 5.0f, 1.4f);
+        placid.onDamaged(navigating, 2.0f);
+        assertTrue(placid.canStart(navigating));
+        placid.start(navigating);
+
+        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        assertTrue(retreat.x > mob.getPosition().x,
+                "flees east, away from the attacker, even though that is toward the bystander: " + retreat);
+    }
+
+    @Test
+    void anUnattributedHitFallsBackToTheNearestPlayer() {
+        AiContext navigating = new AiContext(
+                mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
+        players.position = new Vector3f(3, 64, 0);
+        navigating.setAttacker(null); // e.g. a damage-over-time tick: the source does not say
+
+        FleeBehavior placid = new FleeBehavior(16.0f, 5.0f, 1.4f);
+        placid.onDamaged(navigating, 2.0f);
+        placid.start(navigating);
+
+        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        assertTrue(retreat.x < mob.getPosition().x, "flees west, away from the nearest player: " + retreat);
     }
 
     @Test

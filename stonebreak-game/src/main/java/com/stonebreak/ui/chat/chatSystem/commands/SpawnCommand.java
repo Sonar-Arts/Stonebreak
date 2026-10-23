@@ -15,7 +15,10 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Command to spawn living mobs in front of the player.
+ * Command to spawn living mobs in front of the player — executed ON THE SERVER (issue #341):
+ * the client forwards the raw line, the server checks its own cheats flag and spawns into the
+ * authoritative world, so every player sees the mob, it runs its AI on the server and it is
+ * saved with the world. {@link #execute} is only the no-session fallback (battle-test arena).
  * Usage: /spawn <mob> [count]
  *
  * Examples:
@@ -26,6 +29,7 @@ import java.util.List;
 public class SpawnCommand implements ChatCommand {
 
     private static final int DEFAULT_COUNT = 1;
+    /** Largest count accepted (mirrors ServerCommandHandler.MAX_SPAWN_COUNT). */
     private static final int MAX_COUNT = 50;
 
     /** Distance ahead of the player (along the camera's look direction) to spawn at. */
@@ -116,20 +120,14 @@ public class SpawnCommand implements ChatCommand {
         return true;
     }
 
-    /**
-     * Find a living mob {@link EntityType} by enum name (COW) or display name (cow),
-     * case-insensitively. Returns null for unknown or non-living types.
-     */
+    @Override
+    public boolean executedOnServer() {
+        return true;
+    }
+
+    /** See {@link EntityType#findGlossaryMob} — the same vocabulary the server accepts. */
     private EntityType findMob(String name) {
-        if (name == null || name.isEmpty()) {
-            return null;
-        }
-        for (EntityType type : EntityType.GLOSSARY_TYPES) {
-            if (type.name().equalsIgnoreCase(name) || type.getDisplayName().equalsIgnoreCase(name)) {
-                return type;
-            }
-        }
-        return null;
+        return EntityType.findGlossaryMob(name);
     }
 
     /** Comma-separated list of spawnable mob names for usage/error messages. */

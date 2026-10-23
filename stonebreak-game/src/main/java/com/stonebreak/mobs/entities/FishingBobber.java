@@ -129,4 +129,48 @@ public class FishingBobber extends Entity {
     public boolean isFishBiting() {
         return fishBiting;
     }
+
+    // ─── Replication (#341: the bobber is a server entity; clients hold shadows) ─────────
+
+    /** Visual states replicated through {@code EntityAnimS2C}: in flight or on land, floating, biting. */
+    static final String STATE_CAST = "cast";
+    static final String STATE_FLOAT = "float";
+    static final String STATE_BITE = "bite";
+
+    @Override
+    public String networkVisualState() {
+        if (!inWaterSettled) return STATE_CAST;
+        return fishBiting ? STATE_BITE : STATE_FLOAT;
+    }
+
+    /** Shadow side: adopt the server bobber's float/bite state so {@link #getBobOffset} matches it. */
+    @Override
+    public void applyNetworkState(String state) {
+        inWaterSettled = STATE_FLOAT.equals(state) || STATE_BITE.equals(state);
+        fishBiting = STATE_BITE.equals(state);
+        settled = inWaterSettled;
+    }
+
+    /** Shadows skip {@link #update}: advance the clock the bob animation reads. */
+    @Override
+    public void updateClientVisuals(float deltaTime) {
+        age += deltaTime;
+    }
+
+    /**
+     * The live bobber cast by player {@code ownerPlayerId} in {@code entityManager} (its
+     * replicated shadow on a client), or null.
+     */
+    public static FishingBobber findOwnedBy(EntityManager entityManager, int ownerPlayerId) {
+        if (entityManager == null || ownerPlayerId < 0) {
+            return null;
+        }
+        for (Entity e : entityManager.getEntitiesByType(EntityType.BOBBER)) {
+            if (e instanceof FishingBobber bobber && bobber.isAlive()
+                    && bobber.getOwnerPlayerId() == ownerPlayerId) {
+                return bobber;
+            }
+        }
+        return null;
+    }
 }

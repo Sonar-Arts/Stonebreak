@@ -2,6 +2,7 @@ package com.stonebreak.ui.multiplayerMenu;
 
 import com.stonebreak.config.Settings;
 import com.stonebreak.network.MultiplayerSession;
+import com.stonebreak.network.PlayerNames;
 
 /**
  * Join screen: enter host:port + username, then connect. Shown as the shipped UI document
@@ -72,7 +73,9 @@ public final class JoinWorldScreen {
             return;
         }
         if (hostText.isBlank()) { statusMessage = "Host required."; return; }
-        if (userText.isBlank()) userText = "Player";
+        if (userText.isBlank()) userText = PlayerNames.DEFAULT;
+        // The server refuses any other name (issue #335); say so before connecting.
+        if (!PlayerNames.isValid(userText.trim())) { statusMessage = PlayerNames.RULE; return; }
 
         Settings s = Settings.getInstance();
         s.setLastJoinHost(hostText);

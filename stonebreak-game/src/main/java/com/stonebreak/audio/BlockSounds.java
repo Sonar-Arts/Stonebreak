@@ -37,10 +37,12 @@ public final class BlockSounds {
 
     /** Footstep for the local player: 2D, listener-relative. */
     public static void playStepLocal(BlockType block, float volumeScale) {
-        ResolvedSoundEvents.Entry entry = pick(block, SoundData.EVENT_STEP);
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (entry == null || soundSystem == null) return;
-        soundSystem.playSound(entry.soundKey(), entry.volume() * volumeScale, entry.pitch());
+        MainThreadAudio.run(() -> {
+            ResolvedSoundEvents.Entry entry = pick(block, SoundData.EVENT_STEP);
+            SoundSystem soundSystem = Game.getSoundSystem();
+            if (entry == null || soundSystem == null) return;
+            soundSystem.playSound(entry.soundKey(), entry.volume() * volumeScale, entry.pitch());
+        });
     }
 
     /** Footstep for a mob: positional 3D at the mob's feet. */
@@ -63,14 +65,20 @@ public final class BlockSounds {
         playEventAt(block, SoundData.EVENT_PLACE, x + 0.5f, y + 0.5f, z + 0.5f, 1f);
     }
 
-    /** Any (possibly custom) event as positional 3D audio; unbound events no-op. */
+    /**
+     * Any (possibly custom) event as positional 3D audio; unbound events no-op. Runs on the main
+     * thread whichever thread asks ({@link MainThreadAudio}) — resolving an event registers its
+     * samples with OpenAL, so the lookup is handed over too, not just the play.
+     */
     public static void playEventAt(BlockType block, String event,
                                    float x, float y, float z, float volumeScale) {
-        ResolvedSoundEvents.Entry entry = pick(block, event);
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (entry == null || soundSystem == null) return;
-        soundSystem.playSoundAt3D(entry.soundKey(), entry.volume() * volumeScale,
-                entry.pitch(), x, y, z);
+        MainThreadAudio.run(() -> {
+            ResolvedSoundEvents.Entry entry = pick(block, event);
+            SoundSystem soundSystem = Game.getSoundSystem();
+            if (entry == null || soundSystem == null) return;
+            soundSystem.playSoundAt3D(entry.soundKey(), entry.volume() * volumeScale,
+                    entry.pitch(), x, y, z);
+        });
     }
 
     /** Drop all cached resolutions (e.g. after the SBO bridge re-initializes). */

@@ -83,6 +83,11 @@ public final class ServerPlayer {
         return lastHitTarget == targetNetworkId && nowNanos - lastHitNanos <= windowNanos;
     }
 
+    /** Melee cooldown and ability/status/projectile budgets for this player's combat intents (#339). */
+    private final com.stonebreak.network.server.combat.CombatLimiter combat =
+            new com.stonebreak.network.server.combat.CombatLimiter();
+    public com.stonebreak.network.server.combat.CombatLimiter combat() { return combat; }
+
     /** A handshake arrived (its saved record may still be loading); a repeat is ignored. */
     private boolean handshakeRequested;
     public boolean handshakeRequested() { return handshakeRequested; }
@@ -99,6 +104,16 @@ public final class ServerPlayer {
     private volatile byte[] savedBlob;
     public byte[] savedBlob() { return savedBlob; }
     public void setSavedBlob(byte[] blob) { this.savedBlob = blob; }
+
+    /** The join secret this player's client presented in its handshake ("" = none, #335). */
+    private String presentedSecret = "";
+    public String presentedSecret() { return presentedSecret; }
+    public void setPresentedSecret(String secret) { this.presentedSecret = secret == null ? "" : secret; }
+
+    /** The join secret this server holds for the player (saved with it, #335); null for the host. */
+    private String clientSecret;
+    public String clientSecret() { return clientSecret; }
+    public void setClientSecret(String secret) { this.clientSecret = secret; }
 
     /** One-shot notice delivered to the player after the welcome (e.g. a save set aside). */
     private volatile String joinNotice;
@@ -135,6 +150,17 @@ public final class ServerPlayer {
     public void updateState(float x, float y, float z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
         this.lastStateNs = System.nanoTime();
+    }
+
+    /** Movement/action flags from the last PlayerStateC2S ({@code PlayerStateFlags}). */
+    private byte movementFlags;
+
+    public void setMovementFlags(byte flags) { this.movementFlags = flags; }
+
+    /** Whether the client last reported this player sprinting — what skittish mobs notice. */
+    public boolean isSprinting() {
+        return com.stonebreak.network.packet.player.PlayerStateFlags.has(
+            movementFlags, com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING);
     }
 
     /**
@@ -357,11 +383,48 @@ public final class ServerPlayer {
      */
     public void acceptBaseline(com.stonebreak.world.save.model.PlayerData baseline) {
         this.progressionBaseline = baseline;
+        if (!respecWindowOpen) {
+            spendFloor = SpendFloor.of(baseline); // accepted outside a window = committed
+        }
         serverStats.restore(baseline.getSelectedClassId(), baseline.getSpentAbilityCp(),
                 baseline.getSkillLevels(), baseline.getAcquiredFeatIds(),
                 baseline.getRemainingCp(), baseline.getRemainingSkillPoints(),
                 baseline.getRemainingFeatPoints(), baseline.getAbilityScores(),
                 baseline.getRemainingAp(), baseline.getLevel(), baseline.getXp());
+    }
+
+    /**
+     * The committed spends no prefs report may refund (issue #421). Moves to the accepted
+     * baseline whenever no respec window is open, and when one closes.
+     */
+    private SpendFloor spendFloor = SpendFloor.NONE;
+
+    /** True while the client's character-panel session is open: spends accepted meanwhile
+     *  stay refundable down to {@link #spendFloor} until the window closes. */
+    private boolean respecWindowOpen = false;
+
+    public SpendFloor spendFloor() { return spendFloor; }
+
+    public boolean respecWindowOpen() { return respecWindowOpen; }
+
+    /**
+     * Opens the respec window (a provisional prefs report): the floor stays at the last
+     * commit, so the session's spends can be undone. Idempotent while open.
+     */
+    public void openRespecWindow() {
+        respecWindowOpen = true;
+    }
+
+    /**
+     * Closes the respec window and commits everything accepted so far. Called for a closing
+     * (non-provisional) report after it was judged, and for every combat intent: a client
+     * that never closes its window still cannot refund spends it has fought with.
+     */
+    public void commitSpends() {
+        respecWindowOpen = false;
+        if (progressionBaseline != null) {
+            spendFloor = SpendFloor.of(progressionBaseline);
+        }
     }
 
     /** Seq of the last PlayerPrefsC2S processed (accepted or refused); 0 before the first. */

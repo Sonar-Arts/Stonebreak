@@ -109,7 +109,7 @@ class FreshPlayerSeedingTest {
                 .remainingAp(client.getRemainingAp())
                 .build();
         PlayerData accepted = PlayerPrefsValidator.normalize(
-                sp.serverStats(), sp.progressionBaseline(), report);
+                sp.serverStats(), sp.progressionBaseline(), SpendFloor.NONE, report);
         assertNotNull(accepted, "was newAp = 27 - 28 < 0 against the default record");
         assertEquals(0, accepted.getRemainingAp());
     }

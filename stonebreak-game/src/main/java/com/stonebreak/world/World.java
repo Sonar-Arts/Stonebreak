@@ -104,6 +104,12 @@ public class World {
     // singleton's manager, which during server boot is the previous session's terminated one).
     private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
 
+    // Who this world's mobs can see. The integrated server installs a locator over its connected
+    // roster on the HEADLESS world; render worlds keep NONE (their mobs are shadows whose AI never
+    // ticks), so no mob ever resolves the client's player from the server tick thread.
+    private volatile com.stonebreak.mobs.entities.ai.behavior.PlayerLocator playerLocator =
+        com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE;
+
     /**
      * Authoritative simulation mutations reported for replication. Populated by the integrated
      * server on the HEADLESS world only; every sink stays null on client render worlds.
@@ -771,9 +777,23 @@ public class World {
         this.entityManager = entityManager;
     }
 
-    /** This world's entity manager if bound, else null (caller falls back to the Game singleton). */
+    /**
+     * This world's entity manager if bound, else null. Never substitute {@code Game.getEntityManager()}
+     * for a null here: that is the client render world's, whatever world is asking (#340).
+     */
     public com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return entityManager;
+    }
+
+    /** Bind the players this world's mobs react to; null restores {@code PlayerLocator.NONE}. */
+    public void setPlayerLocator(com.stonebreak.mobs.entities.ai.behavior.PlayerLocator playerLocator) {
+        this.playerLocator = playerLocator != null
+            ? playerLocator : com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE;
+    }
+
+    /** The players this world's mobs react to; never null. */
+    public com.stonebreak.mobs.entities.ai.behavior.PlayerLocator getPlayerLocator() {
+        return playerLocator;
     }
 
     /** Bind this world's save service. Called by {@code SaveService.initialize}. */

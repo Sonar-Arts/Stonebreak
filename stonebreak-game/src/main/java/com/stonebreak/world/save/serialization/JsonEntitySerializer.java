@@ -135,6 +135,14 @@ public class JsonEntitySerializer {
                 customData.put("itemCount", itemCount);
                 customData.put("despawnTimer", despawnTimer);
                 customData.put("stackCount", stackCount);
+                // Optional (#342): the stack's named state; absent in older saves and for
+                // default-state stacks.
+                try {
+                    customData.put("itemState",
+                            JsonParsingUtil.extractStringFromObject(json, "customData", "itemState"));
+                } catch (IllegalArgumentException noState) {
+                    // default state
+                }
             }
             case COW -> {
                 String textureVariant = JsonParsingUtil.extractStringFromObject(json, "customData", "textureVariant");

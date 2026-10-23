@@ -140,14 +140,29 @@ public final class ClientWorldView {
     /** Numbers prefs reports and filters stale progression echoes (issue #334). */
     private final PrefsSequencer prefsSequencer = new PrefsSequencer();
 
+    /** Join secret presented in the handshake; a different one in WelcomeS2C goes to the sink (#335). */
+    private String presentedSecret = "";
+    private java.util.function.Consumer<String> secretSink;
+
     /** Connect (Local or TCP) and send the handshake. */
     public void connect(NetAddress address, String username) throws InterruptedException {
+        connect(address, username, "", null);
+    }
+
+    /**
+     * Connect and present {@code secret}, the join secret this server issued us last time ("" if
+     * none); a newly issued one is handed to {@code secretSink} on the welcome (issue #335).
+     */
+    public void connect(NetAddress address, String username, String secret,
+                        java.util.function.Consumer<String> secretSink) throws InterruptedException {
         this.remote = address.type() == com.openmason.engine.net.transport.TransportType.TCP;
+        this.presentedSecret = secret == null ? "" : secret;
+        this.secretSink = secretSink;
         connection = networkClient.connect(address);
         // A new server acknowledges only this session's actions (issue #334, #353).
         com.stonebreak.network.SlotIntentSeq.markSessionStart();
         InventorySyncApplier.resetSession();
-        connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username));
+        connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username, presentedSecret));
         if (!remote) {
             // The in-process host created its character in the menu, before the server
             // existed. Hand it over right behind the handshake (the channel is FIFO): when the
@@ -576,7 +591,10 @@ public final class ClientWorldView {
                 return;
             }
             int seq = prefsSequencer.nextSeq(p.getCharacterStats().getLedgerVersion());
-            connection.send(new PlayerPrefsC2S(seq, text), false);
+            // Provisional while the save-or-discard panel is open: the server lets this
+            // report's spends be undone until a closing report commits them (#421).
+            boolean provisional = Game.getInstance().getStateController().isRpgSessionOpen();
+            connection.send(new PlayerPrefsC2S(seq, provisional, text), false);
         } catch (Exception e) {
             System.err.println("[CLIENT] Failed to send player prefs: " + e.getMessage());
         }
@@ -733,11 +751,29 @@ public final class ClientWorldView {
     }
 
     /** Toss an item (Q / inventory drop / death scatter): a DEBIT request the server validates. */
-    public void sendDropItem(int itemId, int count) {
+    public void sendDropItem(com.stonebreak.network.packet.NetItemStack stack) {
         ClientConnection conn = connection;
-        if (conn != null && conn.isActive() && itemId > 0 && count > 0) {
-            conn.send(new com.stonebreak.network.packet.player.DropItemC2S(itemId, count,
+        if (conn != null && conn.isActive() && !stack.isEmpty()) {
+            conn.send(new com.stonebreak.network.packet.player.DropItemC2S(stack,
                     com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
+        }
+    }
+
+    /** Fishing-rod use (see {@code FishingRodC2S}): the server casts or reels in. Numbered. */
+    public void sendFishingRodUse(org.joml.Vector3f origin, org.joml.Vector3f direction) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.player.FishingRodC2S(
+                    origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
+                    com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
+        }
+    }
+
+    /** Mirrored Deceit cast (see {@code DecoyCastC2S}): the server spawns the decoys. */
+    public void sendDecoyCast() {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.entity.DecoyCastC2S(), false);
         }
     }
 
@@ -844,11 +880,25 @@ public final class ClientWorldView {
 
     /** Local hit on a replicated entity: forward the damage intent to the authoritative server. */
     public void sendEntityDamage(int targetNetworkId, float amount,
-                                 com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
+                                 com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                 com.stonebreak.mobs.entities.HitKind kind) {
         if (connection == null || targetNetworkId < 0 || amount <= 0f) {
             return;
         }
-        connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal()), false);
+        connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal(),
+                kind.wireId()), false);
+    }
+
+    /** Local ability status effect on a replicated entity: forward it to the authoritative server. */
+    public void sendEntityStatusEffect(int targetNetworkId,
+                                       com.stonebreak.mobs.entities.status.StatusEffectType type,
+                                       float duration, float magnitude) {
+        if (connection == null || targetNetworkId < 0) {
+            return;
+        }
+        connection.send(new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(targetNetworkId,
+                (byte) com.stonebreak.mobs.entities.status.StatusEffectBits.wireId(type),
+                duration, magnitude), false);
     }
 
     public void sendEntityKnockback(int targetNetworkId, float dirX, float dirZ, float horizontal, float vertical) {
@@ -937,7 +987,8 @@ public final class ClientWorldView {
             case PlayerHeldItemS2C h -> playerHandler.handleHeldItem(localPlayerId, h);
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
             case InventorySyncS2C s -> applyInventorySync(s);
-            case com.stonebreak.network.packet.player.KillCreditS2C kc -> playerHandler.handleKillCredit(kc);
+            case com.stonebreak.network.packet.player.KillCreditS2C kc ->
+                playerHandler.handleKillCredit(kc, entityHandler.shadow(kc.targetNetworkId()));
             case com.stonebreak.network.packet.player.ProgressS2C pr -> applyProgress(pr);
             case com.stonebreak.network.packet.player.PlayerDataS2C pd -> onPlayerData(pd.json());
             case EntitySpawnS2C s -> entityHandler.applySpawn(s);
@@ -947,6 +998,7 @@ public final class ClientWorldView {
             case EntityAnimS2C a -> entityHandler.applyAnim(a.networkId(), a.state());
             case com.stonebreak.network.packet.entity.EntityVariantS2C v ->
                 entityHandler.applyVariant(v.networkId(), v.variant());
+            case com.stonebreak.network.packet.entity.EntityStatusS2C st -> entityHandler.applyStatus(st);
             case KeepAliveS2C ka -> {
                 lastRttMs = ka.lastRttMs();
                 ClientConnection conn = connection;
@@ -1007,6 +1059,9 @@ public final class ClientWorldView {
 
     private void handleWelcome(WelcomeS2C w) {
         localPlayerId = w.playerId();
+        if (secretSink != null && !w.clientSecret().isEmpty() && !w.clientSecret().equals(presentedSecret)) {
+            secretSink.accept(w.clientSecret()); // kept for the next join to this server (#335)
+        }
         Vector3f spawn = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
         // Clear character creation flow state — we're now in the world.
         needsCharacterCreation = false;

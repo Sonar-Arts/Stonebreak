@@ -7,7 +7,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
@@ -29,7 +28,7 @@ public class GooseAnimal implements Animal {
 
     @Override
     public void spawn(World world, Chunk chunk, Random random, Object randomLock) {
-        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        com.stonebreak.mobs.entities.EntityManager entityManager = world.getEntityManager(); // this world's own (#340)
         if (entityManager == null) return;
 
         int chunkX = chunk.getChunkX();

@@ -76,24 +76,21 @@ final class LivingEntityCombat {
      * it permanently invulnerable — shadows never tick, so i-frames would never expire.)
      *
      * @param attackerPos       authoritative attacker position for knockback direction, or
-     *                          null to fall back to the local player's position
+     *                          null when unknown (then no knockback)
      * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
+     * @param kind              on a shadow, which server rules validate the forwarded intent
      */
-    void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+    void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer,
+                HitKind kind) {
         Vector3f position = owner.position;
         if (owner.isNetworkShadow()) {
             if (owner.getNetworkId() >= 0 && amount > 0f) {
-                DamageNumbers.getInstance().spawn(
-                    position.x, position.y + owner.height * 0.9f, position.z, amount);
-                // Predicted hurt voice, like the predicted damage number: the
-                // authoritative entity lives in the headless server world, so
-                // this shadow is the only place the local player can hear it.
-                // Plays only when the entity's SBE declares a hurt event.
-                com.stonebreak.audio.EntitySounds.playAt(owner,
-                    com.stonebreak.audio.EntitySounds.EVENT_HURT);
-                MultiplayerSession.onLocalEntityDamage(owner, amount, source);
+                // No predicted damage number / hurt voice: the server may refuse the hit
+                // (range, cooldown, the real mob's i-frames). Both play from its result
+                // (KillCreditS2C) on this client — the only place the attacker can see/hear it.
+                MultiplayerSession.onLocalEntityDamage(owner, amount, source, kind);
             }
             return;
         }
@@ -136,15 +133,14 @@ final class LivingEntityCombat {
     }
 
     /**
-     * Applies knockback away from the attacking player (the most recent attacker if known,
-     * else the local player).
+     * Applies knockback away from the attacking player. Without a known attacker there is no
+     * direction to push in, so there is no knockback — never a guess from the client's local
+     * player, which is another thread's state when this runs on the server tick (#340).
      */
     void applyPlayerKnockback() {
         Vector3f attackerPos = lastAttackerPosition;
         if (attackerPos == null) {
-            Player player = Game.getPlayer();
-            if (player == null) return;
-            attackerPos = player.getPosition();
+            return;
         }
         Vector3f knockbackDir = new Vector3f(owner.position).sub(attackerPos);
         knockbackDir.y = 0;

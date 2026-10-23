@@ -176,8 +176,27 @@ public final class ServerInventory {
         if (source == null) {
             return null;
         }
-        Item item = source.getItem();
-        String state = source.getState();
+        return debitKind(source.getItem(), source.getState(), count);
+    }
+
+    /**
+     * Debits a toss that names its stack (issue #342): {@code count} of {@code itemId} in
+     * {@code state} ({@code null} = the item's default state), in the same order as
+     * {@link #debitStack(int, int)} but only from stacks of exactly that kind — a toss from
+     * the inventory screen removes the stack the player picked, not a different-state one in
+     * the hand. Returns the removed stack, or null — nothing removed — when the replica does
+     * not hold {@code count} of that kind.
+     */
+    public ItemStack debitStack(int itemId, int count, String state) {
+        if (itemId == BlockType.AIR.getId() || count <= 0) {
+            return null;
+        }
+        Item item = resolveItem(itemId);
+        return item != null ? debitKind(item, state, count) : null;
+    }
+
+    /** Removes {@code count} of one stack kind in debit order, or nothing when too few are held. */
+    private ItemStack debitKind(Item item, String state, int count) {
         int available = 0;
         for (ItemStack s : slots) {
             if (sameKind(s, item, state)) {
@@ -340,6 +359,11 @@ public final class ServerInventory {
      * nothing, so the drop stays where it lies.
      */
     public int roomFor(int itemId, int count) {
+        return roomFor(itemId, count, null);
+    }
+
+    /** {@link #roomFor(int, int)} for stacks in {@code state} — what {@link #add(int, int, String)} accepts. */
+    public int roomFor(int itemId, int count, String state) {
         if (itemId == BlockType.AIR.getId() || count <= 0) {
             return 0;
         }
@@ -347,12 +371,12 @@ public final class ServerInventory {
         if (item == null) {
             return 0;
         }
-        int maxStack = new ItemStack(item, 1, null).getMaxStackSize();
+        int maxStack = new ItemStack(item, 1, state).getMaxStackSize();
         int room = 0;
         for (ItemStack s : slots) {
             if (s.isEmpty()) {
                 room += maxStack;
-            } else if (sameKind(s, item, null) && s.getCount() < maxStack) {
+            } else if (sameKind(s, item, state) && s.getCount() < maxStack) {
                 room += maxStack - s.getCount();
             }
             if (room >= count) {

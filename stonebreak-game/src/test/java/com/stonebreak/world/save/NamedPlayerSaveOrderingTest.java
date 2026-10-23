@@ -1,5 +1,6 @@
 package com.stonebreak.world.save;
 
+import com.stonebreak.world.save.repository.PlayerSaveNames;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -66,7 +67,7 @@ class NamedPlayerSaveOrderingTest {
         Path world = tempDir.resolve("w");
         try (SaveService svc = new SaveService(world.toString())) {
             // A directory where the file should be: readAllBytes fails with an IOException.
-            Files.createDirectories(world.resolve("players").resolve("Carol.json"));
+            Files.createDirectories(world.resolve("players").resolve(PlayerSaveNames.stem("Carol") + ".json"));
             assertThrows(ExecutionException.class,
                     () -> svc.loadNamedPlayer("Carol").get(10, TimeUnit.SECONDS));
         }
@@ -79,8 +80,8 @@ class NamedPlayerSaveOrderingTest {
             svc.saveNamedPlayer("Dave", "garbage".getBytes(StandardCharsets.UTF_8));
             Path aside = svc.setNamedPlayerAside("Dave").get(10, TimeUnit.SECONDS);
             assertTrue(Files.exists(aside));
-            assertTrue(aside.getFileName().toString().startsWith("Dave.json.corrupt"));
-            assertFalse(Files.exists(world.resolve("players").resolve("Dave.json")));
+            assertTrue(aside.getFileName().toString().startsWith(PlayerSaveNames.stem("Dave") + ".json.corrupt"));
+            assertFalse(Files.exists(world.resolve("players").resolve(PlayerSaveNames.stem("Dave") + ".json")));
         }
     }
 }

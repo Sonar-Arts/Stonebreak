@@ -81,6 +81,19 @@ class PacketRoundTripTest {
     void scalarPacketsRoundTrip() {
         assertEquals(new HandshakeC2S(1, "player"), roundTrip(HandshakeC2S.CODEC, new HandshakeC2S(1, "player")));
         assertEquals(new WelcomeS2C(7, 123456789L, TerrainGeneratorType.DIFFUSION, 1f, 64f, 2f), roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 123456789L, TerrainGeneratorType.DIFFUSION, 1f, 64f, 2f)));
+        // Join secrets (issue #335): issued in the welcome, presented in the next handshake.
+        assertEquals(new HandshakeC2S(1, "Bob", "Zx9-_secret"), roundTrip(HandshakeC2S.CODEC, new HandshakeC2S(1, "Bob", "Zx9-_secret")));
+        assertEquals("", roundTrip(HandshakeC2S.CODEC, new HandshakeC2S(1, "Bob", null)).clientSecret());
+        // A pre-v16 handshake (no secret) still decodes, so the server can kick it with
+        // "Protocol mismatch" instead of the decoder closing the channel.
+        ByteBuf legacy = Unpooled.buffer();
+        legacy.writeInt(15);
+        com.openmason.engine.net.protocol.ByteBufIO.writeString(legacy, "Bob",
+                com.openmason.engine.net.protocol.ByteBufIO.MAX_USERNAME_CHARS);
+        assertEquals(new HandshakeC2S(15, "Bob", ""), HandshakeC2S.CODEC.decode(legacy));
+        legacy.release();
+        assertEquals(new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret"),
+                roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret")));
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));
         assertEquals(new DisconnectC2S("leaving"), roundTrip(DisconnectC2S.CODEC, new DisconnectC2S("leaving")));
         assertEquals(new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1), roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1)));
@@ -114,7 +127,8 @@ class PacketRoundTripTest {
         assertEquals(new ChatMessageS2C(1, "bob", "hi"), roundTrip(ChatMessageS2C.CODEC, new ChatMessageS2C(1, "bob", "hi")));
         assertEquals(new EntitySpawnS2C(9, 1, 1f, 2f, 3f, 90f, "variant"), roundTrip(EntitySpawnS2C.CODEC, new EntitySpawnS2C(9, 1, 1f, 2f, 3f, 90f, "variant")));
         assertEquals(new EntityDespawnS2C(9), roundTrip(EntityDespawnS2C.CODEC, new EntityDespawnS2C(9)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 0), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 0)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 9, (byte) 1), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 9, (byte) 1)));
         assertEquals(new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900), roundTrip(EntityMoveS2C.CODEC, new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900)));
         assertEquals(new EntityTeleportS2C(9, 1f, 2f, 3f, 90f), roundTrip(EntityTeleportS2C.CODEC, new EntityTeleportS2C(9, 1f, 2f, 3f, 90f)));
         assertEquals(new EntityAnimS2C(9, "Grazing"), roundTrip(EntityAnimS2C.CODEC, new EntityAnimS2C(9, "Grazing")));
@@ -157,8 +171,8 @@ class PacketRoundTripTest {
         assertEquals(new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000),
             roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000)));
         assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
-        assertEquals(new KillCreditS2C(2, 7.5f, true, 15), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15)));
-        assertEquals(new KillCreditS2C(0, 1f, false, 0), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0)));
+        assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2)));
+        assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
         assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(),
             roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,
@@ -166,6 +180,10 @@ class PacketRoundTripTest {
         assertEquals(new com.stonebreak.network.packet.player.PlayerPrefsC2S(7, "{\"k\":1}"),
             roundTrip(com.stonebreak.network.packet.player.PlayerPrefsC2S.CODEC,
                 new com.stonebreak.network.packet.player.PlayerPrefsC2S(7, "{\"k\":1}")));
+        // #421: the provisional (respec window) flag survives the wire.
+        assertEquals(new com.stonebreak.network.packet.player.PlayerPrefsC2S(8, true, "{}"),
+            roundTrip(com.stonebreak.network.packet.player.PlayerPrefsC2S.CODEC,
+                new com.stonebreak.network.packet.player.PlayerPrefsC2S(8, true, "{}")));
     }
 
     @Test
@@ -238,6 +256,31 @@ class PacketRoundTripTest {
     }
 
     @Test
+    void entityStatusEffectIntentRoundTrips() {
+        var se = roundTrip(com.stonebreak.network.packet.entity.EntityStatusEffectC2S.CODEC,
+            new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(7, (byte) 4, 3.5f, 0.25f));
+        assertEquals(new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(7, (byte) 4, 3.5f, 0.25f), se);
+    }
+
+    @Test
+    void entityStatusRoundTripsEveryEffectBitAndQuantizesHealth() {
+        int all = com.stonebreak.mobs.entities.status.StatusEffectBits.sanitize(0xFFFF);
+        var st = roundTrip(com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC,
+            new com.stonebreak.network.packet.entity.EntityStatusS2C(12, 0.3f, all));
+        assertEquals(12, st.networkId());
+        assertEquals(all, st.statusBits(), "every effect's bit survives the wire");
+        assertEquals(0.3f, st.healthFraction(), 1e-4f);
+        assertEquals(1f, roundTrip(com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC,
+            new com.stonebreak.network.packet.entity.EntityStatusS2C(1, 1f, 0)).healthFraction());
+        assertEquals(0f, roundTrip(com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC,
+            new com.stonebreak.network.packet.entity.EntityStatusS2C(1, Float.NaN, 0)).healthFraction(),
+            "a NaN fraction reads as empty, never garbage");
+        assertEquals(1f, roundTrip(com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC,
+            new com.stonebreak.network.packet.entity.EntityStatusS2C(1, 7f, 0)).healthFraction(),
+            "over-full clamps to full");
+    }
+
+    @Test
     void entityKnockbackRoundTrips() {
         var kb = roundTrip(com.stonebreak.network.packet.entity.EntityKnockbackC2S.CODEC,
             new com.stonebreak.network.packet.entity.EntityKnockbackC2S(7, 0.6f, -0.8f, 9f, 4f));
@@ -306,13 +349,50 @@ class PacketRoundTripTest {
     }
 
     @Test
+    void itemStackPacketsKeepTheStackState() {
+        // #342: every packet that carries a stack writes it with the one NetItemStack codec.
+        var water = new com.stonebreak.network.packet.NetItemStack(1040, 1, "sb_wooden_bucket_water");
+        assertEquals(new GiveItemS2C(water), roundTrip(GiveItemS2C.CODEC, new GiveItemS2C(water)));
+        assertEquals("sb_wooden_bucket_water",
+            roundTrip(GiveItemS2C.CODEC, new GiveItemS2C(water)).stack().state());
+        assertEquals(new DropItemC2S(water, 81), roundTrip(DropItemC2S.CODEC, new DropItemC2S(water, 81)));
+        var rod = new com.stonebreak.network.packet.NetItemStack(1031, 1, "Reeled in");
+        assertEquals(new DropItemC2S(rod, 0), roundTrip(DropItemC2S.CODEC, new DropItemC2S(rod, 0)));
+        org.junit.jupiter.api.Assertions.assertNull(
+            roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)).stack().state(),
+            "no state on the wire = the item's default state");
+    }
+
+    @Test
+    void serverSideActionPacketsRoundTrip() {
+        // #341: fishing and Mirrored Deceit are server actions now.
+        var use = new com.stonebreak.network.packet.player.FishingRodC2S(1f, 65.5f, -3f, 0f, -0.5f, 1f, 82);
+        assertEquals(use, roundTrip(com.stonebreak.network.packet.player.FishingRodC2S.CODEC, use));
+        assertEquals(new com.stonebreak.network.packet.entity.DecoyCastC2S(),
+            roundTrip(com.stonebreak.network.packet.entity.DecoyCastC2S.CODEC,
+                new com.stonebreak.network.packet.entity.DecoyCastC2S()));
+
+        PacketRegistry reg = StonebreakProtocol.registry();
+        assertEquals(use, viaRegistry(reg, PLAY, SERVERBOUND, use));
+        assertEquals(new com.stonebreak.network.packet.entity.DecoyCastC2S(),
+            viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.entity.DecoyCastC2S()));
+        var water = new com.stonebreak.network.packet.NetItemStack(1040, 1, "sb_wooden_bucket_water");
+        assertEquals(new GiveItemS2C(water), viaRegistry(reg, PLAY, CLIENTBOUND, new GiveItemS2C(water)));
+        assertEquals(new DropItemC2S(water, 3), viaRegistry(reg, PLAY, SERVERBOUND, new DropItemC2S(water, 3)));
+    }
+
+    @Test
     void registryRoundTripsById() {
         PacketRegistry reg = StonebreakProtocol.registry();
         assertEquals(new HandshakeC2S(1, "p"), viaRegistry(reg, PLAY, SERVERBOUND, new HandshakeC2S(1, "p")));
         assertEquals(new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f), viaRegistry(reg, PLAY, CLIENTBOUND, new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f)));
         assertEquals(new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5), viaRegistry(reg, PLAY, SERVERBOUND, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5)));
         assertEquals(new PlayerLeaveS2C(8), viaRegistry(reg, PLAY, CLIENTBOUND, new PlayerLeaveS2C(8)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 1), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 1)));
+        assertEquals(new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(9, (byte) 1, 1.5f, 0f),
+            viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(9, (byte) 1, 1.5f, 0f)));
+        assertEquals(new com.stonebreak.network.packet.entity.EntityStatusS2C(9, 1f, 0x41),
+            viaRegistry(reg, PLAY, CLIENTBOUND, new com.stonebreak.network.packet.entity.EntityStatusS2C(9, 1f, 0x41)));
         assertEquals(new KeepAliveC2S(42L), viaRegistry(reg, PLAY, SERVERBOUND, new KeepAliveC2S(42L)));
         assertEquals(new DropItemC2S(3, 5), viaRegistry(reg, PLAY, SERVERBOUND, new DropItemC2S(3, 5)));
         assertEquals(new com.stonebreak.network.packet.player.InventoryResyncC2S(),

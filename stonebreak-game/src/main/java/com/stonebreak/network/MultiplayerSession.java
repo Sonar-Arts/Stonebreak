@@ -8,6 +8,7 @@ import com.stonebreak.core.GameState;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.client.ClientWorldView;
+import com.stonebreak.network.packet.NetItemStack;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.ServerLevel;
@@ -46,6 +47,8 @@ public final class MultiplayerSession {
     private static final long SERVER_STOP_WAIT_MS = 15_000;
     /** Between the two shutdown drains: lets a packet sent just before the stop arrive. */
     private static final long SHUTDOWN_DRAIN_GRACE_MS = 20;
+    /** How long a stop waits for an interrupted boot to tear its own server down (save flush). */
+    private static final long BOOT_ABORT_WAIT_MS = 10_000;
 
     private static volatile Mode mode = Mode.MENU;
     private static volatile IntegratedServer server;
@@ -57,9 +60,9 @@ public final class MultiplayerSession {
     // Dedicated server-tick thread (singleplayer/host). The integrated server runs OFF the
     // render thread so world sim / terrain + feature generation / chunk encode don't hitch the
     // frame. It only touches server-owned state (its own world, EntityManager, ServerPlayers);
-    // the sole cross-thread reads are player positions (benign).
-    private static volatile Thread serverThread;
-    private static volatile boolean serverRunning;
+    // the sole cross-thread reads are player positions (benign). Each session has its own run
+    // token (issue #368): a boot outliving its session can never see a newer session's flag.
+    private static volatile ServerRun serverRun;
 
     private MultiplayerSession() {}
 
@@ -140,10 +143,11 @@ public final class MultiplayerSession {
      * back to the player who launched it. No-op without an integrated server.
      */
     public static void sendKillCredit(int ownerPlayerId, com.stonebreak.mobs.entities.LivingEntity victim,
-                                      float dealt, boolean killed) {
+                                      float dealt, boolean killed,
+                                      com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
         IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
         if (s != null) {
-            s.sendKillCreditTo(ownerPlayerId, victim, dealt, killed);
+            s.sendKillCreditTo(ownerPlayerId, victim, dealt, killed, source);
         }
     }
 
@@ -303,15 +307,49 @@ public final class MultiplayerSession {
     }
 
     /**
-     * Toss/return an item stack as a world drop via the server (authoritative, replicated).
-     * Returns false when there is no live client connection (caller may fall back locally).
+     * Fishing-rod use (issue #341): the SERVER casts or reels in, rolls any catch and spawns
+     * it in the server world. Numbered — the caller predicts the rod state flip on its mirror
+     * and the server answers with a sync. Returns false when there is no live connection.
      */
-    public static boolean sendDropItem(int itemId, int count) {
+    public static boolean sendFishingRodUse(Vector3f origin, Vector3f direction) {
         ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return false;
         }
-        c.sendDropItem(itemId, count);
+        c.sendFishingRodUse(origin, direction);
+        return true;
+    }
+
+    /**
+     * Mirrored Deceit cast (issue #341): the SERVER spawns the decoys around its record of the
+     * player and replicates them. Returns false when there is no live connection.
+     */
+    public static boolean sendDecoyCast() {
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendDecoyCast();
+        return true;
+    }
+
+    /** This client's player id, or -1 before the welcome / without a session. */
+    public static int localPlayerId() {
+        ClientWorldView c = getClient();
+        return c != null ? c.localPlayerId() : -1;
+    }
+
+    /**
+     * Toss/return an item stack as a world drop via the server (authoritative, replicated).
+     * The stack's state rides along (issue #342). Returns false when there is no live client
+     * connection (caller may fall back locally).
+     */
+    public static boolean sendDropItem(com.stonebreak.items.ItemStack stack) {
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendDropItem(NetItemStack.of(stack));
         return true;
     }
 
@@ -385,13 +423,14 @@ public final class MultiplayerSession {
     }
 
     private static void startWithServer(String worldName, long seed, Mode targetMode, int tcpPort) {
-        if (mode != Mode.MENU) {
-            shutdown();
+        if (mode != Mode.MENU || serverRun != null) {
+            shutdown(); // also stops a previous boot still running (#368)
         }
         localPlayerRestored = false;
         setMode(targetMode);
-        serverRunning = true;
-        final String username = Settings.getInstance().getMultiplayerUsername();
+        // The host's own name never goes through the join screen's check: an old settings file
+        // may hold one the server would refuse from anyone else (issue #335).
+        final String username = PlayerNames.forLocalHost(Settings.getInstance().getMultiplayerUsername());
         final String localId = "sb-local-" + System.nanoTime();
         final NetAddress tcp = tcpPort > 0 ? NetAddress.tcpBind(tcpPort) : null;
 
@@ -404,68 +443,77 @@ public final class MultiplayerSession {
 
         // One dedicated thread: boot the authoritative world (blocking load/gen), connect the
         // in-process client, then run the server tick loop off the render thread.
-        Thread t = new Thread(() -> {
-            IntegratedServer s = null;
-            try {
-                s = new IntegratedServer();
-                s.start(NetAddress.local(localId), tcp, worldName, seed);
-                // If a shutdown raced our boot (quick start→quit), tear our own server down
-                // here rather than publishing it — otherwise a stale server keeps auto-saving.
-                if (!serverRunning) {
-                    teardownServer(s);
-                    return;
-                }
-                server = s;
-                // Attach the spawn/despawn listener so server-side spawns (mobs, drops) replicate.
-                attachEntityListener(s.worldContext().entityManager());
+        ServerRun run = new ServerRun();
+        Thread t = new Thread(() -> runServer(run, targetMode, NetAddress.local(localId), tcp,
+                worldName, seed, username), targetMode + "-Server");
+        t.setDaemon(true);
+        run.setThread(t);
+        serverRun = run;
+        t.start();
+    }
 
-                ClientWorldView c = new ClientWorldView();
-                c.connect(NetAddress.local(localId), username);
-                client = c;
+    /** The server thread of one session ({@code run}): boot, publish, connect, tick, stop. */
+    private static void runServer(ServerRun run, Mode targetMode, NetAddress local, NetAddress tcp,
+                                  String worldName, long seed, String username) {
+        try {
+            // A shutdown that races the boot (quick start→quit, or a second Play while this one
+            // still loads) stops THIS run: the boot then tears its own server down instead of
+            // publishing it, on every exit path — otherwise a stale server keeps auto-saving and,
+            // on a host, keeps the TCP port (issue #368).
+            IntegratedServer s = new IntegratedServer();
+            boolean published = run.startAndPublish(s,
+                    srv -> srv.start(local, tcp, worldName, seed),
+                    srv -> {
+                        server = srv;
+                        // Attach the spawn/despawn listener so server-side spawns replicate.
+                        attachEntityListener(srv.worldContext().entityManager());
+                    },
+                    MultiplayerSession::teardownServer);
+            if (!published) {
+                return;
+            }
 
-                // Authoritative tick loop (sim @ 20 Hz via the tick's accumulator).
-                while (serverRunning) {
-                    try {
-                        s.tick();
-                    } catch (Throwable th) {
-                        System.err.println("[SERVER-THREAD] Tick error: " + th);
-                        th.printStackTrace();
-                    }
-                    Thread.sleep(SERVER_POLL_MS);
+            ClientWorldView c = new ClientWorldView();
+            c.connect(local, username);
+            if (!run.publish(() -> client = c)) {
+                c.shutdown(); // stopped while connecting: shutdown() already ran without it
+            }
+
+            // Authoritative tick loop (sim @ 20 Hz via the tick's accumulator).
+            while (run.isRunning()) {
+                try {
+                    s.tick();
+                } catch (Throwable th) {
+                    System.err.println("[SERVER-THREAD] Tick error: " + th);
+                    th.printStackTrace();
                 }
-                // Stop requested: apply what the client sent last (shutdown() pushed a final
-                // prefs report) before the host's record is saved from this server's state.
-                s.drainInboundForShutdown();
-                Thread.sleep(SHUTDOWN_DRAIN_GRACE_MS); // local-channel delivery is one event-loop hop
-                s.drainInboundForShutdown();
-                s.stopTicking();
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt(); // shutdown requested
-            } catch (Exception e) {
-                System.err.println("[NET] Failed to start " + targetMode + ": " + e.getMessage());
-                e.printStackTrace();
-                serverRunning = false;
-                if (server == null && s != null) {
-                    teardownServer(s); // never published — clean up our own instance
-                }
-                // Leave the session for real (it stayed in HOST/SINGLEPLAYER mode with no client,
-                // issue #338) and don't strand the player on the loading screen. Only if no newer
-                // session replaced this one meanwhile.
-                Game game = Game.getInstance();
-                Thread self = Thread.currentThread();
-                game.runOnMainThread(() -> {
-                    if (serverThread == self) {
+                Thread.sleep(SERVER_POLL_MS);
+            }
+            // Stop requested: apply what the client sent last (shutdown() pushed a final
+            // prefs report) before the host's record is saved from this server's state.
+            s.drainInboundForShutdown();
+            Thread.sleep(SHUTDOWN_DRAIN_GRACE_MS); // local-channel delivery is one event-loop hop
+            s.drainInboundForShutdown();
+            s.stopTicking();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt(); // shutdown requested
+        } catch (Exception e) {
+            System.err.println("[NET] Failed to start " + targetMode + ": " + e.getMessage());
+            e.printStackTrace();
+            // Leave the session for real (it stayed in HOST/SINGLEPLAYER mode with no client,
+            // issue #338) and don't strand the player on the loading screen. Only if no newer
+            // session replaced this one meanwhile.
+            Game game = Game.getInstance();
+            game.runOnMainThread(() -> {
+                if (serverRun == run) {
+                    if (game.getState() == GameState.LOADING) {
+                        game.leaveWorldToMenu(); // ends the session too
+                    } else {
                         shutdown();
                     }
-                    if (game.getState() == GameState.LOADING) {
-                        game.setState(GameState.MAIN_MENU);
-                    }
-                });
-            }
-        }, targetMode + "-Server");
-        t.setDaemon(true);
-        serverThread = t;
-        t.start();
+                }
+            });
+        }
     }
 
     /**
@@ -499,8 +547,13 @@ public final class MultiplayerSession {
         Game game = Game.getInstance();
         Thread t = new Thread(() -> {
             ClientWorldView c = new ClientWorldView();
+            // The join secret this host issued us last time lets a reconnect take over its own
+            // session; a new one is kept for next time (issue #335).
+            com.stonebreak.network.client.ClientSecretStore secrets =
+                    com.stonebreak.network.client.ClientSecretStore.defaultStore();
             try {
-                c.connect(NetAddress.tcp(host, port), username);
+                c.connect(NetAddress.tcp(host, port), username, secrets.get(host, port, username),
+                        issued -> secrets.put(host, port, username, issued));
             } catch (Exception e) {
                 c.shutdown();
                 String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
@@ -550,28 +603,12 @@ public final class MultiplayerSession {
             client.flushPlayerPrefs();
         }
 
-        // Stop the server tick thread before tearing down its world/connections. Not an
-        // interrupt first: the loop exits on the flag and drains its last packets (above);
-        // interrupting only if it does not stop in time.
-        serverRunning = false;
-        Thread t = serverThread;
-        if (t != null && t != Thread.currentThread()) {
-            // Wait for the tick in progress to finish (a heavy generation tick can take a while):
-            // tearing the world down under a running tick was issue #338. Interrupt only a
-            // thread that is truly stuck.
-            try {
-                t.join(SERVER_STOP_WAIT_MS);
-                if (t.isAlive()) {
-                    System.err.println("[NET] Server thread still busy after "
-                            + SERVER_STOP_WAIT_MS + " ms; interrupting it.");
-                    t.interrupt();
-                    t.join(2000);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        // Stop the server tick thread before tearing down its world/connections.
+        ServerRun run = serverRun;
+        serverRun = null;
+        if (run != null) {
+            stopServerThread(run);
         }
-        serverThread = null;
 
         detachEntityListener();
         if (client != null) {
@@ -584,6 +621,44 @@ public final class MultiplayerSession {
         }
         localPlayerRestored = false;
         setMode(Mode.MENU);
+    }
+
+    /**
+     * Stops {@code run}'s server thread. A published server: not an interrupt first — the loop
+     * exits on the flag and drains its last packets; interrupt only if it does not stop in
+     * time. A server still booting: interrupt at once (the world load and the bind give up on
+     * it) and wait for the boot to tear its own server down, so the next session never meets
+     * its port or its open world files (issue #368).
+     */
+    private static void stopServerThread(ServerRun run) {
+        boolean published = run.stop();
+        Thread t = run.thread();
+        if (t == null || t == Thread.currentThread()) {
+            return;
+        }
+        try {
+            if (!published) {
+                t.interrupt();
+                t.join(BOOT_ABORT_WAIT_MS);
+                if (t.isAlive()) {
+                    System.err.println("[NET] Server boot still unwinding after " + BOOT_ABORT_WAIT_MS
+                            + " ms; it tears its own server down when it finishes.");
+                }
+                return;
+            }
+            // Wait for the tick in progress to finish (a heavy generation tick can take a while):
+            // tearing the world down under a running tick was issue #338. Interrupt only a
+            // thread that is truly stuck.
+            t.join(SERVER_STOP_WAIT_MS);
+            if (t.isAlive()) {
+                System.err.println("[NET] Server thread still busy after "
+                        + SERVER_STOP_WAIT_MS + " ms; interrupting it.");
+                t.interrupt();
+                t.join(2000);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     static {
@@ -604,8 +679,12 @@ public final class MultiplayerSession {
             return;
         }
         System.out.println("[NET] JVM exiting with a live world — flushing its save.");
-        serverRunning = false;
-        Thread t = serverThread;
+        ServerRun run = serverRun;
+        Thread t = null;
+        if (run != null) {
+            run.stop();
+            t = run.thread();
+        }
         if (t != null) {
             try {
                 t.join(3000);
@@ -657,10 +736,6 @@ public final class MultiplayerSession {
         }
     }
 
-    /**
-     * Hook from {@code LivingEntity.damage} when the local player hits a network-shadow
-     * entity — forwards the damage intent to the authoritative server via the local client.
-     */
     /** Local ability knockback on a replicated entity: forward it to the authoritative server. */
     public static void onLocalEntityKnockback(Entity target, org.joml.Vector3f direction,
                                               float horizontal, float vertical) {
@@ -670,11 +745,30 @@ public final class MultiplayerSession {
         }
     }
 
+    /**
+     * Hook from {@code LivingEntity.damage} when the local player hits a network-shadow
+     * entity — forwards the damage intent to the authoritative server via the local client.
+     */
     public static void onLocalEntityDamage(Entity target, float amount,
-                                           com.stonebreak.mobs.entities.LivingEntity.DamageSource source) {
+                                           com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                           com.stonebreak.mobs.entities.HitKind kind) {
         ClientWorldView c = getClient();
         if (c != null && target != null && target.getNetworkId() >= 0) {
-            c.sendEntityDamage(target.getNetworkId(), amount, source);
+            c.sendEntityDamage(target.getNetworkId(), amount, source, kind);
+        }
+    }
+
+    /**
+     * Hook from {@code LivingEntity.applyStatusEffect} on a network shadow: forwards the
+     * ability's status effect to the authoritative server, which applies it to the real mob
+     * (#339). The replicated result comes back as {@code EntityStatusS2C}.
+     */
+    public static void onLocalEntityStatusEffect(Entity target,
+                                                 com.stonebreak.mobs.entities.status.StatusEffectType type,
+                                                 float duration, float magnitude) {
+        ClientWorldView c = getClient();
+        if (c != null && target != null && target.getNetworkId() >= 0 && type != null) {
+            c.sendEntityStatusEffect(target.getNetworkId(), type, duration, magnitude);
         }
     }
 
@@ -698,47 +792,61 @@ public final class MultiplayerSession {
         }
     }
 
-    /** Server-side: hand a connected client an item stack (drop pickup, command-give). */
-    public static void giveItemTo(int playerId, int itemId, int count) {
+    /**
+     * Server-side: hand a connected client an item stack, state included (drop pickup,
+     * command-give). Server thread only — see {@link IntegratedServer#giveItemTo}.
+     */
+    public static void giveItemTo(int playerId, NetItemStack stack) {
         IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
         if (s != null) {
-            s.giveItemTo(playerId, itemId, count);
+            s.giveItemTo(playerId, stack);
         }
     }
 
     /**
-     * Server-authoritative drop pickup. Called from a drop entity on the server tick: the
-     * nearest player within {@code range} with room for the item gets as much of the stack as
-     * fits (over the wire; the local client adds it on receipt). Returns how many were taken
-     * — the drop keeps the rest where it lies (#372; re-dropping the overflow used to throw it
-     * ahead of a full-inventory player on every step). 0 when there is no server or no one in
-     * range has room.
+     * Server-authoritative drop pickup. Called from a drop entity on the SERVER tick: the
+     * nearest player within {@code range} with room for the stack gets as much of it as fits
+     * (over the wire, state included — issue #342; the local client adds it on receipt).
+     * Returns how many were taken — the drop keeps the rest where it lies (#372; re-dropping
+     * the overflow used to throw it ahead of a full-inventory player on every step). 0 when
+     * there is no server, no one in range has room, or the caller is not the server thread
+     * (a client-world entity must never walk the server roster, #341).
      */
-    public static int tryServerPickup(Vector3f pos, float range, int itemId, int count) {
+    public static int tryServerPickup(Vector3f pos, float range, NetItemStack stack) {
         IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
-        if (s == null || count <= 0) {
+        if (s == null || stack == null || stack.isEmpty() || !s.requireTickThread("tryServerPickup")) {
             return 0;
         }
-        ServerPlayer nearest = nearestEligiblePickupCandidate(s.worldContext().players(), pos, range, itemId);
+        ServerPlayer nearest = nearestEligiblePickupCandidate(
+                s.worldContext().players(), pos, range, stack.itemId(), stack.state());
         if (nearest == null) {
             return 0;
         }
-        int taken = nearest.inventory().roomFor(itemId, count);
-        s.giveItemTo(nearest.playerId(), itemId, taken);
+        int taken = nearest.inventory().roomFor(stack.itemId(), stack.count(), stack.state());
+        s.giveItemTo(nearest.playerId(),
+                new NetItemStack(stack.itemId(), taken, stack.state()));
         return taken;
+    }
+
+    /** {@link #nearestEligiblePickupCandidate(Iterable, Vector3f, float, int, String)} for default-state stacks. */
+    static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
+                                                       Vector3f pos, float range, int itemId) {
+        return nearestEligiblePickupCandidate(players, pos, range, itemId, null);
     }
 
     /**
      * Nearest-player-wins pickup selection: when several players stand in range, the closest
      * one gets the stack (roster iteration order is arbitrary and previously decided ties
      * unfairly). Only {@link ServerPlayer#isLiveInWorld() live} players with room for at least
-     * one {@code itemId} qualify: one that has not reported a position yet would win at the
-     * {@code (0,0,0)} default, a dead one would collect its own death drops from the death
-     * screen (#357) — the drop stays in the world for other players or the post-respawn
-     * pickup — and a full one would take the drop away from a player who can hold it (#372).
+     * one {@code itemId} in {@code state} qualify: one that has not reported a position yet
+     * would win at the {@code (0,0,0)} default, a dead one would collect its own death drops
+     * from the death screen (#357) — the drop stays in the world for other players or the
+     * post-respawn pickup — and a full one would take the drop away from a player who can hold
+     * it (#372).
      */
     static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
-                                                       Vector3f pos, float range, int itemId) {
+                                                       Vector3f pos, float range, int itemId,
+                                                       String state) {
         float rangeSq = range * range;
         ServerPlayer nearest = null;
         float nearestSq = Float.MAX_VALUE;
@@ -750,7 +858,7 @@ public final class MultiplayerSession {
             float dy = pos.y - sp.y();
             float dz = pos.z - sp.z();
             float distSq = dx * dx + dy * dy + dz * dz;
-            if (distSq <= rangeSq && distSq < nearestSq && sp.inventory().roomFor(itemId, 1) > 0) {
+            if (distSq <= rangeSq && distSq < nearestSq && sp.inventory().roomFor(itemId, 1, state) > 0) {
                 nearest = sp;
                 nearestSq = distSq;
             }
@@ -761,18 +869,24 @@ public final class MultiplayerSession {
     // ─── Per-tick pump (called from the game loop) ───────────────────────────────
 
     public static void tick() {
+        boolean disconnected;
         synchronized (MultiplayerSession.class) {
-            tickLocked();
+            disconnected = tickLocked();
+        }
+        if (disconnected) {
+            // Host quit, kick or timeout: the same way out as Pause → Quit to menu (issue #368).
+            Game.getInstance().leaveWorldToMenu();
         }
     }
 
-    private static void tickLocked() {
+    /** Pumps the client; true when its connection is gone and the world must be left. */
+    private static boolean tickLocked() {
         if (com.stonebreak.battletest.BattleTestSession.isActive()) {
             if (client != null) client.suspendClock();
-            return;
+            return false;
         }
         if (mode == Mode.MENU) {
-            return;
+            return false;
         }
 
         // The integrated server ticks on its own thread (see startWithServer). The main thread
@@ -785,12 +899,10 @@ public final class MultiplayerSession {
                 String reason = c.kickReason();
                 System.out.println("[NET] Disconnected"
                         + (reason != null ? ": " + reason : "") + "; returning to menu.");
-                com.stonebreak.ui.runtime.GameUiInput.get().cancelAll(
-                        com.openmason.engine.ui.runtime.input.CancelReason.DISCONNECT);
-                shutdown();
-                Game.getInstance().setState(GameState.MAIN_MENU);
+                return true;
             }
         }
+        return false;
     }
 
     /**

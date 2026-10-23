@@ -26,11 +26,19 @@ public final class ProjectileDamage {
         boolean localFallback = Game.getWorld() == projectile.getWorld();
         float healthBefore = target.getHealth();
         target.damage(amount, source, null, localFallback);
-        if (!localFallback && projectile.getOwnerPlayerId() >= 0) {
-            float dealt = healthBefore - Math.max(0f, target.getHealth());
+        float dealt = healthBefore - Math.max(0f, target.getHealth());
+        if (localFallback) {
+            // No server to send a KillCreditS2C (the battle-test arena): the local player shot
+            // it, so the arrow's Quarry/Study hook runs here, on the main thread that ticks
+            // this world. The number and voice already came from the local damage above.
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null && dealt > 0f && source == LivingEntity.DamageSource.ARROW) {
+                player.getRangerAbilities().onPlayerArrowHit(player, target);
+            }
+        } else if (projectile.getOwnerPlayerId() >= 0) {
             if (dealt > 0f) {
                 com.stonebreak.network.MultiplayerSession.sendKillCredit(
-                    projectile.getOwnerPlayerId(), target, dealt, !target.isAlive());
+                    projectile.getOwnerPlayerId(), target, dealt, !target.isAlive(), source);
             }
         }
     }

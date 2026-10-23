@@ -711,6 +711,11 @@ public class Game {
         worldLifecycle.resetWorld();
     }
 
+    /** Delegates to {@link com.stonebreak.core.world.WorldLifecycle#leaveToMenu()}. */
+    public void leaveWorldToMenu() {
+        worldLifecycle.leaveToMenu();
+    }
+
     /** Delegates to {@link com.stonebreak.core.diagnostics.GameDiagnostics#displayDebugInfo()}. */
     public static void displayDebugInfo() {
         com.stonebreak.core.diagnostics.GameDiagnostics.displayDebugInfo();
