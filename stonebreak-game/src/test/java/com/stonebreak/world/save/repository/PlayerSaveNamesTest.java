@@ -93,6 +93,22 @@ class PlayerSaveNamesTest {
     }
 
     @Test
+    void anOldSaveUnderASpacedOrLongNameStillLoads() throws IOException {
+        // The old sanitizer turned spaces into '_'; such names are valid again, so their
+        // players must reach the file the old server wrote.
+        Path world = tempDir.resolve("world");
+        Path players = Files.createDirectories(world.resolve("players"));
+        Files.write(players.resolve("Bob_Smith.json"), bytes("spaced"));
+        Files.write(players.resolve("TheLongestNameAllowed_24.json"), bytes("long"));
+        FileSaveRepository repo = new FileSaveRepository(world.toString());
+
+        assertArrayEquals(bytes("spaced"), repo.loadNamedPlayerBytes("Bob Smith").orElseThrow());
+        assertArrayEquals(bytes("long"), repo.loadNamedPlayerBytes("TheLongestNameAllowed_24").orElseThrow());
+        assertArrayEquals(bytes("spaced"), repo.loadNamedPlayerBytes("Bob Smith").orElseThrow(),
+                "and again from its migrated file");
+    }
+
+    @Test
     void anOldSaveIsMatchedWithItsExactCase() throws IOException {
         Path world = tempDir.resolve("world");
         Path players = Files.createDirectories(world.resolve("players"));

@@ -39,7 +39,7 @@ public final class JoinWorldScreen {
     public String connect(String host, String port, String user) {
         hostText = clip(host, 64, false);
         portText = clip(port, 5, true);
-        userText = clip(user, 24, false);
+        userText = clip(user, PlayerNames.MAX_LENGTH, false);
         statusMessage = "";
         connect();
         return statusMessage;

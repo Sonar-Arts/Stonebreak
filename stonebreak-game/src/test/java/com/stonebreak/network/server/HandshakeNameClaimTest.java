@@ -147,7 +147,7 @@ class HandshakeNameClaimTest {
     @Test
     void namesOutsideTheRuleAreRefused() {
         IntegratedServer server = new IntegratedServer();
-        for (String bad : new String[] {"[SERVER]", "Bob Smith", "", "a".repeat(17), "Bob\u0007"}) {
+        for (String bad : new String[] {"[SERVER]", "Bob  Smith", " Bob", "", "a".repeat(25), "Bob\u0007"}) {
             ServerConnection conn = connection(false, true);
             handshake(server, connecting(conn), bad, "");
             verify(conn).sendAndClose(new KickS2C("Invalid name. " + PlayerNames.RULE));

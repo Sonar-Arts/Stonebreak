@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlayerNamesTest {
 
     @Test
-    void lettersDigitsUnderscoresDotsAndHyphensUpToSixteen() {
+    void lettersDigitsSymbolsAndSingleSpacesUpToTwentyFour() {
         assertTrue(PlayerNames.isValid("Player"));
         assertTrue(PlayerNames.isValid("x"));
         assertTrue(PlayerNames.isValid("Bob_42"));
@@ -20,16 +20,21 @@ class PlayerNamesTest {
         assertFalse(PlayerNames.isValid(""));
         assertFalse(PlayerNames.isValid(null));
         assertFalse(PlayerNames.isValid("[SERVER]"));
-        assertFalse(PlayerNames.isValid("Bob Smith"));
+        assertTrue(PlayerNames.isValid("Bob Smith"), "names from before the rule keep working");
+        assertTrue(PlayerNames.isValid("a".repeat(24)), "the old join screen allowed 24");
+        assertFalse(PlayerNames.isValid(" Bob"));
+        assertFalse(PlayerNames.isValid("Bob "));
+        assertFalse(PlayerNames.isValid("Bob  Smith"), "names never differ only in spacing");
         assertFalse(PlayerNames.isValid("Bob\n"));
         assertFalse(PlayerNames.isValid("Bøb"));
     }
 
     @Test
     void theHostsNameIsCoercedNeverRefused() {
-        assertEquals("BobSmith", PlayerNames.forLocalHost("Bob Smith"));
+        assertEquals("Bob Smith", PlayerNames.forLocalHost("Bob Smith"));
+        assertEquals("Bob Smith", PlayerNames.forLocalHost("  Bob   [Smith] "));
         assertEquals("SERVER", PlayerNames.forLocalHost("[SERVER]"));
-        assertEquals("abcdefghijklmnop", PlayerNames.forLocalHost("abcdefghijklmnopqrstuvwxyz"));
+        assertEquals("abcdefghijklmnopqrstuvwx", PlayerNames.forLocalHost("abcdefghijklmnopqrstuvwxyz"));
         assertEquals(PlayerNames.DEFAULT, PlayerNames.forLocalHost("!!!"));
         assertEquals(PlayerNames.DEFAULT, PlayerNames.forLocalHost(null));
         assertTrue(PlayerNames.isValid(PlayerNames.forLocalHost("  ~~ weird name ~~ ")));
