@@ -358,6 +358,12 @@ public final class ClientWorldView {
         return (stats != null ? stats : new com.stonebreak.player.CharacterStats(null)).toCreationJson();
     }
 
+    /** The server's restore blob ({@code PlayerDataS2C}); package-private for tests. */
+    void onPlayerData(byte[] json) {
+        restoreBlob = json;
+        restoreReceived = true;
+    }
+
     /** True once the server's PlayerData blob has arrived (remote restore can be applied). */
     public boolean isRestoreReceived() { return restoreReceived; }
 
@@ -365,7 +371,10 @@ public final class ClientWorldView {
      * Apply the server-restored PlayerData to a SPECIFIC player (the one the world bootstrap just
      * created). Driven from the build thread rather than auto-applied to {@code Game.getPlayer()},
      * so a re-open never restores into a stale previous-session player. Empty blob ⇒ a fresh
-     * player on this server, so give starting items.
+     * player on this server, so give starting items. A creation echo ⇒ the host built this
+     * character, so only the fresh-spawn reset runs here (#367). A blob this client cannot
+     * read ⇒ leave with a reason instead of playing on with a stand-in character: its prefs
+     * push would replace the host's record of this player, which the host keeps (#367).
      */
     public void applyRestoreTo(Player p) {
         if (p == null) {
@@ -376,6 +385,7 @@ public final class ClientWorldView {
             // Check if this is a character creation blob (has "background" key) or a full save
             if (isCharacterCreationBlob(blob)) {
                 p.getCharacterStats().applyFromJoinData(blob);
+                p.prepareServerCreatedCharacter();
                 System.out.println("[CLIENT] Applied character creation data from server.");
             } else {
                 try {
@@ -384,7 +394,12 @@ public final class ClientWorldView {
                     System.out.println("[CLIENT] Restored saved player data from server.");
                 } catch (Exception e) {
                     System.err.println("[CLIENT] Failed to apply restored player data: " + e.getMessage());
-                    p.giveStartingItems();
+                    // restoreApplied stays false, so no prefs are ever pushed; the tick sees the
+                    // disconnect, returns to the menu and closes the connection.
+                    kickReason = "Could not read your player data from the host"
+                            + " (the host and this client may be on different builds)";
+                    disconnected = true;
+                    return;
                 }
             }
         } else {
@@ -738,10 +753,7 @@ public final class ClientWorldView {
             case InventorySyncS2C s -> applyInventorySync(s);
             case com.stonebreak.network.packet.player.KillCreditS2C kc -> playerHandler.handleKillCredit(kc);
             case com.stonebreak.network.packet.player.ProgressS2C pr -> applyProgress(pr);
-            case com.stonebreak.network.packet.player.PlayerDataS2C pd -> {
-                restoreBlob = pd.json();
-                restoreReceived = true;
-            }
+            case com.stonebreak.network.packet.player.PlayerDataS2C pd -> onPlayerData(pd.json());
             case EntitySpawnS2C s -> entityHandler.applySpawn(s);
             case EntityDespawnS2C d -> entityHandler.applyDespawn(d.networkId());
             case EntityMoveS2C mv -> entityHandler.applyDelta(mv);

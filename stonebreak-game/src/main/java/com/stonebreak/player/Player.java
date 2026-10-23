@@ -461,6 +461,7 @@ public class Player {
 
     // Lifecycle
     public void giveStartingItems() { c.spawnService.giveStartingItems(); }
+    public void prepareServerCreatedCharacter() { c.spawnService.prepareServerCreatedCharacter(); }
     public void setLoadedFromSave(boolean loaded) { c.spawnService.setLoadedFromSave(loaded); }
 
     public void setWorld(World world) {

@@ -58,23 +58,7 @@ public class PlayerSpawnService {
 
     public void giveStartingItems() {
         if (!loadedFromSave) {
-            // Position is already set to the authoritative world spawn (via WelcomeS2C ->
-            // Game.buildClientWorld -> player.setPosition) before this runs; this method only
-            // hands out items and resets physics/state. Snap fall bookkeeping to the current
-            // spawn so a low-surface spawn doesn't register phantom fall damage.
-            state.setPreviousY(state.getPosition().y);
-            state.getVelocity().set(0, 0, 0);
-            state.setOnGround(false);
-
-            swimming.reset();
-            attack.reset();
-            blockBreaker.reset();
-            flight.reset();
-            jumpHandler.reset();
-
-            health.setHealth(20.0f);
-
-            if (camera != null) camera.reset();
+            resetForFreshSpawn();
             if (inventory != null) inventory.resetToStartingItems();
 
             // The same bonus + item rules the server applies to its fresh-character record
@@ -95,5 +79,38 @@ public class PlayerSpawnService {
             health.enableSpawnProtection();
             System.out.println("Player data loaded from save - preserving position and state (spawn protection enabled)");
         }
+    }
+
+    /**
+     * A fresh character the HOST built from this client's creation (#367): the same fresh-spawn
+     * reset, full health and spawn protection as {@link #giveStartingItems}, but no items and no
+     * background bonuses — the server's creation echo already carries the bonuses (applying
+     * them here would double them) and its inventory sync carries the starter + background items.
+     */
+    public void prepareServerCreatedCharacter() {
+        resetForFreshSpawn();
+        health.enableSpawnProtection();
+        System.out.println("Server-created character - spawn protection enabled for "
+                + SPAWN_PROTECTION_DURATION + " seconds");
+    }
+
+    private void resetForFreshSpawn() {
+        // Position is already set to the authoritative world spawn (via WelcomeS2C ->
+        // Game.buildClientWorld -> player.setPosition) before this runs; this only resets
+        // physics/state. Snap fall bookkeeping to the current spawn so a low-surface spawn
+        // doesn't register phantom fall damage.
+        state.setPreviousY(state.getPosition().y);
+        state.getVelocity().set(0, 0, 0);
+        state.setOnGround(false);
+
+        swimming.reset();
+        attack.reset();
+        blockBreaker.reset();
+        flight.reset();
+        jumpHandler.reset();
+
+        health.setHealth(20.0f);
+
+        if (camera != null) camera.reset();
     }
 }
