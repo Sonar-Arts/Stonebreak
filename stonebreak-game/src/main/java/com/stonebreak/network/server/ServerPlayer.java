@@ -227,8 +227,11 @@ public final class ServerPlayer {
     // ─── Server-owned inventory + progression (issue #334) ──────────────────────
     /** The authoritative replica of this player's inventory + carried stack + hotbar slot. */
     private final ServerInventory inventory = new ServerInventory();
-    /** Seq of the newest numbered container action processed from this player (#334/#353). */
+    /** Seq of the newest numbered intent processed from this player (#334/#353) — container
+     *  actions and every other {@code SequencedIntent} the client's mirror predicts. */
     private int lastActionSeq;
+    /** The client skipped a stale sync and asked for a fresh one ({@code InventoryResyncC2S}). */
+    private boolean inventoryResyncRequested;
 
     /** Records a processed (accepted or refused) action's seq; syncs acknowledge the newest. */
     public void recordActionSeq(int seq) {
@@ -237,9 +240,28 @@ public final class ServerPlayer {
         }
     }
 
-    /** This player's inventory sync, acknowledging the newest action processed from them. */
+    /**
+     * This player's inventory sync, acknowledging the newest action processed from them. Every
+     * caller sends what this returns, so it also answers a pending resync request.
+     */
     public com.stonebreak.network.packet.player.InventorySyncS2C inventorySync() {
+        inventoryResyncRequested = false;
         return new com.stonebreak.network.packet.player.InventorySyncS2C(inventory.encode(), lastActionSeq);
+    }
+
+    /** Notes an {@code InventoryResyncC2S}; answered by {@link #flushInventoryResync}. */
+    public void requestInventoryResync() {
+        inventoryResyncRequested = true;
+    }
+
+    /**
+     * Sends the requested sync, if no sync went out since the request (that one already
+     * answered it). Called once per inbound drain, so a burst of requests costs one sync.
+     */
+    public void flushInventoryResync() {
+        if (inventoryResyncRequested) {
+            send(inventorySync(), false);
+        }
     }
 
     /** The last ACCEPTED progression/prefs state (parsed PlayerPrefsC2S, the creation blob,

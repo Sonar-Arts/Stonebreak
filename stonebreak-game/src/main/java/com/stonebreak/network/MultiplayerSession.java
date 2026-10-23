@@ -9,7 +9,6 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.client.ClientWorldView;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.server.IntegratedServer;
 import com.stonebreak.network.server.ServerLevel;
 import com.stonebreak.network.server.ServerPlayer;
@@ -232,7 +231,7 @@ public final class MultiplayerSession {
         if (c == null || c.isDisconnected()) {
             return false;
         }
-        c.sendDeathDrop(new DeathDropC2S());
+        c.sendDeathDrop();
         return true;
     }
 
@@ -245,7 +244,7 @@ public final class MultiplayerSession {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
             c.sendConsumeHeld(new com.stonebreak.network.packet.player.ConsumeHeldC2S(
-                    itemId, SlotIntentSeq.next()));
+                    itemId, SlotIntentSeq.nextAnswered()));
         }
     }
 

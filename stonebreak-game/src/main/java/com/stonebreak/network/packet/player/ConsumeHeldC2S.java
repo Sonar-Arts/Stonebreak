@@ -12,7 +12,8 @@ import io.netty.buffer.ByteBuf;
  * the eaten item nor reverts the switched-in stack. {@code seq} is a {@code SlotIntentSeq}
  * number, acknowledged by the reply sync like a container action.
  */
-public record ConsumeHeldC2S(int itemId, int seq) implements Packet {
+public record ConsumeHeldC2S(int itemId, int seq)
+        implements Packet, com.stonebreak.network.packet.SequencedIntent {
 
     public static final PacketCodec<ConsumeHeldC2S> CODEC = new PacketCodec<>() {
         @Override

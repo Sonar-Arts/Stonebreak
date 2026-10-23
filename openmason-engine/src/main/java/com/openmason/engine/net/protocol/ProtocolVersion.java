@@ -30,8 +30,11 @@ public final class ProtocolVersion {
      *  knows which players are dead (issue #357).
      *  11 = ConsumeHeldC2S: eating debits the server-owned inventory (issue #355).
      *  12 = ChunkUnloadC2S: the client reports the chunks it drops, so the server's
-     *  sent-record matches what the client holds (issue #363). */
-    public static final int CURRENT = 12;
+     *  sent-record matches what the client holds (issue #363).
+     *  13 = every inventory-predicting intent (BlockChangeC2S, DropItemC2S, SnowLayerC2S,
+     *  BlockToggleC2S, ProjectileSpawnC2S, DeathDropC2S) carries a slot-intent seq that
+     *  InventorySyncS2C acknowledges, plus InventoryResyncC2S for a skipped stale sync. */
+    public static final int CURRENT = 13;
 
     private ProtocolVersion() {}
 }

@@ -100,7 +100,7 @@ public final class SlotActionSink {
         lastAction = action;
         // Every action is numbered: InventorySyncS2C acknowledges it per player, and for a
         // furnace/workbench BlockStateS2C also acknowledges it per block (issue #353).
-        int seq = com.stonebreak.network.SlotIntentSeq.next();
+        int seq = com.stonebreak.network.SlotIntentSeq.nextAnswered();
         if (containerKind != ContainerActionC2S.ContainerKind.INVENTORY && onNumbered != null) {
             onNumbered.accept(seq);
         }

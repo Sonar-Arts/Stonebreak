@@ -715,8 +715,8 @@ public class World {
         // changes are applied by the client handlers via setBlockAt(..., false) — the
         // non-broadcasting path — so they never re-enter this hook and loop back out.
         if (isPlayerModification) {
-            // Pass `previous` so the server can spawn break drops from the client's view (its
-            // own world snapshot may lag — esp. for fast non-host breaks on a busy tick).
+            // Pass `previous` as the edit's precondition: the server refuses a break of a block
+            // it holds as something else (issue #370). Drops come from the server's own cell.
             com.stonebreak.network.MultiplayerSession.onLocalBlockChange(
                     x, y, z, blockType, previous, placementState);
         }

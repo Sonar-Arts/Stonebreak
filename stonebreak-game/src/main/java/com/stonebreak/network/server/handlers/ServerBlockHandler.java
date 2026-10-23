@@ -101,6 +101,17 @@ public final class ServerBlockHandler {
             return;
         }
         BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
+        // The server's OWN cell decides what was there (issues #333, #370): drops, container
+        // cleanup and the scoop all read it. An unloaded chunk reads AIR here, which never
+        // conflicts; such an edit waits in the retry queue and is checked again once loaded.
+        BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
+        if (chunkLoaded(world, c.x(), c.z()) && conflictsWithServerCell(c, incoming, serverPrev)) {
+            // Someone else changed the cell first: nothing is taken, the placer sees the real
+            // block, and the sync undoes whatever their mirror spent on the edit.
+            sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+            syncInventory(sp);
+            return;
+        }
         // Placement debits the server-owned inventory (issue #334): a non-air edit costs one
         // of that block unless the SERVER's cheats flag is on AND the player's accepted game
         // mode is creative. A refusal reverts the optimistic client edit — no world mutation.
@@ -115,16 +126,7 @@ public final class ServerBlockHandler {
                 return;
             }
         }
-        // Use the CLIENT-reported prev as the source of truth for "what the player broke" —
-        // the server's own world snapshot can lag under burst load (esp. for fast non-host
-        // edits arriving between server ticks), causing the server's getBlockAt to read the
-        // post-edit AIR and emit no drop. Cross-check the server's snapshot only as a sanity
-        // guard for cheating: if the client claims a block we'd never accept, fall back to
-        // the server's view.
-        BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
-        BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
         boolean scoop = isScoop(world, c, incoming, serverPrev); // pre-apply snapshot
-        BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR) ? clientPrev : serverPrev;
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
             // Server chunk not loaded yet (the reach check bounds this to a near-player chunk,
@@ -134,24 +136,71 @@ public final class ServerBlockHandler {
             retryQueue.add(new PendingEdit(sp, c, debit));
             return;
         }
-        completeEdit(sp, c, incoming, prev, scoop, debit, world, ctx);
+        completeEdit(sp, c, incoming, serverPrev, scoop, debit, world, ctx);
+    }
+
+    /**
+     * Whether a client edit was made against a cell the server no longer holds as the client
+     * saw it (issue #370) — the second of two players editing one block inside a round trip.
+     * <ul>
+     *   <li>A placement needs a cell the client's own placer accepts: air or water
+     *       ({@code BlockPlacer}). Anything else is another player's fresh block, which the
+     *       placement would otherwise overwrite (destroying it and its container contents).</li>
+     *   <li>A break needs the block the client says it broke. A cell that is already air is
+     *       not a conflict — the break is a no-op that drops nothing (a double break, or leaves
+     *       the server already decayed). A client prev of air is "unknown" and not checked.</li>
+     * </ul>
+     */
+    static boolean conflictsWithServerCell(BlockChangeC2S c, BlockType incoming, BlockType serverPrev) {
+        if (incoming != null && incoming != BlockType.AIR) {
+            return serverPrev != BlockType.AIR && serverPrev != BlockType.WATER;
+        }
+        BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
+        if (clientPrev == null || clientPrev == BlockType.AIR || serverPrev == BlockType.AIR) {
+            return false;
+        }
+        return clientPrev != serverPrev;
+    }
+
+    /**
+     * Takes {@code added} SNOW for a layer increase. A client adds one layer per intent and
+     * spends it like a placement, so one layer goes through the placement debit and its
+     * depletion auto-switch (issue #422); a larger jump debits plainly.
+     */
+    private static boolean debitSnow(ServerPlayer sp, int added) {
+        return added == 1
+                ? sp.inventory().debitOneWithAutoSwitch(BlockType.SNOW.getId()) != null
+                : sp.inventory().debit(BlockType.SNOW.getId(), added);
+    }
+
+    /** Whether the server holds the chunk under {@code (x, z)} — an unloaded cell reads AIR. */
+    private static boolean chunkLoaded(World world, int x, int z) {
+        return world.getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
+                Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE)) != null;
     }
 
     /**
      * Everything that follows a successful world apply — shared by the direct path and the
-     * chunk-load retry path, so a retried edit gets the same effects (issue #334).
+     * chunk-load retry path, so a retried edit gets the same effects (issue #334). {@code prev}
+     * is the server's own pre-apply cell.
      */
     private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
                               boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
         applyAccepted(sp, c, incoming, prev, debit, world, ctx);
+        int sel = sp.inventory().selectedHotbarSlot();
         if (scoop) {
             // Bucket scoop (mirrors BlockPlacer.handleEmptyBucket): removing a water SOURCE
             // with a non-water bucket selected fills exactly one of them server-side.
-            int sel = sp.inventory().selectedHotbarSlot();
             if (isBucket(sp.inventory().slot(sel), false)
                     && !convertOneBucket(sp, sel, ItemType.BUCKET_STATE_WATER, ctx)) {
                 syncInventory(sp); // nowhere to put the filled bucket — the client's copy is wrong
             }
+        } else if (incoming == BlockType.AIR
+                && (c.prevBlockTypeId() & 0xFFFF) == BlockType.WATER.getId()
+                && isBucket(sp.inventory().slot(sel), false)) {
+            // The client scooped water the server no longer holds as a source (it flowed
+            // away inside the round trip): its mirror filled a bucket the server did not.
+            syncInventory(sp);
         }
     }
 
@@ -203,21 +252,25 @@ public final class ServerBlockHandler {
         }
         if (incoming == BlockType.TORCH_PLACED) {
             ItemType torch = com.stonebreak.blocks.torch.TorchBlock.item();
-            PlacementDebit taken = torch != null ? takeOne(sp, torch.getId()) : null;
-            if (taken != null) {
-                return taken;
-            }
+            int blockId = incoming.getId();
+            int itemId = torch != null ? torch.getId() : blockId;
+            // Whichever torch id the selected slot holds goes first — the stack the client's
+            // placer spent (and auto-switches); the other id only when that one is not held.
+            int first = sp.inventory().heldItemId() == blockId ? blockId : itemId;
+            int second = first == blockId ? itemId : blockId;
+            PlacementDebit taken = takeOne(sp, first);
+            return taken != null || second == first ? taken : takeOne(sp, second);
         }
         return takeOne(sp, incoming.getId());
     }
 
     /**
-     * Removes one {@code itemId} ({@code ServerInventory.debitStack}: the selected slot first)
-     * and records the state of the unit taken; null when none is held.
+     * Removes one {@code itemId} (the selected slot first, with the client's depletion
+     * auto-switch — issue #422) and records the state of the unit taken; null when none is held.
      */
     private static PlacementDebit takeOne(ServerPlayer sp, int itemId) {
         // The held (selected) stack first, like the client's Inventory.removeItem.
-        ItemStack taken = sp.inventory().debitStack(itemId, 1);
+        ItemStack taken = sp.inventory().debitOneWithAutoSwitch(itemId);
         return taken == null ? null : new PlacementDebit(itemId, taken.getState(), false);
     }
 
@@ -297,9 +350,13 @@ public final class ServerBlockHandler {
         return true;
     }
 
-    /** Adds one item back, dropping it beside the player when the inventory is full. */
+    /**
+     * Adds one item back — onto the selected stack when it is the same kind, so a refused
+     * placement lands where the placer's hand is (issue #422) — dropping it beside the player
+     * when the inventory is full.
+     */
     private static void giveOrDrop(ServerPlayer sp, ServerWorldContext ctx, int itemId, String state) {
-        if (sp.inventory().add(itemId, 1, state) == 0) {
+        if (sp.inventory().addToSelectedFirst(itemId, state) == 0) {
             ServerPlayerHandler.spawnTossDrop(sp, ctx, itemId, 1, state);
         }
     }
@@ -331,9 +388,10 @@ public final class ServerBlockHandler {
      */
     private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
                                PlacementDebit debit, World world, ServerWorldContext ctx) {
-        // Break (non-air → air): spawn drops authoritatively and run per-break cleanup. The
-        // EntityManager listener broadcasts the resulting drop entities (see ServerEntityHandler).
-        if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
+        // A container leaving its cell — broken, or replaced by any other block — drops its
+        // contents and leaves its registry, so nothing keeps ticking or broadcasting on a cell
+        // that no longer holds it (issue #370). {@code prev} is the server's own cell.
+        if (prev != incoming) {
             if (prev == BlockType.FURNACE && world.getFurnaceRegistry() != null) {
                 // The SERVER world's registry (per-world) — drops contents authoritatively.
                 world.getFurnaceRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
@@ -343,6 +401,12 @@ public final class ServerBlockHandler {
                 world.getWorkbenchRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
                         new Vector3f(sp.x(), sp.y(), sp.z()));
             }
+        }
+        // Break (non-air → air): spawn drops authoritatively. A cell the server already held as
+        // air drops nothing — a second player's break of the same block, or leaves that decayed
+        // first (issue #370). The EntityManager listener broadcasts the resulting drop entities
+        // (see ServerEntityHandler).
+        if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
             Vector3f dropPos = new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
             // The breaker's last-reported held item selects per-tool drop overrides
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
@@ -494,6 +558,7 @@ public final class ServerBlockHandler {
             float dz = (s.z() + 0.5f) - sp.z();
             if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
                 sendSnowRevert(sp, s.x(), s.y(), s.z(), world); // undo the client's prediction (#363)
+                syncInventory(sp); // ...and the SNOW its mirror spent on it
                 return;
             }
         }
@@ -504,6 +569,7 @@ public final class ServerBlockHandler {
             // would otherwise stay until the chunk re-streams (#363). The block itself is left
             // to its own BlockChange flow (a placement may still be waiting on a retry).
             sendSnowRevert(sp, s.x(), s.y(), s.z(), world);
+            syncInventory(sp);
         } else {
             // Raising the layer count consumes one SNOW block PER LAYER added from the
             // server-owned inventory (issue #334) — breaking the cell drops one SNOW per
@@ -511,8 +577,14 @@ public final class ServerBlockHandler {
             // and mutates nothing.
             int current = world.getSnowLayerManager().getSnowLayers(s.x(), s.y(), s.z());
             int added = layers - current;
-            if (added > 0 && !placementDebitExempt(sp, ctx)
-                    && !sp.inventory().debit(BlockType.SNOW.getId(), added)) {
+            if (added <= 0) {
+                // Another player raised this cell first (issue #370): the layer the client
+                // predicted is already there and took nothing from the server replica.
+                sendSnowRevert(sp, s.x(), s.y(), s.z(), world);
+                syncInventory(sp);
+                return;
+            }
+            if (!placementDebitExempt(sp, ctx) && !debitSnow(sp, added)) {
                 syncInventory(sp);
                 // Re-assert the cell's actual layer count so an over-optimistic client reverts.
                 sendSnowRevert(sp, s.x(), s.y(), s.z(), world);
@@ -660,14 +732,26 @@ public final class ServerBlockHandler {
                 break;
             }
             BlockChangeC2S c = pe.change;
-            BlockType clientPrev = BlockType.getById(c.prevBlockTypeId() & 0xFFFF);
             BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
             BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z()); // before apply
+            if (chunkLoaded(world, c.x(), c.z()) && conflictsWithServerCell(c, incoming, serverPrev)) {
+                // The cell the edit waited for turned out to be taken (issue #370): undo it and
+                // give back exactly what the placement took.
+                sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
+                refund(pe.sp, pe.debit, ctx);
+                if (pe.debit == PlacementDebit.NONE) {
+                    syncInventory(pe.sp);
+                }
+                continue;
+            }
             boolean scoop = isScoop(world, c, incoming, serverPrev);
             if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
-                BlockType prev = (clientPrev != null && clientPrev != BlockType.AIR)
-                    ? clientPrev : serverPrev;
-                completeEdit(pe.sp, c, incoming, prev, scoop, pe.debit, world, ctx);
+                completeEdit(pe.sp, c, incoming, serverPrev, scoop, pe.debit, world, ctx);
+                if (scoop) {
+                    // The intent was acknowledged when it arrived, and syncs sent since then
+                    // lack the filled bucket — this one carries it.
+                    syncInventory(pe.sp);
+                }
             } else if (--pe.ticksLeft <= 0) {
                 // The debit was taken when the edit was validated; give back exactly what it
                 // took (nothing for an exempt placement or a break) and sync (issue #334).

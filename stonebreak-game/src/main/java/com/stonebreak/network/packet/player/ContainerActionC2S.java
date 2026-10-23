@@ -24,7 +24,8 @@ import io.netty.buffer.ByteBuf;
 public record ContainerActionC2S(int x, int y, int z,
                                  byte containerKind, byte region, byte slot,
                                  byte originRegion, byte originSlot,
-                                 byte action, short count, boolean shift, int seq) implements Packet {
+                                 byte action, short count, boolean shift, int seq)
+        implements Packet, com.stonebreak.network.packet.SequencedIntent {
 
     /** An un-numbered action (seq 0). */
     public ContainerActionC2S(int x, int y, int z, byte containerKind, byte region, byte slot,

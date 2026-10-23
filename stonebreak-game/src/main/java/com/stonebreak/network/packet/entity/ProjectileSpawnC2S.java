@@ -3,6 +3,7 @@ package com.stonebreak.network.packet.entity;
 import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.SequencedIntent;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -20,9 +21,13 @@ import io.netty.buffer.ByteBuf;
  *   <li>{@link #KIND_LEYLINE_BREACH}: (x,y,z) = zone center, v unused; params = [radius, pullForce, pulseDamage, duration, overloaded(0/1)]</li>
  *   <li>{@link #KIND_CALTROP}: (x,y,z) = ground pos, v unused; params = [duration]</li>
  * </ul>
+ *
+ * <p>{@code seq} numbers an arrow ({@link SequencedIntent}): the client took the arrow out of
+ * its mirror when it fired. Other kinds cost nothing and send 0.
  */
 public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
-                                 float vx, float vy, float vz, float[] params) implements Packet {
+                                 float vx, float vy, float vz, float[] params, int seq)
+        implements Packet, SequencedIntent {
 
     public static final byte KIND_ARROW = 1;
     public static final byte KIND_FIRE_BOLT = 2;
@@ -32,6 +37,12 @@ public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
 
     /** Params bound (largest kind uses 5). */
     public static final int MAX_PARAMS = 8;
+
+    /** An unnumbered launch. */
+    public ProjectileSpawnC2S(byte kind, float x, float y, float z,
+                              float vx, float vy, float vz, float[] params) {
+        this(kind, x, y, z, vx, vy, vz, params, 0);
+    }
 
     public static final PacketCodec<ProjectileSpawnC2S> CODEC = new PacketCodec<>() {
         @Override
@@ -48,6 +59,7 @@ public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
             for (float v : params) {
                 out.writeFloat(v);
             }
+            ByteBufIO.writeVarInt(out, p.seq());
         }
 
         @Override
@@ -67,7 +79,7 @@ public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
             for (int i = 0; i < n; i++) {
                 params[i] = in.readFloat();
             }
-            return new ProjectileSpawnC2S(kind, x, y, z, vx, vy, vz, params);
+            return new ProjectileSpawnC2S(kind, x, y, z, vx, vy, vz, params, ByteBufIO.readVarInt(in));
         }
     };
 }

@@ -134,6 +134,20 @@ class PacketRoundTripTest {
                     new com.stonebreak.network.packet.world.CheatsStateS2C(enabled)));
         }
         assertEquals(new DropItemC2S(12, 64), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)));
+        // Intent seqs (protocol 13): placements, tosses, snow, toggles, death drops.
+        assertEquals(new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1, "", 2_000_000),
+            roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(10, 64, -5, (short) 3, (short) 1, "", 2_000_000)));
+        assertEquals(new DropItemC2S(12, 64, 77), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64, 77)));
+        assertEquals(new SnowLayerC2S(1, 2, 3, (byte) 4, 78), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(1, 2, 3, (byte) 4, 78)));
+        assertEquals(new com.stonebreak.network.packet.world.BlockToggleC2S(1, 2, 3, 79),
+            roundTrip(com.stonebreak.network.packet.world.BlockToggleC2S.CODEC,
+                new com.stonebreak.network.packet.world.BlockToggleC2S(1, 2, 3, 79)));
+        assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(80),
+            roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,
+                new com.stonebreak.network.packet.player.DeathDropC2S(80)));
+        assertEquals(new com.stonebreak.network.packet.player.InventoryResyncC2S(),
+            roundTrip(com.stonebreak.network.packet.player.InventoryResyncC2S.CODEC,
+                new com.stonebreak.network.packet.player.InventoryResyncC2S()));
         assertEquals(new SnowLayerC2S(10, 64, -5, (byte) 8), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(10, 64, -5, (byte) 8)));
         assertEquals(new SnowLayerC2S(0, 0, 0, (byte) 0), roundTrip(SnowLayerC2S.CODEC, new SnowLayerC2S(0, 0, 0, (byte) 0)));
         assertEquals(new BlockStateS2C(10, 64, -5, "furnace:state=Lit;ing=B:1:3;fuel=I:20:2;out=B:5:1;burn=100;burnTotal=200;cook=40"),
@@ -184,6 +198,9 @@ class PacketRoundTripTest {
         assertArrayEquals(new float[0],
             roundTrip(ProjectileSpawnC2S.CODEC, new ProjectileSpawnC2S(
                 ProjectileSpawnC2S.KIND_ARROW, 0f, 0f, 0f, 0f, 30f, 0f, new float[0])).params());
+        // An arrow carries its intent seq (protocol 13).
+        assertEquals(81, roundTrip(ProjectileSpawnC2S.CODEC, new ProjectileSpawnC2S(
+                ProjectileSpawnC2S.KIND_ARROW, 0f, 0f, 0f, 0f, 30f, 0f, new float[0], 81)).seq());
     }
 
     @Test
@@ -272,6 +289,8 @@ class PacketRoundTripTest {
         assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1)));
         assertEquals(new KeepAliveC2S(42L), viaRegistry(reg, PLAY, SERVERBOUND, new KeepAliveC2S(42L)));
         assertEquals(new DropItemC2S(3, 5), viaRegistry(reg, PLAY, SERVERBOUND, new DropItemC2S(3, 5)));
+        assertEquals(new com.stonebreak.network.packet.player.InventoryResyncC2S(),
+            viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.player.InventoryResyncC2S()));
         assertEquals(new KeepAliveS2C(42L, 17), viaRegistry(reg, PLAY, CLIENTBOUND, new KeepAliveS2C(42L, 17)));
         assertEquals(new TimeSyncS2C(6000L, 1f, false), viaRegistry(reg, PLAY, CLIENTBOUND, new TimeSyncS2C(6000L, 1f, false)));
         assertEquals(new com.stonebreak.network.packet.world.CheatsSetC2S(true),

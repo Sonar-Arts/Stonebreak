@@ -3,6 +3,7 @@ package com.stonebreak.network.packet.world;
 import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.SequencedIntent;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -14,21 +15,31 @@ import io.netty.buffer.ByteBuf;
  * position alone). The server validates it per block type before applying — it is a proposal,
  * never trusted verbatim. Empty for breaks and for blocks whose state the server derives itself.
  *
- * <p>{@code prevBlockTypeId} is the client's view of the block AT the moment they edited it —
- * needed for break-drop spawning so the server isn't forced to infer "what was there" from its
- * own (possibly out-of-sync) world snapshot. The server treats {@code prevBlockTypeId} as the
- * authoritative source of "what the player broke" for drop decisions; it still applies
- * {@code blockTypeId} to its own world for state correctness.
+ * <p>{@code prevBlockTypeId} is the client's view of the block AT the moment they edited it.
+ * The server never takes it as "what was broken" — drops and container cleanup come from the
+ * server's own cell (issues #333, #370). It is the edit's precondition: a break of a block the
+ * server holds as something else (another player replaced it first) is refused, and the real
+ * block is echoed back. 0 (air) means "unknown" and is not checked.
+ *
+ * <p>{@code seq} numbers the intent ({@link SequencedIntent}): a placement or bucket use has
+ * already changed the client's inventory mirror, so an inventory sync built before the server
+ * saw this edit must not restore what it spent.
  */
 public record BlockChangeC2S(int x, int y, int z, short blockTypeId, short prevBlockTypeId,
-                             String placementState) implements Packet {
+                             String placementState, int seq) implements Packet, SequencedIntent {
 
     /** Upper bound on a proposed state string (torch/door/stair strings are &lt; 40 chars). */
     public static final int MAX_STATE_CHARS = 96;
 
-    /** A plain block change with no proposed placement state. */
+    /** A plain, unnumbered block change with no proposed placement state. */
     public BlockChangeC2S(int x, int y, int z, short blockTypeId, short prevBlockTypeId) {
-        this(x, y, z, blockTypeId, prevBlockTypeId, "");
+        this(x, y, z, blockTypeId, prevBlockTypeId, "", 0);
+    }
+
+    /** An unnumbered block change with a proposed placement state. */
+    public BlockChangeC2S(int x, int y, int z, short blockTypeId, short prevBlockTypeId,
+                          String placementState) {
+        this(x, y, z, blockTypeId, prevBlockTypeId, placementState, 0);
     }
 
     public BlockChangeC2S {
@@ -49,12 +60,13 @@ public record BlockChangeC2S(int x, int y, int z, short blockTypeId, short prevB
             out.writeShort(p.blockTypeId());
             out.writeShort(p.prevBlockTypeId());
             ByteBufIO.writeString(out, p.placementState(), MAX_STATE_CHARS);
+            ByteBufIO.writeVarInt(out, p.seq());
         }
 
         @Override
         public BlockChangeC2S decode(ByteBuf in) {
             return new BlockChangeC2S(in.readInt(), in.readInt(), in.readInt(), in.readShort(), in.readShort(),
-                    ByteBufIO.readString(in, MAX_STATE_CHARS));
+                    ByteBufIO.readString(in, MAX_STATE_CHARS), ByteBufIO.readVarInt(in));
         }
     };
 }

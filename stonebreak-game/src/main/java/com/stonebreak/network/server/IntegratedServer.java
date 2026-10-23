@@ -183,6 +183,11 @@ public final class IntegratedServer {
         }
         ServerInboundQueue queue = networkServer.inboundQueue();
         queue.drain(this::dispatch);
+        // After the drain: one answer per player however many InventoryResyncC2S arrived, built
+        // after every intent drained with them.
+        for (ServerPlayer sp : ctx.players()) {
+            sp.flushInventoryResync();
+        }
 
         long now = System.nanoTime();
         if (lastTickNs == 0L) {
@@ -332,6 +337,12 @@ public final class IntegratedServer {
     }
 
     private void routePlay(ServerPlayer sp, Packet packet) {
+        // A numbered intent is recorded on arrival, whatever its handler then decides — every
+        // sync built from here on reflects it, so the client may stop skipping syncs older
+        // than it. Handlers that debit, refuse or queue all act within this dispatch.
+        if (packet instanceof com.stonebreak.network.packet.SequencedIntent intent) {
+            sp.recordActionSeq(intent.seq());
+        }
         switch (packet) {
             case BlockChangeC2S c -> blockHandler.handleBlockChange(sp, c, ctx);
             case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
@@ -366,6 +377,7 @@ public final class IntegratedServer {
             case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
             case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> playerHandler.handlePlayerLife(sp, pl);
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
+            case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }

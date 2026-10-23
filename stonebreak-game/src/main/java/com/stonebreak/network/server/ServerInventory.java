@@ -223,14 +223,42 @@ public final class ServerInventory {
             return true;
         }
         slots[selectedHotbarSlot] = ItemStackStateCodec.empty();
+        refillSelected(item, state);
+        return true;
+    }
+
+    /**
+     * Takes ONE {@code itemId} for a block placement (issue #422): the same unit
+     * {@link #debitStack} takes (the selected slot first), and when that empties the selected
+     * slot, the next stack of the same kind moves into it — the depletion auto-switch
+     * {@code Inventory.removeItem} predicts on the client, so a later sync neither empties the
+     * selected slot again nor moves the switched-in stack back. Returns the taken unit with its
+     * state, or null — nothing removed — when none is held.
+     */
+    public ItemStack debitOneWithAutoSwitch(int itemId) {
+        ItemStack held = slots[selectedHotbarSlot];
+        boolean fromHeld = !held.isEmpty() && held.getBlockTypeId() == itemId;
+        Item heldItem = fromHeld ? held.getItem() : null;
+        String heldState = fromHeld ? held.getState() : null;
+        ItemStack taken = debitStack(itemId, 1);
+        if (taken != null && fromHeld && slots[selectedHotbarSlot].isEmpty()) {
+            refillSelected(heldItem, heldState);
+        }
+        return taken;
+    }
+
+    /**
+     * Moves the first stack of the given kind into the (empty) selected slot: the other hotbar
+     * slots first, then main — slot order, as {@code Inventory.removeItem}'s auto-switch.
+     */
+    private void refillSelected(Item item, String state) {
         for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (i != selectedHotbarSlot && sameKind(slots[i], item, state)) {
                 slots[selectedHotbarSlot] = slots[i];
                 slots[i] = ItemStackStateCodec.empty();
-                break;
+                return;
             }
         }
-        return true;
     }
 
     /** k-th slot in debit order: the selected hotbar slot, the other hotbar slots, then main. */
@@ -289,6 +317,21 @@ public final class ServerInventory {
             }
         }
         return count - remaining;
+    }
+
+    /**
+     * Gives back ONE {@code itemId}: onto the selected stack when it is the same kind and has
+     * room (a refunded placement returns to the hand that placed it, issue #422), else by the
+     * normal {@link #add} rule. Returns 1 when it was stored, 0 when the inventory is full.
+     */
+    public int addToSelectedFirst(int itemId, String state) {
+        Item item = resolveItem(itemId);
+        ItemStack held = slots[selectedHotbarSlot];
+        if (item != null && sameKind(held, item, state) && held.getCount() < held.getMaxStackSize()) {
+            held.incrementCount(1);
+            return 1;
+        }
+        return add(itemId, 1, state);
     }
 
     /**

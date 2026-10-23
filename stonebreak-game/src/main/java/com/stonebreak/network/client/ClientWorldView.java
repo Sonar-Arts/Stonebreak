@@ -442,8 +442,8 @@ public final class ClientWorldView {
         // (starting items included) is authoritative over whatever the restore produced.
         InventorySyncS2C sync = pendingInventorySync;
         pendingInventorySync = null;
-        if (sync != null) {
-            InventorySyncApplier.applyServerSync(p, sync.payload(), sync.ack());
+        if (sync != null && !InventorySyncApplier.applyServerSync(p, sync.payload(), sync.ack())) {
+            requestInventoryResync();
         }
         restoreApplied = true;
     }
@@ -571,7 +571,24 @@ public final class ClientWorldView {
             pendingInventorySync = s;
             return;
         }
-        InventorySyncApplier.applyServerSync(p, s.payload(), s.ack());
+        if (!InventorySyncApplier.applyServerSync(p, s.payload(), s.ack())) {
+            requestInventoryResync();
+        }
+    }
+
+    /**
+     * A sync was skipped as older than one of our numbered intents: ask for a fresh one. It is
+     * answered after every intent we have sent, so it applies unless we send another first —
+     * then that answer is skipped too and asked for again, until the player pauses.
+     */
+    private void requestInventoryResync() {
+        if (!com.stonebreak.network.SlotIntentSeq.skippedSyncNeedsResync()) {
+            return; // our newest intent is answered with a sync anyway
+        }
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.player.InventoryResyncC2S(), false);
+        }
     }
 
     /** Latest sync that landed before the local player existed; null once applied. */
@@ -598,14 +615,17 @@ public final class ClientWorldView {
         }
         short id = (short) (type == null ? 0 : type.getId());
         short prevId = (short) (prevType == null ? 0 : prevType.getId());
-        connection.send(new BlockChangeC2S(x, y, z, id, prevId, placementState), false);
+        // Numbered: a placement or bucket use has already changed our inventory mirror.
+        connection.send(new BlockChangeC2S(x, y, z, id, prevId, placementState,
+                com.stonebreak.network.SlotIntentSeq.next()), false);
     }
 
     /** Toss an item (Q / inventory drop / death scatter): a DEBIT request the server validates. */
     public void sendDropItem(int itemId, int count) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive() && itemId > 0 && count > 0) {
-            conn.send(new com.stonebreak.network.packet.player.DropItemC2S(itemId, count), false);
+            conn.send(new com.stonebreak.network.packet.player.DropItemC2S(itemId, count,
+                    com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
         }
     }
 
@@ -626,10 +646,10 @@ public final class ClientWorldView {
     }
 
     /** Death drain request (see {@code DeathDropC2S}): the server scatters the replica. */
-    public void sendDeathDrop(DeathDropC2S d) {
+    public void sendDeathDrop() {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
-            conn.send(d, false);
+            conn.send(new DeathDropC2S(com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
         }
     }
 
@@ -669,7 +689,8 @@ public final class ClientWorldView {
     public void sendSnowLayer(int x, int y, int z, int layers) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
-            conn.send(new com.stonebreak.network.packet.world.SnowLayerC2S(x, y, z, (byte) layers), false);
+            conn.send(new com.stonebreak.network.packet.world.SnowLayerC2S(x, y, z, (byte) layers,
+                    com.stonebreak.network.SlotIntentSeq.next()), false);
         }
     }
 
@@ -681,7 +702,9 @@ public final class ClientWorldView {
     public boolean sendBlockToggle(int x, int y, int z) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
-            conn.send(new com.stonebreak.network.packet.world.BlockToggleC2S(x, y, z), false);
+            // Numbered: on a stalagmite the toggle is a water-bucket use our mirror already made.
+            conn.send(new com.stonebreak.network.packet.world.BlockToggleC2S(x, y, z,
+                    com.stonebreak.network.SlotIntentSeq.next()), false);
             return true;
         }
         return false;
@@ -691,8 +714,11 @@ public final class ClientWorldView {
     public void sendProjectileSpawn(byte kind, Vector3f pos, Vector3f v, float... params) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
+            // Only an arrow costs anything — it already left our mirror.
+            int seq = kind == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW
+                    ? com.stonebreak.network.SlotIntentSeq.next() : 0;
             conn.send(new com.stonebreak.network.packet.entity.ProjectileSpawnC2S(
-                kind, pos.x, pos.y, pos.z, v.x, v.y, v.z, params), false);
+                kind, pos.x, pos.y, pos.z, v.x, v.y, v.z, params, seq), false);
         }
     }
 
