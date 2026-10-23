@@ -155,11 +155,11 @@ public final class ClientChunkHandler {
             }
             latestSeq.remove(chunkKey);
             // Late install for a chunk the client already dropped (render-distance
-            // shrink, fast travel): discard instead of resurrecting a zombie slot.
-            // The server's forget radius matches the keep radius, so its sent-record
-            // is gone too and the chunk re-streams cleanly when it re-enters view.
+            // shrink, fast travel): discard instead of resurrecting a zombie slot. The
+            // server marked it sent, so report the drop or it never re-streams (#363).
             if (player != null && Math.max(Math.abs(dc.chunkX() - pcx), Math.abs(dc.chunkZ() - pcz)) > keepRadius) {
                 deferredActions.remove(chunkKey);
+                com.stonebreak.network.MultiplayerSession.notifyChunkUnloaded(dc.chunkX(), dc.chunkZ());
                 continue;
             }
             if (dc.storage() == null

@@ -43,6 +43,7 @@ public class SaveService implements AutoCloseable {
     private static final int AUTO_SAVE_INTERVAL_SECONDS = 30;
     private static final int SAVE_THREADS = 4;
     private static final int LOAD_THREADS = 4;
+    private static final int PLAYER_SNAPSHOT_TIMEOUT_SECONDS = 10;
 
     private final String worldPath;
     private final FileSaveRepository repository;
@@ -72,6 +73,14 @@ public class SaveService implements AutoCloseable {
     private volatile CompletableFuture<Void> inFlightAutoSave;
     private volatile WorldData worldData;
     private volatile Player player;
+    /**
+     * Runs work on the thread that owns {@link #player} (the client main thread for the local
+     * player). The autosave takes its player snapshot there so it never reads an inventory the
+     * main thread is sorting or editing (#356). Direct by default (tests, headless binds).
+     */
+    private volatile java.util.concurrent.Executor playerOwner = Runnable::run;
+    /** The autosave's player snapshot still waiting for the owner thread; close() cancels it. */
+    private volatile CompletableFuture<PlayerData> pendingPlayerSnapshot;
     private volatile World world;
     /** Wall clock the play time is measured on (milliseconds); a test seam. */
     private final java.util.function.LongSupplier clock;
@@ -139,7 +148,17 @@ public class SaveService implements AutoCloseable {
      * and runtime edits with the caller's (stale) copy. No-op before the service is initialized.
      */
     public void bindPlayer(Player player) {
+        bindPlayer(player, Runnable::run);
+    }
+
+    /**
+     * {@link #bindPlayer(Player)} for a player that is mutated on one thread: {@code owner} runs
+     * a task on that thread (e.g. {@code Game::runOnMainThread}), and the autosave snapshots the
+     * player through it instead of reading it from the AutoSave thread (#356).
+     */
+    public void bindPlayer(Player player, java.util.concurrent.Executor owner) {
         if (worldData != null) {
+            this.playerOwner = Objects.requireNonNull(owner, "owner");
             this.player = player;
         }
     }
@@ -448,6 +467,12 @@ public class SaveService implements AutoCloseable {
             return;
         }
         stopAutoSave();
+        // An autosave waiting for the owner thread's snapshot would wait out its timeout if
+        // close() runs on that very thread (it cannot drain its task queue while in here).
+        CompletableFuture<PlayerData> snapshot = pendingPlayerSnapshot;
+        if (snapshot != null) {
+            snapshot.cancel(false);
+        }
         awaitInFlightAutoSave();
         flushSavesBlocking("service close");
         autoSaveScheduler.shutdown();
@@ -610,10 +635,13 @@ public class SaveService implements AutoCloseable {
         int chunkCount;
         CompletableFuture<Void> write;
         try {
+            PlayerData playerData = snapshotPlayerOnOwner(worldData.getWorldName());
+            if (playerData == null) {
+                autoSaveInProgress.set(false);
+                inFlight.complete(null);
+                return;
+            }
             WorldData updatedWorld = advanceWorldDataForSave(started);
-
-            // Convert player to data model
-            PlayerData playerData = StateConverter.toPlayerData(player, updatedWorld.getWorldName());
             List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
             chunkCount = chunkTasks.size();
             write = submitSave(new SaveWork(updatedWorld, playerData, chunkTasks, "auto"));
@@ -639,6 +667,40 @@ public class SaveService implements AutoCloseable {
                 inFlight.completeExceptionally(throwable);
             }
         });
+    }
+
+    /**
+     * Converts the bound player on its owner thread and waits for the result here (the AutoSave
+     * thread). Null when the snapshot was cancelled by {@link #close} or the owner thread did not
+     * get to it in time — this autosave is then skipped, and the next one (or the close flush)
+     * saves the player.
+     */
+    private PlayerData snapshotPlayerOnOwner(String worldName) {
+        Player bound = player;
+        CompletableFuture<PlayerData> snapshot = CompletableFuture.supplyAsync(
+            () -> StateConverter.toPlayerData(bound, worldName), playerOwner);
+        pendingPlayerSnapshot = snapshot;
+        try {
+            if (closed.get()) {
+                snapshot.cancel(false);
+            }
+            return snapshot.get(PLAYER_SNAPSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.CancellationException e) {
+            return null;
+        } catch (java.util.concurrent.TimeoutException e) {
+            snapshot.cancel(false);
+            System.err.println("[AUTO-SAVE] Skipped: the player's thread did not snapshot it within "
+                + PLAYER_SNAPSHOT_TIMEOUT_SECONDS + "s");
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            snapshot.cancel(false);
+            return null;
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new RuntimeException("Player snapshot failed", e.getCause());
+        } finally {
+            pendingPlayerSnapshot = null;
+        }
     }
 
     /** Test view of the autosave currently in flight (null when none). Package-private. */

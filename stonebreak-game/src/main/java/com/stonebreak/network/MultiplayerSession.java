@@ -149,6 +149,14 @@ public final class MultiplayerSession {
         }
     }
 
+    /** The client dropped chunk ({@code cx}, {@code cz}); tell the server so it re-streams on return (#363). */
+    public static void notifyChunkUnloaded(int cx, int cz) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.notifyChunkUnloaded(cx, cz);
+        }
+    }
+
     /**
      * User-initiated full resync (pause-menu button): audit every resident chunk against the
      * server plus re-request the entity snapshot. Returns the number of chunks audited, or
@@ -480,7 +488,7 @@ public final class MultiplayerSession {
             ServerLevel level = server.worldContext().serverLevel();
             Player local = Game.getPlayer();
             if (level != null && local != null) {
-                level.registerLocalPlayer(local);
+                level.registerLocalPlayer(local, Game.getInstance()::runOnMainThread);
             }
         }
 
@@ -696,7 +704,7 @@ public final class MultiplayerSession {
                     }
                 });
             }
-            level.registerLocalPlayer(player);
+            level.registerLocalPlayer(player, Game.getInstance()::runOnMainThread);
             localPlayerRestored = true;
             return;
         }

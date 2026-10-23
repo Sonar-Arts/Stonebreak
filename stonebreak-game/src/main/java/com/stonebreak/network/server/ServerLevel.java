@@ -349,8 +349,16 @@ public final class ServerLevel {
      * since load and runtime edits — is never replaced here. Same-JVM only.
      */
     public void registerLocalPlayer(com.stonebreak.player.Player player) {
+        registerLocalPlayer(player, Runnable::run);
+    }
+
+    /**
+     * {@link #registerLocalPlayer(com.stonebreak.player.Player)} with the executor of the thread
+     * that mutates the player (the client main thread), so the autosave snapshots it there (#356).
+     */
+    public void registerLocalPlayer(com.stonebreak.player.Player player, java.util.concurrent.Executor owner) {
         if (saveService != null) {
-            saveService.bindPlayer(player);
+            saveService.bindPlayer(player, owner);
         }
     }
 

@@ -28,8 +28,10 @@ public final class ProtocolVersion {
      *  are granted and echoed by the server only.
      *  10 = PlayerLifeC2S: death/respawn edges on the reliable channel, so the server
      *  knows which players are dead (issue #357).
-     *  11 = ConsumeHeldC2S: eating debits the server-owned inventory (issue #355). */
-    public static final int CURRENT = 11;
+     *  11 = ConsumeHeldC2S: eating debits the server-owned inventory (issue #355).
+     *  12 = ChunkUnloadC2S: the client reports the chunks it drops, so the server's
+     *  sent-record matches what the client holds (issue #363). */
+    public static final int CURRENT = 12;
 
     private ProtocolVersion() {}
 }

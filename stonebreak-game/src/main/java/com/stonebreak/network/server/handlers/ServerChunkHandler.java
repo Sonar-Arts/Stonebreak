@@ -32,14 +32,17 @@ public final class ServerChunkHandler {
     // (ViewDistanceC2S → ServerPlayer.viewDistanceChunks, clamped server-side).
     // Derived radii, per player:
     //   view   = sp.viewDistanceChunks()  — chunks streamed
-    //   gen    = view + 1                 — one ring beyond view is generated (not streamed)
-    //                                       so view-edge chunks get features
+    //   gen    = view + 2                 — two rings beyond view are generated (not streamed):
+    //                                       a chunk streams only once all 8 neighbours are
+    //                                       populated (settledForStreaming), so the view+1 ring
+    //                                       must populate, which needs its own E/S/SE neighbours
     //   forget = view + 2                 — beyond this the "already sent" record is dropped
-    //                                       so the chunk re-streams on return. MUST match the
+    //                                       so the chunk re-streams on return. Matches the
     //                                       client's keep radius (World.clientKeepRadius() =
-    //                                       renderDistance + 2) or a returning player gets
-    //                                       holes (client dropped the chunk but the server
-    //                                       still thinks it was sent).
+    //                                       renderDistance + 2), but runs on the lagging 20 Hz
+    //                                       position sample, so it is only a bound: the client
+    //                                       reports every chunk it drops (ChunkUnloadC2S,
+    //                                       handleChunksUnloaded — #363).
     /**
      * Chunks streamed per remote player per tick. Kept modest because a real
      * wire needs pacing. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
@@ -144,10 +147,32 @@ public final class ServerChunkHandler {
      */
     public void handleResyncRequest(ServerPlayer sp, int cx, int cz) {
         if (!sp.allowResync()) {
+            sp.deferChunkResync(packKey(cx, cz)); // retried in tick as permits free up (#363)
             return;
         }
         sp.forgetChunk(packKey(cx, cz));
         sp.markViewScanPending();
+    }
+
+    /**
+     * C2S: the client dropped these chunks — forget them so they re-stream when they come
+     * back into view (#363). Normally they are far outside the view and the player's movement
+     * back toward them re-arms the scan; one still inside the view by the server's (lagging)
+     * position sample re-arms it now, or a copy the client re-installed meanwhile would go
+     * stale with no block changes reaching it.
+     */
+    public void handleChunksUnloaded(ServerPlayer sp, int[] coords) {
+        int pcx = (int) Math.floor(sp.x() / 16.0);
+        int pcz = (int) Math.floor(sp.z() / 16.0);
+        int viewDistance = sp.viewDistanceChunks();
+        boolean inView = false;
+        for (int i = 0; i + 1 < coords.length; i += 2) {
+            sp.forgetChunk(packKey(coords[i], coords[i + 1]));
+            inView |= Math.max(Math.abs(coords[i] - pcx), Math.abs(coords[i + 1] - pcz)) <= viewDistance;
+        }
+        if (inView) {
+            sp.markViewScanPending();
+        }
     }
 
     /**
@@ -165,8 +190,8 @@ public final class ServerChunkHandler {
             int cz = entries[i + 1];
             int clientHash = entries[i + 2];
             Chunk chunk = world.getChunkIfLoaded(cx, cz);
-            if (chunk == null || !chunk.areFeaturesPopulated()) {
-                continue; // not resident server-side — nothing to compare against
+            if (chunk == null || !settledForStreaming(world, chunk, cx, cz)) {
+                continue; // not resident or still settling server-side — nothing to compare against
             }
             long key = packKey(cx, cz);
             // Sim-edit grace: skip chunks the simulation touched within the last audit
@@ -204,6 +229,10 @@ public final class ServerChunkHandler {
         versionsDirty = false;
 
         for (ServerPlayer sp : ctx.players()) {
+            sp.drainDeferredChunkResyncs(key -> {
+                sp.forgetChunk(key);
+                sp.markViewScanPending();
+            });
             // Wait for a reported position before streaming — avoids shipping chunks around
             // (0,0) to a player who actually spawned far away.
             if (sp.lastStateNs() == 0L && sp.lastCx() == Integer.MIN_VALUE) {
@@ -225,7 +254,7 @@ public final class ServerChunkHandler {
             }
 
             int viewDistance = sp.viewDistanceChunks();
-            int genDistance = viewDistance + 1;
+            int genDistance = viewDistance + 2;
             int forgetDistance = viewDistance + 2;
 
             // Forget chunks the client has unloaded (left its keep radius) so they re-stream on
@@ -236,9 +265,9 @@ public final class ServerChunkHandler {
                 return Math.max(Math.abs(kx - cx), Math.abs(kz - cz)) > forgetDistance;
             });
 
-            // Generate one ring BEYOND the streamed view so the view-edge chunks have the
-            // east/south/southeast neighbors that feature population (trees/flowers) requires;
-            // those border chunks are generated but never streamed.
+            // Generate two rings BEYOND the streamed view: the view-edge chunks stream only once
+            // their neighbours (ring view+1) are populated, and those need their own
+            // east/south/southeast neighbours (ring view+2) to populate. Never streamed.
             for (int dz = -genDistance; dz <= genDistance; dz++) {
                 for (int dx = -genDistance; dx <= genDistance; dx++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) > viewDistance) {
@@ -269,10 +298,10 @@ public final class ServerChunkHandler {
                             viewComplete = false;
                             continue; // async gen in flight — retry next tick
                         }
-                        // Don't stream a chunk until its features (trees, flowers, ...) are
-                        // populated — otherwise the client receives a terrain-only snapshot and,
-                        // since feature population doesn't bump the version, never gets the rest.
-                        if (!chunk.areFeaturesPopulated()) {
+                        // Don't stream a chunk until generation is done writing into it —
+                        // feature population doesn't bump the version, so anything written
+                        // after the send would never reach the client (#365).
+                        if (!settledForStreaming(world, chunk, cx + dx, cz + dz)) {
                             viewComplete = false;
                             continue; // not ready — retry next tick (do NOT mark sent)
                         }
@@ -310,6 +339,31 @@ public final class ServerChunkHandler {
      * from the others must not get their surroundings evicted before their first
      * position packet lands).
      */
+    /**
+     * True once world generation can no longer write into {@code chunk}: it and all eight
+     * neighbours are populated (trees and surface patches reach at most 7 blocks into an
+     * adjacent chunk, via raw writes that neither bump the version nor replicate), and no
+     * deferred cross-chunk feature still waits to be placed into it (#365).
+     */
+    static boolean settledForStreaming(World world, Chunk chunk, int cx, int cz) {
+        if (!chunk.areFeaturesPopulated()) {
+            return false;
+        }
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                Chunk neighbour = world.getChunkIfLoaded(cx + dx, cz + dz);
+                if (neighbour == null || !neighbour.areFeaturesPopulated()) {
+                    return false;
+                }
+            }
+        }
+        var featureQueue = world.getFeatureQueue();
+        return featureQueue == null || !featureQueue.hasPendingFor(cx, cz);
+    }
+
     private void evictFarChunks(ServerWorldContext ctx, World world) {
         var players = ctx.players();
         if (players.isEmpty()) {
@@ -370,7 +424,7 @@ public final class ServerChunkHandler {
         return com.stonebreak.network.bridge.GameChunkMetaCodec.encode(snow, chunk.getBlockStates(), water);
     }
 
-    private static long packKey(int cx, int cz) {
+    static long packKey(int cx, int cz) {
         return (((long) cx) << 32) | (cz & 0xFFFFFFFFL);
     }
 }

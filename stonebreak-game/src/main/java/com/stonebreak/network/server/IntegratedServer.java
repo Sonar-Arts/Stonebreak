@@ -341,6 +341,8 @@ public final class IntegratedServer {
                 chunkHandler.handleResyncRequest(sp, cr.chunkX(), cr.chunkZ());
             case com.stonebreak.network.packet.world.ChunkHashesC2S ch ->
                 chunkHandler.handleChunkHashes(sp, ch.entries(), ctx);
+            case com.stonebreak.network.packet.world.ChunkUnloadC2S cu ->
+                chunkHandler.handleChunksUnloaded(sp, cu.coords());
             case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
                 if (sp.allowResync()) {
                     entityHandler.onPeerResync(sp, ctx); // idempotent client-side (known ids ignored)

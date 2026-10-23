@@ -112,6 +112,9 @@ public final class ClientWorldView {
     private static final int AUDIT_CHUNKS_PER_ROUND = 16;
     private int auditCounter = 0;
     private int auditCursor = 0;
+    /** Chunks dropped since the last flush, packed {@code [cx, cz, ...]}; main-thread only (#363). */
+    private int[] unloadedChunks = new int[64];
+    private int unloadedChunkCount = 0;
 
     // Remote player-prefs sync (validated server-side, issue #334). The inventory is NOT in
     // here any more — the server owns it (InventorySyncS2C flows the other way).
@@ -193,6 +196,7 @@ public final class ClientWorldView {
         // capped installs at a visible trickle). Deferred per-chunk edits
         // replay here too, immediately after their chunk installs.
         chunkHandler.tick();
+        flushUnloadedChunks();
 
         // Dead-peer detection (remote only): the server keepalives every ~5 s, so 30 s of
         // total silence means the connection is gone even if the OS hasn't noticed yet.
@@ -268,6 +272,34 @@ public final class ClientWorldView {
             int[] trimmed = java.util.Arrays.copyOf(entries, n * 3);
             conn.send(new com.stonebreak.network.packet.world.ChunkHashesC2S(trimmed), false);
         }
+    }
+
+    /**
+     * Records that this client dropped chunk ({@code cx}, {@code cz}); the next {@link #tick}
+     * tells the server, which forgets it so it re-streams on return (issue #363). Main thread.
+     */
+    public void notifyChunkUnloaded(int cx, int cz) {
+        if (unloadedChunkCount + 2 > unloadedChunks.length) {
+            unloadedChunks = java.util.Arrays.copyOf(unloadedChunks, unloadedChunks.length * 2);
+        }
+        unloadedChunks[unloadedChunkCount++] = cx;
+        unloadedChunks[unloadedChunkCount++] = cz;
+    }
+
+    private void flushUnloadedChunks() {
+        if (unloadedChunkCount == 0) {
+            return;
+        }
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            int maxPerPacket = com.stonebreak.network.packet.world.ChunkUnloadC2S.MAX_CHUNKS * 2;
+            for (int from = 0; from < unloadedChunkCount; from += maxPerPacket) {
+                int to = Math.min(unloadedChunkCount, from + maxPerPacket);
+                conn.send(new com.stonebreak.network.packet.world.ChunkUnloadC2S(
+                    java.util.Arrays.copyOfRange(unloadedChunks, from, to)), false);
+            }
+        }
+        unloadedChunkCount = 0;
     }
 
     /**

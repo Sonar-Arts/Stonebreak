@@ -189,6 +189,31 @@ public final class ServerPlayer {
     private long resyncWindowStartNs = 0L;
     private int resyncCount = 0;
 
+    /**
+     * Chunk resync requests refused over budget, retried by the server as permits free up
+     * ({@code ServerChunkHandler.tick}) — the client asks once per cooldown and a refused
+     * request used to be lost for good (#363). Bounded; server tick thread only.
+     */
+    private final java.util.LinkedHashSet<Long> deferredChunkResyncs = new java.util.LinkedHashSet<>();
+    private static final int MAX_DEFERRED_CHUNK_RESYNCS = 256;
+
+    /** Queues a refused chunk resync for {@link #drainDeferredChunkResyncs}; drops it when full. */
+    public void deferChunkResync(long key) {
+        if (deferredChunkResyncs.size() < MAX_DEFERRED_CHUNK_RESYNCS) {
+            deferredChunkResyncs.add(key);
+        }
+    }
+
+    /** Hands deferred resyncs to {@code action} while permits allow, oldest first. */
+    public void drainDeferredChunkResyncs(java.util.function.LongConsumer action) {
+        var it = deferredChunkResyncs.iterator();
+        while (it.hasNext() && allowResync()) {
+            long key = it.next();
+            it.remove();
+            action.accept(key);
+        }
+    }
+
     /** Debits one resync-request permit; false = over budget, drop the request. */
     public boolean allowResync() {
         long now = System.nanoTime();

@@ -220,13 +220,15 @@ public class WorldChunkStore {
      * Called when async chunk load completes.
      */
     private void finalizeChunkLoad(ChunkPosition pos, Chunk chunk) {
+        // Process queued features that were waiting for this chunk FIRST: they also write into
+        // already-populated neighbours, which the server holds back from streaming only until
+        // this chunk is populated (ServerChunkHandler.settledForStreaming, #365).
+        featureQueue.processChunk(world, pos);
+
         // Queue for deferred feature population if not already populated
         if (!chunk.areFeaturesPopulated()) {
             pendingFeaturePopulation.offer(pos);
         }
-
-        // Process queued features that were waiting for this chunk
-        featureQueue.processChunk(world, pos);
 
         // Notify load listener
         if (loadListener != null) {
@@ -298,10 +300,17 @@ public class WorldChunkStore {
      * weakly consistent and tolerates concurrent removal, so no defensive copy is needed.
      */
     public void unloadChunksOutside(int centerChunkX, int centerChunkZ, int keepRadius) {
+        unloadChunksOutside(centerChunkX, centerChunkZ, keepRadius, (x, z) -> { });
+    }
+
+    /** {@link #unloadChunksOutside(int, int, int)}, reporting each chunk it unloads. */
+    public void unloadChunksOutside(int centerChunkX, int centerChunkZ, int keepRadius,
+                                    java.util.function.BiConsumer<Integer, Integer> onUnloaded) {
         for (ChunkPosition cp : chunks.keySet()) {
             int dist = Math.max(Math.abs(cp.getX() - centerChunkX), Math.abs(cp.getZ() - centerChunkZ));
             if (dist > keepRadius) {
                 unloadChunk(cp.getX(), cp.getZ());
+                onUnloaded.accept(cp.getX(), cp.getZ());
             }
         }
     }

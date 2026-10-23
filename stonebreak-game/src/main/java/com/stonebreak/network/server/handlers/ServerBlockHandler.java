@@ -493,12 +493,18 @@ public final class ServerBlockHandler {
             float dy = (s.y() + 0.5f) - sp.y();
             float dz = (s.z() + 0.5f) - sp.z();
             if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
+                sendSnowRevert(sp, s.x(), s.y(), s.z(), world); // undo the client's prediction (#363)
                 return;
             }
         }
         if (layers == 0) {
             world.getSnowLayerManager().removeSnowLayers(s.x(), s.y(), s.z());
-        } else if (world.getBlockAt(s.x(), s.y(), s.z()) == BlockType.SNOW) {
+        } else if (world.getBlockAt(s.x(), s.y(), s.z()) != BlockType.SNOW) {
+            // The cell is not snow here: the client's predicted layer (and its collision height)
+            // would otherwise stay until the chunk re-streams (#363). The block itself is left
+            // to its own BlockChange flow (a placement may still be waiting on a retry).
+            sendSnowRevert(sp, s.x(), s.y(), s.z(), world);
+        } else {
             // Raising the layer count consumes one SNOW block PER LAYER added from the
             // server-owned inventory (issue #334) — breaking the cell drops one SNOW per
             // layer (DropUtil), so anything cheaper would duplicate snow. A refusal syncs
@@ -509,15 +515,7 @@ public final class ServerBlockHandler {
                     && !sp.inventory().debit(BlockType.SNOW.getId(), added)) {
                 syncInventory(sp);
                 // Re-assert the cell's actual layer count so an over-optimistic client reverts.
-                int sx = Math.floorDiv(s.x(), 16);
-                int sy = Math.floorDiv(s.y(), 16);
-                int sz = Math.floorDiv(s.z(), 16);
-                int lx = s.x() - sx * 16;
-                int ly = s.y() - sy * 16;
-                int lz = s.z() - sz * 16;
-                sp.send(new com.stonebreak.network.packet.world.BlockMetaS2C(sx, sy, sz,
-                        com.stonebreak.network.packet.world.BlockMetaS2C.KIND_SNOW_LAYERS,
-                        new int[]{(((lx << 8) | (ly << 4) | lz) << 16) | current}), false);
+                sendSnowRevert(sp, s.x(), s.y(), s.z(), world);
                 return;
             }
             world.getSnowLayerManager().setSnowLayers(s.x(), s.y(), s.z(), layers);
@@ -739,19 +737,19 @@ public final class ServerBlockHandler {
                     int ly = (packed >>> 20) & 0xF;
                     int lz = (packed >>> 16) & 0xF;
                     short blockId = (short) (packed & 0xFFFF);
-                    ctx.broadcast(new BlockChangeS2C(sb.sx * 16 + lx, sb.sy * 16 + ly, sb.sz * 16 + lz, blockId), false);
+                    sendToHolders(ctx, sb, new BlockChangeS2C(sb.sx * 16 + lx, sb.sy * 16 + ly, sb.sz * 16 + lz, blockId));
                 } else {
-                    ctx.broadcast(new MultiBlockChangeS2C(sb.sx, sb.sy, sb.sz, sb.toPackedArray()), false);
+                    sendToHolders(ctx, sb, new MultiBlockChangeS2C(sb.sx, sb.sy, sb.sz, sb.toPackedArray()));
                 }
             }
             pendingByTick.clear();
         }
         if (!pendingSnowByTick.isEmpty()) {
             for (SectionBatch sb : pendingSnowByTick.values()) {
-                ctx.broadcast(new com.stonebreak.network.packet.world.BlockMetaS2C(
+                sendToHolders(ctx, sb, new com.stonebreak.network.packet.world.BlockMetaS2C(
                     sb.sx, sb.sy, sb.sz,
                     com.stonebreak.network.packet.world.BlockMetaS2C.KIND_SNOW_LAYERS,
-                    sb.toPackedArray()), false);
+                    sb.toPackedArray()));
             }
             pendingSnowByTick.clear();
         }
@@ -759,10 +757,10 @@ public final class ServerBlockHandler {
         // client before its flow-level meta (meta on a non-WATER cell would be stale).
         if (!pendingWaterByTick.isEmpty()) {
             for (SectionBatch sb : pendingWaterByTick.values()) {
-                ctx.broadcast(new com.stonebreak.network.packet.world.BlockMetaS2C(
+                sendToHolders(ctx, sb, new com.stonebreak.network.packet.world.BlockMetaS2C(
                     sb.sx, sb.sy, sb.sz,
                     com.stonebreak.network.packet.world.BlockMetaS2C.KIND_WATER_LEVEL,
-                    sb.toPackedArray()), false);
+                    sb.toPackedArray()));
             }
             pendingWaterByTick.clear();
         }
@@ -779,6 +777,22 @@ public final class ServerBlockHandler {
                 }
             }
             pendingStateEchoes.clear();
+        }
+    }
+
+    /**
+     * Sends a per-block batch only to the players this chunk was streamed to (#363). Anyone
+     * else gets the change inside the snapshot when the chunk streams; sending it anyway made
+     * the client fail the apply for a chunk it never had and spend resync budget on it. The
+     * stream scan runs on this same tick thread, so a chunk is either streamed with the change
+     * already in it or marked sent before this flush.
+     */
+    private static void sendToHolders(ServerWorldContext ctx, SectionBatch sb, com.openmason.engine.net.protocol.Packet packet) {
+        long key = ServerChunkHandler.packKey(sb.sx, sb.sz);
+        for (ServerPlayer sp : ctx.players()) {
+            if (sp.sentChunkVersion(key) >= 0) {
+                sp.send(packet, false);
+            }
         }
     }
 
@@ -863,6 +877,24 @@ public final class ServerBlockHandler {
         float dy = (c.y() + 0.5f) - sp.y();
         float dz = (c.z() + 0.5f) - sp.z();
         return (dx * dx + dy * dy + dz * dz) <= MAX_REACH_SQ;
+    }
+
+    /**
+     * Re-asserts the server's snow layer count at a cell to one player (0 = no snow there,
+     * which clears the client's entry) after refusing their snow-layer request.
+     */
+    private static void sendSnowRevert(ServerPlayer sp, int x, int y, int z, World world) {
+        int current = world.getBlockAt(x, y, z) == BlockType.SNOW
+            ? world.getSnowLayerManager().getSnowLayers(x, y, z) : 0;
+        int sx = Math.floorDiv(x, 16);
+        int sy = Math.floorDiv(y, 16);
+        int sz = Math.floorDiv(z, 16);
+        int lx = x - sx * 16;
+        int ly = y - sy * 16;
+        int lz = z - sz * 16;
+        sp.send(new com.stonebreak.network.packet.world.BlockMetaS2C(sx, sy, sz,
+                com.stonebreak.network.packet.world.BlockMetaS2C.KIND_SNOW_LAYERS,
+                new int[]{(((lx << 8) | (ly << 4) | lz) << 16) | current}), false);
     }
 
     private void sendRevert(ServerPlayer sp, int x, int y, int z, ServerWorldContext ctx) {

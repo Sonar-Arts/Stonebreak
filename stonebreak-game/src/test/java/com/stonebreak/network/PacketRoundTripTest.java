@@ -40,6 +40,7 @@ import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.packet.world.ChunkHashesC2S;
 import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
+import com.stonebreak.network.packet.world.ChunkUnloadC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
@@ -190,6 +191,16 @@ class PacketRoundTripTest {
         int[] entries = {1, -2, 0xDEADBEEF, 3, 4, 0};
         assertArrayEquals(entries,
             roundTrip(ChunkHashesC2S.CODEC, new ChunkHashesC2S(entries)).entries());
+    }
+
+    @Test
+    void chunkUnloadRoundTripsAndRejectsOversizedLists() {
+        int[] coords = {1, -2, Integer.MIN_VALUE, Integer.MAX_VALUE};
+        assertArrayEquals(coords,
+            roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(coords)).coords());
+        int[] tooMany = new int[(ChunkUnloadC2S.MAX_CHUNKS + 1) * 2];
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(tooMany)));
     }
 
     @Test
