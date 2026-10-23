@@ -816,6 +816,17 @@ public class World {
     }
 
     /**
+     * Installs chunk loads that have finished (map put, queued features, load listeners). The
+     * tick does this itself; a caller that waited on {@link #awaitPendingChunkLoads} before the
+     * tick runs (the level build) calls it so the chunks are readable.
+     */
+    public void installCompletedChunkLoads() {
+        if (chunkStore != null) {
+            chunkStore.installCompletedLoads();
+        }
+    }
+
+    /**
      * Gets a cached chunk position for coordinate lookup.
      */
     public ChunkPosition getCachedChunkPosition(int x, int z) {

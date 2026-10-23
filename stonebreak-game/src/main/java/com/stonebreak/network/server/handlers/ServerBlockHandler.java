@@ -630,12 +630,19 @@ public final class ServerBlockHandler {
         // Rejected proposals revert the cell for the placer and refund the torch the
         // placement debited (issue #334).
         if (com.stonebreak.blocks.torch.TorchBlock.isTorch(incoming)) {
-            com.stonebreak.blocks.torch.TorchState placed = c.hasPlacementState()
+            // Never into water: the client's BlockPlacer refuses that, and a torch the sim
+            // then washes out would drop a free torch item.
+            com.stonebreak.blocks.torch.TorchState placed = c.hasPlacementState() && prev != BlockType.WATER
                     ? com.stonebreak.blocks.torch.TorchBlock.validatePlacement(
                             world, c.x(), c.y(), c.z(), c.placementState())
                     : null;
             if (placed == null) {
-                world.setBlockAt(c.x(), c.y(), c.z(), BlockType.AIR, false);
+                // Restore the server's own cell (water may have been there — writing AIR
+                // left the server dry while every other client still showed the water),
+                // and queue it like any edit so every view converges.
+                BlockType restore = prev == null ? BlockType.AIR : prev;
+                world.setBlockAt(c.x(), c.y(), c.z(), restore, false);
+                queueOutgoing(c.x(), c.y(), c.z(), (short) restore.getId());
                 sendRevert(sp, c.x(), c.y(), c.z(), ctx);
                 refund(sp, debit, ctx);
                 return;

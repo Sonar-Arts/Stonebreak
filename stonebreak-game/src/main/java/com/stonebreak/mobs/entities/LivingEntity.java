@@ -145,7 +145,11 @@ public abstract class LivingEntity extends Entity {
         // Advance the clip clock; SBE renderers sample animations from it.
         animationController.updateAnimations(deltaTime);
 
-        if (footsteps != null) {
+        // Footsteps are heard where the mob is RENDERED: a client-local mob in a render-only
+        // world plays them here; a server-world mob's are played by its client shadow
+        // (updateClientVisuals). Playing them here on the server world drove the client's
+        // OpenAL mixer from the server tick thread and stayed silent for remote clients.
+        if (footsteps != null && world != null && world.isRenderOnly()) {
             footsteps.updateSounds(this);
         }
     }
@@ -476,6 +480,9 @@ public abstract class LivingEntity extends Entity {
         animationController.updateAnimations(deltaTime);
         if (mobAI != null) {
             mobAI.advanceClientClock(deltaTime);
+        }
+        if (footsteps != null) {
+            footsteps.updateSounds(this); // stride from the interpolated position
         }
     }
 

@@ -23,12 +23,10 @@ import org.joml.Vector3f;
  * block underfoot ({@link BlockSounds}), so a new block with authored step audio is heard by every
  * mob with no code change.
  *
- * <p>TODO: remote multiplayer clients hear nothing. Mobs are simulated on the authoritative server
- * world and a client sees interpolated network shadows, whose {@code update()} is skipped — so
- * these play from the server-side mob, which is audible in single-player (same JVM) and silent
- * across a connection. The fix is to tick this on the shadow in {@code updateClientVisuals}
- * instead, gated to render-only worlds so single-player does not play each step twice. Nothing
- * else needs to change: stepping on distance already works off interpolated positions.
+ * <p>Ticked where the mob is rendered: on a client network shadow ({@code updateClientVisuals}),
+ * or on a client-local mob in a render-only world — never on the authoritative server world,
+ * whose tick thread must not touch the client's mixer. A shadow runs no physics, so its ground
+ * contact is read from the block under its feet instead of {@code isOnGround()}.
  */
 public class MobSounds {
 
@@ -112,7 +110,7 @@ public class MobSounds {
         float dz = position.z - lastPosition.z;
         lastPosition.set(position);
 
-        if (mob.isOnGround()) {
+        if (mob.isNetworkShadow() ? standsOnSolid(mob) : mob.isOnGround()) {
             groundedGrace = GROUND_GRACE_UPDATES;
         } else if (groundedGrace > 0) {
             groundedGrace--;
@@ -143,6 +141,19 @@ public class MobSounds {
         hasLastPosition = false;
         distanceSinceStep = 0.0f;
         groundedGrace = 0;
+    }
+
+    /** Ground contact for a shadow (no physics): a solid block just under its feet. */
+    private boolean standsOnSolid(LivingEntity mob) {
+        if (world == null) {
+            return false;
+        }
+        Vector3f position = mob.getPosition();
+        BlockType below = world.getBlockAt(
+                (int) Math.floor(position.x),
+                (int) Math.floor(position.y - mob.getLegHeight() - 0.1f),
+                (int) Math.floor(position.z));
+        return below != null && below.isSolid();
     }
 
     private boolean isSwimming(LivingEntity mob) {

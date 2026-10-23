@@ -18,7 +18,12 @@ import org.joml.Vector3f;
  */
 public final class NetworkInterpolator {
 
-    /** Allow interp to over-shoot the target by this fraction before clamping. */
+    /**
+     * Allow interp to over-shoot the target by this fraction while the next snapshot is due,
+     * then ease back onto the target over the same span: a shadow that stopped (no further
+     * moves until the 2 s resync) must rest ON its last authoritative position, not 25 % past
+     * it — drops and landing mobs used to sink into the ground and oscillate on each resync.
+     */
     private static final float MAX_EXTRAPOLATION = 0.25f;
     /** Default snapshot period (server tick) in nanos. */
     public static final long DEFAULT_PERIOD_NS = 50_000_000L;
@@ -51,7 +56,7 @@ public final class NetworkInterpolator {
         }
         Vector3f cur = displayed.getPosition();
         prevX = cur.x; prevY = cur.y; prevZ = cur.z;
-        prevYawDeg = displayed.getRotation().y;
+        prevYawDeg = displayed.getYaw();
         prevPitchDeg = targetPitchDeg; // pitch isn't on Entity rotation; carry last target
         targetX = x; targetY = y; targetZ = z;
         targetYawDeg = yawDeg;
@@ -65,13 +70,19 @@ public final class NetworkInterpolator {
 
     /** Per-frame: write interpolated position/yaw onto the entity. */
     public void apply(Entity entity) {
+        apply(entity, System.nanoTime());
+    }
+
+    /** {@link #apply(Entity)} at an explicit clock reading (tests). */
+    void apply(Entity entity, long now) {
         if (!hasSample) {
             return;
         }
-        long now = System.nanoTime();
         float t = (now - startNs) / (float) durationNs;
-        if (t > 1f + MAX_EXTRAPOLATION) {
-            t = 1f + MAX_EXTRAPOLATION;
+        if (t > 1f) {
+            float over = t - 1f;
+            float ext = over <= MAX_EXTRAPOLATION ? over : Math.max(0f, 2f * MAX_EXTRAPOLATION - over);
+            t = 1f + ext;
         }
         if (t < 0f) {
             t = 0f;
@@ -82,9 +93,8 @@ public final class NetworkInterpolator {
         float z = prevZ + (targetZ - prevZ) * t;
         float yaw = lerpAngle(prevYawDeg, targetYawDeg, t);
 
-        entity.setPosition(new Vector3f(x, y, z));
-        Vector3f rot = entity.getRotation();
-        entity.setRotation(new Vector3f(rot.x, yaw, rot.z));
+        entity.setPosition(x, y, z);
+        entity.setYaw(yaw);
     }
 
     public float currentTargetYaw() { return targetYawDeg; }

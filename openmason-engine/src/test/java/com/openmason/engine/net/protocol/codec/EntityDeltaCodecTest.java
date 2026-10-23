@@ -40,8 +40,10 @@ class EntityDeltaCodecTest {
         assertEquals(0.1f, EntityDeltaCodec.decodeYawDeg(EntityDeltaCodec.encodeYawDeg(0.1f)), 1e-4f);
         // 3605° wraps to 5°.
         assertEquals(5f, EntityDeltaCodec.decodeYawDeg(EntityDeltaCodec.encodeYawDeg(3605f)), 0.05f);
-        // 370° is within range and round-trips.
-        assertEquals(370f, EntityDeltaCodec.decodeYawDeg(EntityDeltaCodec.encodeYawDeg(370f)), 0.05f);
+        // 370° wraps to the same heading, 10°.
+        assertEquals(10f, EntityDeltaCodec.decodeYawDeg(EntityDeltaCodec.encodeYawDeg(370f)), 0.05f);
+        // Past the short's ±3276.7° range: used to clamp to 3276.7° (a 323° error), now wraps.
+        assertEquals(60f, EntityDeltaCodec.decodeYawDeg(EntityDeltaCodec.encodeYawDeg(3300f)), 0.05f);
         // Negative yaw keeps sign through the wrap.
         assertEquals(-5f, EntityDeltaCodec.decodeYawDeg(EntityDeltaCodec.encodeYawDeg(-5f)), 0.05f);
     }

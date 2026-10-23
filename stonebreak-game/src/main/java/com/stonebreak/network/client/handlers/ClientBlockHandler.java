@@ -201,6 +201,11 @@ public final class ClientBlockHandler {
                 world.scheduleChunkRemeshAt(s.x(), s.y(), s.z());
             }
         }
+        // A state for a chunk this client doesn't hold has nothing to update; creating a
+        // registry entry for it would only leak (no chunk unload ever clears it).
+        if (chunk == null) {
+            return;
+        }
         if (world.getFurnaceRegistry() != null
                 && s.state() != null
                 && s.state().startsWith(com.stonebreak.blocks.furnace.FurnaceState.STATE_PREFIX)) {

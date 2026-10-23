@@ -128,6 +128,7 @@ public class SpawnLocatorResolveStandingYTest {
             }
         }
         world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+        world.installCompletedChunkLoads();
 
         int[] col = findAcceptableColumn(world);
         int x = col[0];
@@ -233,6 +234,7 @@ public class SpawnLocatorResolveStandingYTest {
             }
         }
         world.awaitPendingChunkLoads().get(30, TimeUnit.SECONDS);
+        world.installCompletedChunkLoads();
 
         int accepted = 0;
         int ravinePits = 0;
@@ -281,6 +283,7 @@ public class SpawnLocatorResolveStandingYTest {
     private static void loadChunk(World world) throws Exception {
         world.getChunkAt(0, 0);
         world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+        world.installCompletedChunkLoads();
     }
 
     /**

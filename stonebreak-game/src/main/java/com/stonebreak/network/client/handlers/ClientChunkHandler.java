@@ -150,7 +150,10 @@ public final class ClientChunkHandler {
         while ((dc = ready.poll()) != null) {
             long chunkKey = key(dc.chunkX(), dc.chunkZ());
             Long latest = latestSeq.get(chunkKey);
-            if (latest != null && dc.seq() < latest) {
+            // Every submission records its seq before decoding, so a missing entry means a
+            // NEWER snapshot already installed and cleared it: installing this one would roll
+            // the chunk back (decodes run on a pool and can finish out of order).
+            if (latest == null || dc.seq() != latest) {
                 continue; // superseded by a newer submission for this chunk (defers stay queued)
             }
             latestSeq.remove(chunkKey);

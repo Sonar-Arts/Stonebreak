@@ -49,6 +49,8 @@ public final class ServerEntityHandler {
     private static final float MIN_BROADCAST_YAW_DEG = 0.5f;
     /** Force an absolute teleport every N ticks per entity to bound drift from lost deltas. */
     private static final int RESYNC_PERIOD_TICKS = 40; // 40 * 50ms = 2 s
+    /** After a dropped move delta, the absolute resync follows within this many ticks. */
+    private static final int DROPPED_MOVE_RESYNC_TICKS = 10;
 
     /** Interest exit hysteresis: leave at view+2 chunks (mirrors the chunk-forget radius),
      *  enter at the view distance itself. Package-private for the interest tests. */
@@ -208,7 +210,9 @@ public final class ServerEntityHandler {
             float dx = p.x - last[0];
             float dy = p.y - last[1];
             float dz = p.z - last[2];
-            float dyaw = Math.abs(yaw - last[3]);
+            // Angular difference: the codec wraps yaw to (-360, 360), so the sent base can
+            // differ from an unwrapped live yaw by whole turns.
+            float dyaw = Math.abs(((yaw - last[3]) % 360f + 540f) % 360f - 180f);
 
             int sinceResync = ticksSinceResync.getOrDefault(id, 0) + 1;
             boolean posMoved = Math.abs(dx) >= MIN_BROADCAST_DELTA
@@ -227,12 +231,19 @@ public final class ServerEntityHandler {
                 short edy = EntityDeltaCodec.encodePosDelta(dy);
                 short edz = EntityDeltaCodec.encodePosDelta(dz);
                 short eyaw = EntityDeltaCodec.encodeYawDeg(yaw);
-                sendToInterested(ctx, id, new EntityMoveS2C(id, edx, edy, edz, eyaw), true);
+                boolean allSent = sendToInterested(ctx, id, new EntityMoveS2C(id, edx, edy, edz, eyaw), true);
                 // Track exactly what we sent (decoded back) so deltas don't accumulate drift.
                 last[0] += EntityDeltaCodec.decodePosDelta(edx);
                 last[1] += EntityDeltaCodec.decodePosDelta(edy);
                 last[2] += EntityDeltaCodec.decodePosDelta(edz);
                 last[3] = EntityDeltaCodec.decodeYawDeg(eyaw);
+                // The base is shared by every viewer: a delta dropped for one of them (a
+                // backed-up channel) offsets that viewer's shadow, so pull the absolute
+                // teleport in to ≤0.5 s instead of waiting out the 2 s resync (not next tick:
+                // a channel that stays backed up would then get a reliable teleport per tick).
+                if (!allSent) {
+                    sinceResync = Math.max(sinceResync, RESYNC_PERIOD_TICKS - DROPPED_MOVE_RESYNC_TICKS);
+                }
                 ticksSinceResync.put(id, sinceResync);
             } else {
                 sendToInterested(ctx, id, new EntityTeleportS2C(id, p.x, p.y, p.z, yaw), false);
@@ -529,13 +540,16 @@ public final class ServerEntityHandler {
         }
     }
 
-    private void sendToInterested(ServerWorldContext ctx, int networkId, Packet packet, boolean droppable) {
+    /** Sends to every player who knows {@code networkId}; false if any send was dropped. */
+    private boolean sendToInterested(ServerWorldContext ctx, int networkId, Packet packet, boolean droppable) {
+        boolean allSent = true;
         for (ServerPlayer sp : ctx.players()) {
             Set<Integer> known = interestByPlayer.get(sp.playerId());
             if (known != null && known.contains(networkId)) {
-                sp.send(packet, droppable);
+                allSent &= sp.send(packet, droppable);
             }
         }
+        return allSent;
     }
 
     private Set<Integer> knownSetFor(ServerPlayer sp) {

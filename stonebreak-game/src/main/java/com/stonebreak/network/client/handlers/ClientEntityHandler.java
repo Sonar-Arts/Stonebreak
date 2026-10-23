@@ -44,7 +44,19 @@ public final class ClientEntityHandler {
         PendingSpawn withVariant(String variant) {
             return new PendingSpawn(spawn, animState, variant);
         }
+        /** The entity moved while its spawn waited: spawn it where it is now. */
+        PendingSpawn movedTo(float x, float y, float z, float yaw) {
+            EntitySpawnS2C s = spawn;
+            return new PendingSpawn(new EntitySpawnS2C(s.networkId(), s.entityTypeOrdinal(),
+                    x, y, z, yaw, s.metadata()), animState, variant);
+        }
     }
+
+    /**
+     * An absolute correction farther than this (blocks) is a real relocation — snap instead of
+     * sliding the shadow across the gap (and 25 % past it) in one snapshot period.
+     */
+    private static final float TELEPORT_SNAP_DISTANCE = 4f;
 
     /** Moves for unknown ids in the current window — a sustained burst means the shadow map
      *  diverged (a spawn was somehow lost), so ask for a full entity resync. Occasional
@@ -140,15 +152,21 @@ public final class ClientEntityHandler {
     }
 
     public void applyDelta(EntityMoveS2C m) {
-        // While the world is rebuilding, spawns sit buffered in pendingSpawns — every move
-        // would look like an "unknown id" and trip the resync heuristic for nothing. Drop
-        // them; the ≤2 s periodic teleport rebases the shadow once the spawn drains.
-        if (!Game.isClientWorldReady()) {
-            return;
-        }
         Entity e = byNetworkId.get(m.networkId());
         if (e == null) {
-            noteUnknownMove();
+            // Still buffered (world build): fold the move into the waiting spawn — deltas are
+            // relative to the server's broadcast base, which the spawn position seeded — so
+            // the shadow appears where the mob is, not where it was when the build began.
+            if (queueForPendingSpawn(m.networkId(), p -> p.movedTo(
+                    p.spawn().x() + EntityDeltaCodec.decodePosDelta(m.dx()),
+                    p.spawn().y() + EntityDeltaCodec.decodePosDelta(m.dy()),
+                    p.spawn().z() + EntityDeltaCodec.decodePosDelta(m.dz()),
+                    EntityDeltaCodec.decodeYawDeg(m.yawDeg10())))) {
+                return;
+            }
+            if (Game.isClientWorldReady()) {
+                noteUnknownMove();
+            }
             return;
         }
         NetworkInterpolator interp = e.getInterpolator();
@@ -169,6 +187,22 @@ public final class ClientEntityHandler {
     }
 
     public void applyTeleport(EntityTeleportS2C t) {
+        Entity e = byNetworkId.get(t.networkId());
+        if (e == null) {
+            queueForPendingSpawn(t.networkId(), p -> p.movedTo(t.x(), t.y(), t.z(), t.yaw()));
+            return;
+        }
+        NetworkInterpolator interp = e.getInterpolator();
+        if (interp != null) {
+            Vector3f cur = e.getPosition();
+            float dx = t.x() - cur.x, dy = t.y() - cur.y, dz = t.z() - cur.z;
+            if (dx * dx + dy * dy + dz * dz > TELEPORT_SNAP_DISTANCE * TELEPORT_SNAP_DISTANCE) {
+                interp.seed(t.x(), t.y(), t.z(), t.yaw(), interp.currentTargetPitch());
+                e.setPosition(t.x(), t.y(), t.z());
+                e.setYaw(t.yaw());
+                return;
+            }
+        }
         applyAbsolute(t.networkId(), t.x(), t.y(), t.z(), t.yaw());
     }
 
@@ -209,17 +243,21 @@ public final class ClientEntityHandler {
         }
     }
 
-    /** Replaces the first pending spawn for {@code networkId} with {@code update} applied. */
-    private void queueForPendingSpawn(int networkId,
+    /**
+     * Replaces the first pending spawn for {@code networkId} with {@code update} applied;
+     * false when no spawn for it is buffered.
+     */
+    private boolean queueForPendingSpawn(int networkId,
             Function<PendingSpawn, PendingSpawn> update) {
         ListIterator<PendingSpawn> lit = pendingSpawns.listIterator();
         while (lit.hasNext()) {
             PendingSpawn p = lit.next();
             if (p.spawn().networkId() == networkId) {
                 lit.set(update.apply(p));
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     public void applyAbsolute(int networkId, float x, float y, float z, float yaw) {
@@ -231,8 +269,8 @@ public final class ClientEntityHandler {
         if (interp != null) {
             interp.receive(x, y, z, yaw, e);
         } else {
-            e.setPosition(new Vector3f(x, y, z));
-            e.setRotation(new Vector3f(e.getRotation().x, yaw, e.getRotation().z));
+            e.setPosition(x, y, z);
+            e.setYaw(yaw);
         }
     }
 

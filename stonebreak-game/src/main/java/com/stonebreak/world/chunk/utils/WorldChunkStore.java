@@ -48,6 +48,13 @@ public class WorldChunkStore {
     // Async chunk loading support - tracks chunks being loaded to prevent duplicate requests
     private final Map<ChunkPosition, CompletableFuture<Chunk>> pendingChunkLoads = new ConcurrentHashMap<>();
 
+    // Loads whose future has completed (on a load-IO or generation worker) but that are not yet
+    // in {@link #chunks}. Installing — map put, queued tree placement, load listeners (water,
+    // leaf decay, sapling growth, registries) — happens on the world's OWNING thread via
+    // {@link #installCompletedLoads()} (server: tick thread), never on the worker: those systems
+    // are single-threaded and the tick iterates them.
+    private final Queue<ChunkPosition> completedLoads = new ConcurrentLinkedQueue<>();
+
     // Terrain generation worker pool. Generation used to ride the disk-load future's
     // continuation onto SaveService's single io thread, serializing every chunk's noise
     // sampling and carving behind disk traffic. The generation stack is stateless per
@@ -167,52 +174,55 @@ public class WorldChunkStore {
         // Check if chunk is currently being loaded
         CompletableFuture<Chunk> pendingLoad = pendingChunkLoads.get(pos);
         if (pendingLoad != null) {
-            // Chunk is loading asynchronously
-            // Check if completed
-            if (pendingLoad.isDone()) {
-                if (pendingLoad.isCompletedExceptionally()) {
-                    // Load failed with exception - propagate it immediately to crash the game
-                    try {
-                        pendingLoad.getNow(null); // This will throw the exception
-                    } catch (Exception e) {
-                        // Re-throw to crash the game with full stack trace
-                        throw new RuntimeException("Chunk load failed for (" + x + ", " + z + ")", e);
-                    }
-                }
-                // Normal completion - get the chunk
-                chunk = pendingLoad.getNow(null);
-                if (chunk != null) {
-                    // Load completed, finalize chunk
-                    finalizeChunkLoad(pos, chunk);
-                    return chunk;
-                }
-            }
-            // Still loading, return null (caller will retry next frame)
-            return null;
+            // Finished but not drained yet: install it now, on this (owning) thread.
+            return pendingLoad.isDone() ? installCompletedLoad(pos, pendingLoad) : null;
         }
 
-        // Start async chunk load
-        CompletableFuture<Chunk> loadFuture = loadOrGenerateAsync(x, z)
-            .thenApply(loadedChunk -> {
-                if (loadedChunk != null) {
-                    // Store chunk and finalize on completion
-                    chunks.put(pos, loadedChunk);
-                    finalizeChunkLoad(pos, loadedChunk);
-                }
-                return loadedChunk;
-            });
-            // NO exception handling - let it crash immediately with full stack trace
-            // (whenComplete below does not swallow: the stored future still completes
-            // exceptionally and the fast path above rethrows on next poll)
-
-        // Track this pending load BEFORE attaching the removal — if the removal lived
-        // inside the chain above, a fast completion could remove the entry before this
-        // put ran, stranding a stale completed future in the map.
+        // Start async chunk load. The worker only produces the chunk; the owning thread
+        // installs it (installCompletedLoads / the branch above).
+        CompletableFuture<Chunk> loadFuture = loadOrGenerateAsync(x, z);
         pendingChunkLoads.put(pos, loadFuture);
-        loadFuture.whenComplete((c, t) -> pendingChunkLoads.remove(pos));
+        loadFuture.whenComplete((c, t) -> completedLoads.offer(pos));
 
-        // Return null - chunk will be available on next frame
+        // Return null - chunk will be available once installed
         return null;
+    }
+
+    /**
+     * Installs every load that has finished since the last call: puts the chunk in the map,
+     * places features queued against it and fires the load listener. Call from the thread
+     * that owns this world (the server tick, or the pre-tick level build).
+     */
+    public void installCompletedLoads() {
+        ChunkPosition pos;
+        while ((pos = completedLoads.poll()) != null) {
+            CompletableFuture<Chunk> future = pendingChunkLoads.get(pos);
+            if (future != null && future.isDone()) {
+                installCompletedLoad(pos, future);
+            }
+        }
+    }
+
+    /** Installs one finished load exactly once (the remove decides the winner); null if it failed. */
+    private Chunk installCompletedLoad(ChunkPosition pos, CompletableFuture<Chunk> future) {
+        if (!pendingChunkLoads.remove(pos, future)) {
+            return chunks.get(pos); // someone else installed it
+        }
+        Chunk chunk;
+        try {
+            chunk = future.getNow(null);
+        } catch (Exception e) {
+            // Dropped from pending, so the next request retries the load.
+            System.err.println("CRITICAL: Chunk load failed for (" + pos.getX() + ", " + pos.getZ() + ")");
+            e.printStackTrace();
+            return null;
+        }
+        if (chunk == null) {
+            return null;
+        }
+        chunks.put(pos, chunk);
+        finalizeChunkLoad(pos, chunk);
+        return chunk;
     }
 
     /**
@@ -333,26 +343,26 @@ public class WorldChunkStore {
         // Save dirty chunks asynchronously, cleanup after save completes.
         // A render-only client world has no save service — skip the save entirely (its chunks
         // are authoritative on the server) so unloading doesn't error on every dirty chunk.
-        if (chunk.isDirty() && getSaveService() != null) {
-            saveIfDirtyAsync(chunk).thenRun(() -> {
-                // AFTER save completes, notify unload listener to clean up water cells
-                notify(unloadListener, chunk);
-                cleanup(chunk, chunkX, chunkZ);
-                positionCache.remove(chunkX, chunkZ);
-            }).exceptionally(ex -> {
-                System.err.println("CRITICAL: Async save failed for chunk (" + chunkX + ", " + chunkZ + "): " + ex.getMessage());
-                // Still cleanup to prevent memory leak
-                notify(unloadListener, chunk);
-                cleanup(chunk, chunkX, chunkZ);
-                positionCache.remove(chunkX, chunkZ);
-                return null;
-            });
-        } else {
-            // Clean chunks can be unloaded immediately
-            notify(unloadListener, chunk);
-            cleanup(chunk, chunkX, chunkZ);
-            positionCache.remove(chunkX, chunkZ);
+        // saveChunk snapshots the chunk (blocks, water, entities) synchronously on THIS thread and
+        // only the encode/write is async, so the listener and cleanup run right away, on the
+        // owning thread — they used to wait for the write and then run on the Save-IO pool,
+        // racing the tick's water/sapling/leaf-decay state and letting entities in the chunk keep
+        // ticking (and wander out) after their snapshot was taken.
+        if (getSaveService() != null) {
+            // Entities don't dirty blocks: a mob that wandered in (or out) since the last save
+            // would otherwise be deleted (or resurrected on reload) with a clean chunk.
+            com.stonebreak.mobs.entities.EntityManager entityManager =
+                (world != null) ? world.getEntityManager() : null;
+            if (entityManager != null && entityManager.hasEntityStateToSave(chunkX, chunkZ)) {
+                chunk.markDirty();
+            }
+            if (chunk.isDirty()) {
+                saveIfDirtyAsync(chunk);
+            }
         }
+        notify(unloadListener, chunk);
+        cleanup(chunk, chunkX, chunkZ);
+        positionCache.remove(chunkX, chunkZ);
 
         if ((chunkX + chunkZ) % WorldConfiguration.MEMORY_LOG_INTERVAL == 0) {
             Game.logDetailedMemoryInfo("After unloading chunk (" + chunkX + ", " + chunkZ + ")");
@@ -367,6 +377,7 @@ public class WorldChunkStore {
         // Cancel any pending chunk loads
         pendingChunkLoads.values().forEach(future -> future.cancel(true));
         pendingChunkLoads.clear();
+        completedLoads.clear();
 
         // Stop the generation workers (same pattern as ChunkManager.shutdown):
         // graceful drain, then force after a timeout.
@@ -679,7 +690,8 @@ public class WorldChunkStore {
         // world this culls local shadows (the manager guards against removing network shadows /
         // remote players); on a headless server world it would target the server's manager. Using
         // the world's own manager rather than the Game singleton (which always resolves to the
-        // CLIENT) keeps the removal authority unambiguous. The server world never unloads chunks.
+        // CLIENT) keeps the removal authority unambiguous. The server evicts chunks no player
+        // needs (ServerChunkHandler.evictFarChunks); unloadChunk saved their entities first.
         com.stonebreak.mobs.entities.EntityManager entityManager =
             (world != null) ? world.getEntityManager() : null;
         if (entityManager != null) {

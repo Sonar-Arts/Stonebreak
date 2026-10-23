@@ -597,29 +597,43 @@ public class EntityManager {
         return nearest;
     }
     
+    /** Reused per update: the bodies {@link #handleEntityCollisions} separates. */
+    private final List<LivingEntity> collisionBodies = new ArrayList<>();
+
     /**
-     * Handles collisions between entities.
+     * Pushes overlapping simulated mobs apart. Only {@link LivingEntity} bodies take part:
+     * drops, projectiles, caltrops and ability zones are not bodies (a pulled mob used to drag
+     * a Leyline Breach zone off its cast point, and mobs shoved drops around). Network shadows
+     * are skipped too — the interpolator owns their position, so a render-only world does no
+     * pair work at all.
      */
     private void handleEntityCollisions() {
-        List<Entity> livingEntities = new ArrayList<>(entities);
-
-        for (int i = 0; i < livingEntities.size(); i++) {
-            for (int j = i + 1; j < livingEntities.size(); j++) {
-                Entity entity1 = livingEntities.get(i);
-                Entity entity2 = livingEntities.get(j);
-
-                // Network shadows are positioned by the interpolator from
-                // authoritative state packets; resolving collisions here would
-                // clobber that position and visibly desync the entity.
-                if (entity1.isNetworkShadow() || entity2.isNetworkShadow()) continue;
-
-                if (collision.checkEntityCollision(entity1, entity2)) {
-                    collision.resolveEntityCollision(entity1, entity2);
+        List<LivingEntity> bodies = collisionBodies;
+        bodies.clear();
+        for (Entity e : entities) {
+            if (e instanceof LivingEntity living && e.isAlive() && !e.isNetworkShadow()) {
+                bodies.add(living);
+            }
+        }
+        int n = bodies.size();
+        for (int i = 0; i < n; i++) {
+            LivingEntity a = bodies.get(i);
+            Vector3f pa = a.getPosition();
+            for (int j = i + 1; j < n; j++) {
+                LivingEntity b = bodies.get(j);
+                Vector3f pb = b.getPosition();
+                // Cheap reject before building bounding boxes: horizontally farther apart
+                // than their combined half-extents (box is width on x, length on z) can't overlap.
+                float reach = (Math.max(a.getWidth(), a.getLength()) + Math.max(b.getWidth(), b.getLength())) * 0.5f;
+                if (Math.abs(pa.x - pb.x) > reach || Math.abs(pa.z - pb.z) > reach) continue;
+                if (collision.checkEntityCollision(a, b)) {
+                    collision.resolveEntityCollision(a, b);
                 }
             }
         }
+        bodies.clear();
     }
-    
+
     /**
      * Cleans up dead entities and performs maintenance.
      */
@@ -850,5 +864,30 @@ public class EntityManager {
             }
         }
     }
+    /**
+     * True when unloading chunk ({@code cx}, {@code cz}) must save it for its entities even if
+     * its blocks are clean: a persistent entity stands in it now (the unload removes it), or did
+     * at the last save (the file would bring it back while it now lives elsewhere).
+     */
+    public boolean hasEntityStateToSave(int cx, int cz) {
+        long key = ((long) cx << 32) | (cz & 0xFFFFFFFFL);
+        synchronized (chunksWithEntitiesLastSave) {
+            if (chunksWithEntitiesLastSave.contains(key)) {
+                return true;
+            }
+        }
+        for (Entity e : entities) {
+            if (!e.isAlive() || e.isNetworkShadow() || !e.isPersistent()) {
+                continue;
+            }
+            Vector3f p = e.getPosition();
+            if (Math.floorDiv((int) Math.floor(p.x), 16) == cx
+                    && Math.floorDiv((int) Math.floor(p.z), 16) == cz) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public float getTotalTime() { return totalTime; }
 }

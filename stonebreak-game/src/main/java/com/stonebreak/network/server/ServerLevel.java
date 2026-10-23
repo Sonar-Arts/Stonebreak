@@ -243,6 +243,7 @@ public final class ServerLevel {
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] Spawn chunk load wait failed: " + e.getMessage());
         }
+        world.installCompletedChunkLoads();
     }
 
     /**
@@ -279,6 +280,7 @@ public final class ServerLevel {
     }
 
     private static void reportPregenProgress(World world, int pcx, int pcz) {
+        world.installCompletedChunkLoads(); // level build owns the world until the tick starts
         int side = 2 * PREGEN_RADIUS + 1;
         int total = side * side;
         int loaded = 0;

@@ -113,6 +113,12 @@ public final class ClientWorldView {
     private int auditCounter = 0;
     private int auditCursor = 0;
     /** Chunks dropped since the last flush, packed {@code [cx, cz, ...]}; main-thread only (#363). */
+    /**
+     * Chunk drops waiting to be reported. Appended from the main thread (late-install
+     * discards) AND the world-update worker (the client unload sweep runs inside
+     * {@code World.updateClient} on {@code worldUpdateExecutor}), so guarded by its own lock.
+     */
+    private final Object unloadedChunksLock = new Object();
     private int[] unloadedChunks = new int[64];
     private int unloadedChunkCount = 0;
 
@@ -189,6 +195,7 @@ public final class ClientWorldView {
 
     public void tick() {
         networkClient.inboundQueue().drain(this::dispatch);
+        applyPendingInventorySync();
 
         // Install pump runs PER FRAME, not on the 20 Hz client tick: decoded
         // chunk snapshots drain under a wall-clock budget each frame, so a
@@ -276,30 +283,36 @@ public final class ClientWorldView {
 
     /**
      * Records that this client dropped chunk ({@code cx}, {@code cz}); the next {@link #tick}
-     * tells the server, which forgets it so it re-streams on return (issue #363). Main thread.
+     * tells the server, which forgets it so it re-streams on return (issue #363). Any thread.
      */
     public void notifyChunkUnloaded(int cx, int cz) {
-        if (unloadedChunkCount + 2 > unloadedChunks.length) {
-            unloadedChunks = java.util.Arrays.copyOf(unloadedChunks, unloadedChunks.length * 2);
+        synchronized (unloadedChunksLock) {
+            if (unloadedChunkCount + 2 > unloadedChunks.length) {
+                unloadedChunks = java.util.Arrays.copyOf(unloadedChunks, unloadedChunks.length * 2);
+            }
+            unloadedChunks[unloadedChunkCount++] = cx;
+            unloadedChunks[unloadedChunkCount++] = cz;
         }
-        unloadedChunks[unloadedChunkCount++] = cx;
-        unloadedChunks[unloadedChunkCount++] = cz;
     }
 
     private void flushUnloadedChunks() {
-        if (unloadedChunkCount == 0) {
-            return;
+        int[] drained;
+        synchronized (unloadedChunksLock) {
+            if (unloadedChunkCount == 0) {
+                return;
+            }
+            drained = java.util.Arrays.copyOf(unloadedChunks, unloadedChunkCount);
+            unloadedChunkCount = 0;
         }
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             int maxPerPacket = com.stonebreak.network.packet.world.ChunkUnloadC2S.MAX_CHUNKS * 2;
-            for (int from = 0; from < unloadedChunkCount; from += maxPerPacket) {
-                int to = Math.min(unloadedChunkCount, from + maxPerPacket);
+            for (int from = 0; from < drained.length; from += maxPerPacket) {
+                int to = Math.min(drained.length, from + maxPerPacket);
                 conn.send(new com.stonebreak.network.packet.world.ChunkUnloadC2S(
-                    java.util.Arrays.copyOfRange(unloadedChunks, from, to)), false);
+                    java.util.Arrays.copyOfRange(drained, from, to)), false);
             }
         }
-        unloadedChunkCount = 0;
     }
 
     /**
@@ -440,8 +453,7 @@ public final class ClientWorldView {
         }
         // A welcome-time InventorySyncS2C that raced the world build: the replica state
         // (starting items included) is authoritative over whatever the restore produced.
-        InventorySyncS2C sync = pendingInventorySync;
-        pendingInventorySync = null;
+        InventorySyncS2C sync = pendingInventorySync.getAndSet(null);
         if (sync != null && !InventorySyncApplier.applyServerSync(p, sync.payload(), sync.ack())) {
             requestInventoryResync();
         }
@@ -566,9 +578,13 @@ public final class ClientWorldView {
         // state (welcome/creation) — its arrival is the local player's "server is ready"
         // signal, the analogue of the remote restore gate.
         welcomeSyncSeen = true;
+        // Not ready = the world (and its Player) is still being built — or rebuilt, when
+        // Game.getPlayer() is still the PREVIOUS session's player, which would swallow the
+        // welcome sync (a fresh character then spawned empty-handed). Buffer; the restore
+        // or the next tick applies it to the right player.
         Player p = Game.getPlayer();
-        if (p == null || p.getInventory() == null) {
-            pendingInventorySync = s;
+        if (!Game.isClientWorldReady() || p == null || p.getInventory() == null) {
+            pendingInventorySync.set(s);
             return;
         }
         if (!InventorySyncApplier.applyServerSync(p, s.payload(), s.ack())) {
@@ -591,8 +607,24 @@ public final class ClientWorldView {
         }
     }
 
-    /** Latest sync that landed before the local player existed; null once applied. */
-    private volatile InventorySyncS2C pendingInventorySync;
+    /** Latest sync that landed before this session's player existed; null once applied. */
+    private final java.util.concurrent.atomic.AtomicReference<InventorySyncS2C> pendingInventorySync =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /** Applies a buffered sync once the world is ready (one that landed after the restore drained). */
+    private void applyPendingInventorySync() {
+        if (pendingInventorySync.get() == null || !Game.isClientWorldReady()) {
+            return;
+        }
+        Player p = Game.getPlayer();
+        if (p == null || p.getInventory() == null) {
+            return;
+        }
+        InventorySyncS2C sync = pendingInventorySync.getAndSet(null);
+        if (sync != null && !InventorySyncApplier.applyServerSync(p, sync.payload(), sync.ack())) {
+            requestInventoryResync();
+        }
+    }
 
     /** True once the server's welcome InventorySyncS2C arrived (seeding is done). */
     private volatile boolean welcomeSyncSeen;

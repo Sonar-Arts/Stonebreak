@@ -59,7 +59,9 @@ public final class StateConverter {
             .flightEnabled(player.isFlightEnabled())
             .flying(player.isFlying())
             .spectator(player.isSpectator())
-            .gameMode(1) // Creative mode default
+            // The client has no creative mode; claiming one made the server skip the debit and
+            // break timing for every action on a cheats world while the client still paid.
+            .gameMode(0)
             .inventory(combinedInventory)
             .selectedHotbarSlot(inventory.getSelectedSlot())
             .worldName(worldName)

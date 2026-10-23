@@ -197,6 +197,7 @@ public class AsyncChunkLoadingTest {
         Thread.sleep(500);
         world.getChunkAt(31, 30);
         Thread.sleep(500);
+        world.installCompletedChunkLoads(); // the owning thread installs finished loads
 
         // Assert - Loaded chunk count should increase
         int loadedCount = world.getLoadedChunkCount();

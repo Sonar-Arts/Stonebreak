@@ -34,8 +34,8 @@ public class FurnaceStateRegistry {
     /**
      * Fired whenever a furnace's persisted state STRING actually changes (contents, timers,
      * lit flip). The integrated server installs this on the authoritative world's registry to
-     * broadcast {@code BlockStateS2C}; null elsewhere. Deduped in {@link #writeChunkState},
-     * so an idle furnace fires nothing.
+     * broadcast {@code BlockStateS2C}; null elsewhere. Deduped, so an idle furnace fires
+     * nothing, and a cooking one's progress is rate-limited ({@link FurnaceState#echoDue}).
      */
     @FunctionalInterface
     public interface StateChangeListener {
@@ -71,7 +71,10 @@ public class FurnaceStateRegistry {
     public void persist(World world, BlockPos pos) {
         FurnaceState s = states.get(pos);
         if (s != null) {
-            writeChunkState(world, pos, s.toStateString());
+            String fresh = s.toStateString();
+            if (writeChunkState(world, pos, fresh)) {
+                announce(s, fresh);
+            }
         }
     }
 
@@ -100,7 +103,10 @@ public class FurnaceStateRegistry {
         // World.setBlockAt already scheduled a remesh for the FURNACE placement,
         // so no additional schedule is needed here — the freshly-built mesh
         // will pick up the Unlit state on its first run.
-        writeChunkState(world, pos, s.toStateString());
+        String fresh = s.toStateString();
+        if (writeChunkState(world, pos, fresh)) {
+            announce(s, fresh);
+        }
     }
 
     public void onBlockBroken(World world, int x, int y, int z) {
@@ -125,6 +131,7 @@ public class FurnaceStateRegistry {
                 LocalBlockKey.y(key),
                 cz * CHUNK_SIZE + LocalBlockKey.z(key));
             FurnaceState s = FurnaceState.fromStateString(pos, value);
+            s.markEchoed(value); // clients get this value with the chunk itself
             states.put(pos, s);
         }
     }
@@ -166,7 +173,13 @@ public class FurnaceStateRegistry {
             // never unloads chunks — the old onChunkUnloaded-only flush would never fire, losing
             // furnace contents. setBlockState dedups (only re-dirties on an actual change), so an
             // idle furnace costs nothing. A lit↔unlit flip additionally triggers a remesh.
-            writeChunkState(world, s.getPos(), s.toStateString());
+            // Clients hear about it per echoDue: burn/cook move every tick while cooking, and
+            // echoing each one sent 20 packets/s per furnace to every connection.
+            String fresh = s.toStateString();
+            writeChunkState(world, s.getPos(), fresh);
+            if (s.echoDue(fresh)) {
+                announce(s, fresh);
+            }
             if (litFlipped) {
                 world.scheduleChunkRemeshAt(s.getPos().x(), s.getPos().y(), s.getPos().z());
             }
@@ -175,22 +188,26 @@ public class FurnaceStateRegistry {
 
     /* ── Helpers ─────────────────────────────────────────────── */
 
-    private void writeChunkState(World world, BlockPos pos, String stateString) {
-        if (world == null || stateString == null) return;
+    /** Writes the state into its chunk; true when it changed (false if unchanged or unloaded). */
+    private boolean writeChunkState(World world, BlockPos pos, String stateString) {
+        if (world == null || stateString == null) return false;
         int cx = Math.floorDiv(pos.x(), CHUNK_SIZE);
         int cz = Math.floorDiv(pos.z(), CHUNK_SIZE);
         Chunk chunk = world.getChunkIfLoaded(cx, cz);
-        if (chunk == null) return;
+        if (chunk == null) return false;
         int lx = Math.floorMod(pos.x(), CHUNK_SIZE);
         int lz = Math.floorMod(pos.z(), CHUNK_SIZE);
         String previous = chunk.getBlockStates()
             .get(LocalBlockKey.pack(lx, pos.y(), lz));
         chunk.setBlockState(lx, pos.y(), lz, stateString);
-        if (!stateString.equals(previous)) {
-            StateChangeListener l = stateChangeListener;
-            if (l != null) {
-                l.onFurnaceStateChanged(pos, stateString);
-            }
+        return !stateString.equals(previous);
+    }
+
+    private void announce(FurnaceState s, String stateString) {
+        s.markEchoed(stateString);
+        StateChangeListener l = stateChangeListener;
+        if (l != null) {
+            l.onFurnaceStateChanged(s.getPos(), stateString);
         }
     }
 

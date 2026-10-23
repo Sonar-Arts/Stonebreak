@@ -29,8 +29,9 @@ public final class EntityDeltaCodec {
     }
 
     public static short encodeYawDeg(float degrees) {
-        // Wrap to a representable range first (yaw can drift unbounded).
-        float wrapped = degrees % 3600f;
+        // Wrap to (-360, 360) first: yaw can drift unbounded, and the short holds only
+        // ±3276.7° — a 3600° wrap let 3276.8°..3599.9° clamp to the wrong heading.
+        float wrapped = degrees % 360f;
         int v = Math.round(wrapped * YAW_SCALE);
         if (v > Short.MAX_VALUE) v = Short.MAX_VALUE;
         else if (v < Short.MIN_VALUE) v = Short.MIN_VALUE;

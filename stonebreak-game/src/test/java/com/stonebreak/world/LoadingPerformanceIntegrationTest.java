@@ -73,6 +73,7 @@ public class LoadingPerformanceIntegrationTest {
         // Phase 2: Wait for async chunk loading
         System.out.println("\nPhase 2: Waiting for async chunk loading...");
         Thread.sleep(2000);
+        world.installCompletedChunkLoads(); // the owning thread installs finished loads
 
         int loadedChunks = world.getLoadedChunkCount();
         System.out.println("Loaded chunks: " + loadedChunks + "/25");

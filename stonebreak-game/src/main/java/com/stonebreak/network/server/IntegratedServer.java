@@ -333,6 +333,12 @@ public final class IntegratedServer {
             }
             return; // ignore anything else until the handshake is accepted
         }
+        if (ctx.player(sp.playerId()) != sp) {
+            // Retired session (taken over by a reconnect, or already removed): its record was
+            // handed to the new session, so its queued drops/container actions/placements
+            // would spend items the new session also holds.
+            return;
+        }
         routePlay(sp, packet, receivedNs);
     }
 
