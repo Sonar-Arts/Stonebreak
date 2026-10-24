@@ -986,6 +986,7 @@ public final class ClientWorldView {
             case PlayerLeaveS2C l -> playerHandler.handleLeave(l);
             case PlayerHeldItemS2C h -> playerHandler.handleHeldItem(localPlayerId, h);
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
+            case com.stonebreak.network.packet.player.PlayerPositionS2C pp -> playerHandler.handlePosition(pp);
             case InventorySyncS2C s -> applyInventorySync(s);
             case com.stonebreak.network.packet.player.KillCreditS2C kc ->
                 playerHandler.handleKillCredit(kc, entityHandler.shadow(kc.targetNetworkId()));

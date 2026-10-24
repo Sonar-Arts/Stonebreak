@@ -43,8 +43,10 @@ public final class ProtocolVersion {
      *  kind and KillCreditS2C the target/source/hit kind, plus EntityStatusEffectC2S and
      *  EntityStatusS2C (status effects and health fraction on shadows, #339/#371/#374);
      *  GiveItemS2C/DropItemC2S and item-drop spawn metadata carry the stack state (#342);
-     *  FishingRodC2S and DecoyCastC2S, with bobber/decoy spawn metadata (#341). */
-    public static final int CURRENT = 16;
+     *  FishingRodC2S and DecoyCastC2S, with bobber/decoy spawn metadata (#341).
+     *  17 = PlayerPositionS2C: the server puts a player back after refusing a move further than
+     *  it could have travelled (issue #336); serverbound frames are capped at 256 KiB. */
+    public static final int CURRENT = 17;
 
     private ProtocolVersion() {}
 }

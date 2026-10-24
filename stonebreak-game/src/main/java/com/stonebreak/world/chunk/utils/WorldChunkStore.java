@@ -240,6 +240,11 @@ public class WorldChunkStore {
         }
     }
 
+    /** True while a load or generation of this chunk is in flight (requested, not installed). */
+    public boolean isLoadPending(int x, int z) {
+        return pendingChunkLoads.containsKey(positionCache.get(x, z));
+    }
+
     public boolean hasChunk(int x, int z) {
         return chunks.containsKey(positionCache.get(x, z));
     }

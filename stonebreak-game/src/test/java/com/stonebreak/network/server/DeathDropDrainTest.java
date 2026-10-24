@@ -57,7 +57,8 @@ class DeathDropDrainTest {
     /** The client's reliable death edge, which it sends before {@code DeathDropC2S}. */
     private static ServerPlayer deadPlayer() {
         ServerPlayer sp = newPlayer();
-        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()));
+        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()),
+                mock(ServerWorldContext.class));
         return sp;
     }
 
@@ -171,8 +172,8 @@ class DeathDropDrainTest {
         handler.handleDeathDrop(sp, new DeathDropC2S(), f.ctx());
 
         // Respawn and "die" again straight away, as a modified client could.
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, sp.x(), sp.y(), sp.z()));
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, sp.x(), sp.y(), sp.z()), f.ctx());
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()), f.ctx());
         sp.inventory().add(ItemType.STICK.getId(), 3);
         handler.handleDeathDrop(sp, new DeathDropC2S(), f.ctx());
 

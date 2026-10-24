@@ -223,16 +223,26 @@ public final class ServerChunkHandler {
      * C2S: periodic client desync audit. Compares each reported hash against the server's
      * cached (lazily recomputed) hash; a mismatch re-streams the chunk to that player.
      * Steady-state cost is a map probe per entry; hashing happens only after invalidation.
+     *
+     * <p>Only chunks the player could hold are audited (its keep radius), and every mismatch
+     * spends a resync permit like an explicit resync request — over budget it is deferred,
+     * not re-sent — so fake hashes cannot buy endless chunk re-sends (issue #336).
      */
     public void handleChunkHashes(ServerPlayer sp, int[] entries, ServerWorldContext ctx) {
         World world = ctx.world();
         if (world == null) {
             return;
         }
+        int pcx = (int) Math.floor(sp.x() / 16.0);
+        int pcz = (int) Math.floor(sp.z() / 16.0);
+        int keepRadius = sp.viewDistanceChunks() + 2;
         for (int i = 0; i + 2 < entries.length; i += 3) {
             int cx = entries[i];
             int cz = entries[i + 1];
             int clientHash = entries[i + 2];
+            if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > keepRadius) {
+                continue; // not a chunk this player holds
+            }
             Chunk chunk = world.getChunkIfLoaded(cx, cz);
             if (chunk == null || !settledForStreaming(world, chunk, cx, cz)) {
                 continue; // not resident or still settling server-side — nothing to compare against
@@ -250,6 +260,10 @@ public final class ServerChunkHandler {
                 chunkHashes.put(key, serverHash);
             }
             if (serverHash != clientHash) {
+                if (!sp.allowResync()) {
+                    sp.deferChunkResync(key); // retried in tick as permits free up
+                    continue;
+                }
                 System.out.println("[SERVER-CHUNK] Audit mismatch at (" + cx + "," + cz
                     + ") for player " + sp.playerId() + " — re-streaming.");
                 sp.forgetChunk(key);
@@ -359,10 +373,11 @@ public final class ServerChunkHandler {
             // Generate two rings BEYOND the streamed view: the view-edge chunks stream only once
             // their neighbours (ring view+1) are populated, and those need their own
             // east/south/southeast neighbours (ring view+2) to populate. Never streamed.
+            long now = System.nanoTime();
             for (int dz = -genDistance; dz <= genDistance; dz++) {
                 for (int dx = -genDistance; dx <= genDistance; dx++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) > viewDistance) {
-                        world.getChunkAt(cx + dx, cz + dz);
+                        requestChunk(world, sp, cx + dx, cz + dz, now);
                     }
                 }
             }
@@ -389,10 +404,10 @@ public final class ServerChunkHandler {
                         if (sp.sentChunkVersion(key) >= version) {
                             continue; // already has the current version
                         }
-                        Chunk chunk = world.getChunkAt(cx + dx, cz + dz);
+                        Chunk chunk = requestChunk(world, sp, cx + dx, cz + dz, now);
                         if (chunk == null) {
                             viewComplete = false;
-                            continue; // async gen in flight — retry next tick
+                            continue; // async gen in flight (or over budget) — retry next tick
                         }
                         // Don't stream a chunk until generation is done writing into it —
                         // feature population doesn't bump the version, so anything written
@@ -457,11 +472,22 @@ public final class ServerChunkHandler {
     }
 
     /**
-     * Unloads (save-then-unload) chunks outside every player's keep ring. Skips
-     * entirely while any player has no reported position yet (a fresh joiner far
-     * from the others must not get their surroundings evicted before their first
-     * position packet lands).
+     * The chunk at {@code (x, z)} if resident; otherwise asks for its load/generation and
+     * returns null. A request that would START a load spends one of the player's chunk
+     * requests (issue #336); over budget nothing is started and the scan retries as the
+     * budget refills. The host's own player is not limited.
      */
+    private static Chunk requestChunk(World world, ServerPlayer sp, int x, int z, long nowNs) {
+        Chunk chunk = world.getChunkIfLoaded(x, z);
+        if (chunk != null) {
+            return chunk;
+        }
+        if (!sp.isLocal() && !world.isChunkLoadPending(x, z) && !sp.allowChunkRequest(nowNs)) {
+            return null;
+        }
+        return world.getChunkAt(x, z);
+    }
+
     /**
      * True once world generation can no longer write into {@code chunk}: it and all eight
      * neighbours are populated (trees and surface patches reach at most 7 blocks into an
@@ -487,15 +513,22 @@ public final class ServerChunkHandler {
         return featureQueue == null || !featureQueue.hasPendingFor(cx, cz);
     }
 
+    /**
+     * Unloads (save-then-unload) chunks outside every positioned player's keep ring. A player
+     * with no reported position yet (handshaking, creating a character) anchors nothing and is
+     * skipped — it used to stop eviction for everyone, so one player idling in character
+     * creation let residency grow without bound (issue #336). Nothing is streamed to it until
+     * it reports, so there is nothing of its own to keep.
+     */
     private void evictFarChunks(ServerWorldContext ctx, World world) {
-        var players = ctx.players();
+        java.util.List<ServerPlayer> players = new java.util.ArrayList<>();
+        for (ServerPlayer sp : ctx.players()) {
+            if (sp.lastStateNs() != 0L || sp.lastCx() != Integer.MIN_VALUE) {
+                players.add(sp);
+            }
+        }
         if (players.isEmpty()) {
             return; // idle server: keep residency; players return to warm chunks
-        }
-        for (ServerPlayer sp : players) {
-            if (sp.lastStateNs() == 0L && sp.lastCx() == Integer.MIN_VALUE) {
-                return;
-            }
         }
         int evicted = 0;
         for (var pos : world.getLoadedChunkPositions()) {

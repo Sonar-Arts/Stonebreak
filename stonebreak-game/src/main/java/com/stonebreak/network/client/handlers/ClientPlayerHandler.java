@@ -98,6 +98,17 @@ public final class ClientPlayerHandler {
         }
     }
 
+    /**
+     * The server refused a reported move and holds the player here (issue #336): go back, so
+     * the next reports start from where the server agrees the player is.
+     */
+    public void handlePosition(com.stonebreak.network.packet.player.PlayerPositionS2C p) {
+        Player local = Game.getPlayer();
+        if (local != null) {
+            local.teleport(p.x(), p.y(), p.z());
+        }
+    }
+
     public void handleGiveItem(GiveItemS2C g) {
         Player local = Game.getPlayer();
         if (local == null || local.getInventory() == null) {

@@ -16,9 +16,18 @@ public final class ServerChatHandler {
 
     private final ServerCommandHandler commands = new ServerCommandHandler();
 
+    /** Told to a player whose chat is over the rate limit. */
+    static final String TOO_FAST = "You are sending messages too fast.";
+
     public void handleChat(ServerPlayer sp, ChatMessageC2S c, ServerWorldContext ctx) {
         String text = sanitize(c.text());
         if (text.isEmpty()) {
+            return;
+        }
+        // Every line is rebroadcast to every player (or runs a command): rate-limited per
+        // sender (issue #336). Over the limit the line is dropped and only the sender is told.
+        if (!sp.allowChat(System.nanoTime())) {
+            sp.send(new ChatMessageS2C(sp.playerId(), "Server", TOO_FAST), false);
             return;
         }
         // Server-side commands (/obtain — issue #334): checked against the SERVER's cheats

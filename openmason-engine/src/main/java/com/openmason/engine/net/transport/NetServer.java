@@ -1,8 +1,10 @@
 package com.openmason.engine.net.transport;
 
+import com.openmason.engine.net.pipeline.ConnectionLimiter;
 import com.openmason.engine.net.pipeline.InboundSink;
 import com.openmason.engine.net.protocol.PacketDirection;
 import com.openmason.engine.net.protocol.PacketRegistry;
+import com.openmason.engine.net.server.ServerLimits;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelOption;
@@ -16,6 +18,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * Low-level Netty server. Owns the event-loop groups and binds a Local listener (always,
@@ -32,6 +35,9 @@ public final class NetServer {
     private final PacketDirection inboundDirection;
     private final PacketDirection outboundDirection;
     private final InboundSink sink;
+    /** Limits for remote (TCP) children; null = none (tests, tools). */
+    private final ServerLimits limits;
+    private final BiConsumer<Channel, String> onAbuse;
 
     private EventLoopGroup bossGroup;    // TCP accept
     private EventLoopGroup workerGroup;  // TCP child IO
@@ -40,10 +46,23 @@ public final class NetServer {
 
     public NetServer(PacketRegistry registry, PacketDirection inboundDirection,
                      PacketDirection outboundDirection, InboundSink sink) {
+        this(registry, inboundDirection, outboundDirection, sink, null, null);
+    }
+
+    /**
+     * A server whose TCP children are held to {@code limits} (issue #336); {@code onAbuse} is
+     * told about a channel that broke a rate limit (it is expected to kick it). Local
+     * children are never limited.
+     */
+    public NetServer(PacketRegistry registry, PacketDirection inboundDirection,
+                     PacketDirection outboundDirection, InboundSink sink,
+                     ServerLimits limits, BiConsumer<Channel, String> onAbuse) {
         this.registry = registry;
         this.inboundDirection = inboundDirection;
         this.outboundDirection = outboundDirection;
         this.sink = sink;
+        this.limits = limits;
+        this.onAbuse = onAbuse != null ? onAbuse : (ch, reason) -> ch.close();
     }
 
     /** Bind the in-JVM Local listener. Returns the bound address. */
@@ -73,7 +92,11 @@ public final class NetServer {
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .childOption(ChannelOption.WRITE_BUFFER_WATER_MARK,
                 new WriteBufferWaterMark(WRITE_LOW_WATER, WRITE_HIGH_WATER))
-            .childHandler(initializer(TransportType.TCP));
+            .childHandler(limits == null ? initializer(TransportType.TCP)
+                : new NetChannelInitializer(TransportType.TCP, registry, inboundDirection,
+                    outboundDirection, sink, new NetChannelInitializer.ServerGuards(limits,
+                        new ConnectionLimiter(limits.maxConnections(), limits.maxConnectionsPerAddress()),
+                        onAbuse)));
         Channel ch = b.bind(address).sync().channel();
         listenChannels.add(ch);
         return ch.localAddress();

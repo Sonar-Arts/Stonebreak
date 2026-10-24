@@ -90,6 +90,11 @@ public final class IntegratedServer {
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
+    /**
+     * Inbound envelopes handled per drain (issue #336): a flood cannot hold the tick in the
+     * drain; the rest wait for the next one (and the engine pauses reading the flooder).
+     */
+    static final int MAX_INBOUND_PER_DRAIN = 8192;
     /** Rate-limits the overload warning (the clamp drops wall time — say so, but not every tick). */
     private static final long OVERLOAD_WARN_INTERVAL_NS = 15_000_000_000L;
     private long lastOverloadWarnNs = Long.MIN_VALUE / 2;
@@ -111,6 +116,10 @@ public final class IntegratedServer {
         // World traffic only reaches players past the handshake (not one still handshaking or
         // creating a character — unauthenticated, and not in the world yet).
         networkServer.connections().setBroadcastFilter(IntegratedServer::inWorld);
+        // Abuse limits (issue #336): a remote connection must open with a handshake (within
+        // the engine's admission deadline), and a kick for abuse carries its reason.
+        networkServer.setAdmissionFilter(p -> p instanceof HandshakeC2S);
+        networkServer.setKickPacketFactory(com.stonebreak.network.packet.handshake.KickS2C::new);
         this.chunkHandler = new ServerChunkHandler();
         this.blockHandler = new ServerBlockHandler(chunkHandler);
         this.entityHandler = new ServerEntityHandler();
@@ -198,10 +207,13 @@ public final class IntegratedServer {
 
     // ─── Per-frame pump (host game thread) ────────────────────────────────────────
 
-    /** A connection whose player is past the handshake (one not yet attached is let through). */
+    /**
+     * A connection whose player is past the handshake. One the tick has not attached a player
+     * to yet is not: it is a stranger until it handshakes (issue #336).
+     */
     static boolean inWorld(ServerConnection c) {
         ServerPlayer sp = c.attachment();
-        return sp == null || sp.handshakeDone();
+        return sp != null && sp.handshakeDone();
     }
 
     /**
@@ -270,7 +282,7 @@ public final class IntegratedServer {
                     });
                 }
             }
-            networkServer.inboundQueue().drain(this::dispatch);
+            networkServer.inboundQueue().drain(this::dispatch, MAX_INBOUND_PER_DRAIN);
             for (ServerPlayer sp : ctx.players()) {
                 sp.flushInventoryResync();
             }
@@ -286,7 +298,7 @@ public final class IntegratedServer {
             return;
         }
         ServerInboundQueue queue = networkServer.inboundQueue();
-        queue.drain(this::dispatch);
+        queue.drain(this::dispatch, MAX_INBOUND_PER_DRAIN);
         // After the drain: one answer per player however many InventoryResyncC2S arrived, built
         // after every intent drained with them.
         for (ServerPlayer sp : ctx.players()) {
@@ -314,7 +326,7 @@ public final class IntegratedServer {
                 // Catching up: packets that arrived during the last tick apply before the next
                 // one (as Minecraft runs its queued tasks between ticks), so input isn't held
                 // back for a whole catch-up burst.
-                queue.drain(this::dispatch);
+                queue.drain(this::dispatch, MAX_INBOUND_PER_DRAIN);
                 for (ServerPlayer sp : ctx.players()) {
                     sp.flushInventoryResync();
                 }
@@ -338,6 +350,7 @@ public final class IntegratedServer {
         runTickStep("fishing", () -> fishingHandler.tick(ctx));
         runTickStep("decoys", () -> illusionHandler.tick(ctx, TICK_PERIOD_NS / 1_000_000_000f));
         runTickStep("chunks", () -> chunkHandler.tick(ctx));
+        runTickStep("held items", () -> playerHandler.broadcastHeldItemChanges(ctx));
 
         // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
         // too (free RTT signal) but are exempt from the silence kick — a same-JVM stall
@@ -516,7 +529,7 @@ public final class IntegratedServer {
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
-            case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx);
+            case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx, receivedNs);
             case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
@@ -533,7 +546,8 @@ public final class IntegratedServer {
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
-            case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> playerHandler.handlePlayerLife(sp, pl);
+            case com.stonebreak.network.packet.player.PlayerLifeC2S pl ->
+                playerHandler.handlePlayerLife(sp, pl, ctx, receivedNs);
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
             case com.stonebreak.network.packet.player.FishingRodC2S fr -> fishingHandler.handleRodUse(sp, fr, ctx);

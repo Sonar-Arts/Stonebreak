@@ -24,6 +24,8 @@ import static org.mockito.Mockito.mock;
 class PlayerLifeStateTest {
 
     private final ServerPlayerHandler handler = new ServerPlayerHandler();
+    /** No level: the spawn is the default (0, 80, 0) and cheats are off. */
+    private final ServerWorldContext ctx = new ServerWorldContext(mock(ConnectionRegistry.class));
 
     private static ServerPlayer reportedPlayer(int id) {
         ServerPlayer sp = new ServerPlayer(mock(ServerConnection.class), id);
@@ -36,7 +38,7 @@ class PlayerLifeStateTest {
     void deathEdgeMarksDeadAtTheCorpse() {
         ServerPlayer sp = reportedPlayer(1);
 
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f), ctx);
 
         assertTrue(sp.isDead());
         assertFalse(sp.isLiveInWorld());
@@ -46,10 +48,9 @@ class PlayerLifeStateTest {
     @Test
     void stateStreamNeverClearsDeath() {
         ServerPlayer sp = reportedPlayer(1);
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f), ctx);
 
-        handler.handlePlayerState(sp, new PlayerStateC2S(8f, 63f, 9f, 0f, 0f, (byte) 0),
-                new ServerWorldContext(mock(ConnectionRegistry.class)));
+        handler.handlePlayerState(sp, new PlayerStateC2S(8f, 63f, 9f, 0f, 0f, (byte) 0), ctx);
 
         assertTrue(sp.isDead(), "only a respawn edge revives a player");
     }
@@ -58,7 +59,7 @@ class PlayerLifeStateTest {
     void deathIsAppliedEvenWhenThePositionIsInvalid() {
         ServerPlayer sp = reportedPlayer(1);
 
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, Float.NaN, -500f, 0f));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, Float.NaN, -500f, 0f), ctx);
 
         assertTrue(sp.isDead());
         assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f(sp.x(), sp.y(), sp.z()),
@@ -68,12 +69,38 @@ class PlayerLifeStateTest {
     @Test
     void respawnEdgeMovesTheBodyOffTheCorpse() {
         ServerPlayer sp = reportedPlayer(1);
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f), ctx);
 
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, 100f, 80f, 100f));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, 2f, 81f, -3f), ctx); // at the spawn
 
         assertTrue(sp.isLiveInWorld());
-        assertEquals(new Vector3f(100f, 80f, 100f), new Vector3f(sp.x(), sp.y(), sp.z()));
+        assertEquals(new Vector3f(2f, 81f, -3f), new Vector3f(sp.x(), sp.y(), sp.z()));
+    }
+
+    @Test
+    void respawnAwayFromTheWorldSpawnIsRefusedAndCorrected() {
+        ServerPlayer sp = reportedPlayer(1);
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 8f, 63f, 9f), ctx);
+
+        // A respawn is the one teleport a client may report; it must land at the spawn (#336).
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, 5000f, 80f, 5000f), ctx);
+
+        assertTrue(sp.isLiveInWorld(), "the life state still follows the edge");
+        assertEquals(new Vector3f(8f, 63f, 9f), new Vector3f(sp.x(), sp.y(), sp.z()));
+        org.mockito.Mockito.verify(sp.connection()).send(
+                org.mockito.ArgumentMatchers.isA(com.stonebreak.network.packet.player.PlayerPositionS2C.class),
+                org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void deathFarFromThePlayerKeepsTheLastAcceptedPosition() {
+        ServerPlayer sp = reportedPlayer(1);
+
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(true, 9000f, 63f, 9000f), ctx);
+
+        assertTrue(sp.isDead());
+        assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f(sp.x(), sp.y(), sp.z()),
+                "a death is a move like any other: a teleport to die elsewhere is refused");
     }
 
     @Test
@@ -81,7 +108,7 @@ class PlayerLifeStateTest {
         ServerPlayer sp = reportedPlayer(1);
 
         // A dead save respawned on load reports "alive" while already alive.
-        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, 100f, 80f, 100f));
+        handler.handlePlayerLife(sp, new PlayerLifeC2S(false, 100f, 80f, 100f), ctx);
 
         assertTrue(sp.isLiveInWorld());
         assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f(sp.x(), sp.y(), sp.z()));
@@ -91,7 +118,7 @@ class PlayerLifeStateTest {
     void deadPlayerAnchorDespawnsButNeverSpawns() {
         ServerPlayer alive = reportedPlayer(1);
         ServerPlayer dead = reportedPlayer(2);
-        handler.handlePlayerLife(dead, new PlayerLifeC2S(true, 5f, 64f, 5f));
+        handler.handlePlayerLife(dead, new PlayerLifeC2S(true, 5f, 64f, 5f), ctx);
         ServerPlayer unreported = new ServerPlayer(mock(ServerConnection.class), 3);
         unreported.markHandshakeDone();
 

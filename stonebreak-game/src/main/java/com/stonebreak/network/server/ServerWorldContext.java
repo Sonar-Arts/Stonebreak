@@ -64,6 +64,12 @@ public final class ServerWorldContext {
 
     public ServerLevel serverLevel() { return serverLevel; }
 
+    /** The world's cheats flag (false before the level is booted). */
+    public boolean cheatsEnabled() {
+        ServerLevel level = serverLevel;
+        return level != null && level.cheatsEnabled();
+    }
+
     public void setServerLevel(ServerLevel serverLevel) { this.serverLevel = serverLevel; }
 
     // ─── Player registry ──────────────────────────────────────────────────────

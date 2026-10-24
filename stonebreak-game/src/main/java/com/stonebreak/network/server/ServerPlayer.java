@@ -266,6 +266,59 @@ public final class ServerPlayer {
         return ++resyncCount <= MAX_RESYNCS_PER_WINDOW;
     }
 
+    // ─── Abuse limits (issue #336) ───────────────────────────────────────────────
+    /** Horizontal movement budget for this player's position reports. */
+    private final MovementGuard movement = new MovementGuard();
+    public MovementGuard movement() { return movement; }
+
+    /**
+     * Chunk loads/generations this player's view may start. A full view at the largest view
+     * distance (its generation square) fits in one burst, so joining is never held back;
+     * after that new terrain is requested at {@link #CHUNK_REQUESTS_PER_SECOND} — above what
+     * even creative flight crosses into.
+     */
+    static final int CHUNK_REQUEST_BURST = square(
+            2 * (com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE + 2) + 1);
+    static final double CHUNK_REQUESTS_PER_SECOND = 128.0;
+    private final com.openmason.engine.net.pipeline.TokenBucket chunkRequests =
+            new com.openmason.engine.net.pipeline.TokenBucket(CHUNK_REQUEST_BURST, CHUNK_REQUESTS_PER_SECOND);
+
+    /** Debits one chunk load/generation request; false = over budget, ask again later. */
+    public boolean allowChunkRequest(long nowNanos) {
+        return chunkRequests.tryTake(nowNanos);
+    }
+
+    private static int square(int n) {
+        return n * n;
+    }
+
+    /** Chat lines (and chat commands) this player may send: a burst of 8, then one a second. */
+    static final double CHAT_BURST = 8;
+    static final double CHAT_PER_SECOND = 1.0;
+    private final com.openmason.engine.net.pipeline.TokenBucket chat =
+            new com.openmason.engine.net.pipeline.TokenBucket(CHAT_BURST, CHAT_PER_SECOND);
+
+    /** Debits one chat line; false = sending too fast, the line is not relayed. */
+    public boolean allowChat(long nowNanos) {
+        return chat.tryTake(nowNanos);
+    }
+
+    /** Held item id last broadcast for this player; the tick re-broadcasts only on change. */
+    private int broadcastHeldItemId = Integer.MIN_VALUE;
+
+    /**
+     * The held item id to announce, or {@code Integer.MIN_VALUE} when every client already
+     * has it — a client flipping its hotbar selection costs at most one broadcast per tick.
+     */
+    public int takeHeldItemChange() {
+        int held = inventory.heldItemId();
+        if (held == broadcastHeldItemId) {
+            return Integer.MIN_VALUE;
+        }
+        broadcastHeldItemId = held;
+        return held;
+    }
+
     // ─── Server-owned inventory + progression (issue #334) ──────────────────────
     /** The authoritative replica of this player's inventory + carried stack + hotbar slot. */
     private final ServerInventory inventory = new ServerInventory();

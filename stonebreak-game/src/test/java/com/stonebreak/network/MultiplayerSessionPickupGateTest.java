@@ -38,8 +38,18 @@ class MultiplayerSessionPickupGateTest {
         return sp;
     }
 
+    /** The world spawn the respawn test lands at (a respawn must land there, #336). */
+    private static final Vector3f SPAWN = new Vector3f(50f, 0f, 0f);
+
+    private static com.stonebreak.network.server.ServerWorldContext ctx() {
+        com.stonebreak.network.server.ServerWorldContext ctx =
+                mock(com.stonebreak.network.server.ServerWorldContext.class);
+        org.mockito.Mockito.when(ctx.spawn()).thenReturn(SPAWN);
+        return ctx;
+    }
+
     private static void kill(ServerPlayer sp) {
-        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()));
+        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()), ctx());
     }
 
     @Test
@@ -64,7 +74,7 @@ class MultiplayerSessionPickupGateTest {
     void respawnedPlayerIsEligibleAgainAtItsNewPosition() {
         ServerPlayer sp = newPlayer(1, "Back", 0f);
         kill(sp);
-        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(false, 50f, 0f, 0f));
+        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(false, 50f, 0f, 0f), ctx());
 
         assertNull(MultiplayerSession.nearestEligiblePickupCandidate(List.of(sp), DROP, 1.5f, STICK),
                 "respawned away from the corpse, so the death drop is out of range");

@@ -420,6 +420,16 @@ public class World {
     }
 
     /**
+     * True while a load or generation of the chunk is in flight: {@link #getChunkAt} was asked
+     * for it and it is not resident yet. Asking again starts nothing new.
+     */
+    public boolean isChunkLoadPending(int x, int z) {
+        if (chunkStore == null) return false; // Test mode - no chunk store
+
+        return chunkStore.isLoadPending(x, z);
+    }
+
+    /**
      * Checks if a chunk exists at the specified position.
      */
     public boolean hasChunkAt(int x, int z) {

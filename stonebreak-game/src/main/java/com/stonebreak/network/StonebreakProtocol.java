@@ -160,6 +160,8 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.player.ProgressS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 29, com.stonebreak.network.packet.entity.EntityStatusS2C.class,
                 com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 30, com.stonebreak.network.packet.player.PlayerPositionS2C.class,
+                com.stonebreak.network.packet.player.PlayerPositionS2C.CODEC);
 
         return r;
     }
