@@ -665,12 +665,13 @@ public final class ClientWorldView {
     public void sendEntityDamage(int targetNetworkId, float amount,
                                  com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
                                  com.stonebreak.items.weapon.DamageType type,
+                                 boolean melee,
                                  com.stonebreak.mobs.entities.Knockback knockback) {
         if (connection == null || targetNetworkId < 0 || amount <= 0f) {
             return;
         }
         connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal(),
-                (byte) type.ordinal(), knockback), false);
+                (byte) type.ordinal(), melee, knockback), false);
     }
 
     /** Local shear on a replicated sheep: forward the shear intent to the authoritative server. */

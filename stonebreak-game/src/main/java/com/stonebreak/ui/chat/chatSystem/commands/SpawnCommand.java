@@ -15,7 +15,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Command to spawn living mobs in front of the player.
+ * Command to spawn living mobs in front of the player — executed ON THE SERVER, so the mob
+ * lives in the authoritative world: a client-world mob was invisible to everything the server
+ * simulates (an arrow flew straight through it). {@link #execute} is the no-session fallback.
  * Usage: /spawn <mob> [count]
  *
  * Examples:
@@ -46,7 +48,7 @@ public class SpawnCommand implements ChatCommand {
         }
 
         // Resolve the mob type (accepts enum name like COW or display name like cow).
-        EntityType type = findMob(args[0]);
+        EntityType type = EntityType.findMob(args[0]);
         if (type == null) {
             messageManager.addMessage("Unknown mob: " + args[0], ChatColors.RED);
             messageManager.addMessage("Valid mobs: " + validMobList(), ChatColors.ORANGE);
@@ -116,20 +118,9 @@ public class SpawnCommand implements ChatCommand {
         return true;
     }
 
-    /**
-     * Find a living mob {@link EntityType} by enum name (COW) or display name (cow),
-     * case-insensitively. Returns null for unknown or non-living types.
-     */
-    private EntityType findMob(String name) {
-        if (name == null || name.isEmpty()) {
-            return null;
-        }
-        for (EntityType type : EntityType.GLOSSARY_TYPES) {
-            if (type.name().equalsIgnoreCase(name) || type.getDisplayName().equalsIgnoreCase(name)) {
-                return type;
-            }
-        }
-        return null;
+    @Override
+    public boolean executedOnServer() {
+        return true;
     }
 
     /** Comma-separated list of spawnable mob names for usage/error messages. */

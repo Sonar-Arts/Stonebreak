@@ -14,10 +14,12 @@ import io.netty.buffer.ByteBuf;
  * @param amount          damage the client computed (melee/ability/projectile); server-clamped
  * @param sourceOrdinal   ordinal of {@code LivingEntity.DamageSource} (server allow-lists it)
  * @param typeOrdinal     ordinal of {@code DamageType}, resisted per target type (server range-checks it)
+ * @param melee           a swing of the held item: the server keys the target's invulnerability
+ *                        window on the item IT holds for this player, so only that weapon is blocked
  * @param knockback       extra knockback applied when the hit lands (server-clamped), or null for none
  */
 public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdinal, byte typeOrdinal,
-                              Knockback knockback)
+                              boolean melee, Knockback knockback)
         implements Packet {
 
     public static final PacketCodec<EntityDamageC2S> CODEC = new PacketCodec<>() {
@@ -27,6 +29,7 @@ public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdi
             out.writeFloat(p.amount());
             out.writeByte(p.sourceOrdinal());
             out.writeByte(p.typeOrdinal());
+            out.writeBoolean(p.melee());
             Knockback kb = p.knockback();
             out.writeBoolean(kb != null);
             if (kb != null) {
@@ -43,10 +46,11 @@ public record EntityDamageC2S(int targetNetworkId, float amount, byte sourceOrdi
             float amount = in.readFloat();
             byte source = in.readByte();
             byte type = in.readByte();
+            boolean melee = in.readBoolean();
             Knockback kb = in.readBoolean()
                 ? new Knockback(in.readFloat(), in.readFloat(), in.readFloat(), in.readFloat())
                 : null;
-            return new EntityDamageC2S(target, amount, source, type, kb);
+            return new EntityDamageC2S(target, amount, source, type, melee, kb);
         }
     };
 }

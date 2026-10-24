@@ -290,6 +290,13 @@ public class RemotePlayer extends LivingEntity {
     @Override
     public EntityType getType() { return EntityType.REMOTE_PLAYER; }
 
+    /** Decoys too are drawn with the player model, turned to the body yaw. */
+    @Override
+    protected String modelObjectId() { return EntityType.REMOTE_PLAYER.getSbeObjectId(); }
+
+    @Override
+    protected float modelYaw() { return getBodyYaw(); }
+
     // RemotePlayer is a display-only proxy for a server-authoritative remote client.
     // Interaction, damage, and death are resolved server-side and broadcast via packets;
     // the local ghost intentionally ignores these events.

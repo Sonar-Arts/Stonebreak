@@ -1,7 +1,6 @@
 package com.stonebreak.player.interaction;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.state.PhysicsState;
@@ -101,7 +100,7 @@ public class RaycastEngine {
         LivingEntity closest = null;
         float closestT = ENTITY_ATTACK_RANGE;
         for (LivingEntity entity : entities) {
-            float t = rayAABBIntersect(origin, dir, entity.getBoundingBox());
+            float t = entity.getHitBox().rayIntersect(origin, dir);
             if (t < closestT) {
                 closestT = t;
                 closest = entity;
@@ -121,7 +120,7 @@ public class RaycastEngine {
         LivingEntity closest = null;
         float closestT = maxRange;
         for (LivingEntity entity : entities) {
-            float t = rayAABBIntersect(origin, direction, entity.getBoundingBox());
+            float t = entity.getHitBox().rayIntersect(origin, direction);
             if (t < closestT) {
                 closestT = t;
                 closest = entity;
@@ -178,49 +177,6 @@ public class RaycastEngine {
         float step = com.stonebreak.blocks.stairs.StairShape
                 .stepHeight(world, bx, by, bz, type, p.x, p.z, p.x, p.z);
         return p.y - by <= step;
-    }
-
-    private float rayAABBIntersect(Vector3f origin, Vector3f dir, Entity.BoundingBox box) {
-        float tMin = 0.0f;
-        float tMax = Float.MAX_VALUE;
-
-        // X slab
-        if (Math.abs(dir.x) < 1e-6f) {
-            if (origin.x < box.minX || origin.x > box.maxX) return Float.MAX_VALUE;
-        } else {
-            float t1 = (box.minX - origin.x) / dir.x;
-            float t2 = (box.maxX - origin.x) / dir.x;
-            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
-            tMin = Math.max(tMin, t1);
-            tMax = Math.min(tMax, t2);
-            if (tMin > tMax) return Float.MAX_VALUE;
-        }
-
-        // Y slab
-        if (Math.abs(dir.y) < 1e-6f) {
-            if (origin.y < box.minY || origin.y > box.maxY) return Float.MAX_VALUE;
-        } else {
-            float t1 = (box.minY - origin.y) / dir.y;
-            float t2 = (box.maxY - origin.y) / dir.y;
-            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
-            tMin = Math.max(tMin, t1);
-            tMax = Math.min(tMax, t2);
-            if (tMin > tMax) return Float.MAX_VALUE;
-        }
-
-        // Z slab
-        if (Math.abs(dir.z) < 1e-6f) {
-            if (origin.z < box.minZ || origin.z > box.maxZ) return Float.MAX_VALUE;
-        } else {
-            float t1 = (box.minZ - origin.z) / dir.z;
-            float t2 = (box.maxZ - origin.z) / dir.z;
-            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
-            tMin = Math.max(tMin, t1);
-            tMax = Math.min(tMax, t2);
-            if (tMin > tMax) return Float.MAX_VALUE;
-        }
-
-        return tMin >= 0.0f ? tMin : Float.MAX_VALUE;
     }
 
     private Vector3i marchToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {

@@ -99,6 +99,22 @@ public enum EntityType {
     /** Entity types that appear as cards in the Glossary screen. */
     public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE, GOBLIN};
 
+    /**
+     * The mob {@code /spawn} names: a {@link #GLOSSARY_TYPES} entry by enum name (COW) or
+     * display name (cow), case-insensitively; null for anything else.
+     */
+    public static EntityType findMob(String name) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
+        for (EntityType type : GLOSSARY_TYPES) {
+            if (type.name().equalsIgnoreCase(name) || type.getDisplayName().equalsIgnoreCase(name)) {
+                return type;
+            }
+        }
+        return null;
+    }
+
     private final String displayName;
     private final float maxHealth;      // literal for non-living; unused when attributes != null
     private final float moveSpeed;      // literal for non-living; unused when attributes != null

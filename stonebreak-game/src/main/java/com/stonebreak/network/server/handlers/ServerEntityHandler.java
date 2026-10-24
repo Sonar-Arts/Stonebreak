@@ -284,8 +284,11 @@ public final class ServerEntityHandler {
         // Never credit through the local-player path (on the server thread that would be
         // the HOST's player object regardless of attacker). Credit routes back to the
         // actual attacker via KillCreditS2C — uniform for host (Local channel) and remotes.
+        // The weapon is what the server says this player holds, not a client claim — a client
+        // naming a fresh id per swing would otherwise dodge every invulnerability window.
+        int weaponId = pkt.melee() ? sp.inventory().heldItemId() : LivingEntity.NO_WEAPON;
         float healthBefore = le.getHealth();
-        le.damage(amount, source, type, new Vector3f(sp.x(), sp.y(), sp.z()), false);
+        le.damage(amount, source, type, weaponId, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             boolean killed = !le.isAlive();

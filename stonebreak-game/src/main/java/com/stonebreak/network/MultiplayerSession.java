@@ -555,16 +555,17 @@ public final class MultiplayerSession {
 
     /**
      * Hook from {@code LivingEntity.damage} when the local player hits a network-shadow
-     * entity — forwards the damage intent (and any extra knockback, or null) to the
-     * authoritative server via the local client.
+     * entity — forwards the damage intent (whether it was a melee swing, and any extra
+     * knockback, or null) to the authoritative server via the local client.
      */
     public static void onLocalEntityDamage(Entity target, float amount,
                                            com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
                                            com.stonebreak.items.weapon.DamageType type,
+                                           boolean melee,
                                            com.stonebreak.mobs.entities.Knockback knockback) {
         ClientWorldView c = getClient();
         if (c != null && target != null && target.getNetworkId() >= 0) {
-            c.sendEntityDamage(target.getNetworkId(), amount, source, type, knockback);
+            c.sendEntityDamage(target.getNetworkId(), amount, source, type, melee, knockback);
         }
     }
 

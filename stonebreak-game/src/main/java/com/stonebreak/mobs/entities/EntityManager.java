@@ -613,6 +613,10 @@ public class EntityManager {
                 // authoritative state packets; resolving collisions here would
                 // clobber that position and visibly desync the entity.
                 if (entity1.isNetworkShadow() || entity2.isNetworkShadow()) continue;
+                // Only bodies shove each other. An arrow that ended its tick inside a goblin
+                // was pushed back out the way it came, so its next sweep never crossed the
+                // body; zones and drops would be dragged around by mobs walking over them.
+                if (!(entity1 instanceof LivingEntity) || !(entity2 instanceof LivingEntity)) continue;
 
                 if (collision.checkEntityCollision(entity1, entity2)) {
                     collision.resolveEntityCollision(entity1, entity2);

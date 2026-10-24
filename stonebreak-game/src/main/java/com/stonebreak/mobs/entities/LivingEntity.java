@@ -22,6 +22,9 @@ import com.stonebreak.mobs.entities.status.StatusEffectType;
  * bewildered timer → AI → animation → footsteps.
  */
 public abstract class LivingEntity extends Entity {
+    /** Weapon id of a hit that was not a melee swing (arrows, spells, abilities, damage over time). */
+    public static final int NO_WEAPON = -1;
+
     // Components
     private final LivingEntityCombat combat = new LivingEntityCombat(this);
     private final LivingEntityStatusEffects statusEffects = new LivingEntityStatusEffects(this);
@@ -240,13 +243,23 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
+     * A melee hit with the item {@code weaponId}: invulnerability after it only blocks that
+     * same weapon, so switching weapons lands a fresh hit.
+     *
+     * @return whether the hit counted (see {@link LivingEntityCombat#damage})
+     */
+    public boolean damage(float amount, DamageSource source, DamageType type, int weaponId) {
+        return damage(amount, source, type, weaponId, null, true);
+    }
+
+    /**
      * Damage plus an extra knockback impulse, applied only when the hit counts. On a network
      * shadow the knockback rides the damage intent to the server.
      *
      * @return whether the hit counted (see {@link LivingEntityCombat#damage})
      */
     public boolean damage(float amount, DamageSource source, Knockback knockback) {
-        return combat.damage(amount, source, source.defaultDamageType(), null, true, knockback);
+        return combat.damage(amount, source, source.defaultDamageType(), NO_WEAPON, null, true, knockback);
     }
 
     /**
@@ -265,7 +278,13 @@ public abstract class LivingEntity extends Entity {
     /** As {@link #damage(float, DamageSource, Vector3f, boolean)}, with an explicit damage type. */
     public boolean damage(float amount, DamageSource source, DamageType type,
                           Vector3f attackerPos, boolean creditLocalPlayer) {
-        return combat.damage(amount, source, type, attackerPos, creditLocalPlayer, null);
+        return damage(amount, source, type, NO_WEAPON, attackerPos, creditLocalPlayer);
+    }
+
+    /** As {@link #damage(float, DamageSource, DamageType, Vector3f, boolean)}, from the melee weapon {@code weaponId}. */
+    public boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
+                          Vector3f attackerPos, boolean creditLocalPlayer) {
+        return combat.damage(amount, source, type, weaponId, attackerPos, creditLocalPlayer, null);
     }
 
     /** Applies already-multiplied damage to health via {@link Entity#damage} (may trigger death). */
@@ -515,12 +534,31 @@ public abstract class LivingEntity extends Entity {
     // Getters
     public float getMoveSpeed() { return moveSpeed; }
     public float getTurnSpeed() { return turnSpeed; }
-    public boolean isInvulnerable() { return combat.isInvulnerable(); }
-    public float getInvulnerabilityTimer() { return combat.getInvulnerabilityTimer(); }
     public boolean isMoving() { return isMoving; }
     public float getInteractionRange() { return interactionRange; }
     public Vector3f getTargetDirection() { return new Vector3f(targetDirection); }
     public float getLegHeight() { return legHeight; }
+
+    /**
+     * What hits are tested against — arrows, bolts, swings and targeting: the rendered model,
+     * turned to the way the entity faces. {@link #getBoundingBox()} stays the movement body
+     * (walls, gaps, shoving), which a long or tall model would wedge into doorways. Falls back
+     * to that body when no model is registered.
+     */
+    public BoundingBox getHitBox() {
+        ModelBounds model = ModelBounds.of(modelObjectId(), textureVariant);
+        if (model == null) {
+            return getBoundingBox();
+        }
+        return model.placed(position.x, position.y - legHeight, position.z, modelYaw(),
+                scale.x, scale.y, scale.z);
+    }
+
+    /** The SBE model this entity is drawn with, or null for none. */
+    protected String modelObjectId() { return getType().getSbeObjectId(); }
+
+    /** The heading, in degrees, the renderer turns this entity's model to. */
+    protected float modelYaw() { return rotation.y; }
 
     // Setters
     public void setMoveSpeed(float moveSpeed) { this.moveSpeed = moveSpeed; }

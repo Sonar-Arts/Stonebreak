@@ -1,5 +1,6 @@
 package com.stonebreak.player;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
@@ -412,7 +413,11 @@ public class Player {
             damageDealt *= c.rogueAbilities.onCritLanded(this, target);
         }
 
-        if (!target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType())) {
+        // Invulnerability after a hit only blocks the same weapon; keyed on the held item's id,
+        // as the server's ServerInventory.heldItemId() keys it for a replicated target.
+        ItemStack held = inventory.getSelectedHotbarSlot();
+        int weaponId = held.isEmpty() ? BlockType.AIR.getId() : held.getBlockTypeId();
+        if (!target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType(), weaponId)) {
             return;
         }
         c.berserkerAbilities.getRage().onMeleeHitDealt();

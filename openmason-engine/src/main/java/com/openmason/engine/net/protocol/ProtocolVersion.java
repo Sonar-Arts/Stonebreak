@@ -29,8 +29,9 @@ public final class ProtocolVersion {
      *  10 = PlayerLifeC2S: death/respawn edges on the reliable channel, so the server
      *  knows which players are dead (issue #357).
      *  11 = ConsumeHeldC2S: eating debits the server-owned inventory (issue #355).
-     *  12 = weather zones (WeatherSyncS2C carries them, WeatherSetC2S a world/local scope). */
-    public static final int CURRENT = 12;
+     *  12 = weather zones (WeatherSyncS2C carries them, WeatherSetC2S a world/local scope).
+     *  13 = EntityDamageC2S carries a melee flag: mob invulnerability is keyed per weapon. */
+    public static final int CURRENT = 13;
 
     private ProtocolVersion() {}
 }
