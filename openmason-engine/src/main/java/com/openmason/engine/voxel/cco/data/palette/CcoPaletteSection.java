@@ -356,6 +356,20 @@ public final class CcoPaletteSection {
         }
     }
 
+    /**
+     * True if any palette entry satisfies {@code test}. Palettes only grow, so {@code false}
+     * proves no cell holds a matching block; {@code true} may name a block no cell holds any
+     * more. Use it to skip sections, never to prove a block is present.
+     */
+    public boolean paletteContains(java.util.function.Predicate<IBlockType> test) {
+        for (IBlockType block : state.palette) {
+            if (test.test(block)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** True if every cell holds the same block. */
     public boolean isUniform() {
         return state.uniform();

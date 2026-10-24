@@ -52,6 +52,19 @@ public final class WorldLeafWorld implements LeafWorld {
     }
 
     @Override
+    public long foliageSectionMask(int chunkX, int chunkZ) {
+        // The section palettes answer it with no cell reads and no terrain-height evaluation
+        // (foliageScanTop computes the generator's surface per column — the bulk of the rescan).
+        com.stonebreak.world.chunk.Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
+        if (chunk == null) {
+            return -1L;
+        }
+        return com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.sectionMask(
+            chunk.getBlockStorageView(),
+            block -> block instanceof BlockType type && (type.isLeaves() || type.isLog()));
+    }
+
+    @Override
     public void setBlock(int x, int y, int z, BlockType type) {
         BlockType previous = access.getBlock(x, y, z);
         if (previous == type || !access.isLoaded(x, y, z)) {

@@ -243,6 +243,14 @@ public class Main {
                 System.err.println("[autoworld] bad seed in " + spec + " — using " + seed);
             }
         }
+        // -Dstonebreak.autorender=<chunks>: render distance for this session only (never saved),
+        // so join timing can be measured at a fixed view (issue #345).
+        String render = System.getProperty("stonebreak.autorender");
+        if (render != null && !render.isBlank()) {
+            com.stonebreak.config.Settings.getInstance().setRenderDistance(Integer.parseInt(render.trim()));
+            System.out.println("[autoworld] render distance "
+                + com.stonebreak.config.Settings.getInstance().getRenderDistance());
+        }
         System.out.println("[autoworld] starting singleplayer world '" + name + "' seed " + seed);
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
     }

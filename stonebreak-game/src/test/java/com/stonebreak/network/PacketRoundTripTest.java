@@ -329,6 +329,20 @@ class PacketRoundTripTest {
     }
 
     @Test
+    void chunkSnapshotIsEncodedForTheWire() {
+        // #345: the server sends a storage snapshot; a TCP connection writes its encoded bytes.
+        var storage = com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
+                16, com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT, 16,
+                com.stonebreak.blocks.BlockType.AIR);
+        storage.set(3, 40, 5, com.stonebreak.blocks.BlockType.STONE);
+        var blocks = com.openmason.engine.net.protocol.codec.ChunkBlockPayload.ofSnapshot(storage);
+
+        ChunkDataS2C decoded = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(2, 9, blocks, new byte[0]));
+        assertArrayEquals(blocks.encoded(), decoded.payload());
+        assertEquals(null, decoded.blocks().snapshot(), "a wire carries bytes, not storage");
+    }
+
+    @Test
     void playerDataBlobsRoundTrip() {
         // PlayerData{C2S,S2C} carry an opaque JSON blob; byte[] needs array equality (record
         // equals() compares array identity, so assertEquals would falsely fail here).

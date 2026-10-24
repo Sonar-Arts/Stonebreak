@@ -18,7 +18,8 @@ import java.util.concurrent.Executors;
  * Successor of the old {@code ChunkSynchronizer} CLIENT path.
  *
  * <p>Payload decode (the expensive half — wire sections → detached paletted
- * storage) runs on a small worker pool; the main thread only pays the
+ * storage; skipped for a local server's storage snapshot) and the sky
+ * heightmap run on a small worker pool; the main thread only pays the
  * install/swap + metadata + mesh scheduling, and paces those with a per-frame
  * wall-clock budget. This is the client-side flow control that lets the server
  * stream without a fixed per-tick push cap: a burst lands in the decode pool
@@ -130,8 +131,11 @@ public final class ClientChunkHandler {
         long seq = nextSeq++;
         latestSeq.put(key(cd.chunkX(), cd.chunkZ()), seq);
         decodeExecutor.execute(() -> {
-            CcoPalettedChunkStorage storage =
-                com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(cd.chunkX(), cd.chunkZ(), cd.payload());
+            // A local (singleplayer) server hands over its copy-on-write storage snapshot: no
+            // decode. The install copies it section by section and never writes into it.
+            CcoPalettedChunkStorage snapshot = cd.blocks().snapshot();
+            CcoPalettedChunkStorage storage = snapshot != null ? snapshot
+                : com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(cd.chunkX(), cd.chunkZ(), cd.payload());
             // Heightmap on the worker too — the install then only swaps storage.
             int[] heights = storage == null ? null : com.stonebreak.network.client.NetworkChunkDecoder.computeSkyHeights(storage);
             // storage == null → decode failed; carried through so the main

@@ -41,6 +41,16 @@ public interface LeafWorld {
         return WorldConfiguration.WORLD_HEIGHT;
     }
 
+    /**
+     * Which 16-block sections of a resident chunk may hold leaves or logs, for the chunk-load
+     * rescan: bit {@code i} covers {@code y} in {@code [16i, 16i+16)}, and a clear bit proves the
+     * section holds neither. {@code -1L} (the default) means unknown — scan every section up to
+     * {@link #foliageScanTop}. When known, the rescan skips {@link #foliageScanTop} entirely.
+     */
+    default long foliageSectionMask(int chunkX, int chunkZ) {
+        return -1L;
+    }
+
     /** Called once after each logical sim tick — adapters flush batched work here. */
     default void onTickComplete() {
     }

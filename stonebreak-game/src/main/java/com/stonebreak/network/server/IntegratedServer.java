@@ -328,6 +328,7 @@ public final class IntegratedServer {
         // resulting state to clients.
         // Each step isolated (issue #337): one that throws used to skip every step after it,
         // on every tick, for as long as it kept throwing.
+        long tickStart = System.nanoTime();
         ServerLevel level = ctx.serverLevel();
         if (level != null) {
             runTickStep("world", () -> level.tick(TICK_PERIOD_NS / 1_000_000_000f));
@@ -373,6 +374,7 @@ public final class IntegratedServer {
                 persistPlayerSnapshot(sp);
             }
         }
+        chunkHandler.onTickEnded(System.nanoTime() - tickStart, ctx.players());
     }
 
     private static void runTickStep(String name, Runnable step) {

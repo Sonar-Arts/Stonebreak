@@ -154,6 +154,25 @@ public final class CcoPalettedChunkStorage implements CcoBlockStorage {
         }
     }
 
+    /**
+     * Bit {@code i} set when section {@code i} may hold a block matching {@code test}
+     * ({@link CcoPaletteSection#paletteContains}: a clear bit proves the section has none).
+     * {@code -1L} — scan everything — for storage that is not paletted or has more than 64
+     * sections.
+     */
+    public static long sectionMask(CcoBlockStorage storage, java.util.function.Predicate<IBlockType> test) {
+        if (!(storage instanceof CcoPalettedChunkStorage paletted) || paletted.sections.length > 64) {
+            return -1L;
+        }
+        long mask = 0L;
+        for (int i = 0; i < paletted.sections.length; i++) {
+            if (paletted.sections[i].paletteContains(test)) {
+                mask |= 1L << i;
+            }
+        }
+        return mask;
+    }
+
     /** Number of sections in this column. */
     public int getSectionCount() {
         return sections.length;

@@ -1,6 +1,8 @@
 package com.stonebreak.network.server.handlers;
 
+import com.openmason.engine.net.protocol.codec.ChunkBlockPayload;
 import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.openmason.engine.util.LongIntHashMap;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.server.ServerPlayer;
@@ -46,21 +48,25 @@ public final class ServerChunkHandler {
     /**
      * Chunks streamed per remote player per tick. Kept modest because a real
      * wire needs pacing. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
-     * (Encode itself is cheap now — bulk section reads, no per-cell adapters —
-     * and runs on the dedicated SINGLEPLAYER-Server thread, not the render
-     * thread, so the budget is purely about remote bandwidth.)
+     * The tick only snapshots the chunk; the encode runs on the connection's
+     * network thread (ChunkBlockPayload), once per snapshot for every viewer.
      */
     private static final int MAX_PUSH_PER_TICK = 8;
     /**
      * Runaway guard (NOT pacing) for the LOCAL (host) player. The LocalChannel
-     * is an in-JVM object handoff — no wire to protect — and the client now
-     * decodes payloads OFF-thread and installs under its own per-frame budget
-     * (ClientChunkHandler), so the stream needs no server-side pacing at all:
-     * the scan pushes until the view is complete or the channel goes
-     * unwritable. 1024/tick @ 20 Hz only exists so a bug can't spin the tick
-     * forever; even the max view (r=24, 2401 chunks) drains in 3 ticks.
+     * is an in-JVM object handoff — the client installs the server's storage
+     * snapshot with no encode or decode, under its own per-frame budget
+     * (ClientChunkHandler) — so the stream is paced only by the client's acks
+     * and {@link #STREAM_BUDGET_NANOS}.
      */
     private static final int LOCAL_PUSH_PER_TICK = 1024;
+    /**
+     * Wall-clock time all players' snapshot sends may take per tick (#345). Without it the
+     * local player's first view was snapshotted and encoded in one tick while water, mobs and
+     * time stood still. Only sends are limited: the generation ring below always requests its
+     * chunks, so terrain generation is never slowed by streaming.
+     */
+    private static final long STREAM_BUDGET_NANOS = 8_000_000L;
 
     // Flow control, after Minecraft's chunk batching: the client reports how many snapshots it
     // installs per tick (ChunkAckC2S) and acknowledges what it processed. The server streams at
@@ -82,6 +88,15 @@ public final class ServerChunkHandler {
      *  Primitive-keyed: the view scan probes this per ring cell, and a boxed
      *  {@code Map<Long, Integer>} allocated a Long per probe. */
     private final LongIntHashMap chunkVersions = new LongIntHashMap();
+
+    /**
+     * Block snapshot per chunk, reused while the chunk object and its block revision are
+     * unchanged: every viewer of a chunk version, and every resend of an unchanged chunk,
+     * shares one copy-on-write snapshot and — on a wire — one encode. Dropped for chunks no
+     * longer resident (eviction sweep).
+     */
+    private record CachedBlocks(Chunk chunk, long revision, ChunkBlockPayload blocks) {}
+    private final java.util.Map<Long, CachedBlocks> blockCache = new java.util.HashMap<>();
 
     /** Set when any chunk version bumps; the next tick re-arms every player's view scan. */
     private boolean versionsDirty = false;
@@ -152,6 +167,7 @@ public final class ServerChunkHandler {
     public void onSessionStart() {
         chunkVersions.clear();
         chunkHashes.clear();
+        blockCache.clear();
         lastSimEditTick.clear();
         tickCounter = 0;
         versionsDirty = true;
@@ -264,7 +280,29 @@ public final class ServerChunkHandler {
         }
     }
 
+    /** Join timing (#345): one log line per player when their first view completes. */
+    private final ChunkJoinProbe joinProbe = new ChunkJoinProbe();
+    /** Duration of this handler's last {@link #tick}, folded into the join probe. */
+    private long lastChunkStepNs;
+
+    /**
+     * End of a server tick ({@code tickNs} = the whole replication tick): feeds the join probe.
+     * Called by the server after every tick step has run.
+     */
+    public void onTickEnded(long tickNs, java.util.Collection<ServerPlayer> players) {
+        joinProbe.tickEnded(tickNs, lastChunkStepNs, players);
+    }
+
     public void tick(ServerWorldContext ctx) {
+        long stepStart = System.nanoTime();
+        try {
+            streamTick(ctx);
+        } finally {
+            lastChunkStepNs = System.nanoTime() - stepStart;
+        }
+    }
+
+    private void streamTick(ServerWorldContext ctx) {
         tickCounter++;
         World world = ctx.world();
         if (world == null) {
@@ -277,6 +315,7 @@ public final class ServerChunkHandler {
         // per player whether the bumped chunk is in view (the per-cell version check).
         boolean versionsBumped = versionsDirty;
         versionsDirty = false;
+        long streamDeadline = System.nanoTime() + STREAM_BUDGET_NANOS;
 
         for (ServerPlayer sp : ctx.players()) {
             refillChunkQuota(sp);
@@ -290,6 +329,7 @@ public final class ServerChunkHandler {
                 continue;
             }
 
+            joinProbe.streamable(sp);
             int cx = (int) Math.floor(sp.x() / 16.0);
             int cz = (int) Math.floor(sp.z() / 16.0);
             sp.setLastChunk(cx, cz); // marks the scan pending on a boundary crossing
@@ -334,8 +374,8 @@ public final class ServerChunkHandler {
             int window = (sp.isLocal() ? LOCAL_WINDOW : REMOTE_WINDOW) - sp.chunksInFlight();
             int budget = Math.min(sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK,
                     Math.min((int) sp.chunkQuota(), window));
-            if (budget <= 0) {
-                continue; // paced: the scan stays armed and resumes as quota/acks arrive
+            if (budget <= 0 || System.nanoTime() >= streamDeadline) {
+                continue; // paced: the scan stays armed and resumes as quota/acks/time allow
             }
             outer:
             for (int r = 0; r <= viewDistance; r++) {
@@ -371,14 +411,15 @@ public final class ServerChunkHandler {
                             viewComplete = false;
                             break outer;
                         }
-                        byte[] payload = VoxelChunkCodec.encode(new ChunkDataAdapter(chunk));
+                        ChunkBlockPayload blocks = blocksFor(key, chunk);
                         byte[] metaPayload = encodeChunkMeta(world, chunk, cx + dx, cz + dz);
-                        sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload, metaPayload), false);
+                        sp.send(new ChunkDataS2C(cx + dx, cz + dz, blocks, metaPayload), false);
                         sp.markChunkSent(key, version);
                         sp.onChunkStreamed();
+                        joinProbe.streamed(sp);
                         com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.increment();
-                        if (--budget <= 0) {
-                            viewComplete = false; // runaway guard — outer rings unverified
+                        if (--budget <= 0 || System.nanoTime() >= streamDeadline) {
+                            viewComplete = false; // quota or tick time spent — outer rings unverified
                             break outer;
                         }
                     }
@@ -386,8 +427,33 @@ public final class ServerChunkHandler {
             }
             if (viewComplete) {
                 sp.clearViewScanPending();
+                joinProbe.viewComplete(sp);
             }
         }
+    }
+
+    /**
+     * The chunk's block payload at its current revision: the cached snapshot when neither the
+     * chunk object nor its blocks changed since, else a fresh copy-on-write snapshot. The
+     * revision is read before the copy, so a write racing the copy only costs a re-snapshot.
+     */
+    private ChunkBlockPayload blocksFor(long key, Chunk chunk) {
+        long revision = chunk.getCcoDirtyTracker().blockRevision();
+        CachedBlocks cached = blockCache.get(key);
+        if (cached != null && cached.chunk() == chunk && cached.revision() == revision) {
+            return cached.blocks();
+        }
+        ChunkBlockPayload blocks = chunk.getBlockStorageView() instanceof CcoPalettedChunkStorage paletted
+            ? ChunkBlockPayload.ofSnapshot(paletted.copy())
+            : ChunkBlockPayload.ofEncoded(VoxelChunkCodec.encode(new ChunkDataAdapter(chunk)));
+        blockCache.put(key, new CachedBlocks(chunk, revision, blocks));
+        return blocks;
+    }
+
+    /** Snapshot cached for (cx, cz), or null. Package-private for tests. */
+    ChunkBlockPayload cachedBlocks(int cx, int cz) {
+        CachedBlocks cached = blockCache.get(packKey(cx, cz));
+        return cached == null ? null : cached.blocks();
     }
 
     /**
@@ -450,6 +516,11 @@ public final class ServerChunkHandler {
                 }
             }
         }
+        // Snapshots of chunks no longer resident (evicted now or unloaded elsewhere).
+        blockCache.entrySet().removeIf(e -> {
+            long key = e.getKey();
+            return world.getChunkIfLoaded((int) (key >> 32), (int) key) != e.getValue().chunk();
+        });
         if (evicted > 0) {
             System.out.println("[SERVER-CHUNK] Evicted " + evicted + " far chunks ("
                 + world.getLoadedChunkCount() + " resident)");
