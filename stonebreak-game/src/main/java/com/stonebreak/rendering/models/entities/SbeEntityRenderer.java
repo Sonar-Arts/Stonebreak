@@ -323,6 +323,19 @@ public final class SbeEntityRenderer {
                        Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
                        float headYawDeg, float headPitchDeg) {
+        render(asset, variantName, anim, baseMatrix, viewMatrix, projectionMatrix, world, cameraPos,
+                headYawDeg, headPitchDeg, null);
+    }
+
+    /**
+     * Matrix-based entry point with code-driven part rotations layered over the clip
+     * (see {@link SbePoseSolver.PartOverrides}); {@code overrides} may be null.
+     */
+    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+                       Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       float headYawDeg, float headPitchDeg,
+                       SbePoseSolver.PartOverrides overrides) {
         if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
@@ -377,7 +390,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
-                headYawDeg, headPitchDeg, (partMatrix, part) -> {
+                headYawDeg, headPitchDeg, overrides, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
             for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).textured()) {
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, gpu.materialTextures.get(batch.materialId()));

@@ -327,6 +327,37 @@ public final class MultiplayerSession {
     }
 
     /**
+     * Places the held dinghy at {@code pos}, bow toward {@code yawDeg}. Numbered — the caller
+     * predicts the item leaving the hand, and the server answers with a sync either way.
+     * Returns false when there is no live connection.
+     */
+    public static boolean sendVehiclePlace(Vector3f pos, float yawDeg) {
+        ClientWorldView c = getClient();
+        if (c == null || c.isDisconnected()) {
+            return false;
+        }
+        c.sendVehiclePacket(com.stonebreak.network.packet.vehicle.VehicleActionC2S.place(
+                pos.x, pos.y, pos.z, yawDeg, SlotIntentSeq.nextAnswered()), false);
+        return true;
+    }
+
+    /** Board / dismount / hit intent on vehicle {@code networkId}; no-op without a session. */
+    public static void sendVehicleAction(byte action, int networkId) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendVehiclePacket(com.stonebreak.network.packet.vehicle.VehicleActionC2S.on(action, networkId), false);
+        }
+    }
+
+    /** The rower's report of its boat (droppable — the next supersedes it). */
+    public static void sendVehicleMove(com.stonebreak.network.packet.vehicle.VehicleMoveC2S move) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendVehiclePacket(move, true);
+        }
+    }
+
+    /**
      * Mirrored Deceit cast (issue #341): the SERVER spawns the decoys around its record of the
      * player and replicates them. Returns false when there is no live connection.
      */
@@ -337,6 +368,12 @@ public final class MultiplayerSession {
         }
         c.sendDecoyCast();
         return true;
+    }
+
+    /** The client shadow of replicated entity {@code networkId}, or null. */
+    public static Entity entityShadow(int networkId) {
+        ClientWorldView c = getClient();
+        return c != null ? c.entityShadow(networkId) : null;
     }
 
     /** This client's player id, or -1 before the welcome / without a session. */

@@ -197,14 +197,18 @@ public class RemotePlayer extends LivingEntity {
         float yawRad = (float) Math.toRadians(rotation.y);
         lookModelYaw = com.stonebreak.player.PlayerBodyOrientation.modelYawFromDirection(
                 (float) Math.cos(yawRad), (float) Math.sin(yawRad));
-        if (deltaTime > 0f) {
+        com.stonebreak.vehicles.Rideable vehicle = getVehicle();
+        if (vehicle != null) {
+            bodyOrientation.seat(vehicle.seatYaw(getSeatIndex()));
+        } else if (deltaTime > 0f) {
             velocityEstimate.set(dx / deltaTime, 0f, dz / deltaTime);
             bodyOrientation.update(deltaTime, velocityEstimate, lookModelYaw);
         }
 
         // Replicated flags select land sprint/jump; unflagged local figures still walk.
         byte flags = stateFlags;
-        movementState = PlayerStateMapping.locomotion(moving,
+        movementState = vehicle != null ? PlayerStateMapping.PlayerMovementState.SITTING
+                : PlayerStateMapping.locomotion(moving,
                 !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE),
                 PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER)
                         || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),

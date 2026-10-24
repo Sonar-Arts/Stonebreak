@@ -42,6 +42,7 @@ public class EntityRenderer {
     private final ArrowRenderer arrowRenderer = new ArrowRenderer(simpleCubePipeline);
     private final GlowCubeRenderer glowCubeRenderer = new GlowCubeRenderer(simpleCubePipeline);
     private final BobberRenderer bobberRenderer = new BobberRenderer(sbeEntityRenderer, fallbackCubeRenderer);
+    private final DinghyRenderer dinghyRenderer = new DinghyRenderer(sbeEntityRenderer, fallbackCubeRenderer);
     private final EntityShadowCasterRenderer shadowCasterRenderer =
             new EntityShadowCasterRenderer(sbeEntityRenderer, mobRenderer);
 
@@ -154,6 +155,11 @@ public class EntityRenderer {
             return;
         }
 
+        if (entity instanceof com.stonebreak.vehicles.Dinghy dinghy) {
+            dinghyRenderer.render(dinghy, viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
         fallbackCubeRenderer.render(entity, viewMatrix, projectionMatrix, world, cameraPos);
     }
 
@@ -198,6 +204,30 @@ public class EntityRenderer {
         if (!initialized || type == null) return;
         withUiPreviewLighting(() -> mobRenderer.renderPreview(type, variant, stateName, animationTime,
                 position, yawDegrees, scale, viewMatrix, projectionMatrix));
+    }
+
+    /**
+     * Draws an item's model ({@link com.stonebreak.items.ItemModels}) at rest with an arbitrary
+     * base transform, into whatever target/viewport is bound: an inventory icon cell (lit by the
+     * UI preview rig) or the first-person hand (lit by the world).
+     *
+     * @return false when the model asset is not loaded (the caller falls back to the sprite)
+     */
+    public boolean renderItemModel(com.stonebreak.items.ItemModels.ItemModel model, Matrix4f base,
+                                   Matrix4f viewMatrix, Matrix4f projectionMatrix, boolean uiLighting) {
+        com.openmason.engine.entity.sbe.SbeEntityAsset asset =
+                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(model.sbeObjectId());
+        if (!initialized || asset == null) return false;
+        Runnable draw = () -> sbeEntityRenderer.render(asset,
+                com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, base,
+                viewMatrix, projectionMatrix, uiLighting ? null : com.stonebreak.core.Game.getWorld(),
+                null, 0f, 0f);
+        if (uiLighting) {
+            withUiPreviewLighting(draw);
+        } else {
+            draw.run();
+        }
+        return true;
     }
 
     /**

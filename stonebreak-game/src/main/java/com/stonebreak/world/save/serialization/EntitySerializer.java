@@ -75,6 +75,7 @@ public class EntitySerializer {
             case GOOSE -> serializeGoose((Goose) entity, builder);
             case SHEEP -> serializeSheep((Sheep) entity, builder);
             case GOBLIN -> serializeGoblin((Goblin) entity, builder);
+            case DINGHY -> { /* position, yaw and health (hits left) are the whole state */ }
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for serialization: " + entityType);
                 return null;
@@ -104,6 +105,7 @@ public class EntitySerializer {
             case GOOSE -> deserializeGoose(entityData, world);
             case SHEEP -> deserializeSheep(entityData, world);
             case GOBLIN -> deserializeGoblin(entityData, world);
+            case DINGHY -> deserializeDinghy(entityData, world);
             default -> {
                 logger.log(Level.WARNING, "Unknown entity type for deserialization: " + entityType);
                 yield null;
@@ -266,6 +268,16 @@ public class EntitySerializer {
             logger.log(Level.SEVERE, "Failed to deserialize Cow", e);
             return null;
         }
+    }
+
+    // ===== Dinghy Serialization =====
+
+    private static Entity deserializeDinghy(EntityData entityData, World world) {
+        com.stonebreak.vehicles.Dinghy dinghy = new com.stonebreak.vehicles.Dinghy(
+                world, entityData.getPosition(), entityData.getRotation().y);
+        dinghy.setHits(Math.round(com.stonebreak.vehicles.Dinghy.HITS_TO_BREAK - entityData.getHealth()));
+        dinghy.setAge(entityData.getAge());
+        return dinghy;
     }
 
     // ===== Chicken Serialization =====

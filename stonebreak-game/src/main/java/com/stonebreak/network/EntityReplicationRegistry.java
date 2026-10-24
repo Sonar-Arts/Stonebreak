@@ -105,6 +105,8 @@ public final class EntityReplicationRegistry {
                 }
                 yield new LeylineBreachZone(world, pos, radius, 0f, 0f, Float.MAX_VALUE, overloaded);
             }
+            // Seats and oars arrive as the boat's visual state (EntityAnimS2C), not metadata.
+            case DINGHY -> new com.stonebreak.vehicles.Dinghy(world, pos, 0f);
             case BOBBER -> {
                 FishingBobber bobber = new FishingBobber(world, pos, new Vector3f(0, 0, 1));
                 bobber.setOwnerPlayerId(parseInt(metadata, -1));

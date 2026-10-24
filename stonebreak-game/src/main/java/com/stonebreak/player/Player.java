@@ -77,6 +77,7 @@ public class Player {
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
     private Perspective perspective = Perspective.FIRST_PERSON;
     private final PlayerBodyAnimation bodyAnimation = new PlayerBodyAnimation();
+    private final com.stonebreak.vehicles.PlayerRiding riding = new com.stonebreak.vehicles.PlayerRiding();
     private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/second
 
     public Player(World world) {
@@ -194,6 +195,9 @@ public class Player {
 
     // Camera / view / inventory
     public Camera getCamera() { return camera; }
+
+    /** Seat state: in a vehicle, WASD rows and the body sits (see {@link com.stonebreak.vehicles.PlayerRiding}). */
+    public com.stonebreak.vehicles.PlayerRiding getRiding() { return riding; }
     public Inventory getInventory() { return inventory; }
     public Matrix4f getViewMatrix() { return camera.getViewMatrix(); }
 
@@ -354,6 +358,9 @@ public class Player {
      * keep walking mid-swing.
      */
     public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
+        if (riding.isRiding()) {
+            return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.SITTING;
+        }
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         return com.stonebreak.mobs.sbe.PlayerStateMapping.locomotion(horizSpeed > WALK_SPEED_THRESHOLD,

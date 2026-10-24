@@ -184,6 +184,11 @@ public final class ServerEntityHandler {
         updatePlayerInterest(sp, ctx);
     }
 
+    /** The authoritative entity with {@code networkId}, or null. */
+    public Entity entity(int networkId) {
+        return byNetworkId.get(networkId);
+    }
+
     /** Drop a disconnected player's interest bookkeeping. */
     public void onPeerLeft(ServerPlayer sp) {
         interestByPlayer.remove(sp.playerId());

@@ -252,6 +252,24 @@ public abstract class Entity {
     private int ownerPlayerId = -1;
     public int getOwnerPlayerId() { return ownerPlayerId; }
     public void setOwnerPlayerId(int ownerPlayerId) { this.ownerPlayerId = ownerPlayerId; }
+    /** The vehicle this entity sits in, or null; while seated it skips its own movement. */
+    private com.stonebreak.vehicles.Rideable vehicle;
+    private int seatIndex = -1;
+    public com.stonebreak.vehicles.Rideable getVehicle() { return vehicle; }
+    public int getSeatIndex() { return seatIndex; }
+    public boolean isRiding() { return vehicle != null; }
+    /** Seats this entity ({@code vehicle} null, or seat &lt; 0, stands it up). */
+    public void setVehicle(com.stonebreak.vehicles.Rideable vehicle, int seat) {
+        this.vehicle = seat >= 0 ? vehicle : null;
+        this.seatIndex = this.vehicle != null ? seat : -1;
+    }
+
+    /**
+     * True while this client simulates the entity itself instead of following the network
+     * interpolator — a dinghy rowed by the local player. Shadows only.
+     */
+    public boolean isLocallyControlled() { return false; }
+
     public boolean isNetworkShadow() { return networkShadow; }
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
     public boolean isCommandSpawned() { return commandSpawned; }

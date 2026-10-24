@@ -2,7 +2,10 @@ package com.stonebreak.ui.runtime.providers;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.items.Item;
+import com.stonebreak.items.ItemModels;
 import com.stonebreak.rendering.Renderer;
+import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.GL_COLOR_BUFFER_BIT;
+import static org.lwjgl.opengl.GL11.GL_DEPTH_BUFFER_BIT;
 import static org.lwjgl.opengl.GL11.GL_SCISSOR_TEST;
 import static org.lwjgl.opengl.GL11.glClear;
 import static org.lwjgl.opengl.GL11.glClearColor;
@@ -19,7 +23,8 @@ import static org.lwjgl.opengl.GL11.glScissor;
 import static org.lwjgl.opengl.GL11.glViewport;
 
 /**
- * 3D block icons rendered once per (block, device-pixel size) into offscreen pages, so documents
+ * 3D item icons — blocks, and items drawn as a model ({@link ItemModels}, the dinghy) — rendered
+ * once per (item, device-pixel size) into offscreen pages, so documents
  * can show them through {@link com.openmason.engine.ui.rendering.GlTextureImages} inside their
  * own paint order (Hard visual #2 of the migration ledger). The cube itself is drawn by the same
  * code as the legacy slots ({@link BlockIconPainter#LEGACY}): same shader, view, lighting and
@@ -55,20 +60,54 @@ public final class ItemIconAtlas implements AutoCloseable {
         };
     }
 
+    /** Draws one item model's icon into the bound framebuffer's square viewport {@code (x, y, size)}. */
+    @FunctionalInterface
+    public interface ModelIconPainter {
+        void paint(ItemModels.ItemModel model, int viewportX, int viewportY, int size);
+
+        /**
+         * The model at rest under the UI preview rig, seen from above at three-quarters — an
+         * orthographic camera spanning {@link ItemModels.ItemModel#iconRadius} each way, so the
+         * whole model fills the cell.
+         */
+        ModelIconPainter ENTITY = (model, x, y, size) -> {
+            Renderer renderer = Game.getRenderer();
+            if (renderer == null || renderer.getEntityRenderer() == null) {
+                return;
+            }
+            float r = model.iconRadius();
+            Matrix4f view = new Matrix4f().setLookAt(6f, 6f + model.iconCenterY(), 6f,
+                    0f, model.iconCenterY(), 0f, 0f, 1f, 0f);
+            Matrix4f proj = new Matrix4f().setOrtho(-r, r, -r, r, 0.1f, 30f);
+            renderer.getEntityRenderer().renderItemModel(model, new Matrix4f(), view, proj, true);
+        };
+    }
+
     /** Where an icon is: the page texture and the cell's rect in it (GL origin bottom-left). */
     public record Icon(int texture, int pageSize, int x, int y, int size) {
     }
 
     private final BlockIconPainter painter;
-    private final IconAtlasLayout<BlockType> layout = new IconAtlasLayout<>(PAGE_SIZE);
+    private final ModelIconPainter modelPainter;
+    private final IconAtlasLayout<Item> layout = new IconAtlasLayout<>(PAGE_SIZE);
     private final Map<Integer, List<GlRenderTarget>> pages = new HashMap<>();
 
     public ItemIconAtlas(BlockIconPainter painter) {
+        this(painter, ModelIconPainter.ENTITY);
+    }
+
+    public ItemIconAtlas(BlockIconPainter painter, ModelIconPainter modelPainter) {
         this.painter = painter;
+        this.modelPainter = modelPainter;
+    }
+
+    /** Whether {@code item} gets an atlas icon: a block, or an item drawn as a model. */
+    public static boolean hasAtlasIcon(Item item) {
+        return (item instanceof BlockType block && block.hasIcon()) || ItemModels.of(item) != null;
     }
 
     /** The cached icon, or null when it was never rendered at {@code size}. */
-    public Icon find(BlockType type, int size) {
+    public Icon find(Item type, int size) {
         IconAtlasLayout.Cell cell = layout.find(type, clamp(size));
         return cell == null ? null : icon(cell);
     }
@@ -78,7 +117,7 @@ public final class ItemIconAtlas implements AutoCloseable {
      * Changes GL state (framebuffer, viewport, scissor, clear colour, whatever the painter
      * touches): call inside a state snapshot.
      */
-    public Icon ensure(BlockType type, int size) {
+    public Icon ensure(Item type, int size) {
         int s = clamp(size);
         IconAtlasLayout.Cell existing = layout.find(type, s);
         if (existing != null) {
@@ -92,8 +131,15 @@ public final class ItemIconAtlas implements AutoCloseable {
         glScissor(cell.x(), cell.y(), s, s);
         glColorMask(true, true, true, true);
         glClearColor(0f, 0f, 0f, 0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        painter.paint(type, cell.x(), cell.y(), s);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        if (type instanceof BlockType block) {
+            painter.paint(block, cell.x(), cell.y(), s);
+        } else {
+            ItemModels.ItemModel model = ItemModels.of(type);
+            if (model != null) {
+                modelPainter.paint(model, cell.x(), cell.y(), s);
+            }
+        }
         return icon(cell);
     }
 

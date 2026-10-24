@@ -206,6 +206,7 @@ public final class ClientWorldView {
     public com.stonebreak.network.packet.world.WeatherSyncS2C pendingWeatherSync() { return pendingWeatherSync; }
     /** Live replicated entity shadows tracked by this client (debug overlay). */
     public int trackedEntityShadows() { return entityHandler.trackedShadowCount(); }
+    public com.stonebreak.mobs.entities.Entity entityShadow(int networkId) { return entityHandler.shadow(networkId); }
     /** True once a remote client has applied its server-sent player data (or for a non-remote
      *  client, trivially true — it doesn't use the network restore path). */
     public boolean isRestoreApplied() { return !remote || restoreApplied; }
@@ -802,6 +803,14 @@ public final class ClientWorldView {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             conn.send(new DeathDropC2S(com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
+        }
+    }
+
+    /** Any vehicle intent or rower's report (see {@code VehicleActionC2S}, {@code VehicleMoveC2S}). */
+    public void sendVehiclePacket(com.openmason.engine.net.protocol.Packet packet, boolean droppable) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(packet, droppable);
         }
     }
 

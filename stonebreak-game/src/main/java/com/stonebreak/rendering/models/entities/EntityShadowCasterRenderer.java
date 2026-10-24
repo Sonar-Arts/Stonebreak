@@ -39,7 +39,8 @@ final class EntityShadowCasterRenderer {
         for (Entity entity : manager.getAllEntities()) {
             if (!entity.isAlive() || !EntityRenderer.isInRenderableChunk(entity, world)) continue;
             if (!SbeMobRenderer.handles(entity) && entity.getType() != EntityType.REMOTE_PLAYER
-                    && entity.getType() != EntityType.ILLUSION_DECOY) continue;
+                    && entity.getType() != EntityType.ILLUSION_DECOY
+                    && entity.getType() != EntityType.DINGHY) continue;
             float height = entity.getHeight();
             float bound = Math.max(height, Math.max(entity.getWidth(), entity.getLength())) + 1f;
             casters.add(new Caster(entity, entity.getPosition(), height, bound));
@@ -112,6 +113,17 @@ final class EntityShadowCasterRenderer {
                         rp.getPosition(), rp.getBodyYaw(), rp.getScale(),
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }
+        }
+        if (type == EntityType.DINGHY) {
+            com.openmason.engine.entity.sbe.SbeEntityAsset asset =
+                    com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
+            if (asset != null) {
+                sbeEntityRenderer.renderColored(asset,
+                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, 0f,
+                        entity.getPosition(), entity.getYaw(), entity.getScale(),
+                        lightView, lightProj, SHADOW_CASTER_COLOR);
+            }
+            return;
         }
         // Everything else (drops, projectiles, effect volumes) doesn't cast.
     }

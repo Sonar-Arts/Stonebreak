@@ -53,6 +53,17 @@ public final class SbePoseSolver {
         void accept(Matrix4f partMatrix, SbePart part);
     }
 
+    /**
+     * Code-driven rotation for named parts, layered on top of whatever the clip (or rest pose)
+     * gives them — how gameplay drives a part no clip can know about (a dinghy's oars follow
+     * the rower's input). Rotates about the part's own origin, so children follow.
+     */
+    @FunctionalInterface
+    public interface PartOverrides {
+        /** Euler degrees added to {@code partName}'s rotation, or null to leave it alone. */
+        Vector3f extraRotationDeg(String partName);
+    }
+
     private SbePoseSolver() {
         throw new UnsupportedOperationException("Utility class");
     }
@@ -92,9 +103,17 @@ public final class SbePoseSolver {
                                          AnimState anim, Matrix4f base,
                                          float headYawDeg, float headPitchDeg,
                                          PartConsumer consumer) {
+        forEachPartMatrix(geometry, asset, anim, base, headYawDeg, headPitchDeg, null, consumer);
+    }
+
+    /** {@link #forEachPartMatrix} with code-driven part rotations (null for none). */
+    public static void forEachPartMatrix(SbeModelGeometry geometry, SbeEntityAsset asset,
+                                         AnimState anim, Matrix4f base,
+                                         float headYawDeg, float headPitchDeg,
+                                         PartOverrides overrides, PartConsumer consumer) {
         ResolvedAnim resolved = resolveAnim(asset, anim);
         Matrix4f partMatrix = new Matrix4f();
-        HierarchyFrame frame = new HierarchyFrame(geometry, resolved, headYawDeg, headPitchDeg);
+        HierarchyFrame frame = new HierarchyFrame(geometry, resolved, headYawDeg, headPitchDeg, overrides);
         for (SbePart part : geometry.parts()) {
             computePartMatrix(partMatrix, frame, part, base);
             consumer.accept(partMatrix, part);
@@ -131,7 +150,7 @@ public final class SbePoseSolver {
             SbePart host = resolveHostPart(geometry, socket);
             if (host == null) return null;
             ResolvedAnim resolved = resolveAnim(asset, anim);
-            computePartMatrix(dest, new HierarchyFrame(geometry, resolved, headYawDeg, headPitchDeg),
+            computePartMatrix(dest, new HierarchyFrame(geometry, resolved, headYawDeg, headPitchDeg, null),
                     host, base);
         }
 
@@ -224,6 +243,7 @@ public final class SbePoseSolver {
         private final String headPartId;
         private final float headYawRad;
         private final float headPitchRad;
+        private final PartOverrides overrides;
         private final Map<String, SbePart> byId;
         private final Map<String, Matrix4f> deltas = new java.util.HashMap<>();
         private final Map<String, Matrix4f> restWorld = new java.util.HashMap<>();
@@ -232,8 +252,9 @@ public final class SbePoseSolver {
         private static final int MAX_DEPTH = 32;
 
         HierarchyFrame(SbeModelGeometry geometry, ResolvedAnim resolved,
-                       float headYawDeg, float headPitchDeg) {
+                       float headYawDeg, float headPitchDeg, PartOverrides overrides) {
             this.resolved = resolved;
+            this.overrides = overrides;
             this.headPartId = (headYawDeg != 0f || headPitchDeg != 0f) ? headPartId(geometry) : null;
             this.headYawRad = (float) Math.toRadians(headYawDeg);
             this.headPitchRad = (float) Math.toRadians(headPitchDeg);
@@ -261,20 +282,25 @@ public final class SbePoseSolver {
 
             AnimSampler.PartPose pose = samplePartPose(part, resolved);
             boolean trackedHead = headPartId != null && headPartId.equals(part.id());
+            Vector3f extraRot = overrides != null ? overrides.extraRotationDeg(part.name()) : null;
             SbePart parent = depth < MAX_DEPTH ? parentOf(part) : null;
             Matrix4f parentDelta = parent != null ? delta(parent, depth + 1) : null;
 
             Matrix4f result;
-            if (pose == null && !trackedHead) {
+            if (pose == null && !trackedHead && extraRot == null) {
                 // L_anim == L_rest: inherit the parent's delta verbatim.
                 result = parentDelta;
             } else {
                 Vector3f origin = part.restOrigin();
+                Vector3f rotDeg = pose != null ? pose.rotationDeg() : part.restRot();
+                if (extraRot != null) {
+                    rotDeg = new Vector3f(rotDeg).add(extraRot);
+                }
                 // Tracking belongs in the local pose, so facial children and
                 // their sockets inherit it along with any animated ancestors.
                 Matrix4f local = partTransform(new Matrix4f(),
                         pose != null ? pose.position() : part.restPos(),
-                        pose != null ? pose.rotationDeg() : part.restRot(),
+                        rotDeg,
                         pose != null ? pose.scale() : part.restScale(), origin,
                         trackedHead ? headYawRad : 0f, trackedHead ? headPitchRad : 0f);
                 Matrix4f restInverse = partTransform(new Matrix4f(),

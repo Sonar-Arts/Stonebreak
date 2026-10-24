@@ -37,8 +37,8 @@ public final class SbeEntityRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(SbeEntityRegistry.class);
 
-    /** Resource folder scanned for {@code .sbe} files. */
-    private static final String SBE_RESOURCE_PATH = "sbe/Mobs";
+    /** Resource folders scanned for {@code .sbe} files: creatures, and vehicles (the dinghy). */
+    private static final List<String> SBE_RESOURCE_PATHS = List.of("sbe/Mobs", "sbe/Vehicles");
 
     private static final Map<String, SbeEntityAsset> BY_OBJECT_ID = new LinkedHashMap<>();
 
@@ -47,7 +47,7 @@ public final class SbeEntityRegistry {
     }
 
     /**
-     * Discover and load every {@code .sbe} file under {@code sbe/Mobs/},
+     * Discover and load every {@code .sbe} file under {@code sbe/Mobs/} and {@code sbe/Vehicles/},
      * indexing each by its manifest object id. Failures on individual files are
      * logged and skipped. Safe to call again to rescan.
      *
@@ -65,7 +65,7 @@ public final class SbeEntityRegistry {
             }
         }
         logger.info("SBE entity registry: {} entit(ies) loaded from {}",
-                BY_OBJECT_ID.size(), SBE_RESOURCE_PATH);
+                BY_OBJECT_ID.size(), SBE_RESOURCE_PATHS);
         return BY_OBJECT_ID.size();
     }
 
@@ -93,23 +93,31 @@ public final class SbeEntityRegistry {
     }
 
     /**
-     * Discover {@code .sbe} files under {@link #SBE_RESOURCE_PATH}, returning
+     * Discover {@code .sbe} files under {@link #SBE_RESOURCE_PATHS}, returning
      * absolute classpath resource paths suitable for {@link SbeEntityLoader}.
      * Checks the development filesystem first, then the classpath (incl. JARs).
      */
     private static List<String> discover() {
+        List<String> resourcePaths = new ArrayList<>();
+        for (String folder : SBE_RESOURCE_PATHS) {
+            resourcePaths.addAll(discover(folder));
+        }
+        return resourcePaths;
+    }
+
+    private static List<String> discover(String folder) {
         Set<String> fileNames = new LinkedHashSet<>();
         try {
-            Path fsPath = Path.of(SBE_RESOURCE_PATH);
+            Path fsPath = Path.of(folder);
             if (Files.isDirectory(fsPath)) {
                 collectSbeNames(fsPath, fileNames);
             }
             if (fileNames.isEmpty()) {
-                URI uri = classpathFolderUri();
+                URI uri = classpathFolderUri(folder);
                 if (uri != null) {
                     if ("jar".equals(uri.getScheme())) {
                         try (FileSystem fs = FileSystems.newFileSystem(uri, Collections.emptyMap())) {
-                            collectSbeNames(fs.getPath(SBE_RESOURCE_PATH), fileNames);
+                            collectSbeNames(fs.getPath(folder), fileNames);
                         }
                     } else {
                         collectSbeNames(Path.of(uri), fileNames);
@@ -122,13 +130,13 @@ public final class SbeEntityRegistry {
 
         List<String> resourcePaths = new ArrayList<>(fileNames.size());
         for (String name : fileNames) {
-            resourcePaths.add("/" + SBE_RESOURCE_PATH + "/" + name);
+            resourcePaths.add("/" + folder + "/" + name);
         }
         return resourcePaths;
     }
 
-    private static URI classpathFolderUri() throws URISyntaxException {
-        var url = SbeEntityRegistry.class.getClassLoader().getResource(SBE_RESOURCE_PATH);
+    private static URI classpathFolderUri(String folder) throws URISyntaxException {
+        var url = SbeEntityRegistry.class.getClassLoader().getResource(folder);
         return url == null ? null : url.toURI();
     }
 

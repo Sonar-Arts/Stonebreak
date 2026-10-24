@@ -141,8 +141,8 @@ public abstract class LivingEntity extends Entity {
         // Tick the Illusionist Bewildered/panic timer; clear the forced target when it lapses.
         combat.updateBewildered(deltaTime);
 
-        // Update AI behavior — suppressed while stunned
-        if (!isStunned()) {
+        // Update AI behavior — suppressed while stunned or seated in a vehicle
+        if (!isStunned() && !isRiding()) {
             updateAI(deltaTime);
         }
 

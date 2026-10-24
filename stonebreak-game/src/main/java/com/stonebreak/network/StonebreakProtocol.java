@@ -130,6 +130,10 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 37, com.stonebreak.network.packet.entity.DecoyCastC2S.class,
                 com.stonebreak.network.packet.entity.DecoyCastC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 38, WeatherSetC2S.class, WeatherSetC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 39, com.stonebreak.network.packet.vehicle.VehicleActionC2S.class,
+                com.stonebreak.network.packet.vehicle.VehicleActionC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 40, com.stonebreak.network.packet.vehicle.VehicleMoveC2S.class,
+                com.stonebreak.network.packet.vehicle.VehicleMoveC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);

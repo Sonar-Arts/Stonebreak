@@ -87,6 +87,7 @@ public final class IntegratedServer {
     private final ServerChatHandler chatHandler;
     private final ServerFishingHandler fishingHandler = new ServerFishingHandler();
     private final ServerIllusionHandler illusionHandler = new ServerIllusionHandler();
+    private final com.stonebreak.network.server.handlers.ServerVehicleHandler vehicleHandler;
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
@@ -123,6 +124,7 @@ public final class IntegratedServer {
         this.chunkHandler = new ServerChunkHandler();
         this.blockHandler = new ServerBlockHandler(chunkHandler);
         this.entityHandler = new ServerEntityHandler();
+        this.vehicleHandler = new com.stonebreak.network.server.handlers.ServerVehicleHandler(entityHandler::entity);
         this.playerHandler = new ServerPlayerHandler();
         this.chatHandler = new ServerChatHandler();
     }
@@ -589,12 +591,18 @@ public final class IntegratedServer {
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
-            case com.stonebreak.network.packet.player.PlayerLifeC2S pl ->
+            case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> {
                 playerHandler.handlePlayerLife(sp, pl, ctx, receivedNs);
+                if (pl.dead()) {
+                    vehicleHandler.onPeerLeft(sp, ctx); // the dead don't row
+                }
+            }
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
             case com.stonebreak.network.packet.player.FishingRodC2S fr -> fishingHandler.handleRodUse(sp, fr, ctx);
             case com.stonebreak.network.packet.entity.DecoyCastC2S dc -> illusionHandler.handleDecoyCast(sp, dc, ctx);
+            case com.stonebreak.network.packet.vehicle.VehicleActionC2S va -> vehicleHandler.handleAction(sp, va, ctx);
+            case com.stonebreak.network.packet.vehicle.VehicleMoveC2S vm -> vehicleHandler.handleMove(sp, vm);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
@@ -711,6 +719,7 @@ public final class IntegratedServer {
             }
             ctx.removePlayer(existing);
             entityHandler.onPeerLeft(existing);
+            vehicleHandler.onPeerLeft(existing, ctx);
             ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
             existing.kick(sp.isLocal() ? NameClaims.HOST_NAME : "You logged in from another location.");
         }
@@ -1357,6 +1366,7 @@ public final class IntegratedServer {
             // would overwrite the new session's fresher blob (takeover already saved it once).
             persistPlayer(sp);
             entityHandler.onPeerLeft(sp);
+            vehicleHandler.onPeerLeft(sp, ctx);
             ctx.broadcast(new PlayerLeaveS2C(sp.playerId()), false);
             System.out.println("[SERVER] Player " + sp.playerId() + " (" + sp.username() + ") left.");
         }

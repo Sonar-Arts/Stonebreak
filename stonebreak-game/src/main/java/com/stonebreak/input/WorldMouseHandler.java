@@ -71,6 +71,8 @@ final class WorldMouseHandler {
                     em.getLivingEntities().stream().filter(Player::isCombatTarget).toList());
             if (target != null) {
                 player.attackEntity(target);
+            } else {
+                com.stonebreak.vehicles.VehicleInteraction.tryHit(player);
             }
         }
     }
@@ -78,6 +80,14 @@ final class WorldMouseHandler {
     /** Right press: held-item actions first (bow/staff/rod/food), then block interaction/placement. Package-private for tests. */
     void handleUse(Player player) {
         ItemStack held = player.getInventory().getSelectedHotbarSlot();
+
+        // A boat under the crosshair takes the click whatever is in hand: climb in.
+        if (com.stonebreak.vehicles.VehicleInteraction.tryBoard(player)) {
+            return;
+        }
+        if (com.stonebreak.vehicles.VehicleInteraction.tryPlace(player, held)) {
+            return;
+        }
 
         // Bow → start drawing (no attack swing).
         if (!held.isEmpty() && held.getItem() == ItemType.BOW) {

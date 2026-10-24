@@ -84,6 +84,17 @@ final class GameplayKeyHandler {
         boolean shift = keys.isDown(GLFW_KEY_LEFT_SHIFT) || keys.isDown(GLFW_KEY_RIGHT_SHIFT);
         boolean crouch = keys.isDown(GLFW_KEY_LEFT_CONTROL) || keys.isDown(GLFW_KEY_RIGHT_CONTROL);
 
+        // Seated in a vehicle: WASD pulls the oars (in the rower's seat), Shift gets out. No
+        // walking, dodging, stealth or flight from a seat.
+        if (player.getRiding().isRiding()) {
+            player.getRiding().setKeys(moveForward, moveBackward, moveLeft, moveRight);
+            if (keys.pressedOnce(GLFW_KEY_LEFT_SHIFT)) {
+                player.getRiding().requestDismount(player);
+            }
+            processWorldActions(player);
+            return;
+        }
+
         // Universal dodge (all classes): edge-triggered dash on Left Alt. Read here, after
         // the WASD state is captured this frame, so the dash follows live input rather than
         // residual momentum. Fires independent of the movement-lock guard below.
@@ -119,7 +130,11 @@ final class GameplayKeyHandler {
             }
         }
 
-        // Continuous block breaking while the left button is held.
+        processWorldActions(player);
+    }
+
+    /** Continuous block breaking while the left button is held, and the hotbar number keys. */
+    private void processWorldActions(Player player) {
         if (mouse.isDown(GLFW_MOUSE_BUTTON_LEFT)) {
             player.startBreakingBlock();
         } else {

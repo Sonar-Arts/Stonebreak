@@ -98,6 +98,12 @@ public final class ItemType implements Item {
      * registry promotion skipped.
      */
     public static final ItemType SHEARS = fromRegistry("stonebreak:shears", "SHEARS");
+    /**
+     * Dinghy (SBO 1.9, numericId 1037). Right-clicking places a
+     * {@code vehicles.Dinghy} entity; the icon and held item draw the boat's
+     * SBE model (see {@code ItemModelRegistry}) instead of the fallback sprite.
+     */
+    public static final ItemType DINGHY = fromRegistry("stonebreak:dinghy", "DINGHY");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
 
