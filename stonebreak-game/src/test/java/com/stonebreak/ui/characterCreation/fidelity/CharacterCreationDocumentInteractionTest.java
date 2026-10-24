@@ -43,7 +43,8 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 /**
  * The character creation document's presses (#301) run the legacy rules through the screen's own actions:
  * tabs, background rows, ability [-]/[+], class rows, class tree nodes, +1 SP, Acquire, Equip on the Looks tab's hair and
- * hat lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame).
+ * hat lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame). A right press over
+ * a point control takes one point back.
  * Escape asks before leaving and Tab does nothing (#302).
  */
 @Tag("regression")
@@ -62,6 +63,65 @@ class CharacterCreationDocumentInteractionTest {
         stage.clickAt(r.x() + r.width() / 2f, r.y() + r.height() / 2f);
         stage.host.characterCreation().poll();
         stage.settle();
+    }
+
+    private static void rightClick(DocumentStage stage, String name) {
+        UiRect r = DocumentCharacterCreationCapture.element(stage, name).rect();
+        float x = r.x() + r.width() / 2f;
+        float y = r.y() + r.height() / 2f;
+        stage.view.input().pointerMove(x, y);
+        stage.view.input().pointerDown(x, y, 1, 0);
+        stage.view.input().pointerUp(x, y, 1, 0);
+        stage.settle();
+        stage.host.characterCreation().poll();
+        stage.settle();
+    }
+
+    @Test
+    void rightPressTakesBackOnePointOfTheControlUnderIt() throws Exception {
+        try (UiRaster fonts = new UiRaster(1920, 1080, 1f)) {
+            CharacterCreationScreen screen = new CharacterCreationScreen(fonts.backend());
+            CharacterStats stats = screen.getCharacterStats();
+            try (DocumentStage stage = DocumentCharacterCreationCapture.stage(shipped, screen, 1920, 1080, 1f)) {
+                CharacterStats.RpgSnapshot blank = stats.snapshotRpgState();
+                click(stage, "tab1");
+                int dex = stats.getAbilityScores()[1];
+                click(stage, "plus1");
+                click(stage, "plus1");
+                rightClick(stage, "plus1");
+                assertEquals(dex + 1, stats.getAbilityScores()[1]);
+                rightClick(stage, "plus1");
+                rightClick(stage, "plus1");
+                assertEquals(dex, stats.getAbilityScores()[1], "never below the starting score");
+
+                click(stage, "tab2");
+                click(stage, "cls0");
+                String tierOne = ClassRegistry.pathKey(ClassRegistry.ALL.get(0).id(), 1, 0);
+                String node = "node" + (1 + ClassRegistry.ALL.get(0).abilities().size() + 4);
+                click(stage, node);
+                assertEquals(1, stats.getRank(tierOne));
+                rightClick(stage, node);
+                assertEquals(0, stats.getRank(tierOne));
+
+                click(stage, "talent1");
+                String skill = SkillRegistry.ALL.get(3).id();
+                click(stage, "invest3");
+                rightClick(stage, "invest3");
+                assertEquals(0, stats.getSkillLevel(skill));
+                click(stage, "mode1");
+                click(stage, "train1");
+                rightClick(stage, "train1");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[1]));
+                click(stage, "mode0");
+
+                click(stage, "talent2");
+                click(stage, "acquire0");
+                rightClick(stage, "acquire0");
+                assertFalse(stats.hasFeat(FeatRegistry.ALL.get(0).id()));
+                assertFalse(stats.hasChangedSince(blank), "every point is back");
+                assertFalse(stats.canUndo(), "and Undo has nothing left to replay");
+            }
+        }
     }
 
     @Test

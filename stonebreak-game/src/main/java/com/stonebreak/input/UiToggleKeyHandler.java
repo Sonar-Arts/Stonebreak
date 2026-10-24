@@ -86,10 +86,10 @@ final class UiToggleKeyHandler {
             return;
         }
 
-        // The "Save changes?" prompt is modal: Escape dismisses it and stays in the panel.
+        // The "Save changes?" prompt is modal: Escape answers No (discards the allocations and leaves the panel).
         SaveChangesDialog saveDialog = game.getSaveChangesDialog();
         if (saveDialog != null && saveDialog.isVisible()) {
-            game.cancelSaveChanges();
+            game.confirmDiscardChanges();
             return;
         }
 

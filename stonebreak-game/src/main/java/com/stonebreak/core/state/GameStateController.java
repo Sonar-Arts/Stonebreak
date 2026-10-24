@@ -516,6 +516,11 @@ public final class GameStateController {
         return rpgSessionBaseline != null;
     }
 
+    /** The state the open panel session began with (what No restores and right-click refunds stop at); null when none is open. */
+    public CharacterStats.RpgSnapshot rpgSessionBaseline() {
+        return rpgSessionBaseline;
+    }
+
     /** True when the player made RPG allocations since the panel session began. */
     private boolean hasUnsavedChanges() {
         if (rpgSessionBaseline == null) return false;

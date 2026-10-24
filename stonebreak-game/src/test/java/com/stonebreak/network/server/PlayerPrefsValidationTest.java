@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PlayerPrefsValidationTest {
 
-    /** Level 3: grantedCp/Sp/Fp = 3/5/3. Scores sum 63, AP pool 5 (budget 68 ≤ 90). */
+    /** Level 3: grantedCp/Sp/Fp = 10/5/3. Scores sum 63, AP pool 5 (budget 68 ≤ 90). */
     private static PlayerData baseline() {
         return PlayerData.builder()
                 .level(3)
@@ -83,7 +83,7 @@ class PlayerPrefsValidationTest {
     @Test
     void spendBeyondServerHeldPoolRejected() {
         PlayerData candidate = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("berserker:p0:0", 5))   // grantedCp(3) == 3
+                .spentAbilityCp(Map.of("berserker:p0:0", 11))  // grantedCp(3) == 10
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
                 serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
@@ -303,7 +303,7 @@ class PlayerPrefsValidationTest {
     void creationSpendBeyondLevelOneGrantRejected() {
         PlayerData candidate = PlayerData.builder()
                 .remainingCp(1)
-                .spentAbilityCp(Map.of("berserker:p0:0", 5))   // grantedCp(1) == 1
+                .spentAbilityCp(Map.of("berserker:p0:0", 5))   // grantedCp(1) == 4
                 .abilityScores(new int[]{10, 10, 10, 10, 10, 10})
                 .build();
         assertNull(PlayerPrefsValidator.normalizeCreation(candidate));

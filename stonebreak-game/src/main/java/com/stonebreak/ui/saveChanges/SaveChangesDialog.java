@@ -8,7 +8,7 @@ import com.stonebreak.ui.runtime.screens.ScreenPresentation;
  * inventory/character sheet while holding unspent point allocations.
  *
  * <p>Yes commits the allocations; No discards them (reverting to the state the
- * screen opened with); Escape dismisses the dialog and stays in the panel. Visibility
+ * screen opened with); Escape is No. Visibility
  * stays here; it shows as the shipped UI document {@value #DOCUMENT_ID}
  * ({@link #setPresentation}), whose buttons run {@code stonebreak:screen.save-changes.yes/no}.
  */

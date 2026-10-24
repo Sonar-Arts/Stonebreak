@@ -16,6 +16,8 @@ public final class CharacterCreationStateManager {
     private static final float NAV_BTN_H = 44f;
 
     private CharacterStats characterStats;
+    /** The blank character creation started from: what right-click refunds stop at. */
+    private CharacterStats.RpgSnapshot baseline;
     private CharacterCreationTab activeTab = CharacterCreationTab.BACKGROUND;
 
     private final MButton backToWorldSelectButton;
@@ -41,6 +43,7 @@ public final class CharacterCreationStateManager {
 
     public CharacterCreationStateManager() {
         this.characterStats = new CharacterStats(null);
+        this.baseline = characterStats.snapshotRpgState();
         this.backToWorldSelectButton = new MButton("World Select")
                 .arrow(MButton.Arrow.LEFT).size(NAV_BTN_W, NAV_BTN_H);
         this.terrainMapperButton     = new MButton("Terrain Mapper")
@@ -50,6 +53,7 @@ public final class CharacterCreationStateManager {
     }
 
     public CharacterStats getCharacterStats() { return characterStats; }
+    public CharacterStats.RpgSnapshot getBaseline() { return baseline; }
 
     public CharacterCreationTab getActiveTab()              { return activeTab; }
     public void setActiveTab(CharacterCreationTab tab)      { this.activeTab = tab; }
@@ -102,6 +106,7 @@ public final class CharacterCreationStateManager {
     /** Discards all progress and resets to the default blank-character state. */
     public void reset() {
         this.characterStats    = new CharacterStats(null);
+        this.baseline          = characterStats.snapshotRpgState();
         this.activeTab         = CharacterCreationTab.BACKGROUND;
         this.classScroll       = 0f;
         this.skillScroll       = 0f;

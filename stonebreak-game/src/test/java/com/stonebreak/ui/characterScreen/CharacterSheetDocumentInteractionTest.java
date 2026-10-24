@@ -26,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The character sheet document's presses (#301) run the sheet's rules through its controller and tab states: tabs,
  * ability [+]/[-], class rows, Spend CP, +1 SP, the feat level filter (left forward, right back), General, a feat
- * row, Acquire, and the wheel over the class list, the ability list and the feat list.
+ * row, Acquire, and the wheel over the class list, the ability list and the feat list; a right press over a point
+ * control refunds one point spent this panel session.
  */
 @Tag("regression")
 class CharacterSheetDocumentInteractionTest {
@@ -87,7 +88,8 @@ class CharacterSheetDocumentInteractionTest {
                 stage.host.characterSheet().poll();
                 stage.settle();
                 stage.clickAt(rank.x() + 5, rank.y() + 5);
-                assertEquals(1, stats.getRank(monk + ":p0:0"), "no CP left: the node takes no rank");
+                assertEquals(2, stats.getRank(monk + ":p0:0"), "a second rank while CP remain");
+                assertEquals(cp - 2, stats.getRemainingCp());
                 assertEquals(monk + ":p0:0", controller.classes().focusKey(), "the clicked node fills the detail panel");
                 // the pointer over another node shows that one instead, and off the nodes the clicked one again
                 UiRect passive = stage.view.instance().qAll(".tn").get(0).rect();
@@ -150,6 +152,69 @@ class CharacterSheetDocumentInteractionTest {
                 click(stage, "tab2");
                 assertEquals(TalentSubTab.CLASS_ABILITIES, controller.getTalentSubTab(),
                     "the Talents tab reopens on the sub-tab last shown");
+            }
+        }
+    }
+
+    private static void rightClick(DocumentStage stage, UiRect r) {
+        stage.view.input().pointerMove(r.x() + 5, r.y() + 5);
+        stage.view.input().pointerDown(r.x() + 5, r.y() + 5, 1, 0);
+        stage.view.input().pointerUp(r.x() + 5, r.y() + 5, 1, 0);
+        stage.settle();
+        stage.host.characterSheet().poll();
+        stage.settle();
+    }
+
+    @Test
+    void rightPressRefundsOnlyPointsSpentThisSession() throws Exception {
+        try (UiRaster fonts = new UiRaster(1920, 1080, 1f)) {
+            CharacterScreen screen = CharacterSheetFixtures.screen(fonts.backend());
+            CharacterStats stats = screen.getController().stats();
+            var controller = screen.getController();
+            try (DocumentStage stage = DocumentCharacterSheetCapture.stage(shipped, screen, 1920, 1080, 1f)) {
+                click(stage, "plus2");
+                CharacterStats.RpgSnapshot saved = stats.snapshotRpgState(); // the point above is saved
+                controller.setSessionBaseline(() -> saved);
+                int con = stats.getAbilityScores()[2];
+                click(stage, "plus2");
+                click(stage, "plus2", 1);
+                assertEquals(con, stats.getAbilityScores()[2], "the session's point comes back");
+                click(stage, "plus2", 1);
+                assertEquals(con, stats.getAbilityScores()[2], "the saved one does not");
+
+                click(stage, "tab2");
+                click(stage, "cls2");
+                String monk = ClassRegistry.ALL.get(2).id();
+                int cp = stats.getRemainingCp();
+                UiRect rank = stage.view.instance().qAll(".tn").get(3).rect();
+                stage.clickAt(rank.x() + 5, rank.y() + 5);
+                stage.host.characterSheet().poll();
+                stage.settle();
+                assertEquals(1, stats.getRank(monk + ":p0:0"));
+                rightClick(stage, rank);
+                assertEquals(0, stats.getRank(monk + ":p0:0"));
+                assertEquals(cp, stats.getRemainingCp());
+
+                click(stage, "talent1");
+                String skill = SkillRegistry.ALL.get(4).id();
+                int level = stats.getSkillLevel(skill);
+                click(stage, "invest4");
+                click(stage, "invest4", 1);
+                assertEquals(level, stats.getSkillLevel(skill));
+                click(stage, "mode1");
+                click(stage, "train2");
+                click(stage, "train2", 1);
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[2]));
+                click(stage, "mode0");
+
+                click(stage, "talent2");
+                click(stage, "feat0");
+                String first = FeatRegistry.filter(0, false).get(0).id();
+                click(stage, "acquire");
+                assertTrue(stats.hasFeat(first));
+                click(stage, "feat0", 1);
+                assertFalse(stats.hasFeat(first));
+                assertFalse(stats.hasChangedSince(saved), "every session point refunded");
             }
         }
     }

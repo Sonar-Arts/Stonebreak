@@ -24,7 +24,7 @@ class CharacterStatsProgressionTest {
     void freshCharacterStartsWithTheLevelOneGrant() {
         CharacterStats cs = stats();
         assertEquals(1, cs.getLevel());
-        assertEquals(1, cs.getRemainingCp());
+        assertEquals(4, cs.getRemainingCp());
         assertEquals(3, cs.getRemainingSkillPoints());
         assertEquals(1, cs.getRemainingFeatPoints());
     }
@@ -33,20 +33,20 @@ class CharacterStatsProgressionTest {
 
     @Test
     void grantHelpersSumAcrossLevels() {
-        assertEquals(1, CharacterStats.grantedCp(1));
+        assertEquals(4, CharacterStats.grantedCp(1));
         assertEquals(3, CharacterStats.grantedSp(1));
         assertEquals(1, CharacterStats.grantedFp(1));
 
-        assertEquals(2, CharacterStats.grantedCp(2));
+        assertEquals(7, CharacterStats.grantedCp(2));
         assertEquals(4, CharacterStats.grantedSp(2));
         assertEquals(2, CharacterStats.grantedFp(2));
 
-        assertEquals(3, CharacterStats.grantedCp(3));
+        assertEquals(10, CharacterStats.grantedCp(3));
         assertEquals(5, CharacterStats.grantedSp(3));
         assertEquals(3, CharacterStats.grantedFp(3));
 
-        // Level 1 (3 SP) + one per level after: level 10 => 3 + 9 = 12 SP
-        assertEquals(10, CharacterStats.grantedCp(10));
+        // Level 1 (4 CP, 3 SP) + per level after (3 CP, 1 SP): level 10 => 4 + 27 = 31 CP, 3 + 9 = 12 SP
+        assertEquals(31, CharacterStats.grantedCp(10));
         assertEquals(12, CharacterStats.grantedSp(10));
         assertEquals(10, CharacterStats.grantedFp(10));
     }
@@ -59,7 +59,7 @@ class CharacterStatsProgressionTest {
         // Level 1 -> 2 needs 200 XP (getXpForNextLevel at level 1)
         cs.addXp(200);
         assertEquals(2, cs.getLevel());
-        assertEquals(2, cs.getRemainingCp());
+        assertEquals(7, cs.getRemainingCp());
         assertEquals(4, cs.getRemainingSkillPoints());
         assertEquals(2, cs.getRemainingFeatPoints());
     }
@@ -84,8 +84,8 @@ class CharacterStatsProgressionTest {
 
         cs.addXp(400); // levels 2 and 3
         assertEquals(3, cs.getLevel());
-        // 3 CP granted, 1 spent => 2 remaining
-        assertEquals(2, cs.getRemainingCp());
+        // 10 CP granted, 1 spent => 9 remaining
+        assertEquals(9, cs.getRemainingCp());
         // 5 SP granted, 1 invested => 4 remaining
         assertEquals(4, cs.getRemainingSkillPoints());
         // 3 FP granted, 1 acquired => 2 remaining
@@ -95,11 +95,10 @@ class CharacterStatsProgressionTest {
     @Test
     void spendingStopsWhenThePoolIsEmpty() {
         CharacterStats cs = stats();
-        cs.spendCpOnAbility("ranger:p0:0");
-        // Only 1 CP at level 1: the second spend is a no-op.
-        cs.spendCpOnAbility("ranger:p0:0");
+        // Only 4 CP at level 1: the fifth spend is a no-op.
+        for (int i = 0; i < 5; i++) cs.spendCpOnAbility("ranger:p0:0");
         assertEquals(0, cs.getRemainingCp());
-        assertEquals(1, cs.getRank("ranger:p0:0"));
+        assertEquals(4, cs.getRank("ranger:p0:0"));
     }
 
     // ─────────────────────────────── Grandfathered saves
@@ -117,7 +116,7 @@ class CharacterStatsProgressionTest {
         // Leveling up after a grandfathered restore still adds the new grant.
         cs.addXp(200);
         assertEquals(2, cs.getLevel());
-        assertEquals(101, cs.getRemainingCp());
+        assertEquals(103, cs.getRemainingCp());
         assertEquals(101, cs.getRemainingSkillPoints());
         assertEquals(101, cs.getRemainingFeatPoints());
     }
@@ -130,11 +129,11 @@ class CharacterStatsProgressionTest {
         assertFalse(cs.canUndo());
         cs.spendCpOnAbility("ranger:p0:0");
         assertTrue(cs.canUndo());
-        assertEquals(0, cs.getRemainingCp());
+        assertEquals(3, cs.getRemainingCp());
         assertEquals("ranger", cs.getSelectedClassId());
 
         assertTrue(cs.undoLastAllocation());
-        assertEquals(1, cs.getRemainingCp());
+        assertEquals(4, cs.getRemainingCp());
         assertEquals(0, cs.getRank("ranger:p0:0"));
         assertNull(cs.getSelectedClassId());
         assertFalse(cs.canUndo());
@@ -198,10 +197,10 @@ class CharacterStatsProgressionTest {
     @Test
     void undoRefundsAllocationsMadeByADecrementChain() {
         CharacterStats cs = stats();
-        cs.spendCpOnAbility("ranger:p0:0");
-        cs.spendCpOnAbility("ranger:p0:0"); // only one succeeds at level 1
-        cs.undoLastAllocation();
-        assertEquals(1, cs.getRemainingCp());
+        // Only four succeed at level 1; the failed fifth must not leave an undo entry.
+        for (int i = 0; i < 5; i++) cs.spendCpOnAbility("ranger:p0:0");
+        for (int i = 0; i < 4; i++) assertTrue(cs.undoLastAllocation());
+        assertEquals(4, cs.getRemainingCp());
         assertFalse(cs.canUndo());
         assertFalse(cs.undoLastAllocation());
     }
@@ -239,7 +238,7 @@ class CharacterStatsProgressionTest {
 
         cs.restoreRpgState(baseline);
         assertFalse(cs.hasChangedSince(baseline));
-        assertEquals(0, cs.getRemainingCp());
+        assertEquals(3, cs.getRemainingCp());
         assertEquals(1, cs.getRank("ranger:p0:0"));
         assertEquals(1, cs.getSkillLevel("mining"));
         assertEquals(0, cs.getSkillLevel("alchemy"));

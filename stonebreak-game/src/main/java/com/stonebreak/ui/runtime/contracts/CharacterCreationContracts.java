@@ -54,7 +54,9 @@ import java.util.concurrent.CompletableFuture;
  * {@code .ability {index, delta}}, {@code .class {id}}, {@code .rank {key}} (one rank of the shown class's tree
  * node), {@code .hover {key}} (the node under the pointer, "" for none), {@code .skill {id}},
  * {@code .skill-mode {mode}} (general, weapons), {@code .train {id}} (a weapon group name, spends WTP),
- * {@code .feat {id}}, {@code .hair {id}}, {@code .hat {id}}, {@code .wheel {dy}}; each refuses unless the screen
+ * {@code .feat {id}}, {@code .refund {target, key}} (a right press: one point of a rank / ability / skill / train
+ * / feat back, {@link com.stonebreak.ui.characterCreation.CharacterCreationActionHandler#onRefund}), {@code .hair {id}}, {@code .hat {id}},
+ * {@code .wheel {dy}}; each refuses unless the screen
  * is showing, and runs the click rule of that control (spending needs points, an equipped cosmetic or an
  * acquired feat takes no press).
  */
@@ -236,6 +238,8 @@ public final class CharacterCreationContracts {
             c.actions().onTrainWeapon(group);
             return null;
         });
+        action(ui, "refund", DataType.object("target", DataType.string(), "key", DataType.string()), (c, a) ->
+            c.actions().onRefund(str(a, "target"), str(a, "key")) ? null : "no such refund target");
         action(ui, "feat", id, (c, a) -> {
             CharacterStats s = c.getCharacterStats();
             if (s.getRemainingFeatPoints() > 0 && !s.hasFeat(str(a, "id"))) {

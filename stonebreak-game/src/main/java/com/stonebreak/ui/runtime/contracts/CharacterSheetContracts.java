@@ -55,7 +55,9 @@ import java.util.concurrent.CompletableFuture;
  * the pointer, "" for none: the tree's detail panel), {@code .skill {index}},
  * {@code .skill-mode {mode}} (general, weapons), {@code .train {group}} (a {@link WeaponGroup} name),
  * {@code .level-filter {direction}}, {@code .general}, {@code .feat {id}}, {@code .acquire},
- * {@code .wheel {dy, sidebar}}; each refuses unless the sheet is showing and runs that control's rule.
+ * {@code .refund {target, key}} (a right press: one point of a rank / ability / skill / train / feat spent this
+ * panel session, {@link CharacterController#refund}), {@code .wheel {dy, sidebar}}; each refuses unless the sheet
+ * is showing and runs that control's rule.
  */
 public final class CharacterSheetContracts {
 
@@ -170,6 +172,8 @@ public final class CharacterSheetContracts {
             c.getController().feats().acquire(c.getController().stats());
             return null;
         });
+        action(ui, "refund", DataType.object("target", DataType.string(), "key", DataType.string()), (c, a) ->
+            c.getController().refund(str(a, "target"), str(a, "key")) ? null : "no such refund target");
         action(ui, "wheel", DataType.object("dy", DataType.number(), "sidebar", DataType.bool()), (c, a) -> {
             float s = com.stonebreak.config.Settings.getInstance().getUiScale();
             float dy = (float) num(a, "dy");

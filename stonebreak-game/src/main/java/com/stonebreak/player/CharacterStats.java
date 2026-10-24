@@ -115,8 +115,8 @@ public class CharacterStats {
    * accumulate, so a level-N character's pool is the sum of grants 1..N minus
    * what they spent. Old saves keep their stored (legacy, larger) pools.
    */
-  private static final int[] STARTING_GRANT  = {1, 3, 1};
-  private static final int[] PER_LEVEL_GRANT = {1, 1, 1};
+  private static final int[] STARTING_GRANT  = {4, 3, 1};
+  private static final int[] PER_LEVEL_GRANT = {3, 1, 1};
 
   /** The {CP, SP, FP} grant awarded for reaching the given level. */
   private static int[] grantForLevel(int level) {
@@ -464,8 +464,13 @@ public class CharacterStats {
 
   /** Ranks the class holds in path tiers strictly below {@code tier}. */
   private int ranksBelowTier(String classId, int tier) {
+    return ranksBelowTier(spentAbilityCp, classId, tier);
+  }
+
+  /** {@link #ranksBelowTier(String, int)} for any rank ledger. */
+  private static int ranksBelowTier(Map<String, Integer> ranks, String classId, int tier) {
     int sum = 0;
-    for (Map.Entry<String, Integer> e : spentAbilityCp.entrySet()) {
+    for (Map.Entry<String, Integer> e : ranks.entrySet()) {
       int t = ClassRegistry.tierOf(e.getKey());
       if (classId.equals(ClassRegistry.classIdOf(e.getKey())) && t >= 0 && t < tier) {
         sum += e.getValue();
@@ -796,6 +801,124 @@ public class CharacterStats {
     this.remainingFp = Math.max(0, fp);
     this.remainingAp = Math.max(0, ap);
     if (player != null) player.updateDerivedStats();
+  }
+
+  // ─────────────────────────────────────────────── Session refunds (right-click undo)
+  //
+  // A right press takes back one point bought since a baseline: in game the panel session's (the state
+  // the inventory / character sheet opened with), in character creation the blank character. A point the
+  // baseline holds is saved and never refunded here. Each refund also drops its allocation from the undo
+  // history, so creation's Undo never replays a point that is already gone.
+
+  /**
+   * Removes one rank of {@code key} bought since {@code baseline}, refunding its CP at the re-derived
+   * slot prices. Session ranks that stood on it go too: a node whose parent empties, and every ranked
+   * node of a tier whose gate is no longer met. Refused when that cascade would take a rank the
+   * baseline holds, or leave spent WTP above earned.
+   *
+   * @return true if ranks were removed
+   */
+  public boolean refundSessionRank(String key, RpgSnapshot baseline) {
+    if (baseline == null || !ClassRegistry.isValidKey(key)) return false;
+    Map<String, Integer> saved = baseline.spentAbilityCp();
+    if (getRank(key) <= saved.getOrDefault(key, 0)) return false;
+    String classId = ClassRegistry.classIdOf(key);
+    Map<String, Integer> ranks = new HashMap<>(spentAbilityCp);
+    ranks.merge(key, -1, Integer::sum);
+    ranks.remove(key, 0);
+    List<String> keys = ClassRegistry.classOfKey(key).map(ClassRegistry::keysOf).orElse(List.of());
+    for (boolean changed = true; changed; ) {
+      changed = false;
+      for (String k : keys) {
+        if (ranks.getOrDefault(k, 0) <= 0 || standsIn(ranks, classId, k)) continue;
+        if (saved.getOrDefault(k, 0) > 0) return false; // would orphan a saved rank
+        ranks.remove(k);
+        changed = true;
+      }
+    }
+    List<String> order = new ArrayList<>(classInvestmentOrder);
+    if (classRanksIn(ranks, classId) == 0) order.remove(classId);
+    if (earnedWtp(ranks, order) < spentWtp()) return false;
+    ledgerVersion++;
+    for (Map.Entry<String, Integer> e : spentAbilityCp.entrySet()) {
+      for (int n = e.getValue() - ranks.getOrDefault(e.getKey(), 0); n > 0; n--) {
+        forgetUndo(UndoKind.CP, e.getKey(), -1);
+      }
+    }
+    int before = derivedSpentCp();
+    spentAbilityCp.clear();
+    spentAbilityCp.putAll(ranks);
+    classInvestmentOrder.clear();
+    classInvestmentOrder.addAll(order);
+    syncPrimaryClass(baseline.classId());
+    remainingCp -= derivedSpentCp() - before;
+    if (player != null) player.updateDerivedStats();
+    return true;
+  }
+
+  /** True when ranked node {@code key} still meets its tier gate and parent rule in {@code ranks}. */
+  private static boolean standsIn(Map<String, Integer> ranks, String classId, String key) {
+    int tier = ClassRegistry.tierOf(key);
+    if (ranksBelowTier(ranks, classId, tier) < PlayerConstants.CLASS_TREE_TIER_GATES[tier]) return false;
+    String parent = ClassRegistry.parentKey(key);
+    return parent == null || ranks.getOrDefault(parent, 0) > 0;
+  }
+
+  /** Takes back one SP put into {@code skillId} since {@code baseline}. */
+  public boolean refundSessionSkillPoint(String skillId, RpgSnapshot baseline) {
+    if (baseline == null || WeaponProficiency.groupOf(skillId).isPresent()
+        || getSkillLevel(skillId) <= baseline.skillLevels().getOrDefault(skillId, 0)) {
+      return false;
+    }
+    remainingSp++;
+    ledgerVersion++;
+    skillLevels.merge(skillId, -1, Integer::sum);
+    skillLevels.remove(skillId, 0);
+    forgetUndo(UndoKind.SP, skillId, -1);
+    return true;
+  }
+
+  /** Lowers {@code group} one proficiency rank trained since {@code baseline} (its WTP is free again). */
+  public boolean refundSessionWeaponRank(WeaponGroup group, RpgSnapshot baseline) {
+    if (baseline == null || group == null) return false;
+    int saved = baseline.skillLevels().getOrDefault(WeaponProficiency.skillId(group), 0);
+    int rank = getProficiency(group).ordinal();
+    if (rank <= ProficiencyRank.fromLevel(saved).ordinal()) return false;
+    setProficiency(group, ProficiencyRank.values()[rank - 1]);
+    forgetUndo(UndoKind.WTP, group.name(), -1);
+    return true;
+  }
+
+  /** Gives back feat {@code featId} when it was acquired since {@code baseline}, refunding its FP. */
+  public boolean refundSessionFeat(String featId, RpgSnapshot baseline) {
+    if (baseline == null || baseline.acquiredFeatIds().contains(featId) || !acquiredFeatIds.remove(featId)) {
+      return false;
+    }
+    remainingFp++;
+    ledgerVersion++;
+    forgetUndo(UndoKind.FP, featId, -1);
+    return true;
+  }
+
+  /** Lowers ability {@code index} one point raised since {@code baseline}, refunding its AP. */
+  public boolean refundSessionAbilityPoint(int index, RpgSnapshot baseline) {
+    if (baseline == null || index < 0 || index >= 6 || abilityScores[index] <= baseline.abilityScores()[index]) {
+      return false;
+    }
+    decrementAbilityScore(index);
+    forgetUndo(UndoKind.AP, null, index);
+    return true;
+  }
+
+  /** Drops the most recent undo entry for this allocation, if the history holds one. */
+  private void forgetUndo(UndoKind kind, String key, int index) {
+    for (var it = undoHistory.descendingIterator(); it.hasNext(); ) {
+      UndoOp op = it.next();
+      if (op.kind() == kind && java.util.Objects.equals(op.key(), key) && op.index() == index) {
+        it.remove();
+        return;
+      }
+    }
   }
 
   /** True when the spendable RPG state differs from the given snapshot. */

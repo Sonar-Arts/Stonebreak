@@ -2694,6 +2694,13 @@
         "id": "string"
       }
     },
+    "stonebreak:screen.character-creation.refund": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "target": "string",
+        "key": "string"
+      }
+    },
     "stonebreak:screen.character-creation.hair": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
@@ -2784,6 +2791,13 @@
     },
     "stonebreak:screen.character-sheet.acquire": {
       "contract": "stonebreak:screen.character-sheet"
+    },
+    "stonebreak:screen.character-sheet.refund": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "target": "string",
+        "key": "string"
+      }
     },
     "stonebreak:screen.character-sheet.wheel": {
       "contract": "stonebreak:screen.character-sheet",
