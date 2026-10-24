@@ -100,10 +100,11 @@ public enum EntityType {
     public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE, GOBLIN};
 
     /**
-     * The mob {@code /spawn} names: a {@link #GLOSSARY_TYPES} entry by enum name (COW) or
-     * display name (cow), case-insensitively; null for anything else.
+     * The spawnable mob ({@link #GLOSSARY_TYPES}) named by enum name (COW) or display name
+     * (cow), case-insensitively — the {@code /spawn} vocabulary on client and server. Null for
+     * unknown or non-living names.
      */
-    public static EntityType findMob(String name) {
+    public static EntityType findGlossaryMob(String name) {
         if (name == null || name.isEmpty()) {
             return null;
         }
@@ -277,21 +278,18 @@ public enum EntityType {
     /**
      * True when server-side entities of this type replicate to clients as network shadows.
      * The single source of truth for replication scope — {@code EntityReplicationRegistry}
-     * holds the matching metadata + shadow factories. Excluded:
+     * holds the matching metadata + shadow factories. BOBBER and ILLUSION_DECOY are server
+     * entities too since #341 (spawned by the server's fishing / decoy handlers). Excluded:
      * <ul>
      *   <li>REMOTE_PLAYER — players ride the dedicated PlayerState channel</li>
-     *   <li>BOBBER — owner-driven (the fishing controller holds and reads the instance
-     *       per frame); making it server-authoritative is a documented follow-up</li>
-     *   <li>ILLUSION_DECOY — the ability mirrors the owner's movement client-side each
-     *       frame; there is no server-side driver yet (documented follow-up)</li>
      * </ul>
      */
     public boolean replicates() {
         return switch (this) {
             case COW, SHEEP, CHICKEN, GOOSE, GOBLIN, BLOCK_DROP, ITEM_DROP,
                  ARROW, FIRE_BOLT, NULL_SPIKE, LEYLINE_BREACH_ZONE,
-                 CALTROP_CLUSTER -> true;
-            case REMOTE_PLAYER, BOBBER, ILLUSION_DECOY -> false;
+                 CALTROP_CLUSTER, BOBBER, ILLUSION_DECOY -> true;
+            case REMOTE_PLAYER -> false;
         };
     }
 

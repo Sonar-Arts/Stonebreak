@@ -66,6 +66,13 @@ final class NetworkChunkInstaller {
         // previous stream of this chunk would survive it — clear unconditionally; the meta
         // below re-hydrates the authoritative set (absence = source, per the layer invariant).
         chunk.getWaterLayer().clear();
+        // Same for the rest of the per-chunk metadata (#363): block states, snow layers and
+        // indexed animated blocks from a previous stream of this chunk survived the swap — a
+        // cell whose block changed in a missed update kept its old state, and an empty meta
+        // payload kept old snow. The meta below re-hydrates the authoritative set.
+        chunk.clearBlockStates();
+        snowLayerManager.onChunkUnloaded(chunkX, chunkZ);
+        animatedBlockRegistry.onChunkUnloaded(chunk);
 
         // Apply streamed chunk metadata: snow layer heights + per-block SBO states + water
         // flow levels. Replaces (not merges) this chunk's previous entries so a re-stream is
@@ -73,7 +80,6 @@ final class NetworkChunkInstaller {
         if (metaPayload != null && metaPayload.length > 0) {
             try {
                 var meta = com.stonebreak.network.bridge.GameChunkMetaCodec.decode(metaPayload);
-                snowLayerManager.onChunkUnloaded(chunkX, chunkZ); // clear stale entries first
                 int baseX = chunkX * WorldConfiguration.CHUNK_SIZE;
                 int baseZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
                 for (var e : meta.snowLayers().entrySet()) {

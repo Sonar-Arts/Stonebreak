@@ -3,7 +3,6 @@ package com.stonebreak.mobs.entities;
 import static com.stonebreak.player.PlayerConstants.CALTROP_CONTACT_RADIUS;
 import static com.stonebreak.player.PlayerConstants.FLAT_FOOTED_DURATION;
 
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -44,10 +43,7 @@ public class CaltropCluster extends Entity {
             return;
         }
 
-        EntityManager entityManager = world.getEntityManager(); // server-spawned: scan the OWNING world
-        if (entityManager == null) {
-            entityManager = Game.getEntityManager();
-        }
+        EntityManager entityManager = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         if (entityManager == null) return;
 
         for (LivingEntity entity : entityManager.getLivingEntities()) {

@@ -4,7 +4,6 @@ import static com.stonebreak.player.PlayerConstants.LEYLINE_BREACH_AMPLIFY_BONUS
 import static com.stonebreak.player.PlayerConstants.LEYLINE_BREACH_AMPLIFY_DURATION;
 import static com.stonebreak.player.PlayerConstants.LEYLINE_BREACH_PULSE_INTERVAL;
 
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -54,10 +53,7 @@ public class LeylineBreachZone extends Entity {
             return;
         }
 
-        EntityManager em = world.getEntityManager(); // server-spawned: scan the OWNING world
-        if (em == null) {
-            em = Game.getEntityManager();
-        }
+        EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         if (em == null) return;
 
         boolean pulse = false;

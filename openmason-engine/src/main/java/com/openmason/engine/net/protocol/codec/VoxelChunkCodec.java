@@ -4,6 +4,8 @@ import com.openmason.engine.net.replication.BlockSetter;
 import com.openmason.engine.net.replication.IBlockTypeResolver;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.IVoxelChunkData;
+import com.openmason.engine.voxel.cco.data.palette.CcoPaletteSection;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -62,6 +64,10 @@ public final class VoxelChunkCodec {
         ThreadLocal.withInitial(() -> new short[BLOCKS_PER_SECTION]);
     private static final ThreadLocal<short[]> SECTION_INDICES =
         ThreadLocal.withInitial(() -> new short[BLOCKS_PER_SECTION]);
+    private static final ThreadLocal<short[]> SECTION_PALETTE_IDS =
+        ThreadLocal.withInitial(() -> new short[MAX_PALETTE_ENTRIES]);
+    private static final ThreadLocal<byte[]> SECTION_BYTE_INDICES =
+        ThreadLocal.withInitial(() -> new byte[BLOCKS_PER_SECTION]);
     private static final ThreadLocal<int[]> PALETTE_LOOKUP = ThreadLocal.withInitial(() -> {
         int[] lookup = new int[65536];
         java.util.Arrays.fill(lookup, -1);
@@ -87,6 +93,67 @@ public final class VoxelChunkCodec {
             throw new IllegalStateException("Chunk encode failed", e);
         }
         return buf.toByteArray();
+    }
+
+    /**
+     * Encodes paletted storage straight from its sections: a uniform section is written as
+     * SINGLE without touching its cells, and an indexed section ships its own palette and
+     * indices instead of being expanded to 4096 ids and re-paletted. Decodes to the same blocks
+     * as {@link #encode(IVoxelChunkData)}; the bytes may differ (palette order, and a palette
+     * may carry an entry no cell uses any more — palettes never shrink).
+     *
+     * <p>Reads each section's current state once, so it is safe on live storage; on a
+     * copy-on-write snapshot ({@code storage.copy()}) it can run on any thread.
+     */
+    public static byte[] encode(CcoPalettedChunkStorage storage) {
+        if (storage.getSectionCount() != SECTIONS_PER_CHUNK
+                || storage.getSizeX() != CHUNK_W || storage.getSizeZ() != CHUNK_W) {
+            throw new IllegalArgumentException("Storage is not a " + CHUNK_W + "x" + CHUNK_H + "x"
+                + CHUNK_W + " chunk: " + storage);
+        }
+        short[] paletteIds = SECTION_PALETTE_IDS.get();
+        byte[] indices = SECTION_BYTE_INDICES.get();
+        ByteArrayOutputStream buf = new ByteArrayOutputStream(4 * 1024);
+        try (DataOutputStream out = new DataOutputStream(buf)) {
+            for (int sy = 0; sy < SECTIONS_PER_CHUNK; sy++) {
+                CcoPaletteSection section = storage.getSection(sy);
+                int paletteSize = section.snapshotPaletteData(paletteIds, indices);
+                if (paletteSize == 0 || paletteSize == 1) {
+                    out.writeByte(TAG_SINGLE);
+                    out.writeShort(paletteIds[0]);
+                } else if (paletteSize > 0) {
+                    writePaletted(paletteIds, paletteSize, indices, out);
+                } else {
+                    // Short-indexed overflow tier (> 256 entries): dense ids.
+                    short[] ids = SECTION_IDS.get();
+                    section.writeBlockIdsInto(ids, 0);
+                    encodeSectionFromIds(ids, out);
+                }
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Chunk encode failed", e);
+        }
+        return buf.toByteArray();
+    }
+
+    private static void writePaletted(short[] palette, int paletteSize, byte[] indices,
+                                      DataOutputStream out) throws IOException {
+        int bitsPerBlock = bitsForPalette(paletteSize);
+        int blocksPerLong = 64 / bitsPerBlock;
+        int longCount = (BLOCKS_PER_SECTION + blocksPerLong - 1) / blocksPerLong;
+        out.writeByte(TAG_PALETTED);
+        out.writeByte(paletteSize == MAX_PALETTE_ENTRIES ? 0 : paletteSize);
+        for (int i = 0; i < paletteSize; i++) out.writeShort(palette[i]);
+        out.writeByte(bitsPerBlock);
+        out.writeInt(longCount);
+        int i = 0;
+        for (int li = 0; li < longCount; li++) {
+            long v = 0L;
+            for (int slot = 0; slot < blocksPerLong && i < BLOCKS_PER_SECTION; slot++, i++) {
+                v |= (long) (indices[i] & 0xFF) << (slot * bitsPerBlock);
+            }
+            out.writeLong(v);
+        }
     }
 
     public static void decodeInto(byte[] payload, BlockSetter sink, IBlockTypeResolver resolver) {

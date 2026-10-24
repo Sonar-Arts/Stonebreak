@@ -5,7 +5,6 @@ import static com.stonebreak.player.PlayerConstants.NULL_SPIKE_MAX_RANGE;
 import static com.stonebreak.player.PlayerConstants.NULL_SPIKE_PROJECTILE_SPEED;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -70,10 +69,7 @@ public class NullSpikeProjectile extends Entity {
         // Advance in small sub-steps so collision is checked along the whole travel
         // segment rather than only at the destination point.
         float remaining = NULL_SPIKE_PROJECTILE_SPEED * deltaTime;
-        EntityManager em = world.getEntityManager(); // server-spawned: scan the OWNING world
-        if (em == null) {
-            em = Game.getEntityManager();
-        }
+        EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         while (remaining > 0.0f && alive) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
             remaining -= stepLen;
@@ -124,10 +120,7 @@ public class NullSpikeProjectile extends Entity {
         alive = false;
         if (!pierce) return;
 
-        EntityManager em = world.getEntityManager(); // server-spawned: scan the OWNING world
-        if (em == null) {
-            em = Game.getEntityManager();
-        }
+        EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         if (em == null) return;
         for (Entity e : em.getEntitiesInRange(position, NULL_SPIKE_BURST_RADIUS)) {
             if (!(e instanceof LivingEntity le) || hitEntities.contains(le)) continue;

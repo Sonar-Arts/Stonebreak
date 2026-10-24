@@ -127,7 +127,7 @@ public class LeylineBreachAbility implements AbilitySpell {
     private void rootEnemiesInZone(Vector3f center, float radius) {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive()) continue;
             if (entity.getPosition().distance(center) > radius) continue;
             entity.applyStatusEffect(StatusEffectType.ROOT, LEYLINE_BREACH_ROOT_DURATION, 0f);

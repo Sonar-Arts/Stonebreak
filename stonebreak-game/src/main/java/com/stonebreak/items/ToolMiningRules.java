@@ -63,6 +63,20 @@ public final class ToolMiningRules {
      * break-progress callers: applies the tool's multiplier with a small floor
      * so a tool never makes a block an instant break.
      */
+    /**
+     * Seconds it takes to break {@code block} with {@code held} in hand — THE break time, shared
+     * by the client's {@code BlockBreaker} (progress per frame) and the server's break timing
+     * (issue #333), so the two can never disagree. A held stack that is not a tool mines at the
+     * block's plain hardness; {@code <= 0} breaks instantly.
+     */
+    public static float breakSeconds(ItemStack held, BlockType block) {
+        float hardness = block.getHardness();
+        if (held == null || held.isEmpty() || !held.isTool()) {
+            return hardness;
+        }
+        return effectiveHardness(held.asItemType(), block, hardness);
+    }
+
     public static float effectiveHardness(ItemType tool, BlockType block, float hardness) {
         if (block == null) {
             return hardness;

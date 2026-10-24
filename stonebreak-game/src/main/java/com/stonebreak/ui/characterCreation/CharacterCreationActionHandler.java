@@ -19,10 +19,9 @@ public final class CharacterCreationActionHandler {
 
     public void goBackToWorldSelect() {
         if (isJoinMode()) {
-            // In join mode: disconnect and return to main menu
+            // In join mode: disconnect and return to main menu (the one way out, #368)
             state.reset();
-            MultiplayerSession.shutdown();
-            Game.getInstance().setState(GameState.MAIN_MENU);
+            Game.getInstance().leaveWorldToMenu();
         } else {
             state.reset();
             Game.getInstance().setState(GameState.WORLD_SELECT);

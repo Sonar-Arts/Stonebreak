@@ -37,6 +37,9 @@ public final class BattleTestSession {
         returnGrounded = player.isOnGround();
         world = new BattleTestWorld(arena);
         entities = new EntityManager(world);
+        // Projectiles and zones find their targets through their own world's manager (there is
+        // no Game singleton fallback any more, #340), so the arena's world must know its manager.
+        world.setEntityManager(entities);
         this.mesh = mesh;
     }
     public static BattleTestSession current() {

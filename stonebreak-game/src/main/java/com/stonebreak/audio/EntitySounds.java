@@ -34,16 +34,21 @@ public final class EntitySounds {
 
     /**
      * Plays {@code event} from the entity's SBE at the entity's position
-     * (positional 3D). Unbound events and non-SBE entities no-op.
+     * (positional 3D). Unbound events and non-SBE entities no-op. Runs on the main thread
+     * whichever thread asks ({@link MainThreadAudio}), from where the entity stood when asked.
      */
     public static void playAt(Entity entity, String event) {
         if (entity == null) return;
-        ResolvedSoundEvents.Entry entry = eventsFor(entity).pick(event);
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (entry == null || soundSystem == null) return;
         org.joml.Vector3f pos = entity.getPosition();
-        soundSystem.playSoundAt3D(entry.soundKey(), entry.volume(), entry.pitch(),
-                pos.x, pos.y + entity.getHeight() * 0.5f, pos.z);
+        float x = pos.x;
+        float y = pos.y + entity.getHeight() * 0.5f;
+        float z = pos.z;
+        MainThreadAudio.run(() -> {
+            ResolvedSoundEvents.Entry entry = eventsFor(entity).pick(event);
+            SoundSystem soundSystem = Game.getSoundSystem();
+            if (entry == null || soundSystem == null) return;
+            soundSystem.playSoundAt3D(entry.soundKey(), entry.volume(), entry.pitch(), x, y, z);
+        });
     }
 
     /** Drop all cached resolutions (e.g. after the SBE registry reloads). */

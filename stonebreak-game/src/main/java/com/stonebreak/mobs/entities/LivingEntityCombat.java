@@ -84,25 +84,27 @@ final class LivingEntityCombat {
      * @param weaponId          item id of the melee weapon swung, or {@link LivingEntity#NO_WEAPON};
      *                          the invulnerability window only blocks that same weapon
      * @param attackerPos       authoritative attacker position for knockback direction, or
-     *                          null to fall back to the local player's position
+     *                          null when unknown (then no knockback)
      * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
-     * @param knockback         extra knockback carried with the hit, or null for none
+     * @param kind              on a shadow, which server rules validate the forwarded intent
      * @return whether the hit counted: forwarded to the server for a shadow (no network id,
      *         e.g. a remote player, means it was dropped), applied for a local entity
      *         (false when dead or invulnerable to this weapon)
      */
     boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
-                   Vector3f attackerPos, boolean creditLocalPlayer, Knockback knockback) {
+                   Vector3f attackerPos, boolean creditLocalPlayer, HitKind kind) {
         Vector3f position = owner.position;
         float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
             if (owner.getNetworkId() < 0 || !(amount > 0f)) {
                 return false;
             }
-            MultiplayerSession.onLocalEntityDamage(owner, amount, source, type,
-                weaponId != LivingEntity.NO_WEAPON, knockback);
+            // No predicted damage number / hurt voice: the server may refuse the hit
+            // (range, cooldown, the real mob's i-frames). Both play from its result
+            // (KillCreditS2C) on this client — the only place the attacker can see/hear it.
+            MultiplayerSession.onLocalEntityDamage(owner, amount, source, type, kind);
             return true;
         }
         HitKey key = new HitKey(source, weaponId);
@@ -141,22 +143,18 @@ final class LivingEntityCombat {
         }
         lastAttackerPosition = attackerPos;
         owner.onDamage(effectiveAmount, source);
-        if (knockback != null) {
-            knockback.applyTo(owner);
-        }
         return true;
     }
 
     /**
-     * Applies knockback away from the attacking player (the most recent attacker if known,
-     * else the local player).
+     * Applies knockback away from the attacking player. Without a known attacker there is no
+     * direction to push in, so there is no knockback — never a guess from the client's local
+     * player, which is another thread's state when this runs on the server tick (#340).
      */
     void applyPlayerKnockback() {
         Vector3f attackerPos = lastAttackerPosition;
         if (attackerPos == null) {
-            Player player = Game.getPlayer();
-            if (player == null) return;
-            attackerPos = player.getPosition();
+            return;
         }
         Vector3f knockbackDir = new Vector3f(owner.position).sub(attackerPos);
         knockbackDir.y = 0;

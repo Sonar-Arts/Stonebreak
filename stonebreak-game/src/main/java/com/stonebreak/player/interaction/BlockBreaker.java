@@ -4,7 +4,6 @@ import com.stonebreak.audio.BlockSounds;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.Inventory;
-import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ToolMiningRules;
 import com.stonebreak.player.combat.AttackController;
 import com.stonebreak.world.World;
@@ -89,6 +88,9 @@ public class BlockBreaker {
             hitSoundTimer = 0.0f;
             if (blockType.getHardness() > 0.0f) {
                 BlockSounds.playHit(blockType, blockPos.x, blockPos.y, blockPos.z);
+                // The server times the break from this start (issue #333); our progress
+                // restarted, so its clock does too.
+                com.stonebreak.network.MultiplayerSession.sendBreakStart(blockPos.x, blockPos.y, blockPos.z);
             }
         }
 
@@ -115,10 +117,7 @@ public class BlockBreaker {
     public float getBreakingProgress() { return breakingProgress; }
 
     private float effectiveHardness(BlockType blockType) {
-        float hardness = blockType.getHardness();
-        ItemStack selectedItem = inventory.getSelectedHotbarSlot();
-        if (selectedItem == null || !selectedItem.isTool()) return hardness;
-        return ToolMiningRules.effectiveHardness(selectedItem.asItemType(), blockType, hardness);
+        return ToolMiningRules.breakSeconds(inventory.getSelectedHotbarSlot(), blockType);
     }
 
     private void completeBreak(Vector3i pos, BlockType blockType) {

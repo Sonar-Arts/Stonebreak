@@ -179,6 +179,18 @@ public class Chunk {
     }
 
     /**
+     * Drops every per-block state (a network re-stream replaces the whole map, #363).
+     * Marks the chunk changed when anything was removed.
+     */
+    public void clearBlockStates() {
+        if (!blockStates.isEmpty()) {
+            blockStates.clear();
+            metadata = metadata.withUpdatedTimestamp();
+            dirtyTracker.markBlockChanged();
+        }
+    }
+
+    /**
      * Read-only view of the per-block state map. Keys are packed local
      * coordinates ({@link com.stonebreak.world.chunk.utils.LocalBlockKey}).
      */

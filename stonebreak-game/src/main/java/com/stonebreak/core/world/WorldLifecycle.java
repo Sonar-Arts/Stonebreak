@@ -20,6 +20,23 @@ public final class WorldLifecycle {
     }
 
     /**
+     * The one way out of a world to the main menu (issue #368): Pause → Quit to menu, a host
+     * quit, kick or timeout, a failed client-world build and leaving character creation all
+     * come here. Resets the world first (crafting grids back to the player while the session
+     * can still ship them, client world + GPU meshes + shadow entities freed, FastLOD store
+     * closed, world name cleared), then ends the session and shows the menu.
+     */
+    public void leaveToMenu() {
+        game.cancelClientWorldBuild(); // a build still in flight must not install a world after the reset
+        resetWorld();
+        com.stonebreak.network.MultiplayerSession.shutdown();
+        game.setState(com.stonebreak.core.GameState.MAIN_MENU);
+        if (game.getPauseMenu() != null) {
+            game.getPauseMenu().setVisible(false);
+        }
+    }
+
+    /**
      * Resets the world state without fully cleaning up resources. Used when
      * returning to main menu from gameplay.
      */

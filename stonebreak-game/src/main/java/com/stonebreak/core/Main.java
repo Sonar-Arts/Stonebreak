@@ -244,6 +244,14 @@ public class Main {
                 System.err.println("[autoworld] bad seed in " + spec + " — using " + seed);
             }
         }
+        // -Dstonebreak.autorender=<chunks>: render distance for this session only (never saved),
+        // so join timing can be measured at a fixed view (issue #345).
+        String render = System.getProperty("stonebreak.autorender");
+        if (render != null && !render.isBlank()) {
+            com.stonebreak.config.Settings.getInstance().setRenderDistance(Integer.parseInt(render.trim()));
+            System.out.println("[autoworld] render distance "
+                + com.stonebreak.config.Settings.getInstance().getRenderDistance());
+        }
         System.out.println("[autoworld] starting singleplayer world '" + name + "' seed " + seed);
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
     }
@@ -365,6 +373,20 @@ public class Main {
      * aims the camera at them. {@code :night} jumps the clock to midnight so
      * the point lights are visible. Inert unless the property is set.
      */
+    /**
+     * Dev-hook edit that may land on an occupied cell: the server only accepts a placement into
+     * air or water (issue #370), so a solid cell is broken first, as a player would.
+     */
+    private static void placeOverAnything(World world, int x, int y, int z,
+                                          com.stonebreak.blocks.BlockType type) {
+        var air = com.stonebreak.blocks.BlockType.AIR;
+        var current = world.getBlockAt(x, y, z);
+        if (type != air && current != air && current != com.stonebreak.blocks.BlockType.WATER) {
+            world.setBlockAt(x, y, z, air, true);
+        }
+        world.setBlockAt(x, y, z, type, true);
+    }
+
     private void maybeAutoTorch() {
         if (autoTorchDone) {
             if (autoTorchPlaced) {
@@ -419,11 +441,11 @@ public class Main {
                     boolean wall = x == px + 7;
                     var want = wall ? stone : air;
                     if (world.getBlockAt(x, y, z) != want) {
-                        world.setBlockAt(x, y, z, want, true);
+                        placeOverAnything(world, x, y, z, want);
                     }
                 }
                 if (world.getBlockAt(x, py - 1, z) != stone) {
-                    world.setBlockAt(x, py - 1, z, stone, true);
+                    placeOverAnything(world, x, py - 1, z, stone);
                 }
             }
         }

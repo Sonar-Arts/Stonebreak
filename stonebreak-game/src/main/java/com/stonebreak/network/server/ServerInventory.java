@@ -176,8 +176,27 @@ public final class ServerInventory {
         if (source == null) {
             return null;
         }
-        Item item = source.getItem();
-        String state = source.getState();
+        return debitKind(source.getItem(), source.getState(), count);
+    }
+
+    /**
+     * Debits a toss that names its stack (issue #342): {@code count} of {@code itemId} in
+     * {@code state} ({@code null} = the item's default state), in the same order as
+     * {@link #debitStack(int, int)} but only from stacks of exactly that kind — a toss from
+     * the inventory screen removes the stack the player picked, not a different-state one in
+     * the hand. Returns the removed stack, or null — nothing removed — when the replica does
+     * not hold {@code count} of that kind.
+     */
+    public ItemStack debitStack(int itemId, int count, String state) {
+        if (itemId == BlockType.AIR.getId() || count <= 0) {
+            return null;
+        }
+        Item item = resolveItem(itemId);
+        return item != null ? debitKind(item, state, count) : null;
+    }
+
+    /** Removes {@code count} of one stack kind in debit order, or nothing when too few are held. */
+    private ItemStack debitKind(Item item, String state, int count) {
         int available = 0;
         for (ItemStack s : slots) {
             if (sameKind(s, item, state)) {
@@ -219,35 +238,39 @@ public final class ServerInventory {
         Item item = held.getItem();
         String state = held.getState();
         held.decrementCount(1);
-        if (held.isEmpty()) {
-            refillSelected(item, state);
+        if (!held.isEmpty()) {
+            return true;
         }
+        slots[selectedHotbarSlot] = ItemStackStateCodec.empty();
+        refillSelected(item, state);
         return true;
     }
 
     /**
-     * Debits one placed block's {@code itemId} ({@link #debitStack}: the selected slot first)
-     * and, when that empties the selected slot, refills it with the next stack of the same
-     * kind — the auto-switch {@code Inventory.removeItem} predicts when {@code BlockPlacer}
-     * places, so the mirror's slot layout converges. Returns the removed unit WITH its state,
-     * or null when nothing was removed.
+     * Takes ONE {@code itemId} for a block placement (issue #422): the same unit
+     * {@link #debitStack} takes (the selected slot first), and when that empties the selected
+     * slot, the next stack of the same kind moves into it — the depletion auto-switch
+     * {@code Inventory.removeItem} predicts on the client, so a later sync neither empties the
+     * selected slot again nor moves the switched-in stack back. Returns the taken unit with its
+     * state, or null — nothing removed — when none is held.
      */
-    public ItemStack debitPlaced(int itemId) {
+    public ItemStack debitOneWithAutoSwitch(int itemId) {
         ItemStack held = slots[selectedHotbarSlot];
         boolean fromHeld = !held.isEmpty() && held.getBlockTypeId() == itemId;
+        Item heldItem = fromHeld ? held.getItem() : null;
+        String heldState = fromHeld ? held.getState() : null;
         ItemStack taken = debitStack(itemId, 1);
         if (taken != null && fromHeld && slots[selectedHotbarSlot].isEmpty()) {
-            refillSelected(taken.getItem(), taken.getState());
+            refillSelected(heldItem, heldState);
         }
         return taken;
     }
 
     /**
-     * Moves the first stack of the given kind (hotbar first, then main) into the emptied
-     * selected slot — the client's auto-switch order.
+     * Moves the first stack of the given kind into the (empty) selected slot: the other hotbar
+     * slots first, then main — slot order, as {@code Inventory.removeItem}'s auto-switch.
      */
     private void refillSelected(Item item, String state) {
-        slots[selectedHotbarSlot] = ItemStackStateCodec.empty();
         for (int i = 0; i < TOTAL_SLOTS; i++) {
             if (i != selectedHotbarSlot && sameKind(slots[i], item, state)) {
                 slots[selectedHotbarSlot] = slots[i];
@@ -313,6 +336,54 @@ public final class ServerInventory {
             }
         }
         return count - remaining;
+    }
+
+    /**
+     * Gives back ONE {@code itemId}: onto the selected stack when it is the same kind and has
+     * room (a refunded placement returns to the hand that placed it, issue #422), else by the
+     * normal {@link #add} rule. Returns 1 when it was stored, 0 when the inventory is full.
+     */
+    public int addToSelectedFirst(int itemId, String state) {
+        Item item = resolveItem(itemId);
+        ItemStack held = slots[selectedHotbarSlot];
+        if (item != null && sameKind(held, item, state) && held.getCount() < held.getMaxStackSize()) {
+            held.incrementCount(1);
+            return 1;
+        }
+        return add(itemId, 1, state);
+    }
+
+    /**
+     * How many of {@code count} state-less {@code itemId} {@link #add} would accept right
+     * now, without changing anything — the pickup check (#372): a full inventory takes
+     * nothing, so the drop stays where it lies.
+     */
+    public int roomFor(int itemId, int count) {
+        return roomFor(itemId, count, null);
+    }
+
+    /** {@link #roomFor(int, int)} for stacks in {@code state} — what {@link #add(int, int, String)} accepts. */
+    public int roomFor(int itemId, int count, String state) {
+        if (itemId == BlockType.AIR.getId() || count <= 0) {
+            return 0;
+        }
+        Item item = resolveItem(itemId);
+        if (item == null) {
+            return 0;
+        }
+        int maxStack = new ItemStack(item, 1, state).getMaxStackSize();
+        int room = 0;
+        for (ItemStack s : slots) {
+            if (s.isEmpty()) {
+                room += maxStack;
+            } else if (sameKind(s, item, state) && s.getCount() < maxStack) {
+                room += maxStack - s.getCount();
+            }
+            if (room >= count) {
+                return count;
+            }
+        }
+        return room;
     }
 
     /** Item ids never collide between blocks and items; items win the lookup. */

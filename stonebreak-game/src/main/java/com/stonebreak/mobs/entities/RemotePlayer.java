@@ -36,7 +36,7 @@ public class RemotePlayer extends LivingEntity {
      * Resolved identity of the held item for third-person in-hand rendering. A
      * {@link BlockType} (cube or flower) or an {@link com.stonebreak.items.ItemType}
      * (voxelized tool); {@code null} when empty. Networked remote players only ever
-     * carry blocks (see {@link #setHeldItemId}); local-only figures such as
+     * carry blocks (see {@link #setHeldItemId}); decoy figures such as
      * {@link IllusionDecoy} set the full item via {@link #setHeldItem}.
      */
     private volatile Item heldItem;
@@ -178,7 +178,7 @@ public class RemotePlayer extends LivingEntity {
     /**
      * Derives walk/idle from horizontal displacement since the last call and
      * advances the animation clock. Extracted so subclasses driven externally
-     * (e.g. {@link IllusionDecoy}, moved by the ability rather than the network)
+     * (e.g. {@link IllusionDecoy}, moved by mirroring its owner rather than the network)
      * can reuse the same state/animation derivation after repositioning.
      */
     protected void updateMovementAnimation(float deltaTime) {

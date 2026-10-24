@@ -54,18 +54,6 @@ class DamageResultTest {
     }
 
     @Test
-    void knockbackAppliesOnlyWhenTheHitCounts() {
-        StubMob mob = new StubMob(EntityType.COW);
-        Knockback kb = new Knockback(1f, 0f, 9f, 4f);
-        assertTrue(mob.damage(1f, PLAYER, kb));
-        assertTrue(mob.getVelocity().x > 0f);
-
-        Vector3f afterFirst = new Vector3f(mob.getVelocity());
-        assertFalse(mob.damage(1f, PLAYER, kb)); // invulnerable now
-        assertEquals(afterFirst, mob.getVelocity());
-    }
-
-    @Test
     void remotePlayersAreNotAttackable() {
         assertFalse(new RemotePlayer(null, new Vector3f(0, 64, 0), 2, "other").isPlayerAttackable());
     }

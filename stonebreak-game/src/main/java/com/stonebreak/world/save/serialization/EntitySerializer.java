@@ -190,6 +190,10 @@ public class EntitySerializer {
                .addCustomData("itemCount", itemStack.getCount())
                .addCustomData("despawnTimer", itemDrop.getDespawnTimer())
                .addCustomData("stackCount", itemDrop.getStackCount());
+        if (itemStack.getState() != null) {
+            // A saved water bucket drop reloads full (#342).
+            builder.addCustomData("itemState", itemStack.getState());
+        }
     }
 
     private static Entity deserializeItemDrop(EntityData entityData, World world) {
@@ -211,7 +215,9 @@ public class EntitySerializer {
                     logger.log(Level.WARNING, "Failed to find ItemType with ID: " + itemDropData.getItemId());
                     return null;
                 }
-                itemStack = new ItemStack(itemType, itemDropData.getItemCount());
+                Object state = entityData.getCustomData().get("itemState");
+                itemStack = new ItemStack(itemType, itemDropData.getItemCount(),
+                        state instanceof String s ? s : null);
             }
 
             ItemDrop itemDrop = new ItemDrop(world, position, itemStack);

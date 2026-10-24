@@ -108,7 +108,7 @@ public class FractureAbility {
         if (entityManager == null) return null;
         LivingEntity nearest = null;
         float nearestDistSq = Float.MAX_VALUE;
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (entity == from || entity instanceof IllusionDecoy || !entity.isAlive()) continue;
             float distSq = entity.getPosition().distanceSquared(from.getPosition());
             if (distSq < nearestDistSq) {

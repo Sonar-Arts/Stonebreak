@@ -91,7 +91,7 @@ public class ShadowStepAbility {
         Vector3f origin = player.getPosition();
         LivingEntity nearest = null;
         float nearestDistSq = SHADOW_STEP_RANGE * SHADOW_STEP_RANGE;
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive()) continue;
             AwarenessController awareness = entity.getAwareness();
             if (awareness == null || awareness.getState() != AwarenessController.AwarenessState.UNAWARE) {

@@ -192,6 +192,44 @@ public final class FurnaceState {
         return s;
     }
 
+    /**
+     * Server only: progress-only changes ({@code burn}/{@code cook}, which move every tick
+     * while cooking) are echoed to clients at most this often. 4 Hz is under a pixel of the
+     * furnace UI's arrow/flame per update; contents and lit flips still echo at once.
+     */
+    static final int PROGRESS_ECHO_TICKS = 5;
+    /** Server only: the state string clients last received, and ticks since. */
+    private String echoedState;
+    private String lastTickState;
+    private int ticksSinceEcho;
+
+    /**
+     * Server only: whether this tick's {@code fresh} state should be echoed to clients — at
+     * once when contents or lit state changed, otherwise every {@link #PROGRESS_ECHO_TICKS}
+     * or as soon as progress stops moving (so the final value always arrives).
+     */
+    boolean echoDue(String fresh) {
+        if (fresh.equals(echoedState)) {
+            lastTickState = fresh;
+            return false;
+        }
+        boolean settled = fresh.equals(lastTickState);
+        lastTickState = fresh;
+        if (settled || ++ticksSinceEcho >= PROGRESS_ECHO_TICKS || echoedState == null) {
+            return true;
+        }
+        // Everything before ";burn=" (lit state + the three stacks) is the structural part.
+        int cut = fresh.indexOf(";burn=");
+        return cut < 0 || !echoedState.regionMatches(0, fresh, 0, cut + 6);
+    }
+
+    /** Server only: {@code state} reached clients (echoed, or streamed with the chunk). */
+    void markEchoed(String state) {
+        echoedState = state;
+        lastTickState = state;
+        ticksSinceEcho = 0;
+    }
+
     /** Client display copy only: seq of the newest slot intent sent for this furnace (0 = none). */
     private volatile int sentSeq;
     /** Client display copy only: newest {@code BlockStateS2C.ack} received for this furnace. */

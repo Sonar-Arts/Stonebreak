@@ -89,7 +89,8 @@ public class RaycastEngine {
         return t > 0.001f ? t : -1;
     }
 
-    private static final float ENTITY_ATTACK_RANGE = 4.0f;
+    /** Melee reach from the eye to a target's box; the server's melee check derives from it. */
+    public static final float ENTITY_ATTACK_RANGE = 4.0f;
 
     /**
      * Returns the closest living entity along the player's look ray within melee range, or null.

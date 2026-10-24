@@ -18,7 +18,8 @@ import java.util.concurrent.Executors;
  * Successor of the old {@code ChunkSynchronizer} CLIENT path.
  *
  * <p>Payload decode (the expensive half — wire sections → detached paletted
- * storage) runs on a small worker pool; the main thread only pays the
+ * storage; skipped for a local server's storage snapshot) and the sky
+ * heightmap run on a small worker pool; the main thread only pays the
  * install/swap + metadata + mesh scheduling, and paces those with a per-frame
  * wall-clock budget. This is the client-side flow control that lets the server
  * stream without a fixed per-tick push cap: a burst lands in the decode pool
@@ -31,10 +32,21 @@ import java.util.concurrent.Executors;
  */
 public final class ClientChunkHandler {
 
-    // No install budget: the drain takes EVERYTHING the decode pool produced.
-    // Installs are cheap (decode AND the sky-heightmap scan happen on the
-    // workers), and the ready queue is naturally bounded by decode throughput
-    // per frame — loading speed is hardware-limited, not paced.
+    // Install budget: installs are cheap (decode AND the sky-heightmap scan run on the
+    // workers), but a backlog after a stall used to be installed in one frame. Each frame
+    // installs for at most this long; the rest wait. The server paces what it sends to the
+    // rate this client measures and reports (ChunkAckC2S, after Minecraft's chunk batching),
+    // so the ready queue stays short.
+    private static final long INSTALL_BUDGET_NS = 4_000_000L;
+    /** Main-thread install time per 50 ms tick the reported rate is sized for (Minecraft: 7 ms). */
+    private static final double INSTALL_NS_PER_TICK = 7_000_000.0;
+    private static final float MAX_DESIRED_PER_TICK = 256f;
+    private static final float MIN_DESIRED_PER_TICK = 1f;
+
+    /** Snapshots taken off the queue (any outcome) since the last ack. Main thread. */
+    private int processedSinceAck;
+    /** Moving average of main-thread nanos per install; seeds the reported rate. */
+    private double avgInstallNs = 100_000.0;
 
     /** Raw payloads that arrived before the client world existed (rebuild/rejoin). */
     private final Deque<ChunkDataS2C> pending = new ArrayDeque<>();
@@ -119,8 +131,11 @@ public final class ClientChunkHandler {
         long seq = nextSeq++;
         latestSeq.put(key(cd.chunkX(), cd.chunkZ()), seq);
         decodeExecutor.execute(() -> {
-            CcoPalettedChunkStorage storage =
-                com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(cd.chunkX(), cd.chunkZ(), cd.payload());
+            // A local (singleplayer) server hands over its copy-on-write storage snapshot: no
+            // decode. The install copies it section by section and never writes into it.
+            CcoPalettedChunkStorage snapshot = cd.blocks().snapshot();
+            CcoPalettedChunkStorage storage = snapshot != null ? snapshot
+                : com.stonebreak.network.client.NetworkChunkDecoder.decodeBlocks(cd.chunkX(), cd.chunkZ(), cd.payload());
             // Heightmap on the worker too — the install then only swaps storage.
             int[] heights = storage == null ? null : com.stonebreak.network.client.NetworkChunkDecoder.computeSkyHeights(storage);
             // storage == null → decode failed; carried through so the main
@@ -146,22 +161,28 @@ public final class ClientChunkHandler {
         int keepRadius = world.clientKeepRadius();
         int pcx = player != null ? (int) Math.floor(player.getPosition().x / 16.0) : Integer.MIN_VALUE;
         int pcz = player != null ? (int) Math.floor(player.getPosition().z / 16.0) : Integer.MIN_VALUE;
+        long start = System.nanoTime();
         DecodedChunk dc;
-        while ((dc = ready.poll()) != null) {
+        while (System.nanoTime() - start < INSTALL_BUDGET_NS && (dc = ready.poll()) != null) {
+            processedSinceAck++;
             long chunkKey = key(dc.chunkX(), dc.chunkZ());
             Long latest = latestSeq.get(chunkKey);
-            if (latest != null && dc.seq() < latest) {
+            // Every submission records its seq before decoding, so a missing entry means a
+            // NEWER snapshot already installed and cleared it: installing this one would roll
+            // the chunk back (decodes run on a pool and can finish out of order).
+            if (latest == null || dc.seq() != latest) {
                 continue; // superseded by a newer submission for this chunk (defers stay queued)
             }
             latestSeq.remove(chunkKey);
             // Late install for a chunk the client already dropped (render-distance
-            // shrink, fast travel): discard instead of resurrecting a zombie slot.
-            // The server's forget radius matches the keep radius, so its sent-record
-            // is gone too and the chunk re-streams cleanly when it re-enters view.
+            // shrink, fast travel): discard instead of resurrecting a zombie slot. The
+            // server marked it sent, so report the drop or it never re-streams (#363).
             if (player != null && Math.max(Math.abs(dc.chunkX() - pcx), Math.abs(dc.chunkZ() - pcz)) > keepRadius) {
                 deferredActions.remove(chunkKey);
+                com.stonebreak.network.MultiplayerSession.notifyChunkUnloaded(dc.chunkX(), dc.chunkZ());
                 continue;
             }
+            long installStart = System.nanoTime();
             if (dc.storage() == null
                     || !world.installDecodedNetworkChunk(dc.chunkX(), dc.chunkZ(),
                         dc.storage(), dc.heights(), dc.metaPayload())) {
@@ -178,7 +199,24 @@ public final class ClientChunkHandler {
                     action.run();
                 }
             }
+            // Install + the edits that waited for it: the main-thread cost the rate is sized by.
+            avgInstallNs += 0.1 * ((System.nanoTime() - installStart) - avgInstallNs);
         }
+    }
+
+    /**
+     * Snapshots processed since the last call, and resets the count — the ChunkAckC2S body.
+     */
+    public int takeProcessedCount() {
+        int n = processedSinceAck;
+        processedSinceAck = 0;
+        return n;
+    }
+
+    /** Chunks per server tick this client can install at its measured cost (ChunkAckC2S). */
+    public float desiredChunksPerTick() {
+        double perTick = INSTALL_NS_PER_TICK / Math.max(1.0, avgInstallNs);
+        return (float) Math.max(MIN_DESIRED_PER_TICK, Math.min(MAX_DESIRED_PER_TICK, perTick));
     }
 
     public void onSessionEnd() {

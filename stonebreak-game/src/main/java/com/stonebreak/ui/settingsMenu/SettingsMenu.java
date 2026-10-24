@@ -48,6 +48,7 @@ public final class SettingsMenu {
                 actionHandler::toggleMusic,
                 actionHandler::onCrosshairSizeChange,
                 actionHandler::togglePlayerNameTags,
+                actionHandler::togglePauseWorld,
                 actionHandler::toggleLeafTransparency,
                 actionHandler::toggleWaterShader,
                 actionHandler::toggleClouds,

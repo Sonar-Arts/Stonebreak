@@ -59,6 +59,10 @@ public final class GameLoop {
      * (menu / loading / paused).
      */
     public void tick(float deltaTime) {
+        // Singleplayer "Pause World" (Settings): the pause screens freeze the integrated server
+        // too. Off — and always in a hosted or joined world — the world keeps running behind them.
+        com.stonebreak.network.MultiplayerSession.setWorldPausedByMenu(isWorldFrozenByMenu());
+
         // Network pump runs in every state once a session is established so
         // chunks/joins/disconnects keep flowing during loading screens too.
         com.stonebreak.network.MultiplayerSession.tick();
@@ -106,6 +110,21 @@ public final class GameLoop {
         return true;
     }
 
+    /** The pause menu and the screens opened from it, over a loaded world. */
+    private boolean isPauseMenuState() {
+        GameState state = game.getState();
+        return Game.getWorld() != null && (state == GameState.PAUSED || state == GameState.SETTINGS
+                || state == GameState.STATISTICS || state == GameState.GLOSSARY);
+    }
+
+    /** A pause screen is open in singleplayer with "Pause World" on: nothing simulates. */
+    private boolean isWorldFrozenByMenu() {
+        return isPauseMenuState()
+                && com.stonebreak.network.MultiplayerSession.getMode()
+                        == com.stonebreak.network.MultiplayerSession.Mode.SINGLEPLAYER
+                && com.stonebreak.config.Settings.getInstance().getPauseSingleplayerWorld();
+    }
+
     private boolean routeStateUpdate(float deltaTime) {
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         WorkbenchScreen workbenchScreen = game.getWorkbenchScreen();
@@ -149,7 +168,16 @@ public final class GameLoop {
             // WORKBENCH_UI, INVENTORY_UI and CHARACTER_SHEET_UI: updateGameWorld ticks the inventory
             // and workbench screens once per frame (updating them here too ran them twice, #300).
             case WORKBENCH_UI, INVENTORY_UI, CHARACTER_SHEET_UI -> { }
-            case PAUSED -> {
+            case PAUSED, SETTINGS, STATISTICS, GLOSSARY -> {
+                if (isPauseMenuState() && !isWorldFrozenByMenu()) {
+                    // The world runs on behind the pause screens (it does on the server, which
+                    // a multiplayer pause never stops): mobs, water, the sky clock and incoming
+                    // chunks stay live instead of jumping when the menu closes.
+                    return true;
+                }
+                if (game.getState() != GameState.PAUSED) {
+                    return false;
+                }
                 if (inventoryScreen != null && inventoryScreen.isVisible()) {
                     inventoryScreen.update(deltaTime);
                 }

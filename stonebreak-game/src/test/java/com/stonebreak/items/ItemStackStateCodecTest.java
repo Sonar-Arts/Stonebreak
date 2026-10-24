@@ -35,6 +35,16 @@ class ItemStackStateCodecTest {
     }
 
     @Test
+    void aMultiWordStateSurvives() {
+        // SBO state names may be words; the fishing rod's are "Cast" and "Reeled in" (#342).
+        ItemStack rod = new ItemStack(ItemType.FISHING_ROD, 1, ItemType.FISHING_ROD_STATE_REELED_IN);
+        assertEquals(ItemType.FISHING_ROD_STATE_REELED_IN,
+                ItemStackStateCodec.decode(ItemStackStateCodec.encode(rod)).getState());
+        assertNull(ItemStackStateCodec.decode(ItemStackStateCodec.encode(
+                new ItemStack(ItemType.STICK, 1, " padded "))).getState(), "no edge spaces");
+    }
+
+    @Test
     void aStateThatCouldBreakTheEnclosingStringIsNotWritten() {
         String token = ItemStackStateCodec.encode(new ItemStack(ItemType.STICK, 1, "bad|state;x=y"));
         assertEquals("I:" + ItemType.STICK.getId() + ":1", token);

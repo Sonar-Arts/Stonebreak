@@ -16,6 +16,21 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ConnectionRegistry {
 
     private final Set<ServerConnection> connections = ConcurrentHashMap.newKeySet();
+    /**
+     * Which connections broadcasts reach. The game admits a connection once its handshake is
+     * accepted: one still handshaking is not in the world, and must not get world traffic.
+     */
+    private volatile java.util.function.Predicate<ServerConnection> broadcastFilter = c -> true;
+
+    /** Sets which connections {@link #broadcast} and {@link #broadcastExcept} reach. */
+    public void setBroadcastFilter(java.util.function.Predicate<ServerConnection> filter) {
+        this.broadcastFilter = filter == null ? c -> true : filter;
+    }
+
+    /** Whether broadcasts reach {@code c} (see {@link #setBroadcastFilter}). */
+    public boolean receivesBroadcasts(ServerConnection c) {
+        return broadcastFilter.test(c);
+    }
 
     public void add(ServerConnection c) {
         connections.add(c);
@@ -35,8 +50,11 @@ public final class ConnectionRegistry {
     }
 
     public void broadcast(Packet packet, boolean droppable) {
+        java.util.function.Predicate<ServerConnection> filter = broadcastFilter;
         for (ServerConnection c : connections) {
-            c.send(packet, droppable);
+            if (filter.test(c)) {
+                c.send(packet, droppable);
+            }
         }
     }
 
@@ -45,8 +63,9 @@ public final class ConnectionRegistry {
     }
 
     public void broadcastExcept(ServerConnection except, Packet packet, boolean droppable) {
+        java.util.function.Predicate<ServerConnection> filter = broadcastFilter;
         for (ServerConnection c : connections) {
-            if (c != except) {
+            if (c != except && filter.test(c)) {
                 c.send(packet, droppable);
             }
         }

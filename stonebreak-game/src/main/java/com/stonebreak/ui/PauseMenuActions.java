@@ -58,8 +58,6 @@ public final class PauseMenuActions {
 
     /** Cleans up world state and returns to the main menu. */
     public static void quitToMenu(Game game) {
-        game.resetWorld();
-        game.setState(GameState.MAIN_MENU);
-        game.getPauseMenu().setVisible(false);
+        game.leaveWorldToMenu();
     }
 }

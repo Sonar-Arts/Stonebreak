@@ -20,12 +20,9 @@ public class ItemDrop extends Entity {
     /** See {@link BlockDrop#PICKUP_DELAY} — same multiplayer fix. */
     private static final float PICKUP_DELAY = 0.5f;
     
-    // Visual compression for nearby same-type drops
-    private static final float COMPRESSION_RANGE = 2.0f; // Range to compress drops
-    private int stackCount = 1; // How many items this drop represents visually
-    private boolean isCompressed = false; // Whether this drop is part of a compressed group
-    private ItemDrop parentDrop = null; // Parent drop if this one is hidden
-    private boolean hasInitialStackCount = false; // Whether this drop was created with an intentional stack count
+    // Nearby same-kind drops merge into one (see mergeNearbyDrops)
+    private static final float MERGE_RANGE = 2.0f;
+    private int stackCount = 1; // How many items this drop holds
     
     // Physics constants for drops (custom values independent of Entity base class)
     private static final float DROP_GRAVITY = 12.0f; // Moderate gravity instead of inheriting -40f from Entity
@@ -42,9 +39,7 @@ public class ItemDrop extends Entity {
         this.despawnTimer = DESPAWN_TIME;
         this.pickupDelay = PICKUP_DELAY;
 
-        // Set initial stack count from the ItemStack and mark as intentional if > 1
         this.stackCount = itemStack.getCount();
-        this.hasInitialStackCount = (itemStack.getCount() > 1);
         
         // Set drop-specific properties from EntityType
         EntityType dropType = EntityType.ITEM_DROP;
@@ -91,8 +86,7 @@ public class ItemDrop extends Entity {
         // Check for player pickup
         if (pickupDelay <= 0f) checkPlayerPickup();
         
-        // Update visual compression with nearby drops
-        updateCompression();
+        mergeNearbyDrops();
         
         // Prevent drops from falling into the void
         if (position.y < -10) {
@@ -196,13 +190,17 @@ public class ItemDrop extends Entity {
     private void checkPlayerPickup() {
         if (world == null) return;
         // Drops are authoritative SERVER entities; the client holds only render shadows, which
-        // must never self-collect. Pickup is server-authoritative: if any connected player
-        // (local or remote) is within range, give them the stack — the local client adds it on
-        // receipt of GiveItemS2C — and despawn this drop.
+        // must never self-collect. Pickup is server-authoritative: the nearest player in range
+        // with room takes what fits — the local client adds it on receipt of GiveItemS2C — and
+        // the rest stays here (#372); the drop despawns once it is empty. The stack's state
+        // goes with it (#342): a picked-up water bucket is still full.
         if (isNetworkShadow()) return;
-        if (com.stonebreak.network.MultiplayerSession.tryServerPickup(
-                position, PICKUP_RANGE, itemStack.getItem().getId(), stackCount)) {
+        int taken = com.stonebreak.network.MultiplayerSession.tryServerPickup(position, PICKUP_RANGE,
+                com.stonebreak.network.packet.NetItemStack.of(itemStack, stackCount));
+        if (taken >= stackCount) {
             alive = false;
+        } else if (taken > 0) {
+            stackCount -= taken;
         }
     }
     
@@ -322,41 +320,46 @@ public class ItemDrop extends Entity {
     }
     
     /**
-     * Updates visual compression by checking for nearby drops of the same type.
+     * Merges nearby drops of the same item AND state into this one (#372) — see
+     * {@link BlockDrop}'s {@code mergeNearbyDrops}: the absorbed drop's count moves here and
+     * it is removed, so no item can be picked up twice. Matching uses the item's identity
+     * (a block-stack item drop has no {@code ItemType}, so the old {@code getItemType()}
+     * comparison lumped every block stack together) and its state (a water bucket never
+     * merges into empty buckets).
      */
-    private void updateCompression() {
-        if (world == null || isCompressed || hasInitialStackCount) return;
+    private void mergeNearbyDrops() {
+        if (world == null || !alive) return;
 
         // THIS world's entity manager, never the Game singleton: the singleton always
         // resolves to the client render world, so an authoritative server drop scanning
-        // it would find (and compress) its own replicated network shadow — hiding the
-        // drop from the host's renderer.
+        // it would find (and absorb) its own replicated network shadow.
         com.stonebreak.mobs.entities.EntityManager entityManager = world.getEntityManager();
         if (entityManager == null) return;
 
-        // Reset stack count only for drops that weren't created with an initial count
-        stackCount = 1;
-
-        // Find nearby drops of the same type
-        java.util.List<Entity> entities = entityManager.getAllEntities();
-        for (Entity entity : entities) {
-            if (entity instanceof ItemDrop otherDrop && entity != this && entity.isAlive()
-                    && !entity.isNetworkShadow()) {
-                if (otherDrop.getItemType() == this.getItemType() && !otherDrop.isCompressed) {
-                    float distance = position.distance(otherDrop.position);
-                    if (distance <= COMPRESSION_RANGE) {
-                        // Compress the other drop into this one
-                        otherDrop.isCompressed = true;
-                        otherDrop.parentDrop = this;
-                        stackCount++;
-                    }
-                }
+        int maxStack = itemStack.getMaxStackSize();
+        for (Entity entity : entityManager.getAllEntities()) {
+            if (stackCount >= maxStack) return;
+            if (entity instanceof ItemDrop other && other != this && other.alive
+                    && !other.isNetworkShadow() && sameKind(other)
+                    && stackCount + other.stackCount <= maxStack
+                    && position.distance(other.position) <= MERGE_RANGE) {
+                stackCount += other.stackCount;
+                // A fresh toss keeps its lock-out; the merged pile lives as long as either.
+                pickupDelay = Math.max(pickupDelay, other.pickupDelay);
+                despawnTimer = Math.max(despawnTimer, other.despawnTimer);
+                other.alive = false;
             }
         }
     }
-    
+
+    private boolean sameKind(ItemDrop other) {
+        com.stonebreak.items.Item item = itemStack.getItem();
+        return item.isSameType(other.itemStack.getItem())
+                && ItemStack.statesMatch(item, itemStack.getState(), other.itemStack.getState());
+    }
+
     /**
-     * Gets the visual stack count for rendering.
+     * Gets how many items this drop holds.
      */
     public int getStackCount() {
         return stackCount;
@@ -368,37 +371,6 @@ public class ItemDrop extends Entity {
      */
     public void setStackCount(int count) {
         this.stackCount = Math.max(1, count);
-        this.hasInitialStackCount = (count > 1);
-    }
-    
-    /**
-     * Returns true if this drop should be rendered (not compressed into another).
-     */
-    public boolean shouldRender() {
-        return !isCompressed;
-    }
-    
-    /**
-     * When this drop is picked up, handle distributing the compressed drops.
-     */
-    @Override
-    protected void onDeath() {
-        // If this drop had compressed drops, handle their pickup too. Same manager rule
-        // as updateCompression: THIS world's manager, never the Game singleton.
-        if (stackCount > 1 && world != null) {
-            com.stonebreak.mobs.entities.EntityManager entityManager = world.getEntityManager();
-            if (entityManager != null) {
-                // Find and remove all compressed drops
-                java.util.List<Entity> entities = new java.util.ArrayList<>(entityManager.getAllEntities());
-                for (Entity entity : entities) {
-                    if (entity instanceof ItemDrop otherDrop && otherDrop.parentDrop == this) {
-                        otherDrop.alive = false;
-                    }
-                }
-            }
-        }
-        
-        super.onDeath();
     }
     
     /**

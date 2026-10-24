@@ -111,7 +111,7 @@ public class CullingShotAbility {
 
         Vector3f origin = player.getRaycastEngine().eyeOrigin();
         LivingEntity hit = player.getRaycastEngine().raycastEntityAlong(
-            origin, lockedDirection, entityManager.getLivingEntities(), RANGER_CULLING_RANGE);
+            origin, lockedDirection, Player.combatTargets(entityManager), RANGER_CULLING_RANGE);
         if (hit == null || !hit.isAlive()) {
             return; // whiff — cooldown already started
         }

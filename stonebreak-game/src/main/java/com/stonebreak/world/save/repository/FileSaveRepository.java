@@ -84,18 +84,27 @@ public class FileSaveRepository {
 
     // ── Per-username player blobs (remote multiplayer players) ──────────────────
     // The host persists every connected player's serialized PlayerData under
-    // players/<sanitized-username>.json. The in-process local player keeps using player.json.
+    // players/<stem>.json, the stem a reversible, case-safe encoding of the name
+    // (PlayerSaveNames, issue #335). Saves made before it used a lossy sanitized name; the first
+    // load of such a player renames its file to the new name. The in-process local player keeps
+    // using player.json.
 
     public void saveNamedPlayerBytes(String username, byte[] json) throws IOException {
         ensureWorldDirectory();
-        Path file = playersDir().resolve(sanitize(username) + ".json");
-        writeAtomic(file, json);
+        writeAtomic(namedPlayerFile(username), json);
     }
 
     public Optional<byte[]> loadNamedPlayerBytes(String username) throws IOException {
-        Path file = playersDir().resolve(sanitize(username) + ".json");
-        if (!Files.exists(file)) {
+        Optional<Path> found = existingNamedPlayerFile(username);
+        if (found.isEmpty()) {
             return Optional.empty();
+        }
+        Path file = found.get();
+        Path current = namedPlayerFile(username);
+        if (!file.equals(current)) {
+            // Migrate, so no old-name copy is left to come back after a later set-aside.
+            Files.move(file, current);
+            file = current;
         }
         return Optional.of(Files.readAllBytes(file));
     }
@@ -106,7 +115,7 @@ public class FileSaveRepository {
      * remote players by #334). Returns where it went.
      */
     public Path setNamedPlayerFileAside(String username) throws IOException {
-        Path file = playersDir().resolve(sanitize(username) + ".json");
+        Path file = existingNamedPlayerFile(username).orElse(namedPlayerFile(username));
         Path aside = file.resolveSibling(file.getFileName() + ".corrupt");
         for (int n = 1; Files.exists(aside); n++) {
             aside = file.resolveSibling(file.getFileName() + ".corrupt." + n);
@@ -119,13 +128,32 @@ public class FileSaveRepository {
         return worldRoot.resolve("players");
     }
 
-    /** Map a username to a safe, collision-resistant filename component. */
-    private static String sanitize(String username) {
-        if (username == null || username.isBlank()) {
-            return "_anonymous";
+    /** Where {@code username}'s save is written. */
+    private Path namedPlayerFile(String username) {
+        return playersDir().resolve(PlayerSaveNames.stem(username) + ".json");
+    }
+
+    /**
+     * The file {@code username}'s save is read from: the current one, else one written before
+     * #335 under the old sanitized name. The old name is matched against the directory listing
+     * with its exact case, so on a case-insensitive file system {@code bob} never reads
+     * {@code Bob.json}.
+     */
+    private Optional<Path> existingNamedPlayerFile(String username) throws IOException {
+        Path current = namedPlayerFile(username);
+        if (Files.exists(current)) {
+            return Optional.of(current);
         }
-        String cleaned = username.replaceAll("[^A-Za-z0-9_.-]", "_");
-        return cleaned.length() > 64 ? cleaned.substring(0, 64) : cleaned;
+        Path dir = playersDir();
+        if (!Files.isDirectory(dir)) {
+            return Optional.empty();
+        }
+        String legacy = PlayerSaveNames.legacyStem(username) + ".json";
+        try (var entries = Files.list(dir)) {
+            return entries.filter(p -> p.getFileName().toString().equals(legacy))
+                    .filter(Files::isRegularFile)
+                    .findFirst();
+        }
     }
 
     public void saveChunks(Collection<ChunkData> chunks) throws IOException {

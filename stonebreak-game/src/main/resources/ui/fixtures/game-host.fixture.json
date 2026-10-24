@@ -292,6 +292,7 @@
       "godRaysEnabled": true,
       "shadowsEnabled": true,
       "playerNameTagsEnabled": true,
+      "pauseSingleplayerWorld": false,
       "shadowQuality": "MEDIUM",
       "shadowDistance": 96,
       "smoothLightingEnabled": true,

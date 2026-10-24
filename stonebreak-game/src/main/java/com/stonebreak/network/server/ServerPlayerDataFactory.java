@@ -45,6 +45,7 @@ public final class ServerPlayerDataFactory {
                 .selectedHotbarSlot(inv.selectedHotbarSlot())
                 .lastSaved(LocalDateTime.now())
                 .worldName(worldName)
+                .clientSecret(sp.clientSecret()) // stored with the save, checked on takeover (#335)
                 .build();
     }
 }

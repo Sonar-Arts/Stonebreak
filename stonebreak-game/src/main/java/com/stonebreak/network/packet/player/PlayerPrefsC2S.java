@@ -27,17 +27,27 @@ import java.nio.charset.StandardCharsets;
  * refused — is answered with a {@link ProgressS2C} carrying it as {@code ackSeq}, so the
  * client can tell an echo of an older report from the answer to its latest one.
  *
+ * <p>{@code provisional} is true while the client's character-panel session (save-or-discard)
+ * is open: its spends may still be undone, so the server keeps them refundable down to the
+ * last commit. A non-provisional report closes that window and commits what it carries
+ * (issue #421; see {@code SpendFloor}).
+ *
  * <p>The payload is bounded in UTF-8 BYTES, the unit the decoder checks: an oversized JSON is
  * encoded as an empty payload (which the server refuses and answers) instead of a frame the
  * decoder would reject by closing the connection, or a character-truncated, invalid JSON.
  */
-public record PlayerPrefsC2S(int seq, String json) implements Packet {
+public record PlayerPrefsC2S(int seq, boolean provisional, String json) implements Packet {
 
     /** Matches the old PlayerDataC2S budget (UTF-8 bytes). */
     public static final int MAX_JSON_BYTES = 64 * 1024;
 
     public PlayerPrefsC2S {
         json = json == null ? "" : json;
+    }
+
+    /** A committing (non-provisional) report. */
+    public PlayerPrefsC2S(int seq, String json) {
+        this(seq, false, json);
     }
 
     /** True when {@code json} fits the wire budget (UTF-8 bytes). */
@@ -53,6 +63,7 @@ public record PlayerPrefsC2S(int seq, String json) implements Packet {
                 bytes = new byte[0]; // never a frame the decoder rejects; the server refuses it
             }
             out.writeInt(p.seq());
+            out.writeBoolean(p.provisional());
             out.writeInt(bytes.length);
             out.writeBytes(bytes);
         }
@@ -60,13 +71,14 @@ public record PlayerPrefsC2S(int seq, String json) implements Packet {
         @Override
         public PlayerPrefsC2S decode(ByteBuf in) {
             int seq = in.readInt();
+            boolean provisional = in.readBoolean();
             int len = in.readInt();
             if (len < 0 || len > MAX_JSON_BYTES) {
                 throw new IllegalArgumentException("PlayerPrefsC2S payload out of range: " + len);
             }
             byte[] bytes = new byte[len];
             in.readBytes(bytes);
-            return new PlayerPrefsC2S(seq, new String(bytes, StandardCharsets.UTF_8));
+            return new PlayerPrefsC2S(seq, provisional, new String(bytes, StandardCharsets.UTF_8));
         }
     };
 }

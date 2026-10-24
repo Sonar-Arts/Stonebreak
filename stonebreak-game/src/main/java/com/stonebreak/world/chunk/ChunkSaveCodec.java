@@ -2,7 +2,6 @@ package com.stonebreak.world.chunk;
 
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
@@ -142,19 +141,21 @@ final class ChunkSaveCodec {
     }
 
     /**
-     * Loads entities from the snapshot into THIS world's entity manager. Critically, prefer the
-     * world's own manager over the Game singleton: during server world-load the singleton
-     * points at the client's manager (or, just after a world switch, the previous session's
-     * terminated one), which would reject the deserialization task.
+     * Loads entities from the snapshot into THIS world's entity manager — never the Game
+     * singleton's: during server world-load that points at the client's manager (or, just after
+     * a world switch, the previous session's terminated one), so saved mobs would come back as
+     * client-only entities or be rejected. A world with no manager bound is a wiring bug and is
+     * reported rather than papered over (#340).
      */
     static void restoreEntities(CcoSerializableSnapshot snapshot, World world) {
         if (world != null && !snapshot.getEntities().isEmpty()) {
             EntityManager em = world.getEntityManager();
             if (em == null) {
-                Game game = Game.getInstance();
-                em = (game != null) ? game.getEntityManager() : null;
-            }
-            if (em != null) {
+                logger.log(Level.SEVERE, String.format(
+                    "[ENTITY-LOAD] Chunk (%d,%d): %d saved entities not restored — the world has no"
+                        + " entity manager bound (World.setEntityManager)",
+                    snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getEntities().size()));
+            } else {
                 logger.log(Level.FINE, String.format(
                     "[ENTITY-LOAD] Chunk (%d,%d): Loading %d entities",
                     snapshot.getChunkX(), snapshot.getChunkZ(), snapshot.getEntities().size()

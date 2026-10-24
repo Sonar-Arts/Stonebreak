@@ -51,6 +51,7 @@ class PlayerRosterAnnounceTest {
         ServerWorldContext ctx = new ServerWorldContext(registry);
         ServerConnection hostConn = mock(ServerConnection.class);
         ServerPlayer host = newPlayer(hostConn, 42, "Host");
+        host.seedTransform(98f, 70f, -5f, 0f, 0f); // where the join seeded it (its saved spot)
         ctx.addPlayer(host);
 
         handler.handlePlayerState(host, new PlayerStateC2S(100f, 70f, -5f, 90f, 0f, (byte) 0), ctx);

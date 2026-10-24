@@ -1,6 +1,8 @@
 package com.stonebreak.network.server.handlers;
 
+import com.openmason.engine.net.protocol.codec.ChunkBlockPayload;
 import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.openmason.engine.util.LongIntHashMap;
 import com.stonebreak.network.packet.world.ChunkDataS2C;
 import com.stonebreak.network.server.ServerPlayer;
@@ -32,37 +34,69 @@ public final class ServerChunkHandler {
     // (ViewDistanceC2S → ServerPlayer.viewDistanceChunks, clamped server-side).
     // Derived radii, per player:
     //   view   = sp.viewDistanceChunks()  — chunks streamed
-    //   gen    = view + 1                 — one ring beyond view is generated (not streamed)
-    //                                       so view-edge chunks get features
+    //   gen    = view + 2                 — two rings beyond view are generated (not streamed):
+    //                                       a chunk streams only once all 8 neighbours are
+    //                                       populated (settledForStreaming), so the view+1 ring
+    //                                       must populate, which needs its own E/S/SE neighbours
     //   forget = view + 2                 — beyond this the "already sent" record is dropped
-    //                                       so the chunk re-streams on return. MUST match the
+    //                                       so the chunk re-streams on return. Matches the
     //                                       client's keep radius (World.clientKeepRadius() =
-    //                                       renderDistance + 2) or a returning player gets
-    //                                       holes (client dropped the chunk but the server
-    //                                       still thinks it was sent).
+    //                                       renderDistance + 2), but runs on the lagging 20 Hz
+    //                                       position sample, so it is only a bound: the client
+    //                                       reports every chunk it drops (ChunkUnloadC2S,
+    //                                       handleChunksUnloaded — #363).
     /**
      * Chunks streamed per remote player per tick. Kept modest because a real
      * wire needs pacing. 8/tick @ 20 Hz = 160 chunks/s fills a view in ~2 s.
-     * (Encode itself is cheap now — bulk section reads, no per-cell adapters —
-     * and runs on the dedicated SINGLEPLAYER-Server thread, not the render
-     * thread, so the budget is purely about remote bandwidth.)
+     * The tick only snapshots the chunk; the encode runs on the connection's
+     * network thread (ChunkBlockPayload), once per snapshot for every viewer.
      */
     private static final int MAX_PUSH_PER_TICK = 8;
     /**
      * Runaway guard (NOT pacing) for the LOCAL (host) player. The LocalChannel
-     * is an in-JVM object handoff — no wire to protect — and the client now
-     * decodes payloads OFF-thread and installs under its own per-frame budget
-     * (ClientChunkHandler), so the stream needs no server-side pacing at all:
-     * the scan pushes until the view is complete or the channel goes
-     * unwritable. 1024/tick @ 20 Hz only exists so a bug can't spin the tick
-     * forever; even the max view (r=24, 2401 chunks) drains in 3 ticks.
+     * is an in-JVM object handoff — the client installs the server's storage
+     * snapshot with no encode or decode, under its own per-frame budget
+     * (ClientChunkHandler) — so the stream is paced only by the client's acks
+     * and {@link #STREAM_BUDGET_NANOS}.
      */
     private static final int LOCAL_PUSH_PER_TICK = 1024;
+    /**
+     * Wall-clock time all players' snapshot sends may take per tick (#345). Without it the
+     * local player's first view was snapshotted and encoded in one tick while water, mobs and
+     * time stood still. Only sends are limited: the generation ring below always requests its
+     * chunks, so terrain generation is never slowed by streaming.
+     */
+    private static final long STREAM_BUDGET_NANOS = 8_000_000L;
+
+    // Flow control, after Minecraft's chunk batching: the client reports how many snapshots it
+    // installs per tick (ChunkAckC2S) and acknowledges what it processed. The server streams at
+    // that rate and keeps at most a window of unacknowledged snapshots in flight, so a client
+    // that stalls (hitch, minimised window) is not buried under a backlog it then installs in
+    // one frame. Rates until the first ack, and the most a client may ask for:
+    private static final float LOCAL_DEFAULT_RATE = 64f;
+    private static final float REMOTE_DEFAULT_RATE = 9f;   // Minecraft's initial batch rate
+    private static final float LOCAL_MAX_RATE = 256f;
+    private static final float REMOTE_MAX_RATE = 64f;
+    private static final float MIN_RATE = 0.5f;
+    /** Unacknowledged snapshots allowed in flight. */
+    private static final int LOCAL_WINDOW = 512;
+    private static final int REMOTE_WINDOW = 96;
+    /** Snapshots in flight with no ack for this long (5 s): reopen the window. */
+    private static final int CHUNK_ACK_WATCHDOG_TICKS = 100;
 
     /** Current version per chunk key; bumped on modification so clients re-receive it.
      *  Primitive-keyed: the view scan probes this per ring cell, and a boxed
      *  {@code Map<Long, Integer>} allocated a Long per probe. */
     private final LongIntHashMap chunkVersions = new LongIntHashMap();
+
+    /**
+     * Block snapshot per chunk, reused while the chunk object and its block revision are
+     * unchanged: every viewer of a chunk version, and every resend of an unchanged chunk,
+     * shares one copy-on-write snapshot and — on a wire — one encode. Dropped for chunks no
+     * longer resident (eviction sweep).
+     */
+    private record CachedBlocks(Chunk chunk, long revision, ChunkBlockPayload blocks) {}
+    private final java.util.Map<Long, CachedBlocks> blockCache = new java.util.HashMap<>();
 
     /** Set when any chunk version bumps; the next tick re-arms every player's view scan. */
     private boolean versionsDirty = false;
@@ -133,6 +167,7 @@ public final class ServerChunkHandler {
     public void onSessionStart() {
         chunkVersions.clear();
         chunkHashes.clear();
+        blockCache.clear();
         lastSimEditTick.clear();
         tickCounter = 0;
         versionsDirty = true;
@@ -144,6 +179,7 @@ public final class ServerChunkHandler {
      */
     public void handleResyncRequest(ServerPlayer sp, int cx, int cz) {
         if (!sp.allowResync()) {
+            sp.deferChunkResync(packKey(cx, cz)); // retried in tick as permits free up (#363)
             return;
         }
         sp.forgetChunk(packKey(cx, cz));
@@ -151,22 +187,65 @@ public final class ServerChunkHandler {
     }
 
     /**
+     * C2S: the client dropped these chunks — forget them so they re-stream when they come
+     * back into view (#363). Normally they are far outside the view and the player's movement
+     * back toward them re-arms the scan; one still inside the view by the server's (lagging)
+     * position sample re-arms it now, or a copy the client re-installed meanwhile would go
+     * stale with no block changes reaching it.
+     */
+    public void handleChunksUnloaded(ServerPlayer sp, int[] coords) {
+        handleChunksUnloaded(sp, coords, com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER,
+                com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER);
+    }
+
+    /**
+     * {@link #handleChunksUnloaded(ServerPlayer, int[])} judged from the chunk the client stood
+     * in when it dropped them. After a teleport the server's position sample still names the
+     * old area, so every dropped chunk counted as in view and the whole old view re-streamed —
+     * only for the client to discard and report it again.
+     */
+    public void handleChunksUnloaded(ServerPlayer sp, int[] coords, int clientCx, int clientCz) {
+        boolean reported = clientCx != com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER;
+        int pcx = reported ? clientCx : (int) Math.floor(sp.x() / 16.0);
+        int pcz = reported ? clientCz : (int) Math.floor(sp.z() / 16.0);
+        int viewDistance = sp.viewDistanceChunks();
+        boolean inView = false;
+        for (int i = 0; i + 1 < coords.length; i += 2) {
+            sp.forgetChunk(packKey(coords[i], coords[i + 1]));
+            inView |= Math.max(Math.abs(coords[i] - pcx), Math.abs(coords[i + 1] - pcz)) <= viewDistance;
+        }
+        if (inView) {
+            sp.markViewScanPending();
+        }
+    }
+
+    /**
      * C2S: periodic client desync audit. Compares each reported hash against the server's
      * cached (lazily recomputed) hash; a mismatch re-streams the chunk to that player.
      * Steady-state cost is a map probe per entry; hashing happens only after invalidation.
+     *
+     * <p>Only chunks the player could hold are audited (its keep radius), and every mismatch
+     * spends a resync permit like an explicit resync request — over budget it is deferred,
+     * not re-sent — so fake hashes cannot buy endless chunk re-sends (issue #336).
      */
     public void handleChunkHashes(ServerPlayer sp, int[] entries, ServerWorldContext ctx) {
         World world = ctx.world();
         if (world == null) {
             return;
         }
+        int pcx = (int) Math.floor(sp.x() / 16.0);
+        int pcz = (int) Math.floor(sp.z() / 16.0);
+        int keepRadius = sp.viewDistanceChunks() + 2;
         for (int i = 0; i + 2 < entries.length; i += 3) {
             int cx = entries[i];
             int cz = entries[i + 1];
             int clientHash = entries[i + 2];
+            if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) > keepRadius) {
+                continue; // not a chunk this player holds
+            }
             Chunk chunk = world.getChunkIfLoaded(cx, cz);
-            if (chunk == null || !chunk.areFeaturesPopulated()) {
-                continue; // not resident server-side — nothing to compare against
+            if (chunk == null || !settledForStreaming(world, chunk, cx, cz)) {
+                continue; // not resident or still settling server-side — nothing to compare against
             }
             long key = packKey(cx, cz);
             // Sim-edit grace: skip chunks the simulation touched within the last audit
@@ -181,6 +260,10 @@ public final class ServerChunkHandler {
                 chunkHashes.put(key, serverHash);
             }
             if (serverHash != clientHash) {
+                if (!sp.allowResync()) {
+                    sp.deferChunkResync(key); // retried in tick as permits free up
+                    continue;
+                }
                 System.out.println("[SERVER-CHUNK] Audit mismatch at (" + cx + "," + cz
                     + ") for player " + sp.playerId() + " — re-streaming.");
                 sp.forgetChunk(key);
@@ -189,7 +272,51 @@ public final class ServerChunkHandler {
         }
     }
 
+    /** C2S ChunkAckC2S: the client processed {@code processed} snapshots; its install rate. */
+    public void handleChunkAck(ServerPlayer sp, int processed, float desiredPerTick) {
+        float max = sp.isLocal() ? LOCAL_MAX_RATE : REMOTE_MAX_RATE;
+        sp.onChunkAck(processed, Math.max(MIN_RATE, Math.min(max, desiredPerTick)));
+        if (processed > 0) {
+            sp.markViewScanPending(); // the window opened — resume a scan it paused
+        }
+    }
+
+    /** Refills this tick's streaming quota from the client's rate. */
+    private static void refillChunkQuota(ServerPlayer sp) {
+        float rate = sp.chunkRate();
+        if (Float.isNaN(rate)) {
+            rate = sp.isLocal() ? LOCAL_DEFAULT_RATE : REMOTE_DEFAULT_RATE;
+        }
+        sp.setChunkQuota(Math.min(sp.chunkQuota() + rate, Math.max(1f, rate)));
+        if (sp.chunkAckOverdue(CHUNK_ACK_WATCHDOG_TICKS)) {
+            System.err.println("[SERVER-CHUNK] No chunk ack from player " + sp.playerId()
+                + " for " + CHUNK_ACK_WATCHDOG_TICKS + " ticks — reopening its stream window.");
+        }
+    }
+
+    /** Join timing (#345): one log line per player when their first view completes. */
+    private final ChunkJoinProbe joinProbe = new ChunkJoinProbe();
+    /** Duration of this handler's last {@link #tick}, folded into the join probe. */
+    private long lastChunkStepNs;
+
+    /**
+     * End of a server tick ({@code tickNs} = the whole replication tick): feeds the join probe.
+     * Called by the server after every tick step has run.
+     */
+    public void onTickEnded(long tickNs, java.util.Collection<ServerPlayer> players) {
+        joinProbe.tickEnded(tickNs, lastChunkStepNs, players);
+    }
+
     public void tick(ServerWorldContext ctx) {
+        long stepStart = System.nanoTime();
+        try {
+            streamTick(ctx);
+        } finally {
+            lastChunkStepNs = System.nanoTime() - stepStart;
+        }
+    }
+
+    private void streamTick(ServerWorldContext ctx) {
         tickCounter++;
         World world = ctx.world();
         if (world == null) {
@@ -202,14 +329,21 @@ public final class ServerChunkHandler {
         // per player whether the bumped chunk is in view (the per-cell version check).
         boolean versionsBumped = versionsDirty;
         versionsDirty = false;
+        long streamDeadline = System.nanoTime() + STREAM_BUDGET_NANOS;
 
         for (ServerPlayer sp : ctx.players()) {
+            refillChunkQuota(sp);
+            sp.drainDeferredChunkResyncs(key -> {
+                sp.forgetChunk(key);
+                sp.markViewScanPending();
+            });
             // Wait for a reported position before streaming — avoids shipping chunks around
             // (0,0) to a player who actually spawned far away.
             if (sp.lastStateNs() == 0L && sp.lastCx() == Integer.MIN_VALUE) {
                 continue;
             }
 
+            joinProbe.streamable(sp);
             int cx = (int) Math.floor(sp.x() / 16.0);
             int cz = (int) Math.floor(sp.z() / 16.0);
             sp.setLastChunk(cx, cz); // marks the scan pending on a boundary crossing
@@ -225,7 +359,7 @@ public final class ServerChunkHandler {
             }
 
             int viewDistance = sp.viewDistanceChunks();
-            int genDistance = viewDistance + 1;
+            int genDistance = viewDistance + 2;
             int forgetDistance = viewDistance + 2;
 
             // Forget chunks the client has unloaded (left its keep radius) so they re-stream on
@@ -236,13 +370,14 @@ public final class ServerChunkHandler {
                 return Math.max(Math.abs(kx - cx), Math.abs(kz - cz)) > forgetDistance;
             });
 
-            // Generate one ring BEYOND the streamed view so the view-edge chunks have the
-            // east/south/southeast neighbors that feature population (trees/flowers) requires;
-            // those border chunks are generated but never streamed.
+            // Generate two rings BEYOND the streamed view: the view-edge chunks stream only once
+            // their neighbours (ring view+1) are populated, and those need their own
+            // east/south/southeast neighbours (ring view+2) to populate. Never streamed.
+            long now = System.nanoTime();
             for (int dz = -genDistance; dz <= genDistance; dz++) {
                 for (int dx = -genDistance; dx <= genDistance; dx++) {
                     if (Math.max(Math.abs(dx), Math.abs(dz)) > viewDistance) {
-                        world.getChunkAt(cx + dx, cz + dz);
+                        requestChunk(world, sp, cx + dx, cz + dz, now);
                     }
                 }
             }
@@ -251,7 +386,12 @@ public final class ServerChunkHandler {
             // version — any deferral (gen in flight, features pending, budget exhausted)
             // keeps the scan armed for next tick.
             boolean viewComplete = true;
-            int budget = sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK;
+            int window = (sp.isLocal() ? LOCAL_WINDOW : REMOTE_WINDOW) - sp.chunksInFlight();
+            int budget = Math.min(sp.isLocal() ? LOCAL_PUSH_PER_TICK : MAX_PUSH_PER_TICK,
+                    Math.min((int) sp.chunkQuota(), window));
+            if (budget <= 0 || System.nanoTime() >= streamDeadline) {
+                continue; // paced: the scan stays armed and resumes as quota/acks/time allow
+            }
             outer:
             for (int r = 0; r <= viewDistance; r++) {
                 for (int dz = -r; dz <= r; dz++) {
@@ -264,15 +404,15 @@ public final class ServerChunkHandler {
                         if (sp.sentChunkVersion(key) >= version) {
                             continue; // already has the current version
                         }
-                        Chunk chunk = world.getChunkAt(cx + dx, cz + dz);
+                        Chunk chunk = requestChunk(world, sp, cx + dx, cz + dz, now);
                         if (chunk == null) {
                             viewComplete = false;
-                            continue; // async gen in flight — retry next tick
+                            continue; // async gen in flight (or over budget) — retry next tick
                         }
-                        // Don't stream a chunk until its features (trees, flowers, ...) are
-                        // populated — otherwise the client receives a terrain-only snapshot and,
-                        // since feature population doesn't bump the version, never gets the rest.
-                        if (!chunk.areFeaturesPopulated()) {
+                        // Don't stream a chunk until generation is done writing into it —
+                        // feature population doesn't bump the version, so anything written
+                        // after the send would never reach the client (#365).
+                        if (!settledForStreaming(world, chunk, cx + dx, cz + dz)) {
                             viewComplete = false;
                             continue; // not ready — retry next tick (do NOT mark sent)
                         }
@@ -286,13 +426,15 @@ public final class ServerChunkHandler {
                             viewComplete = false;
                             break outer;
                         }
-                        byte[] payload = VoxelChunkCodec.encode(new ChunkDataAdapter(chunk));
+                        ChunkBlockPayload blocks = blocksFor(key, chunk);
                         byte[] metaPayload = encodeChunkMeta(world, chunk, cx + dx, cz + dz);
-                        sp.send(new ChunkDataS2C(cx + dx, cz + dz, payload, metaPayload), false);
+                        sp.send(new ChunkDataS2C(cx + dx, cz + dz, blocks, metaPayload), false);
                         sp.markChunkSent(key, version);
+                        sp.onChunkStreamed();
+                        joinProbe.streamed(sp);
                         com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.increment();
-                        if (--budget <= 0) {
-                            viewComplete = false; // runaway guard — outer rings unverified
+                        if (--budget <= 0 || System.nanoTime() >= streamDeadline) {
+                            viewComplete = false; // quota or tick time spent — outer rings unverified
                             break outer;
                         }
                     }
@@ -300,25 +442,93 @@ public final class ServerChunkHandler {
             }
             if (viewComplete) {
                 sp.clearViewScanPending();
+                joinProbe.viewComplete(sp);
             }
         }
     }
 
     /**
-     * Unloads (save-then-unload) chunks outside every player's keep ring. Skips
-     * entirely while any player has no reported position yet (a fresh joiner far
-     * from the others must not get their surroundings evicted before their first
-     * position packet lands).
+     * The chunk's block payload at its current revision: the cached snapshot when neither the
+     * chunk object nor its blocks changed since, else a fresh copy-on-write snapshot. The
+     * revision is read before the copy, so a write racing the copy only costs a re-snapshot.
+     */
+    private ChunkBlockPayload blocksFor(long key, Chunk chunk) {
+        long revision = chunk.getCcoDirtyTracker().blockRevision();
+        CachedBlocks cached = blockCache.get(key);
+        if (cached != null && cached.chunk() == chunk && cached.revision() == revision) {
+            return cached.blocks();
+        }
+        ChunkBlockPayload blocks = chunk.getBlockStorageView() instanceof CcoPalettedChunkStorage paletted
+            ? ChunkBlockPayload.ofSnapshot(paletted.copy())
+            : ChunkBlockPayload.ofEncoded(VoxelChunkCodec.encode(new ChunkDataAdapter(chunk)));
+        blockCache.put(key, new CachedBlocks(chunk, revision, blocks));
+        return blocks;
+    }
+
+    /** Snapshot cached for (cx, cz), or null. Package-private for tests. */
+    ChunkBlockPayload cachedBlocks(int cx, int cz) {
+        CachedBlocks cached = blockCache.get(packKey(cx, cz));
+        return cached == null ? null : cached.blocks();
+    }
+
+    /**
+     * The chunk at {@code (x, z)} if resident; otherwise asks for its load/generation and
+     * returns null. A request that would START a load spends one of the player's chunk
+     * requests (issue #336); over budget nothing is started and the scan retries as the
+     * budget refills. The host's own player is not limited.
+     */
+    private static Chunk requestChunk(World world, ServerPlayer sp, int x, int z, long nowNs) {
+        Chunk chunk = world.getChunkIfLoaded(x, z);
+        if (chunk != null) {
+            return chunk;
+        }
+        if (!sp.isLocal() && !world.isChunkLoadPending(x, z) && !sp.allowChunkRequest(nowNs)) {
+            return null;
+        }
+        return world.getChunkAt(x, z);
+    }
+
+    /**
+     * True once world generation can no longer write into {@code chunk}: it and all eight
+     * neighbours are populated (trees and surface patches reach at most 7 blocks into an
+     * adjacent chunk, via raw writes that neither bump the version nor replicate), and no
+     * deferred cross-chunk feature still waits to be placed into it (#365).
+     */
+    static boolean settledForStreaming(World world, Chunk chunk, int cx, int cz) {
+        if (!chunk.areFeaturesPopulated()) {
+            return false;
+        }
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                Chunk neighbour = world.getChunkIfLoaded(cx + dx, cz + dz);
+                if (neighbour == null || !neighbour.areFeaturesPopulated()) {
+                    return false;
+                }
+            }
+        }
+        var featureQueue = world.getFeatureQueue();
+        return featureQueue == null || !featureQueue.hasPendingFor(cx, cz);
+    }
+
+    /**
+     * Unloads (save-then-unload) chunks outside every positioned player's keep ring. A player
+     * with no reported position yet (handshaking, creating a character) anchors nothing and is
+     * skipped — it used to stop eviction for everyone, so one player idling in character
+     * creation let residency grow without bound (issue #336). Nothing is streamed to it until
+     * it reports, so there is nothing of its own to keep.
      */
     private void evictFarChunks(ServerWorldContext ctx, World world) {
-        var players = ctx.players();
+        java.util.List<ServerPlayer> players = new java.util.ArrayList<>();
+        for (ServerPlayer sp : ctx.players()) {
+            if (sp.lastStateNs() != 0L || sp.lastCx() != Integer.MIN_VALUE) {
+                players.add(sp);
+            }
+        }
         if (players.isEmpty()) {
             return; // idle server: keep residency; players return to warm chunks
-        }
-        for (ServerPlayer sp : players) {
-            if (sp.lastStateNs() == 0L && sp.lastCx() == Integer.MIN_VALUE) {
-                return;
-            }
         }
         int evicted = 0;
         for (var pos : world.getLoadedChunkPositions()) {
@@ -339,6 +549,11 @@ public final class ServerChunkHandler {
                 }
             }
         }
+        // Snapshots of chunks no longer resident (evicted now or unloaded elsewhere).
+        blockCache.entrySet().removeIf(e -> {
+            long key = e.getKey();
+            return world.getChunkIfLoaded((int) (key >> 32), (int) key) != e.getValue().chunk();
+        });
         if (evicted > 0) {
             System.out.println("[SERVER-CHUNK] Evicted " + evicted + " far chunks ("
                 + world.getLoadedChunkCount() + " resident)");
@@ -370,7 +585,7 @@ public final class ServerChunkHandler {
         return com.stonebreak.network.bridge.GameChunkMetaCodec.encode(snow, chunk.getBlockStates(), water);
     }
 
-    private static long packKey(int cx, int cz) {
+    static long packKey(int cx, int cz) {
         return (((long) cx) << 32) | (cz & 0xFFFFFFFFL);
     }
 }

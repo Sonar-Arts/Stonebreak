@@ -99,7 +99,7 @@ public class SnareAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive()) continue;
             if (entity.getPosition().distance(trapPosition) > RANGER_SNARE_RADIUS) continue;
 

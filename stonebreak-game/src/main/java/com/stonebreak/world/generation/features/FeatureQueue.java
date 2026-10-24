@@ -63,9 +63,19 @@ public class FeatureQueue {
                 } catch (Exception e) {
                     System.err.println("[FEATURE-QUEUE] Failed to place feature '" + feature.name() +
                         "' at " + feature.origin() + ": " + e.getMessage());
+                    // Give it up: left queued, it would hold its chunks back from streaming forever.
+                    removeFeatureFromAllQueues(feature);
                 }
             }
         }
+    }
+
+    /**
+     * True while a queued feature still has to be placed into chunk ({@code x}, {@code z}).
+     * The server does not stream such a chunk: the placement would not reach the client (#365).
+     */
+    public boolean hasPendingFor(int x, int z) {
+        return pendingFeatures.containsKey(new ChunkPosition(x, z));
     }
 
     /**

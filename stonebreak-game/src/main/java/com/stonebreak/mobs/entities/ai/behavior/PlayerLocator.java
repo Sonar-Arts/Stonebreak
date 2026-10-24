@@ -1,15 +1,18 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
-import com.stonebreak.core.Game;
-import com.stonebreak.player.Player;
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.player.PlayerConstants;
+import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 /**
  * Where the nearest player is, as far as a behaviour is concerned.
  *
  * <p>A seam rather than a direct {@code Game.getPlayer()} call, for two reasons: behaviours become
- * testable without booting the game, and the day mobs need to notice remote players as well as the
- * local one, only this changes.
+ * testable without booting the game, and mob AI runs on the server tick thread, where the client's
+ * player is both the wrong answer (it is only the host) and another thread's state. The
+ * authoritative world is handed a locator over the connected roster by the integrated server
+ * ({@code network.server.ServerPlayerLocator}); mobs reach it through {@link #ofWorld}.
  */
 public interface PlayerLocator {
 
@@ -48,70 +51,50 @@ public interface PlayerLocator {
     }
 
     /**
-     * The live local player.
+     * How far the nearest player's movement can be heard, in blocks, for stealth awareness.
      *
-     * <p>Only the local player today, matching what the old AI saw. On a server world the
-     * authoritative mobs still resolve through here, so extending this to the connected roster is
-     * the single change needed to make mobs react to remote players.
+     * <p>The default knows only what the server is told — whether the player sprints. Stealth
+     * state, walking noise and dodge spikes live on the player's own client and are not
+     * replicated, so a walking player is heard at zero range and found by sight alone.
      */
-    PlayerLocator LOCAL = new PlayerLocator() {
-        @Override
-        public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
-            Player player = Game.getPlayer();
-            if (player == null || player.isDead()) {
-                return null;
-            }
-            return out.set(player.getPosition());
-        }
-
-        @Override
-        public boolean nearestPlayerSprinting(Vector3f from) {
-            Player player = Game.getPlayer();
-            return player != null && !player.isDead() && player.isSprinting();
-        }
-
-        @Override
-        public boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
-            Player player = Game.getPlayer();
-            if (player == null || player.isDead()) {
-                return false;
-            }
-            Vector3f chest = new Vector3f(player.getPosition()).add(0, CHEST_HEIGHT, 0);
-            Vector3f direction = chest.sub(eye);
-            float distance = direction.length();
-            if (distance < 1.0e-3f) {
-                return true;
-            }
-            direction.div(distance);
-            return player.getRaycastEngine().distanceToFirstSolid(eye, direction, distance) >= distance;
-        }
-
-        @Override
-        public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
-            Player player = Game.getPlayer();
-            if (player == null || player.isDead()) {
-                return false;
-            }
-            player.damage(amount);
-            Vector3f away = new Vector3f(player.getPosition()).sub(from);
-            away.y = 0;
-            if (knockback > 0f && away.lengthSquared() > 1.0e-4f) {
-                away.normalize(knockback);
-                Vector3f velocity = player.getVelocity();
-                // A small hop so the shove carries instead of dying in ground friction.
-                player.setVelocity(new Vector3f(velocity.x + away.x,
-                        Math.max(velocity.y, KNOCKBACK_LIFT * knockback), velocity.z + away.z));
-            }
-            return true;
-        }
-    };
+    default float nearestPlayerNoiseRadius(Vector3f from) {
+        return nearestPlayerSprinting(from) ? PlayerConstants.NOISE_RADIUS_RUN : 0.0f;
+    }
 
     /** Height above a player's feet that ranged attackers aim at and sight on. */
     float CHEST_HEIGHT = 1.1f;
 
-    /** Upward speed of a knockback hop, as a fraction of its horizontal push. */
-    float KNOCKBACK_LIFT = 0.4f;
-
     /** Nobody to react to; for tests and for worlds with no players. */
     PlayerLocator NONE = (from, out) -> null;
+
+    /**
+     * Whoever the entity's own world says is around, resolved on every call: the connected roster
+     * on the authoritative server world, nobody anywhere else. Resolved lazily because a mob is
+     * built before its world is wired to a server, and because the world is the one thing that
+     * knows which players share it.
+     */
+    static PlayerLocator ofWorld(Entity entity) {
+        return new PlayerLocator() {
+            @Override
+            public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+                return players().nearestPlayer(from, out);
+            }
+
+            @Override
+            public boolean nearestPlayerSprinting(Vector3f from) {
+                return players().nearestPlayerSprinting(from);
+            }
+
+            @Override
+            public float nearestPlayerNoiseRadius(Vector3f from) {
+                return players().nearestPlayerNoiseRadius(from);
+            }
+
+            private PlayerLocator players() {
+                World world = entity.getWorld();
+                PlayerLocator players = world != null ? world.getPlayerLocator() : null;
+                return players != null ? players : NONE;
+            }
+        };
+    }
 }

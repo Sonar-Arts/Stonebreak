@@ -61,7 +61,7 @@ public class SkullCrusherAbility {
 
         EntityManager entityManager = Game.getEntityManager();
         LivingEntity raycastTarget = entityManager != null
-            ? raycastEngine.raycastEntity(entityManager.getLivingEntities())
+            ? raycastEngine.raycastEntity(Player.combatTargets(entityManager))
             : null;
 
         if (raycastTarget != null) {
@@ -119,7 +119,7 @@ public class SkullCrusherAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive()) continue;
             if (entity.getPosition().distance(impactPoint) > SKULLCRUSHER_SHOCKWAVE_RADIUS) continue;
 
@@ -139,7 +139,7 @@ public class SkullCrusherAbility {
         if (craterZones.isEmpty()) return;
 
         EntityManager entityManager = Game.getEntityManager();
-        List<LivingEntity> living = entityManager != null ? entityManager.getLivingEntities() : List.of();
+        List<LivingEntity> living = entityManager != null ? Player.combatTargets(entityManager) : List.of();
 
         var it = craterZones.iterator();
         while (it.hasNext()) {

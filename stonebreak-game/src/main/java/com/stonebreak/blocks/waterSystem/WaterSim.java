@@ -59,6 +59,10 @@ public final class WaterSim {
             : Long.compare(a.sequence(), b.sequence()));
     private final Map<Long, Long> scheduledTicks = new ConcurrentHashMap<>();
     private final Set<Long> scannedChunks = new HashSet<>();
+    /** Resident chunks waiting for their load scan, oldest first; drained by the logical tick. */
+    private final java.util.LinkedHashMap<Long, Chunk> pendingScans = new java.util.LinkedHashMap<>();
+    /** Wall-clock budget per logical tick for load scans (at least one runs per tick). */
+    private static final long SCAN_BUDGET_NANOS = 3_000_000L;
 
     private float tickAccumulator;
     private long logicalTick;
@@ -89,6 +93,7 @@ public final class WaterSim {
     public void advanceTicks(int ticks) {
         for (int i = 0; i < ticks; i++) {
             logicalTick++;
+            processScans();
             processQueue(MAX_UPDATES_PER_TICK);
             flow.onTickComplete();
         }
@@ -127,27 +132,62 @@ public final class WaterSim {
      * carry a saved flow entry; ocean interiors are sources that never tick.
      * Border water in already-loaded adjacent chunks is re-scheduled so flow
      * stalled at the chunk edge resumes.
+     *
+     * <p>The scan runs on the next logical tick under a time budget: a world
+     * reload installs hundreds of chunks in one server tick, and scanning each
+     * inline pushed that tick past its 50 ms (#345). The water is scheduled a
+     * tick or two later than before, which nothing depends on.
      */
     public void onChunkLoaded(Chunk chunk) {
         if (chunk == null) {
             return;
         }
         long chunkKey = chunkKey(chunk.getChunkX(), chunk.getChunkZ());
-        if (!scannedChunks.add(chunkKey)) {
+        if (scannedChunks.add(chunkKey)) {
+            pendingScans.put(chunkKey, chunk);
+        }
+    }
+
+    private void processScans() {
+        if (pendingScans.isEmpty()) {
             return;
         }
+        long deadline = System.nanoTime() + SCAN_BUDGET_NANOS;
+        var it = pendingScans.values().iterator();
+        while (it.hasNext()) {
+            Chunk chunk = it.next();
+            it.remove();
+            scanLoadedChunk(chunk);
+            if (System.nanoTime() >= deadline) {
+                break;
+            }
+        }
+    }
 
+    private void scanLoadedChunk(Chunk chunk) {
         int baseX = chunk.getChunkX() * WorldConfiguration.CHUNK_SIZE;
         int baseZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
         var reader = chunk.getBlockReader();
 
         chunk.getWaterLayer().forEach((lx, y, lz, value) -> schedule(baseX + lx, y, baseZ + lz));
 
+        // Sections whose palette holds no water can't contain any: skip them whole — the
+        // per-cell sweep of dry columns was most of this scan's cost (#345).
+        long waterSections = com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage
+            .sectionMask(chunk.getBlockStorageView(), block -> block == BlockType.WATER);
+        if (waterSections == 0L) {
+            return;
+        }
+
         for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
             for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
                 boolean border = lx == 0 || lx == WorldConfiguration.CHUNK_SIZE - 1
                               || lz == 0 || lz == WorldConfiguration.CHUNK_SIZE - 1;
                 for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+                    if ((waterSections & (1L << (y >> 4))) == 0L) {
+                        y |= 15; // dry section — jump to its top
+                        continue;
+                    }
                     if (reader.get(lx, y, lz) != BlockType.WATER) {
                         continue;
                     }
@@ -193,6 +233,7 @@ public final class WaterSim {
         int chunkX = chunk.getChunkX();
         int chunkZ = chunk.getChunkZ();
         scannedChunks.remove(chunkKey(chunkX, chunkZ));
+        pendingScans.remove(chunkKey(chunkX, chunkZ));
 
         synchronized (pendingUpdates) {
             Iterator<ScheduledUpdate> it = pendingUpdates.iterator();

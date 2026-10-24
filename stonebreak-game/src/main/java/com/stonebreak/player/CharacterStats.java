@@ -685,16 +685,25 @@ public class CharacterStats {
 
   /**
    * Acquires the feat with the given id, deducting 1 FP.
-   * Does nothing if FP is exhausted or the feat is already acquired.
+   * Does nothing unless {@link #canAcquireFeat} allows it.
    */
   public void acquireFeat(String featId) {
-    if (remainingFp <= 0 || acquiredFeatIds.contains(featId)) {
+    if (!canAcquireFeat(featId)) {
       return;
     }
     remainingFp--;
     ledgerVersion++;
     acquiredFeatIds.add(featId);
     undoHistory.addLast(new UndoOp(UndoKind.FP, featId, -1, null));
+  }
+
+  /**
+   * True when {@link #acquireFeat} would take the feat: an FP is left, the feat is not held yet
+   * and its required level is not above this character's (issue #421 — the server refuses it too).
+   */
+  public boolean canAcquireFeat(String featId) {
+    return remainingFp > 0 && !acquiredFeatIds.contains(featId)
+        && FeatRegistry.isAvailableAt(featId, level);
   }
 
   /** Returns true if the player has acquired the given feat. */

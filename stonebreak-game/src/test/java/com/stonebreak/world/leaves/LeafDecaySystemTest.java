@@ -314,6 +314,24 @@ class LeafDecaySystemTest {
     }
 
     @Test
+    void chunkLoadRescanWaitsForTheNextTick() {
+        // #345: a reload installs thousands of chunks in one server tick; the rescan must not
+        // run inside the install, and a chunk that leaves before its rescan is skipped.
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+        world.setBlock(7, 10, 7, BlockType.LEAVES); // orphaned leaf in chunk (0,0)
+        world.setBlock(23, 10, 7, BlockType.LEAVES); // orphaned leaf in chunk (1,0)
+
+        sim.onChunkLoaded(0, 0);
+        sim.onChunkLoaded(1, 0);
+        assertEquals(0, sim.getQueuedRecomputeCount(), "the install itself scans nothing");
+
+        sim.onChunkUnloaded(1, 0);
+        sim.advanceTicks(1);
+        assertEquals(1, sim.getQueuedRecomputeCount(), "only the still-resident chunk is rescanned");
+    }
+
+    @Test
     void rescanOfLeaflessChunkSchedulesNothing() {
         FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
@@ -322,6 +340,7 @@ class LeafDecaySystemTest {
         world.setBlock(4, 10, 3, BlockType.WOOD); // a log alone schedules nothing either
 
         sim.onChunkLoaded(0, 0);
+        sim.advanceTicks(1); // the rescan runs on the next logical tick
 
         assertEquals(0, sim.getQueuedRecomputeCount());
         assertEquals(0, sim.getQueuedDecayCount());

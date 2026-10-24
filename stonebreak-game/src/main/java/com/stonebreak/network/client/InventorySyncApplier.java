@@ -32,13 +32,21 @@ public final class InventorySyncApplier {
      * the client's own intent ({@code HotbarSelectC2S}), so it is taken only from the first
      * applied sync of a session (the seeded value): a later sync built before our last
      * selection change would otherwise revert it.
+     *
+     * <p>Every numbered intent counts, not only slot clicks: a placement, toss, arrow, bucket
+     * use, snow layer or eaten item has already changed the mirror, and a sync built before
+     * the server saw it would hand back what the prediction spent (a placed block reappearing
+     * in the hotbar). Returns false when the sync was skipped: the caller asks the server for
+     * a fresh one ({@code InventoryResyncC2S}), because the skipped sync may also have carried
+     * changes the client never predicted (a pickup, a refund).
      */
-    public static void applyServerSync(Player player, String payload, int ack) {
+    public static boolean applyServerSync(Player player, String payload, int ack) {
         if (!com.stonebreak.network.SlotIntentSeq.isCurrent(ack)) {
-            return;
+            return false;
         }
         apply(player, payload, !selectionSeeded);
         selectionSeeded = true;
+        return true;
     }
 
     /** Session start: the next applied sync seeds the hotbar selection again. */

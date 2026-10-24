@@ -2,8 +2,6 @@ package com.stonebreak.mobs.entities;
 
 import com.openmason.engine.voxel.lighting.ChunkHeightMap;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.core.Game;
-import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.world.lighting.BlockOpacity;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -92,9 +90,11 @@ public class EntitySpawner {
     /**
      * Supplier of spawn anchors (player position + that player's view distance) used to size the
      * cap and to place/despawn mobs. Injected by the world owner so this class doesn't reach into
-     * the network layer. Defaults to "the single local player from {@code Game}" for tests/dev runs.
+     * the network layer. Defaults to no anchors (nothing spawns or despawns) until an owner says
+     * where its players are — never the client's {@code Game.getPlayer()}, which is another
+     * thread's state on the server tick (#340).
      */
-    private volatile Supplier<List<SpawnAnchor>> anchorSource = EntitySpawner::defaultLocalAnchor;
+    private volatile Supplier<List<SpawnAnchor>> anchorSource = EntitySpawner::noAnchors;
 
     private float spawnTimer = 0f;
     private float despawnTimer = 0f;
@@ -133,14 +133,11 @@ public class EntitySpawner {
      * that enumerates every connected player with its reported view distance.
      */
     public void setSpawnAnchorSource(Supplier<List<SpawnAnchor>> source) {
-        this.anchorSource = (source != null) ? source : EntitySpawner::defaultLocalAnchor;
+        this.anchorSource = (source != null) ? source : EntitySpawner::noAnchors;
     }
 
-    private static List<SpawnAnchor> defaultLocalAnchor() {
-        Player local = Game.getPlayer();
-        return local != null
-            ? List.of(new SpawnAnchor(new Vector3f(local.getPosition()), WorldConfiguration.DEFAULT_RENDER_DISTANCE))
-            : Collections.emptyList();
+    private static List<SpawnAnchor> noAnchors() {
+        return Collections.emptyList();
     }
 
     // ─── Tick loop ────────────────────────────────────────────────────────────

@@ -225,6 +225,10 @@ public abstract class Entity {
     public void setPosition(Vector3f position) { this.position.set(position); }
     public void setVelocity(Vector3f velocity) { this.velocity.set(velocity); }
     public void setRotation(Vector3f rotation) { this.rotation.set(rotation); }
+    /** Allocation-free forms for per-frame writers (the network interpolator). */
+    public void setPosition(float x, float y, float z) { this.position.set(x, y, z); }
+    public void setYaw(float yawDeg) { this.rotation.y = yawDeg; }
+    public float getYaw() { return rotation.y; }
     public void setScale(Vector3f scale) { this.scale.set(scale); }
     public void setHealth(float health) { this.health = Math.min(health, maxHealth); }
     public void setMaxHealth(float maxHealth) { this.maxHealth = maxHealth; }
@@ -262,6 +266,12 @@ public abstract class Entity {
      * Never called on the authoritative server (shadows exist only on the client).
      */
     public void applyNetworkState(String sbeStateName) { }
+
+    /**
+     * Discrete visual state a non-mob entity replicates through {@code EntityAnimS2C} (a fire
+     * bolt's impact), or null. Mobs replicate their AI behaviour state instead.
+     */
+    public String networkVisualState() { return null; }
 
     /**
      * Advance client-only visual clocks for a network shadow each frame. Shadows skip the full

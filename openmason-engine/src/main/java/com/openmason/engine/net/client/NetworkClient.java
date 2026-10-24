@@ -44,6 +44,8 @@ public final class NetworkClient {
     /** Connect synchronously; the returned connection is also available via {@link #connection()}. */
     public ClientConnection connect(NetAddress address) throws InterruptedException {
         Channel ch = netClient.connect(address);
+        // Backpressure from the game thread: stop reading while the inbound backlog is deep.
+        inboundQueue.setReadGate(on -> ch.eventLoop().execute(() -> ch.config().setAutoRead(on)));
         ClientConnection c = new ClientConnection(ch);
         this.connection = c;
         return c;

@@ -149,7 +149,11 @@ public abstract class LivingEntity extends Entity {
         // Advance the clip clock; SBE renderers sample animations from it.
         animationController.updateAnimations(deltaTime);
 
-        if (footsteps != null) {
+        // Footsteps are heard where the mob is RENDERED: a client-local mob in a render-only
+        // world plays them here; a server-world mob's are played by its client shadow
+        // (updateClientVisuals). Playing them here on the server world drove the client's
+        // OpenAL mixer from the server tick thread and stayed silent for remote clients.
+        if (footsteps != null && world != null && world.isRenderOnly()) {
             footsteps.updateSounds(this);
         }
     }
@@ -253,20 +257,10 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
-     * Damage plus an extra knockback impulse, applied only when the hit counts. On a network
-     * shadow the knockback rides the damage intent to the server.
-     *
-     * @return whether the hit counted (see {@link LivingEntityCombat#damage})
-     */
-    public boolean damage(float amount, DamageSource source, Knockback knockback) {
-        return combat.damage(amount, source, source.defaultDamageType(), NO_WEAPON, null, true, knockback);
-    }
-
-    /**
      * Authoritative damage application; see {@link LivingEntityCombat#damage}.
      *
      * @param attackerPos       authoritative attacker position for knockback direction, or
-     *                          null to fall back to the local player's position
+     *                          null when unknown (then no knockback)
      * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
@@ -281,10 +275,24 @@ public abstract class LivingEntity extends Entity {
         return damage(amount, source, type, NO_WEAPON, attackerPos, creditLocalPlayer);
     }
 
-    /** As {@link #damage(float, DamageSource, DamageType, Vector3f, boolean)}, from the melee weapon {@code weaponId}. */
+    /**
+     * As {@link #damage(float, DamageSource, DamageType, Vector3f, boolean)}, from the melee weapon
+     * {@code weaponId}. A hit with a weapon is a {@link HitKind#MELEE} intent on a network shadow;
+     * one without ({@link #NO_WEAPON}) an {@link HitKind#ABILITY} intent.
+     */
     public boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
                           Vector3f attackerPos, boolean creditLocalPlayer) {
-        return combat.damage(amount, source, type, weaponId, attackerPos, creditLocalPlayer, null);
+        HitKind kind = weaponId != NO_WEAPON ? HitKind.MELEE : HitKind.ABILITY;
+        return combat.damage(amount, source, type, weaponId, attackerPos, creditLocalPlayer, kind);
+    }
+
+    /**
+     * The local player's hit of a given {@link HitKind} — on a network shadow the kind tells
+     * the server which rules validate the intent (melee reach/cooldown/weapon vs an ability
+     * profile). Off a shadow it behaves like {@link #damage(float, DamageSource)}.
+     */
+    public boolean damage(float amount, DamageSource source, HitKind kind) {
+        return combat.damage(amount, source, source.defaultDamageType(), NO_WEAPON, null, true, kind);
     }
 
     /** Applies already-multiplied damage to health via {@link Entity#damage} (may trigger death). */
@@ -297,9 +305,37 @@ public abstract class LivingEntity extends Entity {
 
     // ─────────────────────────────────────────────── Status effects
 
-    /** Applies (or refreshes) a timed debuff. Same-type effects are refreshed rather than stacked. */
+    /**
+     * Applies (or refreshes) a timed debuff. Same-type effects are refreshed rather than stacked.
+     *
+     * <p>On a network shadow this never mutates local state (like {@link #damage}): a shadow
+     * never ticks, so the effect would neither expire nor reach the real mob. The application
+     * is forwarded to the server as an intent instead (#339) and comes back replicated
+     * ({@link #applyNetworkStatus}).
+     */
     public void applyStatusEffect(StatusEffectType type, float duration, float magnitude) {
+        if (isNetworkShadow()) {
+            if (alive && statusEffects.shouldForward(type, duration, magnitude, System.nanoTime())) {
+                com.stonebreak.network.MultiplayerSession.onLocalEntityStatusEffect(this, type, duration, magnitude);
+            }
+            return;
+        }
         statusEffects.apply(type, duration, magnitude);
+    }
+
+    /** The active status effects as a {@link com.stonebreak.mobs.entities.status.StatusEffectBits} set. */
+    public int getStatusEffectBits() {
+        return statusEffects.activeBits();
+    }
+
+    /**
+     * Client shadow: adopts the server's replicated health fraction and active status effects
+     * (#371). Health is set directly — the shadow never dies from it; the despawn does that.
+     */
+    public void applyNetworkStatus(float healthFraction, int statusBits) {
+        float fraction = healthFraction > 0f ? Math.min(1f, healthFraction) : 0f;
+        setHealth(fraction * getMaxHealth());
+        statusEffects.setReplicatedBits(statusBits);
     }
 
     // Package-private so tests can advance the DOT clock directly without a full update().
@@ -466,6 +502,13 @@ public abstract class LivingEntity extends Entity {
      * {@code horizontalDirection} need not be normalized; only its horizontal (XZ) component is used.
      */
     public void applyKnockback(Vector3f horizontalDirection, float horizontalForce, float verticalForce) {
+        if (isNetworkShadow()) {
+            // A shadow never integrates velocity: send the push to the real entity (the server
+            // takes it only right after our hit on it), like damage().
+            com.stonebreak.network.MultiplayerSession.onLocalEntityKnockback(
+                    this, horizontalDirection, horizontalForce, verticalForce);
+            return;
+        }
         locomotion.applyKnockback(horizontalDirection, horizontalForce, verticalForce);
     }
 
@@ -528,6 +571,9 @@ public abstract class LivingEntity extends Entity {
         animationController.updateAnimations(deltaTime);
         if (mobAI != null) {
             mobAI.advanceClientClock(deltaTime);
+        }
+        if (footsteps != null) {
+            footsteps.updateSounds(this); // stride from the interpolated position
         }
     }
 

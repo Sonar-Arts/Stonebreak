@@ -1,6 +1,5 @@
 package com.stonebreak.blocks.cactus;
 
-import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.LivingEntity.DamageSource;
@@ -41,10 +40,10 @@ public final class CactusContactSystem {
 
     /** Damages every living entity in this world whose body touches a cactus cell. */
     private void pulse() {
-        EntityManager entityManager = world.getEntityManager(); // scan the OWNING world
-        if (entityManager == null) {
-            entityManager = Game.getEntityManager(); // rendered-world fallback, like CaltropCluster
-        }
+        // Scan the OWNING world only. No Game.getEntityManager() fallback: that is the client's
+        // render manager, and this ticks on the server thread (#340). A world with no manager
+        // bound (bare test worlds) has no mobs in it to prick.
+        EntityManager entityManager = world.getEntityManager();
         if (entityManager == null) {
             return;
         }

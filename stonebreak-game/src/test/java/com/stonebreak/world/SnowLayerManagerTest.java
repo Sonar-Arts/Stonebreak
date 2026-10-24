@@ -120,6 +120,35 @@ class SnowLayerManagerTest {
     }
 
     @Test
+    void writesSurviveAConcurrentChunkEmptying() throws Exception {
+        // #345: snow is grouped per chunk and an emptied chunk's group is dropped. A write racing
+        // that drop must not land in the discarded group (the save, the network meta and the
+        // client install would then never see it).
+        int rounds = 20_000;
+        Thread churn = new Thread(() -> {
+            for (int i = 0; i < rounds; i++) {
+                snow.setSnowLayers(1, 70, 1, 2);
+                snow.removeSnowLayers(1, 70, 1); // empties chunk (0,0) unless the other cell is in
+            }
+        });
+        churn.start();
+        try {
+            for (int i = 0; i < rounds; i++) {
+                int layers = 2 + (i % 7);
+                snow.setSnowLayers(2, 70, 2, layers);
+                assertEquals(layers, snow.getSnowLayers(2, 70, 2));
+                snow.removeSnowLayers(2, 70, 2);
+            }
+        } finally {
+            churn.join();
+        }
+        snow.setSnowLayers(2, 70, 2, 5);
+        List<Integer> seen = new ArrayList<>();
+        snow.forEachInChunk(0, 0, (x, y, z, layers) -> seen.add(layers));
+        assertEquals(List.of(5), seen);
+    }
+
+    @Test
     void clearEmptiesTheLedger() {
         snow.setSnowLayers(1, 70, 1, 5);
 

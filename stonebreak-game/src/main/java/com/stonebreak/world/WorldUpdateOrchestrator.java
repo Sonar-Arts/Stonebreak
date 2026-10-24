@@ -63,6 +63,8 @@ final class WorldUpdateOrchestrator {
 
     /** Rendered, authoritative update (singleplayer / integrated-host render world). */
     void update() {
+        // Before the test-mode return: finished loads join the world wherever it is ticked.
+        if (chunkStore != null) chunkStore.installCompletedLoads();
         if (!meshScheduler.hasPipeline()) return; // Test mode - skip rendering updates
 
         waterSim.tick(Game.getDeltaTime());
@@ -89,6 +91,8 @@ final class WorldUpdateOrchestrator {
     /** Authoritative simulation step, independent of rendering (headless server world). */
     void updateSimulation(float deltaTime) {
         long tickStart = System.nanoTime();
+        // Finished chunk loads join the world here, on the tick thread, before anything reads it.
+        if (chunkStore != null) chunkStore.installCompletedLoads();
         waterSim.tick(deltaTime);
         leafDecay.tick(deltaTime);
         saplingGrowth.tick(deltaTime);
@@ -108,6 +112,8 @@ final class WorldUpdateOrchestrator {
     /** Render-only client update: mesh pumping, unload sweep and the FastLOD ring tick. */
     void updateClient() {
         if (!meshScheduler.hasPipeline()) return; // No rendering infrastructure — nothing to do.
+
+        if (chunkStore != null) chunkStore.installCompletedLoads();
 
         // Deliberately NO chunkManager.update here: on a render-only world it calls
         // getOrCreateChunk around the player and, with terrain generation disabled, manufactures
@@ -129,8 +135,9 @@ final class WorldUpdateOrchestrator {
 
     /**
      * Unload streamed chunks that have left the client's keep radius. Render-only worlds never
-     * regenerate, so a dropped chunk simply re-streams from the server if the player returns
-     * (the server forgets it at the same radius). Bounds the client's memory as it explores;
+     * regenerate, so a dropped chunk simply re-streams from the server if the player returns:
+     * each drop is reported to the server, which forgets it (#363 — its own forget ring runs on
+     * a lagging position sample and missed quick border crossings). Bounds the client's memory as it explores;
      * no save (the client never persists). Skips entirely while the player stays inside one
      * chunk — the previous per-frame full scan copied every resident chunk position each frame.
      */
@@ -149,6 +156,7 @@ final class WorldUpdateOrchestrator {
         lastUnloadSweepCx = pcx;
         lastUnloadSweepCz = pcz;
         lastUnloadSweepKeepRadius = keepRadius;
-        chunkStore.unloadChunksOutside(pcx, pcz, keepRadius);
+        chunkStore.unloadChunksOutside(pcx, pcz, keepRadius,
+            com.stonebreak.network.MultiplayerSession::notifyChunkUnloaded);
     }
 }

@@ -17,9 +17,9 @@ import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.World;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,10 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -49,6 +47,8 @@ class BlockEditReplicationTest {
     private final Map<String, BlockType> blocks = new HashMap<>();
     private final Map<String, String> states = new HashMap<>();
     private final Map<String, Integer> water = new HashMap<>();
+    /** Everything one client (the player) receives, in order: broadcasts and direct sends. */
+    private final List<Packet> wire = new ArrayList<>();
 
     private ConnectionRegistry registry;
     private ServerWorldContext ctx;
@@ -88,14 +88,21 @@ class BlockEditReplicationTest {
         ServerLevel level = mock(ServerLevel.class);
         when(level.world()).thenReturn(world);
         registry = mock(ConnectionRegistry.class);
+        org.mockito.Mockito.doAnswer(inv -> wire.add(inv.getArgument(0)))
+                .when(registry).broadcast(any(), anyBoolean());
         ctx = new ServerWorldContext(registry);
         ctx.setServerLevel(level);
 
         chunkHandler = new ServerChunkHandler();
         chunkHandler.onSessionStart();
         blockHandler = new ServerBlockHandler(chunkHandler);
-        player = new ServerPlayer(mock(ServerConnection.class), 7);
+        ServerConnection connection = mock(ServerConnection.class);
+        when(connection.send(any(), anyBoolean())).thenAnswer(inv -> wire.add(inv.getArgument(0)));
+        player = new ServerPlayer(connection, 7);
         player.updateState(0.5f, 64f, 0.5f, 0f, 0f);
+        ctx.addPlayer(player);
+        // Per-block batches only reach players the chunk was streamed to (#363).
+        player.markChunkSent(ServerChunkHandler.packKey(0, 0), 0);
     }
 
     private void doAnswerSetState(World world) {
@@ -117,10 +124,9 @@ class BlockEditReplicationTest {
     }
 
     private List<Packet> flush() {
+        wire.clear();
         blockHandler.tick(ctx);
-        ArgumentCaptor<Packet> sent = ArgumentCaptor.forClass(Packet.class);
-        verify(registry, atLeastOnce()).broadcast(sent.capture(), anyBoolean());
-        return sent.getAllValues();
+        return List.copyOf(wire);
     }
 
     @Test
@@ -173,6 +179,21 @@ class BlockEditReplicationTest {
         BlockStateS2C echo = assertInstanceOf(BlockStateS2C.class, sent.get(1));
         assertEquals("workbench:grid=", echo.state());
         assertEquals(5, echo.x());
+    }
+
+    @Test
+    void blockBatchesSkipPlayersThatNeverReceivedTheChunk() {
+        // Chunk (1, 0) was never streamed to the player: the change rides its snapshot instead,
+        // so a client never fails an apply for a chunk it does not hold (#363).
+        player.updateState(15.5f, 64f, 2.5f, 0f, 0f); // on the border, both cells in reach
+        edit(17, 64, 2, BlockType.STONE, BlockType.AIR);
+        edit(14, 64, 2, BlockType.STONE, BlockType.AIR);
+        assertEquals(BlockType.STONE, blocks.get(key(17, 64, 2)), "the edit itself is accepted");
+
+        List<Packet> sent = flush();
+        assertEquals(1, sent.size());
+        BlockChangeS2C change = assertInstanceOf(BlockChangeS2C.class, sent.get(0));
+        assertEquals(14, change.x(), "only the held chunk's change goes out");
     }
 
     @Test

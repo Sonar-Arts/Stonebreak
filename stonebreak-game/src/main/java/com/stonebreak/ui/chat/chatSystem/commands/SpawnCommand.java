@@ -15,9 +15,10 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Command to spawn living mobs in front of the player — executed ON THE SERVER, so the mob
- * lives in the authoritative world: a client-world mob was invisible to everything the server
- * simulates (an arrow flew straight through it). {@link #execute} is the no-session fallback.
+ * Command to spawn living mobs in front of the player — executed ON THE SERVER (issue #341):
+ * the client forwards the raw line, the server checks its own cheats flag and spawns into the
+ * authoritative world, so every player sees the mob, it runs its AI on the server and it is
+ * saved with the world. {@link #execute} is only the no-session fallback (battle-test arena).
  * Usage: /spawn <mob> [count]
  *
  * Examples:
@@ -28,6 +29,7 @@ import java.util.List;
 public class SpawnCommand implements ChatCommand {
 
     private static final int DEFAULT_COUNT = 1;
+    /** Largest count accepted (mirrors ServerCommandHandler.MAX_SPAWN_COUNT). */
     private static final int MAX_COUNT = 50;
 
     /** Distance ahead of the player (along the camera's look direction) to spawn at. */
@@ -48,7 +50,7 @@ public class SpawnCommand implements ChatCommand {
         }
 
         // Resolve the mob type (accepts enum name like COW or display name like cow).
-        EntityType type = EntityType.findMob(args[0]);
+        EntityType type = findMob(args[0]);
         if (type == null) {
             messageManager.addMessage("Unknown mob: " + args[0], ChatColors.RED);
             messageManager.addMessage("Valid mobs: " + validMobList(), ChatColors.ORANGE);
@@ -121,6 +123,11 @@ public class SpawnCommand implements ChatCommand {
     @Override
     public boolean executedOnServer() {
         return true;
+    }
+
+    /** See {@link EntityType#findGlossaryMob} — the same vocabulary the server accepts. */
+    private EntityType findMob(String name) {
+        return EntityType.findGlossaryMob(name);
     }
 
     /** Comma-separated list of spawnable mob names for usage/error messages. */

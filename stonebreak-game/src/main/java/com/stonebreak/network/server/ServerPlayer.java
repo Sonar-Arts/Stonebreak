@@ -72,6 +72,27 @@ public final class ServerPlayer {
     public boolean handshakeDone() { return handshakeDone; }
     public void markHandshakeDone() { this.handshakeDone = true; }
 
+    /** The entity this player last hit (accepted damage) and when — gates ability knockback. */
+    private int lastHitTarget = -1;
+    private long lastHitNanos;
+    public void recordHit(int targetNetworkId, long nowNanos) {
+        lastHitTarget = targetNetworkId;
+        lastHitNanos = nowNanos;
+    }
+    public boolean hitRecently(int targetNetworkId, long nowNanos, long windowNanos) {
+        return lastHitTarget == targetNetworkId && nowNanos - lastHitNanos <= windowNanos;
+    }
+
+    /** Melee cooldown and ability/status/projectile budgets for this player's combat intents (#339). */
+    private final com.stonebreak.network.server.combat.CombatLimiter combat =
+            new com.stonebreak.network.server.combat.CombatLimiter();
+    public com.stonebreak.network.server.combat.CombatLimiter combat() { return combat; }
+
+    /** A handshake arrived (its saved record may still be loading); a repeat is ignored. */
+    private boolean handshakeRequested;
+    public boolean handshakeRequested() { return handshakeRequested; }
+    public void markHandshakeRequested() { this.handshakeRequested = true; }
+
     public boolean waitingForCharacterCreation() { return waitingForCharacterCreation; }
     public void setWaitingForCharacterCreation(boolean waiting) { this.waitingForCharacterCreation = waiting; }
     public byte[] characterCreationBlob() { return characterCreationBlob; }
@@ -83,6 +104,16 @@ public final class ServerPlayer {
     private volatile byte[] savedBlob;
     public byte[] savedBlob() { return savedBlob; }
     public void setSavedBlob(byte[] blob) { this.savedBlob = blob; }
+
+    /** The join secret this player's client presented in its handshake ("" = none, #335). */
+    private String presentedSecret = "";
+    public String presentedSecret() { return presentedSecret; }
+    public void setPresentedSecret(String secret) { this.presentedSecret = secret == null ? "" : secret; }
+
+    /** The join secret this server holds for the player (saved with it, #335); null for the host. */
+    private String clientSecret;
+    public String clientSecret() { return clientSecret; }
+    public void setClientSecret(String secret) { this.clientSecret = secret; }
 
     /** One-shot notice delivered to the player after the welcome (e.g. a save set aside). */
     private volatile String joinNotice;
@@ -98,7 +129,12 @@ public final class ServerPlayer {
 
     /** True between this player's reported death and its respawn (#357). */
     public boolean isDead() { return dead; }
-    public void setDead(boolean dead) { this.dead = dead; }
+    public void setDead(boolean dead) {
+        this.dead = dead;
+        if (!dead) {
+            deathDropClaimed = false; // respawned: the next death may drain again (#420)
+        }
+    }
 
     /**
      * True when this player stands in the world as a live body: handshake done, a real
@@ -114,6 +150,17 @@ public final class ServerPlayer {
     public void updateState(float x, float y, float z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
         this.lastStateNs = System.nanoTime();
+    }
+
+    /** Movement/action flags from the last PlayerStateC2S ({@code PlayerStateFlags}). */
+    private byte movementFlags;
+
+    public void setMovementFlags(byte flags) { this.movementFlags = flags; }
+
+    /** Whether the client last reported this player sprinting — what skittish mobs notice. */
+    public boolean isSprinting() {
+        return com.stonebreak.network.packet.player.PlayerStateFlags.has(
+            movementFlags, com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING);
     }
 
     /**
@@ -184,6 +231,31 @@ public final class ServerPlayer {
     private long resyncWindowStartNs = 0L;
     private int resyncCount = 0;
 
+    /**
+     * Chunk resync requests refused over budget, retried by the server as permits free up
+     * ({@code ServerChunkHandler.tick}) — the client asks once per cooldown and a refused
+     * request used to be lost for good (#363). Bounded; server tick thread only.
+     */
+    private final java.util.LinkedHashSet<Long> deferredChunkResyncs = new java.util.LinkedHashSet<>();
+    private static final int MAX_DEFERRED_CHUNK_RESYNCS = 256;
+
+    /** Queues a refused chunk resync for {@link #drainDeferredChunkResyncs}; drops it when full. */
+    public void deferChunkResync(long key) {
+        if (deferredChunkResyncs.size() < MAX_DEFERRED_CHUNK_RESYNCS) {
+            deferredChunkResyncs.add(key);
+        }
+    }
+
+    /** Hands deferred resyncs to {@code action} while permits allow, oldest first. */
+    public void drainDeferredChunkResyncs(java.util.function.LongConsumer action) {
+        var it = deferredChunkResyncs.iterator();
+        while (it.hasNext() && allowResync()) {
+            long key = it.next();
+            it.remove();
+            action.accept(key);
+        }
+    }
+
     /** Debits one resync-request permit; false = over budget, drop the request. */
     public boolean allowResync() {
         long now = System.nanoTime();
@@ -194,11 +266,67 @@ public final class ServerPlayer {
         return ++resyncCount <= MAX_RESYNCS_PER_WINDOW;
     }
 
+    // ─── Abuse limits (issue #336) ───────────────────────────────────────────────
+    /** Horizontal movement budget for this player's position reports. */
+    private final MovementGuard movement = new MovementGuard();
+    public MovementGuard movement() { return movement; }
+
+    /**
+     * Chunk loads/generations this player's view may start. A full view at the largest view
+     * distance (its generation square) fits in one burst, so joining is never held back;
+     * after that new terrain is requested at {@link #CHUNK_REQUESTS_PER_SECOND} — above what
+     * even creative flight crosses into.
+     */
+    static final int CHUNK_REQUEST_BURST = square(
+            2 * (com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE + 2) + 1);
+    static final double CHUNK_REQUESTS_PER_SECOND = 128.0;
+    private final com.openmason.engine.net.pipeline.TokenBucket chunkRequests =
+            new com.openmason.engine.net.pipeline.TokenBucket(CHUNK_REQUEST_BURST, CHUNK_REQUESTS_PER_SECOND);
+
+    /** Debits one chunk load/generation request; false = over budget, ask again later. */
+    public boolean allowChunkRequest(long nowNanos) {
+        return chunkRequests.tryTake(nowNanos);
+    }
+
+    private static int square(int n) {
+        return n * n;
+    }
+
+    /** Chat lines (and chat commands) this player may send: a burst of 8, then one a second. */
+    static final double CHAT_BURST = 8;
+    static final double CHAT_PER_SECOND = 1.0;
+    private final com.openmason.engine.net.pipeline.TokenBucket chat =
+            new com.openmason.engine.net.pipeline.TokenBucket(CHAT_BURST, CHAT_PER_SECOND);
+
+    /** Debits one chat line; false = sending too fast, the line is not relayed. */
+    public boolean allowChat(long nowNanos) {
+        return chat.tryTake(nowNanos);
+    }
+
+    /** Held item id last broadcast for this player; the tick re-broadcasts only on change. */
+    private int broadcastHeldItemId = Integer.MIN_VALUE;
+
+    /**
+     * The held item id to announce, or {@code Integer.MIN_VALUE} when every client already
+     * has it — a client flipping its hotbar selection costs at most one broadcast per tick.
+     */
+    public int takeHeldItemChange() {
+        int held = inventory.heldItemId();
+        if (held == broadcastHeldItemId) {
+            return Integer.MIN_VALUE;
+        }
+        broadcastHeldItemId = held;
+        return held;
+    }
+
     // ─── Server-owned inventory + progression (issue #334) ──────────────────────
     /** The authoritative replica of this player's inventory + carried stack + hotbar slot. */
     private final ServerInventory inventory = new ServerInventory();
-    /** Seq of the newest numbered container action processed from this player (#334/#353). */
+    /** Seq of the newest numbered intent processed from this player (#334/#353) — container
+     *  actions and every other {@code SequencedIntent} the client's mirror predicts. */
     private int lastActionSeq;
+    /** The client skipped a stale sync and asked for a fresh one ({@code InventoryResyncC2S}). */
+    private boolean inventoryResyncRequested;
 
     /** Records a processed (accepted or refused) action's seq; syncs acknowledge the newest. */
     public void recordActionSeq(int seq) {
@@ -207,9 +335,73 @@ public final class ServerPlayer {
         }
     }
 
-    /** This player's inventory sync, acknowledging the newest action processed from them. */
+    /**
+     * This player's inventory sync, acknowledging the newest action processed from them. Every
+     * caller sends what this returns, so it also answers a pending resync request.
+     */
     public com.stonebreak.network.packet.player.InventorySyncS2C inventorySync() {
+        inventoryResyncRequested = false;
         return new com.stonebreak.network.packet.player.InventorySyncS2C(inventory.encode(), lastActionSeq);
+    }
+
+    // ─── Break timing (issue #333) ─────────────────────────────────────────────
+    /** The block this player is mining ({@code BlockBreakStartC2S}); null when none. */
+    private com.openmason.engine.util.BlockPos breakTarget;
+    /** When mining {@link #breakTarget} started on the server's clock. */
+    private long breakStartNs;
+    /** Until when an earlier break that arrived early is still "being mined": breaks are
+     *  sequential, so the next block's clock cannot start before this. */
+    private long miningBusyUntilNs;
+
+    /**
+     * Mining started on {@code (x, y, z)} at arrival time {@code nowNs}. Its clock starts no
+     * earlier than the end of a break still waiting to complete — a player mines one block at
+     * a time, however early its finishes arrive.
+     */
+    public void startBreak(int x, int y, int z, long nowNs) {
+        breakTarget = new com.openmason.engine.util.BlockPos(x, y, z);
+        breakStartNs = Math.max(nowNs, miningBusyUntilNs);
+    }
+
+    /** Whether the player's current break is on {@code (x, y, z)}. */
+    public boolean isBreaking(int x, int y, int z) {
+        com.openmason.engine.util.BlockPos t = breakTarget;
+        return t != null && t.x() == x && t.y() == y && t.z() == z;
+    }
+
+    /** When the current break's clock started (valid while {@link #isBreaking}). */
+    public long breakStartNs() {
+        return breakStartNs;
+    }
+
+    /** The current break was finished; the next one's clock starts no earlier than {@code busyUntilNs}. */
+    public void finishBreak(long busyUntilNs) {
+        breakTarget = null;
+        miningBusyUntilNs = Math.max(miningBusyUntilNs, busyUntilNs);
+    }
+
+    /** Notes an {@code InventoryResyncC2S}; answered by {@link #flushInventoryResync}. */
+    public void requestInventoryResync() {
+        inventoryResyncRequested = true;
+    }
+
+    /**
+     * Owes this player a sync, sent once at the next flush (after the inbound drain, and at the
+     * end of each tick) however many changes queued it: a right-drag over nine slots or a tick
+     * of drop pickups used to send a full 36-slot sync per action.
+     */
+    public void queueInventorySync() {
+        inventoryResyncRequested = true;
+    }
+
+    /**
+     * Sends the requested sync, if no sync went out since the request (that one already
+     * answered it). Called once per inbound drain, so a burst of requests costs one sync.
+     */
+    public void flushInventoryResync() {
+        if (inventoryResyncRequested) {
+            send(inventorySync(), false);
+        }
     }
 
     /** The last ACCEPTED progression/prefs state (parsed PlayerPrefsC2S, the creation blob,
@@ -244,12 +436,49 @@ public final class ServerPlayer {
      */
     public void acceptBaseline(com.stonebreak.world.save.model.PlayerData baseline) {
         this.progressionBaseline = baseline;
+        if (!respecWindowOpen) {
+            spendFloor = SpendFloor.of(baseline); // accepted outside a window = committed
+        }
         serverStats.restore(baseline.getSelectedClassId(), baseline.getClassInvestmentOrder(),
                 baseline.getSpentAbilityCp(),
                 baseline.getSkillLevels(), baseline.getAcquiredFeatIds(),
                 baseline.getRemainingCp(), baseline.getRemainingSkillPoints(),
                 baseline.getRemainingFeatPoints(), baseline.getAbilityScores(),
                 baseline.getRemainingAp(), baseline.getLevel(), baseline.getXp());
+    }
+
+    /**
+     * The committed spends no prefs report may refund (issue #421). Moves to the accepted
+     * baseline whenever no respec window is open, and when one closes.
+     */
+    private SpendFloor spendFloor = SpendFloor.NONE;
+
+    /** True while the client's character-panel session is open: spends accepted meanwhile
+     *  stay refundable down to {@link #spendFloor} until the window closes. */
+    private boolean respecWindowOpen = false;
+
+    public SpendFloor spendFloor() { return spendFloor; }
+
+    public boolean respecWindowOpen() { return respecWindowOpen; }
+
+    /**
+     * Opens the respec window (a provisional prefs report): the floor stays at the last
+     * commit, so the session's spends can be undone. Idempotent while open.
+     */
+    public void openRespecWindow() {
+        respecWindowOpen = true;
+    }
+
+    /**
+     * Closes the respec window and commits everything accepted so far. Called for a closing
+     * (non-provisional) report after it was judged, and for every combat intent: a client
+     * that never closes its window still cannot refund spends it has fought with.
+     */
+    public void commitSpends() {
+        respecWindowOpen = false;
+        if (progressionBaseline != null) {
+            spendFloor = SpendFloor.of(progressionBaseline);
+        }
     }
 
     /** Seq of the last PlayerPrefsC2S processed (accepted or refused); 0 before the first. */
@@ -332,6 +561,30 @@ public final class ServerPlayer {
         return ++dropCount <= MAX_DROPS_PER_WINDOW;
     }
 
+    // ─── Death drain latch (#420) ────────────────────────────────────────────────
+    /** True once this death's DeathDropC2S drained the replica; cleared by the respawn edge. */
+    private boolean deathDropClaimed = false;
+    private long lastDeathDropNs = Long.MIN_VALUE;
+
+    /**
+     * Claims this death's single inventory drain: true only while the player is dead, once
+     * per death, and at most once per toss window. Until #343 the server learns deaths from
+     * the client's own PlayerLifeC2S, so the window is what keeps a client toggling
+     * dead/alive from scattering its inventory faster than {@link #allowDrop} allows tosses.
+     */
+    public boolean claimDeathDrop() {
+        if (!dead || deathDropClaimed) {
+            return false;
+        }
+        long now = System.nanoTime();
+        if (lastDeathDropNs != Long.MIN_VALUE && now - lastDeathDropNs <= DROP_WINDOW_NS) {
+            return false;
+        }
+        deathDropClaimed = true;
+        lastDeathDropNs = now;
+        return true;
+    }
+
     /** True for the in-process (host/singleplayer) player on the in-JVM Local channel. Its state
      *  is persisted same-JVM, so it is excluded from the network player-data sync. */
     public boolean isLocal() {
@@ -348,6 +601,52 @@ public final class ServerPlayer {
         this.lastCx = cx;
         this.lastCz = cz;
     }
+    // ─── Chunk flow control (after Minecraft's chunk batching) ─────────────────
+    /** Client-reported install rate (chunks per tick); NaN until its first ChunkAckC2S. */
+    private float chunkRate = Float.NaN;
+    /** Chunks this tick may still stream; refilled by the rate each tick, capped at one tick's worth. */
+    private float chunkQuota;
+    /** Snapshots sent but not yet acknowledged as processed by the client. */
+    private int chunksInFlight;
+    /** Ticks since the last ack while snapshots were in flight (a lost-ack watchdog). */
+    private int ticksSinceChunkAck;
+
+    public float chunkRate() { return chunkRate; }
+    public float chunkQuota() { return chunkQuota; }
+    public void setChunkQuota(float quota) { this.chunkQuota = quota; }
+    public int chunksInFlight() { return chunksInFlight; }
+
+    /** One snapshot streamed: spends quota, joins the in-flight window. */
+    public void onChunkStreamed() {
+        chunkQuota -= 1f;
+        chunksInFlight++;
+    }
+
+    /** C2S ChunkAckC2S: {@code processed} snapshots left the client's queue; its new rate. */
+    public void onChunkAck(int processed, float desiredPerTick) {
+        chunksInFlight = Math.max(0, chunksInFlight - processed);
+        chunkRate = desiredPerTick;
+        ticksSinceChunkAck = 0;
+    }
+
+    /**
+     * Advances the lost-ack watchdog; true (and the window reopens) when snapshots have been
+     * in flight for {@code limit} ticks with no ack — streaming must never stall for good on a
+     * count that drifted.
+     */
+    public boolean chunkAckOverdue(int limit) {
+        if (chunksInFlight == 0) {
+            ticksSinceChunkAck = 0;
+            return false;
+        }
+        if (++ticksSinceChunkAck < limit) {
+            return false;
+        }
+        chunksInFlight = 0;
+        ticksSinceChunkAck = 0;
+        return true;
+    }
+
     /** Version of {@code key} last sent to this player, or -1 if never sent. */
     public int sentChunkVersion(long key) { return sentChunkVersions.get(key, -1); }
     public void markChunkSent(long key, int version) { sentChunkVersions.put(key, version); }
@@ -381,6 +680,10 @@ public final class ServerPlayer {
     public void setPhase(ProtocolPhase phase) { connection.setPhase(phase); }
     public ProtocolPhase phase() { return connection.phase(); }
     public void disconnect() { connection.close(); }
+    /** Kicks with {@code reason}: the connection closes once the KickS2C has been flushed. */
+    public void kick(String reason) {
+        connection.sendAndClose(new com.stonebreak.network.packet.handshake.KickS2C(reason));
+    }
 
     @Override
     public String toString() {

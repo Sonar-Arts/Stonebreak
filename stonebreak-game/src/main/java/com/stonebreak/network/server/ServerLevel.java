@@ -81,115 +81,172 @@ public final class ServerLevel {
      * {@link SaveService}. The seed comes from the saved {@link WorldData} when the world exists
      * on disk, otherwise {@code fallbackSeed} is used for a fresh world. Blocks the caller while
      * the world metadata loads and the spawn area pre-generates (run off the render thread).
+     *
+     * <p>An interrupt (a session shutdown racing the boot, issue #368) stops the boot at its next
+     * wait with {@link InterruptedException}: an interrupted metadata load is never mistaken for
+     * a new world, whose save would overwrite the real metadata. A boot that does not finish
+     * closes what it opened (save service, headless world) before it throws.
      */
-    public static ServerLevel createAndLoad(String worldName, long fallbackSeed) {
+    public static ServerLevel createAndLoad(String worldName, long fallbackSeed) throws InterruptedException {
         String worldPath = com.stonebreak.world.save.WorldStorage.worldPath(worldName);
         SaveService save = new SaveService(worldPath);
-
-        SaveService.LoadResult lr = null;
+        World world = null;
+        EntityManager entityManager = null;
         try {
-            lr = save.loadWorld().get(15, TimeUnit.SECONDS);
+            SaveService.LoadResult lr = loadMetadata(save, worldName);
+            throwIfInterrupted(); // the load may have finished before the interrupt was seen
+
+            boolean existing = lr != null && lr.isSuccess() && lr.getWorldData() != null;
+            WorldData worldData;
+            long seed;
+            long timeTicks;
+            if (existing) {
+                worldData = lr.getWorldData();
+                seed = worldData.getSeed();
+                timeTicks = worldData.getWorldTimeTicks();
+            } else {
+                seed = fallbackSeed;
+                worldData = WorldData.builder().seed(seed).worldName(worldName).build();
+                timeTicks = TimeOfDay.NOON;
+            }
+
+            // A first visit (spawn search + pre-gen) loads very differently from a return to saved
+            // player data, so each gets its own timing history for the loading screen's estimate.
+            // Keyed on player data, not on the world existing: the terrain mapper writes world.json
+            // before the first boot, so a brand-new world already "exists" here.
+            boolean returning = existing && lr.getPlayerData() != null;
+            String loadProfile = worldData.getGeneratorType() + "." + (returning ? "returning" : "new");
+            LoadingScreen.report(t -> t.setProfile(loadProfile));
+
+            world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
+            if (worldData.getSpawnPosition() != null) {
+                world.setSpawnPosition(worldData.getSpawnPosition());
+            }
+
+            // Spawn resolution below loads REAL chunks (issue #250 validation + spawn-area pre-gen),
+            // so everything a chunk load consults must be wired BEFORE the first load: the save
+            // service (or saved chunks silently regenerate from noise and later clobber the on-disk
+            // ones) and this world's entity manager/spawner (or saved entities restore into the
+            // Game/client singleton and chunk-gen animal spawns lose the spawner's placement guard).
+            entityManager = new EntityManager(world);
+            EntitySpawner entitySpawner = new EntitySpawner(world, entityManager);
+            world.setEntityManager(entityManager);
+            world.setEntitySpawner(entitySpawner);
+            save.initialize(worldData, null, world);
+
+            PlayerData playerData = existing ? lr.getPlayerData() : null;
+
+            // The WORLD spawn: where new players appear and where everyone respawns. A returning player
+            // still arrives where they saved (their restored PlayerData moves them there); that position
+            // is never the world spawn, or every death respawned at the last save spot (#302).
+            Vector3f spawn;
+            if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
+                // Saved / user-chosen spawn: keep the column when its real (carved) surface is
+                // usable. A column picked on the map inside a ravine, sinkhole, cave mouth or under
+                // water would snap onto the pit floor / lakebed, so it is redirected to the nearest
+                // usable surface column instead; only if none is in reach does it fall back to the
+                // column's own floor.
+                Vector3f saved = worldData.getSpawnPosition();
+                // the column that holds the saved point (round would move a block-centred x.5 spawn
+                // one block on every load)
+                int x = (int) Math.floor(saved.x);
+                int z = (int) Math.floor(saved.z);
+                int height = world.terrain().getFinalTerrainHeightAt(x, z);
+                Vector3f candidate = new Vector3f(x, height + 1, z);
+                pregenSpawnArea(world, candidate);
+                Vector3f surface = SpawnLocator.nearestSafeSurface(world, x, z, CHOSEN_SPAWN_SEARCH_RADIUS);
+                if (surface == null) {
+                    spawn = resolveSurfaceSpawn(world, candidate);
+                } else {
+                    spawn = surface;
+                    if ((int) Math.floor(surface.x) != x || (int) Math.floor(surface.z) != z) {
+                        System.out.println("[SERVER-LEVEL] Chosen spawn column (" + x + ", " + z
+                            + ") is a pit or flooded; moved to nearest surface " + surface);
+                    }
+                }
+            } else {
+                // Locate a safe surface spawn, rejecting columns a ravine or sinkhole has carved
+                // into a pit well below the pre-carve rim (issue #250).
+                spawn = findSafeSurfaceSpawn(world);
+            }
+            world.setSpawnPosition(spawn);
+
+            // The located spawn is a fresh-world choice (or, for a world saved before spawns were
+            // persisted, a first one); persist it so respawns stay put. The save service was
+            // initialized before spawn resolution, so refresh its WorldData reference (this is
+            // still during creation, before any autosave — later refreshes must go through
+            // SaveService.updateWorldData, never initialize).
+            if (worldData != null && !worldData.hasExplicitSpawn()) {
+                worldData = new WorldData.Builder(worldData).spawnPosition(spawn).hasExplicitSpawn(true).build();
+                save.initialize(worldData, null, world);
+            }
+
+            ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
+                save, worldData, spawn, playerData, existing ? lr.getPlayerNotice() : null);
+            save.setWorldTimeSource(level.timeOfDay);
+            save.setWeatherSource(level.weather);
+            entitySpawner.setNightSource(level.timeOfDay::isNight);
+
+            save.startAutoSave();
+
+            System.out.println("[SERVER-LEVEL] Booted '" + worldName + "' (seed=" + seed
+                + ", " + (existing ? "loaded" : "new") + "), spawn=" + spawn);
+            return level;
+        } catch (InterruptedException | RuntimeException | Error e) {
+            abandonBoot(save, entityManager, world);
+            throw e;
+        }
+    }
+
+    /**
+     * Reads the world metadata. A load that fails or times out is treated as a new world (as
+     * before); an interrupt is not a failure — it propagates (issue #368).
+     */
+    private static SaveService.LoadResult loadMetadata(SaveService save, String worldName)
+            throws InterruptedException {
+        try {
+            return save.loadWorld().get(15, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw e;
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] World metadata load failed for '" + worldName
                 + "': " + e.getMessage() + " — treating as a new world.");
+            return null;
         }
+    }
 
-        boolean existing = lr != null && lr.isSuccess() && lr.getWorldData() != null;
-        WorldData worldData;
-        long seed;
-        long timeTicks;
-        if (existing) {
-            worldData = lr.getWorldData();
-            seed = worldData.getSeed();
-            timeTicks = worldData.getWorldTimeTicks();
-        } else {
-            seed = fallbackSeed;
-            worldData = WorldData.builder().seed(seed).worldName(worldName).build();
-            timeTicks = TimeOfDay.NOON;
+    /** Boot checkpoint: waits that already completed never see an interrupt, so look for one. */
+    private static void throwIfInterrupted() throws InterruptedException {
+        if (Thread.interrupted()) {
+            throw new InterruptedException("server boot interrupted");
         }
+    }
 
-        // A first visit (spawn search + pre-gen) loads very differently from a return to saved
-        // player data, so each gets its own timing history for the loading screen's estimate.
-        // Keyed on player data, not on the world existing: the terrain mapper writes world.json
-        // before the first boot, so a brand-new world already "exists" here.
-        boolean returning = existing && lr.getPlayerData() != null;
-        String loadProfile = worldData.getGeneratorType() + "." + (returning ? "returning" : "new");
-        LoadingScreen.report(t -> t.setProfile(loadProfile));
-
-        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
-        if (worldData.getSpawnPosition() != null) {
-            world.setSpawnPosition(worldData.getSpawnPosition());
+    /**
+     * Closes what an unfinished boot opened. The interrupt flag is cleared meanwhile, or the
+     * save flush and the executor shutdowns would give up at once.
+     */
+    private static void abandonBoot(SaveService save, EntityManager entityManager, World world) {
+        boolean interrupted = Thread.interrupted();
+        try {
+            save.close();
+        } catch (RuntimeException e) {
+            System.err.println("[SERVER-LEVEL] Save service close after a failed boot failed: " + e.getMessage());
         }
-
-        // Spawn resolution below loads REAL chunks (issue #250 validation + spawn-area pre-gen),
-        // so everything a chunk load consults must be wired BEFORE the first load: the save
-        // service (or saved chunks silently regenerate from noise and later clobber the on-disk
-        // ones) and this world's entity manager/spawner (or saved entities restore into the
-        // Game/client singleton and chunk-gen animal spawns lose the spawner's placement guard).
-        EntityManager entityManager = new EntityManager(world);
-        EntitySpawner entitySpawner = new EntitySpawner(world, entityManager);
-        world.setEntityManager(entityManager);
-        world.setEntitySpawner(entitySpawner);
-        save.initialize(worldData, null, world);
-
-        PlayerData playerData = existing ? lr.getPlayerData() : null;
-
-        // The WORLD spawn: where new players appear and where everyone respawns. A returning player
-        // still arrives where they saved (their restored PlayerData moves them there); that position
-        // is never the world spawn, or every death respawned at the last save spot (#302).
-        Vector3f spawn;
-        if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
-            // Saved / user-chosen spawn: keep the column when its real (carved) surface is
-            // usable. A column picked on the map inside a ravine, sinkhole, cave mouth or under
-            // water would snap onto the pit floor / lakebed, so it is redirected to the nearest
-            // usable surface column instead; only if none is in reach does it fall back to the
-            // column's own floor.
-            Vector3f saved = worldData.getSpawnPosition();
-            // the column that holds the saved point (round would move a block-centred x.5 spawn
-            // one block on every load)
-            int x = (int) Math.floor(saved.x);
-            int z = (int) Math.floor(saved.z);
-            int height = world.terrain().getFinalTerrainHeightAt(x, z);
-            Vector3f candidate = new Vector3f(x, height + 1, z);
-            pregenSpawnArea(world, candidate);
-            Vector3f surface = SpawnLocator.nearestSafeSurface(world, x, z, CHOSEN_SPAWN_SEARCH_RADIUS);
-            if (surface == null) {
-                spawn = resolveSurfaceSpawn(world, candidate);
-            } else {
-                spawn = surface;
-                if ((int) Math.floor(surface.x) != x || (int) Math.floor(surface.z) != z) {
-                    System.out.println("[SERVER-LEVEL] Chosen spawn column (" + x + ", " + z
-                        + ") is a pit or flooded; moved to nearest surface " + surface);
-                }
+        try {
+            if (entityManager != null) {
+                entityManager.cleanup();
             }
-        } else {
-            // Locate a safe surface spawn, rejecting columns a ravine or sinkhole has carved
-            // into a pit well below the pre-carve rim (issue #250).
-            spawn = findSafeSurfaceSpawn(world);
+            if (world != null) {
+                world.cleanup();
+            }
+        } catch (RuntimeException e) {
+            System.err.println("[SERVER-LEVEL] World cleanup after a failed boot failed: " + e.getMessage());
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
-        world.setSpawnPosition(spawn);
-
-        // The located spawn is a fresh-world choice (or, for a world saved before spawns were
-        // persisted, a first one); persist it so respawns stay put. The save service was
-        // initialized before spawn resolution, so refresh its WorldData reference (this is
-        // still during creation, before any autosave — later refreshes must go through
-        // SaveService.updateWorldData, never initialize).
-        if (worldData != null && !worldData.hasExplicitSpawn()) {
-            worldData = new WorldData.Builder(worldData).spawnPosition(spawn).hasExplicitSpawn(true).build();
-            save.initialize(worldData, null, world);
-        }
-
-        ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-            save, worldData, spawn, playerData, existing ? lr.getPlayerNotice() : null);
-        save.setWorldTimeSource(level.timeOfDay);
-        save.setWeatherSource(level.weather);
-        entitySpawner.setNightSource(level.timeOfDay::isNight);
-
-        save.startAutoSave();
-
-        System.out.println("[SERVER-LEVEL] Booted '" + worldName + "' (seed=" + seed
-            + ", " + (existing ? "loaded" : "new") + "), spawn=" + spawn);
-        return level;
     }
 
     /**
@@ -214,7 +271,7 @@ public final class ServerLevel {
      * every draw lands in a pit, falls back to snapping the last candidate to its real floor so
      * the player never drops / takes fall damage.
      */
-    private static Vector3f findSafeSurfaceSpawn(World world) {
+    private static Vector3f findSafeSurfaceSpawn(World world) throws InterruptedException {
         SpawnLocator locator = new SpawnLocator(world);
         Vector3f last = null;
         LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.SPAWN_SEARCH));
@@ -239,22 +296,27 @@ public final class ServerLevel {
     }
 
     /** Loads {@code p}'s chunk (blocking until generated) so its real surface can be read. */
-    private static void loadSpawnChunk(World world, Vector3f p) {
+    private static void loadSpawnChunk(World world, Vector3f p) throws InterruptedException {
+        throwIfInterrupted();
         int cx = Math.floorDiv((int) Math.floor(p.x), WorldConfiguration.CHUNK_SIZE);
         int cz = Math.floorDiv((int) Math.floor(p.z), WorldConfiguration.CHUNK_SIZE);
         world.getChunkAt(cx, cz);
         try {
             world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw e;
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] Spawn chunk load wait failed: " + e.getMessage());
         }
+        world.installCompletedChunkLoads();
     }
 
     /**
      * Pre-generates a disc of chunks around {@code spawn} so the real (carved) terrain is
      * resident before anything collides with it.
      */
-    private static void pregenSpawnArea(World world, Vector3f spawn) {
+    private static void pregenSpawnArea(World world, Vector3f spawn) throws InterruptedException {
+        throwIfInterrupted();
         LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.PREGEN));
         int pcx = (int) Math.floor(spawn.x / 16.0);
         int pcz = (int) Math.floor(spawn.z / 16.0);
@@ -278,12 +340,15 @@ public final class ServerLevel {
                 }
             }
             reportPregenProgress(world, pcx, pcz);
+        } catch (InterruptedException e) {
+            throw e;
         } catch (Exception e) {
             System.err.println("[SERVER-LEVEL] Spawn-area pre-gen wait failed: " + e.getMessage());
         }
     }
 
     private static void reportPregenProgress(World world, int pcx, int pcz) {
+        world.installCompletedChunkLoads(); // level build owns the world until the tick starts
         int side = 2 * PREGEN_RADIUS + 1;
         int total = side * side;
         int loaded = 0;
@@ -356,8 +421,16 @@ public final class ServerLevel {
      * since load and runtime edits — is never replaced here. Same-JVM only.
      */
     public void registerLocalPlayer(com.stonebreak.player.Player player) {
+        registerLocalPlayer(player, Runnable::run);
+    }
+
+    /**
+     * {@link #registerLocalPlayer(com.stonebreak.player.Player)} with the executor of the thread
+     * that mutates the player (the client main thread), so the autosave snapshots it there (#356).
+     */
+    public void registerLocalPlayer(com.stonebreak.player.Player player, java.util.concurrent.Executor owner) {
         if (saveService != null) {
-            saveService.bindPlayer(player);
+            saveService.bindPlayer(player, owner);
         }
     }
 

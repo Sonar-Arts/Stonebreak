@@ -35,18 +35,19 @@ public final class StateConverter {
     public static PlayerData toPlayerData(Player player, String worldName) {
         PlayerData persistent = com.stonebreak.battletest.BattleTestSession.persistentPlayerData(player);
         if (persistent != null) return persistent;
-        // Build combined inventory (9 hotbar + 27 main)
+        // Build combined inventory (9 hotbar + 27 main) from copies: the slots hold the live
+        // stacks, which the game keeps editing while a save thread serializes this (#356).
         ItemStack[] combinedInventory = new ItemStack[36];
         Inventory inventory = player.getInventory();
 
         // Copy hotbar items (slots 0-8)
         for (int i = 0; i < 9; i++) {
-            combinedInventory[i] = inventory.getHotbarItem(i);
+            combinedInventory[i] = copyOf(inventory.getHotbarItem(i));
         }
 
         // Copy main inventory items (slots 9-35)
         for (int i = 0; i < 27; i++) {
-            combinedInventory[i + 9] = inventory.getMainInventoryItem(i);
+            combinedInventory[i + 9] = copyOf(inventory.getMainInventoryItem(i));
         }
 
         CharacterStats cs = player.getCharacterStats();
@@ -58,7 +59,9 @@ public final class StateConverter {
             .flightEnabled(player.isFlightEnabled())
             .flying(player.isFlying())
             .spectator(player.isSpectator())
-            .gameMode(1) // Creative mode default
+            // The client has no creative mode; claiming one made the server skip the debit and
+            // break timing for every action on a cheats world while the client still paid.
+            .gameMode(0)
             .inventory(combinedInventory)
             .selectedHotbarSlot(inventory.getSelectedSlot())
             .worldName(worldName)
@@ -80,10 +83,36 @@ public final class StateConverter {
             .build();
     }
 
+    /**
+     * Applies only the RPG progression of {@code data} (class, spends, skills, feats, pools,
+     * ability scores, level, xp) — what a refused prefs report rolls back to.
+     */
+    public static void applyProgression(Player player, PlayerData data) {
+        CharacterStats cs = player.getCharacterStats();
+        cs.restore(
+            data.getSelectedClassId(),
+            data.getClassInvestmentOrder(),
+            new HashMap<>(data.getSpentAbilityCp()),
+            new HashMap<>(data.getSkillLevels()),
+            new HashSet<>(data.getAcquiredFeatIds()),
+            data.getRemainingCp(),
+            data.getRemainingSkillPoints(),
+            data.getRemainingFeatPoints(),
+            data.getAbilityScores(),
+            data.getRemainingAp(),
+            data.getLevel(),
+            data.getXp()
+        );
+    }
+
+    private static ItemStack copyOf(ItemStack stack) {
+        return stack == null ? null : stack.copy();
+    }
+
     private static Map<String, Set<String>> snapshotVariants(Player player) {
         Map<String, Set<String>> result = new HashMap<>();
         player.getEntityDiscoveries().getVariantsSeen().forEach((type, variants) ->
-            result.put(type.name(), variants));
+            result.put(type.name(), new HashSet<>(variants)));
         return result;
     }
 
@@ -129,14 +158,14 @@ public final class StateConverter {
             // Apply hotbar items (slots 0-8)
             for (int i = 0; i < 9; i++) {
                 if (loadedInventory[i] != null && !loadedInventory[i].isEmpty()) {
-                    inventory.setHotbarItem(i, loadedInventory[i]);
+                    inventory.setHotbarItem(i, loadedInventory[i].copy());
                 }
             }
 
             // Apply main inventory items (slots 9-35)
             for (int i = 0; i < 27; i++) {
                 if (loadedInventory[i + 9] != null && !loadedInventory[i + 9].isEmpty()) {
-                    inventory.setMainInventoryItem(i, loadedInventory[i + 9]);
+                    inventory.setMainInventoryItem(i, loadedInventory[i + 9].copy());
                 }
             }
 
@@ -163,21 +192,7 @@ public final class StateConverter {
         player.getStats().restoreKillsByType(killsByType);
 
         // Restore RPG / character progression
-        CharacterStats cs = player.getCharacterStats();
-        cs.restore(
-            data.getSelectedClassId(),
-            data.getClassInvestmentOrder(),
-            new HashMap<>(data.getSpentAbilityCp()),
-            new HashMap<>(data.getSkillLevels()),
-            new HashSet<>(data.getAcquiredFeatIds()),
-            data.getRemainingCp(),
-            data.getRemainingSkillPoints(),
-            data.getRemainingFeatPoints(),
-            data.getAbilityScores(),
-            data.getRemainingAp(),
-            data.getLevel(),
-            data.getXp()
-        );
+        applyProgression(player, data);
 
         // Restore entity glossary discoveries
         Map<EntityType, Set<String>> variantsRestored = new EnumMap<>(EntityType.class);

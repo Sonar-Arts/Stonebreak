@@ -114,6 +114,11 @@ public final class LeafDecaySystem {
 
     // Chunks rescanned this residency (mirrors WaterSim.scannedChunks).
     private final Set<Long> scannedChunks = new HashSet<>();
+    // Chunks waiting for their load rescan; drained by the logical tick under a time budget.
+    private final java.util.ArrayDeque<Long> pendingRescans = new java.util.ArrayDeque<>();
+
+    /** Wall-clock budget per logical tick for chunk-load rescans (at least one runs per tick). */
+    private static final long RESCAN_BUDGET_NANOS = 2_000_000L;
 
     private float tickAccumulator;
     private long logicalTick;
@@ -144,6 +149,7 @@ public final class LeafDecaySystem {
     public void advanceTicks(int ticks) {
         for (int i = 0; i < ticks; i++) {
             logicalTick++;
+            processRescans();
             processRecomputes(MAX_RECOMPUTES_PER_TICK);
             processDecays(MAX_DECAY_PER_TICK);
             world.onTickComplete();
@@ -200,13 +206,43 @@ public final class LeafDecaySystem {
      * Seam-supported leaves (trunk in the neighbor chunk) do get scheduled, and
      * their recompute — which floods across the seam — finds the trunk and
      * decays nothing.
+     *
+     * <p>The scan itself runs on the next logical tick, under a time budget: a
+     * world reload installs thousands of chunks in one server tick, and scanning
+     * each one inline stalled that tick for seconds (#345). Nothing here is
+     * urgent — it only resumes interrupted collapses.
      */
     public void onChunkLoaded(int chunkX, int chunkZ) {
-        if (!scannedChunks.add(chunkKey(chunkX, chunkZ))) {
+        long key = chunkKey(chunkX, chunkZ);
+        if (scannedChunks.add(key)) {
+            pendingRescans.add(key);
+        }
+    }
+
+    private void processRescans() {
+        if (pendingRescans.isEmpty()) {
             return;
         }
+        long deadline = System.nanoTime() + RESCAN_BUDGET_NANOS;
+        Long key;
+        while ((key = pendingRescans.poll()) != null) {
+            if (scannedChunks.contains(key)) { // dropped on unload: the chunk is gone
+                rescanChunk((int) (key >> 32), (int) (long) key);
+            }
+            if (System.nanoTime() >= deadline) {
+                break;
+            }
+        }
+    }
+
+    private void rescanChunk(int chunkX, int chunkZ) {
         int baseX = chunkX * WorldConfiguration.CHUNK_SIZE;
         int baseZ = chunkZ * WorldConfiguration.CHUNK_SIZE;
+
+        long sections = world.foliageSectionMask(chunkX, chunkZ);
+        if (sections == 0L) {
+            return; // no section of the chunk holds a leaf or a log
+        }
 
         // One pass over the chunk: the passable network (leaves + logs) and the
         // BFS sources (logs).
@@ -220,8 +256,12 @@ public final class LeafDecaySystem {
                 // Skip the open sky above the column: this runs inline on the
                 // chunk-loading thread, so the rows it does not read are stall
                 // the player does not see.
-                int top = world.foliageScanTop(x, z);
+                int top = sections == -1L ? world.foliageScanTop(x, z) : WorldConfiguration.WORLD_HEIGHT;
                 for (int y = 0; y < top; y++) {
+                    if ((sections & (1L << (y >> 4))) == 0L) {
+                        y |= 15; // section holds no foliage — jump to its top
+                        continue;
+                    }
                     BlockType block = world.getBlock(x, y, z);
                     if (block == null || !NavNodes.inRange(x, y, z)) {
                         continue;

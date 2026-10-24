@@ -55,6 +55,9 @@ public class JsonPlayerSerializer {
         if (player.getWorldName() != null) {
             json.append("  \"worldName\": \"").append(JsonParsingUtil.escapeJson(player.getWorldName())).append("\",\n");
         }
+        if (player.getClientSecret() != null) {
+            json.append("  \"clientSecret\": \"").append(JsonParsingUtil.escapeJson(player.getClientSecret())).append("\",\n");
+        }
 
         json.append("  \"lastSaved\": \"").append(player.getLastSaved().format(FORMATTER)).append("\",\n");
 
@@ -224,6 +227,7 @@ public class JsonPlayerSerializer {
             if (worldName != null) {
                 builder.worldName(worldName);
             }
+            builder.clientSecret(JsonParsingUtil.extractStringOptional(json, "clientSecret"));
 
             builder.inventory(readInventory(json));
 

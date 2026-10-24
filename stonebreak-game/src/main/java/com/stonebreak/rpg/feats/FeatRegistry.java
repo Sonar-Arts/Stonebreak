@@ -2,6 +2,7 @@ package com.stonebreak.rpg.feats;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -19,6 +20,20 @@ public final class FeatRegistry {
       new FeatDefinition("double_jump", "Double Jump",
           "Grants the player an extra jump while mid-air.", 1, true)
   );
+
+  /** The feat with the given id, if the registry knows it. */
+  public static Optional<FeatDefinition> findById(String featId) {
+    return ALL.stream().filter(f -> f.id().equals(featId)).findFirst();
+  }
+
+  /**
+   * True when a character of {@code characterLevel} may take the feat: it exists and its
+   * required level is not above the character's (issue #421). The one level rule shared by
+   * the server's prefs validation, the character sheet and the creation screen.
+   */
+  public static boolean isAvailableAt(String featId, int characterLevel) {
+    return findById(featId).map(f -> f.level() <= characterLevel).orElse(false);
+  }
 
   /**
    * Returns feats matching the given filters, sorted alphabetically by name.

@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.mobs.entities.LivingEntity.DamageSource;
 import com.stonebreak.mobs.entities.status.StatusEffect;
+import com.stonebreak.mobs.entities.status.StatusEffectBits;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.PlayerConstants;
 
@@ -15,11 +16,32 @@ import java.util.List;
  * {@code damage()} call, and answers the derived queries (stunned/rooted, incoming-damage and
  * move-speed multipliers). Extracted from {@code LivingEntity} (issue #233); the entity remains
  * the public facade.
+ *
+ * <p>On a network shadow the list stays empty (effects are applied to the real mob on the
+ * server, #339); what the shadow reports instead is the server's replicated set
+ * ({@link #setReplicatedBits}, #371), which every query folds in.
  */
 final class LivingEntityStatusEffects {
 
+    /**
+     * A shadow re-forwards the same effect at most this often unless it got stronger or
+     * longer: zones (Rampage trail, Skull Crusher crater) re-apply every frame while a mob
+     * stands in them, and the server's refresh keeps the longest duration anyway.
+     */
+    static final long FORWARD_COALESCE_NANOS = 500_000_000L;
+
+    private static final int TYPE_COUNT = StatusEffectType.values().length;
+
     private final LivingEntity owner;
     private final List<StatusEffect> statusEffects = new ArrayList<>();
+
+    /** Shadow only: the server's active-effect set (StatusEffectBits). */
+    private int replicatedBits;
+
+    /** Shadow only: last forwarded application per effect type (lazily allocated). */
+    private long[] lastForwardNanos;
+    private float[] lastForwardDuration;
+    private float[] lastForwardMagnitude;
 
     LivingEntityStatusEffects(LivingEntity owner) {
         this.owner = owner;
@@ -86,7 +108,9 @@ final class LivingEntityStatusEffects {
             } else {
                 source = DamageSource.UNKNOWN;
             }
-            owner.damage(totalTickDamage, source);
+            // Never credits the local player: on the server this ticks the real mob, where
+            // the 2-arg path would resolve the HOST's client Player from the tick thread.
+            owner.damage(totalTickDamage, source, null, false);
         }
     }
 
@@ -95,14 +119,55 @@ final class LivingEntityStatusEffects {
         statusEffects.removeIf(effect -> effect.getType() == type);
     }
 
-    /** True while a status effect of the given type is active. */
+    /** True while a status effect of the given type is active (locally or, on a shadow, on the server). */
     boolean has(StatusEffectType type) {
+        if (StatusEffectBits.has(replicatedBits, type)) {
+            return true;
+        }
         for (StatusEffect effect : statusEffects) {
             if (effect.getType() == type) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** The active-effect set as a {@link StatusEffectBits} bitset (what the server replicates). */
+    int activeBits() {
+        int bits = replicatedBits;
+        for (StatusEffect effect : statusEffects) {
+            bits |= StatusEffectBits.bit(effect.getType());
+        }
+        return bits;
+    }
+
+    /** Shadow: adopts the server's replicated active-effect set. */
+    void setReplicatedBits(int bits) {
+        this.replicatedBits = StatusEffectBits.sanitize(bits);
+    }
+
+    /**
+     * Shadow: whether an application should be forwarded to the server now — false for a
+     * repeat of the same effect inside {@link #FORWARD_COALESCE_NANOS} that is neither
+     * longer nor stronger than the last one sent. Records the forward when it returns true.
+     */
+    boolean shouldForward(StatusEffectType type, float duration, float magnitude, long nowNanos) {
+        if (lastForwardNanos == null) {
+            lastForwardNanos = new long[TYPE_COUNT];
+            lastForwardDuration = new float[TYPE_COUNT];
+            lastForwardMagnitude = new float[TYPE_COUNT];
+            java.util.Arrays.fill(lastForwardNanos, Long.MIN_VALUE);
+        }
+        int i = type.ordinal();
+        boolean recent = lastForwardNanos[i] != Long.MIN_VALUE
+                && nowNanos - lastForwardNanos[i] < FORWARD_COALESCE_NANOS;
+        if (recent && duration <= lastForwardDuration[i] && magnitude <= lastForwardMagnitude[i]) {
+            return false;
+        }
+        lastForwardNanos[i] = nowNanos;
+        lastForwardDuration[i] = duration;
+        lastForwardMagnitude[i] = magnitude;
+        return true;
     }
 
     /** Magnitude of the active effect of the given type, or {@code 0f} if none is active. */
@@ -117,22 +182,12 @@ final class LivingEntityStatusEffects {
 
     /** True while any STUNNED effect is active — suppresses AI updates. */
     boolean isStunned() {
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.STUNNED) {
-                return true;
-            }
-        }
-        return false;
+        return has(StatusEffectType.STUNNED);
     }
 
     /** True while any ROOT (or STUNNED — stun implies immobility) effect is active. */
     boolean isRooted() {
-        for (StatusEffect effect : statusEffects) {
-            if (effect.getType() == StatusEffectType.ROOT || effect.getType() == StatusEffectType.STUNNED) {
-                return true;
-            }
-        }
-        return false;
+        return has(StatusEffectType.ROOT) || has(StatusEffectType.STUNNED);
     }
 
     /** Multiplier applied to incoming damage; {@code 1.0} with no Armor Break active, higher otherwise. */

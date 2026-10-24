@@ -20,8 +20,8 @@ import org.joml.Vector3f;
 public final class ServerCommandHandler {
 
     private static final int MAX_OBTAIN_COUNT = 999;
-    /** Mirrors SpawnCommand: at most this many mobs per /spawn, this far along the look direction. */
     private static final int MAX_SPAWN_COUNT = 50;
+    /** Distance ahead of the player (along its look direction) that /spawn places mobs. */
     private static final float SPAWN_DISTANCE = 3.0f;
 
     /**
@@ -98,9 +98,10 @@ public final class ServerCommandHandler {
     }
 
     /**
-     * /spawn &lt;mob&gt; [count] — mobs in front of the player, in the SERVER's world, so they are
-     * simulated (and replicated) like any naturally spawned mob. Checked against the SERVER's
-     * cheats flag.
+     * /spawn &lt;mob&gt; [count] — the server-side mob spawn (issue #341). Checked against the
+     * SERVER's cheats flag and spawned into the SERVER world in front of the player's reported
+     * position and facing: the mob runs its AI on the server, replicates to every player and is
+     * saved with the world, like a naturally spawned one.
      */
     private void handleSpawn(ServerPlayer sp, String[] args, ServerWorldContext ctx) {
         ServerLevel level = ctx.serverLevel();
@@ -108,15 +109,11 @@ public final class ServerCommandHandler {
             reply(sp, "Cheats are not enabled on this world.");
             return;
         }
-        EntityManager em = ctx.entityManager();
-        if (em == null) {
-            return;
-        }
         if (args.length < 2) {
             reply(sp, "Usage: /spawn <mob> [count]");
             return;
         }
-        EntityType type = EntityType.findMob(args[1]);
+        EntityType type = EntityType.findGlossaryMob(args[1]);
         if (type == null) {
             reply(sp, "Unknown mob: " + args[1]);
             return;
@@ -129,19 +126,28 @@ public final class ServerCommandHandler {
                 reply(sp, "Invalid count: " + args[2]);
                 return;
             }
-            if (count <= 0 || count > MAX_SPAWN_COUNT) {
-                reply(sp, "Count must be between 1 and " + MAX_SPAWN_COUNT + "!");
+            if (count <= 0) {
+                reply(sp, "Count must be greater than 0!");
+                return;
+            }
+            if (count > MAX_SPAWN_COUNT) {
+                reply(sp, "Count too large! Maximum is " + MAX_SPAWN_COUNT);
                 return;
             }
         }
+        EntityManager em = ctx.entityManager();
+        if (em == null || sp.lastStateNs() == 0L) {
+            reply(sp, "Failed to spawn " + type.getDisplayName() + "!");
+            return;
+        }
 
-        // The camera's look direction (Camera.updateCameraVectors), from the player's feet.
+        // Camera convention: front = (cos yaw·cos pitch, sin pitch, sin yaw·cos pitch).
         double yaw = Math.toRadians(sp.yaw());
         double pitch = Math.toRadians(sp.pitch());
         Vector3f base = new Vector3f(
-            sp.x() + (float) (Math.cos(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE,
-            sp.y() + (float) Math.sin(pitch) * SPAWN_DISTANCE,
-            sp.z() + (float) (Math.sin(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE);
+                sp.x() + (float) (Math.cos(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE,
+                sp.y() + (float) Math.sin(pitch) * SPAWN_DISTANCE,
+                sp.z() + (float) (Math.sin(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE);
         int spawned = 0;
         for (int i = 0; i < count; i++) {
             // Jitter x/z slightly so multiple spawns don't stack on a single point.
@@ -153,9 +159,14 @@ public final class ServerCommandHandler {
                 spawned++;
             }
         }
-        reply(sp, spawned > 0
-            ? "Spawned " + spawned + "/" + count + "x " + type.getDisplayName()
-            : "Failed to spawn " + type.getDisplayName() + "!");
+
+        if (spawned == count) {
+            reply(sp, "Spawned " + spawned + "x " + type.getDisplayName());
+        } else if (spawned > 0) {
+            reply(sp, "Spawned " + spawned + "/" + count + "x " + type.getDisplayName() + " (some failed)");
+        } else {
+            reply(sp, "Failed to spawn " + type.getDisplayName() + "!");
+        }
     }
 
     private static void reply(ServerPlayer sp, String message) {

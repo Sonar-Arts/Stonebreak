@@ -3,6 +3,7 @@ package com.stonebreak.network.server;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassRegistry;
+import com.stonebreak.rpg.feats.FeatDefinition;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.proficiency.WeaponProficiency;
 import com.stonebreak.world.save.model.PlayerData;
@@ -15,7 +16,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Normalizes a client-submitted {@code PlayerPrefsC2S} payload (parsed to a
@@ -35,6 +38,9 @@ import java.util.Set;
  *       talent-tree RANKS, priced by the class investment order
  *       ({@link CharacterStats#cpCostOf}); weapon proficiencies live in the skill ledger but
  *       are paid in WTP, not SP.</li>
+ *   <li><b>Refund window</b> (issue #421) — a refund may only reach back to the
+ *       {@link SpendFloor} the server committed; a report below it is refused. A new feat
+ *       must also be available at the server's level ({@link FeatRegistry#isAvailableAt}).</li>
  *   <li><b>AP/scores</b> — a raise is paid out of the server-held remaining AP and an
  *       un-done raise refunds it; {@code sum(scores) + remainingAp} can never exceed its
  *       creation-time ceiling, so refunds can never conjure points.</li>
@@ -88,16 +94,27 @@ public final class PlayerPrefsValidator {
      * @param serverStats the server's CharacterStats, kept in lockstep with the accepted
      *                    baseline ({@link ServerPlayer#acceptBaseline})
      * @param baseline    the last accepted state (cosmetic counters compare against it)
+     * @param floor       the committed spends no report may refund ({@link ServerPlayer#spendFloor})
      * @param candidate   the parsed client report
      * @return the candidate with every server-owned field (level, xp, the four remaining
      *         pools) overwritten from server state, or null when the candidate is refused
      */
     public static PlayerData normalize(CharacterStats serverStats, PlayerData baseline,
-                                       PlayerData candidate) {
-        if (serverStats == null || baseline == null || candidate == null) {
+                                       SpendFloor floor, PlayerData candidate) {
+        return normalize(serverStats, baseline, floor, candidate, FeatRegistry::findById);
+    }
+
+    /** {@link #normalize} over an injectable feat registry (tests need feats above level 1). */
+    static PlayerData normalize(CharacterStats serverStats, PlayerData baseline, SpendFloor floor,
+                                PlayerData candidate,
+                                Function<String, Optional<FeatDefinition>> feats) {
+        if (serverStats == null || baseline == null || floor == null || candidate == null) {
             return null;
         }
         int level = serverStats.getLevel();
+        // Committed spends are never refunded: only what was spent since the last commit
+        // (an open character-sheet session) may shrink (issue #421).
+        if (!floor.admits(candidate)) return null;
 
         // ── CP/SP/FP: conservation over the SERVER-held pools ───────────────────
         // The candidate may re-arrange its spend ledger (undo included); the pool is the
@@ -132,13 +149,18 @@ public final class PlayerPrefsValidator {
             return null;
         }
 
-        Set<String> feats = candidate.getAcquiredFeatIds();
-        if (feats.size() > MAX_LEDGER_ENTRIES) return null;
-        for (String featId : feats) {
-            if (FeatRegistry.ALL.stream().noneMatch(f -> f.id().equals(featId))) return null;
+        Set<String> candidateFeats = candidate.getAcquiredFeatIds();
+        if (candidateFeats.size() > MAX_LEDGER_ENTRIES) return null;
+        Set<String> heldFeats = serverStats.getAcquiredFeatIds();
+        for (String featId : candidateFeats) {
+            Optional<FeatDefinition> feat = feats.apply(featId);
+            if (feat.isEmpty()) return null;
+            // A feat taken now must be available at the SERVER's level; one already held keeps
+            // its place (a save from before the level rule must still load and report).
+            if (!heldFeats.contains(featId) && feat.get().level() > level) return null;
         }
         long newFp = (long) serverStats.getRemainingFeatPoints()
-                + serverStats.getAcquiredFeatIds().size() - feats.size();
+                + heldFeats.size() - candidateFeats.size();
         if (newFp < 0) return null;
 
         // ── AP/scores: raises paid from the server-held pool, refunds return it ─
@@ -230,6 +252,12 @@ public final class PlayerPrefsValidator {
      * @return the normalized creation state, or null when a spend exceeds its grant
      */
     public static PlayerData normalizeCreation(PlayerData candidate) {
+        return normalizeCreation(candidate, FeatRegistry::findById);
+    }
+
+    /** {@link #normalizeCreation} over an injectable feat registry (tests). */
+    static PlayerData normalizeCreation(PlayerData candidate,
+                                        Function<String, Optional<FeatDefinition>> featLookup) {
         if (candidate == null) {
             return null;
         }
@@ -247,7 +275,8 @@ public final class PlayerPrefsValidator {
         }
         Set<String> feats = candidate.getAcquiredFeatIds();
         for (String featId : feats) {
-            if (FeatRegistry.ALL.stream().noneMatch(f -> f.id().equals(featId))) return null;
+            // A new character is level 1: a feat above it is refused like an unknown one.
+            if (featLookup.apply(featId).map(f -> f.level() > 1).orElse(true)) return null;
         }
         if (spentCp > CharacterStats.grantedCp(1)
                 || skillSum > CharacterStats.grantedSp(1)

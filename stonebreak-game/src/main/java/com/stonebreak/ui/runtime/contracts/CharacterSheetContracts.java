@@ -460,12 +460,15 @@ public final class CharacterSheetContracts {
         o.put("hasSelection", UiValue.of(sel != null));
         boolean acquired = sel != null && stats.hasFeat(sel.id());
         boolean canAfford = stats.getRemainingFeatPoints() > 0;
+        // Above the character's level: shown like an unaffordable feat (#421 — the server refuses it).
+        boolean locked = sel != null && !acquired && sel.level() > stats.getLevel();
         o.put("detail", sel == null ? obj("name", "", "type", "", "level", "", "description", "")
             : obj("name", sel.name(), "type", "Type: " + (sel.isGeneral() ? "General Feat" : "Feat"),
                 "level", "Required Level: " + sel.level(), "description", sel.description()));
         // the Acquire button: acquired = disabled grey, unaffordable = disabled red, else a live button
-        o.put("acquireState", UiValue.of(acquired ? "acquired" : !canAfford ? "poor" : "live"));
-        o.put("acquireLabel", UiValue.of(acquired ? "Acquired" : "Acquire? (1 FP)"));
+        o.put("acquireState", UiValue.of(acquired ? "acquired" : locked || !canAfford ? "poor" : "live"));
+        o.put("acquireLabel", UiValue.of(acquired ? "Acquired"
+            : locked ? "Requires Lvl " + sel.level() : "Acquire? (1 FP)"));
         return new UiValue.Obj(o);
     }
 

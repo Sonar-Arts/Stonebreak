@@ -3,7 +3,6 @@ package com.stonebreak.world;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.Map;
 
 /**
  * Manages snow layer data for the world.
@@ -11,6 +10,11 @@ import java.util.Map;
  * <p>Keyed by packed world coordinates (no string allocation per access) and
  * purged per chunk on unload — previously this map grew unbounded for the
  * lifetime of the world. Layout matches the water sim's packing: [x:24][z:24][y:16].
+ *
+ * <p>Entries are grouped by chunk, so the per-chunk operations (save gathering, network
+ * chunk meta, client install, unload) cost the chunk's own entries instead of a sweep of
+ * every snow cell in the world (#345). Every mutation runs inside the outer map's
+ * {@code compute}, so a chunk's inner map is never dropped while another thread writes to it.
  *
  * <p>Note: snow layers are not persisted, so purging on unload means layer
  * counts reset to the 1-layer default when a chunk reloads (previously they
@@ -25,8 +29,31 @@ public class SnowLayerManager {
     private static final int XZ_SIGN_BIT = 0x00800000;
     private static final int XZ_SIGN_EXT = 0xFF000000;
 
-    // Map from packed world position to snow layer count (1-8)
-    private final Map<Long, Integer> snowLayers = new ConcurrentHashMap<>();
+    // Chunk key -> (packed world position -> snow layer count 1-8). Empty inner maps are removed.
+    private final ConcurrentHashMap<Long, ConcurrentHashMap<Long, Integer>> byChunk = new ConcurrentHashMap<>();
+
+    private static long chunkKey(int chunkX, int chunkZ) {
+        return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
+    }
+
+    private static long chunkKeyOf(int x, int z) {
+        return chunkKey(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
+                        Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
+    }
+
+    /** Stores {@code layers} at a cell and returns the previous count (null = untracked). */
+    private Integer put(int x, int y, int z, int layers) {
+        Integer[] previous = new Integer[1];
+        long key = packKey(x, y, z);
+        byChunk.compute(chunkKeyOf(x, z), (k, cells) -> {
+            if (cells == null) {
+                cells = new ConcurrentHashMap<>();
+            }
+            previous[0] = cells.put(key, layers);
+            return cells;
+        });
+        return previous[0];
+    }
 
     /**
      * Observer for gameplay snow mutations ({@code layers == 0} means removed). Fired by
@@ -76,7 +103,8 @@ public class SnowLayerManager {
      * @return Number of snow layers (1-8), or 1 if untracked (snow block default)
      */
     public int getSnowLayers(int x, int y, int z) {
-        return snowLayers.getOrDefault(packKey(x, y, z), 1); // Default to 1 layer if snow exists
+        ConcurrentHashMap<Long, Integer> cells = byChunk.get(chunkKeyOf(x, z));
+        return cells == null ? 1 : cells.getOrDefault(packKey(x, y, z), 1); // Default to 1 layer if snow exists
     }
 
     /**
@@ -90,7 +118,7 @@ public class SnowLayerManager {
         if (layers < 1 || layers > 8) {
             throw new IllegalArgumentException("Snow layers must be between 1 and 8");
         }
-        Integer previous = snowLayers.put(packKey(x, y, z), layers);
+        Integer previous = put(x, y, z, layers);
         if (previous == null || previous != layers) {
             fireChanged(x, y, z, layers);
         }
@@ -103,7 +131,13 @@ public class SnowLayerManager {
      * @param z World Z coordinate
      */
     public void removeSnowLayers(int x, int y, int z) {
-        if (snowLayers.remove(packKey(x, y, z)) != null) {
+        boolean[] removed = new boolean[1];
+        long key = packKey(x, y, z);
+        byChunk.computeIfPresent(chunkKeyOf(x, z), (k, cells) -> {
+            removed[0] = cells.remove(key) != null;
+            return cells.isEmpty() ? null : cells;
+        });
+        if (removed[0]) {
             fireChanged(x, y, z, 0);
         }
     }
@@ -147,15 +181,12 @@ public class SnowLayerManager {
      * save gathering and network chunk-meta encoding.
      */
     public void forEachInChunk(int chunkX, int chunkZ, SnowEntryConsumer consumer) {
-        for (Map.Entry<Long, Integer> e : snowLayers.entrySet()) {
-            long key = e.getKey();
-            int x = unpackX(key);
-            int z = unpackZ(key);
-            if (Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE) == chunkX
-                && Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE) == chunkZ) {
-                consumer.accept(x, (int) (key & Y_MASK), z, e.getValue());
-            }
+        ConcurrentHashMap<Long, Integer> cells = byChunk.get(chunkKey(chunkX, chunkZ));
+        if (cells == null) {
+            return;
         }
+        cells.forEach((key, layers) ->
+            consumer.accept(unpackX(key), (int) (key & Y_MASK), unpackZ(key), layers));
     }
 
     /**
@@ -164,7 +195,7 @@ public class SnowLayerManager {
      * which also READS as 1, but keeping the entry preserves save/wire round-trip fidelity.
      */
     public void putRaw(int x, int y, int z, int layers) {
-        snowLayers.put(packKey(x, y, z), Math.max(1, Math.min(8, layers)));
+        put(x, y, z, Math.max(1, Math.min(8, layers)));
     }
 
     /**
@@ -172,16 +203,13 @@ public class SnowLayerManager {
      * the map grows for every snowfall the player ever walks past.
      */
     public void onChunkUnloaded(int chunkX, int chunkZ) {
-        snowLayers.keySet().removeIf(key ->
-            Math.floorDiv(unpackX(key), WorldConfiguration.CHUNK_SIZE) == chunkX &&
-            Math.floorDiv(unpackZ(key), WorldConfiguration.CHUNK_SIZE) == chunkZ
-        );
+        byChunk.remove(chunkKey(chunkX, chunkZ));
     }
 
     /**
      * Clears all snow layer data (world unload).
      */
     public void clear() {
-        snowLayers.clear();
+        byChunk.clear();
     }
 }

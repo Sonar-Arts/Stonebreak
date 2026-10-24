@@ -3,7 +3,6 @@ package com.stonebreak.player.combat.berserker;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
-import com.stonebreak.mobs.entities.Knockback;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
@@ -148,8 +147,8 @@ public class RampageAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
-        for (LivingEntity entity : entityManager.getLivingEntities()) {
-            if (!entity.isPlayerAttackable() || hitEntities.contains(entity)) continue;
+        for (LivingEntity entity : Player.combatTargets(entityManager)) {
+            if (!entity.isAlive() || hitEntities.contains(entity)) continue;
 
             Vector3f rel = entity.getPosition().sub(currentPos);
             float longitudinal = rel.dot(direction);
@@ -157,20 +156,17 @@ public class RampageAbility {
 
             if (Math.abs(longitudinal) <= RAMPAGE_HIT_RADIUS && perpendicular.length() <= cleaveHalfWidth) {
                 hitEntities.add(entity);
-                if (tier != RageTier.T3) {
-                    entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER);
+                // Knockback and stagger only follow a hit that counted. On a network shadow the
+                // knockback goes to the server (EntityKnockbackC2S), which accepts it right
+                // after this player's accepted hit on the same target.
+                if (!entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER) || tier != RageTier.T3) {
                     continue;
                 }
-                // The knockback rides the damage intent: on a network shadow, writing it to
-                // the copy's velocity would do nothing, since shadows are never simulated.
                 Vector3f knockbackDir = perpendicular.lengthSquared() > 0.0001f
                     ? new Vector3f(perpendicular).normalize()
                     : new Vector3f(direction);
-                Knockback knockback = new Knockback(knockbackDir.x, knockbackDir.z,
-                    RAMPAGE_KNOCKBACK_HORIZONTAL, RAMPAGE_KNOCKBACK_VERTICAL);
-                if (entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER, knockback)) {
-                    entity.applyStatusEffect(StatusEffectType.STUNNED, RAMPAGE_STAGGER_DURATION, 0f);
-                }
+                entity.applyKnockback(knockbackDir, RAMPAGE_KNOCKBACK_HORIZONTAL, RAMPAGE_KNOCKBACK_VERTICAL);
+                entity.applyStatusEffect(StatusEffectType.STUNNED, RAMPAGE_STAGGER_DURATION, 0f);
             }
         }
     }
@@ -201,7 +197,7 @@ public class RampageAbility {
         if (trailZones.isEmpty()) return;
 
         EntityManager entityManager = Game.getEntityManager();
-        List<LivingEntity> living = entityManager != null ? entityManager.getLivingEntities() : List.of();
+        List<LivingEntity> living = entityManager != null ? Player.combatTargets(entityManager) : List.of();
 
         var it = trailZones.iterator();
         while (it.hasNext()) {

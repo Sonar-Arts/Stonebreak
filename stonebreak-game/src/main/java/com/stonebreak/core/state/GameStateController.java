@@ -92,6 +92,14 @@ public final class GameStateController {
             }
         }
 
+        // Leaving the join screen abandons a connect still in flight: it finishing later must not
+        // drop the player into a world from whatever screen they went to instead.
+        if (stateChanged && previousGameState == GameState.JOIN_WORLD_SCREEN
+                && com.stonebreak.network.MultiplayerSession.getMode()
+                        == com.stonebreak.network.MultiplayerSession.Mode.MENU) {
+            com.stonebreak.network.MultiplayerSession.cancelPendingJoin();
+        }
+
         // Leaving LOADING by any route other than LoadingScreen.hide() (a failed build, a disconnect):
         // the loading screen stops showing, so its document never lingers in the input stack (#299).
         if (stateChanged && previousGameState == GameState.LOADING && game.getLoadingScreen() != null) {
@@ -485,8 +493,27 @@ public final class GameStateController {
     }
 
     private void endRpgSession() {
+        boolean wasOpen = rpgSessionBaseline != null;
         rpgSessionBaseline = null;
         pendingExitAction = null;
+        if (wasOpen) {
+            // Report the kept (or reverted) allocations now: the server commits them with this
+            // closing report, before any attack could commit the session's undone spends (#421).
+            com.stonebreak.network.client.ClientWorldView client =
+                    com.stonebreak.network.MultiplayerSession.getClient();
+            if (client != null) {
+                client.flushPlayerPrefs();
+            }
+        }
+    }
+
+    /**
+     * True while the inventory/character panel's save-or-discard session is open. Prefs
+     * reports sent meanwhile are provisional: the server keeps their spends refundable until
+     * the session ends (issue #421).
+     */
+    public boolean isRpgSessionOpen() {
+        return rpgSessionBaseline != null;
     }
 
     /** True when the player made RPG allocations since the panel session began. */
