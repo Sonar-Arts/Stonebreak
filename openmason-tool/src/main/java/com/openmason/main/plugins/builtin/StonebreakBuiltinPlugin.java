@@ -20,7 +20,7 @@ import java.util.Set;
  * Everything in the tool that is about Stonebreak's own assets, gathered into one plugin (#379)
  * so #382 can move it into {@code openmason-plugin-stonebreak} unchanged: the .sbo/.sbe/.sbt file
  * types (opened in their editor windows), Tools → Export SBO/SBE and SBO/SBE Editor, the asset
- * export and asset-lens MCP tools, the {@code assets} topic, the block/item/.SBT viewport content,
+ * export and asset-lens MCP tools, the {@code assets} topic, the item/.SBT viewport content,
  * the New Biome template and the Stonebreak game target (#380). It only wires tool classes; none of it names a game type directly
  * (the boundary ratchet allows no new referrers).
  */

@@ -29,7 +29,7 @@ class OMPUiEditorReferenceTest {
                 new OMPFormat.CameraState("ARCBALL", 10, 20, 30, 45),
                 new OMPFormat.ViewportState(0, 0, true, true, false, false, true, false, 0.25f),
                 OMPFormat.TransformData.editorOnly(true),
-                new OMPFormat.ModelReference("BLOCK_MODEL", "m", "default", null, null, "NONE", null),
+                new OMPFormat.ModelReference("BLOCK_MODEL", "m", "default", null, "NONE", null),
                 new OMPFormat.UIState(true, true, true), null,
                 new OMPFormat.SceneReference(null, "MODEL_EDITOR"), ui);
     }

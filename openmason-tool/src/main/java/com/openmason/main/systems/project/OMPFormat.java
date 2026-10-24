@@ -248,7 +248,6 @@ public final class OMPFormat {
             String renderingMode,
             String modelName,
             String textureVariant,
-            String selectedBlockType,
             String selectedItemType,
             String modelSource,
             String modelFilePath

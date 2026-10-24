@@ -150,13 +150,12 @@ public class OMPDeserializer {
 
     private OMPFormat.ModelReference parseModelReference(JsonNode node) {
         if (node == null) {
-            return new OMPFormat.ModelReference("BLOCK_MODEL", null, null, null, null, "NONE", null);
+            return new OMPFormat.ModelReference("BLOCK_MODEL", null, null, null, "NONE", null);
         }
         return new OMPFormat.ModelReference(
                 text(node, "renderingMode", "BLOCK_MODEL"),
                 text(node, "modelName", null),
                 text(node, "textureVariant", null),
-                text(node, "selectedBlockType", null),
                 text(node, "selectedItemType", null),
                 text(node, "modelSource", "NONE"),
                 text(node, "modelFilePath", null)

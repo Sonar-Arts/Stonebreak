@@ -16,11 +16,6 @@ public enum RenderingMode {
     BLOCK_MODEL,
 
     /**
-     * Render a Stonebreak block preview.
-     */
-    BLOCK,
-
-    /**
      * Render voxelized items.
      */
     ITEM,

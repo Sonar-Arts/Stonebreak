@@ -10,7 +10,6 @@ import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.engine.rendering.viewer.transform.TransformState;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -151,7 +150,6 @@ public class ProjectService {
                 renderingState.getMode().name(),
                 renderingState.getCurrentModelName(),
                 renderingState.getCurrentTextureVariant(),
-                renderingState.getSelectedBlock() != null ? renderingState.getSelectedBlock().name() : null,
                 renderingState.getSelectedItem() != null ? renderingState.getSelectedItem().name() : null,
                 modelState.getModelSource().name(),
                 modelFilePath
@@ -279,13 +277,10 @@ public class ProjectService {
             }
         }
 
-        // Restore block/item selection if applicable
+        // Restore item selection if applicable (old files may name the retired BLOCK mode)
         try {
             RenderingMode mode = RenderingMode.valueOf(modelRef.renderingMode());
-            if (mode == RenderingMode.BLOCK && modelRef.selectedBlockType() != null) {
-                BlockType blockType = BlockType.valueOf(modelRef.selectedBlockType());
-                viewport.setSelectedBlock(blockType);
-            } else if (mode == RenderingMode.ITEM && modelRef.selectedItemType() != null) {
+            if (mode == RenderingMode.ITEM && modelRef.selectedItemType() != null) {
                 ItemType itemType = ItemType.valueOf(modelRef.selectedItemType());
                 viewport.setSelectedItem(itemType);
             }

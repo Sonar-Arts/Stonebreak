@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Item management system for Open Mason following the same pattern as BlockManager.
+ * Item management system for Open Mason.
  * Provides a simple interface for accessing voxelized item meshes.
  */
 public class ItemManager {

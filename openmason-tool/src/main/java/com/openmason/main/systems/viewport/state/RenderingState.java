@@ -1,12 +1,11 @@
 package com.openmason.main.systems.viewport.state;
 
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Manages current rendering state (mode, selected model/block/item).
+ * Manages current rendering state (mode, selected model/item/.SBT).
  * Mutable state object for tracking what content to display.
  */
 public class RenderingState {
@@ -18,9 +17,6 @@ public class RenderingState {
     // Model state (for BlockModels)
     private String currentModelName = null;
     private String currentTextureVariant = "default";
-
-    // Block state
-    private BlockType selectedBlock = null;
 
     // Item state
     private ItemType selectedItem = null;
@@ -45,28 +41,11 @@ public class RenderingState {
     }
 
     /**
-     * Switch to block rendering mode.
-     */
-    public void setBlockMode(BlockType blockType) {
-        if (blockType == null) {
-            logger.warn("Cannot set null block type");
-            return;
-        }
-        this.mode = RenderingMode.BLOCK;
-        this.selectedBlock = blockType;
-        this.currentModelName = null;
-        this.selectedItem = null;
-        this.selectedSbtPath = null;
-        logger.debug("Switched to BLOCK rendering mode: {}", blockType.name());
-    }
-
-    /**
      * Switch to block model rendering mode (.OMO editable models).
      */
     public void setBlockModelMode(String modelName) {
         this.mode = RenderingMode.BLOCK_MODEL;
         this.currentModelName = modelName;
-        this.selectedBlock = null;
         this.selectedItem = null;
         this.selectedSbtPath = null;
         logger.debug("Switched to BLOCK_MODEL rendering mode: {}", modelName);
@@ -83,7 +62,6 @@ public class RenderingState {
         this.mode = RenderingMode.ITEM;
         this.selectedItem = itemType;
         this.currentModelName = null;
-        this.selectedBlock = null;
         this.selectedSbtPath = null;
         logger.debug("Switched to ITEM rendering mode: {}", itemType.name());
     }
@@ -99,7 +77,6 @@ public class RenderingState {
         this.mode = RenderingMode.SBT_TEXTURE;
         this.selectedSbtPath = sbtFile;
         this.currentModelName = null;
-        this.selectedBlock = null;
         this.selectedItem = null;
         logger.debug("Switched to SBT_TEXTURE rendering mode: {}", sbtFile);
     }
@@ -138,7 +115,6 @@ public class RenderingState {
     public RenderingMode getMode() { return mode; }
     public String getCurrentModelName() { return currentModelName; }
     public String getCurrentTextureVariant() { return currentTextureVariant; }
-    public BlockType getSelectedBlock() { return selectedBlock; }
     public ItemType getSelectedItem() { return selectedItem; }
 
     /**
@@ -148,13 +124,6 @@ public class RenderingState {
     @Deprecated
     public boolean isModelReady() {
         return false; // Legacy MODEL mode no longer supported
-    }
-
-    /**
-     * Check if block is ready for rendering.
-     */
-    public boolean isBlockReady() {
-        return mode == RenderingMode.BLOCK && selectedBlock != null;
     }
 
     /**
@@ -171,7 +140,6 @@ public class RenderingState {
         return switch (mode) {
             case MODEL -> currentModelName != null ? "Model: " + currentModelName : "No model";
             case BLOCK_MODEL -> currentModelName != null ? "BlockModel: " + currentModelName : "No block model";
-            case BLOCK -> selectedBlock != null ? "Block: " + selectedBlock.name() : "No block";
             case ITEM -> selectedItem != null ? "Item: " + selectedItem.name() : "No item";
             case SBT_TEXTURE -> selectedSbtPath != null ? "SBT: " + selectedSbtPath.getFileName() : "No SBT";
         };

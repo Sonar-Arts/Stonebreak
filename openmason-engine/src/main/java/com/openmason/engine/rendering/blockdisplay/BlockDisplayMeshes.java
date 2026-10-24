@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,14 +23,12 @@ import static org.lwjgl.opengl.GL30.glGenVertexArrays;
 
 /**
  * Builds and owns the standalone meshes that show a single block outside the
- * world: the held item, dropped items, inventory icons and editor previews.
- * World chunks never come through here (they are MMS meshes).
+ * world: the held item, dropped items and inventory icons. World chunks never
+ * come through here (they are MMS meshes).
  *
- * <p>Textured meshes are for the block texture array: vertices are
+ * <p>Meshes are for the block texture array: vertices are
  * {@code x,y,z,u,v,layer} with tile-local UVs, on attributes 0 (position),
- * 1 (texcoord) and 4 (layer) — the world shader's array path. The fixed
- * {@link Shape}s are untextured-geometry meshes ({@code x,y,z,u,v}, attributes
- * 0 and 1) for previews that draw a block's silhouette.
+ * 1 (texcoord) and 4 (layer) — the world shader's array path.
  *
  * <p>Named meshes are replaced (and the old one released) when the same name
  * is built again. {@link #close()} releases everything this instance built.
@@ -39,6 +36,9 @@ import static org.lwjgl.opengl.GL30.glGenVertexArrays;
 public final class BlockDisplayMeshes implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(BlockDisplayMeshes.class);
+
+    /** {@code x,y,z,u,v,layer}. */
+    private static final int FLOATS_PER_VERTEX = 6;
 
     /**
      * Unit-cube face corners, four per face (bottom-left, bottom-right,
@@ -54,33 +54,12 @@ public final class BlockDisplayMeshes implements AutoCloseable {
         {-0.5f,-0.5f,-0.5f,  0.5f,-0.5f,-0.5f,  0.5f,-0.5f, 0.5f, -0.5f,-0.5f, 0.5f}  // bottom -Y
     };
 
-    /** Fixed untextured silhouettes. */
-    public enum Shape {
-        /** Unit cube. */
-        CUBE,
-        /** Two crossed double-sided planes (flowers, saplings). */
-        CROSS
-    }
-
-    private final Map<Shape, DisplayMesh> shapes = new EnumMap<>(Shape.class);
     private final Map<String, DisplayMesh> named = new ConcurrentHashMap<>();
     private boolean disposed = false;
 
-    /** Builds the fixed {@link Shape}s; needs a current GL context. */
-    public BlockDisplayMeshes() {
-        shapes.put(Shape.CUBE, createShapeCube());
-        shapes.put(Shape.CROSS, createShapeCross());
-        logger.debug("[BlockDisplayMeshes] Built {} shapes", shapes.size());
-    }
-
-    /** The shared mesh for a fixed shape. Owned by this instance; do not close it. */
-    public DisplayMesh getShape(Shape shape) {
-        ensureLive();
-        return shapes.get(shape);
-    }
-
     /**
      * Builds a unit cube for the block texture array, one layer per face.
+     * Needs a current GL context, as does every builder here.
      *
      * @param name       mesh name; rebuilding a name releases the previous mesh
      * @param faceLayers six texture-array layers in display-cube face order:
@@ -92,7 +71,7 @@ public final class BlockDisplayMeshes implements AutoCloseable {
         // is upright — array layers are uploaded top-row-first.
         float[] uv = {0f,1f, 1f,1f, 1f,0f, 0f,0f};
 
-        float[] vertices = new float[6 * 4 * 6]; // 6 faces * 4 verts * 6 floats
+        float[] vertices = new float[6 * 4 * FLOATS_PER_VERTEX]; // 6 faces * 4 verts
         int v = 0;
         for (int f = 0; f < 6; f++) {
             float layer = faceLayers[f];
@@ -105,7 +84,7 @@ public final class BlockDisplayMeshes implements AutoCloseable {
                 vertices[v++] = layer;
             }
         }
-        return register(name, upload(vertices, cubeIndices(), name, true));
+        return register(name, upload(vertices, cubeIndices(), name));
     }
 
     /**
@@ -118,14 +97,12 @@ public final class BlockDisplayMeshes implements AutoCloseable {
      */
     public DisplayMesh createLayeredMesh(String name, float[] vertices, int[] indices) {
         ensureLive();
-        return register(name, upload(vertices, indices, name, true));
+        return register(name, upload(vertices, indices, name));
     }
 
     @Override
     public void close() {
         if (!disposed) {
-            shapes.values().forEach(DisplayMesh::close);
-            shapes.clear();
             named.values().forEach(DisplayMesh::close);
             named.clear();
             disposed = true;
@@ -147,45 +124,6 @@ public final class BlockDisplayMeshes implements AutoCloseable {
         }
     }
 
-    private static DisplayMesh createShapeCube() {
-        float[] uv = {0f,0f, 1f,0f, 1f,1f, 0f,1f};
-        float[] vertices = new float[6 * 4 * 5];
-        int v = 0;
-        for (int f = 0; f < 6; f++) {
-            for (int i = 0; i < 4; i++) {
-                vertices[v++] = CUBE_FACES[f][i * 3];
-                vertices[v++] = CUBE_FACES[f][i * 3 + 1];
-                vertices[v++] = CUBE_FACES[f][i * 3 + 2];
-                vertices[v++] = uv[i * 2];
-                vertices[v++] = uv[i * 2 + 1];
-            }
-        }
-        return upload(vertices, cubeIndices(), "cube", false);
-    }
-
-    private static DisplayMesh createShapeCross() {
-        float[] vertices = {
-            // Plane facing ±Z
-            -0.5f, -0.5f,  0.0f,  0.0f, 0.0f,
-             0.5f, -0.5f,  0.0f,  1.0f, 0.0f,
-             0.5f,  0.5f,  0.0f,  1.0f, 1.0f,
-            -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
-            // Plane facing ±X
-             0.0f, -0.5f, -0.5f,  0.0f, 0.0f,
-             0.0f, -0.5f,  0.5f,  1.0f, 0.0f,
-             0.0f,  0.5f,  0.5f,  1.0f, 1.0f,
-             0.0f,  0.5f, -0.5f,  0.0f, 1.0f
-        };
-        int[] indices = {
-            // Each plane wound both ways so it shows from either side
-            0, 1, 2,  2, 3, 0,
-            0, 3, 2,  2, 1, 0,
-            4, 5, 6,  6, 7, 4,
-            4, 7, 6,  6, 5, 4
-        };
-        return upload(vertices, indices, "cross", false);
-    }
-
     private static int[] cubeIndices() {
         int[] indices = new int[36];
         for (int f = 0; f < 6; f++) {
@@ -197,13 +135,8 @@ public final class BlockDisplayMeshes implements AutoCloseable {
         return indices;
     }
 
-    /**
-     * Uploads interleaved vertices: {@code x,y,z,u,v} on attributes 0 and 1,
-     * plus {@code layer} on attribute 4 when {@code layered}.
-     */
-    private static DisplayMesh upload(float[] vertices, int[] indices, String name, boolean layered) {
-        int floatsPerVertex = layered ? 6 : 5;
-
+    /** Uploads interleaved {@code x,y,z,u,v,layer} vertices on attributes 0, 1 and 4. */
+    private static DisplayMesh upload(float[] vertices, int[] indices, String name) {
         int vao = glGenVertexArrays();
         glBindVertexArray(vao);
 
@@ -219,20 +152,18 @@ public final class BlockDisplayMeshes implements AutoCloseable {
         indexBuffer.put(indices).flip();
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL_STATIC_DRAW);
 
-        int stride = floatsPerVertex * Float.BYTES;
+        int stride = FLOATS_PER_VERTEX * Float.BYTES;
         glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 3 * Float.BYTES);
         glEnableVertexAttribArray(1);
-        if (layered) {
-            glVertexAttribPointer(4, 1, GL_FLOAT, false, stride, 5 * Float.BYTES);
-            glEnableVertexAttribArray(4);
-        }
+        glVertexAttribPointer(4, 1, GL_FLOAT, false, stride, 5 * Float.BYTES);
+        glEnableVertexAttribArray(4);
 
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-        return new DisplayMesh(vao, vbo, ebo, indices.length, vertices.length / floatsPerVertex, name);
+        return new DisplayMesh(vao, vbo, ebo, indices.length, vertices.length / FLOATS_PER_VERTEX, name);
     }
 }

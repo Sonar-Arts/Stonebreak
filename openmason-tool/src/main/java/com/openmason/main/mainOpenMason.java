@@ -780,12 +780,6 @@ public class mainOpenMason {
     }
 
     private void cleanupOpenGLResources() {
-        try {
-            com.openmason.main.systems.rendering.model.block.BlockManager.shutdown();
-        } catch (Exception e) {
-            logger.error("Error cleaning up block preview meshes", e);
-        }
-
         if (texturePreviewPipeline != null) {
             texturePreviewPipeline.dispose();
         }

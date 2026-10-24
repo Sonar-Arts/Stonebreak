@@ -3,7 +3,6 @@ package com.openmason.main.systems.viewport.content;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.engine.rendering.viewer.transform.TransformState;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +17,6 @@ import org.slf4j.LoggerFactory;
  * <h2>Responsibilities</h2>
  * <ul>
  *   <li>Switch to Model mode</li>
- *   <li>Switch to Block mode</li>
  *   <li>Switch to Item mode</li>
  *   <li>Coordinate state updates across transitions</li>
  *   <li>Manage model lifecycle via ModelContentLoader</li>
@@ -46,7 +44,6 @@ public class ContentTypeManager {
     public enum ContentType {
         NONE,
         BLOCK_MODEL,
-        BLOCK,
         ITEM,
         SBT_TEXTURE
     }
@@ -127,39 +124,6 @@ public class ContentTypeManager {
 
         logger.info("Updating model texture: {}", blockModel.getName());
         return modelContentLoader.updateTexture(blockModel);
-    }
-
-    /**
-     * Switch to Block mode and display the specified block type.
-     *
-     * <p>This performs:
-     * <ol>
-     *   <li>Unload any model content</li>
-     *   <li>Update rendering state to Block mode</li>
-     *   <li>Reset transform to default position</li>
-     * </ol>
-     *
-     * @param blockType The block type to display
-     */
-    public void switchToBlock(BlockType blockType) {
-        if (blockType == null) {
-            logger.warn("Cannot switch to null block type");
-            return;
-        }
-
-        logger.info("Switching to Block mode: {}", blockType);
-
-        // Unload model if active
-        if (currentType == ContentType.BLOCK_MODEL) {
-            modelContentLoader.unload();
-        }
-
-        // Update state
-        renderingState.setBlockMode(blockType);
-        transformState.resetPosition();
-        currentType = ContentType.BLOCK;
-
-        logger.info("Switched to Block mode: {}", blockType);
     }
 
     /**

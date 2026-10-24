@@ -158,7 +158,6 @@ public class OMPSerializer {
             if (doc.model().renderingMode() != null) model.put("renderingMode", doc.model().renderingMode());
             if (doc.model().modelName() != null) model.put("modelName", doc.model().modelName());
             if (doc.model().textureVariant() != null) model.put("textureVariant", doc.model().textureVariant());
-            if (doc.model().selectedBlockType() != null) model.put("selectedBlockType", doc.model().selectedBlockType());
             if (doc.model().selectedItemType() != null) model.put("selectedItemType", doc.model().selectedItemType());
             if (doc.model().modelSource() != null) model.put("modelSource", doc.model().modelSource());
             if (doc.model().modelFilePath() != null) model.put("modelFilePath", doc.model().modelFilePath());

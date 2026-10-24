@@ -1,7 +1,6 @@
 package com.openmason.main.systems;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
-import com.openmason.main.systems.rendering.model.block.BlockManager;
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
@@ -14,7 +13,6 @@ import com.openmason.main.systems.viewport.ViewportInputHandler;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
 import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
-import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import com.openmason.engine.rendering.viewer.ViewerFramebuffer;
@@ -33,7 +31,6 @@ import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordina
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,7 +65,6 @@ public class ViewportController {
     private final FaceSelectionState faceSelectionState;
 
     // ========== Renderers ==========
-    private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
     private final GenericModelRenderer modelRenderer;
 
@@ -173,7 +169,6 @@ public class ViewportController {
 
         this.commandHistory = new ModelCommandHistory();
 
-        this.blockRenderer = new BlockRenderer("Viewport");
         this.itemRenderer = new ItemRenderer("Viewport");
         this.modelRenderer = new GenericModelRenderer();
 
@@ -274,9 +269,6 @@ public class ViewportController {
             shaderManager.initialize();
             modelViewer.initialize(viewportState.getWidth(), viewportState.getHeight());
 
-            if (!BlockManager.isInitialized()) BlockManager.initialize();
-            blockRenderer.initialize();
-
             if (!ItemManager.isInitialized()) ItemManager.initialize();
             itemRenderer.initialize();
 
@@ -295,7 +287,7 @@ public class ViewportController {
 
             this.viewportRenderPipeline = new ViewportRenderPipeline(
                 shaderManager,
-                blockRenderer, itemRenderer,
+                itemRenderer,
                 modelRenderer, gizmoRenderer,
                 viewportState, renderingState, transformState
             );
@@ -649,15 +641,6 @@ public class ViewportController {
                 faceRenderer.setGenericModelRenderer(modelRenderer);
             }
         }
-    }
-
-    /**
-     * Set block to render in viewport.
-     *
-     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager.
-     */
-    public void setSelectedBlock(BlockType blockType) {
-        contentTypeManager.switchToBlock(blockType);
     }
 
     /**
@@ -1084,13 +1067,12 @@ public class ViewportController {
     }
 
     /**
-     * The block / item / .SBT content the viewport can draw, as content providers for the built-in
+     * The item / .SBT content the viewport can draw, as content providers for the built-in
      * Stonebreak plugin to register. They forward to the render pipeline once it exists (before
      * that they are never ready).
      */
     public java.util.List<com.openmason.api.viewport.ViewportContentProvider> builtinContentProviders() {
-        return java.util.List.of(builtinContent("stonebreak.block", "Stonebreak block"),
-                builtinContent("stonebreak.item", "Stonebreak item"),
+        return java.util.List.of(builtinContent("stonebreak.item", "Stonebreak item"),
                 builtinContent("stonebreak.sbt", "Stonebreak texture (.SBT)"));
     }
 

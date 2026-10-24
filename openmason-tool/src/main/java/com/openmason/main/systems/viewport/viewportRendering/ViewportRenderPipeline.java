@@ -7,7 +7,6 @@ import com.openmason.engine.rendering.viewer.ViewerFrame;
 import com.openmason.engine.rendering.viewer.ViewerPass;
 import com.openmason.engine.rendering.viewer.ViewerPassOrder;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.core.BlockRenderer;
 import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.rendering.core.SBTRenderer;
 import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
@@ -76,7 +75,6 @@ public class ViewportRenderPipeline implements ViewerPass {
     private final FaceRenderer faceRenderer;
 
     // External renderers (blocks, items)
-    private final BlockRenderer blockRenderer;
     private final ItemRenderer itemRenderer;
     private final SBTRenderer sbtRenderer = new SBTRenderer();
 
@@ -129,7 +127,7 @@ public class ViewportRenderPipeline implements ViewerPass {
      * Create render pipeline with all required dependencies.
      */
     public ViewportRenderPipeline(ShaderManager shaderManager,
-                                  BlockRenderer blockRenderer, ItemRenderer itemRenderer,
+                                  ItemRenderer itemRenderer,
                                   GenericModelRenderer modelRenderer,
                                   GizmoRenderer gizmoRenderer,
                                   ViewportUIState viewportState,
@@ -142,19 +140,18 @@ public class ViewportRenderPipeline implements ViewerPass {
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
         this.faceRenderer = new FaceRenderer();
-        this.blockRenderer = blockRenderer;
         this.itemRenderer = itemRenderer;
         this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
         this.knifePreviewRenderer = new KnifePreviewRenderer();
         this.toolPreviewRenderer = new ToolPreviewRenderer();
         this.sbtRenderer.initialize();
-        this.builtinContent = List.of(new BlockContent(), new ItemContent(), new SbtContent());
+        this.builtinContent = List.of(new ItemContent(), new SbtContent());
     }
 
     /**
-     * The game-asset content this pipeline can draw besides the editable model (a selected block,
-     * item or .SBT sprite); the built-in Stonebreak plugin registers them as viewport content
+     * The game-asset content this pipeline can draw besides the editable model (a selected item
+     * or .SBT sprite); the built-in Stonebreak plugin registers them as viewport content
      * providers until #382 moves them out of the tool.
      */
     public List<ViewportContentProvider> builtinContentProviders() {
@@ -343,40 +340,6 @@ public class ViewportRenderPipeline implements ViewerPass {
             });
         } catch (Exception e) {
             logger.error("Error rendering viewport content {}", provider.id(), e);
-        }
-    }
-
-    /** A selected game block (Stonebreak). */
-    private final class BlockContent implements ViewportContentProvider {
-        @Override
-        public String id() {
-            return "stonebreak.block";
-        }
-
-        @Override
-        public String label() {
-            return "Stonebreak block";
-        }
-
-        @Override
-        public boolean ready() {
-            return renderingState.isBlockReady();
-        }
-
-        @Override
-        public void render(ViewportContentFrame frame) {
-            ShaderProgram shader = frame.matrixShader();
-            blockRenderer.renderBlock(
-                renderingState.getSelectedBlock(),
-                shader.getProgramId(),
-                shader.getUniformLocation("uMVPMatrix"),
-                shader.getUniformLocation("uModelMatrix"),
-                frame.viewProjection(),
-                frame.modelMatrix(),
-                shader.getUniformLocation("uTexture"),
-                shader.getUniformLocation("uUseTexture")
-            );
-            logger.trace("Block rendered: {}", renderingState.getSelectedBlock().name());
         }
     }
 
@@ -663,12 +626,6 @@ public class ViewportRenderPipeline implements ViewerPass {
                     }
                     break;
 
-                case BLOCK:
-                    // Single block rendering
-                    // TODO: Implement vertex extraction for Block rendering
-                    logger.trace("BLOCK mode - vertices not yet supported");
-                    break;
-
                 case ITEM:
                     // Item rendering
                     // TODO: Implement vertex extraction for Item rendering
@@ -717,12 +674,6 @@ public class ViewportRenderPipeline implements ViewerPass {
                     edgeRenderer.render(basicShaderBlockModelEdge, context, transformState.getTransformMatrix());
                     break;
 
-                case BLOCK:
-                    // Single block rendering
-                    // TODO: Implement edge extraction for Block rendering
-                    logger.trace("BLOCK mode - edges not yet supported");
-                    break;
-
                 case ITEM:
                     // Item rendering
                     // TODO: Implement edge extraction for Item rendering
@@ -768,12 +719,6 @@ public class ViewportRenderPipeline implements ViewerPass {
                     ShaderProgram faceDotShader = shaderManager.getShaderProgram(ShaderType.VERTEX);
                     faceRenderer.render(faceLineShader, faceFillShader, faceDotShader,
                             context, transformState.getTransformMatrix());
-                    break;
-
-                case BLOCK:
-                    // Single block rendering
-                    // TODO: Implement face extraction for Block rendering
-                    logger.trace("BLOCK mode - faces not yet supported");
                     break;
 
                 case ITEM:
