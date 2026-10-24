@@ -7,8 +7,9 @@ import io.netty.buffer.ByteBuf;
 /**
  * Client → server, at the player-state rate: where the boat this player is rowing is, and how
  * hard each oar pulls ({@code OarInput} wire form, half steps). The rower's client simulates its
- * boat the way it simulates its own body; the server bounds the move and replicates it (the oars
- * through the boat's visual state). Droppable — the next one supersedes it.
+ * boat the way it simulates its own body; the server refuses a boat reported away from its rower
+ * (whose own movement it checks) and replicates the rest (the oars through the boat's visual
+ * state). Droppable — the next one supersedes it.
  */
 public record VehicleMoveC2S(int networkId, float x, float y, float z, float yaw,
                              byte oarLeft, byte oarRight) implements Packet {

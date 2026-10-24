@@ -88,7 +88,7 @@ final class GameplayKeyHandler {
         // walking, dodging, stealth or flight from a seat.
         if (player.getRiding().isRiding()) {
             player.getRiding().setKeys(moveForward, moveBackward, moveLeft, moveRight);
-            if (keys.pressedOnce(GLFW_KEY_LEFT_SHIFT)) {
+            if (keys.pressedOnce(GLFW_KEY_LEFT_SHIFT) || keys.pressedOnce(GLFW_KEY_RIGHT_SHIFT)) {
                 player.getRiding().requestDismount(player);
             }
             processWorldActions(player);

@@ -25,13 +25,9 @@ public class Dinghy extends Entity implements Rideable {
     public static final int PASSENGER_SEAT = 1;
     /** Bench tops in model space: the thwart and the stern seat (from SB_Dinghy's mesh). */
     private static final float[][] SEATS = {{0f, 0.406f, -0.25f}, {0f, 0.406f, 0.84f}};
-    /**
-     * Seat facing relative to the bow: both riders face forward — the oar handles sit just
-     * bow-ward of the thwart, in the rower's reach, and the stern rider's knees clear its back.
-     */
-    private static final float[] SEAT_FACING = {0f, 0f};
 
-    public static final int HITS_TO_BREAK = 3;
+    /** The entity type's maxHealth is the hit count. */
+    public static final int HITS_TO_BREAK = (int) EntityType.DINGHY.getMaxHealth();
     /** Hits closer together than this count once (a held swing, a lagged double packet). */
     private static final float HIT_COOLDOWN = 0.25f;
 
@@ -56,9 +52,9 @@ public class Dinghy extends Entity implements Rideable {
 
     public Dinghy(World world, Vector3f position, float yawDeg) {
         super(world, position);
-        this.width = DinghyPhysics.HALF_BEAM * 2f;
-        this.length = DinghyPhysics.HALF_BEAM * 2f;
-        this.height = DinghyPhysics.HULL_HEIGHT;
+        this.width = EntityType.DINGHY.getWidth();
+        this.length = EntityType.DINGHY.getLength();
+        this.height = EntityType.DINGHY.getHeight();
         this.maxHealth = HITS_TO_BREAK;
         this.health = HITS_TO_BREAK;
         this.rotation.y = yawDeg;
@@ -127,18 +123,21 @@ public class Dinghy extends Entity implements Rideable {
     @Override
     public Vector3f seatPosition(int seat, Vector3f dest) {
         float[] s = SEATS[seat];
-        double yawRad = Math.toRadians(rotation.y);
-        float cos = (float) Math.cos(yawRad);
-        float sin = (float) Math.sin(yawRad);
-        // Ry(yaw) applied to the model-space seat, as the renderer's base matrix does.
-        return dest.set(position.x + s[0] * cos + s[2] * sin,
-                position.y + s[1],
-                position.z - s[0] * sin + s[2] * cos);
+        return rotateY(s[0], s[1], s[2], rotation.y, dest).add(position);
     }
 
+    /** Both riders face the bow: the oar handles sit just bow-ward of the thwart. */
     @Override
     public float seatYaw(int seat) {
-        return rotation.y + SEAT_FACING[seat];
+        return rotation.y;
+    }
+
+    /** {@code (x, y, z)} turned by Ry({@code yawDeg}), as the renderer's base matrix does; -yaw undoes it. */
+    static Vector3f rotateY(float x, float y, float z, float yawDeg, Vector3f dest) {
+        double yawRad = Math.toRadians(yawDeg);
+        float cos = (float) Math.cos(yawRad);
+        float sin = (float) Math.sin(yawRad);
+        return dest.set(x * cos + z * sin, y, -x * sin + z * cos);
     }
 
     /** Server: seats player {@code playerId}, rower's seat first; the seat taken, or -1 when full. */
@@ -181,22 +180,24 @@ public class Dinghy extends Entity implements Rideable {
     public void dismountAll() {
         seatPlayer[0] = seatPlayer[1] = -1;
         for (int seat = 0; seat < seatEntity.length; seat++) {
-            Entity rider = seatEntity[seat];
+            Entity rider = seatedEntity(seat);
             if (rider != null) {
                 rider.setVehicle(null, -1);
                 rider.setPosition(position.x, position.y + 0.6f, position.z);
-                seatEntity[seat] = null;
             }
+            seatEntity[seat] = null;
         }
         oars = OarInput.IDLE;
     }
 
     public boolean isSeatFree(int seat) {
+        return seatPlayer[seat] < 0 && seatedEntity(seat) == null;
+    }
+
+    /** The mob in {@code seat}, or null — its claim lapses once it dies or is carried off. */
+    private Entity seatedEntity(int seat) {
         Entity e = seatEntity[seat];
-        if (e != null && (!e.isAlive() || e.getVehicle() != this)) {
-            seatEntity[seat] = null; // the mob died or was carried off
-        }
-        return seatPlayer[seat] < 0 && seatEntity[seat] == null;
+        return e != null && e.isAlive() && e.getVehicle() == this ? e : null;
     }
 
     public int seatOfPlayer(int playerId) {
@@ -244,15 +245,12 @@ public class Dinghy extends Entity implements Rideable {
      * the boat's own frame, so the long hull is hit where it is drawn whatever its heading.
      */
     public float rayIntersect(Vector3f origin, Vector3f dir) {
-        double yawRad = Math.toRadians(rotation.y);
-        float cos = (float) Math.cos(yawRad);
-        float sin = (float) Math.sin(yawRad);
-        float ox = origin.x - position.x, oy = origin.y - position.y, oz = origin.z - position.z;
         // Inverse of Ry(yaw): into model space.
-        float lox = ox * cos - oz * sin, loz = ox * sin + oz * cos;
-        float ldx = dir.x * cos - dir.z * sin, ldz = dir.x * sin + dir.z * cos;
-        float[] o = {lox, oy, loz};
-        float[] d = {ldx, dir.y, ldz};
+        Vector3f lo = rotateY(origin.x - position.x, origin.y - position.y, origin.z - position.z,
+                -rotation.y, new Vector3f());
+        Vector3f ld = rotateY(dir.x, dir.y, dir.z, -rotation.y, new Vector3f());
+        float[] o = {lo.x, lo.y, lo.z};
+        float[] d = {ld.x, ld.y, ld.z};
         float[] min = {-HIT_HALF_BEAM, -0.15f, HIT_BOW_Z};
         float[] max = {HIT_HALF_BEAM, HIT_TOP, HIT_STERN_Z};
         float tNear = 0f, tFar = Float.MAX_VALUE;
@@ -286,12 +284,6 @@ public class Dinghy extends Entity implements Rideable {
         return EntityType.DINGHY;
     }
 
-    @Override
-    public BoundingBox getBoundingBox() {
-        return new BoundingBox(position.x - width / 2f, position.y, position.z - length / 2f,
-                position.x + width / 2f, position.y + height, position.z + length / 2f);
-    }
-
     // ─── Replication: "<left>,<right>;<seat0>;<seat1>" ───────────────────────
 
     @Override
@@ -299,12 +291,12 @@ public class Dinghy extends Entity implements Rideable {
         StringBuilder sb = new StringBuilder(24)
                 .append(oars.encodeLeft()).append(',').append(oars.encodeRight());
         for (int seat = 0; seat < SEATS.length; seat++) {
-            isSeatFree(seat); // drops a dead mob's claim first
+            Entity mob = seatedEntity(seat);
             sb.append(';');
             if (seatPlayer[seat] >= 0) {
                 sb.append(SeatToken.player(seatPlayer[seat]));
-            } else if (seatEntity[seat] != null && seatEntity[seat].getNetworkId() >= 0) {
-                sb.append(SeatToken.entity(seatEntity[seat].getNetworkId()));
+            } else if (mob != null && mob.getNetworkId() >= 0) {
+                sb.append(SeatToken.entity(mob.getNetworkId()));
             } else {
                 sb.append(SeatToken.EMPTY);
             }

@@ -66,7 +66,9 @@ public final class OarStroke {
     private static float wrap(float a) {
         double twoPi = 2.0 * Math.PI;
         double w = (a + Math.PI) % twoPi;
-        if (w < 0) w += twoPi;
+        if (w < 0) {
+            w += twoPi;
+        }
         return (float) (w - Math.PI);
     }
 

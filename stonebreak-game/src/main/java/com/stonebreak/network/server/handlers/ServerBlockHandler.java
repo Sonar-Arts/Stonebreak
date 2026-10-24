@@ -2,8 +2,8 @@ package com.stonebreak.network.server.handlers;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.items.ToolMiningRules;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
@@ -30,7 +30,8 @@ import java.util.Map;
  */
 public final class ServerBlockHandler {
 
-    private static final float MAX_REACH = 8.0f;
+    /** Feet to the block's centre; {@link ServerVehicleHandler} places boats within it too. */
+    static final float MAX_REACH = 8.0f;
     private static final float MAX_REACH_SQ = MAX_REACH * MAX_REACH;
 
     private final ServerChunkHandler chunkHandler;
@@ -244,7 +245,7 @@ public final class ServerBlockHandler {
             return BreakTiming.REFUSE;
         }
         ServerInventory inv = sp.inventory();
-        float seconds = com.stonebreak.items.ToolMiningRules.breakSeconds(
+        float seconds = ToolMiningRules.breakSeconds(
                 inv.slot(inv.selectedHotbarSlot()), serverPrev);
         if (Float.isNaN(seconds) || Float.isInfinite(seconds)) {
             return BreakTiming.REFUSE;

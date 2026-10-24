@@ -37,6 +37,9 @@ buildNumber.properties
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 
+# KDE Dolphin folder settings
+.directory
+
 # IntelliJ IDEA
 .idea/
 *.iml

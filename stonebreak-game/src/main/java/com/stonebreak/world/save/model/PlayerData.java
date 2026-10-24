@@ -34,6 +34,8 @@ public final class PlayerData {
     private final String worldName;
     /** Remote player's join secret (issue #335); null for the host and for saves made before it. */
     private final String clientSecret;
+    /** Where the boat the player sat in was, or null on foot: the next load boards it again. */
+    private final Vector3f vehiclePosition;
 
     // RPG / character progression
     private final String selectedClassId;
@@ -77,6 +79,7 @@ public final class PlayerData {
         this.lastSaved = builder.lastSaved;
         this.worldName = builder.worldName;
         this.clientSecret = builder.clientSecret;
+        this.vehiclePosition = builder.vehiclePosition == null ? null : new Vector3f(builder.vehiclePosition);
         this.selectedClassId = builder.selectedClassId;
         this.classInvestmentOrder = builder.classInvestmentOrder == null ? null : List.copyOf(builder.classInvestmentOrder);
         this.spentAbilityCp = Collections.unmodifiableMap(new HashMap<>(builder.spentAbilityCp));
@@ -114,6 +117,7 @@ public final class PlayerData {
     public LocalDateTime getLastSaved() { return lastSaved; }
     public String getWorldName() { return worldName; }
     public String getClientSecret() { return clientSecret; }
+    public Vector3f getVehiclePosition() { return vehiclePosition == null ? null : new Vector3f(vehiclePosition); }
     public String getSelectedClassId() { return selectedClassId; }
     /** Null when the save predates multiclassing; {@code CharacterStats.restore} rebuilds it. */
     public List<String> getClassInvestmentOrder() { return classInvestmentOrder; }
@@ -176,6 +180,7 @@ public final class PlayerData {
         private LocalDateTime lastSaved = LocalDateTime.now();
         private String worldName;
         private String clientSecret;
+        private Vector3f vehiclePosition;
         private String selectedClassId = null;
         private List<String> classInvestmentOrder = null;
         private Map<String, Integer> spentAbilityCp = new HashMap<>();
@@ -221,6 +226,7 @@ public final class PlayerData {
             this.lastSaved = data.lastSaved;
             this.worldName = data.worldName;
             this.clientSecret = data.clientSecret;
+            this.vehiclePosition = data.vehiclePosition;
             this.selectedClassId = data.selectedClassId;
             this.classInvestmentOrder = data.classInvestmentOrder;
             this.spentAbilityCp = new HashMap<>(data.spentAbilityCp);
@@ -305,6 +311,11 @@ public final class PlayerData {
 
         public Builder clientSecret(String clientSecret) {
             this.clientSecret = clientSecret;
+            return this;
+        }
+
+        public Builder vehiclePosition(Vector3f vehiclePosition) {
+            this.vehiclePosition = vehiclePosition == null ? null : new Vector3f(vehiclePosition);
             return this;
         }
 

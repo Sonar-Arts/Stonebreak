@@ -135,7 +135,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
             atlas.ensure(item, size);
         } catch (RuntimeException e) {
             prepareFailed = true; // one log, then documents show swatches instead of spamming
-            LOGGER.error("[ui] item icon rendering failed; block icons disabled for this session", e);
+            LOGGER.error("[ui] item icon rendering failed; 3D item icons disabled for this session", e);
         } finally {
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D_ARRAY, array1);

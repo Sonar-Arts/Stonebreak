@@ -3,6 +3,7 @@ package com.stonebreak.vehicles;
 import com.stonebreak.blocks.BlockShape;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.blocks.waterSystem.WaterSubmersion;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -29,10 +30,11 @@ public final class DinghyPhysics {
     static final float TURN_RATE = 75f;
     static final float BUOY_SPRING = 35f;
     static final float BUOY_DAMPING = 7f;
-    /** A boat out of the water falls at half a body's gravity — it is light and broad. */
+    /** A boat out of the water falls slower than a body (35) — it is light and broad. */
     static final float GRAVITY = -20f;
-    static final float HALF_BEAM = 0.7f;
-    static final float HULL_HEIGHT = 0.5f;
+    /** The square collision footprint and hull height: {@link EntityType#DINGHY}'s box. */
+    static final float HALF_BEAM = EntityType.DINGHY.getWidth() / 2f;
+    static final float HULL_HEIGHT = EntityType.DINGHY.getHeight();
     private static final float EPS = 1.0e-3f;
 
     private DinghyPhysics() {

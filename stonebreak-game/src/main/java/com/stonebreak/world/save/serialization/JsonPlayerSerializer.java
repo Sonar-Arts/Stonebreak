@@ -59,6 +59,12 @@ public class JsonPlayerSerializer {
             json.append("  \"clientSecret\": \"").append(JsonParsingUtil.escapeJson(player.getClientSecret())).append("\",\n");
         }
 
+        Vector3f vehicle = player.getVehiclePosition();
+        if (vehicle != null) {
+            json.append("  \"vehicle\": {\"x\": ").append(vehicle.x).append(", \"y\": ").append(vehicle.y)
+                .append(", \"z\": ").append(vehicle.z).append("},\n");
+        }
+
         json.append("  \"lastSaved\": \"").append(player.getLastSaved().format(FORMATTER)).append("\",\n");
 
         // Serialize inventory as simple {id, count} pairs
@@ -228,6 +234,10 @@ public class JsonPlayerSerializer {
                 builder.worldName(worldName);
             }
             builder.clientSecret(JsonParsingUtil.extractStringOptional(json, "clientSecret"));
+            if (json.contains("\"vehicle\"")) {
+                builder.vehiclePosition(tolerant("vehicle",
+                    () -> JsonParsingUtil.extractVector3f(json, "vehicle"), null));
+            }
 
             builder.inventory(readInventory(json));
 

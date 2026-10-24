@@ -115,6 +115,15 @@ public final class ServerPlayer {
     public String clientSecret() { return clientSecret; }
     public void setClientSecret(String secret) { this.clientSecret = secret; }
 
+    /** The boat this player last boarded; it still seats them while its seat names them. */
+    private volatile com.stonebreak.vehicles.Dinghy boardedVehicle;
+    public void setBoardedVehicle(com.stonebreak.vehicles.Dinghy boat) { this.boardedVehicle = boat; }
+    /** The boat this player sits in now, or null on foot. */
+    public com.stonebreak.vehicles.Dinghy seatedVehicle() {
+        com.stonebreak.vehicles.Dinghy boat = boardedVehicle;
+        return boat != null && boat.isAlive() && boat.seatOfPlayer(playerId()) >= 0 ? boat : null;
+    }
+
     /** One-shot notice delivered to the player after the welcome (e.g. a save set aside). */
     private volatile String joinNotice;
     public String joinNotice() { return joinNotice; }

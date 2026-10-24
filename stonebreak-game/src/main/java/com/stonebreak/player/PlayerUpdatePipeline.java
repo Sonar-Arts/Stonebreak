@@ -69,7 +69,6 @@ final class PlayerUpdatePipeline {
         Vector3f p = state.getPosition();
         placeCamera(p, seated ? com.stonebreak.vehicles.PlayerRiding.EYE_DROP : 0f);
 
-
         c.berserkerAbilities.update(dt, player);
         c.rangerAbilities.update(dt, player);
         c.arcanistAbilities.update(dt, player);

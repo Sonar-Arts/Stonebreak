@@ -279,6 +279,7 @@ public class PlayerArmRenderer {
             } else {
                 info.selectedState = selectedItem.getState();
             }
+            com.stonebreak.items.ItemModels.ItemModel model = com.stonebreak.items.ItemModels.of(selectedItem.getItem());
             if (selectedItem.isPlaceable()) {
                 info.selectedBlockType = selectedItem.asBlockType();
                 info.isDisplayingBlock = (info.selectedBlockType != null && 
@@ -286,9 +287,9 @@ public class PlayerArmRenderer {
                                          info.selectedBlockType.getAtlasX() >= 0 && 
                                          info.selectedBlockType.getAtlasY() >= 0);
                 info.displayingItem = info.isDisplayingBlock;
-            } else if (com.stonebreak.items.ItemModels.of(selectedItem.getItem()) != null) {
+            } else if (model != null) {
                 info.selectedItemType = selectedItem.asItemType();
-                info.model = com.stonebreak.items.ItemModels.of(selectedItem.getItem());
+                info.model = model;
                 info.isDisplayingTool = true;
                 info.displayingItem = true;
             } else if (selectedItem.isTool() || selectedItem.isMaterial() || selectedItem.isFood()) {

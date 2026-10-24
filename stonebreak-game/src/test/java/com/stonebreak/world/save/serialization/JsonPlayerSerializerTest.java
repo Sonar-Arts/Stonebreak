@@ -304,4 +304,28 @@ class JsonPlayerSerializerTest {
         // extractInt uses m.find() on the full document and grabs 42 first.
         assertEquals(42, deserialized.getLevel());
     }
+
+    @Test
+    void seatedVehicleRoundTrips() {
+        PlayerData seated = PlayerData.builder()
+            .position(new Vector3f(10.5f, 62.4f, -7f))
+            .vehiclePosition(new Vector3f(10.25f, 62.125f, -7.5f))
+            .lastSaved(TIMESTAMP)
+            .build();
+
+        PlayerData back = serializer.deserialize(serializer.serialize(seated));
+
+        assertEquals(new Vector3f(10.25f, 62.125f, -7.5f), back.getVehiclePosition());
+        assertEquals(new Vector3f(10.5f, 62.4f, -7f), back.getPosition());
+    }
+
+    @Test
+    void onFootHasNoVehicle() {
+        PlayerData onFoot = PlayerData.builder().lastSaved(TIMESTAMP).build();
+
+        byte[] bytes = serializer.serialize(onFoot);
+
+        assertFalse(new String(bytes, StandardCharsets.UTF_8).contains("\"vehicle\""));
+        assertNull(serializer.deserialize(bytes).getVehiclePosition());
+    }
 }

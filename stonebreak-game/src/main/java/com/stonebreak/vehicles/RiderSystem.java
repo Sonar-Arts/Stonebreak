@@ -1,6 +1,7 @@
 package com.stonebreak.vehicles;
 
 import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.IllusionDecoy;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
@@ -17,7 +18,7 @@ import java.util.function.IntFunction;
  *       shadows, remote players), and unbound when they leave;</li>
  *   <li><b>Both</b> — every seated entity is carried to its seat and faces the way it does.</li>
  * </ul>
- * The local player is not an entity; {@code player.riding.PlayerRiding} seats it.
+ * The local player is not an entity; {@link PlayerRiding} seats it.
  */
 public final class RiderSystem {
 
@@ -26,6 +27,9 @@ public final class RiderSystem {
      * floorboards (bench 0.406, floor 0.125). The sitting clip drops the hips to match.
      */
     public static final float PLAYER_SIT_DROP = 0.28f;
+
+    /** A seated rider's velocity (setVelocity copies it). */
+    private static final Vector3f AT_REST = new Vector3f();
 
     private RiderSystem() {
         throw new UnsupportedOperationException("Utility class");
@@ -83,7 +87,7 @@ public final class RiderSystem {
             int seat = rider.getSeatIndex();
             vehicle.seatPosition(seat, seatPos);
             rider.setPosition(seatPos.x, seatPos.y + seatOffset(rider), seatPos.z);
-            rider.setVelocity(new Vector3f());
+            rider.setVelocity(AT_REST);
             if (!(rider instanceof RemotePlayer)) {
                 // A player's yaw is its look; its figure takes the body facing from the seat.
                 rider.setYaw(riderYaw(rider, vehicle.seatYaw(seat)));
@@ -151,7 +155,7 @@ public final class RiderSystem {
         }
         for (Entity e : entities) {
             if (e instanceof RemotePlayer rp && rp.getPlayerId() == playerId
-                    && !(e instanceof com.stonebreak.mobs.entities.IllusionDecoy)) {
+                    && !(e instanceof IllusionDecoy)) {
                 return rp;
             }
         }

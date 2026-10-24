@@ -1,5 +1,8 @@
 package com.stonebreak.vehicles;
 
+import com.stonebreak.core.Game;
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.network.packet.vehicle.VehicleActionC2S;
 import com.stonebreak.network.packet.vehicle.VehicleMoveC2S;
@@ -25,6 +28,10 @@ public final class PlayerRiding {
     private static final float LEAVE_GRACE = 1.5f;
     /** Rower's report period — the player-state rate. */
     private static final float SEND_PERIOD = 0.05f;
+    /** Once the ground has streamed in, how long a saved seat waits for its boat to replicate. */
+    private static final float RESUME_TIMEOUT = 5f;
+    /** How far the boat may lie from where the save had it (it drifts while unmanned). */
+    private static final float RESUME_RADIUS = 2f;
     /** How much lower the eyes are seated than standing (the sitting clip's hip drop). */
     public static final float EYE_DROP = 0.6f;
 
@@ -36,6 +43,11 @@ public final class PlayerRiding {
     private float leftAge;
     private OarInput input = OarInput.IDLE;
     private float sendTimer;
+    /** A loaded save's boat position, until that boat is found (or given up on). */
+    private Vector3f resumeAt;
+    private float resumeAge;
+    /** The pending board request is the saved seat's: hold still until it is answered. */
+    private boolean resumedBoard;
 
     public boolean isRiding() {
         return boat != null;
@@ -68,6 +80,17 @@ public final class PlayerRiding {
         MultiplayerSession.sendVehicleAction(VehicleActionC2S.BOARD, dinghy.getNetworkId());
     }
 
+    /**
+     * The save had the player seated in the boat at {@code boatPosition} (null: on foot). Once
+     * that boat replicates they ask for a seat in it as a right-click would, sitting still on
+     * the saved seat meanwhile instead of dropping into the water.
+     */
+    public void resumeSeat(Vector3f boatPosition) {
+        resumeAt = boatPosition == null ? null : new Vector3f(boatPosition);
+        resumeAge = 0f;
+        resumedBoard = false;
+    }
+
     /** This frame's oar keys (W/S drive, A/D turn). */
     public void setKeys(boolean forward, boolean backward, boolean left, boolean right) {
         input = OarInput.fromKeys(forward, backward, left, right);
@@ -94,6 +117,15 @@ public final class PlayerRiding {
                 leftBoat = null;
             }
         }
+        if (resumeAt != null) {
+            resumeAge += dt;
+            Dinghy saved = nearestDinghy(resumeAt);
+            if (saved != null || resumeAge > RESUME_TIMEOUT) {
+                resumeAt = null;
+                requestBoard(saved);
+                resumedBoard = pending != null;
+            }
+        }
         if (pending != null) {
             pendingAge += dt;
             int s = seatNaming(pending, me);
@@ -105,7 +137,15 @@ public final class PlayerRiding {
                 pending = null;
             }
         }
+        if (pending == null) {
+            resumedBoard = false;
+        }
         if (boat == null) {
+            if (resumeAt != null || resumedBoard) {
+                player.getVelocity().zero(); // still on the saved seat, waiting for the boat
+                player.setOnGround(true);
+                return true;
+            }
             return false;
         }
         if (player.isDead()) {
@@ -160,17 +200,15 @@ public final class PlayerRiding {
         input = OarInput.IDLE;
         leftBoat = from;
         leftAge = 0f;
-        Vector3f spot = exitSpot(from, com.stonebreak.core.Game.getWorld());
+        Vector3f spot = exitSpot(from, Game.getWorld());
         player.teleport(spot.x, spot.y, spot.z);
     }
 
     /** Beside the hull (left, then right), else standing on it. */
     static Vector3f exitSpot(Dinghy boat, World world) {
         Vector3f base = boat.getPosition();
-        double yawRad = Math.toRadians(boat.getYaw());
-        float rx = (float) Math.cos(yawRad), rz = (float) -Math.sin(yawRad); // the boat's +X side
         for (float side : new float[]{-1.4f, 1.4f}) {
-            Vector3f spot = new Vector3f(base.x + rx * side, base.y + 0.6f, base.z + rz * side);
+            Vector3f spot = Dinghy.rotateY(side, 0.6f, 0f, boat.getYaw(), new Vector3f()).add(base);
             if (world != null && isClear(world, spot)) {
                 return spot;
             }
@@ -187,6 +225,26 @@ public final class PlayerRiding {
             }
         }
         return true;
+    }
+
+    /** The replicated dinghy nearest {@code at} within {@link #RESUME_RADIUS}, or null. */
+    private static Dinghy nearestDinghy(Vector3f at) {
+        EntityManager em = Game.getEntityManager();
+        if (em == null) {
+            return null;
+        }
+        Dinghy best = null;
+        float bestDist = RESUME_RADIUS * RESUME_RADIUS;
+        for (Entity e : em.getAllEntities()) {
+            if (e instanceof Dinghy d && d.isAlive() && d.getNetworkId() >= 0) {
+                float dist = d.getPosition().distanceSquared(at);
+                if (dist <= bestDist) {
+                    bestDist = dist;
+                    best = d;
+                }
+            }
+        }
+        return best;
     }
 
     private static int seatNaming(Dinghy dinghy, int playerId) {

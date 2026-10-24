@@ -209,6 +209,9 @@ public final class StateConverter {
         });
         player.getEntityDiscoveries().restore(variantsRestored, weaknessesRestored);
 
+        // Saved seated in a boat: sit back in it once it streams in (not when respawning below).
+        player.getRiding().resumeSeat(data.getHealth() > 0f ? data.getVehiclePosition() : null);
+
         // Saved while dead (quit or crashed from the death screen): come back respawned rather than
         // alive at 0 health where you died. Last, so full health is the restored character's maximum.
         if (data.getHealth() <= 0f) {

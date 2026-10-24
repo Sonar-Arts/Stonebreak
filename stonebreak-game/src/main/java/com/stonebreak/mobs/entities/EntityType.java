@@ -93,8 +93,8 @@ public enum EntityType {
     // Fishing bobber
     BOBBER("Bobber", 1.0f, 0.0f, 0.2f, 0.2f, 0.2f, 0.0f, false, "stonebreak:Bobber"),
 
-    // Rowing boat (vehicles.Dinghy). maxHealth is its hit count; the box is the square hull
-    // footprint the block collision uses — hit tests use the oriented hull instead.
+    // Rowing boat (vehicles.Dinghy), the source of its hit count (maxHealth) and of the square
+    // hull footprint DinghyPhysics collides with — hit tests use the oriented hull instead.
     DINGHY("Dinghy", 3.0f, 0.0f, 0.5f, 1.4f, 1.4f, 0.0f, false, "stonebreak:dinghy"),
 
     // Future entities can be added here
