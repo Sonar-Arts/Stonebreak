@@ -781,11 +781,9 @@ public class mainOpenMason {
 
     private void cleanupOpenGLResources() {
         try {
-            if (com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.isInitialized()) {
-                com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager.getInstance().close();
-            }
+            com.openmason.main.systems.rendering.model.block.BlockManager.shutdown();
         } catch (Exception e) {
-            logger.error("Error cleaning up CBRResourceManager", e);
+            logger.error("Error cleaning up block preview meshes", e);
         }
 
         if (texturePreviewPipeline != null) {

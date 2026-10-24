@@ -14,7 +14,6 @@ import com.stonebreak.core.window.GameWindow;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.input.MenuInputRouter;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.vram.CearlBootstrap;
 import com.stonebreak.world.World;
@@ -1025,16 +1024,6 @@ public class Main {
         if (window != null) {
             window.makeContextCurrent();
         }
-
-        try {
-            if (CBRResourceManager.isInitialized()) {
-                CBRResourceManager.getInstance().close();
-                logger.debug("CBRResourceManager cleaned up successfully");
-            }
-        } catch (Exception e) {
-            logger.error("Error cleaning up CBRResourceManager", e);
-        }
-        Game.logDetailedMemoryInfo("After CBR cleanup");
 
         // UI document screens (their Masonry handles) and the draw providers' GL textures (item
         // icon atlas, model previews) go before the renderer and its Skija backend.

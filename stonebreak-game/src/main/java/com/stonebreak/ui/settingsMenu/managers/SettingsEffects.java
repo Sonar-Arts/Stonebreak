@@ -1,7 +1,6 @@
 package com.stonebreak.ui.settingsMenu.managers;
 
 import com.stonebreak.core.Game;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
 import org.joml.Vector3f;
 
 /**
@@ -52,13 +51,11 @@ public final class SettingsEffects {
         com.stonebreak.core.Main.applyVsyncSetting();
     }
 
-    /** Leaf transparency changes face culling and render layers: refresh definitions, remesh. */
+    /**
+     * Leaf transparency changes face culling and render layers. {@code BlockType}
+     * reads the setting live, so only the meshes need rebuilding.
+     */
     public static void leafTransparency() {
-        try {
-            CBRResourceManager.refreshLeafDefinitions();
-        } catch (Exception e) {
-            System.err.println("Failed to refresh leaf definitions: " + e.getMessage());
-        }
         rebuildLoadedChunks("leaf transparency");
     }
 

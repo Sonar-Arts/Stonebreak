@@ -16,7 +16,7 @@ public enum RenderingMode {
     BLOCK_MODEL,
 
     /**
-     * Render blocks using CBR API.
+     * Render a Stonebreak block preview.
      */
     BLOCK,
 

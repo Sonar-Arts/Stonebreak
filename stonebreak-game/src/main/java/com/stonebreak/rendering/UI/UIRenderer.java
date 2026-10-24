@@ -5,7 +5,7 @@ import com.stonebreak.rendering.textures.BlockTextureArray;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.ui.chat.ChatSystem;
-import com.stonebreak.rendering.models.blocks.BlockRenderer;
+import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.crosshair.CrosshairSettings;
 import com.stonebreak.rendering.UI.components.OpenGLQuadRenderer;
@@ -50,14 +50,14 @@ public class UIRenderer {
     /**
      * Initializes the block icon renderer with the necessary dependencies.
      * This should be called after the main renderer and block renderer have been set up.
-     * @param blockRenderer The block renderer for creating block geometry
+     * @param displayMeshes Builds the icons' block cube meshes
      * @param windowHeight Current window height for viewport calculations
      */
-    public void initializeBlockIconRenderer(BlockRenderer blockRenderer,
+    public void initializeBlockIconRenderer(BlockDisplayMeshes displayMeshes,
                                             com.stonebreak.rendering.textures.BlockTextureArray blockTextureArray,
                                             com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry,
                                             int windowHeight) {
-        this.blockIconRenderer = new BlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, this, windowHeight);
+        this.blockIconRenderer = new BlockIconRenderer(displayMeshes, blockTextureArray, sboHandMeshRegistry, this, windowHeight);
     }
 
     // ===== Chat Rendering Delegation =====

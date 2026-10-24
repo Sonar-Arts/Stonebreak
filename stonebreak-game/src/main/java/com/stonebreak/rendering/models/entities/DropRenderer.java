@@ -4,9 +4,8 @@ import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.Entity;
-import com.stonebreak.rendering.models.blocks.BlockRenderer;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.openmason.engine.rendering.cbr.meshing.MeshManager;
+import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
+import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
@@ -32,18 +31,17 @@ import com.stonebreak.rendering.gameWorld.UnderwaterFog;
 
 /**
  * Specialized renderer for block and item drops in the world.
- * Uses the CBR API and BlockRenderer for 3D block drops, and the voxelization system for 3D item drops.
+ * Block drops draw as texture-array cubes or their SBO display mesh; item drops as voxelized sprites.
  */
 public class DropRenderer {
     
-    private final BlockRenderer blockRenderer;
     private final BlockTextureArray blockTextureArray;
     private final SBOHandMeshRegistry sboHandMeshRegistry;
-    private CBRResourceManager cbrManager;
+    private final BlockDisplayMeshes displayMeshes;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
 
     /** Per-block-type cube meshes for drops, textured from the block texture array. */
-    private final java.util.Map<BlockType, MeshManager.MeshResource> dropCubeMeshes = new java.util.HashMap<>();
+    private final java.util.Map<BlockType, DisplayMesh> dropCubeMeshes = new java.util.HashMap<>();
 
     private boolean initialized = false;
     
@@ -54,12 +52,11 @@ public class DropRenderer {
     /**
      * Creates a DropRenderer with the required dependencies.
      */
-    public DropRenderer(BlockRenderer blockRenderer, BlockTextureArray blockTextureArray,
+    public DropRenderer(BlockDisplayMeshes displayMeshes, BlockTextureArray blockTextureArray,
                         SBOHandMeshRegistry sboHandMeshRegistry, ShaderProgram shaderProgram) {
-        this.blockRenderer = blockRenderer;
         this.blockTextureArray = blockTextureArray;
         this.sboHandMeshRegistry = sboHandMeshRegistry;
-        this.cbrManager = blockRenderer.getCBRResourceManager();
+        this.displayMeshes = displayMeshes;
         this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram);
         initialize();
     }
@@ -249,8 +246,7 @@ public class DropRenderer {
         // Set common uniforms
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("texture_sampler", 0);
-        // Block-drop CBR meshes carry legacy atlas UVs (no texture-array layer),
-        // so they sample the 2D atlas, not the block texture array.
+        // Off by default; block-drop draws switch to the texture array themselves.
         shaderProgram.setUniform("u_useTextureArray", false);
         shaderProgram.setUniform("u_isText", false);
 
@@ -320,13 +316,13 @@ public class DropRenderer {
                                  ShaderProgram shaderProgram,
                                  Matrix4f projectionMatrix, Matrix4f viewMatrix,
                                  World world, Vector3f cameraPos) {
-        if (players == null || players.isEmpty() || cbrManager == null) return;
+        if (players == null || players.isEmpty() || displayMeshes == null) return;
 
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
         shaderProgram.setUniform("u_renderPass", 0);
         shaderProgram.setUniform("texture_sampler", 0);
-        shaderProgram.setUniform("u_useTextureArray", false); // CBR meshes use the 2D atlas
+        shaderProgram.setUniform("u_useTextureArray", false); // block draws opt in per mesh
         shaderProgram.setUniform("u_isText", false);
         // Render space: the fragment stage differences it against fragPos.
         shaderProgram.setUniform("u_cameraPos", cameraPos != null
@@ -366,7 +362,7 @@ public class DropRenderer {
             float handZ = pos.z + worldDz;
 
             if (held instanceof BlockType blockType && blockType != BlockType.AIR) {
-                MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
+                DisplayMesh sboMesh = sboHandMeshRegistry != null
                         ? sboHandMeshRegistry.getMesh(blockType)
                         : null;
                 boolean isFlower = sboMesh != null && sboHandMeshRegistry.isCutoutMesh(blockType);
@@ -375,7 +371,7 @@ public class DropRenderer {
                         .scale(HAND_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
 
-                MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
+                DisplayMesh mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
                 boolean isTransparent = isTransparentBlock(blockType);
                 if (isFlower || isTransparent) {
                     glEnable(GL_BLEND);
@@ -478,7 +474,7 @@ public class DropRenderer {
     }
     
     /**
-     * Renders a block drop using the CBR API and BlockRenderer.
+     * Renders a block drop as its SBO display mesh or a texture-array cube.
      * Depth mask and blending are controlled by the caller (renderOpaqueDrops/renderTransparentDrops).
      */
     private void renderBlockDrop(Entity drop, ShaderProgram shaderProgram) {
@@ -486,18 +482,17 @@ public class DropRenderer {
         if (blockType == null || blockType == BlockType.AIR) {
             return;
         }
-        if (cbrManager == null) {
-            System.err.println("[DropRenderer] CBR not available for block drop " + blockType);
+        if (displayMeshes == null) {
             return;
         }
 
         // Blocks with an SBO display mesh (flower crosses, the door panel)
         // render as their actual model geometry; other blocks as cubes.
-        MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
+        DisplayMesh sboMesh = sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(blockType)
                 : null;
         boolean isFlowerMesh = sboMesh != null && sboHandMeshRegistry.isCutoutMesh(blockType);
-        MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
+        DisplayMesh mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
 
         // Note: blending and depth mask are now controlled by the caller
         // (renderOpaqueDrops sets glDepthMask(true)/blend OFF, renderTransparentDrops sets glDepthMask(false)/blend ON)
@@ -532,9 +527,9 @@ public class DropRenderer {
      * Returns a cached cube mesh for the block type, textured from the block
      * texture array. Built lazily on first use.
      */
-    private MeshManager.MeshResource getDropCubeMesh(BlockType blockType) {
+    private DisplayMesh getDropCubeMesh(BlockType blockType) {
         return dropCubeMeshes.computeIfAbsent(blockType, bt -> {
-            // CBR cube face order: front(+Z), back(-Z), left(-X), right(+X), top(+Y), bottom(-Y)
+            // Display-cube face order: front(+Z), back(-Z), left(-X), right(+X), top(+Y), bottom(-Y)
             // mapped to MMS face ids: south(3), north(2), west(5), east(4), top(0), bottom(1).
             float[] faceLayers = {
                 blockTextureArray.getBlockFaceLayer(bt, 3),
@@ -544,8 +539,7 @@ public class DropRenderer {
                 blockTextureArray.getBlockFaceLayer(bt, 0),
                 blockTextureArray.getBlockFaceLayer(bt, 1)
             };
-            return cbrManager.getMeshManager()
-                    .createCubeMeshWithLayers("drop_cube_" + bt.name(), faceLayers);
+            return displayMeshes.createLayeredCube("drop_cube_" + bt.name(), faceLayers);
         });
     }
     

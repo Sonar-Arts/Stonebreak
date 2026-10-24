@@ -6,11 +6,10 @@ import com.openmason.engine.rendering.postfx.PostFxFrameParams;
 import com.openmason.engine.rendering.postfx.PostProcessingPipeline;
 import com.openmason.engine.rendering.postfx.effects.GodRaysEffect;
 import com.stonebreak.rendering.core.ResourceManager;
-import com.stonebreak.rendering.core.GameBlockDefinitionRegistry;
 import com.stonebreak.rendering.models.blocks.BlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
-import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
+import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.gameWorld.WorldRenderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
@@ -48,7 +47,8 @@ public class Renderer {
     // Core managers
     private final ResourceManager resourceManager;
     private final RenderingConfigurationManager configManager;
-    private final BlockDefinitionRegistry blockRegistry;
+    // Standalone block meshes for the held item, drops and inventory icons
+    private final BlockDisplayMeshes displayMeshes;
     
     // SBO renderer API (deferred emitter setup until MmsAPI is initialized)
     private SBORendererAPI sboRendererAPI;
@@ -97,22 +97,13 @@ public class Renderer {
         postPipeline = new PostProcessingPipeline(width, height);
         postPipeline.addEffect(new GodRaysEffect());
 
-        // Initialize block definition registry for CBR support.
-        // The SBO bridge (populated above) is consulted so SBO-declared
-        // render layers (e.g. TRANSLUCENT for ice) are honored.
-        blockRegistry = new GameBlockDefinitionRegistry(sboBlockBridge);
-        
-        
-        // Initialize specialized renderers with CBR support
-        blockRenderer = new BlockRenderer(blockRegistry);
+        displayMeshes = new BlockDisplayMeshes();
+        blockRenderer = new BlockRenderer();
 
-        // Build SBO hand-mesh registry now that CBR's MeshManager is available.
-        // Runs after the SBO bridge and texture integration (initializeSBOBlocks
-        // above) so atlas UVs have already been populated.
+        // Build the SBO display meshes. Runs after the SBO bridge and the block
+        // texture array (initializeSBOBlocks above) are populated.
         if (sboBlockBridge != null && sboBlockBridge.size() > 0) {
-            sboHandMeshRegistry = new SBOHandMeshRegistry(
-                    blockRenderer.getCBRResourceManager(),
-                    blockTextureArray);
+            sboHandMeshRegistry = new SBOHandMeshRegistry(displayMeshes, blockTextureArray);
             int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge);
             logger.debug("[Renderer] SBO hand-mesh registry: built {} flower meshes", built);
         }
@@ -120,7 +111,7 @@ public class Renderer {
         playerArmRenderer = new PlayerArmRenderer(resourceManager.getShaderProgram(),
                                                  blockTextureArray,
                                                  configManager.getProjectionMatrix(),
-                                                 blockRegistry,
+                                                 displayMeshes,
                                                  sboHandMeshRegistry);
         
         uiRenderer = new UIRenderer();
@@ -129,7 +120,7 @@ public class Renderer {
                                                  configManager.getWindowWidth(), 
                                                  configManager.getWindowHeight(), 
                                                  configManager.getProjectionMatrix());
-        uiRenderer.initializeBlockIconRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
+        uiRenderer.initializeBlockIconRenderer(displayMeshes, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
 
         com.openmason.engine.ui.masonry.MasonryEnvironment.installClipboard(
                 new com.stonebreak.rendering.UI.backend.skija.GlfwClipboard());
@@ -150,7 +141,7 @@ public class Renderer {
         entityRenderer.initialize();
         entityRenderer.initializeArrowRenderer(resourceManager.getShaderProgram());
 
-        dropRenderer = new DropRenderer(blockRenderer, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
+        dropRenderer = new DropRenderer(displayMeshes, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
         // Animated SBO blocks (doors) — excluded from chunk meshing in
         // initializeSBOBlocks and drawn per-frame instead.
@@ -613,10 +604,7 @@ public class Renderer {
         if (resourceManager != null) {
             resourceManager.cleanup();
         }
-        if (blockRegistry != null) {
-            blockRegistry.close();
-        }
-        
+
         // Cleanup specialized renderers
         if (playerArmRenderer != null) {
             playerArmRenderer.cleanup();
@@ -640,6 +628,9 @@ public class Renderer {
         }
         if (blockRenderer != null) {
             blockRenderer.cleanup();
+        }
+        if (displayMeshes != null) {
+            displayMeshes.close();
         }
         if (entityRenderer != null) {
             entityRenderer.cleanup();

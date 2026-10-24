@@ -2,7 +2,7 @@ package com.stonebreak.blocks;
 
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.rendering.cbr.models.BlockDefinition.RenderLayer;
+import com.openmason.engine.voxel.RenderLayer;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

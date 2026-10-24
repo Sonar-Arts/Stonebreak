@@ -1,11 +1,8 @@
 package com.stonebreak.rendering.models.blocks;
 
 import com.openmason.engine.rendering.RenderOrigin;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3i;
@@ -27,15 +24,8 @@ import static org.lwjgl.opengl.GL20.*;
 public class BlockRenderer {
     private int crackTextureId;
     private int blockOverlayVao;
-    private CBRResourceManager cbrManager;
-    
-    
+
     public BlockRenderer() {
-        initialize();
-    }
-    
-    public BlockRenderer(BlockDefinitionRegistry blockRegistry) {
-        this.cbrManager = CBRResourceManager.getInstance(blockRegistry);
         initialize();
     }
     
@@ -162,62 +152,7 @@ public class BlockRenderer {
 
         shaderProgram.unbind();
     }
-    
-    /**
-     * Renders a block using CBR BlockRenderResource with proper shader configuration.
-     * This method sets up texture coordinates and renders the block mesh.
-     */
-    public void renderBlock(CBRResourceManager.BlockRenderResource resource, ShaderProgram shaderProgram, Matrix4f modelMatrix) {
-        // Get texture coordinates from the resource
-        float[] texCoords = resource.getTextureCoords().toArray();
-        
-        // Set texture coordinate transformation in shader
-        shaderProgram.setUniform("u_transformUVsForItem", true);
-        shaderProgram.setUniform("u_atlasUVOffset", new Vector2f(texCoords[0], texCoords[1])); // u1, v1
-        shaderProgram.setUniform("u_atlasUVScale", new Vector2f(texCoords[2] - texCoords[0], texCoords[3] - texCoords[1])); // width, height
-        
-        // Set model matrix
-        shaderProgram.setUniform("modelMatrix", modelMatrix);
-        
-        // Bind mesh and render
-        resource.getMesh().bind();
-        glDrawElements(GL_TRIANGLES, resource.getMesh().getIndexCount(), GL_UNSIGNED_INT, 0);
-        
-        // Reset shader state
-        shaderProgram.setUniform("u_transformUVsForItem", false);
-    }
-    
-    /**
-     * Convenience method for rendering a block type directly.
-     */
-    public void renderBlockType(BlockType type, ShaderProgram shaderProgram, Matrix4f modelMatrix) {
-        if (cbrManager == null) {
-            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager.");
-        }
-        CBRResourceManager.BlockRenderResource resource = cbrManager.getBlockTypeResource(type);
-        renderBlock(resource, shaderProgram, modelMatrix);
-    }
-    
-    /**
-     * Gets the CBRResourceManager instance if available.
-     * 
-     * @return The CBRResourceManager instance, or null if not initialized
-     */
-    public CBRResourceManager getCBRResourceManager() {
-        return cbrManager;
-    }
-    
-    /**
-     * Checks if this BlockRenderer has been initialized with CBRResourceManager.
-     * 
-     * @return true if CBR is available, false otherwise
-     */
-    public boolean hasCBRSupport() {
-        return cbrManager != null;
-    }
-    
 
-    
     /**
      * Creates the crack texture with multiple crack stages.
      */
@@ -449,33 +384,7 @@ public class BlockRenderer {
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
     }
-    
-    /**
-     * Gets a block render resource using CBR system with proper face texturing.
-     * This ensures proper face texturing for blocks with different textures per face.
-     */
-    public CBRResourceManager.BlockRenderResource getBlockRenderResource(BlockType type) {
-        if (cbrManager == null) {
-            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with BlockDefinitionRegistry.");
-        }
-        return cbrManager.getBlockTypeResource(type);
-    }
-    
 
-    
-    /**
-     * Gets a flower cross render resource using CBR system.
-     * Creates two intersecting quads that form a cross pattern.
-     */
-    public CBRResourceManager.BlockRenderResource getFlowerCrossResource(BlockType type) {
-        if (cbrManager == null) {
-            throw new IllegalStateException("BlockRenderer not initialized with CBRResourceManager. Use constructor with BlockDefinitionRegistry.");
-        }
-        return cbrManager.getBlockTypeResource(type);
-    }
-    
-
-    
     /**
      * Cleanup method to release resources.
      */
@@ -490,16 +399,6 @@ public class BlockRenderer {
         if (blockOverlayVao != 0) {
             GL30.glDeleteVertexArrays(blockOverlayVao);
             blockOverlayVao = 0;
-        }
-        
-        // Clean up CBRResourceManager if we own it
-        if (cbrManager != null) {
-            try {
-                cbrManager.close();
-            } catch (Exception e) {
-                System.err.println("Error cleaning up CBRResourceManager: " + e.getMessage());
-            }
-            cbrManager = null;
         }
     }
 }

@@ -62,34 +62,34 @@ public class MmsCuboidGenerator implements MmsGeometryService {
      */
     private static final float[][][] FACE_VERTEX_OFFSETS = {
         // Top face (+Y): Looking down from above (normal points UP)
-        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // Matches BlockDisplayMeshes: bottom-left, bottom-right, top-right, top-left
         // In Z-axis terms: far-left, far-right, near-right, near-left (Z+ is "far", Z- is "near" when viewing from above)
         // v0=(0,1,1) v1=(1,1,1) v2=(1,1,0) v3=(0,1,0)
         {{0, 1, 1}, {1, 1, 1}, {1, 1, 0}, {0, 1, 0}},
 
         // Bottom face (-Y): Looking up from below (normal points DOWN)
-        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // Matches BlockDisplayMeshes: bottom-left, bottom-right, top-right, top-left
         // In Z-axis terms when looking up: near-left, near-right, far-right, far-left
         // v0=(0,0,0) v1=(1,0,0) v2=(1,0,1) v3=(0,0,1)
         {{0, 0, 0}, {1, 0, 0}, {1, 0, 1}, {0, 0, 1}},
 
         // North face (-Z): Looking from outside at z=0 plane (normal points -Z)
-        // Matches CBR Back face: When viewed from -Z direction (outside), X direction is reversed
+        // Matches the BlockDisplayMeshes back face: When viewed from -Z direction (outside), X direction is reversed
         // v0=(1,0,0) v1=(0,0,0) v2=(0,1,0) v3=(1,1,0)
         {{1, 0, 0}, {0, 0, 0}, {0, 1, 0}, {1, 1, 0}},
 
         // South face (+Z): Looking from outside at z=1 plane (normal points +Z)
-        // Matches CBR Front face: bottom-left, bottom-right, top-right, top-left
+        // Matches the BlockDisplayMeshes front face: bottom-left, bottom-right, top-right, top-left
         // v0=(0,0,1) v1=(1,0,1) v2=(1,1,1) v3=(0,1,1)
         {{0, 0, 1}, {1, 0, 1}, {1, 1, 1}, {0, 1, 1}},
 
         // East face (+X): Looking from outside at x=1 plane (normal points +X)
-        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // Matches BlockDisplayMeshes: bottom-left, bottom-right, top-right, top-left
         // v0=(1,0,1) v1=(1,0,0) v2=(1,1,0) v3=(1,1,1)
         {{1, 0, 1}, {1, 0, 0}, {1, 1, 0}, {1, 1, 1}},
 
         // West face (-X): Looking from outside at x=0 plane (normal points -X)
-        // Matches CBR: bottom-left, bottom-right, top-right, top-left
+        // Matches BlockDisplayMeshes: bottom-left, bottom-right, top-right, top-left
         // v0=(0,0,0) v1=(0,0,1) v2=(0,1,1) v3=(0,1,0)
         {{0, 0, 0}, {0, 0, 1}, {0, 1, 1}, {0, 1, 0}}
     };

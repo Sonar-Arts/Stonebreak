@@ -54,12 +54,9 @@ module stonebreak.game {
     exports com.stonebreak.items;
     exports com.stonebreak.items.registry;
 
-    // Export rendering packages for OpenMason CBR API integration
+    // Export rendering packages for OpenMason
     exports com.stonebreak.rendering.textures;
     exports com.stonebreak.rendering.core;
-    // models/ and meshing/ now live in openmason-engine (com.openmason.engine.rendering.cbr.*)
-    exports com.stonebreak.rendering.core.API.commonBlockResources.resources;
-    exports com.stonebreak.rendering.core.API.commonBlockResources.texturing;
 
     // Export item voxelization system for OpenMason
     exports com.stonebreak.rendering.player.items.voxelization;

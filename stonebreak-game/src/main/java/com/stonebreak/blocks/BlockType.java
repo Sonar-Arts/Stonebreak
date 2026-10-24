@@ -1,7 +1,7 @@
 package com.stonebreak.blocks;
 
 import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.rendering.cbr.models.BlockDefinition;
+import com.openmason.engine.voxel.RenderLayer;
 import com.openmason.engine.voxel.IBlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.Item;
@@ -60,9 +60,9 @@ public final class BlockType implements Item, IBlockType {
     // ----- Hardcoded sentinels (no SBO exists for these). -----------------
 
     public static final BlockType AIR = createSentinel("AIR", 0, "Air", false, false, -1, -1, 0.0f, null,
-            new BlockRenderTraits(BlockDefinition.RenderLayer.OPAQUE, true, false));
+            new BlockRenderTraits(RenderLayer.OPAQUE, true, false));
     public static final BlockType WATER = createSentinel("WATER", 8, "Water", false, false, 9, 0, 0.0f, "stonebreak:water",
-            new BlockRenderTraits(BlockDefinition.RenderLayer.TRANSLUCENT, true, false));
+            new BlockRenderTraits(RenderLayer.TRANSLUCENT, true, false));
 
     // ----- SBO-backed blocks. Data comes from the gameProperties block of
     //       each SBO under sbo/blocks/. The objectId arg below is what's
@@ -361,16 +361,16 @@ public final class BlockType implements Item, IBlockType {
      * from the SBO, with foliage forced OPAQUE while the leaf transparency
      * setting is off.
      */
-    public BlockDefinition.RenderLayer getRenderLayer() {
+    public RenderLayer getRenderLayer() {
         if (isLeaves() && !isTransparent()) {
-            return BlockDefinition.RenderLayer.OPAQUE;
+            return RenderLayer.OPAQUE;
         }
         return renderTraits.renderLayer();
     }
 
     /** True when this block is drawn in the alpha-blended translucent pass (ice, glass). */
     public boolean isTranslucent() {
-        return getRenderLayer() == BlockDefinition.RenderLayer.TRANSLUCENT;
+        return getRenderLayer() == RenderLayer.TRANSLUCENT;
     }
 
     /** True when the SBO embeds per-state animation clips (drawn per frame, not baked). */
@@ -481,7 +481,7 @@ public final class BlockType implements Item, IBlockType {
     /**
      * Texture atlas coordinates for the given face. Hardcoded for the legacy
      * 35 blocks; returns the default atlas coords for SBO-only blocks (the
-     * SBO/CBR system handles per-face texturing for those).
+     * SBO handles per-face texturing for those).
      */
     public float[] getTextureCoords(Face face) {
         if (this == GRASS) {

@@ -141,10 +141,8 @@ module openmason.engine {
     // Hosting OMUI/SBUI documents for any host (game window, editor preview; #381)
     exports com.openmason.engine.ui.hosting;
 
-    // Export CBR clean core (block definitions, registry/resource interfaces, mesh manager)
-    exports com.openmason.engine.rendering.cbr.models;
-    exports com.openmason.engine.rendering.cbr.resources;
-    exports com.openmason.engine.rendering.cbr.meshing;
+    // Standalone single-block meshes (held item, drops, icons, editor previews)
+    exports com.openmason.engine.rendering.blockdisplay;
 
     // Export format classes
     exports com.openmason.engine.format.sbo;

@@ -63,7 +63,7 @@ public class PlayerArmRenderer {
      * Creates and initializes the player arm renderer with specialized components.
      */
     public PlayerArmRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray, Matrix4f projectionMatrix,
-                             com.openmason.engine.rendering.cbr.models.BlockDefinitionRegistry blockRegistry,
+                             com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes displayMeshes,
                              com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
         this.blockTextureArray = blockTextureArray;
@@ -72,7 +72,7 @@ public class PlayerArmRenderer {
         // Initialize specialized components
         this.animator = new PlayerArmAnimator();
         this.armGeometry = new ArmGeometry();
-        this.handItemRenderer = new HandItemRenderer(shaderProgram, blockTextureArray, sboHandMeshRegistry);
+        this.handItemRenderer = new HandItemRenderer(shaderProgram, blockTextureArray, displayMeshes, sboHandMeshRegistry);
         this.armTexture = new PlayerArmTexture();
 
         initialize();

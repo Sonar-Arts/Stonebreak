@@ -4,8 +4,8 @@ import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.voxel.sbo.SBOPlanarGeometry;
 import com.stonebreak.blocks.BlockType;
-import com.openmason.engine.rendering.cbr.meshing.MeshManager;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
+import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
+import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,14 +19,13 @@ import java.util.Set;
  * Builds per-block hand-rendering meshes from SBO geometry so in-hand renders
  * match the in-world SBO model shape.
  *
- * <p>Without this registry, {@code HandItemRenderer} falls back to the CBR
- * hard-coded {@code CROSS}/cube prebuilt meshes, which means a custom rose
- * SBO's two-plane geometry is visible in-world (via {@code SBORendererAPI})
- * but held-in-hand always renders as a generic symmetric cross. This class
- * closes that gap by converting each SBO's {@link ParsedMeshData} into a
- * CBR custom mesh sized to the hand viewport, with UVs remapped from the
- * source material's [0..1] space to the block's atlas region (so sampling
- * hits the integrator-overlaid SBO pixels on the atlas).
+ * <p>Without this registry, {@code HandItemRenderer} falls back to a generic
+ * cross or cube, which means a custom rose SBO's two-plane geometry is
+ * visible in-world (via {@code SBORendererAPI}) but held-in-hand always
+ * renders as a symmetric cross. This class closes that gap by converting each
+ * SBO's {@link ParsedMeshData} into a {@link BlockDisplayMeshes} layered mesh
+ * sized to the hand viewport, sampling the block texture array with the
+ * model's tile-local UVs.
  *
  * <p>Scope: cross-plane flowers (single texture layer, shared vertices) and
  * shaped non-cube blocks — the oak door, stairs, stalagmites (per-face texture layers derived
@@ -38,14 +37,14 @@ public class SBOHandMeshRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(SBOHandMeshRegistry.class);
 
-    private final CBRResourceManager cbrManager;
+    private final BlockDisplayMeshes displayMeshes;
     private final BlockTextureArray textureArray;
-    private final Map<BlockType, MeshManager.MeshResource> meshesByBlock = new HashMap<>();
+    private final Map<BlockType, DisplayMesh> meshesByBlock = new HashMap<>();
     /** Blocks drawn from a single-layer cutout mesh: flowers and pane / X models. */
     private final Set<BlockType> cutoutMeshBlocks = new HashSet<>();
 
-    public SBOHandMeshRegistry(CBRResourceManager cbrManager, BlockTextureArray textureArray) {
-        this.cbrManager = cbrManager;
+    public SBOHandMeshRegistry(BlockDisplayMeshes displayMeshes, BlockTextureArray textureArray) {
+        this.displayMeshes = displayMeshes;
         this.textureArray = textureArray;
     }
 
@@ -59,11 +58,10 @@ public class SBOHandMeshRegistry {
     public int buildMeshes(SBOBlockBridge bridge) {
         meshesByBlock.clear();
         cutoutMeshBlocks.clear();
-        if (cbrManager == null) {
-            logger.warn("CBRResourceManager unavailable — SBO hand meshes will not be built");
+        if (displayMeshes == null) {
+            logger.warn("BlockDisplayMeshes unavailable — SBO hand meshes will not be built");
             return 0;
         }
-        MeshManager meshManager = cbrManager.getMeshManager();
         int built = 0;
 
         for (BlockType type : BlockType.values()) {
@@ -81,20 +79,20 @@ public class SBOHandMeshRegistry {
             boolean cutout = type.isFlower() || SBOPlanarGeometry.isPlanar(mesh);
             if (!cutout && !multiFace) continue;
             if (mesh == null || !mesh.hasGeometry() || mesh.indices() == null) {
-                logger.debug("No SBO geometry for {} — falling back to CBR cross/cube", type);
+                logger.debug("No SBO geometry for {} — falling back to the cross/cube display mesh", type);
                 continue;
             }
 
             String name = "sbo_hand_" + type.name().toLowerCase();
-            MeshManager.MeshResource resource;
+            DisplayMesh resource;
             if (multiFace) {
                 // Multi-face model (door, stairs): per-triangle texture layers.
-                resource = meshManager.createCustomLayeredMesh(name,
+                resource = displayMeshes.createLayeredMesh(name,
                         buildInterleavedPerFace(type, mesh), sequentialIndices(mesh.indices().length));
             } else {
                 // Flowers and pane / X models: one layer everywhere (unchanged path).
                 int layer = textureArray.getBlockFaceLayer(type, 0);
-                resource = meshManager.createCustomLayeredMesh(name,
+                resource = displayMeshes.createLayeredMesh(name,
                         buildInterleaved(mesh, layer), mesh.indices());
                 cutoutMeshBlocks.add(type);
             }
@@ -112,7 +110,7 @@ public class SBOHandMeshRegistry {
      * Get the SBO-derived hand mesh for a block, or null if none exists.
      * Callers should fall back to their default rendering path on null.
      */
-    public MeshManager.MeshResource getMesh(BlockType type) {
+    public DisplayMesh getMesh(BlockType type) {
         if (type == null) return null;
         return meshesByBlock.get(type);
     }
@@ -126,7 +124,7 @@ public class SBOHandMeshRegistry {
     }
 
     /**
-     * Interleave {@code x,y,z,u,v,layer} for {@link MeshManager#createCustomLayeredMesh},
+     * Interleave {@code x,y,z,u,v,layer} for {@link BlockDisplayMeshes#createLayeredMesh},
      * normalizing the mesh to fit the held-item viewport (-0.5..0.5 cube). UVs
      * are the SBO model's tile-local coordinates; {@code layer} selects the
      * block texture array layer.
@@ -262,9 +260,9 @@ public class SBOHandMeshRegistry {
      * Release GPU resources held by all registered meshes.
      */
     public void cleanup() {
-        for (MeshManager.MeshResource resource : meshesByBlock.values()) {
+        for (DisplayMesh resource : meshesByBlock.values()) {
             if (resource != null) {
-                resource.cleanup();
+                resource.close();
             }
         }
         meshesByBlock.clear();

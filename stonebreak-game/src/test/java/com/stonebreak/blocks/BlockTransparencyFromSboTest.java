@@ -1,6 +1,6 @@
 package com.stonebreak.blocks;
 
-import com.openmason.engine.rendering.cbr.models.BlockDefinition.RenderLayer;
+import com.openmason.engine.voxel.RenderLayer;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

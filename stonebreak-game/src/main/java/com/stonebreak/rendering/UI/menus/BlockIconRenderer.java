@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.UI.menus;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.models.blocks.BlockRenderer;
-import com.openmason.engine.rendering.cbr.meshing.MeshManager;
+import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
+import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.UI.UIRenderer;
@@ -26,19 +26,19 @@ import static org.lwjgl.opengl.GL30.*;
  */
 public class BlockIconRenderer {
     
-    private final BlockRenderer blockRenderer;
+    private final BlockDisplayMeshes displayMeshes;
     private final BlockTextureArray blockTextureArray;
     private final com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry;
     private final UIRenderer uiRenderer;
     private final int windowHeight;
 
     /** Per-block-type cube meshes for 3D icons, textured from the block texture array. */
-    private final java.util.Map<BlockType, MeshManager.MeshResource> iconCubeMeshes = new java.util.HashMap<>();
+    private final java.util.Map<BlockType, DisplayMesh> iconCubeMeshes = new java.util.HashMap<>();
 
-    public BlockIconRenderer(BlockRenderer blockRenderer, BlockTextureArray blockTextureArray,
+    public BlockIconRenderer(BlockDisplayMeshes displayMeshes, BlockTextureArray blockTextureArray,
                              com.stonebreak.rendering.sbo.SBOHandMeshRegistry sboHandMeshRegistry,
                              UIRenderer uiRenderer, int windowHeight) {
-        this.blockRenderer = blockRenderer;
+        this.displayMeshes = displayMeshes;
         this.blockTextureArray = blockTextureArray;
         this.sboHandMeshRegistry = sboHandMeshRegistry;
         this.uiRenderer = uiRenderer;
@@ -47,9 +47,9 @@ public class BlockIconRenderer {
 
     /**
      * Returns a cached cube mesh for the block type, textured from the block
-     * texture array (CBR face order mapped to MMS face ids).
+     * texture array (display-cube face order mapped to MMS face ids).
      */
-    private MeshManager.MeshResource getIconCubeMesh(BlockType blockType) {
+    private DisplayMesh getIconCubeMesh(BlockType blockType) {
         return iconCubeMeshes.computeIfAbsent(blockType, bt -> {
             float[] faceLayers = {
                 blockTextureArray.getBlockFaceLayer(bt, 3), // front +Z
@@ -59,8 +59,7 @@ public class BlockIconRenderer {
                 blockTextureArray.getBlockFaceLayer(bt, 0), // top +Y
                 blockTextureArray.getBlockFaceLayer(bt, 1)  // bottom -Y
             };
-            return blockRenderer.getCBRResourceManager().getMeshManager()
-                    .createCubeMeshWithLayers("icon_cube_" + bt.name(), faceLayers);
+            return displayMeshes.createLayeredCube("icon_cube_" + bt.name(), faceLayers);
         });
     }
     
@@ -333,16 +332,12 @@ public class BlockIconRenderer {
      * Renders the actual block cube geometry.
      */
     private void renderBlockCube(ShaderProgram shaderProgram, BlockType type) {
-        if (!blockRenderer.hasCBRSupport()) {
-            throw new IllegalStateException("BlockIconRenderer requires CBR support. BlockRenderer must be initialized with BlockDefinitionRegistry.");
-        }
-
         // Blocks with an SBO display mesh (flower crosses, the door panel)
         // render as their actual model geometry; other blocks as cubes.
-        MeshManager.MeshResource sboMesh = sboHandMeshRegistry != null
+        DisplayMesh sboMesh = sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(type)
                 : null;
-        MeshManager.MeshResource mesh = sboMesh != null ? sboMesh : getIconCubeMesh(type);
+        DisplayMesh mesh = sboMesh != null ? sboMesh : getIconCubeMesh(type);
 
         // Flower and pane / X meshes carry no per-vertex alpha flag — force alpha test.
         shaderProgram.setUniform("u_forceAlphaTest", sboMesh != null && sboHandMeshRegistry.isCutoutMesh(type));

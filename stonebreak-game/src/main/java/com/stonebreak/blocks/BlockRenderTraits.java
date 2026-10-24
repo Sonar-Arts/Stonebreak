@@ -2,7 +2,7 @@ package com.stonebreak.blocks;
 
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.rendering.cbr.models.BlockDefinition;
+import com.openmason.engine.voxel.RenderLayer;
 import com.stonebreak.blocks.registry.BlockRegistry;
 
 import java.util.List;
@@ -34,22 +34,22 @@ import java.util.List;
  * @param animated    whether the SBO embeds per-state animation clips
  */
 public record BlockRenderTraits(
-        BlockDefinition.RenderLayer renderLayer,
+        RenderLayer renderLayer,
         boolean transparent,
         boolean animated
 ) {
 
     /** A plain full cube: opaque, occluding, static. */
     public static final BlockRenderTraits OPAQUE_CUBE =
-            new BlockRenderTraits(BlockDefinition.RenderLayer.OPAQUE, false, false);
+            new BlockRenderTraits(RenderLayer.OPAQUE, false, false);
 
     public BlockRenderTraits {
-        renderLayer = renderLayer == null ? BlockDefinition.RenderLayer.OPAQUE : renderLayer;
+        renderLayer = renderLayer == null ? RenderLayer.OPAQUE : renderLayer;
     }
 
     /** True when the block is drawn in the alpha-blended (sorted) pass. */
     public boolean translucent() {
-        return renderLayer == BlockDefinition.RenderLayer.TRANSLUCENT;
+        return renderLayer == RenderLayer.TRANSLUCENT;
     }
 
     /** Resolve from a registered SBO block entry. */
@@ -66,32 +66,32 @@ public record BlockRenderTraits(
     public static BlockRenderTraits resolve(SBOFormat.GameProperties properties,
                                             List<ParsedMaterialData> materials,
                                             boolean animated) {
-        BlockDefinition.RenderLayer layer = properties != null
+        RenderLayer layer = properties != null
                 ? parseRenderLayer(properties.renderLayer())
-                : BlockDefinition.RenderLayer.OPAQUE;
+                : RenderLayer.OPAQUE;
         if (materials != null) {
             for (ParsedMaterialData material : materials) {
                 layer = mostPermissive(layer, parseRenderLayer(material.renderLayer()));
             }
         }
         boolean transparent = (properties != null && properties.transparent())
-                || layer != BlockDefinition.RenderLayer.OPAQUE
+                || layer != RenderLayer.OPAQUE
                 || animated;
         return new BlockRenderTraits(layer, transparent, animated);
     }
 
     /** Parse an SBO/OMO render-layer string; unknown or missing values are OPAQUE. */
-    public static BlockDefinition.RenderLayer parseRenderLayer(String raw) {
-        if (raw == null) return BlockDefinition.RenderLayer.OPAQUE;
+    public static RenderLayer parseRenderLayer(String raw) {
+        if (raw == null) return RenderLayer.OPAQUE;
         return switch (raw.trim().toUpperCase()) {
-            case "TRANSLUCENT" -> BlockDefinition.RenderLayer.TRANSLUCENT;
-            case "CUTOUT" -> BlockDefinition.RenderLayer.CUTOUT;
-            default -> BlockDefinition.RenderLayer.OPAQUE;
+            case "TRANSLUCENT" -> RenderLayer.TRANSLUCENT;
+            case "CUTOUT" -> RenderLayer.CUTOUT;
+            default -> RenderLayer.OPAQUE;
         };
     }
 
-    private static BlockDefinition.RenderLayer mostPermissive(BlockDefinition.RenderLayer a,
-                                                              BlockDefinition.RenderLayer b) {
+    private static RenderLayer mostPermissive(RenderLayer a,
+                                                              RenderLayer b) {
         // Enum order is OPAQUE < CUTOUT < TRANSLUCENT.
         return a.ordinal() >= b.ordinal() ? a : b;
     }

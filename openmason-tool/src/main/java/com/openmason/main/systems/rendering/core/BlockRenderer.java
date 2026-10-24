@@ -1,8 +1,8 @@
 package com.openmason.main.systems.rendering.core;
 
+import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
+import com.openmason.engine.voxel.RenderLayer;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.openmason.engine.rendering.cbr.models.BlockDefinition;
 import com.openmason.main.systems.rendering.model.block.BlockManager;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
@@ -75,18 +75,9 @@ public class BlockRenderer implements AutoCloseable {
         }
 
         try {
-            // Get block resource from BlockManager
-            BlockManager manager = BlockManager.getInstance();
-            CBRResourceManager.BlockRenderResource resource = manager.getBlockResource(blockType);
-
-            if (resource == null) {
-                System.err.println("[" + debugPrefix + "] No resource found for block: " + blockType);
-                return;
-            }
-
-            // Render the block resource with proper shader setup
-            renderBlockResource(resource, shaderProgram, mvpLocation, modelLocation,
-                              vpMatrix, modelMatrix, textureLocation, useTextureLocation);
+            DisplayMesh mesh = BlockManager.getInstance().getMesh(blockType);
+            renderMesh(mesh, BlockManager.getRenderLayer(blockType), shaderProgram, mvpLocation, modelLocation,
+                       vpMatrix, modelMatrix, textureLocation, useTextureLocation);
 
         } catch (Exception e) {
             System.err.println("[" + debugPrefix + "] Error rendering block " + blockType + ": " + e.getMessage());
@@ -95,9 +86,10 @@ public class BlockRenderer implements AutoCloseable {
     }
 
     /**
-     * Renders a block using a CBR BlockRenderResource directly.
+     * Draws a block preview mesh in the given render layer.
      *
-     * @param resource The block render resource
+     * @param mesh The block's display mesh
+     * @param renderLayer Selects blending, depth writes and culling
      * @param shaderProgram The shader program to use
      * @param mvpLocation Location of MVP matrix uniform
      * @param modelLocation Location of model matrix uniform
@@ -106,16 +98,16 @@ public class BlockRenderer implements AutoCloseable {
      * @param textureLocation Location of texture sampler uniform
      * @param useTextureLocation Location of useTexture flag uniform
      */
-    public void renderBlockResource(CBRResourceManager.BlockRenderResource resource,
-                                    int shaderProgram,
-                                    int mvpLocation, int modelLocation,
-                                    float[] vpMatrix, Matrix4f modelMatrix,
-                                    int textureLocation, int useTextureLocation) {
+    public void renderMesh(DisplayMesh mesh, RenderLayer renderLayer,
+                           int shaderProgram,
+                           int mvpLocation, int modelLocation,
+                           float[] vpMatrix, Matrix4f modelMatrix,
+                           int textureLocation, int useTextureLocation) {
         if (!initialized) {
             throw new IllegalStateException("BlockRenderer not initialized");
         }
 
-        if (resource == null) {
+        if (mesh == null) {
             return;
         }
 
@@ -141,7 +133,6 @@ public class BlockRenderer implements AutoCloseable {
             }
 
             // Handle transparency based on render layer
-            BlockDefinition.RenderLayer renderLayer = resource.getDefinition().getRenderLayer();
             boolean needsBlending = false;
             boolean disabledCulling = false;
 
@@ -189,13 +180,13 @@ public class BlockRenderer implements AutoCloseable {
             }
 
             // Bind the mesh and render
-            resource.getMesh().bindAndDraw();
+            mesh.bindAndDraw();
 
             // Restore OpenGL state after rendering
             if (needsBlending) {
                 glDisable(GL_BLEND);
             }
-            if (renderLayer == BlockDefinition.RenderLayer.TRANSLUCENT || renderLayer == BlockDefinition.RenderLayer.CUTOUT) {
+            if (renderLayer == RenderLayer.TRANSLUCENT || renderLayer == RenderLayer.CUTOUT) {
                 glDepthMask(true); // Restore depth writing for both translucent and cutout
             }
             if (disabledCulling) {
@@ -203,7 +194,7 @@ public class BlockRenderer implements AutoCloseable {
             }
 
         } catch (Exception e) {
-            System.err.println("[" + debugPrefix + "] Error rendering block resource: " + e.getMessage());
+            System.err.println("[" + debugPrefix + "] Error rendering block mesh: " + e.getMessage());
             e.printStackTrace();
         }
     }

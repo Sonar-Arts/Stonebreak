@@ -2,8 +2,8 @@ package com.stonebreak.rendering.player.items;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.core.API.commonBlockResources.resources.CBRResourceManager;
-import com.openmason.engine.rendering.cbr.meshing.MeshManager;
+import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
+import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
@@ -28,18 +28,20 @@ public class HandItemRenderer {
 
     private final ShaderProgram shaderProgram;
     private final BlockTextureArray blockTextureArray;
+    private final BlockDisplayMeshes displayMeshes;
     private final VoxelizedSpriteRenderer voxelizedSpriteRenderer;
     // Optional — held flowers render using the SBO's own geometry for
     // in-hand/in-world parity.
     private final SBOHandMeshRegistry sboHandMeshRegistry;
 
     /** Per-block-type cube meshes for held blocks, textured from the array. */
-    private final Map<BlockType, MeshManager.MeshResource> handCubeMeshes = new HashMap<>();
+    private final Map<BlockType, DisplayMesh> handCubeMeshes = new HashMap<>();
 
     public HandItemRenderer(ShaderProgram shaderProgram, BlockTextureArray blockTextureArray,
-                            SBOHandMeshRegistry sboHandMeshRegistry) {
+                            BlockDisplayMeshes displayMeshes, SBOHandMeshRegistry sboHandMeshRegistry) {
         this.shaderProgram = shaderProgram;
         this.blockTextureArray = blockTextureArray;
+        this.displayMeshes = displayMeshes;
         this.voxelizedSpriteRenderer = new VoxelizedSpriteRenderer(shaderProgram);
         this.sboHandMeshRegistry = sboHandMeshRegistry;
     }
@@ -50,7 +52,7 @@ public class HandItemRenderer {
      * their actual model geometry; everything else draws as a cube.
      */
     public void renderBlockInHand(BlockType blockType) {
-        MeshManager.MeshResource sboMesh = blockType != null && sboHandMeshRegistry != null
+        DisplayMesh sboMesh = blockType != null && sboHandMeshRegistry != null
                 ? sboHandMeshRegistry.getMesh(blockType)
                 : null;
         if (sboMesh != null) {
@@ -64,9 +66,9 @@ public class HandItemRenderer {
 
     /**
      * Returns a cached cube mesh for the block, textured from the block texture
-     * array (CBR cube face order mapped to MMS face ids).
+     * array (display-cube face order mapped to MMS face ids).
      */
-    private MeshManager.MeshResource getHandCubeMesh(BlockType blockType) {
+    private DisplayMesh getHandCubeMesh(BlockType blockType) {
         return handCubeMeshes.computeIfAbsent(blockType, bt -> {
             float[] faceLayers = {
                 blockTextureArray.getBlockFaceLayer(bt, 3), // front +Z
@@ -76,8 +78,7 @@ public class HandItemRenderer {
                 blockTextureArray.getBlockFaceLayer(bt, 0), // top +Y
                 blockTextureArray.getBlockFaceLayer(bt, 1)  // bottom -Y
             };
-            return CBRResourceManager.getInstance().getMeshManager()
-                    .createCubeMeshWithLayers("hand_cube_" + bt.name(), faceLayers);
+            return displayMeshes.createLayeredCube("hand_cube_" + bt.name(), faceLayers);
         });
     }
 
@@ -109,7 +110,7 @@ public class HandItemRenderer {
             glDisable(GL_BLEND);
         }
 
-        MeshManager.MeshResource mesh = getHandCubeMesh(blockType);
+        DisplayMesh mesh = getHandCubeMesh(blockType);
         mesh.bind();
         glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0);
         mesh.unbind();
@@ -125,7 +126,7 @@ public class HandItemRenderer {
      * Renders a block's SBO display mesh (flower cross, door panel) in the
      * player's hand, so in-hand matches the in-world model.
      */
-    private void renderSboMeshInHand(BlockType blockType, MeshManager.MeshResource sboMesh) {
+    private void renderSboMeshInHand(BlockType blockType, DisplayMesh sboMesh) {
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_isText", false);
         shaderProgram.setUniform("u_transformUVsForItem", false);
