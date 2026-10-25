@@ -69,14 +69,17 @@ public class Dinghy extends Entity implements Rideable {
         // A rowing player's client moves the boat; the server only simulates it unmanned.
         if (driverPlayerId() < 0) {
             oars = OarInput.IDLE;
-            DinghyPhysics.step(world, this, OarInput.IDLE, deltaTime);
+            DinghyPhysics.step(world, this, OarInput.IDLE, 1f, deltaTime);
         }
     }
 
-    /** Client: one predicted rowing step of the boat the local player is driving. */
-    public void stepLocal(OarInput input, float deltaTime) {
+    /**
+     * Client: one predicted rowing step of the boat the local player is driving, at the rower's
+     * {@link DinghyPhysics#rowingPower}.
+     */
+    public void stepLocal(OarInput input, float rowingPower, float deltaTime) {
         oars = input;
-        DinghyPhysics.step(world, this, input, deltaTime);
+        DinghyPhysics.step(world, this, input, rowingPower, deltaTime);
         stroke.update(input, deltaTime);
     }
 

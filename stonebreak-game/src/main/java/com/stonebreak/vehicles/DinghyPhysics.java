@@ -10,7 +10,8 @@ import org.joml.Vector3f;
 /**
  * One tick of dinghy motion, shared by the server (an undriven or mob-crewed boat) and the
  * rowing client (its own boat, predicted). The oars are the only engine: thrust is their mean
- * pull, yaw their difference ({@link OarInput}). Afloat, a spring holds the hull at
+ * pull, yaw their difference ({@link OarInput}), and the rower's strength sets how hard that
+ * pull drives the hull ({@link #rowingPower}). Afloat, a spring holds the hull at
  * {@link #WATERLINE}; aground, gravity and heavy friction leave only a slow crawl.
  *
  * <p>Block collision uses a square footprint (the hull's beam) so it does not change with the
@@ -26,6 +27,10 @@ public final class DinghyPhysics {
     static final float LAND_DRAG = 6.0f;
     /** Thrust and turn rate on land, as a share of afloat. */
     static final float LAND_FACTOR = 0.15f;
+    /** Share of {@link #ACCEL} gained (or lost) per point of STR above (below) 10. */
+    static final float POWER_PER_STR = 0.05f;
+    /** Rowing power cap, so a mighty rower cannot plane the boat. (STR 1 still rows at 0.55.) */
+    static final float MAX_POWER = 2.0f;
     /** Turn rate at full differential pull, degrees per second. */
     static final float TURN_RATE = 75f;
     static final float BUOY_SPRING = 35f;
@@ -41,7 +46,17 @@ public final class DinghyPhysics {
         throw new UnsupportedOperationException("Utility class");
     }
 
-    public static void step(World world, Dinghy boat, OarInput oars, float dt) {
+    /**
+     * Thrust multiplier for a rower with this STR score: 1 at STR 10, {@link #POWER_PER_STR} per
+     * point either side, capped at {@link #MAX_POWER}. Drag is linear, so
+     * top speed scales the same way (STR 20 rows ~7.5 b/s against ~5 at STR 10).
+     */
+    public static float rowingPower(int strength) {
+        float power = 1f + POWER_PER_STR * (strength - 10);
+        return Math.min(MAX_POWER, power);
+    }
+
+    public static void step(World world, Dinghy boat, OarInput oars, float power, float dt) {
         if (world == null || dt <= 0f) {
             return;
         }
@@ -58,7 +73,7 @@ public final class DinghyPhysics {
         double yawRad = Math.toRadians(yaw);
         float fx = (float) -Math.sin(yawRad);
         float fz = (float) -Math.cos(yawRad);
-        float push = oars.thrust() * ACCEL * authority * dt;
+        float push = oars.thrust() * ACCEL * power * authority * dt;
         vel.x += fx * push;
         vel.z += fz * push;
 

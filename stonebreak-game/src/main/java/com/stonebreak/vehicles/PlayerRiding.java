@@ -163,7 +163,8 @@ public final class PlayerRiding {
             if (!boat.isLocallyControlled()) {
                 boat.setLocallyControlled(true);
             }
-            boat.stepLocal(input, dt);
+            float power = DinghyPhysics.rowingPower(player.getCharacterStats().getStrength());
+            boat.stepLocal(input, power, dt);
             sendTimer += dt;
             if (sendTimer >= SEND_PERIOD) {
                 sendTimer = 0f;

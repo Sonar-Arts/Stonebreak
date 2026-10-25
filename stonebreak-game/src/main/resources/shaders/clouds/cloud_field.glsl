@@ -53,6 +53,7 @@ struct CloudColumn {
     float density;  // 0 = clear
     float base;     // first block of cloud
     float top;      // block above the last
+    float reach;    // top before snapping to voxels: smooth, for shadows
     float build;    // 0..1: how far the column has grown toward its type's height
     float sigma;    // extinction per block at this density
     float albedo;
@@ -111,6 +112,7 @@ CloudColumn cloudResolve(vec4 raw, vec2 bias) {
     col.build = dome * dome * (0.75 + 0.25 * raw.b);
     float voxels = max(1.0, floor(height / u_cloudVoxel * col.build + 0.5));
     col.top = col.base + voxels * u_cloudVoxel;
+    col.reach = col.base + max(u_cloudVoxel, height * col.build);
     col.sigma = u_cloudTypeSigma[col.type] * col.density;
     col.albedo = u_cloudTypeAlbedo[col.type];
     return col;
