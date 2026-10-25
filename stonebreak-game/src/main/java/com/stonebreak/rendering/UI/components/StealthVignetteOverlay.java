@@ -10,8 +10,8 @@ import com.stonebreak.player.Player;
 public class StealthVignetteOverlay {
 
     private static final int OVERLAY_RGB = 0x000000;
-    private static final float OVERLAY_OPACITY = 0.85f;  // peak alpha at the screen edge: unmistakable, centre still clear
-    private static final float EDGE_FRACTION = 0.3f;
+    private static final float OVERLAY_OPACITY = 0.55f;  // peak alpha at the screen edge: noticeable, not a frame
+    private static final float EDGE_FRACTION = 0.15f;    // a thin border, so the view stays open
     private static final float FADE_IN_SPEED = OVERLAY_OPACITY / 0.3f;   // ~0.3 s in
     private static final float FADE_OUT_SPEED = OVERLAY_OPACITY / 0.15f; // ~0.15 s out
 

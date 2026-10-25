@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.entities.ai.perception;
 
+import com.stonebreak.mobs.entities.EntityType;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -7,6 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -25,8 +28,39 @@ class LoudnessTest {
 
     @Test
     void aGoblinHearsASprintAtItsFullHearingRange() {
-        assertEquals(PerceptionProfile.GOBLIN.hearingRange(),
-                Loudness.audibleRadius(Loudness.SPRINT, PerceptionProfile.GOBLIN.hearingRange()), 1e-4f);
+        float goblinEars = PerceptionProfile.forType(EntityType.GOBLIN).hearingRange();
+        assertEquals(goblinEars, Loudness.audibleRadius(Loudness.SPRINT, goblinEars), 1e-4f);
+    }
+
+    @Test
+    void aKillTheVictimNeverSawComingIsOnlyAsLoudAsAWalk() {
+        assertEquals(Loudness.WALK, Loudness.ofDeath(true));
+        assertEquals(Loudness.DEATH, Loudness.ofDeath(false));
+    }
+
+    @Test
+    void eachStealthPointIsWorthTenPercentAndNoneMakeAPlayerSilent() {
+        assertEquals(1f, StealthSkill.factor(0f));
+        assertEquals(1f / 1.1f, StealthSkill.factor(1f), 1e-5f);
+        assertEquals(0.5f, StealthSkill.factor(10f), 1e-5f);
+        assertTrue(StealthSkill.factor(1000f) > 0f);
+        assertEquals(1f, StealthSkill.factor(-3f), "no negative skill");
+    }
+
+    @Test
+    void theGoblinProfileIsReadFromItsDataFile() {
+        PerceptionProfile goblin = PerceptionProfile.forType(EntityType.GOBLIN);
+        assertNotSame(PerceptionProfile.DEFAULT, goblin);
+        assertEquals(12f, goblin.visionRange());
+        assertEquals(16f, goblin.hearingRange());
+        assertEquals(20f, goblin.shoutRange());
+        assertEquals(2f, goblin.alertness().alerted());
+        assertSame(PerceptionProfile.DEFAULT, PerceptionProfile.forType(EntityType.COW), "unlisted: the default");
+    }
+
+    @Test
+    void aProfileFileThatIsNotThereGivesEveryTypeTheDefault() {
+        assertTrue(PerceptionProfile.load("mobs/no-such-profiles.json").isEmpty());
     }
 
     @Test

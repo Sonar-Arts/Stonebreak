@@ -25,7 +25,7 @@ class SearchBehaviorTest {
     private final StubMob mob = new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 0));
     private final PathAgent nav = new PathAgent(mob, new Steering(mob, 360f, 0f, 0f));
     private final AiContext context = new AiContext(mob, nav, new Random(5), PlayerLocator.NONE);
-    private final AwarenessController awareness = new AwarenessController(mob, PerceptionProfile.GOBLIN,
+    private final AwarenessController awareness = new AwarenessController(mob, PerceptionProfile.forType(EntityType.GOBLIN),
             PlayerLocator.NONE, LightProbe.FULL, ShoutRelay.NONE, new NoiseBus());
     private final SearchBehavior search = new SearchBehavior(awareness, 0.8f);
 
@@ -58,7 +58,7 @@ class SearchBehaviorTest {
         lostThePlayerAt(new Vector3f(6, 64, -3));
         search.start(context);
         Vector3f reported = new Vector3f(-8, 64, 10);
-        awareness.hearShout(reported);
+        awareness.hearShout(reported, PlayerLocator.NEAREST);
         context.setDeltaTime(0.05f);
         search.tick(context, 0.05f);
         assertEquals(reported.z, nav.goal(new Vector3f()).z, 1e-4f);

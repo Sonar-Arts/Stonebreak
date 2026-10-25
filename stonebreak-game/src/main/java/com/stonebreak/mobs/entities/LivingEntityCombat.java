@@ -143,12 +143,15 @@ final class LivingEntityCombat {
         }
         lastAttackerPosition = attackerPos;
         if (!owner.alive && owner.world != null && !owner.world.isRenderOnly()) {
-            // A death is the loudest thing there is (#321): nearby mobs come to look.
+            // A death is the loudest thing there is (#321) and nearby mobs come to look — unless
+            // the victim never knew it was hunted: then it is only a body slumping. The state is
+            // still the one from before this blow (onAttacked below never runs on the dead).
+            boolean caughtUnaware = owner.awareness != null && owner.awareness.caughtUnaware();
             com.stonebreak.mobs.entities.ai.perception.NoiseBus.emitIn(owner.world, position,
-                com.stonebreak.mobs.entities.ai.perception.Loudness.DEATH);
+                com.stonebreak.mobs.entities.ai.perception.Loudness.ofDeath(caughtUnaware), owner);
         }
         if (attackerPos != null && owner.awareness != null && isHostileSource(source)) {
-            owner.awareness.onAttacked(attackerPos); // no-op once dead: a silent kill stays silent
+            owner.awareness.onAttacked(attackerPos); // no-op once dead
         }
         owner.onDamage(effectiveAmount, source);
         return true;

@@ -73,6 +73,7 @@ module stonebreak.game {
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
     opens com.stonebreak.items to com.fasterxml.jackson.databind;
     opens com.stonebreak.mobs.cow to com.fasterxml.jackson.databind;
+    opens com.stonebreak.mobs.entities.ai.perception to com.fasterxml.jackson.databind; // PerceptionProfile (#321)
     exports com.stonebreak.rendering.models.blocks;
     opens com.stonebreak.rendering.models.blocks to com.fasterxml.jackson.databind;
 

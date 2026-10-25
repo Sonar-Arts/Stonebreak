@@ -23,6 +23,6 @@ public final class SkillRegistry {
       new SkillDefinition("insight",      "Insight",      "Placeholder description."),
       new SkillDefinition("intimidation", "Intimidation", "Placeholder description."),
       new SkillDefinition("perception",   "Perception",   "Placeholder description."),
-      new SkillDefinition("stealth",      "Stealth",      "Placeholder description.")
+      new SkillDefinition("stealth",      "Stealth",      "Move more quietly and take longer to notice: 10% per point.")
   );
 }

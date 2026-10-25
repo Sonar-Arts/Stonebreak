@@ -348,13 +348,16 @@ public final class ServerEntityHandler {
         // naming a fresh id per swing would otherwise dodge every invulnerability window.
         int weaponId = kind == HitKind.MELEE ? sp.inventory().heldItemId() : LivingEntity.NO_WEAPON;
         float healthBefore = le.getHealth();
+        boolean caughtUnaware = le.getAwareness() != null && le.getAwareness().caughtUnaware();
         sp.recordHit(pkt.targetNetworkId(), now);
         le.damage(amount, source, type, weaponId, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
-            // The blow is heard (#321), lethal or not: a silent kill keeps the killer's stealth,
-            // not the camp's calm.
-            NoiseBus.emitIn(le.getWorld(), le.getPosition(), Loudness.MELEE_ATTACK);
+            // The blow is heard (#321) — unless it killed a victim that never saw it coming: then
+            // the only sound is the body falling (Loudness.STEALTH_KILL, posted by the death).
+            if (le.isAlive() || !caughtUnaware) {
+                NoiseBus.emitIn(le.getWorld(), le.getPosition(), sp.quieted(Loudness.MELEE_ATTACK));
+            }
             sendKillCredit(sp, le, dealt, !le.isAlive(), source, kind);
         }
     }
@@ -617,7 +620,7 @@ public final class ServerEntityHandler {
         if (spawned != null) {
             // Route hit/kill credit for this projectile back to the launching player.
             spawned.setOwnerPlayerId(sp.playerId());
-            NoiseBus.emitIn(ctx.world(), new Vector3f(sp.x(), sp.y(), sp.z()), launchLoudness(pkt.kind()));
+            NoiseBus.emitIn(ctx.world(), new Vector3f(sp.x(), sp.y(), sp.z()), sp.quieted(launchLoudness(pkt.kind())));
         }
     }
 

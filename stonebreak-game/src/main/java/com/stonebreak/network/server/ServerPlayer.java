@@ -195,13 +195,23 @@ public final class ServerPlayer {
 
     /**
      * How loud this player's movement is for mob hearing (#321), from the reported flags, the
-     * pace between reports, and the class's stealth loudness (the Rogue is quieter).
+     * pace between reports, the class's stealth loudness (the Rogue is quieter) and the Stealth skill.
      */
     public float movementLoudness() {
-        return com.stonebreak.mobs.entities.ai.perception.Loudness.ofMovement(isStealthed(),
+        return quieted(com.stonebreak.mobs.entities.ai.perception.Loudness.ofMovement(isStealthed(),
             com.stonebreak.player.combat.stealth.StealthConfig.forClass(serverStats).stealthLoudness(),
             isSprinting(), horizontalSpeed,
-            hasFlag(com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE));
+            hasFlag(com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE)));
+    }
+
+    /** This player's Stealth skill points, from the server's copy of their progression (#321). */
+    public float stealthSkill() {
+        return com.stonebreak.player.combat.stealth.StealthConfig.skillPoints(serverStats);
+    }
+
+    /** {@code loudness} as this player makes it: softened by their Stealth skill (#321). */
+    public float quieted(float loudness) {
+        return loudness * com.stonebreak.mobs.entities.ai.perception.StealthSkill.factor(stealthSkill());
     }
 
     private boolean hasFlag(int bit) {

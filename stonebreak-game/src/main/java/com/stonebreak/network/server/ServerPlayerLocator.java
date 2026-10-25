@@ -9,6 +9,7 @@ import org.joml.Vector3f;
 
 import java.util.Collection;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * The connected roster as mob AI sees it: every player standing in the authoritative world, the
@@ -87,14 +88,48 @@ public final class ServerPlayerLocator implements PlayerLocator {
     /** Nothing solid between {@code eye} and the nearest player's chest. */
     @Override
     public boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
-        ServerPlayer nearest = nearest(from);
-        if (nearest == null) {
+        return canSee(nearest(from), eye);
+    }
+
+    @Override
+    public void forEachPlayer(Vector3f from, float radius, Consumer<SensedPlayer> sink) {
+        float radiusSq = radius * radius;
+        for (ServerPlayer player : roster) {
+            if (!player.isLiveInWorld()) {
+                continue;
+            }
+            Vector3f position = new Vector3f(player.x(), player.y(), player.z());
+            if (position.distanceSquared(from) <= radiusSq) {
+                sink.accept(new SensedPlayer(player.playerId(), position, player.movementLoudness(),
+                        player.isStealthed(), player.stealthSkill()));
+            }
+        }
+    }
+
+    @Override
+    public Vector3f playerPosition(int id, Vector3f from, Vector3f out) {
+        ServerPlayer player = byId(id, from);
+        return player == null ? null : out.set(player.x(), player.y(), player.z());
+    }
+
+    @Override
+    public boolean canSeePlayer(int id, Vector3f from, Vector3f eye) {
+        return canSee(byId(id, from), eye);
+    }
+
+    @Override
+    public boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
+        return hurt(byId(id, from), from, amount, knockback);
+    }
+
+    private boolean canSee(ServerPlayer player, Vector3f eye) {
+        if (player == null) {
             return false;
         }
         if (world == null) {
             return true;
         }
-        Vector3f dir = new Vector3f(nearest.x(), nearest.y() + CHEST_HEIGHT, nearest.z()).sub(eye);
+        Vector3f dir = new Vector3f(player.x(), player.y() + CHEST_HEIGHT, player.z()).sub(eye);
         float dist = dir.length();
         if (dist < 1.0e-4f) {
             return true;
@@ -108,16 +143,19 @@ public final class ServerPlayerLocator implements PlayerLocator {
     /** The nearest player takes the blow, shoved horizontally away from {@code from}. */
     @Override
     public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
-        ServerPlayer nearest = nearest(from);
-        if (nearest == null) {
+        return hurt(nearest(from), from, amount, knockback);
+    }
+
+    private boolean hurt(ServerPlayer target, Vector3f from, float amount, float knockback) {
+        if (target == null) {
             return false;
         }
-        float dx = nearest.x() - from.x;
-        float dz = nearest.z() - from.z;
+        float dx = target.x() - from.x;
+        float dz = target.z() - from.z;
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         float kx = len > 1.0e-4f ? dx / len * knockback : 0f;
         float kz = len > 1.0e-4f ? dz / len * knockback : 0f;
-        hurtSink.accept(nearest, new PlayerHurtS2C(amount, kx, kz));
+        hurtSink.accept(target, new PlayerHurtS2C(amount, kx, kz));
         return true;
     }
 
@@ -136,6 +174,19 @@ public final class ServerPlayerLocator implements PlayerLocator {
             }
         }
         return false;
+    }
+
+    /** Live player {@code id}; {@link #NEAREST} means the one nearest {@code from}. */
+    private ServerPlayer byId(int id, Vector3f from) {
+        if (id == NEAREST) {
+            return nearest(from);
+        }
+        for (ServerPlayer player : roster) {
+            if (player.playerId() == id && player.isLiveInWorld()) {
+                return player;
+            }
+        }
+        return null;
     }
 
     private ServerPlayer nearest(Vector3f from) {

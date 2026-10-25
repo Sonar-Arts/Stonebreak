@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.ai.perception.Loudness;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
+import java.util.function.Consumer;
+
 /**
  * Where the nearest player is, as far as a behaviour is concerned.
  *
@@ -74,6 +76,53 @@ public interface PlayerLocator {
         return false;
     }
 
+    /**
+     * One player as a mob's senses take them in (#321). {@code id} names them to the targeted calls
+     * ({@link #playerPosition}, {@link #canSeePlayer}, {@link #hurtPlayer}); {@code position} is a
+     * fresh vector the receiver may keep.
+     *
+     * @param loudness     movement loudness on the {@link Loudness} scale, Stealth skill included
+     * @param stealthed    fully stealthed: a smaller shape to pick out
+     * @param stealthSkill Stealth skill points, which slow detection
+     */
+    record SensedPlayer(int id, Vector3f position, float loudness, boolean stealthed, float stealthSkill) {}
+
+    /** The id a locator that cannot tell players apart gives its one player: "whoever is nearest". */
+    int NEAREST = -1;
+
+    /**
+     * Hands every player within {@code radius} of {@code from} to {@code sink}, so a mob perceives
+     * each of them and not just the nearest — a quiet player close by must not hide a loud one
+     * further off. The default knows only the nearest player, as {@link #NEAREST}.
+     */
+    default void forEachPlayer(Vector3f from, float radius, Consumer<SensedPlayer> sink) {
+        Vector3f position = nearestPlayer(from, new Vector3f());
+        if (position != null && position.distance(from) <= radius) {
+            sink.accept(new SensedPlayer(NEAREST, position, nearestPlayerLoudness(from),
+                    nearestPlayerStealthed(from), 0f));
+        }
+    }
+
+    /**
+     * Writes where player {@code id} is into {@code out}.
+     *
+     * @return {@code out}, or {@code null} once that player is gone; the default ignores the id and
+     *         answers for the nearest player
+     */
+    default Vector3f playerPosition(int id, Vector3f from, Vector3f out) {
+        return nearestPlayer(from, out);
+    }
+
+    /** Whether nothing solid stands between {@code eye} and player {@code id}'s body. */
+    default boolean canSeePlayer(int id, Vector3f from, Vector3f eye) {
+        return canSeeNearestPlayer(from, eye);
+    }
+
+    /** Hurts player {@code id}, shoved away from {@code from}; see {@link #hurtNearestPlayer}. */
+    default boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
+        return hurtNearestPlayer(from, amount, knockback);
+    }
+
     /** Height above a player's feet that ranged attackers aim at and sight on. */
     float CHEST_HEIGHT = 1.1f;
 
@@ -121,6 +170,26 @@ public interface PlayerLocator {
             @Override
             public boolean hurtPlayerAt(Vector3f point, float margin, float amount) {
                 return players().hurtPlayerAt(point, margin, amount);
+            }
+
+            @Override
+            public void forEachPlayer(Vector3f from, float radius, Consumer<SensedPlayer> sink) {
+                players().forEachPlayer(from, radius, sink);
+            }
+
+            @Override
+            public Vector3f playerPosition(int id, Vector3f from, Vector3f out) {
+                return players().playerPosition(id, from, out);
+            }
+
+            @Override
+            public boolean canSeePlayer(int id, Vector3f from, Vector3f eye) {
+                return players().canSeePlayer(id, from, eye);
+            }
+
+            @Override
+            public boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
+                return players().hurtPlayer(id, from, amount, knockback);
             }
 
             private PlayerLocator players() {

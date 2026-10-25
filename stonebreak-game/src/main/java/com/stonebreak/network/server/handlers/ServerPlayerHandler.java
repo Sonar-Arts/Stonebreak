@@ -224,7 +224,7 @@ public final class ServerPlayerHandler {
         float fz = (float) Math.sin(yawRad);
         Vector3f pos = new Vector3f(sp.x() + fx * 1.5f, sp.y() + 1.0f, sp.z() + fz * 1.5f);
         Vector3f vel = new Vector3f(fx * 2.0f, 1.0f, fz * 2.0f);
-        NoiseBus.emitIn(world, pos, Loudness.DROP_ITEM); // mobs can hear it land (#321)
+        NoiseBus.emitIn(world, pos, sp.quieted(Loudness.DROP_ITEM)); // mobs can hear it land (#321)
 
         BlockType bt = BlockType.getById(itemId);
         if (bt != null && bt != BlockType.AIR) {

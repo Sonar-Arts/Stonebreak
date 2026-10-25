@@ -8,13 +8,16 @@ import com.stonebreak.mobs.entities.ai.perception.Loudness;
 import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.mobs.entities.ai.perception.PerceptionProfile;
 import com.stonebreak.mobs.entities.ai.perception.ShoutRelay;
+import com.stonebreak.mobs.entities.ai.perception.StealthSkill;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -28,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AwarenessControllerTest {
 
     private static final float DT = 0.05f;
+    private static final PerceptionProfile GOBLIN = PerceptionProfile.forType(EntityType.GOBLIN);
 
     private final StubMob mob = new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 0));
 
@@ -53,20 +57,56 @@ class AwarenessControllerTest {
         }
     }
 
+    /** Several players, each with an id, a loudness and a Stealth skill. */
+    private static final class Crowd implements PlayerLocator {
+        final List<SensedPlayer> all = new ArrayList<>();
+
+        void add(int id, Vector3f position, float loudness, float stealthSkill) {
+            all.add(new SensedPlayer(id, position, loudness, false, stealthSkill));
+        }
+
+        @Override
+        public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+            SensedPlayer nearest = null;
+            for (SensedPlayer p : all) {
+                if (nearest == null || p.position().distance(from) < nearest.position().distance(from)) {
+                    nearest = p;
+                }
+            }
+            return nearest == null ? null : out.set(nearest.position());
+        }
+
+        @Override
+        public void forEachPlayer(Vector3f from, float radius, Consumer<SensedPlayer> sink) {
+            for (SensedPlayer p : all) {
+                if (p.position().distance(from) <= radius) {
+                    sink.accept(p);
+                }
+            }
+        }
+    }
+
     private final FakePlayers players = new FakePlayers();
     private float light = 1f;
     private long clock;
     private final NoiseBus bus = new NoiseBus(() -> clock);
     private final List<Vector3f> shouts = new ArrayList<>();
-    private final ShoutRelay relay = (shouter, lastKnown, range) -> shouts.add(new Vector3f(lastKnown));
+    private final List<Integer> shoutTargets = new ArrayList<>();
+    private final ShoutRelay relay = (shouter, lastKnown, targetId, range) -> {
+        shouts.add(new Vector3f(lastKnown));
+        shoutTargets.add(targetId);
+    };
 
     private AwarenessController goblin() {
         return goblin(mob);
     }
 
     private AwarenessController goblin(StubMob who) {
-        return new AwarenessController(who, PerceptionProfile.GOBLIN, players,
-                (world, position) -> light, relay, bus);
+        return goblin(who, players);
+    }
+
+    private AwarenessController goblin(StubMob who, PlayerLocator locator) {
+        return new AwarenessController(who, GOBLIN, locator, (world, position) -> light, relay, bus);
     }
 
     private Vector3f ahead(float distance) {
@@ -121,14 +161,14 @@ class AwarenessControllerTest {
         float near = visionAt(ahead(3f));
         float far = visionAt(ahead(10f));
         assertTrue(near > far && far > 0f, "near " + near + " vs far " + far);
-        assertEquals(0f, visionAt(ahead(PerceptionProfile.GOBLIN.visionRange() + 0.5f)));
+        assertEquals(0f, visionAt(ahead(GOBLIN.visionRange() + 0.5f)));
     }
 
     @Test
     void sightIsFullInTheConeWeakAtTheSidesAndAbsentBehind() {
         float front = visionAt(atAngle(30f, 5f));
         float side = visionAt(atAngle(90f, 5f));
-        assertEquals(front * PerceptionProfile.GOBLIN.sideVisionFactor(), side, 1e-3f);
+        assertEquals(front * GOBLIN.sideVisionFactor(), side, 1e-3f);
         assertEquals(0f, visionAt(behind(5f)));
     }
 
@@ -219,7 +259,7 @@ class AwarenessControllerTest {
         run(awareness, 1f); // past the low suspicion threshold
         assertEquals(AwarenessState.SUSPICIOUS, awareness.getState());
         tick(awareness);
-        assertEquals(unawareRate * PerceptionProfile.GOBLIN.alertness().suspicious(),
+        assertEquals(unawareRate * GOBLIN.alertness().suspicious(),
                 awareness.snapshot().rate(), 1e-2f);
     }
 
@@ -235,7 +275,7 @@ class AwarenessControllerTest {
         assertEquals(AwarenessState.SEARCHING, awareness.getState());
         assertNotNull(awareness.lastKnownPlayerPosition(new Vector3f()), "searches where it lost them");
 
-        run(awareness, PerceptionProfile.GOBLIN.memorySeconds() + 0.5f);
+        run(awareness, GOBLIN.memorySeconds() + 0.5f);
         assertEquals(AwarenessState.UNAWARE, awareness.getState(), "memory expired: back to its business");
         assertNull(awareness.lastKnownPlayerPosition(new Vector3f()));
     }
@@ -303,7 +343,7 @@ class AwarenessControllerTest {
         AwarenessController mate = goblin();
         players.position = behind(6f); // behind the mate: it cannot see them
         Vector3f reported = new Vector3f(1, 64, 9);
-        mate.hearShout(reported);
+        mate.hearShout(reported, PlayerLocator.NEAREST);
         assertEquals(AwarenessState.SUSPICIOUS, mate.getState());
         assertEquals(reported.z, mate.lastKnownPlayerPosition(new Vector3f()).z, 1e-4f);
         assertTrue(shouts.isEmpty());
@@ -313,8 +353,103 @@ class AwarenessControllerTest {
     void aPackmateThatCanSeeThePlayerIsAlertedButTheShoutStopsThere() {
         AwarenessController mate = goblin();
         players.position = ahead(5f);
-        mate.hearShout(new Vector3f(1, 64, 9));
+        mate.hearShout(new Vector3f(1, 64, 9), PlayerLocator.NEAREST);
         assertEquals(AwarenessState.ALERTED, mate.getState());
         assertTrue(shouts.isEmpty(), "a shout-made alert does not chain across the map");
+    }
+
+    @Test
+    void aShoutNamesThePlayerAndAPackmateGoesAfterThem() {
+        Crowd crowd = new Crowd();
+        crowd.add(7, ahead(4f), 0f, 0f);
+        AwarenessController awareness = goblin(mob, crowd);
+        run(awareness, 3f);
+        assertEquals(List.of(7), shoutTargets);
+
+        AwarenessController mate = goblin(new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 40)), crowd);
+        mate.hearShout(new Vector3f(shouts.get(0)), 7);
+        assertEquals(7, mate.targetPlayerId());
+    }
+
+    @Test
+    void anAlertFlickeringOnAndOffShoutsOnlyOncePerCooldown() {
+        players.position = ahead(4f);
+        AwarenessController awareness = goblin();
+        run(awareness, 3f);
+        players.position = null;
+        run(awareness, AwarenessController.LOST_TRACK_SECONDS + 0.3f);
+        assertEquals(AwarenessState.SEARCHING, awareness.getState());
+        players.position = ahead(4f);
+        tick(awareness);
+        assertEquals(AwarenessState.ALERTED, awareness.getState());
+        assertEquals(1, shouts.size(), "spotted again inside the cooldown: no second shout");
+
+        players.position = null;
+        run(awareness, AwarenessController.SHOUT_COOLDOWN_SECONDS);
+        players.position = ahead(4f);
+        run(awareness, 1f);
+        assertEquals(AwarenessState.ALERTED, awareness.getState());
+        assertEquals(2, shouts.size());
+    }
+
+    // ── Several players ───────────────────────────────────────────────────────
+
+    @Test
+    void aQuietPlayerCloseByDoesNotHideALoudOneFurtherOff() {
+        Crowd crowd = new Crowd();
+        crowd.add(1, behind(3f), 0f, 0f);              // still, and behind: neither seen nor heard
+        crowd.add(2, behind(10f), Loudness.SPRINT, 0f); // sprinting past, further off
+        AwarenessController awareness = goblin(mob, crowd);
+        run(awareness, 3f);
+        assertTrue(awareness.getState() != AwarenessState.UNAWARE, "the sprint is heard");
+        assertEquals(2, awareness.targetPlayerId());
+        assertEquals(behind(10f).z, awareness.lastKnownPlayerPosition(new Vector3f()).z, 1e-4f);
+    }
+
+    @Test
+    void aBlowIsPinnedOnThePlayerStandingWhereItCameFrom() {
+        Crowd crowd = new Crowd();
+        crowd.add(3, ahead(6f), 0f, 0f);
+        crowd.add(9, behind(2f), 0f, 0f);
+        AwarenessController awareness = goblin(mob, crowd);
+        awareness.onAttacked(behind(2f));
+        assertEquals(9, awareness.targetPlayerId());
+    }
+
+    // ── Stealth skill and stealth kills ───────────────────────────────────────
+
+    @Test
+    void eachStealthPointSlowsDetection() {
+        assertEquals(rateAgainst(0f) * StealthSkill.factor(10f), rateAgainst(10f), 1e-3f);
+    }
+
+    private float rateAgainst(float stealthSkill) {
+        Crowd crowd = new Crowd();
+        crowd.add(1, ahead(5f), Loudness.WALK, stealthSkill);
+        AwarenessController awareness = goblin(mob, crowd);
+        tick(awareness);
+        return awareness.snapshot().rate();
+    }
+
+    @Test
+    void onlyAMobThatNeverKnewItWasHuntedIsCaughtUnaware() {
+        AwarenessController awareness = goblin();
+        assertTrue(awareness.caughtUnaware());
+        awareness.onAttacked(behind(2f));
+        assertFalse(awareness.caughtUnaware());
+    }
+
+    @Test
+    void aMobDoesNotHearItsOwnNoiseButItsPackmatesDo() {
+        AwarenessController awareness = goblin();
+        tick(awareness);
+        bus.emit(mob.getPosition(), Loudness.MELEE_ATTACK, mob);
+        tick(awareness);
+        assertEquals(AwarenessState.UNAWARE, awareness.getState());
+
+        StubMob mate = new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 0));
+        bus.emit(mate.getPosition(), Loudness.MELEE_ATTACK, mate);
+        tick(awareness);
+        assertEquals(AwarenessState.SUSPICIOUS, awareness.getState());
     }
 }

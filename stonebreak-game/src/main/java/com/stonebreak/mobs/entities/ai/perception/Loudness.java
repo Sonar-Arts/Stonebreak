@@ -25,6 +25,8 @@ public final class Loudness {
     public static final float RANGED_ATTACK = 6f;
     public static final float BREAK_BLOCK = 8f;
     public static final float DEATH = 10f;
+    /** A kill the victim never saw coming: a body slumping, not a fight. As loud as a walk. */
+    public static final float STEALTH_KILL = WALK;
 
     /** Blocks a loudness of 1 carries for reference ears. */
     public static final float BLOCKS_PER_LOUDNESS = 2.5f;
@@ -48,6 +50,11 @@ public final class Loudness {
             return 0f;
         }
         return 1f - distance / radius;
+    }
+
+    /** How loud a death is: {@link #STEALTH_KILL} when the victim never knew it was hunted, else {@link #DEATH}. */
+    public static float ofDeath(boolean caughtUnaware) {
+        return caughtUnaware ? STEALTH_KILL : DEATH;
     }
 
     /**

@@ -373,7 +373,7 @@ public final class ServerBlockHandler {
     private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
                               boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
         applyAccepted(sp, c, incoming, prev, debit, world, ctx);
-        emitEditNoise(world, c, incoming, prev);
+        emitEditNoise(sp, world, c, incoming, prev);
         int sel = sp.inventory().selectedHotbarSlot();
         if (scoop) {
             // Bucket scoop (mirrors BlockPlacer.handleEmptyBucket): removing a water SOURCE
@@ -391,15 +391,19 @@ public final class ServerBlockHandler {
         }
     }
 
-    /** Breaking a block is loud and placing one less so (#321); scooping or pouring water is quiet. */
-    private static void emitEditNoise(World world, BlockChangeC2S c, BlockType incoming, BlockType prev) {
+    /**
+     * Breaking a block is loud and placing one less so (#321); scooping or pouring water is quiet.
+     * The editor's Stealth skill softens either.
+     */
+    private static void emitEditNoise(ServerPlayer sp, World world, BlockChangeC2S c, BlockType incoming,
+                                      BlockType prev) {
         float loudness;
         if (incoming == null || incoming == BlockType.AIR) {
             loudness = prev == BlockType.AIR || prev == BlockType.WATER ? 0f : Loudness.BREAK_BLOCK;
         } else {
             loudness = incoming == BlockType.WATER ? 0f : Loudness.PLACE_BLOCK;
         }
-        NoiseBus.emitIn(world, new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f), loudness);
+        NoiseBus.emitIn(world, new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f), sp.quieted(loudness));
     }
 
     /**

@@ -21,8 +21,12 @@ import java.util.function.LongSupplier;
  */
 public final class NoiseBus {
 
-    /** Sound number {@code seq}: {@code loudness} (0–10, see {@link Loudness}) at {@code position}, made at {@code time}. */
-    public record NoiseEvent(long seq, Vector3f position, float loudness, long time) {}
+    /**
+     * Sound number {@code seq}: {@code loudness} (0–10, see {@link Loudness}) at {@code position},
+     * made at {@code time} by {@code source} — the mob that made it, which does not hear itself, or
+     * null for a player's or the world's sounds.
+     */
+    public record NoiseEvent(long seq, Vector3f position, float loudness, long time, Object source) {}
 
     static final long RETENTION_NANOS = 1_000_000_000L;
 
@@ -46,20 +50,30 @@ public final class NoiseBus {
 
     /** Posts a sound to {@code world}'s bus; nothing without a world or a bus (tests, mocks). */
     public static void emitIn(com.stonebreak.world.World world, Vector3f position, float loudness) {
+        emitIn(world, position, loudness, null);
+    }
+
+    /** Posts a sound made by {@code source} to {@code world}'s bus; see {@link NoiseEvent#source()}. */
+    public static void emitIn(com.stonebreak.world.World world, Vector3f position, float loudness, Object source) {
         NoiseBus bus = world != null ? world.noiseBus() : null;
         if (bus != null) {
-            bus.emit(position, loudness);
+            bus.emit(position, loudness, source);
         }
     }
 
-    /** Posts a sound. Silent sounds (loudness ≤ 0) are dropped. */
+    /** Posts a sound nobody in particular made. Silent sounds (loudness ≤ 0) are dropped. */
     public void emit(Vector3f position, float loudness) {
+        emit(position, loudness, null);
+    }
+
+    /** Posts a sound made by {@code source}. Silent sounds (loudness ≤ 0) are dropped. */
+    public void emit(Vector3f position, float loudness, Object source) {
         if (!(loudness > 0f)) {
             return;
         }
         long now = clock.getAsLong();
         prune(now);
-        events.addLast(new NoiseEvent(++lastSeq, new Vector3f(position), loudness, now));
+        events.addLast(new NoiseEvent(++lastSeq, new Vector3f(position), loudness, now, source));
     }
 
     /** Hands every still-retained event numbered after {@code since} to {@code sink}, oldest first. */

@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 
 import java.util.EnumSet;
@@ -46,8 +48,8 @@ public final class MeleeAttackBehavior implements Behavior {
     public boolean canStart(AiContext context) {
         return context.entity().getAge() >= readyAt
                 && context.alertedToPlayer()
-                && context.distanceToNearestPlayer() <= weapon.reach()
-                && context.facePlayer(0.0f) <= START_FACING_DEGREES;
+                && context.distanceToTarget() <= weapon.reach()
+                && context.faceTarget(0.0f) <= START_FACING_DEGREES;
     }
 
     @Override
@@ -67,12 +69,14 @@ public final class MeleeAttackBehavior implements Behavior {
         elapsed += deltaTime;
         context.steering().stopMoving();
         if (!landed) {
-            context.facePlayer(TURN_SPEED); // track the target through the wind-up only
+            context.faceTarget(TURN_SPEED); // track the target through the wind-up only
         }
         if (!landed && elapsed >= weapon.impactSeconds()) {
             landed = true;
-            if (context.distanceToNearestPlayer() <= weapon.reach() * REACH_GRACE) {
-                context.hurtNearestPlayer(weapon.damage(), weapon.knockback());
+            // The swing is heard, hit or miss (#321): a fight draws in mobs out of shout range.
+            NoiseBus.emitIn(context.world(), context.entity().getPosition(), Loudness.MELEE_ATTACK, context.entity());
+            if (context.distanceToTarget() <= weapon.reach() * REACH_GRACE) {
+                context.hurtTarget(weapon.damage(), weapon.knockback());
             }
         }
     }

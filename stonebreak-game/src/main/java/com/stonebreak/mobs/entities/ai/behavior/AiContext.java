@@ -89,12 +89,26 @@ public final class AiContext {
     }
 
     /**
-     * Turns the mob toward the nearest player without moving it.
+     * The player this mob is after — the one its stealth awareness tracks (#321), the nearest for a
+     * mob without awareness — or {@code null}. Scratch owned by this context: read it, do not retain it.
+     */
+    public Vector3f targetPlayer() {
+        return players.playerPosition(targetId(), entity.getPosition(), playerScratch);
+    }
+
+    /** Distance to {@link #targetPlayer()}, or {@link Float#MAX_VALUE} when there is none. */
+    public float distanceToTarget() {
+        Vector3f player = targetPlayer();
+        return player == null ? Float.MAX_VALUE : entity.getPosition().distance(player);
+    }
+
+    /**
+     * Turns the mob toward {@link #targetPlayer()} without moving it.
      *
      * @return degrees still left to turn, or {@link Float#MAX_VALUE} when there is no player
      */
-    public float facePlayer(float turnSpeedDegPerSec) {
-        Vector3f player = nearestPlayer();
+    public float faceTarget(float turnSpeedDegPerSec) {
+        Vector3f player = targetPlayer();
         if (player == null) {
             return Float.MAX_VALUE;
         }
@@ -107,14 +121,19 @@ public final class AiContext {
         return steering().yawErrorTo(toPlayer);
     }
 
-    /** Whether the nearest player is in clear sight from {@code eye}. */
-    public boolean canSeeNearestPlayer(Vector3f eye) {
-        return players.canSeeNearestPlayer(entity.getPosition(), eye);
+    /** Whether {@link #targetPlayer()} is in clear sight from {@code eye}. */
+    public boolean canSeeTarget(Vector3f eye) {
+        return players.canSeePlayer(targetId(), entity.getPosition(), eye);
     }
 
-    /** Lands a blow from this mob on the nearest player; see {@link PlayerLocator#hurtNearestPlayer}. */
-    public boolean hurtNearestPlayer(float amount, float knockback) {
-        return players.hurtNearestPlayer(entity.getPosition(), amount, knockback);
+    /** Lands a blow from this mob on {@link #targetPlayer()}; see {@link PlayerLocator#hurtPlayer}. */
+    public boolean hurtTarget(float amount, float knockback) {
+        return players.hurtPlayer(targetId(), entity.getPosition(), amount, knockback);
+    }
+
+    private int targetId() {
+        AwarenessController awareness = entity.getAwareness();
+        return awareness != null ? awareness.targetPlayerId() : PlayerLocator.NEAREST;
     }
 
     /**

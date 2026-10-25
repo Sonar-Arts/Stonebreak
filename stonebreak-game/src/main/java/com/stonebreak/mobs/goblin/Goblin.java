@@ -33,7 +33,7 @@ import java.util.Random;
 
 /**
  * Hostile goblin, the reference enemy of the stealth system (#321). It notices a player through its
- * {@link AwarenessController} — keen ears, fair sight ({@link PerceptionProfile#GOBLIN}) — goes to
+ * {@link AwarenessController} — keen ears, fair sight (its {@link PerceptionProfile}) — goes to
  * look at what it heard, shouts for the pack once sure, closes in and fights with whatever its
  * {@link GoblinLoadout} rolled — stabbing with a dagger, slamming with a patty smacker,
  * or hanging back to shoot a bow. Weapon and cosmetics hang on the model's sockets.
@@ -71,7 +71,7 @@ public class Goblin extends LivingEntity {
         super(world, position, EntityType.GOBLIN);
         this.loadout = Objects.requireNonNull(loadout, "loadout");
         this.scale.set(MODEL_SCALE);
-        this.awareness = new AwarenessController(this, PerceptionProfile.GOBLIN);
+        this.awareness = new AwarenessController(this);
         this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
                 attackFor(loadout.weapon()),
                 pursueFor(loadout.weapon(), awareness),

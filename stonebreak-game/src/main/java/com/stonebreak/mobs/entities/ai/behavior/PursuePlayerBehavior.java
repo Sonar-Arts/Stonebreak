@@ -61,7 +61,7 @@ public final class PursuePlayerBehavior implements Behavior {
     @Override
     public boolean canStart(AiContext context) {
         return switch (awareness.getState()) {
-            case ALERTED -> context.nearestPlayer() != null || awareness.lastKnownPlayerPosition(target) != null;
+            case ALERTED -> context.targetPlayer() != null || awareness.lastKnownPlayerPosition(target) != null;
             case SUSPICIOUS -> awareness.lastKnownPlayerPosition(target) != null;
             case UNAWARE, SEARCHING -> false;
         };
@@ -75,7 +75,7 @@ public final class PursuePlayerBehavior implements Behavior {
     @Override
     public void tick(AiContext context, float deltaTime) {
         if (awareness.getState() == AwarenessController.AwarenessState.ALERTED) {
-            Vector3f player = context.nearestPlayer();
+            Vector3f player = context.targetPlayer();
             if (player != null) {
                 closeIn(context, player);
                 return;
@@ -100,7 +100,7 @@ public final class PursuePlayerBehavior implements Behavior {
                 holding = true;
             }
             context.steering().stopMoving();
-            context.facePlayer(TURN_SPEED);
+            context.faceTarget(TURN_SPEED);
         }
     }
 

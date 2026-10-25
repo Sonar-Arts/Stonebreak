@@ -2,6 +2,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 import org.joml.Vector3f;
 
@@ -50,11 +52,11 @@ public final class RangedAttackBehavior implements Behavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        float distance = context.distanceToNearestPlayer();
+        float distance = context.distanceToTarget();
         return context.entity().getAge() >= readyAt
                 && context.alertedToPlayer()
                 && distance >= weapon.minRange() && distance <= weapon.maxRange()
-                && context.canSeeNearestPlayer(eyeOf(context.entity()));
+                && context.canSeeTarget(eyeOf(context.entity()));
     }
 
     @Override
@@ -75,8 +77,8 @@ public final class RangedAttackBehavior implements Behavior {
         context.steering().stopMoving();
         switch (phase) {
             case DRAW -> {
-                context.facePlayer(TURN_SPEED);
-                if (context.distanceToNearestPlayer() > weapon.maxRange()) {
+                context.faceTarget(TURN_SPEED);
+                if (context.distanceToTarget() > weapon.maxRange()) {
                     phase = Phase.DONE; // they got away: lower the bow
                 } else if (elapsed >= weapon.drawSeconds()) {
                     loose(context);
@@ -111,7 +113,7 @@ public final class RangedAttackBehavior implements Behavior {
 
     /** Fires at the player's chest, lifted to cancel the drop over the flight, plus some wobble. */
     private void loose(AiContext context) {
-        Vector3f player = context.nearestPlayer();
+        Vector3f player = context.targetPlayer();
         if (player == null) {
             return;
         }
@@ -125,6 +127,7 @@ public final class RangedAttackBehavior implements Behavior {
                 (float) context.random().nextGaussian() * weapon.spread(),
                 (float) context.random().nextGaussian() * weapon.spread()).normalize(weapon.arrowSpeed());
         launcher.launch(context.entity(), new Vector3f(origin), new Vector3f(aim), weapon.damage());
+        NoiseBus.emitIn(context.world(), context.entity().getPosition(), Loudness.RANGED_ATTACK, context.entity());
     }
 
     private Vector3f eyeOf(LivingEntity entity) {

@@ -1,12 +1,21 @@
 package com.stonebreak.mobs.entities.ai.perception;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.AwarenessController.AwarenessState;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.util.EnumMap;
+import java.util.Map;
 
 /**
  * How one kind of mob perceives the player (#321): what an
  * {@link com.stonebreak.mobs.entities.ai.AwarenessController} reads instead of global constants,
- * so a new enemy needs new numbers here, not new AI code. Look one up with {@link #forType}.
+ * so a new enemy needs new numbers, not new AI code. The numbers live in {@link #RESOURCE}; look
+ * one up with {@link #forType}.
  *
  * @param visionRange        blocks at which sight fades to nothing, in full light
  * @param fovDeg             full width of the forward cone seen at full strength
@@ -70,22 +79,41 @@ public record PerceptionProfile(
             0f, 10f,
             Alertness.FLAT);
 
-    /**
-     * The reference enemy. Average sight with a wide cone, night vision that only partly ignores
-     * darkness, and sharp ears: goblins punish noise more than sight, so a player crouched behind
-     * a rock stays hidden but a sprint through camp never does. Easily spooked, committed once
-     * alerted, quick to lose interest, and they shout for the pack.
-     */
-    public static final PerceptionProfile GOBLIN = new PerceptionProfile(
-            12f, 120f, 0.3f, 0.6f, 1.5f,
-            16f,
-            25f, 70f,
-            80f, 45f, 45f, 12f,
-            20f, 10f,
-            new Alertness(1f, 1.6f, 2f, 2f));
+    /** Where the per-type profiles live: a JSON object keyed by {@link EntityType} name. */
+    static final String RESOURCE = "mobs/perception-profiles.json";
 
-    /** The profile for {@code type}; {@link #DEFAULT} for types without their own. */
+    /** The profile for {@code type} from {@link #RESOURCE}; {@link #DEFAULT} for types not listed. */
     public static PerceptionProfile forType(EntityType type) {
-        return type == EntityType.GOBLIN ? GOBLIN : DEFAULT;
+        return Loaded.BY_TYPE.getOrDefault(type, DEFAULT);
+    }
+
+    /** Read once, on first use. */
+    private static final class Loaded {
+        static final Map<EntityType, PerceptionProfile> BY_TYPE = load(RESOURCE);
+    }
+
+    /**
+     * Reads a profile file. Keys starting with {@code _} are comments; an unknown type name or a
+     * malformed profile fails loudly — a typo must not quietly hand a mob the default senses.
+     */
+    static Map<EntityType, PerceptionProfile> load(String resource) {
+        // Class, not ClassLoader, lookup: in the game module a resource folder counts as an
+        // unopened package, which the class loader will not hand out.
+        try (InputStream in = PerceptionProfile.class.getResourceAsStream("/" + resource)) {
+            if (in == null) {
+                return Map.of();
+            }
+            ObjectMapper mapper = new ObjectMapper();
+            Map<EntityType, PerceptionProfile> byType = new EnumMap<>(EntityType.class);
+            for (Map.Entry<String, JsonNode> entry : mapper.readTree(in).properties()) {
+                if (!entry.getKey().startsWith("_")) {
+                    byType.put(EntityType.valueOf(entry.getKey()),
+                            mapper.treeToValue(entry.getValue(), PerceptionProfile.class));
+                }
+            }
+            return byType;
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unreadable perception profiles: " + resource, e);
+        }
     }
 }

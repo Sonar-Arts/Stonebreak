@@ -99,7 +99,7 @@ class CombatBehaviorTest {
 
     /** Awareness on the stub goblin, in whatever state the test puts it. */
     private AwarenessController aware(AwarenessController.AwarenessState state) {
-        AwarenessController awareness = new AwarenessController(mob, PerceptionProfile.GOBLIN, players,
+        AwarenessController awareness = new AwarenessController(mob, PerceptionProfile.forType(EntityType.GOBLIN), players,
                 LightProbe.FULL, ShoutRelay.NONE, new NoiseBus());
         awareness.applyReplicatedState(state);
         mob.setAwareness(awareness);
