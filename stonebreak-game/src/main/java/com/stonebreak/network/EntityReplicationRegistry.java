@@ -13,6 +13,8 @@ import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.mobs.entities.FishingBobber;
 import com.stonebreak.mobs.entities.IllusionDecoy;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.goblin.Goblin;
+import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.mobs.entities.LeylineBreachZone;
 import com.stonebreak.mobs.entities.NullSpikeProjectile;
@@ -46,6 +48,7 @@ public final class EntityReplicationRegistry {
         return switch (e.getType()) {
             case COW -> ((Cow) e).getTextureVariant();
             case SHEEP -> ((Sheep) e).getTextureVariant();
+            case GOBLIN -> ((Goblin) e).getLoadout().encode();
             case BLOCK_DROP -> Integer.toString(((BlockDrop) e).getBlockType().getId());
             case ITEM_DROP -> {
                 // The one stack codec (#342): id, the drop's live count and the stack's state.
@@ -77,6 +80,7 @@ public final class EntityReplicationRegistry {
             case SHEEP -> new Sheep(world, pos, orDefault(metadata, "default"));
             case CHICKEN -> new Chicken(world, pos);
             case GOOSE -> new Goose(world, pos);
+            case GOBLIN -> new Goblin(world, pos, GoblinLoadout.decode(metadata));
             case BLOCK_DROP -> {
                 BlockType bt = BlockType.getById(parseInt(metadata, 0));
                 yield new BlockDrop(world, pos, bt != null ? bt : BlockType.AIR);
@@ -101,6 +105,8 @@ public final class EntityReplicationRegistry {
                 }
                 yield new LeylineBreachZone(world, pos, radius, 0f, 0f, Float.MAX_VALUE, overloaded);
             }
+            // Seats and oars arrive as the boat's visual state (EntityAnimS2C), not metadata.
+            case DINGHY -> new com.stonebreak.vehicles.Dinghy(world, pos, 0f);
             case BOBBER -> {
                 FishingBobber bobber = new FishingBobber(world, pos, new Vector3f(0, 0, 1));
                 bobber.setOwnerPlayerId(parseInt(metadata, -1));

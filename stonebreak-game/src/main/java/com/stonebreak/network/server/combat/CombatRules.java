@@ -106,7 +106,7 @@ public final class CombatRules {
     /** An Illusionist with Mirrored Deceit unlocked — the client's own gate. */
     public static boolean mayCastDecoy(CharacterStats stats) {
         return IllusionistAbilityController.CLASS_ID.equals(stats.getSelectedClassId())
-                && stats.getSpentCp(IllusionistAbilityController.MIRRORED_DECEIT_KEY) > 0;
+                && stats.hasAbility(IllusionistAbilityController.MIRRORED_DECEIT_KEY);
     }
 
     // ─── Ability hits ───────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ public final class CombatRules {
                                     List<String> abilityKeys) {
         public boolean unlockedFor(CharacterStats stats) {
             for (String key : abilityKeys) {
-                if (stats.getSpentCp(key) > 0) {
+                if (stats.hasAbility(key)) {
                     return true;
                 }
             }
@@ -259,7 +259,7 @@ public final class CombatRules {
             if (classId != null && (stats == null || !classId.equals(stats.getSelectedClassId()))) {
                 return false;
             }
-            return abilityKey == null || (stats != null && stats.getSpentCp(abilityKey) > 0);
+            return abilityKey == null || (stats != null && stats.hasAbility(abilityKey));
         }
     }
 

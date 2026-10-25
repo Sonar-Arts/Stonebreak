@@ -2,10 +2,12 @@ package com.stonebreak.ui.characterScreen;
 
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.stonebreak.config.Settings;
+import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.backend.skija.SkijaUIBackend;
 import com.stonebreak.rpg.CharacterPanelTab;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
@@ -31,10 +33,10 @@ public final class CharacterSheetFixtures {
     }
 
     public static final List<String> STATES = List.of("overview-busy", "classes", "classes-shown", "classes-scrolled",
-        "skills", "feats", "feats-selected", "feats-filtered");
+        "classes-multi", "skills", "skills-weapons", "feats", "feats-selected", "feats-filtered");
     public static final List<String> HOVERS = List.of("hover-tab0", "hover-tab2", "hover-tile1", "hover-plus2",
-        "hover-talent1", "hover-cls1", "hover-invest3", "hover-feat0", "hover-level", "hover-general",
-        "hover-acquire");
+        "hover-talent1", "hover-cls1", "hover-invest3", "hover-mode1", "hover-train1", "hover-feat0", "hover-level",
+        "hover-general", "hover-acquire");
 
     public static List<FidelityCase> cases() {
         List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("character-sheet", List.of("overview"),
@@ -61,6 +63,7 @@ public final class CharacterSheetFixtures {
         if (t.startsWith("tile") || t.startsWith("plus")) return "overview";
         if (t.startsWith("cls") || t.startsWith("talent")) return "classes-shown";
         if (t.startsWith("invest")) return "skills";
+        if (t.startsWith("mode") || t.startsWith("train")) return "skills-weapons";
         if (t.startsWith("acquire")) return "feats-selected";
         if (t.startsWith("feat") || t.equals("level") || t.equals("general")) return "feats";
         return "overview";
@@ -95,16 +98,30 @@ public final class CharacterSheetFixtures {
             case "classes-shown" -> {
                 talents(controller, TalentSubTab.CLASS_ABILITIES);
                 rc.classes().selectClass(ClassRegistry.ALL.get(0).id());
-                rc.classes().spend(stats, 0);
+                rc.classes().addRank(stats, ClassRegistry.pathKey(ClassRegistry.ALL.get(0).id(), 0, 0));
             }
             case "classes-scrolled" -> {
                 talents(controller, TalentSubTab.CLASS_ABILITIES);
-                rc.classes().selectClass(ClassRegistry.ALL.get(2).id()); // Monk: five abilities
-                rc.classes().spend(stats, 4);
+                rc.classes().selectClass(ClassRegistry.ALL.get(2).id()); // Monk: placeholder abilities
+                rc.classes().addRank(stats, ClassRegistry.pathKey(ClassRegistry.ALL.get(2).id(), 1, 0));
+            }
+            case "classes-multi" -> {
+                // three classes at level 6: Ranger and Rogue at 1 CP per rank, Berserker in the penalised third slot
+                talents(controller, TalentSubTab.CLASS_ABILITIES);
+                stats.addXp(1050);
+                for (String key : List.of("ranger:p0:0", "ranger:p0:0", "rogue:p0:0", "berserker:p0:0")) {
+                    stats.addRank(key);
+                }
+                rc.classes().selectClass("berserker");
             }
             case "skills" -> {
                 talents(controller, TalentSubTab.SKILLS);
                 stats.investSkillPoint(SkillRegistry.ALL.get(1).id());
+            }
+            case "skills-weapons" -> {
+                talents(controller, TalentSubTab.SKILLS);
+                rc.skills().setMode(SkillListMode.WEAPONS);
+                stats.trainWeapon(WeaponGroup.ONE_HANDED);
             }
             case "feats" -> talents(controller, TalentSubTab.FEATS);
             case "feats-selected" -> {
@@ -129,7 +146,7 @@ public final class CharacterSheetFixtures {
     public static void scroll(CharacterScreen screen, String variant) {
         if ("classes-scrolled".equals(base(variant))) {
             float s = Settings.getInstance().getUiScale();
-            screen.getController().classes().scroll(1f, false, s); // the ability list, one notch
+            screen.getController().classes().scroll(20f, false, s); // the talent tree, into the first path
         }
     }
 
@@ -181,9 +198,15 @@ public final class CharacterSheetFixtures {
                 }
             }
             case "SKILLS" -> {
-                for (int i = 0; i < SkillRegistry.ALL.size(); i++) {
-                    out.put("invest" + i, new float[]{p[0] + 490f * s, p[1] + 48f * s + i * (24f * s) + 1f, 86f * s,
-                        22f * s});
+                // the General | Weapons toggle, then +1 SP per skill or Train per weapon group in the same column
+                for (int i = 0; i < 2; i++) {
+                    out.put("mode" + i, new float[]{p[0] + (376f + 96f * i) * s, p[1] + 9f * s, 92f * s, 22f * s});
+                }
+                boolean weapons = rc.skills().mode() == SkillListMode.WEAPONS;
+                int n = weapons ? WeaponGroup.values().length : SkillRegistry.ALL.size();
+                for (int i = 0; i < n; i++) {
+                    out.put((weapons ? "train" : "invest") + i, new float[]{p[0] + 490f * s,
+                        p[1] + 48f * s + i * (24f * s) + 1f, 86f * s, 22f * s});
                 }
             }
             case "FEATS" -> {

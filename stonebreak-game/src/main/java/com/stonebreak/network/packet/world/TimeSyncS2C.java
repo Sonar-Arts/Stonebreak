@@ -13,7 +13,7 @@ import io.netty.buffer.ByteBuf;
  * <p>The client clock free-runs between samples; {@code TimeOfDay.nudgeTo} snaps on large
  * error and converges gently on small error so the sky never visibly jumps.
  *
- * @param worldTimeTicks the server's authoritative {@code TimeOfDay} tick counter
+ * @param worldTimeTicks the server's authoritative {@code TimeOfDay} absolute tick count (day × ticks-per-day + tick)
  * @param timeSpeed      time-scale multiplier the client should tick at (1.0 = normal)
  * @param frozen         true when the server clock is paused (client stops ticking too)
  */

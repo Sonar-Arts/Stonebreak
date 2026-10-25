@@ -1,8 +1,12 @@
 package com.stonebreak.player;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.items.weapon.WeaponGroup;
+import com.stonebreak.items.weapon.WeaponRules;
+import com.stonebreak.items.weapon.WeaponStats;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.player.combat.ManaController;
 import com.stonebreak.player.combat.RageTier;
@@ -13,9 +17,7 @@ import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.player.combat.rogue.RogueAbilityController;
 import com.stonebreak.player.combat.stealth.StealthController;
-import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
-import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.interaction.RaycastEngine;
@@ -75,6 +77,7 @@ public class Player {
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
     private Perspective perspective = Perspective.FIRST_PERSON;
     private final PlayerBodyAnimation bodyAnimation = new PlayerBodyAnimation();
+    private final com.stonebreak.vehicles.PlayerRiding riding = new com.stonebreak.vehicles.PlayerRiding();
     private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/second
 
     public Player(World world) {
@@ -192,6 +195,9 @@ public class Player {
 
     // Camera / view / inventory
     public Camera getCamera() { return camera; }
+
+    /** Seat state: in a vehicle, WASD rows and the body sits (see {@link com.stonebreak.vehicles.PlayerRiding}). */
+    public com.stonebreak.vehicles.PlayerRiding getRiding() { return riding; }
     public Inventory getInventory() { return inventory; }
     public Matrix4f getViewMatrix() { return camera.getViewMatrix(); }
 
@@ -262,11 +268,17 @@ public class Player {
     // Attack animation
     public boolean isAttacking() { return c.attack.isAttacking(); }
     public void startAttackAnimation() { c.attack.startAttackAnimation(); }
+    /** Starts a weapon swing if the previous one has finished; false while on cooldown. */
+    public boolean tryStartAttackSwing() { return c.attack.tryBeginSwing(getAttackSwingSeconds()); }
     public float getAttackAnimationProgress() { return c.attack.getAnimationProgress(); }
     public float getRawAttackAnimationProgress() { return c.attack.getRawAnimationProgress(); }
 
     // Bow draw
     public BowController getBowController() { return c.bow; }
+    /** Starts drawing the bow at the player's Ranged proficiency speed. */
+    public void startBowDraw() {
+        c.bow.startDrawing(c.characterStats.getProficiency(WeaponGroup.RANGED).attackSpeedMultiplier());
+    }
     public boolean isDrawingBow() { return c.bow.isDrawing(); }
     public float getBowDrawProgress() { return c.bow.getDrawProgress(); }
     public String getBowSboState() { return c.bow.getBowSboState(); }
@@ -346,6 +358,9 @@ public class Player {
      * keep walking mid-swing.
      */
     public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
+        if (riding.isRiding()) {
+            return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.SITTING;
+        }
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
         return com.stonebreak.mobs.sbe.PlayerStateMapping.locomotion(horizSpeed > WALK_SPEED_THRESHOLD,
@@ -364,13 +379,23 @@ public class Player {
     /** Envelope tracker for the attack overlay animation (time + fade weight). */
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return bodyAnimation.getAttackOverlay(); }
 
-    /** Returns the melee damage for the player's currently held item (1.0 for bare fist). */
-    public float getAttackDamage() {
+    /** Melee stats of the held item ({@link WeaponStats#UNARMED} for an empty hand or non-weapon). */
+    public WeaponStats getHeldWeapon() {
         ItemStack held = inventory.getSelectedHotbarSlot();
         if (!held.isEmpty() && held.getItem() instanceof ItemType itemType) {
-            return itemType.getDamage();
+            return WeaponRules.statsFor(itemType);
         }
-        return 1.0f;
+        return WeaponStats.UNARMED;
+    }
+
+    /**
+     * Seconds between swings with the held weapon at the player's proficiency rank in its
+     * group, before transient speed bonuses such as Rage.
+     */
+    public float getAttackSwingSeconds() {
+        WeaponStats weapon = getHeldWeapon();
+        return weapon.swingSeconds()
+            / c.characterStats.getProficiency(weapon.group()).attackSpeedMultiplier();
     }
 
     /** Multiplier applied to melee damage from the Berserker's Rage tier (T1+ grants increased damage). */
@@ -395,7 +420,8 @@ public class Player {
         if (!isCombatTarget(target)) {
             return;
         }
-        float damageDealt = getAttackDamage() * getMeleeDamageMultiplier();
+        WeaponStats weapon = getHeldWeapon();
+        float damageDealt = weapon.damage() * getMeleeDamageMultiplier();
 
         // Stealth opener: striking an unaware enemy leaves it flat-footed (so the crit roll below,
         // and any follow-up hit within the window, gains bonus crit chance). On a shadow the
@@ -418,13 +444,18 @@ public class Player {
             damageDealt *= c.rogueAbilities.onCritLanded(this, target);
         }
 
+        // Invulnerability after a hit only blocks the same weapon; keyed on the held item's id,
+        // as the server's ServerInventory.heldItemId() keys it for a replicated target.
+        ItemStack held = inventory.getSelectedHotbarSlot();
+        int weaponId = held.isEmpty() ? BlockType.AIR.getId() : held.getBlockTypeId();
+        float healthBefore = target.getHealth();
+        if (!target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType(), weaponId)) {
+            return; // i-frames or a dead target: nothing pays out, stealth holds
+        }
         c.stealth.onAttack(this); // attacking breaks stealth instantly
         if (target.isNetworkShadow()) {
-            target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, HitKind.MELEE);
             return; // the server's result lands the hit's effects
         }
-        float healthBefore = target.getHealth();
-        target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, HitKind.MELEE);
         float dealt = healthBefore - Math.max(0f, target.getHealth());
         if (dealt > 0f) {
             onMeleeHitLanded(target, dealt);
@@ -453,7 +484,7 @@ public class Player {
      * and the server refuses them too.
      */
     public static boolean isCombatTarget(LivingEntity entity) {
-        return entity != null && entity.isAlive() && !(entity instanceof RemotePlayer);
+        return entity != null && entity.isPlayerAttackable();
     }
 
     /** The entities in {@code entityManager} an ability may hit ({@link #isCombatTarget}). */

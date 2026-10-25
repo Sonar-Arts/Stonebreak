@@ -47,6 +47,7 @@ public final class GameServices {
     private MemoryLeakDetector memoryLeakDetector;
     private DebugOverlay debugOverlay;
     private TimeOfDay timeOfDay;
+    private com.stonebreak.world.weather.ClientWeather weather;
 
     public World world() { return world; }
     public void setWorld(World world) { this.world = world; }
@@ -98,4 +99,11 @@ public final class GameServices {
 
     public TimeOfDay timeOfDay() { return timeOfDay; }
     public void setTimeOfDay(TimeOfDay timeOfDay) { this.timeOfDay = timeOfDay; }
+
+    public com.stonebreak.world.weather.ClientWeather weather() { return weather; }
+    /** Replaces the weather; the previous world's (and its terrain worker) is closed. */
+    public void setWeather(com.stonebreak.world.weather.ClientWeather weather) {
+        if (this.weather != null && this.weather != weather) this.weather.close();
+        this.weather = weather;
+    }
 }

@@ -13,6 +13,12 @@ out vec4 fragColor;
 #include "/shaders/shadow/csm_uniforms.glsl"
 #include "/shaders/lighting/point_lights.glsl"
 #include "/shaders/shadow/csm_functions.glsl"
+#include "/shaders/clouds/cloud_field.glsl"
+#include "/shaders/clouds/cloud_shadow.glsl"
+// Ice and glass draw after the clouds are composited; this keeps them behind them.
+#include "/shaders/clouds/clouds_in_front.glsl"
+#include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/sunset_fog.glsl"
 
 uniform sampler2D texture_sampler;
 // Block texture array — sampled when u_useTextureArray is true.
@@ -31,7 +37,8 @@ uniform vec3 u_cameraPos;
 uniform float u_underwaterFogDensity;
 uniform vec3 u_underwaterFogColor;
 uniform float u_ambientLight;
-uniform vec3 u_sunDirection;
+uniform vec3 u_sunDirection;   // the key light: the sun by day, the moon by night
+uniform vec3 u_keyLight;       // its colour × strength: white by day, faint blue moonlight
 uniform vec3 u_viewPos;
 uniform float u_playerLight;
 // Atmospheric distance fog (fog-to-sky at the LOD outer ring).
@@ -122,15 +129,17 @@ void main() {
         // (diffuse + specular); ambient stays so shadows never go black.
         // Player-held geometry (u_playerLight >= 0) renders in arm-local
         // coordinates, so its fragPos is meaningless in light space — skip.
+        // Clouds dim the same direct light: thin cover only partly, storm
+        // towers almost entirely (Beer-Lambert through the column above).
         float shadowFactor = (u_playerLight >= 0.0)
             ? 1.0
-            : csmShadowFactor(fragPos, norm, v_viewDepth);
+            : csmShadowFactor(fragPos, norm, v_viewDepth) * cloudShadow(fragPos);
 
         // Diffuse component (directional sunlight)
         float diff = max(dot(norm, lightDir), 0.0);
         // Only apply full diffuse during daytime
         float diffuseStrength = 0.6 * u_ambientLight;
-        vec3 diffuse = diff * diffuseStrength * shadowFactor * textureColor.rgb;
+        vec3 diffuse = diff * diffuseStrength * shadowFactor * u_keyLight * textureColor.rgb;
 
         // Specular component (shiny highlights)
         float specularStrength = 0.3;
@@ -138,7 +147,7 @@ void main() {
         float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
         // Only ice gets strong specular (water has its own shader now)
         float specularIntensity = (v_isTranslucent > 0.5) ? 0.5 : 0.1;
-        vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * shadowFactor * vec3(1.0);
+        vec3 specular = specularIntensity * spec * specularStrength * u_ambientLight * shadowFactor * u_keyLight;
 
         // Combine lighting components
         vec3 result = ambient + diffuse + specular;
@@ -197,12 +206,20 @@ void main() {
         // volume around the eye and up/down must fade like sideways does;
         // skipped for player-held geometry (arm-local fragPos) and
         // disabled by the CPU (fogEnd=0) when LOD is off.
-        if (!u_isUIElement && u_playerLight < 0.0 && u_fogEnd > u_fogStart) {
-            float fogDist = u_fogSpherical
-                    ? length(fragPos - u_viewPos)
-                    : length(fragPos.xz - u_viewPos.xz);
-            float fogF = smoothstep(u_fogStart, u_fogEnd, fogDist);
-            fragColor = vec4(mix(fragColor.rgb, u_fogColor, fogF), fragColor.a);
+        if (!u_isUIElement && u_playerLight < 0.0) {
+            float fogF = 0.0;
+            if (u_fogEnd > u_fogStart) {
+                float fogDist = u_fogSpherical
+                        ? length(fragPos - u_viewPos)
+                        : length(fragPos.xz - u_viewPos.xz);
+                fogF = smoothstep(u_fogStart, u_fogEnd, fogDist);
+            }
+            // With the rain and snow in front of the fragment, and the sky's
+            // own where the distance fog dissolves it into the sky.
+            fragColor.rgb = applyPrecipFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos,
+                    horizonFogColor(u_fogColor, fragPos - u_viewPos), fogF);
+            // Only the translucent pass turns this on (WorldRenderer).
+            fragColor.rgb = behindClouds(fragColor.rgb, u_viewPos, fragPos);
         }
 
         // Apply underwater fog effect if not UI element and fog density > 0

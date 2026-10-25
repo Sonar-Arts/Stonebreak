@@ -195,6 +195,7 @@ public class Main {
             maybeAutoTorch();
             maybeAutoBattle();
             maybeAutoScreenshot();
+            maybeAutoFly();
             window.swapBuffers();
 
             if (!sleepToFrameBudget(System.nanoTime() - frameStartNanos)) {
@@ -254,10 +255,13 @@ public class Main {
         com.stonebreak.network.MultiplayerSession.startSingleplayer(name, seed);
     }
 
-    // ─── Dev: -Dstonebreak.autoview=<x>:<y>:<z>:<yaw>:<pitch> ────────────────
+    // ─── Dev: -Dstonebreak.autoview=<x>:<y|top[+n]>:<z>:<yaw>:<pitch>[:<bob>[:<period>]] ─
     //          -Dstonebreak.autolod=<LOW|MEDIUM|HIGH|ULTRA>[:<lodDistance>]
+    //          -Dstonebreak.autotime=<absolute ticks> (day × 24000 + tick: picks the moon's phase too)
+    //          -Dstonebreak.autoweather=<clear|cloudy|rain|storm|auto> (the whole world, as /weather <mode> world)
 
     private boolean autoViewArmed;
+    private long autoViewStartNanos = -1;
 
     /**
      * Development shortcut paired with {@code stonebreak.autoworld}: once the
@@ -265,7 +269,10 @@ public class Main {
      * fixed camera, so distant-terrain (FastLOD) changes can be screenshotted
      * from the same viewpoint run after run. {@code stonebreak.autolod}
      * overrides the LOD quality preset (and optionally the LOD distance) for
-     * this session only — nothing is saved. Inert unless a property is set.
+     * this session only — nothing is saved. An optional {@code bob} sways the
+     * camera that many blocks up and down every {@code period} seconds (default
+     * 3), to reproduce artifacts that only show while the camera moves. Inert
+     * unless a property is set.
      */
     private void maybeAutoView() {
         if (Game.getInstance().getState() != GameState.PLAYING) {
@@ -273,6 +280,21 @@ public class Main {
         }
         if (!autoViewArmed) {
             autoViewArmed = true;
+            String time = System.getProperty("stonebreak.autotime");
+            if (time != null && !time.isBlank()) {
+                long ticks = Long.parseLong(time.trim());
+                // The integrated server owns the clock, so set it there as /timeset does.
+                com.stonebreak.network.MultiplayerSession.requestServerTimeSet(ticks);
+                if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(ticks);
+                System.out.println("[autoview] time set to " + ticks);
+            }
+            String weather = System.getProperty("stonebreak.autoweather");
+            if (weather != null && !weather.isBlank()) {
+                var mode = com.stonebreak.world.weather.WeatherMode.parse(weather);
+                if (mode != null && com.stonebreak.network.MultiplayerSession.requestServerWeatherSet(mode, true)) {
+                    System.out.println("[autoview] weather set to " + mode);
+                }
+            }
             String lod = System.getProperty("stonebreak.autolod");
             if (lod != null && !lod.isBlank()) {
                 String[] p = lod.split(":");
@@ -301,10 +323,37 @@ public class Main {
             return;
         }
         player.setSpectator(true);
-        player.setPosition(Float.parseFloat(p[0]), Float.parseFloat(p[1]), Float.parseFloat(p[2]));
+        float x = Float.parseFloat(p[0]);
+        float z = Float.parseFloat(p[2]);
+        float y = p[1].startsWith("top") ? autoViewTopY(x, z, p[1]) : Float.parseFloat(p[1]);
+        if (p.length > 5) {
+            if (autoViewStartNanos < 0) {
+                autoViewStartNanos = System.nanoTime();
+            }
+            double period = p.length > 6 ? Double.parseDouble(p[6]) : 3.0;
+            double t = (System.nanoTime() - autoViewStartNanos) / 1e9;
+            y += (float) (Float.parseFloat(p[5]) * Math.sin(2.0 * Math.PI * t / period));
+        }
+        player.setPosition(x, y, z);
         player.setVelocity(new org.joml.Vector3f());
         player.getCamera().setYaw(Float.parseFloat(p[3]));
         player.getCamera().setPitch(Float.parseFloat(p[4]));
+    }
+
+    /**
+     * {@code top[+n]}: stand on the highest block of the column (n blocks above it),
+     * re-evaluated every frame so the camera rises as the column streams in.
+     */
+    private static float autoViewTopY(float x, float z, String spec) {
+        float above = spec.length() > 3 ? Float.parseFloat(spec.substring(4)) : 0f;
+        var world = Game.getWorld();
+        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
+        int top = com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 1;
+        while (top > 0 && (world == null
+                || world.getBlockAt(bx, top, bz) == com.stonebreak.blocks.BlockType.AIR)) {
+            top--;
+        }
+        return top + 1 + above;
     }
 
     // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night][:cluster] ─────────────
@@ -426,8 +475,10 @@ public class Main {
         if (java.util.Arrays.asList(parts).contains("night")) {
             // The integrated server owns the clock (TimeSyncS2C snaps the client
             // back), so route through the same path as /timeset.
-            com.stonebreak.network.MultiplayerSession.requestServerTimeSet(18000L);
-            if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(18000L);
+            long day = Game.getTimeOfDay() != null ? Game.getTimeOfDay().getDay() : 0L;
+            long midnight = day * com.stonebreak.world.TimeOfDay.TICKS_PER_DAY + 18000L;
+            com.stonebreak.network.MultiplayerSession.requestServerTimeSet(midnight);
+            if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(midnight);
         }
         autoTorchLookX = px + 4.5f;
         autoTorchLookY = py + 0.6f;
@@ -982,6 +1033,244 @@ public class Main {
         }
         if (parts.length > 2 && "quit".equalsIgnoreCase(parts[2])) {
             running = false;
+        }
+    }
+
+    // ─── Dev: -Dstonebreak.autofly=<delay>:<speed>:<seconds>:<dir>[:<everyN>] ──
+
+    private long autoFlyStartNanos = -1;
+    private boolean autoFlyDone;
+    private boolean autoFlyFlying;
+    private float autoFlyX, autoFlyY, autoFlyZ;
+    private long autoFlyFrame;
+    private java.util.concurrent.ExecutorService autoFlyWriter;
+
+    /**
+     * Development shortcut paired with {@code stonebreak.autoworld}: after
+     * {@code delay} seconds in the world, flies the player along +X at
+     * {@code speed} blocks/s, 40 blocks above the start, sweeping the yaw so
+     * chunks stream in and out of view continuously, and dumps every
+     * {@code everyN}-th frame (default 15) to {@code dir/f<frame>.png}. Quits
+     * after {@code seconds} of flight. Built to reproduce transient
+     * mesh-streaming corruption from a script. Inert unless the property is set.
+     */
+    private void maybeAutoFly() {
+        if (autoFlyDone) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autofly");
+        if (spec == null || spec.isBlank()) {
+            autoFlyDone = true;
+            return;
+        }
+        GameState state = Game.getInstance().getState();
+        if (autoFlyStartNanos < 0) {
+            if (state != GameState.PLAYING) {
+                return;
+            }
+            autoFlyStartNanos = System.nanoTime();
+            return;
+        }
+        if (state == GameState.PAUSED) {
+            Game.getInstance().setState(GameState.PLAYING); // a stray focus loss must not stop the run
+        }
+        String[] parts = spec.split(":");
+        double delay = parseOr(parts, 0, 10);
+        double speed = parseOr(parts, 1, 40);
+        double seconds = parseOr(parts, 2, 60);
+        String dir = parts.length > 3 ? parts[3] : "autofly";
+        int everyN = (int) parseOr(parts, 4, 15);
+        double t = (System.nanoTime() - autoFlyStartNanos) / 1e9 - delay;
+        if (t < 0) {
+            return;
+        }
+        var player = Game.getPlayer();
+        if (player == null) {
+            return;
+        }
+        if (!autoFlyFlying) {
+            autoFlyFlying = true;
+            org.joml.Vector3f p = player.getPosition();
+            autoFlyX = p.x;
+            autoFlyY = Math.min(p.y + 40f,
+                com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 8f);
+            autoFlyZ = p.z;
+            new java.io.File(dir).mkdirs();
+            autoFlyWriter = java.util.concurrent.Executors.newFixedThreadPool(4, r -> {
+                Thread th = new Thread(r, "autofly-png");
+                th.setDaemon(true);
+                return th;
+            });
+            System.out.println("[autofly] start @" + autoFlyX + "," + autoFlyY + "," + autoFlyZ
+                + " speed=" + speed + " seconds=" + seconds + " dir=" + dir + " every=" + everyN);
+        }
+        if (t > seconds) {
+            autoFlyDone = true;
+            for (int spin = 0; spin < 2000 && java.util.Arrays.stream(autoFlyPboFence).anyMatch(f -> f != 0); spin++) {
+                org.lwjgl.opengl.GL11.glFinish();
+                drainAutoFlyReadbacks(dir);
+            }
+            autoFlyWriter.shutdown();
+            try {
+                autoFlyWriter.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            System.out.println("[autofly] done after " + autoFlyFrame + " frames, skipped " + autoFlySkipped);
+            running = false;
+            return;
+        }
+        // Fixed-rate path (not dt-integrated) so runs at different FPS cover the same ground.
+        float x = autoFlyX + (float) (speed * t);
+        // Terrain-following: hold ~25 blocks over the highest loaded surface just
+        // ahead, climbing fast and sinking slowly, so the camera never ends up
+        // inside a mountain (which reads as garbage to the frame analyzer).
+        float ground = Float.NEGATIVE_INFINITY;
+        for (int ahead = 0; ahead <= 48; ahead += 8) {
+            ground = Math.max(ground, autoFlySurface(x + ahead, autoFlyZ));
+        }
+        if (ground > Float.NEGATIVE_INFINITY) {
+            float target = Math.min(ground + 25f,
+                com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 8f);
+            float dt = Math.min(0.1f, Game.getDeltaTime());
+            autoFlyY = target > autoFlyY
+                ? Math.min(target, autoFlyY + 60f * dt)
+                : Math.max(target, autoFlyY - 15f * dt);
+        }
+        player.setFlying(true);
+        player.teleport(x, autoFlyY, autoFlyZ);
+        player.getCamera().setYaw((float) (60.0 * Math.sin(t * 0.7)));
+        player.getCamera().setPitch(-20f);
+
+        autoFlyFrame++;
+        drainAutoFlyReadbacks(dir);
+        if (everyN > 0 && autoFlyFrame % everyN == 0) {
+            // Async PBO readback: a blocking glReadPixels drains the GPU queue
+            // every capture, which is exactly the CPU/GPU lag a streaming race
+            // needs — so never stall; skip the capture if every PBO is busy.
+            int slot = (int) ((autoFlyFrame / everyN) % AUTOFLY_PBOS);
+            if (autoFlyPboFence[slot] != 0) {
+                autoFlySkipped++;
+                return;
+            }
+            int w = window.width();
+            int h = window.height();
+            if (autoFlyPbo[slot] == 0 || autoFlyPboW != w || autoFlyPboH != h) {
+                if (autoFlyPbo[slot] == 0) {
+                    autoFlyPbo[slot] = org.lwjgl.opengl.GL15.glGenBuffers();
+                }
+                autoFlyPboW = w;
+                autoFlyPboH = h;
+                org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER, autoFlyPbo[slot]);
+                org.lwjgl.opengl.GL15.glBufferData(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER,
+                    (long) w * h * 4, org.lwjgl.opengl.GL15.GL_STREAM_READ);
+            }
+            org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER, autoFlyPbo[slot]);
+            org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_BACK);
+            org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_PACK_ALIGNMENT, 1);
+            org.lwjgl.opengl.GL11.glReadPixels(0, 0, w, h, org.lwjgl.opengl.GL11.GL_RGBA,
+                org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, 0L);
+            org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER, 0);
+            autoFlyPboFence[slot] = org.lwjgl.opengl.GL32.glFenceSync(
+                org.lwjgl.opengl.GL32.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            autoFlyPboFrame[slot] = autoFlyFrame;
+            autoFlyPboW2[slot] = w;
+            autoFlyPboH2[slot] = h;
+            System.out.printf("[autofly] frame %d t=%.2f x=%.1f fps=%.0f skipped=%d%n",
+                autoFlyFrame, t, x, 1.0 / Math.max(1e-4, Game.getDeltaTime()), autoFlySkipped);
+        }
+    }
+
+    private static final int AUTOFLY_PBOS = 6;
+    private final int[] autoFlyPbo = new int[AUTOFLY_PBOS];
+    private final long[] autoFlyPboFence = new long[AUTOFLY_PBOS];
+    private final long[] autoFlyPboFrame = new long[AUTOFLY_PBOS];
+    private final int[] autoFlyPboW2 = new int[AUTOFLY_PBOS];
+    private final int[] autoFlyPboH2 = new int[AUTOFLY_PBOS];
+    private int autoFlyPboW, autoFlyPboH;
+    private long autoFlySkipped;
+
+    /** Hands every finished PBO readback to the PNG writer without waiting on the GPU. */
+    private void drainAutoFlyReadbacks(String dir) {
+        for (int i = 0; i < AUTOFLY_PBOS; i++) {
+            long fence = autoFlyPboFence[i];
+            if (fence == 0) {
+                continue;
+            }
+            int status = org.lwjgl.opengl.GL32.glClientWaitSync(fence, 0, 0L);
+            if (status != org.lwjgl.opengl.GL32.GL_ALREADY_SIGNALED
+                    && status != org.lwjgl.opengl.GL32.GL_CONDITION_SATISFIED) {
+                continue;
+            }
+            org.lwjgl.opengl.GL32.glDeleteSync(fence);
+            autoFlyPboFence[i] = 0;
+            int w = autoFlyPboW2[i];
+            int h = autoFlyPboH2[i];
+            org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER, autoFlyPbo[i]);
+            java.nio.ByteBuffer mapped = org.lwjgl.opengl.GL15.glMapBuffer(
+                org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER, org.lwjgl.opengl.GL15.GL_READ_ONLY);
+            if (mapped != null) {
+                java.nio.ByteBuffer copy = java.nio.ByteBuffer.allocate(w * h * 4);
+                copy.put(mapped.limit(w * h * 4)).flip();
+                org.lwjgl.opengl.GL15.glUnmapBuffer(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER);
+                String file = String.format("%s/f%06d.png", dir, autoFlyPboFrame[i]);
+                autoFlyWriter.submit(() -> writePng(copy, w, h, file));
+            }
+            org.lwjgl.opengl.GL15.glBindBuffer(org.lwjgl.opengl.GL21.GL_PIXEL_PACK_BUFFER, 0);
+        }
+    }
+
+    /** Top solid block + 1 at (x, z), or -inf when the column's chunk isn't loaded. */
+    private static float autoFlySurface(float x, float z) {
+        var world = Game.getWorld();
+        if (world == null) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        int bx = (int) Math.floor(x);
+        int bz = (int) Math.floor(z);
+        int size = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
+        var chunk = world.getChunkIfLoaded(Math.floorDiv(bx, size), Math.floorDiv(bz, size));
+        if (chunk == null) {
+            return Float.NEGATIVE_INFINITY;
+        }
+        int top = Math.min(chunk.getHighestNonAirY(),
+            com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 1);
+        for (int y = top; y >= 0; y--) {
+            var block = world.getBlockAt(bx, y, bz);
+            if (block != null && block.isSolid()) {
+                return y + 1;
+            }
+        }
+        return Float.NEGATIVE_INFINITY;
+    }
+
+    private static double parseOr(String[] parts, int i, double fallback) {
+        if (parts.length <= i) {
+            return fallback;
+        }
+        try {
+            return Double.parseDouble(parts[i].trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
+    /** Writes the bottom-up RGBA readback as a half-resolution PNG (keeps up with every-2nd-frame capture). */
+    private static void writePng(java.nio.ByteBuffer pixels, int w, int h, String file) {
+        int ow = w / 2, oh = h / 2;
+        java.awt.image.BufferedImage img =
+            new java.awt.image.BufferedImage(ow, oh, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < oh; y++) {
+            for (int x = 0; x < ow; x++) {
+                int i = ((h - 1 - 2 * y) * w + 2 * x) * 4;
+                int r = pixels.get(i) & 0xFF, g = pixels.get(i + 1) & 0xFF, b = pixels.get(i + 2) & 0xFF;
+                img.setRGB(x, y, (r << 16) | (g << 8) | b);
+            }
+        }
+        try {
+            javax.imageio.ImageIO.write(img, "png", new java.io.File(file));
+        } catch (java.io.IOException e) {
+            System.err.println("[autofly] png failed: " + e.getMessage());
         }
     }
 

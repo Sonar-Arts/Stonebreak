@@ -4,8 +4,11 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.stonebreak.world.generation.TerrainGeneratorType;
+import com.stonebreak.world.weather.WeatherMode;
+import com.stonebreak.world.weather.WeatherZone;
 import org.joml.Vector3f;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Pure data model for world metadata.
@@ -22,6 +25,9 @@ public final class WorldData {
     private final long totalPlayTimeMillis;
     private final long worldTimeTicks;
     private final boolean cheatsEnabled;
+    private final long weatherSeconds;
+    private final WeatherMode weatherMode;
+    private final List<WeatherZone> weatherZones;
     private final int formatVersion;
     private final TerrainGeneratorType generatorType;
 
@@ -42,16 +48,27 @@ public final class WorldData {
             @JsonProperty("totalPlayTimeMillis") long totalPlayTimeMillis,
             @JsonProperty("worldTimeTicks") long worldTimeTicks,
             @JsonProperty("cheatsEnabled") boolean cheatsEnabled,
+            @JsonProperty("weatherSeconds") long weatherSeconds,
+            @JsonProperty("weatherMode") String weatherMode,
+            @JsonProperty("weatherZones") String weatherZones,
             @JsonProperty("formatVersion") int formatVersion,
             @JsonProperty("generatorType") String generatorType) {
         this(seed, worldName, spawnPosition, hasExplicitSpawn, createdTime, lastPlayed, totalPlayTimeMillis,
-             worldTimeTicks, cheatsEnabled, formatVersion,
+             worldTimeTicks, cheatsEnabled, weatherSeconds, parseWeatherMode(weatherMode),
+             WeatherZone.parseAll(weatherZones), formatVersion,
              TerrainGeneratorType.parse(generatorType, LEGACY_GENERATOR));
+    }
+
+    /** Saves from before weather existed (or with an unknown mode) start in AUTO. */
+    public static WeatherMode parseWeatherMode(String name) {
+        WeatherMode mode = WeatherMode.parse(name);
+        return mode != null ? mode : WeatherMode.AUTO;
     }
 
     private WorldData(long seed, String worldName, Vector3f spawnPosition, boolean hasExplicitSpawn,
                       LocalDateTime createdTime, LocalDateTime lastPlayed, long totalPlayTimeMillis,
-                      long worldTimeTicks, boolean cheatsEnabled, int formatVersion,
+                      long worldTimeTicks, boolean cheatsEnabled, long weatherSeconds,
+                      WeatherMode weatherMode, List<WeatherZone> weatherZones, int formatVersion,
                       TerrainGeneratorType generatorType) {
         this.seed = seed;
         this.worldName = worldName;
@@ -62,6 +79,9 @@ public final class WorldData {
         this.totalPlayTimeMillis = totalPlayTimeMillis;
         this.worldTimeTicks = worldTimeTicks;
         this.cheatsEnabled = cheatsEnabled;
+        this.weatherSeconds = weatherSeconds;
+        this.weatherMode = weatherMode;
+        this.weatherZones = List.copyOf(weatherZones);
         this.formatVersion = formatVersion;
         this.generatorType = generatorType;
     }
@@ -69,7 +89,8 @@ public final class WorldData {
     private WorldData(Builder builder) {
         this(builder.seed, builder.worldName, builder.spawnPosition,
              builder.hasExplicitSpawn, builder.createdTime, builder.lastPlayed,
-             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled, builder.formatVersion,
+             builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled,
+             builder.weatherSeconds, builder.weatherMode, builder.weatherZones, builder.formatVersion,
              builder.generatorType);
     }
 
@@ -83,6 +104,11 @@ public final class WorldData {
     public long getTotalPlayTimeMillis() { return totalPlayTimeMillis; }
     public long getWorldTimeTicks() { return worldTimeTicks; }
     public boolean isCheatsEnabled() { return cheatsEnabled; }
+    /** The weather clock, whole seconds (drives cloud drift; never wraps). */
+    public long getWeatherSeconds() { return weatherSeconds; }
+    public WeatherMode getWeatherMode() { return weatherMode; }
+    /** Regions held at their own weather by {@code /weather}. */
+    public List<WeatherZone> getWeatherZones() { return weatherZones; }
     public int getFormatVersion() { return formatVersion; }
     public TerrainGeneratorType getGeneratorType() { return generatorType; }
 
@@ -123,6 +149,17 @@ public final class WorldData {
             .build();
     }
 
+    /**
+     * Creates a new WorldData with updated weather clock, mode and zones.
+     */
+    public WorldData withWeather(long weatherSeconds, WeatherMode weatherMode, List<WeatherZone> weatherZones) {
+        return new Builder(this)
+            .weatherSeconds(weatherSeconds)
+            .weatherMode(weatherMode)
+            .weatherZones(weatherZones)
+            .build();
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -137,6 +174,9 @@ public final class WorldData {
         private long totalPlayTimeMillis = 0;
         private long worldTimeTicks = 6000; // Default to NOON
         private boolean cheatsEnabled = false;
+        private long weatherSeconds = 0;
+        private WeatherMode weatherMode = WeatherMode.AUTO;
+        private List<WeatherZone> weatherZones = List.of();
         private int formatVersion = 1;
         private TerrainGeneratorType generatorType = TerrainGeneratorType.STANDARD;
 
@@ -152,6 +192,9 @@ public final class WorldData {
             this.totalPlayTimeMillis = data.totalPlayTimeMillis;
             this.worldTimeTicks = data.worldTimeTicks;
             this.cheatsEnabled = data.cheatsEnabled;
+            this.weatherSeconds = data.weatherSeconds;
+            this.weatherMode = data.weatherMode;
+            this.weatherZones = data.weatherZones;
             this.formatVersion = data.formatVersion;
             this.generatorType = data.generatorType;
         }
@@ -198,6 +241,21 @@ public final class WorldData {
 
         public Builder cheatsEnabled(boolean cheatsEnabled) {
             this.cheatsEnabled = cheatsEnabled;
+            return this;
+        }
+
+        public Builder weatherSeconds(long weatherSeconds) {
+            this.weatherSeconds = weatherSeconds;
+            return this;
+        }
+
+        public Builder weatherMode(WeatherMode weatherMode) {
+            this.weatherMode = weatherMode;
+            return this;
+        }
+
+        public Builder weatherZones(List<WeatherZone> weatherZones) {
+            this.weatherZones = List.copyOf(weatherZones);
             return this;
         }
 

@@ -57,31 +57,17 @@ final class PlayerUpdatePipeline {
         }
 
         c.health.updateSpawnProtection(dt, state.isOnGround());
-        c.swimming.updateWaterState();
-        Game.getSoundSystem().setEnvironmentGain(
-                c.swimming.isInWater() ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
-        waterEffects.update(dt, state, c.swimming.isInWater());
-        c.swimming.applyAntiFloatingPreIntegration(c.flight.isFlying(),
-                c.jumpHandler.getLastNormalJumpTime(), c.jumpHandler.getNormalJumpGracePeriod());
-        c.swimming.applyWaterFlow(c.flight.isFlying());
-
-        c.movement.applyGravity();
-        Vector3f posBeforeIntegrate = state.getPosition();
-        float prevX = posBeforeIntegrate.x;
-        float prevZ = posBeforeIntegrate.z;
-        boolean wasOnGround = state.isOnGround();
-        boolean wasSprinting = c.stamina.isSprinting();
-        c.movement.integrateAndCollide();
-        recordDistance(dt, posBeforeIntegrate.x - prevX, posBeforeIntegrate.z - prevZ, wasOnGround, wasSprinting);
-        if (c.spectator.isActive()) {
-            state.setOnGround(false);
+        // Seated: the vehicle carries the body (and, rowing, the player moves the vehicle).
+        boolean seated = player.getRiding().tick(player, dt);
+        if (!seated) {
+            updateBodyPhysics(dt);
         } else {
-            c.groundChecker.check();
+            c.swimming.updateWaterState(); // boarded from a swim: the eyes are dry now
+            Game.getSoundSystem().setEnvironmentGain(1.0f);
         }
-        c.movement.applyDamping();
 
         Vector3f p = state.getPosition();
-        placeCamera(p);
+        placeCamera(p, seated ? com.stonebreak.vehicles.PlayerRiding.EYE_DROP : 0f);
 
         c.berserkerAbilities.update(dt, player);
         c.rangerAbilities.update(dt, player);
@@ -111,6 +97,9 @@ final class PlayerUpdatePipeline {
                 player.getBaseMovementState(), state.isPhysicallyInWater(),
                 com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
                         com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId()));
+        if (seated) {
+            bodyAnimation.getBodyOrientation().seat(player.getRiding().seatYaw());
+        }
         com.stonebreak.audio.PlayerSounds playerSounds = Game.getPlayerSounds();
         if (playerSounds != null && bodyAnimation.isFootstepDue()) {
             playerSounds.playFootstep(p);
@@ -119,11 +108,37 @@ final class PlayerUpdatePipeline {
             Game.getSoundSystem().setListenerFromCamera(p, camera.getFront(), camera.getUp());
         }
 
-        c.fallDamage.update(c.flight.isFlying());
+        c.fallDamage.update(c.flight.isFlying() || seated);
         // Cactus contact: eighth heart every 0.5 s while a spiky cell touches the
         // body — same flight gate as fall damage, next to it in the sequence.
         c.cactusContact.update(dt, c.flight.isFlying());
         c.deathHandler.processDeathIfNeeded();
+    }
+
+    /** Water state and effects, gravity, integration with collision, ground check and damping. */
+    private void updateBodyPhysics(float dt) {
+        c.swimming.updateWaterState();
+        Game.getSoundSystem().setEnvironmentGain(
+                c.swimming.isInWater() ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
+        waterEffects.update(dt, state, c.swimming.isInWater());
+        c.swimming.applyAntiFloatingPreIntegration(c.flight.isFlying(),
+                c.jumpHandler.getLastNormalJumpTime(), c.jumpHandler.getNormalJumpGracePeriod());
+        c.swimming.applyWaterFlow(c.flight.isFlying());
+
+        c.movement.applyGravity();
+        Vector3f posBeforeIntegrate = state.getPosition();
+        float prevX = posBeforeIntegrate.x;
+        float prevZ = posBeforeIntegrate.z;
+        boolean wasOnGround = state.isOnGround();
+        boolean wasSprinting = c.stamina.isSprinting();
+        c.movement.integrateAndCollide();
+        recordDistance(dt, posBeforeIntegrate.x - prevX, posBeforeIntegrate.z - prevZ, wasOnGround, wasSprinting);
+        if (c.spectator.isActive()) {
+            state.setOnGround(false);
+        } else {
+            c.groundChecker.check();
+        }
+        c.movement.applyDamping();
     }
 
     /** Accumulates horizontal travel (walked / sprinted / airborne) and airtime into the statistics. */
@@ -145,7 +160,8 @@ final class PlayerUpdatePipeline {
     }
 
     /** Eye-height camera in first person; terrain-clamped orbit camera in third person. */
-    private void placeCamera(Vector3f p) {
+    private void placeCamera(Vector3f feet, float eyeDrop) {
+        Vector3f p = new Vector3f(feet.x, feet.y - eyeDrop, feet.z);
         if (player.getPerspective() == Player.Perspective.THIRD_PERSON) {
             // Pull camera back behind and slightly above the player, but stop short of
             // any solid terrain in the way so it never clips through walls/cliffs.

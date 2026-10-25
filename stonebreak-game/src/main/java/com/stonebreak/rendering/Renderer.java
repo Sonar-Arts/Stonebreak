@@ -545,15 +545,19 @@ public class Renderer {
             return;
         }
 
+        // Shafts take the sun's colour: white by day, reddening as it sets.
+        org.joml.Vector3f sunColor = timeOfDay != null
+                ? com.stonebreak.rendering.lighting.SkyLight.of(timeOfDay).sunColor()
+                : new org.joml.Vector3f(1f);
         postPipeline.beginFrame();
         worldRenderer.renderWorld(world, player, totalTime);
-        // Stamp cloud depth into the scene FBO so god rays are occluded by clouds.
-        worldRenderer.renderCloudOcclusion(player, totalTime);
         postPipeline.endFrame(new PostFxFrameParams(
                 player.getViewMatrix(),
                 configManager.getProjectionMatrix(),
                 sunDirection,
-                godRayStrength));
+                sunColor,
+                godRayStrength,
+                worldRenderer.skyTransmittanceTexture(player)));
     }
 
     /**

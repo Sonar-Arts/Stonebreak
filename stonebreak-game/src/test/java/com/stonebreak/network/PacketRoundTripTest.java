@@ -127,8 +127,8 @@ class PacketRoundTripTest {
         assertEquals(new ChatMessageS2C(1, "bob", "hi"), roundTrip(ChatMessageS2C.CODEC, new ChatMessageS2C(1, "bob", "hi")));
         assertEquals(new EntitySpawnS2C(9, 1, 1f, 2f, 3f, 90f, "variant"), roundTrip(EntitySpawnS2C.CODEC, new EntitySpawnS2C(9, 1, 1f, 2f, 3f, 90f, "variant")));
         assertEquals(new EntityDespawnS2C(9), roundTrip(EntityDespawnS2C.CODEC, new EntityDespawnS2C(9)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 0), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 0)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 9, (byte) 1), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 9, (byte) 1)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, (byte) 0), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, (byte) 0)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 9, (byte) 2, (byte) 1), roundTrip(EntityDamageC2S.CODEC, new EntityDamageC2S(9, 4.5f, (byte) 9, (byte) 2, (byte) 1)));
         assertEquals(new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900), roundTrip(EntityMoveS2C.CODEC, new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900)));
         assertEquals(new EntityTeleportS2C(9, 1f, 2f, 3f, 90f), roundTrip(EntityTeleportS2C.CODEC, new EntityTeleportS2C(9, 1f, 2f, 3f, 90f)));
         assertEquals(new EntityAnimS2C(9, "Grazing"), roundTrip(EntityAnimS2C.CODEC, new EntityAnimS2C(9, "Grazing")));
@@ -146,6 +146,17 @@ class PacketRoundTripTest {
             assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(enabled),
                 roundTrip(com.stonebreak.network.packet.world.CheatsStateS2C.CODEC,
                     new com.stonebreak.network.packet.world.CheatsStateS2C(enabled)));
+        }
+        java.util.List<com.stonebreak.world.weather.WeatherZone> zones = java.util.List.of(
+            new com.stonebreak.world.weather.WeatherZone(-1234.5, 6789.25, 1500f, com.stonebreak.world.weather.WeatherMode.STORM),
+            new com.stonebreak.world.weather.WeatherZone(10, -20, 800f, com.stonebreak.world.weather.WeatherMode.CLEAR));
+        for (com.stonebreak.world.weather.WeatherMode mode : com.stonebreak.world.weather.WeatherMode.values()) {
+            assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode, zones),
+                roundTrip(com.stonebreak.network.packet.world.WeatherSyncS2C.CODEC,
+                    new com.stonebreak.network.packet.world.WeatherSyncS2C(123_456.75, mode, zones)));
+            assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(mode, mode.ordinal() % 2 == 0),
+                roundTrip(com.stonebreak.network.packet.world.WeatherSetC2S.CODEC,
+                    new com.stonebreak.network.packet.world.WeatherSetC2S(mode, mode.ordinal() % 2 == 0)));
         }
         assertEquals(new DropItemC2S(12, 64), roundTrip(DropItemC2S.CODEC, new DropItemC2S(12, 64)));
         // Intent seqs (protocol 13): placements, tosses, snow, toggles, death drops.
@@ -171,8 +182,8 @@ class PacketRoundTripTest {
         assertEquals(new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000),
             roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000)));
         assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
-        assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2)));
-        assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0)));
+        assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f)));
+        assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
         assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(),
             roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,
@@ -402,7 +413,7 @@ class PacketRoundTripTest {
         assertEquals(new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f), viaRegistry(reg, PLAY, CLIENTBOUND, new WelcomeS2C(1, 2L, TerrainGeneratorType.STANDARD, 3f, 4f, 5f)));
         assertEquals(new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5), viaRegistry(reg, PLAY, SERVERBOUND, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5)));
         assertEquals(new PlayerLeaveS2C(8), viaRegistry(reg, PLAY, CLIENTBOUND, new PlayerLeaveS2C(8)));
-        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 1), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 1)));
+        assertEquals(new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, (byte) 1), viaRegistry(reg, PLAY, SERVERBOUND, new EntityDamageC2S(9, 4.5f, (byte) 1, (byte) 2, (byte) 1)));
         assertEquals(new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(9, (byte) 1, 1.5f, 0f),
             viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.entity.EntityStatusEffectC2S(9, (byte) 1, 1.5f, 0f)));
         assertEquals(new com.stonebreak.network.packet.entity.EntityStatusS2C(9, 1f, 0x41),
@@ -419,6 +430,12 @@ class PacketRoundTripTest {
             viaRegistry(reg, PLAY, SERVERBOUND, new com.stonebreak.network.packet.world.CheatsSetC2S(true)));
         assertEquals(new com.stonebreak.network.packet.world.CheatsStateS2C(true),
             viaRegistry(reg, PLAY, CLIENTBOUND, new com.stonebreak.network.packet.world.CheatsStateS2C(true)));
+        assertEquals(new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM, java.util.List.of()),
+            viaRegistry(reg, PLAY, CLIENTBOUND,
+                new com.stonebreak.network.packet.world.WeatherSyncS2C(42.5, com.stonebreak.world.weather.WeatherMode.STORM, java.util.List.of())));
+        assertEquals(new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR, false),
+            viaRegistry(reg, PLAY, SERVERBOUND,
+                new com.stonebreak.network.packet.world.WeatherSetC2S(com.stonebreak.world.weather.WeatherMode.CLEAR, false)));
         assertEquals(new com.stonebreak.network.packet.player.ProgressS2C(9, 3, 40, 1, 2, 1, 5),
             viaRegistry(reg, PLAY, CLIENTBOUND,
                 new com.stonebreak.network.packet.player.ProgressS2C(9, 3, 40, 1, 2, 1, 5)));

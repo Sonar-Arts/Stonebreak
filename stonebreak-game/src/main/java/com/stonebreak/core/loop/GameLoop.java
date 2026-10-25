@@ -46,6 +46,7 @@ public final class GameLoop {
     private final ExecutorService worldUpdateExecutor;
 
     private boolean hasInitializedMouseCaptureAfterLoading = false;
+    private final com.stonebreak.audio.WeatherAudio weatherAudio = new com.stonebreak.audio.WeatherAudio();
 
     public GameLoop(Game game, ExecutorService worldUpdateExecutor) {
         this.game = game;
@@ -72,6 +73,11 @@ public final class GameLoop {
         if (musicManager != null) {
             musicManager.update(deltaTime, musicScene());
         }
+        // Weather ambience likewise, so it fades out the moment a menu or battle takes over.
+        boolean hearWeather = musicScene() == com.stonebreak.audio.MusicManager.Scene.NONE;
+        com.stonebreak.player.Player listener = Game.getPlayer();
+        weatherAudio.update(hearWeather ? Game.getWeather() : null, Game.getWorld(),
+                listener != null ? listener.getCamera().getPosition() : new org.joml.Vector3f(), deltaTime);
 
         if (!routeStateUpdate(deltaTime)) {
             return;
@@ -291,5 +297,11 @@ public final class GameLoop {
         if (timeOfDay != null) {
             timeOfDay.update(deltaTime);
         }
+        // The weather clock works the same way (WeatherSyncS2C converges it).
+        com.stonebreak.world.weather.ClientWeather weather = Game.getWeather();
+        if (weather != null) {
+            weather.update(deltaTime);
+        }
+
     }
 }

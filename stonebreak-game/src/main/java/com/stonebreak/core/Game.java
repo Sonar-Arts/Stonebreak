@@ -199,6 +199,7 @@ public class Game {
             com.stonebreak.player.CharacterStats live = player.getCharacterStats();
             live.restore(
                 pending.getSelectedClassId(),
+                new java.util.ArrayList<>(pending.getClassInvestmentOrder()),
                 new java.util.HashMap<>(pending.getSpentAbilityCp()),
                 new java.util.HashMap<>(pending.getSkillLevels()),
                 new java.util.HashSet<>(pending.getAcquiredFeatIds()),
@@ -394,6 +395,11 @@ public class Game {
     public static TimeOfDay getTimeOfDay() {
         var battle = com.stonebreak.battletest.BattleTestSession.current();
         return battle != null ? battle.time() : getInstance().services.timeOfDay();
+    }
+
+    /** The client's synced weather (clouds, rain); null before a world is joined. */
+    public static com.stonebreak.world.weather.ClientWeather getWeather() {
+        return getInstance().services.weather();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#togglePauseMenu()}. */
@@ -863,6 +869,10 @@ public class Game {
 
     public void setTimeOfDay(TimeOfDay timeOfDay) {
         services.setTimeOfDay(timeOfDay);
+    }
+
+    public void setWeather(com.stonebreak.world.weather.ClientWeather weather) {
+        services.setWeather(weather);
     }
 
     // ---- World lifecycle (client render world) ----

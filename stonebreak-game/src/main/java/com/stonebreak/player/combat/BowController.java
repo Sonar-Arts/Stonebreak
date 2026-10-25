@@ -1,27 +1,31 @@
 package com.stonebreak.player.combat;
 
 /**
- * Manages bow draw state. Hold right-click draws the bow over DRAW_DURATION seconds;
- * release fires an arrow whose speed scales with how long it was drawn.
+ * Manages bow draw state. Hold right-click draws the bow over DRAW_DURATION seconds
+ * (divided by the archer's draw-speed multiplier); release fires an arrow whose speed
+ * scales with how far it was drawn.
  */
 public class BowController {
 
     private static final float DRAW_DURATION  = 3.0f;
     private static final float MIN_DRAW_TIME  = 0.25f; // minimum hold before arrow fires
     private static final float MIN_ARROW_SPEED = 15.0f;
-    private static final float MAX_ARROW_SPEED = 45.0f;
+    public static final float MAX_ARROW_SPEED = 45.0f;
 
     private boolean drawing;
     private float drawTime;
+    private float drawSpeedMultiplier = 1.0f;
 
-    public void startDrawing() {
+    /** Starts a draw; {@code speedMultiplier} > 1 draws faster (e.g. a higher Ranged proficiency). */
+    public void startDrawing(float speedMultiplier) {
         drawing = true;
         drawTime = 0.0f;
+        drawSpeedMultiplier = Math.max(0.1f, speedMultiplier);
     }
 
     public void update(float deltaTime) {
         if (!drawing) return;
-        drawTime = Math.min(drawTime + deltaTime, DRAW_DURATION);
+        drawTime = Math.min(drawTime + deltaTime * drawSpeedMultiplier, DRAW_DURATION);
     }
 
     /** Returns true if the arrow should fire (held long enough). Resets state either way. */
@@ -55,10 +59,18 @@ public class BowController {
      * States cycle through five visual stages evenly over DRAW_DURATION.
      */
     public String getBowSboState() {
-        if (drawTime < DRAW_DURATION * 0.2f) return null;
-        if (drawTime < DRAW_DURATION * 0.4f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW1;
-        if (drawTime < DRAW_DURATION * 0.6f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW2;
-        if (drawTime < DRAW_DURATION * 0.8f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW3;
+        return sboStateFor(drawTime / DRAW_DURATION);
+    }
+
+    /**
+     * The bow's SBO texture state for a draw this far along (0 = slack, 1 = full draw); null is the
+     * undrawn default. Shared by every archer so player and mob bows bend the same way.
+     */
+    public static String sboStateFor(float drawFraction) {
+        if (drawFraction < 0.2f) return null;
+        if (drawFraction < 0.4f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW1;
+        if (drawFraction < 0.6f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW2;
+        if (drawFraction < 0.8f) return com.stonebreak.items.ItemType.BOW_STATE_DRAW3;
         return com.stonebreak.items.ItemType.BOW_STATE_DRAW4;
     }
 }

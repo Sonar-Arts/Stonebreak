@@ -82,12 +82,16 @@ import java.util.Objects;
  *       breaking a block when the block's material is in the tool's list and
  *       the tool's tier is at least the block's required tier. Manifest only;
  *       older readers ignore both.</li>
+ *   <li>1.10 - Combat data. Item SBOs may carry an optional {@code weapon}
+ *       section (see {@link WeaponData}): a weapon group, a damage type, base
+ *       melee damage and the swing time between hits. Supersedes
+ *       {@link ToolData#attackDamage()}. Manifest only; older readers ignore it.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.9";
+    public static final String FORMAT_VERSION = "1.10";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -343,6 +347,8 @@ public final class SBOFormat {
      *                         {@code null} means "use the game's default rule".
      * @param tool             optional mining-tool descriptor (1.9+) for item
      *                         SBOs. {@code null} means the item is not a mining tool.
+     * @param weapon           optional melee-weapon descriptor (1.10+) for item
+     *                         SBOs. {@code null} means the item is not a weapon.
      */
     public record Document(
             String version,
@@ -364,7 +370,8 @@ public final class SBOFormat {
             FuelData fuel,
             com.openmason.engine.format.sound.SoundData sounds,
             DropData drops,
-            ToolData tool
+            ToolData tool,
+            WeaponData weapon
     ) {
         public Document {
             Objects.requireNonNull(version, "version cannot be null");
@@ -468,6 +475,47 @@ public final class SBOFormat {
         public boolean hasTool() {
             return tool != null;
         }
+
+        /** True when this SBO declares itself a weapon (1.10+). */
+        public boolean hasWeapon() {
+            return weapon != null;
+        }
+    }
+
+    /**
+     * Optional melee-weapon descriptor embedded in an item SBO manifest (1.10+).
+     *
+     * <p>The group and damage type are free-form, lowercased names so the
+     * format stays game-agnostic; the game maps them onto its own enums.
+     *
+     * @param group        how the weapon is wielded ({@code one_handed},
+     *                     {@code two_handed}, {@code ranged}, ...); never blank
+     * @param damageType   kind of damage a hit deals ({@code slashing},
+     *                     {@code piercing}, {@code blunt}, ...); never blank
+     * @param damage       base damage per hit, {@code >= 0}
+     * @param swingSeconds base seconds between hits, {@code > 0}
+     */
+    public record WeaponData(String group, String damageType, float damage, float swingSeconds) {
+
+        public WeaponData {
+            group = normalizeName(group, "group");
+            damageType = normalizeName(damageType, "damageType");
+            if (!Float.isFinite(damage) || damage < 0f) {
+                throw new IllegalArgumentException("damage must be >= 0, got " + damage);
+            }
+            if (!Float.isFinite(swingSeconds) || swingSeconds <= 0f) {
+                throw new IllegalArgumentException("swingSeconds must be > 0, got " + swingSeconds);
+            }
+        }
+
+        private static String normalizeName(String value, String field) {
+            Objects.requireNonNull(value, field + " cannot be null");
+            String n = value.trim().toLowerCase(java.util.Locale.ROOT);
+            if (n.isEmpty()) {
+                throw new IllegalArgumentException(field + " cannot be blank");
+            }
+            return n;
+        }
     }
 
     /**
@@ -489,7 +537,8 @@ public final class SBOFormat {
      * @param durability      optional uses before breaking ({@code >= 1});
      *                        {@code null} = unspecified. Not read by the game yet.
      * @param attackDamage    optional melee damage ({@code >= 0}); {@code null}
-     *                        = unspecified. Not read by the game yet.
+     *                        = unspecified. Superseded by {@link WeaponData#damage()}
+     *                        (1.10); not read by the game.
      */
     public record ToolData(
             String toolClass,
@@ -966,6 +1015,7 @@ public final class SBOFormat {
         private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
         private DropData drops;
         private ToolData tool;
+        private WeaponData weapon;
 
         public ExportParameters() {}
 
@@ -1022,6 +1072,9 @@ public final class SBOFormat {
 
         public ToolData getTool() { return tool; }
         public void setTool(ToolData tool) { this.tool = tool; }
+
+        public WeaponData getWeapon() { return weapon; }
+        public void setWeapon(WeaponData weapon) { this.weapon = weapon; }
 
         /**
          * Validates that all required fields are populated.

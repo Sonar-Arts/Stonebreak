@@ -79,6 +79,15 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     private final SinkholeCarver sinkholeCarver;
     private final SurfaceProfileCache surfaceProfiles;
 
+    /**
+     * Blocks per sample of the coarse tiles weather reads relief from: the terrain mapper's
+     * overview resolution, a few tiles for the whole cloud window instead of thousands.
+     */
+    private static final int RELIEF_LOD = 8;
+    /** Coarse relief tiles, opened on first use; see {@link #sampleReliefHeights}. */
+    private DiffusionTileCache reliefTiles;
+    private HeightMapGenerator reliefHeights;
+
     private final Random animalRandom = new Random();
     private final Object animalRandomLock = new Object();
 
@@ -141,6 +150,13 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
      * {@code World.cleanup()}.
      */
     public void shutdown() {
+        synchronized (this) {
+            if (reliefTiles != null) {
+                reliefTiles.close();
+                reliefTiles = null;
+                reliefHeights = null;
+            }
+        }
         if (tileSource instanceof AutoCloseable closeable) {
             try {
                 closeable.close();
@@ -155,7 +171,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     }
 
     /**
-     * The model's tile-cache namespace (see {@link TGMPipe#cacheNamespace}): it changes whenever a
+     * The model's tile-cache namespace (see {@link TGMPipe#cacheNamespace()}): it changes whenever a
      * retrained checkpoint, a re-tuned world or an edited pipeline changes what a tile holds, and
      * so must every FastLOD node sampled from those tiles.
      */
@@ -377,6 +393,35 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             sampleColumnsNow(worldX0, worldZ0, count, stride, outHeights, outWaterLevels, outSurface, null, false);
             return null;
         });
+    }
+
+    /**
+     * From the coarse overview tiles ({@link #RELIEF_LOD} blocks per sample) at preview priority,
+     * so weather never queues ahead of chunk generation. The test seam (a fake tile source) has
+     * no service to ask, so it samples its own tiles.
+     */
+    @Override
+    public void sampleReliefHeights(int worldX0, int worldZ0, int count, int stride, int[] outHeights) {
+        HeightMapGenerator heights = reliefHeights();
+        if (heights == null) {
+            TerrainGenerator.super.sampleReliefHeights(worldX0, worldZ0, count, stride, outHeights);
+            return;
+        }
+        for (int ix = 0; ix < count; ix++) {
+            for (int iz = 0; iz < count; iz++) {
+                int sx = Math.floorDiv(worldX0 + ix * stride, RELIEF_LOD);
+                int sz = Math.floorDiv(worldZ0 + iz * stride, RELIEF_LOD);
+                outHeights[ix * count + iz] = Math.max(heights.generateHeight(sx, sz), heights.waterLevel(sx, sz));
+            }
+        }
+    }
+
+    private synchronized HeightMapGenerator reliefHeights() {
+        if (reliefHeights == null && tileSource instanceof DiffusionTileCache) {
+            reliefTiles = new DiffusionTileCache(seed, RELIEF_LOD, TGMPipe.PRIORITY_PREVIEW);
+            reliefHeights = new HeightMapGenerator(reliefTiles);
+        }
+        return reliefHeights;
     }
 
     private void sampleColumnsNow(int worldX0, int worldZ0, int count, int stride,

@@ -44,6 +44,8 @@ public class ChatCommandExecutor {
         registerCommand(new TeleportCommand());
         registerCommand(new BattleTestCommand());
         registerCommand(new BattleCommand());
+        registerCommand(new LevelCommand());
+        registerCommand(new WeatherCommand());
     }
 
     /**

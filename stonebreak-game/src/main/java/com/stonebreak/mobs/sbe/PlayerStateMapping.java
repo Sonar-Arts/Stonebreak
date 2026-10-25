@@ -18,7 +18,9 @@ public final class PlayerStateMapping {
     }
 
     public enum PlayerMovementState {
-        IDLE, WALKING, JUMPING, ATTACKING, SPRINTING
+        IDLE, WALKING, JUMPING, ATTACKING, SPRINTING,
+        /** Seated in a vehicle. */
+        SITTING
     }
 
     /** SBE state name for a player movement state (null only if a state has no clip). */
@@ -29,6 +31,7 @@ public final class PlayerStateMapping {
             case SPRINTING -> "sprinting";
             case JUMPING   -> "jumping";
             case ATTACKING -> "attacking";
+            case SITTING   -> "sitting";
         };
     }
 

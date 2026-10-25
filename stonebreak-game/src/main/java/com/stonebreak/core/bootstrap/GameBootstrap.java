@@ -38,6 +38,7 @@ public final class GameBootstrap {
     public static void configureSoundSystem(SoundSystem soundSystem) {
         soundSystem.initialize();
         com.stonebreak.audio.GameSoundLoader.load(soundSystem, "blockpickup", "/sounds/BlockPickup.wav");
+        com.stonebreak.audio.WeatherAudio.load(soundSystem);
 
         soundSystem.setMasterVolume(Settings.getInstance().getMasterVolume());
     }

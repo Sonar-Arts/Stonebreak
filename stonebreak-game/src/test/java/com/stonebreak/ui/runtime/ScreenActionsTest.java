@@ -148,7 +148,7 @@ class ScreenActionsTest {
         assertEquals(UiValue.of("Cow"), root.get("name"));
         assertEquals(UiValue.of("2 defeated"), root.get("badge"));
         assertEquals(UiValue.of("Default  1/2"), root.get("chip"));
-        assertEquals(UiValue.of("1 / 4 observed"), root.get("observedText"));
+        assertEquals(UiValue.of("1 / 5 observed"), root.get("observedText"));
 
         assertEquals(ActionCall.State.SUCCEEDED, scope.invoke("stonebreak:screen.glossary.cycle",
             new UiValue.Obj(java.util.Map.of("delta", UiValue.of(1))), site).state());

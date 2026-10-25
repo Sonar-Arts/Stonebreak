@@ -5,6 +5,7 @@ import com.stonebreak.audio.MobSounds;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobAI;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
@@ -21,6 +22,9 @@ import com.stonebreak.mobs.entities.status.StatusEffectType;
  * bewildered timer → AI → animation → footsteps.
  */
 public abstract class LivingEntity extends Entity {
+    /** Weapon id of a hit that was not a melee swing (arrows, spells, abilities, damage over time). */
+    public static final int NO_WEAPON = -1;
+
     // Components
     private final LivingEntityCombat combat = new LivingEntityCombat(this);
     private final LivingEntityStatusEffects statusEffects = new LivingEntityStatusEffects(this);
@@ -137,8 +141,8 @@ public abstract class LivingEntity extends Entity {
         // Tick the Illusionist Bewildered/panic timer; clear the forced target when it lapses.
         combat.updateBewildered(deltaTime);
 
-        // Update AI behavior — suppressed while stunned
-        if (!isStunned()) {
+        // Update AI behavior — suppressed while stunned or seated in a vehicle
+        if (!isStunned() && !isRiding()) {
             updateAI(deltaTime);
         }
 
@@ -228,8 +232,28 @@ public abstract class LivingEntity extends Entity {
         damage(amount, DamageSource.UNKNOWN);
     }
 
-    public void damage(float amount, DamageSource source) {
-        damage(amount, source, null, true);
+    /** @return whether the hit counted (see {@link LivingEntityCombat#damage}) */
+    public boolean damage(float amount, DamageSource source) {
+        return damage(amount, source, null, true);
+    }
+
+    /**
+     * Damage of an explicit {@link DamageType} (e.g. a weapon's), resisted per {@link EntityType#resistance}.
+     *
+     * @return whether the hit counted (see {@link LivingEntityCombat#damage})
+     */
+    public boolean damage(float amount, DamageSource source, DamageType type) {
+        return damage(amount, source, type, null, true);
+    }
+
+    /**
+     * A melee hit with the item {@code weaponId}: invulnerability after it only blocks that
+     * same weapon, so switching weapons lands a fresh hit.
+     *
+     * @return whether the hit counted (see {@link LivingEntityCombat#damage})
+     */
+    public boolean damage(float amount, DamageSource source, DamageType type, int weaponId) {
+        return damage(amount, source, type, weaponId, null, true);
     }
 
     /**
@@ -241,8 +265,25 @@ public abstract class LivingEntity extends Entity {
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
      */
-    public void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
-        combat.damage(amount, source, attackerPos, creditLocalPlayer, HitKind.ABILITY);
+    public boolean damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+        return damage(amount, source, source.defaultDamageType(), attackerPos, creditLocalPlayer);
+    }
+
+    /** As {@link #damage(float, DamageSource, Vector3f, boolean)}, with an explicit damage type. */
+    public boolean damage(float amount, DamageSource source, DamageType type,
+                          Vector3f attackerPos, boolean creditLocalPlayer) {
+        return damage(amount, source, type, NO_WEAPON, attackerPos, creditLocalPlayer);
+    }
+
+    /**
+     * As {@link #damage(float, DamageSource, DamageType, Vector3f, boolean)}, from the melee weapon
+     * {@code weaponId}. A hit with a weapon is a {@link HitKind#MELEE} intent on a network shadow;
+     * one without ({@link #NO_WEAPON}) an {@link HitKind#ABILITY} intent.
+     */
+    public boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
+                          Vector3f attackerPos, boolean creditLocalPlayer) {
+        HitKind kind = weaponId != NO_WEAPON ? HitKind.MELEE : HitKind.ABILITY;
+        return combat.damage(amount, source, type, weaponId, attackerPos, creditLocalPlayer, kind);
     }
 
     /**
@@ -250,8 +291,8 @@ public abstract class LivingEntity extends Entity {
      * the server which rules validate the intent (melee reach/cooldown/weapon vs an ability
      * profile). Off a shadow it behaves like {@link #damage(float, DamageSource)}.
      */
-    public void damage(float amount, DamageSource source, HitKind kind) {
-        combat.damage(amount, source, null, true, kind);
+    public boolean damage(float amount, DamageSource source, HitKind kind) {
+        return combat.damage(amount, source, source.defaultDamageType(), NO_WEAPON, null, true, kind);
     }
 
     /** Applies already-multiplied damage to health via {@link Entity#damage} (may trigger death). */
@@ -450,6 +491,12 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
+     * Whether the local player's attacks and abilities may target this entity. Hits on a target
+     * that can't take damage must not pay out Rage, lifesteal, Quarry or debuffs.
+     */
+    public boolean isPlayerAttackable() { return isAlive(); }
+
+    /**
      * Applies an instantaneous knockback impulse in an arbitrary horizontal direction
      * (e.g. away from a charge line or an ability's impact point), plus a vertical lift.
      * {@code horizontalDirection} need not be normalized; only its horizontal (XZ) component is used.
@@ -533,12 +580,31 @@ public abstract class LivingEntity extends Entity {
     // Getters
     public float getMoveSpeed() { return moveSpeed; }
     public float getTurnSpeed() { return turnSpeed; }
-    public boolean isInvulnerable() { return combat.isInvulnerable(); }
-    public float getInvulnerabilityTimer() { return combat.getInvulnerabilityTimer(); }
     public boolean isMoving() { return isMoving; }
     public float getInteractionRange() { return interactionRange; }
     public Vector3f getTargetDirection() { return new Vector3f(targetDirection); }
     public float getLegHeight() { return legHeight; }
+
+    /**
+     * What hits are tested against — arrows, bolts, swings and targeting: the rendered model,
+     * turned to the way the entity faces. {@link #getBoundingBox()} stays the movement body
+     * (walls, gaps, shoving), which a long or tall model would wedge into doorways. Falls back
+     * to that body when no model is registered.
+     */
+    public BoundingBox getHitBox() {
+        ModelBounds model = ModelBounds.of(modelObjectId(), textureVariant);
+        if (model == null) {
+            return getBoundingBox();
+        }
+        return model.placed(position.x, position.y - legHeight, position.z, modelYaw(),
+                scale.x, scale.y, scale.z);
+    }
+
+    /** The SBE model this entity is drawn with, or null for none. */
+    protected String modelObjectId() { return getType().getSbeObjectId(); }
+
+    /** The heading, in degrees, the renderer turns this entity's model to. */
+    protected float modelYaw() { return rotation.y; }
 
     // Setters
     public void setMoveSpeed(float moveSpeed) { this.moveSpeed = moveSpeed; }
@@ -569,6 +635,16 @@ public abstract class LivingEntity extends Entity {
          */
         public boolean isMagical() {
             return this == ARCANE;
+        }
+
+        /** Damage type of a hit from this source when the caller names none. */
+        public DamageType defaultDamageType() {
+            return switch (this) {
+                case ARROW -> DamageType.PIERCING;
+                case FIRE -> DamageType.FIRE;
+                case ARCANE -> DamageType.ARCANE;
+                default -> DamageType.UNTYPED;
+            };
         }
     }
 }

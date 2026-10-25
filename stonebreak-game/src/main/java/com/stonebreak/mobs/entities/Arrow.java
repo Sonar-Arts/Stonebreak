@@ -1,12 +1,14 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.core.Game;
+import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 /**
- * Arrow projectile fired by the player when drawing and releasing the bow.
+ * Arrow projectile, fired by the player releasing the bow or by an archer mob.
  * Unlike FireBolt, arrows are subject to standard gravity physics applied by EntityManager.
  * Speed (and thus range) scales with how long the bow was drawn.
  */
@@ -16,12 +18,25 @@ public class Arrow extends Entity {
     private static final float BASE_DAMAGE = 5.0f;
     private static final float MAX_DAMAGE  = 15.0f;
     private static final float HIT_RADIUS  = 0.4f;
+    /** Body boxes are grown by this much when a player's arrow sweeps through them. */
+    private static final float ENTITY_HIT_MARGIN = 0.1f;
 
     private final float launchSpeed;
+    /**
+     * Where the arrow was at its previous update. External physics moves it between updates,
+     * so {@code lastPosition → position} is the path it just flew.
+     */
+    private final Vector3f lastPosition;
+
+    /** The mob that loosed this arrow, or null for a player's arrow. */
+    private LivingEntity shooter;
+    /** Damage a mob's arrow does to the player it hits. */
+    private float mobArrowDamage;
 
     public Arrow(World world, Vector3f position, Vector3f velocity) {
         super(world, position);
         this.launchSpeed = velocity.length();
+        this.lastPosition = new Vector3f(position);
         this.velocity.set(velocity);
         this.width  = 0.05f;
         this.height = 0.05f;
@@ -29,6 +44,16 @@ public class Arrow extends Entity {
         // Face the travel direction (yaw from xz, no pitch stored — visual only)
         this.rotation.y = (float) Math.toDegrees(Math.atan2(-velocity.x, -velocity.z));
         this.scale.set(0.15f, 0.15f, 0.5f);
+    }
+
+    /**
+     * Marks this as a mob's arrow: it flies through its shooter and other mobs (no friendly
+     * fire), and hurts the local player it strikes for {@code damage}.
+     */
+    public Arrow firedBy(LivingEntity shooter, float damage) {
+        this.shooter = shooter;
+        this.mobArrowDamage = damage;
+        return this;
     }
 
     @Override
@@ -51,27 +76,58 @@ public class Arrow extends Entity {
             return;
         }
 
-        // Entity collision — damage the first living entity struck. Use the OWNING world's
-        // manager: server-spawned arrows must scan the server's entities (the Game singleton
-        // resolves to the client render manager in the two-world model).
-        EntityManager em = OwningEntityManager.of(this);
-        if (em != null) {
-            for (Entity e : em.getEntitiesInRange(position, HIT_RADIUS)) {
-                if (e == this) continue;
-                if (e instanceof LivingEntity le) {
-                    float speedRatio = launchSpeed > 0 ? Math.min(launchSpeed / 45.0f, 1.0f) : 0.0f;
-                    float damage = BASE_DAMAGE + (MAX_DAMAGE - BASE_DAMAGE) * speedRatio;
-                    // The hit result goes to the shooter (KillCreditS2C with the target's
-                    // network id and ARROW source); their client builds Quarry/Study from it.
-                    ProjectileDamage.deal(this, le, damage, LivingEntity.DamageSource.ARROW);
-                    alive = false;
-                    return;
-                }
-            }
+        if (shooter != null ? strikeLocalPlayer() : strikeEntity()) {
+            alive = false;
+            return;
         }
+        lastPosition.set(position);
         // Counter-act most of the engine gravity so arrows arc gently rather than
         // dropping steeply. Entity.GRAVITY = -40; net effective gravity ≈ -10.
         velocity.y += 30.0f * deltaTime;
+    }
+
+    /** A mob's arrow: hurts the local player if it is inside them. */
+    private boolean strikeLocalPlayer() {
+        if (!hitsLocalPlayer()) {
+            return false;
+        }
+        Game.getPlayer().damage(mobArrowDamage);
+        return true;
+    }
+
+    /** A player's arrow: damages the first living entity on the path it just flew. */
+    private boolean strikeEntity() {
+        // Use the OWNING world's manager: server-spawned arrows must scan the server's
+        // entities (the Game singleton resolves to the client render manager in the
+        // two-world model).
+        EntityManager em = OwningEntityManager.of(this);
+        if (em == null) {
+            return false;
+        }
+        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN);
+        if (le == null) {
+            return false;
+        }
+        float speedRatio = launchSpeed > 0 ? Math.min(launchSpeed / BowController.MAX_ARROW_SPEED, 1.0f) : 0.0f;
+        float damage = BASE_DAMAGE + (MAX_DAMAGE - BASE_DAMAGE) * speedRatio;
+        // The hit result goes to the shooter (KillCreditS2C with the target's network id
+        // and ARROW source); their client builds Quarry/Study from it.
+        ProjectileDamage.deal(this, le, damage, LivingEntity.DamageSource.ARROW);
+        return true;
+    }
+
+    /** Whether the arrow is inside the local player's body box (feet position, standing height). */
+    private boolean hitsLocalPlayer() {
+        com.stonebreak.player.Player player = Game.getPlayer();
+        if (player == null || player.isDead()) {
+            return false;
+        }
+        Vector3f feet = player.getPosition();
+        float halfWidth = com.stonebreak.player.PlayerConstants.PLAYER_WIDTH * 0.5f + HIT_RADIUS;
+        return Math.abs(position.x - feet.x) <= halfWidth
+                && Math.abs(position.z - feet.z) <= halfWidth
+                && position.y >= feet.y - HIT_RADIUS
+                && position.y <= feet.y + com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT + HIT_RADIUS;
     }
 
     @Override

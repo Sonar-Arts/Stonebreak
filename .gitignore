@@ -37,6 +37,9 @@ buildNumber.properties
 .mvn/timing.properties
 .mvn/wrapper/maven-wrapper.jar
 
+# KDE Dolphin folder settings
+.directory
+
 # IntelliJ IDEA
 .idea/
 *.iml
@@ -165,3 +168,6 @@ QWEN.md
 
 # Stray mirror of the absolute repo path (tool writing absolute paths as relative)
 /mnt/
+
+# Written to the working directory by the game on a crash
+crash_log.txt

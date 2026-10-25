@@ -25,7 +25,7 @@ class PrefsSequencerTest {
         PrefsSequencer seq = new PrefsSequencer();
 
         int p0 = seq.nextSeq(cs.getLedgerVersion());     // report P0: nothing spent
-        cs.spendCpOnAbility("berserker:0");                // spend after P0
+        cs.spendCpOnAbility("berserker:p0:0");                // spend after P0
         int p1 = seq.nextSeq(cs.getLedgerVersion());     // report P1: 1 CP spent
 
         // P0's echo (remainingCp 1) arrives after P1 went out: applying it would hand the

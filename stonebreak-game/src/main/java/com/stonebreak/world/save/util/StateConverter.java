@@ -66,6 +66,7 @@ public final class StateConverter {
             .selectedHotbarSlot(inventory.getSelectedSlot())
             .worldName(worldName)
             .selectedClassId(cs.getSelectedClassId())
+            .classInvestmentOrder(cs.getClassInvestmentOrder())
             .spentAbilityCp(new HashMap<>(cs.getSpentAbilityCp()))
             .skillLevels(new HashMap<>(cs.getSkillLevels()))
             .acquiredFeatIds(new HashSet<>(cs.getAcquiredFeatIds()))
@@ -90,6 +91,7 @@ public final class StateConverter {
         CharacterStats cs = player.getCharacterStats();
         cs.restore(
             data.getSelectedClassId(),
+            data.getClassInvestmentOrder(),
             new HashMap<>(data.getSpentAbilityCp()),
             new HashMap<>(data.getSkillLevels()),
             new HashSet<>(data.getAcquiredFeatIds()),
@@ -206,6 +208,9 @@ public final class StateConverter {
             } catch (IllegalArgumentException ignored) {}
         });
         player.getEntityDiscoveries().restore(variantsRestored, weaknessesRestored);
+
+        // Saved seated in a boat: sit back in it once it streams in (not when respawning below).
+        player.getRiding().resumeSeat(data.getHealth() > 0f ? data.getVehiclePosition() : null);
 
         // Saved while dead (quit or crashed from the death screen): come back respawned rather than
         // alive at 0 health where you died. Last, so full health is the restored character's maximum.

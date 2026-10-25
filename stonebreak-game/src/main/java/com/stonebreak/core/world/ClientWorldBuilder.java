@@ -123,7 +123,7 @@ public final class ClientWorldBuilder {
             // stale player. For SP/host this is synchronous; for JOIN it is a no-op (the data
             // arrives via PlayerDataS2C and is applied by the client view).
             MultiplayerSession.restoreLocalPlayer(player);
-            adoptServerClock();
+            adoptServerClock(seed);
 
             // Wait under where the player really is: a restored player arrives at their saved position,
             // not at the world spawn the handshake carries.
@@ -164,11 +164,16 @@ public final class ClientWorldBuilder {
      * The client clock is server-authoritative. Seed it from the TimeSyncS2C the server sends right
      * after WelcomeS2C when that already arrived (buffered by the client view); otherwise start at
      * NOON and let the first periodic sync snap it. Always replace — a leftover clock from a
-     * previous session belongs to a different world.
+     * previous session belongs to a different world. The weather clock is adopted the same way.
      */
-    private void adoptServerClock() {
+    private void adoptServerClock(long seed) {
         Long serverTicks = MultiplayerSession.pendingServerTimeTicks();
         game.setTimeOfDay(new TimeOfDay(serverTicks != null ? serverTicks : TimeOfDay.NOON));
+        var weatherSync = MultiplayerSession.pendingWeatherSync();
+        game.setWeather(weatherSync != null
+                ? new com.stonebreak.world.weather.ClientWeather(seed, weatherSync.weatherSeconds(), weatherSync.mode(),
+                        weatherSync.zones())
+                : new com.stonebreak.world.weather.ClientWeather(seed, 0.0, com.stonebreak.world.weather.WeatherMode.AUTO));
     }
 
     /**

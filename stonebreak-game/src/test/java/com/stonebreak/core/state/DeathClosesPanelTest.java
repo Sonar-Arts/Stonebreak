@@ -103,7 +103,7 @@ class DeathClosesPanelTest {
         Player player = mock(Player.class);
         CharacterStats stats = mock(CharacterStats.class);
         CharacterStats.RpgSnapshot snapshot = new CharacterStats.RpgSnapshot(
-                null, Map.of(), Map.of(), java.util.Set.of(), new int[0], 0, 0, 0, 0, 1, 0);
+                null, java.util.List.of(), Map.of(), Map.of(), java.util.Set.of(), new int[0], 0, 0, 0, 0, 1, 0);
         when(player.getCharacterStats()).thenReturn(stats);
         when(stats.snapshotRpgState()).thenReturn(snapshot);
         when(stats.hasChangedSince(snapshot)).thenReturn(true);
@@ -148,7 +148,7 @@ class DeathClosesPanelTest {
         Player player = mock(Player.class);
         CharacterStats stats = mock(CharacterStats.class);
         CharacterStats.RpgSnapshot snapshot = new CharacterStats.RpgSnapshot(
-                null, Map.of(), Map.of(), java.util.Set.of(), new int[0], 0, 0, 0, 0, 1, 0);
+                null, java.util.List.of(), Map.of(), Map.of(), java.util.Set.of(), new int[0], 0, 0, 0, 0, 1, 0);
         when(player.getCharacterStats()).thenReturn(stats);
         when(stats.snapshotRpgState()).thenReturn(snapshot);
         when(stats.hasChangedSince(snapshot)).thenReturn(true);

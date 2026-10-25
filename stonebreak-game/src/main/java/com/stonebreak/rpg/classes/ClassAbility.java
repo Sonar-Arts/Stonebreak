@@ -1,8 +1,11 @@
 package com.stonebreak.rpg.classes;
 
 /**
- * An ability within a player class that can be unlocked using Class Points (CP).
+ * A core ability of a player class, unlocked by its first rank in the class tree. Core abilities
+ * are tier-I nodes keyed {@code "<classId>:<index>"}.
  *
+ * @param cpCost   deprecated and unused: the CP price of a rank is set by the class's multiclass slot
+ *                 ({@code CharacterStats.getCpCostPerRank}). Kept so existing definitions compile.
  * @param iconPath classpath resource path to a 16x16 icon (e.g. {@code /ui/abilities/berserker/Rampage.png}),
  *                 or {@code null} if the ability has no icon yet.
  */

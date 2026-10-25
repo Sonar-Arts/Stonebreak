@@ -1,5 +1,6 @@
 package com.stonebreak.ui.characterCreation.fidelity;
 
+import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassRegistry;
@@ -10,7 +11,10 @@ import com.stonebreak.ui.characterCreation.CharacterCreationLayout;
 import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import com.stonebreak.ui.characterCreation.CharacterCreationTab;
+import com.stonebreak.items.weapon.WeaponGroup;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
+import com.stonebreak.ui.runtime.contracts.CharacterCreationContracts;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -22,9 +26,10 @@ import java.util.Map;
  * without a selection, scrolled lists) and the legacy layout as the geometry oracle. Not a test class.
  *
  * <p>Variants: {@code background}, {@code ability}, {@code classes-none}, {@code classes}, {@code classes-scrolled},
- * {@code skills}, {@code skills-scrolled}, {@code feats}, {@code feats-owned}, {@code looks}, {@code clothing}; {@code hover-<target>}
+ * {@code skills}, {@code skills-scrolled}, {@code feats}, {@code feats-owned}, {@code looks} (hair and hats side by side); {@code hover-<target>}
  * over the state that shows it: {@code tab3}, {@code next}, {@code back}, {@code undo}, {@code bg1}, {@code tile2},
- * {@code plus0}, {@code minus4}, {@code talent1}, {@code cls2}, {@code spend1}, {@code invest2}, {@code acquire0},
+ * {@code plus0}, {@code minus4}, {@code talent1}, {@code cls2}, {@code node5} (a class tree node), {@code invest2},
+ * {@code acquire0},
  * {@code equip1}. Class, skill and feat states are the Talents tab on that sub-tab.
  */
 public final class CharacterCreationFixtures {
@@ -33,10 +38,10 @@ public final class CharacterCreationFixtures {
     }
 
     public static final List<String> STATES = List.of("ability", "classes-none", "classes", "classes-scrolled", "skills",
-        "skills-scrolled", "feats", "feats-owned", "looks", "clothing");
+        "skills-scrolled", "skills-weapons", "feats", "feats-owned", "looks");
     public static final List<String> HOVERS = List.of("hover-tab3", "hover-next", "hover-back", "hover-undo",
-        "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-spend1",
-        "hover-invest2", "hover-acquire0", "hover-equip1");
+        "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-node5",
+        "hover-invest2", "hover-mode1", "hover-train0", "hover-acquire0", "hover-equip1");
 
     public static List<FidelityCase> cases() {
         List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("character-creation", List.of("background"),
@@ -52,6 +57,10 @@ public final class CharacterCreationFixtures {
         return out;
     }
 
+    private static float num(UiValue.Obj o, String key) {
+        return (float) ((UiValue.Num) o.get(key)).value();
+    }
+
     public static String hover(String variant) {
         return variant.startsWith("hover-") ? variant.substring("hover-".length()) : "";
     }
@@ -63,8 +72,9 @@ public final class CharacterCreationFixtures {
             return variant;
         }
         if (t.startsWith("tile") || t.startsWith("plus") || t.startsWith("minus")) return "ability";
-        if (t.startsWith("cls") || t.startsWith("spend") || t.startsWith("talent")) return "classes";
+        if (t.startsWith("cls") || t.startsWith("node") || t.startsWith("talent")) return "classes";
         if (t.startsWith("invest")) return "skills";
+        if (t.startsWith("mode") || t.startsWith("train")) return "skills-weapons";
         if (t.startsWith("acquire")) return "feats";
         if (t.startsWith("equip")) return "looks";
         return "background";
@@ -83,11 +93,11 @@ public final class CharacterCreationFixtures {
             case "ability" -> s.setActiveTab(CharacterCreationTab.ABILITY_SCORE);
             case "classes-none" -> talents(s, TalentSubTab.CLASS_ABILITIES);
             case "classes", "classes-scrolled" -> {
-                // Berserker: icons and multi-line descriptions; Monk: five abilities, enough to scroll
+                // Berserker: ability icons and a Tier I rank that unlocks Rampage; Monk: placeholder abilities
                 int cls = "classes-scrolled".equals(variant) ? 2 : 0;
                 talents(s, TalentSubTab.CLASS_ABILITIES);
                 a.onSelectClass(cls);
-                a.onSpendCp(ClassRegistry.ALL.get(cls).id() + ":0");
+                a.onSpendCp(ClassRegistry.pathKey(ClassRegistry.ALL.get(cls).id(), 0, 0));
                 if ("classes-scrolled".equals(variant)) s.setClassScroll(13f);
             }
             case "skills", "skills-scrolled" -> {
@@ -95,12 +105,17 @@ public final class CharacterCreationFixtures {
                 a.onInvestSkill(SkillRegistry.ALL.get(2).id());
                 if ("skills-scrolled".equals(variant)) s.setSkillScroll(48f);
             }
+            case "skills-weapons" -> {
+                // the starting WTP spent on one group; the others show their next rank or level gate
+                talents(s, TalentSubTab.SKILLS);
+                a.onSelectSkillMode(SkillListMode.WEAPONS);
+                a.onTrainWeapon(WeaponGroup.ONE_HANDED);
+            }
             case "feats", "feats-owned" -> {
                 talents(s, TalentSubTab.FEATS);
                 if ("feats-owned".equals(variant)) a.onAcquireFeat(FeatRegistry.ALL.get(0).id());
             }
             case "looks" -> s.setActiveTab(CharacterCreationTab.LOOKS);
-            case "clothing" -> s.setActiveTab(CharacterCreationTab.CLOTHING);
             default -> throw new IllegalArgumentException(variant);
         }
     }
@@ -153,20 +168,31 @@ public final class CharacterCreationFixtures {
                 for (int i = 0; i < ClassRegistry.ALL.size(); i++) {
                     out.put("cls" + i, new float[]{c.x() + 8f, c.y() + 32f + i * 38f, 144f, 36f});
                 }
-                int sel = s.getSelectedClassIndex();
-                if (sel >= 0) {
-                    float cx = c.x() + 172f;
-                    float cw = c.width() - 184f;
-                    for (int i = 0; i < ClassRegistry.ALL.get(sel).abilities().size(); i++) {
-                        out.put("spend" + i, new float[]{cx + cw - 110f, c.y() + 78f + i * 64f - s.getClassScroll() + 20f,
-                            110f, 24f});
+                // the class tree's nodes: the shared tree model's grid, placed in the pane's tree area and scrolled
+                if (s.getSelectedClassIndex() >= 0) {
+                    UiValue.Obj tree = (UiValue.Obj) CharacterCreationContracts.tree(screen, w, h);
+                    List<UiValue> nodes = ((UiValue.Arr) tree.get("nodes")).items();
+                    for (int i = 0; i < nodes.size(); i++) {
+                        UiValue.Obj n = (UiValue.Obj) nodes.get(i);
+                        float size = num(n, "size");
+                        out.put("node" + i, new float[]{c.x() + CharacterCreationContracts.TREE_LEFT + num(n, "x"),
+                            c.y() + CharacterCreationContracts.TREE_TOP + num(n, "y") - s.getClassScroll(), size, size});
                     }
                 }
             }
-            case "skills", "skills-scrolled" -> {
-                for (int i = 0; i < SkillRegistry.ALL.size(); i++) {
-                    out.put("invest" + i, new float[]{listX + rowW - 80f, c.y() + 36f + i * 42f - s.getSkillScroll() + 7f,
-                        80f, 26f});
+            case "skills", "skills-scrolled", "skills-weapons" -> {
+                // the General | Weapons toggle, right-aligned in the header; then +1 SP or Train per row
+                out.put("mode0", new float[]{c.x() + c.width() - 116f - 96f, c.y() + 2f, 96f, 24f});
+                out.put("mode1", new float[]{c.x() + c.width() - 16f - 96f, c.y() + 2f, 96f, 24f});
+                if (s.getSkillMode() == SkillListMode.WEAPONS) {
+                    for (int i = 0; i < WeaponGroup.values().length; i++) {
+                        out.put("train" + i, new float[]{listX + rowW - 80f, c.y() + 36f + i * 42f + 7f, 80f, 26f});
+                    }
+                } else {
+                    for (int i = 0; i < SkillRegistry.ALL.size(); i++) {
+                        out.put("invest" + i, new float[]{listX + rowW - 80f,
+                            c.y() + 36f + i * 42f - s.getSkillScroll() + 7f, 80f, 26f});
+                    }
                 }
             }
             case "feats", "feats-owned" -> {
@@ -175,21 +201,28 @@ public final class CharacterCreationFixtures {
                     out.put("acquire" + i, new float[]{listX + rowW - 100f, c.y() + 36f + i * 58f + 13f, 100f, 28f});
                 }
             }
-            case "looks", "clothing" -> {
-                boolean looks = "looks".equals(base(variant));
-                var options = looks ? com.stonebreak.player.PlayerLooks.HAIR_OPTIONS
-                    : com.stonebreak.player.PlayerLooks.HAT_OPTIONS;
-                String equipped = looks ? com.stonebreak.player.PlayerLooks.getSelectedHairId()
-                    : com.stonebreak.player.PlayerLooks.getSelectedHatId();
-                for (int i = 0; i < options.size(); i++) {
-                    if (options.get(i).id().equalsIgnoreCase(equipped)) continue; // "Equipped", no button
-                    out.put("equip" + i, new float[]{listX + rowW - 100f, c.y() + 36f + i * 58f + 13f, 100f, 28f});
-                }
+            case "looks" -> {
+                // two columns, each half the content: hair ("equipN") on the left, hats ("hatN") on the right
+                float colW = c.width() / 2f;
+                cosmetics(out, "equip", com.stonebreak.player.PlayerLooks.HAIR_OPTIONS,
+                    com.stonebreak.player.PlayerLooks.getSelectedHairId(), c.x() + colW - 16f, c.y());
+                cosmetics(out, "hat", com.stonebreak.player.PlayerLooks.HAT_OPTIONS,
+                    com.stonebreak.player.PlayerLooks.getSelectedHatId(), c.right() - 16f, c.y());
             }
             default -> {
             }
         }
         return out;
+    }
+
+    /** One cosmetic list's Equip buttons, right-aligned to {@code right}; the equipped row shows none. */
+    private static void cosmetics(Map<String, float[]> out, String kind,
+                                  List<com.stonebreak.player.PlayerLooks.CosmeticOption> options, String equipped,
+                                  float right, float top) {
+        for (int i = 0; i < options.size(); i++) {
+            if (options.get(i).id().equalsIgnoreCase(equipped)) continue; // "Equipped", no button
+            out.put(kind + i, new float[]{right - 100f, top + 36f + i * 58f + 13f, 100f, 28f});
+        }
     }
 
     /**

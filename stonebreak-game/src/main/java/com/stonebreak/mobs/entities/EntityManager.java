@@ -96,7 +96,12 @@ public class EntityManager {
                 // smooth between snapshots, and advance client-only visual clocks so
                 // animations play (the discrete animation state arrives via EntityAnimS2C).
                 if (entity.isNetworkShadow()) {
-                    if (entity.getInterpolator() != null) entity.getInterpolator().apply(entity);
+                    // A boat the local player rows is stepped by the player instead
+                    // (PlayerRiding); seated shadows still interpolate (a remote player's look
+                    // yaw rides it) and RiderSystem below puts them back on their seats.
+                    if (entity.getInterpolator() != null && !entity.isLocallyControlled()) {
+                        entity.getInterpolator().apply(entity);
+                    }
                     entity.updateClientVisuals(deltaTime);
                     continue;
                 }
@@ -113,6 +118,8 @@ public class EntityManager {
                 // in update() and must skip the external physics step.
                 if (entity.isSelfPropelled()) {
                     // self-managed projectile, no external physics
+                } else if (entity.isRiding()) {
+                    // seated: RiderSystem carries it to its seat below
                 } else if (entity instanceof BlockDrop || entity instanceof ItemDrop) {
                     // Drops fully self-manage physics (custom gravity/bounce/ground snap in
                     // update()). The external step double-integrated their velocity AND its
@@ -137,6 +144,15 @@ public class EntityManager {
             }
         }
         
+        // Seats: mobs climb into boats, riders are carried to their seats.
+        if (world != null && world.isRenderOnly()) {
+            com.stonebreak.vehicles.RiderSystem.updateClient(entities,
+                    com.stonebreak.network.MultiplayerSession::entityShadow,
+                    com.stonebreak.network.MultiplayerSession.localPlayerId());
+        } else {
+            com.stonebreak.vehicles.RiderSystem.updateServer(entities);
+        }
+
         // Handle entity-entity collisions
         handleEntityCollisions();
         
@@ -272,6 +288,7 @@ public class EntityManager {
             case CHICKEN -> new com.stonebreak.mobs.chicken.Chicken(world, position);
             case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
             case SHEEP -> new com.stonebreak.mobs.sheep.Sheep(world, position);
+            case GOBLIN -> new com.stonebreak.mobs.goblin.Goblin(world, position);
             // Sheep always spawn with wool (the "default" fallback): unlike cows, a
             // random variant pick here would spawn ~half of them already sheared
             // now that "Sheared" is a registered appearance variant.
@@ -344,6 +361,21 @@ public class EntityManager {
             entitiesToAdd.add(cluster);
         }
         return cluster;
+    }
+
+    /**
+     * Places a dinghy with its bow toward {@code yawDeg}, or returns null when the target
+     * chunk isn't loaded yet.
+     */
+    public com.stonebreak.vehicles.Dinghy spawnDinghy(Vector3f position, float yawDeg) {
+        if (!isChunkReadyForSpawn(position)) {
+            return null;
+        }
+        com.stonebreak.vehicles.Dinghy dinghy = new com.stonebreak.vehicles.Dinghy(world, position, yawDeg);
+        synchronized (entitiesToAdd) {
+            entitiesToAdd.add(dinghy);
+        }
+        return dinghy;
     }
 
     /**
@@ -611,7 +643,7 @@ public class EntityManager {
         List<LivingEntity> bodies = collisionBodies;
         bodies.clear();
         for (Entity e : entities) {
-            if (e instanceof LivingEntity living && e.isAlive() && !e.isNetworkShadow()) {
+            if (e instanceof LivingEntity living && e.isAlive() && !e.isNetworkShadow() && !e.isRiding()) {
                 bodies.add(living);
             }
         }

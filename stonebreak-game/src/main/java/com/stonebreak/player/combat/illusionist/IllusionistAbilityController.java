@@ -10,8 +10,8 @@ import com.stonebreak.player.combat.DoubtController;
  * that fuels Fracture. Mirrors the controller-per-concern pattern used by
  * {@link com.stonebreak.player.combat.ranger.RangerAbilityController}.
  *
- * <p>Casting an ability requires the Illusionist class to be selected and its CP slot to be
- * unlocked. Doubt builds passively when enemies destroy the player's decoys, so there are no
+ * <p>Casting an ability requires it to be unlocked: a rank in an Illusionist path that grants it
+ * ({@link CharacterStats#hasAbility}). Doubt builds passively when enemies destroy the player's decoys, so there are no
  * player-hit hooks here.</p>
  */
 public class IllusionistAbilityController {
@@ -54,7 +54,7 @@ public class IllusionistAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return CLASS_ID.equals(stats.getSelectedClassId()) && stats.getSpentCp(abilityKey) > 0;
+        return stats.hasAbility(abilityKey);
     }
 
     public DoubtController getDoubt() { return doubt; }

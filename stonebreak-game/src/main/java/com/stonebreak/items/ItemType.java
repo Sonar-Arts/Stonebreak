@@ -2,6 +2,7 @@ package com.stonebreak.items;
 
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.items.registry.ItemRegistry;
+import com.stonebreak.items.weapon.WeaponRules;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -97,6 +98,12 @@ public final class ItemType implements Item {
      * registry promotion skipped.
      */
     public static final ItemType SHEARS = fromRegistry("stonebreak:shears", "SHEARS");
+    /**
+     * Dinghy (SBO 1.9, numericId 1037). Right-clicking places a
+     * {@code vehicles.Dinghy} entity; the icon and held item draw the boat's
+     * SBE model (see {@link ItemModels}) instead of the fallback sprite.
+     */
+    public static final ItemType DINGHY = fromRegistry("stonebreak:dinghy", "DINGHY");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
 
@@ -316,11 +323,7 @@ public final class ItemType implements Item {
      * Returns the base melee damage this item deals when used to attack.
      */
     public float getDamage() {
-        if (this == SWORD) return 6.0f;
-        if (this == WAR_AXE || this == WOODEN_AXE) return 4.0f;
-        if (this == STONE_AXE) return 5.0f;
-        if (this == STONE_PICKAXE) return 2.0f;
-        return 1.0f;
+        return WeaponRules.statsFor(this).damage();
     }
 
     /**

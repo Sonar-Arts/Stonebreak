@@ -59,6 +59,15 @@ public final class PlayerBodyOrientation {
     }
 
     /**
+     * Pins the body to {@code seatYaw} (model space) — a seated figure faces its seat, and the
+     * head swivels from there.
+     */
+    public void seat(float seatYaw) {
+        bodyYaw = seatYaw;
+        bodyYawInitialized = true;
+    }
+
+    /**
      * Converts a world XZ direction into the player model's facing yaw (degrees).
      *
      * <p>This uses {@code atan2(dir.x, dir.z)} with the rotation sense of the SBE

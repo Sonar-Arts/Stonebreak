@@ -30,6 +30,7 @@ import static org.lwjgl.system.MemoryUtil.memAllocInt;
 import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memFree;
 import com.stonebreak.rendering.gameWorld.UnderwaterFog;
+import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
 
 /**
  * Entity-blind renderer for SBE-driven mobs.
@@ -322,6 +323,19 @@ public final class SbeEntityRenderer {
                        Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
                        float headYawDeg, float headPitchDeg) {
+        render(asset, variantName, anim, baseMatrix, viewMatrix, projectionMatrix, world, cameraPos,
+                headYawDeg, headPitchDeg, null);
+    }
+
+    /**
+     * Matrix-based entry point with code-driven part rotations layered over the clip
+     * (see {@link SbePoseSolver.PartOverrides}); {@code overrides} may be null.
+     */
+    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+                       Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       float headYawDeg, float headPitchDeg,
+                       SbePoseSolver.PartOverrides overrides) {
         if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
@@ -351,6 +365,10 @@ public final class SbeEntityRenderer {
             // Scaled by depth, so an entity dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
             fogDensity = UnderwaterFog.density(cameraPos.y);
+        } else if (cameraPos != null && !uiPreviewLighting) {
+            // Rain and snow fog, as the terrain behind the entity gets it.
+            fogDensity = WeatherFog.density();
+            WeatherFog.color(fogColor);
         }
         // cameraPos arrives in world coordinates (the underwater probe above needs
         // it that way); the shader differences it against a render-space fragment
@@ -372,7 +390,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
-                headYawDeg, headPitchDeg, (partMatrix, part) -> {
+                headYawDeg, headPitchDeg, overrides, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
             for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).textured()) {
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, gpu.materialTextures.get(batch.materialId()));
@@ -554,15 +572,15 @@ public final class SbeEntityRenderer {
 
     /**
      * Pushes the per-frame lighting environment to the (bound) entity shader:
-     * time-of-day ambient + sun direction, the sampled sky light at the entity's
+     * the sky's ambient + key light direction (sun, or moon at night), the sampled sky light at the entity's
      * position (so mobs darken in caves and at night), and this frame's shadow
      * cascade state. Falls back to fully lit outside the world pipeline.
      */
     private void applyEnvironmentLighting(com.stonebreak.world.World world, Vector3f position) {
         com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
         if (timeOfDay != null) {
-            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
-            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+            shader.setFloat("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
+            shader.setVec3("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
         } else {
             shader.setFloat("u_ambientLight", 1.0f);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());

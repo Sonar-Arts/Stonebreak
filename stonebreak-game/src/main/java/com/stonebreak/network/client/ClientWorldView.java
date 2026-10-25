@@ -99,6 +99,8 @@ public final class ClientWorldView {
     // client world/clock exists (the world builds async after WelcomeS2C); the world
     // bootstrap seeds the clock from it. null until the first sample.
     private volatile Long pendingServerTimeTicks = null;
+    // Latest WeatherSyncS2C, buffered the same way for the weather clock.
+    private volatile com.stonebreak.network.packet.world.WeatherSyncS2C pendingWeatherSync = null;
 
     // Late-join character creation flow: server sent NeedsCharacterCreationS2C instead of
     // WelcomeS2C, so we show the character creation screen before building the world.
@@ -200,8 +202,11 @@ public final class ClientWorldView {
     public int lastRttMs() { return lastRttMs; }
     /** Latest buffered authoritative world-time sample, or null before the first TimeSyncS2C. */
     public Long pendingServerTimeTicks() { return pendingServerTimeTicks; }
+    /** Latest buffered authoritative weather sample, or null before the first WeatherSyncS2C. */
+    public com.stonebreak.network.packet.world.WeatherSyncS2C pendingWeatherSync() { return pendingWeatherSync; }
     /** Live replicated entity shadows tracked by this client (debug overlay). */
     public int trackedEntityShadows() { return entityHandler.trackedShadowCount(); }
+    public com.stonebreak.mobs.entities.Entity entityShadow(int networkId) { return entityHandler.shadow(networkId); }
     /** True once a remote client has applied its server-sent player data (or for a non-remote
      *  client, trivially true — it doesn't use the network restore path). */
     public boolean isRestoreApplied() { return !remote || restoreApplied; }
@@ -801,6 +806,14 @@ public final class ClientWorldView {
         }
     }
 
+    /** Any vehicle intent or rower's report (see {@code VehicleActionC2S}, {@code VehicleMoveC2S}). */
+    public void sendVehiclePacket(com.openmason.engine.net.protocol.Packet packet, boolean droppable) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(packet, droppable);
+        }
+    }
+
     /** Ate one held item (see {@code ConsumeHeldC2S}): the server debits its replica. */
     public void sendConsumeHeld(com.stonebreak.network.packet.player.ConsumeHeldC2S c) {
         ClientConnection conn = connection;
@@ -822,6 +835,14 @@ public final class ClientWorldView {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             conn.send(new com.stonebreak.network.packet.world.TimeSetC2S(ticks), false);
+        }
+    }
+
+    /** /weather intent: ask the server to set the world's weather mode. */
+    public void sendWeatherSet(com.stonebreak.world.weather.WeatherMode mode, boolean world) {
+        ClientConnection conn = connection;
+        if (conn != null && conn.isActive()) {
+            conn.send(new com.stonebreak.network.packet.world.WeatherSetC2S(mode, world), false);
         }
     }
 
@@ -881,12 +902,13 @@ public final class ClientWorldView {
     /** Local hit on a replicated entity: forward the damage intent to the authoritative server. */
     public void sendEntityDamage(int targetNetworkId, float amount,
                                  com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                 com.stonebreak.items.weapon.DamageType type,
                                  com.stonebreak.mobs.entities.HitKind kind) {
         if (connection == null || targetNetworkId < 0 || amount <= 0f) {
             return;
         }
         connection.send(new EntityDamageC2S(targetNetworkId, amount, (byte) source.ordinal(),
-                kind.wireId()), false);
+                (byte) type.ordinal(), kind.wireId()), false);
     }
 
     /** Local ability status effect on a replicated entity: forward it to the authoritative server. */
@@ -1008,6 +1030,7 @@ public final class ClientWorldView {
                 }
             }
             case TimeSyncS2C ts -> handleTimeSync(ts);
+            case com.stonebreak.network.packet.world.WeatherSyncS2C ws -> handleWeatherSync(ws);
             case com.stonebreak.network.packet.world.CheatsStateS2C cs ->
                 Game.getInstance().setCheatsEnabled(cs.enabled());
             default -> { /* unexpected clientbound packet — ignore */ }
@@ -1055,6 +1078,14 @@ public final class ClientWorldView {
             clock.nudgeTo(ts.worldTimeTicks());
             clock.setTimeSpeed(ts.timeSpeed());
             clock.setFrozen(ts.frozen());
+        }
+    }
+
+    private void handleWeatherSync(com.stonebreak.network.packet.world.WeatherSyncS2C ws) {
+        pendingWeatherSync = ws;
+        com.stonebreak.world.weather.ClientWeather weather = Game.getWeather();
+        if (weather != null) {
+            weather.sync(ws.weatherSeconds(), ws.mode(), ws.zones());
         }
     }
 

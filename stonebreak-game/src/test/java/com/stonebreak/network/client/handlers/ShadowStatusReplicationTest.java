@@ -156,7 +156,8 @@ class ShadowStatusReplicationTest {
             // A damage hit is forwarded with its kind and shows nothing until the server answers.
             cow.damage(2f, LivingEntity.DamageSource.PLAYER, com.stonebreak.mobs.entities.HitKind.MELEE);
             session.verify(() -> MultiplayerSession.onLocalEntityDamage(eq(cow), eq(2f),
-                    eq(LivingEntity.DamageSource.PLAYER), eq(com.stonebreak.mobs.entities.HitKind.MELEE)));
+                    eq(LivingEntity.DamageSource.PLAYER), eq(LivingEntity.DamageSource.PLAYER.defaultDamageType()),
+                    eq(com.stonebreak.mobs.entities.HitKind.MELEE)));
             assertEquals(cow.getMaxHealth(), cow.getHealth());
             session.verify(() -> MultiplayerSession.onLocalEntityKnockback(any(), any(), anyFloat(), anyFloat()),
                     never());

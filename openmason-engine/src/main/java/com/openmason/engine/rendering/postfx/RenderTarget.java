@@ -5,10 +5,13 @@ import java.nio.ByteBuffer;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 import static org.lwjgl.opengl.GL14.GL_DEPTH_COMPONENT24;
+import static org.lwjgl.opengl.GL20.glDrawBuffers;
 import static org.lwjgl.opengl.GL30.*;
 
 /**
- * Offscreen framebuffer with an RGBA8 color texture and an optional depth texture.
+ * Offscreen framebuffer with a color texture (RGBA8 unless another internal format is
+ * given), an optional second color texture (a pass that writes two outputs) and an
+ * optional depth texture.
  *
  * <p>The depth attachment is a texture (not a renderbuffer) so post-processing passes can
  * sample scene depth, e.g. for occlusion masks. All methods must be called on the main
@@ -17,15 +20,39 @@ import static org.lwjgl.opengl.GL30.*;
 public class RenderTarget {
 
     private final boolean withDepthTexture;
+    private final int colorInternalFormat;
+    /** Internal format of the second color attachment, or 0 for none. */
+    private final int extraColorInternalFormat;
 
     private int fboId;
     private int colorTexture;
+    private int extraColorTexture;
     private int depthTexture;
     private int width;
     private int height;
 
     public RenderTarget(int width, int height, boolean withDepthTexture) {
+        this(width, height, withDepthTexture, GL_RGBA8);
+    }
+
+    /**
+     * @param colorInternalFormat e.g. {@code GL_RGBA8}, or {@code GL_RGBA16F} for a buffer
+     *                            that holds HDR or premultiplied values without banding
+     */
+    public RenderTarget(int width, int height, boolean withDepthTexture, int colorInternalFormat) {
+        this(width, height, withDepthTexture, colorInternalFormat, 0);
+    }
+
+    /**
+     * @param extraColorInternalFormat format of a second color attachment
+     *                                 ({@code layout(location = 1)} in the shader), sampled
+     *                                 nearest, e.g. {@code GL_R32F}; 0 for none
+     */
+    public RenderTarget(int width, int height, boolean withDepthTexture, int colorInternalFormat,
+                        int extraColorInternalFormat) {
         this.withDepthTexture = withDepthTexture;
+        this.colorInternalFormat = colorInternalFormat;
+        this.extraColorInternalFormat = extraColorInternalFormat;
         create(Math.max(1, width), Math.max(1, height));
     }
 
@@ -38,12 +65,24 @@ public class RenderTarget {
 
         colorTexture = glGenTextures();
         glBindTexture(GL_TEXTURE_2D, colorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+        glTexImage2D(GL_TEXTURE_2D, 0, colorInternalFormat, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+        if (extraColorInternalFormat != 0) {
+            extraColorTexture = glGenTextures();
+            glBindTexture(GL_TEXTURE_2D, extraColorTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, extraColorInternalFormat, w, h, 0, GL_RGBA, GL_FLOAT, (ByteBuffer) null);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, extraColorTexture, 0);
+            glDrawBuffers(new int[]{GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1});
+        }
 
         if (withDepthTexture) {
             depthTexture = glGenTextures();
@@ -101,6 +140,13 @@ public class RenderTarget {
     }
 
     /**
+     * @return the second color texture id, or 0 if this target was created without one
+     */
+    public int getExtraColorTexture() {
+        return extraColorTexture;
+    }
+
+    /**
      * @return the depth texture id, or 0 if this target was created without one
      */
     public int getDepthTexture() {
@@ -127,6 +173,10 @@ public class RenderTarget {
         if (colorTexture != 0) {
             glDeleteTextures(colorTexture);
             colorTexture = 0;
+        }
+        if (extraColorTexture != 0) {
+            glDeleteTextures(extraColorTexture);
+            extraColorTexture = 0;
         }
         if (depthTexture != 0) {
             glDeleteTextures(depthTexture);

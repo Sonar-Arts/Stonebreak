@@ -55,7 +55,11 @@ class ServerIllusionHandlerTest {
         sp.inventory().setSlot(0, new ItemStack(ItemType.STICK, 1));
         sp.inventory().selectHotbarSlot(0);
         // An Illusionist with Mirrored Deceit unlocked (also selects the class).
-        sp.serverStats().spendCpOnAbility(IllusionistAbilityController.MIRRORED_DECEIT_KEY);
+        sp.serverStats().restore(IllusionistAbilityController.CLASS_ID,
+                java.util.List.of(IllusionistAbilityController.CLASS_ID),
+                java.util.Map.of(CombatIntentServerTest.grantingRank(IllusionistAbilityController.MIRRORED_DECEIT_KEY), 1),
+                java.util.Map.of(), java.util.Set.of(), 0, 0, 0,
+                new int[]{10, 10, 10, 10, 10, 10}, 0, 1, 0);
     }
 
     @Test

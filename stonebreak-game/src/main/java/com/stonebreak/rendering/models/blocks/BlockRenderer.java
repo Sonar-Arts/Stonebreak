@@ -146,7 +146,10 @@ public class BlockRenderer {
         glDisable(GL_POLYGON_OFFSET_FILL);
         glBindTexture(GL_TEXTURE_2D, 0);
 
-        // Reset shader state
+        // Reset shader state. The view matrix carried the overlay's model
+        // transform; glass and ice draw after this with the same shader, so
+        // leaving it would shift them by the cracked block's position.
+        shaderProgram.setUniform("viewMatrix", player.getViewMatrix());
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false); // Restore world rendering state
 

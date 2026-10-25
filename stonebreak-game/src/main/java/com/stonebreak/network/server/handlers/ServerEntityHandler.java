@@ -1,6 +1,7 @@
 package com.stonebreak.network.server.handlers;
 
 import com.openmason.engine.net.protocol.codec.EntityDeltaCodec;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
@@ -183,6 +184,11 @@ public final class ServerEntityHandler {
         updatePlayerInterest(sp, ctx);
     }
 
+    /** The authoritative entity with {@code networkId}, or null. */
+    public Entity entity(int networkId) {
+        return byNetworkId.get(networkId);
+    }
+
     /** Drop a disconnected player's interest bookkeeping. */
     public void onPeerLeft(ServerPlayer sp) {
         interestByPlayer.remove(sp.playerId());
@@ -324,13 +330,17 @@ public final class ServerEntityHandler {
             return; // PROJECTILE (server-simulated, never claimed) or an unknown kind
         }
         amount = Math.min(amount, cap);
+        DamageType type = decodeType(pkt.typeOrdinal(), source);
 
         // Never credit through the local-player path (on the server thread that would be
         // the HOST's player object regardless of attacker). Credit routes back to the
         // actual attacker via KillCreditS2C — uniform for host (Local channel) and remotes.
+        // The weapon is what the server says this player holds, not a client claim — a client
+        // naming a fresh id per swing would otherwise dodge every invulnerability window.
+        int weaponId = kind == HitKind.MELEE ? sp.inventory().heldItemId() : LivingEntity.NO_WEAPON;
         float healthBefore = le.getHealth();
         sp.recordHit(pkt.targetNetworkId(), now);
-        le.damage(amount, source, new Vector3f(sp.x(), sp.y(), sp.z()), false);
+        le.damage(amount, source, type, weaponId, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             sendKillCredit(sp, le, dealt, !le.isAlive(), source, kind);
@@ -470,16 +480,15 @@ public final class ServerEntityHandler {
      */
     public void sendKillCredit(ServerPlayer sp, LivingEntity victim, float dealt, boolean killed,
                                LivingEntity.DamageSource source, HitKind kind) {
-        int xp = killed ? victim.getXpReward() : 0;
-        if (xp > 0) {
-            sp.serverStats().addXp(xp);
-            sp.sendProgression();
-        }
         // Carries the target's network id, source and kind: the attacker's damage number,
         // hurt sound, Rage/lifesteal (melee) and Quarry (arrows) run off this result (#371/#374).
-        sp.send(new com.stonebreak.network.packet.player.KillCreditS2C(
-            victim.getType().ordinal(), dealt, killed, xp,
-            victim.getNetworkId(), (byte) source.ordinal(), kind.wireId()), false);
+        com.stonebreak.network.packet.player.KillCreditS2C credit =
+            com.stonebreak.network.packet.player.KillCreditS2C.forHit(victim, dealt, killed, source, kind);
+        if (credit.xpReward() > 0) {
+            sp.serverStats().addXp(credit.xpReward());
+            sp.sendProgression();
+        }
+        sp.send(credit, false);
     }
 
     /** Spawn position must be near the claiming player (zones cast at range get more slack). */
@@ -618,6 +627,12 @@ public final class ServerEntityHandler {
 
     private static float clamp(float v, float min, float max) {
         return Math.max(min, Math.min(max, v));
+    }
+
+    /** Damage type from the wire; out of range falls back to the source's default type. */
+    private static DamageType decodeType(byte ordinal, LivingEntity.DamageSource source) {
+        DamageType[] values = DamageType.values();
+        return ordinal >= 0 && ordinal < values.length ? values[ordinal] : source.defaultDamageType();
     }
 
     private static LivingEntity.DamageSource decodeSource(byte ordinal) {

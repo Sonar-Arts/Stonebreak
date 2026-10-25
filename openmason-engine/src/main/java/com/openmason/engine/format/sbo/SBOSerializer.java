@@ -262,7 +262,8 @@ public class SBOSerializer {
                 params.getFuel(),
                 sounds.data(),
                 params.getDrops(),
-                params.getTool()
+                params.getTool(),
+                params.getWeapon()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -440,7 +441,8 @@ public class SBOSerializer {
                 document.fuel(),
                 rebuiltSounds.data(),
                 document.drops(),
-                document.tool()
+                document.tool(),
+                document.weapon()
         );
 
         outputPath = SBOFormat.ensureExtension(outputPath);
@@ -714,6 +716,7 @@ public class SBOSerializer {
         public List<SoundJson.SoundDefDTO> sounds;
         public DropDataDTO drops;
         public ToolDataDTO tool;
+        public WeaponDataDTO weapon;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -750,6 +753,22 @@ public class SBOSerializer {
             // Presence is meaningful (empty = drops nothing), so write whenever set.
             this.drops = doc.hasDrops() ? new DropDataDTO(doc.drops()) : null;
             this.tool = doc.hasTool() ? new ToolDataDTO(doc.tool()) : null;
+            this.weapon = doc.hasWeapon() ? new WeaponDataDTO(doc.weapon()) : null;
+        }
+    }
+
+    /** DTO mirror of {@link SBOFormat.WeaponData} (1.10+). */
+    private static class WeaponDataDTO {
+        public String group;
+        public String damageType;
+        public float damage;
+        public float swingSeconds;
+
+        public WeaponDataDTO(SBOFormat.WeaponData w) {
+            this.group = w.group();
+            this.damageType = w.damageType();
+            this.damage = w.damage();
+            this.swingSeconds = w.swingSeconds();
         }
     }
 

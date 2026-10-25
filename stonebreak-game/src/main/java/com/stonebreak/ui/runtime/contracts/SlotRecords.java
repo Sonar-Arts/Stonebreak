@@ -5,6 +5,7 @@ import com.openmason.engine.ui.data.DataType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.registry.ItemRegistry;
+import com.stonebreak.items.weapon.WeaponTooltip;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -12,10 +13,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * The one item-slot record every container contract publishes (#289): furnace slots, the
  * inventory and hotbar grids and the stack on the cursor. Item icons (#298/#300) read
- * {@code item}/{@code objectId}, tooltips read {@code name}, counts read {@code count}.
+ * {@code item}/{@code objectId}, tooltips read {@code tooltip} (the name, plus weapon stats for a
+ * weapon), counts read {@code count}.
  *
  * <pre>{@code
- * { slot: "main:4", item: 12, objectId: "stonebreak:dirt", name: "Dirt", count: 5, state: "", maxStack: 64 }
+ * { slot: "main:4", item: 12, objectId: "stonebreak:dirt", name: "Dirt", tooltip: "Dirt", count: 5,
+ *   state: "", maxStack: 64 }
  * }</pre>
  * An empty slot has {@code item: 0}, {@code count: 0} and empty strings.
  */
@@ -23,12 +26,13 @@ public final class SlotRecords {
 
     /** Fields of one stack, without the slot address (used for {@code carried} and furnace slots). */
     public static final DataType.Obj STACK = DataType.object("item", DataType.integer(), "objectId", DataType.string(),
-        "name", DataType.string(), "count", DataType.integer(), "state", DataType.string(),
-        "maxStack", DataType.integer());
+        "name", DataType.string(), "tooltip", DataType.string(), "count", DataType.integer(),
+        "state", DataType.string(), "maxStack", DataType.integer());
 
     /** A grid slot: {@link #STACK} plus its address, the identity of collection rows. */
     public static final DataType.Obj SLOT = DataType.object("slot", DataType.string(), "item", DataType.integer(),
-        "objectId", DataType.string(), "name", DataType.string(), "count", DataType.integer(),
+        "objectId", DataType.string(), "name", DataType.string(), "tooltip", DataType.string(),
+        "count", DataType.integer(),
         "state", DataType.string(), "maxStack", DataType.integer(), "selected", DataType.bool());
 
     public static final DataType.ListOf GRID = DataType.list(SLOT, "slot");
@@ -62,6 +66,7 @@ public final class SlotRecords {
         m.put("item", UiValue.of(id));
         m.put("objectId", UiValue.of(empty ? "" : objectId(id)));
         m.put("name", UiValue.of(empty ? "" : stack.getName()));
+        m.put("tooltip", UiValue.of(empty ? "" : WeaponTooltip.text(stack.getItem())));
         m.put("count", UiValue.of(empty ? 0 : stack.getCount()));
         m.put("state", UiValue.of(empty || stack.getState() == null ? "" : stack.getState()));
         m.put("maxStack", UiValue.of(empty ? 0 : stack.getMaxStackSize()));

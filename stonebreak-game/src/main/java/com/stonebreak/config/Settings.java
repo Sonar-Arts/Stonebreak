@@ -36,6 +36,7 @@ public class Settings {
     // Hair and clothing are independent cosmetic slots.
     private String selectedHat = "NONE";
     private String selectedHair = "NONE";
+    private String selectedAccessory = "NONE";
 
     // Crosshair settings
     private String crosshairStyle = "SIMPLE_CROSS";
@@ -161,6 +162,7 @@ public class Settings {
             stringField("armModelType", Settings::getArmModelType, Settings::setArmModelType),
             stringField("selectedHat", Settings::getSelectedHat, Settings::setSelectedHat),
             stringField("selectedHair", Settings::getSelectedHair, Settings::setSelectedHair),
+            stringField("selectedAccessory", Settings::getSelectedAccessory, Settings::setSelectedAccessory),
             stringField("crosshairStyle", Settings::getCrosshairStyle, Settings::setCrosshairStyle),
             floatField("crosshairSize", Settings::getCrosshairSize, Settings::setCrosshairSize),
             floatField("crosshairThickness", Settings::getCrosshairThickness, Settings::setCrosshairThickness),
@@ -334,6 +336,7 @@ public class Settings {
     public boolean isSlimArms() { return "SLIM".equals(armModelType); }
     public String getSelectedHat() { return selectedHat; }
     public String getSelectedHair() { return selectedHair; }
+    public String getSelectedAccessory() { return selectedAccessory; }
     
     // Crosshair getters
     public String getCrosshairStyle() { return crosshairStyle; }
@@ -411,6 +414,10 @@ public class Settings {
         this.selectedHat = (hatId == null || hatId.isBlank()) ? "NONE" : hatId;
     }
     
+    public void setSelectedAccessory(String accessoryId) {
+        this.selectedAccessory = (accessoryId == null || accessoryId.isBlank()) ? "NONE" : accessoryId;
+    }
+
     public void setSelectedHair(String hairId) {
         this.selectedHair = (hairId == null || hairId.isBlank()) ? "NONE" : hairId;
     }

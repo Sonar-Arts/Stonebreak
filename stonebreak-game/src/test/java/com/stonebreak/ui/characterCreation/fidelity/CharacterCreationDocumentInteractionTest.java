@@ -9,7 +9,10 @@ import com.openmason.engine.ui.runtime.UiRect;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
+import com.stonebreak.items.weapon.WeaponGroup;
+import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
+import com.stonebreak.rpg.proficiency.ProficiencyRank;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatRegistry;
 import com.stonebreak.rpg.skills.SkillRegistry;
@@ -39,8 +42,9 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 
 /**
  * The character creation document's presses (#301) run the legacy rules through the screen's own actions:
- * tabs, background rows, ability [-]/[+], class rows, Spend CP, +1 SP, Acquire, Equip on the Looks (hair) and
- * Clothing (hats) lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame).
+ * tabs, background rows, ability [-]/[+], class rows, class tree nodes, +1 SP, Acquire, Equip on the Looks tab's hair and
+ * hat lists, and the wheel scrolls the active list (clamped as the screen clamps it each frame). A right press over
+ * a point control takes one point back.
  * Escape asks before leaving and Tab does nothing (#302).
  */
 @Tag("regression")
@@ -59,6 +63,65 @@ class CharacterCreationDocumentInteractionTest {
         stage.clickAt(r.x() + r.width() / 2f, r.y() + r.height() / 2f);
         stage.host.characterCreation().poll();
         stage.settle();
+    }
+
+    private static void rightClick(DocumentStage stage, String name) {
+        UiRect r = DocumentCharacterCreationCapture.element(stage, name).rect();
+        float x = r.x() + r.width() / 2f;
+        float y = r.y() + r.height() / 2f;
+        stage.view.input().pointerMove(x, y);
+        stage.view.input().pointerDown(x, y, 1, 0);
+        stage.view.input().pointerUp(x, y, 1, 0);
+        stage.settle();
+        stage.host.characterCreation().poll();
+        stage.settle();
+    }
+
+    @Test
+    void rightPressTakesBackOnePointOfTheControlUnderIt() throws Exception {
+        try (UiRaster fonts = new UiRaster(1920, 1080, 1f)) {
+            CharacterCreationScreen screen = new CharacterCreationScreen(fonts.backend());
+            CharacterStats stats = screen.getCharacterStats();
+            try (DocumentStage stage = DocumentCharacterCreationCapture.stage(shipped, screen, 1920, 1080, 1f)) {
+                CharacterStats.RpgSnapshot blank = stats.snapshotRpgState();
+                click(stage, "tab1");
+                int dex = stats.getAbilityScores()[1];
+                click(stage, "plus1");
+                click(stage, "plus1");
+                rightClick(stage, "plus1");
+                assertEquals(dex + 1, stats.getAbilityScores()[1]);
+                rightClick(stage, "plus1");
+                rightClick(stage, "plus1");
+                assertEquals(dex, stats.getAbilityScores()[1], "never below the starting score");
+
+                click(stage, "tab2");
+                click(stage, "cls0");
+                String tierOne = ClassRegistry.pathKey(ClassRegistry.ALL.get(0).id(), 1, 0);
+                String node = "node" + (1 + ClassRegistry.ALL.get(0).abilities().size() + 4);
+                click(stage, node);
+                assertEquals(1, stats.getRank(tierOne));
+                rightClick(stage, node);
+                assertEquals(0, stats.getRank(tierOne));
+
+                click(stage, "talent1");
+                String skill = SkillRegistry.ALL.get(3).id();
+                click(stage, "invest3");
+                rightClick(stage, "invest3");
+                assertEquals(0, stats.getSkillLevel(skill));
+                click(stage, "mode1");
+                click(stage, "train1");
+                rightClick(stage, "train1");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[1]));
+                click(stage, "mode0");
+
+                click(stage, "talent2");
+                click(stage, "acquire0");
+                rightClick(stage, "acquire0");
+                assertFalse(stats.hasFeat(FeatRegistry.ALL.get(0).id()));
+                assertFalse(stats.hasChangedSince(blank), "every point is back");
+                assertFalse(stats.canUndo(), "and Undo has nothing left to replay");
+            }
+        }
     }
 
     @Test
@@ -85,10 +148,18 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(TalentSubTab.CLASS_ABILITIES, screen.state().getTalentSubTab());
                 click(stage, "cls0");
                 assertEquals(0, screen.state().getSelectedClassIndex());
+                // the tree: a core ability takes no press; the starting CP buys a Tier I path node (the second path's,
+                // after the passive, the core abilities and the first path), which unlocks that path's ability
+                String berserker = ClassRegistry.ALL.get(0).id();
                 int cp = stats.getRemainingCp();
-                click(stage, "spend1");
+                click(stage, "node1");
+                assertEquals(cp, stats.getRemainingCp(), "core abilities are not bought");
+                String tierOne = ClassRegistry.pathKey(berserker, 1, 0);
+                click(stage, "node" + (1 + ClassRegistry.ALL.get(0).abilities().size() + 4));
                 assertEquals(cp - 1, stats.getRemainingCp());
-                assertEquals(1, stats.getSpentCp(ClassRegistry.ALL.get(0).id() + ":1"));
+                assertEquals(1, stats.getRank(tierOne));
+                assertTrue(stats.hasAbility(ClassRegistry.coreKey(berserker, 1)), "Wrecker unlocks Skull Crusher");
+                assertFalse(stats.hasAbility(ClassRegistry.coreKey(berserker, 0)));
 
                 click(stage, "talent1");
                 assertEquals(TalentSubTab.SKILLS, screen.state().getTalentSubTab());
@@ -103,6 +174,16 @@ class CharacterCreationDocumentInteractionTest {
                 assertEquals(SkillRegistry.ALL.size() * 42f - 320f, screen.state().getSkillScroll(), 1e-4,
                     "ten notches down, clamped at the list's end");
 
+                // the Weapons list: the starting WTP trains one group, then every Train is dead
+                click(stage, "mode1");
+                assertEquals(SkillListMode.WEAPONS, screen.state().getSkillMode());
+                click(stage, "train1");
+                assertEquals(ProficiencyRank.TRAINED, stats.getProficiency(WeaponGroup.values()[1]));
+                click(stage, "train2");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[2]), "no WTP left");
+                click(stage, "mode0");
+                assertEquals(SkillListMode.GENERAL, screen.state().getSkillMode());
+
                 click(stage, "talent2");
                 assertEquals(TalentSubTab.FEATS, screen.state().getTalentSubTab());
                 click(stage, "acquire0");
@@ -112,11 +193,14 @@ class CharacterCreationDocumentInteractionTest {
                 click(stage, "undo");
                 assertFalse(stats.hasFeat(FeatRegistry.ALL.get(0).id()), "the feat comes off first");
                 click(stage, "undo");
+                assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[1]),
+                    "then the weapon training");
+                click(stage, "undo");
                 assertEquals(level, stats.getSkillLevel(skill), "then the skill point");
                 while (stats.canUndo()) {
                     click(stage, "undo");
                 }
-                assertEquals(0, stats.getSpentCp(ClassRegistry.ALL.get(0).id() + ":1"), "and the class ability's CP");
+                assertEquals(0, stats.getRank(tierOne), "and the tree node's CP");
                 int[] scores = stats.getAbilityScores();
                 click(stage, "undo"); // disabled: takes the press, changes nothing
                 assertEquals(java.util.Arrays.toString(scores), java.util.Arrays.toString(stats.getAbilityScores()));
@@ -127,12 +211,12 @@ class CharacterCreationDocumentInteractionTest {
     }
 
     /**
-     * Looks equips hair and Clothing equips hats, never the other way round; the equipped cosmetic shows no
+     * the Looks tab's hair list equips hair and its hat list hats, never the other way round; the equipped cosmetic shows no
      * Equip button, and its action ignores a press. {@link PlayerLooks} is stood in so nothing reaches the
      * settings file or the player model.
      */
     @Test
-    void looksEquipsHairAndClothingEquipsHats() throws Exception {
+    void looksEquipsHairAndHatsFromTheirOwnLists() throws Exception {
         String[] hair = {"MALE_HAIR_1"};
         String[] hat = {"TOP_HAT"};
         List<String> equipped = new ArrayList<>();
@@ -162,16 +246,14 @@ class CharacterCreationDocumentInteractionTest {
                 click(stage, "equip0");
                 assertEquals(List.of("hair MALE_HAIR_2", "hair NONE"), equipped);
 
-                click(stage, "tab4");
-                assertEquals(CharacterCreationTab.CLOTHING, screen.state().getActiveTab());
-                // rows: No Hat, Top Hat (equipped)
-                assertTrue(DocumentCharacterCreationCapture.element(stage, "equip1").isCollapsed(),
+                // the hat list, beside the hair: No Hat, Top Hat (equipped)
+                assertTrue(DocumentCharacterCreationCapture.element(stage, "hat1").isCollapsed(),
                     "the equipped hat has no Equip button");
-                click(stage, "equip0");
-                assertFalse(DocumentCharacterCreationCapture.element(stage, "equip1").isCollapsed());
-                click(stage, "equip1");
+                click(stage, "hat0");
+                assertFalse(DocumentCharacterCreationCapture.element(stage, "hat1").isCollapsed());
+                click(stage, "hat1");
                 assertEquals(List.of("hair MALE_HAIR_2", "hair NONE", "hat NONE", "hat TOP_HAT"), equipped,
-                    "the Clothing list equips hats only");
+                    "the hat list equips hats only");
 
                 UiScope scope = stage.host.host().openScope("stonebreak:ui/screens/test", null, p -> { });
                 CallSite site = scope.site("t", CallSite.Origin.SCRIPT);

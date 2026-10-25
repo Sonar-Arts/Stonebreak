@@ -197,14 +197,18 @@ public class RemotePlayer extends LivingEntity {
         float yawRad = (float) Math.toRadians(rotation.y);
         lookModelYaw = com.stonebreak.player.PlayerBodyOrientation.modelYawFromDirection(
                 (float) Math.cos(yawRad), (float) Math.sin(yawRad));
-        if (deltaTime > 0f) {
+        com.stonebreak.vehicles.Rideable vehicle = getVehicle();
+        if (vehicle != null) {
+            bodyOrientation.seat(vehicle.seatYaw(getSeatIndex()));
+        } else if (deltaTime > 0f) {
             velocityEstimate.set(dx / deltaTime, 0f, dz / deltaTime);
             bodyOrientation.update(deltaTime, velocityEstimate, lookModelYaw);
         }
 
         // Replicated flags select land sprint/jump; unflagged local figures still walk.
         byte flags = stateFlags;
-        movementState = PlayerStateMapping.locomotion(moving,
+        movementState = vehicle != null ? PlayerStateMapping.PlayerMovementState.SITTING
+                : PlayerStateMapping.locomotion(moving,
                 !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE),
                 PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER)
                         || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),
@@ -290,6 +294,13 @@ public class RemotePlayer extends LivingEntity {
     @Override
     public EntityType getType() { return EntityType.REMOTE_PLAYER; }
 
+    /** Decoys too are drawn with the player model, turned to the body yaw. */
+    @Override
+    protected String modelObjectId() { return EntityType.REMOTE_PLAYER.getSbeObjectId(); }
+
+    @Override
+    protected float modelYaw() { return getBodyYaw(); }
+
     // RemotePlayer is a display-only proxy for a server-authoritative remote client.
     // Interaction, damage, and death are resolved server-side and broadcast via packets;
     // the local ghost intentionally ignores these events.
@@ -298,6 +309,10 @@ public class RemotePlayer extends LivingEntity {
 
     @Override
     public void onDamage(float damage, DamageSource source) {}
+
+    /** No PvP yet (#343): remote players have no network id, so hits on them are dropped. */
+    @Override
+    public boolean isPlayerAttackable() { return false; }
 
     @Override
     protected void onDeath() {}

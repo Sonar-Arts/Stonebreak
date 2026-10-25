@@ -49,7 +49,8 @@ public class EntitySightingTracker {
 
         for (LivingEntity entity : entityManager.getLivingEntities()) {
             EntityType type = entity.getType();
-            if (type != EntityType.COW && type != EntityType.SHEEP && type != EntityType.CHICKEN) continue;
+            if (type != EntityType.COW && type != EntityType.SHEEP && type != EntityType.CHICKEN
+                    && type != EntityType.GOBLIN) continue;
 
             // Check distance
             Vector3f pos = entity.getPosition();
@@ -75,7 +76,7 @@ public class EntitySightingTracker {
             case COW -> entity instanceof Cow cow ? cow.getTextureVariant() : "default";
             case SHEEP -> entity instanceof com.stonebreak.mobs.sheep.Sheep sheep
                 ? sheep.getTextureVariant() : "default";
-            case CHICKEN -> "default";
+            case CHICKEN, GOBLIN -> "default";
             default -> null;
         };
     }

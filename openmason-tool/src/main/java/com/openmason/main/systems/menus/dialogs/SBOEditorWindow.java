@@ -46,6 +46,7 @@ public class SBOEditorWindow {
     private final SoundsEditor soundsEditor;
     private final SBODropsSection dropsSection;
     private final SBOToolSection toolSection;
+    private final SBOWeaponSection weaponSection;
     private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
     private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
 
@@ -95,13 +96,14 @@ public class SBOEditorWindow {
     };
     private static final String[] RENDER_LAYER_LABELS = { "OPAQUE", "CUTOUT", "TRANSLUCENT" };
     private static final String[] TAB_LABELS = {
-            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops", "Tool"
+            "Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops", "Tool", "Weapon"
     };
 
     private static final int TAB_STATES = 2;
     private static final int TAB_SOUNDS = 5;
     private static final int TAB_DROPS = 6;
     private static final int TAB_TOOL = 7;
+    private static final int TAB_WEAPON = 8;
 
     /** Mortar window chrome (action bar + tab strip); ImGui fallback inside. */
     private final EditorChrome chrome = new EditorChrome("sbo");
@@ -133,6 +135,7 @@ public class SBOEditorWindow {
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
         this.dropsSection = new SBODropsSection(() -> dirty = true);
         this.toolSection = new SBOToolSection(() -> dirty = true);
+        this.weaponSection = new SBOWeaponSection(() -> dirty = true);
     }
 
     /** Link the states editor to the Animation Editor (in-memory clip round trips). */
@@ -202,6 +205,7 @@ public class SBOEditorWindow {
         if (err == null) err = soundsEditor.validate();
         if (err == null) err = dropsSection.validate();
         if (err == null) err = toolSection.validate();
+        if (err == null) err = weaponSection.validate();
         if (err != null) return err;
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
@@ -281,6 +285,7 @@ public class SBOEditorWindow {
                 loadedSoundBytes != null ? loadedSoundBytes::get : f -> null);
         dropsSection.setFromDropData(doc.drops());
         toolSection.setFromToolData(doc.tool());
+        weaponSection.setFromWeaponData(doc.weapon());
     }
 
     public void render() {
@@ -311,6 +316,7 @@ public class SBOEditorWindow {
                     case 5 -> soundsEditor.render();
                     case 6 -> dropsSection.render();
                     case 7 -> renderToolTab();
+                    case 8 -> renderWeaponTab();
                     default -> { }
                 }
                 if (!validationMessage.isEmpty()) {
@@ -494,6 +500,15 @@ public class SBOEditorWindow {
         toolSection.render();
     }
 
+    private void renderWeaponTab() {
+        if (!"item".equals(OBJECT_TYPE_LABELS[objectTypeIndex.get()])) {
+            ThemedWidgets.statusText(com.openmason.main.systems.themes.utils.ThemeColors.Tone.WARNING,
+                    "Weapon data is read from item SBOs only. Set Object Type to \"item\" on the Metadata tab.");
+            ImGui.dummy(0, 4);
+        }
+        weaponSection.render();
+    }
+
     private boolean isBlockType() {
         return "block".equals(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
     }
@@ -545,6 +560,8 @@ public class SBOEditorWindow {
         if (dropError != null) { rejectSave(dropError, TAB_DROPS); return; }
         String toolError = toolSection.validate();
         if (toolError != null) { rejectSave(toolError, TAB_TOOL); return; }
+        String weaponError = weaponSection.validate();
+        if (weaponError != null) { rejectSave(weaponError, TAB_WEAPON); return; }
         validationMessage = "";
         if (hasGameProperties) {
             NumericIdValidator.Result result = NumericIdValidator.validate(
@@ -607,6 +624,8 @@ public class SBOEditorWindow {
         // first); keep the last good tool data rather than throwing.
         SBOFormat.ToolData tool = toolSection.validate() == null
                 ? toolSection.toToolData() : loadedManifest.tool();
+        SBOFormat.WeaponData weapon = weaponSection.validate() == null
+                ? weaponSection.toWeaponData() : loadedManifest.weapon();
 
         return new SBOFormat.Document(
                 loadedManifest.version(),
@@ -628,7 +647,8 @@ public class SBOEditorWindow {
                 isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null,
                 soundsEditor.toSoundData(),
                 dropsSection.toDropData(),
-                tool
+                tool,
+                weapon
         );
     }
 

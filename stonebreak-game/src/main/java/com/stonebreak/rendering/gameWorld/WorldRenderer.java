@@ -25,8 +25,17 @@ import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.models.entities.DropRenderer;
 import com.stonebreak.rendering.player.PlayerArmRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
+import com.openmason.engine.rendering.sky.SkyParams;
 import com.openmason.engine.rendering.sky.SkyRenderer;
-import com.openmason.engine.rendering.sky.clouds.CloudRenderer;
+import com.stonebreak.rendering.lighting.SkyLight;
+import com.stonebreak.rendering.gameWorld.clouds.CloudRenderer;
+import com.stonebreak.rendering.gameWorld.clouds.CloudsInFront;
+import com.stonebreak.rendering.gameWorld.weather.LightningRenderer;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationRenderer;
+import com.stonebreak.rendering.gameWorld.weather.WeatherEffects;
+import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
+import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
@@ -49,6 +58,13 @@ public class WorldRenderer {
     private final AnimatedBlockRenderer animatedBlockRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
+    private final PrecipitationFog precipitationFog;
+    /** How much a full lightning flash adds to the scene's ambient light. */
+    private static final float LIGHTNING_AMBIENT = 0.6f;
+    private final WeatherEffects weatherEffects =
+            new WeatherEffects();
+    private final PrecipitationRenderer precipitationRenderer;
+    private final LightningRenderer lightningRenderer;
     private final com.stonebreak.rendering.gameWorld.water.WaterRenderer waterRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
     private final com.stonebreak.rendering.gameWorld.shadow.TorchShadowRenderer torchShadowRenderer;
@@ -96,6 +112,9 @@ public class WorldRenderer {
         this.animatedBlockRenderer = animatedBlockRenderer;
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
+        this.precipitationFog = new PrecipitationFog();
+        this.precipitationRenderer = new PrecipitationRenderer();
+        this.lightningRenderer = new LightningRenderer();
         this.shadowMapRenderer =
                 new com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer(projectionMatrix, blockTextureArray);
         if (entityRenderer != null) {
@@ -166,17 +185,60 @@ public class WorldRenderer {
         // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
         // from TimeOfDay, so resolve the values they need here (static fallback when absent).
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
+        // Weather first: it dims the ambient light, greys the sky read below and
+        // veils it with rain/snow fog, and lightning flashes brighten it. None of
+        // it reaches past the terrain's horizon.
+        float weatherReach = horizonDistance(com.stonebreak.config.Settings.getInstance());
+        float lightningFlash = lightningRenderer.update(Game.getWeather(), world, player.getCamera().getPosition(),
+                weatherReach);
+        weatherEffects.update(Game.getWeather(), world, player.getCamera().getPosition(), totalTime,
+                LIGHTNING_AMBIENT * lightningFlash);
         Vector3f sunDirection;
         Vector3f skyColor;
         float ambientLightLevel;
-        if (timeOfDay != null) {
-            sunDirection = timeOfDay.getSunDirection();
-            skyColor = timeOfDay.getSkyColor();
-            ambientLightLevel = timeOfDay.getAmbientLightLevel();
+        // The light that lights faces and casts shadows: the sun, or the moon at night.
+        Vector3f keyDirection;
+        SkyParams skyParams;
+        SkyLight sky = timeOfDay != null ? SkyLight.of(timeOfDay) : null;
+        // The distance fog away from any sunset gold, and the gold at the horizon.
+        Vector3f clearFogColor;
+        Vector3f horizonGold = new Vector3f();
+        float sunsetCoverage = -1f;
+        // The Earth's shadow on the land opposite the sun, and the sun's aureole toward it.
+        Vector3f earthShadow = new Vector3f();
+        float earthShadowHeight = 0f, twilightBand = 0f;
+        Vector3f sunAureole = new Vector3f();
+        if (sky != null) {
+            sunDirection = sky.sunDir();
+            keyDirection = sky.keyDir();
+            skyColor = weatherEffects.tintSky(sky.skyColor(), new Vector3f());
+            clearFogColor = weatherEffects.tintSky(
+                    new Vector3f(sky.clearZenith()).lerp(sky.clearHorizon(), 0.5f), new Vector3f());
+            weatherEffects.tintSky(new Vector3f(sky.sunsetColor()).mul(1.2f), horizonGold);
+            sunsetCoverage = sky.sunsetCoverage();
+            // Overcast hides the sun and the twilight bands it casts on the sky.
+            float clear = 1f - weatherEffects.storminess();
+            weatherEffects.tintSky(sky.earthShadowColor(), earthShadow);
+            earthShadowHeight = sky.earthShadowHeight();
+            twilightBand = sky.twilightBand() * clear;
+            SunsetFog.sunAureole(sky, clear, sunAureole);
+            weatherEffects.updateFogColor(sky);
+            ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
+            skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
+                    weatherEffects.tintSky(sky.clearZenith(), new Vector3f()),
+                    weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
+                    weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
+                    new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
+                    earthShadow, earthShadowHeight, twilightBand, sky.daylight());
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
+            keyDirection = sunDirection;
             skyColor = new Vector3f(0.53f, 0.81f, 0.92f); // Day sky
+            clearFogColor = skyColor;
             ambientLightLevel = 1.0f;
+            skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
+                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
+                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f);
         }
 
         // Region-batched chunk rendering: publish last frame's stats and prune
@@ -196,15 +258,29 @@ public class WorldRenderer {
         // so it is safe even when the post-fx scene FBO is already bound.
         if (entityRenderer != null) entityRenderer.prepareShadowCasters(world);
         torchIndirectLighting.update(world);
-        shadowMapRenderer.renderShadowPass(world, player, sunDirection, entityRenderer, reusableLoadedChunks);
+        shadowMapRenderer.renderShadowPass(world, player, keyDirection, entityRenderer, reusableLoadedChunks);
         torchShadowRenderer.render(world, player, reusableLoadedChunks, entityRenderer, animatedBlockRenderer, totalTime);
         checkGLError("After shadow depth pre-pass");
 
         // Underwater changes what the BACKGROUND is, so it has to be decided
         // before the sky pass rather than with the fog parameters further down.
         Vector3f cameraPos = player.getCamera().getPosition();
+
+        // The local weather and terrain relief follow the camera; rain and
+        // lightning read them even with clouds switched off.
+        ClientWeather weather = Game.getWeather();
+        if (weather != null) {
+            weather.focus(cameraPos.x, cameraPos.z, world.terrain());
+        }
+        // Clouds resolve before any receiver of cloud shadows is set up.
+        cloudRenderer.prepareFrame(weather, cameraPos, keyDirection,
+                com.stonebreak.config.Settings.getInstance().getCloudsEnabled());
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
+        // Rain and snow fog for every pass this frame; underwater the murk replaces it.
+        WeatherFog.set(
+                cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
+        precipitationFog.prepare(!cameraUnderwater, weatherEffects);
 
         if (cameraUnderwater) {
             // Fog alone cannot hide the horizon, because it only tints pixels
@@ -225,7 +301,8 @@ public class WorldRenderer {
             glClearColor(previousClear[0], previousClear[1], previousClear[2], previousClear[3]);
         } else {
             // Render sky first (before world geometry for proper depth testing)
-            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), sunDirection, skyColor);
+            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), skyParams);
+            precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
         }
         checkGLError("After sky rendering");
 
@@ -246,7 +323,11 @@ public class WorldRenderer {
         // full-screen blue tint overlay alone doesn't shrink view distance.
         com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
         float fogStart = 0f, fogEnd = 0f;
-        Vector3f fogColor = skyColor;
+        Vector3f fogColor = clearFogColor;
+        // The evening gold fogs land on the sun's side; underwater the murk is all there is.
+        SunsetFog.set(cameraUnderwater ? new Vector3f() : horizonGold, sunsetCoverage, sunDirection);
+        SunsetFog.setTwilight(earthShadow, earthShadowHeight, cameraUnderwater ? 0f : twilightBand,
+                cameraUnderwater ? new Vector3f() : sunAureole);
         // Underwater the fog is a VOLUME around the eye, so it is measured as a
         // sphere; the atmospheric fog keeps its horizontal measure, which is
         // what makes a distant peak fade with its base instead of pulling clear
@@ -258,8 +339,7 @@ public class WorldRenderer {
             fogColor = UnderwaterFog.COLOR;
         } else if (settings.getLodEnabled() && settings.getLodDistance() > 0) {
             fogStart = settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
-            fogEnd = (settings.getRenderDistance() + settings.getLodDistance())
-                    * (float) WorldConfiguration.CHUNK_SIZE;
+            fogEnd = horizonDistance(settings);
         }
 
         // Set common uniforms for world rendering
@@ -320,8 +400,42 @@ public class WorldRenderer {
         // Water can then occlude them properly (water renders with glDepthMask(false))
         renderOpaqueDrops(player);
 
-        // Render transparent pass (translucent solids like ice)
-        renderTransparentPass(visibleChunks, player);
+        // Volumetric clouds — drawn after the opaque world but BEFORE anything
+        // translucent: the raymarch stops at the scene depth, and glass/ice
+        // write depth, so marching after them hid every cloud behind a window.
+        // Here they march to opaque depth (clouds behind mountains stay hidden,
+        // clouds below a high camera cover the terrain under them) and glass
+        // blends over them. Water, drawn later, fades itself out under the
+        // cloud in front of it (WaterRenderer). Not underwater, for the same
+        // reason the sky is skipped there: clouds are never fogged, and they
+        // would draw into exactly the gaps that have no water in front of
+        // them — the unloaded horizon.
+        if (!cameraUnderwater) {
+            // Bolts write depth before the clouds march, so cloud in front of a
+            // bolt hides it and cloud behind it doesn't paint over it.
+            lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
+            cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
+                    sky, skyColor,
+                    timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
+                    lightningRenderer.flashes(), precipitationFog, weatherReach);
+            checkGLError("After cloud rendering");
+        }
+
+        // Translucent solids (ice, glass) write depth, so whatever draws after
+        // them is hidden behind them. Above water they go AFTER the water pass:
+        // water behind a window or under lake ice is drawn first and the glass
+        // or ice blends over it (drawn before, the water was depth-rejected —
+        // invisible through glass, and ice showed the bare lakebed). Underwater
+        // the ice lies beyond the water surface, so the old order still holds:
+        // ice first, then the water blends over it.
+        sortChunksBackToFront(visibleChunks, player);
+        boolean translucentAfterWater = !cameraUnderwater;
+        if (!translucentAfterWater) {
+            renderTranslucentSolids(visibleChunks, cameraUnderwater);
+        }
+        // The drops and crack overlay below set world-shader uniforms without
+        // binding it; the clouds may have left their own program bound.
+        shaderProgram.bind();
 
         // Transparent drops and the crack overlay draw BEFORE water: the water
         // pass depth-prepasses its nearest surface into the depth buffer (to
@@ -337,30 +451,36 @@ public class WorldRenderer {
         renderWorldOverlays(player);
 
         // Dedicated water pass — draws every chunk's water mesh with the water
-        // shader, in the compositing slot the old water sub-pass held (after
-        // ice). Reuses the back-to-front order renderTransparentPass computed.
+        // shader — before ice and glass above water, after them underwater
+        // (see translucentAfterWater). Reuses the back-to-front order sorted above.
         // State-neutral (saves/restores all GL state it touches), but leaves
         // the nearest water surface's depth in the depth buffer, so later
         // passes (fire bolts, particles) are occluded by water in front of
         // them — physically correct compositing.
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
-                player.getCamera().getPosition(), totalTime, sunDirection,
+                player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
-                reusableLodWater, lodRegionBatcher, lodStamp);
+                reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
+                cloudRenderer, precipitationFog);
         checkGLError("After water pass");
 
-        // Voxel cloud layer — drawn AFTER world geometry and water so it depth
-        // tests against them: clouds behind mountains are rejected, and when
-        // the camera is above the cloud layer the clouds blend over the
-        // terrain/water below instead of being overwritten by it (clouds do
-        // not write depth, so anything drawn later at the same pixels would
-        // win regardless of distance if this ran before the world passes).
-        // Not underwater, for the same reason the sky is skipped there: clouds
-        // are never fogged, and they draw into exactly the gaps that have no
-        // water in front of them to depth-reject them — the unloaded horizon.
-        if (!cameraUnderwater && com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
-            cloudRenderer.renderClouds(projectionMatrix, player.getViewMatrix(), player.getPosition(), totalTime, ambientLightLevel);
-            checkGLError("After cloud rendering");
+        if (!cameraUnderwater) {
+            // Rain and snow fall below the clouds and in front of them. Before
+            // glass and ice: those write depth, so rain drawn after them vanished
+            // behind every window; drawn first, it shows through them, tinted by
+            // them. (Rain in front of a pane takes the pane's faint tint too.)
+            if (cloudRenderer.mapsReady()) {
+                precipitationRenderer.render(world, cloudRenderer, precipitationFog, projectionMatrix,
+                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel, weatherEffects.snow());
+            }
+            checkGLError("After precipitation rendering");
+        }
+
+        if (translucentAfterWater) {
+            shaderProgram.bind();
+            shaderProgram.setUniform("u_useTextureArray", true);
+            renderTranslucentSolids(visibleChunks, cameraUnderwater);
+            restoreGLStateAfterPasses();
         }
 
         // Ability and player VFX go after the water pass: effects in front of water draw over it,
@@ -373,18 +493,14 @@ public class WorldRenderer {
     }
     
     /**
-     * Stamps cloud depth into the bound framebuffer's depth attachment (color writes masked)
-     * so screen-space god rays treat clouds as occluders. Must be called after
-     * {@link #renderWorld} so clouds behind terrain are depth-rejected, and while the
-     * post-processing scene framebuffer (whose depth the god rays read) is still bound.
+     * How much of the sky's light reaches the eye at each pixel through this
+     * frame's cloud and rain (alpha), for screen-space effects such as god rays;
+     * 0 when nothing veils the sky. Call after {@link #renderWorld}.
      */
-    public void renderCloudOcclusion(Player player, float totalTime) {
-        if (com.stonebreak.battletest.BattleTestSession.isActive()) return;
-        if (!com.stonebreak.config.Settings.getInstance().getCloudsEnabled()) {
-            return;
-        }
-        cloudRenderer.renderCloudOcclusion(projectionMatrix, player.getViewMatrix(),
-                player.getPosition(), totalTime);
+    public int skyTransmittanceTexture(Player player) {
+        int clouds = cloudRenderer.transmittanceTexture();
+        return precipitationFog.sunVisibility(clouds, projectionMatrix, player.getViewMatrix(),
+                player.getRenderPosition(new Vector3f()));
     }
 
     /**
@@ -408,6 +524,16 @@ public class WorldRenderer {
     }
     
     /**
+     * Blocks to the edge of the drawn terrain: the native ring plus the LOD
+     * ring when LOD is on. The atmospheric fog is opaque there, and the
+     * weather ends there too.
+     */
+    private static float horizonDistance(com.stonebreak.config.Settings settings) {
+        int chunks = settings.getRenderDistance() + (settings.getLodEnabled() ? settings.getLodDistance() : 0);
+        return chunks * (float) WorldConfiguration.CHUNK_SIZE;
+    }
+
+    /**
      * Set up common uniforms for world rendering.
      */
     private void setupWorldUniforms(Player player, Vector3f skyColor,
@@ -427,12 +553,14 @@ public class WorldRenderer {
         // Set lighting uniforms from TimeOfDay system
         com.stonebreak.world.TimeOfDay timeOfDay = Game.getTimeOfDay();
         if (timeOfDay != null) {
-            shaderProgram.setUniform("u_ambientLight", timeOfDay.getAmbientLightLevel());
-            shaderProgram.setUniform("u_sunDirection", timeOfDay.getSunDirection());
+            shaderProgram.setUniform("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
+            shaderProgram.setUniform("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
+            shaderProgram.setUniform("u_keyLight", com.stonebreak.rendering.lighting.SceneLight.keyLight());
         } else {
             // Fallback to default lighting if TimeOfDay not initialized
             shaderProgram.setUniform("u_ambientLight", 1.0f);
             shaderProgram.setUniform("u_sunDirection", new Vector3f(0.5f, 1.0f, 0.3f).normalize());
+            shaderProgram.setUniform("u_keyLight", new Vector3f(1f));
         }
 
         // Set view position for specular lighting calculations. Render space —
@@ -446,6 +574,10 @@ public class WorldRenderer {
         // Cascaded sun-shadow sampling state (binds the map on its own unit;
         // disables sampling when the pass was skipped — night, setting off).
         shadowMapRenderer.applyToShader(shaderProgram);
+        // Cloud shadows (sunlight dimmed by the cloud above, Beer-Lambert).
+        cloudRenderer.uniforms().applyTo(shaderProgram);
+        CloudsInFront.bindSampler(shaderProgram);
+        shaderProgram.setBool("u_cloudsInFront", false);
 
         // Reset underwater fog uniforms for world rendering (blocks/chunks don't use fog)
         shaderProgram.setUniform("u_cameraPos", new Vector3f(0, 0, 0));
@@ -454,9 +586,12 @@ public class WorldRenderer {
 
         // Atmospheric distance fog toward the sky color (fogEnd <= fogStart disables).
         shaderProgram.setUniform("u_fogColor", skyColor);
+        SunsetFog.applyTo(shaderProgram);
         shaderProgram.setUniform("u_fogStart", fogStart);
         shaderProgram.setUniform("u_fogEnd", fogEnd);
         shaderProgram.setUniform("u_fogSpherical", fogSpherical);
+        // Rain and snow fog (precip_fog.glsl), marched in front of every fragment.
+        precipitationFog.applyTo(shaderProgram);
     }
     
     /**
@@ -625,16 +760,27 @@ public class WorldRenderer {
     private static int debugSBOPassCount = 0;
 
     /**
-     * Render transparent pass (water parts of chunks).
+     * Translucent solids (ice, glass), composited behind the cloud in front of
+     * them: blended over the clouds they would paint over that cloud.
      */
-    private void renderTransparentPass(List<Chunk> visibleChunks, Player player) {
+    private void renderTranslucentSolids(List<Chunk> visibleChunks, boolean cameraUnderwater) {
+        shaderProgram.bind();
+        CloudsInFront.Bindings previousCloudTexture = CloudsInFront.enable(
+                shaderProgram, cameraUnderwater ? null : cloudRenderer);
+        renderTransparentPass(visibleChunks);
+        shaderProgram.bind();
+        CloudsInFront.disable(shaderProgram, previousCloudTexture);
+    }
+
+    /**
+     * Render transparent pass (translucent solids) over the chunks
+     * {@link #sortChunksBackToFront} ordered this frame.
+     */
+    private void renderTransparentPass(List<Chunk> visibleChunks) {
         shaderProgram.bind(); // re-bind in case entity rendering left a different shader active
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent pass
         glEnable(GL_BLEND); // Enable blending
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
-
-        // Sort chunks from back to front for transparent pass
-        sortChunksBackToFront(visibleChunks, player);
 
         // Translucent solids (e.g. ice) only. Depth-write ON so they occlude
         // any farther translucent surface. Water no longer lives in the atlas
@@ -780,6 +926,10 @@ public class WorldRenderer {
         if (!remotePlayers.isEmpty()) {
             dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
+        if (entityRenderer != null) {
+            dropRenderer.renderSocketItems(entityRenderer.socketItems(), shaderProgram, projectionMatrix,
+                    player.getViewMatrix(), cameraPos);
+        }
     }
 
     /**
@@ -814,6 +964,8 @@ public class WorldRenderer {
      */
     private void renderEntities(Player player) {
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        // Socket items are drained by the drop pass; a frame that skips it must not let them pile up.
+        if (entityRenderer != null) entityRenderer.socketItems().clear();
 
         if (entityManager != null && entityRenderer != null) {
             World world = Game.getWorld();
@@ -882,8 +1034,15 @@ public class WorldRenderer {
         if (skyRenderer != null) {
             skyRenderer.cleanup();
         }
+        precipitationFog.cleanup();
         if (cloudRenderer != null) {
             cloudRenderer.cleanup();
+        }
+        if (precipitationRenderer != null) {
+            precipitationRenderer.cleanup();
+        }
+        if (lightningRenderer != null) {
+            lightningRenderer.cleanup();
         }
         torchShadowRenderer.close();
         torchIndirectLighting.close();

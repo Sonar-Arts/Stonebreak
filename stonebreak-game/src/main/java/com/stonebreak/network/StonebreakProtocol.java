@@ -53,6 +53,8 @@ import com.stonebreak.network.packet.world.CheatsSetC2S;
 import com.stonebreak.network.packet.world.CheatsStateS2C;
 import com.stonebreak.network.packet.world.TimeSetC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
+import com.stonebreak.network.packet.world.WeatherSetC2S;
+import com.stonebreak.network.packet.world.WeatherSyncS2C;
 
 import static com.openmason.engine.net.protocol.PacketDirection.CLIENTBOUND;
 import static com.openmason.engine.net.protocol.PacketDirection.SERVERBOUND;
@@ -127,6 +129,11 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.player.FishingRodC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 37, com.stonebreak.network.packet.entity.DecoyCastC2S.class,
                 com.stonebreak.network.packet.entity.DecoyCastC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 38, WeatherSetC2S.class, WeatherSetC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 39, com.stonebreak.network.packet.vehicle.VehicleActionC2S.class,
+                com.stonebreak.network.packet.vehicle.VehicleActionC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 40, com.stonebreak.network.packet.vehicle.VehicleMoveC2S.class,
+                com.stonebreak.network.packet.vehicle.VehicleMoveC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
@@ -162,6 +169,7 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.entity.EntityStatusS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 30, com.stonebreak.network.packet.player.PlayerPositionS2C.class,
                 com.stonebreak.network.packet.player.PlayerPositionS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 31, WeatherSyncS2C.class, WeatherSyncS2C.CODEC);
 
         return r;
     }

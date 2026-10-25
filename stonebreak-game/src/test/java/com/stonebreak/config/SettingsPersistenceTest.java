@@ -134,7 +134,9 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(40, tree.size());
+        assertEquals(41, tree.size());
+        assertTrue(tree.has("selectedAccessory"));
+        assertTrue(tree.has("pauseSingleplayerWorld"));
         assertTrue(tree.has("windowWidth"));
         assertTrue(tree.has("uiScale"));
         assertTrue(tree.has("multiplayerUsername"));

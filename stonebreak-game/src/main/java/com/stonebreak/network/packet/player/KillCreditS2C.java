@@ -22,9 +22,25 @@ import io.netty.buffer.ByteBuf;
  * @param targetNetworkId   victim's network id (-1 when it has none)
  * @param sourceOrdinal     {@code LivingEntity.DamageSource} ordinal the server applied
  * @param hitKind           {@code HitKind} wire id of the hit
+ * @param x                 damage-number anchor (victim head height); carried rather than read
+ * @param y                 from the shadow because a lethal hit can despawn it first
+ * @param z
  */
 public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean killed, int xpReward,
-                            int targetNetworkId, byte sourceOrdinal, byte hitKind) implements Packet {
+                            int targetNetworkId, byte sourceOrdinal, byte hitKind,
+                            float x, float y, float z) implements Packet {
+
+    /** Credit for a hit of {@code source}/{@code kind} that landed on {@code victim}, anchored at its head. */
+    public static KillCreditS2C forHit(com.stonebreak.mobs.entities.LivingEntity victim, float dealt,
+                                       boolean killed,
+                                       com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                       com.stonebreak.mobs.entities.HitKind kind) {
+        org.joml.Vector3f p = victim.getPosition();
+        return new KillCreditS2C(victim.getType().ordinal(), dealt, killed,
+            killed ? victim.getXpReward() : 0, victim.getNetworkId(),
+            (byte) source.ordinal(), kind.wireId(),
+            p.x, p.y + victim.getHeight() * 0.9f, p.z);
+    }
 
     public static final PacketCodec<KillCreditS2C> CODEC = new PacketCodec<>() {
         @Override
@@ -36,12 +52,15 @@ public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean ki
             out.writeInt(p.targetNetworkId());
             out.writeByte(p.sourceOrdinal());
             out.writeByte(p.hitKind());
+            out.writeFloat(p.x());
+            out.writeFloat(p.y());
+            out.writeFloat(p.z());
         }
 
         @Override
         public KillCreditS2C decode(ByteBuf in) {
             return new KillCreditS2C(in.readInt(), in.readFloat(), in.readBoolean(), in.readInt(),
-                    in.readInt(), in.readByte(), in.readByte());
+                in.readInt(), in.readByte(), in.readByte(), in.readFloat(), in.readFloat(), in.readFloat());
         }
     };
 }

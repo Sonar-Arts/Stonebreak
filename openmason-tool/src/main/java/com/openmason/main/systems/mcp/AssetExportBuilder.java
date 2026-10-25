@@ -152,6 +152,9 @@ public final class AssetExportBuilder {
         if (n.has("tool")) {
             params.setTool(tool(n.get("tool")));
         }
+        if (n.has("weapon")) {
+            params.setWeapon(weapon(n.get("weapon")));
+        }
         return params;
     }
 
@@ -275,6 +278,25 @@ public final class AssetExportBuilder {
                     t.hasNonNull("attackDamage") ? (float) t.get("attackDamage").asDouble() : null);
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("invalid_params: tool — " + ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Melee-weapon section (SBO 1.10): {@code {group, damageType, damage,
+     * swingSeconds}}; {@code null} = not a weapon.
+     */
+    public static SBOFormat.WeaponData weapon(JsonNode w) {
+        if (w == null || w.isNull()) {
+            return null;
+        }
+        try {
+            return new SBOFormat.WeaponData(
+                    text(w, "group", ""),
+                    text(w, "damageType", ""),
+                    (float) w.path("damage").asDouble(-1),
+                    (float) w.path("swingSeconds").asDouble(0));
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("invalid_params: weapon — " + ex.getMessage(), ex);
         }
     }
 
@@ -425,6 +447,7 @@ public final class AssetExportBuilder {
         out.put("sounds", sounds(d.sounds()));
         out.put("drops", describeDrops(d.drops()));
         out.put("tool", describeTool(d.tool()));
+        out.put("weapon", describeWeapon(d.weapon()));
         return out;
     }
 
@@ -508,6 +531,18 @@ public final class AssetExportBuilder {
         return out;
     }
 
+    private static Map<String, Object> describeWeapon(SBOFormat.WeaponData weapon) {
+        if (weapon == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("group", weapon.group());
+        out.put("damageType", weapon.damageType());
+        out.put("damage", weapon.damage());
+        out.put("swingSeconds", weapon.swingSeconds());
+        return out;
+    }
+
     private static Map<String, Object> describeDrops(SBOFormat.DropData drops) {
         if (drops == null) {
             return null;
@@ -545,8 +580,8 @@ public final class AssetExportBuilder {
      * objectName, objectType, objectPack, author, description, gameProperties
      * (merged; {@code null} removes), defaultStateName, fuel ({burnTicks} or
      * null), sounds (replaced; {@code resource} or an already-embedded
-     * {@code filename}), drops (replaced; null removes), tool (replaced; null
-     * removes). States, recipes and embedded bytes are untouched.
+     * {@code filename}), drops (replaced; null removes), tool and weapon
+     * (each replaced; null removes). States, recipes and embedded bytes are untouched.
      */
     public static SBOFormat.Document patchSbo(SBOFormat.Document b, JsonNode p) {
         SBOFormat.GameProperties gp = b.gameProperties();
@@ -566,6 +601,7 @@ public final class AssetExportBuilder {
         SoundData sounds = p.has("sounds") ? patchSounds(b.sounds(), p.get("sounds")) : b.sounds();
         SBOFormat.DropData drops = p.has("drops") ? drops(p.get("drops")) : b.drops();
         SBOFormat.ToolData tool = p.has("tool") ? tool(p.get("tool")) : b.tool();
+        SBOFormat.WeaponData weapon = p.has("weapon") ? weapon(p.get("weapon")) : b.weapon();
         return new SBOFormat.Document(
                 b.version(),
                 text(p, "objectId", b.objectId()),
@@ -580,7 +616,7 @@ public final class AssetExportBuilder {
                 b.createdAt(), b.omoFilename(), b.textureFilename(),
                 gp, b.states(),
                 text(p, "defaultStateName", b.defaultStateName()),
-                b.recipes(), b.smeltingRecipes(), fuel, sounds, drops, tool);
+                b.recipes(), b.smeltingRecipes(), fuel, sounds, drops, tool, weapon);
     }
 
     /** Same idea for SBE: objectId/Name, entityType, objectPack, author, description, sounds. */

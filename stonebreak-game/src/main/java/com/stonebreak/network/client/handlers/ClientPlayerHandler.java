@@ -155,7 +155,7 @@ public final class ClientPlayerHandler {
         com.stonebreak.player.combat.HitResultFeedback.apply(local,
                 target instanceof com.stonebreak.mobs.entities.LivingEntity le ? le : null,
                 source, com.stonebreak.mobs.entities.HitKind.fromWire(k.hitKind()),
-                k.damageDealt(), k.killed());
+                k.damageDealt(), k.killed(), new org.joml.Vector3f(k.x(), k.y(), k.z()));
         local.getStats().addDamageDealt(k.damageDealt());
         if (k.killed()) {
             local.getStats().incrementEntitiesKilled();

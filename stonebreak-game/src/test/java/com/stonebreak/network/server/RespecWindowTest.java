@@ -37,7 +37,8 @@ class RespecWindowTest {
                 .remainingFp(2)
                 .remainingAp(5)
                 .abilityScores(new int[]{12, 10, 11, 10, 10, 10})
-                .spentAbilityCp(Map.of("warrior:0", 2))
+                .classInvestmentOrder(java.util.List.of("berserker"))
+                .spentAbilityCp(Map.of("berserker:p0:0", 2))
                 .skillLevels(Map.of("mining", 2))
                 .acquiredFeatIds(Set.of("double_jump"))
                 .build();
@@ -76,7 +77,8 @@ class RespecWindowTest {
     void aCommittedSpendCannotBeRefunded() {
         ServerPlayer sp = seeded(baseline());
         PlayerData respec = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("ranger:0", 2))   // move both committed CP elsewhere
+                .classInvestmentOrder(java.util.List.of("ranger"))
+                .spentAbilityCp(Map.of("ranger:p0:0", 2))   // move both committed CP elsewhere
                 .build();
         assertNull(report(sp, false, respec), "a closing report below the floor");
         assertNull(report(sp, true, respec), "opening a window does not lower the floor");
@@ -97,7 +99,7 @@ class RespecWindowTest {
     void aSessionSpendCanBeUndoneUntilTheWindowCloses() {
         ServerPlayer sp = seeded(baseline());
         PlayerData spent = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("warrior:0", 3))
+                .spentAbilityCp(Map.of("berserker:p0:0", 3))
                 .build();
         assertNotNull(report(sp, true, spent), "provisional spend");
         assertTrue(sp.respecWindowOpen());
@@ -113,7 +115,7 @@ class RespecWindowTest {
     void aClosingReportCommitsTheSession() {
         ServerPlayer sp = seeded(baseline());
         PlayerData spent = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("warrior:0", 3))
+                .spentAbilityCp(Map.of("berserker:p0:0", 3))
                 .build();
         assertNotNull(report(sp, true, spent));
         assertNotNull(report(sp, false, spent), "Save: the closing report keeps the spend");
@@ -126,11 +128,11 @@ class RespecWindowTest {
         // refundable: the first attack commits them.
         ServerPlayer sp = seeded(baseline());
         PlayerData spent = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("warrior:0", 3))
+                .spentAbilityCp(Map.of("berserker:p0:0", 3))
                 .build();
         assertNotNull(report(sp, true, spent));
 
-        assertTrue(IntegratedServer.isCombatIntent(new EntityDamageC2S(1, 2f, (byte) 0, (byte) 0)));
+        assertTrue(IntegratedServer.isCombatIntent(new EntityDamageC2S(1, 2f, (byte) 0, (byte) 0, (byte) 0)));
         sp.commitSpends(); // what routePlay does for that intent
 
         assertFalse(sp.respecWindowOpen());
@@ -141,11 +143,11 @@ class RespecWindowTest {
     void aRefusedClosingReportStillClosesTheWindow() {
         ServerPlayer sp = seeded(baseline());
         PlayerData spent = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("warrior:0", 3))
+                .spentAbilityCp(Map.of("berserker:p0:0", 3))
                 .build();
         assertNotNull(report(sp, true, spent));
         PlayerData overspent = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("warrior:0", 9))
+                .spentAbilityCp(Map.of("berserker:p0:0", 9))
                 .build();
         assertNull(report(sp, false, overspent));
         assertFalse(sp.respecWindowOpen());

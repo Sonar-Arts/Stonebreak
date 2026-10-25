@@ -20,9 +20,10 @@ import static org.lwjgl.opengl.GL30.*;
 // Project Imports
 import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.viewer.scene.PngTextureUploader;
 
 /**
- * Renderer for procedural sky with sun.
+ * Renderer for procedural sky with sun and moon.
  * Renders a full-screen sky dome with atmospheric effects.
  *
  * <p>Sky color and sun direction are supplied per-frame by the caller (e.g. derived from a
@@ -40,6 +41,11 @@ public class SkyRenderer {
 
     // Shader program for sky rendering
     private ShaderProgram skyShaderProgram;
+
+    private static final String MOON_TEXTURE = "/textures/sky/moon.png";
+    /** Texture unit the moon is bound on while the sky draws (restored afterwards). */
+    private static final int MOON_TEXTURE_UNIT = 0;
+    private int moonTexture;
 
     // Sky dome vertices (cube that will be expanded in vertex shader)
     private static final float[] SKY_VERTICES = {
@@ -75,6 +81,7 @@ public class SkyRenderer {
     public SkyRenderer() {
         initializeOpenGLResources();
         initializeShaders();
+        initializeMoonTexture();
     }
 
     /**
@@ -103,6 +110,21 @@ public class SkyRenderer {
         glBindVertexArray(0);
     }
 
+    /** The 64x64 pixel-art moon (alpha = disc), sampled texel by texel. */
+    private void initializeMoonTexture() {
+        try (InputStream in = getClass().getResourceAsStream(MOON_TEXTURE)) {
+            if (in == null) {
+                throw new IOException("Moon texture not found: " + MOON_TEXTURE);
+            }
+            moonTexture = new PngTextureUploader().upload(in.readAllBytes());
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load the moon texture", e);
+        }
+        if (moonTexture == 0) {
+            throw new RuntimeException("Failed to decode the moon texture " + MOON_TEXTURE);
+        }
+    }
+
     /**
      * Initialize sky shaders using the ShaderProgram class.
      */
@@ -126,7 +148,19 @@ public class SkyRenderer {
             skyShaderProgram.createUniform("viewMatrix");
             skyShaderProgram.createUniform("cameraPosition");
             skyShaderProgram.createUniform("sunDirection");
-            skyShaderProgram.createUniform("skyColor");
+            skyShaderProgram.createUniform("moonDirection");
+            skyShaderProgram.createUniform("moonLight");
+            skyShaderProgram.createUniform("zenithColor");
+            skyShaderProgram.createUniform("horizonColor");
+            skyShaderProgram.createUniform("sunGlow");
+            skyShaderProgram.createUniform("sunsetColor");
+            skyShaderProgram.createUniform("sunsetCoverage");
+            skyShaderProgram.createUniform("sunColor");
+            skyShaderProgram.createUniform("earthShadowColor");
+            skyShaderProgram.createUniform("earthShadowHeight");
+            skyShaderProgram.createUniform("twilightBand");
+            skyShaderProgram.createUniform("daylight");
+            skyShaderProgram.createUniform("moonTexture");
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to initialize sky shaders", e);
@@ -146,17 +180,16 @@ public class SkyRenderer {
     }
 
     /**
-     * Render the sky dome with dynamic time-of-day lighting.
+     * Render the sky dome, the sun and the moon with dynamic time-of-day lighting.
      * Should be called first in the rendering pipeline, before world geometry.
      *
      * @param projectionMatrix The projection matrix
      * @param viewMatrix       The view matrix
      * @param cameraPosition   The camera position
-     * @param sunDirection     Normalized sun direction in world space
-     * @param skyColor         RGB sky color (0..1)
+     * @param sky              This frame's sky colours, sun and moon
      */
     public void renderSky(Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPosition,
-                          Vector3f sunDirection, Vector3f skyColor) {
+                          SkyParams sky) {
         // Save current OpenGL state
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -171,7 +204,11 @@ public class SkyRenderer {
         glDepthFunc(GL_LEQUAL); // Sky should be rendered at maximum depth
         glDisable(GL_CULL_FACE); // Render both sides of sky dome
         glDisable(GL_BLEND); // Sky doesn't need blending
-        glDepthMask(true); // Enable depth writing for sky
+        // No depth writes: the cleared 1.0 already says "sky". The xyww trick
+        // rounds some dome pixels to just under 1.0, and passes that read scene
+        // depth (clouds) took those for a surface at the far plane, cutting
+        // distant clouds into a comb that crawled as the camera moved.
+        glDepthMask(false);
 
         // Use sky shader
         skyShaderProgram.bind();
@@ -183,13 +220,33 @@ public class SkyRenderer {
         // the vertex stage, and is drawn through the render-space view matrix.
         skyShaderProgram.setUniform("cameraPosition",
                 RenderOrigin.toRender(cameraPosition, scratchCameraPos));
-        skyShaderProgram.setUniform("sunDirection", sunDirection);
-        skyShaderProgram.setUniform("skyColor", skyColor);
+        skyShaderProgram.setUniform("sunDirection", sky.sunDirection());
+        skyShaderProgram.setUniform("moonDirection", sky.moonDirection());
+        skyShaderProgram.setUniform("moonLight", sky.moonLight());
+        skyShaderProgram.setUniform("zenithColor", sky.zenithColor());
+        skyShaderProgram.setUniform("horizonColor", sky.horizonColor());
+        skyShaderProgram.setUniform("sunGlow", sky.sunGlow());
+        skyShaderProgram.setUniform("sunsetColor", sky.sunsetColor());
+        skyShaderProgram.setUniform("sunsetCoverage", sky.sunsetCoverage());
+        skyShaderProgram.setUniform("sunColor", sky.sunColor());
+        skyShaderProgram.setUniform("earthShadowColor", sky.earthShadowColor());
+        skyShaderProgram.setUniform("earthShadowHeight", sky.earthShadowHeight());
+        skyShaderProgram.setUniform("twilightBand", sky.twilightBand());
+        skyShaderProgram.setUniform("daylight", sky.daylight());
+        skyShaderProgram.setUniform("moonTexture", MOON_TEXTURE_UNIT);
+
+        int previousUnit = glGetInteger(GL_ACTIVE_TEXTURE);
+        glActiveTexture(GL_TEXTURE0 + MOON_TEXTURE_UNIT);
+        int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, moonTexture);
 
         // Bind sky VAO and render
         glBindVertexArray(skyVAO);
         glDrawElements(GL_TRIANGLES, SKY_INDICES.length, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
+
+        glBindTexture(GL_TEXTURE_2D, previousTexture);
+        glActiveTexture(previousUnit);
 
         // Unbind shader
         skyShaderProgram.unbind();
@@ -224,6 +281,9 @@ public class SkyRenderer {
     public void cleanup() {
         if (skyShaderProgram != null) {
             skyShaderProgram.cleanup();
+        }
+        if (moonTexture != 0) {
+            glDeleteTextures(moonTexture);
         }
 
         if (skyVAO != 0) {

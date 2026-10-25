@@ -5,7 +5,11 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.rpg.CharacterPanelTab;
 import com.stonebreak.rpg.TalentSubTab;
+import com.stonebreak.rpg.proficiency.WeaponTraining;
+import com.stonebreak.rpg.skills.SkillRegistry;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator;
+
+import java.util.function.Supplier;
 
 /**
  * The Character Screen's state and rules: visibility, the active tab, the character's stats, each
@@ -22,6 +26,9 @@ public class CharacterController {
   private final ClassesTab classes = new ClassesTab();
   private final SkillsTab skills = new SkillsTab();
   private final FeatsTab feats = new FeatsTab();
+
+  /** The open panel session's baseline: what right-click refunds stop at. */
+  private Supplier<CharacterStats.RpgSnapshot> sessionBaseline = CharacterController::gameSessionBaseline;
 
   private boolean visible = false;
   private CharacterPanelTab activeTab = CharacterPanelTab.OVERVIEW;
@@ -77,6 +84,50 @@ public class CharacterController {
     if (index < 0 || index >= 6) return;
     if (delta > 0) stats.incrementAbilityScore(index);
     else stats.decrementAbilityScore(index);
+  }
+
+  /**
+   * A right press: takes back one point of what is under the pointer, if it was spent since the
+   * panel session opened. Saved points (the session's baseline) are never touched. {@code target}
+   * is rank (a tree node key), ability (an index), skill (an index), train (a weapon group name) or
+   * feat (an id; empty for the selected feat).
+   *
+   * @return false for an unknown target
+   */
+  public boolean refund(String target, String key) {
+    CharacterStats.RpgSnapshot saved = sessionBaseline.get();
+    switch (target) {
+      case "rank" -> stats.refundSessionRank(key, saved);
+      case "ability" -> stats.refundSessionAbilityPoint(index(key), saved);
+      case "skill" -> {
+        int i = index(key);
+        if (i >= 0 && i < SkillRegistry.ALL.size()) stats.refundSessionSkillPoint(SkillRegistry.ALL.get(i).id(), saved);
+      }
+      case "train" -> stats.refundSessionWeaponRank(WeaponTraining.group(key), saved);
+      case "feat" -> stats.refundSessionFeat(key.isEmpty() ? feats.selectedFeatId() : key, saved);
+      default -> {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Replaces where {@link #refund} reads the session baseline (tests; the game's panel session by default). */
+  public void setSessionBaseline(Supplier<CharacterStats.RpgSnapshot> source) {
+    sessionBaseline = source;
+  }
+
+  private static CharacterStats.RpgSnapshot gameSessionBaseline() {
+    Game game = Game.getInstance();
+    return game == null || game.getStateController() == null ? null : game.getStateController().rpgSessionBaseline();
+  }
+
+  private static int index(String s) {
+    try {
+      return Integer.parseInt(s);
+    } catch (NumberFormatException e) {
+      return -1;
+    }
   }
 
   /**

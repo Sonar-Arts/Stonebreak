@@ -1,7 +1,11 @@
 package com.stonebreak.mobs.entities;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.joml.Vector3f;
 import com.stonebreak.core.Game;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.LivingEntity.DamageSource;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Player;
@@ -18,10 +22,17 @@ final class LivingEntityCombat {
 
     private static final float INVULNERABILITY_DURATION = 0.5f; // 500ms after taking damage
 
+    /**
+     * What an invulnerability window blocks: further hits from the same weapon. Melee is keyed
+     * on the item swung, so switching weapons lands a fresh hit; everything else (arrows, fire,
+     * abilities, bleed ticks) on its source alone ({@link LivingEntity#NO_WEAPON}).
+     */
+    private record HitKey(DamageSource source, int weaponId) {}
+
     private final LivingEntity owner;
 
-    private boolean invulnerable;
-    private float invulnerabilityTimer;
+    /** Seconds of invulnerability left, per weapon that recently landed a hit. */
+    private final Map<HitKey, Float> invulnerability = new HashMap<>();
 
     /**
      * Position of the most recent attacker, set per damage application. Lets knockback push
@@ -41,19 +52,13 @@ final class LivingEntityCombat {
 
     LivingEntityCombat(LivingEntity owner) {
         this.owner = owner;
-        this.invulnerable = false;
-        this.invulnerabilityTimer = 0.0f;
     }
 
-    /** Counts down the post-hit invulnerability window. */
+    /** Counts down the post-hit invulnerability windows. */
     void updateInvulnerability(float deltaTime) {
-        if (invulnerable) {
-            invulnerabilityTimer -= deltaTime;
-            if (invulnerabilityTimer <= 0) {
-                invulnerable = false;
-                invulnerabilityTimer = 0;
-            }
-        }
+        if (invulnerability.isEmpty()) return;
+        invulnerability.replaceAll((key, seconds) -> seconds - deltaTime);
+        invulnerability.values().removeIf(seconds -> seconds <= 0f);
     }
 
     /** Ticks the Illusionist Bewildered/panic timer; clears the forced target when it lapses. */
@@ -71,37 +76,45 @@ final class LivingEntityCombat {
      * Authoritative damage application.
      *
      * <p>On a network shadow this never mutates local state: the authoritative entity lives
-     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent and a
-     * predicted damage number is shown for feedback. (Mutating the shadow would also wedge
-     * it permanently invulnerable — shadows never tick, so i-frames would never expire.)
+     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent. Damage
+     * numbers and the hurt voice come back with the server's {@code KillCreditS2C}, so hits
+     * the server rejects (i-frames, range) show nothing. (Mutating the shadow would also
+     * wedge it permanently invulnerable — shadows never tick, so i-frames would never expire.)
      *
+     * @param weaponId          item id of the melee weapon swung, or {@link LivingEntity#NO_WEAPON};
+     *                          the invulnerability window only blocks that same weapon
      * @param attackerPos       authoritative attacker position for knockback direction, or
      *                          null when unknown (then no knockback)
      * @param creditLocalPlayer whether PLAYER-source stats/XP credit the local player; the
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
      * @param kind              on a shadow, which server rules validate the forwarded intent
+     * @return whether the hit counted: forwarded to the server for a shadow (no network id,
+     *         e.g. a remote player, means it was dropped), applied for a local entity
+     *         (false when dead or invulnerable to this weapon)
      */
-    void damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer,
-                HitKind kind) {
+    boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
+                   Vector3f attackerPos, boolean creditLocalPlayer, HitKind kind) {
         Vector3f position = owner.position;
+        float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
-            if (owner.getNetworkId() >= 0 && amount > 0f) {
-                // No predicted damage number / hurt voice: the server may refuse the hit
-                // (range, cooldown, the real mob's i-frames). Both play from its result
-                // (KillCreditS2C) on this client — the only place the attacker can see/hear it.
-                MultiplayerSession.onLocalEntityDamage(owner, amount, source, kind);
+            if (owner.getNetworkId() < 0 || !(amount > 0f)) {
+                return false;
             }
-            return;
+            // No predicted damage number / hurt voice: the server may refuse the hit
+            // (range, cooldown, the real mob's i-frames). Both play from its result
+            // (KillCreditS2C) on this client — the only place the attacker can see/hear it.
+            MultiplayerSession.onLocalEntityDamage(owner, amount, source, type, kind);
+            return true;
         }
-        if (!owner.alive || invulnerable) return;
-        float effectiveAmount = amount * owner.getIncomingDamageMultiplier(source);
+        HitKey key = new HitKey(source, weaponId);
+        if (!owner.alive || invulnerability.containsKey(key)) return false;
+        float effectiveAmount = amount * owner.getIncomingDamageMultiplier(source) * resistance;
         if (source == DamageSource.ARCANE) {
             effectiveAmount *= owner.statusEffects().consumeSpellmark();
         }
         owner.applyBaseDamage(effectiveAmount);
-        invulnerable = true;
-        invulnerabilityTimer = INVULNERABILITY_DURATION;
+        invulnerability.put(key, INVULNERABILITY_DURATION);
         // Damage numbers are client UI — only spawn them for entities living in the world
         // being rendered. Authoritative entities live in the headless server world, where
         // this would emit a duplicate of the client's predicted number from the tick thread.
@@ -130,6 +143,7 @@ final class LivingEntityCombat {
         }
         lastAttackerPosition = attackerPos;
         owner.onDamage(effectiveAmount, source);
+        return true;
     }
 
     /**
@@ -149,9 +163,6 @@ final class LivingEntityCombat {
             owner.applyKnockback(knockbackDir, 3.0f, 1.5f);
         }
     }
-
-    boolean isInvulnerable() { return invulnerable; }
-    float getInvulnerabilityTimer() { return invulnerabilityTimer; }
 
     /** World position of the most recent attacker (null if unknown / the local player). */
     Vector3f getLastAttackerPosition() { return lastAttackerPosition; }

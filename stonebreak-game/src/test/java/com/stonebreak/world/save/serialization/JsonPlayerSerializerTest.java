@@ -51,7 +51,7 @@ class JsonPlayerSerializerTest {
             .worldName("SaveWorld")
             .selectedClassId("ranger")
             .spentAbilityCp(Map.of("str", 2))
-            .skillLevels(Map.of("mining", 3))
+            .skillLevels(Map.of("mining", 3, "proficiency.one_handed", 2))
             .acquiredFeatIds(Set.of("featA", "featB"))
             .abilityScores(new int[]{8, 14, 12, 16, 10, 11})
             .remainingCp(5)
@@ -90,7 +90,7 @@ class JsonPlayerSerializerTest {
         // RPG / character progression
         assertEquals("ranger", deserialized.getSelectedClassId());
         assertEquals(Map.of("str", 2), deserialized.getSpentAbilityCp());
-        assertEquals(Map.of("mining", 3), deserialized.getSkillLevels());
+        assertEquals(Map.of("mining", 3, "proficiency.one_handed", 2), deserialized.getSkillLevels());
         assertEquals(Set.of("featA", "featB"), deserialized.getAcquiredFeatIds());
 
         // Ability scores
@@ -303,5 +303,29 @@ class JsonPlayerSerializerTest {
         // skillLevels {"level": 42} serializes before top-level "level": 7;
         // extractInt uses m.find() on the full document and grabs 42 first.
         assertEquals(42, deserialized.getLevel());
+    }
+
+    @Test
+    void seatedVehicleRoundTrips() {
+        PlayerData seated = PlayerData.builder()
+            .position(new Vector3f(10.5f, 62.4f, -7f))
+            .vehiclePosition(new Vector3f(10.25f, 62.125f, -7.5f))
+            .lastSaved(TIMESTAMP)
+            .build();
+
+        PlayerData back = serializer.deserialize(serializer.serialize(seated));
+
+        assertEquals(new Vector3f(10.25f, 62.125f, -7.5f), back.getVehiclePosition());
+        assertEquals(new Vector3f(10.5f, 62.4f, -7f), back.getPosition());
+    }
+
+    @Test
+    void onFootHasNoVehicle() {
+        PlayerData onFoot = PlayerData.builder().lastSaved(TIMESTAMP).build();
+
+        byte[] bytes = serializer.serialize(onFoot);
+
+        assertFalse(new String(bytes, StandardCharsets.UTF_8).contains("\"vehicle\""));
+        assertNull(serializer.deserialize(bytes).getVehiclePosition());
     }
 }

@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -58,6 +59,12 @@ public class JsonPlayerSerializer {
             json.append("  \"clientSecret\": \"").append(JsonParsingUtil.escapeJson(player.getClientSecret())).append("\",\n");
         }
 
+        Vector3f vehicle = player.getVehiclePosition();
+        if (vehicle != null) {
+            json.append("  \"vehicle\": {\"x\": ").append(vehicle.x).append(", \"y\": ").append(vehicle.y)
+                .append(", \"z\": ").append(vehicle.z).append("},\n");
+        }
+
         json.append("  \"lastSaved\": \"").append(player.getLastSaved().format(FORMATTER)).append("\",\n");
 
         // Serialize inventory as simple {id, count} pairs
@@ -85,6 +92,15 @@ public class JsonPlayerSerializer {
             json.append("  \"characterClass\": \"").append(JsonParsingUtil.escapeJson(classId)).append("\",\n");
         } else {
             json.append("  \"characterClass\": null,\n");
+        }
+        if (player.getClassInvestmentOrder() != null) {
+            json.append("  \"classInvestmentOrder\": [");
+            List<String> order = player.getClassInvestmentOrder();
+            for (int i = 0; i < order.size(); i++) {
+                if (i > 0) json.append(", ");
+                json.append("\"").append(JsonParsingUtil.escapeJson(order.get(i))).append("\"");
+            }
+            json.append("],\n");
         }
         json.append("  \"remainingCp\": ").append(player.getRemainingCp()).append(",\n");
         json.append("  \"remainingSp\": ").append(player.getRemainingSkillPoints()).append(",\n");
@@ -218,6 +234,10 @@ public class JsonPlayerSerializer {
                 builder.worldName(worldName);
             }
             builder.clientSecret(JsonParsingUtil.extractStringOptional(json, "clientSecret"));
+            if (json.contains("\"vehicle\"")) {
+                builder.vehiclePosition(tolerant("vehicle",
+                    () -> JsonParsingUtil.extractVector3f(json, "vehicle"), null));
+            }
 
             builder.inventory(readInventory(json));
 
@@ -229,6 +249,8 @@ public class JsonPlayerSerializer {
             builder.remainingCp(intOrDefault(json, "remainingCp", 100));
             builder.remainingSp(intOrDefault(json, "remainingSp", 100));
             builder.remainingFp(intOrDefault(json, "remainingFp", 100));
+            builder.classInvestmentOrder(tolerant("classInvestmentOrder",
+                () -> JsonParsingUtil.extractStringListOrNull(json, "classInvestmentOrder"), null));
             builder.spentAbilityCp(tolerant("spentAbilityCp",
                 () -> JsonParsingUtil.extractStringIntMap(json, "spentAbilityCp"), Map.of()));
             builder.skillLevels(tolerant("skillLevels",

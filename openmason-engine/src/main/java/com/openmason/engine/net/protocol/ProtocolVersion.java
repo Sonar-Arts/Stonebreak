@@ -45,8 +45,13 @@ public final class ProtocolVersion {
      *  GiveItemS2C/DropItemC2S and item-drop spawn metadata carry the stack state (#342);
      *  FishingRodC2S and DecoyCastC2S, with bobber/decoy spawn metadata (#341).
      *  17 = PlayerPositionS2C: the server puts a player back after refusing a move further than
-     *  it could have travelled (issue #336); serverbound frames are capped at 256 KiB. */
-    public static final int CURRENT = 17;
+     *  it could have travelled (issue #336); serverbound frames are capped at 256 KiB.
+     *  18 = weather zones (WeatherSyncS2C carries them, WeatherSetC2S a world/local scope);
+     *  EntityDamageC2S carries a damage type and mob invulnerability is keyed per melee weapon;
+     *  KillCreditS2C carries the damage-number anchor.
+     *  19 = vehicles: VehicleActionC2S (place/board/dismount/hit) and VehicleMoveC2S (the rower's
+     *  boat position and oar input); the DINGHY entity type replicates. */
+    public static final int CURRENT = 19;
 
     private ProtocolVersion() {}
 }

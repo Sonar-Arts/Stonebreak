@@ -1,8 +1,13 @@
 package com.stonebreak.player;
 
+import com.stonebreak.items.weapon.WeaponGroup;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.classes.PlayerClassDefinition;
+import com.stonebreak.rpg.classes.TalentNode;
+import com.stonebreak.rpg.classes.TalentPath;
 import com.stonebreak.rpg.feats.FeatRegistry;
+import com.stonebreak.rpg.proficiency.ProficiencyRank;
+import com.stonebreak.rpg.proficiency.WeaponProficiency;
 
 import java.util.ArrayList;
 import java.util.ArrayDeque;
@@ -34,10 +39,18 @@ public class CharacterStats {
 
   // ─────────────────────────────────────────────── Classes
 
+  /** The primary class: {@code classInvestmentOrder[0]}, or the class picked before any rank. */
   private String selectedClassId = null;
 
-  /** Maps "classId:abilityIndex" to the number of CP spent on that ability. */
+  /**
+   * Maps a talent-tree key to its rank: {@code "classId:abilityIndex"} for core abilities,
+   * {@code "classId:p<path>:<tier>"} for path nodes. (The field name predates ranks; every rank
+   * used to cost exactly 1 CP.)
+   */
   private final Map<String, Integer> spentAbilityCp = new HashMap<>();
+
+  /** Class ids in the order the player first ranked them; index sets the CP cost per rank. */
+  private final List<String> classInvestmentOrder = new ArrayList<>();
 
   // ─────────────────────────────────────────────── Skills
 
@@ -73,6 +86,21 @@ public class CharacterStats {
     }
   }
 
+  /**
+   * Sets the level directly (cheat command), resetting progress into it. The point pools move by
+   * the difference in granted points; lowering never takes back points already spent, so a pool
+   * that would go negative stops at 0.
+   */
+  public void setLevel(int newLevel) {
+    newLevel = Math.max(1, newLevel);
+    remainingCp = Math.max(0, remainingCp + grantedCp(newLevel) - grantedCp(level));
+    remainingSp = Math.max(0, remainingSp + grantedSp(newLevel) - grantedSp(level));
+    remainingFp = Math.max(0, remainingFp + grantedFp(newLevel) - grantedFp(level));
+    level = newLevel;
+    xp = 0;
+    if (player != null) player.updateDerivedStats();
+  }
+
   // ─────────────────────────────────────────────── Point currencies
 
   private int remainingCp;
@@ -87,8 +115,8 @@ public class CharacterStats {
    * accumulate, so a level-N character's pool is the sum of grants 1..N minus
    * what they spent. Old saves keep their stored (legacy, larger) pools.
    */
-  private static final int[] STARTING_GRANT  = {1, 3, 1};
-  private static final int[] PER_LEVEL_GRANT = {1, 1, 1};
+  private static final int[] STARTING_GRANT  = {4, 3, 1};
+  private static final int[] PER_LEVEL_GRANT = {3, 1, 1};
 
   /** The {CP, SP, FP} grant awarded for reaching the given level. */
   private static int[] grantForLevel(int level) {
@@ -119,7 +147,7 @@ public class CharacterStats {
 
   // ─────────────────────────────────────────────── Undo history
 
-  private enum UndoKind { CP, SP, FP, AP }
+  private enum UndoKind { CP, SP, FP, AP, WTP }
 
   /** A reversible allocation, pushed by each spend/invest/acquire/ability-raise. */
   private record UndoOp(UndoKind kind, String key, int index, String prevClassId) {}
@@ -150,10 +178,13 @@ public class CharacterStats {
     ledgerVersion++;
     switch (op.kind()) {
       case CP -> {
-        remainingCp++;
+        int before = derivedSpentCp();
         spentAbilityCp.merge(op.key(), -1, Integer::sum);
         spentAbilityCp.remove(op.key(), 0);
-        selectedClassId = op.prevClassId();
+        String classId = ClassRegistry.classIdOf(op.key());
+        if (getClassRanks(classId) == 0) classInvestmentOrder.remove(classId);
+        syncPrimaryClass(op.prevClassId());
+        remainingCp -= derivedSpentCp() - before;
       }
       case SP -> {
         remainingSp++;
@@ -167,6 +198,10 @@ public class CharacterStats {
       case AP -> {
         decrementAbilityScore(op.index());
         return true;
+      }
+      case WTP -> {
+        WeaponGroup group = WeaponGroup.valueOf(op.key());
+        setProficiency(group, ProficiencyRank.values()[Math.max(0, getProficiency(group).ordinal() - 1)]);
       }
     }
     if (player != null) player.updateDerivedStats();
@@ -305,35 +340,158 @@ public class CharacterStats {
     return ClassRegistry.findById(selectedClassId);
   }
 
-  // ─────────────────────────────────────────────── Class ability spending
+  // ─────────────────────────────────────────────── Class talent trees
 
   /**
-   * Spends 1 CP on the ability identified by {@code key} (format: "classId:abilityIndex").
-   * Also selects that class, replacing the "Adventurer" placeholder.
-   * Does nothing if CP is already exhausted.
+   * Adds one rank to the talent-tree node {@code key}. Checks, in order: the key is valid, the
+   * node is below its max rank, the tier gate, the parent rule, and that enough CP remain for the
+   * class's cost per rank. A class gains its multiclass slot on its first rank.
+   *
+   * @return true if the rank was added
    */
-  /** Spends 1 CP on the ability identified by {@code key} (format: "classId:abilityIndex").
-   * Also selects that class, replacing the "Adventurer" placeholder.
-   * Does nothing if CP is already exhausted.
-   */
-  public void spendCpOnAbility(String key) {
-    if (remainingCp <= 0) {
-      return;
-    }
-    remainingCp--;
+  public boolean addRank(String key) {
+    if (!canAddRank(key)) return false;
     ledgerVersion++;
+    String classId = ClassRegistry.classIdOf(key);
     String prevClassId = selectedClassId;
+    int before = derivedSpentCp();
     spentAbilityCp.merge(key, 1, Integer::sum);
-    // Auto-select the class when the first point is spent in it
-    int sep = key.lastIndexOf(':');
-    if (sep > 0) {
-      selectedClassId = key.substring(0, sep);
-    }
+    if (!classInvestmentOrder.contains(classId)) classInvestmentOrder.add(classId);
+    syncPrimaryClass(prevClassId);
+    remainingCp -= derivedSpentCp() - before;
     undoHistory.addLast(new UndoOp(UndoKind.CP, key, -1, prevClassId));
+    return true;
   }
 
-  /** Returns the total CP invested in all abilities of the given class. */
-  public int getTotalCpSpentForClass(String classId) {
+  /** Former name of {@link #addRank}: buys one rank of a tree node (core abilities take none). */
+  public void spendCpOnAbility(String key) {
+    addRank(key);
+  }
+
+  /**
+   * True when core ability {@code abilityKey} ({@code "<classId>:<index>"}) is unlocked: some path that grants it
+   * holds a rank. Abilities are never bought; the paths a player invests in decide which they have.
+   */
+  public boolean hasAbility(String abilityKey) {
+    for (TalentPath path : ClassRegistry.pathsGranting(abilityKey)) {
+      for (TalentNode n : path.nodes()) {
+        if (getRank(n.key()) > 0) return true;
+      }
+    }
+    return false;
+  }
+
+  /** "Bloodletter or Frenzy": the paths that grant a core ability, for its lock text. */
+  private static String grantingPathNames(String abilityKey) {
+    List<String> names = ClassRegistry.pathsGranting(abilityKey).stream().map(TalentPath::name).toList();
+    return names.size() <= 1 ? String.join("", names)
+        : String.join(", ", names.subList(0, names.size() - 1)) + " or " + names.getLast();
+  }
+
+  public boolean canAddRank(String key) {
+    return lockReason(key) == null;
+  }
+
+  /**
+   * Why {@code key} can't take another rank right now, or null when it can. For the tree UI,
+   * e.g. "Needs 15 ranks in Tiers I–II", "Needs Open Veins", "Not enough CP (costs 2)".
+   */
+  public String lockReason(String key) {
+    if (ClassRegistry.isAbilityKey(key)) return "Comes with " + grantingPathNames(key);
+    if (!ClassRegistry.isValidKey(key)) return "Unknown talent";
+    if (getRank(key) >= ClassRegistry.maxRankOf(key)) return "Max rank";
+    String classId = ClassRegistry.classIdOf(key);
+    int tier = ClassRegistry.tierOf(key);
+    int gate = PlayerConstants.CLASS_TREE_TIER_GATES[tier];
+    if (ranksBelowTier(classId, tier) < gate) {
+      String tiers = tier == 1 ? "Tier I" : "Tiers I–" + TIER_NUMERALS[tier - 1];
+      return "Needs " + gate + " ranks in " + tiers;
+    }
+    String parent = ClassRegistry.parentKey(key);
+    if (parent != null && getRank(parent) <= 0) {
+      return "Needs " + ClassRegistry.findNode(parent).map(TalentNode::name).orElse(parent);
+    }
+    int cost = getCpCostPerRank(classId);
+    if (remainingCp < cost) return "Not enough CP (costs " + cost + ")";
+    return null;
+  }
+
+  private static final String[] TIER_NUMERALS = {"I", "II", "III", "IV"};
+
+  /**
+   * True if one rank of {@code key} could be removed without breaking the tree: every remaining
+   * rank still meets its tier gate and parent rule, and earned WTP still covers spent WTP.
+   * For a future respec; LIFO undo never needs it.
+   */
+  public boolean canRemoveRank(String key) {
+    if (getRank(key) <= 0) return false;
+    String classId = ClassRegistry.classIdOf(key);
+    spentAbilityCp.merge(key, -1, Integer::sum);
+    try {
+      if (earnedWtp() < spentWtp()) return false;
+      for (String k : ClassRegistry.classOfKey(key).map(ClassRegistry::keysOf).orElse(List.of())) {
+        if (getRank(k) <= 0) continue;
+        int tier = ClassRegistry.tierOf(k);
+        if (ranksBelowTier(classId, tier) < PlayerConstants.CLASS_TREE_TIER_GATES[tier]) return false;
+        String parent = ClassRegistry.parentKey(k);
+        if (parent != null && getRank(parent) <= 0) return false;
+      }
+      return true;
+    } finally {
+      spentAbilityCp.merge(key, 1, Integer::sum);
+    }
+  }
+
+  /**
+   * Removes one rank of {@code key} when {@link #canRemoveRank} allows it, refunding CP at the
+   * re-derived slot prices: a class that empties leaves the investment order and every class
+   * after it moves to a cheaper slot. Records no undo. The primitive for a future respec.
+   *
+   * @return true if a rank was removed
+   */
+  public boolean removeRank(String key) {
+    if (!canRemoveRank(key)) return false;
+    ledgerVersion++;
+    int before = derivedSpentCp();
+    spentAbilityCp.merge(key, -1, Integer::sum);
+    spentAbilityCp.remove(key, 0);
+    String classId = ClassRegistry.classIdOf(key);
+    if (getClassRanks(classId) == 0) classInvestmentOrder.remove(classId);
+    syncPrimaryClass(selectedClassId);
+    remainingCp -= derivedSpentCp() - before;
+    return true;
+  }
+
+  /** Ranks the class holds in path tiers strictly below {@code tier}. */
+  private int ranksBelowTier(String classId, int tier) {
+    return ranksBelowTier(spentAbilityCp, classId, tier);
+  }
+
+  /** {@link #ranksBelowTier(String, int)} for any rank ledger. */
+  private static int ranksBelowTier(Map<String, Integer> ranks, String classId, int tier) {
+    int sum = 0;
+    for (Map.Entry<String, Integer> e : ranks.entrySet()) {
+      int t = ClassRegistry.tierOf(e.getKey());
+      if (classId.equals(ClassRegistry.classIdOf(e.getKey())) && t >= 0 && t < tier) {
+        sum += e.getValue();
+      }
+    }
+    return sum;
+  }
+
+  /** Rank of the given talent-tree node (0 if never ranked). */
+  public int getRank(String key) {
+    return spentAbilityCp.getOrDefault(key, 0);
+  }
+
+  /** @deprecated ranks, not CP: use {@link #getRank}. */
+  @Deprecated
+  public int getSpentCp(String key) {
+    return getRank(key);
+  }
+
+  /** Total ranks across the class's paths. */
+  public int getClassRanks(String classId) {
     String prefix = classId + ":";
     return spentAbilityCp.entrySet().stream()
         .filter(e -> e.getKey().startsWith(prefix))
@@ -341,23 +499,157 @@ public class CharacterStats {
         .sum();
   }
 
-  /** Returns how many CP have been spent on the given ability key. */
-  public int getSpentCp(String key) {
-    return spentAbilityCp.getOrDefault(key, 0);
+  /** @deprecated ranks, not CP: use {@link #getClassRanks}. */
+  @Deprecated
+  public int getTotalCpSpentForClass(String classId) {
+    return getClassRanks(classId);
+  }
+
+  /** True when the class has at least one rank (multiclass-aware replacement for primary-class checks). */
+  public boolean hasClass(String classId) {
+    return classId != null && getClassRanks(classId) > 0;
+  }
+
+  /** Class ids in investment order; index 0 is the primary class. */
+  public List<String> getClassInvestmentOrder() {
+    return Collections.unmodifiableList(classInvestmentOrder);
+  }
+
+  /**
+   * CP per rank in the class: {@code 1 + max(0, slot - 1) * MULTICLASS_PENALTY}, where slot is its
+   * index in the investment order — or, if not invested yet, the slot it would take next.
+   */
+  public int getCpCostPerRank(String classId) {
+    int slot = classInvestmentOrder.indexOf(classId);
+    if (slot < 0) slot = classInvestmentOrder.size();
+    return cpCostForSlot(slot);
+  }
+
+  /** CP per rank for a class at investment slot {@code slot} (0 = primary). */
+  public static int cpCostForSlot(int slot) {
+    return 1 + Math.max(0, slot - 1) * PlayerConstants.MULTICLASS_PENALTY;
+  }
+
+  /** CP the current ranks cost at today's slot prices. */
+  public int derivedSpentCp() {
+    return cpCostOf(spentAbilityCp, classInvestmentOrder);
+  }
+
+  /**
+   * CP a rank ledger costs at the slot prices of {@code order} — the one pricing rule, shared
+   * with the server's prefs validation. Ranks in classes missing from {@code order} cost nothing
+   * here; callers that accept outside ledgers check the order covers every ranked class.
+   */
+  public static int cpCostOf(Map<String, Integer> ranks, List<String> order) {
+    int sum = 0;
+    for (int slot = 0; slot < order.size(); slot++) {
+      sum += classRanksIn(ranks, order.get(slot)) * cpCostForSlot(slot);
+    }
+    return sum;
+  }
+
+  /** Total ranks a ledger holds in the class's paths. */
+  public static int classRanksIn(Map<String, Integer> ranks, String classId) {
+    String prefix = classId + ":";
+    int sum = 0;
+    for (Map.Entry<String, Integer> e : ranks.entrySet()) {
+      if (e.getKey().startsWith(prefix) && e.getValue() != null) sum += e.getValue();
+    }
+    return sum;
   }
 
   public int getRemainingCp() {
     return remainingCp;
   }
 
+  /** Primary class follows the investment order; with no ranks it keeps {@code fallback}. */
+  private void syncPrimaryClass(String fallback) {
+    selectedClassId = classInvestmentOrder.isEmpty() ? fallback : classInvestmentOrder.get(0);
+  }
+
+  /**
+   * Data from before core abilities came from paths held ranks in them ({@code "<classId>:<index>"}): drops those
+   * ranks, lets a class left with none leave the investment order, and refunds their CP at the re-derived prices.
+   */
+  private void dropCoreAbilityRanks() {
+    if (spentAbilityCp.keySet().stream().allMatch(ClassRegistry::isPathKey)) return;
+    int before = derivedSpentCp();
+    spentAbilityCp.keySet().removeIf(k -> !ClassRegistry.isPathKey(k));
+    classInvestmentOrder.removeIf(id -> getClassRanks(id) == 0);
+    remainingCp += before - derivedSpentCp();
+  }
+
+  /** Every class with ranks: {@code selectedClassId} first if invested, then registry order. */
+  private List<String> rebuildInvestmentOrder() {
+    List<String> order = new ArrayList<>();
+    if (hasClass(selectedClassId)) order.add(selectedClassId);
+    for (PlayerClassDefinition c : ClassRegistry.ALL) {
+      if (hasClass(c.id()) && !order.contains(c.id())) order.add(c.id());
+    }
+    return order;
+  }
+
+  // ─────────────────────────────────────────────── Weapon training (WTP)
+
+  /**
+   * WTP earned: {@code WTP_STARTING_GRANT} plus, per invested class,
+   * {@code min(ranks / WTP_CLASS_RANKS_PER_POINT, WTP_MAX_PER_CLASS)}. Counted per class, not pooled.
+   */
+  public int earnedWtp() {
+    return earnedWtp(spentAbilityCp, classInvestmentOrder);
+  }
+
+  /** {@link #earnedWtp()} for any rank ledger and investment order. */
+  public static int earnedWtp(Map<String, Integer> ranks, List<String> order) {
+    int sum = PlayerConstants.WTP_STARTING_GRANT;
+    for (String id : order) {
+      sum += Math.min(classRanksIn(ranks, id) / PlayerConstants.WTP_CLASS_RANKS_PER_POINT,
+          PlayerConstants.WTP_MAX_PER_CLASS);
+    }
+    return sum;
+  }
+
+  /** WTP spent: one per proficiency rank above Untrained, across all weapon groups. */
+  public int spentWtp() {
+    return spentWtp(skillLevels);
+  }
+
+  /** {@link #spentWtp()} for any skill ledger. */
+  public static int spentWtp(Map<String, Integer> skills) {
+    int sum = 0;
+    for (WeaponGroup g : WeaponGroup.values()) {
+      sum += ProficiencyRank.fromLevel(skills.getOrDefault(WeaponProficiency.skillId(g), 0)).ordinal();
+    }
+    return sum;
+  }
+
+  /** Unspent WTP, clamped to 0 (a legacy SP-bought proficiency can overdraw it). */
+  public int getRemainingWtp() {
+    return Math.max(0, earnedWtp() - spentWtp());
+  }
+
+  /** True with WTP to spend and the next rank's character-level gate met. */
+  public boolean canTrainWeapon(WeaponGroup group) {
+    return earnedWtp() - spentWtp() > 0 && WeaponProficiency.canRaise(getProficiency(group), level);
+  }
+
+  /** Spends 1 WTP to raise the group one proficiency rank. */
+  public boolean trainWeapon(WeaponGroup group) {
+    if (!canTrainWeapon(group)) return false;
+    setProficiency(group, getProficiency(group).next());
+    undoHistory.addLast(new UndoOp(UndoKind.WTP, group.name(), -1, null));
+    return true;
+  }
+
   // ─────────────────────────────────────────────── Skill investment
 
   /**
    * Invests 1 SP into the given skill, incrementing its level by 1.
-   * Does nothing if SP is already exhausted.
+   * Does nothing if SP is already exhausted. Weapon proficiency is not an SP skill: it is
+   * bought with WTP through {@link #trainWeapon}.
    */
   public void investSkillPoint(String skillId) {
-    if (remainingSp <= 0) {
+    if (remainingSp <= 0 || WeaponProficiency.groupOf(skillId).isPresent()) {
       return;
     }
     remainingSp--;
@@ -369,6 +661,25 @@ public class CharacterStats {
   /** Returns the current level of the given skill (0 if never invested). */
   public int getSkillLevel(String skillId) {
     return skillLevels.getOrDefault(skillId, 0);
+  }
+
+  /** Rank in the given weapon group, derived from its proficiency skill level. */
+  public ProficiencyRank getProficiency(WeaponGroup group) {
+    return ProficiencyRank.fromLevel(getSkillLevel(WeaponProficiency.skillId(group)));
+  }
+
+  /**
+   * Sets a weapon proficiency rank directly, spending no WTP and recording no undo
+   * (debug / future class grants).
+   */
+  public void setProficiency(WeaponGroup group, ProficiencyRank rank) {
+    ledgerVersion++;
+    String id = WeaponProficiency.skillId(group);
+    if (rank == ProficiencyRank.UNTRAINED) {
+      skillLevels.remove(id);
+    } else {
+      skillLevels.put(id, rank.ordinal());
+    }
   }
 
   public int getRemainingSkillPoints() {
@@ -428,6 +739,7 @@ public class CharacterStats {
   /** Immutable capture of the spendable RPG state, for save-or-discard on inventory exit. */
   public record RpgSnapshot(
       String classId,
+      List<String> classInvestmentOrder,
       Map<String, Integer> spentAbilityCp,
       Map<String, Integer> skillLevels,
       Set<String> acquiredFeatIds,
@@ -443,6 +755,7 @@ public class CharacterStats {
   public RpgSnapshot snapshotRpgState() {
     return new RpgSnapshot(
         selectedClassId,
+        List.copyOf(classInvestmentOrder),
         new HashMap<>(spentAbilityCp),
         new HashMap<>(skillLevels),
         new HashSet<>(acquiredFeatIds),
@@ -456,6 +769,8 @@ public class CharacterStats {
     if (s == null) return;
     ledgerVersion++;
     selectedClassId = s.classId();
+    classInvestmentOrder.clear();
+    classInvestmentOrder.addAll(s.classInvestmentOrder());
     spentAbilityCp.clear();
     spentAbilityCp.putAll(s.spentAbilityCp());
     skillLevels.clear();
@@ -488,10 +803,129 @@ public class CharacterStats {
     if (player != null) player.updateDerivedStats();
   }
 
+  // ─────────────────────────────────────────────── Session refunds (right-click undo)
+  //
+  // A right press takes back one point bought since a baseline: in game the panel session's (the state
+  // the inventory / character sheet opened with), in character creation the blank character. A point the
+  // baseline holds is saved and never refunded here. Each refund also drops its allocation from the undo
+  // history, so creation's Undo never replays a point that is already gone.
+
+  /**
+   * Removes one rank of {@code key} bought since {@code baseline}, refunding its CP at the re-derived
+   * slot prices. Session ranks that stood on it go too: a node whose parent empties, and every ranked
+   * node of a tier whose gate is no longer met. Refused when that cascade would take a rank the
+   * baseline holds, or leave spent WTP above earned.
+   *
+   * @return true if ranks were removed
+   */
+  public boolean refundSessionRank(String key, RpgSnapshot baseline) {
+    if (baseline == null || !ClassRegistry.isValidKey(key)) return false;
+    Map<String, Integer> saved = baseline.spentAbilityCp();
+    if (getRank(key) <= saved.getOrDefault(key, 0)) return false;
+    String classId = ClassRegistry.classIdOf(key);
+    Map<String, Integer> ranks = new HashMap<>(spentAbilityCp);
+    ranks.merge(key, -1, Integer::sum);
+    ranks.remove(key, 0);
+    List<String> keys = ClassRegistry.classOfKey(key).map(ClassRegistry::keysOf).orElse(List.of());
+    for (boolean changed = true; changed; ) {
+      changed = false;
+      for (String k : keys) {
+        if (ranks.getOrDefault(k, 0) <= 0 || standsIn(ranks, classId, k)) continue;
+        if (saved.getOrDefault(k, 0) > 0) return false; // would orphan a saved rank
+        ranks.remove(k);
+        changed = true;
+      }
+    }
+    List<String> order = new ArrayList<>(classInvestmentOrder);
+    if (classRanksIn(ranks, classId) == 0) order.remove(classId);
+    if (earnedWtp(ranks, order) < spentWtp()) return false;
+    ledgerVersion++;
+    for (Map.Entry<String, Integer> e : spentAbilityCp.entrySet()) {
+      for (int n = e.getValue() - ranks.getOrDefault(e.getKey(), 0); n > 0; n--) {
+        forgetUndo(UndoKind.CP, e.getKey(), -1);
+      }
+    }
+    int before = derivedSpentCp();
+    spentAbilityCp.clear();
+    spentAbilityCp.putAll(ranks);
+    classInvestmentOrder.clear();
+    classInvestmentOrder.addAll(order);
+    syncPrimaryClass(baseline.classId());
+    remainingCp -= derivedSpentCp() - before;
+    if (player != null) player.updateDerivedStats();
+    return true;
+  }
+
+  /** True when ranked node {@code key} still meets its tier gate and parent rule in {@code ranks}. */
+  private static boolean standsIn(Map<String, Integer> ranks, String classId, String key) {
+    int tier = ClassRegistry.tierOf(key);
+    if (ranksBelowTier(ranks, classId, tier) < PlayerConstants.CLASS_TREE_TIER_GATES[tier]) return false;
+    String parent = ClassRegistry.parentKey(key);
+    return parent == null || ranks.getOrDefault(parent, 0) > 0;
+  }
+
+  /** Takes back one SP put into {@code skillId} since {@code baseline}. */
+  public boolean refundSessionSkillPoint(String skillId, RpgSnapshot baseline) {
+    if (baseline == null || WeaponProficiency.groupOf(skillId).isPresent()
+        || getSkillLevel(skillId) <= baseline.skillLevels().getOrDefault(skillId, 0)) {
+      return false;
+    }
+    remainingSp++;
+    ledgerVersion++;
+    skillLevels.merge(skillId, -1, Integer::sum);
+    skillLevels.remove(skillId, 0);
+    forgetUndo(UndoKind.SP, skillId, -1);
+    return true;
+  }
+
+  /** Lowers {@code group} one proficiency rank trained since {@code baseline} (its WTP is free again). */
+  public boolean refundSessionWeaponRank(WeaponGroup group, RpgSnapshot baseline) {
+    if (baseline == null || group == null) return false;
+    int saved = baseline.skillLevels().getOrDefault(WeaponProficiency.skillId(group), 0);
+    int rank = getProficiency(group).ordinal();
+    if (rank <= ProficiencyRank.fromLevel(saved).ordinal()) return false;
+    setProficiency(group, ProficiencyRank.values()[rank - 1]);
+    forgetUndo(UndoKind.WTP, group.name(), -1);
+    return true;
+  }
+
+  /** Gives back feat {@code featId} when it was acquired since {@code baseline}, refunding its FP. */
+  public boolean refundSessionFeat(String featId, RpgSnapshot baseline) {
+    if (baseline == null || baseline.acquiredFeatIds().contains(featId) || !acquiredFeatIds.remove(featId)) {
+      return false;
+    }
+    remainingFp++;
+    ledgerVersion++;
+    forgetUndo(UndoKind.FP, featId, -1);
+    return true;
+  }
+
+  /** Lowers ability {@code index} one point raised since {@code baseline}, refunding its AP. */
+  public boolean refundSessionAbilityPoint(int index, RpgSnapshot baseline) {
+    if (baseline == null || index < 0 || index >= 6 || abilityScores[index] <= baseline.abilityScores()[index]) {
+      return false;
+    }
+    decrementAbilityScore(index);
+    forgetUndo(UndoKind.AP, null, index);
+    return true;
+  }
+
+  /** Drops the most recent undo entry for this allocation, if the history holds one. */
+  private void forgetUndo(UndoKind kind, String key, int index) {
+    for (var it = undoHistory.descendingIterator(); it.hasNext(); ) {
+      UndoOp op = it.next();
+      if (op.kind() == kind && java.util.Objects.equals(op.key(), key) && op.index() == index) {
+        it.remove();
+        return;
+      }
+    }
+  }
+
   /** True when the spendable RPG state differs from the given snapshot. */
   public boolean hasChangedSince(RpgSnapshot s) {
     if (s == null) return true;
     return !java.util.Objects.equals(selectedClassId, s.classId())
+        || !classInvestmentOrder.equals(s.classInvestmentOrder())
         || !spentAbilityCp.equals(s.spentAbilityCp())
         || !skillLevels.equals(s.skillLevels())
         || !acquiredFeatIds.equals(s.acquiredFeatIds())
@@ -508,8 +942,13 @@ public class CharacterStats {
 
     /**
      * Restores all RPG state from saved data. Called during world load.
+     *
+     * @param classOrder the class investment order, or null for data that predates it (old
+     *                   saves): the order is then rebuilt from the ranks and CP re-derived from
+     *                   the level as {@code grantedCp(level) - derivedSpentCp()}
      */
     public void restore(String classId,
+                        List<String> classOrder,
                         Map<String, Integer> abilityCp,
                         Map<String, Integer> skills,
                         Set<String> feats,
@@ -533,6 +972,15 @@ public class CharacterStats {
         this.remainingAp = ap;
         this.level = Math.max(1, level);
         this.xp    = Math.max(0, xp);
+        this.classInvestmentOrder.clear();
+        if (classOrder != null) {
+            this.classInvestmentOrder.addAll(classOrder);
+        } else {
+            this.classInvestmentOrder.addAll(rebuildInvestmentOrder());
+            this.remainingCp = Math.max(0, grantedCp(this.level) - derivedSpentCp());
+        }
+        dropCoreAbilityRanks();
+        syncPrimaryClass(classId);
         if (player != null) player.updateDerivedStats();
     }
 
@@ -553,6 +1001,14 @@ public class CharacterStats {
         // The server owns the inventory and ignores this one, but its save reader requires the
         // array (issue #358) and would otherwise reject the whole creation record.
         sb.append(",\"inventory\":[]");
+
+        // Class investment order (sets each class's CP cost per rank)
+        sb.append(",\"classOrder\":[");
+        for (int i = 0; i < classInvestmentOrder.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append('"').append(escapeJson(classInvestmentOrder.get(i))).append('"');
+        }
+        sb.append("]");
 
         // Ability scores
         sb.append(",\"abilityScores\":[");
@@ -659,6 +1115,13 @@ public class CharacterStats {
             this.acquiredFeatIds.addAll(feats);
         }
 
+        // Class investment order; older peers don't send it, so rebuild it from the ranks
+        List<String> order = extractStringList(s, "classOrder");
+        this.classInvestmentOrder.clear();
+        this.classInvestmentOrder.addAll(order != null ? order : rebuildInvestmentOrder());
+        dropCoreAbilityRanks();
+        syncPrimaryClass(this.selectedClassId);
+
         if (player != null) player.updateDerivedStats();
     }
 
@@ -705,6 +1168,18 @@ public class CharacterStats {
                 "\"([^\"]+)\"\\s*:\\s*(\\d+)").matcher(content);
         while (em.find()) {
             result.put(em.group(1), Integer.parseInt(em.group(2)));
+        }
+        return result;
+    }
+
+    static List<String> extractStringList(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(json);
+        if (!m.find()) return null;
+        List<String> result = new ArrayList<>();
+        java.util.regex.Matcher em = java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
+        while (em.find()) {
+            result.add(em.group(1));
         }
         return result;
     }

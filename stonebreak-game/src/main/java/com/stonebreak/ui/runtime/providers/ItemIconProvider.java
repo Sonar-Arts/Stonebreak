@@ -113,15 +113,16 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
             return;
         }
         ItemRef ref = ItemRef.of(element);
-        if (ref == null || !(ref.item() instanceof BlockType block) || !block.hasIcon()) {
+        if (ref == null || !ItemIconAtlas.hasAtlasIcon(ref.item())) {
             return;
         }
+        Item item = ref.item();
         Rect icon = iconRect(element.type(), rect, scale, pixels(element, "insetPx"));
         if (icon == null) {
             return;
         }
         int size = (int) icon.getWidth();
-        if (atlas.find(block, size) != null) {
+        if (atlas.find(item, size) != null) {
             return; // cached: no GL work, no state capture
         }
         GlStateSnapshot saved = GlStateSnapshot.capture();
@@ -131,10 +132,10 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         glActiveTexture(GL_TEXTURE1);
         int array1 = glGetInteger(GL_TEXTURE_BINDING_2D_ARRAY);
         try {
-            atlas.ensure(block, size);
+            atlas.ensure(item, size);
         } catch (RuntimeException e) {
             prepareFailed = true; // one log, then documents show swatches instead of spamming
-            LOGGER.error("[ui] item icon rendering failed; block icons disabled for this session", e);
+            LOGGER.error("[ui] item icon rendering failed; 3D item icons disabled for this session", e);
         } finally {
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D_ARRAY, array1);
@@ -174,8 +175,8 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
 
     private void drawIcon(Canvas canvas, ItemRef ref, Rect icon) {
         Item item = ref.item();
-        if (item instanceof BlockType block) {
-            ItemIconAtlas.Icon cell = prepareFailed || atlas == null ? null : atlas.find(block, (int) icon.getWidth());
+        if (ItemIconAtlas.hasAtlasIcon(item)) {
+            ItemIconAtlas.Icon cell = prepareFailed || atlas == null ? null : atlas.find(item, (int) icon.getWidth());
             Image page = cell == null ? null
                 : GlTextureImages.borrow(canvas, cell.texture(), cell.pageSize(), cell.pageSize(), true);
             if (page == null) {

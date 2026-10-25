@@ -5,7 +5,9 @@ import org.joml.Vector2f;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -235,6 +237,24 @@ public class JsonParsingUtil {
         String content = m.group(1);
         Pattern itemPattern = Pattern.compile("\"([^\"]+)\"");
         Matcher im = itemPattern.matcher(content);
+        while (im.find()) {
+            result.add(im.group(1));
+        }
+        return result;
+    }
+
+    /**
+     * Extracts a JSON array of strings, keeping its order.
+     * Returns null if key not found (so callers can tell "absent" from "empty").
+     */
+    public static List<String> extractStringListOrNull(String json, String key) {
+        String pattern = "\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]";
+        Matcher m = Pattern.compile(pattern, Pattern.DOTALL).matcher(json);
+        if (!m.find()) {
+            return null;
+        }
+        List<String> result = new ArrayList<>();
+        Matcher im = Pattern.compile("\"([^\"]+)\"").matcher(m.group(1));
         while (im.find()) {
             result.add(im.group(1));
         }

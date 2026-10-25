@@ -109,7 +109,7 @@ public class AttachCommand implements ChatCommand {
             return SbeEntityLoader.loadAttachable(file);
         }
         String resource = path.startsWith("/") ? path : "/" + path;
-        if (SbeEntityLoader.class.getResource(resource) != null) {
+        if (GameSbeAssets.class.getResource(resource) != null) {
             return GameSbeAssets.loadAttachableResource(resource);
         }
         throw new IllegalStateException("not found on disk (" + path

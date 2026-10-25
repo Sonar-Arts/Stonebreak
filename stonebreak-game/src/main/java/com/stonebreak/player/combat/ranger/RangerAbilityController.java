@@ -14,8 +14,8 @@ import org.joml.Vector3f;
  * resource that fuels them. Mirrors the controller-per-concern pattern used by
  * {@link com.stonebreak.player.combat.berserker.BerserkerAbilityController}.
  *
- * <p>Casting an ability requires the Ranger class to be selected and its CP slot to be
- * unlocked. The Quarry hit hooks are likewise class-gated so a non-Ranger never marks
+ * <p>Casting an ability requires it to be unlocked: a rank in a Ranger path that grants it
+ * ({@link CharacterStats#hasAbility}). The Quarry hit hooks are likewise class-gated so a non-Ranger never marks
  * prey (the mark has visible HUD/world effects).</p>
  */
 public class RangerAbilityController {
@@ -96,11 +96,11 @@ public class RangerAbilityController {
 
     private boolean isUnlocked(Player player, String abilityKey) {
         CharacterStats stats = player.getCharacterStats();
-        return CLASS_ID.equals(stats.getSelectedClassId()) && stats.getSpentCp(abilityKey) > 0;
+        return stats.hasAbility(abilityKey);
     }
 
     private boolean isRangerSelected(Player player) {
-        return CLASS_ID.equals(player.getCharacterStats().getSelectedClassId());
+        return player.getCharacterStats().hasClass(CLASS_ID);
     }
 
     public QuarryController getQuarry() { return quarry; }

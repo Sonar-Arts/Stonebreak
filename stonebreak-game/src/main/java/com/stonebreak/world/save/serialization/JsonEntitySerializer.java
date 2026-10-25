@@ -169,6 +169,8 @@ public class JsonEntitySerializer {
                 customData.put("textureVariant", textureVariant);
                 customData.put("aiState", aiState);
             }
+            case GOBLIN -> customData.put(EntitySerializer.GOBLIN_LOADOUT_KEY, JsonParsingUtil.extractStringFromObject(
+                    json, "customData", EntitySerializer.GOBLIN_LOADOUT_KEY));
             default -> { /* no entity-specific custom data */ }
         }
 

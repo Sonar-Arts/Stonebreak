@@ -451,7 +451,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 
 ### character-creation
 - **Kind:** screen.
-- **Owner:** `com.stonebreak.ui.characterCreation.CharacterCreationScreen` (own MasonryUI) with StateManager, ActionHandler, InputHandler, MouseHandler, `CharacterCreationLayout`, `CharacterCreationTab` and `renderers.{SkijaCharacterCreationRenderer, BackgroundTabRenderer, AbilityScoreTabRenderer, ClassAbilitiesTabRenderer, SkillsTabRenderer, FeatsTabRenderer, LooksTabRenderer, ClothingTabRenderer, CosmeticOptionsRenderer, CharacterModelPreviewRenderer}`.
+- **Owner:** `com.stonebreak.ui.characterCreation.CharacterCreationScreen` (own MasonryUI) with StateManager, ActionHandler, InputHandler, MouseHandler, `CharacterCreationLayout`, `CharacterCreationTab` and `renderers.{SkijaCharacterCreationRenderer, BackgroundTabRenderer, AbilityScoreTabRenderer, ClassAbilitiesTabRenderer, SkillsTabRenderer, FeatsTabRenderer, LooksTabRenderer, CosmeticOptionsRenderer, CharacterModelPreviewRenderer}`.
   - Created at GS:89, never disposed.
   - `reset()` runs on the WorldSelect create path and on Back. It is **not** run when the server sends `NeedsCharacterCreation` (`network/.../ClientWorldView.java:641-648`).
   - FR:107 calls `updateLabelsForMode()` every frame. In join mode the footer reads "Main Menu" / "Enter World".
@@ -486,7 +486,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Scrolled-out Skills/Feats/ClassAbilities buttons stay clickable.
   - ClassAbilities hit-tests five spend slots regardless of the class.
   - `handleClick` recomputes the layout from `Game.getWindowWidth/Height` rather than its parameters.
-- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-clothing_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-spend1_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-talent1_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-hover-undo_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1`
+- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-mode1_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-node5_1920x1080_s1` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-talent1_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-hover-train0_1920x1080_s1` `character-creation/character-creation-hover-undo_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1920x1080_s1` `character-creation/character-creation-skills-weapons_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1`
 - **Migration (#301; migrated, legacy removed in #302):** shipped as `ui/documents/character_creation.sbui`
   (`UI/stonebreak/ui/screens/character_creation.omui`); legacy renderer removed in #302. A state
   document (`GameScreens.stateDocument(CHARACTER_CREATION, ...)`); the keyboard stays dead, as before.
@@ -514,9 +514,37 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   (`CharacterStats.undoLastAllocation`; disabled with nothing to undo). Contract `stonebreak:screen.character-creation` 2
   (`pane`, `layout.talentBar/talentContent`, `talents`, `undoDisabled`, `.talent {sub}`, `.nav {name: undo}`). Re-frozen
   from the document with `CharacterCreationFixtures.rects` / `footerButtons` (legacy formulas) as the rect oracle.
-- **Gate:** `ui.characterCreation.fidelity.CharacterCreationDocumentGateTest` (28 cases: Background at every standard
+- **Heracles (weapon training, contract 3):** the Skills pane gains the character sheet's General | Weapons
+  toggle (`CharacterCreationStateManager.getSkillMode`, `rpg.SkillListMode`). Weapons lists `ccWeapons`: one row per
+  `WeaponGroup` from `rpg.proficiency.WeaponTraining`, which the sheet uses too, with Train buttons that spend the
+  starting WTP (undo takes it back), plus the WTP hint. New actions are `.skill-mode {mode}` and `.train {id}`. The
+  header reads `SP Remaining: N    WTP: N` on General and `WTP Remaining: N` on Weapons. The skills, skills-scrolled
+  and hover-invest2 cases were re-frozen from the document (pixels, plus the additive `mode0/1` rects), and
+  skills-weapons, hover-mode1 and hover-train0 were added. The rest of geometry.json was spliced back unchanged:
+  clothing's pre-existing `equip2..6` failure is deliberately not re-frozen.
+- **Heracles (Looks merges Clothing, 2026-10-14, user decision):** four tabs (Background / Ability Score / Talents /
+  Looks); `CharacterCreationTab.CLOTHING` and `#pane-CLOTHING` are gone. `#pane-LOOKS` holds two half-width columns,
+  `#looks-hair` (the `ccHair` list) and `#looks-hats` (the `ccHats` list), side by side because the stacked lists
+  (~660 px) overflow the 596 px content at 720p and the pane does not scroll. Actions are unchanged (`.hair`, `.hat`).
+  The gate's `equipN` rects are the hair column's buttons, `hatN` the hat column's; the clothing case is dropped and
+  every remaining case re-frozen from the document (the tab strip lost a tab), which also retires clothing's failure.
+- **Heracles (Grim Dawn style class tree, contract 4, 2026-10-14):** the Class Abilities pane drops the core-ability
+  list (`ccAbilities`, `.spend {index}`) for the class talent tree shared with the character sheet
+  (`ui.classTree.ClassTreeModel`, published as cell `ccTree`): a mastery bar notched at the tier gates, an icon grid
+  (core row, then one row per path, Tier I to IV left to right, connectors lit once the parent has a rank, frames
+  shaped by node type, rank pills), and a detail panel beside the grid (under it when the pane is narrow) for the
+  hovered node, else the last clicked one, else the core passive. New actions are `.rank {key}` (any node of the shown
+  class, so the starting CP can go into a Tier I path node) and `.hover {key}`. The document needs `ui-text` (the
+  wrapped description) and `ui-motion` (the modifier's 45° diamond). The gate's `spend<i>` rects become `node<i>`, placed
+  from the model's own grid; `hover-spend1` became `hover-node5`. The six class-pane cases were re-frozen from the
+  document. Every other case was checked pixel- and geometry-identical before `geometry.json` was replaced.
+  **Path-granted abilities (same day, user decision):** core abilities are no longer bought. Each path grants one
+  (`TalentPath.ability`), and a rank anywhere in it unlocks that ability (`CharacterStats.hasAbility`). The core row
+  shows them as locked or lit with no rank pill, each path row names its ability under the path name, and a Tier I
+  hint reads "…, unlocks <ability>". The class-pane cases were re-frozen again on the same terms.
+- **Gate:** `ui.characterCreation.fidelity.CharacterCreationDocumentGateTest` (32 cases: Background at every standard
   viewport; Ability Score, Class Abilities with no class / Berserker (icons, multi-line descriptions) / Monk scrolled,
-  Skills plain and scrolled, Feats unowned and owned, Looks, Clothing at 1920x1080, Class Abilities also at 1280x720;
+  Skills plain and scrolled, Feats unowned and owned, Looks at 1920x1080, Class Abilities also at 1280x720;
   hovers over a tab, Back, Next, a background row, a tile, [+], [-], a class row, Spend, +1 SP, Acquire and Equip;
   geometry `FLOAT_EXACT`, pixels `EXACT`; the 3D preview is GL and absent on both raster sides),
   `CharacterCreationDocumentInteractionTest` (background, tabs, [+]/[-], class, Spend, +1 SP, wheel clamp, Acquire,
@@ -1234,7 +1262,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Stale hitboxes stay live.
   - "Spend N CP" spends 1.
   - `acquireFeat` ignores the level requirement.
-- **Fidelity:** `character-sheet/character-sheet-classes-scrolled_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1921x1081_s1_25` `character-sheet/character-sheet-classes_1920x1080_s1` `character-sheet/character-sheet-feats-filtered_1920x1080_s1` `character-sheet/character-sheet-feats-selected_1280x720_s0_75` `character-sheet/character-sheet-feats-selected_1920x1080_s1` `character-sheet/character-sheet-feats_1920x1080_s1` `character-sheet/character-sheet-hover-acquire_1920x1080_s1` `character-sheet/character-sheet-hover-cls1_1920x1080_s1` `character-sheet/character-sheet-hover-feat0_1920x1080_s1` `character-sheet/character-sheet-hover-general_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1921x1081_s1_25` `character-sheet/character-sheet-hover-level_1920x1080_s1` `character-sheet/character-sheet-hover-plus2_1920x1080_s1` `character-sheet/character-sheet-hover-tab0_1920x1080_s1` `character-sheet/character-sheet-hover-tab2_1920x1080_s1` `character-sheet/character-sheet-hover-talent1_1920x1080_s1` `character-sheet/character-sheet-hover-tile1_1920x1080_s1` `character-sheet/character-sheet-overview-busy_1920x1080_s1` `character-sheet/character-sheet-overview_1280x720_s0_75` `character-sheet/character-sheet-overview_1920x1080_s1` `character-sheet/character-sheet-overview_1921x1081_s1_25` `character-sheet/character-sheet-overview_3840x2160_s2` `character-sheet/character-sheet-skills_1920x1080_s1`
+- **Fidelity:** `character-sheet/character-sheet-classes-multi_1920x1080_s1` `character-sheet/character-sheet-classes-scrolled_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1920x1080_s1` `character-sheet/character-sheet-classes-shown_1921x1081_s1_25` `character-sheet/character-sheet-classes_1920x1080_s1` `character-sheet/character-sheet-feats-filtered_1920x1080_s1` `character-sheet/character-sheet-feats-selected_1280x720_s0_75` `character-sheet/character-sheet-feats-selected_1920x1080_s1` `character-sheet/character-sheet-feats_1920x1080_s1` `character-sheet/character-sheet-hover-acquire_1920x1080_s1` `character-sheet/character-sheet-hover-cls1_1920x1080_s1` `character-sheet/character-sheet-hover-feat0_1920x1080_s1` `character-sheet/character-sheet-hover-general_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1920x1080_s1` `character-sheet/character-sheet-hover-invest3_1921x1081_s1_25` `character-sheet/character-sheet-hover-level_1920x1080_s1` `character-sheet/character-sheet-hover-mode1_1920x1080_s1` `character-sheet/character-sheet-hover-plus2_1920x1080_s1` `character-sheet/character-sheet-hover-tab0_1920x1080_s1` `character-sheet/character-sheet-hover-tab2_1920x1080_s1` `character-sheet/character-sheet-hover-talent1_1920x1080_s1` `character-sheet/character-sheet-hover-tile1_1920x1080_s1` `character-sheet/character-sheet-hover-train1_1920x1080_s1` `character-sheet/character-sheet-overview-busy_1920x1080_s1` `character-sheet/character-sheet-overview_1280x720_s0_75` `character-sheet/character-sheet-overview_1920x1080_s1` `character-sheet/character-sheet-overview_1921x1081_s1_25` `character-sheet/character-sheet-overview_3840x2160_s2` `character-sheet/character-sheet-skills-weapons_1920x1080_s1` `character-sheet/character-sheet-skills_1920x1080_s1`
 - **Migration (#301; migrated, legacy removed in #302):** shipped as `ui/documents/character_sheet.sbui`
   (`UI/stonebreak/ui/screens/character_sheet.omui`); legacy renderer removed in #302. A presented
   screen shown while the sheet is open in CHARACTER_SHEET_UI (`CharacterScreen.syncPresentation`, from
@@ -1264,7 +1292,31 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   is the pane shown, `talents` bar, `.talent {sub}`). The frozen captures were re-frozen from the document after review,
   with the rects taken from `CharacterSheetFixtures.rects` (the branch legacy formulas) so `FLOAT_EXACT` still checks the
   document against an independent oracle.
-- **Gate:** `ui.characterScreen.CharacterSheetDocumentGateTest` (25 cases: Overview at every standard viewport and
+- **Heracles (class talent trees, contract 3):** the Classes pane is now a talent tree. The sidebar doubles as
+  the multiclass investment list (`<ranks>r`, `x<cost>` in orange when the class pays the multiclass penalty). Under
+  the class description, the dirt pane has a two-line header (CP and this class's cost per rank, then the tier gates)
+  and one scrolling list (`ListView`, unvirtualized, rows of their own height) of a Core section (the always-on core
+  passive, then the core abilities) and three path sections of four nodes. Each node row carries a type badge, its
+  name, `rank/max`, wrapped description lines, the lock reason (`CharacterStats.lockReason`) and a + button
+  (on/off twins). The Skills pane has a General | Weapons toggle (`SkillsTab.Mode`). Weapons lists one row per
+  `WeaponGroup` with its proficiency rank, the next rank's speed or its level gate, and Train (bought with WTP, not SP).
+  The Overview's currencies gain `WTP`. Actions: `.spend {index}` is replaced by `.rank {key}` (id-based, so
+  `ClassesTab`'s five-button cap is gone), plus `.skill-mode {mode}` and `.train {group}`. These are intended visual
+  changes. The classes, overview and skills baselines were re-frozen from the document after review, with rects from
+  `CharacterSheetFixtures.rects`, so `FLOAT_EXACT` still checks the document against an independent oracle (geometry
+  changes are additive: `mode0/1`, `train<i>`). Pixel-identical cases (every Feats state) were left as they were.
+  Character creation shows the starting WTP in its Skills header: three creation PNGs (`skills`,
+  `skills-scrolled`, `hover-invest2`) were re-frozen alone, with no geometry change.
+- **Heracles (Grim Dawn style class tree, contract 4, 2026-10-14):** the dirt pane's row list becomes the icon-grid tree
+  shared with character creation (`ui.classTree.ClassTreeModel` under `classes.tree`, shown by `classes.hasTree`). The
+  header is one CP line, and the tier gates move onto the mastery bar's notches. A press on a node (`.tn`) sends
+  `.rank {key}` and focuses it. A pointer move sends `.hover {key}` (`""` off the nodes) and feeds the detail panel
+  under the grid. The description ends in an ellipsis after three lines. The seven class-pane cases were re-frozen from
+  the document, with no geometry change (the oracle is the sidebar).
+  With path-granted abilities, the core abilities are lit or locked icons that take no rank, and each path row names
+  the ability it grants. The class-pane cases were re-frozen again.
+- **Gate:** `ui.characterScreen.CharacterSheetDocumentGateTest` (30 cases: classes-multi, skills-weapons and the
+  mode / Train hovers added in Heracles; Overview at every standard viewport and
   busy (scores, xp, a feat); Classes empty / Berserker shown (also at 1921x1081@1.25) / Monk; Skills; Feats plain,
   selected (also at 1280x720@0.75), filtered; hovers over two tabs, a tile, [+], a class row, +1 SP (also at 1.25), a
   feat row, both filters and Acquire; geometry `FLOAT_EXACT`, pixels `EXACT`; the 3D preview is GL and absent on both

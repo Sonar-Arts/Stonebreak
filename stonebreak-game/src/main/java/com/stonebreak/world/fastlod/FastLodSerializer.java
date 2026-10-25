@@ -17,7 +17,8 @@ import java.nio.ByteOrder;
  * Wire layout (little-endian):
  * <pre>
  *   magic        u32  'FLOD' (0x444F4C46)
- *   version      u8   current = 5 (v5: adds the per-cell cave-mouth channel — coarse cells
+ *   version      u8   current = {@link #VERSION}; the layout below is v5's plus the
+ *                     v12 spot section (v5: adds the per-cell cave-mouth channel — coarse cells
  *                     draw a recessed notch where an opening exists that the height's single
  *                     representative probe missed; pre-v5 blobs have no opening data and must
  *                     be resampled or the distance rings keep showing ravines only.
@@ -39,12 +40,11 @@ import java.nio.ByteOrder;
  *   treePresent  u8   0 = trees omitted, 1 = trees follow
  *   trees?       u8[cellsPerAxis²] kind   0 = none, else TreeKind.ordinal()+1
  *   trunkH?      u8[cellsPerAxis²]        0 if no tree
- *   spotCount    u16  (v12+) coarse-level trees; 0 when none
+ *   spotCount    u16  (v12) coarse-level trees; 0 when none
  *   spots        u16[spotCount]            FastLodChunkData.packTreeSpot
  * </pre>
- * v12 only appends the spot section, so v11 blobs (no coarse trees) still read.
- * Coarse nodes that draw trees live in their own store rows, so a v11 blob is
- * never asked to stand in for one.
+ * v12 appended the spot section. Older blobs are rejected,
+ * never read: they predate the OCEAN sea floor.
  */
 public final class FastLodSerializer {
 
@@ -86,7 +86,10 @@ public final class FastLodSerializer {
      * dry column its probe landed on — so its height, water level and surface all
      * moved.
      *
-     * <p>12: appends the coarse-level tree-spot section.
+     * <p>12: coarse nodes carry tree spots (the trailing spot section), coarse
+     * levels may hold the uncarved height (keys with {@code carved == false}), and
+     * submerged columns are the OCEAN biome whose sea floor mixes in dirt and clay —
+     * main's v4/v5, merged onto this branch's v11.
      *
      * <p>13: swamp pools are sampled ({@code SwampPoolGenerator.probePoolDepth}): a pool
      * cell's height drops to its bed under a water level, and cypress stand in 1-deep pools

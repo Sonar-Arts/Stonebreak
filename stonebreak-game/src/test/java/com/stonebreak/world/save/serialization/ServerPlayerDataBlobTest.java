@@ -36,7 +36,8 @@ class ServerPlayerDataBlobTest {
                 .abilityScores(new int[]{13, 11, 10, 10, 12, 10})
                 .skillLevels(java.util.Map.of("mining", 3))
                 .acquiredFeatIds(java.util.Set.of("tough"))
-                .spentAbilityCp(java.util.Map.of("warrior:0", 1))
+                .classInvestmentOrder(java.util.List.of("berserker"))
+                .spentAbilityCp(java.util.Map.of("berserker:p0:0", 1))
                 .statKillsByEntityType(java.util.Map.of("COW", 5L))
                 .discoveredWeaknessEntityTypes(java.util.Set.of("cow"))
                 .build());

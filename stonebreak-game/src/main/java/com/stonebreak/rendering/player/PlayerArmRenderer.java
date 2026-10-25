@@ -279,6 +279,7 @@ public class PlayerArmRenderer {
             } else {
                 info.selectedState = selectedItem.getState();
             }
+            com.stonebreak.items.ItemModels.ItemModel model = com.stonebreak.items.ItemModels.of(selectedItem.getItem());
             if (selectedItem.isPlaceable()) {
                 info.selectedBlockType = selectedItem.asBlockType();
                 info.isDisplayingBlock = (info.selectedBlockType != null && 
@@ -286,6 +287,11 @@ public class PlayerArmRenderer {
                                          info.selectedBlockType.getAtlasX() >= 0 && 
                                          info.selectedBlockType.getAtlasY() >= 0);
                 info.displayingItem = info.isDisplayingBlock;
+            } else if (model != null) {
+                info.selectedItemType = selectedItem.asItemType();
+                info.model = model;
+                info.isDisplayingTool = true;
+                info.displayingItem = true;
             } else if (selectedItem.isTool() || selectedItem.isMaterial() || selectedItem.isFood()) {
                 info.selectedItemType = selectedItem.asItemType();
                 // Render the item in hand when it has either legacy atlas
@@ -308,6 +314,15 @@ public class PlayerArmRenderer {
     private void renderSelectedItem(ItemDisplayInfo displayInfo) {
         if (displayInfo.isDisplayingBlock && displayInfo.selectedBlockType != null) {
             handItemRenderer.renderBlockInHand(displayInfo.selectedBlockType);
+        } else if (displayInfo.model != null) {
+            com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
+            boolean drawn = renderer != null && renderer.getEntityRenderer() != null
+                    && renderer.getEntityRenderer().renderItemModel(displayInfo.model,
+                            displayInfo.model.handTransform(new Matrix4f()), reusableArmViewModel,
+                            projectionMatrix, false);
+            if (!drawn) {
+                handItemRenderer.renderToolInHand(displayInfo.selectedItemType, displayInfo.selectedState);
+            }
         } else if (displayInfo.isDisplayingTool && displayInfo.selectedItemType != null) {
             handItemRenderer.renderToolInHand(displayInfo.selectedItemType, displayInfo.selectedState);
         }
@@ -374,6 +389,8 @@ public class PlayerArmRenderer {
         boolean displayingItem = false;
         boolean isDisplayingBlock = false;
         boolean isDisplayingTool = false;
+        /** The item is drawn as its model ({@link com.stonebreak.items.ItemModels}), not its sprite. */
+        com.stonebreak.items.ItemModels.ItemModel model = null;
         BlockType selectedBlockType = null;
         ItemType selectedItemType = null;
         /** SBO state name for the selected stack (1.3+); null = default. */

@@ -252,6 +252,24 @@ public abstract class Entity {
     private int ownerPlayerId = -1;
     public int getOwnerPlayerId() { return ownerPlayerId; }
     public void setOwnerPlayerId(int ownerPlayerId) { this.ownerPlayerId = ownerPlayerId; }
+    /** The vehicle this entity sits in, or null; while seated it skips its own movement. */
+    private com.stonebreak.vehicles.Rideable vehicle;
+    private int seatIndex = -1;
+    public com.stonebreak.vehicles.Rideable getVehicle() { return vehicle; }
+    public int getSeatIndex() { return seatIndex; }
+    public boolean isRiding() { return vehicle != null; }
+    /** Seats this entity ({@code vehicle} null, or seat &lt; 0, stands it up). */
+    public void setVehicle(com.stonebreak.vehicles.Rideable vehicle, int seat) {
+        this.vehicle = seat >= 0 ? vehicle : null;
+        this.seatIndex = this.vehicle != null ? seat : -1;
+    }
+
+    /**
+     * True while this client simulates the entity itself instead of following the network
+     * interpolator — a dinghy rowed by the local player. Shadows only.
+     */
+    public boolean isLocallyControlled() { return false; }
+
     public boolean isNetworkShadow() { return networkShadow; }
     public void setNetworkShadow(boolean shadow) { this.networkShadow = shadow; }
     public boolean isCommandSpawned() { return commandSpawned; }
@@ -312,6 +330,39 @@ public abstract class Entity {
             return point.x >= minX && point.x <= maxX &&
                    point.y >= minY && point.y <= maxY &&
                    point.z >= minZ && point.z <= maxZ;
+        }
+
+        /** This box grown by {@code margin} on every side. */
+        public BoundingBox expand(float margin) {
+            return new BoundingBox(minX - margin, minY - margin, minZ - margin,
+                                   maxX + margin, maxY + margin, maxZ + margin);
+        }
+
+        /**
+         * Slab test: the smallest {@code t >= 0} at which {@code origin + t * dir} is inside this
+         * box (0 when {@code origin} already is), or {@link Float#MAX_VALUE} when the ray misses.
+         * {@code t} is in units of {@code dir}, so with {@code dir = to - from} a hit on the
+         * segment is {@code t <= 1}.
+         */
+        public float rayIntersect(Vector3f origin, Vector3f dir) {
+            float tMin = 0.0f;
+            float tMax = Float.MAX_VALUE;
+            float[] o = {origin.x, origin.y, origin.z};
+            float[] d = {dir.x, dir.y, dir.z};
+            float[] lo = {minX, minY, minZ};
+            float[] hi = {maxX, maxY, maxZ};
+            for (int axis = 0; axis < 3; axis++) {
+                if (Math.abs(d[axis]) < 1e-6f) {
+                    if (o[axis] < lo[axis] || o[axis] > hi[axis]) return Float.MAX_VALUE;
+                    continue;
+                }
+                float t1 = (lo[axis] - o[axis]) / d[axis];
+                float t2 = (hi[axis] - o[axis]) / d[axis];
+                tMin = Math.max(tMin, Math.min(t1, t2));
+                tMax = Math.min(tMax, Math.max(t1, t2));
+                if (tMin > tMax) return Float.MAX_VALUE;
+            }
+            return tMin;
         }
     }
 }

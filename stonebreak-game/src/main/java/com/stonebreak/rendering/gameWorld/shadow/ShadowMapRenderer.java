@@ -47,6 +47,8 @@ public final class ShadowMapRenderer {
     private static final float SUN_FADE_START = 0.02f;
     /** Elevation span over which shadows fade in above {@link #SUN_FADE_START}. */
     private static final float SUN_FADE_RANGE = 0.10f;
+    /** Light-direction dot below which the shadow light has jumped (sun → moon), not crept. */
+    private static final float KEY_JUMP_DOT = 0.99f;
 
     /**
      * Frames between updates per cascade. Near shadows track the camera every
@@ -135,8 +137,11 @@ public final class ShadowMapRenderer {
     /**
      * Runs the depth pre-pass for this frame. Call before the main scene pass,
      * with no special framebuffer requirements — binding and viewport are
-     * restored on exit. When shadows are disabled or the sun is down, the pass
+     * restored on exit. When shadows are disabled or the light is down, the pass
      * is skipped and {@link #applyToShader} will disable sampling.
+     *
+     * @param sunDirection the key light: the sun by day, the moon at night (its
+     *                     faintness is in the receivers' {@code u_keyLight})
      */
     public void renderShadowPass(World world, Player player, Vector3f sunDirection,
                                  EntityRenderer entityRenderer,
@@ -153,10 +158,15 @@ public final class ShadowMapRenderer {
         float elevationFade = Math.clamp((sunDirection.y - SUN_FADE_START) / SUN_FADE_RANGE, 0.0f, 1.0f);
         if (elevationFade <= 0.0f) {
             needsFullRefresh = true;
-            return; // Night — no sun shadows.
+            return; // Sun (or moon) below the horizon — no shadows.
         }
         refreshQualitySettings(userSettings);
         effectiveStrength = settings.strength() * elevationFade;
+        // The light only creeps between frames, except when the key light hands
+        // over from the sun to the moon: then every cascade is from the wrong side.
+        if (sunDir.dot(sunDirection.x, sunDirection.y, sunDirection.z) < KEY_JUMP_DOT * sunDirection.length()) {
+            needsFullRefresh = true;
+        }
         sunDir.set(sunDirection).normalize();
 
         computeUpdateMask(player);

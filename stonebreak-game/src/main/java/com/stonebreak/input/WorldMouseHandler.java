@@ -55,9 +55,14 @@ final class WorldMouseHandler {
         }
     }
 
-    /** Left press: swing, and strike the first living entity under the crosshair. Block breaking is continuous, handled per-frame. */
+    /**
+     * Left press: swing, and strike the first living entity under the crosshair. Does nothing
+     * while the previous swing is still cooling down. Block breaking is continuous, handled per-frame.
+     */
     private void handleAttack(Player player) {
-        player.startAttackAnimation();
+        if (!player.tryStartAttackSwing()) {
+            return;
+        }
         EntityManager em = Game.getEntityManager();
         if (em != null) {
             // Remote players and decoys are not melee targets until PvP exists (#343/#374):
@@ -66,6 +71,8 @@ final class WorldMouseHandler {
                     em.getLivingEntities().stream().filter(Player::isCombatTarget).toList());
             if (target != null) {
                 player.attackEntity(target);
+            } else {
+                com.stonebreak.vehicles.VehicleInteraction.tryHit(player);
             }
         }
     }
@@ -74,9 +81,17 @@ final class WorldMouseHandler {
     void handleUse(Player player) {
         ItemStack held = player.getInventory().getSelectedHotbarSlot();
 
+        // A boat under the crosshair takes the click whatever is in hand: climb in.
+        if (com.stonebreak.vehicles.VehicleInteraction.tryBoard(player)) {
+            return;
+        }
+        if (com.stonebreak.vehicles.VehicleInteraction.tryPlace(player, held)) {
+            return;
+        }
+
         // Bow → start drawing (no attack swing).
         if (!held.isEmpty() && held.getItem() == ItemType.BOW) {
-            player.getBowController().startDrawing();
+            player.startBowDraw();
             return;
         }
 

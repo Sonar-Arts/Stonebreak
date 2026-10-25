@@ -25,7 +25,8 @@ flat in float vWaterDepth;
 // 0 = still water; 1..8 = a river running in octant 0..7. See water.vert.
 flat in float vFlow;
 
-uniform vec3 uSunDirection;
+uniform vec3 uSunDirection;   // the key light: the sun, or the moon at night
+uniform vec3 uKeyLight;       // its colour × strength (white by day)
 uniform float uAmbientLight;
 uniform vec3 uCameraPos;
 // World XZ of the render origin — vWorldPos is render-space, and the
@@ -53,8 +54,13 @@ uniform float uLodFade;
 uniform sampler2D uSceneDepth;
 uniform mat4 uInvProjection;
 uniform vec4 uViewport; // x, y, width, height
-
 #include "/shaders/lighting/point_lights.glsl"
+#include "/shaders/clouds/cloud_field.glsl"
+#include "/shaders/clouds/cloud_shadow.glsl"
+// The clouds are composited BEFORE water draws; this keeps it behind them.
+#include "/shaders/clouds/clouds_in_front.glsl"
+#include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/sunset_fog.glsl"
 
 out vec4 fragColor;
 
@@ -216,9 +222,11 @@ void main() {
     vec3 L = normalize(uSunDirection);
 
     float ambient = uAmbientLight * 0.55;
-    float diffuse = max(dot(N, L), 0.0) * 0.6 * uAmbientLight;
+    // Direct sun (or moon) only: dimmed by whatever cloud lies between it and the water.
+    vec3 sunLight = uAmbientLight * cloudShadow(vWorldPos) * uKeyLight;
+    vec3 diffuse = max(dot(N, L), 0.0) * 0.6 * sunLight;
     vec3 H = normalize(L + V);
-    float spec = pow(max(dot(N, H), 0.0), 64.0) * 0.6 * uAmbientLight * (0.35 + 0.65 * detail);
+    vec3 spec = pow(max(dot(N, H), 0.0), 64.0) * 0.6 * sunLight * (0.35 + 0.65 * detail);
 
     // White rivulet highlights on falling sheets.
     float streaks = smoothstep(0.60, 0.85, n) * vFalling * 0.30 * uAmbientLight;
@@ -236,23 +244,28 @@ void main() {
     // nothing behind enough of it comes through.
     alpha = max(clamp(alpha + streaks * 0.4, 0.0, 0.92), mix(SURFACE_ALPHA, 1.0, opacity));
 
-    vec3 color = baseColor * (ambient + diffuse) + vec3(1.0) * spec + vec3(streaks);
+    vec3 color = baseColor * (ambient + diffuse) + spec + vec3(streaks);
     // Torchlight on the water surface.
     color = applyPointLight(color, baseColor,
             pointLightContribution(vWorldPos, N, pointLightWeight(uAmbientLight, 1.0, 1.0)));
 
-    // Distance fog toward the sky color, measured exactly as the world shader
+    // Distance fog toward the sky color, then rain and snow, measured exactly as the world shader
     // measures it — alpha untouched so the blend over terrain stays correct.
     // Native water and FastLOD sheets share this shader, so the near/far
     // water handover needs no color matching: both sides ARE the same code
     // blending over real geometry (native seabed vs LOD seabed).
+    float fogF = 0.0;
     if (uFogEnd > uFogStart) {
         float fogDist = uFogSpherical
                 ? length(vWorldPos - uCameraPos)
                 : length(vWorldPos.xz - uCameraPos.xz);
-        float fogF = smoothstep(uFogStart, uFogEnd, fogDist);
-        color = mix(color, uFogColor, fogF);
+        fogF = smoothstep(uFogStart, uFogEnd, fogDist);
     }
+    color = applyPrecipFog(color, uCameraPos, vWorldPos - uCameraPos,
+            horizonFogColor(uFogColor, vWorldPos - uCameraPos), fogF);
+
+    // Behind the cloud in front of the surface (seen from above the clouds).
+    color = behindClouds(color, uCameraPos, vWorldPos);
 
     fragColor = vec4(color, alpha);
 }

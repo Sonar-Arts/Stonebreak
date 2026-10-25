@@ -1,11 +1,12 @@
 package com.stonebreak.player.combat.stealth;
 
+import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerConstants;
 
 /**
  * Per-class tunables for the universal stealth system. The {@link StealthController} reads its
  * values exclusively through a resolved {@code StealthConfig}, so a class (e.g. the Rogue) can
- * override defaults without modifying the controller. Resolve via {@link #forClass(String)}.
+ * override defaults without modifying the controller. Resolve via {@link #forClass(CharacterStats)}.
  *
  * @param noiseRadiusStealth player noise radius (blocks) while fully stealthed
  * @param reentryDelay       seconds the re-entry cooldown lasts after stealth breaks
@@ -41,9 +42,9 @@ public record StealthConfig(
 
     private static final String ROGUE_CLASS_ID = "rogue";
 
-    /** Resolves the stealth config for a selected class id ({@link #BASE} when unknown/null). */
-    public static StealthConfig forClass(String selectedClassId) {
-        if (ROGUE_CLASS_ID.equals(selectedClassId)) {
+    /** Resolves the stealth config for a character: {@link #ROGUE} once any rank is in Rogue. */
+    public static StealthConfig forClass(CharacterStats stats) {
+        if (stats != null && stats.hasClass(ROGUE_CLASS_ID)) {
             return ROGUE;
         }
         return BASE;

@@ -38,8 +38,9 @@
     "characterCreation": "stonebreak:screen.character-creation",
     "ccBackgrounds": "stonebreak:screen.character-creation",
     "ccClasses": "stonebreak:screen.character-creation",
-    "ccAbilities": "stonebreak:screen.character-creation",
+    "ccTree": "stonebreak:screen.character-creation",
     "ccSkills": "stonebreak:screen.character-creation",
+    "ccWeapons": "stonebreak:screen.character-creation",
     "ccFeats": "stonebreak:screen.character-creation",
     "ccHair": "stonebreak:screen.character-creation",
     "ccHats": "stonebreak:screen.character-creation",
@@ -1121,15 +1122,6 @@
           "fontSize": 14,
           "baseline": 23.32,
           "active": false
-        },
-        {
-          "tab": "CLOTHING",
-          "label": "Clothing",
-          "x": 1072.0,
-          "width": 88.0,
-          "fontSize": 14,
-          "baseline": 23.32,
-          "active": false
         }
       ],
       "talents": [
@@ -1163,7 +1155,7 @@
       "backgroundLabel": "Background: Adventurer",
       "ap": "AP Remaining: 5",
       "cp": "CP Remaining: 99",
-      "sp": "SP Remaining: 5",
+      "sp": "SP Remaining: 3    WTP: 1",
       "fp": "FP Remaining: 1",
       "className": "Select a class",
       "classDesc": "Click a class on the left to view its abilities.",
@@ -1232,7 +1224,40 @@
       ],
       "classScroll": 0,
       "skillScroll": 0,
-      "featScroll": 0
+      "featScroll": 0,
+      "isGeneral": true,
+      "isWeapons": false,
+      "wtpHint": "Earn 1 WTP per 5 ranks in each class. Any class's ranks train any weapon."
+    },
+    "ccTree": {
+      "mastery": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "fill": 0,
+        "label": "",
+        "notches": []
+      },
+      "tiers": [],
+      "rows": [],
+      "links": [],
+      "nodes": [],
+      "contentH": 0,
+      "clipW": 0,
+      "clipH": 0,
+      "detail": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "name": "",
+        "kind": "",
+        "rank": "",
+        "description": "",
+        "status": "",
+        "ok": false
+      }
     },
     "characterSheet": {
       "tab": "OVERVIEW",
@@ -2106,24 +2131,6 @@
         }
       ]
     },
-    "ccAbilities": {
-      "identity": "key",
-      "items": [
-        {
-          "key": "berserker:0",
-          "index": 0,
-          "name": "Rampage",
-          "description": "Charge forward.",
-          "icon": {
-            "path": "/ui/abilities/berserker/Rampage.png"
-          },
-          "hasIcon": true,
-          "label": "Spend 1 CP (0)",
-          "canSpend": true,
-          "rule": false
-        }
-      ]
-    },
     "ccSkills": {
       "identity": "id",
       "items": [
@@ -2132,6 +2139,19 @@
           "name": "Acrobatics",
           "level": "Lvl: 0",
           "canInvest": true
+        }
+      ]
+    },
+    "ccWeapons": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "ONE_HANDED",
+          "name": "One-Handed Weapons",
+          "rank": "Untrained",
+          "note": "Next: Trained (x1.00 speed)",
+          "gated": false,
+          "canTrain": true
         }
       ]
     },
@@ -2638,13 +2658,31 @@
         "id": "string"
       }
     },
-    "stonebreak:screen.character-creation.spend": {
+    "stonebreak:screen.character-creation.rank": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
-        "index": "number"
+        "key": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.hover": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "key": "string"
       }
     },
     "stonebreak:screen.character-creation.skill": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.skill-mode": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "mode": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.train": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
         "id": "string"
@@ -2654,6 +2692,13 @@
       "contract": "stonebreak:screen.character-creation",
       "params": {
         "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.refund": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "target": "string",
+        "key": "string"
       }
     },
     "stonebreak:screen.character-creation.hair": {
@@ -2699,16 +2744,34 @@
         "id": "string"
       }
     },
-    "stonebreak:screen.character-sheet.spend": {
+    "stonebreak:screen.character-sheet.rank": {
       "contract": "stonebreak:screen.character-sheet",
       "params": {
-        "index": "number"
+        "key": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.hover": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "key": "string"
       }
     },
     "stonebreak:screen.character-sheet.skill": {
       "contract": "stonebreak:screen.character-sheet",
       "params": {
         "index": "number"
+      }
+    },
+    "stonebreak:screen.character-sheet.skill-mode": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "mode": "string"
+      }
+    },
+    "stonebreak:screen.character-sheet.train": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "group": "string"
       }
     },
     "stonebreak:screen.character-sheet.level-filter": {
@@ -2728,6 +2791,13 @@
     },
     "stonebreak:screen.character-sheet.acquire": {
       "contract": "stonebreak:screen.character-sheet"
+    },
+    "stonebreak:screen.character-sheet.refund": {
+      "contract": "stonebreak:screen.character-sheet",
+      "params": {
+        "target": "string",
+        "key": "string"
+      }
     },
     "stonebreak:screen.character-sheet.wheel": {
       "contract": "stonebreak:screen.character-sheet",

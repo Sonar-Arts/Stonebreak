@@ -2,8 +2,8 @@ package com.stonebreak.network.server.handlers;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.items.ToolMiningRules;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
@@ -30,7 +30,8 @@ import java.util.Map;
  */
 public final class ServerBlockHandler {
 
-    private static final float MAX_REACH = 8.0f;
+    /** Feet to the block's centre; {@link ServerVehicleHandler} places boats within it too. */
+    static final float MAX_REACH = 8.0f;
     private static final float MAX_REACH_SQ = MAX_REACH * MAX_REACH;
 
     private final ServerChunkHandler chunkHandler;
@@ -157,13 +158,14 @@ public final class ServerBlockHandler {
                 return; // applies when due (tick → drainDeferredBreaks)
             }
         }
-        // Placement debits the server-owned inventory (issue #334): a non-air edit costs one
-        // of that block unless the SERVER's cheats flag is on AND the player's accepted game
-        // mode is creative. A refusal reverts the optimistic client edit — no world mutation.
-        // The debit records exactly what it took, so a later refusal or retry expiry refunds
-        // that and nothing else.
+        // Placement debits the server-owned inventory (issue #334): a non-air edit always
+        // costs one of that block, exactly as the client's BlockPlacer predicts — the client
+        // has no free-placement mode, so an exemption here would leave the replica holding
+        // items the client already spent, and the next sync would hand them back. A refusal
+        // reverts the optimistic client edit — no world mutation. The debit records exactly
+        // what it took, so a later refusal or retry expiry refunds that and nothing else.
         PlacementDebit debit = PlacementDebit.NONE;
-        if (incoming != null && incoming != BlockType.AIR && !placementDebitExempt(sp, ctx)) {
+        if (incoming != null && incoming != BlockType.AIR) {
             debit = debitForPlacement(sp, incoming, ctx);
             if (debit == null) {
                 syncInventory(sp);
@@ -231,19 +233,19 @@ public final class ServerBlockHandler {
      *
      * <p>Not timed: placements, fluids (scoops, the air half of a pour), a cell that is already
      * air (a no-op break), blocks that break instantly, and creative players on a server with
-     * cheats on (the placement-debit exemption). An unbreakable block is refused.
+     * cheats on ({@link #breakTimingExempt}). An unbreakable block is refused.
      */
     private BreakTiming timeBreak(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType serverPrev,
                                   long receivedNs, ServerWorldContext ctx) {
         if (incoming != BlockType.AIR || serverPrev == BlockType.AIR || serverPrev == BlockType.WATER
-                || placementDebitExempt(sp, ctx)) {
+                || breakTimingExempt(sp, ctx)) {
             return BreakTiming.GO;
         }
         if (!serverPrev.isBreakable()) {
             return BreakTiming.REFUSE;
         }
         ServerInventory inv = sp.inventory();
-        float seconds = com.stonebreak.items.ToolMiningRules.breakSeconds(
+        float seconds = ToolMiningRules.breakSeconds(
                 inv.slot(inv.selectedHotbarSlot()), serverPrev);
         if (Float.isNaN(seconds) || Float.isInfinite(seconds)) {
             return BreakTiming.REFUSE;
@@ -345,6 +347,16 @@ public final class ServerBlockHandler {
                 : sp.inventory().debit(BlockType.SNOW.getId(), added);
     }
 
+    /**
+     * Breaks go untimed only when the SERVER's cheats flag is on AND this player's accepted game
+     * mode is creative — the client's own cheats state is never trusted (issue #334). Placement
+     * has no such exemption: the client's BlockPlacer always spends the block.
+     */
+    private static boolean breakTimingExempt(ServerPlayer sp, ServerWorldContext ctx) {
+        com.stonebreak.network.server.ServerLevel level = ctx.serverLevel();
+        return level != null && level.cheatsEnabled() && sp.gameMode() == 1;
+    }
+
     /** Whether the server holds the chunk under {@code (x, z)} — an unloaded cell reads AIR. */
     private static boolean chunkLoaded(World world, int x, int z) {
         return world.getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
@@ -397,7 +409,7 @@ public final class ServerBlockHandler {
      * Exactly what a placement debit took from the server inventory (issue #334): one item
      * of {@code itemId} carrying {@code state}, or — {@code bucketPoured} — one water bucket
      * emptied. A later refusal or retry expiry refunds this record, never the placed block's
-     * id, and nothing for a free (creative + cheats) placement or a break.
+     * id, and nothing for a break.
      */
     private record PlacementDebit(int itemId, String state, boolean bucketPoured) {
         static final PlacementDebit NONE = new PlacementDebit(0, null, false);
@@ -540,15 +552,6 @@ public final class ServerBlockHandler {
 
     private static void syncInventory(ServerPlayer sp) {
         sp.send(sp.inventorySync(), false);
-    }
-
-    /**
-     * Placement is free only when the SERVER's cheats flag is on AND this player's accepted
-     * game mode is creative — the client's own cheats state is never trusted (issue #334).
-     */
-    private static boolean placementDebitExempt(ServerPlayer sp, ServerWorldContext ctx) {
-        com.stonebreak.network.server.ServerLevel level = ctx.serverLevel();
-        return level != null && level.cheatsEnabled() && sp.gameMode() == 1;
     }
 
     /**
@@ -766,7 +769,7 @@ public final class ServerBlockHandler {
                 syncInventory(sp);
                 return;
             }
-            if (!placementDebitExempt(sp, ctx) && !debitSnow(sp, added)) {
+            if (!debitSnow(sp, added)) {
                 syncInventory(sp);
                 // Re-assert the cell's actual layer count so an over-optimistic client reverts.
                 sendSnowRevert(sp, s.x(), s.y(), s.z(), world);
@@ -830,8 +833,7 @@ public final class ServerBlockHandler {
      *
      * <p>The water costs one water bucket from the server-owned inventory (issue #334): the
      * selected slot must hold one (as {@code StalagmiteInteraction.tryGrow} requires) and one
-     * bucket of it is emptied with the pour's stack rule — free only for the placement-exempt
-     * (creative + cheats). A refusal, or a stalagmite the server says cannot grow, syncs the
+     * bucket of it is emptied with the pour's stack rule. A refusal, or a stalagmite the server says cannot grow, syncs the
      * sender, whose client already emptied its own copy.
      */
     private void growStalagmite(ServerPlayer sp, World world, int x, int y, int z, ServerWorldContext ctx) {
@@ -840,8 +842,7 @@ public final class ServerBlockHandler {
         int sel = sp.inventory().selectedHotbarSlot();
         if (!isBucket(sp.inventory().slot(sel), true)
                 || !com.stonebreak.blocks.stalagmite.Stalagmite.canGrow(cells, x, y, z)
-                || (!placementDebitExempt(sp, ctx)
-                    && !convertOneBucket(sp, sel, ItemType.BUCKET_STATE_EMPTY, ctx))) {
+                || !convertOneBucket(sp, sel, ItemType.BUCKET_STATE_EMPTY, ctx)) {
             syncInventory(sp);
             return;
         }

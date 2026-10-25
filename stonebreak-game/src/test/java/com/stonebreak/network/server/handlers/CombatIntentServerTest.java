@@ -67,11 +67,16 @@ class CombatIntentServerTest {
         sp.updateState(PLAYER_POS.x, PLAYER_POS.y, PLAYER_POS.z, 0f, 0f);
         Map<String, Integer> cp = new java.util.HashMap<>();
         for (String key : unlockedKeys) {
-            cp.put(key, 1);
+            cp.put(grantingRank(key), 1);
         }
-        sp.serverStats().restore(classId, cp, Map.of(), Set.of(), 0, 0, 0,
+        sp.serverStats().restore(classId, classId == null ? List.of() : List.of(classId), cp, Map.of(), Set.of(), 0, 0, 0,
                 new int[]{10, 10, 10, 10, 10, 10}, 0, 1, 0);
         return sp;
+    }
+
+    /** A talent rank that unlocks core ability {@code abilityKey}: abilities come with the paths that grant them. */
+    static String grantingRank(String abilityKey) {
+        return com.stonebreak.rpg.classes.ClassRegistry.pathsGranting(abilityKey).get(0).nodes().get(0).key();
     }
 
     /** A registered server-side mob {@code dx} blocks east of the player. */
@@ -83,7 +88,8 @@ class CombatIntentServerTest {
     }
 
     private static EntityDamageC2S hit(Entity target, float amount, LivingEntity.DamageSource source, HitKind kind) {
-        return new EntityDamageC2S(target.getNetworkId(), amount, (byte) source.ordinal(), kind.wireId());
+        return new EntityDamageC2S(target.getNetworkId(), amount, (byte) source.ordinal(),
+                (byte) source.defaultDamageType().ordinal(), kind.wireId());
     }
 
     private static List<Packet> sent(ServerPlayer sp) {
@@ -390,8 +396,8 @@ class CombatIntentServerTest {
         Spawning s = spawning();
         ServerPlayer rogue = new ServerPlayer(mock(ServerConnection.class), 6);
         rogue.markHandshakeDone();
-        rogue.serverStats().restore(RogueAbilityController.CLASS_ID,
-                Map.of(RogueAbilityController.CALTROP_KEY, 1), Map.of(), Set.of(), 0, 0, 0,
+        rogue.serverStats().restore(RogueAbilityController.CLASS_ID, List.of(RogueAbilityController.CLASS_ID),
+                Map.of(grantingRank(RogueAbilityController.CALTROP_KEY), 1), Map.of(), Set.of(), 0, 0, 0,
                 new int[]{10, 10, 10, 10, 10, 10}, 0, 1, 0);
 
         handler.handleProjectileSpawn(rogue, caltrop(), s.ctx());

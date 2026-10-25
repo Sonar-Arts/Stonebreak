@@ -12,6 +12,7 @@ import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE1;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
 import static org.lwjgl.opengl.GL30.GL_FRAMEBUFFER;
 import static org.lwjgl.opengl.GL30.glBindFramebuffer;
@@ -24,9 +25,11 @@ import static org.lwjgl.opengl.GL30.glBindFramebuffer;
  * Pass B radially blurs the mask toward the sun's projected screen position and composites it
  * additively onto the default framebuffer.</p>
  *
- * <p>Clouds are stamped into the scene depth buffer by a depth-only occlusion pass
- * (see {@code CloudRenderer.renderCloudOcclusion}) after world geometry, so the sun is
- * occluded wherever a cloud crosses in front of it. Water still does not write depth, so
+ * <p>Whatever veils the sky (cloud, rain) comes in as a transmittance texture
+ * ({@link PostFxFrameParams#skyTransmittanceTexture()}): the mask is scaled by how much of the
+ * sky's light reaches the eye, so thin cloud dims the rays, gaps between clouds let shafts
+ * through, and sky seen through a storm's rain sends none. Rays take the sun's colour,
+ * so they redden with it at sunset. Water does not write depth, so
  * rays shine through it (accepted behavior). The effect fades out as the sun approaches the
  * screen edge and is skipped entirely when the sun is behind the camera.</p>
  */
@@ -64,6 +67,9 @@ public class GodRaysEffect implements PostProcessingEffect {
         occlusionProgram.createUniform("depthTex");
         occlusionProgram.createUniform("sunUv");
         occlusionProgram.createUniform("aspect");
+        occlusionProgram.createUniform("skyTransmittance");
+        occlusionProgram.createUniform("hasTransmittance");
+        occlusionProgram.createUniform("sunColor");
 
         blurProgram = new ShaderProgram();
         blurProgram.createVertexShader(fullscreenVert);
@@ -126,7 +132,14 @@ public class GodRaysEffect implements PostProcessingEffect {
         occlusionProgram.setUniform("depthTex", 0);
         occlusionProgram.setUniform("sunUv", sunUv);
         occlusionProgram.setUniform("aspect", (float) outputWidth / (float) outputHeight);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, params.skyTransmittanceTexture());
+        occlusionProgram.setUniform("skyTransmittance", 1);
+        occlusionProgram.setUniform("hasTransmittance", params.skyTransmittanceTexture() != 0);
+        occlusionProgram.setUniform("sunColor", params.sunColor());
         quad.draw();
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE0);
 
         // Pass B: radial blur, composited additively onto the default framebuffer.
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

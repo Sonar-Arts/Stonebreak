@@ -87,6 +87,7 @@ public final class IntegratedServer {
     private final ServerChatHandler chatHandler;
     private final ServerFishingHandler fishingHandler = new ServerFishingHandler();
     private final ServerIllusionHandler illusionHandler = new ServerIllusionHandler();
+    private final com.stonebreak.network.server.handlers.ServerVehicleHandler vehicleHandler;
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
@@ -123,6 +124,7 @@ public final class IntegratedServer {
         this.chunkHandler = new ServerChunkHandler();
         this.blockHandler = new ServerBlockHandler(chunkHandler);
         this.entityHandler = new ServerEntityHandler();
+        this.vehicleHandler = new com.stonebreak.network.server.handlers.ServerVehicleHandler(entityHandler::entity);
         this.playerHandler = new ServerPlayerHandler();
         this.chatHandler = new ServerChatHandler();
     }
@@ -359,6 +361,7 @@ public final class IntegratedServer {
             keepaliveCounter = 0;
             long now = System.nanoTime();
             TimeSyncS2C timeSync = currentTimeSync();
+            com.stonebreak.network.packet.world.WeatherSyncS2C weatherSync = currentWeatherSync();
             for (ServerPlayer sp : ctx.players()) {
                 if (!sp.isLocal() && now - sp.lastInboundNs() > INBOUND_SILENCE_TIMEOUT_NS) {
                     System.out.println("[SERVER] Kicking " + sp.username() + " (id "
@@ -371,6 +374,9 @@ public final class IntegratedServer {
                 sp.send(new KeepAliveS2C(nonce, sp.rttMs()), false);
                 if (timeSync != null) {
                     sp.send(timeSync, true); // droppable — the next sample self-heals
+                }
+                if (weatherSync != null) {
+                    sp.send(weatherSync, true);
                 }
             }
         }
@@ -413,7 +419,7 @@ public final class IntegratedServer {
         if (level == null || level.timeOfDay() == null) {
             return;
         }
-        long ticks = Math.floorMod(ts.ticks(), com.stonebreak.world.TimeOfDay.TICKS_PER_DAY);
+        long ticks = Math.max(0L, ts.ticks()); // absolute: the day carries the moon's phase
         level.timeOfDay().setTicks(ticks);
         TimeSyncS2C sync = currentTimeSync();
         if (sync != null) {
@@ -443,6 +449,44 @@ public final class IntegratedServer {
             + " by " + sp.username());
     }
 
+    /**
+     * C2S: /weather — set the world's weather mode. Host-only, like /timeset. Persists with the
+     * next save (the save service snapshots the level's weather) and broadcasts an immediate
+     * WeatherSyncS2C so every client starts easing toward the new sky at once.
+     */
+    private void handleWeatherSet(ServerPlayer sp, com.stonebreak.network.packet.world.WeatherSetC2S ws) {
+        if (!sp.isLocal()) {
+            return; // remote clients may not change the weather
+        }
+        ServerLevel level = ctx.serverLevel();
+        if (level == null) {
+            return;
+        }
+        var weather = level.weather();
+        if (ws.world()) {
+            weather.setMode(ws.mode());
+        } else if (ws.mode() == com.stonebreak.world.weather.WeatherMode.AUTO) {
+            weather.clearZonesAt(sp.x(), sp.z());
+        } else {
+            weather.placeZone(new com.stonebreak.world.weather.WeatherZone(sp.x(), sp.z(),
+                    com.stonebreak.world.weather.WeatherZone.DEFAULT_RADIUS, ws.mode()));
+        }
+        ctx.broadcast(currentWeatherSync(), false);
+        System.out.println("[SERVER] Weather set to " + ws.mode() + (ws.world() ? " worldwide" : " around "
+                + Math.round(sp.x()) + ", " + Math.round(sp.z())) + " by " + sp.username());
+    }
+
+    /** Authoritative weather sample for WeatherSyncS2C, or null before the level is booted. */
+    private com.stonebreak.network.packet.world.WeatherSyncS2C currentWeatherSync() {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null) {
+            return null;
+        }
+        var weather = level.weather();
+        return new com.stonebreak.network.packet.world.WeatherSyncS2C(weather.seconds(), weather.mode(),
+                weather.zones());
+    }
+
     /** Authoritative time sample for TimeSyncS2C, or null before the level is booted. */
     private TimeSyncS2C currentTimeSync() {
         ServerLevel level = ctx.serverLevel();
@@ -450,7 +494,7 @@ public final class IntegratedServer {
             return null;
         }
         var time = level.timeOfDay();
-        return new TimeSyncS2C(time.getTicks(), time.getTimeSpeed(), time.isFrozen());
+        return new TimeSyncS2C(time.getTotalTicks(), time.getTimeSpeed(), time.isFrozen());
     }
 
     // ─── Inbound dispatch (tick thread) ───────────────────────────────────────────
@@ -529,6 +573,7 @@ public final class IntegratedServer {
             }
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
+            case com.stonebreak.network.packet.world.WeatherSetC2S ws -> handleWeatherSet(sp, ws);
             case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx, receivedNs);
             case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
@@ -546,12 +591,18 @@ public final class IntegratedServer {
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
-            case com.stonebreak.network.packet.player.PlayerLifeC2S pl ->
+            case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> {
                 playerHandler.handlePlayerLife(sp, pl, ctx, receivedNs);
+                if (pl.dead()) {
+                    vehicleHandler.onPeerLeft(sp, ctx); // the dead don't row
+                }
+            }
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
             case com.stonebreak.network.packet.player.FishingRodC2S fr -> fishingHandler.handleRodUse(sp, fr, ctx);
             case com.stonebreak.network.packet.entity.DecoyCastC2S dc -> illusionHandler.handleDecoyCast(sp, dc, ctx);
+            case com.stonebreak.network.packet.vehicle.VehicleActionC2S va -> vehicleHandler.handleAction(sp, va, ctx);
+            case com.stonebreak.network.packet.vehicle.VehicleMoveC2S vm -> vehicleHandler.handleMove(sp, vm);
             case DisconnectC2S ignored -> sp.disconnect();
             default -> { /* unknown / unexpected serverbound packet — ignore */ }
         }
@@ -668,6 +719,7 @@ public final class IntegratedServer {
             }
             ctx.removePlayer(existing);
             entityHandler.onPeerLeft(existing);
+            vehicleHandler.onPeerLeft(existing, ctx);
             ctx.broadcastExcept(sp, new PlayerLeaveS2C(stableId), false);
             existing.kick(sp.isLocal() ? NameClaims.HOST_NAME : "You logged in from another location.");
         }
@@ -824,6 +876,10 @@ public final class IntegratedServer {
         if (timeSync != null) {
             sp.send(timeSync, false);
         }
+        com.stonebreak.network.packet.world.WeatherSyncS2C weatherSync = currentWeatherSync();
+        if (weatherSync != null) {
+            sp.send(weatherSync, false);
+        }
         // The world's saved cheats flag — restores it on the client (issue #318).
         ServerLevel level = ctx.serverLevel();
         if (level != null) {
@@ -939,7 +995,7 @@ public final class IntegratedServer {
     /** The fresh record as the creation-shaped JSON {@code CharacterStats.applyFromJoinData} reads. */
     static byte[] creationEcho(com.stonebreak.world.save.model.PlayerData fresh, String background) {
         com.stonebreak.player.CharacterStats echo = new com.stonebreak.player.CharacterStats(null);
-        echo.restore(fresh.getSelectedClassId(), fresh.getSpentAbilityCp(), fresh.getSkillLevels(),
+        echo.restore(fresh.getSelectedClassId(), fresh.getClassInvestmentOrder(), fresh.getSpentAbilityCp(), fresh.getSkillLevels(),
                 fresh.getAcquiredFeatIds(), fresh.getRemainingCp(), fresh.getRemainingSkillPoints(),
                 fresh.getRemainingFeatPoints(), fresh.getAbilityScores(), fresh.getRemainingAp(),
                 fresh.getLevel(), fresh.getXp());
@@ -1310,6 +1366,7 @@ public final class IntegratedServer {
             // would overwrite the new session's fresher blob (takeover already saved it once).
             persistPlayer(sp);
             entityHandler.onPeerLeft(sp);
+            vehicleHandler.onPeerLeft(sp, ctx);
             ctx.broadcast(new PlayerLeaveS2C(sp.playerId()), false);
             System.out.println("[SERVER] Player " + sp.playerId() + " (" + sp.username() + ") left.");
         }

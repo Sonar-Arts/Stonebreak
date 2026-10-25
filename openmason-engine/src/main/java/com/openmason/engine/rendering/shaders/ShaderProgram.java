@@ -12,6 +12,8 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.nio.ByteBuffer;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -44,6 +46,9 @@ public class ShaderProgram {
     private final ITextureUnitManager textureUnitManager;
     private final IUniformBufferManager uniformBufferManager;
     private final GeometryShaderSupport geometryShaderSupport;
+
+    /** Names the driver reported absent or optimised out; a program never relinks, so a miss is final. */
+    private final Set<String> missingUniforms = ConcurrentHashMap.newKeySet();
 
     private int vertexShaderId;
     private int fragmentShaderId;
@@ -343,10 +348,18 @@ public class ShaderProgram {
 
     /** Lazily registers {@code name}; returns true once a valid GL location is cached. */
     private boolean ensureUniform(String name) {
-        if (!hasUniform(name)) {
-            createUniform(name);
+        if (hasUniform(name)) {
+            return true;
         }
-        return hasUniform(name);
+        if (missingUniforms.contains(name)) {
+            return false;
+        }
+        createUniform(name);
+        if (hasUniform(name)) {
+            return true;
+        }
+        missingUniforms.add(name);
+        return false;
     }
 
     public void setMat4(String name, Matrix4f matrix) {

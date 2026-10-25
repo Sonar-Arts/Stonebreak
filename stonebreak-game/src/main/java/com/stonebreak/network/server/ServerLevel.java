@@ -51,6 +51,7 @@ public final class ServerLevel {
     private final EntityManager entityManager;
     private final EntitySpawner entitySpawner;
     private final TimeOfDay timeOfDay;
+    private final com.stonebreak.world.weather.WeatherState weather;
     private final SaveService saveService;
     private volatile WorldData worldData;
     private final Vector3f spawn;
@@ -66,6 +67,8 @@ public final class ServerLevel {
         this.entityManager = entityManager;
         this.entitySpawner = entitySpawner;
         this.timeOfDay = new TimeOfDay(worldTimeTicks);
+        this.weather = new com.stonebreak.world.weather.WeatherState(
+                worldData.getWeatherSeconds(), worldData.getWeatherMode(), worldData.getWeatherZones());
         this.saveService = saveService;
         this.worldData = worldData;
         this.spawn = spawn;
@@ -181,6 +184,8 @@ public final class ServerLevel {
             ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
                 save, worldData, spawn, playerData, existing ? lr.getPlayerNotice() : null);
             save.setWorldTimeSource(level.timeOfDay);
+            save.setWeatherSource(level.weather);
+            entitySpawner.setNightSource(level.timeOfDay::isNight);
 
             save.startAutoSave();
 
@@ -383,6 +388,8 @@ public final class ServerLevel {
     public EntityManager entityManager() { return entityManager; }
     public EntitySpawner entitySpawner() { return entitySpawner; }
     public TimeOfDay timeOfDay() { return timeOfDay; }
+    /** The authoritative weather clock and mode every client mirrors. */
+    public com.stonebreak.world.weather.WeatherState weather() { return weather; }
     public SaveService saveService() { return saveService; }
     public WorldData worldData() { return worldData; }
     public Vector3f spawn() { return new Vector3f(spawn); }
@@ -437,6 +444,7 @@ public final class ServerLevel {
         entityManager.update(deltaTime);
         entitySpawner.update(deltaTime);
         timeOfDay.update(deltaTime);
+        weather.advance(deltaTime);
     }
 
     public void cleanup() {

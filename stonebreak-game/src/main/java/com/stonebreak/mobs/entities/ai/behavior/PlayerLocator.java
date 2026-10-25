@@ -32,6 +32,25 @@ public interface PlayerLocator {
     }
 
     /**
+     * Whether nothing solid stands between {@code eye} and the body of the player nearest
+     * {@code from}. Open by default, so stubs and tests need not model terrain.
+     */
+    default boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
+        return true;
+    }
+
+    /**
+     * Hurts the player nearest {@code from} and shoves them horizontally away from it. The seam a
+     * hostile behaviour lands its blow through, so attack timing stays testable without a player.
+     *
+     * @param knockback horizontal push speed in blocks per second; 0 for none
+     * @return whether a player was there to take the hit
+     */
+    default boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+        return false;
+    }
+
+    /**
      * How far the nearest player's movement can be heard, in blocks, for stealth awareness.
      *
      * <p>The default knows only what the server is told — whether the player sprints. Stealth
@@ -41,6 +60,9 @@ public interface PlayerLocator {
     default float nearestPlayerNoiseRadius(Vector3f from) {
         return nearestPlayerSprinting(from) ? PlayerConstants.NOISE_RADIUS_RUN : 0.0f;
     }
+
+    /** Height above a player's feet that ranged attackers aim at and sight on. */
+    float CHEST_HEIGHT = 1.1f;
 
     /** Nobody to react to; for tests and for worlds with no players. */
     PlayerLocator NONE = (from, out) -> null;

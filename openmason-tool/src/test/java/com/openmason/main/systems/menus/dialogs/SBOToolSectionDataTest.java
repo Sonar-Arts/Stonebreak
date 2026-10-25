@@ -68,6 +68,6 @@ class SBOToolSectionDataTest {
 
     private static SBOFormat.Document doc(String id, SBOFormat.GameProperties gp, SBOFormat.ToolData tool) {
         return new SBOFormat.Document("1.9", id, id, tool != null ? "item" : "block", "p", "c", "a",
-                null, null, "model.omo", null, gp, null, null, null, null, null, null, null, tool);
+                null, null, "model.omo", null, gp, null, null, null, null, null, null, null, tool, null);
     }
 }

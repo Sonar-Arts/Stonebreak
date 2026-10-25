@@ -35,7 +35,8 @@ class PlayerPrefsBoundsTest {
                 .remainingFp(1)
                 .remainingAp(5)
                 .abilityScores(new int[]{12, 10, 11, 10, 10, 10})
-                .spentAbilityCp(Map.of("warrior:0", 2))
+                .classInvestmentOrder(java.util.List.of("berserker"))
+                .spentAbilityCp(Map.of("berserker:p0:0", 2))
                 .skillLevels(Map.of("mining", 2))
                 .statKillsByEntityType(Map.of("COW", 4L, "SHEEP", 2L))
                 .discoveredVariantsByEntityType(Map.of("COW", Set.of("angus")))
@@ -44,7 +45,7 @@ class PlayerPrefsBoundsTest {
 
     private static CharacterStats statsFor(PlayerData b) {
         CharacterStats s = new CharacterStats(null);
-        s.restore(b.getSelectedClassId(), b.getSpentAbilityCp(), b.getSkillLevels(),
+        s.restore(b.getSelectedClassId(), b.getClassInvestmentOrder(), b.getSpentAbilityCp(), b.getSkillLevels(),
                 b.getAcquiredFeatIds(), b.getRemainingCp(), b.getRemainingSkillPoints(),
                 b.getRemainingFeatPoints(), b.getAbilityScores(), b.getRemainingAp(),
                 b.getLevel(), b.getXp());

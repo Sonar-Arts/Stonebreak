@@ -51,7 +51,8 @@ public final class RecipeLoader {
         for (BlockRegistry.BlockEntry entry : BlockRegistry.getInstance().all()) {
             registered += harvest(entry.objectId(), entry.sboData(), craftingManager);
         }
-        for (ItemRegistry.ItemEntry entry : ItemRegistry.getInstance().all()) {
+        // A snapshot: resolving an output may first initialise ItemType, which rescans the registry.
+        for (ItemRegistry.ItemEntry entry : java.util.List.copyOf(ItemRegistry.getInstance().all())) {
             registered += harvest(entry.objectId(), entry.sboData(), craftingManager);
         }
 

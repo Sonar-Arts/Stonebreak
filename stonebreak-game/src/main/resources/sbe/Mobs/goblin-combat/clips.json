@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "objectId": "stonebreak:goblin",
+  "asset": "/sbe/Mobs/SB_Goblin.sbe",
+  "authoredForward": [0, 0, -1],
+  "units": "model units (rendered at Goblin.MODEL_SCALE = 0.6)",
+  "layer": "BASE",
+  "sockets": ["weapon_r", "bow_l", "Hatzone", "Earring"],
+  "clips": [
+    {"state": "Idle",       "durationSeconds": 2.0, "loop": true,  "startPose": "rest", "endPose": "rest", "cues": []},
+    {"state": "Walking",    "durationSeconds": 0.8, "loop": true,  "startPose": "stride", "endPose": "stride", "cues": []},
+    {"state": "Stab",       "durationSeconds": 0.6, "loop": false, "startPose": "rest", "endPose": "rest",
+     "cues": [{"name": "impact", "seconds": 0.25}], "weapon": "DAGGER"},
+    {"state": "Smash",      "durationSeconds": 0.9, "loop": false, "startPose": "rest", "endPose": "rest",
+     "cues": [{"name": "impact", "seconds": 0.55}], "weapon": "PATTY_SMACKER"},
+    {"state": "DrawBow",    "durationSeconds": 1.2, "loop": false, "startPose": "rest", "endPose": "full_draw",
+     "cues": [{"name": "loose", "seconds": 1.2}], "weapon": "BOW"},
+    {"state": "ReleaseBow", "durationSeconds": 0.4, "loop": false, "startPose": "full_draw", "endPose": "rest",
+     "cues": [], "weapon": "BOW"}
+  ]
+}

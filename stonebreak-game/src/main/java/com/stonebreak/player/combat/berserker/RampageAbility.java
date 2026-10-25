@@ -156,15 +156,17 @@ public class RampageAbility {
 
             if (Math.abs(longitudinal) <= RAMPAGE_HIT_RADIUS && perpendicular.length() <= cleaveHalfWidth) {
                 hitEntities.add(entity);
-                entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER);
-
-                if (tier == RageTier.T3) {
-                    Vector3f knockbackDir = perpendicular.lengthSquared() > 0.0001f
-                        ? new Vector3f(perpendicular).normalize()
-                        : new Vector3f(direction);
-                    entity.applyKnockback(knockbackDir, RAMPAGE_KNOCKBACK_HORIZONTAL, RAMPAGE_KNOCKBACK_VERTICAL);
-                    entity.applyStatusEffect(StatusEffectType.STUNNED, RAMPAGE_STAGGER_DURATION, 0f);
+                // Knockback and stagger only follow a hit that counted. On a network shadow the
+                // knockback goes to the server (EntityKnockbackC2S), which accepts it right
+                // after this player's accepted hit on the same target.
+                if (!entity.damage(RAMPAGE_DAMAGE, LivingEntity.DamageSource.PLAYER) || tier != RageTier.T3) {
+                    continue;
                 }
+                Vector3f knockbackDir = perpendicular.lengthSquared() > 0.0001f
+                    ? new Vector3f(perpendicular).normalize()
+                    : new Vector3f(direction);
+                entity.applyKnockback(knockbackDir, RAMPAGE_KNOCKBACK_HORIZONTAL, RAMPAGE_KNOCKBACK_VERTICAL);
+                entity.applyStatusEffect(StatusEffectType.STUNNED, RAMPAGE_STAGGER_DURATION, 0f);
             }
         }
     }

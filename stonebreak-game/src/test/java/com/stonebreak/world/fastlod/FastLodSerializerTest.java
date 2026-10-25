@@ -141,9 +141,9 @@ class FastLodSerializerTest {
      * guard rail before it was cut to a 12-step reach capped at three blocks of lift — so
      * a v8 bank stands where no bank stands now; v9 roofs ground too thin to carry a
      * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
-     * a coarse cell's footprint holds a river; v11 has no coarse tree spots; v11 and v12 show
-     * swamps dry, with no pools and no cypress past the finest band; v13 shows deserts without
-     * their gravel. The version bump forces
+     * a coarse cell's footprint holds a river; v11 predates coarse tree spots, uncarved coarse
+     * levels and the OCEAN sea floor; v11 and v12 show swamps dry, with no pools and no cypress
+     * past the finest band; v13 shows deserts without their gravel. The version bump forces
      * the resample.
      */
     @Test
@@ -169,8 +169,8 @@ class FastLodSerializerTest {
             FastLodChunkData.packTreeSpot(15, 9, TreeKind.PINE, 7),
             FastLodChunkData.packTreeSpot(4, 15, TreeKind.ELM, 31),
         };
-        FastLodChunkData original = new FastLodChunkData(key, base.rawHeights(), base.rawWaterLevels(),
-            base.rawSurface(), null, null, null, spots);
+        FastLodChunkData original = new FastLodChunkData(key, base.rawHeights(), base.rawWaterLevels(), base.rawSurface(),
+            null, null, null, spots);
         FastLodChunkData restored = FastLodSerializer.deserialize(key, FastLodSerializer.serialize(original));
         assertNotNull(restored);
         assertArrayEquals(spots, restored.treeSpots());
@@ -178,6 +178,21 @@ class FastLodSerializerTest {
         assertEquals(9, FastLodChunkData.spotZ(restored.treeSpots()[1]));
         assertEquals(TreeKind.PINE, FastLodChunkData.spotKind(restored.treeSpots()[1]));
         assertEquals(31, FastLodChunkData.spotTrunk(restored.treeSpots()[2]));
+    }
+
+    /**
+     * v5 changed no layout: submerged columns became OCEAN, whose floor mixes in dirt and
+     * clay. v3/v4 blobs carry the old sea floor, so they must miss and be resampled.
+     */
+    @Test
+    void preOceanBlobsAreRejected() {
+        FastLodChunkData data = makeData(FastLodLevel.L2, false);
+        byte[] v4 = FastLodSerializer.serialize(data);
+        v4[4] = 4;
+        assertNull(FastLodSerializer.deserialize(data.key(), v4));
+        byte[] v3 = Arrays.copyOf(v4, v4.length - 2);   // drop the empty spot count
+        v3[4] = 3;
+        assertNull(FastLodSerializer.deserialize(data.key(), v3));
     }
 
     @Test

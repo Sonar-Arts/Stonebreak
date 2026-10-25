@@ -5,6 +5,7 @@ import com.stonebreak.mobs.entities.Entity;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import com.stonebreak.rendering.gameWorld.UnderwaterFog;
+import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
 
 /**
  * Last-resort entity visual: a white, world-lit unit cube scaled/rotated by the
@@ -35,6 +36,10 @@ final class FallbackCubeRenderer {
             // Scaled by depth, so an entity dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
             fogDensity = UnderwaterFog.density(cameraPos.y);
+        } else if (cameraPos != null) {
+            // Rain and snow fog, as the terrain behind the entity gets it.
+            fogDensity = WeatherFog.density();
+            WeatherFog.color(fogColor);
         }
 
         pipeline.begin(fallbackTexture, viewMatrix, projectionMatrix,

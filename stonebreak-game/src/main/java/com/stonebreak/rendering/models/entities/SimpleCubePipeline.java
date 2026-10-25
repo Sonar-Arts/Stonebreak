@@ -97,8 +97,8 @@ final class SimpleCubePipeline {
         }
         com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
         if (timeOfDay != null) {
-            shader.setFloat("u_ambientLight", timeOfDay.getAmbientLightLevel());
-            shader.setVec3("u_sunDirection", timeOfDay.getSunDirection());
+            shader.setFloat("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
+            shader.setVec3("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
         } else {
             shader.setFloat("u_ambientLight", 1.0f);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());

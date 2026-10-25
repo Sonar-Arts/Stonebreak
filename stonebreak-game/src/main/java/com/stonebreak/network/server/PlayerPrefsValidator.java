@@ -5,12 +5,16 @@ import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.rpg.classes.ClassRegistry;
 import com.stonebreak.rpg.feats.FeatDefinition;
 import com.stonebreak.rpg.feats.FeatRegistry;
+import com.stonebreak.rpg.proficiency.WeaponProficiency;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.serialization.JsonPlayerSerializer;
 
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -30,7 +34,10 @@ import java.util.function.Function;
  * <ul>
  *   <li><b>CP/SP/FP</b> — the new pool is the held pool plus the ledger delta; shrinking
  *       a spend (the character sheet's save-or-discard undo) refunds it, a spend beyond
- *       the held pool is refused. Level/xp in the candidate are ignored.</li>
+ *       the held pool is refused. Level/xp in the candidate are ignored. The CP ledger holds
+ *       talent-tree RANKS, priced by the class investment order
+ *       ({@link CharacterStats#cpCostOf}); weapon proficiencies live in the skill ledger but
+ *       are paid in WTP, not SP.</li>
  *   <li><b>Refund window</b> (issue #421) — a refund may only reach back to the
  *       {@link SpendFloor} the server committed; a report below it is refused. A new feat
  *       must also be available at the server's level ({@link FeatRegistry#isAvailableAt}).</li>
@@ -68,6 +75,10 @@ public final class PlayerPrefsValidator {
     static final int MAX_COSMETIC_ENTRIES = 128;
     static final int MAX_VARIANTS_PER_TYPE = 64;
     static final int MAX_KEY_LENGTH = 64;
+
+    /** Highest skill level a weapon proficiency (WTP-bought, not SP) can hold. */
+    static final int MAX_PROFICIENCY_LEVEL =
+            com.stonebreak.rpg.proficiency.ProficiencyRank.values().length - 1;
 
     /** Ceiling of the accepted record's serialized size: leaves headroom under the 64 KB
      *  {@code PlayerDataS2C} cap for the server-built inventory and item states. */
@@ -114,19 +125,29 @@ public final class PlayerPrefsValidator {
         // mint points (e.g. two Integer.MAX_VALUE spends sum to -2).
         if (!classIdValid(candidate.getSelectedClassId())) return null;
 
-        long acceptedCp = sum(serverStats.getSpentAbilityCp());
+        List<String> order = investmentOrder(candidate);
+        if (order == null) return null;
+        long acceptedCp = serverStats.derivedSpentCp();
         long ownedCp = serverStats.getRemainingCp() + acceptedCp;
-        long spentCp = boundedSum(candidate.getSpentAbilityCp(), ownedCp, MAX_LEDGER_ENTRIES);
-        if (spentCp < 0) return null;
+        long spentCp = CharacterStats.cpCostOf(candidate.getSpentAbilityCp(), order);
         long newCp = ownedCp - spentCp;
         if (newCp < 0) return null;
 
-        long acceptedSkills = sum(serverStats.getSkillLevels());
+        long acceptedSkills = spSum(serverStats.getSkillLevels());
         long ownedSp = serverStats.getRemainingSkillPoints() + acceptedSkills;
-        long skillSum = boundedSum(candidate.getSkillLevels(), ownedSp, MAX_LEDGER_ENTRIES);
-        if (skillSum < 0) return null;
+        if (boundedSum(candidate.getSkillLevels(), Math.max(ownedSp, MAX_PROFICIENCY_LEVEL),
+                MAX_LEDGER_ENTRIES) < 0) return null;
+        long skillSum = spSum(candidate.getSkillLevels());
         long newSp = ownedSp - skillSum;
         if (newSp < 0) return null;
+        // WTP is derived, not pooled: a raise must be covered by what the candidate's ranks
+        // earn. A legacy SP-bought proficiency may already overdraw it, so holding or
+        // lowering the accepted spend always passes.
+        int wtpSpent = CharacterStats.spentWtp(candidate.getSkillLevels());
+        if (wtpSpent > serverStats.spentWtp()
+                && wtpSpent > CharacterStats.earnedWtp(candidate.getSpentAbilityCp(), order)) {
+            return null;
+        }
 
         Set<String> candidateFeats = candidate.getAcquiredFeatIds();
         if (candidateFeats.size() > MAX_LEDGER_ENTRIES) return null;
@@ -201,6 +222,7 @@ public final class PlayerPrefsValidator {
         }
 
         PlayerData accepted = new PlayerData.Builder(candidate)
+                .classInvestmentOrder(order)
                 .level(level)
                 .xp(serverStats.getXp())
                 .remainingCp((int) newCp)
@@ -240,11 +262,17 @@ public final class PlayerPrefsValidator {
             return null;
         }
         if (!classIdValid(candidate.getSelectedClassId())) return null;
-        long spentCp = boundedSum(candidate.getSpentAbilityCp(), CharacterStats.grantedCp(1),
-                MAX_LEDGER_ENTRIES);
-        long skillSum = boundedSum(candidate.getSkillLevels(), CharacterStats.grantedSp(1),
-                MAX_LEDGER_ENTRIES);
-        if (spentCp < 0 || skillSum < 0) return null;
+        List<String> order = investmentOrder(candidate);
+        if (order == null) return null;
+        long spentCp = CharacterStats.cpCostOf(candidate.getSpentAbilityCp(), order);
+        if (boundedSum(candidate.getSkillLevels(),
+                Math.max(CharacterStats.grantedSp(1), MAX_PROFICIENCY_LEVEL),
+                MAX_LEDGER_ENTRIES) < 0) return null;
+        long skillSum = spSum(candidate.getSkillLevels());
+        if (CharacterStats.spentWtp(candidate.getSkillLevels())
+                > CharacterStats.earnedWtp(candidate.getSpentAbilityCp(), order)) {
+            return null;
+        }
         Set<String> feats = candidate.getAcquiredFeatIds();
         for (String featId : feats) {
             // A new character is level 1: a feat above it is refused like an unknown one.
@@ -262,6 +290,7 @@ public final class PlayerPrefsValidator {
         if (sum + ap > MAX_SCORE_BUDGET) return null;
 
         return new PlayerData.Builder(candidate)
+                .classInvestmentOrder(order)
                 .level(1)
                 .xp(0)
                 .remainingCp(CharacterStats.grantedCp(1) - (int) spentCp)
@@ -327,13 +356,52 @@ public final class PlayerPrefsValidator {
         return key != null && !key.isEmpty() && key.length() <= MAX_KEY_LENGTH;
     }
 
-    /** Sum of trusted (server-held) ledger values. */
-    private static long sum(Map<String, Integer> ledger) {
+    /** Sum of a skill ledger's SP-bought levels (weapon proficiencies are paid in WTP). */
+    private static long spSum(Map<String, Integer> skills) {
         long total = 0;
-        for (Integer v : ledger.values()) {
-            total += v == null ? 0 : v;
+        for (Map.Entry<String, Integer> e : skills.entrySet()) {
+            if (e.getValue() != null && WeaponProficiency.groupOf(e.getKey()).isEmpty()) {
+                total += e.getValue();
+            }
         }
         return total;
+    }
+
+    /**
+     * The candidate's validated class investment order (it prices every rank), or null when
+     * its rank ledger or order is malformed: every key must be a talent-tree node within its
+     * max rank, and the order must list each ranked class exactly once (classes left without
+     * ranks are dropped from it, as {@code CharacterStats} does). A record without an order
+     * (older saves) gets the order {@code CharacterStats.restore} would rebuild: the selected
+     * class first, then registry order.
+     */
+    static List<String> investmentOrder(PlayerData candidate) {
+        Map<String, Integer> ranks = candidate.getSpentAbilityCp();
+        if (ranks.size() > MAX_LEDGER_ENTRIES) return null;
+        Set<String> ranked = new HashSet<>();
+        for (Map.Entry<String, Integer> e : ranks.entrySet()) {
+            Integer v = e.getValue();
+            if (v == null || v < 0 || !ClassRegistry.isValidKey(e.getKey())
+                    || v > ClassRegistry.maxRankOf(e.getKey())) {
+                return null;
+            }
+            if (v > 0) ranked.add(ClassRegistry.classIdOf(e.getKey()));
+        }
+        List<String> order = candidate.getClassInvestmentOrder();
+        if (order == null) {
+            List<String> rebuilt = new ArrayList<>();
+            String selected = candidate.getSelectedClassId();
+            if (selected != null && ranked.contains(selected)) rebuilt.add(selected);
+            for (var c : ClassRegistry.ALL) {
+                if (ranked.contains(c.id()) && !rebuilt.contains(c.id())) rebuilt.add(c.id());
+            }
+            return rebuilt;
+        }
+        if (order.size() > ClassRegistry.ALL.size() || new HashSet<>(order).size() != order.size()) {
+            return null;
+        }
+        List<String> priced = order.stream().filter(ranked::contains).toList();
+        return priced.size() == ranked.size() ? priced : null;
     }
 
     /**

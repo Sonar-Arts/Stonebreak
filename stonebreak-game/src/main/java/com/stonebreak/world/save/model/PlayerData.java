@@ -6,10 +6,12 @@ import org.joml.Vector2f;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -32,9 +34,13 @@ public final class PlayerData {
     private final String worldName;
     /** Remote player's join secret (issue #335); null for the host and for saves made before it. */
     private final String clientSecret;
+    /** Where the boat the player sat in was, or null on foot: the next load boards it again. */
+    private final Vector3f vehiclePosition;
 
     // RPG / character progression
     private final String selectedClassId;
+    /** Class ids in multiclass investment order, or null for saves that predate it. */
+    private final List<String> classInvestmentOrder;
     private final Map<String, Integer> spentAbilityCp;
     private final Map<String, Integer> skillLevels;
     private final Set<String> acquiredFeatIds;
@@ -73,7 +79,9 @@ public final class PlayerData {
         this.lastSaved = builder.lastSaved;
         this.worldName = builder.worldName;
         this.clientSecret = builder.clientSecret;
+        this.vehiclePosition = builder.vehiclePosition == null ? null : new Vector3f(builder.vehiclePosition);
         this.selectedClassId = builder.selectedClassId;
+        this.classInvestmentOrder = builder.classInvestmentOrder == null ? null : List.copyOf(builder.classInvestmentOrder);
         this.spentAbilityCp = Collections.unmodifiableMap(new HashMap<>(builder.spentAbilityCp));
         this.skillLevels = Collections.unmodifiableMap(new HashMap<>(builder.skillLevels));
         this.acquiredFeatIds = Collections.unmodifiableSet(new HashSet<>(builder.acquiredFeatIds));
@@ -109,7 +117,10 @@ public final class PlayerData {
     public LocalDateTime getLastSaved() { return lastSaved; }
     public String getWorldName() { return worldName; }
     public String getClientSecret() { return clientSecret; }
+    public Vector3f getVehiclePosition() { return vehiclePosition == null ? null : new Vector3f(vehiclePosition); }
     public String getSelectedClassId() { return selectedClassId; }
+    /** Null when the save predates multiclassing; {@code CharacterStats.restore} rebuilds it. */
+    public List<String> getClassInvestmentOrder() { return classInvestmentOrder; }
     public Map<String, Integer> getSpentAbilityCp() { return spentAbilityCp; }
     public Map<String, Integer> getSkillLevels() { return skillLevels; }
     public Set<String> getAcquiredFeatIds() { return acquiredFeatIds; }
@@ -169,7 +180,9 @@ public final class PlayerData {
         private LocalDateTime lastSaved = LocalDateTime.now();
         private String worldName;
         private String clientSecret;
+        private Vector3f vehiclePosition;
         private String selectedClassId = null;
+        private List<String> classInvestmentOrder = null;
         private Map<String, Integer> spentAbilityCp = new HashMap<>();
         private Map<String, Integer> skillLevels = new HashMap<>();
         private Set<String> acquiredFeatIds = new HashSet<>();
@@ -213,7 +226,9 @@ public final class PlayerData {
             this.lastSaved = data.lastSaved;
             this.worldName = data.worldName;
             this.clientSecret = data.clientSecret;
+            this.vehiclePosition = data.vehiclePosition;
             this.selectedClassId = data.selectedClassId;
+            this.classInvestmentOrder = data.classInvestmentOrder;
             this.spentAbilityCp = new HashMap<>(data.spentAbilityCp);
             this.skillLevels = new HashMap<>(data.skillLevels);
             this.acquiredFeatIds = new HashSet<>(data.acquiredFeatIds);
@@ -299,8 +314,18 @@ public final class PlayerData {
             return this;
         }
 
+        public Builder vehiclePosition(Vector3f vehiclePosition) {
+            this.vehiclePosition = vehiclePosition == null ? null : new Vector3f(vehiclePosition);
+            return this;
+        }
+
         public Builder selectedClassId(String selectedClassId) {
             this.selectedClassId = selectedClassId;
+            return this;
+        }
+
+        public Builder classInvestmentOrder(List<String> classInvestmentOrder) {
+            this.classInvestmentOrder = classInvestmentOrder == null ? null : new ArrayList<>(classInvestmentOrder);
             return this;
         }
 

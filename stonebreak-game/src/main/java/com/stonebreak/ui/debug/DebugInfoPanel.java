@@ -110,6 +110,10 @@ public final class DebugInfoPanel implements DebugPanel {
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
             panel.row("Time", clock.getTimeString());
+            float phase = com.stonebreak.world.MoonCycle.phase(clock);
+            panel.row("Moon", String.format("%s %d%% (day %d)",
+                com.stonebreak.world.MoonCycle.phaseName(phase),
+                Math.round(com.stonebreak.world.MoonCycle.illuminatedFraction(phase) * 100f), clock.getDay()));
         }
         if (com.stonebreak.network.MultiplayerSession.isInWorld()) {
             int rtt = com.stonebreak.network.MultiplayerSession.lastRttMs();

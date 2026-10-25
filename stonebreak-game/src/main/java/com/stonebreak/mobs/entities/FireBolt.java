@@ -16,7 +16,8 @@ public class FireBolt extends Entity {
     private static final float BOLT_SPEED = 25.0f;
     private static final float MAX_AGE    = 5.0f;
     private static final float DAMAGE     = 8.0f;
-    private static final float HIT_RADIUS = 0.5f;
+    // Body boxes are grown by the bolt's half-size when it sweeps through them.
+    private static final float HIT_MARGIN = 0.15f;
     // Largest distance the bolt is allowed to advance between collision samples.
     // Sub-stepping the per-frame move at this granularity stops fast bolts from
     // tunnelling through thin blocks or skipping past mobs at low frame rates.
@@ -93,18 +94,13 @@ public class FireBolt extends Entity {
                 return;
             }
 
+            // Entity collision — damage the first living entity on this sub-step.
+            LivingEntity hit = em != null ? ProjectileSweep.firstHit(em, position, newPos, HIT_MARGIN) : null;
             position.set(newPos);
-
-            // Entity collision — damage the first living entity in range.
-            if (em != null) {
-                for (Entity e : em.getEntitiesInRange(position, HIT_RADIUS)) {
-                    if (e == this) continue;
-                    if (e instanceof LivingEntity le) {
-                        ProjectileDamage.deal(this, le, DAMAGE, LivingEntity.DamageSource.FIRE);
-                        impact();
-                        return;
-                    }
-                }
+            if (hit != null) {
+                ProjectileDamage.deal(this, hit, DAMAGE, LivingEntity.DamageSource.FIRE);
+                impact();
+                return;
             }
         }
 

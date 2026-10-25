@@ -1,6 +1,7 @@
 package com.stonebreak.network.server;
 
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.vehicles.Dinghy;
 import com.stonebreak.world.save.model.PlayerData;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -33,6 +34,7 @@ public final class ServerPlayerDataFactory {
         // grid are folded into a COPY of them (issue #334), so no save — periodic ones taken
         // mid-drag included — loses them and none mutates the live replica.
         ItemStack[] slots = inv.persistedSlots();
+        Dinghy boat = sp.seatedVehicle();
         return new PlayerData.Builder(baseline)
                 .position(new Vector3f(sp.x(), sp.y(), sp.z()))
                 .rotation(new Vector2f(sp.yaw(), sp.pitch()))
@@ -46,6 +48,8 @@ public final class ServerPlayerDataFactory {
                 .lastSaved(LocalDateTime.now())
                 .worldName(worldName)
                 .clientSecret(sp.clientSecret()) // stored with the save, checked on takeover (#335)
+                // Always set from the server's seats: a client's claimed vehicle never reaches disk.
+                .vehiclePosition(boat != null ? boat.getPosition() : null)
                 .build();
     }
 }

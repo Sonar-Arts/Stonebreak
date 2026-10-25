@@ -17,10 +17,12 @@ import java.nio.ByteBuffer;
  * word1: 4 × u8 vertex Y offsets from (y − 1) in 1/128 block, corner order =
  *        MmsCuboidGenerator.FACE_VERTEX_OFFSETS (the water generator's order)
  * word2: 4 × u8 per-corner surface-height flags (aFlags.x, 0..1 → 0..255)
- * word3: (w−1):4 | (h−1):4 | flow:4 | depth:8 | spare   in-plane extent
- *        (1 for near water, the cell size for LOD sheets), the river flow
- *        octant biased by one (0 = still water, 1..8 = octant 0..7), then how
- *        deep the water column under this face stands, in whole blocks
+ * word3: (w−1):4 | (h−1):4 | flow:4 | depth:8 | inset:1 | spare   in-plane
+ *        extent (1 for near water, the cell size for LOD sheets), the river flow
+ *        octant biased by one (0 = still water, 1..8 = octant 0..7), how deep
+ *        the water column under this face stands, in whole blocks, then whether
+ *        the face is pulled {@link #INSET} into its cell (it touches a
+ *        translucent block, whose own face holds the cell boundary)
  * </pre>
  *
  * The shader (`water.vert`, {@code aOrigin.w < -2.5}) rebuilds the corner
@@ -33,6 +35,12 @@ public final class MmsWaterQuadCodec {
     /** Vertex Y offsets are stored from one block BELOW the cell base. */
     public static final float Y_BASE_OFFSET = -1f;
     public static final float Y_STEP = 1f / 128f;
+    /**
+     * How far an inset face sits inside its cell, blocks. A water face against
+     * glass or ice would be coplanar with that block's face and z-fight it;
+     * pulled this far in, the block's face is always in front.
+     */
+    public static final float INSET = 1f / 64f;
 
     private MmsWaterQuadCodec() {
     }
@@ -104,11 +112,20 @@ public final class MmsWaterQuadCodec {
      *              never sets it wants.
      */
     public static int word3(int w, int h, int flow, int depth) {
+        return word3(w, h, flow, depth, false);
+    }
+
+    /** @param inset the face touches a translucent block and sits {@link #INSET} inside its cell */
+    public static int word3(int w, int h, int flow, int depth, boolean inset) {
         check(w, 1, 16, "w");
         check(h, 1, 16, "h");
         check(flow, NO_FLOW, 7, "flow");
         check(depth, 0, 255, "depth");
-        return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8) | (depth << 12);
+        return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8) | (depth << 12) | ((inset ? 1 : 0) << 20);
+    }
+
+    public static boolean inset(int w3) {
+        return ((w3 >>> 20) & 1) != 0;
     }
 
     private static void check(int v, int lo, int hi, String what) {
@@ -181,8 +198,10 @@ public final class MmsWaterQuadCodec {
         int w1 = quads.getInt(q * QUAD_BYTES + 4);
         int w3 = quads.getInt(q * QUAD_BYTES + 12);
         int face = face(w0);
+        // An inset face sits INSET inside its cell, as water.vert pulls it.
+        float pull = inset(w3) ? INSET * MmsLodQuadCodec.faceNormal(face, axis) : 0f;
         if (axis == 1) {
-            return originY + vertexY(y(w0), w1, corner);
+            return originY + vertexY(y(w0), w1, corner) - pull;
         }
         float off = MmsCuboidGenerator.cornerOffset(face, corner, axis);
         if (axis == MmsCuboidGenerator.uAxis(face)) {
@@ -190,7 +209,7 @@ public final class MmsWaterQuadCodec {
         } else if (axis == MmsCuboidGenerator.vAxis(face)) {
             off *= height(w3);
         }
-        return axis == 0 ? originX + x(w0) + off : originZ + z(w0) + off;
+        return (axis == 0 ? originX + x(w0) + off : originZ + z(w0) + off) - pull;
     }
 
     /** Face-local UV: u across the face's u axis, v DOWN the v axis (water.vert convention). */

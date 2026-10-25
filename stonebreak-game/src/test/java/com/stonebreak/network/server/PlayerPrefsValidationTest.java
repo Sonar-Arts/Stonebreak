@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PlayerPrefsValidationTest {
 
-    /** Level 3: grantedCp/Sp/Fp = 3/5/3. Scores sum 63, AP pool 5 (budget 68 ≤ 90). */
+    /** Level 3: grantedCp/Sp/Fp = 10/5/3. Scores sum 63, AP pool 5 (budget 68 ≤ 90). */
     private static PlayerData baseline() {
         return PlayerData.builder()
                 .level(3)
@@ -30,7 +30,8 @@ class PlayerPrefsValidationTest {
                 .remainingFp(1)
                 .remainingAp(5)
                 .abilityScores(new int[]{12, 10, 11, 10, 10, 10})
-                .spentAbilityCp(Map.of("warrior:0", 2))
+                .classInvestmentOrder(java.util.List.of("berserker"))
+                .spentAbilityCp(Map.of("berserker:p0:0", 2))
                 .skillLevels(Map.of("mining", 2))
                 .acquiredFeatIds(Set.of("double_jump"))
                 .build();
@@ -38,7 +39,8 @@ class PlayerPrefsValidationTest {
 
     private static CharacterStats serverStatsFor(PlayerData baseline) {
         CharacterStats s = new CharacterStats(null);
-        s.restore(baseline.getSelectedClassId(), baseline.getSpentAbilityCp(),
+        s.restore(baseline.getSelectedClassId(), baseline.getClassInvestmentOrder(),
+                baseline.getSpentAbilityCp(),
                 baseline.getSkillLevels(), baseline.getAcquiredFeatIds(),
                 baseline.getRemainingCp(), baseline.getRemainingSkillPoints(),
                 baseline.getRemainingFeatPoints(), baseline.getAbilityScores(),
@@ -81,7 +83,7 @@ class PlayerPrefsValidationTest {
     @Test
     void spendBeyondServerHeldPoolRejected() {
         PlayerData candidate = new PlayerData.Builder(baseline())
-                .spentAbilityCp(Map.of("warrior:0", 50))   // grantedCp(3) == 3
+                .spentAbilityCp(Map.of("berserker:p0:0", 11))  // grantedCp(3) == 10
                 .build();
         assertNull(PlayerPrefsValidator.normalize(
                 serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate));
@@ -132,6 +134,53 @@ class PlayerPrefsValidationTest {
     }
 
     @Test
+    void multiclassRanksArePricedByInvestmentSlot() {
+        // Held pool 4 (the baseline's 1 + 3). The second class's rank costs 1 CP and the
+        // third class's 2 CP (MULTICLASS_PENALTY), so 2 + 1 + 2 = 5 of 6 owned CP.
+        PlayerData held = new PlayerData.Builder(baseline()).remainingCp(4).build();
+        PlayerData candidate = new PlayerData.Builder(held)
+                .classInvestmentOrder(java.util.List.of("berserker", "ranger", "rogue"))
+                .spentAbilityCp(Map.of("berserker:p0:0", 2, "ranger:p0:0", 1, "rogue:p0:0", 1))
+                .build();
+        PlayerData accepted = PlayerPrefsValidator.normalize(serverStatsFor(held), held, SpendFloor.NONE, candidate);
+        assertNotNull(accepted);
+        assertEquals(1, accepted.getRemainingCp(), "ranks priced per slot, not 1 CP each");
+        assertEquals(java.util.List.of("berserker", "ranger", "rogue"), accepted.getClassInvestmentOrder());
+    }
+
+    @Test
+    void investmentOrderMustListEachRankedClassOnce() {
+        PlayerData missing = new PlayerData.Builder(baseline())
+                .classInvestmentOrder(java.util.List.of("berserker", "berserker"))
+                .spentAbilityCp(Map.of("berserker:p0:0", 1, "ranger:p0:0", 1))
+                .build();
+        assertNull(PlayerPrefsValidator.normalize(serverStatsFor(baseline()), baseline(), SpendFloor.NONE, missing));
+        PlayerData coreAbilityKey = new PlayerData.Builder(baseline())
+                .spentAbilityCp(Map.of("berserker:0", 1))
+                .build();
+        assertNull(PlayerPrefsValidator.normalize(serverStatsFor(baseline()), baseline(), SpendFloor.NONE, coreAbilityKey));
+    }
+
+    @Test
+    void weaponProficiencyIsPaidInWtpNotSp() {
+        // One proficiency rank fits the starting WTP grant and costs no SP.
+        String prof = com.stonebreak.rpg.proficiency.WeaponProficiency.skillId(
+                com.stonebreak.items.weapon.WeaponGroup.values()[0]);
+        PlayerData candidate = new PlayerData.Builder(baseline())
+                .skillLevels(Map.of("mining", 2, prof, 1))
+                .build();
+        PlayerData accepted = PlayerPrefsValidator.normalize(
+                serverStatsFor(baseline()), baseline(), SpendFloor.NONE, candidate);
+        assertNotNull(accepted);
+        assertEquals(2, accepted.getRemainingSkillPoints(), "proficiency rank charged no SP");
+        // A second rank exceeds the WTP the ledger earns.
+        PlayerData over = new PlayerData.Builder(baseline())
+                .skillLevels(Map.of("mining", 2, prof, 2))
+                .build();
+        assertNull(PlayerPrefsValidator.normalize(serverStatsFor(baseline()), baseline(), SpendFloor.NONE, over));
+    }
+
+    @Test
     void undoneSpendAcceptedAndPoolRecomputed() {
         // The character sheet's save-or-discard undo: the ledger shrinks, the pool grows —
         // safe because the pool is recomputed from the server level, never carried.
@@ -144,6 +193,7 @@ class PlayerPrefsValidationTest {
         assertNotNull(accepted);
         assertEquals(3, accepted.getRemainingCp(), "held pool 1 + refunded ledger 2");
         assertEquals(4, accepted.getRemainingSkillPoints(), "held pool 2 + refunded ledger 2");
+        assertEquals(java.util.List.of(), accepted.getClassInvestmentOrder(), "unranked class leaves the order");
     }
 
     @Test
@@ -253,7 +303,7 @@ class PlayerPrefsValidationTest {
     void creationSpendBeyondLevelOneGrantRejected() {
         PlayerData candidate = PlayerData.builder()
                 .remainingCp(1)
-                .spentAbilityCp(Map.of("warrior:0", 5))   // grantedCp(1) == 1
+                .spentAbilityCp(Map.of("berserker:p0:0", 5))   // grantedCp(1) == 4
                 .abilityScores(new int[]{10, 10, 10, 10, 10, 10})
                 .build();
         assertNull(PlayerPrefsValidator.normalizeCreation(candidate));

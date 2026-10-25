@@ -40,7 +40,7 @@ class FreshPlayerSeedingTest {
         for (int i = 0; i < 27; i++) {
             c.incrementAbilityScore(i % 6);
         }
-        c.spendCpOnAbility("berserker:0");
+        c.spendCpOnAbility("berserker:p0:0");
         return c;
     }
 

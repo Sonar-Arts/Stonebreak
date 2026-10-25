@@ -14,7 +14,8 @@ import org.joml.Vector3f;
  * sends no result, so it shows no number, plays no sound and pays out nothing.
  *
  * <ul>
- *   <li>damage number (the applied amount, multipliers included) and hurt/death voice at the copy;</li>
+ *   <li>damage number (the applied amount, multipliers included) at the server's anchor, which
+ *       a lethal hit's despawn cannot take away, and the hurt/death voice at the copy;</li>
  *   <li>melee: Rage, Quarry and T3 lifesteal via {@link Player#onMeleeHitLanded};</li>
  *   <li>arrows: the Ranger's Quarry/Study — arrows simulate on the server, so this result is
  *       the only place the shooter learns what they hit.</li>
@@ -27,12 +28,12 @@ public final class HitResultFeedback {
     /**
      * @param target the hit entity's copy on this client, or null when it is gone already
      * @param kind   null for an unknown wire value (feedback only)
+     * @param anchor where the damage number shows (the victim's head, as the server saw it)
      */
     public static void apply(Player player, LivingEntity target, LivingEntity.DamageSource source,
-                             HitKind kind, float dealt, boolean killed) {
+                             HitKind kind, float dealt, boolean killed, Vector3f anchor) {
+        DamageNumbers.getInstance().spawn(anchor.x, anchor.y, anchor.z, dealt);
         if (target != null) {
-            Vector3f p = target.getPosition();
-            DamageNumbers.getInstance().spawn(p.x, p.y + target.getHeight() * 0.9f, p.z, dealt);
             // Data-driven voice: plays only when the entity's SBE declares the event.
             EntitySounds.playAt(target, killed ? EntitySounds.EVENT_DEATH : EntitySounds.EVENT_HURT);
         }
