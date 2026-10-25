@@ -13,6 +13,7 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
+import com.stonebreak.network.packet.player.StatCreditS2C;
 import com.stonebreak.network.packet.world.BlockStateS2C;
 import com.stonebreak.network.server.ServerInventory;
 import com.stonebreak.network.server.ServerPlayer;
@@ -414,7 +415,14 @@ public final class ContainerActionProcessor {
                 }
             }
         }
+        creditCrafted(sp, output.getCount());
         return true;
+    }
+
+    private static void creditCrafted(ServerPlayer sp, int items) {
+        if (items > 0) {
+            sp.send(new StatCreditS2C(StatCreditS2C.STAT_ITEMS_CRAFTED, items), false);
+        }
     }
 
     /** The Craft All button: repeat TAKE_OUTPUT into the player inventory; overflow drops. */
@@ -432,6 +440,7 @@ public final class ContainerActionProcessor {
             return false;
         }
         int crafted = 0;
+        int craftedItems = 0;
         for (int i = 0; i < MAX_CRAFT_BATCHES; i++) {
             ItemStack[] cells = grid.all();
             Recipe recipe = craftingManager.getMatchedRecipe(asGrid(cells));
@@ -454,7 +463,9 @@ public final class ContainerActionProcessor {
                 }
             }
             crafted++;
+            craftedItems += output.getCount();
         }
+        creditCrafted(sp, craftedItems);
         return crafted > 0;
     }
 

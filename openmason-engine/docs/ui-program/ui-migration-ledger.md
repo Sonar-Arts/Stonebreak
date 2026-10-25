@@ -947,6 +947,15 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   hit region and action; values repaint when the host publishes; only Back reaches an action). Needed exact line
   boxes off the pixel grid and the new root `-sb-font-grid: none` (15 px rows at 0.75/1.25 were half-pixel-snapped;
   this renderer sized fonts exactly).
+- **Post-migration (#180):** added a Goblins kill row and an ACTIVITY section (Time Spent Fishing, Bass Caught, Items
+  Crafted; `StatsRecord` fields `killsGoblin`, `timeFishing`, `bassCaught`, `itemsCrafted`), so the panel is now 520×750·s
+  with a second section rule at 535 and Back at 670. All 7 captures were re-frozen from the live document (the legacy
+  oracle is gone); only the panel/Back y and height moved in `geometry.json`.
+  The rows then moved into a `ScrollView` (`rows-scroll`, `.stats-scroll`: 550 high, `requires` gains `ui-scroll`) sized
+  to fit today's rows exactly, so trackers added later scroll above Back instead of growing the panel. The section rules
+  now ride inside the gaps (`.stats-gap > .stats-rule`, top 25) so they scroll with the rows; the view is inset 8 px
+  (rows `margin` 8) on both sides so the clip never trims glyph antialiasing at fractional scales and the scrollbar has
+  its own gutter. All 7 captures stayed pixel-identical.
 
 ### glossary
 - **Kind:** screen.

@@ -166,6 +166,21 @@ public final class ClientPlayerHandler {
         }
     }
 
+    /** A statistic the server resolved (crafting, fishing catches) credited to the local player (#180). */
+    public void handleStatCredit(com.stonebreak.network.packet.player.StatCreditS2C c) {
+        Player local = Game.getPlayer();
+        if (local == null || c.amount() <= 0) {
+            return;
+        }
+        switch (c.stat()) {
+            case com.stonebreak.network.packet.player.StatCreditS2C.STAT_ITEMS_CRAFTED ->
+                local.getStats().addItemsCrafted(c.amount());
+            case com.stonebreak.network.packet.player.StatCreditS2C.STAT_BASS_CAUGHT ->
+                local.getStats().addBassCaught(c.amount());
+            default -> { }
+        }
+    }
+
     /** Server-authoritative progression echo (issue #334): level/xp/point pools only. */
     public void handleProgress(com.stonebreak.network.packet.player.ProgressS2C p) {
         Player local = Game.getPlayer();

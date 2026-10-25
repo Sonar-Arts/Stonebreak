@@ -91,6 +91,9 @@ final class PlayerUpdatePipeline {
         c.stamina.update(dt);
         c.mana.update(dt);
         c.blockBreaker.update();
+        if (player.getActiveBobber() != null) {
+            stats.addTimeFishing(dt);
+        }
 
         // Advance the pose before audio: both consume this tick's exact gait phase.
         bodyAnimation.update(dt, c.attack.isAttacking(), state.isOnGround(), state.getVelocity(), camera.getFront(),

@@ -159,6 +159,10 @@ public class JsonPlayerSerializer {
         json.append("    \"distanceSprinted\": ").append(player.getStatDistanceSprinted()).append(",\n");
         json.append("    \"distanceInAir\": ").append(player.getStatDistanceInAir()).append(",\n");
         json.append("    \"timeInAir\": ").append(player.getStatTimeInAir()).append(",\n");
+        // Before killsByEntityType: readStatistics only sees the block up to its first '}'.
+        json.append("    \"timeFishing\": ").append(player.getStatTimeFishing()).append(",\n");
+        json.append("    \"bassCaught\": ").append(player.getStatBassCaught()).append(",\n");
+        json.append("    \"itemsCrafted\": ").append(player.getStatItemsCrafted()).append(",\n");
         json.append("    \"killsByEntityType\": {");
         Map<String, Long> killsByType = player.getStatKillsByEntityType();
         boolean firstKill = true;
@@ -304,6 +308,11 @@ public class JsonPlayerSerializer {
             JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceSprinted"),
             JsonParsingUtil.extractDoubleFromObject(json, "statistics", "distanceInAir"),
             JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeInAir")
+        );
+        ps.restoreActivity(
+            JsonParsingUtil.extractDoubleFromObject(json, "statistics", "timeFishing"),
+            (long) JsonParsingUtil.extractDoubleFromObject(json, "statistics", "bassCaught"),
+            (long) JsonParsingUtil.extractDoubleFromObject(json, "statistics", "itemsCrafted")
         );
         ps.restoreKillsByType(extractKillsByEntityType(json));
         return ps;

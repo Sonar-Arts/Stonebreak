@@ -18,6 +18,9 @@ public class PlayerStats {
     private double distanceSprinted;
     private double distanceInAir;
     private double timeInAir;
+    private double timeFishing;
+    private long bassCaught;
+    private long itemsCrafted;
 
     private final Map<EntityType, Long> killsByType = new EnumMap<>(EntityType.class);
 
@@ -28,6 +31,9 @@ public class PlayerStats {
     public void addDistanceSprinted(double d) { distanceSprinted += d; }
     public void addDistanceInAir(double d) { distanceInAir += d; }
     public void addTimeInAir(double seconds) { timeInAir += seconds; }
+    public void addTimeFishing(double seconds) { timeFishing += seconds; }
+    public void addBassCaught(long count) { bassCaught += count; }
+    public void addItemsCrafted(long count) { itemsCrafted += count; }
     public void incrementKillsForType(EntityType type) {
         killsByType.merge(type, 1L, Long::sum);
     }
@@ -39,6 +45,9 @@ public class PlayerStats {
     public double getDistanceSprinted(){ return distanceSprinted; }
     public double getDistanceInAir()   { return distanceInAir; }
     public double getTimeInAir()       { return timeInAir; }
+    public double getTimeFishing()     { return timeFishing; }
+    public long getBassCaught()        { return bassCaught; }
+    public long getItemsCrafted()      { return itemsCrafted; }
     public Map<EntityType, Long> getKillsByType() { return Collections.unmodifiableMap(killsByType); }
 
     public void restore(long entitiesKilled, double damageDealt, double totalDistance,
@@ -51,6 +60,13 @@ public class PlayerStats {
         this.distanceSprinted = distanceSprinted;
         this.distanceInAir   = distanceInAir;
         this.timeInAir       = timeInAir;
+    }
+
+    /** Fishing and crafting counters; separate from {@link #restore} so saves predating them stay zero. */
+    public void restoreActivity(double timeFishing, long bassCaught, long itemsCrafted) {
+        this.timeFishing  = timeFishing;
+        this.bassCaught   = bassCaught;
+        this.itemsCrafted = itemsCrafted;
     }
 
     public void restoreKillsByType(Map<EntityType, Long> map) {

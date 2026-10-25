@@ -1013,6 +1013,7 @@ public final class ClientWorldView {
             case com.stonebreak.network.packet.player.KillCreditS2C kc ->
                 playerHandler.handleKillCredit(kc, entityHandler.shadow(kc.targetNetworkId()));
             case com.stonebreak.network.packet.player.ProgressS2C pr -> applyProgress(pr);
+            case com.stonebreak.network.packet.player.StatCreditS2C sc -> playerHandler.handleStatCredit(sc);
             case com.stonebreak.network.packet.player.PlayerDataS2C pd -> onPlayerData(pd.json());
             case EntitySpawnS2C s -> entityHandler.applySpawn(s);
             case EntityDespawnS2C d -> entityHandler.applyDespawn(d.networkId());

@@ -170,6 +170,8 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 30, com.stonebreak.network.packet.player.PlayerPositionS2C.class,
                 com.stonebreak.network.packet.player.PlayerPositionS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 31, WeatherSyncS2C.class, WeatherSyncS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 32, com.stonebreak.network.packet.player.StatCreditS2C.class,
+                com.stonebreak.network.packet.player.StatCreditS2C.CODEC);
 
         return r;
     }

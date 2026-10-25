@@ -184,6 +184,9 @@ class PacketRoundTripTest {
         assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
         assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f)));
         assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f)));
+        assertEquals(new com.stonebreak.network.packet.player.StatCreditS2C(com.stonebreak.network.packet.player.StatCreditS2C.STAT_ITEMS_CRAFTED, 64),
+                roundTrip(com.stonebreak.network.packet.player.StatCreditS2C.CODEC,
+                        new com.stonebreak.network.packet.player.StatCreditS2C(com.stonebreak.network.packet.player.StatCreditS2C.STAT_ITEMS_CRAFTED, 64)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
         assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(),
             roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,

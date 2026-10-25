@@ -183,6 +183,11 @@ public final class StateConverter {
             data.getStatDistanceInAir(),
             data.getStatTimeInAir()
         );
+        player.getStats().restoreActivity(
+            data.getStatTimeFishing(),
+            data.getStatBassCaught(),
+            data.getStatItemsCrafted()
+        );
         Map<EntityType, Long> killsByType = new EnumMap<>(EntityType.class);
         data.getStatKillsByEntityType().forEach((typeName, count) -> {
             try {

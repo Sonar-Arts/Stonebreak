@@ -60,6 +60,9 @@ public final class PlayerData {
     private final double statDistanceSprinted;
     private final double statDistanceInAir;
     private final double statTimeInAir;
+    private final double statTimeFishing;
+    private final long statBassCaught;
+    private final long statItemsCrafted;
     private final Map<String, Long> statKillsByEntityType;
 
     // Entity glossary discoveries
@@ -99,6 +102,9 @@ public final class PlayerData {
         this.statDistanceSprinted = builder.statDistanceSprinted;
         this.statDistanceInAir   = builder.statDistanceInAir;
         this.statTimeInAir       = builder.statTimeInAir;
+        this.statTimeFishing     = builder.statTimeFishing;
+        this.statBassCaught      = builder.statBassCaught;
+        this.statItemsCrafted    = builder.statItemsCrafted;
         this.statKillsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.statKillsByEntityType));
         this.discoveredVariantsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.discoveredVariantsByEntityType));
         this.discoveredWeaknessEntityTypes = Collections.unmodifiableSet(new HashSet<>(builder.discoveredWeaknessEntityTypes));
@@ -139,6 +145,9 @@ public final class PlayerData {
     public double getStatDistanceSprinted() { return statDistanceSprinted; }
     public double getStatDistanceInAir()    { return statDistanceInAir; }
     public double getStatTimeInAir()        { return statTimeInAir; }
+    public double getStatTimeFishing()      { return statTimeFishing; }
+    public long   getStatBassCaught()       { return statBassCaught; }
+    public long   getStatItemsCrafted()     { return statItemsCrafted; }
     public Map<String, Long> getStatKillsByEntityType() { return statKillsByEntityType; }
 
     // Discoveries
@@ -200,6 +209,9 @@ public final class PlayerData {
         private double statDistanceSprinted = 0.0;
         private double statDistanceInAir    = 0.0;
         private double statTimeInAir        = 0.0;
+        private double statTimeFishing      = 0.0;
+        private long   statBassCaught       = 0;
+        private long   statItemsCrafted     = 0;
         private Map<String, Long> statKillsByEntityType = new HashMap<>();
 
         // Discoveries (default empty — backward-compatible for old saves)
@@ -246,6 +258,9 @@ public final class PlayerData {
             this.statDistanceSprinted = data.statDistanceSprinted;
             this.statDistanceInAir   = data.statDistanceInAir;
             this.statTimeInAir       = data.statTimeInAir;
+            this.statTimeFishing     = data.statTimeFishing;
+            this.statBassCaught      = data.statBassCaught;
+            this.statItemsCrafted    = data.statItemsCrafted;
             this.statKillsByEntityType = new HashMap<>(data.statKillsByEntityType);
             this.discoveredVariantsByEntityType = new HashMap<>(data.discoveredVariantsByEntityType);
             this.discoveredWeaknessEntityTypes = new HashSet<>(data.discoveredWeaknessEntityTypes);
@@ -390,6 +405,9 @@ public final class PlayerData {
                 this.statDistanceSprinted = s.getDistanceSprinted();
                 this.statDistanceInAir   = s.getDistanceInAir();
                 this.statTimeInAir       = s.getTimeInAir();
+                this.statTimeFishing     = s.getTimeFishing();
+                this.statBassCaught      = s.getBassCaught();
+                this.statItemsCrafted    = s.getItemsCrafted();
                 this.statKillsByEntityType = new HashMap<>();
                 s.getKillsByType().forEach((type, count) ->
                     this.statKillsByEntityType.put(type.name(), count));

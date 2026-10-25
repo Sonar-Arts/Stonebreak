@@ -180,7 +180,10 @@ public final class PlayerPrefsValidator {
                 || candidate.getStatDistanceWalked() < baseline.getStatDistanceWalked()
                 || candidate.getStatDistanceSprinted() < baseline.getStatDistanceSprinted()
                 || candidate.getStatDistanceInAir() < baseline.getStatDistanceInAir()
-                || candidate.getStatTimeInAir() < baseline.getStatTimeInAir()) {
+                || candidate.getStatTimeInAir() < baseline.getStatTimeInAir()
+                || candidate.getStatTimeFishing() < baseline.getStatTimeFishing()
+                || candidate.getStatBassCaught() < baseline.getStatBassCaught()
+                || candidate.getStatItemsCrafted() < baseline.getStatItemsCrafted()) {
             return null;
         }
         // Append-only maps MERGE: a key the candidate omits keeps its accepted value, so

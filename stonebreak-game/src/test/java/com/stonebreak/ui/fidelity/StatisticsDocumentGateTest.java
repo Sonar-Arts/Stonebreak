@@ -17,6 +17,7 @@ import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The statistics screen migration gate (#299): the shipped {@code ui/documents/statistics.sbui}
@@ -70,6 +71,21 @@ class StatisticsDocumentGateTest {
             stage.paint();
             assertNotEquals(before.pixel(1180, 389), stage.raster.capture().pixel(1180, 389),
                 "the Entities Killed value repaints when the host publishes new stats");
+        }
+    }
+
+    @Test
+    void theRowsScrollAboveBackSoNewTrackersNeverPushItOffThePanel() throws Exception {
+        DeathDocumentGateTest.requireLua();
+        FidelityCase.Viewport hd = FidelityCase.STANDARD.get(0);
+        try (DocumentStage stage = DocumentStatisticsCapture.stage(GameUiDocuments.readScreen(StatisticsScreen.DOCUMENT_ID),
+                hd, "played")) {
+            stage.paint();
+            var view = stage.q("#rows-scroll");
+            assertTrue(view.isScrollContainer(), "the stat rows live in a scroll container");
+            assertEquals(0f, view.maxScrollY(), 0.01f, "today's rows fit without scrolling");
+            assertTrue(view.rect().bottom() <= stage.rect("back").y(), "the scrolling rows end above Back");
+            assertTrue(stage.rect("items-crafted").bottom() <= view.rect().bottom(), "the last row is in view");
         }
     }
 

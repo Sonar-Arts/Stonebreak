@@ -36,6 +36,7 @@ class JsonPlayerSerializerTest {
         // Build PlayerStats with non-zero values
         PlayerStats ps = new PlayerStats();
         ps.restore(3, 12.5, 100.0, 60.0, 30.0, 10.0, 5.5);
+        ps.restoreActivity(42.5, 7, 128);
         ps.restoreKillsByType(Collections.singletonMap(EntityType.COW, 3L));
 
         PlayerData original = PlayerData.builder()
@@ -120,6 +121,9 @@ class JsonPlayerSerializerTest {
         assertEquals(30.0, deserialized.getStatDistanceSprinted());
         assertEquals(10.0, deserialized.getStatDistanceInAir());
         assertEquals(5.5, deserialized.getStatTimeInAir());
+        assertEquals(42.5, deserialized.getStatTimeFishing());
+        assertEquals(7, deserialized.getStatBassCaught());
+        assertEquals(128, deserialized.getStatItemsCrafted());
         assertEquals(Map.of("COW", 3L), deserialized.getStatKillsByEntityType());
 
         // Discoveries

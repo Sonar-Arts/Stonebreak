@@ -234,23 +234,31 @@
       "killsCow": 12,
       "killsSheep": 7,
       "killsChicken": 1203,
+      "killsGoblin": 12,
       "damageDealt": 4567.25,
       "totalDistance": 15432.5,
       "distanceWalked": 9876.4,
       "distanceSprinted": 4321,
       "distanceInAir": 512.75,
       "timeInAir": 3725,
+      "timeFishing": 845,
+      "bassCaught": 37,
+      "itemsCrafted": 2048,
       "text": {
         "entitiesKilled": "1,234",
         "killsCow": "12",
         "killsSheep": "7",
         "killsChicken": "1,203",
+        "killsGoblin": "12",
         "damageDealt": "4567.3",
         "totalDistance": "15.43 km",
         "distanceWalked": "9.88 km",
         "distanceSprinted": "4.32 km",
         "distanceInAir": "512.8 m",
-        "timeInAir": "1h 2m 5s"
+        "timeInAir": "1h 2m 5s",
+        "timeFishing": "14m 5s",
+        "bassCaught": "37",
+        "itemsCrafted": "2,048"
       }
     },
     "vitals": {

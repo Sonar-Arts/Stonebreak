@@ -5,7 +5,9 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.FishingBobber;
 import com.stonebreak.mobs.entities.FishingManager;
+import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.network.packet.player.FishingRodC2S;
+import com.stonebreak.network.packet.player.StatCreditS2C;
 import com.stonebreak.network.server.ServerInventory;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
@@ -153,7 +155,10 @@ public final class ServerFishingHandler {
 
     private void reelIn(ServerPlayer sp, FishingBobber bobber, EntityManager em) {
         // The catch arcs toward the angler's reported position (the old client aim).
-        catches.tryCatch(bobber, new Vector3f(sp.x(), sp.y(), sp.z()), em);
+        ItemDrop caught = catches.tryCatch(bobber, new Vector3f(sp.x(), sp.y(), sp.z()), em);
+        if (caught != null && caught.getItemType() == ItemType.BASS) {
+            sp.send(new StatCreditS2C(StatCreditS2C.STAT_BASS_CAUGHT, 1), false);
+        }
         bobber.setAlive(false);
         casts.remove(sp.playerId());
     }
