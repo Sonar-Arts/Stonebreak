@@ -110,6 +110,15 @@ public class World {
     private volatile com.stonebreak.mobs.entities.ai.behavior.PlayerLocator playerLocator =
         com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE;
 
+    // The one-off sounds made in this world lately, for its mobs' hearing (#321). Only the
+    // authoritative world's mobs listen; on a render world nothing posts and nothing reads.
+    // Created on first use: test worlds are built without running this class's initialisers.
+    private com.stonebreak.mobs.entities.ai.perception.NoiseBus noiseBus;
+
+    // Daylight 0..1 for its mobs' sight (#321). The server level binds its clock; full light
+    // until then (and on worlds with no clock: tests, render views).
+    private volatile java.util.function.DoubleSupplier daylightSource;
+
     /**
      * Authoritative simulation mutations reported for replication. Populated by the integrated
      * server on the HEADLESS world only; every sink stays null on client render worlds.
@@ -804,6 +813,25 @@ public class World {
     /** The players this world's mobs react to; never null. */
     public com.stonebreak.mobs.entities.ai.behavior.PlayerLocator getPlayerLocator() {
         return playerLocator;
+    }
+
+    /** The recent one-off sounds this world's mobs can hear (#321); never null. */
+    public com.stonebreak.mobs.entities.ai.perception.NoiseBus noiseBus() {
+        if (noiseBus == null) {
+            noiseBus = new com.stonebreak.mobs.entities.ai.perception.NoiseBus();
+        }
+        return noiseBus;
+    }
+
+    /** Bind the clock this world's daylight follows; null restores full light. */
+    public void setDaylightSource(java.util.function.DoubleSupplier daylightSource) {
+        this.daylightSource = daylightSource;
+    }
+
+    /** Sky light right now, 0 (darkest night) to 1 (full day). */
+    public float getDaylight() {
+        java.util.function.DoubleSupplier source = daylightSource;
+        return source != null ? (float) source.getAsDouble() : 1f;
     }
 
     /** Bind this world's save service. Called by {@code SaveService.initialize}. */

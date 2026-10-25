@@ -7,6 +7,8 @@ import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.DeathDropC2S;
@@ -124,6 +126,9 @@ public final class ServerPlayerHandler {
             sp.movement().reset(receivedNs);
         }
         sp.updateState(l.x(), l.y(), l.z(), sp.yaw(), sp.pitch());
+        if (l.dead()) {
+            NoiseBus.emitIn(ctx.world(), new Vector3f(l.x(), l.y(), l.z()), Loudness.DEATH);
+        }
     }
 
     /** Upper bound on one DropItemC2S so a buggy/hostile client can't spawn item mountains. */
@@ -219,6 +224,7 @@ public final class ServerPlayerHandler {
         float fz = (float) Math.sin(yawRad);
         Vector3f pos = new Vector3f(sp.x() + fx * 1.5f, sp.y() + 1.0f, sp.z() + fz * 1.5f);
         Vector3f vel = new Vector3f(fx * 2.0f, 1.0f, fz * 2.0f);
+        NoiseBus.emitIn(world, pos, Loudness.DROP_ITEM); // mobs can hear it land (#321)
 
         BlockType bt = BlockType.getById(itemId);
         if (bt != null && bt != BlockType.AIR) {

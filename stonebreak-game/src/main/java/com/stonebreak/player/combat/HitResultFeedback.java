@@ -16,7 +16,8 @@ import org.joml.Vector3f;
  * <ul>
  *   <li>damage number (the applied amount, multipliers included) at the server's anchor, which
  *       a lethal hit's despawn cannot take away, and the hurt/death voice at the copy;</li>
- *   <li>melee: Rage, Quarry and T3 lifesteal via {@link Player#onMeleeHitLanded};</li>
+ *   <li>melee: Rage, Quarry and T3 lifesteal via {@link Player#onMeleeHitLanded}, and the stealth
+ *       break a silent kill escapes;</li>
  *   <li>arrows: the Ranger's Quarry/Study — arrows simulate on the server, so this result is
  *       the only place the shooter learns what they hit.</li>
  * </ul>
@@ -41,6 +42,11 @@ public final class HitResultFeedback {
             return;
         }
         if (kind == HitKind.MELEE) {
+            if (!killed) {
+                // A swing breaks stealth unless it killed an unaware target outright (#321); the
+                // swing itself already broke it for any other target, making this a no-op there.
+                player.getStealth().onAttack(player);
+            }
             player.onMeleeHitLanded(target, dealt);
         }
         if (source == LivingEntity.DamageSource.ARROW && target != null) {

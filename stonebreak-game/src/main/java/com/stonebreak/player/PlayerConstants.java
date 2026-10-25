@@ -67,17 +67,11 @@ public final class PlayerConstants {
     public static final float DODGE_SPEED                  = 24f;   // blocks/sec — 3-block dash finishes within the i-frame window
     public static final float DODGE_INVINCIBILITY_TIME     = 0.25f; // seconds
     public static final float DODGE_COOLDOWN               = 1.5f;  // seconds
-    public static final float DODGE_STEALTH_NOISE_RADIUS   = 4f;    // blocks (read by the stealth system)
     public static final float DODGE_STEALTH_NOISE_DURATION = 0.5f;  // seconds
     public static final float DODGE_STAMINA_COST           = 15f;   // stamina spent per dash
 
     // ── Universal: Stealth ────────────────────────────────────────────────────
-    // Detection (enemy side)
-    public static final float ENEMY_SIGHT_ANGLE_DEG     = 90f;   // full forward cone width
-    public static final float ENEMY_SIGHT_RANGE         = 16f;   // blocks
-    public static final float NOISE_RADIUS_RUN          = 10f;   // blocks while sprinting
-    public static final float NOISE_RADIUS_WALK         = 5f;    // blocks while walking
-    public static final float NOISE_RADIUS_STEALTH      = 2f;    // base; Rogue overrides via class config
+    // Detection (enemy side) is per mob type: see mobs.entities.ai.perception.PerceptionProfile.
 
     // Stealth timing / movement
     public static final float STEALTH_ENTRY_DELAY       = 1.0f;  // seconds before fully stealthed
@@ -96,13 +90,6 @@ public final class PlayerConstants {
     // Cripple (reuses StatusEffectType.CRIPPLE)
     public static final float STEALTH_CRIPPLE_SLOW_PERCENT  = 0.45f; // fractional move-speed reduction
     public static final float STEALTH_CRIPPLE_DURATION      = 4.0f;  // seconds
-
-    // ── Enemy Awareness meter (0..100, per enemy) ─────────────────────────────
-    public static final float AWARENESS_SUSPICIOUS_THRESHOLD = 35f;
-    public static final float AWARENESS_ALERTED_THRESHOLD     = 100f;
-    public static final float AWARENESS_SIGHT_GAIN_PER_SEC    = 60f; // fast fill from line of sight
-    public static final float AWARENESS_SOUND_GAIN_PER_SEC    = 18f; // slow fill from noise (< sight)
-    public static final float AWARENESS_DECAY_PER_SEC         = 12f; // drain when out of detection
 
     // ── Berserker: Rage resource ──────────────────────────────────────────────
     public static final float RAGE_MAX             = 100f;

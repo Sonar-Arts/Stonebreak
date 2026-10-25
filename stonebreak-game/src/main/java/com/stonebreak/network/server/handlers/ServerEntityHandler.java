@@ -8,11 +8,15 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.mobs.sbe.EntityAnimResolver;
 import com.stonebreak.mobs.entities.status.StatusEffectBits;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.mobs.sheep.Sheep;
 import com.stonebreak.network.packet.entity.EntityAnimS2C;
+import com.stonebreak.network.packet.entity.EntityAwarenessS2C;
 import com.stonebreak.network.packet.entity.EntityDamageC2S;
 import com.stonebreak.network.packet.entity.EntityDespawnS2C;
 import com.stonebreak.network.packet.entity.EntityMoveS2C;
@@ -207,6 +211,8 @@ public final class ServerEntityHandler {
             broadcastVariantIfChanged(t, ctx);
             // Replicate health fraction + status effects on change (#371).
             broadcastStatusIfChanged(t, ctx);
+            // Replicate stealth awareness on change (#321).
+            broadcastAwarenessIfChanged(t);
 
             int id = t.id;
             float[] last = t.last;
@@ -263,6 +269,11 @@ public final class ServerEntityHandler {
                 if (anim != null) {
                     t.lastAnim = anim.state();
                     sendToInterested(t, anim, false);
+                }
+                EntityAwarenessS2C awareness = awarenessPacketFor(e);
+                if (awareness != null) {
+                    t.lastAwareness = awareness.state();
+                    sendToInterested(t, awareness, false);
                 }
             }
             if (t.rebase()) {
@@ -341,6 +352,9 @@ public final class ServerEntityHandler {
         le.damage(amount, source, type, weaponId, new Vector3f(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
+            // The blow is heard (#321), lethal or not: a silent kill keeps the killer's stealth,
+            // not the camp's calm.
+            NoiseBus.emitIn(le.getWorld(), le.getPosition(), Loudness.MELEE_ATTACK);
             sendKillCredit(sp, le, dealt, !le.isAlive(), source, kind);
         }
     }
@@ -603,7 +617,22 @@ public final class ServerEntityHandler {
         if (spawned != null) {
             // Route hit/kill credit for this projectile back to the launching player.
             spawned.setOwnerPlayerId(sp.playerId());
+            NoiseBus.emitIn(ctx.world(), new Vector3f(sp.x(), sp.y(), sp.z()), launchLoudness(pkt.kind()));
         }
+    }
+
+    /**
+     * How loud loosing each projectile is at the shooter (#321). Spells vary; caltrops are
+     * scattered without a sound, so they never give a Rogue away.
+     */
+    private static float launchLoudness(byte kind) {
+        return switch (kind) {
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW -> Loudness.RANGED_ATTACK;
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_FIRE_BOLT -> 6f;
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_NULL_SPIKE -> 5f;
+            case com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH -> 7f;
+            default -> 0f; // caltrops, and any kind without a voice yet
+        };
     }
 
     private static void refuseSpawn(ServerPlayer sp, boolean arrow) {
@@ -710,6 +739,11 @@ public final class ServerEntityHandler {
         EntityAnimS2C anim = animPacketFor(e);
         if (anim != null) {
             sp.send(anim, false);
+        }
+        // Awareness when not the UNAWARE a fresh shadow starts in (#321).
+        EntityAwarenessS2C awareness = awarenessPacketFor(e);
+        if (awareness != null && awareness.state() != AwarenessController.AwarenessState.UNAWARE) {
+            sp.send(awareness, false);
         }
         // Health/status when not the default a fresh shadow starts with (full, no effects).
         if (e instanceof LivingEntity le) {
@@ -828,6 +862,25 @@ public final class ServerEntityHandler {
         }
     }
 
+    /**
+     * Replicates a mob's stealth awareness state on change as {@link EntityAwarenessS2C} (#321):
+     * the stealth markers, Shadow Step and the flat-footed opener read it off the shadow, which
+     * never perceives anything itself.
+     */
+    private void broadcastAwarenessIfChanged(Tracked t) {
+        EntityAwarenessS2C awareness = awarenessPacketFor(t.entity);
+        if (awareness != null && awareness.state() != t.lastAwareness) {
+            t.lastAwareness = awareness.state();
+            sendToInterested(t, awareness, false);
+        }
+    }
+
+    /** The current awareness packet for an entity, or null if it tracks no awareness. */
+    private static EntityAwarenessS2C awarenessPacketFor(Entity e) {
+        AwarenessController awareness = e instanceof LivingEntity le ? le.getAwareness() : null;
+        return awareness != null ? new EntityAwarenessS2C(e.getNetworkId(), awareness.getState()) : null;
+    }
+
     private static EntityStatusS2C statusPacketFor(LivingEntity le) {
         float max = le.getMaxHealth();
         float fraction = max > 0f ? Math.max(0f, le.getHealth()) / max : 0f;
@@ -875,6 +928,8 @@ public final class ServerEntityHandler {
         String lastAnim;
         String lastVariant;
         long lastStatus = Long.MIN_VALUE;
+        /** Last awareness state broadcast; a fresh shadow starts UNAWARE (#321). */
+        AwarenessController.AwarenessState lastAwareness = AwarenessController.AwarenessState.UNAWARE;
         /** Chunk of the broadcast base: interest is judged on it. */
         int chunkX;
         int chunkZ;

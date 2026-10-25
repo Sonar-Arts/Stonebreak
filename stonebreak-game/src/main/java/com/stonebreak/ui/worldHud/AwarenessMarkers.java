@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * The per-enemy stealth awareness indicator above each living entity's head: a yellow "?"
- * while SUSPICIOUS and a red "!" while ALERTED (nothing while UNAWARE). World position is projected
+ * while SUSPICIOUS, a red "!" while ALERTED and a grey "?" while SEARCHING (nothing while UNAWARE). World position is projected
  * to screen space by {@link WorldMarker#project}.
  */
 public class AwarenessMarkers {
@@ -23,6 +23,7 @@ public class AwarenessMarkers {
 
     private static final int SUSPICIOUS_COLOR = 0xFFF2D24A; // amber
     private static final int ALERTED_COLOR    = 0xFFE0473C; // red
+    private static final int SEARCHING_COLOR  = 0xFFB4B4B4; // grey: lost you, still looking
     private static final int ICON_SHADOW      = 0xCC101010;
 
     private AwarenessMarkers() {}
@@ -32,9 +33,9 @@ public class AwarenessMarkers {
     }
 
     /**
-     * "?" (SUSPICIOUS) and "!" (ALERTED) over the client entity manager's living entities
-     * ({@link WorldMarker.Kind#AWARENESS}, #301). Network shadows never tick awareness, so server mobs
-     * show nothing here (the two-world trap, recorded in the migration ledger).
+     * "?" (SUSPICIOUS / SEARCHING) and "!" (ALERTED) over the client entity manager's living entities
+     * ({@link WorldMarker.Kind#AWARENESS}, #301). Network shadows never perceive anything; their
+     * state is the server mob's, replicated by {@code EntityAwarenessS2C} (#321).
      */
     public void collect(Matrix4f vp, int screenW, int screenH, List<WorldMarker> out) {
         EntityManager entityManager = Game.getEntityManager();
@@ -49,6 +50,7 @@ public class AwarenessMarkers {
             switch (awareness.getState()) {
                 case SUSPICIOUS -> { glyph = "?"; color = SUSPICIOUS_COLOR; }
                 case ALERTED    -> { glyph = "!"; color = ALERTED_COLOR; }
+                case SEARCHING  -> { glyph = "?"; color = SEARCHING_COLOR; }
                 default -> { continue; }
             }
 

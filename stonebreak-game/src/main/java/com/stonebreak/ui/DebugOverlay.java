@@ -7,6 +7,7 @@ import com.stonebreak.ui.debug.DebugInfoPanel;
 import com.stonebreak.ui.debug.DebugPanel;
 import com.stonebreak.ui.debug.GpuInfoProbe;
 import com.stonebreak.ui.debug.MobPathWireframeDrawer;
+import com.stonebreak.ui.debug.PerceptionDebug;
 import com.stonebreak.ui.debug.RamPanel;
 import com.stonebreak.ui.debug.UiBudgetPanel;
 import com.stonebreak.ui.debug.VramPanel;
@@ -28,6 +29,7 @@ public class DebugOverlay {
     private final DebugPanel debugPanel = new DebugInfoPanel(diagnostics, gpuInfo);
     private final UiBudgetPanel uiBudgetPanel = new UiBudgetPanel();
     private final MobPathWireframeDrawer wireframes = new MobPathWireframeDrawer();
+    private final PerceptionDebug perception = new PerceptionDebug();
 
     // Cached panels — rebuilt periodically rather than every frame. Reading
     // MXBeans + GPU snapshot + building MStatPanel structures every frame
@@ -138,13 +140,15 @@ public class DebugOverlay {
 
     /**
      * Renders debug wireframes for entities (called after UI rendering):
-     * behaviour-coloured model outlines plus each mob's planned route. See
-     * {@link MobPathWireframeDrawer}.
+     * behaviour-coloured model outlines plus each mob's planned route, and the
+     * stealth vision cones and hearing radii. See {@link MobPathWireframeDrawer}
+     * and {@link PerceptionDebug}.
      */
     public void renderWireframes(Renderer renderer) {
         if (!visible) {
             return;
         }
         wireframes.render(renderer);
+        perception.render(renderer);
     }
 }

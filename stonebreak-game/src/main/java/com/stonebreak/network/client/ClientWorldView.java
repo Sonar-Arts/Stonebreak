@@ -647,6 +647,8 @@ public final class ClientWorldView {
         if (!p.isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
         if (p.isOnGround())  flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
         if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
+        if (p.getStealth().isStealthed()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED;
+        if (p.getDodge().isMakingNoise()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE;
         connection.send(new PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch, flags), true);
 
         if (p.getInventory() != null) {
@@ -1024,6 +1026,8 @@ public final class ClientWorldView {
             case com.stonebreak.network.packet.entity.EntityVariantS2C v ->
                 entityHandler.applyVariant(v.networkId(), v.variant());
             case com.stonebreak.network.packet.entity.EntityStatusS2C st -> entityHandler.applyStatus(st);
+            case com.stonebreak.network.packet.entity.EntityAwarenessS2C aw -> entityHandler.applyAwareness(aw);
+            case com.stonebreak.network.packet.player.PlayerHurtS2C h -> playerHandler.handleHurt(h);
             case KeepAliveS2C ka -> {
                 lastRttMs = ka.lastRttMs();
                 ClientConnection conn = connection;

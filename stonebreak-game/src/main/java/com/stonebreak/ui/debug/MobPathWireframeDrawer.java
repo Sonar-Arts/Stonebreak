@@ -136,7 +136,7 @@ public final class MobPathWireframeDrawer {
      * marker may lag a frame or land between two updates, which for a debug overlay is the right
      * trade against putting a lock in the navigation hot path.
      */
-    private static EntityManager authoritativeEntitySource() {
+    static EntityManager authoritativeEntitySource() {
         if (!MultiplayerSession.hasIntegratedServer()) {
             return null;
         }

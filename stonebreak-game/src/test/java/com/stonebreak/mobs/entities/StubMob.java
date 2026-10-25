@@ -30,6 +30,11 @@ public class StubMob extends LivingEntity {
         this.type = type;
     }
 
+    /** Gives the stub stealth awareness, for the rules that only apply to mobs tracking it. */
+    public void setAwareness(com.stonebreak.mobs.entities.ai.AwarenessController awareness) {
+        this.awareness = awareness;
+    }
+
     @Override
     public EntityType getType() {
         return type;

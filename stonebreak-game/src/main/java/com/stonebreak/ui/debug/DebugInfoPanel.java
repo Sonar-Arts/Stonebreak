@@ -13,8 +13,8 @@ import static com.stonebreak.ui.debug.DebugFormat.truncate;
 
 /**
  * The right-hand "Debug Info" card: player position, chunk coords, facing,
- * terrain heights, targeted block/water, world + network counters,
- * graphics pipeline stats and GPU identity. Reads its numbers through
+ * terrain heights, targeted block/water, world + network counters, nearby
+ * mobs' stealth perception, graphics pipeline stats and GPU identity. Reads its numbers through
  * {@link DebugDiagnostics} and {@link GpuInfoProbe}.
  */
 public final class DebugInfoPanel implements DebugPanel {
@@ -126,6 +126,8 @@ public final class DebugInfoPanel implements DebugPanel {
                 panel.row("Entity Shadows", String.valueOf(cwv.trackedEntityShadows()));
             }
         }
+
+        PerceptionDebug.appendSection(panel);
 
         panel.section("Graphics");
         try {

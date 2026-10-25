@@ -16,7 +16,6 @@ import static com.stonebreak.player.PlayerConstants.DODGE_INVINCIBILITY_TIME;
 import static com.stonebreak.player.PlayerConstants.DODGE_SPEED;
 import static com.stonebreak.player.PlayerConstants.DODGE_STAMINA_COST;
 import static com.stonebreak.player.PlayerConstants.DODGE_STEALTH_NOISE_DURATION;
-import static com.stonebreak.player.PlayerConstants.DODGE_STEALTH_NOISE_RADIUS;
 
 /**
  * Universal directional dodge available to every player class (not a class ability).
@@ -171,8 +170,8 @@ public class DodgeController {
         return Math.max(0f, Math.min(1f, 1f - cooldownRemaining / DODGE_COOLDOWN));
     }
 
-    /** Player noise radius (blocks) spiked by a recent dodge; 0 when not spiked. Read by the future stealth system. */
-    public float getCurrentNoiseRadius() {
-        return noiseRemaining > 0f ? DODGE_STEALTH_NOISE_RADIUS : 0f;
+    /** True inside a recent dodge's noise window, which mobs can hear (replicated to the server, #321). */
+    public boolean isMakingNoise() {
+        return noiseRemaining > 0f;
     }
 }

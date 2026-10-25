@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.ToolMiningRules;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
@@ -371,6 +373,7 @@ public final class ServerBlockHandler {
     private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
                               boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
         applyAccepted(sp, c, incoming, prev, debit, world, ctx);
+        emitEditNoise(world, c, incoming, prev);
         int sel = sp.inventory().selectedHotbarSlot();
         if (scoop) {
             // Bucket scoop (mirrors BlockPlacer.handleEmptyBucket): removing a water SOURCE
@@ -386,6 +389,17 @@ public final class ServerBlockHandler {
             // away inside the round trip): its mirror filled a bucket the server did not.
             syncInventory(sp);
         }
+    }
+
+    /** Breaking a block is loud and placing one less so (#321); scooping or pouring water is quiet. */
+    private static void emitEditNoise(World world, BlockChangeC2S c, BlockType incoming, BlockType prev) {
+        float loudness;
+        if (incoming == null || incoming == BlockType.AIR) {
+            loudness = prev == BlockType.AIR || prev == BlockType.WATER ? 0f : Loudness.BREAK_BLOCK;
+        } else {
+            loudness = incoming == BlockType.WATER ? 0f : Loudness.PLACE_BLOCK;
+        }
+        NoiseBus.emitIn(world, new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f), loudness);
     }
 
     /**

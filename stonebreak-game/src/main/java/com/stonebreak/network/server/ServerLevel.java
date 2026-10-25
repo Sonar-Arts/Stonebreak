@@ -186,6 +186,7 @@ public final class ServerLevel {
             save.setWorldTimeSource(level.timeOfDay);
             save.setWeatherSource(level.weather);
             entitySpawner.setNightSource(level.timeOfDay::isNight);
+            world.setDaylightSource(level.timeOfDay::getAmbientLightLevel);
 
             save.startAutoSave();
 

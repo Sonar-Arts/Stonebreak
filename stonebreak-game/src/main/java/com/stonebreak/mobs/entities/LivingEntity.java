@@ -76,7 +76,7 @@ public abstract class LivingEntity extends Entity {
 
     /**
      * Optional per-enemy stealth awareness (sight/sound detection driving UNAWARE/SUSPICIOUS/
-     * ALERTED). Null on entities that don't react to a stealthed player; subclasses opt in by
+     * ALERTED/SEARCHING, #321). Null on entities that don't react to a stealthed player; subclasses opt in by
      * assigning one. Exposed so the combat and UI layers can query any entity generically.
      */
     protected AwarenessController awareness;
@@ -160,8 +160,9 @@ public abstract class LivingEntity extends Entity {
 
     /**
      * Runs this entity's AI for one tick. The default drives the shared mob
-     * framework: stealth awareness (investigate/pursue) overrides the passive
-     * {@link MobAI} while the entity is SUSPICIOUS/ALERTED. Subclasses with
+     * framework: stealth awareness perceives first, so the {@link MobAI}'s
+     * awareness-driven behaviours (investigate, pursue, search) act on this
+     * tick's state. Subclasses with
      * bespoke behaviour may override.
      */
     protected void updateAI(float deltaTime) {

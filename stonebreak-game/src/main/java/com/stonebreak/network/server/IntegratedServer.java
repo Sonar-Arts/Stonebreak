@@ -147,7 +147,8 @@ public final class IntegratedServer {
         level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
         // Same direction for mob AI: the world's mobs flee from / pursue the connected roster,
         // remote players included, instead of the client's local player (#340).
-        level.world().setPlayerLocator(new ServerPlayerLocator(ctx.players()));
+        // Their blows land on the connected players too, through each one's own client.
+        level.world().setPlayerLocator(ServerPlayerLocator.of(ctx.players(), level.world()));
 
         // Replication funnel for authoritative SIM block mutations (water flow etc.):
         // installed on the HEADLESS world only, so server-side chunk.setBlock writes reach

@@ -35,7 +35,7 @@ public final class WorldHudFixtures {
             case "prey" -> prey(m, w, h, 0.63f);
             case "prey-empty" -> prey(m, w, h, 0f);
             case "stealth" -> stealth = new StealthHud.State("STEALTH", StealthHud.ACTIVE_COLOR, false, 0f);
-            case "entering" -> stealth = new StealthHud.State("ENTERING STEALTH…",
+            case "entering" -> stealth = new StealthHud.State("STEALTH",
                 StealthHud.ENTERING_COLOR, true, 0.42f);
             case "cooling" -> stealth = new StealthHud.State("", 0, true, 0.9f);
             case "mixed" -> {

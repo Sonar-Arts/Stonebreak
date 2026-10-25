@@ -45,6 +45,7 @@ public final class MeleeAttackBehavior implements Behavior {
     @Override
     public boolean canStart(AiContext context) {
         return context.entity().getAge() >= readyAt
+                && context.alertedToPlayer()
                 && context.distanceToNearestPlayer() <= weapon.reach()
                 && context.facePlayer(0.0f) <= START_FACING_DEGREES;
     }

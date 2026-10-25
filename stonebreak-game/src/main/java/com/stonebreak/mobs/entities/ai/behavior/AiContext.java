@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
 import com.stonebreak.world.World;
@@ -114,6 +115,16 @@ public final class AiContext {
     /** Lands a blow from this mob on the nearest player; see {@link PlayerLocator#hurtNearestPlayer}. */
     public boolean hurtNearestPlayer(float amount, float knockback) {
         return players.hurtNearestPlayer(entity.getPosition(), amount, knockback);
+    }
+
+    /**
+     * Whether this mob knows the player is there to fight: always for a mob without stealth
+     * awareness, only while ALERTED for one with it — an unaware goblin does not swing at a
+     * stealthed player who wanders into reach (#321).
+     */
+    public boolean alertedToPlayer() {
+        AwarenessController awareness = entity.getAwareness();
+        return awareness == null || awareness.getState() == AwarenessController.AwarenessState.ALERTED;
     }
 
     /** Whether the nearest player is sprinting — skittish mobs notice that from further off. */

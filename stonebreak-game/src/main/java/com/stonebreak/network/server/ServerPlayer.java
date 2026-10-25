@@ -157,9 +157,26 @@ public final class ServerPlayer {
     }
 
     public void updateState(float x, float y, float z, float yaw, float pitch) {
+        long now = System.nanoTime();
+        float dt = (now - lastStateNs) / 1.0e9f;
+        if (lastStateNs != 0L && dt > 0f && dt <= MAX_SPEED_SAMPLE_SECONDS) {
+            float dx = x - this.x;
+            float dz = z - this.z;
+            horizontalSpeed = (float) Math.sqrt(dx * dx + dz * dz) / dt;
+        } else {
+            horizontalSpeed = 0f;
+        }
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
-        this.lastStateNs = System.nanoTime();
+        this.lastStateNs = now;
     }
+
+    /** Reports further apart than this say nothing about pace (a stall, a first report). */
+    private static final float MAX_SPEED_SAMPLE_SECONDS = 0.5f;
+
+    /** Horizontal speed between the last two reported positions, blocks per second. */
+    private float horizontalSpeed;
+
+    public float horizontalSpeed() { return horizontalSpeed; }
 
     /** Movement/action flags from the last PlayerStateC2S ({@code PlayerStateFlags}). */
     private byte movementFlags;
@@ -168,8 +185,27 @@ public final class ServerPlayer {
 
     /** Whether the client last reported this player sprinting — what skittish mobs notice. */
     public boolean isSprinting() {
-        return com.stonebreak.network.packet.player.PlayerStateFlags.has(
-            movementFlags, com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING);
+        return hasFlag(com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING);
+    }
+
+    /** Whether the client last reported this player fully stealthed (#321). */
+    public boolean isStealthed() {
+        return hasFlag(com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED);
+    }
+
+    /**
+     * How loud this player's movement is for mob hearing (#321), from the reported flags, the
+     * pace between reports, and the class's stealth loudness (the Rogue is quieter).
+     */
+    public float movementLoudness() {
+        return com.stonebreak.mobs.entities.ai.perception.Loudness.ofMovement(isStealthed(),
+            com.stonebreak.player.combat.stealth.StealthConfig.forClass(serverStats).stealthLoudness(),
+            isSprinting(), horizontalSpeed,
+            hasFlag(com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE));
+    }
+
+    private boolean hasFlag(int bit) {
+        return com.stonebreak.network.packet.player.PlayerStateFlags.has(movementFlags, bit);
     }
 
     /**

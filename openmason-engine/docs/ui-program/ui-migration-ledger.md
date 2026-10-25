@@ -196,6 +196,7 @@ These apply to every row unless the row says otherwise.
 | world-revealed-outline | custom-renderer | `rendering.gameWorld.effects.WorldEffectsRenderer` | process-persistent | world-render |
 | effect-underwater-tint | effect | `rendering.UI.components.UnderwaterOverlayRenderer` | process-persistent | world-render |
 | effect-dodge-vignette | effect | `rendering.UI.components.DodgeInvincibilityOverlay` | process-persistent | world-render |
+| effect-stealth-vignette | effect | `rendering.UI.components.StealthVignetteOverlay` | process-persistent | world-render |
 | effect-screen-droplets | effect | `rendering.UI.components.ScreenDropletOverlay` | process-persistent | world-render |
 | effect-pause-depth-curtain | effect | `rendering.pipeline.DepthCurtainRenderer` | process-persistent | world-render |
 | battle-hud | screen | `ui.focusBattle.FocusBattleScreen` + `BattleHudLayers` + `BattleHudDocument` | shell-persistent, bound per encounter | migrated |
@@ -1692,9 +1693,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 ### world-enemy-awareness
 - **Kind:** hud (world-space).
 - **Owner:** singleton `EnemyAwarenessRenderer`.
-- **Draw:** "?" amber when SUSPICIOUS, "!" red when ALERTED, over entities of the **client** `Game.getEntityManager()`.
+- **Draw:** "?" amber when SUSPICIOUS, "!" red when ALERTED, "?" grey when SEARCHING, over entities of the **client** `Game.getEntityManager()`.
 - **Notes:**
-  - Network shadows never tick awareness, so this likely never shows for server mobs (two-world trap; `EntityManager.java:98-102`).
+  - Network shadows never tick awareness; since #321 the server mob's state reaches them through `EntityAwarenessS2C`, so server mobs show their glyphs.
   - **Opens a Skija bracket every PLAYING frame** even with no glyphs (:52).
 - **Fixtures:** none.
 - **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-texts_1920x1080_s1`
@@ -1716,7 +1717,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 ### stealth-hud
 - **Kind:** hud (screen-space).
 - **Owner:** singleton `StealthHudRenderer`.
-- **Draw:** "STEALTH" / "ENTERING STEALTH…" at a fixed y=64 top-centre, plus a 160×8 "Re-entry" cooldown bar. The doc comment claims "under the crosshair", which is wrong.
+- **Draw:** "STEALTH" (dim while entering, since #321) at a fixed y=64 top-centre, plus a 160×8 "Re-entry" cooldown bar. The doc comment claims "under the crosshair", which is wrong.
 - **Bindings:** `player.getStealth()`.
 - **Fixtures:** none.
 - **Fidelity:** `world-hud/world-hud-cooling_1920x1080_s1` `world-hud/world-hud-entering_1920x1080_s1` `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-stealth_1920x1080_s1`
@@ -1747,6 +1748,15 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   underwater tint and droplets (same immediate-mode GL path, same place in the frame, under the HUD), keyed on the dodge's
   i-frames. It stays with them; moving it would split one effect pass across two pipelines. The immediate-mode GL is
   renderer modernisation (Hard visuals #10), not a UI migration.
+
+### effect-stealth-vignette
+- **Kind:** effect. Owner: `StealthVignetteOverlay` (same path as underwater).
+- **Draw:** black edge band at 30 % of the min dimension, alpha 0.85, four gradient trapezoids (the shared `EdgeVignette`
+  the dodge flash also draws through), ~0.3 s fade in / ~0.15 s out, keyed on `getStealth().isStealthed()` (#321) —
+  nothing during the entry delay.
+- **Fixtures:** none.
+- **Decision:** (#321) world-render, for the dodge vignette's reasons: a screen effect of the world pass drawn by
+  `OverlayRenderer` under the HUD, beside the effects it shares a pipeline with.
 
 ### effect-screen-droplets
 - **Kind:** effect. Owner: `ScreenDropletOverlay` (same path).

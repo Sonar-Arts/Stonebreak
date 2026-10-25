@@ -4,16 +4,19 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobAI;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.ArrowLauncher;
 import com.stonebreak.mobs.entities.ai.behavior.Behavior;
-import com.stonebreak.mobs.entities.ai.behavior.ChasePlayerBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.MeleeAttackBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.PursuePlayerBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.RangedAttackBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.SearchBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
+import com.stonebreak.mobs.entities.ai.perception.PerceptionProfile;
 import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 import com.stonebreak.mobs.sbe.AttachmentVisual;
@@ -29,8 +32,10 @@ import java.util.Objects;
 import java.util.Random;
 
 /**
- * Hostile goblin. Notices a player within {@link #NOTICE_RADIUS} blocks, closes in, and fights with
- * whatever its {@link GoblinLoadout} rolled — stabbing with a dagger, slamming with a patty smacker,
+ * Hostile goblin, the reference enemy of the stealth system (#321). It notices a player through its
+ * {@link AwarenessController} — keen ears, fair sight ({@link PerceptionProfile#GOBLIN}) — goes to
+ * look at what it heard, shouts for the pack once sure, closes in and fights with whatever its
+ * {@link GoblinLoadout} rolled — stabbing with a dagger, slamming with a patty smacker,
  * or hanging back to shoot a bow. Weapon and cosmetics hang on the model's sockets.
  */
 public class Goblin extends LivingEntity {
@@ -38,9 +43,10 @@ public class Goblin extends LivingEntity {
     /** The authored model is ~2.25 blocks tall; goblins stand well under a player. */
     public static final float MODEL_SCALE = 0.6f;
 
-    static final float NOTICE_RADIUS = 15.0f;
-    private static final float GIVE_UP_RADIUS = 24.0f;
     private static final float CHASE_SPEED = 1.3f;
+    /** Creeping up on something it heard or was told about. */
+    private static final float INVESTIGATE_SPEED = 0.9f;
+    private static final float SEARCH_SPEED = 0.8f;
     /** Where an archer stops closing in: comfortably inside bow range. */
     private static final float ARCHER_HOLD_FRACTION = 0.7f;
     /** Where a brawler stops: just inside its reach, so the swing can start. */
@@ -65,9 +71,11 @@ public class Goblin extends LivingEntity {
         super(world, position, EntityType.GOBLIN);
         this.loadout = Objects.requireNonNull(loadout, "loadout");
         this.scale.set(MODEL_SCALE);
+        this.awareness = new AwarenessController(this, PerceptionProfile.GOBLIN);
         this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
                 attackFor(loadout.weapon()),
-                chaseFor(loadout.weapon()),
+                pursueFor(loadout.weapon(), awareness),
+                new SearchBehavior(awareness, SEARCH_SPEED),
                 StandStillBehavior.idle(0.5f, 2.0f, 6.0f),
                 new WanderBehavior(0.5f, 3.0f, 8.0f, 0.8f));
         this.interactionRange = 2.5f;
@@ -81,12 +89,12 @@ public class Goblin extends LivingEntity {
         };
     }
 
-    private static Behavior chaseFor(MobWeapon weapon) {
+    private static Behavior pursueFor(MobWeapon weapon, AwarenessController awareness) {
         float hold = switch (weapon.profile()) {
             case WeaponProfile.Melee melee -> melee.reach() * BRAWLER_HOLD_FRACTION;
             case WeaponProfile.Ranged ranged -> ranged.maxRange() * ARCHER_HOLD_FRACTION;
         };
-        return new ChasePlayerBehavior(NOTICE_RADIUS, GIVE_UP_RADIUS, hold, CHASE_SPEED);
+        return new PursuePlayerBehavior(awareness, hold, INVESTIGATE_SPEED, CHASE_SPEED);
     }
 
     public GoblinLoadout getLoadout() {

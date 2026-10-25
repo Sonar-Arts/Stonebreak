@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -48,7 +49,7 @@ public class Arrow extends Entity {
 
     /**
      * Marks this as a mob's arrow: it flies through its shooter and other mobs (no friendly
-     * fire), and hurts the local player it strikes for {@code damage}.
+     * fire), and hurts the player it strikes for {@code damage}.
      */
     public Arrow firedBy(LivingEntity shooter, float damage) {
         this.shooter = shooter;
@@ -76,7 +77,7 @@ public class Arrow extends Entity {
             return;
         }
 
-        if (shooter != null ? strikeLocalPlayer() : strikeEntity()) {
+        if (shooter != null ? strikePlayer() : strikeEntity()) {
             alive = false;
             return;
         }
@@ -86,8 +87,17 @@ public class Arrow extends Entity {
         velocity.y += 30.0f * deltaTime;
     }
 
-    /** A mob's arrow: hurts the local player if it is inside them. */
-    private boolean strikeLocalPlayer() {
+    /**
+     * A mob's arrow: hurts the player it is inside. On the authoritative world that is any
+     * connected player, told through their own client ({@link PlayerLocator#hurtPlayerAt}) — never
+     * {@code Game.getPlayer()}, which there is only the host, read from the wrong thread. A world
+     * with no roster (single-world tests) keeps the local player.
+     */
+    private boolean strikePlayer() {
+        PlayerLocator players = world.getPlayerLocator();
+        if (players != PlayerLocator.NONE) {
+            return players.hurtPlayerAt(position, HIT_RADIUS, mobArrowDamage);
+        }
         if (!hitsLocalPlayer()) {
             return false;
         }

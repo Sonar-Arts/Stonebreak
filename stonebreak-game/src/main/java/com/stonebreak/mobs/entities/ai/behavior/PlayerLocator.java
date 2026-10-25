@@ -1,7 +1,7 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.Entity;
-import com.stonebreak.player.PlayerConstants;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -51,14 +51,27 @@ public interface PlayerLocator {
     }
 
     /**
-     * How far the nearest player's movement can be heard, in blocks, for stealth awareness.
+     * Hurts whichever player's body is within {@code margin} of {@code point} — a mob's arrow
+     * striking. No knockback: an arrow stings, it does not shove.
      *
-     * <p>The default knows only what the server is told — whether the player sprints. Stealth
-     * state, walking noise and dodge spikes live on the player's own client and are not
-     * replicated, so a walking player is heard at zero range and found by sight alone.
+     * @return whether a player was there to take the hit
      */
-    default float nearestPlayerNoiseRadius(Vector3f from) {
-        return nearestPlayerSprinting(from) ? PlayerConstants.NOISE_RADIUS_RUN : 0.0f;
+    default boolean hurtPlayerAt(Vector3f point, float margin, float amount) {
+        return false;
+    }
+
+    /**
+     * How loud the nearest player's movement is right now, on the {@link Loudness} scale, for
+     * stealth awareness. The default knows only whether the player sprints; the server's roster
+     * also knows stealth, pace and dodges from the replicated movement flags.
+     */
+    default float nearestPlayerLoudness(Vector3f from) {
+        return nearestPlayerSprinting(from) ? Loudness.SPRINT : 0.0f;
+    }
+
+    /** Whether the nearest player is fully stealthed — a smaller shape for mobs to pick out. */
+    default boolean nearestPlayerStealthed(Vector3f from) {
+        return false;
     }
 
     /** Height above a player's feet that ranged attackers aim at and sight on. */
@@ -86,8 +99,28 @@ public interface PlayerLocator {
             }
 
             @Override
-            public float nearestPlayerNoiseRadius(Vector3f from) {
-                return players().nearestPlayerNoiseRadius(from);
+            public float nearestPlayerLoudness(Vector3f from) {
+                return players().nearestPlayerLoudness(from);
+            }
+
+            @Override
+            public boolean nearestPlayerStealthed(Vector3f from) {
+                return players().nearestPlayerStealthed(from);
+            }
+
+            @Override
+            public boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
+                return players().canSeeNearestPlayer(from, eye);
+            }
+
+            @Override
+            public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+                return players().hurtNearestPlayer(from, amount, knockback);
+            }
+
+            @Override
+            public boolean hurtPlayerAt(Vector3f point, float margin, float amount) {
+                return players().hurtPlayerAt(point, margin, amount);
             }
 
             private PlayerLocator players() {

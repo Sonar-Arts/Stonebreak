@@ -52,6 +52,7 @@ public final class RangedAttackBehavior implements Behavior {
     public boolean canStart(AiContext context) {
         float distance = context.distanceToNearestPlayer();
         return context.entity().getAge() >= readyAt
+                && context.alertedToPlayer()
                 && distance >= weapon.minRange() && distance <= weapon.maxRange()
                 && context.canSeeNearestPlayer(eyeOf(context.entity()));
     }

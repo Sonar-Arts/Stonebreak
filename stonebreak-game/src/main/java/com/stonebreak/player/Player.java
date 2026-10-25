@@ -452,9 +452,17 @@ public class Player {
         if (!target.damage(damageDealt, LivingEntity.DamageSource.PLAYER, weapon.damageType(), weaponId)) {
             return; // i-frames or a dead target: nothing pays out, stealth holds
         }
-        c.stealth.onAttack(this); // attacking breaks stealth instantly
+        // Attacking breaks stealth — except a strike on an unaware target, which keeps it if the
+        // blow kills (#321): that is judged on the hit's result, here for a local target and
+        // from the server's KillCreditS2C for a shadow (HitResultFeedback).
+        if (!opener) {
+            c.stealth.onAttack(this);
+        }
         if (target.isNetworkShadow()) {
             return; // the server's result lands the hit's effects
+        }
+        if (target.isAlive()) {
+            c.stealth.onAttack(this);
         }
         float dealt = healthBefore - Math.max(0f, target.getHealth());
         if (dealt > 0f) {
@@ -534,14 +542,8 @@ public class Player {
         return c.dodge.tryDodge(this, computeIntendedMoveDirection(forward, backward, left, right));
     }
 
-    /** Noise radius (blocks) spiked by a recent dodge; 0 when not spiked. Read by the stealth system. */
-    public float getDodgeNoiseRadius() { return c.dodge.getCurrentNoiseRadius(); }
-
     // Stealth (universal)
     public StealthController getStealth() { return c.stealth; }
-
-    /** Current player noise radius (blocks) for enemy sound detection (movement state + dodge spike). */
-    public float getCurrentNoiseRadius() { return c.stealth.getNoiseRadius(this); }
 
     // Block interaction
     public Vector3i raycast() { return c.raycastEngine.raycast(); }

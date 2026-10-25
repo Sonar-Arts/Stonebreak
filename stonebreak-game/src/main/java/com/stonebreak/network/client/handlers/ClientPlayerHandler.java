@@ -24,6 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ClientPlayerHandler {
 
+    /** Upward pop on a mob's shove, blocks per second, so the player is not dragged along the ground. */
+    private static final float KNOCKBACK_LIFT = 4.0f;
+
     private final Map<Integer, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
 
     /**
@@ -126,6 +129,23 @@ public final class ClientPlayerHandler {
         SoundSystem ss = Game.getInstance().getSoundSystem();
         if (ss != null) {
             ss.playSound("blockpickup");
+        }
+    }
+
+    /**
+     * A mob hit the local player (a goblin's swing or arrow, judged on the server): applied through
+     * {@link Player#damage}, so dodge i-frames, Rage and the stealth break hold as for any hit, and
+     * the shove lands unless the dodge negated the blow. Spectators take nothing.
+     */
+    public void handleHurt(com.stonebreak.network.packet.player.PlayerHurtS2C hurt) {
+        Player local = Game.getPlayer();
+        if (local == null || local.isDead() || local.isSpectator()) {
+            return;
+        }
+        boolean negated = local.getDodge().isInvincible();
+        local.damage(hurt.amount());
+        if (!negated && (hurt.knockbackX() != 0f || hurt.knockbackZ() != 0f)) {
+            local.getVelocity().add(hurt.knockbackX(), KNOCKBACK_LIFT, hurt.knockbackZ());
         }
     }
 

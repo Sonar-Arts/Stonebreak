@@ -142,8 +142,21 @@ final class LivingEntityCombat {
             }
         }
         lastAttackerPosition = attackerPos;
+        if (!owner.alive && owner.world != null && !owner.world.isRenderOnly()) {
+            // A death is the loudest thing there is (#321): nearby mobs come to look.
+            com.stonebreak.mobs.entities.ai.perception.NoiseBus.emitIn(owner.world, position,
+                com.stonebreak.mobs.entities.ai.perception.Loudness.DEATH);
+        }
+        if (attackerPos != null && owner.awareness != null && isHostileSource(source)) {
+            owner.awareness.onAttacked(attackerPos); // no-op once dead: a silent kill stays silent
+        }
         owner.onDamage(effectiveAmount, source);
         return true;
+    }
+
+    /** Sources that mean someone attacked this entity, and so give away where they are. */
+    private static boolean isHostileSource(DamageSource source) {
+        return source == DamageSource.PLAYER || source == DamageSource.ARCANE || source == DamageSource.ARROW;
     }
 
     /**

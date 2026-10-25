@@ -275,6 +275,17 @@ public final class ClientEntityHandler {
         }
     }
 
+    /**
+     * Applies a mob's replicated awareness state (#321). A packet that beats its spawn is dropped:
+     * the periodic teleport resync resends it.
+     */
+    public void applyAwareness(com.stonebreak.network.packet.entity.EntityAwarenessS2C awareness) {
+        if (byNetworkId.get(awareness.networkId()) instanceof com.stonebreak.mobs.entities.LivingEntity le
+                && le.getAwareness() != null) {
+            le.getAwareness().applyReplicatedState(awareness.state());
+        }
+    }
+
     /** The live shadow with {@code networkId}, or null (unknown / despawned / not yet spawned). */
     public Entity shadow(int networkId) {
         return networkId >= 0 ? byNetworkId.get(networkId) : null;

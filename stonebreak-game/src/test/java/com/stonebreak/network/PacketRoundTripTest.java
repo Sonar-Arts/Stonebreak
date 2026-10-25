@@ -109,6 +109,13 @@ class PacketRoundTripTest {
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF)));
         assertEquals(new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (byte) 0x3F), roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (byte) 0x3F)));
         assertEquals(new HotbarSelectC2S(5), roundTrip(HotbarSelectC2S.CODEC, new HotbarSelectC2S(5)));
+        var hurt = new com.stonebreak.network.packet.player.PlayerHurtS2C(3.5f, -2f, 6f);
+        assertEquals(hurt, roundTrip(com.stonebreak.network.packet.player.PlayerHurtS2C.CODEC, hurt));
+        for (com.stonebreak.mobs.entities.ai.AwarenessController.AwarenessState state
+                : com.stonebreak.mobs.entities.ai.AwarenessController.AwarenessState.values()) {
+            var awareness = new com.stonebreak.network.packet.entity.EntityAwarenessS2C(42, state);
+            assertEquals(awareness, roundTrip(com.stonebreak.network.packet.entity.EntityAwarenessS2C.CODEC, awareness));
+        }
         assertEquals(new com.stonebreak.network.packet.player.ConsumeHeldC2S(1032, 70_000),
             roundTrip(com.stonebreak.network.packet.player.ConsumeHeldC2S.CODEC,
                 new com.stonebreak.network.packet.player.ConsumeHeldC2S(1032, 70_000)));
