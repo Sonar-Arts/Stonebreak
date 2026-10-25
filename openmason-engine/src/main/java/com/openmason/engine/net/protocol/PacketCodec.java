@@ -16,6 +16,16 @@ public interface PacketCodec<T extends Packet> {
     /** Write {@code packet}'s fields into {@code out}. */
     void encode(ByteBuf out, T packet);
 
+    /**
+     * Write {@code packet} for a peer that decodes the {@code peerCompression} codecs
+     * ({@link com.openmason.engine.net.protocol.codec.WireCompression} bitmask, negotiated in the
+     * handshake; 0 = none). The wire encoder calls this; codecs that never compress keep the
+     * default, which ignores the mask.
+     */
+    default void encode(ByteBuf out, T packet, int peerCompression) {
+        encode(out, packet);
+    }
+
     /** Read a packet of type {@code T} from {@code in}. */
     T decode(ByteBuf in);
 }

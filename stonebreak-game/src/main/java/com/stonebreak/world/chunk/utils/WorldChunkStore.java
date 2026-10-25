@@ -449,8 +449,12 @@ public class WorldChunkStore {
 
         ChunkPosition pos;
         int processed = 0;
+        // One look at each chunk queued now: a chunk whose neighbours are not ready goes to the
+        // back and the drain moves on (issue #346 — it used to stop there, holding up every
+        // chunk behind it), and requeued chunks are not looked at again this drain.
+        int remaining = pendingFeaturePopulation.size();
 
-        while (processed < FEATURE_HARD_CAP && System.nanoTime() < deadline
+        while (remaining-- > 0 && processed < FEATURE_HARD_CAP && System.nanoTime() < deadline
                 && (pos = pendingFeaturePopulation.poll()) != null) {
             Chunk chunk = chunks.get(pos);
 
@@ -499,9 +503,8 @@ public class WorldChunkStore {
                     chunk.setFeaturesPopulated(true);
                 }
             } else {
-                // Re-queue if neighbors not ready yet
+                // Neighbours not ready yet: back of the queue, next chunk.
                 pendingFeaturePopulation.offer(pos);
-                break; // Stop processing to prevent spinning on same chunk
             }
         }
     }

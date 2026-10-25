@@ -229,6 +229,10 @@ public abstract class Entity {
     public void setPosition(float x, float y, float z) { this.position.set(x, y, z); }
     public void setYaw(float yawDeg) { this.rotation.y = yawDeg; }
     public float getYaw() { return rotation.y; }
+    /** Allocation-free position reads for per-tick readers (entity replication). */
+    public float getX() { return position.x; }
+    public float getY() { return position.y; }
+    public float getZ() { return position.z; }
     public void setScale(Vector3f scale) { this.scale.set(scale); }
     public void setHealth(float health) { this.health = Math.min(health, maxHealth); }
     public void setMaxHealth(float maxHealth) { this.maxHealth = maxHealth; }

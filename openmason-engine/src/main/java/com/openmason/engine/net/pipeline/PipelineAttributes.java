@@ -14,6 +14,12 @@ public final class PipelineAttributes {
      */
     public static final AttributeKey<ProtocolPhase> PHASE = AttributeKey.valueOf("openmason.net.phase");
 
+    /**
+     * Compression codecs the peer decodes ({@link com.openmason.engine.net.protocol.codec.WireCompression}
+     * bitmask), set once the handshake reports them; absent = none (issue #346).
+     */
+    public static final AttributeKey<Integer> PEER_COMPRESSION = AttributeKey.valueOf("openmason.net.peerCompression");
+
     /** Last error seen by {@code exceptionCaught}, read by {@code channelInactive}. */
     public static final AttributeKey<Throwable> CAUSE = AttributeKey.valueOf("openmason.net.cause");
 

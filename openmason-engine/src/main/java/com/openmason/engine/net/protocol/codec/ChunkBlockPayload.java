@@ -61,4 +61,36 @@ public final class ChunkBlockPayload {
     public boolean isEncoded() {
         return encoded != null;
     }
+
+    /** Marks a codec whose output was not smaller than the raw bytes. */
+    private static final byte[] NOT_SMALLER = new byte[0];
+    /** Compressed {@link #encoded()} per {@link WireCompression} codec, built at most once each. */
+    private final byte[][] compressed = new byte[3][];
+
+    /**
+     * {@link #encoded()} compressed with {@code codec} (issue #346), or null when it does not
+     * shrink (send it raw). Like the encoding, compressed once and shared by every connection
+     * that negotiated the same codec.
+     */
+    public byte[] compressed(int codec) {
+        if (codec <= WireCompression.NONE || codec >= compressed.length) {
+            return null;
+        }
+        byte[] bytes;
+        synchronized (compressed) {
+            bytes = compressed[codec];
+        }
+        if (bytes == null) {
+            byte[] built = WireCompression.compress(codec, encoded());
+            bytes = built != null ? built : NOT_SMALLER;
+            synchronized (compressed) {
+                if (compressed[codec] == null) {
+                    compressed[codec] = bytes;
+                } else {
+                    bytes = compressed[codec]; // another event loop got there first
+                }
+            }
+        }
+        return bytes == NOT_SMALLER ? null : bytes;
+    }
 }

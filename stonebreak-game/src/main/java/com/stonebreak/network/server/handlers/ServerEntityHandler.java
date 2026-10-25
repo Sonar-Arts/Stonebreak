@@ -26,8 +26,9 @@ import com.stonebreak.network.server.combat.CombatRules;
 import com.openmason.engine.net.protocol.Packet;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -68,29 +69,20 @@ public final class ServerEntityHandler {
     private static final long SHEAR_RATE_LIMIT_NANOS = 500_000_000L;
 
     private final AtomicInteger nextNetworkId = new AtomicInteger(1);
-    private final Map<Integer, Entity> byNetworkId = new ConcurrentHashMap<>();
-    private final Map<Integer, float[]> lastBroadcast = new ConcurrentHashMap<>();
-    private final Map<Integer, Integer> ticksSinceResync = new ConcurrentHashMap<>();
-    /** Last SBE animation-state name broadcast per entity, so we only resend on change. */
-    private final Map<Integer, String> lastAnimState = new ConcurrentHashMap<>();
-
-    /** Last appearance variant broadcast per entity, so we only resend on change. */
-    private final Map<Integer, String> lastVariantState = new ConcurrentHashMap<>();
-    /** Last health/status state broadcast per living entity ({@link #statusKey}), resent on change (#371). */
-    private final Map<Integer, Long> lastStatusState = new ConcurrentHashMap<>();
-    /** playerId → network ids this player has been sent a spawn for (their interest set). */
-    private final Map<Integer, Set<Integer>> interestByPlayer = new ConcurrentHashMap<>();
+    /** Replication state per network id — one lookup per entity per tick (issue #346). */
+    private final Map<Integer, Tracked> byNetworkId = new ConcurrentHashMap<>();
+    /** playerId → where that player's interest was last judged from. */
+    private final Map<Integer, PlayerView> views = new ConcurrentHashMap<>();
+    /**
+     * Entities whose broadcast base entered another chunk since the last interest pass — the
+     * only ones a player who stayed in their chunk needs judged again (tick thread only).
+     */
+    private final List<Tracked> crossedChunk = new ArrayList<>();
 
     /** Reset, then snapshot existing entities so they're tracked + replicable. */
     public void onSessionStart(ServerWorldContext ctx) {
         nextNetworkId.set(1);
-        byNetworkId.clear();
-        lastBroadcast.clear();
-        ticksSinceResync.clear();
-        lastAnimState.clear();
-        lastVariantState.clear();
-        lastStatusState.clear();
-        interestByPlayer.clear();
+        clearTracking();
         EntityManager em = ctx.entityManager();
         if (em != null) {
             for (Entity e : em.getAllEntities()) {
@@ -102,13 +94,16 @@ public final class ServerEntityHandler {
     }
 
     public void onSessionEnd() {
+        clearTracking();
+    }
+
+    private void clearTracking() {
+        for (Tracked t : byNetworkId.values()) {
+            t.removed = true;
+        }
         byNetworkId.clear();
-        lastBroadcast.clear();
-        ticksSinceResync.clear();
-        lastAnimState.clear();
-        lastVariantState.clear();
-        lastStatusState.clear();
-        interestByPlayer.clear();
+        views.clear();
+        crossedChunk.clear();
     }
 
     /** EntityManager listener hook: a new entity was added to the authoritative world. */
@@ -116,19 +111,18 @@ public final class ServerEntityHandler {
         if (!isReplicable(e)) {
             return;
         }
-        registerHostEntity(e);
+        Tracked t = registerHostEntity(e);
         int sentTo = 0;
         for (ServerPlayer sp : ctx.players()) {
-            if (offerToPlayer(sp, e, ctx)) {
+            if (offerToPlayer(sp, t, ctx)) {
                 sentTo++;
             }
         }
         // Drops are rare enough to trace individually — this line is the server half of the
         // drop-replication diagnosis (pairs with the client's "Drop shadow" line).
         if (e.getType() == EntityType.BLOCK_DROP || e.getType() == EntityType.ITEM_DROP) {
-            Vector3f dp = e.getPosition();
             System.out.printf("[SERVER-ENTITY] %s spawn netId=%d at (%.1f, %.1f, %.1f) sent to %d interested player(s)%n",
-                e.getType(), e.getNetworkId(), dp.x, dp.y, dp.z, sentTo);
+                e.getType(), e.getNetworkId(), e.getX(), e.getY(), e.getZ(), sentTo);
         }
     }
 
@@ -138,14 +132,9 @@ public final class ServerEntityHandler {
         if (id < 0) {
             return;
         }
-        byNetworkId.remove(id);
-        lastBroadcast.remove(id);
-        ticksSinceResync.remove(id);
-        lastAnimState.remove(id);
-        lastVariantState.remove(id);
-        lastStatusState.remove(id);
-        for (Set<Integer> known : interestByPlayer.values()) {
-            known.remove(id);
+        Tracked t = byNetworkId.remove(id);
+        if (t != null) {
+            t.removed = true; // a pending crossed-chunk entry must not spawn it again
         }
         // Broadcast (not interest-scoped): a stray despawn for an unknown id is a no-op on
         // the client, and this guarantees no ghost can survive an interest bookkeeping slip.
@@ -157,8 +146,12 @@ public final class ServerEntityHandler {
      * send what's already in range.
      */
     public void onPeerJoined(ServerPlayer sp, ServerWorldContext ctx) {
-        interestByPlayer.put(sp.playerId(), ConcurrentHashMap.newKeySet());
-        updatePlayerInterest(sp, ctx);
+        int playerId = sp.playerId();
+        for (Tracked t : byNetworkId.values()) {
+            t.removeViewer(playerId);
+        }
+        views.put(playerId, new PlayerView());
+        updatePlayerInterest(sp, ctx, true);
     }
 
     /**
@@ -170,64 +163,66 @@ public final class ServerEntityHandler {
      * yet outside the enter radius, so never re-spawned — a frozen ghost on the client.
      */
     public void onPeerResync(ServerPlayer sp, ServerWorldContext ctx) {
-        Set<Integer> known = knownSetFor(sp);
-        for (Integer id : known) {
-            Entity e = byNetworkId.get(id);
-            if (e != null) {
-                sendSpawnTo(sp, e);
-            } else {
-                // Bookkeeping slip (entity gone but still in the set) — despawn + forget.
-                known.remove(id);
-                sp.send(new EntityDespawnS2C(id), false);
+        int playerId = sp.playerId();
+        for (Tracked t : byNetworkId.values()) {
+            if (t.hasViewer(playerId)) {
+                t.addViewer(sp); // the viewer entry now points at this session
+                sendSpawnTo(sp, t);
             }
         }
-        updatePlayerInterest(sp, ctx);
+        updatePlayerInterest(sp, ctx, true);
     }
 
     /** The authoritative entity with {@code networkId}, or null. */
     public Entity entity(int networkId) {
-        return byNetworkId.get(networkId);
+        Tracked t = byNetworkId.get(networkId);
+        return t != null ? t.entity : null;
     }
 
     /** Drop a disconnected player's interest bookkeeping. */
     public void onPeerLeft(ServerPlayer sp) {
-        interestByPlayer.remove(sp.playerId());
+        int playerId = sp.playerId();
+        for (Tracked t : byNetworkId.values()) {
+            t.removeViewer(playerId);
+        }
+        views.remove(playerId);
     }
 
     public void tick(ServerWorldContext ctx) {
         // Interest pass first: entities entering a player's view get their spawn before any
         // move packet this tick could reference them.
         for (ServerPlayer sp : ctx.players()) {
-            updatePlayerInterest(sp, ctx);
+            updatePlayerInterest(sp, ctx, false);
         }
-        for (Entity e : byNetworkId.values()) {
-            if (!e.isAlive()) {
+        crossedChunk.clear();
+        for (Tracked t : byNetworkId.values()) {
+            Entity e = t.entity;
+            if (!e.isAlive() || t.removed) {
                 continue;
             }
             // Replicate animation/behavior state on change (independent of movement — a mob can
             // change state while stationary, e.g. Idle -> Grazing).
-            broadcastAnimIfChanged(e, ctx);
+            broadcastAnimIfChanged(t, ctx);
             // Replicate appearance variant on change (shear swap, wool regrowth via grazing).
-            broadcastVariantIfChanged(e, ctx);
+            broadcastVariantIfChanged(t, ctx);
             // Replicate health fraction + status effects on change (#371).
-            broadcastStatusIfChanged(e, ctx);
+            broadcastStatusIfChanged(t, ctx);
 
-            int id = e.getNetworkId();
-            float[] last = lastBroadcast.get(id);
-            if (last == null) {
-                continue;
-            }
-            Vector3f p = e.getPosition();
-            float yaw = e.getRotation().y;
+            int id = t.id;
+            float[] last = t.last;
+            float x = e.getX();
+            float y = e.getY();
+            float z = e.getZ();
+            float yaw = e.getYaw();
 
-            float dx = p.x - last[0];
-            float dy = p.y - last[1];
-            float dz = p.z - last[2];
+            float dx = x - last[0];
+            float dy = y - last[1];
+            float dz = z - last[2];
             // Angular difference: the codec wraps yaw to (-360, 360), so the sent base can
             // differ from an unwrapped live yaw by whole turns.
             float dyaw = Math.abs(((yaw - last[3]) % 360f + 540f) % 360f - 180f);
 
-            int sinceResync = ticksSinceResync.getOrDefault(id, 0) + 1;
+            int sinceResync = t.ticksSinceResync + 1;
             boolean posMoved = Math.abs(dx) >= MIN_BROADCAST_DELTA
                 || Math.abs(dy) >= MIN_BROADCAST_DELTA
                 || Math.abs(dz) >= MIN_BROADCAST_DELTA;
@@ -235,7 +230,7 @@ public final class ServerEntityHandler {
             boolean forceResync = sinceResync >= RESYNC_PERIOD_TICKS;
 
             if (!posMoved && !rotMoved && !forceResync) {
-                ticksSinceResync.put(id, sinceResync);
+                t.ticksSinceResync = sinceResync;
                 continue;
             }
 
@@ -244,7 +239,7 @@ public final class ServerEntityHandler {
                 short edy = EntityDeltaCodec.encodePosDelta(dy);
                 short edz = EntityDeltaCodec.encodePosDelta(dz);
                 short eyaw = EntityDeltaCodec.encodeYawDeg(yaw);
-                boolean allSent = sendToInterested(ctx, id, new EntityMoveS2C(id, edx, edy, edz, eyaw), true);
+                boolean allSent = sendToInterested(t, new EntityMoveS2C(id, edx, edy, edz, eyaw), true);
                 // Track exactly what we sent (decoded back) so deltas don't accumulate drift.
                 last[0] += EntityDeltaCodec.decodePosDelta(edx);
                 last[1] += EntityDeltaCodec.decodePosDelta(edy);
@@ -257,18 +252,21 @@ public final class ServerEntityHandler {
                 if (!allSent) {
                     sinceResync = Math.max(sinceResync, RESYNC_PERIOD_TICKS - DROPPED_MOVE_RESYNC_TICKS);
                 }
-                ticksSinceResync.put(id, sinceResync);
+                t.ticksSinceResync = sinceResync;
             } else {
-                sendToInterested(ctx, id, new EntityTeleportS2C(id, p.x, p.y, p.z, yaw), false);
-                last[0] = p.x; last[1] = p.y; last[2] = p.z; last[3] = yaw;
-                ticksSinceResync.put(id, 0);
+                sendToInterested(t, new EntityTeleportS2C(id, x, y, z, yaw), false);
+                last[0] = x; last[1] = y; last[2] = z; last[3] = yaw;
+                t.ticksSinceResync = 0;
                 // The periodic resync also refreshes animation state, self-healing any spawn-race
                 // miss (e.g. an anim packet that arrived before the client world was ready).
                 EntityAnimS2C anim = animPacketFor(e);
                 if (anim != null) {
-                    lastAnimState.put(id, anim.state());
-                    sendToInterested(ctx, id, anim, false);
+                    t.lastAnim = anim.state();
+                    sendToInterested(t, anim, false);
                 }
+            }
+            if (t.rebase()) {
+                crossedChunk.add(t);
             }
         }
     }
@@ -288,7 +286,7 @@ public final class ServerEntityHandler {
      * removal → {@link EntityDespawnS2C} + replicated drops).
      */
     public void handleEntityDamage(ServerPlayer sp, EntityDamageC2S pkt, ServerWorldContext ctx) {
-        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        Entity e = entity(pkt.targetNetworkId());
         if (!(e instanceof LivingEntity le) || !le.isAlive()) {
             return; // unknown id (despawn raced the hit) or already dead — drop silently
         }
@@ -357,7 +355,7 @@ public final class ServerEntityHandler {
      */
     public void handleEntityStatusEffect(ServerPlayer sp,
                                          com.stonebreak.network.packet.entity.EntityStatusEffectC2S pkt) {
-        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        Entity e = entity(pkt.targetNetworkId());
         if (!(e instanceof LivingEntity le) || !le.isAlive() || !sp.isLiveInWorld()
                 || le instanceof RemotePlayer) { // no PvP effects either (#374)
             return;
@@ -394,7 +392,7 @@ public final class ServerEntityHandler {
      * the forces clamped to the strongest ability's.
      */
     public void handleEntityKnockback(ServerPlayer sp, com.stonebreak.network.packet.entity.EntityKnockbackC2S pkt) {
-        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        Entity e = entity(pkt.targetNetworkId());
         if (!(e instanceof LivingEntity le) || !le.isAlive()) {
             return;
         }
@@ -434,7 +432,7 @@ public final class ServerEntityHandler {
      */
     public void handleEntityShear(ServerPlayer sp, com.stonebreak.network.packet.entity.EntityShearC2S pkt,
                                   ServerWorldContext ctx) {
-        Entity e = byNetworkId.get(pkt.targetNetworkId());
+        Entity e = entity(pkt.targetNetworkId());
         if (!(e instanceof Sheep sheep) || !sheep.isAlive()) {
             return; // unknown id (despawn raced the click) — the despawn shadow removal corrects the client
         }
@@ -650,56 +648,64 @@ public final class ServerEntityHandler {
     // ─── Per-player interest ────────────────────────────────────────────────────
 
     /**
-     * Diff one player's interest set against every tracked entity: offer spawns for
-     * entities entering the view radius, despawn those beyond the exit radius.
+     * Diff one player's interest against the tracked entities: offer spawns for entities
+     * entering the view radius, despawn those beyond the exit radius. Interest only changes
+     * when a chunk distance does (issue #346): a player who moved to another chunk, changed
+     * view distance or is new ({@code full}) is judged against every entity; anyone else
+     * only against the entities that crossed into another chunk since the last pass.
      */
-    private void updatePlayerInterest(ServerPlayer sp, ServerWorldContext ctx) {
+    private void updatePlayerInterest(ServerPlayer sp, ServerWorldContext ctx, boolean full) {
         if (!sp.handshakeDone()) {
             return;
         }
-        float px = anchorX(sp, ctx);
-        float pz = anchorZ(sp, ctx);
-        Set<Integer> known = knownSetFor(sp);
+        int pcx = chunkOf(anchorX(sp, ctx));
+        int pcz = chunkOf(anchorZ(sp, ctx));
         int enterRadius = sp.viewDistanceChunks();
-        int exitRadius = enterRadius + INTEREST_EXIT_MARGIN_CHUNKS;
-        for (Entity e : byNetworkId.values()) {
-            int id = e.getNetworkId();
-            float[] base = lastBroadcast.get(id);
-            float ex = base != null ? base[0] : e.getPosition().x;
-            float ez = base != null ? base[2] : e.getPosition().z;
-            if (known.contains(id)) {
-                if (!withinChunkRadius(ex, ez, px, pz, exitRadius)) {
-                    known.remove(id);
-                    sp.send(new EntityDespawnS2C(id), false);
-                }
-            } else if (withinChunkRadius(ex, ez, px, pz, enterRadius)) {
-                known.add(id);
-                sendSpawnTo(sp, e);
+        PlayerView view = views.computeIfAbsent(sp.playerId(), ignored -> new PlayerView());
+        if (full || view.changedTo(pcx, pcz, enterRadius)) {
+            view.set(pcx, pcz, enterRadius);
+            for (Tracked t : byNetworkId.values()) {
+                judgeInterest(sp, t, pcx, pcz, enterRadius);
+            }
+        } else {
+            for (int i = 0, n = crossedChunk.size(); i < n; i++) {
+                judgeInterest(sp, crossedChunk.get(i), pcx, pcz, enterRadius);
             }
         }
     }
 
+    private void judgeInterest(ServerPlayer sp, Tracked t, int pcx, int pcz, int enterRadius) {
+        if (t.removed) {
+            return;
+        }
+        int distance = Math.max(Math.abs(t.chunkX - pcx), Math.abs(t.chunkZ - pcz));
+        if (t.hasViewer(sp.playerId())) {
+            if (distance > enterRadius + INTEREST_EXIT_MARGIN_CHUNKS) {
+                t.removeViewer(sp.playerId());
+                sp.send(new EntityDespawnS2C(t.id), false);
+            }
+        } else if (distance <= enterRadius) {
+            t.addViewer(sp);
+            sendSpawnTo(sp, t);
+        }
+    }
+
     /** Offer one entity to one player (spawn hook path); true if a spawn was sent. */
-    private boolean offerToPlayer(ServerPlayer sp, Entity e, ServerWorldContext ctx) {
-        if (!sp.handshakeDone()) {
+    private boolean offerToPlayer(ServerPlayer sp, Tracked t, ServerWorldContext ctx) {
+        if (!sp.handshakeDone() || t.hasViewer(sp.playerId())) {
             return false;
         }
-        Set<Integer> known = knownSetFor(sp);
-        int id = e.getNetworkId();
-        if (known.contains(id)) {
+        if (!withinChunkRadius(t.last[0], t.last[2], anchorX(sp, ctx), anchorZ(sp, ctx), sp.viewDistanceChunks())) {
             return false;
         }
-        Vector3f p = e.getPosition();
-        if (!withinChunkRadius(p.x, p.z, anchorX(sp, ctx), anchorZ(sp, ctx), sp.viewDistanceChunks())) {
-            return false;
-        }
-        known.add(id);
-        sendSpawnTo(sp, e);
+        t.addViewer(sp);
+        sendSpawnTo(sp, t);
         return true;
     }
 
-    private void sendSpawnTo(ServerPlayer sp, Entity e) {
-        sp.send(spawnPacketFor(e), false);
+    private void sendSpawnTo(ServerPlayer sp, Tracked t) {
+        Entity e = t.entity;
+        sp.send(spawnPacketFor(t), false);
         // Current animation state so the shadow starts in the right clip, not the default.
         EntityAnimS2C anim = animPacketFor(e);
         if (anim != null) {
@@ -715,20 +721,13 @@ public final class ServerEntityHandler {
         }
     }
 
-    /** Sends to every player who knows {@code networkId}; false if any send was dropped. */
-    private boolean sendToInterested(ServerWorldContext ctx, int networkId, Packet packet, boolean droppable) {
+    /** Sends to every player who knows {@code t}; false if any send was dropped. */
+    private static boolean sendToInterested(Tracked t, Packet packet, boolean droppable) {
         boolean allSent = true;
-        for (ServerPlayer sp : ctx.players()) {
-            Set<Integer> known = interestByPlayer.get(sp.playerId());
-            if (known != null && known.contains(networkId)) {
-                allSent &= sp.send(packet, droppable);
-            }
+        for (ServerPlayer sp : t.viewers) {
+            allSent &= sp.send(packet, droppable);
         }
         return allSent;
-    }
-
-    private Set<Integer> knownSetFor(ServerPlayer sp) {
-        return interestByPlayer.computeIfAbsent(sp.playerId(), ignored -> ConcurrentHashMap.newKeySet());
     }
 
     /** Interest anchor: the player's last reported position, or the world spawn until the
@@ -741,36 +740,36 @@ public final class ServerEntityHandler {
         return sp.lastStateNs() != 0L ? sp.z() : ctx.spawn().z;
     }
 
+    private static int chunkOf(float coord) {
+        return Math.floorDiv((int) Math.floor(coord), com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
+    }
+
     /** Chebyshev chunk-radius test — the same view shape chunk streaming uses. */
     static boolean withinChunkRadius(float ex, float ez, float px, float pz, int radiusChunks) {
-        int cs = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
-        int ecx = Math.floorDiv((int) Math.floor(ex), cs);
-        int ecz = Math.floorDiv((int) Math.floor(ez), cs);
-        int pcx = Math.floorDiv((int) Math.floor(px), cs);
-        int pcz = Math.floorDiv((int) Math.floor(pz), cs);
-        return Math.max(Math.abs(ecx - pcx), Math.abs(ecz - pcz)) <= radiusChunks;
+        return Math.max(Math.abs(chunkOf(ex) - chunkOf(px)), Math.abs(chunkOf(ez) - chunkOf(pz))) <= radiusChunks;
     }
 
     // ─── Helpers ───────────────────────────────────────────────────────────────
 
-    private void registerHostEntity(Entity e) {
+    private Tracked registerHostEntity(Entity e) {
         if (e.getNetworkId() < 0) {
             e.setNetworkId(nextNetworkId.getAndIncrement());
         }
-        byNetworkId.put(e.getNetworkId(), e);
-        Vector3f p = e.getPosition();
-        lastBroadcast.put(e.getNetworkId(), new float[]{p.x, p.y, p.z, e.getRotation().y});
-        ticksSinceResync.put(e.getNetworkId(), 0);
+        Tracked t = new Tracked(e);
         if (e instanceof LivingEntity le) {
             // Seed the variant tracker with what the EntitySpawnS2C metadata already
             // carried — otherwise the first tick broadcasts one redundant variant
             // packet per living entity.
-            lastVariantState.put(e.getNetworkId(), le.getTextureVariant());
+            t.lastVariant = le.getTextureVariant();
             // Likewise the status tracker: the spawn path sends any non-default state itself.
-            lastStatusState.put(e.getNetworkId(), statusKey(statusPacketFor(le)));
+            t.lastStatus = statusKey(statusPacketFor(le));
         }
+        Tracked previous = byNetworkId.put(t.id, t);
+        if (previous != null) {
+            previous.removed = true;
+        }
+        return t;
     }
-
     private static boolean isReplicable(Entity e) {
         // The instanceof guard keeps player-shaped display entities off the entity channel;
         // the server-spawned illusion decoy (#341) is the one RemotePlayer subclass that rides it.
@@ -779,15 +778,14 @@ public final class ServerEntityHandler {
     }
 
     /** Send an {@link EntityAnimS2C} to interested players when an entity's SBE state changed. */
-    private void broadcastAnimIfChanged(Entity e, ServerWorldContext ctx) {
-        String state = EntityAnimResolver.sbeState(e);
+    private void broadcastAnimIfChanged(Tracked t, ServerWorldContext ctx) {
+        String state = EntityAnimResolver.sbeState(t.entity);
         if (state == null) {
             return; // not an AI-animated mob (drops/projectiles)
         }
-        int id = e.getNetworkId();
-        if (!state.equals(lastAnimState.get(id))) {
-            lastAnimState.put(id, state);
-            sendToInterested(ctx, id, new EntityAnimS2C(id, state), false);
+        if (!state.equals(t.lastAnim)) {
+            t.lastAnim = state;
+            sendToInterested(t, new EntityAnimS2C(t.id, state), false);
         }
     }
 
@@ -798,15 +796,14 @@ public final class ServerEntityHandler {
      * the AI-driven regrowth both mutate the real sheep's variant, and this
      * broadcasts it to interested players on the next tick.
      */
-    private void broadcastVariantIfChanged(Entity e, ServerWorldContext ctx) {
-        if (!(e instanceof LivingEntity le)) {
+    private void broadcastVariantIfChanged(Tracked t, ServerWorldContext ctx) {
+        if (!(t.entity instanceof LivingEntity le)) {
             return; // drops/projectiles carry no variant
         }
         String variant = le.getTextureVariant();
-        int id = e.getNetworkId();
-        if (!variant.equals(lastVariantState.get(id))) {
-            lastVariantState.put(id, variant);
-            sendToInterested(ctx, id, new EntityVariantS2C(id, variant), false);
+        if (!variant.equals(t.lastVariant)) {
+            t.lastVariant = variant;
+            sendToInterested(t, new EntityVariantS2C(t.id, variant), false);
         }
     }
 
@@ -817,17 +814,17 @@ public final class ServerEntityHandler {
      * simulates either. Change is judged on the quantized wire value, so sub-step regeneration
      * does not resend.
      */
-    private void broadcastStatusIfChanged(Entity e, ServerWorldContext ctx) {
-        if (!(e instanceof LivingEntity le)) {
+    private void broadcastStatusIfChanged(Tracked t, ServerWorldContext ctx) {
+        if (!(t.entity instanceof LivingEntity le)) {
             return;
         }
-        EntityStatusS2C status = statusPacketFor(le);
-        long key = statusKey(status);
-        int id = e.getNetworkId();
-        Long last = lastStatusState.get(id);
-        if (last == null || last != key) {
-            lastStatusState.put(id, key);
-            sendToInterested(ctx, id, status, false);
+        float max = le.getMaxHealth();
+        float fraction = max > 0f ? Math.max(0f, le.getHealth()) / max : 0f;
+        int bits = le.getStatusEffectBits();
+        long key = statusKey(fraction, bits);
+        if (t.lastStatus != key) {
+            t.lastStatus = key;
+            sendToInterested(t, new EntityStatusS2C(t.id, fraction, bits), false);
         }
     }
 
@@ -839,7 +836,11 @@ public final class ServerEntityHandler {
 
     /** Change key of a status packet: what actually goes on the wire. */
     private static long statusKey(EntityStatusS2C s) {
-        return ((long) EntityStatusS2C.quantize(s.healthFraction()) << 32) | (s.statusBits() & 0xFFFFL);
+        return statusKey(s.healthFraction(), s.statusBits());
+    }
+
+    private static long statusKey(float healthFraction, int statusBits) {
+        return ((long) EntityStatusS2C.quantize(healthFraction) << 32) | (statusBits & 0xFFFFL);
     }
 
     /** The current animation-state packet for an entity, or null if it has no AI-driven state. */
@@ -848,21 +849,118 @@ public final class ServerEntityHandler {
         return state != null ? new EntityAnimS2C(e.getNetworkId(), state) : null;
     }
 
-    private EntitySpawnS2C spawnPacketFor(Entity e) {
+    private static EntitySpawnS2C spawnPacketFor(Tracked t) {
         // Seed the client at the entity's last-broadcast base (not its live position): the
         // move deltas this handler emits are computed against that base, so a late-interest
         // spawn keeps the receiver's delta chain consistent with everyone else's.
-        float[] last = lastBroadcast.get(e.getNetworkId());
-        float x, y, z, yaw;
-        if (last != null) {
-            x = last[0]; y = last[1]; z = last[2]; yaw = last[3];
-        } else {
-            Vector3f p = e.getPosition();
-            x = p.x; y = p.y; z = p.z; yaw = e.getRotation().y;
-        }
+        float[] last = t.last;
         return new EntitySpawnS2C(
-            e.getNetworkId(), e.getType().ordinal(),
-            x, y, z, yaw,
-            com.stonebreak.network.EntityReplicationRegistry.metadataFor(e));
+            t.id, t.entity.getType().ordinal(),
+            last[0], last[1], last[2], last[3],
+            com.stonebreak.network.EntityReplicationRegistry.metadataFor(t.entity));
+    }
+
+    // ─── Tracking state ────────────────────────────────────────────────────────
+
+    /** Replication state of one tracked entity, so a tick reads it with one map lookup. */
+    private static final class Tracked {
+        private static final ServerPlayer[] NO_VIEWERS = new ServerPlayer[0];
+
+        final Entity entity;
+        final int id;
+        /** Last broadcast base: x, y, z, yaw — what every viewer's shadow was told. */
+        final float[] last;
+        int ticksSinceResync;
+        /** Last SBE animation state / appearance variant / status key broadcast, resent on change. */
+        String lastAnim;
+        String lastVariant;
+        long lastStatus = Long.MIN_VALUE;
+        /** Chunk of the broadcast base: interest is judged on it. */
+        int chunkX;
+        int chunkZ;
+        /** Set once untracked: a stale reference (crossed-chunk list) must not spawn it. */
+        volatile boolean removed;
+        /**
+         * Players sent this entity's spawn — at most one entry per player id. Copy-on-write:
+         * replication reads it every tick, it changes only on interest enter/exit.
+         */
+        volatile ServerPlayer[] viewers = NO_VIEWERS;
+
+        Tracked(Entity e) {
+            this.entity = e;
+            this.id = e.getNetworkId();
+            this.last = new float[]{e.getX(), e.getY(), e.getZ(), e.getYaw()};
+            this.chunkX = chunkOf(last[0]);
+            this.chunkZ = chunkOf(last[2]);
+        }
+
+        /** Recomputes the base's chunk; true if it changed. */
+        boolean rebase() {
+            int cx = chunkOf(last[0]);
+            int cz = chunkOf(last[2]);
+            if (cx == chunkX && cz == chunkZ) {
+                return false;
+            }
+            chunkX = cx;
+            chunkZ = cz;
+            return true;
+        }
+
+        boolean hasViewer(int playerId) {
+            for (ServerPlayer v : viewers) {
+                if (v.playerId() == playerId) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /** Adds {@code sp}, replacing an earlier session with its player id. */
+        synchronized void addViewer(ServerPlayer sp) {
+            ServerPlayer[] current = viewers;
+            for (int i = 0; i < current.length; i++) {
+                if (current[i].playerId() == sp.playerId()) {
+                    ServerPlayer[] next = current.clone();
+                    next[i] = sp;
+                    viewers = next;
+                    return;
+                }
+            }
+            ServerPlayer[] next = java.util.Arrays.copyOf(current, current.length + 1);
+            next[current.length] = sp;
+            viewers = next;
+        }
+
+        synchronized void removeViewer(int playerId) {
+            ServerPlayer[] current = viewers;
+            for (int i = 0; i < current.length; i++) {
+                if (current[i].playerId() == playerId) {
+                    ServerPlayer[] next = new ServerPlayer[current.length - 1];
+                    System.arraycopy(current, 0, next, 0, i);
+                    System.arraycopy(current, i + 1, next, i, current.length - i - 1);
+                    viewers = next.length == 0 ? NO_VIEWERS : next;
+                    return;
+                }
+            }
+        }
+    }
+
+    /** The chunk and view distance a player's interest was last fully judged from. */
+    private static final class PlayerView {
+        private boolean judged;
+        private int chunkX;
+        private int chunkZ;
+        private int viewDistance;
+
+        boolean changedTo(int cx, int cz, int view) {
+            return !judged || cx != chunkX || cz != chunkZ || view != viewDistance;
+        }
+
+        void set(int cx, int cz, int view) {
+            judged = true;
+            chunkX = cx;
+            chunkZ = cz;
+            viewDistance = view;
+        }
     }
 }

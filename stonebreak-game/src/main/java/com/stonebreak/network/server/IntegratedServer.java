@@ -269,6 +269,18 @@ public final class IntegratedServer {
 
     public void tick() {
         tickThread = Thread.currentThread();
+        // Every packet this tick sends is written now and flushed once per connection at the
+        // end (issue #346), not flushed one segment at a time.
+        com.openmason.engine.net.server.OutboundBatch batch = networkServer.outboundBatch();
+        batch.begin();
+        try {
+            tickBatched(batch);
+        } finally {
+            batch.end();
+        }
+    }
+
+    private void tickBatched(com.openmason.engine.net.server.OutboundBatch batch) {
         drainTickTasks();
         if (pausedByHost) {
             // Like Minecraft's integrated server: a paused singleplayer world does not tick, and
@@ -324,6 +336,7 @@ public final class IntegratedServer {
         while (tickAccumulatorNs >= TICK_PERIOD_NS) {
             tickAccumulatorNs -= TICK_PERIOD_NS;
             replicationTick();
+            batch.flush(); // each tick of a catch-up burst goes out as it finishes
             if (tickAccumulatorNs >= TICK_PERIOD_NS) {
                 // Catching up: packets that arrived during the last tick apply before the next
                 // one (as Minecraft runs its queued tasks between ticks), so input isn't held
@@ -645,6 +658,11 @@ public final class IntegratedServer {
         }
         sp.setUsername(hs.username());
         sp.setPresentedSecret(hs.clientSecret());
+        // Chunks compress with a codec this client can decode (issue #346); Local channels
+        // pass packet objects and never encode.
+        if (sp.connection() != null) {
+            sp.connection().setPeerCompression(hs.compressionCodecs());
+        }
 
         // Stable identity: the id is derived from the username, so the same player keeps
         // the same id across reconnects and server restarts (saves, kill credit, and

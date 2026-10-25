@@ -43,7 +43,7 @@ items	stonebreak-game	com/stonebreak/items/**/*Test
 weather	stonebreak-game	com/stonebreak/world/weather/**/*Test,com/stonebreak/world/MoonCycleTest
 input	stonebreak-game	com/stonebreak/input/**/*Test
 crafting	stonebreak-game	com/stonebreak/crafting/**/*Test
-mobs	stonebreak-game	com/stonebreak/mobs/**/*Test,com/stonebreak/rendering/models/**/*Test
+mobs	stonebreak-game	com/stonebreak/mobs/**/*Test,com/stonebreak/rendering/models/**/*Test,com/stonebreak/vehicles/**/*Test
 player	stonebreak-game	com/stonebreak/player/**/*Test,com/stonebreak/rpg/**/*Test,com/stonebreak/rendering/player/**/*Test,com/stonebreak/battletest/**/*Test
 battle	stonebreak-game	com/stonebreak/battle/**/*Test
 ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Test
