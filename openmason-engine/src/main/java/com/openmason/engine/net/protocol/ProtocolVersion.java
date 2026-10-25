@@ -50,8 +50,11 @@ public final class ProtocolVersion {
      *  EntityDamageC2S carries a damage type and mob invulnerability is keyed per melee weapon;
      *  KillCreditS2C carries the damage-number anchor.
      *  19 = vehicles: VehicleActionC2S (place/board/dismount/hit) and VehicleMoveC2S (the rower's
-     *  boat position and oar input); the DINGHY entity type replicates. */
-    public static final int CURRENT = 19;
+     *  boat position and oar input); the DINGHY entity type replicates.
+     *  20 = server cost pass (issue #346): HandshakeC2S lists the compression codecs the client
+     *  decodes, ChunkDataS2C blobs carry a codec byte (raw / zstd / deflate), and EntityAnimS2C
+     *  sends known animation states as a one-byte code. */
+    public static final int CURRENT = 20;
 
     private ProtocolVersion() {}
 }

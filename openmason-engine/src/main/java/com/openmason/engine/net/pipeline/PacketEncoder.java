@@ -33,7 +33,8 @@ public final class PacketEncoder extends MessageToByteEncoder<Packet> {
         @SuppressWarnings("unchecked")
         PacketCodec<Packet> codec =
             (PacketCodec<Packet>) registry.codecForClass(phase, outboundDirection, msg.getClass());
-        codec.encode(out, msg);
+        Integer peerCompression = ctx.channel().attr(PipelineAttributes.PEER_COMPRESSION).get();
+        codec.encode(out, msg, peerCompression == null ? 0 : peerCompression);
     }
 
     private static ProtocolPhase phaseOf(ChannelHandlerContext ctx) {

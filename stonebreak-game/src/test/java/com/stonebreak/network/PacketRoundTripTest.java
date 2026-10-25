@@ -55,6 +55,7 @@ import static com.openmason.engine.net.protocol.ProtocolPhase.PLAY;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * §5d — every packet's codec round-trips, and the {@link StonebreakProtocol} registry maps
@@ -92,6 +93,9 @@ class PacketRoundTripTest {
                 com.openmason.engine.net.protocol.ByteBufIO.MAX_USERNAME_CHARS);
         assertEquals(new HandshakeC2S(15, "Bob", ""), HandshakeC2S.CODEC.decode(legacy));
         legacy.release();
+        // Compression codecs the client decodes (issue #346); a pre-v20 handshake lists none.
+        assertEquals(new HandshakeC2S(20, "Bob", "s", 0b110), roundTrip(HandshakeC2S.CODEC, new HandshakeC2S(20, "Bob", "s", 0b110)));
+        assertEquals(0, new HandshakeC2S(20, "Bob", "s").compressionCodecs());
         assertEquals(new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret"),
                 roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret")));
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));
@@ -132,6 +136,8 @@ class PacketRoundTripTest {
         assertEquals(new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900), roundTrip(EntityMoveS2C.CODEC, new EntityMoveS2C(9, (short) 1, (short) 2, (short) 3, (short) 900)));
         assertEquals(new EntityTeleportS2C(9, 1f, 2f, 3f, 90f), roundTrip(EntityTeleportS2C.CODEC, new EntityTeleportS2C(9, 1f, 2f, 3f, 90f)));
         assertEquals(new EntityAnimS2C(9, "Grazing"), roundTrip(EntityAnimS2C.CODEC, new EntityAnimS2C(9, "Grazing")));
+        // Free-form visual states (a dinghy's seats and oars) still travel as strings.
+        assertEquals(new EntityAnimS2C(9, "3,-2;p7;-"), roundTrip(EntityAnimS2C.CODEC, new EntityAnimS2C(9, "3,-2;p7;-")));
         assertEquals(new KeepAliveC2S(0x1122334455667788L), roundTrip(KeepAliveC2S.CODEC, new KeepAliveC2S(0x1122334455667788L)));
         assertEquals(new KeepAliveS2C(Long.MIN_VALUE, 250), roundTrip(KeepAliveS2C.CODEC, new KeepAliveS2C(Long.MIN_VALUE, 250)));
         assertEquals(new TimeSyncS2C(23_999L, 1.0f, false), roundTrip(TimeSyncS2C.CODEC, new TimeSyncS2C(23_999L, 1.0f, false)));
@@ -337,6 +343,47 @@ class PacketRoundTripTest {
         byte[] meta = {9, 8, 7};
         ChunkDataS2C withMeta = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(3, -7, payload, meta));
         assertArrayEquals(meta, withMeta.metaPayload());
+    }
+
+    @Test
+    void chunkDataCompressesForAPeerThatDecodesIt() {
+        // Issue #346: over TCP the block and meta blobs compress with a negotiated codec.
+        var storage = com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
+                16, com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT, 16,
+                com.stonebreak.blocks.BlockType.AIR);
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = 0; y < 60; y++) {
+                    storage.set(x, y, z, (x * 7 + y * 3 + z) % 11 == 0
+                            ? com.stonebreak.blocks.BlockType.COAL_ORE : com.stonebreak.blocks.BlockType.STONE);
+                }
+            }
+        }
+        var blocks = com.openmason.engine.net.protocol.codec.ChunkBlockPayload.ofSnapshot(storage);
+        byte[] meta = new byte[600];
+        java.util.Arrays.fill(meta, (byte) 3);
+        ChunkDataS2C packet = new ChunkDataS2C(4, -2, blocks, meta);
+        int deflateOnly = com.openmason.engine.net.protocol.codec.WireCompression.bit(
+                com.openmason.engine.net.protocol.codec.WireCompression.DEFLATE);
+
+        for (int peer : new int[]{0, deflateOnly, com.openmason.engine.net.protocol.codec.WireCompression.localDecodeMask()}) {
+            ByteBuf buf = Unpooled.buffer();
+            try {
+                ChunkDataS2C.CODEC.encode(buf, packet, peer);
+                int wireBytes = buf.readableBytes();
+                ChunkDataS2C decoded = ChunkDataS2C.CODEC.decode(buf);
+                assertEquals(0, buf.readableBytes());
+                assertEquals(4, decoded.chunkX());
+                assertEquals(-2, decoded.chunkZ());
+                assertArrayEquals(blocks.encoded(), decoded.payload());
+                assertArrayEquals(meta, decoded.metaPayload());
+                int raw = blocks.encoded().length + meta.length;
+                assertTrue(peer == 0 ? wireBytes > raw : wireBytes < raw / 2,
+                        "codec mask " + peer + ": " + wireBytes + " wire bytes for " + raw);
+            } finally {
+                buf.release();
+            }
+        }
     }
 
     @Test

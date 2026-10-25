@@ -36,6 +36,7 @@ public final class NetworkServer {
     private final ServerLimits limits;
     private final ServerInboundQueue inboundQueue;
     private final ConnectionRegistry connections = new ConnectionRegistry();
+    private final OutboundBatch outboundBatch = new OutboundBatch();
     private final NetServer netServer;
 
     private volatile Predicate<Packet> admissionFilter = p -> true;
@@ -53,7 +54,8 @@ public final class NetworkServer {
             @Override
             public void onConnect(Channel ch) {
                 boolean local = ch instanceof LocalChannel;
-                ServerConnection conn = new ServerConnection(ch, local ? 0L : limits.maxOutboundBytes());
+                ServerConnection conn = new ServerConnection(ch, local ? 0L : limits.maxOutboundBytes(),
+                    outboundBatch);
                 conn.setKickPacket(kickPacketFactory);
                 ch.attr(ServerConnection.ATTR).set(conn);
                 if (local) {
@@ -152,6 +154,15 @@ public final class NetworkServer {
 
     public ConnectionRegistry connections() {
         return connections;
+    }
+
+    /**
+     * The tick's flush batch (issue #346): {@link OutboundBatch#begin} at the start of a tick,
+     * {@link OutboundBatch#end} after it, and every connection is flushed once per tick
+     * instead of once per packet.
+     */
+    public OutboundBatch outboundBatch() {
+        return outboundBatch;
     }
 
     /** Actual bound TCP address (resolves the ephemeral port after a {@code bind(0)}). */

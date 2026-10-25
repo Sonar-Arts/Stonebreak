@@ -164,7 +164,8 @@ public final class ClientWorldView {
         // A new server acknowledges only this session's actions (issue #334, #353).
         com.stonebreak.network.SlotIntentSeq.markSessionStart();
         InventorySyncApplier.resetSession();
-        connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username, presentedSecret));
+        connection.send(new HandshakeC2S(ProtocolVersion.CURRENT, username, presentedSecret,
+                com.openmason.engine.net.protocol.codec.WireCompression.localDecodeMask()));
         if (!remote) {
             // The in-process host created its character in the menu, before the server
             // existed. Hand it over right behind the handshake (the channel is FIFO): when the

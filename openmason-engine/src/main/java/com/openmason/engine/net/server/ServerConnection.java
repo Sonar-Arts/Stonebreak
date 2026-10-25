@@ -21,7 +21,9 @@ import java.util.function.Function;
  * game's per-connection player object).
  *
  * <p>{@code writeAndFlush} is thread-safe, so {@link #send} may be called from the tick
- * thread; the actual write is scheduled on the channel's event loop.
+ * thread; the actual write is scheduled on the channel's event loop. Inside an open
+ * {@link OutboundBatch} on the sending thread, the packet is written now and flushed when
+ * the batch flushes (issue #346).
  *
  * <p>Abuse limits (issue #336): a connection whose queued outbound bytes pass
  * {@link #maxOutboundBytes} is closed (a peer that never reads must not grow the heap), and
@@ -46,6 +48,10 @@ public final class ServerConnection {
     private volatile boolean admitted;
     /** Builds the packet a kick sends with its reason; null = close without one. */
     private volatile Function<String, Packet> kickPacket;
+    /** Defers flushes of the batch owner's sends; null = flush every send. */
+    private final OutboundBatch batch;
+    /** Has writes waiting for the batch's flush (touched by the batch owner only). */
+    private boolean flushPending;
 
     /** Packets from this connection waiting in the inbound queue. */
     private final AtomicInteger queued = new AtomicInteger();
@@ -56,8 +62,13 @@ public final class ServerConnection {
     }
 
     public ServerConnection(Channel channel, long maxOutboundBytes) {
+        this(channel, maxOutboundBytes, null);
+    }
+
+    public ServerConnection(Channel channel, long maxOutboundBytes, OutboundBatch batch) {
         this.channel = channel;
         this.maxOutboundBytes = maxOutboundBytes;
+        this.batch = batch;
     }
 
     public Channel channel() {
@@ -103,8 +114,31 @@ public final class ServerConnection {
             closeWithCause(new IOException("Outbound buffer over " + maxOutboundBytes + " bytes"));
             return false;
         }
-        channel.writeAndFlush(packet);
+        if (batch != null && batch.defersCurrentThread()) {
+            channel.write(packet);
+            if (!flushPending) {
+                flushPending = true;
+                batch.enlist(this);
+            }
+        } else {
+            channel.writeAndFlush(packet);
+        }
         return true;
+    }
+
+    /** The batch's flush: sends what this connection's deferred writes queued. */
+    void flushDeferred() {
+        flushPending = false;
+        channel.flush();
+    }
+
+    /**
+     * Records the compression codecs the peer decodes (its handshake's
+     * {@link com.openmason.engine.net.protocol.codec.WireCompression} mask); packets written
+     * after this compress for it (issue #346).
+     */
+    public void setPeerCompression(int codecMask) {
+        channel.attr(PipelineAttributes.PEER_COMPRESSION).set(codecMask);
     }
 
     /** Bytes queued for this connection that the peer has not taken yet. */

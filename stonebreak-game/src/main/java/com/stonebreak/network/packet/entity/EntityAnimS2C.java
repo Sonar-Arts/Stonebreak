@@ -8,6 +8,7 @@ import io.netty.buffer.ByteBuf;
 /**
  * Server → client: the authoritative animation/behavior state of a replicated entity, as the
  * SBE state name (e.g. {@code "Idle"}, {@code "Walking"}, {@code "Grazing"}, {@code "Wingflap"}).
+ * Known names cross the wire as a one-byte code ({@link #KNOWN_STATES}).
  *
  * <p>In the two-world model the client renders mobs as network shadows that never run AI, so
  * their behavior state would otherwise be frozen at the constructor default. The server sends
@@ -28,18 +29,60 @@ import io.netty.buffer.ByteBuf;
  */
 public record EntityAnimS2C(int networkId, String state) implements Packet {
 
+    /**
+     * States sent as their index in this table — one byte — instead of a string (issue #346):
+     * every SBE clip name {@code MobStateMapping} produces, then the non-mob visual states
+     * (fire-bolt impact, fishing-bobber phases). Anything else (a dinghy's seat/oar string)
+     * goes as {@link #STRING_TAG} plus the string. Append only, and bump the protocol version.
+     */
+    static final String[] KNOWN_STATES = {
+        "Idle", "Walking", "Grazing", "Wingflap", "Stab", "Smash", "DrawBow", "ReleaseBow",
+        "idle", "walking", "flying",
+        "Impact", "cast", "float", "bite",
+    };
+    /** Tag byte for a state outside {@link #KNOWN_STATES}; a string follows. */
+    static final int STRING_TAG = 0xFF;
+
+    private static final java.util.Map<String, Integer> KNOWN_INDEX = indexOf(KNOWN_STATES);
+
+    private static java.util.Map<String, Integer> indexOf(String[] states) {
+        java.util.Map<String, Integer> index = new java.util.HashMap<>();
+        for (int i = 0; i < states.length; i++) {
+            index.put(states[i], i);
+        }
+        return java.util.Map.copyOf(index);
+    }
+
+    /** The one-byte code of {@code state}, or -1 when it travels as a string. */
+    static int knownIndex(String state) {
+        Integer i = state != null ? KNOWN_INDEX.get(state) : null;
+        return i != null ? i : -1;
+    }
+
     public static final PacketCodec<EntityAnimS2C> CODEC = new PacketCodec<>() {
         @Override
         public void encode(ByteBuf out, EntityAnimS2C p) {
             out.writeInt(p.networkId());
-            ByteBufIO.writeString(out, p.state(), ByteBufIO.MAX_METADATA_CHARS);
+            int known = knownIndex(p.state());
+            if (known >= 0) {
+                out.writeByte(known);
+            } else {
+                out.writeByte(STRING_TAG);
+                ByteBufIO.writeString(out, p.state(), ByteBufIO.MAX_METADATA_CHARS);
+            }
         }
 
         @Override
         public EntityAnimS2C decode(ByteBuf in) {
-            return new EntityAnimS2C(
-                in.readInt(),
-                ByteBufIO.readString(in, ByteBufIO.MAX_METADATA_CHARS));
+            int networkId = in.readInt();
+            int tag = in.readUnsignedByte();
+            if (tag == STRING_TAG) {
+                return new EntityAnimS2C(networkId, ByteBufIO.readString(in, ByteBufIO.MAX_METADATA_CHARS));
+            }
+            if (tag >= KNOWN_STATES.length) {
+                throw new IllegalArgumentException("Unknown animation state code " + tag);
+            }
+            return new EntityAnimS2C(networkId, KNOWN_STATES[tag]);
         }
     };
 }
