@@ -331,10 +331,13 @@ public class PlayerArmRenderer {
     /**
      * Renders the arrow overlaid on the bow when the player is drawing.
      * Offsets the arrow slightly so it appears nocked on the bow string.
+     * With no arrow in the inventory the bow draws empty, matching the release,
+     * which fires nothing.
      */
     private void renderArrowOverlayIfDrawing(Player player, ItemDisplayInfo displayInfo) {
         if (displayInfo.selectedItemType != ItemType.BOW) return;
         if (!player.isDrawingBow()) return;
+        if (player.getInventory() == null || !player.getInventory().hasItem(ItemType.ARROW)) return;
         float progress = player.getBowDrawProgress();
         if (progress <= 0.05f) return;
 

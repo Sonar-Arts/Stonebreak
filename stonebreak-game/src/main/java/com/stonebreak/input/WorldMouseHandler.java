@@ -136,8 +136,8 @@ final class WorldMouseHandler {
         if (now - lastFireBoltCastNanos < STAFF_CAST_COOLDOWN_NANOS) {
             return;
         }
-        Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-        Vector3f spawnPos = new Vector3f(player.getCamera().getPosition());
+        Vector3f dir = player.getRaycastEngine().aimDirection();
+        Vector3f spawnPos = player.getRaycastEngine().eyeOrigin();
         if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_FIRE_BOLT, spawnPos, dir)) {
             EntityManager em = Game.getEntityManager();
             if (em != null) {
@@ -155,8 +155,8 @@ final class WorldMouseHandler {
      * rod does nothing.
      */
     private void useFishingRod(Player player, ItemStack rod) {
-        Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-        Vector3f pos = new Vector3f(player.getCamera().getPosition());
+        Vector3f dir = player.getRaycastEngine().aimDirection();
+        Vector3f pos = player.getRaycastEngine().eyeOrigin();
         if (!MultiplayerSession.sendFishingRodUse(pos, dir)) {
             return;
         }
@@ -205,9 +205,9 @@ final class WorldMouseHandler {
         float arrowSpeed = player.getBowController().getArrowSpeed();
         if (player.getBowController().releaseAndFire() && player.getInventory().hasItem(ItemType.ARROW)) {
             player.getInventory().removeItem(ItemType.ARROW);
-            Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
+            Vector3f dir = player.getRaycastEngine().aimDirection();
             Vector3f vel = new Vector3f(dir).mul(arrowSpeed);
-            Vector3f spawnPos = new Vector3f(player.getCamera().getPosition());
+            Vector3f spawnPos = player.getRaycastEngine().eyeOrigin();
             // Server-authoritative spawn (replicated to all); local fallback
             // only when there is no session at all.
             if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_ARROW, spawnPos, vel)) {

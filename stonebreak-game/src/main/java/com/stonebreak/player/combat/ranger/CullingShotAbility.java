@@ -66,9 +66,8 @@ public class CullingShotAbility {
     public boolean tryActivate(Player player) {
         if (state != State.IDLE) return false;
 
-        Vector3f front = player.getCamera().getFront();
-        if (front.lengthSquared() < 0.0001f) return false;
-        lockedDirection.set(front).normalize();
+        if (player.getCamera().getFront().lengthSquared() < 0.0001f) return false;
+        lockedDirection.set(player.getRaycastEngine().aimDirection());
 
         channelRemaining = RANGER_CULLING_CHANNEL_TIME;
         state = State.CHANNELING;

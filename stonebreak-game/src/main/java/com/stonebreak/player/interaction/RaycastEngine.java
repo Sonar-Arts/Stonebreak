@@ -77,6 +77,30 @@ public class RaycastEngine {
     }
 
     /**
+     * Unit direction from {@link #eyeOrigin()} toward what the crosshair is on — the
+     * direction projectiles leave the eyes in. In first person that is just the look
+     * direction; the third-person camera sits behind and above the eyes, so a shot
+     * parallel to its ray would land off the crosshair. Instead it aims at the point the
+     * camera ray reaches (the first solid block, or {@link #AIM_DISTANCE} out).
+     */
+    public Vector3f aimDirection() {
+        Vector3f eye = eyeOrigin();
+        Vector3f cam = camera.getPosition();
+        Vector3f front = new Vector3f(camera.getFront()).normalize();
+        float behind = cam.distance(eye);
+        if (behind < 1e-3f) {
+            return front;
+        }
+        float hit = distanceToFirstSolid(cam, front, AIM_DISTANCE);
+        // Never aim at a point level with or behind the player, or the shot swings sideways.
+        float t = Math.max(hit == Float.MAX_VALUE ? AIM_DISTANCE : hit, behind + 1f);
+        return new Vector3f(front).mul(t).add(cam).sub(eye).normalize();
+    }
+
+    /** How far out the third-person aim point sits when the crosshair is on open sky. */
+    private static final float AIM_DISTANCE = 64f;
+
+    /**
      * Ray/plane intersection. Returns distance along ray to intersection, or -1 if
      * parallel or behind the origin.
      */
