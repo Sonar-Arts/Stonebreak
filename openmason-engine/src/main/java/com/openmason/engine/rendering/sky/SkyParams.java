@@ -20,10 +20,12 @@ import org.joml.Vector3f;
  * @param earthShadowHeight its edge's height straight opposite the sun (sine of elevation)
  * @param twilightBand   0..1: how strongly the shadow and the pink Belt of Venus above it show
  * @param daylight       0 with the sun down, 1 in full day: fades the haze in and washes the moon out
+ * @param seaHorizon     the sea's edge as the eye sees it (sine of elevation, 0 or below): the sun
+ *                       shines fully until it reaches it, then fades as it sinks
  */
 public record SkyParams(Vector3f sunDirection, Vector3f moonDirection, float moonLight,
                         Vector3f zenithColor, Vector3f horizonColor,
                         Vector3f sunsetColor, float sunsetCoverage, Vector3f sunGlow,
                         Vector3f sunColor, Vector3f earthShadowColor, float earthShadowHeight,
-                        float twilightBand, float daylight) {
+                        float twilightBand, float daylight, float seaHorizon) {
 }

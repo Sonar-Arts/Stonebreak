@@ -160,6 +160,7 @@ public class SkyRenderer {
             skyShaderProgram.createUniform("earthShadowHeight");
             skyShaderProgram.createUniform("twilightBand");
             skyShaderProgram.createUniform("daylight");
+            skyShaderProgram.createUniform("seaHorizon");
             skyShaderProgram.createUniform("moonTexture");
 
         } catch (Exception e) {
@@ -233,6 +234,7 @@ public class SkyRenderer {
         skyShaderProgram.setUniform("earthShadowHeight", sky.earthShadowHeight());
         skyShaderProgram.setUniform("twilightBand", sky.twilightBand());
         skyShaderProgram.setUniform("daylight", sky.daylight());
+        skyShaderProgram.setUniform("seaHorizon", sky.seaHorizon());
         skyShaderProgram.setUniform("moonTexture", MOON_TEXTURE_UNIT);
 
         int previousUnit = glGetInteger(GL_ACTIVE_TEXTURE);

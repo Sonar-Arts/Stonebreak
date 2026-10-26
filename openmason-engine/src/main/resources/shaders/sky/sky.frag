@@ -17,6 +17,7 @@ uniform float twilightBand;   // 0..1: how strongly the shadow and the Belt of V
 uniform vec3 sunsetColor;     // evening gold × strength (0 = none)
 uniform float sunsetCoverage; // how far round from the sun the gold reaches
 uniform float daylight;       // 0 sun down .. 1 full day
+uniform float seaHorizon;     // the sea's edge seen from the eye (sine of elevation, <= 0)
 uniform sampler2D moonTexture; // 64x64 pixel art, alpha = disc
 
 out vec4 FragColor;
@@ -35,6 +36,8 @@ const float SUNSET_SOFTNESS = 0.3;
 const vec3 BELT_PINK = vec3(1.0, 0.58, 0.56);
 // The sun disc's own tint over sunlight's hue: a touch yellow at noon.
 const vec3 SUN_DISC = vec3(1.0, 0.95, 0.7);
+// How far (sun y) below the sea's edge the sun takes to fade out once it reaches it.
+const float SUN_SINK = 0.12;
 
 vec3 getTimedSkyColor(vec3 direction) {
     float elevation = direction.y;
@@ -117,8 +120,8 @@ vec3 getSunContribution(vec3 direction) {
     float glowIntensity = exp(-pow((1.0 - sunDot) / glowRadius, 1.5)) * 0.4;
     vec3 glowColor = vec3(1.0, 0.8, 0.5) * sunColor;
 
-    // The glow is the sun's light in the air: it goes as the sun sinks out of it.
-    float lit = smoothstep(-0.12, 0.02, sunDirection.y);
+    // Full until the sun reaches the sea's edge, then it fades as it sinks below it.
+    float lit = smoothstep(seaHorizon - SUN_SINK, seaHorizon, sunDirection.y);
     return (discColor * sunIntensity + glowColor * glowIntensity) * lit;
 }
 
@@ -179,7 +182,6 @@ void main() {
     finalColor = applyEarthShadow(direction, finalColor);
     finalColor = applyAfterglow(direction, finalColor);
     finalColor = applyMoon(direction, finalColor);
-    finalColor += getSunContribution(direction);
 
     // Atmospheric perspective with horizon softening. The pale haze is sunlit air:
     // it fades out with the daylight, or it would light the night horizon up.
@@ -189,6 +191,8 @@ void main() {
     float hazeAmount = mix(0.1, 0.3, horizonSoft);
     vec3 hazeColor = mix(horizonColor, vec3(0.8, 0.85, 0.9), daylight);
     finalColor = mix(hazeColor, finalColor, haze * (1.0 - hazeAmount));
+    // The sun goes over the haze: the horizon haze would wash it out before it set.
+    finalColor += getSunContribution(direction);
 
     FragColor = vec4(finalColor, 1.0);
 }

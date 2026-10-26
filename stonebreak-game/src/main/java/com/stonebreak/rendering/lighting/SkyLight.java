@@ -124,10 +124,11 @@ public record SkyLight(
      */
     private static final float ASTRONOMICAL = -24f, NAUTICAL = -12f, CIVIL = -4f, DAY = 10f;
     /**
-     * Sunlight's hue stops, as the sun's y: the horizon orange at 0, gold by about 6°
-     * up, white by 20°.
+     * Sunlight's hue stops, as the sun's y: the horizon orange at 0, gold by about 12°
+     * up, white by 30°. Wide, so the sun reddens over the whole descent (about two real
+     * minutes) rather than flipping to orange in its last few degrees.
      */
-    private static final float GOLDEN_Y = 0.10f, WHITE_Y = 0.35f;
+    private static final float GOLDEN_Y = 0.20f, WHITE_Y = 0.50f;
     /** Sunlight on the world fades from this sun y, just above the horizon, to nothing at {@link #KEY_SWITCH_Y}. */
     private static final float SUN_FULL_Y = 0.02f;
     /** The Earth's shadow edge stands this many degrees up per degree the sun is down, at most MAX. */
@@ -192,14 +193,19 @@ public record SkyLight(
         horizon = lerp(clearHorizon, new Vector3f(SUNSET).mul(SUNSET_HORIZON), horizonShare);
         Vector3f skyColor = lerp(lerp(zenith, horizon, 0.5f), zenith, evening);
         // The afterglow: red over the set sun, from just before it sets to nautical twilight.
-        float glow = smoothstep(-14f, -5f, sunElevation) * (1f - smoothstep(-1f, 4f, sunElevation));
+        // It grows in slowly from 10° up, so the red does not bloom all at once.
+        float glow = smoothstep(-14f, -5f, sunElevation) * (1f - smoothstep(-2f, 10f, sunElevation));
         Vector3f sunGlow = new Vector3f(AFTERGLOW).mul(0.7f * glow);
 
         // Sunlight: white high up, gold low down, the sunset orange on the horizon, and
         // gone just after the sun sets, where the moon takes over (from nothing).
-        Vector3f sunColor = sunDir.y >= GOLDEN_Y
-                ? lerp(GOLDEN_SUN, WHITE, smoothstep(GOLDEN_Y, WHITE_Y, sunDir.y))
-                : lerp(SUNSET, GOLDEN_SUN, smoothstep(0f, GOLDEN_Y, sunDir.y));
+        // One easing over the whole span, linear through the gold stop: easing each
+        // segment would hold at gold and then rush to orange near the horizon.
+        float hue = smoothstep(0f, WHITE_Y, sunDir.y);
+        float goldenHue = smoothstep(0f, WHITE_Y, GOLDEN_Y);
+        Vector3f sunColor = hue >= goldenHue
+                ? lerp(GOLDEN_SUN, WHITE, (hue - goldenHue) / (1f - goldenHue))
+                : lerp(SUNSET, GOLDEN_SUN, hue / goldenHue);
         Vector3f sunLight = new Vector3f(sunColor).mul(smoothstep(KEY_SWITCH_Y, SUN_FULL_Y, sunDir.y));
 
         // The Earth's shadow rises opposite the sun as it sinks (a slate band, pink above),

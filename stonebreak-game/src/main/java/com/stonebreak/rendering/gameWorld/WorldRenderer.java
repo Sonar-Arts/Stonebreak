@@ -208,6 +208,7 @@ public class WorldRenderer {
         Vector3f earthShadow = new Vector3f();
         float earthShadowHeight = 0f, twilightBand = 0f;
         Vector3f sunAureole = new Vector3f();
+        float seaHorizon = SunsetFog.seaHorizon(player.getCamera().getPosition().y, weatherReach);
         if (sky != null) {
             sunDirection = sky.sunDir();
             keyDirection = sky.keyDir();
@@ -221,7 +222,7 @@ public class WorldRenderer {
             weatherEffects.tintSky(sky.earthShadowColor(), earthShadow);
             earthShadowHeight = sky.earthShadowHeight();
             twilightBand = sky.twilightBand() * clear;
-            SunsetFog.sunAureole(sky, clear, sunAureole);
+            SunsetFog.sunAureole(sky, clear, seaHorizon, sunAureole);
             weatherEffects.updateFogColor(sky);
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
             skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
@@ -229,7 +230,7 @@ public class WorldRenderer {
                     weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
                     weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
                     new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
-                    earthShadow, earthShadowHeight, twilightBand, sky.daylight());
+                    earthShadow, earthShadowHeight, twilightBand, sky.daylight(), seaHorizon);
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
@@ -238,7 +239,7 @@ public class WorldRenderer {
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
                     skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
-                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f);
+                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon);
         }
 
         // Region-batched chunk rendering: publish last frame's stats and prune
