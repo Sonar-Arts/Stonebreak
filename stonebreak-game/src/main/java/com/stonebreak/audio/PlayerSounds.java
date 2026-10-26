@@ -20,6 +20,22 @@ public class PlayerSounds {
         this.world = world;
     }
 
+    /** Beyond this, another player's footstep is not worth the work (matches {@link MobSounds}). */
+    private static final float MAX_AUDIBLE_DISTANCE = 30.0f;
+
+    /**
+     * Another player's footstep (issue #344): positional 3D at their feet, at the local player's
+     * step volume. Played by their shadow on its own foot contacts, so it needs no packet.
+     */
+    public static void playStepAt(World world, Vector3f feet) {
+        if (world == null) return;
+        com.stonebreak.player.Player listener = com.stonebreak.core.Game.getPlayer();
+        if (listener != null && listener.getPosition().distance(feet) > MAX_AUDIBLE_DISTANCE) return;
+        BlockType groundBlock = world.getBlockAt(
+                (int) Math.floor(feet.x), (int) Math.floor(feet.y - 0.1f), (int) Math.floor(feet.z));
+        BlockSounds.playStepAt(groundBlock, feet, STEP_VOLUME);
+    }
+
     /**
      * Plays the appropriate walking sound based on the block type under the player.
      */

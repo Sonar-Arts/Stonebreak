@@ -159,6 +159,10 @@ public final class IntegratedServer {
         // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
         // render live flow heights instead of full-height columns.
         level.world().serverSinks().setWaterSink(blockHandler::onServerWaterChange);
+        // Sounds the simulation makes (a mob's hurt/death voice) → SoundEventS2C to the players
+        // near it (issue #344); the tick thread never plays into the host client's mixer (#340).
+        level.world().serverSinks().setSoundSink((type, event, x, y, z) -> ServerSounds.sendNear(ctx,
+            com.stonebreak.network.packet.world.SoundEventS2C.entity(type.ordinal(), event, x, y, z), null));
         // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
         // The registry dedups (fires only on actual string change), so idle furnaces are free.
         // Queued behind the block batches: a placement's first state write happens in the

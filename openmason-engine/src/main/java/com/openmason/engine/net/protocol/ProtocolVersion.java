@@ -53,8 +53,11 @@ public final class ProtocolVersion {
      *  boat position and oar input); the DINGHY entity type replicates.
      *  20 = server cost pass (issue #346): HandshakeC2S lists the compression codecs the client
      *  decodes, ChunkDataS2C blobs carry a codec byte (raw / zstd / deflate), and EntityAnimS2C
-     *  sends known animation states as a one-byte code. */
-    public static final int CURRENT = 20;
+     *  sends known animation states as a one-byte code.
+     *  21 = sound replication (issue #344): SoundEventS2C plays another player's block
+     *  break/place/mining hits and mobs' hurt/death voices on nearby clients, and the
+     *  PlayerStateFlags MINING bit tells the server when a player stops mining. */
+    public static final int CURRENT = 21;
 
     private ProtocolVersion() {}
 }

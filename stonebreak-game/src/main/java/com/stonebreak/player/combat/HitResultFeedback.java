@@ -1,6 +1,5 @@
 package com.stonebreak.player.combat;
 
-import com.stonebreak.audio.EntitySounds;
 import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
@@ -15,7 +14,9 @@ import org.joml.Vector3f;
  *
  * <ul>
  *   <li>damage number (the applied amount, multipliers included) at the server's anchor, which
- *       a lethal hit's despawn cannot take away, and the hurt/death voice at the copy;</li>
+ *       a lethal hit's despawn cannot take away. The hurt/death voice is not played here: the
+ *       server replicates it to every player near the victim ({@code SoundEventS2C}, #344),
+ *       this one included;</li>
  *   <li>melee: Rage, Quarry and T3 lifesteal via {@link Player#onMeleeHitLanded};</li>
  *   <li>arrows: the Ranger's Quarry/Study — arrows simulate on the server, so this result is
  *       the only place the shooter learns what they hit.</li>
@@ -31,12 +32,8 @@ public final class HitResultFeedback {
      * @param anchor where the damage number shows (the victim's head, as the server saw it)
      */
     public static void apply(Player player, LivingEntity target, LivingEntity.DamageSource source,
-                             HitKind kind, float dealt, boolean killed, Vector3f anchor) {
+                             HitKind kind, float dealt, Vector3f anchor) {
         DamageNumbers.getInstance().spawn(anchor.x, anchor.y, anchor.z, dealt);
-        if (target != null) {
-            // Data-driven voice: plays only when the entity's SBE declares the event.
-            EntitySounds.playAt(target, killed ? EntitySounds.EVENT_DEATH : EntitySounds.EVENT_HURT);
-        }
         if (player == null) {
             return;
         }

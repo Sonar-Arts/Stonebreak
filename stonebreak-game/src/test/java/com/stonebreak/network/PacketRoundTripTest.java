@@ -486,6 +486,10 @@ class PacketRoundTripTest {
         assertEquals(new com.stonebreak.network.packet.player.ProgressS2C(9, 3, 40, 1, 2, 1, 5),
             viaRegistry(reg, PLAY, CLIENTBOUND,
                 new com.stonebreak.network.packet.player.ProgressS2C(9, 3, 40, 1, 2, 1, 5)));
+        com.stonebreak.network.packet.world.SoundEventS2C sound =
+            com.stonebreak.network.packet.world.SoundEventS2C.entity(3, "death", -12.5f, 70.25f, 400f);
+        assertEquals(sound, viaRegistry(reg, PLAY, CLIENTBOUND, sound));
+        assertEquals(sound, roundTrip(com.stonebreak.network.packet.world.SoundEventS2C.CODEC, sound));
     }
 
     /** Encode/decode through the registry exactly as the pipeline does (id varint + codec). */

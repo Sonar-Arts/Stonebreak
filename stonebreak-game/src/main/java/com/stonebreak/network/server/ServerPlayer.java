@@ -370,6 +370,33 @@ public final class ServerPlayer {
     public void startBreak(int x, int y, int z, long nowNs) {
         breakTarget = new com.openmason.engine.util.BlockPos(x, y, z);
         breakStartNs = Math.max(nowNs, miningBusyUntilNs);
+        miningHitDueNs = nowNs; // the client plays a hit as it starts; others hear it next tick
+    }
+
+    /** The block this player is mining, or null when none (finished, or never started). */
+    public com.openmason.engine.util.BlockPos breakTarget() {
+        return breakTarget;
+    }
+
+    /**
+     * Whether the client last reported holding the attack on a block
+     * ({@code PlayerStateFlags.MINING}) — the only way the server learns mining stopped short
+     * of a finish (issue #344).
+     */
+    public boolean isMining() {
+        return com.stonebreak.network.packet.player.PlayerStateFlags.has(
+            movementFlags, com.stonebreak.network.packet.player.PlayerStateFlags.MINING);
+    }
+
+    /** When the next mining "hit" sound is due for other players (server clock). */
+    private long miningHitDueNs;
+
+    public long miningHitDueNs() {
+        return miningHitDueNs;
+    }
+
+    public void setMiningHitDueNs(long dueNs) {
+        this.miningHitDueNs = dueNs;
     }
 
     /** Whether the player's current break is on {@code (x, y, z)}. */

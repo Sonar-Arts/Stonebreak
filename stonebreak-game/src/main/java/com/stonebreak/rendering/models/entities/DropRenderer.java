@@ -311,6 +311,9 @@ public class DropRenderer {
         shaderProgram.setUniform("u_isUIElement", false);
     }
     
+    /** Scratch for {@link #renderHeldItems}' hand positions. */
+    private final Vector3f handPosition = new Vector3f();
+
     /**
      * Render the held item of every visible player-shaped entity at its hand.
      * Dispatches on the entity's resolved {@link com.stonebreak.items.Item}:
@@ -345,10 +348,6 @@ public class DropRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glEnable(GL_DEPTH_TEST);
 
-        // Hand offset, in player local space (right, up, forward).
-        final float HAND_RIGHT   = 0.35f;
-        final float HAND_UP      = 1.2f;
-        final float HAND_FORWARD = 0.15f;
         final float HAND_SCALE   = 0.30f;
         // Voxelized tools reuse the world-drop pipeline, which renders at scale 0.25.
         final float TOOL_SCALE   = 0.25f;
@@ -358,18 +357,13 @@ public class DropRenderer {
             com.stonebreak.items.Item held = rp.getHeldItem();
             if (held == null) continue;
 
-            Vector3f pos = rp.getPosition();
             // Model-space body yaw — must match the figure the item is parented to
             // (the raw rotation.y is camera-space for networked remote players).
             float yawRad = (float) Math.toRadians(rp.getBodyYaw());
-            float cos = (float) Math.cos(yawRad);
-            float sin = (float) Math.sin(yawRad);
-            // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
-            float worldDx = HAND_RIGHT * cos + HAND_FORWARD * (-sin);
-            float worldDz = HAND_RIGHT * (-sin) + HAND_FORWARD * (-cos);
-            float handX = pos.x + worldDx;
-            float handY = pos.y + HAND_UP;
-            float handZ = pos.z + worldDz;
+            Vector3f hand = rp.handPosition(handPosition);
+            float handX = hand.x;
+            float handY = hand.y;
+            float handZ = hand.z;
 
             if (held instanceof BlockType blockType && blockType != BlockType.AIR) {
                 DisplayMesh sboMesh = sboHandMeshRegistry != null

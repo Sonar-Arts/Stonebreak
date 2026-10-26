@@ -19,7 +19,10 @@ import org.joml.Vector3f;
  */
 public class RemotePlayer extends LivingEntity {
 
-    /** A remote player's footsteps are their own client's business, not this shadow's. */
+    /**
+     * No stride-counted mob footsteps: a player shadow steps on its gait clock's foot contacts
+     * instead ({@link #updateClientVisuals}), the same signal the local player's own steps use.
+     */
     @Override
     protected boolean hasFootsteps() {
         return false;
@@ -44,6 +47,8 @@ public class RemotePlayer extends LivingEntity {
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3f prevPosition;
     private final PlayerGaitClock gaitClock = new PlayerGaitClock();
+    /** Whether the last {@link #updateMovementAnimation} planted a foot (walk/run only). */
+    private boolean footContact;
 
     /**
      * Body facing / head-swivel logic, shared with the local player's third-person view.
@@ -129,6 +134,26 @@ public class RemotePlayer extends LivingEntity {
 
     /** Held item identity for third-person hand rendering. {@code null} = empty-handed. */
     public Item getHeldItem() { return heldItem; }
+
+    /** Hand offset from the feet, in body space: right, up, forward (third-person held item). */
+    private static final float HAND_RIGHT = 0.35f;
+    private static final float HAND_UP = 1.2f;
+    private static final float HAND_FORWARD = 0.15f;
+
+    /**
+     * Where this figure's held item sits, in world space: the one hand position the held-item
+     * renderer draws at and a held torch lights from. Turned with the model-space body yaw, the
+     * frame the figure itself is drawn in.
+     */
+    public Vector3f handPosition(Vector3f out) {
+        float yawRad = (float) Math.toRadians(getBodyYaw());
+        float cos = (float) Math.cos(yawRad);
+        float sin = (float) Math.sin(yawRad);
+        // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
+        return out.set(position.x + HAND_RIGHT * cos - HAND_FORWARD * sin,
+                position.y + HAND_UP,
+                position.z - HAND_RIGHT * sin - HAND_FORWARD * cos);
+    }
     /** Sets the full held-item identity (block or tool/flower). Used by local-only figures. */
     public void setHeldItem(Item item) {
         this.heldItem = item;
@@ -213,8 +238,11 @@ public class RemotePlayer extends LivingEntity {
                 PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER)
                         || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),
                 PlayerStateFlags.has(flags, PlayerStateFlags.SPRINTING));
-        gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
+        boolean contact = gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
                 SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId())));
+        // Same gate as the local player's steps (PlayerBodyAnimation): on land, out of water.
+        footContact = contact && !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE)
+                && !PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER);
 
         attackAnimation.update(deltaTime, PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING),
                 SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId()));
@@ -279,11 +307,16 @@ public class RemotePlayer extends LivingEntity {
     /**
      * Client shadow path (network shadows never run {@link #update}): derive
      * walk/idle from the freshly interpolated position and advance the
-     * animation clock so the remote player's clips actually play.
+     * animation clock so the remote player's clips actually play, stepping
+     * audibly on each foot contact.
      */
     @Override
     public void updateClientVisuals(float deltaTime) {
         updateMovementAnimation(deltaTime);
+        // Footsteps (issue #344), on the gait clock's foot contacts as the local player's are.
+        if (footContact) {
+            com.stonebreak.audio.PlayerSounds.playStepAt(world, position);
+        }
     }
 
     @Override

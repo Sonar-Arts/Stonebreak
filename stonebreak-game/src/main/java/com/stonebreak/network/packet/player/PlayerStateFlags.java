@@ -17,6 +17,12 @@ public final class PlayerStateFlags {
     public static final int ATTACKING = 1 << 5;
     /** Body touching water (not just eyes) — drives remote splash/ripple triggering. */
     public static final int PARTIALLY_IN_WATER = 1 << 6;
+    /**
+     * Holding the attack on a block that takes time to break (issue #344). The server plays the
+     * mining "hit" sounds to nearby players while this is set for the block it was told about
+     * ({@code BlockBreakStartC2S}); clearing it is how the server learns mining stopped.
+     */
+    public static final int MINING = 1 << 7;
 
     private PlayerStateFlags() {}
 
