@@ -36,7 +36,7 @@ public final class DetachedWorkspaceWindow {
 
     public DetachedWorkspaceWindow(WorkspaceDescriptor workspace) {
         this.workspace = workspace;
-        this.title = "Open Mason - " + workspace.label() + "###openMasonWorkspaceWindow" + workspace.id();
+        this.title = "Open Mason Toolset - " + workspace.label() + "###openMasonWorkspaceWindow" + workspace.id();
         windowClass.setViewportFlagsOverrideClear(ImGuiViewportFlags.NoDecoration | ImGuiViewportFlags.NoTaskBarIcon);
         windowClass.setViewportFlagsOverrideSet(ImGuiViewportFlags.NoAutoMerge);
     }
