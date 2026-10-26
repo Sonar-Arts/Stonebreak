@@ -51,6 +51,18 @@ public interface PlayerLocator {
     }
 
     /**
+     * Hurts the player whose body {@code point} is inside (grown by {@code margin}) — a
+     * projectile's hit (issue #343). A player's own shot never hits them, and hits another
+     * player only where the world allows PvP.
+     *
+     * @param ownerPlayerId the player who shot it, or -1 for a mob's shot
+     * @return whether a player took the hit (the projectile is spent)
+     */
+    default boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+        return false;
+    }
+
+    /**
      * How far the nearest player's movement can be heard, in blocks, for stealth awareness.
      *
      * <p>The default knows only what the server is told — whether the player sprints. Stealth
@@ -88,6 +100,16 @@ public interface PlayerLocator {
             @Override
             public float nearestPlayerNoiseRadius(Vector3f from) {
                 return players().nearestPlayerNoiseRadius(from);
+            }
+
+            @Override
+            public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+                return players().hurtNearestPlayer(from, amount, knockback);
+            }
+
+            @Override
+            public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+                return players().hitPlayerAt(point, margin, amount, ownerPlayerId);
             }
 
             private PlayerLocator players() {

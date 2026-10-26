@@ -246,18 +246,15 @@ public final class MultiplayerSession {
     }
 
     /**
-     * Death scatter as ONE request (see {@code DeathDropC2S}): the server spawns the
-     * dying player's drops from its own replica — no toss rate limit — and syncs the
-     * mirror. Returns false when there is no live client connection (caller falls back to
-     * the local scatter).
+     * Whether a server owns the local player's health (issue #343): any live session — the
+     * host's own integrated server included. The server then resolves every hit, decides the
+     * death (and scatters the inventory there) and the respawn point; the client applies what
+     * {@code PlayerHealthS2C} says and only predicts effects. False without a session (the
+     * battle-test arena), where the client's own health rules apply.
      */
-    public static boolean sendDeathDrop() {
+    public static boolean serverOwnsPlayerHealth() {
         ClientWorldView c = getClient();
-        if (c == null || c.isDisconnected()) {
-            return false;
-        }
-        c.sendDeathDrop();
-        return true;
+        return c != null && !c.isDisconnected();
     }
 
     /**
@@ -274,9 +271,9 @@ public final class MultiplayerSession {
     }
 
     /**
-     * Death ({@code dead}) or respawn edge of the local player at {@code pos}, on the reliable
-     * channel: the server's only source for which players are dead (drop pickup, mob spawning
-     * — #357). No-op without a live session.
+     * A life edge the local player asks for, on the reliable channel ({@code PlayerLifeC2S}):
+     * a respawn request, or a death only the client saw. The server owns health and decides
+     * deaths and respawn spots itself (#343). No-op without a live session.
      */
     public static void sendPlayerLife(boolean dead, Vector3f pos) {
         ClientWorldView c = getClient();
@@ -817,6 +814,22 @@ public final class MultiplayerSession {
         ClientWorldView c = getClient();
         if (c != null && target != null && target.getNetworkId() >= 0) {
             c.sendEntityDamage(target.getNetworkId(), amount, source, type, kind);
+        }
+    }
+
+    /**
+     * PvP hit (issue #343): the local player hit another player's figure. Players have no
+     * network id, so the intent names the player; the server refuses it unless the world
+     * allows PvP. The applied result comes back as {@code KillCreditS2C}.
+     */
+    public static void onLocalPlayerDamage(int targetPlayerId, float amount,
+                                           com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
+                                           com.stonebreak.items.weapon.DamageType type,
+                                           com.stonebreak.mobs.entities.HitKind kind) {
+        ClientWorldView c = getClient();
+        if (c != null && !c.isDisconnected()) {
+            c.sendPlayerDamage(new com.stonebreak.network.packet.player.PlayerDamageC2S(targetPlayerId, amount,
+                    (byte) source.ordinal(), (byte) type.ordinal(), kind.wireId()));
         }
     }
 

@@ -76,7 +76,7 @@ public class Arrow extends Entity {
             return;
         }
 
-        if (shooter != null ? strikeLocalPlayer() : strikeEntity()) {
+        if (shooter != null ? strikePlayer() : strikeEntity()) {
             alive = false;
             return;
         }
@@ -86,8 +86,17 @@ public class Arrow extends Entity {
         velocity.y += 30.0f * deltaTime;
     }
 
-    /** A mob's arrow: hurts the local player if it is inside them. */
-    private boolean strikeLocalPlayer() {
+    /**
+     * A mob's arrow: hurts the player it is inside. On the server world that is any player in the
+     * roster, through their server-owned health (#343) — never the host's client player read
+     * from the tick thread. A world with no roster (one the client simulates itself) has only
+     * the local player.
+     */
+    private boolean strikePlayer() {
+        com.stonebreak.mobs.entities.ai.behavior.PlayerLocator players = roster();
+        if (players != null) {
+            return players.hitPlayerAt(position, HIT_RADIUS, mobArrowDamage, -1);
+        }
         if (!hitsLocalPlayer()) {
             return false;
         }
@@ -104,16 +113,26 @@ public class Arrow extends Entity {
         if (em == null) {
             return false;
         }
-        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN);
-        if (le == null) {
-            return false;
-        }
         float speedRatio = launchSpeed > 0 ? Math.min(launchSpeed / BowController.MAX_ARROW_SPEED, 1.0f) : 0.0f;
         float damage = BASE_DAMAGE + (MAX_DAMAGE - BASE_DAMAGE) * speedRatio;
+        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN);
+        if (le == null) {
+            // Another player, where the world allows PvP (#343); never the shooter.
+            com.stonebreak.mobs.entities.ai.behavior.PlayerLocator players = roster();
+            return players != null && getOwnerPlayerId() >= 0
+                    && players.hitPlayerAt(position, ENTITY_HIT_MARGIN, damage, getOwnerPlayerId());
+        }
         // The hit result goes to the shooter (KillCreditS2C with the target's network id
         // and ARROW source); their client builds Quarry/Study from it.
         ProjectileDamage.deal(this, le, damage, LivingEntity.DamageSource.ARROW);
         return true;
+    }
+
+    /** The connected players of this arrow's world, or null when it has none (not the server's). */
+    private com.stonebreak.mobs.entities.ai.behavior.PlayerLocator roster() {
+        com.stonebreak.mobs.entities.ai.behavior.PlayerLocator players =
+                world != null ? world.getPlayerLocator() : null;
+        return players == com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE ? null : players;
     }
 
     /** Whether the arrow is inside the local player's body box (feet position, standing height). */

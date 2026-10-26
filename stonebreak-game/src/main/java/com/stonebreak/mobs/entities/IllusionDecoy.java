@@ -126,6 +126,10 @@ public class IllusionDecoy extends RemotePlayer {
     @Override
     public float getHeadPitch() { return 0f; }
 
+    /** Decoys take no hits, PvP or not (#374): there is nobody behind the figure to hurt. */
+    @Override
+    public boolean isPlayerAttackable() { return false; }
+
     @Override
     public boolean isPersistent() {
         // Transient — decoys live ~5s and are recreated on cast, never saved.

@@ -291,7 +291,7 @@ public final class ServerEntityHandler {
             return; // unknown id (despawn raced the hit) or already dead — drop silently
         }
         if (le instanceof RemotePlayer) {
-            return; // players and their decoys take no player hits until PvP exists (#343/#374)
+            return; // decoys take no hits (#374); a hit on a player is a PlayerDamageC2S (#343)
         }
         if (!sp.isLiveInWorld()) {
             return; // no reported position to measure from, or dead
@@ -342,6 +342,9 @@ public final class ServerEntityHandler {
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             sendKillCredit(sp, le, dealt, !le.isAlive(), source, kind);
+            if (kind == HitKind.MELEE) {
+                ServerHealthHandler.applyLifesteal(sp, dealt);
+            }
         }
     }
 

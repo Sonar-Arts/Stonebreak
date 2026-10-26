@@ -8,6 +8,10 @@ import static com.stonebreak.player.PlayerConstants.SPAWN_PROTECTION_DURATION;
  * Owns player health, death flag, and spawn-protection window. Damage requests from
  * other subsystems (fall damage, combat) funnel through damage(); death is a terminal
  * state cleared only by {@link DeathHandler#respawn()}.
+ *
+ * <p>In a session the server owns the health (issue #343): this becomes its mirror, set by
+ * {@link #applyServerState}, and the local damage sources stand down
+ * ({@code MultiplayerSession.serverOwnsPlayerHealth}).
  */
 public class HealthController {
 
@@ -79,6 +83,20 @@ public class HealthController {
     public void restoreFullHealth() {
         this.health = maxHealth;
         this.dead = false;
+    }
+
+    /**
+     * The server's word on this player's health (#343): health and maximum outright, and a
+     * death the server decided ({@link DeathHandler} runs its side effects next frame). A
+     * respawn is the caller's business — it needs the death handler's reset.
+     */
+    public void applyServerState(float health, float maxHealth, boolean dead) {
+        this.maxHealth = maxHealth;
+        this.health = Math.max(0f, Math.min(health, maxHealth));
+        if (dead) {
+            this.health = 0f;
+            this.dead = true;
+        }
     }
 
     /** Directly set death flag (used by DeathHandler after running death side effects). */

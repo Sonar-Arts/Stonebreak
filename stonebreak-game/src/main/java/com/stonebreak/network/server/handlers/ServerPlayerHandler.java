@@ -9,13 +9,11 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.DropItemC2S;
 import com.stonebreak.network.packet.player.HotbarSelectC2S;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
-import com.stonebreak.network.packet.player.PlayerLifeC2S;
 import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
 import com.stonebreak.network.server.ServerInventory;
@@ -61,19 +59,21 @@ public final class ServerPlayerHandler {
 
     // ─── Inbound ───────────────────────────────────────────────────────────────
 
-    public void handlePlayerState(ServerPlayer sp, PlayerStateC2S ps, ServerWorldContext ctx) {
-        handlePlayerState(sp, ps, ctx, System.nanoTime());
+    public boolean handlePlayerState(ServerPlayer sp, PlayerStateC2S ps, ServerWorldContext ctx) {
+        return handlePlayerState(sp, ps, ctx, System.nanoTime());
     }
 
     /**
      * {@code receivedNs}: when the report arrived on the event loop — the movement budget
      * refills by arrival time, so reports bunched by a tick hitch are not judged as a sprint.
+     *
+     * @return whether the report was accepted (and is now the player's server-side transform)
      */
-    public void handlePlayerState(ServerPlayer sp, PlayerStateC2S ps, ServerWorldContext ctx,
-                                  long receivedNs) {
+    public boolean handlePlayerState(ServerPlayer sp, PlayerStateC2S ps, ServerWorldContext ctx,
+                                     long receivedNs) {
         boolean firstReport = sp.lastStateNs() == 0L;
         if (!validateAndCache(sp, ps, ctx, receivedNs)) {
-            return;
+            return false;
         }
         if (firstReport) {
             // Re-announce with the first REAL position, non-droppable. Peers who received the
@@ -87,43 +87,7 @@ public final class ServerPlayerHandler {
         }
         ctx.broadcastExcept(sp,
             new PlayerStateS2C(sp.playerId(), ps.x(), ps.y(), ps.z(), ps.yaw(), ps.pitch(), ps.flags()), true);
-    }
-
-    /**
-     * Death / respawn edge (#357). The flag is applied unconditionally — a client whose
-     * position fails validation must not keep a stale dead/alive state. The edge's position
-     * replaces the cached one only for a real transition of a player that has already
-     * reported: on respawn the server must not hold a live player at the corpse until the
-     * droppable state stream catches up, while a redundant "alive" (a dead save respawned on
-     * load) carries a position the state stream has not vouched for.
-     */
-    public void handlePlayerLife(ServerPlayer sp, PlayerLifeC2S l, ServerWorldContext ctx) {
-        handlePlayerLife(sp, l, ctx, System.nanoTime());
-    }
-
-    /**
-     * The edge's position is held to the movement rules too (issue #336): a death happens
-     * where the player was, so it is an ordinary move; a respawn is a teleport the server
-     * checks itself — it must land at the world spawn — and refills the movement budget.
-     */
-    public void handlePlayerLife(ServerPlayer sp, PlayerLifeC2S l, ServerWorldContext ctx,
-                                 long receivedNs) {
-        boolean transition = sp.isDead() != l.dead();
-        sp.setDead(l.dead());
-        if (!transition || sp.lastStateNs() == 0L || !isValidPosition(l.x(), l.y(), l.z())) {
-            return;
-        }
-        if (l.dead()) {
-            if (!movementAllowed(sp, l.x(), l.z(), ctx, receivedNs)) {
-                return; // the corpse stays where the server last had the player
-            }
-        } else if (!respawnAllowed(sp, l.x(), l.z(), ctx)) {
-            correct(sp, receivedNs);
-            return;
-        } else {
-            sp.movement().reset(receivedNs);
-        }
-        sp.updateState(l.x(), l.y(), l.z(), sp.yaw(), sp.pitch());
+        return true;
     }
 
     /** Upper bound on one DropItemC2S so a buggy/hostile client can't spawn item mountains. */
@@ -159,26 +123,18 @@ public final class ServerPlayerHandler {
     }
 
     /**
-     * Death scatter (issue #334): one request replaces the per-stack toss burst. The server
-     * spawns a drop for every stack its OWN replica holds — 36 slots, craft grid, carried
-     * cursor — without consuming toss tokens (a death legitimately exceeds the toss
-     * budget), then clears the replica and syncs. Nothing is client-supplied. When the
-     * world/entities aren't spawnable yet, nothing is drained and the sync returns the
-     * inventory intact — no debit without a spawn.
-     *
-     * <p>Only a player the server holds dead (the reliable {@code PlayerLifeC2S} edge, which
-     * the client sends first) may drain, once per death and at most once per toss window
-     * ({@link ServerPlayer#claimDeathDrop}, #420); anything else is refused with a sync, so a
-     * living client cannot dump its inventory past the toss limit.
+     * Death scatter (issue #334, decided by the server since #343): a drop for every stack the
+     * server's OWN replica holds — 36 slots, craft grid, carried cursor — without toss tokens
+     * (a death legitimately exceeds the toss budget), then the replica is cleared and synced.
+     * Nothing is client-supplied. A world that cannot spawn drops yet keeps the inventory: no
+     * debit without a spawn.
      */
-    public void handleDeathDrop(ServerPlayer sp, DeathDropC2S d, ServerWorldContext ctx) {
-        ServerInventory inv = sp.inventory();
-        // Spawnability first: a death that cannot drain yet must not use up its claim.
-        if (ctx.world() == null || ctx.entityManager() == null || sp.lastStateNs() == 0L
-                || !sp.claimDeathDrop()) {
+    public static void scatterInventory(ServerPlayer sp, ServerWorldContext ctx) {
+        if (ctx.world() == null || ctx.entityManager() == null || sp.lastStateNs() == 0L) {
             sp.send(sp.inventorySync(), false);
             return;
         }
+        ServerInventory inv = sp.inventory();
         for (int i = 0; i < ServerInventory.TOTAL_SLOTS; i++) {
             ItemStack s = inv.slot(i);
             if (!s.isEmpty()) {
@@ -341,12 +297,19 @@ public final class ServerPlayerHandler {
 
     /**
      * The player ate one item from the selected hotbar slot (issue #355): debit the replica
-     * with the client's depletion auto-switch, then sync. Answered like a container action —
-     * accepted or refused, the sync acknowledges the seq, so a refusal corrects the mirror.
+     * with the client's depletion auto-switch, heal by the food's amount (#343), then sync.
+     * Answered like a container action — accepted or refused, the sync acknowledges the seq,
+     * so a refusal corrects the mirror.
      */
     public void handleConsumeHeld(ServerPlayer sp, ConsumeHeldC2S c) {
         sp.recordActionSeq(c.seq());
-        sp.inventory().consumeHeldFood(c.itemId());
+        if (!sp.isDead() && sp.inventory().consumeHeldFood(c.itemId())) {
+            // The food heals the server-owned health (#343); the client's heal was a prediction.
+            com.stonebreak.items.ItemType food = com.stonebreak.items.ItemType.getById(c.itemId());
+            if (food != null) {
+                sp.vitals().heal(food.getHealAmount());
+            }
+        }
         sp.send(sp.inventorySync(), false);
     }
 
@@ -406,8 +369,9 @@ public final class ServerPlayerHandler {
         }
         // Movement limit (issue #336): a jump further than the player could have travelled
         // is refused and the client put back, instead of every far-away report generating a
-        // view of chunks there. Legitimate teleports are exempt: respawn (checked in
-        // handlePlayerLife), world load (the first report), /teleport (cheats only).
+        // view of chunks there. Legitimate teleports are exempt: respawn (the server puts the
+        // player at the spawn itself, ServerHealthHandler), world load (the first report),
+        // /teleport (cheats only).
         if (!movementAllowed(sp, ps.x(), ps.z(), ctx, receivedNs)) {
             correct(sp, receivedNs);
             return false;
@@ -436,15 +400,6 @@ public final class ServerPlayerHandler {
     }
 
     /** A respawn must land at the world spawn (where the client's respawn puts it). */
-    private static boolean respawnAllowed(ServerPlayer sp, float x, float z, ServerWorldContext ctx) {
-        Vector3f spawn = ctx.spawn();
-        if (sp.isLocal() || ctx.cheatsEnabled() || spawn == null) {
-            return true;
-        }
-        return com.stonebreak.network.server.MovementGuard.horizontalDistance(spawn.x, spawn.z, x, z)
-                <= com.stonebreak.network.server.MovementGuard.RESPAWN_SLACK;
-    }
-
     /** Puts the client back where the server holds it (rate-limited by the guard). */
     private static void correct(ServerPlayer sp, long nowNs) {
         if (sp.movement().shouldCorrect(nowNs)) {

@@ -30,7 +30,7 @@ public final class ServerPlayer {
     // Last reported transform (cached from PlayerStateC2S) for reach checks + chunk targeting.
     private float x, y, z, yaw, pitch;
     private long lastStateNs = 0L;
-    /** Last death/respawn edge the client reported (PlayerLifeC2S, reliable — #357). */
+    /** Dead between the server's kill and the player's respawn (#343; was client-reported, #357). */
     private boolean dead = false;
 
     /** Nanos of this player's last authoritative shear request (containment rate limit). */
@@ -136,14 +136,9 @@ public final class ServerPlayer {
     public float pitch() { return pitch; }
     public long lastStateNs() { return lastStateNs; }
 
-    /** True between this player's reported death and its respawn (#357). */
+    /** True between this player's death and its respawn — both decided by the server (#343). */
     public boolean isDead() { return dead; }
-    public void setDead(boolean dead) {
-        this.dead = dead;
-        if (!dead) {
-            deathDropClaimed = false; // respawned: the next death may drain again (#420)
-        }
-    }
+    public void setDead(boolean dead) { this.dead = dead; }
 
     /**
      * True when this player stands in the world as a live body: handshake done, a real
@@ -162,9 +157,10 @@ public final class ServerPlayer {
     }
 
     /** Movement/action flags from the last PlayerStateC2S ({@code PlayerStateFlags}). */
-    private byte movementFlags;
+    private short movementFlags;
 
-    public void setMovementFlags(byte flags) { this.movementFlags = flags; }
+    public void setMovementFlags(short flags) { this.movementFlags = flags; }
+    public short movementFlags() { return movementFlags; }
 
     /** Whether the client last reported this player sprinting — what skittish mobs notice. */
     public boolean isSprinting() {
@@ -445,8 +441,11 @@ public final class ServerPlayer {
      *  against this. Never null after join. */
     private volatile com.stonebreak.world.save.model.PlayerData progressionBaseline;
 
+    /** Server-owned health and the rules that change it (#343); never taken from a client report. */
+    private final com.stonebreak.network.server.PlayerVitals vitals =
+            new com.stonebreak.network.server.PlayerVitals(20f, 20f);
+
     /** Mirrored prefs from the accepted PlayerPrefsC2S (cheats-gated server-side). */
-    private volatile float health = 20.0f;
     private volatile boolean flightEnabled = false;
     private volatile boolean flying = false;
     private volatile boolean spectator = false;
@@ -569,8 +568,14 @@ public final class ServerPlayer {
     public boolean isInventorySeeded() { return inventorySeeded; }
     public void markInventorySeeded() { this.inventorySeeded = true; }
 
-    public float health() { return health; }
-    public void setHealth(float health) { this.health = Math.max(0f, Math.min(1024f, health)); }
+    public com.stonebreak.network.server.PlayerVitals vitals() { return vitals; }
+    public float health() { return vitals.health(); }
+
+    /** Sets the health outright (a save, a fresh character), against the server-computed maximum. */
+    public void setHealth(float health) {
+        vitals.applyMaxHealth(serverStats.computeMaxHealth());
+        vitals.setHealth(health);
+    }
     public boolean flightEnabled() { return flightEnabled; }
     public void setFlightEnabled(boolean flightEnabled) { this.flightEnabled = flightEnabled; }
     public boolean flying() { return flying; }
@@ -597,27 +602,21 @@ public final class ServerPlayer {
         return ++dropCount <= MAX_DROPS_PER_WINDOW;
     }
 
-    // ─── Death drain latch (#420) ────────────────────────────────────────────────
-    /** True once this death's DeathDropC2S drained the replica; cleared by the respawn edge. */
-    private boolean deathDropClaimed = false;
-    private long lastDeathDropNs = Long.MIN_VALUE;
+    // ─── Claimed deaths (#420, #343) ─────────────────────────────────────────────
+    private long lastClaimedDeathNs = Long.MIN_VALUE;
 
     /**
-     * Claims this death's single inventory drain: true only while the player is dead, once
-     * per death, and at most once per toss window. Until #343 the server learns deaths from
-     * the client's own PlayerLifeC2S, so the window is what keeps a client toggling
-     * dead/alive from scattering its inventory faster than {@link #allowDrop} allows tosses.
+     * Whether a death the CLIENT claims ({@code PlayerLifeC2S} dead — giving up its life, as
+     * a /kill would) may be honoured now: at most one per toss window. Every death scatters
+     * the inventory, so a client toggling dead/alive must not dump it faster than
+     * {@link #allowDrop} allows tosses. Deaths the server decides itself are not limited.
      */
-    public boolean claimDeathDrop() {
-        if (!dead || deathDropClaimed) {
-            return false;
-        }
+    public boolean allowClaimedDeath() {
         long now = System.nanoTime();
-        if (lastDeathDropNs != Long.MIN_VALUE && now - lastDeathDropNs <= DROP_WINDOW_NS) {
+        if (lastClaimedDeathNs != Long.MIN_VALUE && now - lastClaimedDeathNs <= DROP_WINDOW_NS) {
             return false;
         }
-        deathDropClaimed = true;
-        lastDeathDropNs = now;
+        lastClaimedDeathNs = now;
         return true;
     }
 

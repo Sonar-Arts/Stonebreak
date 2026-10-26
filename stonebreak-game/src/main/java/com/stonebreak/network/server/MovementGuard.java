@@ -15,8 +15,8 @@ import com.openmason.engine.net.pipeline.TokenBucket;
  * does not reach new chunks, and a long fall is legitimately fast.
  *
  * <p>Exempt: the host's own player, and every player while the world's cheats are on
- * ({@code /teleport} and creative flight are then allowed). A respawn is a server-checked
- * teleport to the world spawn and refills the budget.
+ * ({@code /teleport} and creative flight are then allowed). A respawn is a teleport the server
+ * makes itself — it puts the player at the world spawn (#343) — and refills the budget.
  *
  * <p>Server tick thread only, like the rest of {@link ServerPlayer}.
  */
@@ -28,8 +28,6 @@ public final class MovementGuard {
     public static final double BURST_BLOCKS = 32.0;
     /** The first report may differ this much (horizontally) from the stored position it joined at. */
     public static final float FIRST_REPORT_SLACK = 64f;
-    /** A respawn must land this close (horizontally) to the world spawn. */
-    public static final float RESPAWN_SLACK = 16f;
     /** At most one correction per this long, so reports already in flight don't each trigger one. */
     static final long CORRECTION_INTERVAL_NANOS = 500_000_000L;
 

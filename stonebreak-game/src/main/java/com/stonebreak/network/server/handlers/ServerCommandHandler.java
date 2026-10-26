@@ -41,11 +41,45 @@ public final class ServerCommandHandler {
         switch (parts[0].toLowerCase()) {
             case "obtain" -> handleObtain(sp, parts, ctx);
             case "spawn" -> handleSpawn(sp, parts, ctx);
+            case "pvp" -> handlePvp(sp, parts, ctx);
             default -> {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * /pvp [on|off] — whether players may hurt each other on this world (issue #343). With no
+     * argument, reports the rule. Changing it is the host's call, or anyone's while the world's
+     * cheats are on; the rule persists with the world and every client is told.
+     */
+    private void handlePvp(ServerPlayer sp, String[] args, ServerWorldContext ctx) {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null) {
+            return;
+        }
+        if (args.length < 2) {
+            reply(sp, "PvP is " + (level.pvpEnabled() ? "on" : "off") + " on this world.");
+            return;
+        }
+        Boolean enable = switch (args[1].toLowerCase()) {
+            case "on", "true", "enable" -> true;
+            case "off", "false", "disable" -> false;
+            default -> null;
+        };
+        if (enable == null) {
+            reply(sp, "Usage: /pvp [on|off]");
+            return;
+        }
+        if (!sp.isLocal() && !level.cheatsEnabled()) {
+            reply(sp, "Only the host can change PvP while cheats are off.");
+            return;
+        }
+        level.setPvpEnabled(enable);
+        ctx.broadcast(new com.stonebreak.network.packet.world.PvpStateS2C(enable), false);
+        ctx.broadcast(new ChatMessageS2C(-1, "Server",
+                sp.username() + " turned PvP " + (enable ? "on." : "off.")), false);
     }
 
     /**

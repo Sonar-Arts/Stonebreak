@@ -56,8 +56,13 @@ public final class ProtocolVersion {
      *  sends known animation states as a one-byte code.
      *  21 = sound replication (issue #344): SoundEventS2C plays another player's block
      *  break/place/mining hits and mobs' hurt/death voices on nearby clients, and the
-     *  PlayerStateFlags MINING bit tells the server when a player stops mining. */
-    public static final int CURRENT = 21;
+     *  PlayerStateFlags MINING bit tells the server when a player stops mining.
+     *  22 = server-owned player health (issue #343): PlayerHealthS2C (health/max/dead, every
+     *  player to everyone), PlayerKnockbackS2C, PvpStateS2C and PlayerDamageC2S (PvP hits) added;
+     *  the state flags grow to 16 bits (FLYING, DODGING, LIFESTEAL); DeathDropC2S (27) retired —
+     *  the server scatters the inventory at the death it decides; PlayerLifeC2S's respawn is a
+     *  request whose spot the server picks. */
+    public static final int CURRENT = 22;
 
     private ProtocolVersion() {}
 }

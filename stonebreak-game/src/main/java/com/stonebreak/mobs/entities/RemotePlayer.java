@@ -65,7 +65,7 @@ public class RemotePlayer extends LivingEntity {
     private final Vector3f velocityEstimate = new Vector3f();
 
     /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
-    private volatile byte stateFlags;
+    private volatile short stateFlags;
     /**
      * Full authored punch triggered by the replicated ATTACKING flag, independent
      * of the short gameplay pulse, matching the local player's body animation.
@@ -98,11 +98,11 @@ public class RemotePlayer extends LivingEntity {
      */
     private volatile boolean receivedFirstState;
 
-    public void setStateFlags(byte flags) {
+    public void setStateFlags(short flags) {
         this.stateFlags = flags;
         receivedFirstState = true;
     }
-    public byte getStateFlags() { return stateFlags; }
+    public short getStateFlags() { return stateFlags; }
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
     public com.stonebreak.rendering.effects.WaterSplashParticles getSplashParticles() { return splashParticles; }
     public com.stonebreak.rendering.effects.WaterRippleParticles getRippleParticles() { return rippleParticles; }
@@ -231,7 +231,7 @@ public class RemotePlayer extends LivingEntity {
         }
 
         // Replicated flags select land sprint/jump; unflagged local figures still walk.
-        byte flags = stateFlags;
+        short flags = stateFlags;
         movementState = vehicle != null ? PlayerStateMapping.PlayerMovementState.SITTING
                 : PlayerStateMapping.locomotion(moving,
                 !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE),
@@ -259,7 +259,7 @@ public class RemotePlayer extends LivingEntity {
         // Read order matters: receivedFirstState before stateFlags, so a true here always
         // pairs with the flags of a real packet (see the field's doc).
         boolean hasState = receivedFirstState;
-        byte flags = stateFlags;
+        short flags = stateFlags;
         boolean partiallyInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
                 flags, com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER);
         boolean eyesInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
@@ -343,9 +343,12 @@ public class RemotePlayer extends LivingEntity {
     @Override
     public void onDamage(float damage, DamageSource source) {}
 
-    /** No PvP yet (#343): remote players have no network id, so hits on them are dropped. */
+    /**
+     * A combat target only while the world allows PvP (#343, mirrored from {@code PvpStateS2C});
+     * the server still refuses hits when it is off. Decoys never are ({@link IllusionDecoy}).
+     */
     @Override
-    public boolean isPlayerAttackable() { return false; }
+    public boolean isPlayerAttackable() { return isAlive() && com.stonebreak.core.Game.isPvpEnabled(); }
 
     @Override
     protected void onDeath() {}

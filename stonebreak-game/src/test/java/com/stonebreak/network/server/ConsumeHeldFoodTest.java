@@ -123,4 +123,23 @@ class ConsumeHeldFoodTest {
         }
         server.setSlot(slot, stack.copy());
     }
+
+    @Test
+    void eatingHealsTheServerOwnedHealthAndOnlyWhileAlive() {
+        ServerPlayer sp = new ServerPlayer(mock(ServerConnection.class), 7);
+        sp.inventory().setSlot(0, new ItemStack(ItemType.BANANA, 3));
+        sp.vitals().damage(10f, com.stonebreak.network.packet.player.PlayerHealthS2C.CAUSE_MOB, 0L);
+        ServerPlayerHandler handler = new ServerPlayerHandler();
+
+        handler.handleConsumeHeld(sp, new ConsumeHeldC2S(BANANA, 1));
+
+        assertEquals(Math.min(20f, 10f + ItemType.BANANA.getHealAmount()), sp.health(), 1e-4f,
+                "the food heals on the server (#343); the client's heal was a prediction");
+
+        sp.setDead(true);
+        float before = sp.health();
+        handler.handleConsumeHeld(sp, new ConsumeHeldC2S(BANANA, 2));
+        assertEquals(before, sp.health(), "the dead eat nothing");
+        assertEquals(2, sp.inventory().slot(0).getCount());
+    }
 }

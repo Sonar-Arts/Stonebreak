@@ -11,7 +11,7 @@ class RemotePlayerAnimationTest {
     @Test
     void remotePunchContinuesAfterReplicatedAttackFlagClears() {
         var player = new RemotePlayer(null, new Vector3f(), 1, "test");
-        player.setStateFlags((byte) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.ATTACKING));
+        player.setStateFlags((short) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.ATTACKING));
         player.updateClientVisuals(0.01f);
         player.setStateFlags((byte) PlayerStateFlags.ON_GROUND);
         player.updateClientVisuals(0.25f);
@@ -24,7 +24,7 @@ class RemotePlayerAnimationTest {
     @Test
     void replicatedSprintFlagSelectsSprintAtHighFrameRatesAndKeepsAttackOverlay() {
         var player = new RemotePlayer(null, new Vector3f(), 1, "test");
-        player.setStateFlags((byte) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.SPRINTING
+        player.setStateFlags((short) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.SPRINTING
                 | PlayerStateFlags.ATTACKING));
         player.applyNetworkState(0.025f, 0, 0, 0, 0);
         player.updateClientVisuals(1f / 240f);

@@ -11,23 +11,21 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 /**
- * The client half of #357: the death and respawn edges reach the server on the reliable
- * channel, the death edge ahead of the death scatter, the respawn edge carrying the respawn
- * point (not the corpse).
+ * The client half of the life edges (#357, reworked by #343): in a session the server decides
+ * deaths and scatters the inventory itself, so the client only runs the death's local side
+ * effects — once — and asks to respawn; the respawn spot is the server's.
  */
 class DeathHandlerLifeEdgeTest {
 
@@ -44,7 +42,7 @@ class DeathHandlerLifeEdgeTest {
         gameStatic = mockStatic(Game.class);
         gameStatic.when(Game::getInstance).thenReturn(game);
         session = mockStatic(MultiplayerSession.class);
-        session.when(MultiplayerSession::sendDeathDrop).thenReturn(true);
+        session.when(MultiplayerSession::serverOwnsPlayerHealth).thenReturn(true);
 
         state = new PhysicsState();
         state.getPosition().set(40f, 70f, -12f);
@@ -59,16 +57,16 @@ class DeathHandlerLifeEdgeTest {
     }
 
     @Test
-    void deathReportsDeadAtTheCorpseBeforeTheScatter() {
-        health.damage(1000f);
+    void aDeathTheServerDecidedRunsTheLocalSideEffects() {
+        health.applyServerState(0f, 20f, true);
 
         handler.processDeathIfNeeded();
 
+        // The edge is a no-op on the server (it already holds the player dead), sent at the corpse.
         ArgumentCaptor<Vector3f> pos = ArgumentCaptor.forClass(Vector3f.class);
-        InOrder order = inOrder(MultiplayerSession.class);
-        order.verify(session, () -> MultiplayerSession.sendPlayerLife(eq(true), pos.capture()));
-        order.verify(session, MultiplayerSession::sendDeathDrop);
+        session.verify(() -> MultiplayerSession.sendPlayerLife(eq(true), pos.capture()));
         assertEquals(new Vector3f(40f, 70f, -12f), pos.getValue());
+        assertEquals(0f, state.getVelocity().length(), "the corpse stops");
         session.verify(() -> MultiplayerSession.sendPlayerLife(eq(false), any()), never());
     }
 

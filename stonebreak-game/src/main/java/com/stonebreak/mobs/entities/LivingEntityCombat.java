@@ -98,6 +98,12 @@ final class LivingEntityCombat {
         Vector3f position = owner.position;
         float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
+            if (owner instanceof RemotePlayer rp && rp.isPlayerAttackable() && amount > 0f) {
+                // PvP (#343): players have no network id; the intent names the player and the
+                // server applies it to their server-owned health, if the world allows PvP.
+                MultiplayerSession.onLocalPlayerDamage(rp.getPlayerId(), amount, source, type, kind);
+                return true;
+            }
             if (owner.getNetworkId() < 0 || !(amount > 0f)) {
                 return false;
             }

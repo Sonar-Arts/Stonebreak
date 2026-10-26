@@ -174,7 +174,7 @@ public class MirroredDeceitAbility {
             decoy.setFakeCasting(fakeCasting);
             decoy.setHeldItem(held);
             if (decoy.isNetworkShadow()) {
-                decoy.setStateFlags((byte) (fakeCasting ? PlayerStateFlags.ATTACKING : 0));
+                decoy.setStateFlags((short) (fakeCasting ? PlayerStateFlags.ATTACKING : 0));
             }
         }
 

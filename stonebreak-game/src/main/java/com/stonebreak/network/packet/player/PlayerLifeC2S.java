@@ -5,12 +5,11 @@ import com.openmason.engine.net.protocol.PacketCodec;
 import io.netty.buffer.ByteBuf;
 
 /**
- * Client → server: the sender died ({@code dead}) or respawned ({@code !dead}), with where
- * it stands at that edge. Sent once per edge on the reliable channel — never on the
- * droppable 20 Hz state stream — so the server's view of who is dead cannot be lost to a
- * join or chunk burst (#357). The position is the corpse on death and the respawn point on
- * respawn: a respawn that is processed before the next state report must not leave the
- * server holding a live player at the corpse, next to its own death drops.
+ * Client → server, on the reliable channel: a life edge the CLIENT asks for (#357, reworked by
+ * #343 — the server owns health and decides deaths itself). {@code !dead} asks to respawn; the
+ * server puts the player at the spot it picks and answers with {@code PlayerPositionS2C} and
+ * {@code PlayerHealthS2C}. {@code dead} gives the player's life up (a death only the client saw);
+ * a death the server already decided makes it a no-op. The position is informational only.
  */
 public record PlayerLifeC2S(boolean dead, float x, float y, float z) implements Packet {
 

@@ -106,8 +106,8 @@ class PacketRoundTripTest {
         assertEquals("", roundTrip(BlockChangeC2S.CODEC, new BlockChangeC2S(1, 2, 3, (short) 4, (short) 5, null)).placementState());
         assertEquals(new BlockChangeS2C(10, 64, -5, (short) 3), roundTrip(BlockChangeS2C.CODEC, new BlockChangeS2C(10, 64, -5, (short) 3)));
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0)));
-        assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (byte) 0xFF)));
-        assertEquals(new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (byte) 0x3F), roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (byte) 0x3F)));
+        assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (short) 0x7FF), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (short) 0x7FF)));
+        assertEquals(new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (short) 0x5BF), roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (short) 0x5BF)));
         assertEquals(new HotbarSelectC2S(5), roundTrip(HotbarSelectC2S.CODEC, new HotbarSelectC2S(5)));
         assertEquals(new com.stonebreak.network.packet.player.ConsumeHeldC2S(1032, 70_000),
             roundTrip(com.stonebreak.network.packet.player.ConsumeHeldC2S.CODEC,
@@ -173,9 +173,6 @@ class PacketRoundTripTest {
         assertEquals(new com.stonebreak.network.packet.world.BlockToggleC2S(1, 2, 3, 79),
             roundTrip(com.stonebreak.network.packet.world.BlockToggleC2S.CODEC,
                 new com.stonebreak.network.packet.world.BlockToggleC2S(1, 2, 3, 79)));
-        assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(80),
-            roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,
-                new com.stonebreak.network.packet.player.DeathDropC2S(80)));
         assertEquals(new com.stonebreak.network.packet.player.InventoryResyncC2S(),
             roundTrip(com.stonebreak.network.packet.player.InventoryResyncC2S.CODEC,
                 new com.stonebreak.network.packet.player.InventoryResyncC2S()));
@@ -191,9 +188,6 @@ class PacketRoundTripTest {
         assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f)));
         assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
-        assertEquals(new com.stonebreak.network.packet.player.DeathDropC2S(),
-            roundTrip(com.stonebreak.network.packet.player.DeathDropC2S.CODEC,
-                new com.stonebreak.network.packet.player.DeathDropC2S()));
         assertEquals(new com.stonebreak.network.packet.player.PlayerPrefsC2S(7, "{\"k\":1}"),
             roundTrip(com.stonebreak.network.packet.player.PlayerPrefsC2S.CODEC,
                 new com.stonebreak.network.packet.player.PlayerPrefsC2S(7, "{\"k\":1}")));
@@ -490,6 +484,16 @@ class PacketRoundTripTest {
             com.stonebreak.network.packet.world.SoundEventS2C.entity(3, "death", -12.5f, 70.25f, 400f);
         assertEquals(sound, viaRegistry(reg, PLAY, CLIENTBOUND, sound));
         assertEquals(sound, roundTrip(com.stonebreak.network.packet.world.SoundEventS2C.CODEC, sound));
+        // #343: server-owned player health.
+        var health = new com.stonebreak.network.packet.player.PlayerHealthS2C(9, 12.5f, 22f, true,
+            com.stonebreak.network.packet.player.PlayerHealthS2C.CAUSE_MOB);
+        assertEquals(health, viaRegistry(reg, PLAY, CLIENTBOUND, health));
+        var knockback = new com.stonebreak.network.packet.player.PlayerKnockbackS2C(-3f, 4f, 0.5f);
+        assertEquals(knockback, viaRegistry(reg, PLAY, CLIENTBOUND, knockback));
+        var pvp = new com.stonebreak.network.packet.world.PvpStateS2C(true);
+        assertEquals(pvp, viaRegistry(reg, PLAY, CLIENTBOUND, pvp));
+        var hit = new com.stonebreak.network.packet.player.PlayerDamageC2S(77, 6.5f, (byte) 1, (byte) 2, (byte) 0);
+        assertEquals(hit, viaRegistry(reg, PLAY, SERVERBOUND, hit));
     }
 
     /** Encode/decode through the registry exactly as the pipeline does (id varint + codec). */

@@ -24,7 +24,6 @@ import com.stonebreak.network.packet.handshake.KeepAliveS2C;
 import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.DropItemC2S;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.HotbarSelectC2S;
@@ -88,6 +87,8 @@ public final class IntegratedServer {
     private final ServerFishingHandler fishingHandler = new ServerFishingHandler();
     private final ServerIllusionHandler illusionHandler = new ServerIllusionHandler();
     private final com.stonebreak.network.server.handlers.ServerVehicleHandler vehicleHandler;
+    /** Server-owned player health, death and respawn (issue #343). */
+    private final com.stonebreak.network.server.handlers.ServerHealthHandler healthHandler;
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
@@ -125,6 +126,8 @@ public final class IntegratedServer {
         this.blockHandler = new ServerBlockHandler(chunkHandler);
         this.entityHandler = new ServerEntityHandler();
         this.vehicleHandler = new com.stonebreak.network.server.handlers.ServerVehicleHandler(entityHandler::entity);
+        // The dead don't row: a death gets the player out of any boat first.
+        this.healthHandler = new com.stonebreak.network.server.handlers.ServerHealthHandler(vehicleHandler::onPeerLeft);
         this.playerHandler = new ServerPlayerHandler();
         this.chatHandler = new ServerChatHandler();
     }
@@ -147,7 +150,8 @@ public final class IntegratedServer {
         level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
         // Same direction for mob AI: the world's mobs flee from / pursue the connected roster,
         // remote players included, instead of the client's local player (#340).
-        level.world().setPlayerLocator(new ServerPlayerLocator(ctx.players()));
+        // Hostile mobs land their blows and arrows on the roster through it too (#343).
+        level.world().setPlayerLocator(new ServerPlayerLocator(ctx.players(), ctx, healthHandler));
 
         // Replication funnel for authoritative SIM block mutations (water flow etc.):
         // installed on the HEADLESS world only, so server-side chunk.setBlock writes reach
@@ -370,6 +374,7 @@ public final class IntegratedServer {
         runTickStep("decoys", () -> illusionHandler.tick(ctx, TICK_PERIOD_NS / 1_000_000_000f));
         runTickStep("chunks", () -> chunkHandler.tick(ctx));
         runTickStep("held items", () -> playerHandler.broadcastHeldItemChanges(ctx));
+        runTickStep("health", () -> healthHandler.tick(ctx, TICK_PERIOD_NS / 1_000_000_000f, System.nanoTime()));
 
         // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
         // too (free RTT signal) but are exempt from the silence kick — a same-JVM stall
@@ -591,7 +596,12 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
             case com.stonebreak.network.packet.world.WeatherSetC2S ws -> handleWeatherSet(sp, ws);
-            case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx, receivedNs);
+            case PlayerStateC2S ps -> {
+                if (playerHandler.handlePlayerState(sp, ps, ctx, receivedNs)) {
+                    healthHandler.onPlayerState(sp, ps.flags(), receivedNs, ctx); // falls (#343)
+                }
+            }
+            case com.stonebreak.network.packet.player.PlayerDamageC2S pd -> healthHandler.handlePlayerDamage(sp, pd, ctx);
             case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
@@ -607,13 +617,8 @@ public final class IntegratedServer {
             case ViewDistanceC2S vd -> sp.setViewDistanceChunks(vd.chunks());
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
-            case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
-            case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> {
-                playerHandler.handlePlayerLife(sp, pl, ctx, receivedNs);
-                if (pl.dead()) {
-                    vehicleHandler.onPeerLeft(sp, ctx); // the dead don't row
-                }
-            }
+            case com.stonebreak.network.packet.player.PlayerLifeC2S pl ->
+                healthHandler.handleLife(sp, pl, ctx, receivedNs);
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
             case com.stonebreak.network.packet.player.FishingRodC2S fr -> fishingHandler.handleRodUse(sp, fr, ctx);
@@ -633,6 +638,7 @@ public final class IntegratedServer {
      */
     static boolean isCombatIntent(Packet packet) {
         return packet instanceof EntityDamageC2S
+                || packet instanceof com.stonebreak.network.packet.player.PlayerDamageC2S
                 || packet instanceof com.stonebreak.network.packet.entity.EntityKnockbackC2S
                 || packet instanceof com.stonebreak.network.packet.entity.ProjectileSpawnC2S
                 || packet instanceof com.stonebreak.network.packet.entity.DecoyCastC2S;
@@ -930,6 +936,10 @@ public final class IntegratedServer {
         // 5. Restore a REMOTE player's saved inventory/stats (the local player is restored
         //    same-JVM). An empty payload tells the client to use fresh starting items.
         sendInitialPlayerData(sp);
+
+        // 6. Health: the world's PvP rule and everyone's health to the newcomer, its own (just
+        //    seeded) to everyone (#343).
+        healthHandler.onPeerJoined(sp, ctx);
     }
 
     /**
@@ -1245,7 +1255,6 @@ public final class IntegratedServer {
         inv.loadFrom(slots);
         inv.selectHotbarSlot(data.getSelectedHotbarSlot());
         sp.acceptBaseline(data);
-        sp.setHealth(data.getHealth());
         sp.setFlightEnabled(data.isFlightEnabled());
         sp.setFlying(data.isFlying());
         sp.setSpectator(data.isSpectator());
@@ -1253,7 +1262,16 @@ public final class IntegratedServer {
         // The stored transform, so a save before the first PlayerStateC2S keeps it (the
         // persistence blob reads the cached transform, which was (0,0,0) until then).
         Vector3f pos = data.getPosition();
-        sp.seedTransform(pos.x, pos.y, pos.z, data.getRotation().x, data.getRotation().y);
+        if (data.getHealth() <= 0f) {
+            // Saved dead: back at the world spawn with full health, as the client respawns it
+            // on load (StateConverter.applyPlayerData) — never alive at 0 HP at the corpse.
+            sp.setHealth(sp.serverStats().computeMaxHealth());
+            Vector3f spawn = ctx.spawn();
+            sp.seedTransform(spawn.x, spawn.y, spawn.z, data.getRotation().x, data.getRotation().y);
+        } else {
+            sp.setHealth(data.getHealth());
+            sp.seedTransform(pos.x, pos.y, pos.z, data.getRotation().x, data.getRotation().y);
+        }
         return true;
     }
 
@@ -1352,7 +1370,7 @@ public final class IntegratedServer {
             return;
         }
         sp.acceptBaseline(accepted);
-        sp.setHealth(PlayerPrefsValidator.acceptedHealth(sp.serverStats(), accepted.getHealth()));
+        // The report's health is not read: health is server-owned (#343).
         // Cheats-gated prefs: flight/spectator/creative only when the SERVER's flag is on.
         if (level.cheatsEnabled()) {
             sp.setFlightEnabled(accepted.isFlightEnabled());
