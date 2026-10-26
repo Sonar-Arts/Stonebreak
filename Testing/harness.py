@@ -6,7 +6,7 @@ Driven by run-tests.sh; can also be used standalone. Stdlib only.
 Subcommands:
   list                          print the system catalog (validates the registry)
   resolve   --scope SCOPE       emit MODULES/TESTS (or GROUPS) lines for the runner
-  summarize --scope SCOPE [--update-baseline] [--report FILE]
+  summarize --scope SCOPE [--update-baseline] [--slow] [--report FILE]
                                 parse surefire XML reports, print the concise
                                 stats table, diff against the baseline, set the
                                 exit code (0 green, 1 failures/regressions,
@@ -403,6 +403,8 @@ def cmd_resolve(args):
 
 
 def cmd_summarize(args):
+    if args.update_baseline and args.slow:
+        fail("--update-baseline records the default run; drop --slow")
     systems, by_system = resolve_registry()
     modules, _ = scope_selection(args.scope, systems, by_system)
     class_to_system = {
@@ -534,6 +536,8 @@ def main():
     p_sum = sub.add_parser("summarize")
     p_sum.add_argument("--scope", required=True)
     p_sum.add_argument("--update-baseline", action="store_true")
+    p_sum.add_argument("--slow", action="store_true",
+                       help="the run included @Tag(\"slow\") tests (the baseline excludes them)")
     p_sum.add_argument("--report", metavar="FILE", help="also write the result as Markdown")
     p_infra = sub.add_parser("infra-report")
     p_infra.add_argument("--scope", required=True)

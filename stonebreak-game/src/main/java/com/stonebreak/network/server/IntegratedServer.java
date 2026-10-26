@@ -70,9 +70,12 @@ public final class IntegratedServer {
     private int remotePlayerSaveCounter = 0;
 
     /** Keepalive probe + authoritative time sample cadence (100 ticks = 5 s at 20 Hz). */
-    private static final int KEEPALIVE_INTERVAL_TICKS = 100;
+    static final int KEEPALIVE_INTERVAL_TICKS = 100;
     /** Kick a REMOTE player after this much total inbound silence (dead TCP peer). */
-    private static final long INBOUND_SILENCE_TIMEOUT_NS = 30_000_000_000L; // 30 s
+    static final long INBOUND_SILENCE_TIMEOUT_NS = 30_000_000_000L; // 30 s
+    /** This server's keepalive cadence and silence timeout (the constants above, unless tuned for a test). */
+    private final int keepaliveIntervalTicks;
+    private final long inboundSilenceTimeoutNs;
     private int keepaliveCounter = 0;
     private long nextKeepaliveNonce = 1L;
 
@@ -113,7 +116,19 @@ public final class IntegratedServer {
     private boolean wasPausedByHost;
 
     public IntegratedServer() {
-        this.networkServer = new NetworkServer(StonebreakProtocol.registry());
+        this(com.openmason.engine.net.server.ServerLimits.DEFAULTS, INBOUND_SILENCE_TIMEOUT_NS,
+                KEEPALIVE_INTERVAL_TICKS);
+    }
+
+    /**
+     * A server with its own abuse limits and silence timing — the tests' seam (issue #347), so a
+     * timeout or admission deadline can be exercised in seconds rather than the real minutes.
+     */
+    IntegratedServer(com.openmason.engine.net.server.ServerLimits limits, long inboundSilenceTimeoutNs,
+                     int keepaliveIntervalTicks) {
+        this.keepaliveIntervalTicks = keepaliveIntervalTicks;
+        this.inboundSilenceTimeoutNs = inboundSilenceTimeoutNs;
+        this.networkServer = new NetworkServer(StonebreakProtocol.registry(), limits);
         this.ctx = new ServerWorldContext(networkServer.connections());
         // World traffic only reaches players past the handshake (not one still handshaking or
         // creating a character — unauthenticated, and not in the world yet).
@@ -190,6 +205,11 @@ public final class IntegratedServer {
 
     public ServerWorldContext worldContext() {
         return ctx;
+    }
+
+    /** The bound TCP listen address (port 0 resolved), or null when not listening on TCP. */
+    public java.net.SocketAddress tcpBoundAddress() {
+        return networkServer.tcpBoundAddress();
     }
 
     private List<EntitySpawner.SpawnAnchor> collectPlayerSpawnAnchors() {
@@ -379,13 +399,13 @@ public final class IntegratedServer {
         // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
         // too (free RTT signal) but are exempt from the silence kick — a same-JVM stall
         // (debugger, world-gen hitch on the game thread) must not tear down SP/host.
-        if (++keepaliveCounter >= KEEPALIVE_INTERVAL_TICKS) {
+        if (++keepaliveCounter >= keepaliveIntervalTicks) {
             keepaliveCounter = 0;
             long now = System.nanoTime();
             TimeSyncS2C timeSync = currentTimeSync();
             com.stonebreak.network.packet.world.WeatherSyncS2C weatherSync = currentWeatherSync();
             for (ServerPlayer sp : ctx.players()) {
-                if (!sp.isLocal() && now - sp.lastInboundNs() > INBOUND_SILENCE_TIMEOUT_NS) {
+                if (!sp.isLocal() && now - sp.lastInboundNs() > inboundSilenceTimeoutNs) {
                     System.out.println("[SERVER] Kicking " + sp.username() + " (id "
                         + sp.playerId() + "): connection timed out.");
                     sp.disconnect(); // channelInactive → normal DISCONNECT flow (persist + leave)

@@ -9,6 +9,7 @@ HARNESS="$HERE/harness.py"
 LIST=0
 UPDATE_BASELINE=0
 VERBOSE=0
+SLOW=0
 REPORT=""
 SCOPE_WORDS=()
 
@@ -16,17 +17,20 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       cat <<'EOF'
-Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--report FILE]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--slow] [--report FILE]
                                  all | integration | regression | <system> [<system>...]
 
   --report FILE   also write the result as Markdown (for a PR comment), even
                   when the build fails before any test runs
+  --slow          also run tests tagged @Tag("slow") (left out by default; the
+                  baseline is the default run's, so --update-baseline refuses it)
 EOF
       exit 2
       ;;
     --list)           LIST=1; shift ;;
     --update-baseline) UPDATE_BASELINE=1; shift ;;
     --verbose)        VERBOSE=1; shift ;;
+    --slow)           SLOW=1; shift ;;
     --report)
       if [[ $# -lt 2 || "$2" == -* ]]; then
         echo "--report needs a file path" >&2
@@ -37,11 +41,13 @@ EOF
     -*)
       echo "Unknown flag: $1" >&2
       cat >&2 <<'EOF'
-Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--report FILE]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--slow] [--report FILE]
                                  all | integration | regression | <system> [<system>...]
 
   --report FILE   also write the result as Markdown (for a PR comment), even
                   when the build fails before any test runs
+  --slow          also run tests tagged @Tag("slow") (left out by default; the
+                  baseline is the default run's, so --update-baseline refuses it)
 EOF
       exit 2
       ;;
@@ -51,12 +57,19 @@ done
 
 if [[ "$LIST" -eq 0 && ${#SCOPE_WORDS[@]} -eq 0 ]]; then
   cat <<'EOF'
-Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--report FILE]
+Usage: Testing/run-tests.sh [--list] [--update-baseline] [--verbose] [--slow] [--report FILE]
                                  all | integration | regression | <system> [<system>...]
 
   --report FILE   also write the result as Markdown (for a PR comment), even
                   when the build fails before any test runs
+  --slow          also run tests tagged @Tag("slow") (left out by default; the
+                  baseline is the default run's, so --update-baseline refuses it)
 EOF
+  exit 2
+fi
+
+if [[ "$UPDATE_BASELINE" -eq 1 && "$SLOW" -eq 1 ]]; then
+  echo "--update-baseline records the default run; drop --slow" >&2
   exit 2
 fi
 
@@ -116,6 +129,11 @@ done
 
 # ── Run Maven ───────────────────────────────────────────────────────
 cd "$ROOT"
+# @Tag("slow") tests (timeouts, leak checks) are left out unless --slow is given.
+EXTRA_MVN=()
+if [[ "$SLOW" -eq 0 ]]; then
+  EXTRA_MVN+=("-DexcludedGroups=slow")
+fi
 MVN_LOG="$(mktemp /tmp/stonebreak-tests-XXXXXX.log)"
 MVN_EXIT=0
 
@@ -138,25 +156,25 @@ done
 
 if [[ "$LINE_KIND" == "GROUPS" ]]; then
   if [[ "$VERBOSE" -eq 1 ]]; then
-    mvn -q -Dmaven.test.failure.ignore=true test -Dgroups="$LINE_VALUE" 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?
+    mvn -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dgroups="$LINE_VALUE" 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?
   else
-    mvn -q -Dmaven.test.failure.ignore=true test -Dgroups="$LINE_VALUE" >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
+    mvn -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dgroups="$LINE_VALUE" >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
   fi
 elif [[ "$LINE_KIND" == "TESTS" ]]; then
   if [[ "$ALL_THREE" == true ]]; then
     # Full reactor — no -pl
     if [[ "$VERBOSE" -eq 1 ]]; then
-      mvn -q -Dmaven.test.failure.ignore=true test -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?
+      mvn -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?
     else
-      mvn -q -Dmaven.test.failure.ignore=true test -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
+      mvn -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
     fi
   else
     # Subset of modules — use -pl -am
     PL_LIST="$(IFS=','; echo "${MODULES[*]}")"
     if [[ "$VERBOSE" -eq 1 ]]; then
-      mvn -pl "$PL_LIST" -am -q -Dmaven.test.failure.ignore=true test -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?
+      mvn -pl "$PL_LIST" -am -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?
     else
-      mvn -pl "$PL_LIST" -am -q -Dmaven.test.failure.ignore=true test -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
+      mvn -pl "$PL_LIST" -am -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
     fi
   fi
 fi
@@ -187,5 +205,8 @@ if [[ "$UPDATE_BASELINE" -eq 1 ]]; then
 fi
 if [[ -n "$REPORT" ]]; then
   SUMMARIZE_ARGS+=(--report "$REPORT")
+fi
+if [[ "$SLOW" -eq 1 ]]; then
+  SUMMARIZE_ARGS+=(--slow)
 fi
 exec python3 "$HARNESS" "${SUMMARIZE_ARGS[@]}"
