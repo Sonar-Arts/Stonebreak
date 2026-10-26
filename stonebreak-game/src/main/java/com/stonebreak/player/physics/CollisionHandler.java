@@ -212,7 +212,10 @@ public class CollisionHandler {
                 // Hit ceiling — clear ground flag so gravity can take over.
                 state.setOnGround(false);
             }
-        } else if (velocity.y < 0) {
+        } else if (velocity.y != 0) {
+            // Moving vertically without touching anything is airborne — including a rise from an
+            // impulse (hit knockback) that, unlike a jump, never cleared the flag itself. Left set,
+            // gravity stays off and the body climbs forever.
             state.setOnGround(false);
         }
     }
