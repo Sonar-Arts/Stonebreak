@@ -15,8 +15,8 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
  * <p>All AI-driven mobs render through one generic {@link SbeMobRenderer} path
  * keyed off {@code EntityType.getSbeObjectId()} (ground-anchored via the model's
  * rest-pose feet); player-shaped figures (local third-person, remote players,
- * decoys, previews) go through {@link PlayerFigureRenderer}; effect entities
- * through {@link GlowCubeRenderer}; arrows, the bobber and anything else through
+ * decoys, previews) go through {@link PlayerFigureRenderer}; fire bolts through
+ * {@link FireBoltRenderer}; other effect entities through {@link GlowCubeRenderer}; arrows, the bobber and anything else through
  * {@link ArrowRenderer}, {@link BobberRenderer} and {@link FallbackCubeRenderer},
  * all of which draw via the shared {@link SimpleCubePipeline}. The depth-only
  * shadow pass is {@link EntityShadowCasterRenderer}.
@@ -41,6 +41,7 @@ public class EntityRenderer {
     private final FallbackCubeRenderer fallbackCubeRenderer = new FallbackCubeRenderer(simpleCubePipeline);
     private final ArrowRenderer arrowRenderer = new ArrowRenderer(simpleCubePipeline);
     private final GlowCubeRenderer glowCubeRenderer = new GlowCubeRenderer(simpleCubePipeline);
+    private final FireBoltRenderer fireBoltRenderer = new FireBoltRenderer();
     private final BobberRenderer bobberRenderer = new BobberRenderer(sbeEntityRenderer, fallbackCubeRenderer);
     private final DinghyRenderer dinghyRenderer = new DinghyRenderer(sbeEntityRenderer, fallbackCubeRenderer);
     private final EntityShadowCasterRenderer shadowCasterRenderer =
@@ -63,6 +64,7 @@ public class EntityRenderer {
         simpleCubePipeline.initialize();
         fallbackCubeRenderer.initialize();
         glowCubeRenderer.initialize();
+        fireBoltRenderer.initialize();
         arrowRenderer.initialize();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
@@ -137,6 +139,11 @@ public class EntityRenderer {
         if (SbeMobRenderer.handles(entity)) {
             mobRenderer.render((com.stonebreak.mobs.entities.LivingEntity) entity,
                     viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
+
+        if (entity instanceof com.stonebreak.mobs.entities.FireBolt bolt) {
+            fireBoltRenderer.render(bolt, viewMatrix, projectionMatrix);
             return;
         }
 
@@ -383,6 +390,7 @@ public class EntityRenderer {
         simpleCubePipeline.cleanup();
         fallbackCubeRenderer.cleanup();
         glowCubeRenderer.cleanup();
+        fireBoltRenderer.cleanup();
         arrowRenderer.cleanup();
 
         sbeEntityRenderer.cleanup();

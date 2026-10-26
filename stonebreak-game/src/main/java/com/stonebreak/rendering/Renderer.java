@@ -453,6 +453,14 @@ public class Renderer {
     public DropRenderer getDropRenderer() {
         return dropRenderer;
     }
+
+    /**
+     * Get the first-person arm renderer sub-component.
+     * @return PlayerArmRenderer instance
+     */
+    public PlayerArmRenderer getPlayerArmRenderer() {
+        return playerArmRenderer;
+    }
     
     // ============ UI RENDERER PROXY METHODS ============
     

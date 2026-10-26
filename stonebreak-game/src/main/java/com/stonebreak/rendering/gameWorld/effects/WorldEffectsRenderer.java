@@ -81,7 +81,7 @@ public final class WorldEffectsRenderer {
     }
 
     /**
-     * Fire bolt core cubes, drawn through the entity renderer so bolts that already impacted are
+     * Fire bolt fireballs, drawn through the entity renderer so bolts that already impacted are
      * skipped — only their particles remain.
      */
     private void renderFireBoltCores(Player player) {

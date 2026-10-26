@@ -84,17 +84,43 @@ public class RaycastEngine {
      * camera ray reaches (the first solid block, or {@link #AIM_DISTANCE} out).
      */
     public Vector3f aimDirection() {
-        Vector3f eye = eyeOrigin();
+        return aimDirectionFrom(eyeOrigin());
+    }
+
+    /**
+     * {@link #aimDirection()} for a projectile leaving {@code origin} instead of the eyes
+     * (e.g. a staff head): the unit direction from it to the point the crosshair is on.
+     */
+    public Vector3f aimDirectionFrom(Vector3f origin) {
         Vector3f cam = camera.getPosition();
         Vector3f front = new Vector3f(camera.getFront()).normalize();
-        float behind = cam.distance(eye);
+        float behind = cam.distance(origin);
         if (behind < 1e-3f) {
             return front;
         }
         float hit = distanceToFirstSolid(cam, front, AIM_DISTANCE);
-        // Never aim at a point level with or behind the player, or the shot swings sideways.
+        // Never aim at a point level with or behind the origin, or the shot swings sideways.
         float t = Math.max(hit == Float.MAX_VALUE ? AIM_DISTANCE : hit, behind + 1f);
-        return new Vector3f(front).mul(t).add(cam).sub(eye).normalize();
+        return new Vector3f(front).mul(t).add(cam).sub(origin).normalize();
+    }
+
+    /**
+     * Where a projectile drawn from {@code source} (a held item's tip) actually leaves: the
+     * source itself, unless it is null or a solid block stands between it and the eyes — a
+     * staff pushed into a wall must not cast from its far side — when it is the eyes.
+     */
+    public Vector3f launchOrigin(Vector3f source) {
+        Vector3f eye = eyeOrigin();
+        if (source == null) {
+            return eye;
+        }
+        Vector3f toSource = new Vector3f(source).sub(eye);
+        float length = toSource.length();
+        if (length < 1e-3f) {
+            return eye;
+        }
+        boolean blocked = distanceToFirstSolid(eye, toSource.div(length), length) < length;
+        return blocked ? eye : new Vector3f(source);
     }
 
     /** How far out the third-person aim point sits when the crosshair is on open sky. */

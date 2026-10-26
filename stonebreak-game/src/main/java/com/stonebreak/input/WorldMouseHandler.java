@@ -1,6 +1,7 @@
 package com.stonebreak.input;
 
 import com.stonebreak.blocks.stalagmite.StalagmiteInteraction;
+import com.stonebreak.rendering.player.items.StaffHead;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
@@ -130,14 +131,17 @@ final class WorldMouseHandler {
         interactOrPlaceBlock(player);
     }
 
-    /** Staff fire bolt, rate-limited. Server-authoritative spawn with a local fallback when sessionless. */
+    /**
+     * Staff fire bolt, rate-limited: leaves the staff head, aimed at the crosshair.
+     * Server-authoritative spawn with a local fallback when sessionless.
+     */
     private void castFireBolt(Player player) {
         long now = System.nanoTime();
         if (now - lastFireBoltCastNanos < STAFF_CAST_COOLDOWN_NANOS) {
             return;
         }
-        Vector3f dir = player.getRaycastEngine().aimDirection();
-        Vector3f spawnPos = player.getRaycastEngine().eyeOrigin();
+        Vector3f spawnPos = player.getRaycastEngine().launchOrigin(StaffHead.world(player));
+        Vector3f dir = player.getRaycastEngine().aimDirectionFrom(spawnPos);
         if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_FIRE_BOLT, spawnPos, dir)) {
             EntityManager em = Game.getEntityManager();
             if (em != null) {

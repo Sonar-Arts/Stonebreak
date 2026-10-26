@@ -8,16 +8,14 @@ import org.joml.Vector3f;
 import org.lwjgl.opengl.GL11;
 
 /**
- * Emissive, additively blended cube visuals for effect entities: fire bolt core,
- * null spike, leyline breach zone slab and caltrop clusters. Each type gets its
+ * Emissive, additively blended cube visuals for effect entities: null spike,
+ * leyline breach zone slab and caltrop clusters (the fire bolt is a fireball, see
+ * {@link FireBoltRenderer}). Each type gets its
  * own flat-colour texture and outer-glow scale; the glow pass is drawn with the
  * cube VAO kept bound (issue #177).
  */
 final class GlowCubeRenderer {
     private final SimpleCubePipeline pipeline;
-
-    // 1x1 orange texture for the fire bolt core.
-    private int fireBoltTexture;
 
     // 1x1 violet texture for the null spike core.
     private int nullSpikeTexture;
@@ -33,8 +31,6 @@ final class GlowCubeRenderer {
     }
 
     void initialize() {
-        // Bright orange-yellow for the fire bolt core
-        fireBoltTexture = SolidColorTexture.create(255, 140, 0, 255);
         // Arcane violet for the null spike core
         nullSpikeTexture = SolidColorTexture.create(178, 102, 255, 255);
         // Translucent arcane cyan for the zone slab (alpha matters under additive blend)
@@ -45,8 +41,7 @@ final class GlowCubeRenderer {
 
     /** Whether this renderer draws the given entity type. */
     static boolean handles(EntityType type) {
-        return type == EntityType.FIRE_BOLT
-                || type == EntityType.NULL_SPIKE
+        return type == EntityType.NULL_SPIKE
                 || type == EntityType.LEYLINE_BREACH_ZONE
                 || type == EntityType.CALTROP_CLUSTER;
     }
@@ -54,9 +49,7 @@ final class GlowCubeRenderer {
     /** Dispatches an entity accepted by {@link #handles} to its glow-cube variant. */
     void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
         EntityType entityType = entity.getType();
-        if (entityType == EntityType.FIRE_BOLT) {
-            renderFireBolt(entity, viewMatrix, projectionMatrix, cameraPos);
-        } else if (entityType == EntityType.NULL_SPIKE) {
+        if (entityType == EntityType.NULL_SPIKE) {
             renderGlowCube(entity, nullSpikeTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
         } else if (entityType == EntityType.LEYLINE_BREACH_ZONE) {
             renderGlowCube(entity, leylineZoneTexture, 1.0f, viewMatrix, projectionMatrix, cameraPos);
@@ -65,20 +58,9 @@ final class GlowCubeRenderer {
         }
     }
 
-    private void renderFireBolt(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                Vector3f cameraPos) {
-        // Once the bolt has impacted, the solid core is gone — only the fading
-        // trail/impact particles remain (drawn by WorldRenderer).
-        if (entity instanceof com.stonebreak.mobs.entities.FireBolt bolt && bolt.isImpacted()) {
-            return;
-        }
-
-        renderGlowCube(entity, fireBoltTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
-    }
-
     /**
-     * Draws an entity as an additively blended emissive cube (fire bolts, null spikes,
-     * leyline zone slabs), with an optional larger outer glow layer.
+     * Draws an entity as an additively blended emissive cube (null spikes, leyline zone
+     * slabs, caltrops), with an optional larger outer glow layer.
      *
      * @param glowScale scale multiplier for the outer glow pass; {@code <= 1} skips it
      */
@@ -127,7 +109,6 @@ final class GlowCubeRenderer {
     }
 
     void cleanup() {
-        SolidColorTexture.delete(fireBoltTexture);
         SolidColorTexture.delete(nullSpikeTexture);
         SolidColorTexture.delete(leylineZoneTexture);
         SolidColorTexture.delete(caltropTexture);

@@ -35,6 +35,12 @@ public class FireBolt extends Entity {
     public final FireTrailParticles particles = new FireTrailParticles();
     /** Shadow only: last interpolated position, to aim the trail behind its motion. */
     private final Vector3f lastShadowPos = new Vector3f(Float.NaN, 0f, 0f);
+    /**
+     * Which way the bolt is seen to fly, for the fireball's tail. A client shadow is built
+     * with a placeholder direction, so it has no heading until it has been seen to move.
+     */
+    private final Vector3f heading = new Vector3f();
+    private boolean hasHeading;
 
     public FireBolt(World world, Vector3f position, Vector3f direction) {
         super(world, position);
@@ -77,6 +83,8 @@ public class FireBolt extends Entity {
         // Advance the bolt in small sub-steps so collision is checked along the
         // whole travel segment rather than only at the destination point.
         float remaining = BOLT_SPEED * deltaTime;
+        heading.set(direction);
+        hasHeading = true;
         EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         while (remaining > 0.0f && !impacted) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
@@ -126,6 +134,8 @@ public class FireBolt extends Entity {
         if (!impacted && !Float.isNaN(lastShadowPos.x)) {
             Vector3f moved = new Vector3f(position).sub(lastShadowPos);
             if (moved.lengthSquared() > 1e-6f) {
+                heading.set(moved).normalize();
+                hasHeading = true;
                 particles.spawn(position, moved.negate().normalize());
             }
         }
@@ -153,6 +163,16 @@ public class FireBolt extends Entity {
         if (impacted) return;
         impacted = true;
         particles.burst(position);
+    }
+
+    /** Whether the bolt has been seen to move, so {@link #getHeading} is meaningful. */
+    public boolean hasHeading() {
+        return hasHeading;
+    }
+
+    /** Unit direction the bolt is seen to fly in, copied into {@code dest}. */
+    public Vector3f getHeading(Vector3f dest) {
+        return dest.set(heading);
     }
 
     /** Whether the bolt has struck something and is now just fading out. */

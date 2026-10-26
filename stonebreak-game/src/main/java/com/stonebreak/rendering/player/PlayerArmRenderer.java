@@ -169,30 +169,54 @@ public class PlayerArmRenderer {
      *         isn't available.
      */
     public org.joml.Vector3f getHeldRodTipWorld(Player player) {
-        // Reproduce the arm view-model used in renderPlayerArm: animations first,
-        // then the held-item pose (no bow draw for a rod).
-        Matrix4f armViewModel = new Matrix4f();
-        animator.applyAnimations(armViewModel, player, getSelectedItem(player));
-        animator.applyItemTransform(armViewModel, 0.0f);
-
+        Matrix4f armViewModel = heldItemArmPose(player);
         org.joml.Vector3f modelTip = getRodTipModelPoint(armViewModel);
         if (modelTip == null) {
             return null;
         }
 
         // armViewModel acts as the view here (camera at origin), so this is the
-        // rod tip in eye space. Nudge it onto the rod's visual tip, then map
-        // eye → world via the inverse camera view.
+        // rod tip in eye space. Nudge it onto the rod's visual tip.
         org.joml.Vector3f eyeTip = armViewModel.transformPosition(new org.joml.Vector3f(modelTip));
         eyeTip.x += ROD_TIP_NUDGE_RIGHT;
         eyeTip.y += ROD_TIP_NUDGE_UP;
-        // Inverting the render-space view matrix lands in render space, but this
-        // method's contract (and its caller, which pairs the tip with a bobber's
-        // world position) is world coordinates — so step back out.
+        return eyeToWorld(player, eyeTip);
+    }
+
+    /**
+     * World-space position of a point of the held voxelized sprite item, given in the
+     * item's voxel-mesh space — e.g. the staff head its fire bolts leave from. Uses the
+     * same transform chain the item is rendered with, so the point follows the arm's
+     * walk bob, idle sway and swing.
+     */
+    public org.joml.Vector3f heldPointWorld(Player player, org.joml.Vector3f meshPoint) {
+        Matrix4f armViewModel = heldItemArmPose(player);
+        org.joml.Vector3f model = com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer
+                .getBaseSpriteTransform().transformPosition(new org.joml.Vector3f(meshPoint));
+        return eyeToWorld(player, armViewModel.transformPosition(model));
+    }
+
+    /**
+     * The arm view-model renderPlayerArm draws a held sprite item with: animations first,
+     * then the held-item pose (no bow draw).
+     */
+    private Matrix4f heldItemArmPose(Player player) {
+        Matrix4f armViewModel = new Matrix4f();
+        animator.applyAnimations(armViewModel, player, getSelectedItem(player));
+        animator.applyItemTransform(armViewModel, 0.0f);
+        return armViewModel;
+    }
+
+    /**
+     * Maps an eye-space point (the arm view-model's space: camera at the origin) to world
+     * coordinates. Inverting the render-space view matrix lands in render space, so step
+     * back out of it — callers pair these points with entities' world positions.
+     */
+    private static org.joml.Vector3f eyeToWorld(Player player, org.joml.Vector3f eyePoint) {
         Matrix4f invView = new Matrix4f();
         player.getViewMatrix().invert(invView);
-        org.joml.Vector3f renderTip = invView.transformPosition(eyeTip);
-        return com.openmason.engine.rendering.RenderOrigin.toWorld(renderTip, renderTip);
+        org.joml.Vector3f renderPoint = invView.transformPosition(eyePoint);
+        return com.openmason.engine.rendering.RenderOrigin.toWorld(renderPoint, renderPoint);
     }
 
     /**
