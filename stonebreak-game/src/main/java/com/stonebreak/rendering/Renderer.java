@@ -139,7 +139,6 @@ public class Renderer {
         
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
-        entityRenderer.initializeArrowRenderer(resourceManager.getShaderProgram());
 
         dropRenderer = new DropRenderer(displayMeshes, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 

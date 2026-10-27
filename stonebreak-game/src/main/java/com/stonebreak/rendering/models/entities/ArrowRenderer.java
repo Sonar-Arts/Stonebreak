@@ -1,67 +1,49 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.rendering.RenderOrigin;
-import com.openmason.engine.rendering.shaders.ShaderProgram;
-import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.items.ItemType;
+import com.stonebreak.mobs.entities.Arrow;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
- * Draws arrow projectiles as an elongated brown cuboid (a scaled simple cube)
- * rotated to the arrow's travel yaw. Also holds the voxelized-sprite renderer
- * wired in by {@link EntityRenderer#initializeArrowRenderer} for a future
- * sprite-based arrow visual.
+ * Draws arrow projectiles as the arrow item's voxelized SBO sprite, pointed along the arrow's
+ * flight path (pitch included, so it noses over as it arcs).
+ *
+ * <p>Voxelized items draw with the world shader in the drop pass, so the arrow is queued on the
+ * {@link SocketItemQueue} like a mob's held item. In that socket frame the sprite lies in the XY
+ * plane, one unit across, and the arrow sprite's top-left-to-bottom-right diagonal (head to
+ * fletching) lands on the X axis with the head at -X. Two copies are queued, rolled 90° about the
+ * shaft, so the arrow never vanishes edge-on.
  */
 final class ArrowRenderer {
-    private final SimpleCubePipeline pipeline;
 
-    // 1x1 brown texture for arrow projectiles.
-    private int arrowTexture;
+    /** Socket units → blocks; the sprite's diagonal is ~1.2 units, so the arrow is ~0.6 blocks long. */
+    private static final float SCALE = 0.5f;
+    /** Below this |heading.y| the world up is a usable reference axis for the arrow's roll. */
+    private static final float NEAR_VERTICAL = 0.999f;
+    private static final Vector3f WORLD_UP = new Vector3f(0, 1, 0);
+    private static final Vector3f WORLD_NORTH = new Vector3f(0, 0, -1);
 
-    // Voxelized sprite renderer for arrow projectiles (uses the main scene shader).
-    private com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer arrowVoxelRenderer;
+    private final SocketItemQueue queue;
+    private final Matrix4f flight = new Matrix4f();
+    private final Matrix4f copy = new Matrix4f();
 
-    ArrowRenderer(SimpleCubePipeline pipeline) {
-        this.pipeline = pipeline;
+    ArrowRenderer(SocketItemQueue queue) {
+        this.queue = queue;
     }
 
-    void initialize() {
-        arrowTexture = SolidColorTexture.create(139, 90, 43, 255); // saddle-brown
-    }
-
-    /**
-     * Wires up the voxelized-sprite renderer used for arrow projectiles.
-     * Must be called after initialize() and after the main scene shader is ready.
-     */
-    void initializeVoxelRenderer(ShaderProgram mainSceneShader) {
-        if (mainSceneShader != null) {
-            arrowVoxelRenderer = new com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer(mainSceneShader);
-        }
-    }
-
-    /**
-     * Renders an arrow as an elongated brown cylinder approximated with a scaled cube.
-     * Rotated to face the arrow's velocity direction (stored in entity.rotation.y).
-     */
-    void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
-        pipeline.begin(arrowTexture, viewMatrix, projectionMatrix, new Vector3f(0, 0, 0),
-                0.0f, new Vector3f(0.1f, 0.3f, 0.5f), entity, true);
-
-        // Elongated along local Z (direction of travel); yaw from rotation.y
-        Matrix4f modelMatrix = RenderOrigin
-                .modelAt(entity.getPosition().x, entity.getPosition().y, entity.getPosition().z)
-                .rotateY((float) Math.toRadians(entity.getRotation().y))
-                .scale(0.06f, 0.06f, 0.5f);
-        pipeline.setModel(modelMatrix);
-
-        pipeline.bindCube();
-        pipeline.drawCube();
-        pipeline.unbindCube();
-
-        pipeline.end();
-    }
-
-    void cleanup() {
-        SolidColorTexture.delete(arrowTexture);
+    void render(Arrow arrow) {
+        Vector3f heading = arrow.heading();
+        Vector3f up = Math.abs(heading.y) < NEAR_VERTICAL ? WORLD_UP : WORLD_NORTH;
+        Vector3f pos = arrow.getPosition();
+        // rotateTowards maps local +Z onto the heading; rotateY(90°) then turns the sprite's
+        // head (-X) onto local +Z.
+        RenderOrigin.modelAt(flight, pos.x, pos.y, pos.z)
+                .rotateTowards(heading, up)
+                .rotateY((float) Math.toRadians(90.0))
+                .scale(SCALE);
+        queue.add(ItemType.ARROW, null, flight);
+        queue.add(ItemType.ARROW, null, copy.set(flight).rotateX((float) Math.toRadians(90.0)));
     }
 }

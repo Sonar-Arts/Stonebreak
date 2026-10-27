@@ -19,8 +19,8 @@ import static org.lwjgl.system.MemoryUtil.memFree;
 /**
  * The shared GL resources behind every non-SBE entity draw: the textured
  * "simple cube" shader (opt-in sun/world lighting + underwater fog) and the
- * unit cube VAO it draws. {@link FallbackCubeRenderer}, {@link ArrowRenderer}
- * and {@link GlowCubeRenderer} are thin clients of this pipeline; it owns no
+ * unit cube VAO it draws. {@link FallbackCubeRenderer} and
+ * {@link GlowCubeRenderer} are thin clients of this pipeline; it owns no
  * per-entity textures. Call sequence per draw: {@link #begin} → {@link #setModel}
  * → {@link #bindCube} → {@link #drawCube} → {@link #unbindCube} → {@link #end}.
  */
