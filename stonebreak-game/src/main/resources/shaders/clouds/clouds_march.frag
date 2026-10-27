@@ -18,6 +18,14 @@
 // darkening of creases. Light behind the cloud is kept by exp(-sigma * d), the
 // rule cloud shadows and water use, so thin cloud is see-through.
 //
+// In the golden hour the warm sunlight is seen mostly toward the sun. Cloud
+// droplets scatter forward, so the low, dim, reddened beam lines the clouds
+// near the sun in gold, and the clouds opposite send back far less of it. There
+// the blue dusk sky lights them instead, and they read pastel pink to grey. The
+// change follows the angle from the sun smoothly (sunsetFalloff). Haze and
+// skylight follow the sky behind each cloud, gold only where it is gold
+// (sunset_fog.glsl).
+//
 // Output (half resolution): rgb = cloud light, premultiplied; a = how much of
 // the scene behind survives. Composite with blend (ONE, SRC_ALPHA). Second
 // output: how far along the ray the cloud a pixel shows sits, which the
@@ -26,6 +34,7 @@
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shape.glsl"
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/sunset_fog.glsl"
 
 in vec2 vUv;
 layout(location = 0) out vec4 fragColor;
@@ -38,8 +47,9 @@ uniform mat4 u_invViewProj;     // render space
 uniform vec3 u_camPos;          // render space
 uniform vec3 u_sunDir;
 uniform vec3 u_sunColor;
-uniform vec3 u_ambientColor;
-uniform vec3 u_hazeColor;       // distant clouds fade toward this (the sky)
+uniform vec3 u_ambientColor;    // the sky's light on the cloud where the sky is gold...
+uniform vec3 u_ambientClear;    // ...and where it is not
+uniform vec3 u_hazeColor;       // distant clouds fade toward this (the sky without the gold)
 uniform float u_slabBottom;
 uniform float u_slabTop;
 uniform float u_fadeStart;      // clouds thin out with horizontal distance...
@@ -91,6 +101,25 @@ const float FLASH_RADIUS = 110.0;
 const vec3 FLASH_COLOR = vec3(0.75, 0.8, 1.0);
 // Lowest sun elevation the sun march is aimed at, so it never runs flat along the slab.
 const float MIN_SUN_Y = 0.15;
+// Golden-hour fall-off of the sunlight with the angle from the sun: a gaussian
+// in the angle, as wide as SUNSET_LOBE (radians, 70 degrees), over a floor of
+// SUNSET_BACK opposite the sun.
+const float SUNSET_LOBE = 1.222;
+const float SUNSET_BACK = 0.25;
+// Sunlight warmth (1 - blue / brightest channel) at which the fall-off is
+// complete: SkyLight's GOLDEN_SUN. White noon sun and the blue moon have none.
+const float SUNSET_WARMTH = 0.48;
+
+// How much of the sunlight a cloud in view direction cosTheta from the sun shows.
+// Full toward the sun, about 0.6 at 90 degrees, SUNSET_BACK opposite; 1 outside
+// the golden hour, when the bright beam saturates every cloud to white.
+float sunsetFalloff(float cosTheta) {
+    float warmth = 1.0 - u_sunColor.b / max(max(u_sunColor.r, u_sunColor.g), max(u_sunColor.b, 1e-4));
+    float golden = smoothstep(0.0, SUNSET_WARMTH, warmth);
+    float angle = acos(clamp(cosTheta, -1.0, 1.0));
+    float lobe = mix(SUNSET_BACK, 1.0, exp(-0.5 * angle * angle / (SUNSET_LOBE * SUNSET_LOBE)));
+    return mix(1.0, lobe, golden);
+}
 
 // How much of the sky a point at height y over `site` sees: two short samples
 // straight up the same column. In shade (inside a storm, under a deck)
@@ -234,6 +263,11 @@ void main() {
     // have gathered less scattered light than its body, so they read darker.
     // Gone when looking toward the sun.
     float powderAmount = 0.6 * (0.5 - 0.5 * cosTheta);
+    vec3 sunLight = u_sunColor * sunsetFalloff(cosTheta);
+    // The sky behind the cloud, and the light it casts on it.
+    vec3 haze = horizonFogColor(u_hazeColor, rd);
+    vec2 flatDir = rd.xz / max(length(rd.xz), 1e-4);
+    vec3 ambient = mix(u_ambientClear, u_ambientColor, min(sunsetFogWeight(flatDir), 1.0));
 
     float scale = stepScale(tNear, tFar);
     float t = tNear + scale * stepAt(tNear) * dither(gl_FragCoord.xy);
@@ -268,12 +302,12 @@ void main() {
             // Skylight: the base of a cloud sees less of the sky than its top.
             float skyLit = mix(0.35, 1.0, sqrt(clamp(s.height, 0.0, 1.0)))
                     * mix(1.0 - SKY_OCCLUSION_MAX, 1.0, skyVisibility(site, p.y, footprint));
-            vec3 lit = s.albedo * (u_sunColor * sun * powder + u_ambientColor * skyLit);
+            vec3 lit = s.albedo * (sunLight * sun * powder + ambient * skyLit);
             lit += FLASH_COLOR * flashAt(p);
             lit = 1.0 - exp(-EXPOSURE * lit);
 
             // Aerial perspective, like the terrain's distance fog...
-            lit = mix(lit, u_hazeColor, 0.65 * smoothstep(0.0, u_fadeEnd, t * across));
+            lit = mix(lit, haze, 0.65 * smoothstep(0.0, u_fadeEnd, t * across));
             // ...and clouds thin out toward the fade distance instead of ending in a wall.
             float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, t * across);
             float stepT = exp(-ext * fade * min(ds, tFar - t));

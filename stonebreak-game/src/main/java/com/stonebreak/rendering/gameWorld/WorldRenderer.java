@@ -416,7 +416,7 @@ public class WorldRenderer {
             // bolt hides it and cloud behind it doesn't paint over it.
             lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
-                    sky, skyColor,
+                    sky, skyColor, clearFogColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
                     lightningRenderer.flashes(), precipitationFog, weatherReach);
             checkGLError("After cloud rendering");

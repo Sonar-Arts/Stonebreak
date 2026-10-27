@@ -6,6 +6,7 @@ import com.openmason.engine.rendering.postfx.RenderTarget;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.stonebreak.rendering.gameWorld.SceneDepthCopy;
+import com.stonebreak.rendering.gameWorld.SunsetFog;
 import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
 import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.world.weather.ClientWeather;
@@ -102,6 +103,7 @@ public final class CloudRenderer {
     /** Moonlight on the deck relative to the key light it casts on the ground. */
     private static final float MOONLIT_CLOUD = 0.3f;
     private final Vector3f ambientColor = new Vector3f();
+    private final Vector3f ambientClear = new Vector3f();
     private final int[] viewportBuf = new int[4];
 
     public CloudRenderer() {
@@ -179,14 +181,17 @@ public final class CloudRenderer {
      *
      * @param renderCameraPos camera position in render space
      * @param sky             this frame's sky (null outside a world: plain daylight)
-     * @param skyColor        the sky colour as the weather tints it, for the haze
+     * @param skyColor        the sky colour as the weather tints it, sunset gold included
+     * @param clearSkyColor   the same without the gold: the haze and sky light away from it,
+     *                        which {@link SunsetFog} turns gold toward the sun per pixel
      * @param flashes         lightning flash points (render-space xyz, intensity w; 0 = unused),
      *                        each lighting only the cloud around it
      * @param fog             rain and snow fog, which hides the cloud behind it
      * @param reach           blocks to the terrain's horizon: no cloud hangs beyond it
      */
     public void render(Matrix4f projection, Matrix4f view, Vector3f renderCameraPos,
-                       SkyLight sky, Vector3f skyColor, float ambientLight, Vector4f[] flashes,
+                       SkyLight sky, Vector3f skyColor, Vector3f clearSkyColor, float ambientLight,
+                       Vector4f[] flashes,
                        PrecipitationFog fog, float reach) {
         if (!prepared) return;
 
@@ -247,7 +252,9 @@ public final class CloudRenderer {
                 ? sunColor.set(sky.keyLight()).mul(MOONLIT_CLOUD)
                 : sunColor(sky, keyDirection));
         marchShader.setVec3("u_ambientColor", ambientColor(sky, skyColor, ambientLight, ambientColor));
-        marchShader.setVec3("u_hazeColor", skyColor);
+        marchShader.setVec3("u_ambientClear", ambientColor(sky, clearSkyColor, ambientLight, ambientClear));
+        marchShader.setVec3("u_hazeColor", clearSkyColor);
+        SunsetFog.applyTo(marchShader);
         fog.applyTo(marchShader);
         marchShader.setFloat("u_slabBottom", CloudType.slabBottom());
         marchShader.setFloat("u_slabTop", CloudType.slabTop());
@@ -359,7 +366,7 @@ public final class CloudRenderer {
         return drawnThisFrame && target != null ? target.getExtraColorTexture() : 0;
     }
 
-    /** Sunlight's hue ({@link SkyLight#sunColor}), dim near the horizon and gone below it. */
+    /** Sunlight's hue ({@link SkyLight#sunColor()}), dim near the horizon and gone below it. */
     private Vector3f sunColor(SkyLight sky, Vector3f sun) {
         float strength = smoothstep(-0.05f, 0.12f, sun.y) * 0.85f;
         return sky != null ? sunColor.set(sky.sunColor()).mul(strength) : sunColor.set(strength);
