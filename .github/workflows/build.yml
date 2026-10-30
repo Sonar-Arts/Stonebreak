@@ -1,0 +1,59 @@
+# Compiles and packages the whole reactor (openmason-engine, stonebreak-game, openmason-tool) on
+# every supported platform, so a change that breaks the build on one OS shows up before merge.
+# Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh), and the
+# shaded jars are not uploaded or released. The root POM's OS-activated profiles pick the
+# LWJGL/Skija natives for each runner; Cenda is not built here, so the engine packages without
+# it and relies on its pure-Java fallback (cenda-native.yml covers the native library).
+name: build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "Dev Working/**"
+      - ".github/ISSUE_TEMPLATE/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "Dev Working/**"
+      - ".github/ISSUE_TEMPLATE/**"
+  workflow_dispatch:
+
+# Checkout + build only: the job never writes to the repo, issues or packages.
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR supersedes the running build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest is Apple Silicon (natives-macos-arm64 profile); macos-13 is the last
+        # Intel image, so add it here if the x86_64 natives need coverage too.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Build Stonebreak + Open Mason
+        # -DskipTests still compiles the test sources, so broken tests fail the build.
+        run: mvn -B -ntp -s .mvn/settings.xml package -DskipTests
