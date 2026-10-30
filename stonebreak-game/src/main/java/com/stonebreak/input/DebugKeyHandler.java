@@ -5,6 +5,7 @@ import org.joml.Vector3f;
 import com.openmason.engine.diagnostics.MemoryProfiler;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.core.render.Screenshots;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.player.Player;
@@ -12,6 +13,8 @@ import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.diagnostics.SaveSystemDiagnostics;
 
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F1;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F2;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F4;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
@@ -22,7 +25,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT;
 
 /**
- * Development function keys: F3 debug overlay, F4 memory-leak analysis,
+ * Function keys: F1 hide HUD, F2 screenshot, F3 debug overlay, F4 memory-leak analysis,
  * F5 perspective toggle (Shift+F5 memory profiling), F6 test-cow spawn,
  * F7 manual save, F8 save-system diagnostic.
  */
@@ -39,6 +42,14 @@ final class DebugKeyHandler {
     }
 
     void poll() {
+        if (keys.pressedOnce(GLFW_KEY_F1)) {
+            Game.toggleHudHidden();
+        }
+
+        if (keys.pressedOnce(GLFW_KEY_F2)) {
+            Screenshots.request();
+        }
+
         if (keys.pressedOnce(GLFW_KEY_F3)) {
             Game.toggleDebugOverlay();
         }
