@@ -196,6 +196,30 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Rebuilds Cenda from the checked-out sources: the IDE run configurations' before-launch
+                 step (mvn -pl openmason-engine exec:exec@cenda-kernels). No phase, so package and CI
+                 never run it. A Maven goal rather than a Shell Script run configuration because the
+                 shared .run files cannot name a bash that exists on every OS; cenda.bash does. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>cenda-kernels</id>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${cenda.bash}</executable>
+                            <workingDirectory>${project.basedir}/cenda</workingDirectory>
+                            <arguments>
+                                <argument>${project.basedir}/cenda/build-kernels.sh</argument>
+                                <argument>release</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>

@@ -3,8 +3,9 @@
 # Builds the Cenda native kernels (libcenda_kernels.so) from the CURRENT sources.
 #
 # Wired into the "Stonebreak" IntelliJ run configuration as a before-launch step
-# (.run/Cenda Kernels.run.xml), so launching the game always runs against a lib
-# built from the checked-out tree. Also safe to run by hand:
+# (the engine POM's exec:exec@cenda-kernels, which picks a bash per OS), so launching
+# the game always runs against a lib built from the checked-out tree. Also safe to
+# run by hand:
 #
 #     openmason-engine/cenda/build-kernels.sh [debug|release|asan]
 #
