@@ -14,12 +14,9 @@ on:
       - "docs/**"
       - "Dev Working/**"
       - ".github/ISSUE_TEMPLATE/**"
+  # No paths-ignore on PRs: the build jobs are required status checks on main, and a skipped
+  # workflow never reports, which would leave docs-only PRs blocked forever.
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "Dev Working/**"
-      - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
 
 # Checkout + build only: the job never writes to the repo, issues or packages.
