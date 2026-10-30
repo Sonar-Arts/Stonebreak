@@ -191,6 +191,12 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <!-- Attach the uber-jar as -shaded instead of replacing the main
+                                 artifact: openmason-tool depends on this module, and compiling it
+                                 against the uber-jar puts the bundled engine/Netty/SLF4J packages
+                                 in both their own modules and stonebreak.game (split packages). -->
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>shaded</shadedClassifierName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.stonebreak.core.Main</mainClass>
