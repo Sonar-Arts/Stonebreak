@@ -8,6 +8,7 @@ import com.stonebreak.world.save.serialization.JsonPlayerSerializer;
 import com.stonebreak.world.save.serialization.JsonWorldSerializer;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -199,11 +200,44 @@ public class FileSaveRepository {
         }
         Files.write(temp, payload);
         try {
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    replace(temp, target);
+                    return;
+                } catch (AccessDeniedException e) {
+                    // Windows refuses to rename over a file another thread has open — a load
+                    // of the same player reading it. The read is brief, so wait it out.
+                    if (attempt >= REPLACE_ATTEMPTS) {
+                        throw e;
+                    }
+                    sleepBeforeRetry(attempt);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(temp);
+            throw e;
+        }
+    }
+
+    /** Tries for about a second in all before a write fails. */
+    private static final int REPLACE_ATTEMPTS = 20;
+
+    private static void replace(Path temp, Path target) throws IOException {
+        try {
             Files.move(temp, target,
                 StandardCopyOption.REPLACE_EXISTING,
                 StandardCopyOption.ATOMIC_MOVE);
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static void sleepBeforeRetry(int attempt) throws IOException {
+        try {
+            Thread.sleep(Math.min(attempt * 5L, 100L));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new java.io.InterruptedIOException("interrupted while retrying a save");
         }
     }
 }

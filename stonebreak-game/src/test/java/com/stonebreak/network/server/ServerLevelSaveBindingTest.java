@@ -17,7 +17,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -36,12 +35,11 @@ class ServerLevelSaveBindingTest {
     @Test
     @Timeout(value = 120, unit = TimeUnit.SECONDS)
     void registerLocalPlayerPreservesAccumulatedPlayTime() throws Exception {
-        String xdg = System.getenv("XDG_DATA_HOME");
-        assumeTrue(xdg == null || xdg.isBlank(), "worlds would land in XDG_DATA_HOME, not the temp home");
-        String realHome = System.getProperty("user.home");
-        System.setProperty("user.home", home.toString());
+        String previous = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
+        System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
         try {
             String name = "bind-366";
+            assertTrue(WorldStorage.worldDir(name).startsWith(home), "the test never touches the real worlds");
             World world = mock(World.class);
             when(world.getDirtyChunks()).thenReturn(List.of());
             try (MockedStatic<Game> globals = mockStatic(Game.class)) {
@@ -77,7 +75,11 @@ class ServerLevelSaveBindingTest {
                 level.cleanup();
             }
         } finally {
-            System.setProperty("user.home", realHome);
+            if (previous == null) {
+                System.clearProperty(WorldStorage.DATA_DIR_PROPERTY);
+            } else {
+                System.setProperty(WorldStorage.DATA_DIR_PROPERTY, previous);
+            }
         }
     }
 }
