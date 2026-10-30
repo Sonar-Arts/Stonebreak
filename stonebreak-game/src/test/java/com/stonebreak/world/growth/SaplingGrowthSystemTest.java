@@ -1,6 +1,7 @@
 package com.stonebreak.world.growth;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.HashMap;
@@ -79,6 +80,19 @@ class SaplingGrowthSystemTest {
         world.system.advanceTicks(LONGEST_WAIT);
         assertEquals(BlockType.CYPRESS_LOG, world.getBlock(X, Y, Z));
         assertTrue(world.blocks.containsValue(BlockType.CYPRESS_LEAVES));
+        assertEquals(0, world.system.getTrackedCount());
+    }
+
+    @Test
+    void drySaplingGrowsIntoADryOakOnDryGrass() {
+        FakeWorld world = new FakeWorld();
+        world.system = new SaplingGrowthSystem(world, new Random(42));
+        world.blocks.put(new BlockPos(X, Y - 1, Z), BlockType.DRY_GRASS);
+        world.setBlock(X, Y, Z, BlockType.DRY_OAK_SAPLING);
+        world.system.advanceTicks(LONGEST_WAIT);
+        assertEquals(BlockType.DRY_OAK_LOG, world.getBlock(X, Y, Z));
+        assertTrue(world.blocks.containsValue(BlockType.DRY_OAK_LEAVES));
+        assertFalse(world.blocks.containsValue(BlockType.CYPRESS_LOG));
         assertEquals(0, world.system.getTrackedCount());
     }
 

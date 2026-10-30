@@ -457,6 +457,7 @@ public final class FastLodMesher {
             return BlockType.RED_SANDSTONE;
         }
         if (surface == BlockType.GRASS || surface == BlockType.SNOWY_DIRT || surface == BlockType.SWAMPY_GRASS
+                || surface == BlockType.DRY_GRASS
                 || surface == BlockType.DIRT || surface == BlockType.GRAVEL || surface == BlockType.CLAY) {
             return BlockType.DIRT;
         }

@@ -38,6 +38,25 @@ public final class RegularTree {
 
     public static void place(World world, int worldX, int worldY, int worldZ) {
         TreeBlockPlacer placer = new TreeBlockPlacer(world);
+        generate(placer, worldX, worldY, worldZ, BlockType.WOOD, BlockType.LEAVES);
+        placer.complete();
+    }
+
+    /**
+     * The same shape built from {@code log} and {@code leaves} against any sink — used by
+     * sapling growth. Like {@link CypressTree}, leaves the decay system could never anchor
+     * are pruned before anything is written.
+     */
+    public static void place(TreeBlockSink out, int worldX, int worldY, int worldZ,
+                             BlockType log, BlockType leaves) {
+        if (worldY + MAX_HEIGHT >= WorldConfiguration.WORLD_HEIGHT) return;
+        TreeShapeBuffer buffer = new TreeShapeBuffer();
+        generate(buffer, worldX, worldY, worldZ, log, leaves);
+        buffer.flushAnchored(out);
+    }
+
+    private static void generate(TreeBlockSink placer, int worldX, int worldY, int worldZ,
+                                 BlockType log, BlockType leaves) {
         Random rng = TreeRandom.forPosition(worldX, worldY, worldZ, SEED_TAG);
 
         Variant variant = Variant.values()[rng.nextInt(Variant.values().length)];
@@ -45,7 +64,7 @@ public final class RegularTree {
 
         if (worldY + profile.canopyTopOffset() >= WorldConfiguration.WORLD_HEIGHT) return;
 
-        placeTrunk(placer, worldX, worldY, worldZ, profile.trunkHeight);
+        placeTrunk(placer, worldX, worldY, worldZ, profile.trunkHeight, log);
 
         // Lean offset: small horizontal shift of canopy centre, sampled once per tree.
         int leanX = profile.canLean ? rng.nextInt(3) - 1 : 0;
@@ -53,13 +72,11 @@ public final class RegularTree {
         int canopyCx = worldX + leanX;
         int canopyCz = worldZ + leanZ;
 
-        placeCanopy(placer, rng, variant, profile, worldX, worldY, worldZ, canopyCx, canopyCz);
+        placeCanopy(placer, rng, variant, profile, worldX, worldY, worldZ, canopyCx, canopyCz, leaves);
 
         // Inner branches go AFTER the canopy so a few logs stay visible inside the leaves
         // instead of being silently overwritten by leaf placement.
-        placeInnerBranches(placer, rng, variant, worldX, worldY, worldZ, profile.trunkHeight);
-
-        placer.complete();
+        placeInnerBranches(placer, rng, variant, worldX, worldY, worldZ, profile.trunkHeight, log);
     }
 
     private static Profile profileFor(Variant variant, Random rng) {
@@ -72,9 +89,10 @@ public final class RegularTree {
         };
     }
 
-    private static void placeTrunk(TreeBlockPlacer placer, int wx, int wy, int wz, int trunkHeight) {
+    private static void placeTrunk(TreeBlockSink placer, int wx, int wy, int wz, int trunkHeight,
+                                   BlockType log) {
         for (int dy = 0; dy < trunkHeight; dy++) {
-            placer.placeBlock(wx, wy + dy, wz, BlockType.WOOD);
+            placer.placeBlock(wx, wy + dy, wz, log);
         }
     }
 
@@ -82,19 +100,19 @@ public final class RegularTree {
     // Inner branches — short cardinal branches near the top of the trunk, embedded in canopy
     // --------------------------------------------------------------------------------------
 
-    private static void placeInnerBranches(TreeBlockPlacer placer, Random rng, Variant variant,
-                                           int wx, int wy, int wz, int trunkHeight) {
+    private static void placeInnerBranches(TreeBlockSink placer, Random rng, Variant variant,
+                                           int wx, int wy, int wz, int trunkHeight, BlockType log) {
         switch (variant) {
-            case ROUND, COMPACT -> placeShortInnerBranches(placer, rng, wx, wy, wz, trunkHeight, 2);
-            case TALL           -> placeShortInnerBranches(placer, rng, wx, wy, wz, trunkHeight, 3);
-            case BIG_BRANCHED   -> placeBigBranches(placer, wx, wy, wz, trunkHeight);
+            case ROUND, COMPACT -> placeShortInnerBranches(placer, rng, wx, wy, wz, trunkHeight, 2, log);
+            case TALL           -> placeShortInnerBranches(placer, rng, wx, wy, wz, trunkHeight, 3, log);
+            case BIG_BRANCHED   -> placeBigBranches(placer, wx, wy, wz, trunkHeight, log);
         }
     }
 
     /** Pick {@code count} (≤4) random cardinal directions and place a single log one block out. */
-    private static void placeShortInnerBranches(TreeBlockPlacer placer, Random rng,
+    private static void placeShortInnerBranches(TreeBlockSink placer, Random rng,
                                                 int wx, int wy, int wz,
-                                                int trunkHeight, int count) {
+                                                int trunkHeight, int count, BlockType log) {
         if (trunkHeight < 3) return;
         int branchY = wy + trunkHeight - 2;
 
@@ -106,14 +124,14 @@ public final class RegularTree {
             int idx = rng.nextInt(4);
             if (used[idx]) continue;
             used[idx] = true;
-            placer.placeBlock(wx + dx[idx], branchY, wz + dz[idx], BlockType.WOOD);
+            placer.placeBlock(wx + dx[idx], branchY, wz + dz[idx], log);
             placed++;
         }
     }
 
     /** Four-direction arching branches that reach 2 blocks out and rise one block. */
-    private static void placeBigBranches(TreeBlockPlacer placer, int wx, int wy, int wz,
-                                         int trunkHeight) {
+    private static void placeBigBranches(TreeBlockSink placer, int wx, int wy, int wz,
+                                         int trunkHeight, BlockType log) {
         if (trunkHeight < 4) return;
         int branchY = wy + trunkHeight - 3;
         int[] dx = {1, -1, 0, 0};
@@ -121,9 +139,9 @@ public final class RegularTree {
 
         for (int d = 0; d < 4; d++) {
             // First step: 1 block out, level with branchY.
-            placer.placeBlock(wx + dx[d], branchY, wz + dz[d], BlockType.WOOD);
+            placer.placeBlock(wx + dx[d], branchY, wz + dz[d], log);
             // Second step: 2 blocks out, raised one block — gives the arch a visible curve.
-            placer.placeBlock(wx + 2 * dx[d], branchY + 1, wz + 2 * dz[d], BlockType.WOOD);
+            placer.placeBlock(wx + 2 * dx[d], branchY + 1, wz + 2 * dz[d], log);
         }
     }
 
@@ -131,9 +149,9 @@ public final class RegularTree {
     // Canopy
     // --------------------------------------------------------------------------------------
 
-    private static void placeCanopy(TreeBlockPlacer placer, Random rng, Variant variant,
+    private static void placeCanopy(TreeBlockSink placer, Random rng, Variant variant,
                                     Profile profile, int trunkX, int trunkBaseY, int trunkZ,
-                                    int canopyCx, int canopyCz) {
+                                    int canopyCx, int canopyCz, BlockType leaves) {
         for (int dy = profile.canopyBottomOffset; dy <= profile.canopyTopOffset; dy++) {
             int worldY = trunkBaseY + dy;
             if (worldY >= WorldConfiguration.WORLD_HEIGHT) continue;
@@ -162,7 +180,7 @@ public final class RegularTree {
                     float gap = canopyGapChance(variant, absDx, absDz, radius);
                     if (gap > 0f && rng.nextFloat() < gap) continue;
 
-                    placer.placeBlock(worldX, worldY, worldZ, BlockType.LEAVES);
+                    placer.placeBlock(worldX, worldY, worldZ, leaves);
                 }
             }
 
@@ -171,7 +189,7 @@ public final class RegularTree {
             if (variant == Variant.COMPACT && dy == profile.canopyTopOffset) {
                 int capY = worldY + 1;
                 if (capY < WorldConfiguration.WORLD_HEIGHT) {
-                    placer.placeBlock(canopyCx, capY, canopyCz, BlockType.LEAVES);
+                    placer.placeBlock(canopyCx, capY, canopyCz, leaves);
                 }
             }
         }

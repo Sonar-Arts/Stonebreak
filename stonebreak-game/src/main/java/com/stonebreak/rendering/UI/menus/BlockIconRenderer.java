@@ -257,7 +257,7 @@ public class BlockIconRenderer {
         glClear(GL_DEPTH_BUFFER_BIT);
 
         // Handle leaf transparency - enable blending only for transparent leaf blocks
-        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
+        boolean isLeafBlock = blockType != null && blockType.isLeaves();
         if (isLeafBlock && blockType.isTransparent()) {
             // Enable blending for transparent leaves
             glEnable(GL_BLEND);

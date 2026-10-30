@@ -107,6 +107,13 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType CYPRESS_LEAVES = fromRegistry("stonebreak:cypress_leaves", "CYPRESS_LEAVES");
     public static final BlockType CYPRESS_SAPLING = fromRegistry("stonebreak:cypress_sapling", "CYPRESS_SAPLING");
     public static final BlockType SWAMPY_GRASS = fromRegistry("stonebreak:swampy_grass", "SWAMPY_GRASS");
+    // Dry oak set ("The Shade"): no worldgen yet. Saplings grow into RegularTree shapes built
+    // from the dry blocks via world/growth/SaplingGrowthSystem.
+    public static final BlockType DRY_GRASS = fromRegistry("stonebreak:dry_grass", "DRY_GRASS");
+    public static final BlockType DRY_OAK_LOG = fromRegistry("stonebreak:dry_oak_log", "DRY_OAK_LOG");
+    public static final BlockType DRY_OAK_LEAVES = fromRegistry("stonebreak:dry_oak_leaves", "DRY_OAK_LEAVES");
+    public static final BlockType DRY_OAK_PLANKS = fromRegistry("stonebreak:dry_oak_planks", "DRY_OAK_PLANKS");
+    public static final BlockType DRY_OAK_SAPLING = fromRegistry("stonebreak:dry_oak_sapling", "DRY_OAK_SAPLING");
     public static final BlockType COBBLESTONE = fromRegistry("stonebreak:cobblestone", "COBBLESTONE");
     public static final BlockType GRAVEL = fromRegistry("stonebreak:gravel", "GRAVEL");
     public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
@@ -132,6 +139,7 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType OAK_STAIRS = fromRegistry("stonebreak:oak_stairs", "OAK_STAIRS");
     public static final BlockType ELM_STAIRS = fromRegistry("stonebreak:elm_stairs", "ELM_STAIRS");
     public static final BlockType PINE_STAIRS = fromRegistry("stonebreak:pine_stairs", "PINE_STAIRS");
+    public static final BlockType DRY_OAK_STAIRS = fromRegistry("stonebreak:dry_oak_stairs", "DRY_OAK_STAIRS");
     // Torch: placed by the stonebreak:torch ITEM (see blocks/torch/TorchBlock),
     // Ground/Side states with looping flicker clips drawn by
     // AnimatedBlockRenderer; emits a pulsing point light (rendering/lighting).
@@ -447,7 +455,7 @@ public final class BlockType implements Item, IBlockType {
      * than a full cell.
      */
     public boolean isStairs() {
-        return this == OAK_STAIRS || this == ELM_STAIRS || this == PINE_STAIRS;
+        return this == OAK_STAIRS || this == ELM_STAIRS || this == PINE_STAIRS || this == DRY_OAK_STAIRS;
     }
 
     /**
@@ -455,14 +463,15 @@ public final class BlockType implements Item, IBlockType {
      * "supported" (won't decay) while it remains connected to one of these.
      */
     public boolean isLog() {
-        return this == WOOD || this == PINE || this == ELM_WOOD_LOG || this == CYPRESS_LOG;
+        return this == WOOD || this == PINE || this == ELM_WOOD_LOG || this == CYPRESS_LOG || this == DRY_OAK_LOG;
     }
 
     /**
      * True for foliage blocks subject to decay when detached from a log.
      */
     public boolean isLeaves() {
-        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES || this == CYPRESS_LEAVES;
+        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES || this == CYPRESS_LEAVES
+            || this == DRY_OAK_LEAVES;
     }
 
     /**

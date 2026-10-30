@@ -24,7 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class WoodRecipeCoverageTest {
 
     private static final List<String> OTHER_PLANKS = List.of(
-        "stonebreak:pine_wood_planks", "stonebreak:elm_wood_planks", "stonebreak:cypress_planks");
+        "stonebreak:pine_wood_planks", "stonebreak:elm_wood_planks", "stonebreak:cypress_planks",
+        "stonebreak:dry_oak_planks");
     private static final Set<String> WOOD_SPECIFIC_OUTPUTS = Set.of("stonebreak:oak_door", "stonebreak:oak_stairs");
 
     private static final Set<Item> exempt = new HashSet<>();
@@ -51,6 +52,15 @@ class WoodRecipeCoverageTest {
             new ItemStack(BlockType.getByObjectId("stonebreak:cypress_log"), 1))));
         assertNotNull(out, "cypress log crafts nothing");
         assertEquals(BlockType.getByObjectId("stonebreak:cypress_planks"), out.getItem());
+    }
+
+    @Test
+    void dryOakLogCraftsDryOakPlanks() {
+        ItemStack out = manager.craftItem(List.of(List.of(
+            new ItemStack(BlockType.DRY_OAK_LOG, 1))));
+        assertNotNull(out, "dry oak log crafts nothing");
+        assertEquals(BlockType.DRY_OAK_PLANKS, out.getItem());
+        assertEquals(4, out.getCount());
     }
 
     @Test
