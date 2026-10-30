@@ -158,7 +158,8 @@
                  resource natives/<platform>/<lib>, which CendaKernels extracts to a per-user cache
                  when no dev build directory is found: UI scripting and layout have no Java
                  fallback, so a shipped game needs the library inside its jar. A missing build
-                 directory is skipped, never a build failure (CI and tool-only builds). -->
+                 directory is skipped, never a build failure (local and tool-only builds); the CI
+                 build workflow builds Cenda first and fails if a jar comes out without it. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>

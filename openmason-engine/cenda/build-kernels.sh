@@ -37,22 +37,34 @@ warn() { echo "[cenda] WARNING: $*" >&2; }
 # cenda dir regardless of where the caller (IntelliJ, shell) invoked us from.
 cd "$HERE" || { warn "cannot enter $HERE — skipping native kernels."; exit 0; }
 
-if ! command -v cmake >/dev/null 2>&1; then
+# $CMAKE_BIN, then PATH, then the installers' default locations: an IDE launched before CMake was
+# installed keeps its old PATH.
+CMAKE="${CMAKE_BIN:-}"
+if [[ -z "$CMAKE" ]]; then
+  for c in "$(command -v cmake 2>/dev/null || true)" \
+           "/c/Program Files/CMake/bin/cmake.exe" \
+           "/opt/homebrew/bin/cmake" "/usr/local/bin/cmake" "/snap/bin/cmake"; do
+    [[ -n "$c" && -x "$c" ]] && CMAKE="$c" && break
+  done
+fi
+if [[ -z "$CMAKE" ]]; then
   warn "cmake not found — skipping native kernels; the game will use the Java fallback path."
+  warn "run '$HERE/setup-cenda.sh' to install the toolchain and build."
   exit 0
 fi
 
 # Configure only when the cache is absent; cmake re-configures itself on preset changes.
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
   echo "[cenda] configuring '$PRESET' preset..."
-  if ! cmake --preset "$PRESET" >/dev/null; then
+  if ! "$CMAKE" --preset "$PRESET" >/dev/null; then
     warn "cmake configure failed — skipping native kernels; the game will use the Java fallback path."
+    warn "run '$HERE/setup-cenda.sh --check' to see whether the toolchain is complete."
     exit 0
   fi
 fi
 
 # Incremental: a no-op in well under a second when nothing changed.
-if ! cmake --build --preset "$PRESET" --parallel >/dev/null; then
+if ! "$CMAKE" --build --preset "$PRESET" --parallel >/dev/null; then
   warn "native kernels failed to build — the game will use the Java fallback path."
   warn "UI scripting and UI layout have no fallback: a stale library from an earlier build may now fail"
   warn "their ABI handshake, and scripted or migrated screens will refuse to open (loudly) until this builds."
