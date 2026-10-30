@@ -9,7 +9,8 @@
     <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">
-      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Cenda Kernels" run_configuration_type="ShConfigurationType" />
+      <!-- Rebuilds Cenda (openmason-engine/pom.xml, exec:exec@cenda-kernels) before each launch. -->
+      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/openmason-engine/pom.xml" goal="exec:exec@cenda-kernels" />
       <option name="Make" enabled="true" />
     </method>
   </configuration>

@@ -801,7 +801,20 @@ public class Game {
     public static void toggleDebugOverlay() {
         com.stonebreak.core.diagnostics.GameDiagnostics.toggleDebugOverlay();
     }
-    
+
+    /** F1: hides the crosshair, hotbar, chat and world-space HUD while playing (screens and menus still draw). */
+    private boolean hudHidden;
+
+    public static void toggleHudHidden() {
+        Game game = getInstance();
+        game.hudHidden = !game.hudHidden;
+    }
+
+    public static boolean isHudHidden() {
+        Game game = instance;
+        return game != null && game.hudHidden;
+    }
+
     /**
      * Gets the loading screen.
      */

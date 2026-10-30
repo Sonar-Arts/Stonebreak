@@ -1,0 +1,129 @@
+name: Stonebreak Bug Report
+description: Report a Stonebreak bug.
+title: "[BUG] [STONEBREAK] "
+labels: ["Attention Requested", "Bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. Engine or toolset bugs go in the Open Mason Bug Report.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a new world with seed ...
+        2. Walk to ...
+        3. Place ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      options:
+        - Every time
+        - Sometimes
+        - Once
+    validations:
+      required: true
+
+  - type: dropdown
+    id: game-mode
+    attributes:
+      label: Game mode
+      options:
+        - Singleplayer
+        - Multiplayer (hosting)
+        - Multiplayer (joined a server)
+        - Not in a world
+    validations:
+      required: true
+
+  - type: input
+    id: game-state
+    attributes:
+      label: Game state
+      description: e.g. main menu, inventory, crafting, battle, riding a vehicle.
+
+  - type: input
+    id: seed
+    attributes:
+      label: World seed
+      description: For world-specific bugs.
+
+  - type: input
+    id: version
+    attributes:
+      label: Build / version
+      description: Release version or commit hash.
+      placeholder: e.g. 00c98ea4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: e.g. Windows 11 24H2, macOS 15.1, Ubuntu 24.04
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver version
+      placeholder: e.g. NVIDIA RTX 3070, driver 566.14
+    validations:
+      required: true
+
+  - type: input
+    id: java
+    attributes:
+      label: Java version
+      description: Output of `java -version`.
+      placeholder: e.g. OpenJDK 25
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output
+      render: shell
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Attachments
+      description: Screenshots, videos, or zipped world saves.

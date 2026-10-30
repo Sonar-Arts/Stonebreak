@@ -99,7 +99,7 @@ public final class TGMPipe {
                 pythonExe().toString(),
                 "-m", MODULE,
                 System.getProperty("stonebreak.tgmpipe.model", DEFAULT_MODEL),
-                "--device", System.getProperty("stonebreak.tgmpipe.device", "cuda"),
+                "--device", System.getProperty("stonebreak.tgmpipe.device", "auto"),
                 // In-memory generation cache (GPU) and finished-tile cache on disk.
                 "--cache-size", System.getProperty("stonebreak.tgmpipe.cacheSize", "4G"),
                 "--disk-cache", System.getProperty("stonebreak.tgmpipe.diskCache", "8G"));

@@ -2,8 +2,12 @@
 # every supported platform, so a change that breaks the build on one OS shows up before merge.
 # Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh), and the
 # shaded jars are not uploaded or released. The root POM's OS-activated profiles pick the
-# LWJGL/Skija natives for each runner; Cenda is not built here, so the engine packages without
-# it and relies on its pure-Java fallback (cenda-native.yml covers the native library).
+# LWJGL/Skija natives for each runner.
+#
+# Cenda is built first (release preset) so the engine POM packages it as natives/<platform>/ and
+# the shaded game and tool jars carry it: UI scripting and layout have no Java fallback, so a jar
+# without the library is broken, and this job fails rather than package one. The native tests
+# and the Java ABI handshake suites stay in cenda-native.yml.
 name: build
 
 on:
@@ -38,14 +42,27 @@ jobs:
         # Intel image, so add it here if the x86_64 natives need coverage too.
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - name: Configure Cenda (release)
+        working-directory: openmason-engine/cenda
+        # FETCHCONTENT_BASE_DIR overrides the preset's $HOME cache, which Windows runners lack.
+        # Tests are cenda-native.yml's job, so skip building them here.
+        run: >
+          cmake --preset release
+          -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/cenda-deps"
+          -DBUILD_TESTING=OFF
+
+      - name: Build Cenda
+        working-directory: openmason-engine/cenda
+        run: cmake --build --preset release --parallel
+
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
@@ -54,3 +71,33 @@ jobs:
       - name: Build Stonebreak + Open Mason
         # -DskipTests still compiles the test sources, so broken tests fail the build.
         run: mvn -B -ntp -s .mvn/settings.xml package -DskipTests
+
+      - name: Verify Cenda is packaged
+        # The POM's copy-resources step skips a missing library silently (local tool-only builds),
+        # so check every jar that ships it. The platform dir must match cenda.natives.dir.
+        run: |
+          case "${{ runner.os }}" in
+            Linux) os=linux; lib=libcenda_kernels.so ;;
+            macOS) os=macos; lib=libcenda_kernels.dylib ;;
+            Windows) os=windows; lib=cenda_kernels.dll ;;
+          esac
+          case "${{ runner.arch }}" in
+            X64) arch=x86_64 ;;
+            ARM64) arch=aarch64 ;;
+            *) echo "::error::unmapped runner arch ${{ runner.arch }}"; exit 1 ;;
+          esac
+          entry="natives/$os-$arch/$lib"
+          status=0
+          for jar in openmason-engine/target/openmason-engine-*.jar \
+                     stonebreak-game/target/stonebreak-game-*-shaded.jar \
+                     openmason-tool/target/openmason-tool-*.jar; do
+            case "$jar" in *-sources.jar|*-javadoc.jar|*/original-*) continue ;; esac
+            if [[ ! -f "$jar" ]]; then
+              echo "::error::expected jar not found: $jar"; status=1
+            elif jar tf "$jar" | grep -qx "$entry"; then
+              echo "$jar: $entry"
+            else
+              echo "::error::$jar is missing $entry"; status=1
+            fi
+          done
+          exit $status

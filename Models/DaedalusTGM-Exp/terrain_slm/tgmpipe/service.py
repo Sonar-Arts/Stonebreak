@@ -1,6 +1,6 @@
 """TGMPipe: the game's one terrain process (serving DaedalusTGM-Exp), spoken to over stdin/stdout.
 
-    python -m terrain_slm.tgmpipe [model_dir] [--device cuda] [--cache-size 4G] [--disk-cache 8G]
+    python -m terrain_slm.tgmpipe [model_dir] [--device auto|cuda|cpu] [--cache-size 4G] [--disk-cache 8G]
 
 The game launches this as a child (TGMPipe in stonebreak-game) and talks `protocol` frames
 over its pipes: HELLO with the world config, then TILE requests for any seed, answered as tiles
@@ -33,12 +33,25 @@ from terrain_slm.tgmpipe.scheduler import Scheduler, TileKey
 log = logging.getLogger("tgmpipe")
 
 
+CPU_MAX_VRAM = 4 * 2**30   # "auto" runs on the CPU when the chosen GPU has this much memory or less
+
+
 def pick_device(requested: str) -> str:
     """The service's device: `requested`, except that plain "cuda" on a two-GPU machine means cuda:1
-    (TERRAIN_SLM_DEVICE overrides), keeping GPU 0 for the game's rendering."""
+    (TERRAIN_SLM_DEVICE overrides), keeping GPU 0 for the game's rendering. "auto" is "cuda", or "cpu"
+    when that GPU has CPU_MAX_VRAM or less (no CUDA at all stays "cuda", which fails loudly)."""
     import torch
+    auto = requested == "auto"
+    if auto:
+        requested = "cuda"
     if requested == "cuda" and torch.cuda.device_count() > 1:
-        return os.getenv("TERRAIN_SLM_DEVICE", "cuda:1")
+        requested = os.getenv("TERRAIN_SLM_DEVICE", "cuda:1")
+    if auto and torch.cuda.is_available():
+        total = torch.cuda.get_device_properties(torch.device(requested)).total_memory
+        if total <= CPU_MAX_VRAM:
+            log.info("%s has %.1f GB of VRAM (<= %.0f GB): running on the CPU", requested,
+                     total / 2**30, CPU_MAX_VRAM / 2**30)
+            return "cpu"
     return requested
 
 
@@ -177,7 +190,7 @@ def main(argv=None) -> None:
 
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.tgmpipe")
     ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
-    ap.add_argument("--device", default="cuda")
+    ap.add_argument("--device", default="auto")
     ap.add_argument("--cache-size", default="4G", help="in-memory generation cache (GPU)")
     ap.add_argument("--disk-cache", default="8G", help="finished-tile cache on disk, all versions")
     ap.add_argument("--disk-cache-dir", default=str(TILE_CACHE_DIR))

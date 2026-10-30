@@ -125,7 +125,7 @@
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
-            <version>1.6.5</version>
+            <version>1.6.6</version>
         </dependency>
 
         <!-- JUnit 5 for testing -->
@@ -158,7 +158,8 @@
                  resource natives/<platform>/<lib>, which CendaKernels extracts to a per-user cache
                  when no dev build directory is found: UI scripting and layout have no Java
                  fallback, so a shipped game needs the library inside its jar. A missing build
-                 directory is skipped, never a build failure (CI and tool-only builds). -->
+                 directory is skipped, never a build failure (local and tool-only builds); the CI
+                 build workflow builds Cenda first and fails if a jar comes out without it. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -191,6 +192,30 @@
                                     </includes>
                                 </resource>
                             </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Rebuilds Cenda from the checked-out sources: the IDE run configurations' before-launch
+                 step (mvn -pl openmason-engine exec:exec@cenda-kernels). No phase, so package and CI
+                 never run it. A Maven goal rather than a Shell Script run configuration because the
+                 shared .run files cannot name a bash that exists on every OS; cenda.bash does. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>cenda-kernels</id>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${cenda.bash}</executable>
+                            <workingDirectory>${project.basedir}/cenda</workingDirectory>
+                            <arguments>
+                                <argument>${project.basedir}/cenda/build-kernels.sh</argument>
+                                <argument>release</argument>
+                            </arguments>
                         </configuration>
                     </execution>
                 </executions>

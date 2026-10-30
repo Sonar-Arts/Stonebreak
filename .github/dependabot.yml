@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Monitor Maven dependencies for the parent POM
+  # Root reactor covers openmason-engine, stonebreak-game and openmason-tool
   - package-ecosystem: "maven"
     directory: "/"
     schedule:
@@ -13,85 +13,31 @@ updates:
       - "maven"
     commit-message:
       prefix: "deps"
-      include: "scope"
-    target-branch: "main"
-    reviewers:
-      - "Cheese_yacht"
     assignees:
-      - "Cheese_yacht"
-    # Batch all dependency updates for this POM into a single branch/PR
+      - "Cheese_Yacht"
+    # One weekly PR for minor/patch bumps; major versions arrive as separate PRs
     groups:
-      parent-pom:
-        patterns:
-          - "*"
+      all-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Monitor stonebreak-game module
-  - package-ecosystem: "maven"
-    directory: "/stonebreak-game"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    target-branch: "main"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "maven"
-      - "stonebreak-game"
-    commit-message:
-      prefix: "deps(game)"
-      include: "scope"
-    reviewers:
-      - "Cheese_yacht"
-    assignees:
-      - "Cheese_yacht"
-    # Batch all dependency updates for this POM into a single branch/PR
-    groups:
-      stonebreak-game:
-        patterns:
-          - "*"
-
-  # Monitor openmason-tool module
-  - package-ecosystem: "maven"
-    directory: "/openmason-tool"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    target-branch: "main"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "maven"
-      - "openmason-tool"
-    commit-message:
-      prefix: "deps(openmason)"
-      include: "scope"
-    reviewers:
-      - "Cheese_yacht"
-    assignees:
-      - "Cheese_yacht"
-    # Batch all dependency updates for this POM into a single branch/PR
-    groups:
-      openmason-tool:
-        patterns:
-          - "*"
-
-  # Monitor GitHub Actions if present
+  # Monitor GitHub Actions used by .github/workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-    target-branch: "main"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"
     commit-message:
       prefix: "ci"
-    reviewers:
-      - "Cheese_yacht"
     assignees:
-      - "Cheese_yacht"
+      - "Cheese_Yacht"
+    groups:
+      actions:
+        patterns:
+          - "*"

@@ -25,7 +25,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  *   <li>{@link KeyEdgeTracker} — polled key edge detection</li>
  *   <li>{@link UiToggleKeyHandler} — Escape/E/C/T/Q UI toggles</li>
  *   <li>{@link GameplayKeyHandler} — movement, flight, abilities, breaking, hotbar keys</li>
- *   <li>{@link DebugKeyHandler} — F3–F8 development keys</li>
+ *   <li>{@link DebugKeyHandler} — F1 hide HUD, F2 screenshot, F3–F8 development keys</li>
  *   <li>{@link UiMouseRouter} — click routing to active UI surfaces</li>
  *   <li>{@link WorldMouseHandler} — attack/use clicks that reach the world</li>
  *   <li>{@link ChatInputRouter} — keys routed to an open chat</li>

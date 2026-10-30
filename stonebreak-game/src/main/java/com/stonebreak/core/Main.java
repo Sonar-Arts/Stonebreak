@@ -190,6 +190,7 @@ public class Main {
             inputRouter.pollActiveScreen();
 
             frameRenderer.renderFrame();
+            com.stonebreak.core.render.Screenshots.captureIfRequested(window.width(), window.height());
             maybeAutoFurnace();
             maybeAutoScreen();
             maybeAutoTorch();

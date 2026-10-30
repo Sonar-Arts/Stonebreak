@@ -28,6 +28,10 @@
         <!-- Classpath folder the built Cenda library is packaged under (natives/<this>/);
              must match CendaKernels.nativePlatform(). -->
         <cenda.natives.dir>windows-x86_64</cenda.natives.dir>
+        <!-- Shell that runs cenda/build-kernels.sh for the IDE's before-launch step
+             (exec:exec@cenda-kernels). The Windows profile points it at Git Bash; override
+             with -Dcenda.bash=<path> for a non-default Git install. -->
+        <cenda.bash>bash</cenda.bash>
         <jackson.version>2.22.4</jackson.version>
         <jackson.version.annotations>2.22</jackson.version.annotations>
         <junit.version>6.1.3</junit.version>
@@ -301,6 +305,9 @@
                 <lwjgl.natives>natives-windows</lwjgl.natives>
                 <skija.artifact>skija-windows-x64</skija.artifact>
                 <cenda.natives.dir>windows-x86_64</cenda.natives.dir>
+                <!-- Not "bash": on PATH that is often WSL's launcher, which would build Linux libs.
+                     Maven upper-cases environment variable names on Windows. -->
+                <cenda.bash>${env.PROGRAMFILES}/Git/bin/bash.exe</cenda.bash>
             </properties>
         </profile>
         <profile>

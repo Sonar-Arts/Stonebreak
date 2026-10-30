@@ -310,11 +310,15 @@ public final class FrameRenderer {
 
         if (HUD_STATES.contains(game.getState())) {
             renderCrosshair(game, renderer);
-            renderInventoryAndHotbar(game);
-            renderChat(game, renderer);
+            if (!hudHidden(game)) {
+                renderInventoryAndHotbar(game);
+            }
+            if (chatShown(game)) {
+                renderChat(game, renderer);
+            }
         }
 
-        if (game.getState() == GameState.PLAYING) {
+        if (game.getState() == GameState.PLAYING && !hudHidden(game)) {
             renderWorldSpaceHud(renderer);
         }
 
@@ -349,7 +353,7 @@ public final class FrameRenderer {
 
     /** PLAYING with no container screen open: where the crosshair is drawn. */
     private static boolean crosshairShown(Game game) {
-        if (game.getState() != GameState.PLAYING) {
+        if (game.getState() != GameState.PLAYING || hudHidden(game)) {
             return false;
         }
         InventoryScreen inventory = game.getInventoryScreen();
@@ -367,10 +371,25 @@ public final class FrameRenderer {
     private static void syncCrosshair(Game game, Renderer renderer) {
         if (renderer != null && renderer.getUIRenderer() != null) {
             renderer.getUIRenderer().getCrosshair().sync(crosshairShown(game));
-            renderer.getUIRenderer().getWorldHud().sync(game.getState() == GameState.PLAYING && Game.getPlayer() != null);
+            renderer.getUIRenderer().getWorldHud().sync(game.getState() == GameState.PLAYING && Game.getPlayer() != null
+                    && !hudHidden(game));
             renderer.getUIRenderer().getChatDocument().sync(HUD_STATES.contains(game.getState())
-                    && game.getChatSystem() != null);
+                    && game.getChatSystem() != null && chatShown(game));
         }
+    }
+
+    /**
+     * F1 hides the HUD while PLAYING. The in-game screens (inventory, character sheet, containers,
+     * recipe book) and menus are their own states and keep their hotbar and chat.
+     */
+    private static boolean hudHidden(Game game) {
+        return Game.isHudHidden() && game.getState() == GameState.PLAYING;
+    }
+
+    /** Chat follows the HUD, except that a chat the player opened always shows. */
+    private static boolean chatShown(Game game) {
+        ChatSystem chat = game.getChatSystem();
+        return !hudHidden(game) || (chat != null && chat.isOpen());
     }
 
     private void renderInventoryAndHotbar(Game game) {

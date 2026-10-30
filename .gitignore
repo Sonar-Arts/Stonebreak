@@ -171,3 +171,6 @@ QWEN.md
 
 # Written to the working directory by the game on a crash
 crash_log.txt
+
+# F2 screenshots, written to the working directory by the game
+/screenshots/
