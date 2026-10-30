@@ -54,6 +54,20 @@ class UvToolTest {
         assertArrayEquals(exe, Files.readAllBytes(target));
     }
 
+    /** The download lands as {@code <asset>.part}; a zip must still be read as a zip, not gzip. */
+    @Test
+    void extractsTheExeFromAPartialDownloadNamedZip() throws IOException {
+        byte[] exe = {9, 8, 7, 6};
+        Path archive = dir.resolve("uv-x86_64-pc-windows-msvc.zip.part");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+            zip.putNextEntry(new ZipEntry("uv.exe"));
+            zip.write(exe);
+        }
+        Path target = dir.resolve("uv.exe");
+        UvTool.extract(archive, target);
+        assertArrayEquals(exe, Files.readAllBytes(target));
+    }
+
     @Test
     void anArchiveWithoutUvFailsLoudly() throws IOException {
         Path archive = dir.resolve("empty.tar.gz");

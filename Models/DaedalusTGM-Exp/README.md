@@ -35,7 +35,7 @@ frames over its stdin/stdout (see [`../README.md`](../README.md)).
 Run everything from this folder (`Models/DaedalusTGM-Exp/`).
 
 ```bash
-# Environment (Python 3.12, torch cu129)
+# Environment (Python 3.12, torch cu129 on Linux, cu130 on Windows)
 uv sync
 
 # Tests (154; GPU tests pick cuda:1 when two GPUs are present)

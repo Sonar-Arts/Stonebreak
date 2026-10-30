@@ -395,7 +395,7 @@ public final class ModelSetup {
         String[] error = {null};
         List<String> cmd = List.of(p.python.toString(), "-m", "terrain_slm.tgmpipe.warmup",
                 System.getProperty("stonebreak.tgmpipe.model", TGMPipe.DEFAULT_MODEL),
-                "--device", System.getProperty("stonebreak.tgmpipe.device", "cuda"));
+                "--device", System.getProperty("stonebreak.tgmpipe.device", "auto"));
         int exit = runProcess(cmd, p.slmDir, Map.of("TGM_KERNEL_CACHE", p.kernelCache.toString()), log, line -> {
             if (!line.startsWith("{")) {
                 if (!line.isBlank()) activity(line.strip());

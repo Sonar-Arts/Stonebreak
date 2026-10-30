@@ -1,6 +1,6 @@
 """Game-launch check of the terrain model: GPU, model, and the native kernels compiled ahead of time.
 
-    python -m terrain_slm.tgmpipe.warmup [model_dir] [--device cuda|cpu]
+    python -m terrain_slm.tgmpipe.warmup [model_dir] [--device auto|cuda|cpu]
 
 The game's model setup (Java `ModelSetup`) runs this once after installing the environment and
 whenever the kernels change, so the first world never waits on a compiler. It reports progress
@@ -32,7 +32,7 @@ def _emit(**fields) -> None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.tgmpipe.warmup")
     ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
-    ap.add_argument("--device", default="cuda")
+    ap.add_argument("--device", default="auto")
     args = ap.parse_args(argv)
     t0 = time.monotonic()
     try:
@@ -40,7 +40,7 @@ def main(argv=None) -> int:
         import torch
 
         from terrain_slm.paths import MODEL_DIR
-        from terrain_slm.tgmpipe.service import pick_device
+        from terrain_slm.tgmpipe.service import CPU_MAX_VRAM, pick_device
         from terrain_slm.world.generator import WorldGenerator
 
         if args.device == "cpu":
@@ -50,7 +50,10 @@ def main(argv=None) -> int:
                 _emit(error="PyTorch cannot see a CUDA GPU (NVIDIA driver missing or too old?)")
                 return 1
             device = pick_device(args.device)
-            gpu = torch.cuda.get_device_name(torch.device(device))
+            if device == "cpu":   # "auto" with a small GPU
+                gpu = f"CPU (GPU has {CPU_MAX_VRAM // 2**30} GB of VRAM or less)"
+            else:
+                gpu = torch.cuda.get_device_name(torch.device(device))
         _emit(stage="verify", detail=f"Loading the model on {gpu}")
         model_dir = Path(args.model_path)
         if not model_dir.is_absolute():

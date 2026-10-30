@@ -14,7 +14,7 @@ import torch
 
 from terrain_slm.tgmpipe import protocol as W
 from terrain_slm.tgmpipe.scheduler import Scheduler, TileKey
-from terrain_slm.tgmpipe.service import Output, Service
+from terrain_slm.tgmpipe.service import CPU_MAX_VRAM, Output, Service, pick_device
 from terrain_slm.tgmpipe.tile_cache import TileCache, namespace, source_fingerprint
 
 N = 8
@@ -241,3 +241,40 @@ def test_gpu_memory_snapshot_reports_this_process():
     if "process_bytes" in snap:   # NVML present: the whole process, context included, holds at least the tensor
         assert snap["process_bytes"] >= x.numel() * 4
         assert 0 < snap["device_used_bytes"] <= snap["device_total_bytes"]
+
+
+# ----------------------------------------------------------------------------- device
+def _fake_gpus(monkeypatch, *vram_bytes):
+    class Props:
+        def __init__(self, total):
+            self.total_memory = total
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: bool(vram_bytes))
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: len(vram_bytes))
+    monkeypatch.setattr(torch.cuda, "get_device_properties",
+                        lambda d: Props(vram_bytes[torch.device(d).index or 0]))
+    monkeypatch.delenv("TERRAIN_SLM_DEVICE", raising=False)
+
+
+def test_auto_runs_on_the_cpu_with_4gb_of_vram_or_less(monkeypatch):
+    _fake_gpus(monkeypatch, CPU_MAX_VRAM)
+    assert pick_device("auto") == "cpu"
+    _fake_gpus(monkeypatch, CPU_MAX_VRAM + 1)
+    assert pick_device("auto") == "cuda"
+
+
+def test_auto_checks_the_gpu_the_service_would_use(monkeypatch):
+    _fake_gpus(monkeypatch, 24 * 2**30, 4 * 2**30)   # second GPU is the service's, and small
+    assert pick_device("auto") == "cpu"
+    _fake_gpus(monkeypatch, 4 * 2**30, 24 * 2**30)
+    assert pick_device("auto") == "cuda:1"
+
+
+def test_explicit_devices_ignore_the_vram_rule(monkeypatch):
+    _fake_gpus(monkeypatch, 2 * 2**30)
+    assert pick_device("cuda") == "cuda"
+    assert pick_device("cpu") == "cpu"
+
+
+def test_auto_without_cuda_stays_cuda_and_fails_later(monkeypatch):
+    _fake_gpus(monkeypatch)
+    assert pick_device("auto") == "cuda"

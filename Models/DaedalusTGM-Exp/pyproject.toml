@@ -31,8 +31,17 @@ name = "pytorch-cu129"
 url = "https://download.pytorch.org/whl/cu129"
 explicit = true
 
+# cu129 has no Windows wheels; cu130 does (and also covers Blackwell / sm_120).
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [tool.uv.sources]
-torch = { index = "pytorch-cu129" }
+torch = [
+    { index = "pytorch-cu129", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

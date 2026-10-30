@@ -138,11 +138,16 @@ final class UvTool {
         }
     }
 
-    /** Pulls the {@code uv} binary (whatever folder it sits in) out of the release archive. */
+    /**
+     * Pulls the {@code uv} binary (whatever folder it sits in) out of the release archive. The format
+     * comes from the name with any {@code .part} download suffix dropped.
+     */
     static void extract(Path archive, Path target) throws IOException {
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
         boolean found = false;
-        if (archive.toString().endsWith(".zip")) {
+        String name = archive.getFileName().toString();
+        if (name.endsWith(".part")) name = name.substring(0, name.length() - ".part".length());
+        if (name.endsWith(".zip")) {
             try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(Files.newInputStream(archive)))) {
                 for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
                     if (!e.isDirectory() && baseName(e.getName()).equals(target.getFileName().toString())) {
