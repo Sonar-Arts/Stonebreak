@@ -1,17 +1,28 @@
 ---
-name: Stonebreak Feature Template
-about: Suggest additions to Stonebreak.
-title: "[FEATURE] [STONEBREAK]"
+name: Stonebreak Feature Request
+about: Suggest a Stonebreak feature.
+title: "[FEATURE] [STONEBREAK] "
 labels: Feature/system addition
 assignees: ''
 
 ---
 
-# Describe the feature you'd like and why.
-Add a clear and concise description of what you want to be added.
+## Feature
+<!-- What you want added and why it belongs in the game. -->
+
+
+## Alternatives considered
+<!-- Other approaches, and why they fall short. -->
+
+
+## Engine support needed?
+<!-- Yes / No / Not sure. If yes, describe the engine mechanism needed. -->
+
 
 ## Additional context
-Add any other context or screenshots about the feature request here for ideas about specific implementation.
+<!-- Mockups, screenshots, or implementation ideas. -->
 
-### If this feature is related to a known bug, outstanding issue, or active project, please link/name it below.**
-(I.E. Issue #1)
+
+## Related issues
+<!-- e.g. #1 -->
+
