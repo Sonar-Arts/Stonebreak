@@ -26,7 +26,8 @@ public class VegetationGenerator {
         OAK(BlockType.WOOD, BlockType.LEAVES),
         ELM(BlockType.ELM_WOOD_LOG, BlockType.ELM_LEAVES),
         PINE(BlockType.PINE, BlockType.PINE_LEAVES),
-        CYPRESS(BlockType.CYPRESS_LOG, BlockType.CYPRESS_LEAVES);
+        CYPRESS(BlockType.CYPRESS_LOG, BlockType.CYPRESS_LEAVES),
+        DRY_OAK(BlockType.DRY_OAK_LOG, BlockType.DRY_OAK_LEAVES);
 
         private final BlockType trunk;
         private final BlockType leaves;
@@ -45,6 +46,14 @@ public class VegetationGenerator {
      */
     public static TreeSample probeTree(int worldX, int worldZ, BiomeType biome,
                                        BlockType surfaceBlock, DeterministicRandom rng) {
+        // The Shade is woodland throughout, so it skips the clearings the field cuts below.
+        if (biome == BiomeType.SHADE) {
+            if (surfaceBlock == BlockType.DRY_GRASS && rolls(rng, worldX, worldZ, "shade_tree",
+                    ForestDensityField.shadeTreeChance(worldX, worldZ, rng))) {
+                return new TreeSample(TreeKind.DRY_OAK, 5);
+            }
+            return null;
+        }
         float forest = ForestDensityField.forestMultiplier(worldX, worldZ, rng);
         if (forest <= 0f) return null;
 
@@ -92,7 +101,7 @@ public class VegetationGenerator {
      */
     public static boolean growsTreeOn(BlockType surfaceBlock) {
         return surfaceBlock == BlockType.GRASS || surfaceBlock == BlockType.SNOWY_DIRT
-            || isCypressGround(surfaceBlock);
+            || surfaceBlock == BlockType.DRY_GRASS || isCypressGround(surfaceBlock);
     }
 
     /** Probability roll that accepts values >1 (saturating to always-true). */
@@ -130,10 +139,18 @@ public class VegetationGenerator {
 
     private void placeTree(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
                            int surface, BiomeType biome, BlockType surfaceBlock) {
+        FeatureQueue queue = ctx.world.getFeatureQueue();
+        // The Shade is woodland throughout, so it skips the clearings the field cuts below.
+        if (biome == BiomeType.SHADE) {
+            if (surfaceBlock == BlockType.DRY_GRASS && rolls(worldX, worldZ, "shade_tree",
+                    ForestDensityField.shadeTreeChance(worldX, worldZ, rng))) {
+                TreeGenerator.generateDryOakTree(ctx.world, queue, ctx.chunk, x, surface, z);
+            }
+            return;
+        }
         float forest = ForestDensityField.forestMultiplier(worldX, worldZ, rng);
         if (forest <= 0f) return;
 
-        FeatureQueue queue = ctx.world.getFeatureQueue();
         if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
             rolls(worldX, worldZ, "tree", TREE_CHANCE * forest)) {
             float elmProb = ForestDensityField.elmProbability(worldX, worldZ, rng);

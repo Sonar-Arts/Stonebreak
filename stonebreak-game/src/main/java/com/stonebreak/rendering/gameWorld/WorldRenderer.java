@@ -59,6 +59,7 @@ public class WorldRenderer {
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
     private final PrecipitationFog precipitationFog;
+    private final com.stonebreak.rendering.gameWorld.fog.GroundFog groundFog;
     /** How much a full lightning flash adds to the scene's ambient light. */
     private static final float LIGHTNING_AMBIENT = 0.6f;
     private final WeatherEffects weatherEffects =
@@ -113,6 +114,7 @@ public class WorldRenderer {
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
         this.precipitationFog = new PrecipitationFog();
+        this.groundFog = new com.stonebreak.rendering.gameWorld.fog.GroundFog();
         this.precipitationRenderer = new PrecipitationRenderer();
         this.lightningRenderer = new LightningRenderer();
         this.shadowMapRenderer =
@@ -301,6 +303,8 @@ public class WorldRenderer {
         WeatherFog.set(
                 cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
         precipitationFog.prepare(!cameraUnderwater, weatherEffects);
+        // The Shade's night ground fog; underwater the murk replaces it too.
+        groundFog.prepare(!cameraUnderwater, sky, world.terrain(), cameraPos);
 
         if (cameraUnderwater) {
             // Fog alone cannot hide the horizon, because it only tints pixels
@@ -323,6 +327,7 @@ public class WorldRenderer {
             // Render sky first (before world geometry for proper depth testing)
             skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), skyParams);
             precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
+            groundFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
         }
         checkGLError("After sky rendering");
 
@@ -481,7 +486,7 @@ public class WorldRenderer {
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
-                cloudRenderer, precipitationFog);
+                cloudRenderer, precipitationFog, groundFog);
         checkGLError("After water pass");
 
         if (!cameraUnderwater) {
@@ -612,6 +617,7 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_fogSpherical", fogSpherical);
         // Rain and snow fog (precip_fog.glsl), marched in front of every fragment.
         precipitationFog.applyTo(shaderProgram);
+        groundFog.applyTo(shaderProgram);
     }
     
     /**
@@ -1055,6 +1061,7 @@ public class WorldRenderer {
             skyRenderer.cleanup();
         }
         precipitationFog.cleanup();
+        groundFog.cleanup();
         if (cloudRenderer != null) {
             cloudRenderer.cleanup();
         }

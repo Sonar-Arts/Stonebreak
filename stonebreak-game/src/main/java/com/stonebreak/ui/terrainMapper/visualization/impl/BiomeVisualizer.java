@@ -68,6 +68,7 @@ public final class BiomeVisualizer implements NoiseVisualizer {
         map.put(BiomeType.BADLANDS,        0xFFB85A2E);
         map.put(BiomeType.MEADOW,          0xFF9DC46B);
         map.put(BiomeType.SWAMP,           0xFF4F6B3A);
+        map.put(BiomeType.SHADE,           0xFF6B6438);
         return map;
     }
 }

@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 import com.openmason.engine.util.BlockPos;
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.utils.ChunkPosition;
@@ -46,6 +47,18 @@ public final class TreeGenerator {
         scheduleOrPlace(world, queue, "regular_tree", worldX, worldYBase, worldZ,
             RegularTree.LEAF_RADIUS,
             w -> RegularTree.place(w, worldX, worldYBase, worldZ));
+    }
+
+    public static void generateDryOakTree(World world, FeatureQueue queue, Chunk originChunk,
+                                          int localX, int worldYBase, int localZ) {
+        int worldX = originChunk.getWorldX(localX);
+        int worldZ = originChunk.getWorldZ(localZ);
+        if (worldYBase + RegularTree.MAX_HEIGHT >= WorldConfiguration.WORLD_HEIGHT) return;
+
+        scheduleOrPlace(world, queue, "dry_oak_tree", worldX, worldYBase, worldZ,
+            RegularTree.LEAF_RADIUS,
+            w -> RegularTree.place(w, worldX, worldYBase, worldZ,
+                BlockType.DRY_OAK_LOG, BlockType.DRY_OAK_LEAVES));
     }
 
     public static void generatePineTree(World world, FeatureQueue queue, Chunk originChunk,

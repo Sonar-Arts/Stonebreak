@@ -54,6 +54,7 @@ public final class BiomeSurfaceConfig {
     private static final Entry OCEAN            = new Entry(0.00f, 0.00f);   // no caves through the sea floor
     // No caves/overhangs: swamp pools need unbroken banks (SwampPoolGenerator).
     private static final Entry SWAMP            = new Entry(0.00f, 0.00f);
+    private static final Entry SHADE            = new Entry(0.22f, 0.10f);
 
     private BiomeSurfaceConfig() {}
 
@@ -72,6 +73,7 @@ public final class BiomeSurfaceConfig {
             case MEADOW          -> MEADOW;
             case OCEAN           -> OCEAN;
             case SWAMP           -> SWAMP;
+            case SHADE           -> SHADE;
         };
     }
 }

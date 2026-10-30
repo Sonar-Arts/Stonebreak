@@ -101,16 +101,20 @@ public final class FastLodChunkData {
 
     // ─── Tree spots (coarse levels) ────────────────────────────────────────
 
-    /** Packs one coarse-level tree: chunk-local column (0..15), kind, trunk height (0..31). */
+    /**
+     * Packs one coarse-level tree into a u16: chunk-local column (0..15) in bits 0-7, kind
+     * (0..7) in bits 8-10, trunk height (0..31) in bits 11-15.
+     */
     public static int packTreeSpot(int localX, int localZ, TreeKind kind, int trunkHeight) {
         return (localX & 15) | ((localZ & 15) << 4) | (kind.ordinal() << 8)
-            | (Math.max(0, Math.min(31, trunkHeight)) << 10);
+            | (Math.max(0, Math.min(31, trunkHeight)) << 11);
     }
 
     public static int spotX(int spot)       { return spot & 15; }
     public static int spotZ(int spot)       { return (spot >>> 4) & 15; }
-    public static TreeKind spotKind(int spot) { return TreeKind.values()[(spot >>> 8) & 3]; }
-    public static int spotTrunk(int spot)   { return (spot >>> 10) & 31; }
+    public static int spotKindOrdinal(int spot) { return (spot >>> 8) & 7; }
+    public static TreeKind spotKind(int spot) { return TreeKind.values()[spotKindOrdinal(spot)]; }
+    public static int spotTrunk(int spot)   { return (spot >>> 11) & 31; }
 
     /** Trees of a coarse node, or null when the node carries none (and always at L0). */
     public int[] treeSpots()                { return treeSpots; }

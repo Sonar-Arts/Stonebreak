@@ -169,7 +169,8 @@ public class WaterRenderer {
                        int lodStamp,
                        com.stonebreak.rendering.gameWorld.clouds.CloudUniforms clouds,
                        com.stonebreak.rendering.gameWorld.clouds.CloudRenderer cloudBuffer,
-                       com.stonebreak.rendering.gameWorld.weather.PrecipitationFog precipitationFog) {
+                       com.stonebreak.rendering.gameWorld.weather.PrecipitationFog precipitationFog,
+                       com.stonebreak.rendering.gameWorld.fog.GroundFog groundFog) {
         // Save GL state we touch.
         boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
         boolean cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
@@ -241,6 +242,7 @@ public class WaterRenderer {
         shader.setUniform("uFogEnd", fogEnd);
         shader.setUniform("uFogSpherical", fogSpherical);
         precipitationFog.applyTo(shader);
+        groundFog.applyTo(shader);
 
         // Two sub-passes make water self-occluding, like ice: looking through
         // water never shows other water faces (flowing step faces, far walls,

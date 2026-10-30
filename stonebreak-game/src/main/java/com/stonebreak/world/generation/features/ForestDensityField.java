@@ -35,6 +35,13 @@ public final class ForestDensityField {
     /** Probability of elm-vs-oak inside the hottest part of an elm pocket. */
     private static final float ELM_PEAK_PROB = 0.85f;
 
+    /** Shade tree chance in the field's lows (thin glades) and in its highs (the woods' cores). */
+    static final float SHADE_SPARSE = 0.015f;
+    static final float SHADE_DENSE = 0.085f;
+    /** Field values the Shade ramps between. */
+    private static final float SHADE_LOW = 0.25f;
+    private static final float SHADE_HIGH = 0.75f;
+
     private ForestDensityField() {}
 
     /**
@@ -45,6 +52,18 @@ public final class ForestDensityField {
         float d = sampleLattice(worldX, worldZ, FOREST_LATTICE, "forest_density", rng);
         if (d <= FOREST_THRESHOLD) return 0f;
         return (d - FOREST_THRESHOLD) * FOREST_PEAK_MULT;
+    }
+
+    /**
+     * Per-column tree chance in the Shade. Other biomes zero out below FOREST_THRESHOLD and
+     * peak near 3.5x; the Shade is woodland throughout, so it runs from a thin floor in the
+     * field's lows to a capped peak — more trees overall, no thicket denser than SHADE_DENSE.
+     */
+    public static float shadeTreeChance(int worldX, int worldZ, DeterministicRandom rng) {
+        float d = sampleLattice(worldX, worldZ, FOREST_LATTICE, "forest_density", rng);
+        float t = Math.max(0f, Math.min(1f, (d - SHADE_LOW) / (SHADE_HIGH - SHADE_LOW)));
+        t = t * t * (3f - 2f * t);
+        return SHADE_SPARSE + (SHADE_DENSE - SHADE_SPARSE) * t;
     }
 
     /**

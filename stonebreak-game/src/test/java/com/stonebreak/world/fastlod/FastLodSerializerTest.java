@@ -143,15 +143,16 @@ class FastLodSerializerTest {
      * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
      * a coarse cell's footprint holds a river; v11 predates coarse tree spots, uncarved coarse
      * levels and the OCEAN sea floor; v11 and v12 show swamps dry, with no pools and no cypress
-     * past the finest band; v13 shows deserts without their gravel. The version bump forces
+     * past the finest band; v13 shows deserts without their gravel; v14 packs a tree spot's
+     * kind in 2 bits, too few for the Shade's dry oak. The version bump forces
      * the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(14, blob[4], "version byte moved; update this test and the note above");
-        for (byte older = 4; older < 14; older++) {
+        assertEquals(15, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 15; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");
@@ -307,5 +308,20 @@ class FastLodSerializerTest {
         assertNotNull(restored);
         assertNull(restored.rawTrees());
         assertArrayEquals(data.rawHeights(), restored.rawHeights());
+    }
+
+    /** Every tree kind, the Shade's dry oak included, survives a spot's packing at the extremes. */
+    @Test
+    void treeSpotPackingRoundTripsEveryKind() {
+        for (TreeKind kind : TreeKind.values()) {
+            for (int trunk : new int[]{0, 5, 31}) {
+                int spot = FastLodChunkData.packTreeSpot(15, 7, kind, trunk);
+                assertEquals(spot, spot & 0xFFFF, "spot must fit the u16 it is serialized as");
+                assertEquals(15, FastLodChunkData.spotX(spot));
+                assertEquals(7, FastLodChunkData.spotZ(spot));
+                assertEquals(kind, FastLodChunkData.spotKind(spot));
+                assertEquals(trunk, FastLodChunkData.spotTrunk(spot));
+            }
+        }
     }
 }

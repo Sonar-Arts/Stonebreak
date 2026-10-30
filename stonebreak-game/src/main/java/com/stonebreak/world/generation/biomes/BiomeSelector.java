@@ -10,9 +10,10 @@ import com.stonebreak.world.generation.noise.MultiNoiseSample;
  *   1. Submerged columns (surface under sea level) → ocean, or ice fields when frozen
  *   2. Coastal shelves (low continentalness + low peaks) → beach variants
  *   3. Mountainous shape (high peaks/valleys) → peak biomes, climate-skinned
- *   4. Hilly shape (mid peaks/valleys) → rolling biomes, climate-skinned
- *   5. Flatland (low peaks/valleys) → swamp on flat, wet, non-cold lowland; otherwise pure
- *      climate Whittaker selection
+ *   4. Hilly shape (mid peaks/valleys) → the Shade on dry temperate ground; otherwise rolling
+ *      biomes, climate-skinned
+ *   5. Flatland (low peaks/valleys) → swamp on flat, wet, non-cold lowland; the Shade on dry
+ *      temperate ground; otherwise pure climate Whittaker selection
  */
 public final class BiomeSelector {
 
@@ -46,6 +47,11 @@ public final class BiomeSelector {
     // the ground is flat whatever the erosion; the PV floor also excludes valley floors.
     private static final float SWAMP_MAX_C = 0.20f;
     private static final float SWAMP_MIN_PV = -0.30f;
+
+    // The Shade: dry temperate woodland, carved out of what was the dry half of temperate plains.
+    // Drier than SHADE_MIN_M stays plains, so open grassland survives between the woods
+    // (at M_ARID the Shade took ~12% of land; 0.30 keeps it a regional biome, see ShadeBiomeTest).
+    private static final float SHADE_MIN_M = 0.30f;
 
     /**
      * @param submerged whether the column's final surface is under sea level. Standard's only
@@ -96,6 +102,9 @@ public final class BiomeSelector {
     }
 
     private BiomeType hilly(MultiNoiseSample s) {
+        if (isShade(s)) {
+            return BiomeType.SHADE;
+        }
         if (s.temperature() < T_FREEZING) {
             return BiomeType.TUNDRA;
         }
@@ -117,6 +126,9 @@ public final class BiomeSelector {
     private BiomeType flatland(MultiNoiseSample s) {
         if (isSwamp(s)) {
             return BiomeType.SWAMP;
+        }
+        if (isShade(s)) {
+            return BiomeType.SHADE;
         }
         if (s.temperature() < T_FREEZING) {
             return s.moisture() >= M_WET ? BiomeType.ICE_FIELDS : BiomeType.TUNDRA;
@@ -145,5 +157,10 @@ public final class BiomeSelector {
             && s.peaksValleys() >= SWAMP_MIN_PV
             && s.temperature() >= T_COLD
             && s.moisture() >= M_WET;
+    }
+
+    private static boolean isShade(MultiNoiseSample s) {
+        return s.temperature() >= T_COLD && s.temperature() < T_WARM
+            && s.moisture() >= SHADE_MIN_M && s.moisture() < M_DRY;
     }
 }

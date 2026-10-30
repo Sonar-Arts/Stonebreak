@@ -98,8 +98,12 @@ public final class FastLodSerializer {
      *
      * <p>14: desert gravel is part of the surface ({@code DesertGravel}), sampled like any
      * other; a v13 node shows the desert as unbroken sand where the chunks lay gravel.
+     *
+     * <p>15: the Shade's dry oak is a fifth {@code TreeKind}, so a tree spot's kind field
+     * widened to 3 bits and its trunk height moved up one bit ({@code packTreeSpot}); a v14
+     * spot would decode with the wrong trunk.
      */
-    public static final int VERSION = 14;
+    public static final int VERSION = 15;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -277,7 +281,7 @@ public final class FastLodSerializer {
         int[] spots = new int[spotCount];
         for (int i = 0; i < spotCount; i++) {
             spots[i] = buf.getShort() & 0xFFFF;
-            if (((spots[i] >>> 8) & 3) >= TreeKind.values().length) return null;
+            if (FastLodChunkData.spotKindOrdinal(spots[i]) >= TreeKind.values().length) return null;
         }
         if (!expected.coarseTrees()) spots = null;
 

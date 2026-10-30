@@ -37,8 +37,14 @@ public final class RegularTree {
     private RegularTree() {}
 
     public static void place(World world, int worldX, int worldY, int worldZ) {
+        place(world, worldX, worldY, worldZ, BlockType.WOOD, BlockType.LEAVES);
+    }
+
+    /** Worldgen placement built from {@code log} and {@code leaves} (the Shade's dry oaks). */
+    public static void place(World world, int worldX, int worldY, int worldZ,
+                             BlockType log, BlockType leaves) {
         TreeBlockPlacer placer = new TreeBlockPlacer(world);
-        generate(placer, worldX, worldY, worldZ, BlockType.WOOD, BlockType.LEAVES);
+        generate(placer, worldX, worldY, worldZ, log, leaves);
         placer.complete();
     }
 
