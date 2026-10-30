@@ -24,7 +24,7 @@ public final class AppWindow {
 
     private static final Logger logger = LoggerFactory.getLogger(AppWindow.class);
 
-    private static final String APP_TITLE = "OpenMason - Voxel Game Engine & Toolset";
+    private static final String APP_TITLE = "Open Mason Toolset";
     private static final int MIN_WIDTH = 1200;
     private static final int MIN_HEIGHT = 800;
     private static final int DEFAULT_WIDTH = 1600;

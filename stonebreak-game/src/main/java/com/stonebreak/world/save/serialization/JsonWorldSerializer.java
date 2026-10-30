@@ -34,6 +34,7 @@ public class JsonWorldSerializer {
         json.append("  \"totalPlayTimeMillis\": ").append(world.getTotalPlayTimeMillis()).append(",\n");
         json.append("  \"worldTimeTicks\": ").append(world.getWorldTimeTicks()).append(",\n");
         json.append("  \"cheatsEnabled\": ").append(world.isCheatsEnabled()).append(",\n");
+        json.append("  \"pvpEnabled\": ").append(world.isPvpEnabled()).append(",\n");
         json.append("  \"weatherSeconds\": ").append(world.getWeatherSeconds()).append(",\n");
         json.append("  \"weatherMode\": \"").append(world.getWeatherMode().name()).append("\",\n");
         json.append("  \"weatherZones\": \"").append(WeatherZone.formatAll(world.getWeatherZones())).append("\",\n");
@@ -58,6 +59,7 @@ public class JsonWorldSerializer {
                 .totalPlayTimeMillis(JsonParsingUtil.extractLong(json, "totalPlayTimeMillis"))
                 .worldTimeTicks(JsonParsingUtil.extractLong(json, "worldTimeTicks", 6000L)) // Default to NOON if not present
                 .cheatsEnabled(JsonParsingUtil.extractBoolean(json, "cheatsEnabled", false))
+                .pvpEnabled(JsonParsingUtil.extractBoolean(json, "pvpEnabled", false))
                 .weatherSeconds(JsonParsingUtil.extractLong(json, "weatherSeconds", 0L))
                 .weatherMode(WorldData.parseWeatherMode(
                     JsonParsingUtil.extractStringOptional(json, "weatherMode")))

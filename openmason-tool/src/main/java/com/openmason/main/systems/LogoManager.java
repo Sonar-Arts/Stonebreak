@@ -151,7 +151,7 @@ public class LogoManager {
         
         // Add tooltip on hover
         if (ImGui.isItemHovered()) {
-            ImGui.setTooltip("Open Mason - 3D Model & Texture Tool");
+            ImGui.setTooltip("Open Mason Toolset");
         }
     }
     

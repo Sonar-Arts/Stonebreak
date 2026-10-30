@@ -19,7 +19,10 @@ import org.joml.Vector3f;
  */
 public class RemotePlayer extends LivingEntity {
 
-    /** A remote player's footsteps are their own client's business, not this shadow's. */
+    /**
+     * No stride-counted mob footsteps: a player shadow steps on its gait clock's foot contacts
+     * instead ({@link #updateClientVisuals}), the same signal the local player's own steps use.
+     */
     @Override
     protected boolean hasFootsteps() {
         return false;
@@ -44,6 +47,8 @@ public class RemotePlayer extends LivingEntity {
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3f prevPosition;
     private final PlayerGaitClock gaitClock = new PlayerGaitClock();
+    /** Whether the last {@link #updateMovementAnimation} planted a foot (walk/run only). */
+    private boolean footContact;
 
     /**
      * Body facing / head-swivel logic, shared with the local player's third-person view.
@@ -60,7 +65,7 @@ public class RemotePlayer extends LivingEntity {
     private final Vector3f velocityEstimate = new Vector3f();
 
     /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
-    private volatile byte stateFlags;
+    private volatile short stateFlags;
     /**
      * Full authored punch triggered by the replicated ATTACKING flag, independent
      * of the short gameplay pulse, matching the local player's body animation.
@@ -93,11 +98,11 @@ public class RemotePlayer extends LivingEntity {
      */
     private volatile boolean receivedFirstState;
 
-    public void setStateFlags(byte flags) {
+    public void setStateFlags(short flags) {
         this.stateFlags = flags;
         receivedFirstState = true;
     }
-    public byte getStateFlags() { return stateFlags; }
+    public short getStateFlags() { return stateFlags; }
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
     public com.stonebreak.rendering.effects.WaterSplashParticles getSplashParticles() { return splashParticles; }
     public com.stonebreak.rendering.effects.WaterRippleParticles getRippleParticles() { return rippleParticles; }
@@ -129,6 +134,26 @@ public class RemotePlayer extends LivingEntity {
 
     /** Held item identity for third-person hand rendering. {@code null} = empty-handed. */
     public Item getHeldItem() { return heldItem; }
+
+    /** Hand offset from the feet, in body space: right, up, forward (third-person held item). */
+    private static final float HAND_RIGHT = 0.35f;
+    private static final float HAND_UP = 1.2f;
+    private static final float HAND_FORWARD = 0.15f;
+
+    /**
+     * Where this figure's held item sits, in world space: the one hand position the held-item
+     * renderer draws at and a held torch lights from. Turned with the model-space body yaw, the
+     * frame the figure itself is drawn in.
+     */
+    public Vector3f handPosition(Vector3f out) {
+        float yawRad = (float) Math.toRadians(getBodyYaw());
+        float cos = (float) Math.cos(yawRad);
+        float sin = (float) Math.sin(yawRad);
+        // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
+        return out.set(position.x + HAND_RIGHT * cos - HAND_FORWARD * sin,
+                position.y + HAND_UP,
+                position.z - HAND_RIGHT * sin - HAND_FORWARD * cos);
+    }
     /** Sets the full held-item identity (block or tool/flower). Used by local-only figures. */
     public void setHeldItem(Item item) {
         this.heldItem = item;
@@ -206,15 +231,18 @@ public class RemotePlayer extends LivingEntity {
         }
 
         // Replicated flags select land sprint/jump; unflagged local figures still walk.
-        byte flags = stateFlags;
+        short flags = stateFlags;
         movementState = vehicle != null ? PlayerStateMapping.PlayerMovementState.SITTING
                 : PlayerStateMapping.locomotion(moving,
                 !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE),
                 PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER)
                         || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),
                 PlayerStateFlags.has(flags, PlayerStateFlags.SPRINTING));
-        gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
+        boolean contact = gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
                 SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId())));
+        // Same gate as the local player's steps (PlayerBodyAnimation): on land, out of water.
+        footContact = contact && !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE)
+                && !PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER);
 
         attackAnimation.update(deltaTime, PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING),
                 SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId()));
@@ -231,7 +259,7 @@ public class RemotePlayer extends LivingEntity {
         // Read order matters: receivedFirstState before stateFlags, so a true here always
         // pairs with the flags of a real packet (see the field's doc).
         boolean hasState = receivedFirstState;
-        byte flags = stateFlags;
+        short flags = stateFlags;
         boolean partiallyInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
                 flags, com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER);
         boolean eyesInWater = com.stonebreak.network.packet.player.PlayerStateFlags.has(
@@ -279,11 +307,16 @@ public class RemotePlayer extends LivingEntity {
     /**
      * Client shadow path (network shadows never run {@link #update}): derive
      * walk/idle from the freshly interpolated position and advance the
-     * animation clock so the remote player's clips actually play.
+     * animation clock so the remote player's clips actually play, stepping
+     * audibly on each foot contact.
      */
     @Override
     public void updateClientVisuals(float deltaTime) {
         updateMovementAnimation(deltaTime);
+        // Footsteps (issue #344), on the gait clock's foot contacts as the local player's are.
+        if (footContact) {
+            com.stonebreak.audio.PlayerSounds.playStepAt(world, position);
+        }
     }
 
     @Override
@@ -310,9 +343,12 @@ public class RemotePlayer extends LivingEntity {
     @Override
     public void onDamage(float damage, DamageSource source) {}
 
-    /** No PvP yet (#343): remote players have no network id, so hits on them are dropped. */
+    /**
+     * A combat target only while the world allows PvP (#343, mirrored from {@code PvpStateS2C});
+     * the server still refuses hits when it is off. Decoys never are ({@link IllusionDecoy}).
+     */
     @Override
-    public boolean isPlayerAttackable() { return false; }
+    public boolean isPlayerAttackable() { return isAlive() && com.stonebreak.core.Game.isPvpEnabled(); }
 
     @Override
     protected void onDeath() {}

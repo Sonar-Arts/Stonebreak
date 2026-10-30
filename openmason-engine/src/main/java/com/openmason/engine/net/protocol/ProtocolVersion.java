@@ -54,11 +54,18 @@ public final class ProtocolVersion {
      *  20 = server cost pass (issue #346): HandshakeC2S lists the compression codecs the client
      *  decodes, ChunkDataS2C blobs carry a codec byte (raw / zstd / deflate), and EntityAnimS2C
      *  sends known animation states as a one-byte code.
-     *  21 = stealth perception (issue #321): EntityAwarenessS2C replicates a mob's awareness
-     *  state to its shadows, and PlayerStateC2S flags carry STEALTHED (the old reserved sneak
-     *  bit) and DODGE_NOISE; PlayerHurtS2C carries a mob's hit (melee or arrow) to the player it
-     *  landed on. */
-    public static final int CURRENT = 21;
+     *  21 = sound replication (issue #344): SoundEventS2C plays another player's block
+     *  break/place/mining hits and mobs' hurt/death voices on nearby clients, and the
+     *  PlayerStateFlags MINING bit tells the server when a player stops mining.
+     *  22 = server-owned player health (issue #343): PlayerHealthS2C (health/max/dead, every
+     *  player to everyone), PlayerKnockbackS2C, PvpStateS2C and PlayerDamageC2S (PvP hits) added;
+     *  the state flags grow to 16 bits (FLYING, DODGING, LIFESTEAL); DeathDropC2S (27) retired —
+     *  the server scatters the inventory at the death it decides; PlayerLifeC2S's respawn is a
+     *  request whose spot the server picks.
+     *  23 = stealth perception (issue #321): EntityAwarenessS2C (37) replicates a mob's awareness
+     *  state to its shadows, StatCreditS2C (36) credits non-kill stats, and the state flags carry STEALTHED
+     *  (the old reserved sneak bit) and DODGE_NOISE (bit 11). */
+    public static final int CURRENT = 23;
 
     private ProtocolVersion() {}
 }

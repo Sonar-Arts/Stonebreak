@@ -30,15 +30,15 @@ public class Arrow extends Entity {
      * so {@code lastPosition → position} is the path it just flew.
      */
     private final Vector3f lastPosition;
-    /** Unit flight direction for drawing; see {@link #heading()}. */
-    private final Vector3f heading = new Vector3f();
-    /** Where {@link #heading()} last saw the arrow, or null before its first call. */
-    private Vector3f headingSample;
 
     /** The mob that loosed this arrow, or null for a player's arrow. */
     private LivingEntity shooter;
     /** Damage a mob's arrow does to the player it hits. */
     private float mobArrowDamage;
+    /** Unit flight direction for drawing; see {@link #heading()}. */
+    private final Vector3f heading = new Vector3f();
+    /** Where {@link #heading()} last saw the arrow, or null before its first call. */
+    private Vector3f headingSample;
 
     public Arrow(World world, Vector3f position, Vector3f velocity) {
         super(world, position);
@@ -94,15 +94,15 @@ public class Arrow extends Entity {
     }
 
     /**
-     * A mob's arrow: hurts the player it is inside. On the authoritative world that is any
-     * connected player, told through their own client ({@link PlayerLocator#hurtPlayerAt}) — never
-     * {@code Game.getPlayer()}, which there is only the host, read from the wrong thread. A world
-     * with no roster (single-world tests) keeps the local player.
+     * A mob's arrow: hurts the player it is inside. On the server world that is any player in the
+     * roster, through their server-owned health (#343) — never the host's client player read
+     * from the tick thread. A world with no roster (one the client simulates itself) has only
+     * the local player.
      */
     private boolean strikePlayer() {
-        PlayerLocator players = world.getPlayerLocator();
-        if (players != PlayerLocator.NONE) {
-            return players.hurtPlayerAt(position, HIT_RADIUS, mobArrowDamage);
+        PlayerLocator players = roster();
+        if (players != null) {
+            return players.hitPlayerAt(position, HIT_RADIUS, mobArrowDamage, -1);
         }
         if (!hitsLocalPlayer()) {
             return false;
@@ -120,16 +120,26 @@ public class Arrow extends Entity {
         if (em == null) {
             return false;
         }
-        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN);
-        if (le == null) {
-            return false;
-        }
         float speedRatio = launchSpeed > 0 ? Math.min(launchSpeed / BowController.MAX_ARROW_SPEED, 1.0f) : 0.0f;
         float damage = BASE_DAMAGE + (MAX_DAMAGE - BASE_DAMAGE) * speedRatio;
+        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN);
+        if (le == null) {
+            // Another player, where the world allows PvP (#343); never the shooter.
+            PlayerLocator players = roster();
+            return players != null && getOwnerPlayerId() >= 0
+                    && players.hitPlayerAt(position, ENTITY_HIT_MARGIN, damage, getOwnerPlayerId());
+        }
         // The hit result goes to the shooter (KillCreditS2C with the target's network id
         // and ARROW source); their client builds Quarry/Study from it.
         ProjectileDamage.deal(this, le, damage, LivingEntity.DamageSource.ARROW);
         return true;
+    }
+
+    /** The connected players of this arrow's world, or null when it has none (not the server's). */
+    private PlayerLocator roster() {
+        PlayerLocator players =
+                world != null ? world.getPlayerLocator() : null;
+        return players == PlayerLocator.NONE ? null : players;
     }
 
     /** Whether the arrow is inside the local player's body box (feet position, standing height). */

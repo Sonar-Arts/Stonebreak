@@ -30,7 +30,6 @@ import com.stonebreak.network.packet.handshake.KickS2C;
 import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.GiveItemS2C;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.HotbarSelectC2S;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
@@ -640,7 +639,7 @@ public final class ClientWorldView {
         Vector3f pos = p.getPosition();
         float yaw = p.getCamera() != null ? p.getCamera().getYaw() : 0f;
         float pitch = p.getCamera() != null ? p.getCamera().getPitch() : 0f;
-        byte flags = 0;
+        short flags = 0;
         if (p.isSprinting()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING;
         if (p.isInWater())   flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SWIMMING;
         if (p.isPhysicallyInWater()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER;
@@ -649,6 +648,14 @@ public final class ClientWorldView {
         if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
         if (p.getStealth().isStealthed()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED;
         if (p.getDodge().isMakingNoise()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE;
+        if (p.getBreakingBlock() != null) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.MINING;
+        // #343: what the server needs to resolve the player's health — flight voids falls and
+        // cactus contact, a dodge's i-frames negate blows, Rage T3 heals by lifesteal.
+        if (p.isFlying()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.FLYING;
+        if (p.getDodge().isInvincible()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGING;
+        if (p.getBerserkerAbilities().getRage().getTier().atLeast(com.stonebreak.player.combat.RageTier.T3)) {
+            flags |= com.stonebreak.network.packet.player.PlayerStateFlags.LIFESTEAL;
+        }
         connection.send(new PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch, flags), true);
 
         if (p.getInventory() != null) {
@@ -801,11 +808,11 @@ public final class ClientWorldView {
         }
     }
 
-    /** Death drain request (see {@code DeathDropC2S}): the server scatters the replica. */
-    public void sendDeathDrop() {
+    /** A hit on another player (see {@code PlayerDamageC2S}, PvP — #343). */
+    public void sendPlayerDamage(com.stonebreak.network.packet.player.PlayerDamageC2S d) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
-            conn.send(new DeathDropC2S(com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
+            conn.send(d, false);
         }
     }
 
@@ -1027,7 +1034,13 @@ public final class ClientWorldView {
                 entityHandler.applyVariant(v.networkId(), v.variant());
             case com.stonebreak.network.packet.entity.EntityStatusS2C st -> entityHandler.applyStatus(st);
             case com.stonebreak.network.packet.entity.EntityAwarenessS2C aw -> entityHandler.applyAwareness(aw);
-            case com.stonebreak.network.packet.player.PlayerHurtS2C h -> playerHandler.handleHurt(h);
+            case com.stonebreak.network.packet.world.SoundEventS2C se ->
+                com.stonebreak.network.client.handlers.ClientSoundHandler.apply(se);
+            case com.stonebreak.network.packet.player.PlayerHealthS2C ph ->
+                playerHandler.handleHealth(localPlayerId, ph);
+            case com.stonebreak.network.packet.player.PlayerKnockbackS2C kb -> playerHandler.handleKnockback(kb);
+            case com.stonebreak.network.packet.world.PvpStateS2C pvp ->
+                Game.getInstance().setPvpEnabled(pvp.enabled());
             case KeepAliveS2C ka -> {
                 lastRttMs = ka.lastRttMs();
                 ClientConnection conn = connection;

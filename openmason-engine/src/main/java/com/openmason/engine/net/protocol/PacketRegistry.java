@@ -50,6 +50,16 @@ public final class PacketRegistry {
         return this;
     }
 
+    /** Every packet type registered in a slot, by wire id (a snapshot; for tests and tooling). */
+    public Map<Integer, Class<?>> registeredTypes(ProtocolPhase phase, PacketDirection direction) {
+        Bucket b = buckets.get(new Slot(phase, direction));
+        Map<Integer, Class<?>> out = new java.util.TreeMap<>();
+        if (b != null) {
+            b.idByClass.forEach((type, id) -> out.put(id, type));
+        }
+        return java.util.Collections.unmodifiableMap(out);
+    }
+
     /** Codec for an inbound packet id, or {@code null} if unregistered in that slot. */
     public PacketCodec<?> codecForId(ProtocolPhase phase, PacketDirection direction, int id) {
         Bucket b = buckets.get(new Slot(phase, direction));

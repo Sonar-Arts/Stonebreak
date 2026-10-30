@@ -51,7 +51,10 @@ public class CactusContactDamage {
             return;
         }
         timer -= CactusContactRules.PULSE_INTERVAL; // keep remainders so pulses stay even
-        health.damage(CactusContactRules.DAMAGE_PER_PULSE);
+        // In a session the server tests the contact against its own world (#343).
+        if (!com.stonebreak.network.MultiplayerSession.serverOwnsPlayerHealth()) {
+            health.damage(CactusContactRules.DAMAGE_PER_PULSE);
+        }
     }
 
     /**

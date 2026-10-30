@@ -1,6 +1,6 @@
 /**
- * OpenMason Tool Module
- * Professional Voxel Game Engine & Toolset for Stonebreak with Dear ImGui-based interface
+ * Open Mason Toolset
+ * Asset tools for Stonebreak with a Dear ImGui-based interface
  */
 module com.openmason {
     

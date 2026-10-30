@@ -24,9 +24,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class ClientPlayerHandler {
 
-    /** Upward pop on a mob's shove, blocks per second, so the player is not dragged along the ground. */
-    private static final float KNOCKBACK_LIFT = 4.0f;
-
     private final Map<Integer, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
 
     /**
@@ -37,8 +34,20 @@ public final class ClientPlayerHandler {
      * Replayed by {@link #tick()} once {@code Game.isClientWorldReady()}.
      */
     private final java.util.Deque<PlayerJoinS2C> pendingJoins = new java.util.ArrayDeque<>();
-    /** Held-item snapshots for players whose figure doesn't exist yet (join buffered). */
+    /** Held-item snapshots for players whose figure doesn't exist yet (join buffered, or dead). */
     private final Map<Integer, Integer> pendingHeldItems = new ConcurrentHashMap<>();
+    /**
+     * Players the server holds dead (#343, {@code PlayerHealthS2C}): their figure is gone until
+     * they respawn, and neither their state stream nor a roster join may bring it back early.
+     */
+    private final java.util.Set<Integer> deadPlayers = ConcurrentHashMap.newKeySet();
+    /** Names of the players in the roster, so a figure re-created after a death keeps its name. */
+    private final Map<Integer, String> usernames = new ConcurrentHashMap<>();
+    /**
+     * Our own latest health while the client world is still being built: the join's snapshot
+     * arrives then, when {@code Game.getPlayer()} is still the previous session's player.
+     */
+    private volatile com.stonebreak.network.packet.player.PlayerHealthS2C pendingOwnHealth;
 
     public void handlePlayerState(int localPlayerId, PlayerStateS2C ps) {
         if (ps.playerId() == localPlayerId) {
@@ -56,6 +65,10 @@ public final class ClientPlayerHandler {
             return;
         }
         departed.remove(j.playerId());
+        usernames.put(j.playerId(), j.username());
+        if (deadPlayers.contains(j.playerId())) {
+            return; // a dead player's figure stays hidden until the respawn
+        }
         if (!com.stonebreak.core.Game.isClientWorldReady()) {
             pendingJoins.add(j);
             return;
@@ -67,6 +80,8 @@ public final class ClientPlayerHandler {
         departed.add(l.playerId());
         pendingJoins.removeIf(j -> j.playerId() == l.playerId());
         pendingHeldItems.remove(l.playerId());
+        deadPlayers.remove(l.playerId());
+        usernames.remove(l.playerId());
         despawnRemote(l.playerId());
     }
 
@@ -84,9 +99,14 @@ public final class ClientPlayerHandler {
         }
     }
 
-    /** Replay joins buffered while the client world was being built/swapped. */
+    /** Replay joins (and our own health) buffered while the client world was being built/swapped. */
     public void tick() {
         drainPendingJoins();
+        com.stonebreak.network.packet.player.PlayerHealthS2C own = pendingOwnHealth;
+        if (own != null && Game.isClientWorldReady()) {
+            pendingOwnHealth = null;
+            applyOwnHealth(own);
+        }
     }
 
     private void drainPendingJoins() {
@@ -95,7 +115,7 @@ public final class ClientPlayerHandler {
         }
         PlayerJoinS2C j;
         while ((j = pendingJoins.poll()) != null) {
-            if (!departed.contains(j.playerId())) {
+            if (!departed.contains(j.playerId()) && !deadPlayers.contains(j.playerId())) {
                 spawnRemote(j.playerId(), j.username(), j.x(), j.y(), j.z());
             }
         }
@@ -109,6 +129,51 @@ public final class ClientPlayerHandler {
         Player local = Game.getPlayer();
         if (local != null) {
             local.teleport(p.x(), p.y(), p.z());
+        }
+    }
+
+    /**
+     * Server-owned health (#343). Our own goes to the local player — a death the server decided,
+     * a respawn it made, the hearts in between. Another player's death hides their figure until
+     * they respawn (their state stream brings it back, at the spot the server put them).
+     */
+    public void handleHealth(int localPlayerId, com.stonebreak.network.packet.player.PlayerHealthS2C h) {
+        if (h.playerId() == localPlayerId) {
+            if (Game.isClientWorldReady()) {
+                pendingOwnHealth = null;
+                applyOwnHealth(h);
+            } else {
+                pendingOwnHealth = h; // only the latest matters
+            }
+            return;
+        }
+        if (!h.dead()) {
+            deadPlayers.remove(h.playerId());
+            return;
+        }
+        if (deadPlayers.add(h.playerId())) {
+            pendingJoins.removeIf(j -> j.playerId() == h.playerId());
+            RemotePlayer rp = remotePlayers.get(h.playerId());
+            if (rp != null) {
+                pendingHeldItems.put(h.playerId(), rp.getHeldItemId()); // re-applied on respawn
+            }
+            despawnRemote(h.playerId());
+        }
+    }
+
+    private static void applyOwnHealth(com.stonebreak.network.packet.player.PlayerHealthS2C h) {
+        Player local = Game.getPlayer();
+        if (local != null) {
+            local.applyServerHealth(h.health(), h.maxHealth(), h.dead(),
+                    com.stonebreak.network.packet.player.PlayerHealthS2C.isCombat(h.cause()));
+        }
+    }
+
+    /** A blow the server landed on us pushes us (#343). */
+    public void handleKnockback(com.stonebreak.network.packet.player.PlayerKnockbackS2C k) {
+        Player local = Game.getPlayer();
+        if (local != null) {
+            local.applyKnockback(k.vx(), k.vy(), k.vz());
         }
     }
 
@@ -129,23 +194,6 @@ public final class ClientPlayerHandler {
         SoundSystem ss = Game.getInstance().getSoundSystem();
         if (ss != null) {
             ss.playSound("blockpickup");
-        }
-    }
-
-    /**
-     * A mob hit the local player (a goblin's swing or arrow, judged on the server): applied through
-     * {@link Player#damage}, so dodge i-frames, Rage and the stealth break hold as for any hit, and
-     * the shove lands unless the dodge negated the blow. Spectators take nothing.
-     */
-    public void handleHurt(com.stonebreak.network.packet.player.PlayerHurtS2C hurt) {
-        Player local = Game.getPlayer();
-        if (local == null || local.isDead() || local.isSpectator()) {
-            return;
-        }
-        boolean negated = local.getDodge().isInvincible();
-        local.damage(hurt.amount());
-        if (!negated && (hurt.knockbackX() != 0f || hurt.knockbackZ() != 0f)) {
-            local.getVelocity().add(hurt.knockbackX(), KNOCKBACK_LIFT, hurt.knockbackZ());
         }
     }
 
@@ -222,6 +270,9 @@ public final class ClientPlayerHandler {
         departed.clear();
         pendingJoins.clear();
         pendingHeldItems.clear();
+        deadPlayers.clear();
+        usernames.clear();
+        pendingOwnHealth = null;
     }
 
     // ─── Remote-player lifecycle ────────────────────────────────────────────────
@@ -269,7 +320,7 @@ public final class ClientPlayerHandler {
         }
     }
 
-    private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch, byte flags) {
+    private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch, short flags) {
         // Droppable 20 Hz stream: while the world is rebuilding just drop the packet (the
         // next one is 50 ms away). Replay buffered joins first so the on-demand fallback
         // below never beats a real join to the spawn (it would lose the username).
@@ -289,10 +340,10 @@ public final class ClientPlayerHandler {
             // that ghost would linger forever (its player is gone; no leave will follow).
             // A rejoin lifts the block via handleJoin before any of its state arrives
             // (PlayerJoinS2C is non-droppable and sent first).
-            if (departed.contains(playerId)) {
+            if (departed.contains(playerId) || deadPlayers.contains(playerId)) {
                 return;
             }
-            spawnRemote(playerId, "Player" + playerId, x, y, z);
+            spawnRemote(playerId, usernames.getOrDefault(playerId, "Player" + playerId), x, y, z);
             rp = remotePlayers.get(playerId);
         }
         if (rp != null) {

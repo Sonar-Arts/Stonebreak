@@ -56,14 +56,18 @@ final class EntityShadowCasterRenderer {
      * models draw from render-space matrices — while {@code cascadeCenter} and
      * the caster positions are world space, so the cull frustum is rebased back
      * to world space before testing them.
+     *
+     * @param excluded an entity that does not cast into this view (a torch holder, for its
+     *                 own torch), or null
      */
-    void render(com.stonebreak.player.Player player,
+    void render(com.stonebreak.player.Player player, Entity excluded,
                 Matrix4f lightView, Matrix4f lightProj,
                 Vector3f cascadeCenter, float cascadeRadius) {
         float cullRadius = cascadeRadius + 8.0f;
         float cullRadiusSq = cullRadius * cullRadius;
         lightFrustum.set(RenderOrigin.acceptWorldSpace(lightProj.mul(lightView, lightViewProjection)));
         for (Caster caster : casters) {
+            if (caster.entity == excluded) continue;
             Vector3f pos = caster.position;
             float dx = pos.x - cascadeCenter.x;
             float dz = pos.z - cascadeCenter.z;

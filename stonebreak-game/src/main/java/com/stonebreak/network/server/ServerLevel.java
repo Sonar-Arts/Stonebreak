@@ -410,6 +410,17 @@ public final class ServerLevel {
         }
     }
 
+    /** Whether the world lets players hurt each other (issue #343, persisted; off by default). */
+    public boolean pvpEnabled() { return worldData.isPvpEnabled(); }
+
+    /** Set the world's PvP rule; persists with the next save, like {@link #setCheatsEnabled}. */
+    public void setPvpEnabled(boolean enabled) {
+        worldData = worldData.withPvpEnabled(enabled);
+        if (saveService != null) {
+            saveService.updateWorldData(d -> d.withPvpEnabled(enabled));
+        }
+    }
+
     /** Loaded player data for an integrated server, or null for a fresh world / dedicated boot. */
     public PlayerData loadedPlayerData() { return loadedPlayerData; }
 

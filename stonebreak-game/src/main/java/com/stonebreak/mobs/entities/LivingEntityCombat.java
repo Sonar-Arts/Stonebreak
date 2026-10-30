@@ -76,9 +76,9 @@ final class LivingEntityCombat {
      * Authoritative damage application.
      *
      * <p>On a network shadow this never mutates local state: the authoritative entity lives
-     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent. Damage
-     * numbers and the hurt voice come back with the server's {@code KillCreditS2C}, so hits
-     * the server rejects (i-frames, range) show nothing. (Mutating the shadow would also
+     * on the server, so the hit is forwarded as an {@code EntityDamageC2S} intent. The damage
+     * number comes back with the server's {@code KillCreditS2C} and the hurt voice as a
+     * {@code SoundEventS2C}, so hits the server rejects (i-frames, range) show nothing. (Mutating the shadow would also
      * wedge it permanently invulnerable — shadows never tick, so i-frames would never expire.)
      *
      * @param weaponId          item id of the melee weapon swung, or {@link LivingEntity#NO_WEAPON};
@@ -98,12 +98,18 @@ final class LivingEntityCombat {
         Vector3f position = owner.position;
         float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
+            if (owner instanceof RemotePlayer rp && rp.isPlayerAttackable() && amount > 0f) {
+                // PvP (#343): players have no network id; the intent names the player and the
+                // server applies it to their server-owned health, if the world allows PvP.
+                MultiplayerSession.onLocalPlayerDamage(rp.getPlayerId(), amount, source, type, kind);
+                return true;
+            }
             if (owner.getNetworkId() < 0 || !(amount > 0f)) {
                 return false;
             }
             // No predicted damage number / hurt voice: the server may refuse the hit
-            // (range, cooldown, the real mob's i-frames). Both play from its result
-            // (KillCreditS2C) on this client — the only place the attacker can see/hear it.
+            // (range, cooldown, the real mob's i-frames). The number comes from its result
+            // (KillCreditS2C); the voice from the hit itself, replicated to everyone near.
             MultiplayerSession.onLocalEntityDamage(owner, amount, source, type, kind);
             return true;
         }
@@ -117,16 +123,17 @@ final class LivingEntityCombat {
         invulnerability.put(key, INVULNERABILITY_DURATION);
         // Damage numbers are client UI — only spawn them for entities living in the world
         // being rendered. Authoritative entities live in the headless server world, where
-        // this would emit a duplicate of the client's predicted number from the tick thread.
+        // the attacker's number comes back with the server's KillCreditS2C instead.
         if (Game.getWorld() == owner.world) {
             DamageNumbers.getInstance().spawn(
                 position.x, position.y + owner.height * 0.9f, position.z, effectiveAmount);
-            // Data-driven voice: plays only when the entity's SBE declares a
-            // hurt/death sound event (SBE 1.4+); silent otherwise.
-            com.stonebreak.audio.EntitySounds.playAt(owner,
-                owner.alive ? com.stonebreak.audio.EntitySounds.EVENT_HURT
-                            : com.stonebreak.audio.EntitySounds.EVENT_DEATH);
         }
+        // Data-driven voice: plays only when the entity's SBE declares a hurt/death sound
+        // event (SBE 1.4+). Played here in a rendered world; from the server world it is
+        // replicated to every nearby player, attacker included (issue #344).
+        com.stonebreak.audio.EntitySounds.emit(owner,
+            owner.alive ? com.stonebreak.audio.EntitySounds.EVENT_HURT
+                        : com.stonebreak.audio.EntitySounds.EVENT_DEATH);
         if ((source == DamageSource.PLAYER || source == DamageSource.ARCANE) && creditLocalPlayer) {
             Player player = Game.getPlayer();
             if (player != null) {

@@ -265,6 +265,32 @@ public class Player {
     public void heal(float amount) { c.health.heal(amount); }
     public void respawn() { c.deathHandler.respawn(); }
 
+    /**
+     * Applies the server-owned health (issue #343; {@code PlayerHealthS2C}). A server-side
+     * death marks this player dead; alive while dead here is a respawn the server made (a save
+     * that was dead on load). A combat hit builds Rage, as {@link #damage} does locally.
+     *
+     * @param combatHit the change was a blow from a mob or another player
+     */
+    public void applyServerHealth(float health, float maxHealth, boolean dead, boolean combatHit) {
+        if (!dead && c.health.isDead()) {
+            respawn();
+        }
+        float before = c.health.getHealth();
+        c.health.applyServerState(health, maxHealth, dead);
+        if (combatHit && c.health.getHealth() < before) {
+            c.berserkerAbilities.getRage().onHitReceived();
+        }
+    }
+
+    /** A push from a blow the server landed (issue #343), added to the velocity in blocks per second. */
+    public void applyKnockback(float vx, float vy, float vz) {
+        if (c.health.isDead() || !Float.isFinite(vx) || !Float.isFinite(vy) || !Float.isFinite(vz)) {
+            return;
+        }
+        state.getVelocity().add(vx, vy, vz);
+    }
+
     // Attack animation
     public boolean isAttacking() { return c.attack.isAttacking(); }
     public void startAttackAnimation() { c.attack.startAttackAnimation(); }
@@ -486,10 +512,9 @@ public class Player {
     }
 
     /**
-     * Whether a swing or ability may resolve against {@code entity}: alive, and not a
-     * player-shaped entity (remote players, decoys) — hits on those never deal damage until PvP
-     * exists (#343), so they must not pay out Rage, lifesteal, Quarry or stealth effects (#374),
-     * and the server refuses them too.
+     * Whether a swing or ability may resolve against {@code entity}: alive, and not a decoy or —
+     * unless the world allows PvP (#343) — another player. Hits on those deal no damage, so they
+     * must not pay out Rage, lifesteal, Quarry or stealth effects (#374); the server refuses them too.
      */
     public static boolean isCombatTarget(LivingEntity entity) {
         return entity != null && entity.isPlayerAttackable();

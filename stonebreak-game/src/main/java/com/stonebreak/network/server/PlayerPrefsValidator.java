@@ -432,15 +432,4 @@ public final class PlayerPrefsValidator {
         }
         return total;
     }
-
-    /**
-     * Clamps a client-reported health value to the character's CON-derived max (issue
-     * #334). Health is locally simulated, so it stays client-reported, but the raw
-     * 0..1024 setter clamp would otherwise let a modified client report god-mode health
-     * through the same prefs channel this issue closes.
-     */
-    public static float acceptedHealth(CharacterStats serverStats, float reportedHealth) {
-        float maxHp = serverStats.computeMaxHealth();
-        return Math.max(0f, Math.min(reportedHealth, maxHp));
-    }
 }

@@ -49,7 +49,7 @@ public class ProjectHubScreen {
 
     private static final Logger logger = LoggerFactory.getLogger(ProjectHubScreen.class);
 
-    private static final String WINDOW_TITLE = "Open Mason - Project Hub";
+    private static final String WINDOW_TITLE = "Open Mason Toolset - Project Hub";
     private static final float SIDEBAR_WIDTH = 230.0f;
     private static final float PREVIEW_WIDTH = 340.0f;
     private static final float PANEL_GAP = 10.0f;

@@ -10,7 +10,7 @@ import io.netty.buffer.ByteBuf;
  */
 public record PlayerStateS2C(int playerId,
                              float x, float y, float z,
-                             float yaw, float pitch, byte flags) implements Packet {
+                             float yaw, float pitch, short flags) implements Packet {
 
     public static final PacketCodec<PlayerStateS2C> CODEC = new PacketCodec<>() {
         @Override
@@ -21,7 +21,7 @@ public record PlayerStateS2C(int playerId,
             out.writeFloat(p.z());
             out.writeFloat(p.yaw());
             out.writeFloat(p.pitch());
-            out.writeByte(p.flags());
+            out.writeShort(p.flags());
         }
 
         @Override
@@ -29,7 +29,7 @@ public record PlayerStateS2C(int playerId,
             return new PlayerStateS2C(
                 in.readInt(),
                 in.readFloat(), in.readFloat(), in.readFloat(),
-                in.readFloat(), in.readFloat(), in.readByte());
+                in.readFloat(), in.readFloat(), in.readShort());
         }
     };
 }

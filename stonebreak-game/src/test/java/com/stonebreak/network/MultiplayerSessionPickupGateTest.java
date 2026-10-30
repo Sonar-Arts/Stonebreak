@@ -6,7 +6,8 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.network.packet.player.PlayerLifeC2S;
 import com.stonebreak.network.server.ServerInventory;
 import com.stonebreak.network.server.ServerPlayer;
-import com.stonebreak.network.server.handlers.ServerPlayerHandler;
+import com.stonebreak.network.packet.player.PlayerHealthS2C;
+import com.stonebreak.network.server.handlers.ServerHealthHandler;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -18,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.mock;
 
 /**
- * Dead players must not receive drop pickups (#357): the server learns deaths from the
- * reliable {@code PlayerLifeC2S} edge and the nearest-player selection in
+ * Dead players must not receive drop pickups (#357): the server decides deaths itself (#343)
+ * and the nearest-player selection in
  * {@code MultiplayerSession.tryServerPickup} skips dead players, so death drops stay in the
  * world until the player respawns (away from them). A player with no room for the item is
  * skipped too (#372): it no longer takes the drop and throws the overflow ahead of itself.
@@ -38,7 +39,7 @@ class MultiplayerSessionPickupGateTest {
         return sp;
     }
 
-    /** The world spawn the respawn test lands at (a respawn must land there, #336). */
+    /** The world spawn the respawn test lands at (the server puts a respawn there, #343). */
     private static final Vector3f SPAWN = new Vector3f(50f, 0f, 0f);
 
     private static com.stonebreak.network.server.ServerWorldContext ctx() {
@@ -49,7 +50,7 @@ class MultiplayerSessionPickupGateTest {
     }
 
     private static void kill(ServerPlayer sp) {
-        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(true, sp.x(), sp.y(), sp.z()), ctx());
+        new ServerHealthHandler().hurt(sp, sp.health(), PlayerHealthS2C.CAUSE_MOB, System.nanoTime(), ctx());
     }
 
     @Test
@@ -74,7 +75,8 @@ class MultiplayerSessionPickupGateTest {
     void respawnedPlayerIsEligibleAgainAtItsNewPosition() {
         ServerPlayer sp = newPlayer(1, "Back", 0f);
         kill(sp);
-        new ServerPlayerHandler().handlePlayerLife(sp, new PlayerLifeC2S(false, 50f, 0f, 0f), ctx());
+        // The server respawns the player at the world spawn, whatever the request says.
+        new ServerHealthHandler().handleLife(sp, new PlayerLifeC2S(false, 0f, 0f, 0f), ctx(), System.nanoTime());
 
         assertNull(MultiplayerSession.nearestEligiblePickupCandidate(List.of(sp), DROP, 1.5f, STICK),
                 "respawned away from the corpse, so the death drop is out of range");

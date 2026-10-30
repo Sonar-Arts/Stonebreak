@@ -256,26 +256,6 @@ class PlayerPrefsValidationTest {
                 serverStatsFor(baseline), baseline, SpendFloor.NONE, candidate));
     }
 
-    // ── Health clamping ─────────────────────────────────────────────────────────
-
-    @Test
-    void godModeHealthClaimClampedToConDerivedMax() {
-        // A modified client reports health 1024 (inside the setter's 0..1024 clamp);
-        // the server caps it at the CON-derived max (CON 11 → 22) instead.
-        CharacterStats stats = serverStatsFor(baseline());
-        assertEquals(22f, PlayerPrefsValidator.acceptedHealth(stats, 1024f), 0.001f);
-    }
-
-    @Test
-    void negativeHealthClampedToZero() {
-        assertEquals(0f, PlayerPrefsValidator.acceptedHealth(serverStatsFor(baseline()), -5f), 0.001f);
-    }
-
-    @Test
-    void legitimateHealthReportPreserved() {
-        assertEquals(13f, PlayerPrefsValidator.acceptedHealth(serverStatsFor(baseline()), 13f), 0.001f);
-    }
-
     // ── Character-creation normalization ────────────────────────────────────────
 
     @Test

@@ -24,7 +24,6 @@ import com.stonebreak.network.packet.handshake.KeepAliveS2C;
 import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.DropItemC2S;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.GiveItemS2C;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.HotbarSelectC2S;
@@ -71,9 +70,12 @@ public final class IntegratedServer {
     private int remotePlayerSaveCounter = 0;
 
     /** Keepalive probe + authoritative time sample cadence (100 ticks = 5 s at 20 Hz). */
-    private static final int KEEPALIVE_INTERVAL_TICKS = 100;
+    static final int KEEPALIVE_INTERVAL_TICKS = 100;
     /** Kick a REMOTE player after this much total inbound silence (dead TCP peer). */
-    private static final long INBOUND_SILENCE_TIMEOUT_NS = 30_000_000_000L; // 30 s
+    static final long INBOUND_SILENCE_TIMEOUT_NS = 30_000_000_000L; // 30 s
+    /** This server's keepalive cadence and silence timeout (the constants above, unless tuned for a test). */
+    private final int keepaliveIntervalTicks;
+    private final long inboundSilenceTimeoutNs;
     private int keepaliveCounter = 0;
     private long nextKeepaliveNonce = 1L;
 
@@ -88,6 +90,8 @@ public final class IntegratedServer {
     private final ServerFishingHandler fishingHandler = new ServerFishingHandler();
     private final ServerIllusionHandler illusionHandler = new ServerIllusionHandler();
     private final com.stonebreak.network.server.handlers.ServerVehicleHandler vehicleHandler;
+    /** Server-owned player health, death and respawn (issue #343). */
+    private final com.stonebreak.network.server.handlers.ServerHealthHandler healthHandler;
 
     private long lastTickNs = 0L;
     private long tickAccumulatorNs = 0L;
@@ -112,7 +116,19 @@ public final class IntegratedServer {
     private boolean wasPausedByHost;
 
     public IntegratedServer() {
-        this.networkServer = new NetworkServer(StonebreakProtocol.registry());
+        this(com.openmason.engine.net.server.ServerLimits.DEFAULTS, INBOUND_SILENCE_TIMEOUT_NS,
+                KEEPALIVE_INTERVAL_TICKS);
+    }
+
+    /**
+     * A server with its own abuse limits and silence timing — the tests' seam (issue #347), so a
+     * timeout or admission deadline can be exercised in seconds rather than the real minutes.
+     */
+    IntegratedServer(com.openmason.engine.net.server.ServerLimits limits, long inboundSilenceTimeoutNs,
+                     int keepaliveIntervalTicks) {
+        this.keepaliveIntervalTicks = keepaliveIntervalTicks;
+        this.inboundSilenceTimeoutNs = inboundSilenceTimeoutNs;
+        this.networkServer = new NetworkServer(StonebreakProtocol.registry(), limits);
         this.ctx = new ServerWorldContext(networkServer.connections());
         // World traffic only reaches players past the handshake (not one still handshaking or
         // creating a character — unauthenticated, and not in the world yet).
@@ -125,6 +141,8 @@ public final class IntegratedServer {
         this.blockHandler = new ServerBlockHandler(chunkHandler);
         this.entityHandler = new ServerEntityHandler();
         this.vehicleHandler = new com.stonebreak.network.server.handlers.ServerVehicleHandler(entityHandler::entity);
+        // The dead don't row: a death gets the player out of any boat first.
+        this.healthHandler = new com.stonebreak.network.server.handlers.ServerHealthHandler(vehicleHandler::onPeerLeft);
         this.playerHandler = new ServerPlayerHandler();
         this.chatHandler = new ServerChatHandler();
     }
@@ -147,8 +165,8 @@ public final class IntegratedServer {
         level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
         // Same direction for mob AI: the world's mobs flee from / pursue the connected roster,
         // remote players included, instead of the client's local player (#340).
-        // Their blows land on the connected players too, through each one's own client.
-        level.world().setPlayerLocator(ServerPlayerLocator.of(ctx.players(), level.world()));
+        // Hostile mobs land their blows and arrows on the roster through it too (#343).
+        level.world().setPlayerLocator(new ServerPlayerLocator(ctx.players(), ctx, healthHandler));
 
         // Replication funnel for authoritative SIM block mutations (water flow etc.):
         // installed on the HEADLESS world only, so server-side chunk.setBlock writes reach
@@ -160,6 +178,10 @@ public final class IntegratedServer {
         // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
         // render live flow heights instead of full-height columns.
         level.world().serverSinks().setWaterSink(blockHandler::onServerWaterChange);
+        // Sounds the simulation makes (a mob's hurt/death voice) → SoundEventS2C to the players
+        // near it (issue #344); the tick thread never plays into the host client's mixer (#340).
+        level.world().serverSinks().setSoundSink((type, event, x, y, z) -> ServerSounds.sendNear(ctx,
+            com.stonebreak.network.packet.world.SoundEventS2C.entity(type.ordinal(), event, x, y, z), null));
         // Furnace state-string changes (lit flips, contents, cook progress) → BlockStateS2C.
         // The registry dedups (fires only on actual string change), so idle furnaces are free.
         // Queued behind the block batches: a placement's first state write happens in the
@@ -183,6 +205,11 @@ public final class IntegratedServer {
 
     public ServerWorldContext worldContext() {
         return ctx;
+    }
+
+    /** The bound TCP listen address (port 0 resolved), or null when not listening on TCP. */
+    public java.net.SocketAddress tcpBoundAddress() {
+        return networkServer.tcpBoundAddress();
     }
 
     private List<EntitySpawner.SpawnAnchor> collectPlayerSpawnAnchors() {
@@ -367,17 +394,18 @@ public final class IntegratedServer {
         runTickStep("decoys", () -> illusionHandler.tick(ctx, TICK_PERIOD_NS / 1_000_000_000f));
         runTickStep("chunks", () -> chunkHandler.tick(ctx));
         runTickStep("held items", () -> playerHandler.broadcastHeldItemChanges(ctx));
+        runTickStep("health", () -> healthHandler.tick(ctx, TICK_PERIOD_NS / 1_000_000_000f, System.nanoTime()));
 
         // Keepalive probes + authoritative time sample, every 5 s. Local channels get probes
         // too (free RTT signal) but are exempt from the silence kick — a same-JVM stall
         // (debugger, world-gen hitch on the game thread) must not tear down SP/host.
-        if (++keepaliveCounter >= KEEPALIVE_INTERVAL_TICKS) {
+        if (++keepaliveCounter >= keepaliveIntervalTicks) {
             keepaliveCounter = 0;
             long now = System.nanoTime();
             TimeSyncS2C timeSync = currentTimeSync();
             com.stonebreak.network.packet.world.WeatherSyncS2C weatherSync = currentWeatherSync();
             for (ServerPlayer sp : ctx.players()) {
-                if (!sp.isLocal() && now - sp.lastInboundNs() > INBOUND_SILENCE_TIMEOUT_NS) {
+                if (!sp.isLocal() && now - sp.lastInboundNs() > inboundSilenceTimeoutNs) {
                     System.out.println("[SERVER] Kicking " + sp.username() + " (id "
                         + sp.playerId() + "): connection timed out.");
                     sp.disconnect(); // channelInactive → normal DISCONNECT flow (persist + leave)
@@ -588,7 +616,12 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.world.TimeSetC2S ts -> handleTimeSet(sp, ts);
             case com.stonebreak.network.packet.world.CheatsSetC2S cs -> handleCheatsSet(sp, cs);
             case com.stonebreak.network.packet.world.WeatherSetC2S ws -> handleWeatherSet(sp, ws);
-            case PlayerStateC2S ps -> playerHandler.handlePlayerState(sp, ps, ctx, receivedNs);
+            case PlayerStateC2S ps -> {
+                if (playerHandler.handlePlayerState(sp, ps, ctx, receivedNs)) {
+                    healthHandler.onPlayerState(sp, ps.flags(), receivedNs, ctx); // falls (#343)
+                }
+            }
+            case com.stonebreak.network.packet.player.PlayerDamageC2S pd -> healthHandler.handlePlayerDamage(sp, pd, ctx);
             case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
@@ -604,13 +637,8 @@ public final class IntegratedServer {
             case ViewDistanceC2S vd -> sp.setViewDistanceChunks(vd.chunks());
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
-            case DeathDropC2S dd -> playerHandler.handleDeathDrop(sp, dd, ctx);
-            case com.stonebreak.network.packet.player.PlayerLifeC2S pl -> {
-                playerHandler.handlePlayerLife(sp, pl, ctx, receivedNs);
-                if (pl.dead()) {
-                    vehicleHandler.onPeerLeft(sp, ctx); // the dead don't row
-                }
-            }
+            case com.stonebreak.network.packet.player.PlayerLifeC2S pl ->
+                healthHandler.handleLife(sp, pl, ctx, receivedNs);
             case com.stonebreak.network.packet.player.ConsumeHeldC2S ch -> playerHandler.handleConsumeHeld(sp, ch);
             case com.stonebreak.network.packet.player.InventoryResyncC2S ignored3 -> sp.requestInventoryResync();
             case com.stonebreak.network.packet.player.FishingRodC2S fr -> fishingHandler.handleRodUse(sp, fr, ctx);
@@ -630,6 +658,7 @@ public final class IntegratedServer {
      */
     static boolean isCombatIntent(Packet packet) {
         return packet instanceof EntityDamageC2S
+                || packet instanceof com.stonebreak.network.packet.player.PlayerDamageC2S
                 || packet instanceof com.stonebreak.network.packet.entity.EntityKnockbackC2S
                 || packet instanceof com.stonebreak.network.packet.entity.ProjectileSpawnC2S
                 || packet instanceof com.stonebreak.network.packet.entity.DecoyCastC2S;
@@ -927,6 +956,10 @@ public final class IntegratedServer {
         // 5. Restore a REMOTE player's saved inventory/stats (the local player is restored
         //    same-JVM). An empty payload tells the client to use fresh starting items.
         sendInitialPlayerData(sp);
+
+        // 6. Health: the world's PvP rule and everyone's health to the newcomer, its own (just
+        //    seeded) to everyone (#343).
+        healthHandler.onPeerJoined(sp, ctx);
     }
 
     /**
@@ -1242,7 +1275,6 @@ public final class IntegratedServer {
         inv.loadFrom(slots);
         inv.selectHotbarSlot(data.getSelectedHotbarSlot());
         sp.acceptBaseline(data);
-        sp.setHealth(data.getHealth());
         sp.setFlightEnabled(data.isFlightEnabled());
         sp.setFlying(data.isFlying());
         sp.setSpectator(data.isSpectator());
@@ -1250,7 +1282,16 @@ public final class IntegratedServer {
         // The stored transform, so a save before the first PlayerStateC2S keeps it (the
         // persistence blob reads the cached transform, which was (0,0,0) until then).
         Vector3f pos = data.getPosition();
-        sp.seedTransform(pos.x, pos.y, pos.z, data.getRotation().x, data.getRotation().y);
+        if (data.getHealth() <= 0f) {
+            // Saved dead: back at the world spawn with full health, as the client respawns it
+            // on load (StateConverter.applyPlayerData) — never alive at 0 HP at the corpse.
+            sp.setHealth(sp.serverStats().computeMaxHealth());
+            Vector3f spawn = ctx.spawn();
+            sp.seedTransform(spawn.x, spawn.y, spawn.z, data.getRotation().x, data.getRotation().y);
+        } else {
+            sp.setHealth(data.getHealth());
+            sp.seedTransform(pos.x, pos.y, pos.z, data.getRotation().x, data.getRotation().y);
+        }
         return true;
     }
 
@@ -1349,7 +1390,7 @@ public final class IntegratedServer {
             return;
         }
         sp.acceptBaseline(accepted);
-        sp.setHealth(PlayerPrefsValidator.acceptedHealth(sp.serverStats(), accepted.getHealth()));
+        // The report's health is not read: health is server-owned (#343).
         // Cheats-gated prefs: flight/spectator/creative only when the SERVER's flag is on.
         if (level.cheatsEnabled()) {
             sp.setFlightEnabled(accepted.isFlightEnabled());

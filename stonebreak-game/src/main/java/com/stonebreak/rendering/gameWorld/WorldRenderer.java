@@ -138,6 +138,25 @@ public class WorldRenderer {
             new com.stonebreak.battletest.BattleTestRenderer();
     private boolean battleWasRendered;
 
+    /** Reused per frame by {@link #collectRemotePlayers}. */
+    private final java.util.List<com.stonebreak.mobs.entities.RemotePlayer> frameRemotePlayers =
+            new java.util.ArrayList<>();
+
+    /** This frame's remote-player figures (their held torches light the world). */
+    private java.util.List<com.stonebreak.mobs.entities.RemotePlayer> collectRemotePlayers() {
+        frameRemotePlayers.clear();
+        com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
+        if (entityManager != null) {
+            for (com.stonebreak.mobs.entities.Entity entity
+                    : entityManager.getEntitiesByType(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER)) {
+                if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+                    frameRemotePlayers.add(rp);
+                }
+            }
+        }
+        return frameRemotePlayers;
+    }
+
     public void renderWorld(World world, Player player, float totalTime) {
         var battle = com.stonebreak.battletest.BattleTestSession.current();
         if (battle != null) {
@@ -177,10 +196,10 @@ public class WorldRenderer {
         clearPendingGLErrors();
         checkGLError("After clearing pending errors");
 
-        // Gather this frame's dynamic point lights (placed + held torches) once;
-        // the world, water and entity shaders all read the same set.
+        // Gather this frame's dynamic point lights (placed + held torches, other players'
+        // included) once; the world, water and entity shaders all read the same set.
         com.stonebreak.rendering.lighting.DynamicLights.update(
-                world, player, player.getCamera().getPosition(), totalTime);
+                world, player, player.getCamera().getPosition(), totalTime, collectRemotePlayers());
 
         // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
         // from TimeOfDay, so resolve the values they need here (static fallback when absent).

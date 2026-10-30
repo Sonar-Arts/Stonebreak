@@ -322,8 +322,19 @@ public class EntityRenderer {
     public void renderShadowCasters(com.stonebreak.player.Player player,
                                     Matrix4f lightView, Matrix4f lightProj,
                                     Vector3f cascadeCenter, float cascadeRadius) {
+        renderShadowCasters(player, null, lightView, lightProj, cascadeCenter, cascadeRadius);
+    }
+
+    /**
+     * As {@link #renderShadowCasters(com.stonebreak.player.Player, Matrix4f, Matrix4f, Vector3f, float)},
+     * leaving out {@code excluded} — the figure carrying the light being rendered, whose body
+     * sits on top of its own torch.
+     */
+    public void renderShadowCasters(com.stonebreak.player.Player player, Entity excluded,
+                                    Matrix4f lightView, Matrix4f lightProj,
+                                    Vector3f cascadeCenter, float cascadeRadius) {
         if (!initialized) return;
-        shadowCasterRenderer.render(player, lightView, lightProj, cascadeCenter, cascadeRadius);
+        shadowCasterRenderer.render(player, excluded, lightView, lightProj, cascadeCenter, cascadeRadius);
     }
 
     /** Collect casters once before rendering any of the frame's sun/torch shadow views. */

@@ -175,7 +175,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-Dnet.bytebuddy.experimental=true</argLine>
+                    <!-- add-reads: PacketDecoderFuzzTest drives the engine's inbound chain directly
+                         (Netty's codec handlers and channel attributes); test JVM only — the game
+                         itself never touches io.netty.codec. -->
+                    <argLine>-Dnet.bytebuddy.experimental=true --add-reads stonebreak.game=io.netty.codec,io.netty.common</argLine>
                 </configuration>
             </plugin>
             <plugin>

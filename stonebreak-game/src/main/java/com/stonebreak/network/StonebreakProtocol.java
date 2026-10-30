@@ -28,7 +28,6 @@ import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.player.KillCreditS2C;
 import com.stonebreak.network.packet.player.HotbarSelectC2S;
 import com.stonebreak.network.packet.player.PlayerPrefsC2S;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.PlayerLifeC2S;
 import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.PlayerHeldItemS2C;
@@ -111,7 +110,7 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 24, ContainerActionC2S.class, ContainerActionC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 25, HotbarSelectC2S.class, HotbarSelectC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 26, PlayerPrefsC2S.class, PlayerPrefsC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 27, DeathDropC2S.class, DeathDropC2S.CODEC);
+        // id 27 retired (DeathDropC2S — the server scatters the inventory at the death it decides; v22).
         r.register(PLAY, SERVERBOUND, 28, PlayerLifeC2S.class, PlayerLifeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 29, ConsumeHeldC2S.class, ConsumeHeldC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 30, ChunkUnloadC2S.class, ChunkUnloadC2S.CODEC);
@@ -134,6 +133,8 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.vehicle.VehicleActionC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 40, com.stonebreak.network.packet.vehicle.VehicleMoveC2S.class,
                 com.stonebreak.network.packet.vehicle.VehicleMoveC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 41, com.stonebreak.network.packet.player.PlayerDamageC2S.class,
+                com.stonebreak.network.packet.player.PlayerDamageC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
@@ -170,12 +171,18 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 30, com.stonebreak.network.packet.player.PlayerPositionS2C.class,
                 com.stonebreak.network.packet.player.PlayerPositionS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 31, WeatherSyncS2C.class, WeatherSyncS2C.CODEC);
-        r.register(PLAY, CLIENTBOUND, 32, com.stonebreak.network.packet.player.StatCreditS2C.class,
+        r.register(PLAY, CLIENTBOUND, 32, com.stonebreak.network.packet.world.SoundEventS2C.class,
+                com.stonebreak.network.packet.world.SoundEventS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 33, com.stonebreak.network.packet.player.PlayerHealthS2C.class,
+                com.stonebreak.network.packet.player.PlayerHealthS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 34, com.stonebreak.network.packet.player.PlayerKnockbackS2C.class,
+                com.stonebreak.network.packet.player.PlayerKnockbackS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 35, com.stonebreak.network.packet.world.PvpStateS2C.class,
+                com.stonebreak.network.packet.world.PvpStateS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 36, com.stonebreak.network.packet.player.StatCreditS2C.class,
                 com.stonebreak.network.packet.player.StatCreditS2C.CODEC);
-        r.register(PLAY, CLIENTBOUND, 33, com.stonebreak.network.packet.entity.EntityAwarenessS2C.class,
+        r.register(PLAY, CLIENTBOUND, 37, com.stonebreak.network.packet.entity.EntityAwarenessS2C.class,
                 com.stonebreak.network.packet.entity.EntityAwarenessS2C.CODEC);
-        r.register(PLAY, CLIENTBOUND, 34, com.stonebreak.network.packet.player.PlayerHurtS2C.class,
-                com.stonebreak.network.packet.player.PlayerHurtS2C.CODEC);
 
         return r;
     }

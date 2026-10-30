@@ -9,9 +9,12 @@ import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
+import com.stonebreak.network.packet.world.SoundEventS2C;
 import com.stonebreak.network.server.ServerInventory;
 import com.stonebreak.network.server.ServerPlayer;
+import com.stonebreak.network.server.ServerSounds;
 import com.stonebreak.network.server.ServerWorldContext;
+import com.openmason.engine.format.sound.SoundData;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
@@ -35,6 +38,8 @@ public final class ServerBlockHandler {
     /** Feet to the block's centre; {@link ServerVehicleHandler} places boats within it too. */
     static final float MAX_REACH = 8.0f;
     private static final float MAX_REACH_SQ = MAX_REACH * MAX_REACH;
+    /** Between mining "hit" sounds for other players — {@code BlockBreaker}'s own cadence. */
+    static final long MINING_HIT_INTERVAL_NS = 250_000_000L;
 
     private final ServerChunkHandler chunkHandler;
 
@@ -374,6 +379,10 @@ public final class ServerBlockHandler {
                               boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
         applyAccepted(sp, c, incoming, prev, debit, world, ctx);
         emitEditNoise(sp, world, c, incoming, prev);
+        SoundEventS2C sound = editSound(c.x(), c.y(), c.z(), incoming, prev);
+        if (sound != null) {
+            ServerSounds.sendNear(ctx, sound, sp); // the editor's client played it already
+        }
         int sel = sp.inventory().selectedHotbarSlot();
         if (scoop) {
             // Bucket scoop (mirrors BlockPlacer.handleEmptyBucket): removing a water SOURCE
@@ -404,6 +413,62 @@ public final class ServerBlockHandler {
             loudness = incoming == BlockType.WATER ? 0f : Loudness.PLACE_BLOCK;
         }
         NoiseBus.emitIn(world, new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f), sp.quieted(loudness));
+    }
+
+    /**
+     * The sound an accepted edit makes, as the editor's own client played it when it predicted
+     * the edit (issue #344): a break plays the broken block's {@code break} ({@code BlockBreaker}),
+     * a placement the placed block's {@code place} ({@code BlockPlacer}). Water makes none — a
+     * scoop, a pour and the air half of a flow reset are silent there too. Null when silent.
+     *
+     * @param prev the server's own pre-apply cell
+     */
+    static SoundEventS2C editSound(int x, int y, int z, BlockType incoming, BlockType prev) {
+        BlockType subject;
+        String event;
+        if (incoming == BlockType.AIR) {
+            subject = prev;
+            event = SoundData.EVENT_BREAK;
+        } else {
+            subject = incoming;
+            event = SoundData.EVENT_PLACE;
+        }
+        if (subject == null || subject == BlockType.AIR || subject == BlockType.WATER) {
+            return null;
+        }
+        return SoundEventS2C.block(subject.getId(), event, x + 0.5f, y + 0.5f, z + 0.5f);
+    }
+
+    /**
+     * Mining "hit" sounds for the players near a miner (issue #344), at {@code BlockBreaker}'s
+     * cadence: from the break start until the finish lands, the target changes, or the miner's
+     * client stops reporting {@code MINING} (it let go or looked away). The miner's own client
+     * plays them itself.
+     */
+    private static void emitMiningHits(ServerWorldContext ctx, long nowNs) {
+        World world = ctx.world();
+        if (world == null) {
+            return;
+        }
+        for (ServerPlayer sp : ctx.players()) {
+            com.openmason.engine.util.BlockPos target = sp.breakTarget();
+            if (target == null || !sp.isMining() || nowNs < sp.miningHitDueNs()
+                    || !inReach(sp, target.x(), target.y(), target.z())) {
+                continue;
+            }
+            BlockType block = world.getBlockAt(target.x(), target.y(), target.z());
+            if (!makesMiningHits(block)) {
+                continue;
+            }
+            sp.setMiningHitDueNs(nowNs + MINING_HIT_INTERVAL_NS);
+            ServerSounds.sendNear(ctx, SoundEventS2C.block(block.getId(), SoundData.EVENT_HIT,
+                    target.x() + 0.5f, target.y() + 0.5f, target.z() + 0.5f), sp);
+        }
+    }
+
+    /** The blocks {@code BlockBreaker} plays hits on: breakable, and not broken on the press. */
+    static boolean makesMiningHits(BlockType block) {
+        return block != null && block != BlockType.AIR && block.isBreakable() && block.getHardness() > 0f;
     }
 
     /**
@@ -794,6 +859,9 @@ public final class ServerBlockHandler {
                 return;
             }
             world.getSnowLayerManager().setSnowLayers(s.x(), s.y(), s.z(), layers);
+            // A layer added is a placement ({@code BlockPlacer} plays SNOW's place sound).
+            ServerSounds.sendNear(ctx, SoundEventS2C.block(BlockType.SNOW.getId(), SoundData.EVENT_PLACE,
+                    s.x() + 0.5f, s.y() + 0.5f, s.z() + 0.5f), sp);
         }
     }
 
@@ -1030,6 +1098,7 @@ public final class ServerBlockHandler {
     void tick(ServerWorldContext ctx, long nowNs) {
         simEditsThisTick = 0;
         drainDeferredBreaks(ctx, nowNs);
+        emitMiningHits(ctx, nowNs);
         drainRetries(ctx);
         if (!pendingByTick.isEmpty()) {
             for (SectionBatch sb : pendingByTick.values()) {

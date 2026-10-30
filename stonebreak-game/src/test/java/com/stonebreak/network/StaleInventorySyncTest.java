@@ -12,7 +12,6 @@ import com.stonebreak.network.packet.SequencedIntent;
 import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
 import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
-import com.stonebreak.network.packet.player.DeathDropC2S;
 import com.stonebreak.network.packet.player.DropItemC2S;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
@@ -138,7 +137,6 @@ class StaleInventorySyncTest {
                 new SnowLayerC2S(0, 0, 0, (byte) 2, 1),
                 new BlockToggleC2S(0, 0, 0, 1),
                 new ProjectileSpawnC2S(ProjectileSpawnC2S.KIND_ARROW, 0, 0, 0, 0, 0, 0, new float[0], 1),
-                new DeathDropC2S(1),
                 new ConsumeHeldC2S(1, 1),
                 new ContainerActionC2S(0, 0, 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0, (byte) 0,
                         (byte) 0, (short) 0, false, 1));

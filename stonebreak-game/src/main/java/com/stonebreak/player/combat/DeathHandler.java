@@ -62,8 +62,8 @@ public class DeathHandler {
             }
         }
 
-        // #357: tell the server first, on the reliable channel, so it stops handing drops to
-        // this player before the death scatter below lands at the corpse.
+        // In a session the server decided this death and already scattered the inventory (#343);
+        // the edge is then a no-op there. It claims a death only the client saw (a dev hook).
         com.stonebreak.network.MultiplayerSession.sendPlayerLife(true, position);
 
         // #351: return panel-held stacks (cursor, crafting grids, furnace carried stack) to the
@@ -78,10 +78,10 @@ public class DeathHandler {
 
     private void dropAllItems() {
         System.out.println("DEBUG: dropAllItems() called - dropping all inventory items on death");
-        // Session play: ONE death-drain request. The server spawns every drop from its own
-        // authoritative replica — no toss rate limit — and the InventorySyncS2C confirms the
-        // cleared mirror; the local clear below is only the prediction.
-        boolean serverDrains = com.stonebreak.network.MultiplayerSession.sendDeathDrop();
+        // Session play: the server scattered every stack of its own replica at the death it
+        // decided (#343) and its InventorySyncS2C confirms the cleared mirror; the local clear
+        // below is only the prediction.
+        boolean serverDrains = com.stonebreak.network.MultiplayerSession.serverOwnsPlayerHealth();
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
             ItemStack stack = inventory.getHotbarSlot(i);
             if (stack != null && !stack.isEmpty()) {
@@ -103,8 +103,8 @@ public class DeathHandler {
     }
 
     private void dropItemStack(ItemStack stack) {
-        // No-session fallback only (battle-test / headless): with a live session,
-        // dropAllItems sends ONE DeathDropC2S and the server scatters the replica instead.
+        // No-session fallback only (battle-test / headless): with a live session the server
+        // scatters its replica at the death it decides.
         // The local paths spawn into the passed world's EntityManager, which on a client
         // render world is null — death drops would silently vanish in the two-world model.
         Vector3f p = state.getPosition();
@@ -145,8 +145,8 @@ public class DeathHandler {
         Vector3f p = state.getPosition();
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
-        // #357: alive again, AT the respawn point — the server must not resume pickups for a
-        // body it still places at the corpse, beside the death drops.
+        // Ask the server to respawn us (#343): it puts the player at the spawn it picks
+        // (PlayerPositionS2C) — this local move is only the prediction.
         com.stonebreak.network.MultiplayerSession.sendPlayerLife(false, p);
 
         System.out.println("DEBUG: Respawn complete");

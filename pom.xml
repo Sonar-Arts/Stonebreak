@@ -28,7 +28,7 @@
         <!-- Classpath folder the built Cenda library is packaged under (natives/<this>/);
              must match CendaKernels.nativePlatform(). -->
         <cenda.natives.dir>windows-x86_64</cenda.natives.dir>
-        <jackson.version>2.22.3</jackson.version>
+        <jackson.version>2.22.4</jackson.version>
         <jackson.version.annotations>2.22</jackson.version.annotations>
         <junit.version>6.1.3</junit.version>
         <mockito.version>5.24.0</mockito.version>
@@ -253,7 +253,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.6.0</version>
+                    <version>3.6.1</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

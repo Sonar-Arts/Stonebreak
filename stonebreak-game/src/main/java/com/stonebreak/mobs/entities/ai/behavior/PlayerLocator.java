@@ -53,12 +53,14 @@ public interface PlayerLocator {
     }
 
     /**
-     * Hurts whichever player's body is within {@code margin} of {@code point} — a mob's arrow
-     * striking. No knockback: an arrow stings, it does not shove.
+     * Hurts the player whose body {@code point} is inside (grown by {@code margin}) — a
+     * projectile's hit (issue #343). No knockback: an arrow stings, it does not shove. A player's
+     * own shot never hits them, and hits another player only where the world allows PvP.
      *
-     * @return whether a player was there to take the hit
+     * @param ownerPlayerId the player who shot it, or -1 for a mob's shot
+     * @return whether a player took the hit (the projectile is spent)
      */
-    default boolean hurtPlayerAt(Vector3f point, float margin, float amount) {
+    default boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
         return false;
     }
 
@@ -168,11 +170,6 @@ public interface PlayerLocator {
             }
 
             @Override
-            public boolean hurtPlayerAt(Vector3f point, float margin, float amount) {
-                return players().hurtPlayerAt(point, margin, amount);
-            }
-
-            @Override
             public void forEachPlayer(Vector3f from, float radius, Consumer<SensedPlayer> sink) {
                 players().forEachPlayer(from, radius, sink);
             }
@@ -190,6 +187,11 @@ public interface PlayerLocator {
             @Override
             public boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
                 return players().hurtPlayer(id, from, amount, knockback);
+            }
+
+            @Override
+            public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+                return players().hitPlayerAt(point, margin, amount, ownerPlayerId);
             }
 
             private PlayerLocator players() {

@@ -1,14 +1,13 @@
 package com.stonebreak.network.server;
 
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
-import com.stonebreak.network.packet.player.PlayerHurtS2C;
-import com.stonebreak.player.PlayerConstants;
+import com.stonebreak.network.packet.player.PlayerHealthS2C;
+import com.stonebreak.network.server.handlers.ServerHealthHandler;
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 import java.util.Collection;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -24,41 +23,35 @@ import java.util.function.Consumer;
  * handshaking sits at the {@code (0,0,0)} default, and a corpse behind the death menu should not
  * keep a herd running.
  *
- * <p>Mob blows land here too: the server judges the hit, and the player's own client — where their
- * health lives — applies it from a {@link PlayerHurtS2C}.
+ * <p>Mobs hurt players through it too (issue #343): a melee blow lands on the player it targets and
+ * a mob's arrow on the player it is inside, both through the server-owned health
+ * ({@link ServerHealthHandler}). Built without one (tests), hits land on nobody.
  */
 public final class ServerPlayerLocator implements PlayerLocator {
 
+    /** A blow never reaches a player further than this, whatever the behaviour asked for. */
+    static final float MAX_MELEE_DISTANCE = 6f;
+
     private final Collection<ServerPlayer> roster;
-    /** The world sight is marched through; null sees through everything (tests). */
-    private final World world;
-    /** Where a mob's hit on a player goes: that player's connection. */
-    private final BiConsumer<ServerPlayer, PlayerHurtS2C> hurtSink;
+    /** Whose world sight is marched through; null (tests) sees through everything. */
+    private final ServerWorldContext ctx;
+    private final ServerHealthHandler health;
 
     private RaycastEngine sightRay;
-
-    /** Delivers a hit over the player's own connection. */
-    private static final BiConsumer<ServerPlayer, PlayerHurtS2C> SEND = (player, hurt) -> player.send(hurt);
+    /** The world {@link #sightRay} was built over. */
+    private World sightWorld;
 
     /** @param roster a live view of the connected players ({@link ServerWorldContext#players()}) */
     public ServerPlayerLocator(Collection<ServerPlayer> roster) {
-        this(roster, null, SEND);
+        this(roster, null, null);
     }
 
-    /**
-     * @param world    the authoritative world, for line of sight
-     * @param hurtSink delivers a mob's hit to the player it landed on
-     */
-    public ServerPlayerLocator(Collection<ServerPlayer> roster, World world,
-                               BiConsumer<ServerPlayer, PlayerHurtS2C> hurtSink) {
+    /** A locator whose hits land on the server-owned health in {@code health}. */
+    public ServerPlayerLocator(Collection<ServerPlayer> roster, ServerWorldContext ctx,
+                               ServerHealthHandler health) {
         this.roster = roster;
-        this.world = world;
-        this.hurtSink = hurtSink;
-    }
-
-    /** Over {@code world}, delivering hits over each player's connection. */
-    public static ServerPlayerLocator of(Collection<ServerPlayer> roster, World world) {
-        return new ServerPlayerLocator(roster, world, SEND);
+        this.ctx = ctx;
+        this.health = health;
     }
 
     @Override
@@ -117,15 +110,11 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return canSee(byId(id, from), eye);
     }
 
-    @Override
-    public boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
-        return hurt(byId(id, from), from, amount, knockback);
-    }
-
     private boolean canSee(ServerPlayer player, Vector3f eye) {
         if (player == null) {
             return false;
         }
+        World world = ctx != null ? ctx.world() : null;
         if (world == null) {
             return true;
         }
@@ -134,8 +123,9 @@ public final class ServerPlayerLocator implements PlayerLocator {
         if (dist < 1.0e-4f) {
             return true;
         }
-        if (sightRay == null) {
+        if (sightRay == null || sightWorld != world) {
             sightRay = new RaycastEngine(null, null, world);
+            sightWorld = world;
         }
         return sightRay.distanceToFirstSolid(eye, dir.div(dist), dist) >= dist;
     }
@@ -146,34 +136,46 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return hurt(nearest(from), from, amount, knockback);
     }
 
+    @Override
+    public boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
+        return hurt(byId(id, from), from, amount, knockback);
+    }
+
     private boolean hurt(ServerPlayer target, Vector3f from, float amount, float knockback) {
-        if (target == null) {
+        if (health == null || target == null
+                || distanceSq(target, from) > MAX_MELEE_DISTANCE * MAX_MELEE_DISTANCE) {
             return false;
         }
-        float dx = target.x() - from.x;
-        float dz = target.z() - from.z;
-        float len = (float) Math.sqrt(dx * dx + dz * dz);
-        float kx = len > 1.0e-4f ? dx / len * knockback : 0f;
-        float kz = len > 1.0e-4f ? dz / len * knockback : 0f;
-        hurtSink.accept(target, new PlayerHurtS2C(amount, kx, kz));
+        if (health.hurt(target, amount, PlayerHealthS2C.CAUSE_MOB, System.nanoTime(), ctx) > 0f) {
+            health.knockback(target, from, knockback);
+        }
         return true;
     }
 
-    /** The first live player whose standing body box (grown by {@code margin}) holds {@code point}. */
     @Override
-    public boolean hurtPlayerAt(Vector3f point, float margin, float amount) {
-        float halfWidth = PlayerConstants.PLAYER_WIDTH * 0.5f + margin;
+    public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+        if (health == null) {
+            return false;
+        }
         for (ServerPlayer player : roster) {
-            if (player.isLiveInWorld()
-                    && Math.abs(point.x - player.x()) <= halfWidth
-                    && Math.abs(point.z - player.z()) <= halfWidth
-                    && point.y >= player.y() - margin
-                    && point.y <= player.y() + PlayerConstants.PLAYER_HEIGHT + margin) {
-                hurtSink.accept(player, new PlayerHurtS2C(amount, 0f, 0f));
-                return true;
+            if (!player.isLiveInWorld() || player.playerId() == ownerPlayerId
+                    || !ServerHealthHandler.insideBody(player, point, margin)) {
+                continue;
             }
+            if (ownerPlayerId >= 0) {
+                return health.hitByPlayerProjectile(ctx.player(ownerPlayerId), player, amount, ctx);
+            }
+            health.hurt(player, amount, PlayerHealthS2C.CAUSE_MOB, System.nanoTime(), ctx);
+            return true;
         }
         return false;
+    }
+
+    private static float distanceSq(ServerPlayer player, Vector3f from) {
+        float dx = player.x() - from.x;
+        float dy = player.y() - from.y;
+        float dz = player.z() - from.z;
+        return dx * dx + dy * dy + dz * dz;
     }
 
     /** Live player {@code id}; {@link #NEAREST} means the one nearest {@code from}. */

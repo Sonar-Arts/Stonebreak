@@ -1,7 +1,7 @@
 package com.stonebreak.network.packet.player;
 
 /**
- * Bit layout of the movement/action flags byte carried by {@link PlayerStateC2S} /
+ * Bit layout of the movement/action flags (16 bits since protocol 22) carried by {@link PlayerStateC2S} /
  * {@link PlayerStateS2C}. Lets remote players render real movement/action clips instead of
  * displacement-guessed walk/idle, and tells the server what mob hearing needs (#321). Bits without
  * an authored clip yet (stealth/swim —
@@ -19,12 +19,27 @@ public final class PlayerStateFlags {
     public static final int ATTACKING = 1 << 5;
     /** Body touching water (not just eyes) — drives remote splash/ripple triggering. */
     public static final int PARTIALLY_IN_WATER = 1 << 6;
+    /**
+     * Holding the attack on a block that takes time to break (issue #344). The server plays the
+     * mining "hit" sounds to nearby players while this is set for the block it was told about
+     * ({@code BlockBreakStartC2S}); clearing it is how the server learns mining stopped.
+     */
+    public static final int MINING = 1 << 7;
+    /** Flying (creative-style flight or spectator): no fall damage, no cactus contact (#343). */
+    public static final int FLYING = 1 << 8;
+    /**
+     * Inside a dodge's invincibility window (#343). The server negates combat damage for the
+     * dodge's i-frame time after this rises, at most once per dodge cooldown.
+     */
+    public static final int DODGING = 1 << 9;
+    /** Rage at T3: melee hits heal by lifesteal; honoured for Berserkers only (#343). */
+    public static final int LIFESTEAL = 1 << 10;
     /** Inside a dodge's noise window — the scuff mobs can hear (#321). */
-    public static final int DODGE_NOISE = 1 << 7;
+    public static final int DODGE_NOISE = 1 << 11;
 
     private PlayerStateFlags() {}
 
-    public static boolean has(byte flags, int bit) {
+    public static boolean has(short flags, int bit) {
         return (flags & bit) != 0;
     }
 }

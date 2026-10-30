@@ -6,6 +6,8 @@ import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.torch.TorchBlock;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.mobs.entities.Entity;
+import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
@@ -14,6 +16,7 @@ import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
 import java.nio.FloatBuffer;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -26,8 +29,15 @@ public final class DynamicLights {
     private static final float HELD_FORWARD = 0.35f;
     private static final float HELD_RIGHT = 0.30f;
     private static final float HELD_UP = -0.25f;
+    /** A remote player's torch flame sits this far above their hand. */
+    private static final float REMOTE_FLAME_UP = 0.25f;
+    /** A remote player's torch falls back to their chest when the hand is inside a wall. */
+    private static final float REMOTE_CHEST_UP = 1.2f;
     private static final NearestLightSources nearest = new NearestLightSources(PointLightGlsl.MAX_LIGHTS);
     private static final Vector3f[] positions = new Vector3f[PointLightGlsl.MAX_LIGHTS];
+    /** Who carries each light: a remote player for their held torch, null otherwise. */
+    private static final Entity[] holders = new Entity[PointLightGlsl.MAX_LIGHTS];
+    private static final Vector3f scratch = new Vector3f();
     private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final Map<ShaderProgram, Upload> uploads = new WeakHashMap<>();
@@ -60,10 +70,21 @@ public final class DynamicLights {
 
     private DynamicLights() {}
 
-    /** Select the nearest emitting {@link BlockLightSource}s, reserving one slot for the held torch. */
+    /** {@link #update(World, Player, Vector3f, float, Iterable)} without other players' torches. */
     public static void update(World world, Player player, Vector3f cameraPos, float totalTime) {
+        update(world, player, cameraPos, totalTime, null);
+    }
+
+    /**
+     * Select the nearest emitting lights, reserving one slot for the held torch: placed
+     * {@link BlockLightSource}s and the torches {@code remotePlayers} hold (issue #344 — their
+     * held item arrives with {@code PlayerHeldItemS2C}), ranked together by distance.
+     */
+    public static void update(World world, Player player, Vector3f cameraPos, float totalTime,
+                              Iterable<RemotePlayer> remotePlayers) {
         frame++;
         count = 0;
+        Arrays.fill(holders, null);
         shadowsEnabled = false;
         indirectEnabled = false;
         held = world != null && player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player);
@@ -83,11 +104,27 @@ public final class DynamicLights {
                     }
                 }
             }
+            if (remotePlayers != null) {
+                for (RemotePlayer rp : remotePlayers) {
+                    if (!isHoldingTorch(rp) || !com.stonebreak.rendering.models.entities.EntityRenderer
+                            .isInRenderableChunk(rp, world)) continue;
+                    float distance = rp.handPosition(scratch).distanceSquared(cameraPos);
+                    if (distance <= MAX_DISTANCE_SQ) nearest.offer(rp, distance);
+                }
+            }
             if (held) {
                 heldTorchPosition(world, player, positions[count]);
                 addLight(TorchLight.PROFILE, totalTime);
             }
             for (int i = 0; i < nearest.size(); i++) {
+                if (nearest.holder(i) instanceof RemotePlayer rp) {
+                    remoteTorchPosition(world, rp, positions[count]);
+                    holders[count] = rp;
+                    // Each holder flickers on its own phase, as placed torches do.
+                    float phase = (rp.getPlayerId() & 0xFF) / 256f * TorchLight.PROFILE.period();
+                    addLight(TorchLight.PROFILE, totalTime + phase);
+                    continue;
+                }
                 BlockPos pos = nearest.get(i);
                 BlockLightSource source = BlockLightSource.of(world.getBlockAt(pos.x(), pos.y(), pos.z()));
                 if (source == null) continue;
@@ -121,6 +158,21 @@ public final class DynamicLights {
         out.set(eye);
     }
 
+    /**
+     * A remote player's torch flame: just above the hand their held item is drawn at, falling
+     * back to the hand and then their chest when it would sit inside a block (a player hugging a
+     * wall would otherwise black their own torch out).
+     */
+    private static void remoteTorchPosition(World world, RemotePlayer rp, Vector3f out) {
+        rp.handPosition(out);
+        out.y += REMOTE_FLAME_UP;
+        if (!isSolidAt(world, out)) return;
+        out.y -= REMOTE_FLAME_UP;
+        if (!isSolidAt(world, out)) return;
+        Vector3f feet = rp.getPosition();
+        out.set(feet.x, feet.y + REMOTE_CHEST_UP, feet.z);
+    }
+
     private static boolean isSolidAt(World world, Vector3f p) {
         BlockType block = world.getBlockAt((int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
         return block != null && block.isSolid();
@@ -136,6 +188,11 @@ public final class DynamicLights {
         float k = profile.peak() * profile.intensity(elapsed);
         colorData.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(count);
         count++;
+    }
+
+    /** Whether a player figure (a remote player or a decoy) is alive and holding a torch. */
+    public static boolean isHoldingTorch(RemotePlayer rp) {
+        return rp != null && rp.isAlive() && TorchBlock.isTorchItem(rp.getHeldItem());
     }
 
     public static boolean isHoldingTorch(Player player) {
@@ -155,6 +212,13 @@ public final class DynamicLights {
     public static int heldTorchIndex() { return held && count > 0 ? 0 : -1; }
 
     public static Vector3f position(int index, Vector3f out) { return out.set(positions[index]); }
+
+    /**
+     * The entity carrying light {@code index}, or null for a placed source or the local held
+     * torch. Its own body must not cast a shadow from its own torch, for the same reason the
+     * local player's must not ({@link #heldTorchIndex}).
+     */
+    public static Entity holder(int index) { return holders[index]; }
 
     /** Called after the depth pass, before any receiver renders. */
     public static void enableShadows() { shadowsEnabled = true; }

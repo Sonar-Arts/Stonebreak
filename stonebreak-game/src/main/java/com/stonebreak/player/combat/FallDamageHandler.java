@@ -42,7 +42,10 @@ public class FallDamageHandler {
             float fallDistance = state.getPreviousY() - state.getPosition().y;
             if (fallDistance > 4.0f && !state.isPhysicallyInWater()) {
                 float damage = (fallDistance - 4.0f) * (HEALTH_PER_HEART * 0.25f);
-                health.damage(damage);
+                // In a session the server lands the fall from the reported positions (#343).
+                if (!com.stonebreak.network.MultiplayerSession.serverOwnsPlayerHealth()) {
+                    health.damage(damage);
+                }
             }
             state.setWasFalling(false);
         }

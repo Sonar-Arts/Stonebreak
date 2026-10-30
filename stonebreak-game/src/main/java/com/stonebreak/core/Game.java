@@ -761,6 +761,22 @@ public class Game {
     public boolean isCheatsEnabled() {
         return cheats.isEnabled();
     }
+
+    /**
+     * The session world's PvP rule, mirrored from the server ({@code PvpStateS2C}, sent on join
+     * and on every {@code /pvp} change — issue #343). Decides whether another player's figure is a
+     * combat target at all; the server still refuses hits while it is off.
+     */
+    private volatile boolean pvpEnabled;
+
+    public void setPvpEnabled(boolean enabled) {
+        this.pvpEnabled = enabled;
+    }
+
+    public static boolean isPvpEnabled() {
+        Game game = instance;
+        return game != null && game.pvpEnabled;
+    }
     
     /**
      * Gets the memory leak detector.

@@ -121,6 +121,7 @@ public final class TorchShadowRenderer implements AutoCloseable {
                 DynamicLights.position(i, position);
                 // The held torch rides the camera, so the player's own body sits on top of
                 // the light and would stamp a head/torso shadow over whatever they look at.
+                // Another player's torch likewise skips its holder (DynamicLights.holder).
                 Player bodyCaster = i == DynamicLights.heldTorchIndex() ? null : player;
                 collectNearbyChunks(loadedChunks);
                 boolean refresh = cache.needsRefresh(i, position) || !terrainSnapshots[i].matches(nearbyChunks);
@@ -136,7 +137,8 @@ public final class TorchShadowRenderer implements AutoCloseable {
                     }
                     terrain.copyLayerTo(layer, live);
                     if (entities != null) {
-                        entities.renderShadowCasters(bodyCaster, viewRender, projection, position, PointLightGlsl.RADIUS);
+                        entities.renderShadowCasters(bodyCaster, DynamicLights.holder(i),
+                                viewRender, projection, position, PointLightGlsl.RADIUS);
                     }
                     if (animated != null) {
                         animated.renderShadowCasters(world, viewRender, projection, position, PointLightGlsl.RADIUS, totalTime);

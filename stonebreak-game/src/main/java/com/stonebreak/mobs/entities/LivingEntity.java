@@ -107,8 +107,9 @@ public abstract class LivingEntity extends Entity {
     }
 
     /**
-     * Whether this entity makes footstep noises as it walks. True for anything with feet; remote
-     * players are the exception — their sounds are their own client's business, not a mob's.
+     * Whether this entity makes stride-counted footstep noises as it walks ({@link MobSounds}).
+     * True for anything with feet; player figures are the exception — they step on their gait
+     * clock's foot contacts instead, as the local player does ({@code RemotePlayer}).
      */
     protected boolean hasFootsteps() {
         return true;
