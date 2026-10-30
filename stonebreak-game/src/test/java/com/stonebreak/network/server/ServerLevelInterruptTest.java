@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -37,20 +36,20 @@ class ServerLevelInterruptTest {
 
     @TempDir
     Path home;
-    private String realHome;
+    private String previousDataDir;
 
     @BeforeEach
     void useTempHome() {
-        String xdg = System.getenv("XDG_DATA_HOME");
-        assumeTrue(xdg == null || xdg.isBlank(), "worlds would land in XDG_DATA_HOME, not the temp home");
-        realHome = System.getProperty("user.home");
-        System.setProperty("user.home", home.toString());
+        previousDataDir = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
+        System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
     }
 
     @AfterEach
     void restoreHome() {
-        if (realHome != null) {
-            System.setProperty("user.home", realHome);
+        if (previousDataDir == null) {
+            System.clearProperty(WorldStorage.DATA_DIR_PROPERTY);
+        } else {
+            System.setProperty(WorldStorage.DATA_DIR_PROPERTY, previousDataDir);
         }
         Thread.interrupted();
     }

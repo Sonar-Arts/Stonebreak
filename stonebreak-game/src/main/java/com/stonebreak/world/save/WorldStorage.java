@@ -14,6 +14,7 @@ import java.nio.file.Paths;
  *   <li>macOS:   {@code ~/Library/Application Support/Stonebreak/worlds}</li>
  *   <li>Linux:   {@code $XDG_DATA_HOME/Stonebreak/worlds} (else {@code ~/.local/share/Stonebreak/worlds})</li>
  * </ul>
+ * The {@value #DATA_DIR_PROPERTY} system property overrides the platform choice.
  *
  * <p>All world paths produced here are absolute, so they may be handed directly to
  * {@code SaveService} and resolved against (e.g. {@code worldDir/fastlod/cache.sqlite}).
@@ -54,7 +55,18 @@ public final class WorldStorage {
         return worldDir(worldName).toString();
     }
 
+    /**
+     * System property naming the application-data directory outright, in place of the
+     * platform default (portable installs, and tests that must not touch the real worlds).
+     */
+    public static final String DATA_DIR_PROPERTY = "stonebreak.dataDir";
+
     private static Path appDataDir() {
+        String override = System.getProperty(DATA_DIR_PROPERTY);
+        if (override != null && !override.isBlank()) {
+            return Paths.get(override);
+        }
+
         String os = System.getProperty("os.name", "").toLowerCase();
 
         if (os.contains("win")) {

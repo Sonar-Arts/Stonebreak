@@ -3,6 +3,7 @@ package com.stonebreak.network.server;
 import com.openmason.engine.net.server.ServerLimits;
 import com.openmason.engine.net.transport.NetAddress;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.save.WorldStorage;
 
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
@@ -19,9 +20,9 @@ import java.util.function.BooleanSupplier;
  * protocol. {@link #close} stops it the way a session stops it — final drains, then
  * shutdown (which persists the connected players) and the level's cleanup.
  *
- * <p>{@code user.home} is redirected for the harness's lifetime so worlds and player saves land in
- * the temporary home; callers must make sure {@code XDG_DATA_HOME} is unset
- * ({@link #isolatedHomeAvailable}). One harness at a time per JVM.
+ * <p>The data directory ({@link WorldStorage#DATA_DIR_PROPERTY}) is redirected for the harness's
+ * lifetime so worlds and player saves land in the temporary home, on every platform. One harness
+ * at a time per JVM.
  */
 public final class ServerHarness implements AutoCloseable {
 
@@ -30,21 +31,20 @@ public final class ServerHarness implements AutoCloseable {
 
     private final IntegratedServer server;
     private final Thread tickThread;
-    private final String realHome;
+    private final String previousDataDir;
     private volatile boolean running = true;
     private volatile Throwable tickFailure;
 
-    private ServerHarness(IntegratedServer server, String realHome) {
+    private ServerHarness(IntegratedServer server, String previousDataDir) {
         this.server = server;
-        this.realHome = realHome;
+        this.previousDataDir = previousDataDir;
         this.tickThread = new Thread(this::tickLoop, "Harness-Server");
         this.tickThread.setDaemon(true);
     }
 
-    /** Whether worlds can be redirected to a temporary home (they follow XDG_DATA_HOME when set). */
+    /** Whether worlds can be redirected to a temporary home — always, through the data-dir property. */
     public static boolean isolatedHomeAvailable() {
-        String xdg = System.getenv("XDG_DATA_HOME");
-        return xdg == null || xdg.isBlank();
+        return true;
     }
 
     /** A server with the real limits and timeouts. */
@@ -62,18 +62,26 @@ public final class ServerHarness implements AutoCloseable {
         com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
                 new com.openmason.engine.voxel.VoxelWorldConfig(WorldConfiguration.CHUNK_SIZE,
                         WorldConfiguration.WORLD_HEIGHT, WorldConfiguration.SEA_LEVEL));
-        String realHome = System.getProperty("user.home");
-        System.setProperty("user.home", home.toString());
+        String previousDataDir = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
+        System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
         IntegratedServer server = new IntegratedServer(limits, silenceTimeoutNs, keepaliveIntervalTicks);
         try {
             server.start(null, NetAddress.tcp("127.0.0.1", 0), worldName, 347L);
         } catch (InterruptedException | RuntimeException e) {
-            System.setProperty("user.home", realHome);
+            restoreDataDir(previousDataDir);
             throw e;
         }
-        ServerHarness harness = new ServerHarness(server, realHome);
+        ServerHarness harness = new ServerHarness(server, previousDataDir);
         harness.tickThread.start();
         return harness;
+    }
+
+    private static void restoreDataDir(String previous) {
+        if (previous == null) {
+            System.clearProperty(WorldStorage.DATA_DIR_PROPERTY);
+        } else {
+            System.setProperty(WorldStorage.DATA_DIR_PROPERTY, previous);
+        }
     }
 
     /** Limits like the real ones, with a short admission deadline and outbound cap for tests. */
@@ -165,7 +173,7 @@ public final class ServerHarness implements AutoCloseable {
                 level.cleanup();
             }
         } finally {
-            System.setProperty("user.home", realHome);
+            restoreDataDir(previousDataDir);
         }
     }
 }

@@ -18,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 
@@ -35,12 +34,12 @@ class ServerLevelSpawnTest {
     @Test
     @Timeout(value = 120, unit = TimeUnit.SECONDS)
     void aSavedPlayerPositionNeverBecomesTheWorldSpawn() throws Exception {
-        String xdg = System.getenv("XDG_DATA_HOME");
-        assumeTrue(xdg == null || xdg.isBlank(), "worlds would land in XDG_DATA_HOME, not the temp home");
-        String realHome = System.getProperty("user.home");
-        System.setProperty("user.home", home.toString());
+        String previous = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
+        System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
         try {
             String name = "spawn-302";
+            // Checked before anything is written, so a run that cannot redirect saves fails clean.
+            assertTrue(WorldStorage.worldDir(name).startsWith(home), "the test never touches the real worlds");
             Vector3f worldSpawn = new Vector3f(8.5f, 90f, 8.5f);
             Vector3f saved = new Vector3f(400f, 70f, -300f);
             World world = mock(World.class);
@@ -55,7 +54,6 @@ class ServerLevelSpawnTest {
                     svc.saveAll().get(10, TimeUnit.SECONDS);
                 }
             }
-            assertTrue(WorldStorage.worldDir(name).startsWith(home), "the test never touches the real worlds");
 
             ServerLevel level = ServerLevel.createAndLoad(name, 1L);
             try {
@@ -68,7 +66,11 @@ class ServerLevelSpawnTest {
                 level.cleanup();
             }
         } finally {
-            System.setProperty("user.home", realHome);
+            if (previous == null) {
+                System.clearProperty(WorldStorage.DATA_DIR_PROPERTY);
+            } else {
+                System.setProperty(WorldStorage.DATA_DIR_PROPERTY, previous);
+            }
         }
     }
 }
