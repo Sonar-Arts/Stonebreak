@@ -1,5 +1,9 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.api.asset.AssetEditorSection;
+import com.openmason.api.asset.AssetSectionHost;
+import com.openmason.api.asset.AssetSurface;
+
 import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
@@ -14,7 +18,6 @@ import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
-import imgui.type.ImInt;
 import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,10 +46,13 @@ public class SBEExportWindow {
     private static final float WINDOW_W = 720.0f;
     private static final float WINDOW_H = 640.0f;
 
-    private static final String[] ENTITY_TYPE_LABELS = {
-            "Mob", "NPC", "Projectile", "Vehicle", "Other"
-    };
-    private static final String[] TAB_LABELS = { "Metadata", "States", "Variants" };
+    private static final String TAB_METADATA = "core.metadata";
+    private static final String TAB_STATES = "core.states";
+    private static final String TAB_VARIANTS = "core.variants";
+    private static final List<AssetSectionSet.Tab> CORE_TABS = List.of(
+            new AssetSectionSet.Tab(TAB_METADATA, "Metadata", 0, null),
+            new AssetSectionSet.Tab(TAB_STATES, "States", 100, null),
+            new AssetSectionSet.Tab(TAB_VARIANTS, "Variants", 200, null));
 
     private final ImBoolean visible;
     private final ModelState modelState;
@@ -56,12 +62,14 @@ public class SBEExportWindow {
     private final SBEObjectIndexPopup objectIndexPopup = new SBEObjectIndexPopup();
 
     private final EditorChrome chrome = new EditorChrome("sbe_export");
+    /** Game-data sections contributed by plugins (#431; Stonebreak: the entity type). */
+    private final AssetSectionSet<SBEFormat.ExportParameters> sections;
+    private List<AssetSectionSet.Tab> tabs = CORE_TABS;
     private int selectedTab;
 
     // Form buffers
     private final ImString objectId = new ImString(256);
     private final ImString objectName = new ImString(256);
-    private final ImInt entityTypeIndex = new ImInt(0);
     private final ImString objectPack = new ImString(256);
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
@@ -105,6 +113,32 @@ public class SBEExportWindow {
         this.modelState = modelState;
         this.statusService = statusService;
         this.fileDialogService = fileDialogService;
+        this.sections = new AssetSectionSet<>(AssetSurface.SBE_EXPORT, new AssetSectionHost() {
+            @Override
+            public AssetSurface<?> surface() {
+                return AssetSurface.SBE_EXPORT;
+            }
+
+            @Override
+            public String objectId() {
+                return objectId.get().trim();
+            }
+
+            @Override
+            public String objectType() {
+                return "";
+            }
+
+            @Override
+            public boolean texturePayload() {
+                return false;
+            }
+
+            @Override
+            public void markDirty() {
+                // an export form has no saved state
+            }
+        });
     }
 
     /** Wire the post-export handoff (typically {@code sbeEditorWindow::openFile}). */
@@ -115,6 +149,8 @@ public class SBEExportWindow {
     public void show() {
         resetForm();
         prepopulateFromModel();
+        sections.load(new SBEFormat.ExportParameters());
+        tabs = sections.tabs(CORE_TABS);
         visible.set(true);
         centerOnNextFrame = true;
         logger.debug("SBE export window shown");
@@ -132,7 +168,6 @@ public class SBEExportWindow {
     private void resetForm() {
         objectId.set("");
         objectName.set("");
-        entityTypeIndex.set(0);
         objectPack.set("default");
         author.set("");
         description.set("");
@@ -167,19 +202,26 @@ public class SBEExportWindow {
         if (ImGui.begin(title, visible, ImGuiWindowFlags.NoCollapse)) {
             try {
                 selectedTab = chrome.renderExport(canExport(), sourceLabel(), "Export...",
-                        TAB_LABELS, selectedTab, this::performExport, this::hide);
+                        tabs.stream().map(AssetSectionSet.Tab::label).toArray(String[]::new),
+                        selectedTab, this::performExport, this::hide);
                 ImGui.dummy(0, 6);
-                switch (selectedTab) {
-                    case 0 -> renderMetadataTab();
-                    case 1 -> renderStatesTab();
-                    case 2 -> renderVariantsTab();
-                    default -> { }
+                AssetSectionSet.Tab tab = tabs.get(Math.min(selectedTab, tabs.size() - 1));
+                if (tab.section() != null) {
+                    sections.renderSection(tab.section());
+                } else {
+                    switch (tab.key()) {
+                        case TAB_METADATA -> renderMetadataTab();
+                        case TAB_STATES -> renderStatesTab();
+                        case TAB_VARIANTS -> renderVariantsTab();
+                        default -> { }
+                    }
                 }
                 if (!validationMessage.isEmpty()) {
                     ImGui.dummy(0, 8);
                     ThemedWidgets.inlineError(validationMessage);
                 }
                 objectIndexPopup.render();
+                sections.renderOverlays();
             } catch (Exception e) {
                 logger.error("Error rendering SBE export window", e);
                 ThemedWidgets.statusText(Tone.ERROR, "Error rendering export window");
@@ -215,9 +257,9 @@ public class SBEExportWindow {
         ImGui.inputTextWithHint("Object Name", "e.g. Cow", objectName);
 
         ThemedWidgets.sectionLabel("Classification");
-        ImGui.combo("Entity Type", entityTypeIndex, ENTITY_TYPE_LABELS);
-        ImGui.textDisabled("Exports into " + describeTargetFolder());
         ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack);
+        sections.renderMetadataSections();
+        ImGui.textDisabled("Exports into " + describeTargetFolder());
 
         ThemedWidgets.sectionLabel("Attribution");
         ImGui.inputTextWithHint("Author", "Creator name or studio", author);
@@ -312,7 +354,7 @@ public class SBEExportWindow {
 
     private String describeTargetFolder() {
         GameTargets targets = GameTargets.shared();
-        Path dir = targets.folderFor(BuiltinFileTypes.SBE.id(), ENTITY_TYPE_LABELS[entityTypeIndex.get()]);
+        Path dir = targets.folderFor(BuiltinFileTypes.SBE.id(), entityTypeId());
         if (dir == null) {
             return targets.active().isPresent() ? "the last used folder (game resources not found)"
                     : "the last used folder (the project has no game target)";
@@ -337,25 +379,54 @@ public class SBEExportWindow {
         }
     }
 
+    /** The entity type the sections chose (the engine default without one): picks the target folder. */
+    private String entityTypeId() {
+        return buildParameters().getEntityType().getId();
+    }
+
+    private int tabIndex(String key) {
+        for (int i = 0; i < tabs.size(); i++) {
+            if (tabs.get(i).key().equals(key)) return i;
+        }
+        return 0;
+    }
+
+    private int tabOf(AssetEditorSection<?> section) {
+        for (int i = 0; i < tabs.size(); i++) {
+            if (tabs.get(i).section() == section) return i;
+        }
+        return tabIndex(TAB_METADATA);
+    }
+
     private void performExport() {
+        AssetSectionSet.Problem problem = sections.firstError();
+        if (problem != null) {
+            validationMessage = problem.message();
+            selectedTab = tabOf(problem.section());
+            return;
+        }
+        sections.confirmThenWrite(this::performExportConfirmed);
+    }
+
+    private void performExportConfirmed() {
         SBEFormat.ExportParameters params = buildParameters();
 
         if (!params.isValid()) {
             validationMessage = params.getValidationError();
-            selectedTab = 0;
+            selectedTab = tabIndex(TAB_METADATA);
             return;
         }
 
         String stateError = validateStates();
         if (stateError != null) {
             validationMessage = stateError;
-            selectedTab = 1;
+            selectedTab = tabIndex(TAB_STATES);
             return;
         }
         String variantError = validateVariants();
         if (variantError != null) {
             validationMessage = variantError;
-            selectedTab = 2;
+            selectedTab = tabIndex(TAB_VARIANTS);
             return;
         }
         validationMessage = "";
@@ -372,13 +443,13 @@ public class SBEExportWindow {
         String compatError = validateAnimationCompatibility(omoPath);
         if (compatError != null) {
             validationMessage = compatError;
-            selectedTab = 1;
+            selectedTab = tabIndex(TAB_STATES);
             statusService.updateStatus("SBE export blocked: incompatible animation");
             return;
         }
 
         String targetDir = GameTargets.shared().folderPathFor(BuiltinFileTypes.SBE.id(),
-                ENTITY_TYPE_LABELS[entityTypeIndex.get()]);
+                params.getEntityType().getId());
         String fileName = GameTargets.shared().suggestedFileName(objectName.get(), "sbe", "entity.sbe");
 
         fileDialogService.showSaveSBEDialog(fileName, targetDir, filePath -> {
@@ -387,6 +458,7 @@ public class SBEExportWindow {
                 statusService.updateStatus("Exported SBE: " + Path.of(filePath).getFileName());
                 logger.info("SBE export successful: {}", filePath);
                 visible.set(false);
+                sections.written();
                 onExported.accept(filePath);
             } else {
                 validationMessage = "Export failed. Check logs for details.";
@@ -472,7 +544,6 @@ public class SBEExportWindow {
         SBEFormat.ExportParameters params = new SBEFormat.ExportParameters();
         params.setObjectId(objectId.get().trim());
         params.setObjectName(objectName.get().trim());
-        params.setEntityType(SBEFormat.EntityType.values()[entityTypeIndex.get()]);
         params.setObjectPack(objectPack.get().trim());
         params.setAuthor(author.get().trim());
         params.setDescription(description.get().trim());
@@ -482,11 +553,12 @@ public class SBEExportWindow {
         for (VariantBindingRow row : variantBindings) {
             params.addVariant(row.variant.get().trim(), row.modelOverridePath);
         }
-        return params;
+        return sections.write(params);
     }
 
     /** Release the Mortar chrome region. Must run with a current GL context. */
     public void close() {
         chrome.close();
+        sections.close();
     }
 }

@@ -416,6 +416,43 @@ public final class SBOFormat {
             }
         }
 
+        // Copies with one game-data field replaced (#431: editor sections own one field each).
+
+        /** Copy with {@code gameProperties} replaced. */
+        public Document withGameProperties(GameProperties value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, value, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, drops, tool, weapon);
+        }
+
+        /** Copy with {@code recipes} replaced. */
+        public Document withRecipes(RecipeData value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, value, smeltingRecipes, fuel, sounds, drops, tool, weapon);
+        }
+
+        /** Copy with {@code smeltingRecipes} replaced. */
+        public Document withSmeltingRecipes(SmeltingRecipeData value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, value, fuel, sounds, drops, tool, weapon);
+        }
+
+        /** Copy with {@code fuel} replaced. */
+        public Document withFuel(FuelData value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, value, sounds, drops, tool, weapon);
+        }
+
+        /** Copy with {@code drops} replaced. */
+        public Document withDrops(DropData value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, value, tool, weapon);
+        }
+
+        /** Copy with {@code tool} replaced. */
+        public Document withTool(ToolData value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, drops, value, weapon);
+        }
+
+        /** Copy with {@code weapon} replaced. */
+        public Document withWeapon(WeaponData value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, drops, tool, value);
+        }
+
         /** True when this SBO carries an embedded OMO model. */
         public boolean isModelBearing() {
             return omoFilename != null && !omoFilename.isBlank();
@@ -953,6 +990,13 @@ public final class SBOFormat {
             return new GameProperties(numericId, hardness, solid, breakable, atlasX, atlasY,
                     renderLayer, transparent, flower, stackable, maxStackSize, category,
                     placeable, newMaterial, newRequiredTier);
+        }
+
+        /** Copy with the container-level rendering fields (render layer, transparency) replaced. */
+        public GameProperties withRendering(String newRenderLayer, boolean newTransparent) {
+            return new GameProperties(numericId, hardness, solid, breakable, atlasX, atlasY,
+                    newRenderLayer, newTransparent, flower, stackable, maxStackSize, category,
+                    placeable, material, requiredTier);
         }
 
         /** Convenience: returns the render layer or "OPAQUE" if absent. */

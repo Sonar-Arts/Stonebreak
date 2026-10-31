@@ -93,21 +93,9 @@ public final class BuiltinMcpTools {
             c -> new ScriptLibraryToolDefinitions(new ScriptLibraryService(McpSharedServices.of(c).editor()),
                     c.mapper()).registerAll(c.registry()));
 
-    // ── stonebreak (built in until #382 moves it to openmason-plugin-stonebreak) ──
-
-    public static final McpToolContribution ASSET_EXPORT = new McpToolContribution("stonebreak.assets", c -> {
-        McpSharedServices s = McpSharedServices.of(c);
-        new AssetExportToolDefinitions(new AssetExportService(s.editor(), s.writes(), s.modelFiles(), s.texture()),
-                c.mapper()).registerAll(c.registry());
-    });
-
-    public static final McpToolContribution ASSET_LENS = new McpToolContribution("stonebreak.lens",
-            c -> new AssetLensToolDefinitions(new AssetLensService(McpSharedServices.of(c).editor(), c.mapper()),
-                    c.mapper()).registerAll(c.registry()));
-
     /** Every built-in group, in the order the built-in plugins register them. */
     public static List<McpToolContribution> all() {
         return List.of(SAVE, MODEL_FILES, MODEL, BONES, ATTACHMENTS, VIEWPORT, SCENE, INSPECTION, KNOWLEDGE, META,
-                TEXTURE, FACE_TEXTURES, ANIMATION, UI, SCRIPTING, SCRIPT_LIBRARY, ASSET_EXPORT, ASSET_LENS);
+                TEXTURE, FACE_TEXTURES, ANIMATION, UI, SCRIPTING, SCRIPT_LIBRARY);
     }
 }

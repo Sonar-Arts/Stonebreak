@@ -146,8 +146,8 @@ public class ViewportRenderPipeline implements ViewerPass {
     }
 
     /**
-     * The asset content this pipeline can draw besides the editable model (a .SBT sprite); the
-     * Stonebreak plugin registers it as viewport content (game items are the plugin's own, #382).
+     * The asset content this pipeline can draw besides the editable model (a .SBT sprite); the core
+     * registers it as viewport content (#431; game items are a plugin's own, #382).
      */
     public List<ViewportContentProvider> builtinContentProviders() {
         return builtinContent;
@@ -345,12 +345,12 @@ public class ViewportRenderPipeline implements ViewerPass {
     private final class SbtContent implements ViewportContentProvider {
         @Override
         public String id() {
-            return "stonebreak.sbt";
+            return "openmason.sbt";
         }
 
         @Override
         public String label() {
-            return "Stonebreak texture (.SBT)";
+            return "SBT texture sprite";
         }
 
         @Override

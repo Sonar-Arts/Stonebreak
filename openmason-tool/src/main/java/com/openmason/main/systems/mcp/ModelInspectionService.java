@@ -130,8 +130,8 @@ public class ModelInspectionService {
         totals.put("faces", faces);
         out.put("totals", totals);
         if (Float.isFinite(min.x)) {
-            out.put("bboxMin", AssetLensService.round3(new float[]{min.x, min.y, min.z}));
-            out.put("bboxMax", AssetLensService.round3(new float[]{max.x, max.y, max.z}));
+            out.put("bboxMin", McpNumbers.round3(new float[]{min.x, min.y, min.z}));
+            out.put("bboxMax", McpNumbers.round3(new float[]{max.x, max.y, max.z}));
         }
 
         // Face texture join (materialId, uv region) via the GPU-side mapping list.
@@ -218,17 +218,17 @@ public class ModelInspectionService {
             Vector3f acc = new Vector3f();
             for (int i = 0; i < ids.length; i++) {
                 Vector3f p = ap.mesh().position(ids[i]);
-                loop[i] = new float[]{AssetLensService.round4(p.x),
-                        AssetLensService.round4(p.y), AssetLensService.round4(p.z)};
+                loop[i] = new float[]{McpNumbers.round4(p.x),
+                        McpNumbers.round4(p.y), McpNumbers.round4(p.z)};
                 acc.add(p);
             }
             row.put("loop", loop);
             acc.div(ids.length);
-            row.put("centroid", AssetLensService.round3(new float[]{acc.x, acc.y, acc.z}));
+            row.put("centroid", McpNumbers.round3(new float[]{acc.x, acc.y, acc.z}));
         }
         if (verdict != null) {
-            row.put("normal", AssetLensService.round3(verdict.normal()));
-            row.put("area", AssetLensService.round4(verdict.area()));
+            row.put("normal", McpNumbers.round3(verdict.normal()));
+            row.put("area", McpNumbers.round4(verdict.area()));
             row.put("planar", !verdict.nonPlanar());
             row.put("orientation", verdict.orientation().name().toLowerCase(Locale.ROOT));
             row.put("orientationMethod", verdict.method());

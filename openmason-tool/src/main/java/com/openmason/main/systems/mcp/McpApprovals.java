@@ -16,12 +16,12 @@ import java.util.concurrent.TimeoutException;
  * {@link ApprovalGate}, shared by every tool that needs it. Returns a
  * structured decline map, or null when the user approved.
  */
-final class McpApprovals {
+public final class McpApprovals {
 
     private McpApprovals() {
     }
 
-    static Map<String, Object> confirm(ApprovalGate gate, String action, String title,
+    public static Map<String, Object> confirm(ApprovalGate gate, String action, String title,
                                        List<String> details, int timeoutSeconds) {
         if (gate == null) {
             return declined("approval_unavailable",

@@ -293,6 +293,12 @@ public final class SBEFormat {
                     : List.copyOf(variants);
         }
 
+        /** Copy with {@code entityType} replaced (#431: the entity-type picker is a game section). */
+        public Document withEntityType(String value) {
+            return new Document(version, objectId, objectName, value, objectPack, checksum, author,
+                    description, createdAt, omoFilename, states, variants, sounds);
+        }
+
         public boolean hasStates() { return !states.isEmpty(); }
         public boolean hasVariants() { return !variants.isEmpty(); }
 

@@ -6,6 +6,7 @@ import com.openmason.api.PluginInfo;
 import com.openmason.api.Registrar;
 import com.openmason.api.Registration;
 import com.openmason.api.ServiceRegistry;
+import com.openmason.api.asset.AssetSectionContribution;
 import com.openmason.api.files.FileOpener;
 import com.openmason.api.files.FileType;
 import com.openmason.api.knowledge.GuideTopic;
@@ -45,6 +46,8 @@ public final class EditorRegistries {
     private final Contributions<GuideTopic> guideTopics = new Contributions<>("guide topic", GuideTopic::id);
     private final Contributions<KnowledgePack> knowledgePacks = new Contributions<>("knowledge pack", KnowledgePack::id);
     private final Contributions<PreferencePage> preferencePages = new Contributions<>("preference page", PreferencePage::id);
+    private final Contributions<AssetSectionContribution<?>> assetSections =
+            new Contributions<>("asset section", AssetSectionContribution::id);
     private final Contributions<ViewportContentProvider> viewportContent =
             new Contributions<>("viewport content", ViewportContentProvider::id);
     private final Contributions<ProjectTemplate> templates = new Contributions<>("project template", ProjectTemplate::getId);
@@ -100,6 +103,10 @@ public final class EditorRegistries {
         return preferencePages;
     }
 
+    public Contributions<AssetSectionContribution<?>> assetSections() {
+        return assetSections;
+    }
+
     public Contributions<ViewportContentProvider> viewportContent() {
         return viewportContent;
     }
@@ -123,7 +130,7 @@ public final class EditorRegistries {
     /** Every contribution list, for owner-wide operations. */
     public List<Contributions<?>> all() {
         return List.of(workspaces, menus, menuEntries, commands, fileTypes, fileOpeners, mcpTools, guideTopics,
-                knowledgePacks, preferencePages, viewportContent, templates, gameTargets, themes, lifecycle);
+                knowledgePacks, preferencePages, assetSections, viewportContent, templates, gameTargets, themes, lifecycle);
     }
 
     /**
@@ -211,6 +218,11 @@ public final class EditorRegistries {
             @Override
             public Registrar<PreferencePage> preferencePages() {
                 return preferencePages.registrar(owner);
+            }
+
+            @Override
+            public Registrar<AssetSectionContribution<?>> assetSections() {
+                return assetSections.registrar(owner);
             }
 
             @Override

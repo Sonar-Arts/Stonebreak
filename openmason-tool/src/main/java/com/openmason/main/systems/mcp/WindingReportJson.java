@@ -12,13 +12,13 @@ import java.util.Map;
  * {@code asset_check_winding} (file-based) and {@code model_check_winding}
  * (live model) so clients see one report format.
  */
-final class WindingReportJson {
+public final class WindingReportJson {
 
     private WindingReportJson() {
     }
 
     /** Aggregate part reports into the documented {status, parts, totals, hints} shape. */
-    static Map<String, Object> aggregate(List<WindingAnalyzer.PartReport> reports) {
+    public static Map<String, Object> aggregate(List<WindingAnalyzer.PartReport> reports) {
         List<Map<String, Object>> parts = new ArrayList<>();
         List<String> hints = new ArrayList<>();
         int inverted = 0;
@@ -34,7 +34,7 @@ final class WindingReportJson {
             row.put("indeterminate", r.indeterminate());
             row.put("mixedWinding", r.mixedWinding());
             row.put("closed", r.closed());
-            row.put("signedVolume", AssetLensService.round4(r.signedVolume()));
+            row.put("signedVolume", McpNumbers.round4(r.signedVolume()));
             if (r.indeterminateReason() != null) {
                 row.put("reason", r.indeterminateReason());
             }

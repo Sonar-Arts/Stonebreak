@@ -112,6 +112,8 @@ public final class UiComposition {
             projectHubScreen.getTemplateService().setSource(registries.templates()::all);
             // Game targets (#380): export dialogs, the asset catalog and the write sandbox read them here.
             com.openmason.main.systems.target.GameTargets.shared().setSource(registries.gameTargets()::all);
+            // Asset editor sections (#431): the SBO/SBE editor and export windows read them here.
+            com.openmason.main.systems.menus.dialogs.AssetSectionSet.setSource(registries.assetSections()::all);
             registries.themes().addListener(new com.openmason.api.Contributions.Listener<>() {
                 @Override
                 public void added(com.openmason.main.systems.themes.core.ThemeDefinition theme) {

@@ -557,7 +557,7 @@ public final class TextureToolDefinitions {
     }
 
     /** Shared schema for the describe tools (rect + codec options). */
-    static McpSchema describeSchema(McpSchema s) {
+    public static McpSchema describeSchema(McpSchema s) {
         return s.intArr("rect", "Sub-rectangle [x,y,w,h]; omit for the whole image")
                 .intg("tolerance", "Merge colours within this RGB distance into one glyph (default 0)")
                 .intg("max_colors", "Max glyphs, 1-" + PixelTextCodec.MAX_COLORS + " (default all)")
@@ -572,7 +572,7 @@ public final class TextureToolDefinitions {
         return describeSchema(schema());
     }
 
-    static PixelTextCodec.Options describeOptions(JsonNode args) {
+    public static PixelTextCodec.Options describeOptions(JsonNode args) {
         PixelTextCodec.Options d = PixelTextCodec.Options.defaults();
         return new PixelTextCodec.Options(
                 McpArgs.optInt(args, "tolerance", d.tolerance()),

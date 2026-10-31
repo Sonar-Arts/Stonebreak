@@ -1,5 +1,8 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.api.asset.AssetSectionHost;
+import com.openmason.api.asset.AssetSurface;
+
 import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbe.SBEParser;
 import com.openmason.engine.format.sbe.SBESerializer;
@@ -10,7 +13,6 @@ import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
-import imgui.type.ImInt;
 import imgui.type.ImString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,10 +37,15 @@ public class SBEEditorWindow {
     private static final Logger logger = LoggerFactory.getLogger(SBEEditorWindow.class);
     private static final String WINDOW_TITLE = "SBE Editor";
 
-    private static final String[] ENTITY_TYPE_LABELS = {
-            "Mob", "NPC", "Projectile", "Vehicle", "Other"
-    };
-    private static final String[] TAB_LABELS = { "Metadata", "States", "Variants", "Sounds" };
+    private static final String TAB_METADATA = "core.metadata";
+    private static final String TAB_STATES = "core.states";
+    private static final String TAB_VARIANTS = "core.variants";
+    private static final String TAB_SOUNDS = "core.sounds";
+    private static final java.util.List<AssetSectionSet.Tab> CORE_TABS = java.util.List.of(
+            new AssetSectionSet.Tab(TAB_METADATA, "Metadata", 0, null),
+            new AssetSectionSet.Tab(TAB_STATES, "States", 100, null),
+            new AssetSectionSet.Tab(TAB_VARIANTS, "Variants", 200, null),
+            new AssetSectionSet.Tab(TAB_SOUNDS, "Sounds", 300, null));
 
     private final ImBoolean visible = new ImBoolean(false);
     private final FileDialogService fileDialogService;
@@ -48,6 +55,9 @@ public class SBEEditorWindow {
     private final SBEStatesEditor statesEditor;
     private final SBEVariantsEditor variantsEditor;
     private final SoundsEditor soundsEditor;
+    /** Game-data sections contributed by plugins (#431; Stonebreak: the entity type). */
+    private final AssetSectionSet<SBEFormat.Document> sections;
+    private java.util.List<AssetSectionSet.Tab> tabs = CORE_TABS;
 
     /** Popup listing already-registered SBE object ids. */
     private final SBEObjectIndexPopup objectIndexPopup = new SBEObjectIndexPopup();
@@ -63,9 +73,6 @@ public class SBEEditorWindow {
     }
     private int selectedTab;
 
-    private static final int TAB_STATES = 1;
-    private static final int TAB_VARIANTS = 2;
-    private static final int TAB_SOUNDS = 3;
 
     /** Last save-blocking problem, shown inline under the tab content (cleared on load / successful save). */
     private String validationMessage = "";
@@ -85,7 +92,6 @@ public class SBEEditorWindow {
     private final ImString objectPack = new ImString(256);
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
-    private final ImInt entityTypeIndex = new ImInt(0);
 
     public SBEEditorWindow(FileDialogService fileDialogService, StatusService statusService) {
         this.fileDialogService = fileDialogService;
@@ -100,6 +106,32 @@ public class SBEEditorWindow {
         this.soundsEditor = new SoundsEditor(
                 () -> dirty = true,
                 cb -> { if (fileDialogService != null) fileDialogService.showOpenAudioDialog(cb::accept); });
+        this.sections = new AssetSectionSet<>(AssetSurface.SBE_EDITOR, new AssetSectionHost() {
+            @Override
+            public AssetSurface<?> surface() {
+                return AssetSurface.SBE_EDITOR;
+            }
+
+            @Override
+            public String objectId() {
+                return objectId.get().trim();
+            }
+
+            @Override
+            public String objectType() {
+                return "";
+            }
+
+            @Override
+            public boolean texturePayload() {
+                return false;
+            }
+
+            @Override
+            public void markDirty() {
+                dirty = true;
+            }
+        });
     }
 
     /** Link the states editor to the Animation Editor (in-memory clip round trips). */
@@ -165,7 +197,11 @@ public class SBEEditorWindow {
         String err = statesEditor.validate();
         if (err == null) err = variantsEditor.validate();
         if (err == null) err = soundsEditor.validate();
-        return err;
+        if (err != null) return err;
+        AssetSectionSet.Problem problem = sections.firstError();
+        if (problem != null) return problem.message();
+        java.util.List<AssetSectionSet.Problem> conflicts = sections.conflicts();
+        return conflicts.isEmpty() ? null : conflicts.get(0).message();
     }
 
     /** Write the draft to {@code pathStr} (no validation, no dialog); true on success. */
@@ -203,11 +239,13 @@ public class SBEEditorWindow {
         objectPack.set(doc.objectPack());
         author.set(doc.author());
         description.set(doc.description() != null ? doc.description() : "");
-        entityTypeIndex.set(indexOf(ENTITY_TYPE_LABELS, doc.entityType()));
         statesEditor.load(doc, stateAssetBytes);
         variantsEditor.load(doc, stateAssetBytes);
         soundsEditor.load(doc.sounds(),
                 stateAssetBytes != null ? stateAssetBytes::get : f -> null);
+        sections.load(doc);
+        tabs = sections.tabs(CORE_TABS);
+        if (selectedTab >= tabs.size()) selectedTab = 0;
     }
 
     // ========================================================================
@@ -227,18 +265,23 @@ public class SBEEditorWindow {
             boolean loaded = loadedManifest != null;
             selectedTab = chrome.render(loaded, loaded && dirty, dirty,
                     currentPath != null ? currentPath.getFileName().toString() : "",
-                    "Open Different SBE...", TAB_LABELS, selectedTab,
+                    "Open Different SBE...", tabLabels(), selectedTab,
                     this::saveInPlace, this::saveAs, this::openWithDialog);
             ImGui.dummy(0, 6);
             if (!loaded) {
                 ImGui.textDisabled(EditorWidgets.emptyEditorText("SBE"));
             } else {
-                switch (selectedTab) {
-                    case 0 -> renderMetadataTab();
-                    case 1 -> statesEditor.render();
-                    case 2 -> variantsEditor.render();
-                    case 3 -> soundsEditor.render();
-                    default -> { }
+                AssetSectionSet.Tab tab = tabs.get(Math.min(selectedTab, tabs.size() - 1));
+                if (tab.section() != null) {
+                    sections.renderSection(tab.section());
+                } else {
+                    switch (tab.key()) {
+                        case TAB_METADATA -> renderMetadataTab();
+                        case TAB_STATES -> statesEditor.render();
+                        case TAB_VARIANTS -> variantsEditor.render();
+                        case TAB_SOUNDS -> soundsEditor.render();
+                        default -> { }
+                    }
                 }
                 if (!validationMessage.isEmpty()) {
                     ImGui.dummy(0, 8);
@@ -246,6 +289,7 @@ public class SBEEditorWindow {
                 }
             }
             objectIndexPopup.render();
+            sections.renderOverlays();
         }
         ImGui.end();
     }
@@ -269,8 +313,8 @@ public class SBEEditorWindow {
         if (ImGui.inputTextWithHint("Object Name", "e.g. Cow", objectName))        dirty = true;
 
         ThemedWidgets.sectionLabel("Classification");
-        if (ImGui.combo("Entity Type", entityTypeIndex, ENTITY_TYPE_LABELS)) dirty = true;
         if (ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack)) dirty = true;
+        sections.renderMetadataSections();
 
         ThemedWidgets.sectionLabel("Attribution");
         if (ImGui.inputTextWithHint("Author", "Creator name or studio", author))   dirty = true;
@@ -349,15 +393,31 @@ public class SBEEditorWindow {
         if (variantError != null) { rejectSave(variantError, TAB_VARIANTS); return; }
         String soundError = soundsEditor.validate();
         if (soundError != null) { rejectSave(soundError, TAB_SOUNDS); return; }
+        AssetSectionSet.Problem problem = sections.firstError();
+        if (problem != null) { rejectSave(problem.message(), sectionTab(problem.section())); return; }
         validationMessage = "";
 
-        performWrite(pathStr);
+        sections.confirmThenWrite(() -> performWrite(pathStr));
+    }
+
+    private String sectionTab(com.openmason.api.asset.AssetEditorSection<?> section) {
+        for (AssetSectionSet.Tab t : tabs) {
+            if (t.section() == section) return t.key();
+        }
+        return TAB_METADATA;
+    }
+
+    private String[] tabLabels() {
+        return tabs.stream().map(AssetSectionSet.Tab::label).toArray(String[]::new);
     }
 
     /** Show a save-blocking problem inline, jump to the offending tab and echo it to the status bar. */
-    private void rejectSave(String error, int tab) {
+    private void rejectSave(String error, String tabKey) {
         validationMessage = error;
-        selectedTab = tab;
+        selectedTab = 0;
+        for (int i = 0; i < tabs.size(); i++) {
+            if (tabs.get(i).key().equals(tabKey)) selectedTab = i;
+        }
         if (statusService != null) statusService.updateStatus("Cannot save: " + error);
     }
 
@@ -375,6 +435,7 @@ public class SBEEditorWindow {
             loadedManifest = edited;
             loadedStateAssetBytes = assetBytes;
             dirty = false;
+            sections.written();
             if (statusService != null) {
                 statusService.updateStatus("Saved SBE: " + currentPath.getFileName());
             }
@@ -384,12 +445,13 @@ public class SBEEditorWindow {
         return ok;
     }
 
+    /** The core form over the loaded manifest (entity type kept as loaded), then each section's form. */
     private SBEFormat.Document buildEditedDocument() {
-        return new SBEFormat.Document(
+        return sections.write(new SBEFormat.Document(
                 loadedManifest.version(),
                 objectId.get().trim(),
                 objectName.get().trim(),
-                SBEFormat.EntityType.values()[entityTypeIndex.get()].getId(),
+                loadedManifest.entityType(),
                 objectPack.get().trim(),
                 loadedManifest.checksum(), // recomputed by serializer
                 author.get().trim(),
@@ -399,15 +461,7 @@ public class SBEEditorWindow {
                 statesEditor.toStateEntries(),
                 variantsEditor.toVariantEntries(),
                 soundsEditor.toSoundData()
-        );
-    }
-
-    private static int indexOf(String[] arr, String value) {
-        if (value == null) return 0;
-        for (int i = 0; i < arr.length; i++) {
-            if (arr[i].equalsIgnoreCase(value)) return i;
-        }
-        return 0;
+        ));
     }
 
     /**
@@ -419,5 +473,6 @@ public class SBEEditorWindow {
         statesEditor.close();
         variantsEditor.close();
         soundsEditor.close();
+        sections.close();
     }
 }

@@ -1,17 +1,15 @@
 package com.openmason.main.systems.menus.dialogs;
 
+import com.openmason.api.asset.AssetEditorSection;
+import com.openmason.api.asset.AssetSectionHost;
+import com.openmason.api.asset.AssetSurface;
 import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.target.GameTargets;
 import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbe.AnimationCompatibility;
 import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParser;
 import com.openmason.engine.format.sbo.SBOSerializer;
-import com.openmason.main.systems.mcp.AssetExportBuilder;
-import com.openmason.main.systems.menus.dialogs.validation.NumericIdConflictPopup;
-import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
-import com.openmason.main.systems.menus.dialogs.validation.TakenIdsPopup;
 import com.openmason.main.systems.services.StatusService;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.themes.core.ThemeManager;
@@ -23,30 +21,25 @@ import imgui.flag.ImGuiWindowFlags;
 import imgui.type.ImBoolean;
 import imgui.type.ImInt;
 import imgui.type.ImString;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
  * Export "start screen" for Stonebreak Object ({@code .sbo}) files.
  *
- * <p>Collects the minimum an SBO needs to exist — identity, classification,
- * numeric ID and optional states — in the same chrome/tab layout as the
- * {@link SBOEditorWindow}, writes the file into the game's resource tree
- * ({@code sbo/blocks} / {@code sbo/items}) and then hands the new file to the
- * SBO editor so the remaining metadata (recipes, sounds, drops, ...) is
- * authored in place. Every field is reset on {@link #show()}; nothing leaks
- * between exports.
+ * <p>Collects the minimum an SBO needs to exist — identity, classification and
+ * optional states, plus whatever game data the plugins' {@link AssetEditorSection}s
+ * for {@link AssetSurface#SBO_EXPORT} add (#431; Stonebreak: the numeric id) — in
+ * the same chrome/tab layout as the {@link SBOEditorWindow}, writes the file into
+ * the game target's folder for the object type and then hands the new file to
+ * the SBO editor so the remaining metadata is authored in place. Every field is
+ * reset on {@link #show()}; nothing leaks between exports.
  *
  * <p>Two sources share this one window: the model viewer opens it with
  * {@link #show()} (payload = the current {@code .omo}), the Texture Editor with
@@ -65,7 +58,11 @@ public class SBOExportWindow {
     private static final String[] OBJECT_TYPE_LABELS = {
             "Block", "Item", "Entity", "Decoration", "Particle", "Other"
     };
-    private static final String[] TAB_LABELS = { "Metadata", "Game Properties", "States" };
+    private static final String TAB_METADATA = "core.metadata";
+    private static final String TAB_STATES = "core.states";
+    private static final List<AssetSectionSet.Tab> CORE_TABS = List.of(
+            new AssetSectionSet.Tab(TAB_METADATA, "Metadata", 0, null),
+            new AssetSectionSet.Tab(TAB_STATES, "States", 200, null));
 
     /** What the export wraps: the viewport model or the texture editor's canvas. */
     private enum Source { MODEL, TEXTURE }
@@ -77,8 +74,9 @@ public class SBOExportWindow {
     private final SBOSerializer serializer = new SBOSerializer();
     private final SBOStatesSection modelStates;
     private final SBOStatesSection textureStates;
-    private final NumericIdConflictPopup conflictPopup = new NumericIdConflictPopup();
-    private final TakenIdsPopup takenIdsPopup = new TakenIdsPopup();
+    /** Game-data sections contributed by plugins (#431). */
+    private final AssetSectionSet<SBOFormat.ExportParameters> sections;
+    private List<AssetSectionSet.Tab> tabs = CORE_TABS;
 
     /** Same Mortar chrome as the editors, in export mode. */
     private final EditorChrome chrome = new EditorChrome("sbo_export");
@@ -95,9 +93,6 @@ public class SBOExportWindow {
     private final ImString objectPack = new ImString(256);
     private final ImString author = new ImString(256);
     private final ImString description = new ImString(1024);
-    /** Required for blocks/items; -1 = no GameProperties block emitted. */
-    private final ImInt numericId = new ImInt(-1);
-    private int lastSuggestedDomainIndex = -1;
 
     private String validationMessage = "";
     private boolean centerOnNextFrame = false;
@@ -126,6 +121,32 @@ public class SBOExportWindow {
                 /* clipPicker */ null, // texture-only SBOs cannot carry animation clips
                 () -> omtPathSupplier.get()
         );
+        this.sections = new AssetSectionSet<>(AssetSurface.SBO_EXPORT, new AssetSectionHost() {
+            @Override
+            public AssetSurface<?> surface() {
+                return AssetSurface.SBO_EXPORT;
+            }
+
+            @Override
+            public String objectId() {
+                return objectId.get().trim();
+            }
+
+            @Override
+            public String objectType() {
+                return SBOFormat.ObjectType.values()[objectTypeIndex.get()].getId();
+            }
+
+            @Override
+            public boolean texturePayload() {
+                return textureSource();
+            }
+
+            @Override
+            public void markDirty() {
+                // an export form has no saved state
+            }
+        });
     }
 
     /** Wire the texture editor's current {@code .omt} (texture-context source). */
@@ -160,7 +181,8 @@ public class SBOExportWindow {
             objectTypeIndex.set(SBOFormat.ObjectType.ITEM.ordinal());
         }
         prepopulateFromSource();
-        suggestNumericIdForType();
+        sections.load(new SBOFormat.ExportParameters());
+        tabs = sections.tabs(CORE_TABS);
         visible.set(true);
         centerOnNextFrame = true;
         logger.debug("SBO export window shown ({} source)", source);
@@ -182,8 +204,6 @@ public class SBOExportWindow {
         objectPack.set("default");
         author.set("");
         description.set("");
-        numericId.set(-1);
-        lastSuggestedDomainIndex = -1;
         modelStates.reset();
         textureStates.reset();
         validationMessage = "";
@@ -215,20 +235,21 @@ public class SBOExportWindow {
         if (ImGui.begin(title, visible, ImGuiWindowFlags.NoCollapse)) {
             try {
                 selectedTab = chrome.renderExport(canExport(), sourceLabel(), "Export...",
-                        TAB_LABELS, selectedTab, this::performExport, this::hide);
+                        tabLabels(), selectedTab, this::performExport, this::hide);
                 ImGui.dummy(0, 6);
-                switch (selectedTab) {
-                    case 0 -> renderMetadataTab();
-                    case 1 -> renderGamePropertiesTab();
-                    case 2 -> renderStatesTab();
-                    default -> { }
+                AssetSectionSet.Tab tab = tabs.get(Math.min(selectedTab, tabs.size() - 1));
+                if (tab.section() != null) {
+                    sections.renderSection(tab.section());
+                } else if (TAB_METADATA.equals(tab.key())) {
+                    renderMetadataTab();
+                } else if (TAB_STATES.equals(tab.key())) {
+                    renderStatesTab();
                 }
                 if (!validationMessage.isEmpty()) {
                     ImGui.dummy(0, 8);
                     ThemedWidgets.inlineError(validationMessage);
                 }
-                conflictPopup.render();
-                takenIdsPopup.render();
+                sections.renderOverlays();
             } catch (Exception e) {
                 logger.error("Error rendering SBO export window", e);
                 ThemedWidgets.statusText(Tone.ERROR, "Error rendering export window");
@@ -275,11 +296,10 @@ public class SBOExportWindow {
         ImGui.inputTextWithHint("Object Name", "e.g. Oak Planks", objectName);
 
         ThemedWidgets.sectionLabel("Classification");
-        if (renderObjectTypeCombo()) {
-            suggestNumericIdForType();
-        }
+        renderObjectTypeCombo();
         ImGui.textDisabled("Exports into " + describeTargetFolder());
         ImGui.inputTextWithHint("Pack", "e.g. default, expansion_1", objectPack);
+        sections.renderMetadataSections();
 
         ThemedWidgets.sectionLabel("Attribution");
         ImGui.inputTextWithHint("Author", "Creator name or studio", author);
@@ -300,7 +320,7 @@ public class SBOExportWindow {
         boolean changed = false;
         if (ImGui.beginCombo("Object Type", OBJECT_TYPE_LABELS[objectTypeIndex.get()])) {
             for (int i = 0; i < OBJECT_TYPE_LABELS.length; i++) {
-                boolean allowed = AssetExportBuilder.textureObjectTypeAllowed(SBOFormat.ObjectType.values()[i]);
+                boolean allowed = textureObjectTypeAllowed(SBOFormat.ObjectType.values()[i]);
                 int flags = allowed ? ImGuiSelectableFlags.None : ImGuiSelectableFlags.Disabled;
                 if (ImGui.selectable(OBJECT_TYPE_LABELS[i], i == objectTypeIndex.get(), flags)
                         && i != objectTypeIndex.get()) {
@@ -316,46 +336,16 @@ public class SBOExportWindow {
         return changed;
     }
 
-    private void renderGamePropertiesTab() {
-        ThemedWidgets.sectionLabel("Identity");
-        ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
-        ImGui.inputInt("Numeric ID", numericId);
-        ImGui.popItemWidth();
-        ImGui.sameLine();
-        if (ImGui.smallButton(EditorWidgets.TAKEN_IDS_LABEL + "##exp_taken")) {
-            takenIdsPopup.open(currentDomain());
-        }
-        ImGui.textDisabled(numericIdRequired()
-                ? blockSelected()
-                        ? "Required for blocks - unique across all blocks (chunk saves reference it)."
-                        : "Required for sprite items - unique across all items (ItemRegistry keys on it)."
-                : currentDomain() == NumericIdValidator.Domain.ITEM
-                        ? "Unique across all items; -1 skips the gameProperties block."
-                        : "Optional for this object type; -1 skips the gameProperties block.");
-        renderConflictHint();
-
-        ThemedWidgets.sectionLabel("Defaults");
-        ImGui.textDisabled(textureSource()
-                ? "Hardness 0, not solid, CUTOUT layer, max stack 64, TOOLS category, no atlas tile."
-                : blockSelected()
-                        ? "Hardness 1.0, solid, breakable, OPAQUE layer, first free atlas tile."
-                        : "Hardness 1.0, stackable x64, MATERIALS category.");
-        ImGui.textDisabled("Everything else (recipes, smelting, sounds, drops) is authored in the");
-        ImGui.textDisabled("SBO Editor, which opens automatically after the export.");
+    /**
+     * Whether a texture-only SBO may have this object type: blocks and entities need a model
+     * (a texture payload has no mesh). Shared with the {@code sbo_export} MCP tool.
+     */
+    public static boolean textureObjectTypeAllowed(SBOFormat.ObjectType type) {
+        return type != SBOFormat.ObjectType.BLOCK && type != SBOFormat.ObjectType.ENTITY;
     }
 
     private void renderStatesTab() {
         states().render();
-    }
-
-    private void renderConflictHint() {
-        NumericIdValidator.Domain domain = currentDomain();
-        if (domain == NumericIdValidator.Domain.NONE) return;
-        NumericIdValidator.Result result = NumericIdValidator.validate(
-                domain, numericId.get(), objectId.get().trim());
-        if (result instanceof NumericIdValidator.Result.Conflict c) {
-            ThemedWidgets.inlineError("ID " + c.numericId() + " taken by " + c.existingObjectId());
-        }
     }
 
     private String describeTargetFolder() {
@@ -369,31 +359,23 @@ public class SBOExportWindow {
         return root != null && dir.startsWith(root) ? root.relativize(dir).toString() : dir.toString();
     }
 
-    private NumericIdValidator.Domain currentDomain() {
-        return NumericIdValidator.domainFor(OBJECT_TYPE_LABELS[objectTypeIndex.get()]);
+    private String[] tabLabels() {
+        return tabs.stream().map(AssetSectionSet.Tab::label).toArray(String[]::new);
     }
 
-    private boolean blockSelected() {
-        return currentDomain() == NumericIdValidator.Domain.BLOCK;
+    private int tabIndex(String key) {
+        for (int i = 0; i < tabs.size(); i++) {
+            if (tabs.get(i).key().equals(key)) return i;
+        }
+        return 0;
     }
 
-    /** Blocks (chunk saves) and texture items (ItemRegistry) cannot load without an ID. */
-    private boolean numericIdRequired() {
-        return blockSelected()
-                || (textureSource() && currentDomain() == NumericIdValidator.Domain.ITEM);
-    }
-
-    /**
-     * Re-suggest the numeric ID whenever the type's ID domain changes, so a
-     * block gets the next free block ID and an item the next free item ID.
-     * Engine sentinels without an SBO (water = 8) are excluded by the validator.
-     */
-    private void suggestNumericIdForType() {
-        NumericIdValidator.Domain domain = currentDomain();
-        int domainIndex = domain.ordinal();
-        if (domainIndex == lastSuggestedDomainIndex) return;
-        lastSuggestedDomainIndex = domainIndex;
-        numericId.set(NumericIdValidator.suggestNextFreeId(domain));
+    /** The tab showing {@code section} (Metadata for metadata-placed sections). */
+    private int tabOf(AssetEditorSection<?> section) {
+        for (int i = 0; i < tabs.size(); i++) {
+            if (tabs.get(i).section() == section) return i;
+        }
+        return tabIndex(TAB_METADATA);
     }
 
     // ========================================
@@ -413,21 +395,13 @@ public class SBOExportWindow {
     }
 
     private void performExport() {
-        if (numericIdRequired() && numericId.get() <= 0) {
-            validationMessage = blockSelected()
-                    ? "Numeric ID must be > 0 for blocks (required for chunk save references)"
-                    : "Numeric ID must be > 0 for items (required for ItemRegistry to load this SBO)";
-            selectedTab = 1;
+        AssetSectionSet.Problem problem = sections.firstError();
+        if (problem != null) {
+            validationMessage = problem.message();
+            selectedTab = tabOf(problem.section());
             return;
         }
-
-        NumericIdValidator.Result vr = NumericIdValidator.validate(
-                currentDomain(), numericId.get(), objectId.get().trim());
-        if (vr instanceof NumericIdValidator.Result.Conflict c) {
-            conflictPopup.open(c, this::performExportConfirmed);
-            return;
-        }
-        performExportConfirmed();
+        sections.confirmThenWrite(this::performExportConfirmed);
     }
 
     /** Mirrors the metadata half of {@code ExportParameters.getValidationError()}. */
@@ -442,7 +416,7 @@ public class SBOExportWindow {
         if (!params.isValid()) {
             validationMessage = params.getValidationError();
             // Identity/attribution errors live on Metadata; everything after them is a States error
-            selectedTab = hasMetadataGaps(params) ? 0 : 2;
+            selectedTab = tabIndex(hasMetadataGaps(params) ? TAB_METADATA : TAB_STATES);
             return;
         }
         validationMessage = "";
@@ -474,7 +448,7 @@ public class SBOExportWindow {
             String compatError = validateClipCompatibility(params);
             if (compatError != null) {
                 validationMessage = compatError;
-                selectedTab = 2;
+                selectedTab = tabIndex(TAB_STATES);
                 statusService.updateStatus("Export blocked: animation/model mismatch");
                 return;
             }
@@ -482,6 +456,7 @@ public class SBOExportWindow {
 
         String typeLabel = OBJECT_TYPE_LABELS[objectTypeIndex.get()];
         String targetDir = GameTargets.shared().folderPathFor(BuiltinFileTypes.SBO.id(), typeLabel);
+        Runnable written = sections::written;
         String fileName = GameTargets.shared().suggestedFileName(objectName.get(), "sbo", "object.sbo");
 
         fileDialogService.showSaveSBODialog(fileName, targetDir, filePath -> {
@@ -492,6 +467,7 @@ public class SBOExportWindow {
                 statusService.updateStatus("Exported SBO: " + Path.of(filePath).getFileName());
                 logger.info("SBO export successful: {}", filePath);
                 visible.set(false);
+                written.run();
                 onExported.accept(filePath);
             } else {
                 validationMessage = "Export failed. Check logs for details.";
@@ -547,23 +523,7 @@ public class SBOExportWindow {
             params.setStates(states.toStateSpecs());
             params.setDefaultStateName(states.getDefaultStateName());
         }
-        if (numericId.get() >= 0) {
-            params.setGameProperties(buildDefaultGameProperties());
-        }
-        return params;
-    }
-
-    /**
-     * Minimal {@code GameProperties} populated from the form's Numeric ID and
-     * the defaults for the selected object type and source, shared with the
-     * MCP {@code sbo_export} path through {@link AssetExportBuilder}. The full
-     * set of properties (atlas coords, hardness, render layer, etc.) is
-     * authored later via the SBO Editor.
-     */
-    private SBOFormat.GameProperties buildDefaultGameProperties() {
-        return textureSource()
-                ? AssetExportBuilder.spriteGameProperties(null, numericId.get())
-                : AssetExportBuilder.gameProperties(null, blockSelected(), numericId.get());
+        return sections.write(params);
     }
 
     /** Release the Mortar chrome region. Must run with a current GL context. */
@@ -571,105 +531,6 @@ public class SBOExportWindow {
         chrome.close();
         modelStates.close();
         textureStates.close();
-    }
-
-    /**
-     * Return the first free {@code [tileX, tileY]} on the texture atlas in
-     * row-major order. Occupancy is computed fresh on every call as the
-     * union of:
-     * <ul>
-     *   <li>baked entries in {@code texture atlas/atlas_metadata.json}</li>
-     *   <li>declared {@code atlasX/atlasY} (≥ 0) in every {@code .sbo} file
-     *       currently in {@code sbo/blocks/} on disk</li>
-     * </ul>
-     *
-     * <p>Because the SBO scan reads the live filesystem (via
-     * {@link SBOObjectIndex#discover}), back-to-back exports automatically
-     * see prior writes, and deleted SBOs free their slot. No in-memory
-     * reservation needed.
-     *
-     * <p>Returns {@code [-1, -1]} when the atlas is fully occupied or the
-     * metadata is unreachable — callers should treat that as "no slot" and
-     * rely on the game's runtime dynamic allocator.
-     */
-    public static int[] findFreeAtlasSlot() {
-        var target = GameTargets.shared().active();
-        if (target.isEmpty()) {
-            return new int[]{-1, -1};
-        }
-        // The game target's atlas (#382: read from its resources, not the tool's class path).
-        try (InputStream in = target.get().resources().open("texture atlas/atlas_metadata.json")) {
-            JsonNode root = new ObjectMapper().readTree(in);
-            int tileSize = Math.max(1, root.path("textureSize").asInt(16));
-            JsonNode size = root.path("atlasSize");
-            int cols = Math.max(1, size.path("width").asInt(256) / tileSize);
-            int rows = Math.max(1, size.path("height").asInt(256) / tileSize);
-
-            Set<Long> occupied = new HashSet<>();
-            markBakedTiles(root.path("textures"), tileSize, cols, rows, occupied);
-            markSboDeclaredTiles(cols, rows, occupied);
-
-            for (int r = 0; r < rows; r++) {
-                for (int c = 0; c < cols; c++) {
-                    if (!occupied.contains(((long) r << 32) | (c & 0xFFFFFFFFL))) {
-                        return new int[]{c, r};
-                    }
-                }
-            }
-            logger.warn("Atlas is fully occupied — defaulting atlasX/Y to -1");
-        } catch (java.io.FileNotFoundException e) {
-            logger.debug("No atlas_metadata.json in the game target — defaulting atlasX/Y to -1");
-        } catch (IOException e) {
-            logger.warn("Failed to scan atlas_metadata.json for free slot — defaulting atlasX/Y to -1", e);
-        }
-        return new int[]{-1, -1};
-    }
-
-    /**
-     * Mark every tile covered by a baked {@code atlas_metadata.json} entry.
-     * Off-grid pixel rects are rounded out to all tiles they touch.
-     */
-    private static void markBakedTiles(JsonNode textures, int tileSize, int cols, int rows, Set<Long> occupied) {
-        Iterator<JsonNode> it = textures.elements();
-        while (it.hasNext()) {
-            JsonNode entry = it.next();
-            int x = entry.path("x").asInt(-1);
-            int y = entry.path("y").asInt(-1);
-            if (x < 0 || y < 0) continue;
-            int w = Math.max(1, entry.path("width").asInt(tileSize));
-            int h = Math.max(1, entry.path("height").asInt(tileSize));
-            int c0 = x / tileSize;
-            int r0 = y / tileSize;
-            int c1 = (x + w - 1) / tileSize;
-            int r1 = (y + h - 1) / tileSize;
-            for (int r = r0; r <= r1 && r < rows; r++) {
-                for (int c = c0; c <= c1 && c < cols; c++) {
-                    occupied.add(((long) r << 32) | (c & 0xFFFFFFFFL));
-                }
-            }
-        }
-    }
-
-    /**
-     * Mark the tile declared by each block {@code .sbo} of the game target whose
-     * {@code gameProperties.atlasX/atlasY} are both ≥ 0. Unreadable files are
-     * skipped — best-effort, since one bad file shouldn't block exporting.
-     */
-    private static void markSboDeclaredTiles(int cols, int rows, Set<Long> occupied) {
-        SBOParser parser = new SBOParser();
-        for (Path path : SBOObjectIndex.listAll().stream()
-                .filter(SBOObjectIndex.Entry::isBlock).map(SBOObjectIndex.Entry::sourcePath).toList()) {
-            try {
-                SBOParser.RawParse raw = parser.parseRaw(path);
-                SBOFormat.GameProperties gp = raw.manifest().gameProperties();
-                if (gp == null) continue;
-                int c = gp.atlasX();
-                int r = gp.atlasY();
-                if (c < 0 || r < 0 || c >= cols || r >= rows) continue;
-                occupied.add(((long) r << 32) | (c & 0xFFFFFFFFL));
-            } catch (IOException ignored) {
-                // best-effort; skip unreadable SBOs
-            }
-        }
+        sections.close();
     }
 }

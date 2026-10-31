@@ -11,6 +11,10 @@ module openmason.plugin.stonebreak {
     requires org.lwjgl.opengl;
     requires org.joml;
     requires io.github.humbleui.skija.shared;
+    requires io.github.humbleui.types;
+    requires imgui.binding;
+    requires com.fasterxml.jackson.databind;
+    requires java.desktop;
     requires org.slf4j;
 
     provides com.openmason.api.OpenMasonPlugin with com.stonebreak.openmason.StonebreakPlugin;

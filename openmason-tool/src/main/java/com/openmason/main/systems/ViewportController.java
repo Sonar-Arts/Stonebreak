@@ -1062,12 +1062,12 @@ public class ViewportController {
     }
 
     /**
-     * The .SBT content the viewport can draw, as a content provider for the Stonebreak plugin to
-     * register (the plugin draws game items itself, #382). They forward to the render pipeline once it exists (before
+     * The .SBT content the viewport can draw, as a content provider the core registers (#431; a
+     * game plugin draws its items itself, #382). They forward to the render pipeline once it exists (before
      * that they are never ready).
      */
     public java.util.List<com.openmason.api.viewport.ViewportContentProvider> builtinContentProviders() {
-        return java.util.List.of(builtinContent("stonebreak.sbt", "Stonebreak texture (.SBT)"));
+        return java.util.List.of(builtinContent("openmason.sbt", "SBT texture sprite"));
     }
 
     private com.openmason.api.viewport.ViewportContentProvider builtinContent(String id, String label) {

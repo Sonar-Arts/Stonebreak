@@ -1,5 +1,6 @@
 package com.openmason.api;
 
+import com.openmason.api.asset.AssetSectionContribution;
 import com.openmason.api.files.FileOpener;
 import com.openmason.api.files.FileType;
 import com.openmason.api.knowledge.GuideTopic;
@@ -61,6 +62,9 @@ public interface PluginContext {
 
     /** Preferences window pages. */
     Registrar<PreferencePage> preferencePages();
+
+    /** Game-data sections of the SBO/SBE editor and export windows (#431). */
+    Registrar<AssetSectionContribution<?>> assetSections();
 
     /** Non-model content for the Model Editor viewport. */
     Registrar<ViewportContentProvider> viewportContent();
