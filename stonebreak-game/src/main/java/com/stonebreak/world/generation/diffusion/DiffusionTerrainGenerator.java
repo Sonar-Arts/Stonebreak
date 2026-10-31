@@ -1063,7 +1063,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
             case RED_SAND_DESERT, BADLANDS -> BlockType.RED_SAND;
             case PLAINS, MEADOW -> BlockType.GRASS;
             case SWAMP -> BlockType.SWAMPY_GRASS;
-            case SHADE -> BlockType.DRY_GRASS;   // never mapped from the model; the switch is exhaustive
+            case SHADE -> BlockType.DRY_GRASS;
             case SNOWY_PLAINS, TAIGA, TUNDRA -> BlockType.SNOWY_DIRT;
             case STONY_PEAKS -> BlockType.STONE;
             case ICE_FIELDS -> BlockType.ICE;

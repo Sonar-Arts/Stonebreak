@@ -14,7 +14,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * sibling of terrain-diffusion-mc's {@code BiomeClassifier.java}) — climate
  * classification already happened server-side before the tile ever reaches
  * Java, so this class is a lookup table, not a second classifier. Stonebreak
- * has 11 biomes against the classifier's ~20+, so the mapping is necessarily
+ * has fewer biomes than the classifier's ~20+, so the mapping is necessarily
  * lossy; choices below favor preserving each Stonebreak biome's distinctive
  * mechanic (TAIGA/SNOWY_PLAINS/MEADOW/PLAINS tree density in
  * {@code VegetationGenerator}, RED_SAND_DESERT's magma pockets in
@@ -99,6 +99,10 @@ final class DiffusionBiomeMapper {
             // red_desert (DaedalusTGM-Exp id 205): a WHOLE desert the model decided is red, one decision per
             // desert (terrain_slm generator.red_desert_cells), so red sand never comes in patches.
             case 205 -> BiomeType.RED_SAND_DESERT;
+            // shade (DaedalusTGM-Exp id 206): patches of the Shade's own noise over dry temperate sparse forest and
+            // steppe (biomes.py apply_shade, 2026-10-31), Standard's dry temperate woodland. Never the model's forest
+            // or swamp: its moisture window ends far below theirs.
+            case 206 -> BiomeType.SHADE;
             // swamp: patches overlaid on wet, mild, low-lying forest (biomes.py apply_swamps, 2026-10-18), never
             // near the snow line. Was MEADOW, which hid the model's swamps entirely (2026-10-11); SWAMP brings
             // swampy grass, pools and cypress.

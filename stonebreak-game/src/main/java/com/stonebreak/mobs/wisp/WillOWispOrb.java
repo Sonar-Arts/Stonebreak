@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.wisp;
 
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
@@ -85,6 +86,12 @@ public final class WillOWispOrb extends FireBolt {
         float a = (float) Math.sin((1f - t) * angle) / sin;
         float b = (float) Math.sin(t * angle) / sin;
         dir.set(dir.x * a + goal.x * b, dir.y * a + goal.y * b, dir.z * a + goal.z * b).normalize();
+    }
+
+    /** It drifts through leaves as through air: a Wisp throws from the canopy it sees through. */
+    @Override
+    protected boolean passesThrough(BlockType block) {
+        return block == BlockType.AIR || block.isLeaves();
     }
 
     /** Burns the first player it passes through. */

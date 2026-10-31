@@ -127,6 +127,11 @@ public final class AiContext {
         return players.canSeePlayer(targetId(), entity.getPosition(), eye);
     }
 
+    /** {@link #canSeeTarget}, with leaves no bar to the view. */
+    public boolean canSeeTargetThroughLeaves(Vector3f eye) {
+        return players.canSeePlayerThroughLeaves(targetId(), entity.getPosition(), eye);
+    }
+
     /** Lands a blow from this mob on {@link #targetPlayer()}; see {@link PlayerLocator#hurtPlayer}. */
     public boolean hurtTarget(float amount, float knockback) {
         return players.hurtPlayer(targetId(), entity.getPosition(), amount, knockback);

@@ -84,7 +84,7 @@ final class WispCorneredBehavior extends WispBehavior {
                     landed = false;
                     wisp.emit("scratch");
                 } else if (senses.distance() <= tuning().castRange() && elapsed >= castReadyAt
-                        && context.canSeeTarget(handPosition(scratch))) {
+                        && context.canSeeTargetThroughLeaves(handPosition(scratch))) {
                     enter(Phase.CAST);
                     landed = false;
                     wisp.emit("cast");

@@ -18,6 +18,6 @@ public enum BiomeType {
     /** Open sea floor: every submerged column in Standard, the ocean ids in DaedalusTGM-Exp. Appended last: ordinals of existing biomes stay put. */
     OCEAN,
     SWAMP,
-    /** "The Shade": dry temperate woodland of dry oaks under a night ground fog. Standard only. */
+    /** "The Shade": dry temperate woodland of dry oaks under a night ground fog. In DaedalusTGM-Exp, id 206. */
     SHADE
 }

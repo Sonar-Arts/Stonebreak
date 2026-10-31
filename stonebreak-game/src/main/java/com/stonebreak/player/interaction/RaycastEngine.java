@@ -186,6 +186,15 @@ public class RaycastEngine {
      * {@link Float#MAX_VALUE} if the ray is clear out to {@code maxDistance}.
      */
     public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+        return distanceToFirstSolid(origin, direction, maxDistance, false);
+    }
+
+    /**
+     * {@link #distanceToFirstSolid(Vector3f, Vector3f, float)}, optionally looking through leaves —
+     * for eyes that make a player out between the twigs, where a block-solid view would not.
+     */
+    public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance,
+                                      boolean throughLeaves) {
         List<PanelTarget> panels = doorPanelsNear(origin, maxDistance);
         List<float[]> sceneBoxes = world.getStaticCollisionBoxes(origin, maxDistance);
         for (float d = 0; d < maxDistance; d += STEP_SIZE) {
@@ -203,6 +212,7 @@ public class RaycastEngine {
             int bz = (int) Math.floor(p.z);
             BlockType bt = world.getBlockAt(bx, by, bz);
             if (bt != BlockType.AIR && bt != BlockType.WATER
+                    && !(throughLeaves && bt.isLeaves())
                     && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)
                     && fillsPoint(bt, p, bx, by, bz)) {
                 return d;

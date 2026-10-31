@@ -40,8 +40,9 @@ from terrain_slm.river.scale import NATIVE_M, BlockScale
 from terrain_slm.world.world_config import WorldConfig
 
 PLANES = 6
-#: Majority window (samples) that cleans specks and pinholes out of the swamp overlay (radius 5, far inside BLOCK_MARGIN).
-SWAMP_SMOOTH = 11
+#: Majority window (samples) that cleans specks and pinholes out of the swamp and Shade overlays (radius 5, far
+#: inside BLOCK_MARGIN).
+OVERLAY_SMOOTH = 11
 #: At a whole cell (8 native px) or coarser per sample, tiles come from the cells alone.
 OVERVIEW_MIN_PX = CELL_PX
 # D8 class (drow, dcol) -> flow octant (0 = +x, toward +z); class 8 = terminal. Must match data/build.py.
@@ -134,10 +135,12 @@ class TileBuilder:
             biome = torch.where(ocean, rule, torch.where(biome == B.SWAMP_ID, clean, biome))
         else:
             biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=NATIVE_M * d)
-        # Swamp candidates are per column, so smoothing them over tile + margin is request-independent.
+        # Swamp and Shade candidates are per column, so smoothing them over tile + margin is request-independent.
         regional = F.avg_pool2d(regional[None, None], d)[0, 0]
-        swamps = B.smooth_mask(B.swamp_candidates(elev, regional, climate, i1 - mb, j1 - mb), SWAMP_SMOOTH)
+        swamps = B.smooth_mask(B.swamp_candidates(elev, regional, climate, i1 - mb, j1 - mb), OVERLAY_SMOOTH)
         biome = B.apply_swamps(biome, crop(swamps))
+        shade = B.smooth_mask(B.shade_candidates(elev, climate, i1 - mb, j1 - mb), OVERLAY_SMOOTH)
+        biome = B.apply_shade(biome, crop(shade))
         biome = self._red_deserts(biome, i1, j1, d)
         river = tuple(crop(p).long() for p in (cols.floor, cols.roof, cols.flow))
         return crop(cols.height).long(), biome, crop(cols.water).long(), crop(cols.wet), river
@@ -191,10 +194,12 @@ class TileBuilder:
         crop = lambda x: x[..., 1:-1, 1:-1]
         biome = B._classify_biome(crop(elev_m), crop(pool(c["climate"])), i1, j1, elev_padded=elev_m,
                                   pixel_size_m=NATIVE_M * d)
-        # Swamp noise in block coordinates (lod blocks per sample), so far-zoom swamps sit where tiles put them.
+        # Overlay noise in block coordinates (lod blocks per sample), so far-zoom swamps and Shade sit where tiles put them.
         lod = d // self.world.downscale
         swamps = B.swamp_candidates(crop(elev_m), crop(pool(c["regional"][None])[0]), crop(pool(c["climate"])),
                                     i1 * lod, j1 * lod, step=lod)
         biome = B.apply_swamps(biome, swamps)
+        biome = B.apply_shade(biome, B.shade_candidates(crop(elev_m), crop(pool(c["climate"])), i1 * lod, j1 * lod,
+                                                        step=lod))
         biome = self._red_deserts(biome, i1, j1, d)
         return crop(hb), biome, crop(hb + 1), crop(wet), (crop(none), crop(none), crop(flow))

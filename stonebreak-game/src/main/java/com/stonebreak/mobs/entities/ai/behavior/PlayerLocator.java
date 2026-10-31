@@ -120,6 +120,14 @@ public interface PlayerLocator {
         return canSeeNearestPlayer(from, eye);
     }
 
+    /**
+     * {@link #canSeePlayer}, but leaves do not block the view — for a mob at home in the canopy
+     * that makes its victim out through the foliage.
+     */
+    default boolean canSeePlayerThroughLeaves(int id, Vector3f from, Vector3f eye) {
+        return canSeePlayer(id, from, eye);
+    }
+
     /** Hurts player {@code id}, shoved away from {@code from}; see {@link #hurtNearestPlayer}. */
     default boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
         return hurtNearestPlayer(from, amount, knockback);
@@ -207,6 +215,11 @@ public interface PlayerLocator {
             @Override
             public boolean canSeePlayer(int id, Vector3f from, Vector3f eye) {
                 return players().canSeePlayer(id, from, eye);
+            }
+
+            @Override
+            public boolean canSeePlayerThroughLeaves(int id, Vector3f from, Vector3f eye) {
+                return players().canSeePlayerThroughLeaves(id, from, eye);
             }
 
             @Override

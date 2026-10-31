@@ -99,7 +99,7 @@ public class FireBolt extends Entity {
                     (int) Math.floor(newPos.x),
                     (int) Math.floor(newPos.y),
                     (int) Math.floor(newPos.z));
-            if (block != null && block != BlockType.AIR) {
+            if (block != null && !passesThrough(block)) {
                 impact();
                 return;
             }
@@ -133,6 +133,11 @@ public class FireBolt extends Entity {
 
     /** Turns {@link #direction} before this tick's move; the staff's bolt flies straight. */
     protected void steer(float deltaTime) {
+    }
+
+    /** Whether the bolt flies on through {@code block} rather than bursting on it. */
+    protected boolean passesThrough(BlockType block) {
+        return block == BlockType.AIR;
     }
 
     /**

@@ -89,7 +89,7 @@ final class WispKiteAndCastBehavior extends WispBehavior {
                 } else {
                     context.steering().stopMoving();
                 }
-                if (context.canSeeTarget(handPosition(scratch))) {
+                if (context.canSeeTargetThroughLeaves(handPosition(scratch))) {
                     phase = Phase.CAST;
                     elapsed = 0f;
                     released = false;

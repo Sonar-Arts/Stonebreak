@@ -13,9 +13,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * cell's Shade coverage (blurred over {@link #BLUR_CELLS} so the fog's edge is soft) and
  * its ground height. Built on a worker thread whenever the camera strays
  * {@link #REBUILD_DISTANCE} blocks from the grid's centre, or the world changes.
- *
- * <p>Only Standard terrain ever answers SHADE, so in a Daedalus world every grid comes
- * back without Shade and the fog never draws.</p>
  */
 public final class ShadeFogMap implements AutoCloseable {
 

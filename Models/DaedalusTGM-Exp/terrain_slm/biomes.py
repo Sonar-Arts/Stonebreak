@@ -19,6 +19,7 @@ from pyfastnoiselite.pyfastnoiselite import FastNoiseLite, NoiseType, FractalTyp
 
 
 RED_DESERT_ID = 205   # a desert that came out red (generator.red_desert_cells); game: RED_SAND_DESERT
+SHADE_ID = 206        # the Shade, dry temperate woodland (apply_shade); game: SHADE
 OCEAN_IDS = (41, 44, 46, 48)   # warm_ocean, ocean, cold_ocean, frozen_ocean (assigned by literal in the ocean branch)
 HYPER_ARID_PRECIP_MM = 250.0   # v4: below this (or "too arid") treeless land is desert at any temperature
 
@@ -548,6 +549,23 @@ def _noise(n: FastNoiseLite, i0: int, j0: int, h: int, w: int, step: int = 1) ->
     return n.gen_from_coords(np.array([xx.ravel(), yy.ravel()], dtype=np.float32)).astype(np.float32).reshape(h, w)
 
 
+def _noise_sampler(elev: torch.Tensor, climate: torch.Tensor, i0: int, j0: int, step: int):
+    """noise field -> (H, W) tensor on elev's grid, device and climate's dtype."""
+    h, w = elev.shape
+    return lambda n: torch.from_numpy(_noise(n, i0, j0, h, w, step)).to(device=elev.device, dtype=climate.dtype)
+
+
+def _noisy_climate(climate: torch.Tensor, t):
+    """(temp, snow_temp, effective tree moisture, climate vars): the classifier's own noisy climate, so an
+    overlay agrees with its snow line and forest classes. `t` samples a noise field (_noise_sampler)."""
+    temp = climate[0] + 0.4 * t(_TEMP_NOISE) + 0.2 * t(_TEMP_NOISE_FINE)
+    precip = torch.clamp(climate[2], min=0.0) * (1.0 + 0.2 * t(_PRECIP_NOISE))
+    snow_temp = temp + 3.0 * t(_SNOW_NOISE) + 2.0 * t(_SNOW_NOISE_FINE)
+    cv = _compute_climate_vars(temp, climate[1], precip, climate[3])
+    moisture = cv['tree_moisture'] * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0)
+    return temp, snow_temp, moisture, cv
+
+
 def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.Tensor,
                      i0: int, j0: int, step: int = 1) -> torch.Tensor:
     """(H, W) bool: columns where a swamp may be, from climate, elevation and coordinates alone.
@@ -556,15 +574,8 @@ def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.
     `regional` in metres, `climate` exactly as `_classify_biome` takes it, (i0, j0) its noise origin and
     `step` the noise coordinates between samples.
     The host biome is checked separately (apply_swamps)."""
-    h, w = elev.shape
-    dev, dt = elev.device, climate.dtype
-    t = lambda n: torch.from_numpy(_noise(n, i0, j0, h, w, step)).to(device=dev, dtype=dt)
-    # The classifier's own noisy climate, so this agrees with its snow line and forest classes.
-    temp = climate[0] + 0.4 * t(_TEMP_NOISE) + 0.2 * t(_TEMP_NOISE_FINE)
-    precip = torch.clamp(climate[2], min=0.0) * (1.0 + 0.2 * t(_PRECIP_NOISE))
-    snow_temp = temp + 3.0 * t(_SNOW_NOISE) + 2.0 * t(_SNOW_NOISE_FINE)
-    cv = _compute_climate_vars(temp, climate[1], precip, climate[3])
-    moisture = cv['tree_moisture'] * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0)
+    t = _noise_sampler(elev, climate, i0, j0, step)
+    temp, snow_temp, moisture, cv = _noisy_climate(climate, t)
 
     wet = ((moisture - SWAMP_MIN_MOISTURE) / (SWAMP_FULL_MOISTURE - SWAMP_MIN_MOISTURE)).clamp(0.0, 1.0)
     threshold = SWAMP_PATCH_DRY + (SWAMP_PATCH_WET - SWAMP_PATCH_DRY) * wet
@@ -595,3 +606,47 @@ def apply_swamps(biome: torch.Tensor, candidates: torch.Tensor) -> torch.Tensor:
     never on snow, taiga, desert, peaks or sea."""
     host = torch.isin(biome, torch.tensor(SWAMP_HOST_IDS, device=biome.device, dtype=biome.dtype))
     return torch.where(candidates & host, torch.full_like(biome, SWAMP_ID), biome)
+
+
+# ============================================================
+# THE SHADE (DaedalusTGM-Exp, 2026-10-31): Stonebreak's dry temperate woodland, an overlay like swamps
+# ============================================================
+# Standard carves the Shade out of the dry half of temperate grassland (BiomeSelector.isShade). Here that
+# ground is the rule's temperate sparse forest and the wetter edge of its steppe plains: patches of a
+# dedicated noise field inside it, so the woods' outlines follow the noise, not an isohyet. Its moisture
+# window ends far below SWAMP_MIN_MOISTURE, so a column is never a candidate for both.
+SHADE_HOST_IDS = (_BIOME_ID["forest_sparse"], _BIOME_ID["plains"])
+SHADE_MIN_TEMP_C = 12.0       # noisy mean annual temperature: the classifier's temperate band ...
+SHADE_MAX_TEMP_C = 20.0       # ... and not warm (warm sparse forest is savanna country)
+SHADE_MIN_MOISTURE = 0.15     # effective tree moisture: the wettest steppe ...
+SHADE_MAX_MOISTURE = 0.55     # ... up to the dry half of the woodland; forest proper (>= 0.5-0.8) stays forest
+SHADE_SNOW_MARGIN_C = 6.0     # as swamps: no dry oaks beside the snow line
+SHADE_PATCH = 0.0             # patch noise threshold (about half of eligible land)
+
+_SHADE_NOISE = FastNoiseLite(seed=66666)
+_SHADE_NOISE.noise_type = NoiseType.NoiseType_Perlin
+_SHADE_NOISE.frequency = 1.0 / 480.0  # woods a few hundred blocks to ~2 km across
+_SHADE_NOISE.fractal_type = FractalType.FractalType_FBm
+_SHADE_NOISE.fractal_octaves = 3
+_SHADE_NOISE.fractal_lacunarity = 2.0
+_SHADE_NOISE.fractal_gain = 0.5
+
+
+def shade_candidates(elev: torch.Tensor, climate: torch.Tensor, i0: int, j0: int, step: int = 1) -> torch.Tensor:
+    """(H, W) bool: columns where the Shade may be, from climate, elevation and coordinates alone.
+
+    Per column (no neighbourhood), so callers may smooth it over a margin without seams. Arguments as
+    swamp_candidates. The host biome is checked separately (apply_shade)."""
+    t = _noise_sampler(elev, climate, i0, j0, step)
+    temp, snow_temp, moisture, cv = _noisy_climate(climate, t)
+    return ((t(_SHADE_NOISE) > SHADE_PATCH)
+            & (temp >= SHADE_MIN_TEMP_C) & (temp < SHADE_MAX_TEMP_C)
+            & (moisture >= SHADE_MIN_MOISTURE) & (moisture < SHADE_MAX_MOISTURE)
+            & (snow_temp >= SHADE_SNOW_MARGIN_C) & ~cv['hard_frost'] & (elev >= 0.0))
+
+
+def apply_shade(biome: torch.Tensor, candidates: torch.Tensor) -> torch.Tensor:
+    """The Shade where a candidate column's classified biome is a host (sparse forest, plains):
+    never on forest, jungle, taiga, snow, desert, peaks, swamp or sea."""
+    host = torch.isin(biome, torch.tensor(SHADE_HOST_IDS, device=biome.device, dtype=biome.dtype))
+    return torch.where(candidates & host, torch.full_like(biome, SHADE_ID), biome)

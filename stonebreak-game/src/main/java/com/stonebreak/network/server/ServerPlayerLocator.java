@@ -81,7 +81,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
     /** Nothing solid between {@code eye} and the nearest player's chest. */
     @Override
     public boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
-        return canSee(nearest(from), eye);
+        return canSee(nearest(from), eye, false);
     }
 
     @Override
@@ -107,10 +107,15 @@ public final class ServerPlayerLocator implements PlayerLocator {
 
     @Override
     public boolean canSeePlayer(int id, Vector3f from, Vector3f eye) {
-        return canSee(byId(id, from), eye);
+        return canSee(byId(id, from), eye, false);
     }
 
-    private boolean canSee(ServerPlayer player, Vector3f eye) {
+    @Override
+    public boolean canSeePlayerThroughLeaves(int id, Vector3f from, Vector3f eye) {
+        return canSee(byId(id, from), eye, true);
+    }
+
+    private boolean canSee(ServerPlayer player, Vector3f eye, boolean throughLeaves) {
         if (player == null) {
             return false;
         }
@@ -127,7 +132,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
             sightRay = new RaycastEngine(null, null, world);
             sightWorld = world;
         }
-        return sightRay.distanceToFirstSolid(eye, dir.div(dist), dist) >= dist;
+        return sightRay.distanceToFirstSolid(eye, dir.div(dist), dist, throughLeaves) >= dist;
     }
 
     /** The nearest player takes the blow, shoved horizontally away from {@code from}. */
