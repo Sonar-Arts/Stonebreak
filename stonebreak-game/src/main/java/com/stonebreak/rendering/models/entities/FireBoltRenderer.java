@@ -11,7 +11,7 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 /**
- * The staff's fire bolt (and the Wisp's blue orb, in its own {@link FireBolt.Palette}) as a fireball: one camera-facing quad shaded procedurally into a
+ * The staff's fire bolt (and the Vestige's blue orb, in its own {@link FireBolt.Palette}) as a fireball: one camera-facing quad shaded procedurally into a
  * white-hot core, a yellow-orange body and a red, flickering rim, with flame tongues
  * streaming back into a comet tail along the bolt's heading and a soft additive halo.
  * The quad is stretched along the heading's on-screen direction, so a bolt seen side-on

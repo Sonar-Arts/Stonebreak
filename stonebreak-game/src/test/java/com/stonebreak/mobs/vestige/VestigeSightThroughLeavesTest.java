@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.anim.AnimatedBlockRegistry;
@@ -16,10 +16,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * A Wisp makes its victim out through leaves, and its orb drifts through them, so it can throw
+ * A Vestige makes its victim out through leaves, and its orb drifts through them, so it can throw
  * from the canopy it hides in. Everything else still sees leaves as a wall.
  */
-class WispSightThroughLeavesTest {
+class VestigeSightThroughLeavesTest {
 
     private static final float TICK = 0.05f;
 
@@ -41,14 +41,14 @@ class WispSightThroughLeavesTest {
     }
 
     @Test
-    void leavesBlockOrdinarySightButNotTheWisps() {
+    void leavesBlockOrdinarySightButNotTheVestiges() {
         World leaves = wallAt(BlockType.LEAVES);
         assertEquals(1.5f, sight(leaves, false), 0.15f);
         assertEquals(Float.MAX_VALUE, sight(leaves, true));
     }
 
     @Test
-    void stoneStillBlocksTheWispsSight() {
+    void stoneStillBlocksTheVestigesSight() {
         assertEquals(1.5f, sight(wallAt(BlockType.STONE), true), 0.15f);
     }
 

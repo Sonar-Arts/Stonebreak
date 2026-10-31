@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
@@ -6,12 +6,12 @@ import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import org.joml.Vector3f;
 
 /**
- * What a stalking Wisp does between tricks: drifts silently from tree to tree in the thick of the
+ * What a stalking Vestige does between tricks: drifts silently from tree to tree in the thick of the
  * forest, keeping out of its victim's sight at a middling distance, watching them. If it is seen it
  * moves on to other cover. When its victim leaves the Shade it waits at the treeline, watching. While
  * they are tracking it, it keeps well off and on their flank.
  */
-final class WispLurkBehavior extends WispBehavior {
+final class VestigeLurkBehavior extends VestigeBehavior {
 
     static final float SEARCH_RADIUS = 24f;
     static final float MOVE_SPEED = 0.9f;
@@ -25,8 +25,8 @@ final class WispLurkBehavior extends WispBehavior {
     private float replanAt;
     private float settledAt;
 
-    WispLurkBehavior(Wisp wisp) {
-        super(wisp);
+    VestigeLurkBehavior(Vestige vestige) {
+        super(vestige);
     }
 
     @Override
@@ -36,7 +36,7 @@ final class WispLurkBehavior extends WispBehavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        return mind().mode() == WispMind.Mode.STALK && !wisp.isDissolving();
+        return mind().mode() == VestigeMind.Mode.STALK && !vestige.isDissolving();
     }
 
     @Override
@@ -44,18 +44,18 @@ final class WispLurkBehavior extends WispBehavior {
         goal = null;
         moving = false;
         replanAt = 0f;
-        settledAt = wisp.getAge();
+        settledAt = vestige.getAge();
     }
 
     @Override
     public void tick(AiContext context, float deltaTime) {
-        WispSenses senses = senses();
+        VestigeSenses senses = senses();
         if (!senses.hasVictim()) {
             context.nav().stop();
             moving = false;
             return;
         }
-        float age = wisp.getAge();
+        float age = vestige.getAge();
         boolean tracked = tracked();
         float bandMin = tracked ? tuning().trackedBandMin() : tuning().lurkBandMin();
         float bandMax = tracked ? tuning().trackedBandMax() : tuning().lurkBandMax();
@@ -64,7 +64,7 @@ final class WispLurkBehavior extends WispBehavior {
         if (age >= replanAt && (goal == null || senses.inView() || (!moving && outOfBand) || restless)) {
             replanAt = age + REPLAN_SECONDS;
             Vector3f next = tracked ? flankSpot(SEARCH_RADIUS)
-                    : wisp.cover().find(wisp.getPosition(), SEARCH_RADIUS, senses.victimEye(),
+                    : vestige.cover().find(vestige.getPosition(), SEARCH_RADIUS, senses.victimEye(),
                             senses.victimLook(), bandMin, bandMax, CoverFinder.Preference.FOREST);
             if (next != null && (goal == null || next.distance(goal) > 1.5f)) {
                 goal = next;

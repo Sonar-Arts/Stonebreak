@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.audio.EntitySounds;
 import com.stonebreak.items.ItemStack;
@@ -16,18 +16,18 @@ import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 /**
- * The Shade's night stalker. A Wisp would rather frighten a player out of its forest than fight
+ * The Shade's night stalker. A Vestige would rather frighten a player out of its forest than fight
  * them: it peeks out from behind trees and laughs, vanishes, and whooshes past their ear from
- * behind, every trick raising its fright meter ({@link WispMind}). Only when that meter is full
+ * behind, every trick raising its fright meter ({@link VestigeMind}). Only when that meter is full
  * does it turn to fighting — blue fire from a distance, a claw for anyone who gets too close — and
  * then it fights until its victim is dead or out of the Shade.
  *
  * <p>It is bound to the Shade: it will not cross out of it, and if it ever finds itself outside
  * it comes apart into smoke. It leaves at dawn.
  */
-public class Wisp extends LivingEntity {
+public class Vestige extends LivingEntity {
 
-    /** The authored model is ~2.36 blocks tall; a wisp looms a little over a player. */
+    /** The authored model is ~2.36 blocks tall; a vestige looms a little over a player. */
     public static final float MODEL_SCALE = 0.85f;
     /** How high it floats, and how far it bobs about that. */
     static final float HOVER = 0.45f;
@@ -56,10 +56,10 @@ public class Wisp extends LivingEntity {
     /** How long the smokescreen bit stays up: long enough to replicate, short enough to re-arm. */
     static final float SMOKESCREEN_SECONDS = 0.6f;
 
-    private final WispMind mind;
+    private final VestigeMind mind;
     private final ShadeColumns shade;
     private final CoverFinder cover;
-    private final WispSenses senses;
+    private final VestigeSenses senses;
 
     private boolean dissolving;
     /** Removal is queued; asked once. */
@@ -71,32 +71,32 @@ public class Wisp extends LivingEntity {
     /** Client side: the height it is drawn at, easing up after a step rather than popping. */
     private float drawnY = Float.NaN;
 
-    public Wisp(World world, Vector3f position) {
-        this(world, position, WispTuning.DEFAULT);
+    public Vestige(World world, Vector3f position) {
+        this(world, position, VestigeTuning.DEFAULT);
     }
 
-    public Wisp(World world, Vector3f position, WispTuning tuning) {
-        super(world, position, EntityType.WISP);
+    public Vestige(World world, Vector3f position, VestigeTuning tuning) {
+        super(world, position, EntityType.VESTIGE);
         this.scale.set(MODEL_SCALE);
         this.moveSpeed = RUN_SPEED;
-        this.mind = new WispMind(tuning);
+        this.mind = new VestigeMind(tuning);
         this.shade = new ShadeColumns(world);
         this.cover = new CoverFinder(world, shade);
-        this.senses = new WispSenses(this, PlayerLocator.ofWorld(this), shade);
+        this.senses = new VestigeSenses(this, PlayerLocator.ofWorld(this), shade);
         this.interactionRange = 2.5f;
         this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, 0f, 0f),
-                new WispDissolveBehavior(this),
-                new WispDawnRetreatBehavior(this),
-                new WispCorneredBehavior(this),
-                WispVanishBehavior.hitReaction(this),
-                WispVanishBehavior.breakMelee(this),
-                WispVanishBehavior.spotted(this),
-                new WispWooshBehavior(this),
-                new WispPeekABooBehavior(this),
-                new WispKiteAndCastBehavior(this),
-                new WispEvadeBehavior(this),
-                new WispVeilBehavior(this),
-                new WispLurkBehavior(this));
+                new VestigeDissolveBehavior(this),
+                new VestigeDawnRetreatBehavior(this),
+                new VestigeCorneredBehavior(this),
+                VestigeVanishBehavior.hitReaction(this),
+                VestigeVanishBehavior.breakMelee(this),
+                VestigeVanishBehavior.spotted(this),
+                new VestigeWooshBehavior(this),
+                new VestigePeekABooBehavior(this),
+                new VestigeKiteAndCastBehavior(this),
+                new VestigeEvadeBehavior(this),
+                new VestigeVeilBehavior(this),
+                new VestigeLurkBehavior(this));
     }
 
     // ── Tick ────────────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ public class Wisp extends LivingEntity {
     }
 
     /**
-     * The Shade's edge is a wall to a Wisp: horizontal motion that would carry it across is
+     * The Shade's edge is a wall to a Vestige: horizontal motion that would carry it across is
      * cancelled before the physics step moves it. Behaviours keep their goals inside too; this is
      * what holds against knockback and routes that clip a corner.
      */
@@ -138,7 +138,7 @@ public class Wisp extends LivingEntity {
             mind.tracking().update(senses.inView(), senses.watched(), position, senses.victimEye(),
                     senses.victimLook(), deltaTime);
         }
-        if (mind.mode() == WispMind.Mode.ATTACK && (!senses.hasVictim() || !senses.victimInShade())) {
+        if (mind.mode() == VestigeMind.Mode.ATTACK && (!senses.hasVictim() || !senses.victimInShade())) {
             mind.calmDown(); // the victim is dead or got out: the hunt is over
         }
         super.updateAI(deltaTime);
@@ -172,11 +172,11 @@ public class Wisp extends LivingEntity {
 
     // ── What behaviours do through it ───────────────────────────────────────
 
-    WispMind mind() {
+    VestigeMind mind() {
         return mind;
     }
 
-    WispSenses senses() {
+    VestigeSenses senses() {
         return senses;
     }
 
@@ -218,7 +218,7 @@ public class Wisp extends LivingEntity {
         return hasStatusEffect(StatusEffectType.EYES_DARK);
     }
 
-    /** Throws down smoke: every client watching puffs it at the Wisp. */
+    /** Throws down smoke: every client watching puffs it at the Vestige. */
     void smokescreen() {
         applyStatusEffect(StatusEffectType.SMOKESCREEN, SMOKESCREEN_SECONDS, 0f);
     }
@@ -328,7 +328,7 @@ public class Wisp extends LivingEntity {
 
     @Override
     public void onInteract(Player player) {
-        // Nothing to say to a wisp.
+        // Nothing to say to a vestige.
     }
 
     /** Client side: the smoke it has thrown, for the effects renderer. */
@@ -343,6 +343,6 @@ public class Wisp extends LivingEntity {
 
     @Override
     public EntityType getType() {
-        return EntityType.WISP;
+        return EntityType.VESTIGE;
     }
 }

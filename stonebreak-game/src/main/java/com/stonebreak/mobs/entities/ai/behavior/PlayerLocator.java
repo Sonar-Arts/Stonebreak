@@ -135,7 +135,7 @@ public interface PlayerLocator {
 
     /**
      * Writes the unit direction player {@code id} is looking in into {@code out} — what a mob that
-     * must not be seen (the Wisp) reads to know when it is being watched.
+     * must not be seen (the Vestige) reads to know when it is being watched.
      *
      * @return {@code out}, or {@code null} when the locator does not know (the default) or the
      *         player is gone

@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityType;
@@ -8,9 +8,9 @@ import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
 /**
- * The Wisp's will-o'-wisp: a slow ball of cold blue fire that bends after the player it was thrown
+ * The Vestige's will-o'-wisp: a slow ball of cold blue fire that bends after the player it was thrown
  * at for its first few seconds, then flies straight on. Slow enough to sidestep, and it leaves its
- * victim burning briefly. It only hurts players — a wisp's fire passes through the forest's other
+ * victim burning briefly. It only hurts players — a vestige's fire passes through the forest's other
  * creatures.
  */
 public final class WillOWispOrb extends FireBolt {
@@ -88,7 +88,7 @@ public final class WillOWispOrb extends FireBolt {
         dir.set(dir.x * a + goal.x * b, dir.y * a + goal.y * b, dir.z * a + goal.z * b).normalize();
     }
 
-    /** It drifts through leaves as through air: a Wisp throws from the canopy it sees through. */
+    /** It drifts through leaves as through air: a Vestige throws from the canopy it sees through. */
     @Override
     protected boolean passesThrough(BlockType block) {
         return block == BlockType.AIR || block.isLeaves();
@@ -112,11 +112,11 @@ public final class WillOWispOrb extends FireBolt {
 
     @Override
     public Palette palette() {
-        return Palette.WISP;
+        return Palette.VESTIGE;
     }
 
     @Override
     public EntityType getType() {
-        return EntityType.WISP_ORB;
+        return EntityType.VESTIGE_ORB;
     }
 }

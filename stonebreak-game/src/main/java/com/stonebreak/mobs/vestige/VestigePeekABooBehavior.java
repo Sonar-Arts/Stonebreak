@@ -1,17 +1,17 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import org.joml.Vector3f;
 
 /**
- * Peek-a-boo: from behind a tree the victim cannot see past, the Wisp leans out, laughs, and waits
+ * Peek-a-boo: from behind a tree the victim cannot see past, the Vestige leans out, laughs, and waits
  * to be noticed. The moment the victim looks at it, it jerks back into cover — and, out of sight
  * with their attention fixed on the wrong tree, it has the perfect moment to vanish
- * ({@link WispMind#armPerfectMoment}). Not for a victim already hunting for it: they would only
+ * ({@link VestigeMind#armPerfectMoment}). Not for a victim already hunting for it: they would only
  * follow it.
  */
-final class WispPeekABooBehavior extends WispBehavior {
+final class VestigePeekABooBehavior extends VestigeBehavior {
 
     private enum Phase { HIDE, LEAN, JERK, DONE }
 
@@ -34,8 +34,8 @@ final class WispPeekABooBehavior extends WispBehavior {
     private float retryAt;
     private final Vector3f scratch = new Vector3f();
 
-    WispPeekABooBehavior(Wisp wisp) {
-        super(wisp);
+    VestigePeekABooBehavior(Vestige vestige) {
+        super(vestige);
     }
 
     @Override
@@ -45,16 +45,16 @@ final class WispPeekABooBehavior extends WispBehavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        WispSenses senses = senses();
-        return mind().mode() == WispMind.Mode.STALK && mind().peekReady() && wisp.getAge() >= retryAt
-                && !tracked() && senses.hasVictim() && senses.victimLook() != null && !wisp.isVeiled() && !senses.inView()
+        VestigeSenses senses = senses();
+        return mind().mode() == VestigeMind.Mode.STALK && mind().peekReady() && vestige.getAge() >= retryAt
+                && !tracked() && senses.hasVictim() && senses.victimLook() != null && !vestige.isVeiled() && !senses.inView()
                 && senses.distance() >= tuning().peekBandMin() - 2f
                 && senses.distance() <= tuning().peekBandMax() + 4f;
     }
 
     @Override
     public boolean shouldContinue(AiContext context) {
-        return phase != Phase.DONE && mind().mode() == WispMind.Mode.STALK && senses().hasVictim();
+        return phase != Phase.DONE && mind().mode() == VestigeMind.Mode.STALK && senses().hasVictim();
     }
 
     @Override
@@ -62,12 +62,12 @@ final class WispPeekABooBehavior extends WispBehavior {
         elapsed = 0f;
         leaned = false;
         noticed = false;
-        WispSenses senses = senses();
-        setup = wisp.cover().findPeek(wisp.getPosition(), SEARCH_RADIUS, senses.victimEye(),
+        VestigeSenses senses = senses();
+        setup = vestige.cover().findPeek(vestige.getPosition(), SEARCH_RADIUS, senses.victimEye(),
                 tuning().peekBandMin(), tuning().peekBandMax());
         phase = setup != null ? Phase.HIDE : Phase.DONE;
         if (setup == null) {
-            retryAt = wisp.getAge() + RETRY_SECONDS;
+            retryAt = vestige.getAge() + RETRY_SECONDS;
         }
     }
 
@@ -78,17 +78,17 @@ final class WispPeekABooBehavior extends WispBehavior {
             case HIDE -> {
                 // Seen on the way to its tree: the trick is spoiled before it starts.
                 if (senses().inView() || elapsed >= HIDE_SECONDS) {
-                    retryAt = wisp.getAge() + RETRY_SECONDS;
+                    retryAt = vestige.getAge() + RETRY_SECONDS;
                     phase = Phase.DONE;
                     return;
                 }
                 goTo(context, setup.hide(), 0.4f, HIDE_SPEED);
-                if (wisp.getPosition().distance(setup.hide()) <= 0.6f) {
+                if (vestige.getPosition().distance(setup.hide()) <= 0.6f) {
                     context.nav().stop();
                     phase = Phase.LEAN;
                     elapsed = 0f;
                     leaned = true;
-                    wisp.emit("laugh");
+                    vestige.emit("laugh");
                 }
             }
             case LEAN -> {
@@ -118,15 +118,15 @@ final class WispPeekABooBehavior extends WispBehavior {
 
     /** Glides straight at {@code point}; false once there. Short hops beside a trunk need no route. */
     private boolean stepToward(AiContext context, Vector3f point, float speed) {
-        Vector3f toward = scratch.set(point).sub(wisp.getPosition());
+        Vector3f toward = scratch.set(point).sub(vestige.getPosition());
         toward.y = 0f;
         if (toward.lengthSquared() < 0.01f) {
             return false;
         }
         Vector3f heading = toward.normalize();
-        Vector3f facing = wisp.getRotation(); // keep facing the victim while sidestepping
+        Vector3f facing = vestige.getRotation(); // keep facing the victim while sidestepping
         context.steering().steerAlong(heading, speed, context.deltaTime(), false);
-        wisp.setYaw(facing.y);
+        vestige.setYaw(facing.y);
         return true;
     }
 

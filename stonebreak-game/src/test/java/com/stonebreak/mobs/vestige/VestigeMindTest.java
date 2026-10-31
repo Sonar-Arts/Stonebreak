@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -9,48 +9,48 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The fright meter, the mode it drives, and the pacing that keeps the Wisp hard to track. */
-class WispMindTest {
+/** The fright meter, the mode it drives, and the pacing that keeps the Vestige hard to track. */
+class VestigeMindTest {
 
-    private static final WispTuning T = WispTuning.DEFAULT;
+    private static final VestigeTuning T = VestigeTuning.DEFAULT;
     private static final float TICK = 0.05f;
 
-    private static WispMind mind() {
-        WispMind mind = new WispMind(T);
+    private static VestigeMind mind() {
+        VestigeMind mind = new VestigeMind(T);
         mind.tick(0f, 0f);
         return mind;
     }
 
     @Test
     void aPlayerHitAddsThirtyFiveAndOwesAnAnswerWhileStalking() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         mind.onHitByPlayer();
         assertEquals(35f, mind.meter(), 1e-4f);
-        assertEquals(WispMind.Mode.STALK, mind.mode());
+        assertEquals(VestigeMind.Mode.STALK, mind.mode());
         assertTrue(mind.takeHitPending());
         assertFalse(mind.takeHitPending(), "the answer is owed once");
     }
 
     @Test
     void aHitThatFillsTheMeterStartsTheAttackInsteadOfAnAnswer() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         mind.frighten(70f);
         mind.onHitByPlayer();
-        assertEquals(WispMind.Mode.ATTACK, mind.mode());
+        assertEquals(VestigeMind.Mode.ATTACK, mind.mode());
         assertFalse(mind.hitPending());
     }
 
     @Test
     void twoHitsDoNotAlwaysForceTheAttack() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         mind.onHitByPlayer();
         mind.onHitByPlayer();
-        assertEquals(WispMind.Mode.STALK, mind.mode(), "70 of 100: still only stalking");
+        assertEquals(VestigeMind.Mode.STALK, mind.mode(), "70 of 100: still only stalking");
     }
 
     @Test
     void fearFadesOnlyWhileStalking() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         mind.frighten(50f);
         mind.tick(10f, 10f);
         assertEquals(50f - 10f * T.decayPerSec(), mind.meter(), 1e-4f);
@@ -58,21 +58,21 @@ class WispMindTest {
         mind.frighten(100f);
         float full = mind.meter();
         mind.tick(20f, 10f);
-        assertEquals(full, mind.meter(), 1e-4f, "an attacking Wisp does not calm itself");
+        assertEquals(full, mind.meter(), 1e-4f, "an attacking Vestige does not calm itself");
     }
 
     @Test
     void anAttackThatEndsFallsBackToStalkingOnEdge() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         mind.frighten(100f);
         mind.calmDown();
-        assertEquals(WispMind.Mode.STALK, mind.mode());
+        assertEquals(VestigeMind.Mode.STALK, mind.mode());
         assertEquals(T.calmMeter(), mind.meter(), 1e-4f);
     }
 
     @Test
     void peekAndWooshShareAQuietGapButInvisibilityDoesNot() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         Random random = new Random(1);
         mind.usedPeek(random);
         assertFalse(mind.wooshReady(), "a Woosh right after a Peek-a-boo is too easy to follow");
@@ -89,7 +89,7 @@ class WispMindTest {
 
     @Test
     void aWooshWaitsForATurnedBackAndACalmCamera() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         Vector3f player = new Vector3f();
         Vector3f behind = new Vector3f(-10f, 0f, 0f);
         Vector3f lookingAway = new Vector3f(1f, 0f, 0f);
@@ -108,7 +108,7 @@ class WispMindTest {
 
     @Test
     void aVictimHuntingForItIsNotWooshed() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         Vector3f player = new Vector3f();
         Vector3f eye = new Vector3f(0f, 1.6f, 0f);
         Vector3f behind = new Vector3f(-10f, 0f, 0f);
@@ -127,10 +127,10 @@ class WispMindTest {
 
     @Test
     void aFranticPlayerIsNotWooshed() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         Vector3f player = new Vector3f();
         Vector3f behind = new Vector3f(-10f, 0f, 0f);
-        // Snapping between two headings that both keep the back to the Wisp, fast.
+        // Snapping between two headings that both keep the back to the Vestige, fast.
         for (int i = 0; i < 80; i++) {
             float yaw = (float) Math.toRadians(i % 2 == 0 ? -40 : 40);
             mind.look().update(new Vector3f((float) Math.cos(yaw), 0f, (float) Math.sin(yaw)),
@@ -141,18 +141,18 @@ class WispMindTest {
     }
 
     /**
-     * Nobody fights back and the Wisp keeps to its routine — a trick every 25 seconds, round the
+     * Nobody fights back and the Vestige keeps to its routine — a trick every 25 seconds, round the
      * cycle of Peek-a-boo (noticed), Invisibility, Woosh. It should snap after three to four
      * minutes: long enough for the hint to be taken.
      */
     @Test
     void anUnansweredRoutineSnapsAfterThreeToFourMinutes() {
-        WispMind mind = mind();
+        VestigeMind mind = mind();
         float[] cycle = {T.peekGain(), T.veilGain(), T.wooshGain()};
         float time = 0f;
         float nextTrick = 25f;
         int trick = 0;
-        while (mind.mode() == WispMind.Mode.STALK && time < 600f) {
+        while (mind.mode() == VestigeMind.Mode.STALK && time < 600f) {
             time += TICK;
             mind.tick(time, TICK);
             if (time >= nextTrick) {

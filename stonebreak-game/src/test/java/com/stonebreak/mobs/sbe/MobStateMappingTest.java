@@ -21,7 +21,7 @@ class MobStateMappingTest {
      */
     @Test
     void everyStateMapsToAClipThatMapsBackToTheSameClip() {
-        for (EntityType type : new EntityType[]{EntityType.COW, EntityType.GOOSE, EntityType.WISP}) {
+        for (EntityType type : new EntityType[]{EntityType.COW, EntityType.GOOSE, EntityType.VESTIGE}) {
             for (MobBehaviorState state : MobBehaviorState.values()) {
                 String clipName = MobStateMapping.sbeState(type, state);
                 assertNotNull(clipName, type + "/" + state + " must map to a clip name");
@@ -54,18 +54,18 @@ class MobStateMappingTest {
         assertEquals(MobBehaviorState.WANDERING, MobStateMapping.behaviorState(EntityType.GOOSE, "walking"));
     }
 
-    /** The Wisp drifts rather than walks, and its tricks each have a clip of their own. */
+    /** The Vestige drifts rather than walks, and its tricks each have a clip of their own. */
     @Test
-    void wispClipNamesMatchItsAuthoringList() {
-        assertEquals("Float", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.WANDERING));
+    void vestigeClipNamesMatchItsAuthoringList() {
+        assertEquals("Float", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.WANDERING));
         assertEquals("Walking", MobStateMapping.sbeState(EntityType.GOBLIN, MobBehaviorState.WANDERING));
-        assertEquals("PeekLean", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.PEEK));
-        assertEquals("JerkBack", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.JERK_BACK));
-        assertEquals("Woosh", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.WOOSH));
-        assertEquals("Cast", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.CAST));
-        assertEquals("Scratch", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.SCRATCH));
-        assertEquals("Dissolve", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.DISSOLVE));
-        assertEquals(MobBehaviorState.WANDERING, MobStateMapping.behaviorState(EntityType.WISP, "Float"));
+        assertEquals("PeekLean", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.PEEK));
+        assertEquals("JerkBack", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.JERK_BACK));
+        assertEquals("Woosh", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.WOOSH));
+        assertEquals("Cast", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.CAST));
+        assertEquals("Scratch", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.SCRATCH));
+        assertEquals("Dissolve", MobStateMapping.sbeState(EntityType.VESTIGE, MobBehaviorState.DISSOLVE));
+        assertEquals(MobBehaviorState.WANDERING, MobStateMapping.behaviorState(EntityType.VESTIGE, "Float"));
     }
 
     /** Unknown or null replicated names fall back to IDLE instead of throwing. */

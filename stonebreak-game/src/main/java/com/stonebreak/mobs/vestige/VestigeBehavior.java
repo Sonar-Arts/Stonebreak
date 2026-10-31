@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
@@ -8,10 +8,10 @@ import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import org.joml.Vector3f;
 
 /**
- * What every Wisp behaviour shares: the Wisp it belongs to, with its mind and senses, and the few
+ * What every Vestige behaviour shares: the Vestige it belongs to, with its mind and senses, and the few
  * moves they all make — go somewhere, notice when the trip is over, and keep an eye on the victim.
  */
-abstract class WispBehavior implements Behavior {
+abstract class VestigeBehavior implements Behavior {
 
     /** Turning to keep the victim in front of it, degrees per second. */
     static final float WATCH_TURN_SPEED = 240f;
@@ -22,22 +22,22 @@ abstract class WispBehavior implements Behavior {
     /** Throwing hand: ahead of and level with its head. */
     static final float HAND_FORWARD = 0.5f;
 
-    protected final Wisp wisp;
+    protected final Vestige vestige;
 
-    WispBehavior(Wisp wisp) {
-        this.wisp = wisp;
+    VestigeBehavior(Vestige vestige) {
+        this.vestige = vestige;
     }
 
-    WispMind mind() {
-        return wisp.mind();
+    VestigeMind mind() {
+        return vestige.mind();
     }
 
-    WispSenses senses() {
-        return wisp.senses();
+    VestigeSenses senses() {
+        return vestige.senses();
     }
 
-    WispTuning tuning() {
-        return wisp.mind().tuning();
+    VestigeTuning tuning() {
+        return vestige.mind().tuning();
     }
 
     /** Heads for {@code goal} along a route, if there is one. */
@@ -66,8 +66,8 @@ abstract class WispBehavior implements Behavior {
 
     /** Where to run to: hidden, away from the victim, between {@code bandMin} and {@code bandMax}. */
     Vector3f escapeSpot(float bandMin, float bandMax) {
-        WispSenses senses = senses();
-        return wisp.cover().find(wisp.getPosition(), 16f, senses.victimEye(), senses.victimLook(),
+        VestigeSenses senses = senses();
+        return vestige.cover().find(vestige.getPosition(), 16f, senses.victimEye(), senses.victimLook(),
                 bandMin, bandMax, CoverFinder.Preference.AWAY);
     }
 
@@ -80,12 +80,12 @@ abstract class WispBehavior implements Behavior {
         if (spot != null || !senses().hasVictim()) {
             return spot;
         }
-        return wisp.cover().runSpot(wisp.getPosition(), senses().victimFeet(), RUN_DISTANCE);
+        return vestige.cover().runSpot(vestige.getPosition(), senses().victimFeet(), RUN_DISTANCE);
     }
 
     /**
      * A flight has failed — nowhere to run, no way there, or wedged. With the victim close, that
-     * has it cornered, and it turns to fight ({@link WispCorneredBehavior}). True if it is.
+     * has it cornered, and it turns to fight ({@link VestigeCorneredBehavior}). True if it is.
      */
     boolean fleeFailed() {
         if (senses().hasVictim() && senses().distance() <= tuning().cornerRange()) {
@@ -97,9 +97,9 @@ abstract class WispBehavior implements Behavior {
 
     /** Where its throwing hand is now. */
     Vector3f handPosition(Vector3f out) {
-        Vector3f forward = wisp.getForwardDirection();
-        return out.set(wisp.getPosition())
-                .add(forward.x * HAND_FORWARD, WispSenses.HEAD_HEIGHT + wisp.renderLift() - 0.2f,
+        Vector3f forward = vestige.getForwardDirection();
+        return out.set(vestige.getPosition())
+                .add(forward.x * HAND_FORWARD, VestigeSenses.HEAD_HEIGHT + vestige.renderLift() - 0.2f,
                         forward.z * HAND_FORWARD);
     }
 
@@ -112,7 +112,7 @@ abstract class WispBehavior implements Behavior {
         }
         Vector3f origin = handPosition(new Vector3f());
         Vector3f direction = new Vector3f(target).add(0f, PlayerLocator.CHEST_HEIGHT, 0f).sub(origin).normalize();
-        manager.addEntity(new WillOWispOrb(context.world(), origin, direction, wisp.lockedTargetPlayerId(),
+        manager.addEntity(new WillOWispOrb(context.world(), origin, direction, vestige.lockedTargetPlayerId(),
                 tuning().orbDamage(), tuning().orbBurnSeconds(), tuning().orbBurnDps()));
     }
 
@@ -121,8 +121,8 @@ abstract class WispBehavior implements Behavior {
      * behind, clear of where they last saw it and of the way they are heading.
      */
     Vector3f flankSpot(float radius) {
-        WispSenses senses = senses();
-        return wisp.cover().find(wisp.getPosition(), radius, senses.victimEye(), senses.victimLook(),
+        VestigeSenses senses = senses();
+        return vestige.cover().find(vestige.getPosition(), radius, senses.victimEye(), senses.victimLook(),
                 tuning().trackedBandMin(), tuning().trackedBandMax(), CoverFinder.Preference.FLANK, pursuit());
     }
 

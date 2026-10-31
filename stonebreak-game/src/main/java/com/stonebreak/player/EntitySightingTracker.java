@@ -50,8 +50,8 @@ public class EntitySightingTracker {
         for (LivingEntity entity : entityManager.getLivingEntities()) {
             EntityType type = entity.getType();
             if (type != EntityType.COW && type != EntityType.SHEEP && type != EntityType.CHICKEN
-                    && type != EntityType.GOBLIN && type != EntityType.WISP) continue;
-            // A veiled wisp is a pair of eyes in the fog, not a sighting.
+                    && type != EntityType.GOBLIN && type != EntityType.VESTIGE) continue;
+            // A veiled vestige is a pair of eyes in the fog, not a sighting.
             if (entity.hasStatusEffect(com.stonebreak.mobs.entities.status.StatusEffectType.VEILED)) continue;
 
             // Check distance
@@ -78,7 +78,7 @@ public class EntitySightingTracker {
             case COW -> entity instanceof Cow cow ? cow.getTextureVariant() : "default";
             case SHEEP -> entity instanceof com.stonebreak.mobs.sheep.Sheep sheep
                 ? sheep.getTextureVariant() : "default";
-            case CHICKEN, GOBLIN, WISP -> "default";
+            case CHICKEN, GOBLIN, VESTIGE -> "default";
             default -> null;
         };
     }

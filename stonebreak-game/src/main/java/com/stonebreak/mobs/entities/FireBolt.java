@@ -173,7 +173,7 @@ public class FireBolt extends Entity {
                 new Vector3f(1.0f, 0.78f, 0.22f), new Vector3f(1.0f, 0.97f, 0.86f),
                 new Vector3f(1.0f, 0.42f, 0.08f), new Vector3f(1.0f, 0.35f, 0.0f));
         /** Will-o'-wisp fire: cold blue, white at the heart. */
-        public static final Palette WISP = new Palette(
+        public static final Palette VESTIGE = new Palette(
                 new Vector3f(0.02f, 0.10f, 0.45f), new Vector3f(0.10f, 0.42f, 1.0f),
                 new Vector3f(0.45f, 0.78f, 1.0f), new Vector3f(0.88f, 0.96f, 1.0f),
                 new Vector3f(0.20f, 0.50f, 1.0f), new Vector3f(0.25f, 0.55f, 1.0f));

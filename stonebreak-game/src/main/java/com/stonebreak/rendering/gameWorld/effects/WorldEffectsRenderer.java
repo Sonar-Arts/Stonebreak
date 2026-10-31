@@ -15,7 +15,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
-import com.stonebreak.mobs.wisp.Wisp;
+import com.stonebreak.mobs.vestige.Vestige;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
@@ -71,7 +71,7 @@ public final class WorldEffectsRenderer {
         renderFireBoltCores(player);
         renderFireBoltParticles(player);
         renderIllusionSmoke(player);
-        renderWispSmoke(player);
+        renderVestigeSmoke(player);
         // One remote-player sweep serves both water effects: they run back to back on the
         // render thread and entity membership only changes in the update tick, so the two
         // can never observe different sets.
@@ -121,7 +121,7 @@ public final class WorldEffectsRenderer {
                     float opacity = particle.getOpacity();
                     Vector3f position = particle.getPosition();
                     // The trail colour, its middle channel draining as the particle fades
-                    // (orange to red for fire, blue deepening for a wisp's orb).
+                    // (orange to red for fire, blue deepening for a vestige's orb).
                     emit.point(position.x, position.y, position.z, particle.getSize(),
                             trail.x, trail.y * opacity, trail.z, opacity * 0.85f);
                 }
@@ -157,8 +157,8 @@ public final class WorldEffectsRenderer {
         });
     }
 
-    /** The smokescreens Wisps vanish into: grey-blue, thick, slow to clear. */
-    private void renderWispSmoke(Player player) {
+    /** The smokescreens Vestiges vanish into: grey-blue, thick, slow to clear. */
+    private void renderVestigeSmoke(Player player) {
         EntityManager entities = Game.getEntityManager();
         if (entities == null) {
             return;
@@ -166,17 +166,17 @@ public final class WorldEffectsRenderer {
         List<Entity> all = entities.getAllEntities();
         boolean any = false;
         for (int i = 0; !any && i < all.size(); i++) {
-            any = all.get(i) instanceof Wisp wisp && !wisp.getSmoke().isEmpty();
+            any = all.get(i) instanceof Vestige vestige && !vestige.getSmoke().isEmpty();
         }
         if (!any) {
             return;
         }
         drawPointSprites(player.getViewMatrix(), GL_ONE_MINUS_SRC_ALPHA, emit -> {
             for (Entity entity : all) {
-                if (!(entity instanceof Wisp wisp)) {
+                if (!(entity instanceof Vestige vestige)) {
                     continue;
                 }
-                for (IllusionSmokeParticles.SmokeParticle particle : wisp.getSmoke().snapshot()) {
+                for (IllusionSmokeParticles.SmokeParticle particle : vestige.getSmoke().snapshot()) {
                     Vector3f position = particle.getPosition();
                     emit.point(position.x, position.y, position.z, particle.getSize(),
                             0.55f, 0.60f, 0.68f, particle.getOpacity() * 0.75f);

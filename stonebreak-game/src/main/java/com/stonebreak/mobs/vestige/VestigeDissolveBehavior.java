@@ -1,18 +1,18 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 
 /**
- * Coming apart into smoke, once the Wisp finds itself outside the Shade: it stops, plays the
+ * Coming apart into smoke, once the Vestige finds itself outside the Shade: it stops, plays the
  * dissolve, and is gone. Nothing outranks it.
  */
-final class WispDissolveBehavior extends WispBehavior {
+final class VestigeDissolveBehavior extends VestigeBehavior {
 
     private float elapsed;
 
-    WispDissolveBehavior(Wisp wisp) {
-        super(wisp);
+    VestigeDissolveBehavior(Vestige vestige) {
+        super(vestige);
     }
 
     @Override
@@ -22,7 +22,7 @@ final class WispDissolveBehavior extends WispBehavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        return wisp.isDissolving();
+        return vestige.isDissolving();
     }
 
     @Override
@@ -40,8 +40,8 @@ final class WispDissolveBehavior extends WispBehavior {
     public void tick(AiContext context, float deltaTime) {
         context.steering().stopMoving();
         elapsed += deltaTime;
-        if (elapsed >= Wisp.DISSOLVE_SECONDS) {
-            wisp.vanish();
+        if (elapsed >= Vestige.DISSOLVE_SECONDS) {
+            vestige.vanish();
         }
     }
 

@@ -13,7 +13,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** Goblins come out every night, seldom in the Shade; Wisps only into the Shade's full fog, for those who linger. */
+/** Goblins come out every night, seldom in the Shade; Vestiges only into the Shade's full fog, for those who linger. */
 class HostileSpawnRuleTest {
 
     /** A world whose biome is the Shade west of x=0 and plains east of it. */
@@ -44,33 +44,33 @@ class HostileSpawnRuleTest {
     }
 
     @Test
-    void wispsWaitForTheFullFog() {
-        assertFalse(HostileSpawnRule.WISP.when().allows(halfShade(0.3f), true), "dusk is not enough");
-        assertTrue(HostileSpawnRule.WISP.when().allows(halfShade(1f), true));
+    void vestigesWaitForTheFullFog() {
+        assertFalse(HostileSpawnRule.VESTIGE.when().allows(halfShade(0.3f), true), "dusk is not enough");
+        assertTrue(HostileSpawnRule.VESTIGE.when().allows(halfShade(1f), true));
     }
 
     @Test
-    void wispsSpawnOnlyInTheShadeAndOnlyNearSomeoneInIt() {
+    void vestigesSpawnOnlyInTheShadeAndOnlyNearSomeoneInIt() {
         World world = halfShade(1f);
         Vector3f shade = new Vector3f(-40, 64, 0);
         Vector3f plains = new Vector3f(40, 64, 0);
-        assertTrue(HostileSpawnRule.WISP.where().allows(world, shade, new Vector3f(-5, 64, 0)));
-        assertFalse(HostileSpawnRule.WISP.where().allows(world, plains, new Vector3f(-5, 64, 0)));
-        assertFalse(HostileSpawnRule.WISP.where().allows(world, shade, new Vector3f(5, 64, 0)),
+        assertTrue(HostileSpawnRule.VESTIGE.where().allows(world, shade, new Vector3f(-5, 64, 0)));
+        assertFalse(HostileSpawnRule.VESTIGE.where().allows(world, plains, new Vector3f(-5, 64, 0)));
+        assertFalse(HostileSpawnRule.VESTIGE.where().allows(world, shade, new Vector3f(5, 64, 0)),
                 "the player is outside the Shade");
     }
 
     @Test
-    void wispsComeEveryMinuteAndAHalfInTheShade() {
-        assertEquals(90f, HostileSpawnRule.WISP.shadeClockSeconds());
-        assertEquals(1f, HostileSpawnRule.WISP.chance().at(halfShade(1f), new Vector3f(-40, 64, 0)),
+    void vestigesComeEveryMinuteAndAHalfInTheShade() {
+        assertEquals(90f, HostileSpawnRule.VESTIGE.shadeClockSeconds());
+        assertEquals(1f, HostileSpawnRule.VESTIGE.chance().at(halfShade(1f), new Vector3f(-40, 64, 0)),
                 "once the time is served, no roll stands in the way");
         assertEquals(0f, HostileSpawnRule.GOBLIN.shadeClockSeconds(), "goblins keep the spawn interval");
     }
 
     @Test
-    void wispsAreFew() {
-        assertTrue(HostileSpawnRule.WISP.groupMin() == 1 && HostileSpawnRule.WISP.groupMax() == 2);
-        assertEquals(2, HostileSpawnRule.WISP.cap(), "never more than two about");
+    void vestigesAreFew() {
+        assertTrue(HostileSpawnRule.VESTIGE.groupMin() == 1 && HostileSpawnRule.VESTIGE.groupMax() == 2);
+        assertEquals(2, HostileSpawnRule.VESTIGE.cap(), "never more than two about");
     }
 }

@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;

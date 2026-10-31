@@ -65,11 +65,11 @@ public enum EntityType {
         new String[]{"Default"},
         new String[]{"Dagger", "Bow", "Patty Smacker"},
         Map.of(DamageType.FIRE, 1.25f)),
-    // Hostile, the Shade's night stalker. Wisp rescales the ~2.36-block authored model (feet at
-    // its origin, facing -Z) by Wisp.MODEL_SCALE and hovers it; it has no legs to stand on.
-    WISP("Wisp",
+    // Hostile, the Shade's night stalker. Vestige rescales the ~2.36-block authored model (feet at
+    // its origin, facing -Z) by Vestige.MODEL_SCALE and hovers it; it has no legs to stand on.
+    VESTIGE("Vestige",
         new EntityAttributes(8, 12, 7, 10, 12, 3),
-        2.0f, 0.7f, 0.5f, 0.0f, "stonebreak:wisp",
+        2.0f, 0.7f, 0.5f, 0.0f, "stonebreak:vestige",
         LivingEntity.DamageSource.ARCANE,
         "Held together by spite and fog; raw magic unravels it.",
         new String[]{"Default"},
@@ -93,8 +93,8 @@ public enum EntityType {
     FIRE_BOLT("Fire Bolt", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
     ARROW("Arrow", 1.0f, 0.0f, 0.1f, 0.05f, 0.5f, 0.0f, false, null),
     NULL_SPIKE("Null Spike", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
-    // The Wisp's homing blue fireball; a FireBolt in a different palette.
-    WISP_ORB("Will-o'-wisp", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
+    // The Vestige's homing blue fireball; a FireBolt in a different palette.
+    VESTIGE_ORB("Will-o'-wisp", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),
 
     // Persistent spell zone (Arcanist's Leyline Breach)
     LEYLINE_BREACH_ZONE("Leyline Breach", 1.0f, 0.0f, 0.4f, 0.4f, 0.4f, 0.0f, false, null),
@@ -113,7 +113,7 @@ public enum EntityType {
     ;
 
     /** Entity types that appear as cards in the Glossary screen. */
-    public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE, GOBLIN, WISP};
+    public static final EntityType[] GLOSSARY_TYPES = {COW, SHEEP, CHICKEN, GOOSE, GOBLIN, VESTIGE};
 
     /**
      * The spawnable mob ({@link #GLOSSARY_TYPES}) named by enum name (COW) or display name
@@ -281,12 +281,12 @@ public enum EntityType {
      * awareness sight cones) derives yaw as
      * {@code atan2(dir.x, dir.z) + getModelYawOffsetDegrees()}.
      *
-     * <p>Cow, sheep, goblin and wisp SBE models face −Z (180° offset); chicken and everything
+     * <p>Cow, sheep, goblin and vestige SBE models face −Z (180° offset); chicken and everything
      * else face +Z (no offset).
      */
     public float getModelYawOffsetDegrees() {
         return switch (this) {
-            case COW, SHEEP, GOBLIN, WISP -> 180.0f;
+            case COW, SHEEP, GOBLIN, VESTIGE -> 180.0f;
             default -> 0.0f;
         };
     }
@@ -302,8 +302,8 @@ public enum EntityType {
      */
     public boolean replicates() {
         return switch (this) {
-            case COW, SHEEP, CHICKEN, GOOSE, GOBLIN, WISP, BLOCK_DROP, ITEM_DROP,
-                 ARROW, FIRE_BOLT, WISP_ORB, NULL_SPIKE, LEYLINE_BREACH_ZONE,
+            case COW, SHEEP, CHICKEN, GOOSE, GOBLIN, VESTIGE, BLOCK_DROP, ITEM_DROP,
+                 ARROW, FIRE_BOLT, VESTIGE_ORB, NULL_SPIKE, LEYLINE_BREACH_ZONE,
                  CALTROP_CLUSTER, BOBBER, ILLUSION_DECOY, DINGHY -> true;
             case REMOTE_PLAYER -> false;
         };

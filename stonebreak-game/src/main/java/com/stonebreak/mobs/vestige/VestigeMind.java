@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.perception.LookTracker;
 import com.stonebreak.mobs.entities.ai.perception.PlayerTracking;
@@ -6,18 +6,18 @@ import com.stonebreak.mobs.entities.ai.perception.PlayerTracking;
 import java.util.Random;
 
 /**
- * What a Wisp's behaviours share: its fright meter and the mode it drives, the pacing that keeps
+ * What a Vestige's behaviours share: its fright meter and the mode it drives, the pacing that keeps
  * its tricks from coming so thick and fast that the player can follow it, and what it has learned
  * about its victim. The behaviours decide <em>what</em> to do; this decides whether they may.
  *
- * <p>Pure state on the Wisp's own clock (its age), so it can be driven from a test.
+ * <p>Pure state on the Vestige's own clock (its age), so it can be driven from a test.
  */
-public final class WispMind {
+public final class VestigeMind {
 
     /** Stalking scares the victim out of the Shade; attacking tries to kill them. */
     public enum Mode { STALK, ATTACK }
 
-    private final WispTuning tuning;
+    private final VestigeTuning tuning;
     private final LookTracker look = new LookTracker();
     private final PlayerTracking tracking = new PlayerTracking();
 
@@ -40,11 +40,11 @@ public final class WispMind {
     /** A flight failed with its victim close: it has nowhere to run and will fight. */
     private boolean cornered;
 
-    public WispMind(WispTuning tuning) {
+    public VestigeMind(VestigeTuning tuning) {
         this.tuning = tuning;
     }
 
-    public WispTuning tuning() {
+    public VestigeTuning tuning() {
         return tuning;
     }
 

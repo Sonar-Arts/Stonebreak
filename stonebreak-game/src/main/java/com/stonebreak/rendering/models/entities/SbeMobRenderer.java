@@ -72,31 +72,31 @@ final class SbeMobRenderer {
     /** Veiled body opacity, and the eyes' through the veil (unless dimmed, when they match the body). */
     static final float VEILED_BODY_ALPHA = 0.05f;
     static final float VEILED_EYE_ALPHA = 0.4f;
-    /** A veiled Wisp starts to shimmer inside this many blocks of the camera, fully by the near one. */
+    /** A veiled Vestige starts to shimmer inside this many blocks of the camera, fully by the near one. */
     static final float SHIMMER_FAR = 4f;
     static final float SHIMMER_NEAR = 1.5f;
 
     /**
-     * How a mob is drawn beyond its clip: a Wisp's eyes glow, and veiled it is nearly invisible, a
+     * How a mob is drawn beyond its clip: a Vestige's eyes glow, and veiled it is nearly invisible, a
      * shimmer up close. Every other mob draws as authored.
      */
     static SbeEntityRenderer.Look lookOf(LivingEntity mob, Vector3f cameraPos) {
-        if (!(mob instanceof com.stonebreak.mobs.wisp.Wisp wisp)) {
+        if (!(mob instanceof com.stonebreak.mobs.vestige.Vestige vestige)) {
             return SbeEntityRenderer.Look.NONE;
         }
-        if (!wisp.isVeiled()) {
-            return new SbeEntityRenderer.Look(1f, 0f, com.stonebreak.mobs.wisp.Wisp.EYE_PARTS, 1f);
+        if (!vestige.isVeiled()) {
+            return new SbeEntityRenderer.Look(1f, 0f, com.stonebreak.mobs.vestige.Vestige.EYE_PARTS, 1f);
         }
-        float distance = cameraPos != null ? cameraPos.distance(wisp.getPosition()) : Float.MAX_VALUE;
+        float distance = cameraPos != null ? cameraPos.distance(vestige.getPosition()) : Float.MAX_VALUE;
         float shimmer = Math.clamp((SHIMMER_FAR - distance) / (SHIMMER_FAR - SHIMMER_NEAR), 0f, 1f);
         // Eyes dimmed, they fade with the body: nothing left to track.
-        return new SbeEntityRenderer.Look(VEILED_BODY_ALPHA, shimmer, com.stonebreak.mobs.wisp.Wisp.EYE_PARTS,
-                wisp.eyesDark() ? VEILED_BODY_ALPHA : VEILED_EYE_ALPHA);
+        return new SbeEntityRenderer.Look(VEILED_BODY_ALPHA, shimmer, com.stonebreak.mobs.vestige.Vestige.EYE_PARTS,
+                vestige.eyesDark() ? VEILED_BODY_ALPHA : VEILED_EYE_ALPHA);
     }
 
-    /** Whether the mob casts no shadow right now (a veiled Wisp). */
+    /** Whether the mob casts no shadow right now (a veiled Vestige). */
     static boolean castsNoShadow(LivingEntity mob) {
-        return mob instanceof com.stonebreak.mobs.wisp.Wisp wisp && wisp.isVeiled();
+        return mob instanceof com.stonebreak.mobs.vestige.Vestige vestige && vestige.isVeiled();
     }
 
     /** Flat-colored draw with the same bindings as {@link #render} (shadow-caster pass). */

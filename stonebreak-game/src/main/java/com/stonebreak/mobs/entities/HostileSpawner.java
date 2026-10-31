@@ -13,7 +13,7 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Night-time hostile spawns, one {@link HostileSpawnRule} per creature: goblin bands everywhere
- * (seldom in the Shade), the Wisp for whoever lingers in the Shade's fog. Ticked by {@link EntitySpawner} on the
+ * (seldom in the Shade), the Vestige for whoever lingers in the Shade's fog. Ticked by {@link EntitySpawner} on the
  * authoritative server world, and borrows its anchors (where the players are) and its
  * standable-site finders, so hostile and passive spawns can never disagree about what ground a mob
  * may stand on.
@@ -37,7 +37,7 @@ final class HostileSpawner {
     /** Farther than this from every player and a hostile is gone. */
     static final int DESPAWN_DISTANCE = 64;
 
-    static final List<HostileSpawnRule> RULES = List.of(HostileSpawnRule.GOBLIN, HostileSpawnRule.WISP);
+    static final List<HostileSpawnRule> RULES = List.of(HostileSpawnRule.GOBLIN, HostileSpawnRule.VESTIGE);
 
     private final EntitySpawner sites;
     private final EntityManager entityManager;

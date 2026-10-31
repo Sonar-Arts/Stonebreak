@@ -17,7 +17,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** Animals graze everywhere but seldom wander into the Shade, which belongs to the Wisps. */
+/** Animals graze everywhere but seldom wander into the Shade, which belongs to the Vestiges. */
 class EntitySpawnerShadeTest {
 
     /** A world whose biome is the Shade west of x=0 and plains east of it. */

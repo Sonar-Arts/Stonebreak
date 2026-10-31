@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.openmason.engine.format.sound.SoundDef;
@@ -15,26 +15,26 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The Wisp's voice lives in its asset: Peek-a-boo's laugh and the Woosh are embedded samples bound
+ * The Vestige's voice lives in its asset: Peek-a-boo's laugh and the Woosh are embedded samples bound
  * to the events the behaviours emit. An unbound event is silently silent, and a stereo sample plays
  * flat in both ears instead of from the tree it is hiding behind — both are pinned here.
  */
-class WispAssetContractTest {
+class VestigeAssetContractTest {
 
-    private final SbeEntityAsset wisp = GameSbeAssets.load("/sbe/Mobs/SB_Wisp.sbe");
+    private final SbeEntityAsset vestige = GameSbeAssets.load("/sbe/Mobs/SB_Vestige.sbe");
 
     @Test
-    void theAssetIsTheWisp() {
-        assertEquals(EntityType.WISP.getSbeObjectId(), wisp.objectId());
+    void theAssetIsTheVestige() {
+        assertEquals(EntityType.VESTIGE.getSbeObjectId(), vestige.objectId());
     }
 
     @Test
     void itLaughsAndWooshesFromWhereItIs() throws Exception {
         for (String event : new String[] {"laugh", "woosh", "death"}) {
-            SoundDef def = wisp.sounds().sounds().stream()
+            SoundDef def = vestige.sounds().sounds().stream()
                     .filter(d -> d.event().equals(event)).findFirst().orElse(null);
-            assertNotNull(def, "SB_Wisp.sbe binds no '" + event + "' sound");
-            byte[] bytes = wisp.soundBytesFor(def.filename());
+            assertNotNull(def, "SB_Vestige.sbe binds no '" + event + "' sound");
+            byte[] bytes = vestige.soundBytesFor(def.filename());
             assertNotNull(bytes, event + " is not embedded");
             AudioFormat format = AudioSystem.getAudioFileFormat(new ByteArrayInputStream(bytes)).getFormat();
             assertEquals(1, format.getChannels(), event + " must be mono to play positionally");

@@ -98,7 +98,7 @@ public final class SbeEntityRenderer {
     }
 
     /**
-     * How see-through and how glowing the next {@link #render} is — a veiled Wisp is a faint
+     * How see-through and how glowing the next {@link #render} is — a veiled Vestige is a faint
      * shimmer with its eyes still lit. {@link #NONE} (the default) draws as authored.
      *
      * @param bodyAlpha opacity of every part not in {@code glowParts}

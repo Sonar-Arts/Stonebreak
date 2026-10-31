@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.openmason.engine.wayfind.SearchLimits;
 import com.openmason.engine.wayfind.voxel.NavCell;
@@ -24,12 +24,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * A Wisp floats down a ten-block cliff instead of dropping off it, and plans its escapes down
+ * A Vestige floats down a ten-block cliff instead of dropping off it, and plans its escapes down
  * drops like that, which a goblin will not take.
  *
  * <p>The cliff: a plateau standing at y=74 west of x=3, ground at y=64 east of it.
  */
-class WispGlideTest {
+class VestigeGlideTest {
 
     private static final float TICK = 0.05f;
     private static final int LOW = 64;
@@ -63,30 +63,30 @@ class WispGlideTest {
     @Test
     void itFloatsDownACliffRatherThanDropping() {
         World world = cliff();
-        Wisp wisp = new Wisp(world, new Vector3f(1.5f, HIGH, 0.5f));
-        float fastest = walkOff(world, wisp, 1.5f);
-        assertTrue(fastest <= Wisp.GLIDE_SINK_SPEED + 1e-3f, "sank at " + fastest);
-        assertTrue(wisp.getPosition().y > LOW + 3f, "still on the way down after a second: " + wisp.getPosition());
+        Vestige vestige = new Vestige(world, new Vector3f(1.5f, HIGH, 0.5f));
+        float fastest = walkOff(world, vestige, 1.5f);
+        assertTrue(fastest <= Vestige.GLIDE_SINK_SPEED + 1e-3f, "sank at " + fastest);
+        assertTrue(vestige.getPosition().y > LOW + 3f, "still on the way down after a second: " + vestige.getPosition());
 
-        walkOff(world, wisp, 3f);
-        assertEquals(LOW, wisp.getPosition().y, 0.05f, "and lands at the bottom");
+        walkOff(world, vestige, 3f);
+        assertEquals(LOW, vestige.getPosition().y, 0.05f, "and lands at the bottom");
     }
 
     @Test
     void somethingWithoutAGlideStillDrops() {
         World world = cliff();
         StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3f(1.5f, HIGH, 0.5f), world);
-        assertTrue(walkOff(world, goblin, 1.5f) > 2f * Wisp.GLIDE_SINK_SPEED);
+        assertTrue(walkOff(world, goblin, 1.5f) > 2f * Vestige.GLIDE_SINK_SPEED);
     }
 
     @Test
     void itsRoutesTakeTallDropsAndBarelyChargeForThem() {
         World world = mock(World.class);
-        NavProfile wisp = NavProfiles.forEntity(new Wisp(world, new Vector3f()));
+        NavProfile vestige = NavProfiles.forEntity(new Vestige(world, new Vector3f()));
         NavProfile goblin = NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world));
-        assertEquals(Wisp.MAX_GLIDE_DROP, wisp.maxFall(), 1e-6f);
+        assertEquals(Vestige.MAX_GLIDE_DROP, vestige.maxFall(), 1e-6f);
         assertTrue(goblin.maxFall() < HIGH - LOW);
-        assertTrue(wisp.fallCostPerBlock() < goblin.fallCostPerBlock());
+        assertTrue(vestige.fallCostPerBlock() < goblin.fallCostPerBlock());
     }
 
     @Test
@@ -95,8 +95,8 @@ class WispGlideTest {
         Vector3f top = new Vector3f(0.5f, HIGH, 0.5f);
         Vector3f bottom = new Vector3f(8.5f, LOW, 0.5f);
 
-        Path glide = route(NavProfiles.forEntity(new Wisp(world, new Vector3f())), top, bottom);
-        assertTrue(glide.isComplete(), "the Wisp glides down");
+        Path glide = route(NavProfiles.forEntity(new Vestige(world, new Vector3f())), top, bottom);
+        assertTrue(glide.isComplete(), "the Vestige glides down");
         assertEquals(LOW, glide.y(glide.size() - 1), 0.01f);
 
         Path walk = route(NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world)), top, bottom);

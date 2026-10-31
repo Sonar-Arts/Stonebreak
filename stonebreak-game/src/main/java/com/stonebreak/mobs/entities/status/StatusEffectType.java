@@ -47,7 +47,7 @@ public enum StatusEffectType {
      */
     FLAT_FOOTED,
     /**
-     * Wrapped in the Wisp's veil: drawn almost see-through, only its eyes still faintly glowing.
+     * Wrapped in the Vestige's veil: drawn almost see-through, only its eyes still faintly glowing.
      * {@code magnitude} is unused. Replicated like any effect, which is how clients learn to fade it.
      */
     VEILED,
@@ -57,7 +57,7 @@ public enum StatusEffectType {
      */
     SMOKESCREEN,
     /**
-     * The Wisp has dimmed its eyes: veiled, they no longer glow through, so a player tracking it
+     * The Vestige has dimmed its eyes: veiled, they no longer glow through, so a player tracking it
      * loses it entirely. {@code magnitude} is unused. Replicated so clients draw the eyes dark.
      */
     EYES_DARK

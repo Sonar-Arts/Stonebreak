@@ -47,7 +47,7 @@ public final class PlayerVitals {
 
     private float cactusTimer;
 
-    /** Seconds of burning left, and its damage per second (a Wisp's fire, say). */
+    /** Seconds of burning left, and its damage per second (a Vestige's fire, say). */
     private float burnSeconds;
     private float burnDps;
     private float burnTimer;

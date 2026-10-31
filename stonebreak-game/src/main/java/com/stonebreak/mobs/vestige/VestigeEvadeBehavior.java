@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
@@ -6,16 +6,16 @@ import org.joml.Vector3f;
 
 /**
  * Slipping the victim's eye. Stared at — or merely glimpsed by a victim already hunting for it —
- * the Wisp draws its veil, dims even its eyes, darts sideways off their line of sight, and makes for
+ * the Vestige draws its veil, dims even its eyes, darts sideways off their line of sight, and makes for
  * cover round on their flank: well off, away from where they saw it, and out of the way they are
  * heading. A player who keeps tracking it finds only empty trees. If there is no way out with
- * the player close, it is cornered and fights instead ({@link WispCorneredBehavior}).
+ * the player close, it is cornered and fights instead ({@link VestigeCorneredBehavior}).
  *
  * <p>It costs nothing on the fright meter: being hunted is not one of its tricks, and a player who
  * merely looks around a lot should not be what pushes it into an attack. Peek-a-boo, which wants
  * to be seen, outranks it, so a noticed peek is not mistaken for being caught.
  */
-final class WispEvadeBehavior extends WispBehavior {
+final class VestigeEvadeBehavior extends VestigeBehavior {
 
     private enum Phase { BREAK, FLANK, DONE }
 
@@ -37,8 +37,8 @@ final class WispEvadeBehavior extends WispBehavior {
     private Vector3f goal;
     private final Vector3f side = new Vector3f();
 
-    WispEvadeBehavior(Wisp wisp) {
-        super(wisp);
+    VestigeEvadeBehavior(Vestige vestige) {
+        super(vestige);
     }
 
     @Override
@@ -48,16 +48,16 @@ final class WispEvadeBehavior extends WispBehavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        WispSenses senses = senses();
-        return mind().mode() == WispMind.Mode.STALK && !wisp.isDissolving() && wisp.getAge() >= readyAt
+        VestigeSenses senses = senses();
+        return mind().mode() == VestigeMind.Mode.STALK && !vestige.isDissolving() && vestige.getAge() >= readyAt
                 && senses.hasVictim() && senses.victimLook() != null
                 && (senses.watched() || (tracked() && senses.inView()));
     }
 
     @Override
     public boolean shouldContinue(AiContext context) {
-        return phase != Phase.DONE && mind().mode() == WispMind.Mode.STALK && senses().hasVictim()
-                && !wisp.isDissolving();
+        return phase != Phase.DONE && mind().mode() == VestigeMind.Mode.STALK && senses().hasVictim()
+                && !vestige.isDissolving();
     }
 
     @Override
@@ -65,8 +65,8 @@ final class WispEvadeBehavior extends WispBehavior {
         elapsed = 0f;
         goal = null;
         mind().spotted();
-        wisp.veil(tuning().veilSeconds());
-        wisp.darkenEyes(tuning().veilSeconds());
+        vestige.veil(tuning().veilSeconds());
+        vestige.darkenEyes(tuning().veilSeconds());
         context.nav().stop();
         if (chooseBreakSide()) {
             phase = Phase.BREAK;
@@ -96,7 +96,7 @@ final class WispEvadeBehavior extends WispBehavior {
                     return;
                 }
                 // They moved and the spot is in plain view now: find another.
-                if (elapsed >= replanAt && !wisp.cover().hidden(senses().victimEye(), goal)) {
+                if (elapsed >= replanAt && !vestige.cover().hidden(senses().victimEye(), goal)) {
                     replanAt = elapsed + REPLAN_SECONDS;
                     Vector3f next = flankSpot(SEARCH_RADIUS);
                     if (next != null) {
@@ -114,7 +114,7 @@ final class WispEvadeBehavior extends WispBehavior {
      * further from the way they are heading. False when neither side is open Shade.
      */
     private boolean chooseBreakSide() {
-        Vector3f self = wisp.getPosition();
+        Vector3f self = vestige.getPosition();
         Vector3f feet = senses().victimFeet();
         float dx = self.x - feet.x;
         float dz = self.z - feet.z;
@@ -130,7 +130,7 @@ final class WispEvadeBehavior extends WispBehavior {
             float sx = -dz / len * sign;
             float sz = dx / len * sign;
             probe.set(self.x + sx * BREAK_PROBE, self.y, self.z + sz * BREAK_PROBE);
-            if (!wisp.shade().isShade(probe)) {
+            if (!vestige.shade().isShade(probe)) {
                 continue;
             }
             float clearance = pursuit.distanceToPath(probe);
@@ -156,9 +156,9 @@ final class WispEvadeBehavior extends WispBehavior {
     @Override
     public void stop(AiContext context) {
         phase = Phase.DONE;
-        wisp.brightenEyes();
+        vestige.brightenEyes();
         context.nav().stop();
-        readyAt = wisp.getAge() + tuning().evadeCooldown();
+        readyAt = vestige.getAge() + tuning().evadeCooldown();
     }
 
     @Override

@@ -1,16 +1,16 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import org.joml.Vector3f;
 
 /**
- * Woosh: with the victim's back turned, the Wisp creeps up behind them, rushes past their ear for a
+ * Woosh: with the victim's back turned, the Vestige creeps up behind them, rushes past their ear for a
  * sting, and is veiled and gone before they have turned round. It only tries when it has read them
- * as safe to approach ({@link WispMind#wooshReadIsSafe}); if they turn to face it on the way in it
+ * as safe to approach ({@link VestigeMind#wooshReadIsSafe}); if they turn to face it on the way in it
  * gives up quietly, and if they catch it close the {@code spotted} reaction takes over.
  */
-final class WispWooshBehavior extends WispBehavior {
+final class VestigeWooshBehavior extends VestigeBehavior {
 
     private enum Phase { APPROACH, STRIKE, ESCAPE, DONE }
 
@@ -31,8 +31,8 @@ final class WispWooshBehavior extends WispBehavior {
     private Vector3f refuge;
     private final Vector3f behind = new Vector3f();
 
-    WispWooshBehavior(Wisp wisp) {
-        super(wisp);
+    VestigeWooshBehavior(Vestige vestige) {
+        super(vestige);
     }
 
     @Override
@@ -42,8 +42,8 @@ final class WispWooshBehavior extends WispBehavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        WispSenses senses = senses();
-        return mind().mode() == WispMind.Mode.STALK && mind().wooshReady()
+        VestigeSenses senses = senses();
+        return mind().mode() == VestigeMind.Mode.STALK && mind().wooshReady()
                 && senses.hasVictim() && senses.victimInShade() && senses.victimLook() != null
                 && !senses.inView() && senses.distance() <= tuning().wooshStartRange()
                 && mind().wooshReadIsSafe();
@@ -51,7 +51,7 @@ final class WispWooshBehavior extends WispBehavior {
 
     @Override
     public boolean shouldContinue(AiContext context) {
-        return phase != Phase.DONE && mind().mode() == WispMind.Mode.STALK && senses().hasVictim();
+        return phase != Phase.DONE && mind().mode() == VestigeMind.Mode.STALK && senses().hasVictim();
     }
 
     @Override
@@ -84,13 +84,13 @@ final class WispWooshBehavior extends WispBehavior {
     }
 
     private void approach(AiContext context) {
-        WispSenses senses = senses();
+        VestigeSenses senses = senses();
         if (senses.distance() <= STRIKE_RANGE) {
             phase = Phase.STRIKE;
             elapsed = 0f;
             mind().setApproaching(false);
             context.nav().stop();
-            wisp.emit("woosh");
+            vestige.emit("woosh");
             return;
         }
         // They turned round (but not close enough to catch it), went frantic, or it took too long:
@@ -110,7 +110,7 @@ final class WispWooshBehavior extends WispBehavior {
         if (len > 1.0e-3f) {
             behind.add(-lx / len * BEHIND_DISTANCE, 0f, -lz / len * BEHIND_DISTANCE);
         }
-        if (!wisp.shade().isShade(behind)) {
+        if (!vestige.shade().isShade(behind)) {
             behind.set(feet); // their back is to the border: come at them straight
         }
         goTo(context, behind, 0.8f, APPROACH_SPEED);
@@ -119,14 +119,14 @@ final class WispWooshBehavior extends WispBehavior {
     private void strike(AiContext context) {
         context.faceTarget(720f);
         // The rush carries it past their ear.
-        Vector3f forward = wisp.getForwardDirection();
+        Vector3f forward = vestige.getForwardDirection();
         context.steering().steerAlong(new Vector3f(forward.x, 0f, forward.z).normalize(),
                 APPROACH_SPEED, context.deltaTime(), false);
         if (!landed && elapsed >= STRIKE_IMPACT) {
             landed = true;
             context.hurtTarget(tuning().wooshDamage(), STRIKE_KNOCKBACK);
             mind().frighten(tuning().wooshGain());
-            wisp.veil(tuning().veilSeconds());
+            vestige.veil(tuning().veilSeconds());
         }
         if (elapsed >= STRIKE_SECONDS) {
             phase = Phase.ESCAPE;

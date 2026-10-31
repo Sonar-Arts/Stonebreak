@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
@@ -7,7 +7,7 @@ import org.joml.Vector3f;
 import java.util.function.Predicate;
 
 /**
- * The Wisp's way out of trouble: a claw swipe if the player is in reach, then a smokescreen, the
+ * The Vestige's way out of trouble: a claw swipe if the player is in reach, then a smokescreen, the
  * veil, and a dash to cover. Three triggers share it —
  *
  * <ul>
@@ -19,9 +19,9 @@ import java.util.function.Predicate;
  * </ul>
  *
  * <p>If the dash finds no way out with the player still close, it is cornered and stops running
- * ({@link WispCorneredBehavior}); none of the three fire while it is.
+ * ({@link VestigeCorneredBehavior}); none of the three fire while it is.
  */
-final class WispVanishBehavior extends WispBehavior {
+final class VestigeVanishBehavior extends VestigeBehavior {
 
     private enum Phase { SCRATCH, SMOKE, FLEE, DONE }
 
@@ -36,7 +36,7 @@ final class WispVanishBehavior extends WispBehavior {
 
     private final String name;
     private final int priority;
-    private final Predicate<WispBehavior> trigger;
+    private final Predicate<VestigeBehavior> trigger;
     private final boolean mayScratch;
     private final boolean spotting;
     private final boolean attackBand;
@@ -49,9 +49,9 @@ final class WispVanishBehavior extends WispBehavior {
     private Vector3f refuge;
     private float readyAt;
 
-    private WispVanishBehavior(Wisp wisp, String name, int priority, Predicate<WispBehavior> trigger,
+    private VestigeVanishBehavior(Vestige vestige, String name, int priority, Predicate<VestigeBehavior> trigger,
                                boolean mayScratch, boolean spotting, boolean attackBand, boolean cooled) {
-        super(wisp);
+        super(vestige);
         this.name = name;
         this.priority = priority;
         this.trigger = trigger;
@@ -62,24 +62,24 @@ final class WispVanishBehavior extends WispBehavior {
     }
 
     /** Hit while stalking, meter not full: answer and vanish. */
-    static WispVanishBehavior hitReaction(Wisp wisp) {
-        return new WispVanishBehavior(wisp, "HitReaction", 2,
-                b -> b.mind().mode() == WispMind.Mode.STALK && b.mind().hitPending(),
+    static VestigeVanishBehavior hitReaction(Vestige vestige) {
+        return new VestigeVanishBehavior(vestige, "HitReaction", 2,
+                b -> b.mind().mode() == VestigeMind.Mode.STALK && b.mind().hitPending(),
                 true, false, false, false);
     }
 
     /** Attacking, and the player got too close: scratch, vanish, back to range. */
-    static WispVanishBehavior breakMelee(Wisp wisp) {
-        return new WispVanishBehavior(wisp, "BreakMelee", 2,
-                b -> b.mind().mode() == WispMind.Mode.ATTACK && b.senses().hasVictim()
+    static VestigeVanishBehavior breakMelee(Vestige vestige) {
+        return new VestigeVanishBehavior(vestige, "BreakMelee", 2,
+                b -> b.mind().mode() == VestigeMind.Mode.ATTACK && b.senses().hasVictim()
                         && b.senses().distance() <= b.tuning().meleeBreakRange(),
                 true, false, true, true);
     }
 
     /** Caught sneaking up for a Woosh: smoke and gone. */
-    static WispVanishBehavior spotted(Wisp wisp) {
-        return new WispVanishBehavior(wisp, "Spotted", 3,
-                b -> b.mind().mode() == WispMind.Mode.STALK && b.mind().approaching()
+    static VestigeVanishBehavior spotted(Vestige vestige) {
+        return new VestigeVanishBehavior(vestige, "Spotted", 3,
+                b -> b.mind().mode() == VestigeMind.Mode.STALK && b.mind().approaching()
                         && b.senses().watched() && b.senses().distance() <= b.tuning().spottedRange(),
                 false, true, false, false);
     }
@@ -91,13 +91,13 @@ final class WispVanishBehavior extends WispBehavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        return !wisp.isDissolving() && !mind().cornered() && (!cooled || wisp.getAge() >= readyAt)
+        return !vestige.isDissolving() && !mind().cornered() && (!cooled || vestige.getAge() >= readyAt)
                 && trigger.test(this);
     }
 
     @Override
     public boolean shouldContinue(AiContext context) {
-        return phase != Phase.DONE && !wisp.isDissolving();
+        return phase != Phase.DONE && !vestige.isDissolving();
     }
 
     @Override
@@ -114,7 +114,7 @@ final class WispVanishBehavior extends WispBehavior {
         boolean inReach = senses().hasVictim() && senses().distance() <= tuning().scratchReach();
         phase = mayScratch && inReach ? Phase.SCRATCH : Phase.SMOKE;
         if (phase == Phase.SCRATCH) {
-            wisp.emit("scratch");
+            vestige.emit("scratch");
         } else {
             throwSmoke();
         }
@@ -169,8 +169,8 @@ final class WispVanishBehavior extends WispBehavior {
     private void throwSmoke() {
         phase = Phase.SMOKE;
         elapsed = 0f;
-        wisp.smokescreen();
-        wisp.veil(tuning().veilSeconds());
+        vestige.smokescreen();
+        vestige.veil(tuning().veilSeconds());
     }
 
     private Vector3f refuge() {
@@ -183,7 +183,7 @@ final class WispVanishBehavior extends WispBehavior {
     public void stop(AiContext context) {
         phase = Phase.DONE;
         context.nav().stop();
-        readyAt = wisp.getAge() + tuning().meleeBreakCooldown();
+        readyAt = vestige.getAge() + tuning().meleeBreakCooldown();
     }
 
     @Override

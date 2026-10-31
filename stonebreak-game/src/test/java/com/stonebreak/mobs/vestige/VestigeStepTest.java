@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityCollision;
@@ -19,13 +19,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * A Wisp runs straight up a one-block rise — no stop, no hop — where anything with feet still has
+ * A Vestige runs straight up a one-block rise — no stop, no hop — where anything with feet still has
  * to jump; a two-block wall, or a step with no room above it, still stops it.
  *
  * <p>Flat stone up to y=63; from x=3 on, the terrain is whatever {@code solidFromX3} says for each
  * height. Physics only — the mob is pushed east at a run, as its steering would.
  */
-class WispStepTest {
+class VestigeStepTest {
 
     private static final float TICK = 0.05f;
     private static final int GROUND = 64;
@@ -58,10 +58,10 @@ class WispStepTest {
     @Test
     void itRunsStraightUpAOneBlockRise() {
         World world = terrain(y -> y == GROUND);
-        Wisp wisp = new Wisp(world, new Vector3f(0.5f, GROUND, 0.5f));
-        runEast(world, wisp);
-        assertTrue(wisp.getPosition().x > 6f, "kept running: " + wisp.getPosition());
-        assertEquals(GROUND + 1, wisp.getPosition().y, 0.05f);
+        Vestige vestige = new Vestige(world, new Vector3f(0.5f, GROUND, 0.5f));
+        runEast(world, vestige);
+        assertTrue(vestige.getPosition().x > 6f, "kept running: " + vestige.getPosition());
+        assertEquals(GROUND + 1, vestige.getPosition().y, 0.05f);
     }
 
     @Test
@@ -75,25 +75,25 @@ class WispStepTest {
     @Test
     void aTwoBlockWallStopsIt() {
         World world = terrain(y -> y == GROUND || y == GROUND + 1);
-        Wisp wisp = new Wisp(world, new Vector3f(0.5f, GROUND, 0.5f));
-        runEast(world, wisp);
-        assertTrue(wisp.getPosition().x < 3f, "went through or over the wall: " + wisp.getPosition());
+        Vestige vestige = new Vestige(world, new Vector3f(0.5f, GROUND, 0.5f));
+        runEast(world, vestige);
+        assertTrue(vestige.getPosition().x < 3f, "went through or over the wall: " + vestige.getPosition());
     }
 
     @Test
     void aStepWithNoRoomAboveItStopsIt() {
         // One block up, but a ceiling two blocks above the step: no room for a two-block body.
         World world = terrain(y -> y == GROUND || y == GROUND + 2);
-        Wisp wisp = new Wisp(world, new Vector3f(0.5f, GROUND, 0.5f));
-        runEast(world, wisp);
-        assertTrue(wisp.getPosition().x < 3f, "squeezed under the ceiling: " + wisp.getPosition());
-        assertEquals(GROUND, wisp.getPosition().y, 0.05f);
+        Vestige vestige = new Vestige(world, new Vector3f(0.5f, GROUND, 0.5f));
+        runEast(world, vestige);
+        assertTrue(vestige.getPosition().x < 3f, "squeezed under the ceiling: " + vestige.getPosition());
+        assertEquals(GROUND, vestige.getPosition().y, 0.05f);
     }
 
     @Test
     void itsRoutesTreatAWholeBlockAsAStepNotAJump() {
         World world = terrain(y -> false);
-        assertEquals(Wisp.STEP_UP, NavProfiles.forEntity(new Wisp(world, new Vector3f())).maxStepUp(), 1e-6f);
+        assertEquals(Vestige.STEP_UP, NavProfiles.forEntity(new Vestige(world, new Vector3f())).maxStepUp(), 1e-6f);
         assertEquals(NavProfiles.MAX_STEP_UP,
                 NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world)).maxStepUp(), 1e-6f);
     }
@@ -101,7 +101,7 @@ class WispStepTest {
     @Test
     void itOutrunsASprintingPlayerWhenItFlees() {
         float sprint = 20f * 1.5f / 5f; // PlayerConstants.MOVE_SPEED × SPRINT_MULTIPLIER ÷ ground friction
-        assertTrue(Wisp.RUN_SPEED * WispVanishBehavior.FLEE_SPEED > sprint);
-        assertTrue(Wisp.RUN_SPEED * WispWooshBehavior.ESCAPE_SPEED > sprint);
+        assertTrue(Vestige.RUN_SPEED * VestigeVanishBehavior.FLEE_SPEED > sprint);
+        assertTrue(Vestige.RUN_SPEED * VestigeWooshBehavior.ESCAPE_SPEED > sprint);
     }
 }

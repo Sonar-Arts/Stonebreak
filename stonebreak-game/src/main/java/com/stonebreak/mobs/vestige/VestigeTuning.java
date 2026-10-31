@@ -1,14 +1,14 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 /**
- * Every number that decides how a Wisp plays, in one place, so balancing it is editing a record
+ * Every number that decides how a Vestige plays, in one place, so balancing it is editing a record
  * rather than hunting through behaviours. Times are seconds, distances blocks, damage hit points.
  *
- * <p>The fright meter's gains and decay are set so that a Wisp left to its routine — an ability
+ * <p>The fright meter's gains and decay are set so that a Vestige left to its routine — an ability
  * about every 25 seconds, nobody fighting back — snaps into its attack after three to four minutes
- * ({@code WispMindTest} holds it to that).
+ * ({@code VestigeMindTest} holds it to that).
  *
- * @param meterMax                 fright meter at which the Wisp stops scaring and attacks
+ * @param meterMax                 fright meter at which the Vestige stops scaring and attacks
  * @param decayPerSec              meter drained per second while it stalks
  * @param peekGain                 meter for a Peek-a-boo the victim looked at
  * @param peekIgnoredGain          meter for a Peek-a-boo nobody noticed
@@ -38,7 +38,7 @@ package com.stonebreak.mobs.wisp;
  * @param trackedBandMax           furthest it keeps to a victim who is tracking it
  * @param evadeCooldown            seconds after slipping a victim's eye before it slips again
  * @param cornerRange              a victim this close when a flight fails has it cornered
- * @param cornerFightSeconds       how long a cornered Wisp fights before trying to get away again
+ * @param cornerFightSeconds       how long a cornered Vestige fights before trying to get away again
  * @param scratchReach             how close the victim must be to be scratched
  * @param scratchDamage            the scratch's damage
  * @param meleeBreakRange          in an attack, closer than this and it breaks away
@@ -50,9 +50,9 @@ package com.stonebreak.mobs.wisp;
  * @param orbDamage                a fireball's hit
  * @param orbBurnSeconds           how long a fireball leaves its victim burning
  * @param orbBurnDps               the burn's damage per second
- * @param dawnFog                  night fog below this and the Wisp leaves for the day
+ * @param dawnFog                  night fog below this and the Vestige leaves for the day
  */
-public record WispTuning(
+public record VestigeTuning(
         float meterMax, float decayPerSec,
         float peekGain, float peekIgnoredGain, float veilGain, float wooshGain, float spottedGain,
         float playerHitGain, float calmMeter,
@@ -70,7 +70,7 @@ public record WispTuning(
         float orbDamage, float orbBurnSeconds, float orbBurnDps,
         float dawnFog) {
 
-    public static final WispTuning DEFAULT = new WispTuning(
+    public static final VestigeTuning DEFAULT = new VestigeTuning(
             100f, 0.04f,
             16f, 8f, 6f, 20f, 10f,
             35f, 50f,

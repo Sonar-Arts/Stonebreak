@@ -67,7 +67,7 @@ public class IllusionSmokeParticles {
     }
 
     /**
-     * A thick, slow smokescreen a body could vanish into (the Wisp's): more, larger, longer-lived
+     * A thick, slow smokescreen a body could vanish into (the Vestige's): more, larger, longer-lived
      * puffs, spread wider and taller than a decoy's burst.
      */
     public void screen(Vector3f origin) {

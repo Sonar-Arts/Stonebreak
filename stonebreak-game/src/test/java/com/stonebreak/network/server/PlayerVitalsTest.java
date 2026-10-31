@@ -166,7 +166,7 @@ class PlayerVitalsTest {
         assertEquals(0f, vitals.onCactusContact(true, true, 1f, now, 0.5f, 0.5f), "flying touches nothing");
     }
 
-    /** A wisp's fire burns for its duration at its rate, in pulses, and a fresh hit refreshes it. */
+    /** A vestige's fire burns for its duration at its rate, in pulses, and a fresh hit refreshes it. */
     @Test
     void aBurnDealsItsDamageOverItsDurationAndRefreshesRatherThanStacks() {
         vitals.ignite(3f, 0.5f);

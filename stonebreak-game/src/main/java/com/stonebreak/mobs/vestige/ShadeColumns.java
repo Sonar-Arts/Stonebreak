@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.TerrainGenerator;
@@ -9,10 +9,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Which columns belong to the Shade, remembered: a Wisp asks about the same few hundred columns
+ * Which columns belong to the Shade, remembered: a Vestige asks about the same few hundred columns
  * over and over (where it is, where it might hide), and a biome never changes under it.
  *
- * <p>A world with no terrain generator (tests) is all Shade, so a Wisp there never dissolves for
+ * <p>A world with no terrain generator (tests) is all Shade, so a Vestige there never dissolves for
  * want of an answer.
  */
 final class ShadeColumns {

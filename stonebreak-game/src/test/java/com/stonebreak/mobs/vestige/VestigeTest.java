@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityManager;
@@ -25,10 +25,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * The Wisp's hard rules, on a world whose Shade ends at x=0 (east is plains) and where nothing is
+ * The Vestige's hard rules, on a world whose Shade ends at x=0 (east is plains) and where nothing is
  * solid: it never crosses out, it dissolves if it finds itself out, and dissolving pays nothing.
  */
-class WispTest {
+class VestigeTest {
 
     private static final float TICK = 0.05f;
 
@@ -80,66 +80,66 @@ class WispTest {
     @Test
     void theEdgeOfTheShadeIsAWall() {
         Rig rig = rig(PlayerLocator.NONE);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-0.3f, 64f, 0.5f));
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-0.3f, 64f, 0.5f));
         for (int i = 0; i < 20; i++) {
-            wisp.setVelocity(new Vector3f(4f, wisp.getVelocity().y, 0f));
-            wisp.update(TICK);
+            vestige.setVelocity(new Vector3f(4f, vestige.getVelocity().y, 0f));
+            vestige.update(TICK);
         }
-        assertTrue(wisp.getPosition().x < 0f, "still in the Shade: " + wisp.getPosition());
-        assertFalse(wisp.isDissolving());
+        assertTrue(vestige.getPosition().x < 0f, "still in the Shade: " + vestige.getPosition());
+        assertFalse(vestige.isDissolving());
     }
 
     @Test
     void outsideTheShadeItDissolvesAndIsGoneWithNothingToShow() {
         Rig rig = rig(PlayerLocator.NONE);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(5f, 64f, 0.5f));
-        wisp.update(TICK);
-        assertTrue(wisp.isDissolving());
-        assertTrue(wisp.hasStatusEffect(StatusEffectType.SMOKESCREEN));
-        assertEquals(0, wisp.getXpReward());
-        assertEquals(0, wisp.getDrops().length);
-        assertFalse(wisp.isPlayerAttackable(), "smoke cannot be hit");
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(5f, 64f, 0.5f));
+        vestige.update(TICK);
+        assertTrue(vestige.isDissolving());
+        assertTrue(vestige.hasStatusEffect(StatusEffectType.SMOKESCREEN));
+        assertEquals(0, vestige.getXpReward());
+        assertEquals(0, vestige.getDrops().length);
+        assertFalse(vestige.isPlayerAttackable(), "smoke cannot be hit");
 
-        wisp.update(TICK);
-        assertEquals(MobBehaviorState.DISSOLVE, wisp.getAI().getCurrentState());
-        verify(rig.manager(), never()).removeEntity(wisp);
+        vestige.update(TICK);
+        assertEquals(MobBehaviorState.DISSOLVE, vestige.getAI().getCurrentState());
+        verify(rig.manager(), never()).removeEntity(vestige);
         for (int i = 0; i < 40; i++) {
-            wisp.update(TICK);
+            vestige.update(TICK);
         }
-        verify(rig.manager()).removeEntity(wisp);
+        verify(rig.manager()).removeEntity(vestige);
     }
 
     @Test
     void itLocksOntoThePlayerItFound() {
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f)));
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
-        wisp.update(TICK);
-        assertEquals(7, wisp.lockedTargetPlayerId());
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        vestige.update(TICK);
+        assertEquals(7, vestige.lockedTargetPlayerId());
     }
 
     @Test
     void beingHitWhileStalkingRaisesTheMeterAndSendsItIntoTheVeil() {
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f)));
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
-        wisp.update(TICK);
-        wisp.damage(1f, LivingEntity.DamageSource.PLAYER);
-        assertEquals(35f, wisp.mind().meter(), 0.5f);
-        wisp.update(TICK);
-        assertTrue(wisp.isVeiled(), "out of reach of a scratch: straight to smoke and veil");
-        assertEquals(WispMind.Mode.STALK, wisp.mind().mode());
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        vestige.update(TICK);
+        vestige.damage(1f, LivingEntity.DamageSource.PLAYER);
+        assertEquals(35f, vestige.mind().meter(), 0.5f);
+        vestige.update(TICK);
+        assertTrue(vestige.isVeiled(), "out of reach of a scratch: straight to smoke and veil");
+        assertEquals(VestigeMind.Mode.STALK, vestige.mind().mode());
     }
 
     @Test
     void staredAtItSlipsAwayVeiledWithItsEyesDarkAndNoFright() {
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f)));
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
-        wisp.update(TICK);
-        wisp.update(TICK);
-        assertTrue(wisp.isVeiled());
-        assertTrue(wisp.eyesDark(), "nothing left glowing for them to follow");
-        assertFalse(wisp.senses().watched(), "they cannot stare at what they cannot see");
-        assertEquals("Evade", wisp.getAI().activeBehaviorName());
-        assertEquals(0f, wisp.mind().meter(), 1e-4f, "being hunted is not one of its tricks");
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        vestige.update(TICK);
+        vestige.update(TICK);
+        assertTrue(vestige.isVeiled());
+        assertTrue(vestige.eyesDark(), "nothing left glowing for them to follow");
+        assertFalse(vestige.senses().watched(), "they cannot stare at what they cannot see");
+        assertEquals("Evade", vestige.getAI().activeBehaviorName());
+        assertEquals(0f, vestige.mind().meter(), 1e-4f, "being hunted is not one of its tricks");
     }
 
     @Test
@@ -148,17 +148,17 @@ class WispTest {
         double off = Math.toRadians(40);
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f),
                 new Vector3f((float) Math.cos(off), 0f, (float) Math.sin(off))));
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
-        wisp.update(TICK);
-        assertTrue(wisp.senses().inView());
-        assertFalse(wisp.isVeiled(), "a glimpse from a victim not hunting for it");
-        for (int i = 0; i < 40 && !wisp.isVeiled(); i++) {
-            wisp.update(TICK);
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        vestige.update(TICK);
+        assertTrue(vestige.senses().inView());
+        assertFalse(vestige.isVeiled(), "a glimpse from a victim not hunting for it");
+        for (int i = 0; i < 40 && !vestige.isVeiled(); i++) {
+            vestige.update(TICK);
         }
-        assertTrue(wisp.isVeiled(), "kept in view long enough, they are tracking it");
+        assertTrue(vestige.isVeiled(), "kept in view long enough, they are tracking it");
     }
 
-    /** Stone up to y=63 under the whole rig, so a Wisp stands rather than sinks. */
+    /** Stone up to y=63 under the whole rig, so a Vestige stands rather than sinks. */
     private static void floor(Rig rig) {
         when(rig.world().getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv ->
                 (int) inv.getArgument(1) < 64 ? BlockType.STONE : BlockType.AIR);
@@ -170,15 +170,15 @@ class WispTest {
         // way out finds no route (this rig has no pathfinder): it is cornered.
         Rig rig = rig(playerAt(new Vector3f(-4f, 64f, 0.5f)));
         floor(rig);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-0.5f, 64f, 0.5f));
-        for (int i = 0; i < 40 && !"Cornered".equals(wisp.getAI().activeBehaviorName()); i++) {
-            wisp.update(TICK);
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-0.5f, 64f, 0.5f));
+        for (int i = 0; i < 40 && !"Cornered".equals(vestige.getAI().activeBehaviorName()); i++) {
+            vestige.update(TICK);
         }
-        assertEquals("Cornered", wisp.getAI().activeBehaviorName());
-        assertFalse(wisp.isVeiled(), "it turns to fight in plain sight");
-        assertFalse(wisp.eyesDark());
+        assertEquals("Cornered", vestige.getAI().activeBehaviorName());
+        assertFalse(vestige.isVeiled(), "it turns to fight in plain sight");
+        assertFalse(vestige.eyesDark());
         for (int i = 0; i < 30; i++) {
-            wisp.update(TICK);
+            vestige.update(TICK);
         }
         verify(rig.manager()).addEntity(any(WillOWispOrb.class));
     }
@@ -187,10 +187,10 @@ class WispTest {
     void aFailedFlightFromAFarOffVictimIsNotACorner() {
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f)));
         floor(rig);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
         for (int i = 0; i < 60; i++) {
-            wisp.update(TICK);
-            assertFalse(wisp.mind().cornered(), "fifteen blocks off is room enough to slip away later");
+            vestige.update(TICK);
+            assertFalse(vestige.mind().cornered(), "fifteen blocks off is room enough to slip away later");
         }
     }
 
@@ -199,39 +199,39 @@ class WispTest {
         Vector3f player = new Vector3f(-4f, 64f, 0.5f);
         Rig rig = rig(playerAt(player));
         floor(rig);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-0.5f, 64f, 0.5f));
-        for (int i = 0; i < 40 && !wisp.mind().cornered(); i++) {
-            wisp.update(TICK);
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-0.5f, 64f, 0.5f));
+        for (int i = 0; i < 40 && !vestige.mind().cornered(); i++) {
+            vestige.update(TICK);
         }
-        assertTrue(wisp.mind().cornered());
+        assertTrue(vestige.mind().cornered());
         player.set(-30f, 64f, 0.5f);
         for (int i = 0; i < 3; i++) {
-            wisp.update(TICK);
+            vestige.update(TICK);
         }
-        assertFalse(wisp.mind().cornered(), "given room, it may run again");
+        assertFalse(vestige.mind().cornered(), "given room, it may run again");
     }
 
     @Test
     void atDawnItLeavesOnceNobodyIsWatching() {
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f), new Vector3f(-1f, 0f, 0f)));
         when(rig.world().getNightFog()).thenReturn(0f);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
         for (int i = 0; i < 80; i++) {
-            wisp.update(TICK);
+            vestige.update(TICK);
         }
-        verify(rig.manager()).removeEntity(wisp);
-        assertFalse(wisp.isDissolving(), "a dawn exit is a quiet one");
+        verify(rig.manager()).removeEntity(vestige);
+        assertFalse(vestige.isDissolving(), "a dawn exit is a quiet one");
     }
 
     @Test
     void atDawnItWaitsWhileItsEyesAreWatched() {
         Rig rig = rig(playerAt(new Vector3f(-20f, 64f, 0.5f), new Vector3f(1f, 0f, 0f)));
         when(rig.world().getNightFog()).thenReturn(0f);
-        Wisp wisp = new Wisp(rig.world(), new Vector3f(-5f, 64f, 0.5f));
+        Vestige vestige = new Vestige(rig.world(), new Vector3f(-5f, 64f, 0.5f));
         for (int i = 0; i < 80; i++) {
-            wisp.update(TICK);
+            vestige.update(TICK);
         }
-        verify(rig.manager(), never()).removeEntity(wisp);
-        assertTrue(wisp.isVeiled());
+        verify(rig.manager(), never()).removeEntity(vestige);
+        assertTrue(vestige.isVeiled());
     }
 }

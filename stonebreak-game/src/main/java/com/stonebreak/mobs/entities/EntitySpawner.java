@@ -71,7 +71,7 @@ public class EntitySpawner {
     private static final int MAX_SPAWN_PER_CYCLE = 16;
     /**
      * The Shade holds this share of the animals anywhere else: its chunks count this much toward the
-     * cap, and a pack whose spot falls in it goes ahead only this often. The woods belong to the Wisps.
+     * cap, and a pack whose spot falls in it goes ahead only this often. The woods belong to the Vestiges.
      */
     static final float SHADE_PASSIVE_SHARE = 0.1f;
     /** Chunks {@link #chunkWeights} remembers before it is cleared and starts over. */
@@ -505,7 +505,7 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         return switch (type) {
-            case COW, CHICKEN, SHEEP, GOOSE, GOBLIN, WISP -> isValidGroundSpawn(x, y, z, position);
+            case COW, CHICKEN, SHEEP, GOOSE, GOBLIN, VESTIGE -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }

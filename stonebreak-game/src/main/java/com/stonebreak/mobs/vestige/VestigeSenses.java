@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
@@ -6,23 +6,23 @@ import com.stonebreak.mobs.entities.ai.perception.PlayerGaze;
 import org.joml.Vector3f;
 
 /**
- * One tick's read of the Wisp's victim, taken once before its behaviours run so they all act on
- * the same picture: where the victim is and looks, whether they could see the Wisp, and whether
+ * One tick's read of the Vestige's victim, taken once before its behaviours run so they all act on
+ * the same picture: where the victim is and looks, whether they could see the Vestige, and whether
  * they are looking right at it. Also where the victim lock comes from — the nearest player in the
  * Shade, kept until they are gone.
  */
-final class WispSenses {
+final class VestigeSenses {
 
-    /** How far a Wisp looks for a victim, and how far a victim can make it out in the fog. */
+    /** How far a Vestige looks for a victim, and how far a victim can make it out in the fog. */
     static final float VICTIM_SEARCH_RADIUS = 96f;
     static final float SIGHT_RANGE = 48f;
-    /** Inside this, even a veiled Wisp's shimmer gives it away to a watching player. */
+    /** Inside this, even a veiled Vestige's shimmer gives it away to a watching player. */
     static final float SHIMMER_RANGE = 4f;
-    /** Height of the Wisp's eyes above its feet (the model, scaled). */
+    /** Height of the Vestige's eyes above its feet (the model, scaled). */
     static final float HEAD_HEIGHT = 1.8f;
     static final float CHEST_HEIGHT = 1.0f;
 
-    private final LivingEntity wisp;
+    private final LivingEntity vestige;
     private final PlayerLocator players;
     private final ShadeColumns shade;
 
@@ -42,8 +42,8 @@ final class WispSenses {
     private final Vector3f chest = new Vector3f();
     private final Vector3f scratch = new Vector3f();
 
-    WispSenses(LivingEntity wisp, PlayerLocator players, ShadeColumns shade) {
-        this.wisp = wisp;
+    VestigeSenses(LivingEntity vestige, PlayerLocator players, ShadeColumns shade) {
+        this.vestige = vestige;
         this.players = players;
         this.shade = shade;
     }
@@ -53,7 +53,7 @@ final class WispSenses {
      * replaced after the last one was lost), so the caller can forget what it knew of the old one.
      */
     boolean refresh(boolean veiled, boolean eyesDark) {
-        Vector3f self = wisp.getPosition();
+        Vector3f self = vestige.getPosition();
         boolean changed = false;
         if (!victimChosen || players.playerPosition(victimId, self, scratch) == null) {
             changed = chooseVictim(self);
@@ -69,8 +69,8 @@ final class WispSenses {
         victimEye.set(victimFeet).add(0f, PlayerLocator.EYE_HEIGHT, 0f);
         victimInShade = shade.isShade(victimFeet);
         distance = self.distance(victimFeet);
-        head.set(self).add(0f, HEAD_HEIGHT + wisp.renderLift(), 0f);
-        chest.set(self).add(0f, CHEST_HEIGHT + wisp.renderLift(), 0f);
+        head.set(self).add(0f, HEAD_HEIGHT + vestige.renderLift(), 0f);
+        chest.set(self).add(0f, CHEST_HEIGHT + vestige.renderLift(), 0f);
         hasLook = players.playerLook(victimId, self, victimLook) != null;
         if (hasLook && distance <= SIGHT_RANGE) {
             boolean headClear = players.canSeePlayer(victimId, self, head);
@@ -140,12 +140,12 @@ final class WispSenses {
         return distance;
     }
 
-    /** Whether the victim could see the Wisp right now, were they paying attention. */
+    /** Whether the victim could see the Vestige right now, were they paying attention. */
     boolean inView() {
         return inView;
     }
 
-    /** Whether the victim is looking straight at the Wisp. */
+    /** Whether the victim is looking straight at the Vestige. */
     boolean watched() {
         return watched;
     }

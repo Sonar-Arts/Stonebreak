@@ -1,4 +1,4 @@
-package com.stonebreak.mobs.wisp;
+package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
@@ -10,11 +10,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Finds somewhere for a Wisp to hide from one player: the far side of a tree trunk, out of their
+ * Finds somewhere for a Vestige to hide from one player: the far side of a tree trunk, out of their
  * line of sight, in the Shade. Trunks in thick forest score higher than lone trees, which is what
- * keeps the Wisp in the woods.
+ * keeps the Vestige in the woods.
  *
- * <p>A scan, not a cached map — the forest it reads is a few hundred columns, and a Wisp only asks
+ * <p>A scan, not a cached map — the forest it reads is a few hundred columns, and a Vestige only asks
  * when it is about to move.
  */
 final class CoverFinder {
@@ -38,12 +38,12 @@ final class CoverFinder {
     record PeekSetup(Vector3f hide, Vector3f peek) {}
 
     /**
-     * What a tracking victim is about to do: look toward where they last saw the Wisp — and on past
+     * What a tracking victim is about to do: look toward where they last saw the Vestige — and on past
      * it — and carry on the way they are heading. Those two lines are the path a flank must keep
      * out of.
      *
      * @param player   the victim's feet
-     * @param lastSeen where they last saw the Wisp, or null if they never have
+     * @param lastSeen where they last saw the Vestige, or null if they never have
      * @param heading  where they will be in a few seconds (their feet, standing still)
      */
     record Pursuit(Vector3f player, Vector3f lastSeen, Vector3f heading) {
@@ -68,14 +68,14 @@ final class CoverFinder {
     /** Points of the body that must be out of sight: chest and head, above the feet. */
     static final float CHEST = 0.9f;
     static final float HEAD = 1.7f;
-    /** How far behind a trunk's centre the Wisp stands. */
+    /** How far behind a trunk's centre the Vestige stands. */
     private static final float BEHIND_TRUNK = 1.1f;
     /** How far it leans sideways out of cover to be seen. */
     private static final float PEEK_SIDESTEP = 0.75f;
     /** Rows of logs above and below the reference height that count as a trunk. */
     private static final int TRUNK_SCAN_HEIGHT = 4;
     /** Getting away or flanking, it also looks for trees below it that it could glide down to. */
-    private static final int ESCAPE_SCAN_DEPTH = TRUNK_SCAN_HEIGHT + (int) Wisp.MAX_GLIDE_DROP;
+    private static final int ESCAPE_SCAN_DEPTH = TRUNK_SCAN_HEIGHT + (int) Vestige.MAX_GLIDE_DROP;
     private static final float RAY_STEP = 0.3f;
     /** Closer than this to a pursuit's path and the spot is in the way of the victim's eyes. */
     static final float PATH_HALF_WIDTH = 5f;
@@ -134,7 +134,7 @@ final class CoverFinder {
 
     /**
      * A hiding spot near {@code around} the victim can be teased from: hidden itself, with a
-     * sidestep to either side of its trunk that puts the Wisp's head in their sight.
+     * sidestep to either side of its trunk that puts the Vestige's head in their sight.
      */
     PeekSetup findPeek(Vector3f around, float radius, Vector3f victimEye, float bandMin, float bandMax) {
         PeekSetup best = null;

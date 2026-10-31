@@ -33,11 +33,11 @@ public enum MobBehaviorState {
     DRAW_BOW,
     /** One-shot follow-through after loosing an arrow. */
     RELEASE_BOW,
-    /** One-shot lean out from behind cover that holds, laughing (the Wisp's Peek-a-boo). */
+    /** One-shot lean out from behind cover that holds, laughing (the Vestige's Peek-a-boo). */
     PEEK,
     /** One-shot snap back into cover once seen. */
     JERK_BACK,
-    /** One-shot dash past the player's ear (the Wisp's Woosh). */
+    /** One-shot dash past the player's ear (the Vestige's Woosh). */
     WOOSH,
     /** One-shot conjuring of a projectile or a smokescreen. */
     CAST,

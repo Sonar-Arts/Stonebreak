@@ -10,7 +10,7 @@ import com.stonebreak.mobs.entities.ai.MobBehaviorState;
  *
  * <p>Most mobs share one clip-naming convention ({@code Idle}, {@code Walking}, {@code Grazing},
  * {@code Wingflap}, and the combat set {@code Stab}, {@code Smash}, {@code DrawBow},
- * {@code ReleaseBow}, plus the Wisp's {@code Float}, {@code PeekLean}, {@code JerkBack},
+ * {@code ReleaseBow}, plus the Vestige's {@code Float}, {@code PeekLean}, {@code JerkBack},
  * {@code Woosh}, {@code Cast}, {@code Scratch} and {@code Dissolve}); the goose's asset was authored in lowercase with a {@code flying} clip instead
  * of the ground-only set. Names are matched exactly — {@link SbeEntityAsset#clipFor(String)} is
  * case-sensitive — so the per-asset difference lives here rather than in a second mapping class
@@ -35,7 +35,7 @@ public final class MobStateMapping {
                      PEEK, JERK_BACK, WOOSH, CAST, SCRATCH, DISSOLVE -> "idle";
             };
         }
-        if (type == EntityType.WISP && (behaviorState == MobBehaviorState.WANDERING
+        if (type == EntityType.VESTIGE && (behaviorState == MobBehaviorState.WANDERING
                 || behaviorState == MobBehaviorState.FLYING || behaviorState == MobBehaviorState.SWIMMING)) {
             return "Float"; // no legs: whatever moves it, it drifts
         }

@@ -65,7 +65,7 @@ public final class ProtocolVersion {
      *  23 = stealth perception (issue #321): EntityAwarenessS2C (37) replicates a mob's awareness
      *  state to its shadows, StatCreditS2C (36) credits non-kill stats, and the state flags carry STEALTHED
      *  (the old reserved sneak bit) and DODGE_NOISE (bit 11).
-     *  24 = the Wisp: EntityAnimS2C's known states gain its clips (Float, PeekLean, JerkBack, Woosh,
+     *  24 = the Vestige: EntityAnimS2C's known states gain its clips (Float, PeekLean, JerkBack, Woosh,
      *  Cast, Scratch, Dissolve), and the replicated status set gains VEILED and SMOKESCREEN. */
     public static final int CURRENT = 24;
 
