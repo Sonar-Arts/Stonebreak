@@ -5,6 +5,11 @@
 // Beer-Lambert marched across the layer between the eye and the point: the ray is
 // clipped to the slab the fog can occupy and to the map, then sampled at jittered
 // steps spaced quadratically, densest near the eye where the fog's shape shows.
+//
+// Standing in the fog, the eye also sees at least u_groundFogHaze blocks of it in
+// every direction: the layer alone is a few blocks deep straight up, and the sky
+// overhead stayed clear from inside it. The two are not added (that fogged the
+// ground twice); the ray takes whichever is deeper.
 
 uniform bool u_groundFogEnabled;
 uniform sampler2D u_groundFogMap;
@@ -16,6 +21,7 @@ uniform float u_groundFogDepth;   // blocks above the ground the fog thins out o
 uniform float u_groundFogBelow;   // blocks below the ground it fades over (caves stay clear)
 uniform float u_groundFogDensity; // extinction per block in the thick of it, by night
 uniform vec3 u_groundFogColor;    // the light the fog scatters toward the eye
+uniform float u_groundFogHaze;    // blocks of fog seen every way from the thick of it
 
 const int GROUND_FOG_STEPS = 20;
 
@@ -36,6 +42,7 @@ float groundFogAt(vec3 p) {
 // Fog between eye and eye + dir * dist: rgb = in-scattered light, a = transmittance.
 vec4 groundFog(vec3 eye, vec3 dir, float dist) {
     if (!u_groundFogEnabled) return vec4(0.0, 0.0, 0.0, 1.0);
+    float depth = groundFogAt(eye) * min(dist, u_groundFogHaze);
     float t0 = 0.0;
     float t1 = min(dist, u_groundFogSize);
     if (abs(dir.y) > 1e-5) {
@@ -44,21 +51,24 @@ vec4 groundFog(vec3 eye, vec3 dir, float dist) {
         t0 = max(t0, min(ta, tb));
         t1 = min(t1, max(ta, tb));
     } else if (eye.y < u_groundFogBottom || eye.y > u_groundFogTop) {
-        return vec4(0.0, 0.0, 0.0, 1.0);
+        t1 = t0;
     }
-    if (t1 <= t0) return vec4(0.0, 0.0, 0.0, 1.0);
-    // Interleaved gradient noise: a jitter the eye reads as fine dither, not grain.
-    float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-    float span = t1 - t0;
-    float depth = 0.0;
-    float prev = 0.0;
-    for (int i = 1; i <= GROUND_FOG_STEPS; i++) {
-        float u = float(i) / float(GROUND_FOG_STEPS);
-        float next = u * u;
-        float mid = mix(prev, next, jitter);
-        depth += groundFogAt(eye + dir * (t0 + mid * span)) * (next - prev) * span;
-        prev = next;
+    if (t1 > t0) {
+        // Interleaved gradient noise: a jitter the eye reads as fine dither, not grain.
+        float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        float span = t1 - t0;
+        float layer = 0.0;
+        float prev = 0.0;
+        for (int i = 1; i <= GROUND_FOG_STEPS; i++) {
+            float u = float(i) / float(GROUND_FOG_STEPS);
+            float next = u * u;
+            float mid = mix(prev, next, jitter);
+            layer += groundFogAt(eye + dir * (t0 + mid * span)) * (next - prev) * span;
+            prev = next;
+        }
+        depth = max(depth, layer);
     }
+    if (depth <= 0.0) return vec4(0.0, 0.0, 0.0, 1.0);
     float t = exp(-u_groundFogDensity * depth);
     return vec4(u_groundFogColor * (1.0 - t), t);
 }

@@ -2,6 +2,7 @@ package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.stonebreak.rendering.gameWorld.fog.GroundFog;
 import com.stonebreak.mobs.entities.Entity;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -34,6 +35,13 @@ final class SimpleCubePipeline {
     /** Scratch for the render-space camera position uniform. */
     private final Vector3f scratchCameraPos = new Vector3f();
 
+    /** The Shade's ground fog; null until WorldRenderer wires it. */
+    private GroundFog groundFog;
+
+    void setGroundFog(GroundFog fog) {
+        this.groundFog = fog;
+    }
+
     void initialize() {
         createShader();
         createSimpleCubeModel();
@@ -58,6 +66,11 @@ final class SimpleCubePipeline {
         shader.setUniform("cameraPos", RenderOrigin.toRender(cameraPos, scratchCameraPos));
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
+        if (groundFog != null) {
+            groundFog.applyTo(shader);
+        } else {
+            GroundFog.applyDisabled(shader);
+        }
         applySimpleLighting(entity, lit);
     }
 
@@ -145,7 +158,9 @@ final class SimpleCubePipeline {
             uniform float u_ambientLight;
             uniform vec3 u_sunDirection;
             uniform float u_entityLight;
-
+            """
+            + GroundFog.glsl()
+            + """
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
 
@@ -166,6 +181,8 @@ final class SimpleCubePipeline {
                 } else {
                     FragColor = texColor;
                 }
+                // The Shade's night fog, as the terrain behind the cube gets it.
+                FragColor.rgb = applyGroundFog(FragColor.rgb, cameraPos, FragWorldPos - cameraPos);
             }
             """;
 
@@ -187,6 +204,7 @@ final class SimpleCubePipeline {
             shader.setFloat("u_ambientLight", 1.0f);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
             shader.setFloat("u_entityLight", 1.0f);
+            GroundFog.applyDisabled(shader);
             shader.unbind();
         } catch (Exception e) {
             System.err.println("Failed to create entity shader: " + e.getMessage());

@@ -121,6 +121,7 @@ public class WorldRenderer {
                 new com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer(projectionMatrix, blockTextureArray);
         if (entityRenderer != null) {
             entityRenderer.setShadowMapRenderer(shadowMapRenderer);
+            entityRenderer.setGroundFog(groundFog);
         }
         if (animatedBlockRenderer != null) {
             animatedBlockRenderer.setShadowMapRenderer(shadowMapRenderer);
@@ -442,7 +443,7 @@ public class WorldRenderer {
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
                     sky, skyColor, clearFogColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
-                    lightningRenderer.flashes(), precipitationFog, weatherReach);
+                    lightningRenderer.flashes(), precipitationFog, groundFog, weatherReach);
             checkGLError("After cloud rendering");
         }
 

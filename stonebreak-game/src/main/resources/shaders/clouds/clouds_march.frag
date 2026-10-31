@@ -34,6 +34,7 @@
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shape.glsl"
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/ground_fog.glsl"
 #include "/shaders/world/sunset_fog.glsl"
 
 in vec2 vUv;
@@ -328,8 +329,12 @@ void main() {
     // cloud's light is dimmed by the fog in front, and the fog's own light is
     // added here for the share of the scene the cloud hides. Above the clouds
     // there is no fog (WeatherEffects), so the rain stays behind the cloud.
+    // The Shade's ground fog the same way, so cloud seen from inside it is fogged
+    // like the sky around it (ground_fog_sky.frag).
     if (transmittance < 1.0) {
         vec4 fog = precipFog(ro, rd, tNear);
+        light = light * fog.a + fog.rgb * (1.0 - transmittance);
+        fog = groundFog(ro, rd, tNear);
         light = light * fog.a + fog.rgb * (1.0 - transmittance);
     }
 

@@ -77,6 +77,12 @@ public class EntityRenderer {
         sbeEntityRenderer.setShadowMapRenderer(renderer);
     }
 
+    /** Wires the Shade's ground fog. Called by WorldRenderer once at construction. */
+    public void setGroundFog(com.stonebreak.rendering.gameWorld.fog.GroundFog fog) {
+        sbeEntityRenderer.setGroundFog(fog);
+        simpleCubePipeline.setGroundFog(fog);
+    }
+
     /**
      * Render an entity. Called by the main Renderer.
      */

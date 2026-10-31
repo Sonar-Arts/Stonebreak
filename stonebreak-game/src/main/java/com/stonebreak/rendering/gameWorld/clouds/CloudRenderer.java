@@ -7,6 +7,7 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.stonebreak.rendering.gameWorld.SceneDepthCopy;
 import com.stonebreak.rendering.gameWorld.SunsetFog;
+import com.stonebreak.rendering.gameWorld.fog.GroundFog;
 import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
 import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.world.weather.ClientWeather;
@@ -187,12 +188,13 @@ public final class CloudRenderer {
      * @param flashes         lightning flash points (render-space xyz, intensity w; 0 = unused),
      *                        each lighting only the cloud around it
      * @param fog             rain and snow fog, which hides the cloud behind it
+     * @param groundFog       the Shade's ground fog, which does the same
      * @param reach           blocks to the terrain's horizon: no cloud hangs beyond it
      */
     public void render(Matrix4f projection, Matrix4f view, Vector3f renderCameraPos,
                        SkyLight sky, Vector3f skyColor, Vector3f clearSkyColor, float ambientLight,
                        Vector4f[] flashes,
-                       PrecipitationFog fog, float reach) {
+                       PrecipitationFog fog, GroundFog groundFog, float reach) {
         if (!prepared) return;
 
         // Save state.
@@ -256,6 +258,7 @@ public final class CloudRenderer {
         marchShader.setVec3("u_hazeColor", clearSkyColor);
         SunsetFog.applyTo(marchShader);
         fog.applyTo(marchShader);
+        groundFog.applyTo(marchShader);
         marchShader.setFloat("u_slabBottom", CloudType.slabBottom());
         marchShader.setFloat("u_slabTop", CloudType.slabTop());
         float fadeEnd = Math.min(FADE_END, reach);

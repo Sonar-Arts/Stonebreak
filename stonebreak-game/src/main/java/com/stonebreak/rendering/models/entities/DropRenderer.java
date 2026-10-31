@@ -151,6 +151,7 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
@@ -219,6 +220,7 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
@@ -309,6 +311,7 @@ public class DropRenderer {
 
         // Reset UI element mode back to false for world rendering
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
     }
     
     /**
@@ -370,6 +373,7 @@ public class DropRenderer {
                         .rotateY(yawRad)
                         .scale(HAND_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
+                groundFogAt(shaderProgram, dropModelMatrix);
 
                 DisplayMesh mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
                 boolean isTransparent = isTransparentBlock(blockType);
@@ -401,6 +405,7 @@ public class DropRenderer {
                         .rotateY(yawRad)
                         .scale(HeldItemPose.TOOL_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
+                groundFogAt(shaderProgram, dropModelMatrix);
                 glDisable(GL_BLEND);
                 glDepthMask(true);
                 renderVoxelizedItemDrop(itemType, null);
@@ -423,9 +428,21 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_useTextureArray", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    /**
+     * Fogs the next draw by the Shade's ground fog at the model's origin (render space).
+     * These draws fold their model into viewMatrix, so the shader's fragPos is
+     * model-local and cannot place the fog itself; at a quarter block across, one
+     * point per item is indistinguishable from per-pixel.
+     */
+    private static void groundFogAt(ShaderProgram shaderProgram, Matrix4f model) {
+        shaderProgram.setBool("u_groundFogAtPoint", true);
+        shaderProgram.setVec3("u_groundFogPoint", model.getTranslation(new Vector3f()));
     }
 
     /**
@@ -464,6 +481,7 @@ public class DropRenderer {
         // Combine with view matrix
         Matrix4f modelViewMatrix = new Matrix4f(viewMatrix).mul(dropModelMatrix);
         shaderProgram.setUniform("viewMatrix", modelViewMatrix);
+        groundFogAt(shaderProgram, dropModelMatrix);
 
         // Render based on drop type
         if (isBlockDrop(drop)) {
@@ -600,6 +618,7 @@ public class DropRenderer {
             if (!SpriteVoxelizer.isVoxelizable(entry.type())) continue;
             modelView.set(viewMatrix).mul(entry.socketMatrix());
             shaderProgram.setUniform("viewMatrix", modelView);
+            groundFogAt(shaderProgram, entry.socketMatrix());
             voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
         }
 
@@ -611,6 +630,7 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_useTextureArray", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));

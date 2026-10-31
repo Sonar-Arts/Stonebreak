@@ -8,6 +8,7 @@ import com.openmason.engine.entity.sbe.MaterialImage;
 import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.openmason.engine.entity.sbe.SbeModelGeometry;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.stonebreak.rendering.gameWorld.fog.GroundFog;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -58,6 +59,14 @@ public final class SbeEntityRenderer {
     /** Wires the cascaded-shadow state used when rendering entities in the world. */
     public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
         this.shadowMapRenderer = renderer;
+    }
+
+    /** The Shade's ground fog; null outside the world pipeline (UI previews). */
+    private GroundFog groundFog;
+
+    /** Wires the ground fog, so creatures in it fade as the terrain behind them does. */
+    public void setGroundFog(GroundFog fog) {
+        this.groundFog = fog;
     }
 
     /** UI preview rig: full ambient, no sky-light probe, no torches, no shadows. */
@@ -153,6 +162,7 @@ public final class SbeEntityRenderer {
             + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
             + com.stonebreak.rendering.lighting.PointLightGlsl.UNIFORMS
             + com.stonebreak.rendering.lighting.PointLightGlsl.FUNCTIONS
+            + GroundFog.glsl()
             + """
             void main() {
                 vec4 texColor = texture(textureSampler, TexCoord);
@@ -186,6 +196,8 @@ public final class SbeEntityRenderer {
                 } else {
                     FragColor = vec4(lit, texColor.a);
                 }
+                // The Shade's night fog, as the terrain behind the creature gets it.
+                FragColor.rgb = applyGroundFog(FragColor.rgb, cameraPos, FragWorldPos - cameraPos);
             }
             """;
 
@@ -207,6 +219,7 @@ public final class SbeEntityRenderer {
             shader.setFloat("u_ambientLight", UI_PREVIEW_AMBIENT);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
             shader.setFloat("u_entityLight", 1.0f);
+            GroundFog.applyDisabled(shader);
             // The shadow sampler must live on its own unit even while disabled —
             // sharing unit 0 with the 2D textureSampler is a GL error on strict drivers.
             com.openmason.engine.rendering.shadow.ShadowUniforms.applyDisabled(shader,
@@ -378,6 +391,11 @@ public final class SbeEntityRenderer {
                 : new Vector3f());
         shader.setUniform("underwaterFogDensity", fogDensity);
         shader.setUniform("underwaterFogColor", fogColor);
+        if (groundFog != null && !uiPreviewLighting) {
+            groundFog.applyTo(shader);
+        } else {
+            GroundFog.applyDisabled(shader);
+        }
         if (uiPreviewLighting) {
             applyUiPreviewLighting(viewMatrix);
         } else {

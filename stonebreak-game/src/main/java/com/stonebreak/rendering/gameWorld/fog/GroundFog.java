@@ -20,8 +20,8 @@ import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 /**
  * The Shade's night ground fog: a layer {@link #DEPTH} blocks deep lying on Shade ground
  * ({@link ShadeFogMap}), forming as the sun sets and burning off just after it rises.
- * Shaders that include {@code ground_fog.glsl} take it ({@link #applyTo}): terrain, FastLOD
- * and water. {@link #renderSky} fogs the sky seen across it.
+ * Shaders that include {@code ground_fog.glsl} ({@link #glsl}) take it ({@link #applyTo}):
+ * terrain, FastLOD, water, clouds and creatures. {@link #renderSky} fogs the sky seen across it.
  */
 public final class GroundFog {
 
@@ -32,6 +32,11 @@ public final class GroundFog {
     static final float BELOW = 6f;
     /** Extinction per block in the thick of the fog: about 30 blocks of sight inside it. */
     static final float DENSITY = 0.08f;
+    /**
+     * Blocks of fog the camera sees in every direction, the sky overhead included, while it
+     * stands in the thick of the layer; less as it climbs out ({@code ground_fog.glsl}).
+     */
+    static final float HAZE = 24f;
     /** The sun's height (sin of elevation) at which the fog starts to form, and where it is full. */
     static final float FORM_SUN_Y = 0.03f;
     static final float FULL_SUN_Y = -0.15f;
@@ -73,6 +78,11 @@ public final class GroundFog {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         GL13.glActiveTexture(previousUnit);
+    }
+
+    /** {@code ground_fog.glsl}'s source, for shaders built in code rather than loaded. */
+    public static String glsl() {
+        return load("/shaders/world/ground_fog.glsl");
     }
 
     /** Lambda (not a method reference) so the caller-sensitive lookup happens in this module. */
@@ -154,10 +164,12 @@ public final class GroundFog {
 
     /** Sets the {@code ground_fog.glsl} uniforms on a BOUND shader, binding the map on its unit. */
     public void applyTo(ShaderProgram shader) {
-        shader.setBool("u_groundFogEnabled", enabled);
-        // Even when off: left at unit 0 the sampler could clash with another type bound there.
+        if (!enabled) {
+            applyDisabled(shader);
+            return;
+        }
+        shader.setBool("u_groundFogEnabled", true);
         shader.setInt("u_groundFogMap", TEXTURE_UNIT);
-        if (!enabled) return;
         ShadeFogMap.Grid grid = uploaded;
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + TEXTURE_UNIT);
@@ -173,6 +185,14 @@ public final class GroundFog {
         shader.setFloat("u_groundFogBelow", BELOW);
         shader.setFloat("u_groundFogDensity", density);
         shader.setVec3("u_groundFogColor", color);
+        shader.setFloat("u_groundFogHaze", HAZE);
+    }
+
+    /** Turns the fog off on a BOUND shader, for draws it must not touch (UI previews). */
+    public static void applyDisabled(ShaderProgram shader) {
+        shader.setBool("u_groundFogEnabled", false);
+        // Even when off: left at unit 0 the sampler could clash with another type bound there.
+        shader.setInt("u_groundFogMap", TEXTURE_UNIT);
     }
 
     public void cleanup() {

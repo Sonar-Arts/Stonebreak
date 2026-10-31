@@ -58,6 +58,9 @@ uniform bool u_fogSpherical;
 // screen-door dither below so LOD nodes dissolve over/under the
 // native chunk mesh without blending or depth artifacts.
 uniform float u_lodFade;
+// Ground fog taken at one render-space point rather than per fragment (DropRenderer).
+uniform bool u_groundFogAtPoint;
+uniform vec3 u_groundFogPoint;
 
 // 4x4 Bayer thresholds for the LOD crossfade dither.
 const float LOD_BAYER[16] = float[16](
@@ -234,5 +237,11 @@ void main() {
             // Blend fragment color with fog color, preserving alpha
             fragColor = mix(vec4(u_underwaterFogColor, fragColor.a), fragColor, fogFactor);
         }
+    }
+
+    // Drops and held items (DropRenderer): their model rides in viewMatrix, so
+    // fragPos is model-local; they are fogged at their centre instead.
+    if (u_groundFogAtPoint) {
+        fragColor.rgb = applyGroundFog(fragColor.rgb, u_viewPos, u_groundFogPoint - u_viewPos);
     }
 }
