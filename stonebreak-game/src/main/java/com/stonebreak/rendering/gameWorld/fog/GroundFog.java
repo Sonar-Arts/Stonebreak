@@ -5,6 +5,7 @@ import com.openmason.engine.rendering.postfx.FullscreenQuad;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.stonebreak.rendering.lighting.SkyLight;
+import com.stonebreak.world.ShadeNight;
 import com.stonebreak.world.generation.TerrainGenerator;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -37,9 +38,6 @@ public final class GroundFog {
      * stands in the thick of the layer; less as it climbs out ({@code ground_fog.glsl}).
      */
     static final float HAZE = 24f;
-    /** The sun's height (sin of elevation) at which the fog starts to form, and where it is full. */
-    static final float FORM_SUN_Y = 0.03f;
-    static final float FULL_SUN_Y = -0.15f;
     /**
      * Least luminance of the fog by night, and how much a full moon adds: the night sky's
      * horizon is all but black, and fog held to it vanished at midnight.
@@ -90,13 +88,9 @@ public final class GroundFog {
         return ShaderResourceLoader.load(path, p -> GroundFog.class.getResourceAsStream(p));
     }
 
-    /**
-     * How formed the fog is with the sun at height {@code sunY} (sin of its elevation):
-     * 0 by day, rising to 1 as the sun sinks below the horizon, and back at dawn.
-     */
+    /** How formed the fog is with the sun at height {@code sunY}; see {@link ShadeNight}. */
     static float nightStrength(float sunY) {
-        float t = Math.max(0f, Math.min(1f, (FORM_SUN_Y - sunY) / (FORM_SUN_Y - FULL_SUN_Y)));
-        return t * t * (3f - 2f * t);
+        return ShadeNight.fogStrength(sunY);
     }
 
     /**

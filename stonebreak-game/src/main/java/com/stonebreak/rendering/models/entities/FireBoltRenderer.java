@@ -11,7 +11,7 @@ import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 /**
- * The staff's fire bolt as a fireball: one camera-facing quad shaded procedurally into a
+ * The staff's fire bolt (and the Wisp's blue orb, in its own {@link FireBolt.Palette}) as a fireball: one camera-facing quad shaded procedurally into a
  * white-hot core, a yellow-orange body and a red, flickering rim, with flame tongues
  * streaming back into a comet tail along the bolt's heading and a soft additive halo.
  * The quad is stretched along the heading's on-screen direction, so a bolt seen side-on
@@ -59,6 +59,12 @@ final class FireBoltRenderer {
         shader.setFloat("u_tail", TAIL);
         shader.setFloat("u_time", time);
         shader.setFloat("u_seed", seed);
+        FireBolt.Palette palette = bolt.palette();
+        shader.setVec3("u_rim", palette.rim());
+        shader.setVec3("u_body", palette.body());
+        shader.setVec3("u_mid", palette.mid());
+        shader.setVec3("u_core", palette.core());
+        shader.setVec3("u_halo", palette.halo());
 
         boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
         GL11.glDisable(GL11.GL_CULL_FACE);
@@ -121,6 +127,11 @@ final class FireBoltRenderer {
 
             uniform float u_time;
             uniform float u_seed;
+            uniform vec3 u_rim;
+            uniform vec3 u_body;
+            uniform vec3 u_mid;
+            uniform vec3 u_core;
+            uniform vec3 u_halo;
 
             out vec4 FragColor;
 
@@ -160,16 +171,16 @@ final class FireBoltRenderer {
                 float shape = d + (flow - 0.5) * 0.6 * smoothstep(0.25, 1.0, d) - (flick - 0.5) * 0.15;
                 float heat = clamp(1.0 - shape, 0.0, 1.0);
 
-                vec3 col = mix(vec3(0.55, 0.04, 0.0), vec3(1.0, 0.36, 0.02), smoothstep(0.0, 0.35, heat));
-                col = mix(col, vec3(1.0, 0.78, 0.22), smoothstep(0.35, 0.7, heat));
-                col = mix(col, vec3(1.0, 0.97, 0.86), smoothstep(0.7, 0.95, heat));
+                vec3 col = mix(u_rim, u_body, smoothstep(0.0, 0.35, heat));
+                col = mix(col, u_mid, smoothstep(0.35, 0.7, heat));
+                col = mix(col, u_core, smoothstep(0.7, 0.95, heat));
                 float body = smoothstep(0.0, 0.12, heat);
 
                 // Soft additive halo, faded out before the quad's edge.
                 float edge = min(min(q.x + PAD, vTailLen + PAD - q.x), PAD - abs(q.y));
                 float halo = exp(-max(d - 0.8, 0.0) * 2.5) * 0.4 * smoothstep(0.0, 0.7, edge);
 
-                vec3 rgb = col * body + vec3(1.0, 0.42, 0.08) * halo * (1.0 - body);
+                vec3 rgb = col * body + u_halo * halo * (1.0 - body);
                 // Only the hot inside hides what is behind; the rim and halo glow over it.
                 float alpha = body * smoothstep(0.15, 0.6, heat) * 0.85;
                 FragColor = vec4(rgb, alpha);

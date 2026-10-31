@@ -119,6 +119,10 @@ public class World {
     // until then (and on worlds with no clock: tests, render views).
     private volatile java.util.function.DoubleSupplier daylightSource;
 
+    // How thick the Shade's night fog is, 0..1, for the creatures that hunt in it. The server level
+    // binds its clock; none (0) until then, so unbound worlds have no fog-born spawns.
+    private volatile java.util.function.DoubleSupplier nightFogSource;
+
     /**
      * Authoritative simulation mutations reported for replication. Populated by the integrated
      * server on the HEADLESS world only; every sink stays null on client render worlds.
@@ -832,6 +836,17 @@ public class World {
     public float getDaylight() {
         java.util.function.DoubleSupplier source = daylightSource;
         return source != null ? (float) source.getAsDouble() : 1f;
+    }
+
+    /** Bind the clock the Shade's night fog follows ({@link ShadeNight}); null for none. */
+    public void setNightFogSource(java.util.function.DoubleSupplier nightFogSource) {
+        this.nightFogSource = nightFogSource;
+    }
+
+    /** How formed the Shade's night fog is right now, 0 (none) to 1 (full). */
+    public float getNightFog() {
+        java.util.function.DoubleSupplier source = nightFogSource;
+        return source != null ? (float) source.getAsDouble() : 0f;
     }
 
     /** Bind this world's save service. Called by {@code SaveService.initialize}. */

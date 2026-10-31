@@ -89,8 +89,9 @@ public final class AiContext {
     }
 
     /**
-     * The player this mob is after — the one its stealth awareness tracks (#321), the nearest for a
-     * mob without awareness — or {@code null}. Scratch owned by this context: read it, do not retain it.
+     * The player this mob is after — the one it has locked onto ({@link LivingEntity#lockedTargetPlayerId}),
+     * else the one its stealth awareness tracks (#321), else the nearest — or {@code null}. Scratch
+     * owned by this context: read it, do not retain it.
      */
     public Vector3f targetPlayer() {
         return players.playerPosition(targetId(), entity.getPosition(), playerScratch);
@@ -131,7 +132,26 @@ public final class AiContext {
         return players.hurtPlayer(targetId(), entity.getPosition(), amount, knockback);
     }
 
+    /**
+     * Writes the direction {@link #targetPlayer()} is looking into {@code out}; see
+     * {@link PlayerLocator#playerLook}.
+     *
+     * @return {@code out}, or {@code null} when that is not known
+     */
+    public Vector3f targetLook(Vector3f out) {
+        return players.playerLook(targetId(), entity.getPosition(), out);
+    }
+
+    /** The players this mob can perceive. */
+    public PlayerLocator players() {
+        return players;
+    }
+
     private int targetId() {
+        int locked = entity.lockedTargetPlayerId();
+        if (locked != PlayerLocator.NEAREST) {
+            return locked;
+        }
         AwarenessController awareness = entity.getAwareness();
         return awareness != null ? awareness.targetPlayerId() : PlayerLocator.NEAREST;
     }

@@ -58,7 +58,7 @@ class HitboxMatchesModelTest {
     private static Entity.BoundingBox renderedModel(LivingEntity le) {
         SbeModelGeometry geometry = SbeEntityRegistry.get(le.modelObjectId()).geometryFor(le.getTextureVariant());
         Vector3f p = le.getPosition();
-        float anchorY = p.y - le.getLegHeight() - geometry.restMinY() * le.getScale().y;
+        float anchorY = p.y - le.getLegHeight() - geometry.restMinY() * le.getScale().y + le.renderLift();
         Matrix4f model = new Matrix4f().translate(p.x, anchorY, p.z)
                 .rotateY((float) Math.toRadians(le.modelYaw()))
                 .scale(le.getScale());

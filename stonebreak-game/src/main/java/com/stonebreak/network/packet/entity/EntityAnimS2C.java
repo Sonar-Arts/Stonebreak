@@ -39,6 +39,7 @@ public record EntityAnimS2C(int networkId, String state) implements Packet {
         "Idle", "Walking", "Grazing", "Wingflap", "Stab", "Smash", "DrawBow", "ReleaseBow",
         "idle", "walking", "flying",
         "Impact", "cast", "float", "bite",
+        "Float", "PeekLean", "JerkBack", "Woosh", "Cast", "Scratch", "Dissolve",
     };
     /** Tag byte for a state outside {@link #KNOWN_STATES}; a string follows. */
     static final int STRING_TAG = 0xFF;

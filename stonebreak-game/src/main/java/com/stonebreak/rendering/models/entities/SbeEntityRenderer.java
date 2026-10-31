@@ -97,6 +97,30 @@ public final class SbeEntityRenderer {
         return previous;
     }
 
+    /**
+     * How see-through and how glowing the next {@link #render} is — a veiled Wisp is a faint
+     * shimmer with its eyes still lit. {@link #NONE} (the default) draws as authored.
+     *
+     * @param bodyAlpha opacity of every part not in {@code glowParts}
+     * @param shimmer   0..1 strength of the heat-haze flicker on those parts
+     * @param glowParts names of the parts that glow by their own light
+     * @param glowAlpha opacity of the glowing parts
+     */
+    public record Look(float bodyAlpha, float shimmer, java.util.Set<String> glowParts, float glowAlpha) {
+        public static final Look NONE = new Look(1f, 0f, java.util.Set.of(), 1f);
+
+        boolean isTranslucent() {
+            return bodyAlpha < 1f || glowAlpha < 1f;
+        }
+    }
+
+    private Look look = Look.NONE;
+
+    /** Sets the {@link Look} of the next draws; callers reset it to {@link Look#NONE} after. */
+    public void setLook(Look look) {
+        this.look = look != null ? look : Look.NONE;
+    }
+
     /** GPU resources for one variant of one asset. */
     private static final class VariantGpu {
         int vao;
@@ -157,6 +181,10 @@ public final class SbeEntityRenderer {
             uniform vec3 u_sunDirection;
             uniform float u_entityLight;
             uniform float u_selfGlow;
+            uniform float u_alpha;    // 1 opaque; less draws the part see-through
+            uniform float u_emissive; // 0 lit as usual, 1 glowing by its own light
+            uniform float u_shimmer;  // 0..1 heat-haze flicker on a veiled body seen up close
+            uniform float u_time;
             """
             + com.openmason.engine.rendering.shadow.ShadowGlsl.UNIFORMS
             + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
@@ -188,6 +216,8 @@ public final class SbeEntityRenderer {
                 vec3 torch = pointLightContribution(FragWorldPos, normal,
                         pointLightWeight(u_ambientLight, u_entityLight, shadowFactor)) + vec3(u_selfGlow);
                 lit = applyPointLight(lit, texColor.rgb, torch);
+                vec3 glow = texColor.rgb * 1.6;
+                lit = mix(lit, glow, u_emissive);
 
                 if (underwaterFogDensity > 0.0) {
                     float dist = length(FragWorldPos - cameraPos);
@@ -198,6 +228,16 @@ public final class SbeEntityRenderer {
                 }
                 // The Shade's night fog, as the terrain behind the creature gets it.
                 FragColor.rgb = applyGroundFog(FragColor.rgb, cameraPos, FragWorldPos - cameraPos);
+                // Glowing parts cut through the fog — eyes in the dark.
+                FragColor.rgb = mix(FragColor.rgb, glow, u_emissive * 0.5);
+
+                float alpha = u_alpha;
+                if (u_shimmer > 0.0) {
+                    float wave = 0.5 + 0.5 * sin(FragWorldPos.y * 14.0 + FragWorldPos.x * 9.0 + u_time * 7.0);
+                    alpha += u_shimmer * (0.05 + 0.10 * wave);
+                    FragColor.rgb = mix(FragColor.rgb, vec3(0.75, 0.85, 1.0), u_shimmer * 0.3 * wave);
+                }
+                FragColor.a = texColor.a * clamp(alpha, 0.0, 1.0);
             }
             """;
 
@@ -407,15 +447,43 @@ public final class SbeEntityRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL30.glBindVertexArray(gpu.vao);
 
+        Look look = this.look;
+        boolean translucent = look.isTranslucent();
+        boolean wasBlendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+        shader.setFloat("u_alpha", 1f);
+        shader.setFloat("u_emissive", 0f);
+        shader.setFloat("u_shimmer", 0f);
+        shader.setFloat("u_time", com.stonebreak.core.Game.getInstance() != null
+                ? com.stonebreak.core.Game.getInstance().getTotalTimeElapsed() : 0f);
+        if (translucent) {
+            // See-through parts must not hide what is behind them from later draws.
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDepthMask(false);
+        }
+
         SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
                 headYawDeg, headPitchDeg, overrides, (partMatrix, part) -> {
             shader.setUniform("model", partMatrix);
+            if (look != Look.NONE) {
+                boolean glows = look.glowParts().contains(part.name());
+                shader.setFloat("u_alpha", glows ? look.glowAlpha() : look.bodyAlpha());
+                shader.setFloat("u_emissive", glows ? 1f : 0f);
+                shader.setFloat("u_shimmer", glows ? 0f : look.shimmer());
+            }
             for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).textured()) {
                 GL11.glBindTexture(GL11.GL_TEXTURE_2D, gpu.materialTextures.get(batch.materialId()));
                 GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
                         GL11.GL_UNSIGNED_INT, batch.byteOffset());
             }
         });
+
+        if (translucent) {
+            GL11.glDepthMask(true);
+            if (!wasBlendEnabled) {
+                GL11.glDisable(GL11.GL_BLEND);
+            }
+        }
 
         GL30.glBindVertexArray(0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);

@@ -403,6 +403,26 @@ public abstract class LivingEntity extends Entity {
     /** This entity's stealth awareness component, or null if it doesn't track the player. */
     public AwarenessController getAwareness() { return awareness; }
 
+    /**
+     * The one player this mob is set on, whoever else is closer, or
+     * {@link com.stonebreak.mobs.entities.ai.behavior.PlayerLocator#NEAREST} for none (the usual
+     * case). A stalker that picked its victim overrides this.
+     */
+    public int lockedTargetPlayerId() { return com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NEAREST; }
+
+    /**
+     * How far above its position the model floats, in blocks: 0 for anything that stands. Visual
+     * only — collision and pathing still treat the mob as standing on the ground.
+     */
+    public float renderLift() { return 0f; }
+
+    /**
+     * The tallest rise this entity walks straight up without jumping, in blocks: half a block for
+     * anything with feet. Collision, route planning and the obstacle hop all read it, so a mob
+     * that glides up whole blocks never stops to jump at one.
+     */
+    public float getMaxStepUp() { return com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP; }
+
     // ─────────────────────────────────────────────── Illusionist Fracture stubs
 
     /** World position of the most recent attacker (null if unknown / the local player). */
@@ -598,7 +618,7 @@ public abstract class LivingEntity extends Entity {
         if (model == null) {
             return getBoundingBox();
         }
-        return model.placed(position.x, position.y - legHeight, position.z, modelYaw(),
+        return model.placed(position.x, position.y - legHeight + renderLift(), position.z, modelYaw(),
                 scale.x, scale.y, scale.z);
     }
 

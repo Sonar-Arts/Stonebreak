@@ -165,4 +165,24 @@ class PlayerVitalsTest {
         assertEquals(1f, total, 1e-4f, "a pulse every half second");
         assertEquals(0f, vitals.onCactusContact(true, true, 1f, now, 0.5f, 0.5f), "flying touches nothing");
     }
+
+    /** A wisp's fire burns for its duration at its rate, in pulses, and a fresh hit refreshes it. */
+    @Test
+    void aBurnDealsItsDamageOverItsDurationAndRefreshesRatherThanStacks() {
+        vitals.ignite(3f, 0.5f);
+        float total = 0f;
+        for (int i = 0; i < 100; i++) {
+            total += vitals.onBurnTick(0.05f);
+        }
+        assertEquals(1.5f, total, 1e-4f);
+        assertFalse(vitals.isBurning());
+
+        vitals.ignite(3f, 0.5f);
+        vitals.ignite(3f, 0.5f);
+        total = 0f;
+        for (int i = 0; i < 100; i++) {
+            total += vitals.onBurnTick(0.05f);
+        }
+        assertEquals(1.5f, total, 1e-4f, "two hits, one fire");
+    }
 }

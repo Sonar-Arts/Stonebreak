@@ -47,6 +47,11 @@ public final class PlayerVitals {
 
     private float cactusTimer;
 
+    /** Seconds of burning left, and its damage per second (a Wisp's fire, say). */
+    private float burnSeconds;
+    private float burnDps;
+    private float burnTimer;
+
     private boolean wasDodging;
     private long dodgeRiseNs = Long.MIN_VALUE;
     private long dodgeWindowEndNs = Long.MIN_VALUE;
@@ -128,6 +133,7 @@ public final class PlayerVitals {
         hasLastReport = false;
         airborne = false;
         cactusTimer = 0f;
+        burnSeconds = 0f;
     }
 
     /** Opens the spawn-protection window ({@code SPAWN_PROTECTION_DURATION}). */
@@ -223,6 +229,48 @@ public final class PlayerVitals {
         while (cactusTimer >= pulseInterval) {
             cactusTimer -= pulseInterval;
             damage += damagePerPulse;
+        }
+        return damage;
+    }
+
+    /** Burn pulses land this far apart, like cactus pulses. */
+    static final float BURN_PULSE_SECONDS = 0.5f;
+
+    /** Sets the player burning; refreshes the longer and hotter of the old and new fire. */
+    public void ignite(float seconds, float damagePerSecond) {
+        if (!(seconds > 0f) || !(damagePerSecond > 0f) || health <= 0f) {
+            return;
+        }
+        if (burnSeconds <= 0f) {
+            burnTimer = 0f;
+            burnDps = 0f;
+        }
+        burnSeconds = Math.max(burnSeconds, seconds);
+        burnDps = Math.max(burnDps, damagePerSecond);
+    }
+
+    /** Whether the player is on fire. */
+    public boolean isBurning() {
+        return burnSeconds > 0f;
+    }
+
+    /** Advances any burn by {@code dt} seconds and returns the damage due this tick. */
+    public float onBurnTick(float dt) {
+        if (burnSeconds <= 0f) {
+            return 0f;
+        }
+        float step = Math.min(dt, burnSeconds);
+        burnSeconds -= step;
+        burnTimer += step;
+        float damage = 0f;
+        while (burnTimer >= BURN_PULSE_SECONDS) {
+            burnTimer -= BURN_PULSE_SECONDS;
+            damage += burnDps * BURN_PULSE_SECONDS;
+        }
+        if (burnSeconds <= 0f) {
+            damage += burnDps * burnTimer; // the last part-pulse, so a burn deals its whole damage
+            burnTimer = 0f;
+            burnDps = 0f;
         }
         return damage;
     }

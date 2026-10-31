@@ -9,13 +9,16 @@ import com.stonebreak.mobs.entities.LivingEntity;
  * no second set of numbers to keep in sync with physics.
  *
  * <p>Every limit here traces to something the collision code actually does:
- * {@link #MAX_STEP_UP} is the auto-step {@code EntityCollision} performs, and the climb ceiling
+ * the step height is the auto-step {@code EntityCollision} performs, and the climb ceiling
  * comes from the mob's own jump apex rather than a constant, so a stronger jumper really does plan
  * routes a weaker one will not.
  */
 public final class NavProfiles {
 
-    /** The auto-step entity collision performs without a jump. Mirrors {@code EntityCollision}. */
+    /**
+     * The auto-step entity collision performs without a jump, for anything with feet. Mirrors
+     * {@code EntityCollision}; a mob may step higher ({@link LivingEntity#getMaxStepUp()}).
+     */
     public static final float MAX_STEP_UP = 0.5f;
 
     /**
@@ -51,7 +54,8 @@ public final class NavProfiles {
         float footprint = Math.max(entity.getWidth(), entity.getLength());
         int columnRadius = footprint > WIDE_FOOTPRINT ? 1 : 0;
 
-        float maxClimb = Math.max(MAX_STEP_UP,
+        float stepUp = entity.getMaxStepUp();
+        float maxClimb = Math.max(stepUp,
                 Math.min(CLIMB_CEILING, entity.getJumpApexHeight() * USABLE_JUMP_FRACTION));
         // Leaving water is a swim stroke, which reaches higher than a standing jump.
         float waterEscapeClimb = Math.max(maxClimb,
@@ -59,7 +63,7 @@ public final class NavProfiles {
 
         if (entity.canSwim()) {
             return new NavProfile(standingHeight, columnRadius,
-                    MAX_STEP_UP, maxClimb, waterEscapeClimb, SWIMMER_MAX_FALL,
+                    stepUp, maxClimb, waterEscapeClimb, SWIMMER_MAX_FALL,
                     true, 1.0f, 1.2f,
                     0.5f, 2.0f, 0.2f);
         }
@@ -68,7 +72,7 @@ public final class NavProfiles {
         // would stand on the bottom until something else moved it. The multipliers are steep
         // enough that any dry route of comparable length wins, so they still walk around ponds.
         return new NavProfile(standingHeight, columnRadius,
-                MAX_STEP_UP, maxClimb, waterEscapeClimb, WALKER_MAX_FALL,
+                stepUp, maxClimb, waterEscapeClimb, WALKER_MAX_FALL,
                 true, 3.0f, 8.0f,
                 0.5f, 2.0f, 0.5f);
     }

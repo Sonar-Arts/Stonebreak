@@ -15,6 +15,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
+import com.stonebreak.mobs.wisp.Wisp;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
@@ -70,6 +71,7 @@ public final class WorldEffectsRenderer {
         renderFireBoltCores(player);
         renderFireBoltParticles(player);
         renderIllusionSmoke(player);
+        renderWispSmoke(player);
         // One remote-player sweep serves both water effects: they run back to back on the
         // render thread and entity membership only changes in the update tick, so the two
         // can never observe different sets.
@@ -92,7 +94,7 @@ public final class WorldEffectsRenderer {
         World world = Game.getWorld();
         Vector3f cameraPos = player.getCamera().getPosition();
         for (Entity entity : entities.getAllEntities()) {
-            if (entity.isAlive() && entity.getType() == EntityType.FIRE_BOLT) {
+            if (entity.isAlive() && entity instanceof FireBolt) {
                 entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
             }
         }
@@ -114,12 +116,14 @@ public final class WorldEffectsRenderer {
                 if (!(entity instanceof FireBolt bolt) || !bolt.isAlive()) {
                     continue;
                 }
+                Vector3f trail = bolt.palette().trail();
                 for (FireTrailParticles.FireParticle particle : bolt.particles.snapshot()) {
                     float opacity = particle.getOpacity();
                     Vector3f position = particle.getPosition();
-                    // Lerp orange to red as the particle fades.
+                    // The trail colour, its middle channel draining as the particle fades
+                    // (orange to red for fire, blue deepening for a wisp's orb).
                     emit.point(position.x, position.y, position.z, particle.getSize(),
-                            1.0f, 0.35f * opacity, 0.0f, opacity * 0.85f);
+                            trail.x, trail.y * opacity, trail.z, opacity * 0.85f);
                 }
             }
         });
@@ -149,6 +153,34 @@ public final class WorldEffectsRenderer {
                 // Pale violet smoke, fading out.
                 emit.point(position.x, position.y, position.z, particle.getSize(),
                         0.72f, 0.66f, 0.85f, particle.getOpacity() * 0.55f);
+            }
+        });
+    }
+
+    /** The smokescreens Wisps vanish into: grey-blue, thick, slow to clear. */
+    private void renderWispSmoke(Player player) {
+        EntityManager entities = Game.getEntityManager();
+        if (entities == null) {
+            return;
+        }
+        List<Entity> all = entities.getAllEntities();
+        boolean any = false;
+        for (int i = 0; !any && i < all.size(); i++) {
+            any = all.get(i) instanceof Wisp wisp && !wisp.getSmoke().isEmpty();
+        }
+        if (!any) {
+            return;
+        }
+        drawPointSprites(player.getViewMatrix(), GL_ONE_MINUS_SRC_ALPHA, emit -> {
+            for (Entity entity : all) {
+                if (!(entity instanceof Wisp wisp)) {
+                    continue;
+                }
+                for (IllusionSmokeParticles.SmokeParticle particle : wisp.getSmoke().snapshot()) {
+                    Vector3f position = particle.getPosition();
+                    emit.point(position.x, position.y, position.z, particle.getSize(),
+                            0.55f, 0.60f, 0.68f, particle.getOpacity() * 0.75f);
+                }
             }
         });
     }

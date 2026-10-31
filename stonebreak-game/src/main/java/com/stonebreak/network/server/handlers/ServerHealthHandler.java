@@ -87,6 +87,10 @@ public final class ServerHealthHandler {
             }
             PlayerVitals vitals = sp.vitals();
             vitals.applyMaxHealth(sp.serverStats().computeMaxHealth());
+            float burn = vitals.onBurnTick(dt);
+            if (burn > 0f) {
+                hurt(sp, burn, PlayerHealthS2C.CAUSE_MOB, nowNs, ctx);
+            }
             if (world != null) {
                 float half = PLAYER_WIDTH / 2;
                 boolean touching = CactusContactRules.touchesCactus(world,

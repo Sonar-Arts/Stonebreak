@@ -10,7 +10,8 @@ import com.stonebreak.mobs.entities.ai.MobBehaviorState;
  *
  * <p>Most mobs share one clip-naming convention ({@code Idle}, {@code Walking}, {@code Grazing},
  * {@code Wingflap}, and the combat set {@code Stab}, {@code Smash}, {@code DrawBow},
- * {@code ReleaseBow}); the goose's asset was authored in lowercase with a {@code flying} clip instead
+ * {@code ReleaseBow}, plus the Wisp's {@code Float}, {@code PeekLean}, {@code JerkBack},
+ * {@code Woosh}, {@code Cast}, {@code Scratch} and {@code Dissolve}); the goose's asset was authored in lowercase with a {@code flying} clip instead
  * of the ground-only set. Names are matched exactly — {@link SbeEntityAsset#clipFor(String)} is
  * case-sensitive — so the per-asset difference lives here rather than in a second mapping class
  * beside the mob it belongs to.
@@ -30,8 +31,13 @@ public final class MobStateMapping {
                 case FLYING -> "flying";
                 case WANDERING -> "walking";
                 // Standing, grazing, flapping and floating all render as the goose's idle pose.
-                case IDLE, GRAZING, WING_FLAP, SWIMMING, STAB, SMASH, DRAW_BOW, RELEASE_BOW -> "idle";
+                case IDLE, GRAZING, WING_FLAP, SWIMMING, STAB, SMASH, DRAW_BOW, RELEASE_BOW,
+                     PEEK, JERK_BACK, WOOSH, CAST, SCRATCH, DISSOLVE -> "idle";
             };
+        }
+        if (type == EntityType.WISP && (behaviorState == MobBehaviorState.WANDERING
+                || behaviorState == MobBehaviorState.FLYING || behaviorState == MobBehaviorState.SWIMMING)) {
+            return "Float"; // no legs: whatever moves it, it drifts
         }
         return switch (behaviorState) {
             case WANDERING, FLYING, SWIMMING -> "Walking";
@@ -42,6 +48,12 @@ public final class MobStateMapping {
             case SMASH -> "Smash";
             case DRAW_BOW -> "DrawBow";
             case RELEASE_BOW -> "ReleaseBow";
+            case PEEK -> "PeekLean";
+            case JERK_BACK -> "JerkBack";
+            case WOOSH -> "Woosh";
+            case CAST -> "Cast";
+            case SCRATCH -> "Scratch";
+            case DISSOLVE -> "Dissolve";
         };
     }
 
@@ -62,13 +74,19 @@ public final class MobStateMapping {
             };
         }
         return switch (sbeState) {
-            case "Walking" -> MobBehaviorState.WANDERING;
+            case "Walking", "Float" -> MobBehaviorState.WANDERING;
             case "Grazing" -> MobBehaviorState.GRAZING;
             case "Wingflap" -> MobBehaviorState.WING_FLAP;
             case "Stab" -> MobBehaviorState.STAB;
             case "Smash" -> MobBehaviorState.SMASH;
             case "DrawBow" -> MobBehaviorState.DRAW_BOW;
             case "ReleaseBow" -> MobBehaviorState.RELEASE_BOW;
+            case "PeekLean" -> MobBehaviorState.PEEK;
+            case "JerkBack" -> MobBehaviorState.JERK_BACK;
+            case "Woosh" -> MobBehaviorState.WOOSH;
+            case "Cast" -> MobBehaviorState.CAST;
+            case "Scratch" -> MobBehaviorState.SCRATCH;
+            case "Dissolve" -> MobBehaviorState.DISSOLVE;
             default -> MobBehaviorState.IDLE;
         };
     }

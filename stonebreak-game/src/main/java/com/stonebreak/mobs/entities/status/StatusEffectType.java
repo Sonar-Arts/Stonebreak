@@ -45,5 +45,15 @@ public enum StatusEffectType {
      * against this target (see the stealth class config). {@code magnitude} is unused. Duration-based;
      * also cleared when the target becomes ALERTED.
      */
-    FLAT_FOOTED
+    FLAT_FOOTED,
+    /**
+     * Wrapped in the Wisp's veil: drawn almost see-through, only its eyes still faintly glowing.
+     * {@code magnitude} is unused. Replicated like any effect, which is how clients learn to fade it.
+     */
+    VEILED,
+    /**
+     * Just threw down a smokescreen. {@code magnitude} is unused; clients puff smoke on the rising
+     * edge of this effect, so it only needs to last long enough to replicate.
+     */
+    SMOKESCREEN
 }

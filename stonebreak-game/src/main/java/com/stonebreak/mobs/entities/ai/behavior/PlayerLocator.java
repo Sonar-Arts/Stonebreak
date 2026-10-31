@@ -125,8 +125,33 @@ public interface PlayerLocator {
         return hurtNearestPlayer(from, amount, knockback);
     }
 
+    /**
+     * Writes the unit direction player {@code id} is looking in into {@code out} — what a mob that
+     * must not be seen (the Wisp) reads to know when it is being watched.
+     *
+     * @return {@code out}, or {@code null} when the locator does not know (the default) or the
+     *         player is gone
+     */
+    default Vector3f playerLook(int id, Vector3f from, Vector3f out) {
+        return null;
+    }
+
+    /**
+     * Sets the player whose body {@code point} is inside (grown by {@code margin}) burning for
+     * {@code seconds} at {@code damagePerSecond}; a projectile's lingering fire. Refreshes, never
+     * stacks.
+     *
+     * @return whether a player was there to catch fire
+     */
+    default boolean ignitePlayerAt(Vector3f point, float margin, float seconds, float damagePerSecond) {
+        return false;
+    }
+
     /** Height above a player's feet that ranged attackers aim at and sight on. */
     float CHEST_HEIGHT = 1.1f;
+
+    /** Height above a player's feet that they see from. */
+    float EYE_HEIGHT = com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 
     /** Nobody to react to; for tests and for worlds with no players. */
     PlayerLocator NONE = (from, out) -> null;
@@ -192,6 +217,16 @@ public interface PlayerLocator {
             @Override
             public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
                 return players().hitPlayerAt(point, margin, amount, ownerPlayerId);
+            }
+
+            @Override
+            public Vector3f playerLook(int id, Vector3f from, Vector3f out) {
+                return players().playerLook(id, from, out);
+            }
+
+            @Override
+            public boolean ignitePlayerAt(Vector3f point, float margin, float seconds, float damagePerSecond) {
+                return players().ignitePlayerAt(point, margin, seconds, damagePerSecond);
             }
 
             private PlayerLocator players() {

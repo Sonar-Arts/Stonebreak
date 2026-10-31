@@ -171,6 +171,30 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return false;
     }
 
+    /** The camera convention: yaw about +Y from +X, pitch up from the horizon, in degrees. */
+    @Override
+    public Vector3f playerLook(int id, Vector3f from, Vector3f out) {
+        ServerPlayer player = byId(id, from);
+        if (player == null) {
+            return null;
+        }
+        double yaw = Math.toRadians(player.yaw());
+        double pitch = Math.toRadians(player.pitch());
+        return out.set((float) (Math.cos(yaw) * Math.cos(pitch)), (float) Math.sin(pitch),
+                (float) (Math.sin(yaw) * Math.cos(pitch))).normalize();
+    }
+
+    @Override
+    public boolean ignitePlayerAt(Vector3f point, float margin, float seconds, float damagePerSecond) {
+        for (ServerPlayer player : roster) {
+            if (player.isLiveInWorld() && ServerHealthHandler.insideBody(player, point, margin)) {
+                player.vitals().ignite(seconds, damagePerSecond);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static float distanceSq(ServerPlayer player, Vector3f from) {
         float dx = player.x() - from.x;
         float dy = player.y() - from.y;

@@ -215,8 +215,10 @@ public final class MobPathWireframeDrawer {
             case GRAZING, WING_FLAP  -> new Vector4f(1.0f, 0.80f, 0.20f, 1.0f); // amber
             case SWIMMING            -> new Vector4f(0.20f, 0.55f, 1.0f, 1.0f); // blue
             case FLYING              -> new Vector4f(1.0f, 0.45f, 0.15f, 1.0f); // orange
-            case STAB, SMASH, DRAW_BOW, RELEASE_BOW
+            case STAB, SMASH, DRAW_BOW, RELEASE_BOW, WOOSH, CAST, SCRATCH
                                      -> new Vector4f(1.0f, 0.20f, 0.20f, 1.0f); // red: attacking
+            case PEEK, JERK_BACK, DISSOLVE
+                                     -> new Vector4f(0.75f, 0.40f, 1.0f, 1.0f); // violet: a scare
         };
     }
 }

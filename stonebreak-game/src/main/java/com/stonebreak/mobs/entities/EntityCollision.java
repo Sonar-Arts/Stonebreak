@@ -87,6 +87,33 @@ public class EntityCollision {
     }
     
     /**
+     * Whether a blocking cell at foot level is low enough to step onto without a jump: within the
+     * entity's own step height ({@link LivingEntity#getMaxStepUp()}; half a block for anything
+     * else), standing on the ground. A step taller than the shared half-block also needs the
+     * cells the head would rise into to be clear — a glide up a whole block must not drive the
+     * entity into a ceiling.
+     */
+    private boolean canStepUp(Entity entity, float stepUpNeeded, int yi, float entityFootY,
+                              float entityHeadY, int blockX, int blockZ) {
+        float limit = entity instanceof LivingEntity living ? living.getMaxStepUp()
+                : com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP;
+        if (!(stepUpNeeded > 0.0f) || stepUpNeeded > limit
+                || yi != (int) Math.floor(entityFootY) || !entity.isOnGround()) {
+            return false;
+        }
+        if (stepUpNeeded <= com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP) {
+            return true;
+        }
+        for (int y = (int) Math.ceil(entityHeadY); y < (int) Math.ceil(entityHeadY + stepUpNeeded); y++) {
+            com.stonebreak.blocks.BlockType above = world.getBlockAt(blockX, y, blockZ);
+            if (above != null && above.isSolid()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Handles collision on the X axis for entities (similar to Player).
      */
     private void handleCollisionX(Entity entity, Vector3f position, Vector3f velocity) {
@@ -121,14 +148,13 @@ public class EntityCollision {
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
-                        // Auto step-up for blocks up to 0.5 blocks high (cows can't step as high as players)
+                        // Auto step-up within the entity's step height (see canStepUp)
                         float stepUpNeeded = blockTop - position.y;
                         if (entity instanceof LivingEntity livingEntity) {
                             stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
                         }
                         
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 0.5f && 
-                            yi == (int)Math.floor(entityFootY) && entity.isOnGround()) {
+                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, blockToCheckX, zi)) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
                         } else if (entityFootY < blockTop && entityHeadY > yi) {
                             float potentialNewX = (float)(blockToCheckX + 1) + halfWidth;
@@ -147,14 +173,13 @@ public class EntityCollision {
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
-                        // Auto step-up for blocks up to 0.5 blocks high
+                        // Auto step-up within the entity's step height (see canStepUp)
                         float stepUpNeeded = blockTop - position.y;
                         if (entity instanceof LivingEntity livingEntity) {
                             stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
                         }
                         
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 0.5f && 
-                            yi == (int)Math.floor(entityFootY) && entity.isOnGround()) {
+                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, blockToCheckX, zi)) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
                         } else if (entityFootY < blockTop && entityHeadY > yi) {
                             float potentialNewX = (float)blockToCheckX - halfWidth;
@@ -280,14 +305,13 @@ public class EntityCollision {
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
-                        // Auto step-up for blocks up to 0.5 blocks high
+                        // Auto step-up within the entity's step height (see canStepUp)
                         float stepUpNeeded = blockTop - position.y;
                         if (entity instanceof LivingEntity livingEntity) {
                             stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
                         }
                         
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 0.5f && 
-                            yi == (int)Math.floor(entityFootY) && entity.isOnGround()) {
+                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, xi, blockToCheckZ)) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
                         } else if (entityFootY < blockTop && entityHeadY > yi) {
                             float potentialNewZ = (float)(blockToCheckZ + 1) + halfLength;
@@ -306,14 +330,13 @@ public class EntityCollision {
                     if (blockHeight > 0) {
                         float blockTop = yi + blockHeight;
                         
-                        // Auto step-up for blocks up to 0.5 blocks high
+                        // Auto step-up within the entity's step height (see canStepUp)
                         float stepUpNeeded = blockTop - position.y;
                         if (entity instanceof LivingEntity livingEntity) {
                             stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
                         }
                         
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 0.5f && 
-                            yi == (int)Math.floor(entityFootY) && entity.isOnGround()) {
+                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, xi, blockToCheckZ)) {
                             stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
                         } else if (entityFootY < blockTop && entityHeadY > yi) {
                             float potentialNewZ = (float)blockToCheckZ - halfLength;

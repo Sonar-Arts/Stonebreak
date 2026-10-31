@@ -120,6 +120,11 @@ public class EntitySpawner {
         this.hostileSpawner = new HostileSpawner(this, entityManager, random);
     }
 
+    /** The world spawns are placed in. */
+    World world() {
+        return world;
+    }
+
     /**
      * Replaces the "is it night?" source the hostile spawner checks. The server wires its own
      * clock; the default reads the client's.
@@ -454,7 +459,7 @@ public class EntitySpawner {
         int y = (int) Math.floor(position.y);
         int z = (int) Math.floor(position.z);
         return switch (type) {
-            case COW, CHICKEN, SHEEP, GOOSE, GOBLIN -> isValidGroundSpawn(x, y, z, position);
+            case COW, CHICKEN, SHEEP, GOOSE, GOBLIN, WISP -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }

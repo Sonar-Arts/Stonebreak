@@ -66,6 +66,27 @@ public class IllusionSmokeParticles {
         }
     }
 
+    /**
+     * A thick, slow smokescreen a body could vanish into (the Wisp's): more, larger, longer-lived
+     * puffs, spread wider and taller than a decoy's burst.
+     */
+    public void screen(Vector3f origin) {
+        int count = Math.min(40, MAX_PARTICLES - particles.size());
+        for (int i = 0; i < count; i++) {
+            Vector3f pos = new Vector3f(origin).add(
+                    (random.nextFloat() - 0.5f) * 1.2f,
+                    random.nextFloat() * 2.2f,
+                    (random.nextFloat() - 0.5f) * 1.2f);
+            Vector3f vel = new Vector3f(
+                    (random.nextFloat() - 0.5f) * 2.4f,
+                    random.nextFloat() * 0.5f,
+                    (random.nextFloat() - 0.5f) * 2.4f);
+            float lifetime = 1.4f + random.nextFloat() * 1.2f;
+            float size = 9.0f + random.nextFloat() * 9.0f;
+            particles.add(new SmokeParticle(pos, vel, lifetime, size));
+        }
+    }
+
     public void update(float deltaTime) {
         synchronized (particles) {
             particles.removeIf(SmokeParticle::isDead);

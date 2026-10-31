@@ -32,7 +32,19 @@ public enum MobBehaviorState {
     /** One-shot bow draw that holds at full draw until the shot. */
     DRAW_BOW,
     /** One-shot follow-through after loosing an arrow. */
-    RELEASE_BOW;
+    RELEASE_BOW,
+    /** One-shot lean out from behind cover that holds, laughing (the Wisp's Peek-a-boo). */
+    PEEK,
+    /** One-shot snap back into cover once seen. */
+    JERK_BACK,
+    /** One-shot dash past the player's ear (the Wisp's Woosh). */
+    WOOSH,
+    /** One-shot conjuring of a projectile or a smokescreen. */
+    CAST,
+    /** One-shot claw swipe. */
+    SCRATCH,
+    /** One-shot coming apart into smoke; the mob is gone when it ends. */
+    DISSOLVE;
 
     /**
      * Whether the state's clip plays through once rather than looping. One-shot clips are sampled
@@ -40,7 +52,8 @@ public enum MobBehaviorState {
      */
     public boolean isOneShot() {
         return switch (this) {
-            case WING_FLAP, STAB, SMASH, DRAW_BOW, RELEASE_BOW -> true;
+            case WING_FLAP, STAB, SMASH, DRAW_BOW, RELEASE_BOW,
+                 PEEK, JERK_BACK, WOOSH, CAST, SCRATCH, DISSOLVE -> true;
             default -> false;
         };
     }

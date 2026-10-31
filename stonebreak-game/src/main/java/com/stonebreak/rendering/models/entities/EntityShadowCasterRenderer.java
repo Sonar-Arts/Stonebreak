@@ -101,6 +101,9 @@ final class EntityShadowCasterRenderer {
         // Same generic SBE-mob path as renderEntity, through the flat-colored
         // depth-only route (color output is discarded by the shadow FBO).
         if (SbeMobRenderer.handles(entity)) {
+            if (SbeMobRenderer.castsNoShadow((com.stonebreak.mobs.entities.LivingEntity) entity)) {
+                return;
+            }
             mobRenderer.renderColored((com.stonebreak.mobs.entities.LivingEntity) entity,
                     lightView, lightProj, SHADOW_CASTER_COLOR);
             return;

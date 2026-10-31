@@ -218,6 +218,9 @@ public final class Steering {
         if (ahead == null || !ahead.isSolid()) {
             return false;
         }
+        if (entity.getMaxStepUp() >= 1.0f) {
+            return false; // a whole block is a step to this mob: collision carries it up, no hop
+        }
         BlockType above1 = entity.getWorld().getBlockAt(blockX, blockY + 1, blockZ);
         BlockType above2 = entity.getWorld().getBlockAt(blockX, blockY + 2, blockZ);
         return (above1 == null || !above1.isSolid())

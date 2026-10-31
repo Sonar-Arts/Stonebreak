@@ -81,6 +81,7 @@ public final class EntityReplicationRegistry {
             case CHICKEN -> new Chicken(world, pos);
             case GOOSE -> new Goose(world, pos);
             case GOBLIN -> new Goblin(world, pos, GoblinLoadout.decode(metadata));
+            case WISP -> new com.stonebreak.mobs.wisp.Wisp(world, pos);
             case BLOCK_DROP -> {
                 BlockType bt = BlockType.getById(parseInt(metadata, 0));
                 yield new BlockDrop(world, pos, bt != null ? bt : BlockType.AIR);
@@ -93,6 +94,7 @@ public final class EntityReplicationRegistry {
             // Projectiles: sim params are zeros — shadows skip update(), only visuals matter.
             case ARROW -> new Arrow(world, pos, new Vector3f(0, 0, 1));
             case FIRE_BOLT -> new FireBolt(world, pos, new Vector3f(0, 0, 1));
+            case WISP_ORB -> new com.stonebreak.mobs.wisp.WillOWispOrb(world, pos, new Vector3f(0, 0, 1));
             case NULL_SPIKE -> new NullSpikeProjectile(world, pos, new Vector3f(0, 0, 1), 0f, 0f, false, 0f);
             case CALTROP_CLUSTER -> new CaltropCluster(world, pos, Float.MAX_VALUE);
             case LEYLINE_BREACH_ZONE -> {

@@ -21,7 +21,7 @@ class MobStateMappingTest {
      */
     @Test
     void everyStateMapsToAClipThatMapsBackToTheSameClip() {
-        for (EntityType type : new EntityType[]{EntityType.COW, EntityType.GOOSE}) {
+        for (EntityType type : new EntityType[]{EntityType.COW, EntityType.GOOSE, EntityType.WISP}) {
             for (MobBehaviorState state : MobBehaviorState.values()) {
                 String clipName = MobStateMapping.sbeState(type, state);
                 assertNotNull(clipName, type + "/" + state + " must map to a clip name");
@@ -54,6 +54,20 @@ class MobStateMappingTest {
         assertEquals(MobBehaviorState.WANDERING, MobStateMapping.behaviorState(EntityType.GOOSE, "walking"));
     }
 
+    /** The Wisp drifts rather than walks, and its tricks each have a clip of their own. */
+    @Test
+    void wispClipNamesMatchItsAuthoringList() {
+        assertEquals("Float", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.WANDERING));
+        assertEquals("Walking", MobStateMapping.sbeState(EntityType.GOBLIN, MobBehaviorState.WANDERING));
+        assertEquals("PeekLean", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.PEEK));
+        assertEquals("JerkBack", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.JERK_BACK));
+        assertEquals("Woosh", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.WOOSH));
+        assertEquals("Cast", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.CAST));
+        assertEquals("Scratch", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.SCRATCH));
+        assertEquals("Dissolve", MobStateMapping.sbeState(EntityType.WISP, MobBehaviorState.DISSOLVE));
+        assertEquals(MobBehaviorState.WANDERING, MobStateMapping.behaviorState(EntityType.WISP, "Float"));
+    }
+
     /** Unknown or null replicated names fall back to IDLE instead of throwing. */
     @Test
     void unknownClipNamesFallBackToIdle() {
@@ -84,7 +98,9 @@ class MobStateMappingTest {
     void onlyGesturesAndAttacksAreOneShot() {
         java.util.Set<MobBehaviorState> oneShots = java.util.EnumSet.of(MobBehaviorState.WING_FLAP,
                 MobBehaviorState.STAB, MobBehaviorState.SMASH,
-                MobBehaviorState.DRAW_BOW, MobBehaviorState.RELEASE_BOW);
+                MobBehaviorState.DRAW_BOW, MobBehaviorState.RELEASE_BOW,
+                MobBehaviorState.PEEK, MobBehaviorState.JERK_BACK, MobBehaviorState.WOOSH,
+                MobBehaviorState.CAST, MobBehaviorState.SCRATCH, MobBehaviorState.DISSOLVE);
         for (MobBehaviorState state : MobBehaviorState.values()) {
             assertEquals(oneShots.contains(state), state.isOneShot(), state.name());
         }

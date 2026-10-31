@@ -27,7 +27,8 @@ public class FireBolt extends Entity {
     /** Replicated (EntityAnimS2C) when the bolt hits, so a client shadow bursts and hides its core. */
     static final String IMPACT_STATE = "Impact";
 
-    private final Vector3f direction;
+    /** Unit travel direction; a homing subclass turns it in {@link #steer}. */
+    protected final Vector3f direction;
     // Once true the bolt has hit something and stops moving; it stays alive only
     // long enough for its trail/impact particles to fade out before despawning.
     private boolean impacted = false;
@@ -69,23 +70,24 @@ public class FireBolt extends Entity {
             if (drawsParticles()) {
                 particles.update(deltaTime);
             }
-            if ((impactAge >= IMPACT_LINGER && particles.isEmpty()) || age > MAX_AGE + 2.0f) {
+            if ((impactAge >= IMPACT_LINGER && particles.isEmpty()) || age > maxAge() + 2.0f) {
                 alive = false;
             }
             return;
         }
 
-        if (age > MAX_AGE) {
+        if (age > maxAge()) {
             impact();
             return;
         }
 
+        steer(deltaTime);
+
         // Advance the bolt in small sub-steps so collision is checked along the
         // whole travel segment rather than only at the destination point.
-        float remaining = BOLT_SPEED * deltaTime;
+        float remaining = speed() * deltaTime;
         heading.set(direction);
         hasHeading = true;
-        EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         while (remaining > 0.0f && !impacted) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
             remaining -= stepLen;
@@ -102,11 +104,9 @@ public class FireBolt extends Entity {
                 return;
             }
 
-            // Entity collision — damage the first living entity on this sub-step.
-            LivingEntity hit = em != null ? ProjectileSweep.firstHit(em, position, newPos, HIT_MARGIN) : null;
+            boolean struck = strike(position, newPos);
             position.set(newPos);
-            if (hit != null) {
-                ProjectileDamage.deal(this, hit, DAMAGE, LivingEntity.DamageSource.FIRE);
+            if (struck) {
                 impact();
                 return;
             }
@@ -119,6 +119,59 @@ public class FireBolt extends Entity {
             particles.spawn(position, backDir);
             particles.update(deltaTime);
         }
+    }
+
+    /** Flight speed, blocks per second. */
+    protected float speed() {
+        return BOLT_SPEED;
+    }
+
+    /** Seconds of flight before the bolt fizzles out. */
+    protected float maxAge() {
+        return MAX_AGE;
+    }
+
+    /** Turns {@link #direction} before this tick's move; the staff's bolt flies straight. */
+    protected void steer(float deltaTime) {
+    }
+
+    /**
+     * Hits whatever is on the segment {@code from}→{@code to}, if anything: the staff's bolt burns
+     * the first living entity on it.
+     *
+     * @return whether something was hit (the bolt is spent)
+     */
+    protected boolean strike(Vector3f from, Vector3f to) {
+        EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
+        LivingEntity hit = em != null ? ProjectileSweep.firstHit(em, from, to, HIT_MARGIN) : null;
+        if (hit == null) {
+            return false;
+        }
+        ProjectileDamage.deal(this, hit, DAMAGE, LivingEntity.DamageSource.FIRE);
+        return true;
+    }
+
+    /** What colour the ball and its trail burn. */
+    public Palette palette() {
+        return Palette.FIRE;
+    }
+
+    /**
+     * A fireball's colours, hottest last: {@code rim} at the flickering edge through {@code body}
+     * and {@code mid} to the {@code core}; {@code halo} is the glow around it and {@code trail} its
+     * particles (RGB).
+     */
+    public record Palette(Vector3f rim, Vector3f body, Vector3f mid, Vector3f core, Vector3f halo,
+                          Vector3f trail) {
+        public static final Palette FIRE = new Palette(
+                new Vector3f(0.55f, 0.04f, 0.0f), new Vector3f(1.0f, 0.36f, 0.02f),
+                new Vector3f(1.0f, 0.78f, 0.22f), new Vector3f(1.0f, 0.97f, 0.86f),
+                new Vector3f(1.0f, 0.42f, 0.08f), new Vector3f(1.0f, 0.35f, 0.0f));
+        /** Will-o'-wisp fire: cold blue, white at the heart. */
+        public static final Palette WISP = new Palette(
+                new Vector3f(0.02f, 0.10f, 0.45f), new Vector3f(0.10f, 0.42f, 1.0f),
+                new Vector3f(0.45f, 0.78f, 1.0f), new Vector3f(0.88f, 0.96f, 1.0f),
+                new Vector3f(0.20f, 0.50f, 1.0f), new Vector3f(0.25f, 0.55f, 1.0f));
     }
 
     private boolean drawsParticles() {

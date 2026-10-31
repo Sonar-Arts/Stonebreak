@@ -187,6 +187,7 @@ public final class ServerLevel {
             save.setWeatherSource(level.weather);
             entitySpawner.setNightSource(level.timeOfDay::isNight);
             world.setDaylightSource(level.timeOfDay::getAmbientLightLevel);
+            world.setNightFogSource(() -> com.stonebreak.world.ShadeNight.fogStrength(level.timeOfDay));
 
             save.startAutoSave();
 
