@@ -52,7 +52,16 @@ public final class DocumentGlossaryCapture implements MigrationGate.Renderer {
 
     /** A glossary that also logs what was asked of it (the gate reads the effect of clicks). */
     static final class LoggingGlossary extends GlossaryScreen {
+        /** The mobs the frozen captures were recorded with (GOBLIN joined the glossary later). */
+        static final EntityType[] CAPTURED_TYPES = {EntityType.COW, EntityType.SHEEP, EntityType.CHICKEN,
+            EntityType.GOOSE};
+
         final List<String> log = new ArrayList<>();
+
+        @Override
+        public EntityType[] glossaryTypes() {
+            return CAPTURED_TYPES;
+        }
 
         @Override
         public boolean select(int index) {

@@ -22,7 +22,6 @@ import com.openmason.main.systems.uiEditor.service.UiProjectContext;
 import com.openmason.main.systems.uiEditor.service.UiRecoveryService;
 import com.openmason.main.systems.uiEditor.service.UiSnapshot;
 import com.openmason.main.systems.uiEditor.view.UiEditorContext;
-import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -166,7 +165,7 @@ class UiToolsEndToEndTest {
         assertTrue(Files.isRegularFile(Path.of(export.get("report").asText())));
 
         SbuiArchive loaded = SbuiReader.read(sbui, SbuiReader.Options.RUNTIME).archive();
-        try (UiDocumentView view = GameUiDocuments.open(loaded, Map.of(), ctx::typeface, Map.of())) {
+        try (UiDocumentView view = com.openmason.main.systems.target.GameUiFixtures.open(loaded, ctx::typeface)) {
             UiSnapshot.render(view, ctx.typeface(), 1280, 720, 1f);
             UiDocumentInstance ui = view.instance();
             assertEquals(400, ui.find("panel").rect().width(), 0.5f);

@@ -149,9 +149,7 @@ class WriteSandboxTest {
     @Test
     void readOnlyTargetOffersNoRoot() {
         var readOnly = TestGameTargets.stonebreakAt(game);
-        readOnly = new com.openmason.api.target.GameTarget(readOnly.id(), readOnly.displayName(),
-                readOnly.defaultNamespace(), readOnly.resources(), readOnly.folders(), readOnly.assetFilePrefix(),
-                com.openmason.api.target.WriteRules.READ_ONLY, readOnly.uiDeploy(), readOnly.uiHost(), null, false);
+        readOnly = readOnly.withWrites(com.openmason.api.target.WriteRules.READ_ONLY);
         WriteRoots roots = WriteRoots.forTarget(project, readOnly, exports);
         assertNull(roots.path(WriteRoot.TARGET));
         assertEquals(WriteRoot.PROJECT, roots.defaultRoot(WriteKind.SBO));

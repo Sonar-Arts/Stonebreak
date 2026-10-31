@@ -593,12 +593,12 @@ public class SBOExportWindow {
      * rely on the game's runtime dynamic allocator.
      */
     public static int[] findFreeAtlasSlot() {
-        try (InputStream in = SBOExportWindow.class.getClassLoader()
-                .getResourceAsStream("texture atlas/atlas_metadata.json")) {
-            if (in == null) {
-                logger.debug("atlas_metadata.json not on classpath — defaulting atlasX/Y to -1");
-                return new int[]{-1, -1};
-            }
+        var target = GameTargets.shared().active();
+        if (target.isEmpty()) {
+            return new int[]{-1, -1};
+        }
+        // The game target's atlas (#382: read from its resources, not the tool's class path).
+        try (InputStream in = target.get().resources().open("texture atlas/atlas_metadata.json")) {
             JsonNode root = new ObjectMapper().readTree(in);
             int tileSize = Math.max(1, root.path("textureSize").asInt(16));
             JsonNode size = root.path("atlasSize");
@@ -617,6 +617,8 @@ public class SBOExportWindow {
                 }
             }
             logger.warn("Atlas is fully occupied — defaulting atlasX/Y to -1");
+        } catch (java.io.FileNotFoundException e) {
+            logger.debug("No atlas_metadata.json in the game target — defaulting atlasX/Y to -1");
         } catch (IOException e) {
             logger.warn("Failed to scan atlas_metadata.json for free slot — defaulting atlasX/Y to -1", e);
         }

@@ -353,7 +353,7 @@ public class mainOpenMason {
         }
         // The editor's own features first, through the same registrars; a failure here stops start-up.
         com.openmason.main.bootstrap.CoreFeatures.register(registries);
-        pluginManager.registerAll(com.openmason.main.plugins.builtin.BuiltinPlugins.all(),
+        pluginManager.registerAll(java.util.List.of(),
                 pluginManager.discover());
         new com.openmason.main.systems.menus.preferences.PreferencesManager().loadKeybindsIntoRegistry(keybinds);
     }

@@ -1,7 +1,7 @@
-# Modelling fundamentals — parts-based voxel/low-poly models for Stonebreak
+# Modelling fundamentals — parts-based voxel/low-poly models for block games
 
 ## The style
-Stonebreak models are Minecraft-family: a small number of cuboid (occasionally
+Block-game models are Minecraft-family: a small number of cuboid (occasionally
 cylinder/wedge) PARTS, each axis-aligned in rest pose, textured with low-res
 pixel art. Character comes from proportion, silhouette and texture — not
 polycount. A good mob is 6–12 parts; a good block is 1–4. If you are adding
@@ -20,9 +20,9 @@ squint). Rules that reliably read well:
   and leave a visible gap between them.
 
 ## Proportion and units
-- World units are Stonebreak blocks; one block face is textured 16x16 px.
-- A cow is the calibration reference: body ≈ 1.2 x 0.9 x 0.6 blocks, legs
-  ≈ 0.5 tall. Player eye height ≈ 1.6. Keep new mobs plausible against these.
+- World units are game blocks; one block face is textured 16x16 px.
+- Calibrate against the game's own reference mob and player height — the
+  game target's conventions pack has them (Stonebreak: stonebreak_conventions).
 - Keep part dimensions on the 1/16-block grid where possible (0.0625
   multiples) so textures map 1 texel : 1 sixteenth and never shimmer.
 
@@ -35,13 +35,11 @@ squint). Rules that reliably read well:
 - Rest pose = the neutral standing pose, symmetric wherever the creature is.
   Author symmetric limbs with om.mirror (winding-safe), not manual copies.
 
-## Model facing and grounding (Stonebreak specifics)
-- Author mobs facing a consistent axis and remember it: the game maps model
-  facing per EntityType (cow/sheep were authored −Z, chicken +Z). Pick −Z
-  for new quadrupeds unless told otherwise, and never mix within one model.
-- The game anchors a model by its rest-pose lowest point (restMinY): feet are
-  planted at position.y − legHeight automatically. So DO ground the model at
-  y=0 in the editor, but never fake grounding with a translated body.
+## Model facing and grounding
+- Author mobs facing one consistent axis and never mix within a model; which
+  axis the game expects is in the game target's conventions pack.
+- Ground models at y=0 in the editor (feet on the origin plane); never fake
+  grounding with a translated body.
 
 ## Workflow that works (scripted)
 1. model_summary → see what exists. 2. Block out the silhouette with om.box

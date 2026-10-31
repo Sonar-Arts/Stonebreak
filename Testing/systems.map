@@ -69,3 +69,4 @@ scene	openmason-tool	com/openmason/main/systems/scene/**/*Test,com/openmason/mai
 tool-model	openmason-tool	com/openmason/main/systems/skeleton/**/*Test,com/openmason/main/systems/rendering/**/*Test
 boundaries	openmason-tool	com/openmason/main/boundary/**/*Test
 plugins	openmason-tool	com/openmason/main/plugins/**/*Test,com/openmason/api/**/*Test,com/openmason/main/systems/target/**/*Test
+plugins	openmason-plugin-stonebreak	com/stonebreak/openmason/**/*Test

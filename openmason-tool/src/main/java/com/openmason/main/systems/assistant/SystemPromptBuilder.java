@@ -25,6 +25,7 @@ public final class SystemPromptBuilder {
         if (projectName != null && !projectName.isBlank()) {
             sb.append("- Open model/project: ").append(projectName).append('\n');
         }
+        sb.append("- Game target: ").append(gameTarget()).append('\n');
         sb.append("- knowledge_search (libalex): ")
                 .append(libalexAvailable ? "available" : "not available").append('\n');
         if (!pythonAvailable) {
@@ -35,6 +36,13 @@ public final class SystemPromptBuilder {
             sb.append("\n## User instructions\n").append(userExtras.strip()).append('\n');
         }
         return sb.toString();
+    }
+
+    /** The active game target, as the agent should read it (#382: the tool knows no game itself). */
+    static String gameTarget() {
+        return com.openmason.main.systems.target.GameTargets.shared().active()
+                .map(t -> t.displayName() + " (namespace " + t.defaultNamespace() + ")")
+                .orElse("none (a project-only editor: no game assets, ids use the custom: namespace)");
     }
 
     private static String core() {

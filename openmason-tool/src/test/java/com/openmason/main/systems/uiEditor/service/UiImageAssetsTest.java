@@ -21,8 +21,7 @@ import com.openmason.main.systems.menus.textureCreator.layers.LayerManager;
 import com.openmason.main.systems.uiEditor.command.NodeCommands;
 import com.openmason.main.systems.uiEditor.document.NodeLocation;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
-import com.stonebreak.ui.runtime.GameUiDocuments;
-import com.stonebreak.ui.runtime.GameUiResources;
+import com.openmason.main.systems.target.GameUiFixtures;
 import io.github.humbleui.skija.Typeface;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -57,7 +56,7 @@ class UiImageAssetsTest {
 
     @BeforeAll
     static void font() throws Exception {
-        typeface = GameUiResources.loadTypeface();
+        typeface = GameUiFixtures.loadTypeface();
     }
 
     @AfterAll
@@ -141,8 +140,8 @@ class UiImageAssetsTest {
         UiEditorDocument first = screenWithSheet(ctx, "UI/test/ui/sprites/bands.sprites.json");
         UiEditorDocument second = screenWithSheet(ctx, "UI/test/ui/sprites/bands.sprites.json");
 
-        try (UiDocumentView a = GameUiDocuments.open(first.archive(), ctx.sources(), () -> typeface, Map.of());
-             UiDocumentView b = GameUiDocuments.open(second.archive(), ctx.sources(), () -> typeface, Map.of())) {
+        try (UiDocumentView a = GameUiFixtures.open(first.archive(), ctx.sources(), () -> typeface);
+             UiDocumentView b = GameUiFixtures.open(second.archive(), ctx.sources(), () -> typeface)) {
             assertEquals(RED, centre(a), "the skin's normal state is the red band");
             assertEquals(RED, centre(b));
 

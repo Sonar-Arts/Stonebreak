@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * The Tools menu's game-asset commands (Export SBO/SBE, SBO/SBE Editor), contributed as menu
- * items by the built-in Stonebreak plugin until #382 moves them into {@code openmason-plugin-stonebreak}.
+ * items by the Stonebreak plugin ({@code openmason-plugin-stonebreak}, #382).
  * The editors' own entries (Texture, Animation, Scripting, UI) are contributed by their plugins.
  */
 public class AssetExportMenuActions {

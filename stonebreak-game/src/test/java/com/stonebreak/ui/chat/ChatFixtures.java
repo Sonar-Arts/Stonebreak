@@ -22,11 +22,29 @@ public final class ChatFixtures {
         "picker-empty", "long-input");
 
     /**
+     * The commands (names and aliases) the frozen captures were recorded with. Commands added to
+     * the game later are unregistered from the fixture's chat, so the commands tab stays a
+     * rendering comparison instead of a content snapshot.
+     */
+    public static final java.util.Set<String> CAPTURED_COMMANDS = java.util.Set.of("attach", "battle",
+        "battletest", "cheats", "diagnose_openal", "fly", "help", "obtain", "spawn", "spawn_soundemit",
+        "spectator", "teleport", "test_3d_audio", "test_3d_far", "test_3d_near", "timeset", "tp", "voxeladj");
+
+    static void pinCommands(ChatSystem c) {
+        for (String name : c.getCommandExecutor().getCommands().keySet()) {
+            if (!CAPTURED_COMMANDS.contains(name)) {
+                c.getCommandExecutor().unregisterCommand(name);
+            }
+        }
+    }
+
+    /**
      * The chat of {@code variant}. Leaves the clock pinned at {@link #NOW}: release it with
      * {@link UiWallClock#release()} when done.
      */
     public static ChatSystem chat(String variant) {
         ChatSystem c = new ChatSystem();
+        pinCommands(c);
         // history: older messages first (their fades differ while the chat is closed)
         UiWallClock.pin(NOW - 9.2, UiWallClock.DEFAULT_SEED);
         c.addMessage("Welcome to Stonebreak!", new float[]{1f, 0.8f, 0.33f, 1f});

@@ -1,10 +1,9 @@
-package com.openmason.main.systems.rendering.core;
+package com.stonebreak.openmason.item;
 
 import com.stonebreak.items.ItemType;
 import com.openmason.engine.rendering.sprite.VoxelMesh;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import com.openmason.engine.rendering.sprite.VoxelData;
-import com.openmason.main.systems.rendering.model.item.ItemManager;
 import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 

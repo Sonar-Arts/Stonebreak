@@ -1,4 +1,4 @@
-package com.openmason.main.systems.rendering.model.item;
+package com.stonebreak.openmason.item;
 
 import com.stonebreak.items.ItemType;
 import com.openmason.engine.rendering.sprite.ColorPalette;

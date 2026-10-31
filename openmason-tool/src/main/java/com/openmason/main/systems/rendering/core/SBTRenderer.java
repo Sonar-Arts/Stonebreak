@@ -34,7 +34,7 @@ import static org.lwjgl.opengl.GL20.*;
  * game's held items use (#381) — so the layout, voxel size and depth match what
  * the player sees holding the same SBT in-game. The colour palette step is
  * skipped — Open Mason renders colours directly per voxel via a shader uniform,
- * the same approach {@link ItemRenderer} uses.
+ * the same approach the Stonebreak plugin's item renderer uses.
  */
 public class SBTRenderer implements AutoCloseable {
 

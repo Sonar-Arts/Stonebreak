@@ -2,11 +2,11 @@ package com.openmason.main.systems.project;
 
 import com.openmason.engine.format.omo.OMOFormat;
 import com.openmason.api.target.GameTarget;
-import com.openmason.main.plugins.builtin.StonebreakGameTarget;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 import com.openmason.main.systems.menus.mainHub.services.TemplateService;
 import com.openmason.main.systems.rendering.model.io.omo.OMODeserializer;
 import com.openmason.main.systems.target.TestGameTargets;
+import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -14,11 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sbo.SBOFormat;
 
-import com.stonebreak.blocks.BlockType;
 
 import java.io.InputStream;
-import java.net.URI;
-import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -42,13 +39,34 @@ class TemplateScaffolderTest {
 
     private static ProjectTemplate template(String id) {
         return switch (id) {
-            case "new-biome" -> StonebreakGameTarget.newBiomeTemplate();
+            case "new-biome" -> newBiome();
             case "blank-template" -> TemplateService.blankTemplate();
             default -> throw new IllegalArgumentException(id);
         };
     }
 
     private static final GameTarget STONEBREAK = TestGameTargets.stonebreak();
+
+    /**
+     * The shape of the Stonebreak plugin's New Biome template (#382: the template itself lives in
+     * {@code openmason-plugin-stonebreak}): cubes, a cross and one model copied from the target.
+     */
+    private static ProjectTemplate newBiome() {
+        return new ProjectTemplate.Builder()
+                .id("new-biome")
+                .name("New Biome")
+                .category("Biome")
+                .type(ProjectTemplate.TemplateType.BLOCK_SET)
+                .target(STONEBREAK.id())
+                .model("Log", PartShapeFactory.Shape.CUBE)
+                .model("Planks", PartShapeFactory.Shape.CUBE)
+                .modelFromTargetSbo("Stairs", "sbo/blocks/SB_Oak_Stairs.sbo")
+                .model("Leaves", PartShapeFactory.Shape.CUBE)
+                .model("Sapling", PartShapeFactory.Shape.CROSS)
+                .model("Grass", PartShapeFactory.Shape.CUBE)
+                .openOnCreate("Log")
+                .build();
+    }
 
     /** Loads a model and returns its mesh; {@code parts} is the expected part count. */
     private static OMOFormat.MeshData load(Path omo, int parts) {
@@ -78,9 +96,7 @@ class TemplateScaffolderTest {
         TemplateScaffolder.scaffold(template("new-biome"), root, STONEBREAK);
 
         OMOReader.ReadResult game;
-        URL folder = BlockType.class.getClassLoader().getResource("sbo/blocks");
-        assertNotNull(folder, "the game's block SBOs must be on the tool's classpath");
-        try (InputStream sbo = URI.create(folder + "/SB_Oak_Stairs.sbo").toURL().openStream()) {
+        try (InputStream sbo = STONEBREAK.resources().open("sbo/blocks/SB_Oak_Stairs.sbo")) {
             ZipInputStream zip = new ZipInputStream(sbo);
             while (!SBOFormat.EMBEDDED_OMO_FILENAME.equals(zip.getNextEntry().getName())) {
                 // skip to the embedded model
@@ -100,7 +116,7 @@ class TemplateScaffolderTest {
 
     @Test
     void newBiomeTargetsStonebreak() {
-        assertEquals(StonebreakGameTarget.ID, template("new-biome").getTargetId());
+        assertEquals(STONEBREAK.id(), template("new-biome").getTargetId());
         assertNull(template("blank-template").getTargetId());
     }
 

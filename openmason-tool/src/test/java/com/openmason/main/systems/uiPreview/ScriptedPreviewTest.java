@@ -15,7 +15,7 @@ import com.openmason.engine.ui.runtime.paint.UiPaintHost;
 import com.openmason.engine.ui.runtime.paint.UiPainter;
 import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
-import com.stonebreak.ui.runtime.GameUiDocuments;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The #292 acceptance screen in Open Mason: the preview's path ({@code GameUiDocuments.scripts}
+ * The #292 acceptance screen in Open Mason: the preview's path ({@code UiDocuments.scripts}
  * against the archive's {@link FixtureHost}) runs the Lua-authored sample in the tool's own JVM
  * and module graph, with fixture answers instead of game services.
  */
@@ -50,7 +50,7 @@ class ScriptedPreviewTest {
         ui.update();
         UiDocumentView view = new UiDocumentView(ui, new UiPainter(UiPaintHost.NONE, null));
         try {
-            UiScriptRuntime scripts = GameUiDocuments.scripts(view, fixture.host(), null, UiScriptServices.NONE);
+            UiScriptRuntime scripts = UiDocuments.scripts(view, fixture.host(), null, UiScriptServices.NONE);
             assertTrue(scripts.diagnostics().isEmpty(), scripts.diagnostics().toString());
             frame(view, 0.5);
             assertEquals("flex", ui.find("online").computedStyle().keyword("display", "?"));

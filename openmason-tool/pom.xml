@@ -14,7 +14,7 @@
     <packaging>jar</packaging>
 
     <name>OpenMason Tool</name>
-    <description>Tool for texture and model generation utilities for Stonebreak</description>
+    <description>Open Mason: a game-agnostic voxel asset editor (games plug in through com.openmason.api)</description>
     
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -144,13 +144,8 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- Stonebreak Game Module for shared resources (temporary - will be removed in Milestone 2) -->
-        <dependency>
-            <groupId>com.stonebreak</groupId>
-            <artifactId>stonebreak-game</artifactId>
-            <version>1.0-SNAPSHOT</version>
-            <scope>compile</scope>
-        </dependency>
+        <!-- No stonebreak-game dependency (#382): Stonebreak's tooling is the
+             openmason-plugin-stonebreak module, which depends on this one. -->
         
         <!-- Jackson JSON library for data parsing (same as Stonebreak) -->
         <dependency>

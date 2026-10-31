@@ -17,12 +17,14 @@ import java.util.Objects;
  * @param writes           whether and how the editor writes into the tree
  * @param uiDeploy         where shipped UI goes, or null when the game ships no UI documents
  * @param uiHost           the game's UI host, or null when it has none
+ * @param numericIds       the numeric ids the game's registries hold, or null when it numbers nothing
  * @param templates        where template-sourced models are read from; defaults to {@code resources}
  * @param legacyDefault    projects saved before targets existed (OMP below 1.5) migrate to this target
  */
 public record GameTarget(String id, String displayName, String defaultNamespace, ResourceRoot resources,
                          AssetFolders folders, String assetFilePrefix, WriteRules writes, UiDeployLayout uiDeploy,
-                         UiHostSource uiHost, ResourceRoot templates, boolean legacyDefault) {
+                         UiHostSource uiHost, NumericIdSource numericIds, ResourceRoot templates,
+                         boolean legacyDefault) {
 
     public GameTarget {
         Objects.requireNonNull(id, "id");
@@ -54,6 +56,18 @@ public record GameTarget(String id, String displayName, String defaultNamespace,
         return new Builder(id, displayName);
     }
 
+    /** This target with its resources (and templates, when they were the resources) at {@code root}. */
+    public GameTarget withResources(ResourceRoot root) {
+        return new GameTarget(id, displayName, defaultNamespace, root, folders, assetFilePrefix, writes, uiDeploy,
+                uiHost, numericIds, templates == resources ? root : templates, legacyDefault);
+    }
+
+    /** This target with different write rules. */
+    public GameTarget withWrites(WriteRules rules) {
+        return new GameTarget(id, displayName, defaultNamespace, resources, folders, assetFilePrefix, rules, uiDeploy,
+                uiHost, numericIds, templates, legacyDefault);
+    }
+
     /** True when {@code qualifiedId} ({@code ns:path}) is in this game's namespace. */
     public boolean owns(String qualifiedId) {
         return qualifiedId != null && qualifiedId.startsWith(defaultNamespace + ":");
@@ -70,6 +84,7 @@ public record GameTarget(String id, String displayName, String defaultNamespace,
         private WriteRules writes;
         private UiDeployLayout uiDeploy;
         private UiHostSource uiHost;
+        private NumericIdSource numericIds;
         private ResourceRoot templates;
         private boolean legacyDefault;
 
@@ -113,6 +128,11 @@ public record GameTarget(String id, String displayName, String defaultNamespace,
             return this;
         }
 
+        public Builder numericIds(NumericIdSource numericIds) {
+            this.numericIds = numericIds;
+            return this;
+        }
+
         public Builder templates(ResourceRoot templates) {
             this.templates = templates;
             return this;
@@ -125,7 +145,7 @@ public record GameTarget(String id, String displayName, String defaultNamespace,
 
         public GameTarget build() {
             return new GameTarget(id, displayName, namespace, resources, folders, assetFilePrefix, writes,
-                    uiDeploy, uiHost, templates, legacyDefault);
+                    uiDeploy, uiHost, numericIds, templates, legacyDefault);
         }
     }
 }

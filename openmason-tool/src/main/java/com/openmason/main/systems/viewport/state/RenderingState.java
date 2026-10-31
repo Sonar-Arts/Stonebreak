@@ -1,6 +1,5 @@
 package com.openmason.main.systems.viewport.state;
 
-import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,8 +17,9 @@ public class RenderingState {
     private String currentModelName = null;
     private String currentTextureVariant = "default";
 
-    // Item state
-    private ItemType selectedItem = null;
+    // Item state: the id of a game item a plugin's viewport content draws (#382: Stonebreak's
+    // ItemType name); the tool itself never interprets it.
+    private String selectedItem = null;
 
     // SBT texture state — driven by an absolute path supplied by the Model Browser.
     private java.nio.file.Path selectedSbtPath = null;
@@ -54,8 +54,8 @@ public class RenderingState {
     /**
      * Switch to item rendering mode.
      */
-    public void setItemMode(ItemType itemType) {
-        if (itemType == null) {
+    public void setItemMode(String itemType) {
+        if (itemType == null || itemType.isBlank()) {
             logger.warn("Cannot set null item type");
             return;
         }
@@ -63,7 +63,7 @@ public class RenderingState {
         this.selectedItem = itemType;
         this.currentModelName = null;
         this.selectedSbtPath = null;
-        logger.debug("Switched to ITEM rendering mode: {}", itemType.name());
+        logger.debug("Switched to ITEM rendering mode: {}", itemType);
     }
 
     /**
@@ -115,7 +115,7 @@ public class RenderingState {
     public RenderingMode getMode() { return mode; }
     public String getCurrentModelName() { return currentModelName; }
     public String getCurrentTextureVariant() { return currentTextureVariant; }
-    public ItemType getSelectedItem() { return selectedItem; }
+    public String getSelectedItem() { return selectedItem; }
 
     /**
      * Check if model is ready for rendering (legacy cow functionality removed).
@@ -140,7 +140,7 @@ public class RenderingState {
         return switch (mode) {
             case MODEL -> currentModelName != null ? "Model: " + currentModelName : "No model";
             case BLOCK_MODEL -> currentModelName != null ? "BlockModel: " + currentModelName : "No block model";
-            case ITEM -> selectedItem != null ? "Item: " + selectedItem.name() : "No item";
+            case ITEM -> selectedItem != null ? "Item: " + selectedItem : "No item";
             case SBT_TEXTURE -> selectedSbtPath != null ? "SBT: " + selectedSbtPath.getFileName() : "No SBT";
         };
     }

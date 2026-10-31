@@ -10,7 +10,7 @@
 - Frame economy: a readable walk cycle is 4 key poses; an idle is 2–3.
   More keys usually means mushier motion, not better motion.
 
-## Cycles that work at Stonebreak scale
+## Cycles that work at block scale
 - Quadruped walk (loop ~1.0–1.2s): diagonal pairs (LF+RH forward while
   RF+LH back), legs swing ±20–35°, body bobs 1–2 sixteenths at double
   frequency, head counter-bobs slightly, tail lags 90° behind body.
@@ -34,10 +34,9 @@
 - Loop mode: cycles loop; one-shot clips (door open) play once and HOLD the
   final pose — design the final key as a stable pose.
 
-## Stonebreak clip conventions
-- States map to clips by lowercase name (idle/wandering/grazing/wing_flap/
-  flying/swimming). Author at least idle + wandering for a mob; the shared
-  goose clip table is the naming reference.
+## Clip conventions
+- Which clip names a game plays for which state is game-specific: see the
+  game target's conventions pack (Stonebreak: stonebreak_conventions).
 - om.anim clips are DETACHED: c.save("/abs/path.omanim") writes only on
   script success; load into the editor with anim_load to preview. Verify with
   anim transport + viewport_capture at 2–3 timestamps, not by trusting keys.

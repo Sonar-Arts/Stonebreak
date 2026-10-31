@@ -1,4 +1,4 @@
-package com.openmason.main.plugins.builtin;
+package com.stonebreak.openmason;
 
 import com.openmason.api.target.AssetFolders;
 import com.openmason.api.target.GameTarget;
@@ -8,14 +8,13 @@ import com.openmason.api.target.WriteRules;
 import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory.Shape;
 import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
-import com.openmason.main.systems.uiEditor.service.UiGameDeploy;
 
 import java.util.List;
 
 /**
  * The Stonebreak {@link GameTarget} (#380): the one place the editor learns where Stonebreak keeps
  * its assets, how it names them and how its UI host is reached. Contributed by
- * {@link StonebreakBuiltinPlugin}; moves with it into {@code openmason-plugin-stonebreak} (#382).
+ * {@link StonebreakPlugin} ({@code openmason-plugin-stonebreak}, #382).
  */
 public final class StonebreakGameTarget {
 
@@ -35,8 +34,7 @@ public final class StonebreakGameTarget {
         String sbe = BuiltinFileTypes.SBE.id();
         return GameTarget.builder(ID, "Stonebreak")
                 .namespace("stonebreak")
-                // The game's packaged resources are on this module's loader (the tool requires the
-                // game module until #382; the plugin module will carry the same loader then).
+                // The game's packaged resources are on this plugin's loader (it requires the game).
                 .resources(new ResourceRoot(List.of(SOURCE_TREE), RESOURCES_PROPERTY,
                         StonebreakGameTarget.class.getClassLoader()))
                 .folders(AssetFolders.builder()
@@ -53,7 +51,8 @@ public final class StonebreakGameTarget {
                 .assetFilePrefix("SB_")
                 .writes(WriteRules.SHIPPED_ASSETS)
                 .uiDeploy(new UiDeployLayout("ui/documents", "ui/shared"))
-                .uiHost(UiGameDeploy.stonebreakHost())
+                .uiHost(StonebreakUiHost.INSTANCE)
+                .numericIds(new StonebreakNumericIds())
                 .legacyDefault(true)
                 .build();
     }

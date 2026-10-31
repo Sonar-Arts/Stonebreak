@@ -17,8 +17,7 @@ import com.openmason.main.systems.uiEditor.command.NodeCommands;
 import com.openmason.main.systems.uiEditor.command.UiCommand;
 import com.openmason.main.systems.uiEditor.document.NodeLocation;
 import com.openmason.main.systems.uiEditor.document.UiEditorDocument;
-import com.stonebreak.ui.runtime.GameUiDocuments;
-import com.stonebreak.ui.runtime.GameUiResources;
+import com.openmason.main.systems.target.GameUiFixtures;
 import io.github.humbleui.skija.Typeface;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -54,7 +53,7 @@ class UiAuthoringEndToEndTest {
 
     @BeforeAll
     static void font() throws Exception {
-        typeface = GameUiResources.loadTypeface();
+        typeface = GameUiFixtures.loadTypeface();
     }
 
     @AfterAll
@@ -99,7 +98,7 @@ class UiAuthoringEndToEndTest {
         assertTrue(Files.isRegularFile(project.resolve("Exports/hud.report.json")));
 
         SbuiArchive sbui = SbuiReader.read(export.target(), SbuiReader.Options.RUNTIME).archive();
-        try (UiDocumentView view = GameUiDocuments.open(sbui, Map.of(), () -> typeface, Map.of())) {
+        try (UiDocumentView view = GameUiFixtures.open(sbui, () -> typeface)) {
             UiSnapshot.render(view, typeface, 1280, 720, 1f);
             UiDocumentInstance ui = view.instance();
             UiElement p = ui.find(panel);
@@ -115,7 +114,7 @@ class UiAuthoringEndToEndTest {
         UiProjectContext ctx = new UiProjectContext(() -> project);
         var doc = OmuiReader.read(UiDocumentServiceTest.FIXTURES.resolve("pause_menu.omui")).archive();
         for (float scale : new float[]{1f, 2f}) {
-            try (UiDocumentView view = GameUiDocuments.open(doc, ctx.sources(), () -> typeface, Map.of())) {
+            try (UiDocumentView view = GameUiFixtures.open(doc, ctx.sources(), () -> typeface)) {
                 int w = (int) (1280 * scale);
                 int h = (int) (720 * scale);
                 BufferedImage img = UiSnapshot.render(view, typeface, w, h, scale);

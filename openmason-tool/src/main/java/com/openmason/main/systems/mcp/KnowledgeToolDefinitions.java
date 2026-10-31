@@ -58,9 +58,9 @@ public final class KnowledgeToolDefinitions {
                             + "engine code notes, game-dev references) for cited slices.",
                     McpSchema.of(mapper)
                             .str("query", "What to recall")
-                            .enumStr("collection", "Corpus to search (omit = sensible default)",
-                                    "openmason-models", "3d-models", "game-development",
-                                    "stonebreak-code")
+                            .str("collection", "Corpus to search (omit = sensible default), e.g. "
+                                    + "openmason-models, 3d-models, game-development, or a game's own "
+                                    + "code corpus")
                             .intg("limit", "Max results (default 5)")
                             .required("query")
                             .build(),

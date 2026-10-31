@@ -1,6 +1,6 @@
 /**
  * Open Mason Toolset
- * Asset tools for Stonebreak with a Dear ImGui-based interface
+ * Game-agnostic voxel asset editor with a Dear ImGui-based interface
  */
 module com.openmason {
     
@@ -57,9 +57,9 @@ module com.openmason {
     // OpenMason Engine for shared rendering and format support
     requires openmason.engine;
 
-    // Stonebreak Game Module for model system access (temporary - Milestone 2 removes this)
-    requires stonebreak.game;
-    
+    // No game module (#382): games plug in through com.openmason.api (Stonebreak: the
+    // openmason.plugin.stonebreak module, found on the module path through the `uses` below).
+
     // Open packages for Jackson JSON processing
     opens com.openmason.main.systems.themes.core to com.fasterxml.jackson.databind;
     opens com.openmason.main.systems.themes.registry to com.fasterxml.jackson.databind;
@@ -105,6 +105,8 @@ module com.openmason {
     exports com.openmason.main.systems.io;
     exports com.openmason.main.systems.services;
     exports com.openmason.main.systems.menus.mainHub.model;
+    exports com.openmason.main.systems.menus;              // asset export/editor menu actions
+    exports com.openmason.main.systems.menus.dialogs;      // SBO/SBE editor windows (file openers)
     exports com.openmason.main.systems.menus.textureCreator.keyboard;
 
     // Export packages for potential future extensions

@@ -137,9 +137,9 @@ fi
 MVN_LOG="$(mktemp /tmp/stonebreak-tests-XXXXXX.log)"
 MVN_EXIT=0
 
-# Determine if all three modules are present (full reactor needed)
-ALL_THREE=false
-for required_module in openmason-engine stonebreak-game openmason-tool; do
+# Determine if every module is present (full reactor needed)
+ALL_MODULES=false
+for required_module in openmason-engine stonebreak-game openmason-tool openmason-plugin-stonebreak; do
   found=false
   for m in "${MODULES[@]}"; do
     if [[ "$m" == "$required_module" ]]; then
@@ -148,10 +148,10 @@ for required_module in openmason-engine stonebreak-game openmason-tool; do
     fi
   done
   if [[ "$found" == false ]]; then
-    ALL_THREE=false
+    ALL_MODULES=false
     break
   fi
-  ALL_THREE=true
+  ALL_MODULES=true
 done
 
 if [[ "$LINE_KIND" == "GROUPS" ]]; then
@@ -161,7 +161,7 @@ if [[ "$LINE_KIND" == "GROUPS" ]]; then
     mvn -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dgroups="$LINE_VALUE" >"$MVN_LOG" 2>&1 || MVN_EXIT=$?
   fi
 elif [[ "$LINE_KIND" == "TESTS" ]]; then
-  if [[ "$ALL_THREE" == true ]]; then
+  if [[ "$ALL_MODULES" == true ]]; then
     # Full reactor — no -pl
     if [[ "$VERBOSE" -eq 1 ]]; then
       mvn -q -Dmaven.test.failure.ignore=true test ${EXTRA_MVN[@]+"${EXTRA_MVN[@]}"} -Dtest="$LINE_VALUE" -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$MVN_LOG" || MVN_EXIT=$?

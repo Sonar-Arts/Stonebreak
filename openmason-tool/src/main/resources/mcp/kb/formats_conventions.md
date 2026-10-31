@@ -13,8 +13,8 @@
   easing), fps/duration/loop, v1.1 layering (BASE/OVERLAY + part masks).
 - SBO — Stonebreak object (block/item): ZIP with manifest.json + either
   model.omo (model-bearing) or texture.omt (texture-only sprite items) +
-  optional states/<name>/ (alternate models + clip.omanim), sounds/, and
-  manifest data: gameProperties, crafting recipes, smelting, fuel, drops.
+  optional states/<name>/ (alternate models + clip.omanim), sounds/, and the
+  game's manifest data (Stonebreak: see stonebreak_conventions).
 - SBE — Stonebreak entity (mob/npc/...): ZIP with manifest.json + model.omo
   + states/<name>/ (behavior clips, optional model overrides) + variants/
   <name>/ (identity model swaps, e.g. cow breeds) + sounds/.

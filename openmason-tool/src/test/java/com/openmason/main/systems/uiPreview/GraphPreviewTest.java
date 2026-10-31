@@ -18,7 +18,7 @@ import com.openmason.engine.ui.script.GraphDebugger;
 import com.openmason.engine.ui.script.UiScriptOptions;
 import com.openmason.engine.ui.script.UiScriptRuntime;
 import com.openmason.engine.ui.script.UiScriptServices;
-import com.stonebreak.ui.runtime.GameUiDocuments;
+import com.openmason.engine.ui.hosting.UiDocuments;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The #291 acceptance screen in Open Mason: the preview's path ({@code GameUiDocuments.scripts}
+ * The #291 acceptance screen in Open Mason: the preview's path ({@code UiDocuments.scripts}
  * against the archive's {@link FixtureHost}) compiles and runs the graph-only pause sample in the
  * tool's own JVM, with the debug build the preview uses, and behaves as the game test asserts.
  */
@@ -53,7 +53,7 @@ class GraphPreviewTest {
         ui.update();
         UiDocumentView view = new UiDocumentView(ui, new UiPainter(UiPaintHost.NONE, null));
         try {
-            UiScriptRuntime scripts = GameUiDocuments.scripts(view, fixture.host(), null, UiScriptServices.NONE,
+            UiScriptRuntime scripts = UiDocuments.scripts(view, fixture.host(), null, UiScriptServices.NONE,
                 UiScriptOptions.DEFAULTS.withGraphDebug(true));
             assertTrue(scripts.diagnostics().isEmpty(), scripts.diagnostics().toString());
             frame(view, 0.5);

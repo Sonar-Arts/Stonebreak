@@ -2,7 +2,6 @@ package com.openmason.main.systems;
 
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.engine.format.omo.OMOFormat;
-import com.openmason.main.systems.rendering.model.item.ItemManager;
 import com.openmason.main.omConfig;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
 import com.openmason.main.systems.rendering.model.miscComponents.OMTTextureLoader;
@@ -13,7 +12,6 @@ import com.openmason.main.systems.viewport.ViewportInputHandler;
 import com.openmason.main.systems.viewport.viewportRendering.ViewportRenderPipeline;
 import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
 import com.openmason.engine.rendering.viewer.gizmo.GizmoState;
-import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.engine.rendering.viewer.ViewerRenderContext;
 import com.openmason.engine.rendering.viewer.ViewerFramebuffer;
 import com.openmason.engine.rendering.shaders.ShaderManager;
@@ -31,7 +29,6 @@ import com.openmason.main.systems.viewport.viewportRendering.TranslationCoordina
 import com.openmason.main.systems.rendering.model.gmr.subrenders.edge.EdgeRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.face.FaceRenderer;
 import com.openmason.main.systems.rendering.model.gmr.subrenders.vertex.VertexRenderer;
-import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,7 +62,6 @@ public class ViewportController {
     private final FaceSelectionState faceSelectionState;
 
     // ========== Renderers ==========
-    private final ItemRenderer itemRenderer;
     private final GenericModelRenderer modelRenderer;
 
     // ========== Gizmo ==========
@@ -169,7 +165,6 @@ public class ViewportController {
 
         this.commandHistory = new ModelCommandHistory();
 
-        this.itemRenderer = new ItemRenderer("Viewport");
         this.modelRenderer = new GenericModelRenderer();
 
         // Content loading (SOLID refactored)
@@ -269,9 +264,6 @@ public class ViewportController {
             shaderManager.initialize();
             modelViewer.initialize(viewportState.getWidth(), viewportState.getHeight());
 
-            if (!ItemManager.isInitialized()) ItemManager.initialize();
-            itemRenderer.initialize();
-
             modelRenderer.initialize();
             gizmoRenderer.initialize();
 
@@ -287,7 +279,6 @@ public class ViewportController {
 
             this.viewportRenderPipeline = new ViewportRenderPipeline(
                 shaderManager,
-                itemRenderer,
                 modelRenderer, gizmoRenderer,
                 viewportState, renderingState, transformState
             );
@@ -644,12 +635,16 @@ public class ViewportController {
     }
 
     /**
-     * Set item to render in viewport.
-     *
-     * <p><b>SOLID Refactored:</b> Delegates to ContentTypeManager.
+     * Switch the viewport to a game item by its id (#382: the game's plugin registers the
+     * viewport content that draws it; the tool never interprets the id).
      */
-    public void setSelectedItem(ItemType itemType) {
-        contentTypeManager.switchToItem(itemType);
+    public void setSelectedItem(String itemId) {
+        contentTypeManager.switchToItem(itemId);
+    }
+
+    /** The selected game item's id while the viewport is in item mode, else null. */
+    public String getSelectedItemId() {
+        return renderingState.isItemReady() ? renderingState.getSelectedItem() : null;
     }
 
     /**
@@ -1067,13 +1062,12 @@ public class ViewportController {
     }
 
     /**
-     * The item / .SBT content the viewport can draw, as content providers for the built-in
-     * Stonebreak plugin to register. They forward to the render pipeline once it exists (before
+     * The .SBT content the viewport can draw, as a content provider for the Stonebreak plugin to
+     * register (the plugin draws game items itself, #382). They forward to the render pipeline once it exists (before
      * that they are never ready).
      */
     public java.util.List<com.openmason.api.viewport.ViewportContentProvider> builtinContentProviders() {
-        return java.util.List.of(builtinContent("stonebreak.item", "Stonebreak item"),
-                builtinContent("stonebreak.sbt", "Stonebreak texture (.SBT)"));
+        return java.util.List.of(builtinContent("stonebreak.sbt", "Stonebreak texture (.SBT)"));
     }
 
     private com.openmason.api.viewport.ViewportContentProvider builtinContent(String id, String label) {

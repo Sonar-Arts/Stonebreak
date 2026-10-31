@@ -18,7 +18,6 @@ import com.openmason.main.systems.uiEditor.service.UiProjectContext;
 import com.openmason.main.systems.uiEditor.service.UiRecoveryService;
 import com.openmason.main.systems.uiEditor.service.UiSnapshot;
 import com.openmason.main.systems.uiEditor.view.UiEditorContext;
-import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -120,7 +119,7 @@ class UiNestedComponentsTest {
         call("ui_save", "{}");
         Path sbui = Path.of(call("ui_export", "{\"mode\":\"collect_all\"}").get("path").asText());
         SbuiArchive loaded = SbuiReader.read(sbui, SbuiReader.Options.RUNTIME).archive();
-        try (UiDocumentView view = GameUiDocuments.open(loaded, Map.of(), ctx::typeface, Map.of())) {
+        try (UiDocumentView view = com.openmason.main.systems.target.GameUiFixtures.open(loaded, ctx::typeface)) {
             UiSnapshot.render(view, ctx.typeface(), 1280, 720, 1f);
             UiElement button = view.instance().find("card/btn/button");
             assertNotNull(button, "nested instance built from the collected copies");

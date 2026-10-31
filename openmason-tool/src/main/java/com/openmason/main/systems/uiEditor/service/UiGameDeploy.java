@@ -26,8 +26,6 @@ import com.openmason.engine.ui.data.UiHost;
 import com.openmason.engine.ui.runtime.UiDocumentSource;
 import com.openmason.engine.ui.runtime.binding.UiActivation;
 import com.openmason.engine.ui.runtime.paint.ResolvedUiAssets;
-import com.stonebreak.ui.runtime.GameUiAssets;
-import com.stonebreak.ui.runtime.GameUiHost;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -52,9 +50,6 @@ import java.util.Map;
  * project into the game's resource tree, in the target's {@link UiDeployLayout} (the layout the
  * game's packaged asset source reads). Files that already exist with different bytes are
  * conflicts: nothing is written unless the caller confirms.
- *
- * <p>{@link #stonebreakHost()} is the Stonebreak target's UI host (#380; moves to the Stonebreak
- * plugin in #382).
  */
 public final class UiGameDeploy {
 
@@ -226,56 +221,5 @@ public final class UiGameDeploy {
 
     private static List<UiDiagnostic> dedupe(List<UiDiagnostic> in) {
         return new ArrayList<>(new java.util.LinkedHashSet<>(in));
-    }
-
-    /** The Stonebreak game's UI host, headless (#380): declarations, fixture, packaged assets, font, preview providers. */
-    public static UiHostSource stonebreakHost() {
-        return StonebreakUiHost.INSTANCE;
-    }
-
-    private enum StonebreakUiHost implements UiHostSource {
-        INSTANCE;
-
-        private volatile UiHostProfile profile;
-
-        @Override
-        public UiHostProfile profile() {
-            UiHostProfile p = profile;
-            if (p == null) {
-                p = GameUiHost.declaredProfile();
-                profile = p;
-            }
-            return p;
-        }
-
-        @Override
-        public UiHost declaration() {
-            return GameUiHost.declaration().host();
-        }
-
-        @Override
-        public byte[] fixtureJson() {
-            return GameUiHost.fixtureJson();
-        }
-
-        @Override
-        public String fixtureName() {
-            return GameUiHost.FIXTURE_RESOURCE;
-        }
-
-        @Override
-        public List<AssetSource> packagedAssets() throws IOException {
-            return GameUiAssets.sources(Map.of());
-        }
-
-        @Override
-        public io.github.humbleui.skija.Typeface loadTypeface() throws IOException {
-            return com.stonebreak.ui.runtime.GameUiResources.loadTypeface();
-        }
-
-        @Override
-        public Map<String, com.openmason.engine.ui.runtime.paint.UiPaintHost.UiDrawProvider> previewProviders() {
-            return com.stonebreak.ui.runtime.GameUiProviders.skiaOnly();
-        }
     }
 }

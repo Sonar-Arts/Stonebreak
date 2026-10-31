@@ -10,7 +10,6 @@ import com.openmason.main.systems.viewport.ViewportUIState;
 import com.openmason.main.systems.viewport.state.RenderingMode;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.engine.rendering.viewer.transform.TransformState;
-import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -150,7 +149,7 @@ public class ProjectService {
                 renderingState.getMode().name(),
                 renderingState.getCurrentModelName(),
                 renderingState.getCurrentTextureVariant(),
-                renderingState.getSelectedItem() != null ? renderingState.getSelectedItem().name() : null,
+                renderingState.getSelectedItem(),
                 modelState.getModelSource().name(),
                 modelFilePath
         );
@@ -281,8 +280,8 @@ public class ProjectService {
         try {
             RenderingMode mode = RenderingMode.valueOf(modelRef.renderingMode());
             if (mode == RenderingMode.ITEM && modelRef.selectedItemType() != null) {
-                ItemType itemType = ItemType.valueOf(modelRef.selectedItemType());
-                viewport.setSelectedItem(itemType);
+                // The id is the game's; the target's plugin draws it (or nothing, if it is unknown).
+                viewport.setSelectedItem(modelRef.selectedItemType());
             }
         } catch (IllegalArgumentException e) {
             logger.warn("Failed to restore rendering mode/selection: {}", e.getMessage());

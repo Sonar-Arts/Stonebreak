@@ -69,6 +69,17 @@ public final class RecipeBookFixtures {
         return new Recipe(id, p, out);
     }
 
+    /** The scrolled book's filler outputs, in id order: the shipped blocks (minus AIR/WATER) as of 2026-10-31. */
+    static final List<String> FILLER_BLOCKS = List.of(
+        "GRASS", "DIRT", "STONE", "BEDROCK", "WOOD", "LEAVES", "SAND", "COAL_ORE", "IRON_ORE", "RED_SAND",
+        "MAGMA", "CRYSTAL", "SANDSTONE", "RED_SANDSTONE", "ROSE", "DANDELION", "SNOWY_DIRT", "PINE_LEAVES",
+        "PINE", "ICE", "SNOW", "WORKBENCH", "WOOD_PLANKS", "PINE_WOOD_PLANKS", "ELM_WOOD_LOG",
+        "ELM_WOOD_PLANKS", "ELM_LEAVES", "COBBLESTONE", "GRAVEL", "CLAY", "RED_SAND_COBBLESTONE",
+        "SAND_COBBLESTONE", "WILDGRASS", "SPONGE", "FURNACE", "OAK_DOOR", "ELM_STAIRS", "OAK_STAIRS",
+        "PINE_STAIRS", "BRICKS_BLOCK", "STONE_BRICKS", "TORCH_PLACED", "LIMESTONE", "LIMESTONE_STALAGMITE",
+        "WOOL", "CACTUS", "GLASS", "CYPRESS_LEAVES", "CYPRESS_PLANKS", "CYPRESS_LOG", "CYPRESS_SAPLING",
+        "SWAMPY_GRASS");
+
     /** The table: the planks have two recipes (variants), the flowers are Decorative, the rest Building. */
     public static List<Recipe> recipes(String variant) {
         List<Recipe> out = new ArrayList<>();
@@ -90,12 +101,11 @@ public final class RecipeBookFixtures {
         out.add(recipe("clay", new ItemStack(BlockType.CLAY, 3), BlockType.DIRT, BlockType.SAND));
         out.add(recipe("wool", new ItemStack(BlockType.WOOL, 1), BlockType.SNOW));
         if ("scrolled".equals(variant)) {
-            // the book shows one recipe per output: one per block type, in id order
-            List<BlockType> blocks = new ArrayList<>(java.util.Arrays.asList(BlockType.values()));
-            blocks.removeIf(b -> b == BlockType.AIR || b == BlockType.WATER);
-            blocks.sort(java.util.Comparator.comparingInt(BlockType::getId));
-            for (int i = 0; i < blocks.size(); i++) {
-                out.add(recipe("filler" + i, new ItemStack(blocks.get(i), 1 + i % 5), BlockType.DIRT));
+            // the book shows one recipe per output: one per block of a fixed list (never the live
+            // registry, which grows with every new SBO and picks up stale target/classes copies)
+            for (int i = 0; i < FILLER_BLOCKS.size(); i++) {
+                BlockType block = BlockType.valueOf(FILLER_BLOCKS.get(i)); // throws if one stops shipping
+                out.add(recipe("filler" + i, new ItemStack(block, 1 + i % 5), BlockType.DIRT));
             }
         }
         return out;

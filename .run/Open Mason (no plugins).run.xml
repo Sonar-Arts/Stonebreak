@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Open Mason (no plugins)" type="Application" factoryName="Application">
+    <option name="ALTERNATIVE_JRE_PATH" value="ms-25" />
+    <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="true" />
+    <option name="MAIN_CLASS_NAME" value="com.openmason.main.mainOpenMason" />
+    <!-- The bare tool (#382): no game target, a generic project-only editor. -->
+    <module name="openmason-tool" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

@@ -7,7 +7,6 @@ import com.openmason.engine.rendering.viewer.ViewerFrame;
 import com.openmason.engine.rendering.viewer.ViewerPass;
 import com.openmason.engine.rendering.viewer.ViewerPassOrder;
 import com.openmason.engine.rendering.model.GenericModelRenderer;
-import com.openmason.main.systems.rendering.core.ItemRenderer;
 import com.openmason.main.systems.rendering.core.SBTRenderer;
 import com.openmason.engine.rendering.viewer.gizmo.rendering.GizmoRenderer;
 import com.openmason.main.systems.viewport.viewportRendering.bones.BoneGizmoRenderer;
@@ -75,7 +74,6 @@ public class ViewportRenderPipeline implements ViewerPass {
     private final FaceRenderer faceRenderer;
 
     // External renderers (blocks, items)
-    private final ItemRenderer itemRenderer;
     private final SBTRenderer sbtRenderer = new SBTRenderer();
 
     /** Block / item / SBT content, drawn through the content-provider registry (#379). */
@@ -127,7 +125,6 @@ public class ViewportRenderPipeline implements ViewerPass {
      * Create render pipeline with all required dependencies.
      */
     public ViewportRenderPipeline(ShaderManager shaderManager,
-                                  ItemRenderer itemRenderer,
                                   GenericModelRenderer modelRenderer,
                                   GizmoRenderer gizmoRenderer,
                                   ViewportUIState viewportState,
@@ -140,19 +137,17 @@ public class ViewportRenderPipeline implements ViewerPass {
         this.vertexRenderer = new VertexRenderer();
         this.edgeRenderer = new EdgeRenderer();
         this.faceRenderer = new FaceRenderer();
-        this.itemRenderer = itemRenderer;
         this.modelRenderer = modelRenderer;
         this.gizmoRenderer = gizmoRenderer;
         this.knifePreviewRenderer = new KnifePreviewRenderer();
         this.toolPreviewRenderer = new ToolPreviewRenderer();
         this.sbtRenderer.initialize();
-        this.builtinContent = List.of(new ItemContent(), new SbtContent());
+        this.builtinContent = List.of(new SbtContent());
     }
 
     /**
-     * The game-asset content this pipeline can draw besides the editable model (a selected item
-     * or .SBT sprite); the built-in Stonebreak plugin registers them as viewport content
-     * providers until #382 moves them out of the tool.
+     * The asset content this pipeline can draw besides the editable model (a .SBT sprite); the
+     * Stonebreak plugin registers it as viewport content (game items are the plugin's own, #382).
      */
     public List<ViewportContentProvider> builtinContentProviders() {
         return builtinContent;
@@ -340,39 +335,6 @@ public class ViewportRenderPipeline implements ViewerPass {
             });
         } catch (Exception e) {
             logger.error("Error rendering viewport content {}", provider.id(), e);
-        }
-    }
-
-    /** A selected game item (Stonebreak). */
-    private final class ItemContent implements ViewportContentProvider {
-        @Override
-        public String id() {
-            return "stonebreak.item";
-        }
-
-        @Override
-        public String label() {
-            return "Stonebreak item";
-        }
-
-        @Override
-        public boolean ready() {
-            return renderingState.isItemReady();
-        }
-
-        @Override
-        public void render(ViewportContentFrame frame) {
-            ShaderProgram shader = frame.matrixShader();
-            itemRenderer.renderItem(
-                renderingState.getSelectedItem(),
-                shader.getProgramId(),
-                shader.getUniformLocation("uMVPMatrix"),
-                shader.getUniformLocation("uModelMatrix"),
-                frame.viewProjection(),
-                frame.modelMatrix(),
-                shader.getUniformLocation("uUseTexture")
-            );
-            logger.trace("Item rendered: {}", renderingState.getSelectedItem().name());
         }
     }
 

@@ -1,4 +1,4 @@
-# UI Editor (Stonebreak UI documents: .omui / .sbui)
+# UI Editor (UI documents: .omui / .sbui)
 
 Agents edit UI documents through the same command layer as the author: every `ui_ops` call is
 ONE undo step in the History panel (the author can undo it), and nothing here touches Open

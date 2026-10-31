@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.stonebreak</groupId>
+        <artifactId>stonebreak-parent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>openmason-plugin-stonebreak</artifactId>
+    <packaging>jar</packaging>
+
+    <name>OpenMason Stonebreak Plugin</name>
+    <description>
+        Stonebreak's Open Mason plugin (#382): the Stonebreak game target, UI host, numeric-id
+        registries, game-item viewport content and asset tooling. Depends on the tool and the game;
+        the tool never depends on this module.
+    </description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>openmason-tool</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>stonebreak-game</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- Testing (versions managed by parent POM) -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.6.1</version>
+                <configuration>
+                    <argLine>
+                        --enable-native-access=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=org.lwjgl
+                        --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+                        --add-exports=java.base/sun.security.util=ALL-UNNAMED
+                        -Dorg.lwjgl.util.Debug=false
+                        -Dorg.lwjgl.util.NoChecks=true
+                    </argLine>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

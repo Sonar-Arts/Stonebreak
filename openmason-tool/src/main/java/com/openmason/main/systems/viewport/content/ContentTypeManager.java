@@ -3,7 +3,6 @@ package com.openmason.main.systems.viewport.content;
 import com.openmason.main.systems.rendering.model.editable.BlockModel;
 import com.openmason.main.systems.viewport.state.RenderingState;
 import com.openmason.engine.rendering.viewer.transform.TransformState;
-import com.stonebreak.items.ItemType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -156,8 +155,8 @@ public class ContentTypeManager {
         currentType = ContentType.SBT_TEXTURE;
     }
 
-    public void switchToItem(ItemType itemType) {
-        if (itemType == null) {
+    public void switchToItem(String itemType) {
+        if (itemType == null || itemType.isBlank()) {
             logger.warn("Cannot switch to null item type");
             return;
         }

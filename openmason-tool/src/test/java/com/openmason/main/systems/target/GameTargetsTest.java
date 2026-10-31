@@ -4,7 +4,6 @@ import com.openmason.api.target.AssetFolders;
 import com.openmason.api.target.GameTarget;
 import com.openmason.api.target.ResourceRoot;
 import com.openmason.api.target.UiDeployLayout;
-import com.openmason.main.plugins.builtin.StonebreakGameTarget;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -135,7 +134,7 @@ class GameTargetsTest {
     @Test
     void stonebreakFoldersRouteOnTheRealTree() {
         // Surefire runs with cwd = openmason-tool/; the resources live in a sibling module.
-        GameTargets targets = new GameTargets(() -> List.of(StonebreakGameTarget.create()));
+        GameTargets targets = new GameTargets(() -> List.of(TestGameTargets.stonebreak()));
         Path root = targets.resourcesRoot();
         assertNotNull(root, "the Stonebreak tree should be discoverable from the tool module");
         assertTrue(Files.isDirectory(root.resolve("sbo/blocks")));
@@ -185,11 +184,12 @@ class GameTargetsTest {
         }
         assertThrows(java.io.IOException.class, () -> ResourceRoot.at(tmp).open("sbo/blocks/Missing.sbo"));
 
-        // No tree: the game's class path (the tool's loader sees the game module's resources).
-        ResourceRoot packaged = new ResourceRoot(List.of("does/not/exist"), null,
-                StonebreakGameTarget.class.getClassLoader());
-        try (InputStream in = packaged.open("sbo/blocks/SB_Oak_Stairs.sbo")) {
-            assertTrue(in.readAllBytes().length > 0);
+        // No tree: the target's class path (a packaged game's jar or folder).
+        try (java.net.URLClassLoader loader = new java.net.URLClassLoader(new java.net.URL[]{tmp.toUri().toURL()}, null)) {
+            ResourceRoot packaged = new ResourceRoot(List.of("does/not/exist"), null, loader);
+            try (InputStream in = packaged.open("sbo/blocks/X.sbo")) {
+                assertArrayEquals(new byte[]{1, 2, 3}, in.readAllBytes());
+            }
         }
     }
 
@@ -198,16 +198,5 @@ class GameTargetsTest {
         UiDeployLayout layout = new UiDeployLayout("ui/documents/", "ui\\shared");
         assertEquals("ui/documents/pause.sbui", layout.screenPath("pause"));
         assertEquals("ui/shared/mg/ui/textures/panel.png", layout.sharedPath("mg/ui/textures/panel.png"));
-    }
-
-    @Test
-    void stonebreakIsTheLegacyTargetAndShipsUi() {
-        GameTarget sb = StonebreakGameTarget.create();
-        assertTrue(sb.legacyDefault());
-        assertEquals("stonebreak", sb.defaultNamespace());
-        assertNotNull(sb.uiDeploy());
-        assertNotNull(sb.uiHost());
-        assertEquals("SB_", sb.assetFilePrefix());
-        assertTrue(sb.writes().writable() && sb.writes().confirmWrites());
     }
 }
