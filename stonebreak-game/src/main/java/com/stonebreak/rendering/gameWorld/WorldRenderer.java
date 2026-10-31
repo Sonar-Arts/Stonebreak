@@ -328,7 +328,6 @@ public class WorldRenderer {
             // Render sky first (before world geometry for proper depth testing)
             skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), skyParams);
             precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
-            groundFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
         }
         checkGLError("After sky rendering");
 
@@ -410,6 +409,12 @@ public class WorldRenderer {
 
         // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
         renderSBOPass(visibleChunks);
+
+        // The Shade's ground fog over the sky and the opaque terrain, once per pixel from
+        // the depth buffer; everything drawn from here on fogs itself.
+        groundFog.renderScreen(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
+        shaderProgram.bind();
+        groundFog.applyTo(shaderProgram);
 
         // Render entities after opaque blocks but before transparent water
         // This allows water to blend over entities when viewing through water
@@ -618,7 +623,8 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_fogSpherical", fogSpherical);
         // Rain and snow fog (precip_fog.glsl), marched in front of every fragment.
         precipitationFog.applyTo(shaderProgram);
-        groundFog.applyTo(shaderProgram);
+        // The Shade's ground fog: the opaque passes leave it to its screen pass.
+        com.stonebreak.rendering.gameWorld.fog.GroundFog.applyDisabled(shaderProgram);
     }
     
     /**

@@ -270,6 +270,14 @@ public final class PathAgent {
             steering.stopMoving();
             return;
         }
+        // A glider floating down onto the waypoint: hold over it rather than overshooting and
+        // circling back all the way down.
+        if (entity.getGlideSinkSpeed() > 0f && horizontal < WAYPOINT_RADIUS && !entity.isOnGround()
+                && feetY - path.y(cursor) >= WAYPOINT_VERTICAL_SLACK) {
+            steering.stopMoving();
+            status = Status.FOLLOWING;
+            return;
+        }
 
         heading.set(dx / horizontal, 0.0f, dz / horizontal);
         steering.steerAlong(heading, speedMultiplier, deltaTime, true);

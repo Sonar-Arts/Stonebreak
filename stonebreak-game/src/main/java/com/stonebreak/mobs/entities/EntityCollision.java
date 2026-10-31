@@ -520,6 +520,10 @@ public class EntityCollision {
                 velocity.set(entity.getVelocity());
             } else if (!entity.isOnGround()) {
                 velocity.y += Entity.GRAVITY * deltaTime;
+                // A glider floats down instead of dropping.
+                if (entity instanceof LivingEntity living && living.getGlideSinkSpeed() > 0f) {
+                    velocity.y = Math.max(velocity.y, -living.getGlideSinkSpeed());
+                }
             }
         }
 

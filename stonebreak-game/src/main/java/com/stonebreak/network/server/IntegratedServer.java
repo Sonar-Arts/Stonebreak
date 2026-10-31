@@ -230,7 +230,7 @@ public final class IntegratedServer {
         for (ServerPlayer sp : roster) {
             if (!sp.handshakeDone() || sp.lastStateNs() == 0L) continue;
             out.add(new EntitySpawner.SpawnAnchor(
-                new Vector3f(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld()));
+                new Vector3f(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld(), sp.playerId()));
         }
         return out;
     }

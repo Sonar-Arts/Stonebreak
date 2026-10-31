@@ -423,6 +423,16 @@ public abstract class LivingEntity extends Entity {
      */
     public float getMaxStepUp() { return com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP; }
 
+    /**
+     * How fast this entity sinks with nothing under it, in blocks per second, or 0 to fall like a
+     * stone. Collision caps the fall at this speed; pair it with {@link #getMaxGlideDrop()} so its
+     * routes use the drops it can float down.
+     */
+    public float getGlideSinkSpeed() { return 0f; }
+
+    /** The tallest drop a route may glide this entity down, in blocks, or 0 for a walker's usual. */
+    public float getMaxGlideDrop() { return 0f; }
+
     // ─────────────────────────────────────────────── Illusionist Fracture stubs
 
     /** World position of the most recent attacker (null if unknown / the local player). */

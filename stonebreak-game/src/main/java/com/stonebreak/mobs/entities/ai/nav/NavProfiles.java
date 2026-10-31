@@ -34,6 +34,9 @@ public final class NavProfiles {
     /** Drops a mob will take on purpose. Below the player's four-block fall-damage threshold. */
     private static final float WALKER_MAX_FALL = 3.0f;
     private static final float SWIMMER_MAX_FALL = 5.0f;
+    /** A drop costs a walker care; a glider just floats down it, so routes barely charge for one. */
+    private static final float FALL_COST_PER_BLOCK = 0.5f;
+    private static final float GLIDE_COST_PER_BLOCK = 0.1f;
 
     /**
      * Footprint beyond which a route demands clearance either side. No current mob reaches it —
@@ -60,20 +63,23 @@ public final class NavProfiles {
         // Leaving water is a swim stroke, which reaches higher than a standing jump.
         float waterEscapeClimb = Math.max(maxClimb,
                 entity.getSwimStrokeReach() * USABLE_JUMP_FRACTION);
+        // A glider takes any drop it can float down, and prefers it to the long way round.
+        float glideDrop = entity.getGlideSinkSpeed() > 0f ? entity.getMaxGlideDrop() : 0f;
+        float fallCost = glideDrop > 0f ? GLIDE_COST_PER_BLOCK : FALL_COST_PER_BLOCK;
 
         if (entity.canSwim()) {
             return new NavProfile(standingHeight, columnRadius,
-                    stepUp, maxClimb, waterEscapeClimb, SWIMMER_MAX_FALL,
+                    stepUp, maxClimb, waterEscapeClimb, Math.max(SWIMMER_MAX_FALL, glideDrop),
                     true, 1.0f, 1.2f,
-                    0.5f, 2.0f, 0.2f);
+                    0.5f, 2.0f, glideDrop > 0f ? GLIDE_COST_PER_BLOCK : 0.2f);
         }
         // Land mobs CAN swim — they just hate it. Marking deep water impassable instead would be
         // worse than a preference: a cow that fell in a lake would have no route out at all, and
         // would stand on the bottom until something else moved it. The multipliers are steep
         // enough that any dry route of comparable length wins, so they still walk around ponds.
         return new NavProfile(standingHeight, columnRadius,
-                stepUp, maxClimb, waterEscapeClimb, WALKER_MAX_FALL,
+                stepUp, maxClimb, waterEscapeClimb, Math.max(WALKER_MAX_FALL, glideDrop),
                 true, 3.0f, 8.0f,
-                0.5f, 2.0f, 0.5f);
+                0.5f, 2.0f, fallCost);
     }
 }

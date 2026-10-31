@@ -9,8 +9,10 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -67,6 +69,13 @@ public class EntitySpawner {
     private static final int PACK_SPREAD = 5;
     /** Hard bound on spawns attempted per cycle, so one cycle can't stall the tick. */
     private static final int MAX_SPAWN_PER_CYCLE = 16;
+    /**
+     * The Shade holds this share of the animals anywhere else: its chunks count this much toward the
+     * cap, and a pack whose spot falls in it goes ahead only this often. The woods belong to the Wisps.
+     */
+    static final float SHADE_PASSIVE_SHARE = 0.1f;
+    /** Chunks {@link #chunkWeights} remembers before it is cleared and starts over. */
+    private static final int CHUNK_WEIGHT_CAPACITY = 16384;
 
     /** Mobs nearer than this to any player are never cap-culled (so animals don't vanish in your face). */
     private static final int CAP_PROTECTION_RADIUS = 16;
@@ -86,6 +95,12 @@ public class EntitySpawner {
     private final World world;
     private final EntityManager entityManager;
     private final Random random = new Random();
+    /**
+     * Each chunk's weight toward the cap ({@link #packChance} at its centre), remembered: a biome
+     * lookup runs the noise and the height map, the despawn sweep asks about every chunk in view
+     * each second, and a chunk's biome never changes.
+     */
+    private final Map<Long, Float> chunkWeights = new HashMap<>();
 
     /**
      * Supplier of spawn anchors (player position + that player's view distance) used to size the
@@ -106,9 +121,16 @@ public class EntitySpawner {
      * A point of interest for spawning: a player's position and the view distance (in chunks) they
      * have loaded around it. The view distance defines both the eligible-chunk square and the
      * spawn/despawn radius for this anchor. {@code spawnsMobs} is false for a dead player: its area
-     * still bounds despawning, but no new mobs are placed around the corpse.
+     * still bounds despawning, but no new mobs are placed around the corpse. {@code playerId} tells
+     * one player's anchor from the next across snapshots ({@link #NO_PLAYER} when nobody owns it).
      */
-    public record SpawnAnchor(Vector3f position, int viewDistanceChunks, boolean spawnsMobs) {
+    public record SpawnAnchor(Vector3f position, int viewDistanceChunks, boolean spawnsMobs, int playerId) {
+        public static final int NO_PLAYER = -1;
+
+        public SpawnAnchor(Vector3f position, int viewDistanceChunks, boolean spawnsMobs) {
+            this(position, viewDistanceChunks, spawnsMobs, NO_PLAYER);
+        }
+
         public SpawnAnchor(Vector3f position, int viewDistanceChunks) {
             this(position, viewDistanceChunks, true);
         }
@@ -173,12 +195,14 @@ public class EntitySpawner {
     }
 
     /**
-     * Counts the de-duplicated loaded + feature-populated chunks within view distance of any anchor.
-     * Reads only resident chunks ({@link World#getChunkIfLoaded}) — never generates — so it measures
-     * the currently visible area, not the server's monotonically-growing residency set.
+     * Counts the de-duplicated loaded + feature-populated chunks within view distance of any anchor,
+     * a Shade chunk counting only {@link #SHADE_PASSIVE_SHARE} of one. Reads only resident chunks
+     * ({@link World#getChunkIfLoaded}) — never generates — so it measures the currently visible area,
+     * not the server's monotonically-growing residency set.
      */
     private int countEligibleChunks(List<SpawnAnchor> anchors) {
         Set<Long> eligible = new HashSet<>();
+        float weight = 0f;
         for (SpawnAnchor anchor : anchors) {
             int r = anchor.viewDistanceChunks();
             int pcx = Math.floorDiv((int) Math.floor(anchor.position().x), 16);
@@ -194,11 +218,28 @@ public class EntitySpawner {
                     var chunk = world.getChunkIfLoaded(cx, cz);
                     if (chunk != null && chunk.areFeaturesPopulated()) {
                         eligible.add(key);
+                        weight += chunkWeight(cx, cz, key);
                     }
                 }
             }
         }
-        return eligible.size();
+        return Math.round(weight);
+    }
+
+    private float chunkWeight(int cx, int cz, long key) {
+        Float known = chunkWeights.get(key);
+        if (known != null) {
+            return known;
+        }
+        float weight = packChance(world, new Vector3f(cx * 16 + 8, 0, cz * 16 + 8));
+        // No terrain yet answers "not Shade" for now, not for good.
+        if (world.terrain() != null) {
+            if (chunkWeights.size() >= CHUNK_WEIGHT_CAPACITY) {
+                chunkWeights.clear();
+            }
+            chunkWeights.put(key, weight);
+        }
+        return weight;
     }
 
     private static long chunkKey(int cx, int cz) {
@@ -229,11 +270,16 @@ public class EntitySpawner {
         for (int attempt = 0; attempt < maxAttempts && spawned < deficit; attempt++) {
             SpawnAnchor anchor = anchors.get(random.nextInt(anchors.size()));
             Vector3f spot = findSpawnNear(anchor.position(), anchor.viewDistanceChunks() * 16);
-            if (spot == null) {
+            if (spot == null || random.nextFloat() >= packChance(world, spot)) {
                 continue;
             }
             spawned += spawnPack(spot, deficit - spawned);
         }
+    }
+
+    /** Odds a passive pack spawns at {@code spot}: always, but seldom in the Shade. */
+    static float packChance(World world, Vector3f spot) {
+        return HostileSpawnRule.isShade(world, spot) ? SHADE_PASSIVE_SHARE : 1f;
     }
 
     /** Spawns a small clustered pack of one random passive type around {@code spot}; returns the count placed. */

@@ -5,13 +5,15 @@ import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.function.BooleanSupplier;
 
 /**
  * Night-time hostile spawns, one {@link HostileSpawnRule} per creature: goblin bands everywhere
- * (seldom in the Shade), the rare Wisp in the Shade's fog. Ticked by {@link EntitySpawner} on the
+ * (seldom in the Shade), the Wisp for whoever lingers in the Shade's fog. Ticked by {@link EntitySpawner} on the
  * authoritative server world, and borrows its anchors (where the players are) and its
  * standable-site finders, so hostile and passive spawns can never disagree about what ground a mob
  * may stand on.
@@ -24,6 +26,8 @@ final class HostileSpawner {
 
     private static final float SPAWN_INTERVAL_SECONDS = 20.0f;
     private static final float DESPAWN_INTERVAL_SECONDS = 1.0f;
+    /** How often the players' Shade clocks are run on. */
+    private static final float CLOCK_INTERVAL_SECONDS = 1.0f;
     /** Tries at a spot far enough out before a rule gives up for this interval. */
     private static final int SPOT_ATTEMPTS = 4;
 
@@ -38,15 +42,23 @@ final class HostileSpawner {
     private final EntitySpawner sites;
     private final EntityManager entityManager;
     private final Random random;
+    /** A Shade clock for each rule that spawns on one, in place of the interval. */
+    private final Map<HostileSpawnRule, ShadeClock> clocks = new LinkedHashMap<>();
 
     private BooleanSupplier isNight = HostileSpawner::clientNight;
     private float spawnTimer;
     private float despawnTimer;
+    private float clockTimer;
 
     HostileSpawner(EntitySpawner sites, EntityManager entityManager, Random random) {
         this.sites = sites;
         this.entityManager = entityManager;
         this.random = random;
+        for (HostileSpawnRule rule : RULES) {
+            if (rule.shadeClockSeconds() > 0f) {
+                clocks.put(rule, new ShadeClock(rule.shadeClockSeconds()));
+            }
+        }
     }
 
     void setNightSource(BooleanSupplier isNight) {
@@ -59,12 +71,17 @@ final class HostileSpawner {
     }
 
     void update(float deltaTime) {
+        clockTimer += deltaTime;
+        if (clockTimer >= CLOCK_INTERVAL_SECONDS) {
+            runClocks(clockTimer);
+            clockTimer = 0f;
+        }
         spawnTimer += deltaTime;
         if (spawnTimer >= SPAWN_INTERVAL_SECONDS) {
             spawnTimer = 0f;
             boolean night = isNight.getAsBoolean();
             for (HostileSpawnRule rule : RULES) {
-                if (rule.when().allows(sites.world(), night)) {
+                if (!clocks.containsKey(rule) && rule.when().allows(sites.world(), night)) {
                     spawnGroup(rule);
                 }
             }
@@ -76,13 +93,33 @@ final class HostileSpawner {
         }
     }
 
+    /** Runs the Shade clocks on; each that comes round while its rule's time is right spawns near its player. */
+    private void runClocks(float elapsed) {
+        World world = sites.world();
+        List<EntitySpawner.SpawnAnchor> anchors = sites.collectAnchors();
+        boolean night = isNight.getAsBoolean();
+        clocks.forEach((rule, clock) -> {
+            for (EntitySpawner.SpawnAnchor anchor : clock.update(anchors, elapsed,
+                    point -> HostileSpawnRule.isShade(world, point))) {
+                if (rule.when().allows(world, night)) {
+                    spawnGroupNear(rule, anchor);
+                }
+            }
+        });
+    }
+
     private void spawnGroup(HostileSpawnRule rule) {
         List<EntitySpawner.SpawnAnchor> anchors = sites.collectAnchors();
+        if (!anchors.isEmpty()) {
+            spawnGroupNear(rule, anchors.get(random.nextInt(anchors.size())));
+        }
+    }
+
+    private void spawnGroupNear(HostileSpawnRule rule, EntitySpawner.SpawnAnchor anchor) {
         int room = rule.cap() - count(rule.type());
-        if (anchors.isEmpty() || room < rule.groupMin()) {
+        if (room < rule.groupMin()) {
             return;
         }
-        EntitySpawner.SpawnAnchor anchor = anchors.get(random.nextInt(anchors.size()));
         Vector3f spot = findSpot(rule, anchor.position());
         if (spot == null || !roll(rule.chance().at(sites.world(), spot))) {
             return; // try again next interval

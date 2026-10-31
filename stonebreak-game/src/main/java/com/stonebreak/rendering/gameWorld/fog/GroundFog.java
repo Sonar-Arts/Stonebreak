@@ -4,6 +4,7 @@ import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.postfx.FullscreenQuad;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
+import com.stonebreak.rendering.gameWorld.SceneDepthCopy;
 import com.stonebreak.rendering.lighting.SkyLight;
 import com.stonebreak.world.ShadeNight;
 import com.stonebreak.world.generation.TerrainGenerator;
@@ -21,12 +22,15 @@ import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
 /**
  * The Shade's night ground fog: a layer {@link #DEPTH} blocks deep lying on Shade ground
  * ({@link ShadeFogMap}), forming as the sun sets and burning off just after it rises.
- * Shaders that include {@code ground_fog.glsl} ({@link #glsl}) take it ({@link #applyTo}):
- * terrain, FastLOD, water, clouds and creatures. {@link #renderSky} fogs the sky seen across it.
+ * {@link #renderScreen} fogs the sky and the opaque terrain in one full-screen pass over
+ * the scene depth; what draws after it (creatures, drops, water, clouds, glass) includes
+ * {@code ground_fog.glsl} ({@link #glsl}) and fogs itself ({@link #applyTo}).
  */
 public final class GroundFog {
 
     public static final int TEXTURE_UNIT = 24;
+    /** Where {@link #renderScreen} binds its copy of the scene depth. */
+    private static final int DEPTH_TEXTURE_UNIT = 25;
     /** Blocks above the ground the fog reaches: into the dry oak canopy and a little over it. */
     static final float DEPTH = 10f;
     /** Below the ground the fog fades out over this many blocks, so caves under the Shade stay clear. */
@@ -48,8 +52,9 @@ public final class GroundFog {
     private static final Vector3f HUE = new Vector3f(0.90f, 1.00f, 1.15f);
 
     private final ShadeFogMap map = new ShadeFogMap();
-    private final ShaderProgram skyShader;
+    private final ShaderProgram screenShader;
     private final FullscreenQuad quad = new FullscreenQuad();
+    private final SceneDepthCopy sceneDepth = new SceneDepthCopy();
     private final int texture;
     private final FloatBuffer upload = BufferUtils.createFloatBuffer(ShadeFogMap.CELLS * ShadeFogMap.CELLS * 2);
     private ShadeFogMap.Grid uploaded;
@@ -60,10 +65,10 @@ public final class GroundFog {
     private final Matrix4f invViewProj = new Matrix4f();
 
     public GroundFog() {
-        skyShader = new ShaderProgram();
-        skyShader.createVertexShader(load("/shaders/postfx/fullscreen.vert"));
-        skyShader.createFragmentShader(load("/shaders/world/ground_fog_sky.frag"));
-        skyShader.link();
+        screenShader = new ShaderProgram();
+        screenShader.createVertexShader(load("/shaders/postfx/fullscreen.vert"));
+        screenShader.createFragmentShader(load("/shaders/world/ground_fog_screen.frag"));
+        screenShader.link();
 
         texture = glGenTextures();
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
@@ -130,28 +135,45 @@ public final class GroundFog {
         uploaded = grid;
     }
 
-    /** Fogs the sky just drawn: each pixel by its ray across the fog layer. */
-    public void renderSky(Matrix4f projection, Matrix4f view, Vector3f cameraRenderPos) {
+    /**
+     * Fogs the sky and the opaque terrain drawn so far: each pixel by its ray across the
+     * fog layer, out to the surface the depth buffer holds there. Surfaces drawn before
+     * this must not fog themselves ({@link #applyDisabled}); those drawn after must.
+     */
+    public void renderScreen(Matrix4f projection, Matrix4f view, Vector3f cameraRenderPos) {
         if (!enabled) return;
         boolean depthTest = glIsEnabled(GL_DEPTH_TEST);
         boolean blend = glIsEnabled(GL_BLEND);
+        boolean cull = glIsEnabled(GL_CULL_FACE);
         boolean depthMask = glGetBoolean(GL_DEPTH_WRITEMASK);
         int blendSrc = glGetInteger(GL_BLEND_SRC);
         int blendDst = glGetInteger(GL_BLEND_DST);
+        int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + DEPTH_TEXTURE_UNIT);
+        int previousDepthBinding = glGetInteger(GL_TEXTURE_BINDING_2D);
+        sceneDepth.copy(); // bound on the depth unit
+        GL13.glActiveTexture(previousUnit);
+
         glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
         glDepthMask(false);
         glEnable(GL_BLEND);
         glBlendFunc(GL_ONE, GL_SRC_ALPHA);
 
-        skyShader.bind();
-        applyTo(skyShader);
-        skyShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
-        skyShader.setVec3("u_camPos", cameraRenderPos);
+        screenShader.bind();
+        applyTo(screenShader);
+        screenShader.setInt("u_sceneDepth", DEPTH_TEXTURE_UNIT);
+        screenShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
+        screenShader.setVec3("u_camPos", cameraRenderPos);
         quad.draw();
-        skyShader.unbind();
+        screenShader.unbind();
 
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + DEPTH_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, previousDepthBinding);
+        GL13.glActiveTexture(previousUnit);
         glBlendFunc(blendSrc, blendDst);
         if (!blend) glDisable(GL_BLEND);
+        if (cull) glEnable(GL_CULL_FACE);
         if (depthTest) glEnable(GL_DEPTH_TEST);
         glDepthMask(depthMask);
     }
@@ -182,7 +204,10 @@ public final class GroundFog {
         shader.setFloat("u_groundFogHaze", HAZE);
     }
 
-    /** Turns the fog off on a BOUND shader, for draws it must not touch (UI previews). */
+    /**
+     * Turns the fog off on a BOUND shader, for draws it must not touch: UI previews, and
+     * the surfaces {@link #renderScreen} fogs after them.
+     */
     public static void applyDisabled(ShaderProgram shader) {
         shader.setBool("u_groundFogEnabled", false);
         // Even when off: left at unit 0 the sampler could clash with another type bound there.
@@ -192,7 +217,8 @@ public final class GroundFog {
     public void cleanup() {
         map.close();
         quad.cleanup();
-        skyShader.cleanup();
+        sceneDepth.cleanup();
+        screenShader.cleanup();
         glDeleteTextures(texture);
     }
 }

@@ -55,5 +55,10 @@ public enum StatusEffectType {
      * Just threw down a smokescreen. {@code magnitude} is unused; clients puff smoke on the rising
      * edge of this effect, so it only needs to last long enough to replicate.
      */
-    SMOKESCREEN
+    SMOKESCREEN,
+    /**
+     * The Wisp has dimmed its eyes: veiled, they no longer glow through, so a player tracking it
+     * loses it entirely. {@code magnitude} is unused. Replicated so clients draw the eyes dark.
+     */
+    EYES_DARK
 }

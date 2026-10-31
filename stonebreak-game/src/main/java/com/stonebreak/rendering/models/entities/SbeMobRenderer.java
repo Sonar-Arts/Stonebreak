@@ -69,7 +69,7 @@ final class SbeMobRenderer {
                 viewMatrix, projectionMatrix, world, cameraPos);
     }
 
-    /** Veiled body opacity, and the eyes' through the veil. */
+    /** Veiled body opacity, and the eyes' through the veil (unless dimmed, when they match the body). */
     static final float VEILED_BODY_ALPHA = 0.05f;
     static final float VEILED_EYE_ALPHA = 0.4f;
     /** A veiled Wisp starts to shimmer inside this many blocks of the camera, fully by the near one. */
@@ -89,8 +89,9 @@ final class SbeMobRenderer {
         }
         float distance = cameraPos != null ? cameraPos.distance(wisp.getPosition()) : Float.MAX_VALUE;
         float shimmer = Math.clamp((SHIMMER_FAR - distance) / (SHIMMER_FAR - SHIMMER_NEAR), 0f, 1f);
+        // Eyes dimmed, they fade with the body: nothing left to track.
         return new SbeEntityRenderer.Look(VEILED_BODY_ALPHA, shimmer, com.stonebreak.mobs.wisp.Wisp.EYE_PARTS,
-                VEILED_EYE_ALPHA);
+                wisp.eyesDark() ? VEILED_BODY_ALPHA : VEILED_EYE_ALPHA);
     }
 
     /** Whether the mob casts no shadow right now (a veiled Wisp). */
