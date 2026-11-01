@@ -79,7 +79,7 @@ great_plains, norway and east_africa.
 .venv/bin/python -m terrain_slm.data.water --region alps     # water masks for the bank model
 ```
 
-Building a region's drainage uses `terrain_slm/data/hydrology/` (depression fill, D8 flow). WorldClim is read from `Dev Working/terrain-diffusion-spike/`.
+Building a region's drainage uses `terrain_slm/data/hydrology/` (depression fill, D8 flow). WorldClim/ETOPO rasters are read from `Dev Working/worldclim/`.
 
 ### Training
 
