@@ -2,7 +2,7 @@
  * Stonebreak Game Module
  * 3D voxel-based sandbox game with model and texture systems
  */
-module stonebreak.game {
+module stonebreak.game{
     
     // LWJGL for graphics and input
     requires org.lwjgl;

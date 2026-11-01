@@ -349,6 +349,31 @@ class BlockEditInventoryTest {
     }
 
     @Test
+    void plantingABlueberryBushSpendsOneBlueberry() {
+        com.stonebreak.items.Item berry = com.stonebreak.items.ItemType.BLUEBERRY;
+        inv().add(berry.getId(), 3);
+        blocks.put(key(0, 63, 2), BlockType.GRASS);
+
+        edit(0, 64, 2, BlockType.BLUEBERRY_BUSH, BlockType.AIR);
+
+        assertEquals(BlockType.BLUEBERRY_BUSH, blocks.get(key(0, 64, 2)), "the bush was planted");
+        assertEquals(2, inv().countOf(berry.getId()), "one blueberry was spent");
+    }
+
+    @Test
+    void aBlueberryBushOffGrassIsRefusedAndTheBerryRefunded() {
+        com.stonebreak.items.Item berry = com.stonebreak.items.ItemType.BLUEBERRY;
+        inv().add(berry.getId(), 3);
+        blocks.put(key(0, 63, 2), BlockType.DIRT);
+
+        edit(0, 64, 2, BlockType.BLUEBERRY_BUSH, BlockType.AIR);
+
+        assertEquals(BlockType.AIR, blocks.getOrDefault(key(0, 64, 2), BlockType.AIR), "the cell was reverted");
+        assertEquals(3, inv().countOf(berry.getId()), "the berry came back");
+        assertTrue(syncs() >= 1, "the refund was synced");
+    }
+
+    @Test
     void anExpiredBucketPourRefillsTheBucketInsteadOfGrantingAWaterBlock() {
         bucketsAt(0, 1, WATER);
         chunksLoaded = false;

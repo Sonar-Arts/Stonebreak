@@ -479,6 +479,8 @@ public class WorldChunkStore {
                     ColumnProfile profile = pendingColumnProfiles.remove(pos);
                     terrainSystem.populateChunkWithFeatures(world, chunk, world.getSnowLayerManager(), profile);
                     chunk.setFeaturesPopulated(true);
+                    // The chunk-load listeners ran before these features existed.
+                    world.onChunkFeaturesPopulated(chunk);
                     // Features write via chunk.setBlock(), which only flips the CCO dirty flag
                     // and does not schedule a remesh. If the mesh was already built from
                     // terrain-only data (common when flying fast), flowers/wildgrass would

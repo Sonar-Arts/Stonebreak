@@ -191,6 +191,13 @@ public final class IntegratedServer {
             level.world().getFurnaceRegistry().setStateChangeListener((pos, state) ->
                 blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
         }
+        // Blueberry bush stage changes (growth, ripening, picking) → BlockStateS2C, queued behind
+        // the block batches for the same reason as the furnace: a placed bush writes its first
+        // stage in the tick its block change goes out. Timer-only rewrites never fire this.
+        if (level.world().getBlueberryBushGrowth() != null) {
+            level.world().getBlueberryBushGrowth().setStageListener((x, y, z) ->
+                blockHandler.queueStateEcho(x, y, z));
+        }
         // Crafting-table grid changes (issue #307) → BlockStateS2C, same dedup-at-source rule.
         level.world().getWorkbenchRegistry().setStateChangeListener((pos, state) ->
             blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));

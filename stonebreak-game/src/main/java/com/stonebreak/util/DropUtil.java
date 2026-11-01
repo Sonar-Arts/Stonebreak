@@ -355,6 +355,20 @@ public class DropUtil {
     }
     
     /**
+     * Whether a block in {@code state} drops anything when broken. Only the blueberry bush is
+     * gated: before its berries are ripe it drops nothing, so a bush can't be farmed for
+     * berries by breaking it early.
+     */
+    public static boolean dropsInState(BlockType block, String state) {
+        if (block == BlockType.BLUEBERRY_BUSH) {
+            com.stonebreak.blocks.blueberrybush.BlueberryBushState s =
+                    com.stonebreak.blocks.blueberrybush.BlueberryBushState.parse(state);
+            return s != null && s.isRipe();
+        }
+        return true;
+    }
+
+    /**
      * Handles block breaking and creates appropriate drops.
      */
     public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock) {
@@ -387,7 +401,20 @@ public class DropUtil {
      */
     public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, ItemType toolItem,
                                          int snowLayers, Vector3f preferencePoint) {
+        handleBlockBroken(world, position, brokenBlock, null, toolItem, snowLayers, preferencePoint);
+    }
+
+    /**
+     * State-aware overload: {@code brokenState} is the block's state string from just before
+     * the break ({@code null} when it had none). Blocks whose drops depend on their state read
+     * it here; a blueberry bush drops only when it is ripe.
+     */
+    public static void handleBlockBroken(World world, Vector3f position, BlockType brokenBlock, String brokenState,
+                                         ItemType toolItem, int snowLayers, Vector3f preferencePoint) {
         if (world == null || brokenBlock == null || brokenBlock == BlockType.AIR) {
+            return;
+        }
+        if (!dropsInState(brokenBlock, brokenState)) {
             return;
         }
 

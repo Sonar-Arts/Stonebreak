@@ -75,6 +75,8 @@ public final class ItemType implements Item {
     public static final ItemType WAR_AXE = fromRegistry("stonebreak:war_axe", "WAR_AXE");
     public static final ItemType WOODEN_SHOVEL = fromRegistry("stonebreak:wooden_shovel", "WOODEN_SHOVEL");
     public static final ItemType BANANA = fromRegistry("stonebreak:banana", "BANANA");
+    /** Food (2 hearts); placed on grass it plants a blueberry bush (BlueberryBushPlanting). */
+    public static final ItemType BLUEBERRY = fromRegistry("stonebreak:blueberry", "BLUEBERRY");
 
     /**
      * Wooden bucket (SBO 1.3, two states: "sb_wooden_bucket_empty" default
@@ -317,6 +319,7 @@ public final class ItemType implements Item {
 
     public float getHealAmount() {
         if (this == BANANA) return 4.0f;
+        if (this == BLUEBERRY) return 4.0f; // 2 hearts (PlayerConstants.HEALTH_PER_HEART = 2)
         return 0.0f;
     }
 

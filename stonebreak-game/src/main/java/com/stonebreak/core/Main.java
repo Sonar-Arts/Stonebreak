@@ -196,6 +196,7 @@ public class Main {
             maybeAutoTorch();
             maybeAutoBattle();
             maybeAutoScreenshot();
+            maybeAutoResize();
             maybeAutoFly();
             window.swapBuffers();
 
@@ -936,6 +937,48 @@ public class Main {
         }
         System.out.println("[autopause] pause menu open: " + (menu != null && menu.isVisible())
             + (spec.trim().endsWith(":online") ? " (online layout)" : ""));
+    }
+
+    // TEMP DIAG: -Dstonebreak.autoresize=<seconds>:<outdir>
+    private long autoResizeStart = -1;
+    private int autoResizeStep;
+    private int autoResizeDragW = -1;
+    private void maybeAutoResize() {
+        String spec = System.getProperty("stonebreak.autoresize");
+        if (spec == null || autoResizeStep > 6) return;
+        if (Game.getInstance().getState() != GameState.PLAYING && autoResizeStart < 0) return;
+        String[] parts = spec.split(":");
+        if (autoResizeStart < 0) { autoResizeStart = System.nanoTime() + (long) (Double.parseDouble(parts[0]) * 1e9); return; }
+        double t = (System.nanoTime() - autoResizeStart) / 1e9;
+        String dir = parts[1];
+        long h = window.handle();
+        if (autoResizeStep == 0 && t > 0) { diagShot(dir + "/0-before.png"); autoResizeStep++; }
+        else if (autoResizeStep == 1 && t > 1) { org.lwjgl.glfw.GLFW.glfwMaximizeWindow(h); System.out.println("[autoresize] maximize"); autoResizeStep++; }
+        else if (autoResizeStep == 2 && t > 5) { diagShot(dir + "/1-max.png"); autoResizeStep++; }
+        else if (autoResizeStep == 3 && t > 6) {
+            if (Boolean.getBoolean("stonebreak.autoresize.drag")) {
+                if (autoResizeDragW < 0) { org.lwjgl.glfw.GLFW.glfwRestoreWindow(h); autoResizeDragW = 2400; return; }
+                org.lwjgl.glfw.GLFW.glfwSetWindowSize(h, autoResizeDragW, Math.max(300, autoResizeDragW * 9 / 17));
+                autoResizeDragW -= 37;
+                if (autoResizeDragW < 860) { System.out.println("[autoresize] drag done"); autoResizeStep++; }
+                return;
+            }
+            org.lwjgl.glfw.GLFW.glfwRestoreWindow(h); System.out.println("[autoresize] restore"); autoResizeStep++; }
+        else if (autoResizeStep == 4 && t > 10) { diagShot(dir + "/2-restored.png"); autoResizeStep++; }
+        else if (autoResizeStep == 5 && t > 16) { diagShot(dir + "/3-later.png"); autoResizeStep++; }
+        else if (autoResizeStep == 6 && t > 17) { autoResizeStep++; running = false; }
+    }
+    private void diagShot(String file) {
+        int w = window.width(), hh = window.height();
+        System.out.println("[autoresize] shot " + file + " fb=" + w + "x" + hh);
+        java.nio.ByteBuffer px = org.lwjgl.BufferUtils.createByteBuffer(w * hh * 4);
+        org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_BACK);
+        org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_PACK_ALIGNMENT, 1);
+        org.lwjgl.opengl.GL11.glReadPixels(0, 0, w, hh, org.lwjgl.opengl.GL11.GL_RGBA, org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, px);
+        var img = new java.awt.image.BufferedImage(w, hh, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < hh; y++) for (int x = 0; x < w; x++) { int i = ((hh - 1 - y) * w + x) * 4;
+            img.setRGB(x, y, ((px.get(i) & 0xFF) << 16) | ((px.get(i + 1) & 0xFF) << 8) | (px.get(i + 2) & 0xFF)); }
+        try { javax.imageio.ImageIO.write(img, "png", new java.io.File(file)); } catch (java.io.IOException e) { e.printStackTrace(); }
     }
 
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────

@@ -11,6 +11,7 @@ import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import com.stonebreak.world.generation.biomes.DesertGravel;
 import com.stonebreak.world.generation.biomes.OceanFloor;
+import com.stonebreak.world.generation.features.BlueberryBushGenerator;
 import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.CavernOrigins;
 import com.stonebreak.world.generation.features.ColumnHeights;
@@ -65,6 +66,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
     private final LimestoneGenerator limestoneGenerator;
     private final VegetationGenerator vegetationGenerator;
     private final CactusGenerator cactusGenerator;
+    private final BlueberryBushGenerator blueberryBushGenerator;
     private final SwampPoolGenerator swampPoolGenerator;
     /** Terrain-pass columns behind FastLOD's swamp pools (see {@link #sampleColumns}). */
     private final SwampPoolGenerator.ColumnOracle poolColumns = SwampPoolGenerator.ColumnOracle.of(this);
@@ -131,6 +133,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         this.oreGenerator = new OreGenerator(deterministicRandom, worldHeights, seed);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
+        this.blueberryBushGenerator = new BlueberryBushGenerator(deterministicRandom);
         this.swampPoolGenerator = new SwampPoolGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, worldHeights, seed);
         this.density3D = new Density3D(seed, this.heightMapGenerator);
@@ -1026,6 +1029,8 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         swampPoolGenerator.generate(ctx, SwampPoolGenerator.ColumnOracle.of(this));
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
+        // After vegetation: bushes only take grass cells the flowers and trees left open.
+        blueberryBushGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
 
         // Passive-mob population is owned entirely by EntitySpawner, which is a

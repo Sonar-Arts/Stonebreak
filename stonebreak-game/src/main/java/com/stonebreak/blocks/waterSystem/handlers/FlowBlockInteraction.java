@@ -43,6 +43,13 @@ public final class FlowBlockInteraction {
             DropUtil.handleBlockBroken(world, dropPosition, blockType);
             return;
         }
+        if (blockType == BlockType.BLUEBERRY_BUSH) {
+            // Same rule as a player break: berries (its drops table) only when ripe, else nothing.
+            // The water has not replaced the bush yet, so its state is still readable.
+            DropUtil.handleBlockBroken(world, dropPosition, blockType, world.getBlockStateAt(x, y, z),
+                    null, 0, null);
+            return;
+        }
         DropUtil.createBlockDrop(world, dropPosition, blockType);
     }
 

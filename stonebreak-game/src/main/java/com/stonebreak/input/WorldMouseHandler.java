@@ -6,6 +6,8 @@ import org.joml.Vector3f;
 import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.blueberrybush.BlueberryBushInteraction;
+import com.stonebreak.blocks.blueberrybush.BlueberryBushPlanting;
 import com.stonebreak.blocks.door.DoorInteraction;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
@@ -108,6 +110,12 @@ final class WorldMouseHandler {
             return;
         }
 
+        // A blueberry aimed at grass plants a bush instead of being eaten.
+        if (!held.isEmpty() && BlueberryBushPlanting.isBerryItem(held.getItem()) && isAimingAtGrass(player)) {
+            interactOrPlaceBlock(player);
+            return;
+        }
+
         // Food consumption takes priority over block placement.
         if (!held.isEmpty() && held.isFood()) {
             ItemType foodType = held.asItemType();
@@ -171,6 +179,12 @@ final class WorldMouseHandler {
         }
     }
 
+    private static boolean isAimingAtGrass(Player player) {
+        Vector3i target = player.raycast();
+        return target != null
+                && BlueberryBushPlanting.canPlantOn(Game.getWorld().getBlockAt(target.x, target.y, target.z));
+    }
+
     /** Interactable blocks (workbench/furnace/door) open/toggle; anything else falls through to placement. */
     private void interactOrPlaceBlock(Player player) {
         Vector3i targetedBlockPos = player.raycast();
@@ -190,6 +204,9 @@ final class WorldMouseHandler {
         } else if (targetedBlockType == BlockType.LIMESTONE_STALAGMITE
                 && StalagmiteInteraction.tryGrow(player, targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
             // Watered with a full bucket: grew one size.
+        } else if (targetedBlockType == BlockType.BLUEBERRY_BUSH
+                && BlueberryBushInteraction.tryHarvest(player, targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
+            // Picked a ripe bush: it goes back to Mature instead of breaking.
         } else if (targetedBlockType == BlockType.OAK_DOOR) {
             // Toggle the door open/closed — plays the target state's one-shot
             // clip and holds the final pose.

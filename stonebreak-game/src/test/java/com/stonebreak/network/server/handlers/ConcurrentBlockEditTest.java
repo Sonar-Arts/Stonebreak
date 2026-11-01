@@ -150,7 +150,7 @@ class ConcurrentBlockEditTest {
     }
 
     private void verifyDropsFor(BlockType broken, int times) {
-        drops.verify(() -> DropUtil.handleBlockBroken(any(), any(), eq(broken), any(), anyInt(), any()),
+        drops.verify(() -> DropUtil.handleBlockBroken(any(), any(), eq(broken), any(), any(), anyInt(), any()),
                 times(times));
     }
 
@@ -208,7 +208,7 @@ class ConcurrentBlockEditTest {
     void breakingLeavesTheServerAlreadyDecayedDropsNothing() {
         edit(BlockType.AIR, BlockType.LEAVES); // the server cell is already air
 
-        drops.verify(() -> DropUtil.handleBlockBroken(any(), any(), any(), any(), anyInt(), any()), never());
+        drops.verify(() -> DropUtil.handleBlockBroken(any(), any(), any(), any(), any(), anyInt(), any()), never());
     }
 
     @Test
@@ -219,7 +219,7 @@ class ConcurrentBlockEditTest {
 
         assertEquals(BlockType.DIRT, cell(), "A's dirt survives");
         assertEquals(BlockType.DIRT, revertedTo());
-        drops.verify(() -> DropUtil.handleBlockBroken(any(), any(), any(), any(), anyInt(), any()), never());
+        drops.verify(() -> DropUtil.handleBlockBroken(any(), any(), any(), any(), any(), anyInt(), any()), never());
     }
 
     @Test

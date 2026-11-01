@@ -149,6 +149,10 @@ public final class BlockType implements Item, IBlockType {
     // stacks per-cell; the lower cell's top face is culled when a cactus sits above
     // (Renderer instance cull policy) and contact rules live in blocks/cactus/.
     public static final BlockType CACTUS = fromRegistry("stonebreak:cactus", "CACTUS");
+    // Blueberry bush: cross-pane plant whose SBO carries one state per growth stage (see
+    // blocks/blueberrybush/BlueberryBushState). Grows via world/growth/BlueberryBushGrowthSystem;
+    // a ripe bush is picked with right-click and goes back to Mature instead of breaking.
+    public static final BlockType BLUEBERRY_BUSH = fromRegistry("stonebreak:blueberry_bush", "BLUEBERRY_BUSH");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType

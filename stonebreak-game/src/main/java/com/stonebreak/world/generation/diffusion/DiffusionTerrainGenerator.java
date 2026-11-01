@@ -22,6 +22,7 @@ import com.stonebreak.world.generation.biomes.OceanFloor;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.diffusion.TerrainTileSource;
 import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
+import com.stonebreak.world.generation.features.BlueberryBushGenerator;
 import com.stonebreak.world.generation.features.CactusGenerator;
 import com.stonebreak.world.generation.features.LimestoneGenerator;
 import com.stonebreak.world.generation.features.OreGenerator;
@@ -69,6 +70,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
     private final SwampPoolGenerator.ColumnOracle poolColumns = SwampPoolGenerator.ColumnOracle.of(this);
     private final VegetationGenerator vegetationGenerator;
     private final CactusGenerator cactusGenerator;
+    private final BlueberryBushGenerator blueberryBushGenerator;
     private final SurfaceDecorationGenerator decorationGenerator;
     private final DeterministicRandom deterministicRandom;
     private final Density3D density3D;
@@ -126,6 +128,7 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         this.swampPoolGenerator = new SwampPoolGenerator(deterministicRandom);
         this.vegetationGenerator = new VegetationGenerator(deterministicRandom);
         this.cactusGenerator = new CactusGenerator(deterministicRandom);
+        this.blueberryBushGenerator = new BlueberryBushGenerator(deterministicRandom);
         this.decorationGenerator = new SurfaceDecorationGenerator(deterministicRandom, heightMapGenerator, seed);
         // The cave stack is Standard's (generation.heightmap), read through this world's tile
         // heights. Peak damping is off: its knots are fitted to the noise terrain's summits
@@ -960,6 +963,8 @@ public class DiffusionTerrainGenerator implements TerrainGenerator {
         swampPoolGenerator.generate(ctx, SwampPoolGenerator.ColumnOracle.of(this));
         vegetationGenerator.generate(ctx);
         cactusGenerator.generate(ctx);
+        // After vegetation: bushes only take grass cells the flowers and trees left open.
+        blueberryBushGenerator.generate(ctx);
         decorationGenerator.generate(ctx);
 
         // Passive-mob population is owned entirely by EntitySpawner, which is a

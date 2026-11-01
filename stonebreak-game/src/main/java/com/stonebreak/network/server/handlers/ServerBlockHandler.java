@@ -181,6 +181,7 @@ public final class ServerBlockHandler {
             }
         }
         boolean scoop = isScoop(world, c, incoming, serverPrev); // pre-apply snapshot
+        String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
             // Server chunk not loaded yet (the reach check bounds this to a near-player chunk,
@@ -190,7 +191,7 @@ public final class ServerBlockHandler {
             retryQueue.add(new PendingEdit(sp, c, debit, receivedNs, loaded));
             return;
         }
-        completeEdit(sp, c, incoming, serverPrev, scoop, debit, world, ctx);
+        completeEdit(sp, c, incoming, serverPrev, prevState, scoop, debit, world, ctx);
     }
 
     /**
@@ -322,8 +323,12 @@ public final class ServerBlockHandler {
                 retryQueue.add(new PendingEdit(d.sp(), c, PlacementDebit.NONE, d.dueNs(), true));
             } else if (conflictsWithServerCell(c, BlockType.AIR, serverPrev)) {
                 sendRevert(d.sp(), c.x(), c.y(), c.z(), ctx);
-            } else if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
-                completeEdit(d.sp(), c, BlockType.AIR, serverPrev, false, PlacementDebit.NONE, world, ctx);
+            } else {
+                String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
+                if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
+                    completeEdit(d.sp(), c, BlockType.AIR, serverPrev, prevState, false, PlacementDebit.NONE,
+                            world, ctx);
+                }
             }
         }
     }
@@ -373,11 +378,12 @@ public final class ServerBlockHandler {
     /**
      * Everything that follows a successful world apply — shared by the direct path and the
      * chunk-load retry path, so a retried edit gets the same effects (issue #334). {@code prev}
-     * is the server's own pre-apply cell.
+     * is the server's own pre-apply cell and {@code prevState} that cell's block state.
      */
     private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
-                              boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
-        applyAccepted(sp, c, incoming, prev, debit, world, ctx);
+                              String prevState, boolean scoop, PlacementDebit debit, World world,
+                              ServerWorldContext ctx) {
+        applyAccepted(sp, c, incoming, prev, prevState, debit, world, ctx);
         emitEditNoise(sp, world, c, incoming, prev);
         SoundEventS2C sound = editSound(c.x(), c.y(), c.z(), incoming, prev);
         if (sound != null) {
@@ -502,7 +508,7 @@ public final class ServerBlockHandler {
      * The placement debit for one block (issue #334), or null when the player does not hold
      * what the placement costs (nothing taken). Most blocks debit their own id, but the torch
      * ITEM places the torch BLOCK (ids differ — a stack may hold either: crafted torches carry
-     * the item id, picked-up ones the block id), and water poured from a selected water bucket
+     * the item id, picked-up ones the block id), a blueberry plants the bush, and water poured from a selected water bucket
      * empties exactly one bucket (mirrors {@code BlockPlacer.handleWaterBucket}).
      */
     private static PlacementDebit debitForPlacement(ServerPlayer sp, BlockType incoming,
@@ -518,17 +524,27 @@ public final class ServerBlockHandler {
             return takeOne(sp, incoming.getId());
         }
         if (incoming == BlockType.TORCH_PLACED) {
-            ItemType torch = com.stonebreak.blocks.torch.TorchBlock.item();
-            int blockId = incoming.getId();
-            int itemId = torch != null ? torch.getId() : blockId;
-            // Whichever torch id the selected slot holds goes first — the stack the client's
-            // placer spent (and auto-switches); the other id only when that one is not held.
-            int first = sp.inventory().heldItemId() == blockId ? blockId : itemId;
-            int second = first == blockId ? itemId : blockId;
-            PlacementDebit taken = takeOne(sp, first);
-            return taken != null || second == first ? taken : takeOne(sp, second);
+            return takeItemOrBlock(sp, com.stonebreak.blocks.torch.TorchBlock.item(), incoming);
+        }
+        if (incoming == BlockType.BLUEBERRY_BUSH) {
+            // A blueberry plants the bush; a held bush block places itself.
+            return takeItemOrBlock(sp, ItemType.BLUEBERRY, incoming);
         }
         return takeOne(sp, incoming.getId());
+    }
+
+    /**
+     * Debit for a block that an ITEM with a different id also places (torch, blueberry): a stack
+     * may hold either id. Whichever id the selected slot holds goes first — the stack the
+     * client's placer spent (and auto-switches); the other id only when that one is not held.
+     */
+    private static PlacementDebit takeItemOrBlock(ServerPlayer sp, ItemType item, BlockType block) {
+        int blockId = block.getId();
+        int itemId = item != null ? item.getId() : blockId;
+        int first = sp.inventory().heldItemId() == blockId ? blockId : itemId;
+        int second = first == blockId ? itemId : blockId;
+        PlacementDebit taken = takeOne(sp, first);
+        return taken != null || second == first ? taken : takeOne(sp, second);
     }
 
     /**
@@ -645,7 +661,7 @@ public final class ServerBlockHandler {
      * predictions (issue #362). Only the audit hash is dropped.
      */
     private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
-                               PlacementDebit debit, World world, ServerWorldContext ctx) {
+                               String prevState, PlacementDebit debit, World world, ServerWorldContext ctx) {
         // A container leaving its cell — broken, or replaced by any other block — drops its
         // contents and leaves its registry, so nothing keeps ticking or broadcasting on a cell
         // that no longer holds it (issue #370). {@code prev} is the server's own cell.
@@ -674,7 +690,9 @@ public final class ServerBlockHandler {
             com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.inventory().heldItemId());
             // Issue #225: the breaker's position biases which adjacent passable cell the
             // drops spawn into (nearest to the player) and the direction they spit out.
-            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool, 0,
+            // The pre-break state lets state-gated blocks decide (a blueberry bush drops only
+            // when ripe).
+            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, prevState, tool, 0,
                     new Vector3f(sp.x(), sp.y(), sp.z()));
         }
         // Furnace placement: register the authoritative state (Unlit, empty). The client's
@@ -743,6 +761,20 @@ public final class ServerBlockHandler {
             }
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
             queueStateEcho(c.x(), c.y(), c.z());
+        }
+        // Blueberry bush placement: only on top of grass, never into water (mirrors the client's
+        // BlockPlacer/BlockPlacementValidator). A refusal restores the cell, reverts the placer
+        // and refunds the berry, like a refused torch. An accepted bush is already a Sprout: the
+        // World.setBlockAt funnel started it there, and the growth system echoes that stage.
+        if (incoming == BlockType.BLUEBERRY_BUSH && (prev == BlockType.WATER
+                || !com.stonebreak.blocks.blueberrybush.BlueberryBushPlanting.canPlantOn(
+                        world.getBlockAt(c.x(), c.y() - 1, c.z())))) {
+            BlockType restore = prev == null ? BlockType.AIR : prev;
+            world.setBlockAt(c.x(), c.y(), c.z(), restore, false);
+            queueOutgoing(c.x(), c.y(), c.z(), (short) restore.getId());
+            sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+            refund(sp, debit, ctx);
+            return;
         }
         // Stalagmite placement: hanging and facing come from the client's proposal (only it knows
         // which face was clicked); a missing or unreadable one stands upright facing the placer's
@@ -891,6 +923,14 @@ public final class ServerBlockHandler {
             growStalagmite(sp, world, t.x(), t.y(), t.z(), ctx);
             return;
         }
+        // Blueberry bush: the toggle intent picks a ripe bush. The growth system sets it back
+        // to Mature; its stage listener queues the state echo (IntegratedServer), and the berry
+        // drops replicate as entities. An unripe bush ignores the intent.
+        if (target == BlockType.BLUEBERRY_BUSH) {
+            com.stonebreak.blocks.blueberrybush.BlueberryBushHarvest.harvest(
+                    world, t.x(), t.y(), t.z(), new Vector3f(sp.x(), sp.y(), sp.z()));
+            return;
+        }
         if (target != BlockType.OAK_DOOR) {
             return;
         }
@@ -1025,8 +1065,9 @@ public final class ServerBlockHandler {
                 }
             }
             boolean scoop = isScoop(world, c, incoming, serverPrev);
+            String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
             if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
-                completeEdit(pe.sp, c, incoming, serverPrev, scoop, pe.debit, world, ctx);
+                completeEdit(pe.sp, c, incoming, serverPrev, prevState, scoop, pe.debit, world, ctx);
                 if (scoop) {
                     // The intent was acknowledged when it arrived, and syncs sent since then
                     // lack the filled bucket — this one carries it.
