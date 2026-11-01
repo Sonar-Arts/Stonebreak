@@ -57,9 +57,11 @@ The built-ins (`BuiltInWidgets`) are the format's set:
 - `Label(text)`
 - `Button`
 - `Image(source)`
-- `ItemSlot(provider, slot, item, count, state, durability, stack, params)`; the item props are read by item
-  providers (see §11, host providers)
 - `DrawProvider(provider, params, item, count, stack)`
+
+Games add namespaced widgets through their theme (#384, see "Themes" below): Stonebreak's
+`stonebreak:ItemSlot(provider, slot, item, count, state, durability, stack, params)` was the built-in `ItemSlot`
+until #384, and documents may keep that bare name (a format alias the game registers).
 - `ScrollView(vertical = true, horizontal = false)`, which needs the `ui-scroll` feature
 - `ListView(items, itemKey, itemHeight = 0, selectionMode = single)`, which needs the `ui-data` feature; its single
   child is a row template that is never built directly ([ui-data-binding.md](ui-data-binding.md) §5)
@@ -331,10 +333,11 @@ Per element:
 
 `opacity` fades the subtree, and `-sb-tint` multiplies the element's own drawing.
 
-`ui-masonry` (#297) makes the legacy house look authorable: `-sb-surface` paints a Masonry stone surface
-(`panel`, `container` (the translucent panel of the inventory/workbench/furnace/character screens, #298), `button`,
-`button-hover`, `button-disabled`, `hud`) after the background, exactly as `MPainter.panel` / `containerPanel` /
-`stoneSurface` / `hudFrame` do (radii in device px, as the legacy screens never scaled them); any explicit value,
+`ui-masonry` (#297) makes the legacy house look authorable: `-sb-surface` paints a named surface of the host's
+theme (#384) after the background. The engine's neutral entries are `panel`, `button`, `button-hover`,
+`button-disabled` and `inset` (`MPainter.panel` / `stoneSurface` / `inset`, radii in device px, as the legacy screens
+never scaled them); a game adds namespaced ones (Stonebreak: `stonebreak:container`, `stonebreak:hud`, ... with their
+pre-#384 bare names as aliases). Any explicit value,
 `none` included, replaces a `Button`'s pseudo-state look, so a component decides its own hover in its sheet.
 `-sb-text-effect` picks a label's `shadow` (default), `none`, or `title` (`MPainter.drawTitleText`: the pause /
 statistics / glossary title stack, layers 2 device px apart). `-sb-text-shadow-color` (#301, inherited) gives the
@@ -358,16 +361,15 @@ More of the house look as style (#299, all `ui-masonry` unless noted):
   baseline (`-sb-baseline: 0`) stacks like the legacy text cursor did.
 - **`line-height`** (`ui-text`, inherited): the pitch of a label's lines (each line box that tall, text centred in it);
   absent = the font's line height.
-- **`-sb-symbol`**: a house vector symbol (`lock`, `check`, `warning`, `star`, `chevron-left`, ... = `MSymbol`)
-  centred in the element's box, in its `color`, with the 1 px house shadow unless `-sb-text-effect: none`.
+- **`-sb-symbol`**: a theme symbol (neutral: `lock`, `check`, `warning`, `star`, `chevron-left`, ... = `MSymbol`;
+  Stonebreak adds `stonebreak:crafting-arrow`, `smiley`, `heart`, `nav-left/right`) centred in the element's box, in
+  its `color`, with the 1 px house shadow unless `-sb-text-effect: none`.
 - **`-sb-surface: inset`**: the recessed dark well (`MPainter.inset`, the glossary's panes).
-- **`-sb-surface: tab | tab-hover | tab-active`** (#300): the inventory/character tab strip, a button surface without
-  the drop shadow (`tab-active` = the selected tab's lighter fill; a sheet keeps it on `:hover` too).
-  **`hotbar`**: the gameplay hotbar's dark translucent frame (radius 8). **`panel-deep`**: a stone panel on the deep
-  fill (the hotbar's item-name tooltip).
-- **`-sb-symbol: crafting-arrow`** (#300): the container screens' crafting arrow (`MPainter.craftingArrow`), spanning
-  the whole box rather than centred in its square; with `-sb-text-effect: none` it has no shadow, as the legacy
-  screens drew it.
+- Stonebreak's surfaces (#300/#301, game theme since #384; legacy bare names still work): `tab | tab-hover |
+  tab-active | tab-dim | tab-disabled` (the inventory/character tab strip, a button surface without the drop
+  shadow), `hotbar`, `panel-deep`, `container`, `hud`, `folder-tab(-active)`, `input-well`, `search-field(-active)`,
+  `mini-button(-hover/-disabled)`, `slot`, `dirt`, `tip-strip`, `filter-bar`. `crafting-arrow` spans the whole box
+  rather than centred in its square.
 - **`-sb-shadow-color`** (+ `-sb-shadow-offset-x/-y`, `-sb-shadow-blur` = sigma, logical or `dpx`): a Skia drop
   shadow under the element's own paint. On an `Image` without a background it rides on the image's paint, exactly
   as a legacy `drawImageRect` with an image-filter paint (the menu logo); otherwise the element paints into a
@@ -392,9 +394,20 @@ More of the house look as style (#299, all `ui-masonry` unless noted):
 | `Button` | the Masonry stone surface: highlight fill on `:hover`/`:active`, disabled fill when disabled, unless a background is styled |
 | `Label` | house-style shadowed text on the shared baseline, aligned by `text-align`, colour `color` (default `MStyle.TEXT_PRIMARY`) |
 | `Image` | its `source` |
-| `ItemSlot` | the Masonry slot frame plus its host provider |
+| a game widget | its theme painter (Stonebreak's `ItemSlot`: the Masonry slot frame plus its host provider) |
 | `DrawProvider` | its host provider |
 | `Canvas` | the draw commands its script wrote this frame (`paint/CanvasPainter`), clipped to the element |
+
+**Themes (#384).** Every named thing the painter draws comes from the host's `ui.theme.UiTheme`
+(`UiPaintHost.theme()`, default `UiThemes.installed()`): `SurfacePainter`s for `-sb-surface`, `SymbolPainter`s for
+`-sb-symbol`, `UiThemeWidget`s (namespaced descriptor + painter + accessibility role + `drawsProvider`) for game
+widgets. The engine ships only `UiThemes.neutral()`; a game implements `UiThemeProvider` (namespaced names, optional
+bare aliases that never shadow a neutral name or `auto`/`none`) and `format.omui.UiVocabularyProvider` (legacy bare
+widget types → namespaced, accepted by the format without a `providers` row and never rewritten), declared as module
+services; a host whose game code is in another module layer (an Open Mason plugin) calls `UiThemes.register`. The
+format checks `-sb-surface`/`-sb-symbol` values only for spelling (`[ns:]name`); a name the host's theme lacks paints
+nothing and reports `UNKNOWN_SURFACE` / `UNKNOWN_SYMBOL` once per element. `WidgetRegistry.withInstalled()` (used by
+`UiRuntimeContext.basic()`) = built-ins + installed game widgets.
 
 Images and `background-image` are whole textures, sprite regions or skins (`<sheet>#<name>`, #294), drawn by
 `SpritePainter` ([ui-sprites.md](ui-sprites.md) §4). `-sb-image-scale` (`stretch`, `integer` by the pivot,
@@ -413,7 +426,7 @@ whose providers need no GL phase. The painter draws carets, selections, focus ri
 from the router (a pointer tooltip sits `round(15 x scale)` px right of and below the pointer, whole pixels as the
 legacy container screens placed it, #300).
 
-**Missing providers are loud.** An `ItemSlot`/`DrawProvider` whose `provider` id the host does not know paints a
+**Missing providers are loud.** A `DrawProvider` (or provider-drawing game widget such as `ItemSlot`) whose `provider` id the host does not know paints a
 magenta placeholder with a warning symbol and reports `MISSING_DRAW_PROVIDER` once per element; a provider that
 throws in `prepare` or `draw` reports `DRAW_PROVIDER_FAILED` and shows the placeholder. An `ItemSlot` with no
 `provider` is an empty slot and draws only its frame.

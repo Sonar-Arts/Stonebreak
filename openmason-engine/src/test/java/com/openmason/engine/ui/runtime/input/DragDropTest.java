@@ -40,9 +40,9 @@ class DragDropTest {
 
     private static OmuiArchive slots() {
         return screen("t:ui/drag", box("root").style("width", 400).style("height", 300).style("flex-direction", "row")
-            .kids(node("from", "ItemSlot").prop("draggable", true).style("width", 50).style("height", 50),
+            .kids(node("from", "Box").prop("draggable", true).style("width", 50).style("height", 50),
                 box("gap").style("width", 100),
-                node("to", "ItemSlot").style("width", 50).style("height", 50)));
+                node("to", "Box").style("width", 50).style("height", 50)));
     }
 
     /** Wires the slots: "from" offers its stack, "to" accepts and moves it on drop. */

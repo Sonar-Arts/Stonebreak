@@ -5,7 +5,7 @@ import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MDropdown;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MToggle;
-import com.openmason.engine.ui.masonry.MVitalBar;
+import com.openmason.engine.ui.masonry.MProgressBar;
 import com.openmason.engine.ui.masonry.MasonryEnvironment;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.masonry.textures.MTexture;
@@ -94,7 +94,7 @@ public final class MasonryPreviewPanel implements AutoCloseable {
         ui.canvas().clear(BACKDROP);
         button.scaleText(true).bounds(16, 16, 170, 40).render(ui);
         toggle.bounds(16, 66, 160, 24).render(ui);
-        new MVitalBar().label("HP").value(70).max(100).fillColor(0xFF3366FF).bounds(16, 100, 160, 20).render(ui);
+        new MProgressBar().label("HP").progress(70, 100).fillColor(0xFF3366FF).bounds(16, 100, 160, 20).render(ui);
         dropdown.bounds(200, 16, 90, 24);
         if (!dropdown.isOpen()) {
             dropdown.open();

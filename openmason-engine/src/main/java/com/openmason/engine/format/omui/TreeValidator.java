@@ -84,6 +84,8 @@ final class TreeValidator {
                 d.error(Code.UNRESOLVED_REFERENCE, E, ptr + "/type",
                         "Provider widget '" + n.type() + "' is not declared in manifest providers");
             }
+        } else if (UiVocabulary.widgetAlias(n.type()) != null) {
+            // a legacy bare name of a game widget (#384): versioned by the runtime's registry
         } else {
             int supported = UiWidgets.supportedVersion(n.type());
             if (supported == 0) {

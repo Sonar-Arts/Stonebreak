@@ -4,7 +4,7 @@ import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MDropdown;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MToggle;
-import com.openmason.engine.ui.masonry.MVitalBar;
+import com.stonebreak.ui.masonry.MVitalBar;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.rendering.GlStateSnapshot;

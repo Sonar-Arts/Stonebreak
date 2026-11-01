@@ -92,38 +92,6 @@ class MWidgetRenderTest {
     }
 
     @Test
-    void theVitalBarFillTracksItsFraction() {
-        int fill = 0xFF3366FF;
-        RasterUiFixture half = new RasterUiFixture(W, H);
-        RasterUiFixture full = new RasterUiFixture(W, H);
-        new MVitalBar().label("").value(50).max(100).fillColor(fill)
-                .bounds(16, 32, 160, 20).render(half.ui);
-        new MVitalBar().label("").value(100).max(100).fillColor(fill)
-                .bounds(16, 32, 160, 20).render(full.ui);
-
-        // The bar spans x ∈ [22, 176]; half health fills to ~99. Probe the right
-        // quarter, where only a full bar reaches (the "100/100" text drawn there
-        // punches glyph-shaped holes in the fill but leaves plenty of it).
-        assertTrue(half.countExactly(fill, 30, 38, 90, 45) > 50,
-                "half health must paint a visible fill on the left");
-        assertEquals(0, half.countExactly(fill, 110, 38, 170, 45),
-                "a half bar's fill must stop at its fraction");
-        assertTrue(full.countExactly(fill, 110, 38, 170, 45) > 20,
-                "a full bar's fill must reach the right end");
-    }
-
-    @Test
-    void theHotbarSelectionRingIsVisible() {
-        RasterUiFixture plain = new RasterUiFixture(W, H);
-        RasterUiFixture selected = new RasterUiFixture(W, H);
-        new MItemSlot().bounds(32, 24, 40, 40).render(plain.ui);
-        new MItemSlot().hotbarSelected(true).bounds(32, 24, 40, 40).render(selected.ui);
-
-        assertTrue(plain.diff(selected, 32, 24, 72, 64) > 30,
-                "the gold ring is how the player knows which slot is live");
-    }
-
-    @Test
     void aFocusedSearchFieldLooksFocused() {
         RasterUiFixture idle = new RasterUiFixture(W, H);
         RasterUiFixture focused = new RasterUiFixture(W, H);

@@ -91,7 +91,7 @@ public final class MTexture implements AutoCloseable {
      * {@link Image}. The opener belongs to the module that owns the resource (JPMS hides game
      * resources from the engine), e.g. {@code path -> Game.class.getResourceAsStream(path)}.
      *
-     * @param resourcePath key and path, e.g. {@code "/ui/shared/stonebreak/ui/hud/heart_full.sbt"}
+     * @param resourcePath key and path, e.g. {@code "/ui/shared/game/ui/hud/heart_full.sbt"}
      * @return a ready-to-draw texture, or {@code null} if loading failed
      */
     public static MTexture loadFromResource(String resourcePath, ResourceOpener opener) {

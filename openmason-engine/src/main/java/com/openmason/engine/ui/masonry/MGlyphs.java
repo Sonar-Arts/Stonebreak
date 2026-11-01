@@ -1,18 +1,22 @@
 package com.openmason.engine.ui.masonry;
 
+import io.github.humbleui.skija.Font;
+
 /**
- * ASCII stand-ins for the typographic code points the UI typeface has no glyph for.
+ * ASCII stand-ins for typographic code points a UI typeface has no glyph for.
  *
- * <p>The game UI is drawn in {@code /fonts/Minecraft.ttf}, whose cmap covers only
- * U+0020–U+007E, U+00A0–U+00A9, U+20AC and U+3000. Anything else resolves to glyph 0, and
- * this font's {@code .notdef} is a hollow rectangle — so the character comes out as a tofu
- * box, not as the thing it means. A "−" (U+2212 MINUS SIGN) decrement button reads as an
- * empty box, and every em dash in a class or background description is a box mid-sentence.
+ * <p>A pixel font's cmap often covers little beyond ASCII (Stonebreak's covers only
+ * U+0020–U+007E, U+00A0–U+00A9, U+20AC and U+3000). Anything else resolves to glyph 0, and a
+ * {@code .notdef} is typically a hollow rectangle — so the character comes out as a tofu box,
+ * not as the thing it means. A "−" (U+2212 MINUS SIGN) decrement button reads as an empty box,
+ * and every em dash in a description is a box mid-sentence.
  *
  * <p>Rather than police every literal and every piece of authored prose, the MasonryUI text
- * seam ({@link MPainter}) folds these characters down to ASCII on the way to the canvas, so
- * drawing and measuring agree and the caller's string stays whatever it wants to be. This is
- * the text counterpart to {@link MSymbol}, which exists for the same reason on the icon side.
+ * seam ({@link MPainter}) folds these characters down to ASCII on the way to the canvas — only
+ * those the font in hand actually lacks ({@link #fold(Font, String)}), so a typeface that has
+ * real dashes keeps them — and drawing and measuring agree while the caller's string stays
+ * whatever it wants to be. This is the text counterpart to {@link MSymbol}, which exists for the
+ * same reason on the icon side.
  *
  * <p>Characters with no mapping pass through untouched: a deliberate hole (an emoji in chat,
  * say) is not this class's business.
@@ -50,6 +54,42 @@ public final class MGlyphs {
             }
         }
         return out.toString();
+    }
+
+    /**
+     * {@code text} with every typographic character {@code font} has no glyph for replaced by its
+     * ASCII stand-in; characters the font draws stay. Returns the argument itself when there is
+     * nothing to do (one scan, no allocation for plain ASCII). A null font folds like {@link #ascii}.
+     */
+    public static String fold(Font font, String text) {
+        if (font == null) return ascii(text);
+        if (text == null || text.isEmpty()) return text;
+
+        int first = -1;
+        for (int i = 0; i < text.length(); i++) {
+            if (folds(font, text.charAt(i))) {
+                first = i;
+                break;
+            }
+        }
+        if (first < 0) return text;
+
+        StringBuilder out = new StringBuilder(text.length() + 8);
+        out.append(text, 0, first);
+        for (int i = first; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (folds(font, c)) {
+                out.append(asciiFor(c));
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
+    }
+
+    /** A mapped character the font lacks (glyph 0). */
+    private static boolean folds(Font font, char c) {
+        return c >= 0x80 && asciiFor(c) != null && font.getUTF32Glyph(c) == 0;
     }
 
     /** True when {@code c} is one of the characters {@link #ascii} folds down. */

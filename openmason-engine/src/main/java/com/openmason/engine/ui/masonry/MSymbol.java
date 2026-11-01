@@ -30,27 +30,11 @@ public enum MSymbol {
     CHEVRON_UP, CHEVRON_DOWN, CHEVRON_LEFT, CHEVRON_RIGHT,
     PLUS, MINUS, CROSS, CHECK,
     GEAR, MAGNIFIER, WARNING, INFO,
-    STAR, HEART, LOCK, PLAY, PAUSE,
+    STAR, LOCK, PLAY, PAUSE,
     /** Solid block arrows: direction prompts, where a chevron is too light to read at a glance. */
     ARROW_UP, ARROW_DOWN, ARROW_LEFT, ARROW_RIGHT,
     /** Pointing hand (points right): the list cursor of a keyboard/gamepad-driven menu. */
-    HAND_POINT,
-    /**
-     * The container screens' crafting arrow ({@link MPainter#craftingArrow}): a shaft and head
-     * spanning the whole box, not centred in its square like the others (#300).
-     */
-    CRAFTING_ARROW,
-    /**
-     * The chat's emoji-button face (#301): a 1.5 px circle of radius {@code min(w, h) / 2 - 4}, two
-     * 1.3 px dot eyes and a bottom-arc smile, as the legacy chat renderer drew it.
-     */
-    SMILEY,
-    /**
-     * The stone buttons' navigation arrows ({@link MPainter#navArrow}, {@code MButton.Arrow}): a shaft
-     * and open head spanning the box (#301). With {@link #drawWithShadow} they are exactly the
-     * legacy two-pass arrow.
-     */
-    NAV_LEFT, NAV_RIGHT;
+    HAND_POINT;
 
     /**
      * Draws this symbol centered in the box {@code (x, y, w, h)}. Ignores
@@ -92,7 +76,6 @@ public enum MSymbol {
             case WARNING -> drawWarning(canvas, cx, cy, s, color);
             case INFO -> drawInfo(canvas, cx, cy, s, color);
             case STAR -> drawStar(canvas, cx, cy, s, color);
-            case HEART -> drawHeart(canvas, cx, cy, s, color);
             case LOCK -> drawLock(canvas, cx, cy, s, color);
             case PLAY -> fillPolygon(canvas, color,
                     cx - 0.22f * s, cy - 0.3f * s, cx - 0.22f * s, cy + 0.3f * s, cx + 0.34f * s, cy);
@@ -105,10 +88,6 @@ public enum MSymbol {
             case ARROW_LEFT -> drawArrow(canvas, cx, cy, s, color, -1f, 0f);
             case ARROW_RIGHT -> drawArrow(canvas, cx, cy, s, color, 1f, 0f);
             case HAND_POINT -> drawHand(canvas, cx, cy, s, color);
-            case CRAFTING_ARROW -> MPainter.craftingArrow(canvas, x, y, w, h, color);
-            case SMILEY -> drawSmiley(canvas, cx, cy, s / 2f - 4f, color);
-            case NAV_LEFT -> MPainter.navArrow(canvas, x, y, w, h, true, color, 0);
-            case NAV_RIGHT -> MPainter.navArrow(canvas, x, y, w, h, false, color, 0);
         }
     }
 
@@ -199,17 +178,6 @@ public enum MSymbol {
         fillPolygon(canvas, color, pts);
     }
 
-    private static void drawHeart(Canvas canvas, float cx, float cy, float s, int color) {
-        // Two round lobes joined by a triangle down to the point — a curve-free
-        // approximation that reads as a heart at UI icon sizes.
-        fillCircle(canvas, cx - 0.15f * s, cy - 0.11f * s, 0.17f * s, color);
-        fillCircle(canvas, cx + 0.15f * s, cy - 0.11f * s, 0.17f * s, color);
-        fillPolygon(canvas, color,
-                cx - 0.3f * s, cy - 0.05f * s,
-                cx + 0.3f * s, cy - 0.05f * s,
-                cx, cy + 0.34f * s);
-    }
-
     private static void drawLock(Canvas canvas, float cx, float cy, float s, int color) {
         // Shackle: upper semicircle tessellated into segments (y-down canvas:
         // 180°→360° sweeps through the top).
@@ -279,26 +247,6 @@ public enum MSymbol {
     private static void fillRect(Canvas canvas, int color, float x, float y, float w, float h) {
         try (Paint p = new Paint().setColor(color).setAntiAlias(true)) {
             canvas.drawRect(Rect.makeXYWH(x, y, w, h), p);
-        }
-    }
-
-    private static void drawSmiley(Canvas canvas, float cx, float cy, float fr, int color) {
-        try (io.github.humbleui.skija.Paint p = new io.github.humbleui.skija.Paint().setColor(color)
-                .setMode(io.github.humbleui.skija.PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
-            canvas.drawCircle(cx, cy, fr, p);
-        }
-        try (io.github.humbleui.skija.Paint p = new io.github.humbleui.skija.Paint().setColor(color).setAntiAlias(true)) {
-            canvas.drawCircle(cx - fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
-            canvas.drawCircle(cx + fr * 0.28f, cy - fr * 0.22f, 1.3f, p);
-        }
-        // the bottom arc of a small oval below the face's centre (0 to 180 degrees from 3 o'clock)
-        float smileW = fr * 0.75f;
-        float smileH = fr * 0.4f;
-        float smileL = cx - smileW / 2f;
-        float smileT = cy + fr * 0.1f;
-        try (io.github.humbleui.skija.Paint p = new io.github.humbleui.skija.Paint().setColor(color)
-                .setMode(io.github.humbleui.skija.PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
-            canvas.drawArc(smileL, smileT, smileL + smileW, smileT + smileH, 0f, 180f, false, p);
         }
     }
 }

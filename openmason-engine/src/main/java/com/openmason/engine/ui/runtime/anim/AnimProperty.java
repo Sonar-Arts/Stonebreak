@@ -57,7 +57,7 @@ public record AnimProperty(String target, Interp interp, boolean motion, boolean
             case UNIT_INTERVAL -> Interp.OPACITY;
             case COLOR -> Interp.COLOR;
             case KEYWORD -> "visibility".equals(property) ? Interp.VISIBILITY : Interp.DISCRETE;
-            case ASSET, STRING -> Interp.DISCRETE;
+            case ASSET, STRING, NAME -> Interp.DISCRETE;
         };
         return new AnimProperty(STYLE + property, interp, MOTION.contains(property),
             StyleValues.LAYOUT.contains(property));

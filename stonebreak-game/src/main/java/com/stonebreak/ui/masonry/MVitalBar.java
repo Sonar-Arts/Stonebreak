@@ -1,4 +1,9 @@
-package com.openmason.engine.ui.masonry;
+package com.stonebreak.ui.masonry;
+
+import com.openmason.engine.ui.masonry.MPainter;
+import com.openmason.engine.ui.masonry.MStyle;
+import com.openmason.engine.ui.masonry.MWidget;
+import com.openmason.engine.ui.masonry.MasonryUI;
 
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;

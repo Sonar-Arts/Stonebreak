@@ -313,7 +313,7 @@ public class InventoryLayoutCalculator {
 
         // Output slot position: right of the arrow gap, vertically centred on the
         // full 3×3 grid. (The arrow itself is auto-aligned at render time by
-        // MPainter.craftingArrowPlacement, so no arrow coords are stored here.)
+        // StonePainter.craftingArrowPlacement, so no arrow coords are stored here.)
         int outputSlotX = craftingElementsStartX + craftingGridVisualWidth + slotPadding + slotSize + slotPadding;
         int outputSlotY = craftingGridStartY + (WORKBENCH_CRAFTING_GRID_SIZE * (slotSize + slotPadding) - slotPadding - slotSize) / 2;
 

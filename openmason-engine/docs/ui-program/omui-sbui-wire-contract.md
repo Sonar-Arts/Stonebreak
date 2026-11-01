@@ -54,7 +54,7 @@ build contracts and never appear in documents.
   | `ui-states` | UI state machines, `animations/<part id>.states.json` (§5.7, [ui-animation.md](ui-animation.md)) | #295 |
   | `ui-motion` | custom `bezier` timing on clip keys and style transitions; the `transform-origin-x` / `transform-origin-y` properties. Retro-gated | #295 |
   | `ui-layers` | the `-sb-layer` paint-layer property. Retro-gated | #287 |
-  | `ui-masonry` | the house look as style: `-sb-surface` (`auto` `none` `panel` `container` `button` `button-hover` `button-disabled` `hud`: a Masonry stone surface on any element, at the legacy painters' device-px radii; an explicit value replaces a `Button`'s state-driven look), `-sb-text-effect` (`shadow` `none` `title`: a label's house shadow, none, or the layered screen title), `-sb-pixel-grid` on the root (`device` `none`: `none` keeps fractional geometry, as float-math legacy screens draw) | #297 |
+  | `ui-masonry` | the house look as style: `-sb-surface` (`auto`, `none` or a theme name `[namespace:]name`, #384: the engine's neutral `panel` `button` `button-hover` `button-disabled` `inset` or a game's namespaced surface / its legacy bare alias, on any element, at the legacy painters' device-px radii; an explicit value replaces a `Button`'s state-driven look; an unknown name is a runtime diagnostic, not a format error), `-sb-text-effect` (`shadow` `none` `title`: a label's house shadow, none, or the layered screen title), `-sb-pixel-grid` on the root (`device` `none`: `none` keeps fractional geometry, as float-math legacy screens draw) | #297 |
 - `uiApi`, `layoutSemantics`, `hostApis` and `providers` are checked by the **host** before instantiating
   (`UiHostProfile.check`), not by the reader, so an editor can open and preserve a document its preview cannot run.
   An unmet optional requirement is a warning; an unmet required one is an error and the host refuses the document.
@@ -256,7 +256,7 @@ The `id` inside a style, graph, clip or state-machine file MUST equal the part i
 | --- | --- | --- | --- |
 | `id` | local id | required | unique in the document, slot content included |
 | `name` | identifier | none | |
-| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `ItemSlot`, `DrawProvider`, `Instance` (all at version 1); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input`; `ListView` (version 1) with `ui-data`; `Canvas` (version 1) with `ui-canvas` |
+| `type` | widget type | required | built-ins in 1.0: `Box`, `Label`, `Button`, `Image`, `DrawProvider`, `Instance` (all at version 1; `ItemSlot` moved to the game as `stonebreak:ItemSlot` in #384 and stays readable as a game-registered legacy alias); `ScrollView` (version 1) with the `ui-scroll` feature; `TextField` (version 1) with `ui-input`; `ListView` (version 1) with `ui-data`; `Canvas` (version 1) with `ui-canvas` |
 | `typeVersion` | integer | `1` | MUST NOT exceed the reader's supported version |
 | `classes` | identifier[] | `[]` | sorted, unique |
 | `props` | object | `{}` | widget properties, validated by widget descriptors (#287). The names listed for `ui-input` and `ui-l10n` (§1) are reserved: using one requires that feature, checked in node props and instance-override props. |

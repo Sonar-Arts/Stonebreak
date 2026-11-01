@@ -8,8 +8,9 @@ import java.util.Map;
  * exists and that its {@code typeVersion} is not newer than this reader.
  *
  * <p>The version-one set is what the pause and furnace pilots need (#283 contracts), plus
- * {@code Instance} for component instances. Namespaced types ({@code stonebreak:CrucibleView})
- * are host providers and must be declared in the manifest's {@code providers}.
+ * {@code Instance} for component instances. Namespaced types ({@code game:CrucibleView})
+ * are host widgets and must be declared in the manifest's {@code providers}, unless the document
+ * uses a legacy bare alias a game registered for one ({@link UiVocabulary}, #384).
  */
 public final class UiWidgets {
 
@@ -18,7 +19,6 @@ public final class UiWidgets {
             Map.entry("Label", 1),
             Map.entry("Button", 1),
             Map.entry("Image", 1),
-            Map.entry("ItemSlot", 1),
             Map.entry("DrawProvider", 1),
             Map.entry("ScrollView", 1),
             Map.entry("TextField", 1),
@@ -31,6 +31,11 @@ public final class UiWidgets {
             "TextField", UiFeatures.INPUT, "ListView", UiFeatures.DATA, "Canvas", UiFeatures.CANVAS);
 
     private UiWidgets() {
+    }
+
+    /** True for a type of the engine's own built-in table (not a game alias). */
+    public static boolean isBuiltIn(String type) {
+        return BUILT_IN.containsKey(type);
     }
 
     /** @return the newest supported version, or 0 for an unknown built-in type */

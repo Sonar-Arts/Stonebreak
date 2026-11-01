@@ -3,7 +3,7 @@ package com.openmason.engine.ui.masonry;
 /**
  * Central palette and default sizing for MasonryUI widgets. Constants only —
  * no instances, no runtime configuration. Keeping one source of truth for the
- * Minecraft-ish bevel/gray aesthetic means individual widgets never hard-code
+ * beveled gray stone aesthetic means individual widgets never hard-code
  * hex values and all future menus get consistent styling for free.
  *
  * Colors use ARGB ordering (0xAARRGGBB) for Skija's {@code Paint.setColor(int)}.

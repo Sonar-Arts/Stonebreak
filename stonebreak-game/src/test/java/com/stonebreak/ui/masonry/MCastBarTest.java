@@ -1,4 +1,8 @@
-package com.openmason.engine.ui.masonry;
+package com.stonebreak.ui.masonry;
+
+import com.openmason.engine.ui.masonry.MColor;
+import com.openmason.engine.ui.masonry.MGauge;
+import com.openmason.engine.ui.masonry.MStyle;
 
 import org.junit.jupiter.api.Test;
 

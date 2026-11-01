@@ -39,17 +39,6 @@ public final class BuiltInWidgets {
         "SBT, OMT or sprite region; intrinsic size comes from the asset",
         props(prop("source", ValueType.ASSET, UiValue.NULL, "Texture or sprite reference")));
 
-    public static final WidgetDescriptor ITEM_SLOT = WidgetDescriptor.of("ItemSlot", 1, false, false,
-        "Masonry slot frame; a host draw provider paints the icon and count",
-        props(prop("provider", ValueType.STRING, UiValue.NULL, "Host draw provider id"),
-            prop("slot", ValueType.INT, UiValue.NULL, "Slot index passed to the provider"),
-            prop("item", ValueType.STRING, UiValue.NULL, "Item shown by an item provider: objectId or numeric id"),
-            prop("count", ValueType.INT, UiValue.NULL, "Stack count shown by an item provider (drawn when above 1)"),
-            prop("state", ValueType.STRING, UiValue.NULL, "SBO state of the shown item"),
-            prop("durability", ValueType.NUMBER, UiValue.NULL, "Remaining durability 0..1 (a bar below 1)"),
-            prop("stack", ValueType.OBJECT, UiValue.NULL, "Whole slot record {objectId, count, state, durability}"),
-            prop("params", ValueType.OBJECT, UiValue.NULL, "Provider-specific parameters")));
-
     public static final WidgetDescriptor DRAW_PROVIDER = WidgetDescriptor.of("DrawProvider", 1, false, false,
         "Host immediate drawing inside the element's rect",
         props(prop("provider", ValueType.STRING, UiValue.NULL, "Host draw provider id"),
@@ -121,7 +110,7 @@ public final class BuiltInWidgets {
     }
 
     public static List<WidgetDescriptor> all() {
-        return List.of(BOX, LABEL, BUTTON, IMAGE, ITEM_SLOT, DRAW_PROVIDER, SCROLL_VIEW, TEXT_FIELD, LIST_VIEW,
+        return List.of(BOX, LABEL, BUTTON, IMAGE, DRAW_PROVIDER, SCROLL_VIEW, TEXT_FIELD, LIST_VIEW,
             CANVAS, INSTANCE);
     }
 }

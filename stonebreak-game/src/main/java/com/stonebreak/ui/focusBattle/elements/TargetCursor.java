@@ -7,7 +7,7 @@ import com.stonebreak.battle.api.CombatantView;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MSymbol;
-import com.openmason.engine.ui.masonry.MWorldMarker;
+import com.stonebreak.ui.masonry.MWorldMarker;
 import com.openmason.engine.ui.masonry.MasonryUI;
 import com.stonebreak.ui.focusBattle.BattleHudAnimState;
 import com.stonebreak.ui.focusBattle.BattleHudRules;

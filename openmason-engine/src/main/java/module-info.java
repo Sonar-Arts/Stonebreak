@@ -179,6 +179,10 @@ module openmason.engine {
     exports com.openmason.engine.ui.runtime.paint;
     exports com.openmason.engine.ui.runtime.style;
     exports com.openmason.engine.ui.runtime.widget;
+    // UI theme registry (#384): neutral surfaces/symbols; games contribute theirs as services
+    exports com.openmason.engine.ui.theme;
+    uses com.openmason.engine.ui.theme.UiThemeProvider;
+    uses com.openmason.engine.format.omui.UiVocabularyProvider;
     // Typed host contracts (data sources, actions, scopes, edits) and bindings (#289)
     exports com.openmason.engine.ui.data;
     exports com.openmason.engine.ui.runtime.binding;

@@ -46,7 +46,12 @@ class UiMasonryStyleTest {
             assertNull(UiStyleProperties.problem(p, UiValue.of("none")), p);
         }
         assertNull(UiStyleProperties.problem("-sb-surface", UiValue.of("panel")));
-        assertNotNull(UiStyleProperties.problem("-sb-surface", UiValue.of("glass")));
+        // theme names (#384): the format checks the spelling, the host's theme the existence
+        assertNull(UiStyleProperties.problem("-sb-surface", UiValue.of("glass")));
+        assertNull(UiStyleProperties.problem("-sb-surface", UiValue.of("game:glass")));
+        assertNotNull(UiStyleProperties.problem("-sb-surface", UiValue.of("Glass")));
+        assertNotNull(UiStyleProperties.problem("-sb-symbol", UiValue.of("two words")));
+        assertNotNull(UiStyleProperties.problem("-sb-surface", UiValue.of(3)));
         assertNotNull(UiStyleProperties.problem("-sb-text-effect", UiValue.of("glow")));
         assertNotNull(UiStyleProperties.problem("-sb-pixel-grid", UiValue.of(0)));
     }

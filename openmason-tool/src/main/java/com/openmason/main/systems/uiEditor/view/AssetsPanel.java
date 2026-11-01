@@ -140,7 +140,7 @@ final class AssetsPanel {
         String glyph = switch (e.kind()) {
             case SCREEN -> "Box";
             case COMPONENT -> "Instance";
-            case EXPORT -> "ItemSlot";
+            case EXPORT -> Glyphs.GAME_WIDGET;
             case STYLESHEET -> "Label";
             case SCRIPT -> "Canvas";
             case OTHER -> "?";

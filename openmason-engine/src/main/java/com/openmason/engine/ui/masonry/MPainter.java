@@ -16,13 +16,13 @@ import io.github.humbleui.types.Rect;
 /**
  * Stateless Skija drawing primitives shared by every MasonryUI widget.
  *
- * All of the Stonebreak Skija renderers had been re-implementing trapezoid-fan
- * bevels and measure-text-safe fallbacks inline; this class is the single
- * place that knows how to draw them. Widgets stay small and focused.
+ * The single place that knows how to draw Masonry's default look (the beveled, speckled stone
+ * surface, HUD frames, text with the house shadow) and measure-text-safe fallbacks, so widgets
+ * stay small and focused. A game's own shapes live in the game and reach documents through its
+ * {@code ui.theme} entries (#384).
  *
- * <p>Text drawn and measured here passes through {@link MGlyphs}: the UI typeface covers
- * little beyond ASCII, so typographic characters are folded to stand-ins rather than
- * vanishing from the line.
+ * <p>Text drawn and measured here passes through {@link MGlyphs}: a character the typeface has no
+ * glyph for is folded to an ASCII stand-in rather than drawn as a tofu box.
  */
 public final class MPainter {
 
@@ -118,42 +118,6 @@ public final class MPainter {
     }
 
     /**
-     * The chat's folder tab (#301, from the legacy chat renderer): a top-rounded body (radius
-     * {@link MStyle#PANEL_RADIUS}, flat bottom so it merges with the panel below), a border on the top
-     * and sides only (accent 1.5 px when active, the panel border 1 px otherwise) and a 1 px top
-     * highlight. {@code (x, y, w, h)} is the body: the active tab is drawn 2 px taller and 3 px higher.
-     */
-    public static void folderTab(Canvas canvas, float x, float y, float w, float h, boolean active) {
-        float r = MStyle.PANEL_RADIUS;
-        try (Paint fill = new Paint().setColor(active ? MStyle.PANEL_FILL : MStyle.BUTTON_FILL).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, r, r, 0f, 0f), fill);
-        }
-        try (Paint border = new Paint().setColor(active ? MStyle.TEXT_ACCENT : MStyle.PANEL_BORDER)
-                .setMode(PaintMode.STROKE).setStrokeWidth(active ? 1.5f : 1f).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r, r, 0f, 0f), border);
-        }
-        fillRect(canvas, x + 1f, y + 1f, w - 2f, 1f, MStyle.PANEL_HIGHLIGHT);
-    }
-
-    /**
-     * The chat's recessed input well (#301, from the legacy chat renderer): a dark rounded track
-     * (radius 3), a 2 px inner shadow strip under the top edge and a 1.5 px slider-blue rim.
-     */
-    public static void inputWell(Canvas canvas, float x, float y, float w, float h) {
-        float r = 3f;
-        try (Paint fill = new Paint().setColor(MStyle.SLIDER_TRACK).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x, y, w, h, r), fill);
-        }
-        int shadow = Math.round(((MStyle.PANEL_SHADOW >>> 24) & 0xFF) * 0.6f);
-        fillRect(canvas, x + 1f, y + 1f, w - 2f, 2f, (Math.max(0, Math.min(255, shadow)) << 24)
-                | (MStyle.PANEL_SHADOW & 0xFFFFFF));
-        try (Paint border = new Paint().setColor(MStyle.SLIDER_FILL)
-                .setMode(PaintMode.STROKE).setStrokeWidth(1.5f).setAntiAlias(true)) {
-            canvas.drawRRect(RRect.makeXYWH(x + 0.5f, y + 0.5f, w - 1f, h - 1f, r), border);
-        }
-    }
-
-    /**
      * The search field's well ({@link MSearchField}, #301): a recessed rounded fill (radius 3, lighter
      * when active) and a rim (slider blue 1.5 px when active, near-black 1 px otherwise).
      */
@@ -170,14 +134,6 @@ public final class MPainter {
     public static void panel(Canvas canvas, float x, float y, float w, float h) {
         stoneSurface(canvas, x, y, w, h, MStyle.PANEL_RADIUS,
                 MStyle.PANEL_FILL, MStyle.PANEL_BORDER,
-                MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, MStyle.PANEL_DROP_SHADOW,
-                MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
-    }
-
-    /** The container screens' panel: the stone panel on the translucent {@link MStyle#PANEL_FILL_TRANS}. */
-    public static void containerPanel(Canvas canvas, float x, float y, float w, float h) {
-        stoneSurface(canvas, x, y, w, h, MStyle.PANEL_RADIUS,
-                MStyle.PANEL_FILL_TRANS, MStyle.PANEL_BORDER,
                 MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, MStyle.PANEL_DROP_SHADOW,
                 MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
     }
@@ -368,57 +324,6 @@ public final class MPainter {
         return x;
     }
 
-    // ─────────────────────────────────────────────── Crafting arrow
-
-    /**
-     * Right-pointing arrow drawn as a vector glyph: a horizontal shaft plus a
-     * filled triangular head whose single tip meets the right edge of the box.
-     * The head is a real triangle (not a right-aligned diamond), so the arrow
-     * always points toward the output slot.
-     *
-     * Used by inventory, workbench, and the recipe detail pane. Vertical
-     * centring against the output slot is handled by
-     * {@link #craftingArrowPlacement(float, float, float, float, float)}.
-     */
-    public static void craftingArrow(Canvas canvas, float x, float y, float w, float h, int color) {
-        if (canvas == null || w <= 0f || h <= 0f) return;
-        float centerY = y + h / 2f;
-        float shaftLen = w * 0.55f;
-        float shaftH   = Math.min(h, Math.max(2f, h * 0.28f));
-        float headHalf = h * 0.42f;
-        float faceX    = x + shaftLen; // flat face where the head meets the shaft
-
-        try (Paint fill = new Paint().setColor(color).setAntiAlias(true)) {
-            canvas.drawRect(Rect.makeXYWH(x, centerY - shaftH / 2f, shaftLen, shaftH), fill);
-            try (PathBuilder pb = new PathBuilder()) {
-                pb.moveTo(faceX, centerY - headHalf);
-                pb.lineTo(x + w, centerY);
-                pb.lineTo(faceX, centerY + headHalf);
-                pb.closePath();
-                try (Path path = pb.build()) {
-                    canvas.drawPath(path, fill);
-                }
-            }
-        }
-    }
-
-    /**
-     * Auto-aligning placement for the crafting arrow: horizontally centred in
-     * the gap between the input grid's right edge and the output slot, and
-     * vertically centred on the output slot. This works for any grid size
-     * (2×2 inventory, 3×3 workbench) and any uiScale because it derives every
-     * dimension from the surrounding slots.
-     *
-     * @return the arrow's top-left corner as a two-element array {@code {x, y}}
-     */
-    public static float[] craftingArrowPlacement(float gridRightX, float outputX,
-                                                 float outputY, float slotSize,
-                                                 float arrowSize) {
-        float x = gridRightX + (outputX - gridRightX - arrowSize) / 2f;
-        float y = outputY + (slotSize - arrowSize) / 2f;
-        return new float[]{x, y};
-    }
-
     // ─────────────────────────────────────────────── Navigation arrow
 
     /**
@@ -494,7 +399,7 @@ public final class MPainter {
      */
     public static float measureWidth(Font font, String text) {
         if (font == null || text == null || text.isEmpty()) return 0f;
-        text = MGlyphs.ascii(text);
+        text = MGlyphs.fold(font, text);
         for (int i = 0; i < text.length(); i++) {
             if (Character.isSurrogate(text.charAt(i))) return 0f;
         }
@@ -503,7 +408,7 @@ public final class MPainter {
 
     public static void drawString(Canvas canvas, String text, float x, float y, Font font, int color) {
         if (font == null || text == null || text.isEmpty()) return;
-        text = MGlyphs.ascii(text);
+        text = MGlyphs.fold(font, text);
         try (Paint p = new Paint().setColor(color)) {
             canvas.drawString(text, x, y, font, p);
         }
@@ -614,7 +519,7 @@ public final class MPainter {
     public static void drawTextOutlined(Canvas canvas, String text, float x, float y, Font font, int color,
                                         Align align, float outlineWidth) {
         if (canvas == null || font == null || text == null || text.isEmpty() || (color & 0xFF000000) == 0) return;
-        text = MGlyphs.ascii(text);
+        text = MGlyphs.fold(font, text);
         float left = alignedX(font, text, x, align);
         int outline = MColor.fade(MStyle.OUTLINE_DARK, ((color >>> 24) & 0xFF) / 255f);
         try (Paint stroke = new Paint().setColor(outline).setAntiAlias(true)

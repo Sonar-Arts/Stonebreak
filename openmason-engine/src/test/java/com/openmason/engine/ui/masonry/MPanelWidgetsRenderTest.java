@@ -49,40 +49,6 @@ class MPanelWidgetsRenderTest {
                 "the settings menu marks the open category via selection");
     }
 
-    // ── MEquipSlot ───────────────────────────────────────────────────────────
-
-    @Test
-    void anEquipSlotPaintsItsBodyAndItsLabelBelow() {
-        RasterUiFixture labeled = new RasterUiFixture(W, H);
-        RasterUiFixture bare = new RasterUiFixture(W, H);
-        new MEquipSlot().slotLabel("HEAD").bounds(32, 16, 40, 40).render(labeled.ui);
-        new MEquipSlot().bounds(32, 16, 40, 40).render(bare.ui);
-
-        assertTrue(labeled.countPainted(36, 20, 68, 52) > 500, "the recessed body covers the slot");
-        assertTrue(labeled.countPainted(28, 58, 76, 76) > 10, "the label draws under the slot");
-        assertEquals(0, bare.countPainted(28, 58, 76, 76), "no label, nothing below");
-    }
-
-    @Test
-    void theLabelIsDecorativeNotHitArea() {
-        MEquipSlot slot = new MEquipSlot().slotLabel("HEAD").bounds(32, 16, 40, 40);
-
-        assertTrue(slot.contains(52, 40), "the slot rect itself is clickable");
-        assertFalse(slot.contains(52, 62), "the label below is not — drops must not land on it");
-    }
-
-    @Test
-    void equipSlotHoverIsVisible() {
-        RasterUiFixture idle = new RasterUiFixture(W, H);
-        RasterUiFixture hot = new RasterUiFixture(W, H);
-        new MEquipSlot().bounds(32, 16, 40, 40).render(idle.ui);
-        MEquipSlot hovered = new MEquipSlot().bounds(32, 16, 40, 40);
-        hovered.setHovered(true);
-        hovered.render(hot.ui);
-
-        assertTrue(idle.diff(hot, 32, 16, 72, 56) > 30);
-    }
-
     // ── MStatRow ─────────────────────────────────────────────────────────────
 
     @Test

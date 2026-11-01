@@ -8,9 +8,11 @@ import com.openmason.api.knowledge.ResourceText;
 import com.openmason.api.lifecycle.LifecycleListener;
 import com.openmason.main.systems.ViewportController;
 import com.openmason.main.plugins.PluginManager;
+import com.openmason.engine.ui.theme.UiThemes;
 import com.stonebreak.openmason.assets.StonebreakAssetSections;
 import com.stonebreak.openmason.assets.mcp.StonebreakMcpTools;
 import com.stonebreak.openmason.item.StonebreakItemContent;
+import com.stonebreak.ui.theme.StonebreakUiTheme;
 
 import java.util.Set;
 
@@ -66,6 +68,10 @@ public final class StonebreakPlugin implements OpenMasonPlugin {
             }
         });
         context.gameTargets().register(StonebreakGameTarget.create());
+        // The stone screens' surfaces, symbols and ItemSlot (#384) for the UI editor and preview. The
+        // engine also finds them as a service when the game module is on the boot layer; registering
+        // here covers a plugin loaded in its own module layer (idempotent either way).
+        UiThemes.register(new StonebreakUiTheme());
         context.templates().register(StonebreakGameTarget.newBiomeTemplate());
     }
 

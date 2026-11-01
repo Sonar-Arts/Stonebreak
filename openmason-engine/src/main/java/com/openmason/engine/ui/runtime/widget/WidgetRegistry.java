@@ -2,7 +2,9 @@ package com.openmason.engine.ui.runtime.widget;
 
 import com.openmason.engine.format.omui.UiNode;
 import com.openmason.engine.format.omui.UiValue;
+import com.openmason.engine.format.omui.UiVocabulary;
 import com.openmason.engine.format.omui.UiWidgets;
+import com.openmason.engine.ui.theme.UiThemes;
 import com.openmason.engine.format.omui.ValueType;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic;
 import com.openmason.engine.ui.runtime.UiRuntimeDiagnostic.Code;
@@ -15,9 +17,10 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Widget types a runtime can instantiate: the schema-1.0 built-ins plus host providers
- * ({@code stonebreak:CrucibleView}) a game or tool registers. One registry is shared by the
- * editor preview and the game so validation is identical in both.
+ * Widget types a runtime can instantiate: the schema-1.0 built-ins plus namespaced game widgets
+ * ({@code game:ItemSlot}) a game or tool registers. One registry is shared by the editor preview
+ * and the game so validation is identical in both. A legacy bare alias of a game widget
+ * ({@link com.openmason.engine.format.omui.UiVocabulary}, #384) resolves to the namespaced descriptor.
  */
 public final class WidgetRegistry {
 
@@ -27,6 +30,31 @@ public final class WidgetRegistry {
     public static WidgetRegistry withBuiltIns() {
         WidgetRegistry r = new WidgetRegistry();
         BuiltInWidgets.all().forEach(r::register);
+        return r;
+    }
+
+    /** The built-ins plus every installed theme's game widgets ({@link UiThemes#installed()}, #384). */
+    public static WidgetRegistry withInstalled() {
+        WidgetRegistry r = withBuiltIns();
+        UiThemes.installed().widgets().forEach(w -> r.register(w.descriptor()));
+        return r;
+    }
+
+    private static volatile WidgetRegistry installedShared;
+    private static volatile Object installedFor;
+
+    /**
+     * A shared {@link #withInstalled()} registry, rebuilt when the installed themes change (a plugin
+     * registered one). For lookups only: never {@link #register} into it.
+     */
+    public static WidgetRegistry installed() {
+        Object theme = UiThemes.installed();
+        WidgetRegistry r = installedShared;
+        if (r == null || installedFor != theme) {
+            r = withInstalled();
+            installedShared = r;
+            installedFor = theme;
+        }
         return r;
     }
 
@@ -44,8 +72,10 @@ public final class WidgetRegistry {
         return this;
     }
 
+    /** The descriptor of {@code type}, or of the namespaced type it is a legacy alias of; null when unknown. */
     public WidgetDescriptor get(String type) {
-        return descriptors.get(type);
+        WidgetDescriptor d = descriptors.get(type);
+        return d != null || type == null ? d : descriptors.get(UiVocabulary.canonicalType(type));
     }
 
     public Collection<WidgetDescriptor> all() {
@@ -59,7 +89,7 @@ public final class WidgetRegistry {
      * @return the node's valid authored props, or {@code null} when the widget type is unusable
      */
     public Map<String, UiValue> validate(UiNode node, String elementKey, Consumer<UiRuntimeDiagnostic> diagnostics) {
-        WidgetDescriptor d = descriptors.get(node.type());
+        WidgetDescriptor d = get(node.type());
         if (d == null) {
             diagnostics.accept(UiRuntimeDiagnostic.error(Code.UNKNOWN_WIDGET, elementKey,
                 "no widget registered for type " + node.type()));

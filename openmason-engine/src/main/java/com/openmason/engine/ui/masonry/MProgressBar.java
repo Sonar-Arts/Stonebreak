@@ -7,7 +7,7 @@ import io.github.humbleui.skija.Font;
  * General-purpose pill progress bar: dark track, colored fill tracking a
  * [0,1] fraction, and an optional centered label ("Loading...", "42%").
  *
- * <p>Distinct from {@link MVitalBar}, which is a stat readout (side label +
+ * <p>Distinct from a game's vital bar, a stat readout (side label +
  * right-aligned value/max text). This one is for loading screens, crafting
  * progress, furnace burn, download/upload style feedback — anywhere the bar
  * itself is the whole widget.

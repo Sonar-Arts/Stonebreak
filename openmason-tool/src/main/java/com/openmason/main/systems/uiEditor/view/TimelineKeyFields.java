@@ -35,6 +35,8 @@ final class TimelineKeyFields {
                 case UNIT_INTERVAL -> ValueFields.unit(id, value, null, width);
                 case COLOR -> ValueFields.color(id, value, null, List.of(), width);
                 case KEYWORD -> ValueFields.keyword(id, value, null, spec.keywords(), width);
+                case NAME -> ValueFields.keyword(id, value, null,
+                    com.openmason.engine.ui.theme.UiThemes.installed().names(name), width);
                 case ASSET -> ValueFields.asset(id, value, null, assetIds(doc), width);
                 case STRING -> ValueFields.text(id, value instanceof UiValue.Str s ? s.value() : null, "", width,
                     UiValue::of);

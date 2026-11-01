@@ -4,7 +4,7 @@ import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Font;
 
 /**
- * Minecraft-style beveled button. Fluent builders, single-responsibility
+ * Beveled stone button. Fluent builders, single-responsibility
  * click handler. Standard MasonryUI widget — no legacy renderer coupling.
  */
 public class MButton extends MWidget {

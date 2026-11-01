@@ -38,6 +38,10 @@ public record UiRuntimeDiagnostic(Severity severity, Code code, String element, 
         VARIABLE_CYCLE,
         STYLE_VALUE,
         UNKNOWN_STATE,
+        /** An {@code -sb-surface} name the host's theme does not have (#384). */
+        UNKNOWN_SURFACE,
+        /** An {@code -sb-symbol} name the host's theme does not have (#384). */
+        UNKNOWN_SYMBOL,
         // Layout
         CYCLIC_PERCENTAGE,
         CONFLICTING_CONSTRAINTS,

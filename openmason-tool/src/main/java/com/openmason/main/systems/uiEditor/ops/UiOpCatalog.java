@@ -80,7 +80,10 @@ final class UiOpCatalog {
         }
     }
 
-    static final WidgetRegistry WIDGETS = WidgetRegistry.withBuiltIns();
+    /** Built-ins + installed game widgets (#384); read live, a plugin may register late. */
+    static WidgetRegistry widgets() {
+        return WidgetRegistry.installed();
+    }
     private static final Set<String> BINDING_MODES = Set.of("to-target", "two-way", "to-source", "once");
     private static final Map<String, Spec> OPS = new LinkedHashMap<>();
 
@@ -317,7 +320,7 @@ final class UiOpCatalog {
         if (UiNode.INSTANCE_TYPE.equals(type)) {
             throw new IllegalArgumentException("component instances are placed with add_instance {component}");
         }
-        if (type.indexOf(':') < 0 && WIDGETS.get(type) == null) {
+        if (type.indexOf(':') < 0 && widgets().get(type) == null) {
             throw new IllegalArgumentException("unknown widget type '" + type + "'; built-ins: " + widgetTypes());
         }
         if (o.hasNonNull("id") && !OmuiFormat.LOCAL_ID.matcher(o.get("id").asText()).matches()) {
@@ -371,12 +374,12 @@ final class UiOpCatalog {
     }
 
     private static String widgetTypes() {
-        return WIDGETS.all().stream().map(WidgetDescriptor::type).filter(t -> !UiNode.INSTANCE_TYPE.equals(t))
+        return widgets().all().stream().map(WidgetDescriptor::type).filter(t -> !UiNode.INSTANCE_TYPE.equals(t))
             .sorted().toList().toString();
     }
 
     private static String containerTypes() {
-        return WIDGETS.all().stream().map(WidgetDescriptor::type).filter(NodeCommands::acceptsChildren).sorted()
+        return widgets().all().stream().map(WidgetDescriptor::type).filter(NodeCommands::acceptsChildren).sorted()
             .toList().toString();
     }
 

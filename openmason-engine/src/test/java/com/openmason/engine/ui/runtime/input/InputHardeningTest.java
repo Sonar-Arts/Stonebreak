@@ -155,10 +155,10 @@ class InputHardeningTest {
 
     private static OmuiArchive slots() {
         return screen("t:ui/slots", box("root").style("width", 400).style("height", 300).style("flex-direction", "row")
-            .kids(node("from", "ItemSlot").prop("draggable", true).prop("focusable", true)
+            .kids(node("from", "Box").prop("draggable", true).prop("focusable", true)
                     .style("width", 50).style("height", 50),
                 box("gap").style("width", 100),
-                node("to", "ItemSlot").prop("focusable", true).style("width", 50).style("height", 50)));
+                node("to", "Box").prop("focusable", true).style("width", 50).style("height", 50)));
     }
 
     /** "to" accepts and takes the stack; returns the counts and the outcomes seen at DRAG_END. */
@@ -237,7 +237,7 @@ class InputHardeningTest {
             DragSession s = r.router.drag().session();
             UiElement old = r.el("to");
             old.remove(); // an inventory sync re-renders the slot
-            UiElement twin = r.el("root").insertChild(2, node("to", "ItemSlot").prop("focusable", true)
+            UiElement twin = r.el("root").insertChild(2, node("to", "Box").prop("focusable", true)
                 .style("width", 50).style("height", 50).build());
             // The re-render wires the new slot like the old one.
             twin.on(UiEventType.DRAG_OVER, e -> ((DragEvent) e).acceptDrop());

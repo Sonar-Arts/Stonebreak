@@ -142,12 +142,12 @@ class UiPaintLayersTest {
         OmuiArchive doc = screen("t:ui/missing", box("root").kids(
             node("slot", "DrawProvider").prop("provider", "stonebreak:item-icon").style("width", 40)
                 .style("height", 40),
-            node("empty", "ItemSlot").style("width", 40).style("height", 40)));
+            node("empty", "DrawProvider").style("width", 40).style("height", 40)));
         try (RasterDocHost host = new RasterDocHost(doc, UiRuntimeContext.basic(), 100, 100).render(1f).render(1f)) {
             assertTrue(has(host.ui(), UiRuntimeDiagnostic.Code.MISSING_DRAW_PROVIDER));
             long reports = host.ui().diagnostics().stream()
                 .filter(d -> d.code() == UiRuntimeDiagnostic.Code.MISSING_DRAW_PROVIDER).count();
-            assertEquals(1, reports, "an empty ItemSlot (no provider id) is not an error");
+            assertEquals(1, reports, "an empty DrawProvider (no provider id) is not an error");
             int c = host.color(20, 8);
             assertTrue(((c >> 16) & 0xFF) > 100 && (c & 0xFF) > 100 && ((c >> 8) & 0xFF) < 60,
                 "magenta placeholder, got " + Integer.toHexString(c));
@@ -170,14 +170,14 @@ class UiPaintLayersTest {
         };
         UiPaintHost providers = UiPaintHost.of(id -> null, Map.of("rec", recorder));
         OmuiArchive doc = screen("t:ui/prepare", box("root").kids(
-            node("shown", "ItemSlot").prop("provider", "rec").style("width", 20).style("height", 20),
-            node("collapsed", "ItemSlot").prop("provider", "rec").style("width", 20).style("height", 20)
+            node("shown", "DrawProvider").prop("provider", "rec").style("width", 20).style("height", 20),
+            node("collapsed", "DrawProvider").prop("provider", "rec").style("width", 20).style("height", 20)
                 .style("display", "none"),
             box("faded").style("opacity", 0).kids(
-                node("inFaded", "ItemSlot").prop("provider", "rec").style("width", 20).style("height", 20)),
+                node("inFaded", "DrawProvider").prop("provider", "rec").style("width", 20).style("height", 20)),
             box("clip").style("width", 20).style("height", 20).style("overflow", "hidden").kids(
                 box("spacer").style("width", 20).style("height", 40).style("flex-shrink", 0),
-                node("clipped", "ItemSlot").prop("provider", "rec").style("width", 20).style("height", 20)
+                node("clipped", "DrawProvider").prop("provider", "rec").style("width", 20).style("height", 20)
                     .style("flex-shrink", 0))));
         try (RasterDocHost host = new RasterDocHost(doc, UiRuntimeContext.basic(), providers, 100, 200)) {
             host.view.layout(100, 200, 1f, 1f);

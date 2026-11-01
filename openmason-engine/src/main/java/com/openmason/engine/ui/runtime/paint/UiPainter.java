@@ -1,12 +1,15 @@
 package com.openmason.engine.ui.runtime.paint;
 
 import com.openmason.engine.format.omui.UiValue;
-import com.openmason.engine.ui.masonry.MItemSlot;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.openmason.engine.ui.masonry.MSymbol;
 import com.openmason.engine.ui.masonry.MTooltip;
 import com.openmason.engine.ui.masonry.MasonryUI;
+import com.openmason.engine.ui.theme.SurfacePainter;
+import com.openmason.engine.ui.theme.SymbolPainter;
+import com.openmason.engine.ui.theme.UiTheme;
+import com.openmason.engine.ui.theme.UiThemeWidget;
 import com.openmason.engine.ui.runtime.UiDocumentInstance;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.TextLineMetrics;
@@ -47,16 +50,18 @@ import java.util.List;
  * {@code opacity} fades the element with its subtree; {@code -sb-tint} multiplies the element's
  * own drawing; {@code visibility: hidden} skips the element but not visible descendants.
  *
- * <p>{@code -sb-surface} (any element, {@code ui-masonry}) paints a house surface after the
- * background and replaces a {@code Button}'s state-driven look; {@code -sb-text-effect} picks a
- * label's shadow, none, or the layered title.
+ * <p>{@code -sb-surface} (any element, {@code ui-masonry}) paints a surface of the host's
+ * {@link UiTheme} after the background and replaces a {@code Button}'s state-driven look;
+ * {@code -sb-symbol} draws a theme symbol; a name the theme lacks paints nothing and reports
+ * {@code UNKNOWN_SURFACE}/{@code UNKNOWN_SYMBOL} once per element (#384). {@code -sb-text-effect}
+ * picks a label's shadow, none, or the layered title.
  *
  * <p>Widget looks: {@code Button} is the Masonry stone surface (hover/active → highlight fill,
  * disabled → disabled fill) unless a background is styled; {@code Label} draws house-style
  * shadowed text on the {@link MasonryContentMeasurer} baseline with {@code text-align};
- * {@code Image} draws its {@code source}; {@code ItemSlot} draws the Masonry slot frame (with the
- * selected-hotbar ring when its {@code stack} record is {@code selected}) and
- * then its host provider; {@code DrawProvider} calls its provider. Images and
+ * {@code Image} draws its {@code source}; {@code DrawProvider} calls its provider; a game widget
+ * (a theme's {@link UiThemeWidget}, e.g. an item slot) paints itself and, when it
+ * {@code drawsProvider}, its host provider. Images and
  * {@code background-image} are whole textures, sprite regions or skins
  * ({@code <sheet>#<name>}, #294) drawn by {@link SpritePainter}: {@code -sb-image-scale}
  * (stretch, integer, tile, nine-slice), {@code -sb-sampling} (nearest by default: pixel art),
@@ -82,10 +87,11 @@ public final class UiPainter {
 
     private final UiPaintHost host;
     private final MasonryContentMeasurer text;
-    private final MItemSlot slotFrame = new MItemSlot();
     private final CanvasPainter canvasPainter;
     private UiInputRouter input;
-    /** Provider problems already reported ({@code key|id}), so a broken slot does not report every frame. */
+    /** The host's theme, read once per {@link #paint}/{@link #prepare} (a plugin may register one late). */
+    private UiTheme theme;
+    /** Provider and theme problems already reported ({@code code|key|id}), so a broken slot does not report every frame. */
     private final java.util.Set<String> providerReports = new java.util.HashSet<>();
 
     private static final int PLACEHOLDER_FILL = 0x66FF00FF;
@@ -104,6 +110,7 @@ public final class UiPainter {
         this.host = host == null ? UiPaintHost.NONE : host;
         this.text = text;
         this.canvasPainter = new CanvasPainter(this.host, text);
+        this.theme = this.host.theme();
     }
 
     /** Paints {@code ui} (already updated) into {@code masonry}'s open frame, without interaction state. */
@@ -118,6 +125,7 @@ public final class UiPainter {
             return;
         }
         input = router;
+        theme = host.theme();
         ui.beginAnimationFrame();
         try {
             float scale = ui.metrics().scale();
@@ -182,6 +190,7 @@ public final class UiPainter {
      * inside its clips and the viewport. Call outside the Masonry frame, on the GL thread.
      */
     public void prepare(UiDocumentInstance ui) {
+        theme = host.theme();
         float scale = ui.metrics().scale();
         UiRect viewport = new UiRect(0, 0, ui.metrics().viewportWidth(), ui.metrics().viewportHeight());
         PaintOrder order = ui.paintOrder();
@@ -237,16 +246,22 @@ public final class UiPainter {
         return w <= 0 || h <= 0 ? null : new UiRect(x, y, w, h);
     }
 
-    /** A slot record ({@code stack} prop) flagged {@code selected}: the selected hotbar slot's ring. */
-    private static boolean selectedSlot(UiElement el) {
-        return el.prop("stack") instanceof UiValue.Obj o && o.get("selected") instanceof UiValue.Bool b && b.value();
-    }
-
-    private static String providerId(UiElement el) {
-        if (!"ItemSlot".equals(el.type()) && !"DrawProvider".equals(el.type())) {
-            return null;
+    /** The element's draw provider id: a {@code DrawProvider}'s, or a provider-drawing game widget's. */
+    private String providerId(UiElement el) {
+        if (!"DrawProvider".equals(el.type())) {
+            UiThemeWidget w = theme.widget(el.type());
+            if (w == null || !w.drawsProvider()) {
+                return null;
+            }
         }
         return el.prop("provider") instanceof UiValue.Str str && !str.value().isEmpty() ? str.value() : null;
+    }
+
+    private void reportTheme(UiDocumentInstance ui, UiElement el, UiRuntimeDiagnostic.Code code, String name,
+                             String message) {
+        if (providerReports.add(code + "|" + el.key() + "|" + name)) {
+            ui.reportDiagnostic(UiRuntimeDiagnostic.warning(code, el.key(), message));
+        }
     }
 
     private void reportProvider(UiDocumentInstance ui, UiElement el, String id, UiRuntimeDiagnostic.Code code,
@@ -363,12 +378,12 @@ public final class UiPainter {
             image(ui, canvas, el, bgImage, r, s, scale);
         }
         String surface = s.keyword("-sb-surface", "auto");
-        if (!"auto".equals(surface)) {
-            surface(canvas, surface, r);
+        if (!"auto".equals(surface) && !"none".equals(surface)) {
+            surface(ui, canvas, el, surface, r, scale);
         }
         String symbol = s.keyword("-sb-symbol", "none");
         if (!"none".equals(symbol)) {
-            symbol(canvas, symbol, r, s);
+            symbol(ui, canvas, el, symbol, r, s);
         }
         switch (el.type()) {
             case "Button" -> {
@@ -395,17 +410,15 @@ public final class UiPainter {
                     }
                 }
             }
-            case "ItemSlot" -> {
-                slotFrame.bounds(r.x(), r.y(), r.width(), r.height());
-                slotFrame.setHovered(el.hasState(UiElement.HOVER));
-                slotFrame.hotbarSelected(selectedSlot(el));
-                slotFrame.render(masonry);
-                provider(ui, canvas, el, r, scale);
-            }
             case "DrawProvider" -> provider(ui, canvas, el, r, scale);
             case "TextField" -> textField(canvas, el, r, s, scale, styledBackground);
             case "Canvas" -> canvasPainter.paint(canvas, ui.canvas(el.key()), r, scale, ui);
             default -> {
+                UiThemeWidget w = theme.widget(el.type());
+                if (w != null) {
+                    w.painter().paint(new UiThemeWidget.Paint(masonry, canvas, el, r, scale,
+                        () -> provider(ui, canvas, el, r, scale)));
+                }
             }
         }
         border(canvas, r, s, radius, scale);
@@ -649,91 +662,29 @@ public final class UiPainter {
     }
 
     /**
-     * The {@code -sb-surface} house surfaces, at the legacy painters' radii in device px (the stone
-     * screens never scaled them): what lets a document reproduce a Masonry panel or a button that
-     * does not follow its pseudo-states.
+     * The {@code -sb-surface} named {@code surface} from the host's theme (#384): the engine's neutral
+     * panel/button/inset or a game's namespaced surface (or its legacy bare alias).
      */
-    private static void surface(Canvas canvas, String surface, UiRect r) {
-        switch (surface) {
-            case "panel" -> MPainter.panel(canvas, r.x(), r.y(), r.width(), r.height());
-            case "container" -> MPainter.containerPanel(canvas, r.x(), r.y(), r.width(), r.height());
-            case "hud" -> MPainter.hudFrame(canvas, r.x(), r.y(), r.width(), r.height());
-            case "inset" -> MPainter.inset(canvas, r.x(), r.y(), r.width(), r.height());
-            // the chat's folder tabs and input well (#301), at the legacy chat's device-px radii
-            case "folder-tab" -> MPainter.folderTab(canvas, r.x(), r.y(), r.width(), r.height(), false);
-            case "folder-tab-active" -> MPainter.folderTab(canvas, r.x(), r.y(), r.width(), r.height(), true);
-            case "input-well" -> MPainter.inputWell(canvas, r.x(), r.y(), r.width(), r.height());
-            case "search-field" -> MPainter.searchWell(canvas, r.x(), r.y(), r.width(), r.height(), false);
-            case "search-field-active" -> MPainter.searchWell(canvas, r.x(), r.y(), r.width(), r.height(), true);
-            case "hotbar" -> // the gameplay hotbar's frame (#300): dark translucent stone, radius 8
-                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 8f,
-                    0xC8282828, 0xFF505050, 0x22FFFFFF, 0x44000000, 0x78000000,
-                    MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
-            case "panel-deep" -> // a stone panel on the deep fill: the hotbar's item-name tooltip (#300)
-                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
-                    MStyle.PANEL_FILL_DEEP, MStyle.PANEL_BORDER, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW,
-                    MStyle.PANEL_DROP_SHADOW, MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
-            case "tab", "tab-hover", "tab-active", "tab-dim", "tab-disabled" -> {
-                // the inventory/character sheet tab strip: a button without the drop shadow (#300); also the
-                // character screens' list rows and row buttons: hovered-unselected rows dim, disabled (#301)
-                int fill = switch (surface) {
-                    case "tab-active" -> 0xFF7A7A7A;
-                    case "tab-hover" -> MStyle.BUTTON_FILL_HI;
-                    case "tab-dim" -> 0xFF3C3C3C;
-                    case "tab-disabled" -> MStyle.BUTTON_FILL_DIS;
-                    default -> MStyle.BUTTON_FILL;
-                };
-                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.BUTTON_RADIUS,
-                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
-                    MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-            }
-            case "mini-button", "mini-button-hover", "mini-button-disabled" -> {
-                // the ability score tiles' [-]/[+]: radius 2, no drop shadow (#301)
-                int fill = switch (surface) {
-                    case "mini-button-hover" -> MStyle.BUTTON_FILL_HI;
-                    case "mini-button-disabled" -> MStyle.BUTTON_FILL_DIS;
-                    default -> MStyle.BUTTON_FILL;
-                };
-                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 2f,
-                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW, 0,
-                    MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-            }
-            // the character sheet's earthy ability pane, its skill hint strip and the feat filter bar (#301)
-            case "dirt" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
-                0xBF5C4033, 0xFF2A1A0A, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0, 0x38000000, 0x1A7A5A2A);
-            case "tip-strip" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 3f,
-                0xCC1A1A1A, 0xFF141414, 0x1AFFFFFF, 0x1A000000, 0, 0, 0);
-            case "filter-bar" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.PANEL_RADIUS,
-                0xBF3C3C3C, MStyle.PANEL_BORDER, MStyle.PANEL_HIGHLIGHT, MStyle.PANEL_SHADOW, 0,
-                MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
-            // the item slot's recessed frame (MItemSlot) on any element: the ability score tiles (#301)
-            case "slot" -> MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), 3f,
-                0xFF252525, 0xFF151515, 0x55000000, 0x1AFFFFFF, 0, MStyle.PANEL_NOISE_DARK, MStyle.PANEL_NOISE_LIGHT);
-            case "button", "button-hover", "button-disabled" -> {
-                int fill = switch (surface) {
-                    case "button-hover" -> MStyle.BUTTON_FILL_HI;
-                    case "button-disabled" -> MStyle.BUTTON_FILL_DIS;
-                    default -> MStyle.BUTTON_FILL;
-                };
-                MPainter.stoneSurface(canvas, r.x(), r.y(), r.width(), r.height(), MStyle.BUTTON_RADIUS,
-                    fill, MStyle.BUTTON_BORDER, MStyle.BUTTON_HIGHLIGHT, MStyle.BUTTON_SHADOW,
-                    MStyle.BUTTON_DROP_SHADOW, MStyle.BUTTON_NOISE_DARK, MStyle.BUTTON_NOISE_LIGHT);
-            }
-            default -> {
-            }
+    private void surface(UiDocumentInstance ui, Canvas canvas, UiElement el, String surface, UiRect r, float scale) {
+        SurfacePainter p = theme.surface(surface);
+        if (p == null) {
+            reportTheme(ui, el, UiRuntimeDiagnostic.Code.UNKNOWN_SURFACE, surface,
+                "no surface '" + surface + "' in this host's theme");
+            return;
         }
+        p.paint(canvas, r, scale);
     }
 
     /**
-     * {@code -sb-symbol}: a Masonry vector symbol centred in the element's box, in its {@code color},
-     * with the house 1 px shadow unless {@code -sb-text-effect: none} (#299).
+     * {@code -sb-symbol}: a theme symbol centred in the element's box, in its {@code color}, with the
+     * house 1 px shadow unless {@code -sb-text-effect: none} (#299, #384).
      */
-    private static void symbol(Canvas canvas, String name, UiRect r, ComputedStyle s) {
-        MSymbol sym;
-        try {
-            sym = MSymbol.valueOf(name.toUpperCase(java.util.Locale.ROOT).replace('-', '_'));
-        } catch (IllegalArgumentException e) {
-            return; // the validator reports unknown keywords
+    private void symbol(UiDocumentInstance ui, Canvas canvas, UiElement el, String name, UiRect r, ComputedStyle s) {
+        SymbolPainter sym = theme.symbol(name);
+        if (sym == null) {
+            reportTheme(ui, el, UiRuntimeDiagnostic.Code.UNKNOWN_SYMBOL, name,
+                "no symbol '" + name + "' in this host's theme");
+            return;
         }
         int color = s.color("color", MStyle.TEXT_PRIMARY);
         if ("none".equals(s.keyword("-sb-text-effect", "shadow"))) {

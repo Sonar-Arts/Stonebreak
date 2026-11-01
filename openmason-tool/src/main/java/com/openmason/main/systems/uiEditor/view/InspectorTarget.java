@@ -189,11 +189,8 @@ final class InspectorTarget {
 
     /** Descriptor lookup through the editor's registry. */
     private static final class NodeCommandsAccess {
-        private static final com.openmason.engine.ui.runtime.widget.WidgetRegistry REGISTRY =
-            com.openmason.engine.ui.runtime.widget.WidgetRegistry.withBuiltIns();
-
         static WidgetDescriptor descriptor(String type) {
-            return REGISTRY.get(type);
+            return com.openmason.engine.ui.runtime.widget.WidgetRegistry.installed().get(type);
         }
     }
 }

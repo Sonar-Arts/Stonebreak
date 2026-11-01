@@ -12,13 +12,25 @@ import imgui.flag.ImDrawFlags;
  */
 public final class Glyphs {
 
+    /** Glyph key of a game widget (#384: an installed theme's widget or any namespaced type) and of exports. */
+    public static final String GAME_WIDGET = "game:widget";
+
+    /** {@code type}'s glyph key: a game widget (namespaced, or a legacy alias of one) shares one mark. */
+    private static String key(String type) {
+        if (type == null) {
+            return "";
+        }
+        return type.indexOf(':') >= 0 || com.openmason.engine.format.omui.UiVocabulary.widgetAlias(type) != null
+            ? GAME_WIDGET : type;
+    }
+
     private Glyphs() {
     }
 
     /** The glyph for a widget type ({@code Instance} for components; unknown types get a dashed box). */
     public static void widget(ImDrawList dl, String type, float x, float y, float s, int col) {
         float t = Math.max(1f, s / 12f);
-        switch (type) {
+        switch (key(type)) {
             case "Box" -> dl.addRect(x + s * 0.12f, y + s * 0.12f, x + s * 0.88f, y + s * 0.88f, col, s * 0.12f, 0, t * 1.2f);
             case "Label" -> {
                 dl.addLine(x + s * 0.18f, y + s * 0.2f, x + s * 0.82f, y + s * 0.2f, col, t * 1.6f);
@@ -35,7 +47,7 @@ public final class Glyphs {
                 dl.addTriangleFilled(x + s * 0.5f, y + s * 0.76f, x + s * 0.66f, y + s * 0.56f, x + s * 0.82f, y + s * 0.76f, col);
                 dl.addCircleFilled(x + s * 0.7f, y + s * 0.34f, s * 0.07f, col);
             }
-            case "ItemSlot" -> {
+            case GAME_WIDGET -> {
                 dl.addRect(x + s * 0.1f, y + s * 0.1f, x + s * 0.9f, y + s * 0.9f, col, s * 0.06f, 0, t * 1.2f);
                 dl.addRectFilled(x + s * 0.3f, y + s * 0.3f, x + s * 0.7f, y + s * 0.7f, col, s * 0.04f);
             }
@@ -84,11 +96,11 @@ public final class Glyphs {
 
     /** Category tint of a widget type: fixed mid-tones that read on light and dark themes. */
     public static int typeColor(String type, float alpha) {
-        return switch (type) {
+        return switch (key(type)) {
             case "Box", "ScrollView", "ListView" -> rgba(0.36f, 0.66f, 0.88f, alpha);
             case "Label", "TextField" -> rgba(0.52f, 0.78f, 0.46f, alpha);
             case "Button", "Image" -> rgba(0.86f, 0.74f, 0.36f, alpha);
-            case "ItemSlot", "DrawProvider", "Canvas" -> rgba(0.92f, 0.56f, 0.30f, alpha);
+            case GAME_WIDGET, "DrawProvider", "Canvas" -> rgba(0.92f, 0.56f, 0.30f, alpha);
             case "Instance" -> rgba(0.70f, 0.52f, 0.92f, alpha);
             default -> rgba(0.62f, 0.64f, 0.68f, alpha);
         };

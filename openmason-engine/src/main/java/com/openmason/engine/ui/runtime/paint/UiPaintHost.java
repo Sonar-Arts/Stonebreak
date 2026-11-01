@@ -3,6 +3,8 @@ package com.openmason.engine.ui.runtime.paint;
 import com.openmason.engine.ui.masonry.textures.MTexture;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.openmason.engine.ui.runtime.UiRect;
+import com.openmason.engine.ui.theme.UiTheme;
+import com.openmason.engine.ui.theme.UiThemes;
 import io.github.humbleui.skija.Canvas;
 
 import java.util.Map;
@@ -38,6 +40,44 @@ public interface UiPaintHost {
 
     /** Draw provider registered under {@code id}, or null. */
     UiDrawProvider drawProvider(String id);
+
+    /**
+     * Surfaces, symbols and game widgets the painter draws named things with (#384). Default: the
+     * process's installed themes (the engine's neutral set plus every registered game).
+     */
+    default UiTheme theme() {
+        return UiThemes.installed();
+    }
+
+    /** {@code base} painting with {@code theme} instead of its own. */
+    static UiPaintHost withTheme(UiPaintHost base, UiTheme theme) {
+        return new UiPaintHost() {
+            @Override
+            public MTexture texture(String assetRef) {
+                return base.texture(assetRef);
+            }
+
+            @Override
+            public UiImage image(String assetRef) {
+                return base.image(assetRef);
+            }
+
+            @Override
+            public UiImage image(UiElement element, String assetRef) {
+                return base.image(element, assetRef);
+            }
+
+            @Override
+            public UiDrawProvider drawProvider(String id) {
+                return base.drawProvider(id);
+            }
+
+            @Override
+            public UiTheme theme() {
+                return theme;
+            }
+        };
+    }
 
     /**
      * Host immediate drawing inside an element (item icons, 3D previews, the crucible).

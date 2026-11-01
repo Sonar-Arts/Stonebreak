@@ -14,7 +14,7 @@ import java.util.List;
  * <p>A floater takes its <b>screen</b> position once, at {@link #spawn}, and from then on moves
  * purely in screen space: a ballistic arc, then a fade. Whatever it was born from (a body in the
  * world, a HUD row) may move or a camera may cut; the number never teleports after it. Project a
- * world point with {@link MWorldMarker} first and hand the pixels in.
+ * world point to screen pixels first (a host's world-marker projection) and hand them in.
  *
  * <p>Several texts can be born on one spot in the same frame (a number, a grade word and a status
  * name from one blow). {@link Lane}s keep the three kinds apart vertically, and a run of spawns in

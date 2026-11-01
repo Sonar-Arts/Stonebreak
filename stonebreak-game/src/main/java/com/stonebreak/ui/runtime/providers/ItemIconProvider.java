@@ -1,5 +1,6 @@
 package com.stonebreak.ui.runtime.providers;
 
+import com.stonebreak.ui.theme.StonebreakWidgets;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MPainter;
 import com.openmason.engine.ui.masonry.MStyle;
@@ -94,7 +95,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
     /** @param insetPx fixed device-pixel inset, or NaN for the element type's default */
     static Rect iconRect(String elementType, UiRect rect, float scale, float insetPx) {
         float inset = !Float.isNaN(insetPx) ? insetPx
-            : "ItemSlot".equals(elementType) ? Math.round(SLOT_INSET * scale) : 0f;
+            : StonebreakWidgets.isItemSlot(elementType) ? Math.round(SLOT_INSET * scale) : 0f;
         float x = Math.round(rect.x() + inset);
         float y = Math.round(rect.y() + inset);
         float side = Math.round(Math.min(rect.width(), rect.height()) - 2f * inset);
@@ -155,7 +156,7 @@ public final class ItemIconProvider implements UiPaintHost.UiDrawProvider {
         if (icon != null) {
             drawIcon(canvas, ref, icon);
         }
-        boolean slot = "ItemSlot".equals(element.type());
+        boolean slot = StonebreakWidgets.isItemSlot(element.type());
         Rect anchor = slot ? Rect.makeXYWH(rect.x(), rect.y(), rect.width(), rect.height()) : icon;
         if (anchor != null && !Double.isNaN(ref.durability()) && ref.durability() < 1.0) {
             drawDurability(canvas, anchor, (float) Math.max(0.0, ref.durability()), scale);

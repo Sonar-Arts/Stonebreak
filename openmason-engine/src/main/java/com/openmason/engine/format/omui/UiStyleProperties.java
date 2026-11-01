@@ -34,7 +34,13 @@ public final class UiStyleProperties {
         /** in-archive or dependency reference, or {@code none} */
         ASSET,
         STRING,
-        KEYWORD
+        KEYWORD,
+        /**
+         * A theme entry name (#384): {@code auto}/{@code none} or a bare engine name or a namespaced
+         * game name ({@code game:hotbar}). The format checks the spelling; whether the host's theme
+         * has the entry is a runtime diagnostic ({@code UNKNOWN_SURFACE}/{@code UNKNOWN_SYMBOL}).
+         */
+        NAME
     }
 
     public record Spec(Kind kind, Set<String> keywords) {
@@ -43,6 +49,8 @@ public final class UiStyleProperties {
     private static final Pattern PERCENT = Pattern.compile("-?(0|[1-9][0-9]*)(\\.[0-9]+)?%");
     private static final Pattern COLOR = Pattern.compile("#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})");
     private static final Pattern VAR = Pattern.compile("var\\(--[A-Za-z0-9_-]+\\)");
+    /** A theme entry name: an optional {@code namespace:} then a lower-case hyphenated identifier. */
+    private static final Pattern THEME_NAME = Pattern.compile("([a-z0-9_.-]{1,64}:)?[a-z][a-z0-9-]{0,63}");
     private static final Pattern DEVICE = Pattern.compile("-?(0|[1-9][0-9]*)(\\.[0-9]+)?dpx");
 
     /** Lengths that also accept {@code Ndpx} (box geometry; not text or transforms). */
@@ -57,9 +65,6 @@ public final class UiStyleProperties {
             "baseline", "space-between", "space-around", "space-evenly");
 
     private static final Map<String, Spec> SPECS = new HashMap<>();
-
-    /** {@code -sb-symbol} keywords: {@code none} and the Masonry {@code MSymbol}s, lower-case with hyphens. */
-    public static final String[] SYMBOLS = {"none", "chevron-up", "chevron-down", "chevron-left", "chevron-right", "plus", "minus", "cross", "check", "gear", "magnifier", "warning", "info", "star", "heart", "lock", "play", "pause", "arrow-up", "arrow-down", "arrow-left", "arrow-right", "hand-point", "crafting-arrow", "smiley", "nav-left", "nav-right"};
 
     static {
         keyword("display", "flex", "none");
@@ -95,18 +100,14 @@ public final class UiStyleProperties {
         // ui-cursor: pointer-anchored cursor layer and click-through subtrees
         keyword("-sb-anchor", "none", "pointer");
         keyword("pointer-events", "auto", "none");
-        // ui-masonry: the house look as style (#297)
-        keyword("-sb-surface", "auto", "none", "panel", "container", "button", "button-hover", "button-disabled",
-                "tab", "tab-hover", "tab-active", "hotbar", "panel-deep", "hud",
-                "inset", "folder-tab", "folder-tab-active", "input-well", "search-field", "search-field-active",
-                "tab-dim", "tab-disabled", "mini-button", "mini-button-hover", "mini-button-disabled", "slot",
-                "dirt", "tip-strip", "filter-bar");
+        // ui-masonry: the house look as style (#297); the names come from the host's theme (#384)
+        plain(Kind.NAME, "-sb-surface");
         keyword("-sb-text-effect", "shadow", "none", "title");
         keyword("-sb-pixel-grid", "device", "none");
         keyword("-sb-font-grid", "half", "none");
-        // ui-masonry (#299): an explicit first text baseline, and the house vector symbols on any element
+        // ui-masonry (#299): an explicit first text baseline, and the theme's vector symbols on any element
         plain(Kind.LENGTH_NO_AUTO, "-sb-baseline");
-        keyword("-sb-symbol", SYMBOLS);
+        plain(Kind.NAME, "-sb-symbol");
         // ui-masonry (#299): a drop shadow under the element's own paint (the logo's)
         plain(Kind.COLOR, "-sb-shadow-color");
         plain(Kind.LENGTH_NO_AUTO, "-sb-shadow-offset-x", "-sb-shadow-offset-y", "-sb-shadow-blur");
@@ -154,6 +155,16 @@ public final class UiStyleProperties {
         return property.startsWith("--") && property.length() > 2 && UiSelectors.isIdent(property);
     }
 
+    /** True for a well-formed theme entry name ({@link Kind#NAME}), keywords included. */
+    public static boolean isThemeName(String value) {
+        return value != null && THEME_NAME.matcher(value).matches();
+    }
+
+    /** {@code auto} and {@code none}: {@link Kind#NAME} keywords no theme may register. */
+    public static boolean isReservedThemeName(String value) {
+        return "auto".equals(value) || "none".equals(value);
+    }
+
     /** True for an {@code Ndpx} device-pixel length. */
     public static boolean isDeviceLength(String value) {
         return DEVICE.matcher(value).matches();
@@ -181,12 +192,14 @@ public final class UiStyleProperties {
             case COLOR -> value instanceof UiValue.Str s && COLOR.matcher(s.value()).matches();
             case ASSET, STRING -> value instanceof UiValue.Str;
             case KEYWORD -> value instanceof UiValue.Str s && spec.keywords().contains(s.value());
+            case NAME -> value instanceof UiValue.Str s && isThemeName(s.value());
         };
         if (ok) {
             return null;
         }
         return switch (spec.kind()) {
             case KEYWORD -> "expected one of " + new TreeSet<>(spec.keywords());
+            case NAME -> "expected a theme name (\"name\" or \"namespace:name\")";
             case LENGTH -> "expected a number (px), \"N%\" or \"auto\"";
             case LENGTH_NO_AUTO -> "expected a number (px) or \"N%\"";
             case UNIT_INTERVAL -> "expected a number in [0, 1]";

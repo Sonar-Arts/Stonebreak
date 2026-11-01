@@ -28,15 +28,17 @@ import java.util.function.UnaryOperator;
  */
 public final class NodeCommands {
 
-    /** The registry the editor validates containers against (built-ins; providers are leaves). */
-    static final WidgetRegistry WIDGETS = WidgetRegistry.withBuiltIns();
+    /** The registry the editor validates containers against: built-ins + installed game widgets (#384). */
+    static WidgetRegistry widgets() {
+        return WidgetRegistry.installed();
+    }
 
     private NodeCommands() {
     }
 
     /** True when nodes of {@code type} may have children. */
     public static boolean acceptsChildren(String type) {
-        WidgetDescriptor d = WIDGETS.get(type);
+        WidgetDescriptor d = widgets().get(type);
         return d != null && d.acceptsChildren() && !UiNode.INSTANCE_TYPE.equals(type);
     }
 

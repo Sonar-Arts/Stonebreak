@@ -82,9 +82,14 @@ public final class AccessibilityTree {
             case "TextField" -> "text-field";
             case "ScrollView" -> "scroll-area";
             case "ListView" -> "list";
-            case "ItemSlot" -> "cell";
-            default -> "none";
+            default -> gameWidgetRole(el.type());
         };
+    }
+
+    /** A game widget's own role (#384), else none. */
+    private static String gameWidgetRole(String type) {
+        com.openmason.engine.ui.theme.UiThemeWidget w = com.openmason.engine.ui.theme.UiThemes.installed().widget(type);
+        return w == null ? "none" : w.accessibleRole();
     }
 
     public static String name(UiElement el, String role) {

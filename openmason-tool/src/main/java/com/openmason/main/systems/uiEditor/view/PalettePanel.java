@@ -1,9 +1,12 @@
 package com.openmason.main.systems.uiEditor.view;
 
+import com.openmason.engine.format.omui.UiVocabulary;
+import com.openmason.engine.ui.runtime.widget.WidgetRegistry;
+import com.openmason.engine.ui.theme.UiThemeWidget;
+import com.openmason.engine.ui.theme.UiThemes;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.UiDependency;
 import com.openmason.engine.format.omui.UiWidgets;
-import com.openmason.engine.ui.runtime.widget.BuiltInWidgets;
 import com.openmason.engine.ui.runtime.widget.WidgetDescriptor;
 import com.openmason.main.systems.menus.panes.propertyPane.inspector.InspectorFoldout;
 import com.openmason.main.systems.uiEditor.command.DocumentCommands;
@@ -63,7 +66,7 @@ final class PalettePanel implements AutoCloseable {
             String q = search.get().trim().toLowerCase(Locale.ROOT);
             section("Layout", widgets("Box", "ScrollView", "ListView"), q, doc != null);
             section("Common", widgets("Label", "Button", "Image", "TextField"), q, doc != null);
-            section("Game", widgets("ItemSlot", "DrawProvider", "Canvas"), q, doc != null);
+            section("Game", gameWidgets(), q, doc != null);
             section("Components", components(doc), q, doc != null);
         }
         ImGui.endChild();
@@ -138,10 +141,35 @@ final class PalettePanel implements AutoCloseable {
         }
     }
 
+    /** The installed games' widgets (#384, e.g. an item slot), then the host-drawing built-ins. */
+    private static List<Item> gameWidgets() {
+        List<String> types = new ArrayList<>();
+        for (UiThemeWidget w : UiThemes.installed().widgets()) {
+            types.add(paletteType(w.type()));
+        }
+        types.add("DrawProvider");
+        types.add("Canvas");
+        return widgets(types.toArray(String[]::new));
+    }
+
+    /**
+     * The type a palette drop inserts for a game widget: its legacy bare alias when the game kept one
+     * (no manifest {@code providers} row needed, as every shipped document uses it), else the
+     * namespaced type.
+     */
+    private static String paletteType(String type) {
+        for (Map.Entry<String, String> a : UiVocabulary.widgetAliases().entrySet()) {
+            if (a.getValue().equals(type)) {
+                return a.getKey();
+            }
+        }
+        return type;
+    }
+
     private static List<Item> widgets(String... types) {
         List<Item> out = new ArrayList<>();
         for (String t : types) {
-            WidgetDescriptor d = BuiltInWidgets.all().stream().filter(x -> x.type().equals(t)).findFirst().orElse(null);
+            WidgetDescriptor d = WidgetRegistry.installed().get(t);
             if (d != null) {
                 out.add(new Item("widget:" + t, t, t, d.description(), UiWidgets.requiredFeature(t)));
             }

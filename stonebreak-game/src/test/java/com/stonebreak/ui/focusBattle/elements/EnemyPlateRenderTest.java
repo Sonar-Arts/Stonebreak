@@ -8,7 +8,7 @@ import com.stonebreak.battle.api.EnemyAction;
 import com.stonebreak.battle.api.FakeBattleView;
 import com.stonebreak.battle.api.StatusView;
 import com.stonebreak.battle.api.TelegraphView;
-import com.openmason.engine.ui.masonry.MCastBar;
+import com.stonebreak.ui.masonry.MCastBar;
 import com.openmason.engine.ui.masonry.MColor;
 import com.openmason.engine.ui.masonry.MStyle;
 import com.stonebreak.ui.focusBattle.BattlePalette;

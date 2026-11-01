@@ -68,6 +68,12 @@ module stonebreak.game {
 
     // UI hosting seams other hosts use (#285 GameUiAssets, #286 GameUiResources for the Open Mason preview)
     exports com.stonebreak.ui.runtime;
+    exports com.stonebreak.ui.theme;            // Stonebreak UI theme (#384): the OM plugin registers it
+    exports com.stonebreak.ui.masonry;          // Stonebreak's own Masonry widgets (#384)
+
+    // #384: the stonebreak: surfaces/symbols/ItemSlot and their legacy bare aliases
+    provides com.openmason.engine.ui.theme.UiThemeProvider with com.stonebreak.ui.theme.StonebreakUiTheme;
+    provides com.openmason.engine.format.omui.UiVocabularyProvider with com.stonebreak.ui.theme.StonebreakUiTheme;
     exports com.stonebreak.ui.runtime.contracts;
 
     // Open packages for Jackson JSON processing

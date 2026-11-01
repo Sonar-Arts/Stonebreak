@@ -41,7 +41,7 @@ public record UiRuntimeContext(WidgetRegistry widgets, UiDocumentSource source, 
 
     /** Built-in widgets, no dependencies, no theme. */
     public static UiRuntimeContext basic() {
-        return new UiRuntimeContext(WidgetRegistry.withBuiltIns(), UiDocumentSource.EMPTY, List.of(),
+        return new UiRuntimeContext(WidgetRegistry.withInstalled(), UiDocumentSource.EMPTY, List.of(),
             ContentMeasurer.NONE, DEVICE_PIXEL_GRID, UiLocalizer.english());
     }
 
