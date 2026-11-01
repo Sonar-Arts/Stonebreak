@@ -67,6 +67,10 @@ public final class StonebreakPlugin implements OpenMasonPlugin {
                 items.close();
             }
         });
+        // The checkout the target reads and writes (Preferences > Stonebreak), applied before anything
+        // resolves the target.
+        StonebreakResources resources = StonebreakResources.install(StonebreakResources.defaultSettingsFile());
+        context.preferencePages().register(new StonebreakPreferencePage(resources));
         context.gameTargets().register(StonebreakGameTarget.create());
         // The stone screens' surfaces, symbols and ItemSlot (#384) for the UI editor and preview. The
         // engine also finds them as a service when the game module is on the boot layer; registering

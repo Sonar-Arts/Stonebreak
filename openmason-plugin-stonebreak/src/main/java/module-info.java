@@ -10,6 +10,7 @@ module openmason.plugin.stonebreak {
 
     requires org.lwjgl;
     requires org.lwjgl.opengl;
+    requires org.lwjgl.nfd;
     requires org.joml;
     requires io.github.humbleui.skija.shared;
     requires io.github.humbleui.types;
