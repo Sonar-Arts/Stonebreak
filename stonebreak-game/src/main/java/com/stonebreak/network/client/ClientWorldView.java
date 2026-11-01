@@ -4,7 +4,7 @@ import com.openmason.engine.net.client.ClientConnection;
 import com.openmason.engine.net.client.ClientInboundQueue;
 import com.openmason.engine.net.client.NetworkClient;
 import com.openmason.engine.net.protocol.Packet;
-import com.openmason.engine.net.protocol.ProtocolVersion;
+import com.stonebreak.network.ProtocolVersion;
 import com.openmason.engine.net.transport.NetAddress;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;

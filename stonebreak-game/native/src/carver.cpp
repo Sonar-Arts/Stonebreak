@@ -1,17 +1,17 @@
-/* Standalone worm-carver ABI (ck_terrain_create / ck_carve_worms) — a thin
+/* Standalone worm-carver ABI (sbw_terrain_create / sbw_carve_worms) — a thin
  * extern "C" wrapper over the shared native terrain context + worm walk in
  * terrain_ctx.hpp. Cavern-connector anchors arrive precomputed from Java
  * (CavernCarver/MegaCavernCarver own cavern placement on this path).
  *
  * The fused chunk generator (generator.cpp) reuses the same internals with a
  * native anchor source instead. */
-#include "cenda/kernels.h"
+#include "stonebreak/worldgen.h"
 #include "terrain_ctx.hpp"
 
 namespace {
 
-using cenda::gen::AnchorSource;
-using cenda::gen::TerrainCtx;
+using stonebreak::gen::AnchorSource;
+using stonebreak::gen::TerrainCtx;
 
 /* Anchor lookup over the Java-precomputed (srcChunkX, srcChunkZ) -> (x,y,z)
  * arrays. The worm origin is ignored — Java derived each anchor with the same
@@ -40,7 +40,7 @@ struct ArrayAnchorSource final : AnchorSource {
 
 extern "C" {
 
-void* ck_terrain_create(int64_t worm_seed,
+void* sbw_terrain_create(int64_t worm_seed,
                         const int32_t* ch_seeds, const int32_t* ch_octaves,
                         const float* ch_gain, const float* ch_lacunarity,
                         const float* ch_freq,
@@ -48,17 +48,17 @@ void* ck_terrain_create(int64_t worm_seed,
                         const double* spline_xs, const double* spline_ys,
                         const int32_t* spline_sizes,
                         float detail_amplitude) {
-    return cenda::gen::terrainCreateImpl(worm_seed, ch_seeds, ch_octaves, ch_gain,
+    return stonebreak::gen::terrainCreateImpl(worm_seed, ch_seeds, ch_octaves, ch_gain,
                                          ch_lacunarity, ch_freq, ch_xoff, ch_zoff,
                                          spline_xs, spline_ys, spline_sizes,
                                          detail_amplitude);
 }
 
-void ck_terrain_destroy(void* ctx) {
+void sbw_terrain_destroy(void* ctx) {
     delete static_cast<TerrainCtx*>(ctx);
 }
 
-int64_t ck_carve_worms(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
+int64_t sbw_carve_worms(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
                        const int32_t* target_heights,
                        int32_t n_anchors, const int32_t* anchor_chunks,
                        const float* anchors,
@@ -74,7 +74,7 @@ int64_t ck_carve_worms(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
     anchorSource.count = n_anchors;
     anchorSource.chunks = anchor_chunks;
     anchorSource.positions = anchors;
-    return cenda::gen::carveWormsImpl(*ctx, chunk_x, chunk_z, target_heights,
+    return stonebreak::gen::carveWormsImpl(*ctx, chunk_x, chunk_z, target_heights,
                                       &anchorSource, out_mask);
 }
 

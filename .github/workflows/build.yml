@@ -6,8 +6,10 @@
 #
 # Cenda is built first (release preset) so the engine POM packages it as natives/<platform>/ and
 # the shaded game and tool jars carry it: UI scripting and layout have no Java fallback, so a jar
-# without the library is broken, and this job fails rather than package one. The native tests
-# and the Java ABI handshake suites stay in cenda-native.yml.
+# without the library is broken, and this job fails rather than package one. Stonebreak's own
+# worldgen library (stonebreak-game/native, #386) is built next and packaged into the game jar the
+# same way; it has a Java fallback, but a release without it generates on the slow path, so the
+# job checks it too. The native tests and the Java ABI handshake suites stay in cenda-native.yml.
 name: build
 
 on:
@@ -62,6 +64,17 @@ jobs:
         working-directory: openmason-engine/cenda
         run: cmake --build --preset release --parallel
 
+      - name: Configure Stonebreak worldgen natives (release)
+        working-directory: stonebreak-game/native
+        run: >
+          cmake --preset release
+          -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/stonebreak-native-deps"
+          -DBUILD_TESTING=OFF
+
+      - name: Build Stonebreak worldgen natives
+        working-directory: stonebreak-game/native
+        run: cmake --build --preset release --parallel
+
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -72,7 +85,7 @@ jobs:
         # -DskipTests still compiles the test sources, so broken tests fail the build.
         run: mvn -B -ntp -s .mvn/settings.xml package -DskipTests
 
-      - name: Verify Cenda is packaged
+      - name: Verify Cenda + worldgen natives are packaged
         # The POM's copy-resources step skips a missing library silently (local tool-only builds),
         # so check every jar that ships it. The platform dir must match cenda.natives.dir.
         run: |
@@ -98,6 +111,20 @@ jobs:
               echo "$jar: $entry"
             else
               echo "::error::$jar is missing $entry"; status=1
+            fi
+          done
+          # The game's own worldgen library (#386) rides the game jars only.
+          case "${{ runner.os }}" in
+            Linux) wlib=libstonebreak_worldgen.so ;;
+            macOS) wlib=libstonebreak_worldgen.dylib ;;
+            Windows) wlib=stonebreak_worldgen.dll ;;
+          esac
+          wentry="natives/$os-$arch/$wlib"
+          for jar in stonebreak-game/target/stonebreak-game-*-shaded.jar; do
+            if jar tf "$jar" | grep -qx "$wentry"; then
+              echo "$jar: $wentry"
+            else
+              echo "::error::$jar is missing $wentry"; status=1
             fi
           done
           exit $status

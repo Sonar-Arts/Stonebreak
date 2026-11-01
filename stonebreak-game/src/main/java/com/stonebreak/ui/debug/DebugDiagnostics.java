@@ -159,11 +159,13 @@ public final class DebugDiagnostics {
             pipelineRates[3], pipelineRates[4], pipelineRates[5]);
     }
 
-    /** One-line world-gen noise backend status: Cenda native kernels vs classic Java. */
+    /** One-line world-gen backend status: Cenda native noise vs classic Java, plus whether the
+     *  game's worldgen natives (#386) carry the carver and fused chunk generator. */
     public static String noiseBackendSummary() {
         if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
                 == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE) {
-            return "Cenda FastNoise2 (" + com.openmason.engine.cenda.CendaKernels.simdLevel() + ")";
+            return "Cenda FastNoise2 (" + com.openmason.engine.cenda.CendaKernels.simdLevel() + "), worldgen "
+                + (com.stonebreak.world.generation.WorldgenNatives.isAvailable() ? "native" : "Java");
         }
         return "Java (classic simplex)";
     }

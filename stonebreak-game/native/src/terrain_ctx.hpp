@@ -1,6 +1,6 @@
 /* Shared native terrain context + PerlinWormCarver walk — used by both the
- * standalone carver ABI (ck_terrain_create/ck_carve_worms in carver.cpp) and
- * the fused chunk generator (ck_chunkgen_* in generator.cpp).
+ * standalone carver ABI (sbw_terrain_create/sbw_carve_worms in carver.cpp) and
+ * the fused chunk generator (sbw_chunkgen_* in generator.cpp).
  *
  * The context evaluates heights from the SAME FastNoise2 channel nodes the
  * Java NoiseRouter uses (bit-identical channel values) plus exact ports of the
@@ -21,7 +21,7 @@
 #pragma once
 
 #include "java_compat.hpp"
-#include "nodes.hpp"
+#include "cenda/noise_nodes.hpp"
 
 #include <bit>
 #include <cmath>
@@ -29,7 +29,7 @@
 #include <cstring>
 #include <vector>
 
-namespace cenda::gen {
+namespace stonebreak::gen {
 
 constexpr double JPI = 3.141592653589793; // Java Math.PI exactly
 constexpr int CHUNK_SIZE = 16;
@@ -98,7 +98,7 @@ inline int waterTableResolve(int surface, int waterLevel, float wobbleNoise) {
     if (waterLevel != NO_WATER && waterLevel > 0) {
         table = waterLevel;
     } else {
-        table = cenda::javaRoundFloat(
+        table = stonebreak::javaRoundFloat(
             static_cast<float>(SEA_LEVEL)
             + static_cast<float>(surface - SEA_LEVEL) * WT_DAMP
             + wobbleNoise * WT_WOBBLE);
@@ -181,7 +181,7 @@ struct TerrainCtx {
         float peak = static_cast<float>(splinePeak.interpolate(pv));
         float strength = static_cast<float>(splineStrength.interpolate(e));
         float detail = d * detailAmplitude;
-        int h = cenda::javaRoundFloat(base + peak * strength + detail);
+        int h = stonebreak::javaRoundFloat(base + peak * strength + detail);
         if (h < 1) h = 1;
         if (h > WORLD_HEIGHT - 1) h = WORLD_HEIGHT - 1;
         return h;
@@ -286,7 +286,7 @@ inline bool hasWorm(int64_t seed, int cx, int cz) {
     h ^= static_cast<uint64_t>(static_cast<int64_t>(cx)) * HASH_A;
     h = (h << 23) | (h >> 41);
     h ^= static_cast<uint64_t>(static_cast<int64_t>(cz)) * HASH_B;
-    h = cenda::splitmix64Finalize(h);
+    h = stonebreak::splitmix64Finalize(h);
     return (h & 7) == 0; // Math.floorMod(h, 8) on the signed value
 }
 
@@ -302,7 +302,7 @@ inline int64_t chunkRngSeed(int64_t seed, int cx, int cz) {
  * Consumes exactly one nextInt so the downstream stream (twin, connector and
  * cavern-connector seeds) keeps its shape; spawnCarvers must mirror these three draws. */
 inline float originY(const TerrainCtx& ctx, float ox, float oz, JavaRandom& rng) {
-    const int surface = ctx.generateHeight(cenda::javaRoundFloat(ox), cenda::javaRoundFloat(oz));
+    const int surface = ctx.generateHeight(stonebreak::javaRoundFloat(ox), stonebreak::javaRoundFloat(oz));
     const int depth = ORIGIN_DEPTH_MIN + rng.nextInt(ORIGIN_DEPTH_MAX - ORIGIN_DEPTH_MIN);
     const int y = surface - depth;
     return static_cast<float>(y > Y_FLOOR + 2 ? y : Y_FLOOR + 2);
@@ -451,9 +451,9 @@ inline void walkCarver(const TerrainCtx& ctx, Segment seg, std::vector<Segment>&
         y += static_cast<float>(std::sin(static_cast<double>(pitch))) * STEP_SIZE;
         z += static_cast<float>(std::sin(static_cast<double>(yaw))) * cosPitch * STEP_SIZE;
 
-        const int wxi = cenda::javaRoundFloat(x);
-        const int wyi = cenda::javaRoundFloat(y);
-        const int wzi = cenda::javaRoundFloat(z);
+        const int wxi = stonebreak::javaRoundFloat(x);
+        const int wyi = stonebreak::javaRoundFloat(y);
+        const int wzi = stonebreak::javaRoundFloat(z);
         if (wyi < Y_FLOOR || wyi >= WORLD_HEIGHT) break;
         const int surface = ctx.generateHeight(wxi, wzi);
         /* Gate on whether THIS column actually holds water rather than on global sea level:
@@ -553,7 +553,7 @@ inline void spawnCarvers(const TerrainCtx& ctx, int srcCx, int srcCz, int target
     }
 }
 
-/* Shared construction for ck_terrain_create and the fused generator context.
+/* Shared construction for sbw_terrain_create and the fused generator context.
  * Returns nullptr on bad args or node-construction failure. */
 inline TerrainCtx* terrainCreateImpl(int64_t worm_seed,
                                      const int32_t* ch_seeds, const int32_t* ch_octaves,
@@ -632,4 +632,4 @@ inline int64_t carveWormsImpl(const TerrainCtx& ctx, int32_t chunk_x, int32_t ch
     return bits;
 }
 
-} // namespace cenda::gen
+} // namespace stonebreak::gen

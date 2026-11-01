@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Launch glue for Stonebreak's own native library (#386), kept out of the game module on purpose:
+     exec:exec resolves the module's dependencies, and the game's include the engine, which is not
+     installed in ~/.m2 during development. This POM has no dependencies, so the Stonebreak run
+     configuration's before-launch step (exec:exec@worldgen-natives) works from a clean checkout,
+     exactly like the engine's exec:exec@cenda-kernels. It IS a reactor module (root POM) only so
+     IntelliJ imports it — a Maven before-launch task against an unimported POM stops the launch.
+     Packaging pom: a reactor build runs nothing here. The parent supplies ${cenda.bash}. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.stonebreak</groupId>
+        <artifactId>stonebreak-parent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>stonebreak-native</artifactId>
+    <packaging>pom</packaging>
+    <name>Stonebreak native worldgen (launch glue)</name>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>worldgen-natives</id>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${cenda.bash}</executable>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <arguments>
+                                <argument>${project.basedir}/build-worldgen.sh</argument>
+                                <argument>release</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

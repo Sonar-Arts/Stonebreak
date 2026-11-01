@@ -1,6 +1,5 @@
 package com.stonebreak.world.generation;
 
-import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.noise.TerrainNoise;
 import org.junit.jupiter.api.Tag;
@@ -25,7 +24,7 @@ class NativeCarverIntegrationTest {
 
     @Test
     void independentGeneratorsProduceIdenticalChunks() {
-        assumeTrue(CendaKernels.isAvailable(), "Cenda kernels not built");
+        assumeTrue(WorldgenNatives.isAvailable(), "Stonebreak worldgen natives not built (stonebreak-game/native)");
         assumeTrue(TerrainNoise.backend() == TerrainNoise.Backend.NATIVE, "native backend inactive");
 
         TerrainGenerationSystem a = new TerrainGenerationSystem(SEED);

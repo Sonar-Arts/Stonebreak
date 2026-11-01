@@ -1,5 +1,5 @@
 #include "cenda/kernels.h"
-#include "nodes.hpp"
+#include "cenda/noise_nodes.hpp"
 
 #include <FastNoise/FastNoise.h>
 

@@ -1,6 +1,5 @@
 package com.stonebreak.world.generation;
 
-import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.biomes.BiomeType;
@@ -18,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The fused native chunk generator ({@code ck_generate_chunk}) must be
+ * The fused native chunk generator ({@code sbw_generate_chunk}) must be
  * BYTE-IDENTICAL to the legacy mixed path (native worms + Java caverns/
  * formations + Java block fill) — the worm walk is the same native code in
  * both, and the cavern/formation/fill/magma ports are exact (no libm). This
@@ -46,7 +45,7 @@ class FusedChunkGenParityTest {
 
     @Test
     void fusedPathMatchesLegacyPathByteForByte() {
-        assumeTrue(CendaKernels.isAvailable(), "Cenda kernels not built");
+        assumeTrue(WorldgenNatives.isAvailable(), "Stonebreak worldgen natives not built (stonebreak-game/native)");
         assumeTrue(TerrainNoise.backend() == TerrainNoise.Backend.NATIVE, "native backend inactive");
 
         TerrainGenerationSystem fused = new TerrainGenerationSystem(SEED);

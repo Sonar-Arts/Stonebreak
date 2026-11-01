@@ -181,6 +181,46 @@
                     <argLine>-Dnet.bytebuddy.experimental=true --add-reads stonebreak.game=io.netty.codec,io.netty.common</argLine>
                 </configuration>
             </plugin>
+            <!-- Stonebreak's own native library (#386: the worldgen kernels moved out of the engine's
+                 Cenda lib) goes into the jar as natives/<platform>/<lib>, like the engine's, where
+                 WorldgenNatives extracts it for a shipped game. Absent build output = nothing copied;
+                 the game then generates on the Java path. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>package-worldgen-natives</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/natives/${cenda.natives.dir}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/native/build/release</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>libstonebreak_worldgen.so</include>
+                                        <include>libstonebreak_worldgen.dylib</include>
+                                        <include>stonebreak_worldgen.dll</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <!-- multi-config generators (Visual Studio, Xcode) -->
+                                    <directory>${project.basedir}/native/build/release/Release</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>libstonebreak_worldgen.dylib</include>
+                                        <include>stonebreak_worldgen.dll</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

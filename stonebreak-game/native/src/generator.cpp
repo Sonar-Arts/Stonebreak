@@ -10,7 +10,7 @@
  * which FusedChunkGenParityTest pins against the living Java code.
  *
  * Constants mirror the Java classes and must stay in lockstep. */
-#include "cenda/kernels.h"
+#include "stonebreak/worldgen.h"
 #include "terrain_ctx.hpp"
 
 #include <algorithm>
@@ -19,13 +19,13 @@
 
 namespace {
 
-using cenda::JavaRandom;
-using cenda::SplineLinear;
-using cenda::gen::AnchorSource;
-using cenda::gen::TerrainCtx;
-using cenda::gen::CHUNK_SIZE;
-using cenda::gen::SEA_LEVEL;
-using cenda::gen::WORLD_HEIGHT;
+using stonebreak::JavaRandom;
+using stonebreak::SplineLinear;
+using stonebreak::gen::AnchorSource;
+using stonebreak::gen::TerrainCtx;
+using stonebreak::gen::CHUNK_SIZE;
+using stonebreak::gen::SEA_LEVEL;
+using stonebreak::gen::WORLD_HEIGHT;
 
 /* PerlinWormCarver.CAVERN_CONNECTOR_RADIUS */
 constexpr int CAVERN_CONNECTOR_RADIUS = 5;
@@ -55,7 +55,7 @@ constexpr float DENSITY_PEAK_DAMP_FLOOR = 0.55f;
 
 constexpr float CHEESE_Y_SQUASH = 1.6f;
 /* Density3D.CRAG_Y_SQUASH — the overhang band's own channel, for biomes flagged
- * CK_BIOME_CRAG_SURFACE. Frequency arrives from Java in density_freq[3]. */
+ * SBW_BIOME_CRAG_SURFACE. Frequency arrives from Java in density_freq[3]. */
 constexpr float CRAG_Y_SQUASH = 1.8f;
 constexpr float SPAG_Y_SQUASH = 1.08f;
 constexpr float SPAG_THICKNESS = 0.085f;
@@ -188,8 +188,8 @@ bool hasCavern(const CavernParams& p, int64_t seed, int cx, int cz) {
     h ^= signExt(cx) * p.hashMulX;
     h = rotl64(h, p.hashRot);
     h ^= signExt(cz) * p.hashMulZ;
-    h = cenda::splitmix64Finalize(h);
-    return cenda::javaFloorMod(static_cast<int64_t>(h), p.divisor) == 0;
+    h = stonebreak::splitmix64Finalize(h);
+    return stonebreak::javaFloorMod(static_cast<int64_t>(h), p.divisor) == 0;
 }
 
 int64_t cavernRngSeed(const CavernParams& p, int64_t seed, int cx, int cz) {
@@ -211,7 +211,7 @@ int64_t formationSeed(const CavernParams& p, int64_t seed, int worldX, int world
  * bedrock; the Java depth ranges are chosen to stay inside a ~114-block column. */
 float cavernCenterY(const CavernParams& p, const TerrainCtx& terrain,
                     float ox, float oz, JavaRandom& rng) {
-    const int surface = terrain.generateHeight(cenda::javaRoundFloat(ox), cenda::javaRoundFloat(oz));
+    const int surface = terrain.generateHeight(stonebreak::javaRoundFloat(ox), stonebreak::javaRoundFloat(oz));
     const int depth = p.depthMin + rng.nextInt(p.depthMax - p.depthMin);
     const int y = surface - depth;
     return static_cast<float>(y > 2 ? y : 2);
@@ -256,9 +256,9 @@ void carveCavernEllipsoid(const CavernParams& p, float wx, float wy, float wz, f
     const int targetBaseZ = targetCz * CHUNK_SIZE;
     const int rxz = static_cast<int>(std::ceil(static_cast<double>(radius)));
     const int ry = static_cast<int>(std::ceil(static_cast<double>(radius * p.ySquash)));
-    const int wxi = cenda::javaRoundFloat(wx);
-    const int wyi = cenda::javaRoundFloat(wy);
-    const int wzi = cenda::javaRoundFloat(wz);
+    const int wxi = stonebreak::javaRoundFloat(wx);
+    const int wyi = stonebreak::javaRoundFloat(wy);
+    const int wzi = stonebreak::javaRoundFloat(wz);
     if (wxi + rxz < targetBaseX || wxi - rxz >= targetBaseX + CHUNK_SIZE) return;
     if (wzi + rxz < targetBaseZ || wzi - rxz >= targetBaseZ + CHUNK_SIZE) return;
 
@@ -285,7 +285,7 @@ void carveCavernEllipsoid(const CavernParams& p, float wx, float wy, float wz, f
                 const int by = wyi + oy;
                 if (by < 1 || by >= WORLD_HEIGHT) continue;
                 if (by >= surface) continue;
-                if (cenda::gen::waterGuardSeals(waterGuard, idx, by, p.waterClearance)) continue;
+                if (stonebreak::gen::waterGuardSeals(waterGuard, idx, by, p.waterClearance)) continue;
                 setBit(mask, (bx << 12) | (by << 4) | bz);
             }
         }
@@ -501,10 +501,10 @@ float densityPeakDamp(int surfaceHeight) {
 
 /* Density3D.solidInOverhangBand — the biome rule, now a UNION with the cave test
  * rather than a branch that short-circuits it. `n` is the channel the biome selected:
- * crag when it is flagged CK_BIOME_CRAG_SURFACE, cheese otherwise. The caller picks,
+ * crag when it is flagged SBW_BIOME_CRAG_SURFACE, cheese otherwise. The caller picks,
  * so each backend samples its own way. The carve decision alone is gated only on
  * depth and intensity, so the caller ALSO applies the density water gate
- * (cenda::gen::waterGuardSeals + DENSITY_WATER_CLEARANCE) — the same WaterGuard
+ * (stonebreak::gen::waterGuardSeals + DENSITY_WATER_CLEARANCE) — the same WaterGuard
  * plane the mask carvers go through, keeping the band out of the ground beneath and
  * beside standing water. */
 bool solidInOverhangBand(const ChunkGenCtx& c, float n, int biomeIdx, int surfaceHeight) {
@@ -527,7 +527,7 @@ bool densitySolidAt(const ChunkGenCtx& c, float cheese, float s1, float s2,
     }
     /* Two noise sheets intersect in a curve: this is the tube test. */
     const float thickness =
-        (SPAG_THICKNESS + SPAG_GALLERY_BONUS * cenda::gen::waterTableGalleryWeight(table, y))
+        (SPAG_THICKNESS + SPAG_GALLERY_BONUS * stonebreak::gen::waterTableGalleryWeight(table, y))
         * spaghettiFade(depth);
     if (thickness > 0.0f && std::fabs(s1) < thickness && std::fabs(s2) < thickness) {
         return false;
@@ -561,10 +561,10 @@ bool densitySolid(const ChunkGenCtx& c, int localX, int y, int localZ,
         /* cragVol is non-null whenever any column in the chunk is flagged, and only a
          * flagged column can reach this branch wanting it. */
         const bool crag =
-            (c.biomeFlags[static_cast<size_t>(biomeIdx)] & CK_BIOME_CRAG_SURFACE) != 0
+            (c.biomeFlags[static_cast<size_t>(biomeIdx)] & SBW_BIOME_CRAG_SURFACE) != 0
             && cragVol != nullptr;
         if (!solidInOverhangBand(c, crag ? cragVol[i] : cheese, biomeIdx, surfaceHeight)
-                && !cenda::gen::waterGuardSeals(waterGuard, col, y, DENSITY_WATER_CLEARANCE)) {
+                && !stonebreak::gen::waterGuardSeals(waterGuard, col, y, DENSITY_WATER_CLEARANCE)) {
             return false;
         }
     }
@@ -614,7 +614,7 @@ int16_t determineBlock(const ChunkGenCtx& c, int worldX, int y, int worldZ,
     }
     const uint8_t flags = c.biomeFlags[static_cast<size_t>(biomeIdx)];
     if (y < height - 4) {
-        if ((flags & CK_BIOME_MAGMA) != 0 && y < height - 10
+        if ((flags & SBW_BIOME_MAGMA) != 0 && y < height - 10
                 && magmaAt(c.seed, worldX, y, worldZ, c.magmaFeatureHash, c.magmaChance)) {
             return c.magmaId;
         }
@@ -627,7 +627,7 @@ int16_t determineBlock(const ChunkGenCtx& c, int worldX, int y, int worldZ,
         return c.biomeSurface[static_cast<size_t>(biomeIdx)];
     }
     if (y < SEA_LEVEL) {
-        if ((flags & CK_BIOME_DRY_BELOW_SEA) != 0 && height > SEA_LEVEL) {
+        if ((flags & SBW_BIOME_DRY_BELOW_SEA) != 0 && height > SEA_LEVEL) {
             return c.airId;
         }
         return c.waterId;
@@ -639,7 +639,7 @@ int16_t determineBlock(const ChunkGenCtx& c, int worldX, int y, int worldZ,
 
 extern "C" {
 
-void* ck_chunkgen_create(
+void* sbw_chunkgen_create(
     int64_t seed,
     const int32_t* ch_seeds, const int32_t* ch_octaves,
     const float* ch_gain, const float* ch_lacunarity, const float* ch_freq,
@@ -668,7 +668,7 @@ void* ck_chunkgen_create(
             || opacity_table == nullptr || opacity_table_len <= 0) {
         return nullptr;
     }
-    TerrainCtx* terrain = cenda::gen::terrainCreateImpl(
+    TerrainCtx* terrain = stonebreak::gen::terrainCreateImpl(
         seed, ch_seeds, ch_octaves, ch_gain, ch_lacunarity, ch_freq,
         ch_xoff, ch_zoff, spline_xs, spline_ys, spline_sizes, detail_amplitude);
     if (terrain == nullptr) {
@@ -712,11 +712,11 @@ void* ck_chunkgen_create(
     return ctx;
 }
 
-void ck_chunkgen_destroy(void* ctx) {
+void sbw_chunkgen_destroy(void* ctx) {
     delete static_cast<ChunkGenCtx*>(ctx);
 }
 
-int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
+int64_t sbw_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
                           const int32_t* heights, const int32_t* biomes,
                           const uint64_t* extra_carve_mask,
                           int16_t* out_blocks, int32_t* out_heightmap) {
@@ -740,10 +740,10 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
 
     NativeAnchorSource anchors;
     anchors.ctx = ctx;
-    cenda::gen::carveWormsImpl(*ctx->terrain, chunk_x, chunk_z, heights, &anchors, caveMask);
+    stonebreak::gen::carveWormsImpl(*ctx->terrain, chunk_x, chunk_z, heights, &anchors, caveMask);
 
     int32_t waterGuard[CHUNK_SIZE * CHUNK_SIZE];
-    cenda::gen::waterGuardPlane(*ctx->terrain, heights, chunk_x, chunk_z, waterGuard);
+    stonebreak::gen::waterGuardPlane(*ctx->terrain, heights, chunk_x, chunk_z, waterGuard);
 
     buildCavernCarve(ctx->cavern, *ctx->terrain, ctx->seed, chunk_x, chunk_z,
                      heights, waterGuard, cavA);
@@ -794,7 +794,7 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
     for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
         const int b = biomes[i];
         if (b >= 0 && b < ctx->nBiomes
-                && (ctx->biomeFlags[static_cast<size_t>(b)] & CK_BIOME_CRAG_SURFACE) != 0) {
+                && (ctx->biomeFlags[static_cast<size_t>(b)] & SBW_BIOME_CRAG_SURFACE) != 0) {
             needsCrag = true;
             break;
         }
@@ -831,8 +831,8 @@ int64_t ck_generate_chunk(void* ctxPtr, int32_t chunk_x, int32_t chunk_z,
         CHUNK_SIZE, CHUNK_SIZE, 1.0f, 1.0f, ctx->terrain->wobbleSeed);
     int32_t table[CHUNK_SIZE * CHUNK_SIZE];
     for (int i = 0; i < CHUNK_SIZE * CHUNK_SIZE; i++) {
-        table[i] = cenda::gen::waterTableResolve(
-            heights[i], cenda::gen::waterLevelOf(heights[i]), wobble[i]);
+        table[i] = stonebreak::gen::waterTableResolve(
+            heights[i], stonebreak::gen::waterLevelOf(heights[i]), wobble[i]);
     }
 
     /* Every carver is in and the density volumes exist, so a formation's anchor can

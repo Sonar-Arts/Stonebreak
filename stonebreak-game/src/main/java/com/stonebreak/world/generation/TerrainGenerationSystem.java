@@ -233,7 +233,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
             anchors[i * 3 + 2] = anchor[2];
         }
         long[] mask = new long[1024];
-        long carved = com.openmason.engine.cenda.CendaKernels.carveWorms(
+        long carved = WorldgenNatives.carveWorms(
             carverCtx, chunkX, chunkZ, heights, anchorChunks, anchors, mask);
         if (carved < 0) {
             return wormCarver.carveMaskForChunk(chunkX, chunkZ, heights, waterLevels);

@@ -89,4 +89,24 @@ class CendaKernelsTest {
         assertFalse(CendaKernels.fillGrid2D(0L, new float[4], 0f, 0f, 2, 2, 1f, 1f, 1));
         assertNotEquals("unavailable", CendaKernels.simdLevel());
     }
+
+    /**
+     * #386: the engine library carries no game's world generator. Stonebreak's worm carver and
+     * fused chunk generator live in the game's own library now; a lib that still exports them was
+     * built from a stale tree (or someone moved them back).
+     */
+    @Test
+    void exportsNoWorldgenSymbols() {
+        assumeTrue(CendaKernels.isAvailable(), "Cenda kernels not built");
+        java.nio.file.Path lib = CendaKernels.libraryPath().orElseThrow();
+        try (java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined()) {
+            java.lang.foreign.SymbolLookup lookup = java.lang.foreign.SymbolLookup.libraryLookup(lib, arena);
+            assertTrue(lookup.find("ck_mesh_chunk").isPresent(), "lookup sees the engine ABI");
+            for (String symbol : new String[]{"ck_terrain_create", "ck_terrain_destroy", "ck_carve_worms",
+                    "ck_chunkgen_create", "ck_chunkgen_destroy", "ck_generate_chunk",
+                    "sbw_terrain_create", "sbw_generate_chunk"}) {
+                assertFalse(lookup.find(symbol).isPresent(), lib + " still exports " + symbol);
+            }
+        }
+    }
 }

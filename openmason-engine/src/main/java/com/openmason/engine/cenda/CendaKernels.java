@@ -10,12 +10,13 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
  * FFM binding to the Cenda native kernels library ({@code libcenda_kernels.so},
- * built from {@code openmason-engine/cenda/native/kernels}).
+ * built from {@code openmason-engine/cenda/native/kernels}): noise, the chunk mesher
+ * and zstd. Game-specific kernels belong in the game's own library (Stonebreak's worldgen
+ * moved out in #386), which can reuse the discovery rules through {@link NativeLibraryLocator}.
  *
  * Fully optional: when the library is absent or fails its ABI handshake,
  * {@link #isAvailable()} is false and callers must use their pure-Java path.
@@ -31,7 +32,22 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 12; // 12 (#385): ck_mesh_chunk takes chunk_size + world_height
+    private static final int EXPECTED_ABI = 13; // 13 (#386): worldgen kernels moved to the game's own library
+
+    /** Where the engine library is looked for — see the class comment for the order. Declared
+     *  before the static loader below, which reads it. */
+    static final NativeLibraryLocator.Spec LIBRARY = new NativeLibraryLocator.Spec(
+        "cenda_kernels", "cenda.kernels.path", "CENDA_KERNELS_PATH",
+        java.util.List.of(
+            "openmason-engine/cenda/build/release/native/kernels/",
+            "openmason-engine/cenda/build/debug/native/kernels/",
+            "openmason-engine/cenda/build/native/kernels/",
+            "../openmason-engine/cenda/build/release/native/kernels/",
+            "../openmason-engine/cenda/build/debug/native/kernels/",
+            "../openmason-engine/cenda/build/native/kernels/",
+            "cenda/build/release/native/kernels/",
+            "cenda/build/native/kernels/"),
+        NativeLibraryExtractor::openResource);
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -41,12 +57,6 @@ public final class CendaKernels {
     private static final MethodHandle GEN_2D;
     private static final MethodHandle GEN_3D;
     private static final MethodHandle MESH_CHUNK;
-    private static final MethodHandle TERRAIN_CREATE;
-    private static final MethodHandle TERRAIN_DESTROY;
-    private static final MethodHandle CARVE_WORMS;
-    private static final MethodHandle CHUNKGEN_CREATE;
-    private static final MethodHandle CHUNKGEN_DESTROY;
-    private static final MethodHandle GENERATE_CHUNK;
     private static final MethodHandle ZSTD_BOUND;
     private static final MethodHandle ZSTD_COMPRESS;
     private static final MethodHandle ZSTD_DECOMPRESS;
@@ -65,12 +75,6 @@ public final class CendaKernels {
         MethodHandle gen2d = null;
         MethodHandle gen3d = null;
         MethodHandle meshChunk = null;
-        MethodHandle terrainCreate = null;
-        MethodHandle terrainDestroy = null;
-        MethodHandle carveWorms = null;
-        MethodHandle chunkGenCreate = null;
-        MethodHandle chunkGenDestroy = null;
-        MethodHandle generateChunk = null;
         MethodHandle zstdBound = null;
         MethodHandle zstdCompress = null;
         MethodHandle zstdDecompress = null;
@@ -126,54 +130,6 @@ public final class CendaKernels {
                         ValueLayout.ADDRESS,
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-                terrainCreate = linker.downcallHandle(
-                    find(lookup, "ck_terrain_create"),
-                    FunctionDescriptor.of(ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_LONG,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_FLOAT));
-                terrainDestroy = linker.downcallHandle(
-                    find(lookup, "ck_terrain_destroy"),
-                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-                carveWorms = linker.downcallHandle(
-                    find(lookup, "ck_carve_worms"),
-                    FunctionDescriptor.of(ValueLayout.JAVA_LONG,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS));
-                chunkGenCreate = linker.downcallHandle(
-                    find(lookup, "ck_chunkgen_create"),
-                    FunctionDescriptor.of(ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_LONG,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_FLOAT,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT, ValueLayout.JAVA_FLOAT,
-                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-                chunkGenDestroy = linker.downcallHandle(
-                    find(lookup, "ck_chunkgen_destroy"),
-                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
-                generateChunk = linker.downcallHandle(
-                    find(lookup, "ck_generate_chunk"),
-                    FunctionDescriptor.of(ValueLayout.JAVA_LONG,
-                        ValueLayout.ADDRESS,
-                        ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
                 zstdBound = linker.downcallHandle(
                     find(lookup, "ck_zstd_bound"),
                     FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG));
@@ -213,12 +169,6 @@ public final class CendaKernels {
         GEN_2D = gen2d;
         GEN_3D = gen3d;
         MESH_CHUNK = meshChunk;
-        TERRAIN_CREATE = terrainCreate;
-        TERRAIN_DESTROY = terrainDestroy;
-        CARVE_WORMS = carveWorms;
-        CHUNKGEN_CREATE = chunkGenCreate;
-        CHUNKGEN_DESTROY = chunkGenDestroy;
-        GENERATE_CHUNK = generateChunk;
         ZSTD_BOUND = zstdBound;
         ZSTD_COMPRESS = zstdCompress;
         ZSTD_DECOMPRESS = zstdDecompress;
@@ -243,7 +193,7 @@ public final class CendaKernels {
 
     /**
      * Per-thread grow-on-demand native scratch segments for per-chunk kernel
-     * calls (mesher, generator, carver, zstd). Each slot is one argument role
+     * calls (mesher, zstd). Each slot is one argument role
      * of one call; contents are only valid for the duration of that downcall.
      * Replaces the confined-Arena-per-call pattern, which allocated and freed
      * ~130 KB of off-heap memory on every chunk mesh/generate/compress.
@@ -305,62 +255,7 @@ public final class CendaKernels {
     }
 
     static Path locateLibrary() {
-        String prop = System.getProperty("cenda.kernels.path");
-        if (prop != null && !prop.isBlank()) {
-            Path p = Path.of(prop);
-            return Files.isRegularFile(p) ? p : null;
-        }
-        String env = System.getenv("CENDA_KERNELS_PATH");
-        if (env != null && !env.isBlank()) {
-            Path p = Path.of(env);
-            return Files.isRegularFile(p) ? p : null;
-        }
-        // mapLibraryName: libcenda_kernels.so (Linux), libcenda_kernels.dylib (macOS),
-        // cenda_kernels.dll (Windows). Multi-config generators (Visual Studio, Xcode) put the
-        // library in a Release/ or Debug/ sub-directory of the same folder.
-        String libName = System.mapLibraryName("cenda_kernels");
-        String[] dirs = {
-            "openmason-engine/cenda/build/release/native/kernels/",
-            "openmason-engine/cenda/build/debug/native/kernels/",
-            "openmason-engine/cenda/build/native/kernels/",
-            "../openmason-engine/cenda/build/release/native/kernels/",
-            "../openmason-engine/cenda/build/debug/native/kernels/",
-            "../openmason-engine/cenda/build/native/kernels/",
-            "cenda/build/release/native/kernels/",
-            "cenda/build/native/kernels/",
-        };
-        for (String dir : dirs) {
-            for (String config : new String[]{"", "Release/", "Debug/"}) {
-                Path p = Path.of(dir + config + libName).toAbsolutePath().normalize();
-                if (Files.isRegularFile(p)) {
-                    return p;
-                }
-            }
-        }
-        return packagedLibrary(libName);
-    }
-
-    private static volatile Path packaged;
-
-    /** The library packaged in the jar, extracted once per launch (null when not packaged). */
-    private static Path packagedLibrary(String libName) {
-        Path p = packaged;
-        if (p != null) {
-            return p;
-        }
-        synchronized (CendaKernels.class) {
-            if (packaged != null) {
-                return packaged;
-            }
-            String resource = NativeLibraryExtractor.resourceName(libName);
-            try {
-                packaged = NativeLibraryExtractor.extract(resource, libName, NativeLibraryExtractor::openResource,
-                    NativeLibraryExtractor.cacheRoot());
-            } catch (java.io.IOException | RuntimeException e) {
-                LOGGER.warn("Cenda library packaged as {} could not be extracted: {}", resource, e.toString());
-            }
-            return packaged;
-        }
+        return NativeLibraryLocator.locate(LIBRARY);
     }
 
     /**
@@ -527,224 +422,6 @@ public final class CendaKernels {
             return result;
         } catch (Throwable t) {
             throw new IllegalStateException("ck_mesh_chunk failed", t);
-        }
-    }
-
-    // ═══════════════════════ Worm carver ═══════════════════════
-
-    /**
-     * Creates a native terrain context (channel nodes + splines + worm state).
-     * Returns 0 when unavailable or on invalid input. Destroy with
-     * {@link #terrainDestroy}.
-     */
-    public static long terrainCreate(long seed,
-                                     int[] chSeeds, int[] chOctaves,
-                                     float[] chGain, float[] chLacunarity, float[] chFreq,
-                                     int[] chXoff, int[] chZoff,
-                                     double[] splineXs, double[] splineYs, int[] splineSizes,
-                                     float detailAmplitude) {
-        if (!AVAILABLE) {
-            return 0L;
-        }
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment ctx = (MemorySegment) TERRAIN_CREATE.invokeExact(
-                seed,
-                arena.allocateFrom(ValueLayout.JAVA_INT, chSeeds),
-                arena.allocateFrom(ValueLayout.JAVA_INT, chOctaves),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, chGain),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, chLacunarity),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, chFreq),
-                arena.allocateFrom(ValueLayout.JAVA_INT, chXoff),
-                arena.allocateFrom(ValueLayout.JAVA_INT, chZoff),
-                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, splineXs),
-                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, splineYs),
-                arena.allocateFrom(ValueLayout.JAVA_INT, splineSizes),
-                detailAmplitude);
-            return ctx.address();
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_terrain_create failed", t);
-        }
-    }
-
-    /** Destroys a terrain context. Safe on 0. */
-    public static void terrainDestroy(long ctx) {
-        if (!AVAILABLE || ctx == 0L) {
-            return;
-        }
-        try {
-            TERRAIN_DESTROY.invokeExact(MemorySegment.ofAddress(ctx));
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_terrain_destroy failed", t);
-        }
-    }
-
-    /**
-     * Runs the native worm carver for one chunk. {@code outMask} (1024 longs)
-     * receives the carve mask in java.util.BitSet.valueOf layout, bit index
-     * {@code (x<<12)|(y<<4)|z}. anchorChunks/anchors may be null when empty.
-     * Returns the number of carved cells, or negative on error/unavailable.
-     */
-    public static long carveWorms(long ctx, int chunkX, int chunkZ, int[] heights256,
-                                  int[] anchorChunks, float[] anchors, long[] outMask) {
-        if (!AVAILABLE || ctx == 0L) {
-            return -1L;
-        }
-        int nAnchors = anchorChunks == null ? 0 : anchorChunks.length / 2;
-        try {
-            MemorySegment maskSeg = scratch(0, 1024L * Long.BYTES);
-            MemorySegment anchorChunksSeg = nAnchors == 0 ? MemorySegment.NULL
-                : scratchFrom(1, anchorChunks);
-            MemorySegment anchorsSeg = nAnchors == 0 ? MemorySegment.NULL
-                : scratchFrom(2, anchors);
-            long carved = (long) CARVE_WORMS.invokeExact(
-                MemorySegment.ofAddress(ctx), chunkX, chunkZ,
-                scratchFrom(3, heights256),
-                nAnchors, anchorChunksSeg, anchorsSeg, maskSeg);
-            if (carved >= 0) {
-                MemorySegment.copy(maskSeg, ValueLayout.JAVA_LONG, 0L, outMask, 0, 1024);
-            }
-            return carved;
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_carve_worms failed", t);
-        }
-    }
-
-    // ═══════════════════ Fused chunk generator ═══════════════════
-
-    /**
-     * Creates a fused chunk-generation context (terrain channels/splines +
-     * cave-density node + block/biome tables). Layouts and semantics per
-     * cenda/kernels.h (ck_chunkgen_create). Returns 0 when unavailable or on
-     * invalid input. Destroy with {@link #chunkGenDestroy}.
-     */
-    public static long chunkGenCreate(long seed,
-                                      int[] chSeeds, int[] chOctaves,
-                                      float[] chGain, float[] chLacunarity, float[] chFreq,
-                                      int[] chXoff, int[] chZoff,
-                                      double[] splineXs, double[] splineYs, int[] splineSizes,
-                                      float detailAmplitude,
-                                      int[] densitySeeds, int[] densityOctaves,
-                                      float[] densityGain, float[] densityLacunarity,
-                                      float[] densityFreq,
-                                      double[] cheeseSplineXs, double[] cheeseSplineYs,
-                                      int[] cheeseSplineSizes,
-                                      int[] blockIds,
-                                      short[] biomeSurfaceId, short[] biomeSubsurfaceId,
-                                      float[] biomeCaveIntensity, float[] biomeOverhangIntensity,
-                                      byte[] biomeFlags,
-                                      int magmaFeatureHash, float magmaChance,
-                                      byte[] opacityTable) {
-        if (!AVAILABLE) {
-            return 0L;
-        }
-        int nBiomes = biomeSurfaceId.length;
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment ctx = (MemorySegment) CHUNKGEN_CREATE.invokeExact(
-                seed,
-                arena.allocateFrom(ValueLayout.JAVA_INT, chSeeds),
-                arena.allocateFrom(ValueLayout.JAVA_INT, chOctaves),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, chGain),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, chLacunarity),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, chFreq),
-                arena.allocateFrom(ValueLayout.JAVA_INT, chXoff),
-                arena.allocateFrom(ValueLayout.JAVA_INT, chZoff),
-                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, splineXs),
-                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, splineYs),
-                arena.allocateFrom(ValueLayout.JAVA_INT, splineSizes),
-                detailAmplitude,
-                arena.allocateFrom(ValueLayout.JAVA_INT, densitySeeds),
-                arena.allocateFrom(ValueLayout.JAVA_INT, densityOctaves),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, densityGain),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, densityLacunarity),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, densityFreq),
-                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, cheeseSplineXs),
-                arena.allocateFrom(ValueLayout.JAVA_DOUBLE, cheeseSplineYs),
-                arena.allocateFrom(ValueLayout.JAVA_INT, cheeseSplineSizes),
-                arena.allocateFrom(ValueLayout.JAVA_INT, blockIds),
-                nBiomes,
-                arena.allocateFrom(ValueLayout.JAVA_SHORT, biomeSurfaceId),
-                arena.allocateFrom(ValueLayout.JAVA_SHORT, biomeSubsurfaceId),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, biomeCaveIntensity),
-                arena.allocateFrom(ValueLayout.JAVA_FLOAT, biomeOverhangIntensity),
-                arena.allocateFrom(ValueLayout.JAVA_BYTE, biomeFlags),
-                magmaFeatureHash, magmaChance,
-                arena.allocateFrom(ValueLayout.JAVA_BYTE, opacityTable),
-                opacityTable.length);
-            return ctx.address();
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_chunkgen_create failed", t);
-        }
-    }
-
-    /** Destroys a fused chunk-generation context. Safe on 0. */
-    public static void chunkGenDestroy(long ctx) {
-        if (!AVAILABLE || ctx == 0L) {
-            return;
-        }
-        try {
-            CHUNKGEN_DESTROY.invokeExact(MemorySegment.ofAddress(ctx));
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_chunkgen_destroy failed", t);
-        }
-    }
-
-    /**
-     * Generates one chunk's full block volume natively (worm + cavern carving,
-     * formations, cave density, biome fill, sky heightmap). {@code heights256}
-     * and {@code biomes256} are indexed {@code [x*16+z]} (biomes as BiomeType
-     * ordinals); {@code outBlocks} (65536 shorts) receives ids in mesher/CCO
-     * layout {@code y*256 + z*16 + x}; {@code outHeightmap} (256 ints,
-     * {@code [z*16+x]}, nullable) receives topOpaqueY+1 per column.
-     * Returns the non-air block count, or negative on error/unavailable.
-     *
-     * <p>The native kernel emits a FIXED 256-block-tall volume, so this entry
-     * point only serves worlds of that height. It is currently unused — the
-     * diffusion terrain source replaced the fused generator on this branch,
-     * where {@code WORLD_HEIGHT} is 1024 — and the explicit length check below
-     * exists so re-enabling it against a taller world fails loudly instead of
-     * silently filling only the bottom 256 blocks of every column.
-     */
-    /**
-     * @param extraCarveMask 1024 longs (bit = {@code (x<<12)|(y<<4)|z}) OR'd into the
-     *                       kernel's own carve mask, or null for none
-     */
-    public static long generateChunk(long ctx, int chunkX, int chunkZ,
-                                     int[] heights256, int[] biomes256,
-                                     long[] extraCarveMask,
-                                     short[] outBlocks, int[] outHeightmap) {
-        if (outBlocks.length != 65536) {
-            throw new IllegalArgumentException(
-                "ck_generate_chunk emits a fixed 16x256x16 volume; outBlocks must be 65536 shorts, was "
-                    + outBlocks.length);
-        }
-        if (!AVAILABLE || ctx == 0L) {
-            return -1L;
-        }
-        try {
-            // invokeExact matches the STATIC types of its arguments, so the null case has to
-            // be a MemorySegment local — a ternary here widens to Object and throws
-            // WrongMethodTypeException at the call.
-            MemorySegment maskSeg = extraCarveMask == null
-                ? MemorySegment.NULL
-                : scratchFrom(4, extraCarveMask);
-            MemorySegment blocksSeg = scratch(0, 65536L * Short.BYTES);
-            MemorySegment heightmapSeg = outHeightmap == null ? MemorySegment.NULL
-                : scratch(1, 256L * Integer.BYTES);
-            long nonAir = (long) GENERATE_CHUNK.invokeExact(
-                MemorySegment.ofAddress(ctx), chunkX, chunkZ,
-                scratchFrom(2, heights256),
-                scratchFrom(3, biomes256),
-                maskSeg,
-                blocksSeg, heightmapSeg);
-            if (nonAir >= 0) {
-                MemorySegment.copy(blocksSeg, ValueLayout.JAVA_SHORT, 0L, outBlocks, 0, 65536);
-                if (outHeightmap != null) {
-                    MemorySegment.copy(heightmapSeg, ValueLayout.JAVA_INT, 0L, outHeightmap, 0, 256);
-                }
-            }
-            return nonAir;
-        } catch (Throwable t) {
-            throw new IllegalStateException("ck_generate_chunk failed", t);
         }
     }
 

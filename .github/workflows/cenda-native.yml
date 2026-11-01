@@ -1,13 +1,17 @@
 # Builds the Cenda native library (kernels + the mandatory Lua and Yoga UI hosts) on every
 # supported platform, runs its native tests, then proves the Java side loads it through the ABI
 # handshake and runs the UI scripting suites against it (#292). The UI suites fail, never skip,
-# without the library, so a platform that cannot build or load it turns this job red.
+# without the library, so a platform that cannot build or load it turns this job red. Stonebreak's
+# own worldgen library (stonebreak-game/native, #386) is built and tested here too: it shares the
+# engine's FastNoise2 pin and noise_nodes.hpp, so an engine-side change can break it.
 name: cenda-native
 
 on:
   push:
     paths:
       - "openmason-engine/cenda/**"
+      - "stonebreak-game/native/**"
+      - "stonebreak-game/src/main/java/com/stonebreak/world/generation/**"
       - "openmason-engine/src/main/java/com/openmason/engine/cenda/**"
       - "openmason-engine/src/main/java/com/openmason/engine/ui/**"
       - "openmason-engine/src/main/resources/com/openmason/engine/ui/**"
@@ -18,6 +22,8 @@ on:
   pull_request:
     paths:
       - "openmason-engine/cenda/**"
+      - "stonebreak-game/native/**"
+      - "stonebreak-game/src/main/java/com/stonebreak/world/generation/**"
       - "openmason-engine/src/main/java/com/openmason/engine/cenda/**"
       - "openmason-engine/src/main/java/com/openmason/engine/ui/**"
       - "openmason-engine/src/main/java/com/openmason/engine/format/omui/**"
@@ -57,6 +63,19 @@ jobs:
         timeout-minutes: 10
         run: ctest --preset release
 
+      - name: Configure Stonebreak worldgen natives (release)
+        working-directory: stonebreak-game/native
+        run: cmake --preset release -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/stonebreak-native-deps"
+
+      - name: Build Stonebreak worldgen natives
+        working-directory: stonebreak-game/native
+        run: cmake --build --preset release --parallel
+
+      - name: Native tests (worldgen)
+        working-directory: stonebreak-game/native
+        timeout-minutes: 10
+        run: ctest --preset release
+
       - name: Skija runtime libraries (Linux)
         # libskija.so links libEGL/libGL even for CPU raster surfaces; the bare runner has neither.
         if: runner.os == 'Linux'
@@ -75,9 +94,19 @@ jobs:
           -Dtest='CendaLua*Test,CendaFlexTest,UiNativeHealthTest,Script*Test,MinigameBenchmarkTest,UiApiSurfaceTest'
           -Dsurefire.failIfNoSpecifiedTests=false
 
+      - name: Java worldgen handshake + parity suites
+        # requireNative turns a library that cannot load into a failure instead of a skip.
+        run: >
+          mvn -B -q -pl stonebreak-game -am test
+          -Dtest='WorldgenNativesTest,WormCarverParityTest,FusedChunkGenParityTest,NativeCarverIntegrationTest'
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dstonebreak.worldgen.requireNative=true
+
       - name: Upload test reports on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: surefire-${{ matrix.os }}
-          path: openmason-engine/target/surefire-reports/
+          path: |
+            openmason-engine/target/surefire-reports/
+            stonebreak-game/target/surefire-reports/

@@ -1,12 +1,16 @@
-package com.openmason.engine.net.protocol;
+package com.stonebreak.network;
 
 /**
- * Wire protocol version. Bumped whenever the packet layout changes incompatibly; the
+ * Stonebreak's wire protocol version. Bumped whenever the packet layout changes incompatibly; the
  * server rejects clients whose advertised version differs from {@link #CURRENT} during
  * the handshake.
  *
  * <p>Reset to {@code 1} for the Netty rewrite — the wire format is entirely new, so the
  * legacy version counter does not carry over.
+ *
+ * <p>Game-owned since #386: the history below is a list of Stonebreak packets. The engine's
+ * {@code net} framework (codecs, registry, pipeline, limits) has no version of its own — a game
+ * puts its version in its handshake packet and checks it in its handshake handler.
  */
 public final class ProtocolVersion {
 

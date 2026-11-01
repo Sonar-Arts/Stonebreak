@@ -138,14 +138,14 @@ public final class NoiseRouter {
     /**
      * Creates the native carver terrain context: the four shape channels
      * (c, pv, e, d) with EXACTLY this router's parameters, plus the height
-     * splines. Returns 0 when the native kernels are unavailable. The caller
+     * splines. Returns 0 when the game's worldgen natives are unavailable. The caller
      * owns the handle (destroy via {@link TerrainNoise#destroyTerrainOnCollect}).
      */
     public static long createCarverTerrainContext(long seed,
                                                   double[] splineXs, double[] splineYs,
                                                   int[] splineSizes, float detailAmplitude) {
         ShapeChannelParams ch = shapeChannelParams(seed);
-        return com.openmason.engine.cenda.CendaKernels.terrainCreate(seed,
+        return com.stonebreak.world.generation.WorldgenNatives.terrainCreate(seed,
             ch.seeds(), ch.octaves(), ch.gain(), ch.lacunarity(), ch.freq(), ch.xOff(), ch.zOff(),
             splineXs, splineYs, splineSizes, detailAmplitude);
     }

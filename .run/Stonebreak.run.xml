@@ -11,6 +11,8 @@
     <method v="2">
       <!-- Rebuilds Cenda (openmason-engine/pom.xml, exec:exec@cenda-kernels) before each launch. -->
       <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/openmason-engine/pom.xml" goal="exec:exec@cenda-kernels" />
+      <!-- Rebuilds Stonebreak's own worldgen natives (stonebreak-game/native/pom.xml, exec:exec@worldgen-natives, #386). -->
+      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/stonebreak-game/native/pom.xml" goal="exec:exec@worldgen-natives" />
       <option name="Make" enabled="true" />
     </method>
   </configuration>

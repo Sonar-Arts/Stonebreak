@@ -15,6 +15,11 @@
         <module>openmason-tool</module>
         <!-- Stonebreak's Open Mason plugin (#382): depends on the tool and the game -->
         <module>openmason-plugin-stonebreak</module>
+        <!-- Launch glue for Stonebreak's worldgen natives (#386): pom packaging, no dependencies, no
+             build output. A reactor module so IntelliJ imports it — the Stonebreak run
+             configuration's Maven before-launch task (exec:exec@worldgen-natives) only runs
+             against an imported Maven project, and silently stops the launch otherwise. -->
+        <module>stonebreak-game/native</module>
     </modules>
 
     <properties>

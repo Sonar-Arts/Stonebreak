@@ -1,7 +1,9 @@
 /* Shared FastNoise2 node construction — the single place that encodes the
  * "frequency inside the generator's feature scale + amplitude-sum normalized
- * fbm" contract. kernels.cpp (the FFM noise ABI) and carver.cpp (terrain
- * context) must build IDENTICAL node graphs so channel values agree. */
+ * fbm" contract. kernels.cpp (the FFM noise ABI) and any consumer that builds
+ * its own channels natively (the game's worldgen library, #386) must build
+ * IDENTICAL node graphs from the same pinned FastNoise2 (cmake/CendaFastNoise2.cmake)
+ * so channel values agree. Public so out-of-tree native libraries can include it. */
 #pragma once
 
 #include <FastNoise/FastNoise.h>

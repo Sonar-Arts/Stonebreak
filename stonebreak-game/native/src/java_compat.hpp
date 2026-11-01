@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace cenda {
+namespace stonebreak {
 
 class JavaRandom {
 public:
@@ -127,4 +127,4 @@ inline uint64_t splitmix64Finalize(uint64_t h) {
     return h;
 }
 
-} // namespace cenda
+} // namespace stonebreak

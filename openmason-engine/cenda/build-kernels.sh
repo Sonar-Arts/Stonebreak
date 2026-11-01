@@ -95,8 +95,8 @@ if [[ -f "$HEADER" && -f "$BINDING" ]]; then
   JAVA_ABI="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$BINDING" | head -1)"
   if [[ -n "$NATIVE_ABI" && -n "$JAVA_ABI" && "$NATIVE_ABI" != "$JAVA_ABI" ]]; then
     warn "ABI mismatch: kernels.h exports $NATIVE_ABI but CendaKernels.EXPECTED_ABI is $JAVA_ABI."
-    warn "CendaKernels will REJECT the library and every native path (noise, fused chunk gen,"
-    warn "mesher, carver, zstd codec) will silently fall back to Java. Fix one side to match."
+    warn "CendaKernels will REJECT the library and every native path (noise, mesher, zstd codec)"
+    warn "will silently fall back to Java. Fix one side to match."
     exit 0
   fi
 fi
