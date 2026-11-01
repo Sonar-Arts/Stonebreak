@@ -14,7 +14,7 @@ updates:
     commit-message:
       prefix: "deps"
     assignees:
-      - "Cheese_Yacht"
+      - "WorldWeaverCY"
     # One weekly PR for minor/patch bumps; major versions arrive as separate PRs
     groups:
       all-minor-and-patch:
@@ -36,7 +36,7 @@ updates:
     commit-message:
       prefix: "ci"
     assignees:
-      - "Cheese_Yacht"
+      - "WorldWeaverCY"
     groups:
       actions:
         patterns:
