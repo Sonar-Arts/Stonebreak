@@ -5,6 +5,7 @@ Driven by run-tests.sh; can also be used standalone. Stdlib only.
 
 Subcommands:
   list                          print the system catalog (validates the registry)
+  modules                       print every test module, in build order
   resolve   --scope SCOPE       emit MODULES/TESTS (or GROUPS) lines for the runner
   summarize --scope SCOPE [--update-baseline] [--slow] [--report FILE]
                                 parse surefire XML reports, print the concise
@@ -36,9 +37,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-MODULES = ["openmason-engine/engine-core", "openmason-engine/engine-ui", "openmason-engine/engine-voxel",
-           "openmason-engine/samples/core-consumer",
-           "stonebreak-game", "openmason-tool", "openmason-plugin-stonebreak"]
+PROJECT = "Stonebreak"
+STATE_NAME = "stonebreak-tests"
+MODULES = ["stonebreak-game",
+           "openmason-plugin-stonebreak"]
 TAG_SCOPES = ("integration", "regression")
 REGISTRY = HERE / "systems.map"
 SKIP_IGNORE = HERE / "skip-ignore.list"
@@ -182,7 +184,7 @@ def state_dir():
         base = str(Path.home() / "Library" / "Application Support")
     else:
         base = os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local" / "state"))
-    return Path(base) / "stonebreak-tests"
+    return Path(base) / STATE_NAME
 
 
 def baseline_path():
@@ -206,7 +208,7 @@ def load_baseline():
 def write_baseline(cases):
     path = baseline_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [f"# Stonebreak test baseline — written {date.today().isoformat()} by run-tests.sh all --update-baseline"]
+    lines = [f"# {PROJECT} test baseline — written {date.today().isoformat()} by run-tests.sh all --update-baseline"]
     for (cls, method), rec in sorted(cases.items()):
         lines.append(f"{cls}\t{method}\t{rec['runs']}\t{rec['skipped']}")
     path.write_text("\n".join(lines) + "\n")
@@ -323,7 +325,7 @@ def write_markdown(path, result):
     icon = "\u2705" if verdict == "PASS" else "\u274c"
     t = result["totals"]
     lines = [
-        f"## {icon} Stonebreak tests: {verdict}",
+        f"## {icon} {PROJECT} tests: {verdict}",
         "",
         f"**Scope:** `{result['scope']}` &nbsp; **Revision:** {git_revision()}"
         f" &nbsp; **Date:** {date.today().isoformat()}",
@@ -392,6 +394,10 @@ def cmd_list(_args):
         print(f"{system:<14} {', '.join(buckets):<38} {count:>7}")
     print(f"{'TOTAL':<14} {'':<38} {total:>7}")
     print(f"\ncategories (via @Tag): {', '.join(TAG_SCOPES)}")
+
+
+def cmd_modules(_args):
+    print(" ".join(MODULES))
 
 
 def cmd_resolve(args):
@@ -533,6 +539,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list")
+    sub.add_parser("modules")
     p_resolve = sub.add_parser("resolve")
     p_resolve.add_argument("--scope", required=True)
     p_sum = sub.add_parser("summarize")
@@ -549,6 +556,7 @@ def main():
     args = parser.parse_args()
     {
         "list": cmd_list,
+        "modules": cmd_modules,
         "resolve": cmd_resolve,
         "summarize": cmd_summarize,
         "infra-report": cmd_infra_report,

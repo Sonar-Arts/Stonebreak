@@ -45,7 +45,7 @@ LEDGER="$OUT/tier$TIER/$LABEL.json"
 mkdir -p "$OUT/tier$TIER"
 
 echo "[chunk-lab] tier $TIER label '$LABEL' gl=$GL ${EXTRA[*]:-}"
-( cd "$ROOT" && mvn -q -pl openmason-engine/engine-core,openmason-engine/engine-voxel,stonebreak-game -am test \
+( cd "$ROOT" && mvn -q -pl stonebreak-game -am test \
     -Dtest=ChunkFootprintLabTest -Dsurefire.failIfNoSpecifiedTests=false \
     -DfailIfNoTests=false -Dstonebreak.bench=true \
     -Dlab.tier="$TIER" -Dlab.label="$LABEL" -Dlab.gl="$GL" -Dlab.out="$OUT" \

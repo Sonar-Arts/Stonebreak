@@ -25,10 +25,10 @@
     </properties>
 
     <dependencies>
+        <!-- The Open Mason tool (Sonar-Arts/OpenMason, #388): its plain jar, version from the root POM -->
         <dependency>
-            <groupId>com.stonebreak</groupId>
+            <groupId>com.openmason</groupId>
             <artifactId>openmason-tool</artifactId>
-            <version>1.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.stonebreak</groupId>

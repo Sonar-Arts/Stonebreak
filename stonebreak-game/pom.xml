@@ -17,25 +17,19 @@
     <description>A 3D voxel-based sandbox game inspired by Minecraft</description>
 
     <dependencies>
-        <!-- OpenMason Engine for shared rendering and format support -->
-        <!-- Open Mason engine (#387 split): all three engine modules -->
+        <!-- Open Mason engine (Sonar-Arts/OpenMason, #388): all three engine modules, at the root POM's
+             ${openmason.version} -->
         <dependency>
-            <groupId>com.stonebreak</groupId>
+            <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-core</artifactId>
-            <version>1.0-SNAPSHOT</version>
-            <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>com.stonebreak</groupId>
+            <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-ui</artifactId>
-            <version>1.0-SNAPSHOT</version>
-            <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>com.stonebreak</groupId>
+            <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-voxel</artifactId>
-            <version>1.0-SNAPSHOT</version>
-            <scope>compile</scope>
         </dependency>
 
         <!-- LWJGL core -->
@@ -245,7 +239,7 @@
                         </goals>
                         <configuration>
                             <!-- Attach the uber-jar as -shaded instead of replacing the main
-                                 artifact: openmason-tool depends on this module, and compiling it
+                                 artifact: the Open Mason plugin depends on this module, and compiling it
                                  against the uber-jar puts the bundled engine/Netty/SLF4J packages
                                  in both their own modules and stonebreak.game (split packages). -->
                             <shadedArtifactAttached>true</shadedArtifactAttached>

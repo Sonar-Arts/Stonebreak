@@ -35,6 +35,8 @@ release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
 .mvn/timing.properties
+# Local Open Mason version override, written by scripts/openmason-local.sh --use (#388)
+.mvn/maven.config
 .mvn/wrapper/maven-wrapper.jar
 
 # KDE Dolphin folder settings
@@ -174,3 +176,6 @@ crash_log.txt
 
 # F2 screenshots, written to the working directory by the game
 /screenshots/
+
+# Python bytecode (Testing/harness.py)
+__pycache__/

@@ -3,9 +3,11 @@
 # Builds Stonebreak's own native library (libstonebreak_worldgen: the worm carver and the fused
 # chunk generator, #386) from the CURRENT sources.
 #
-# Wired into the "Stonebreak" IntelliJ run configuration as a before-launch step (the game POM's
-# exec:exec@worldgen-natives), next to the engine's cenda/build-kernels.sh, so launching the game
-# always runs against a lib built from the checked-out tree. Also safe to run by hand:
+# Wired into the "Stonebreak" IntelliJ run configuration as a before-launch step (this directory's
+# glue POM: `initialize exec:exec@worldgen-natives`; initialize unpacks Open Mason's Cenda SDK into
+# target/openmason-cenda-sdk, #388), so launching the game always runs against a lib built from the
+# checked-out tree. Also safe to run by hand (after one `mvn -f stonebreak-game/native/pom.xml
+# initialize` from the repository root):
 #
 #     stonebreak-game/native/build-worldgen.sh [debug|release|asan]
 #
@@ -40,7 +42,15 @@ if [[ -z "$CMAKE" ]]; then
 fi
 if [[ -z "$CMAKE" ]]; then
   warn "cmake not found — skipping worldgen natives; chunks generate on the Java path."
-  warn "run 'openmason-engine/cenda/setup-cenda.sh' to install the toolchain."
+  warn "install CMake 3.25+ and a C++23 compiler (Open Mason's openmason-engine/cenda/setup-cenda.sh does both)."
+  exit 0
+fi
+
+# The engine-side inputs (Open Mason's Cenda SDK) must be unpacked first, unless a configured cache
+# already points STONEBREAK_ENGINE_CENDA_DIR somewhere else (the dev loop's checkout override).
+if [[ ! -f "$BUILD_DIR/CMakeCache.txt" && ! -f "$HERE/target/openmason-cenda-sdk/cmake/CendaFastNoise2.cmake" ]]; then
+  warn "Open Mason's Cenda SDK is not unpacked — skipping worldgen natives; chunks generate on the Java path."
+  warn "run 'mvn -f stonebreak-game/native/pom.xml initialize' from the repository root (the run configuration does)."
   exit 0
 fi
 

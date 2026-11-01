@@ -1,15 +1,19 @@
-# Compiles and packages the whole reactor (the engine modules, stonebreak-game, openmason-tool, the plugin) on
-# every supported platform, so a change that breaks the build on one OS shows up before merge.
+# Compiles and packages the reactor (stonebreak-game, the Open Mason plugin, the worldgen glue) on every
+# supported platform, so a change that breaks the build on one OS shows up before merge.
 # Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh), and the
 # shaded jars are not uploaded or released. The root POM's OS-activated profiles pick the
 # LWJGL/Skija natives for each runner.
 #
-# Cenda is built first (release preset) so engine-core's POM packages it as natives/<platform>/ and
-# the shaded game and tool jars carry it: UI scripting and layout have no Java fallback, so a jar
-# without the library is broken, and this job fails rather than package one. Stonebreak's own
-# worldgen library (stonebreak-game/native, #386) is built next and packaged into the game jar the
-# same way; it has a Java fallback, but a release without it generates on the slow path, so the
-# job checks it too. The native tests and the Java ABI handshake suites stay in cenda-native.yml.
+# Open Mason (the engine and the tool) comes from GitHub Packages at the root POM's openmason.version
+# (#388; for now a snapshot following OpenMason main, so every mvn call here passes -U to fetch the
+# newest one and the jars and the Cenda SDK come from the same publish); its engine-core jar already carries every platform's Cenda library, so the shaded game jar
+# gets it from there, and this job fails if it does not (UI scripting and layout have no Java
+# fallback). Stonebreak's own worldgen library (stonebreak-game/native, #386) is built here against
+# the Open Mason Cenda SDK of the same version and packaged into the game jar; it has a Java
+# fallback, but a release without it generates on the slow path, so the job checks it too.
+#
+# Reading GitHub Packages needs a token even for public packages: the workflow token, or the
+# OPENMASON_PACKAGES_TOKEN secret (a read:packages token) if the workflow token is refused.
 name: build
 
 on:
@@ -28,6 +32,7 @@ on:
 # Checkout + build only: the job never writes to the repo, issues or packages.
 permissions:
   contents: read
+  packages: read
 
 # A newer push to the same branch/PR supersedes the running build.
 concurrency:
@@ -51,18 +56,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure Cenda (release)
-        working-directory: openmason-engine/cenda
-        # FETCHCONTENT_BASE_DIR overrides the preset's $HOME cache, which Windows runners lack.
-        # Tests are cenda-native.yml's job, so skip building them here.
-        run: >
-          cmake --preset release
-          -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/cenda-deps"
-          -DBUILD_TESTING=OFF
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
 
-      - name: Build Cenda
-        working-directory: openmason-engine/cenda
-        run: cmake --build --preset release --parallel
+      - name: Unpack the Open Mason Cenda SDK
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: mvn -B -ntp -U -s .mvn/settings.xml -f stonebreak-game/native/pom.xml initialize
 
       - name: Configure Stonebreak worldgen natives (release)
         working-directory: stonebreak-game/native
@@ -75,19 +78,16 @@ jobs:
         working-directory: stonebreak-game/native
         run: cmake --build --preset release --parallel
 
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-
-      - name: Build Stonebreak + Open Mason
+      - name: Build Stonebreak + the Open Mason plugin
         # -DskipTests still compiles the test sources, so broken tests fail the build.
-        run: mvn -B -ntp -s .mvn/settings.xml package -DskipTests
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: mvn -B -ntp -U -s .mvn/settings.xml package -DskipTests
 
       - name: Verify Cenda + worldgen natives are packaged
-        # The POM's copy-resources step skips a missing library silently (local tool-only builds),
-        # so check every jar that ships it. The platform dir must match cenda.natives.dir.
+        # The Cenda library arrives inside the published engine-core jar; the worldgen library is
+        # copied by the game POM, which skips a missing one silently. The platform dir must match
+        # cenda.natives.dir.
         run: |
           case "${{ runner.os }}" in
             Linux) os=linux; lib=libcenda_kernels.so ;;
@@ -101,9 +101,7 @@ jobs:
           esac
           entry="natives/$os-$arch/$lib"
           status=0
-          for jar in openmason-engine/engine-core/target/openmason-engine-core-*.jar \
-                     stonebreak-game/target/stonebreak-game-*-shaded.jar \
-                     openmason-tool/target/openmason-tool-*.jar; do
+          for jar in stonebreak-game/target/stonebreak-game-*-shaded.jar; do
             case "$jar" in *-sources.jar|*-javadoc.jar|*/original-*) continue ;; esac
             if [[ ! -f "$jar" ]]; then
               echo "::error::expected jar not found: $jar"; status=1

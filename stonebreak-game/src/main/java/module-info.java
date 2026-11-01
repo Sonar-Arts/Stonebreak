@@ -100,7 +100,7 @@ module stonebreak.game {
     exports com.stonebreak.network to org.junit.platform.commons;
     opens com.stonebreak.network to org.junit.platform.commons;
 
-    // Export and open remaining MMS packages (most moved to openmason-engine)
+    // Export and open remaining MMS packages (most moved to the Open Mason engine)
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;

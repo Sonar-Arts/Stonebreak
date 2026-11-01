@@ -39,7 +39,7 @@ public class ChatDocumentGateTest {
     public static void requireLua() {
         if (!CendaLua.isAvailable()) {
             assumeTrue(Boolean.getBoolean("ui.script.allowMissingNative"), "Cenda Lua host unavailable");
-            throw new AssertionError("Cenda Lua host unavailable (build openmason-engine/cenda/build-kernels.sh): "
+            throw new AssertionError("Cenda Lua host unavailable (the Open Mason engine-core jar has no Cenda library for this platform: scripts/openmason-local.sh): "
                 + com.openmason.engine.ui.script.UiNativeHealth.check().problems());
         }
     }

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 # Stonebreak's own native library (#386): the worldgen kernels (worm carver + fused chunk
 # generator) that used to live in the engine's Cenda kernels. The engine keeps noise, the mesher,
 # zstd and the UI hosts; this library only builds Stonebreak's generator on top of the engine's
-# noise contract (the shared FastNoise2 pin + cenda/noise_nodes.hpp), so channel values stay
+# noise contract (the shared FastNoise2 pin + cenda/noise_nodes.hpp, from Open Mason's Cenda SDK), so channel values stay
 # bit-identical to the engine's ck_gen_grid_*.
 #
 #     cmake --preset release && cmake --build --preset release && ctest --preset release
@@ -19,11 +19,31 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(STONEBREAK_ENGINE_CENDA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../openmason-engine/cenda"
-        CACHE PATH "The engine's Cenda project (shared FastNoise2 pin + noise_nodes.hpp)")
+# The engine's native build inputs come from Open Mason (Sonar-Arts/OpenMason, #388): by default the
+# Cenda SDK of the engine version the game runs with, unpacked by Maven (pom.xml, initialize). For
+# the cross-repo dev loop either install your OpenMason checkout with scripts/openmason-local.sh
+# (the SDK follows it), or point this at the checkout's cenda dir directly
+# (-DSTONEBREAK_ENGINE_CENDA_DIR=<OpenMason>/openmason-engine/cenda); both have the same layout.
+set(_sbw_default_sdk "${CMAKE_CURRENT_SOURCE_DIR}/target/openmason-cenda-sdk")
+set(STONEBREAK_ENGINE_CENDA_DIR "${_sbw_default_sdk}"
+        CACHE PATH "Open Mason's Cenda SDK or cenda dir (shared FastNoise2 pin + noise_nodes.hpp)")
+# Build dirs configured before #388 cache the in-repo engine path, which no longer exists: move them
+# to the unpacked SDK instead of failing (a failed configure means a silent Java fallback at launch).
+if(NOT EXISTS "${STONEBREAK_ENGINE_CENDA_DIR}/cmake/CendaFastNoise2.cmake"
+        AND EXISTS "${_sbw_default_sdk}/cmake/CendaFastNoise2.cmake")
+    message(STATUS "STONEBREAK_ENGINE_CENDA_DIR (${STONEBREAK_ENGINE_CENDA_DIR}) is gone; using ${_sbw_default_sdk}")
+    set(STONEBREAK_ENGINE_CENDA_DIR "${_sbw_default_sdk}" CACHE PATH
+            "Open Mason's Cenda SDK or cenda dir (shared FastNoise2 pin + noise_nodes.hpp)" FORCE)
+endif()
 cmake_path(ABSOLUTE_PATH STONEBREAK_ENGINE_CENDA_DIR NORMALIZE)
 if(NOT EXISTS "${STONEBREAK_ENGINE_CENDA_DIR}/cmake/CendaFastNoise2.cmake")
-    message(FATAL_ERROR "STONEBREAK_ENGINE_CENDA_DIR (${STONEBREAK_ENGINE_CENDA_DIR}) is not the engine's cenda dir")
+    message(FATAL_ERROR "STONEBREAK_ENGINE_CENDA_DIR (${STONEBREAK_ENGINE_CENDA_DIR}) holds no Open Mason "
+            "Cenda SDK. Unpack it with `mvn -f stonebreak-game/native/pom.xml initialize` (from the "
+            "repository root), or pass -DSTONEBREAK_ENGINE_CENDA_DIR=<OpenMason>/openmason-engine/cenda.")
+endif()
+if(EXISTS "${STONEBREAK_ENGINE_CENDA_DIR}/cenda-sdk.properties")
+    file(STRINGS "${STONEBREAK_ENGINE_CENDA_DIR}/cenda-sdk.properties" _sbw_sdk_version REGEX "^version=")
+    message(STATUS "Open Mason Cenda SDK: ${_sbw_sdk_version}")
 endif()
 list(APPEND CMAKE_MODULE_PATH "${STONEBREAK_ENGINE_CENDA_DIR}/cmake")
 

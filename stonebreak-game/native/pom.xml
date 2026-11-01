@@ -5,7 +5,14 @@
      configuration's before-launch step (exec:exec@worldgen-natives) works from a clean checkout,
      exactly like the engine's exec:exec@cenda-kernels. It IS a reactor module (root POM) only so
      IntelliJ imports it — a Maven before-launch task against an unimported POM stops the launch.
-     Packaging pom: a reactor build runs nothing here. The parent supplies ${cenda.bash}. -->
+     Packaging pom. The parent supplies ${cenda.bash} and ${openmason.version}.
+
+     Since #388 it also fetches the library's engine-side inputs: the Open Mason Cenda SDK
+     (com.openmason:openmason-cenda:${openmason.version}:zip:sdk = the shared FastNoise2 pin,
+     CendaDepsGuard and noise_nodes.hpp) is unpacked into target/openmason-cenda-sdk at initialize,
+     which CMakeLists.txt reads by default. Same version as the engine-core jar the game runs with,
+     so the worldgen noise stays bit-identical to libcenda_kernels'. Run it as
+     `mvn -f stonebreak-game/native/pom.xml initialize` before a manual cmake configure. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -24,6 +31,36 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <id>cenda-sdk</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.openmason</groupId>
+                                    <artifactId>openmason-cenda</artifactId>
+                                    <version>${openmason.version}</version>
+                                    <classifier>sdk</classifier>
+                                    <type>zip</type>
+                                    <outputDirectory>${project.build.directory}/openmason-cenda-sdk</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                            <!-- Re-unpack whenever the version changes (snapshots: on every new build). -->
+                            <overWriteReleases>true</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                            <markersDirectory>${project.build.directory}/dependency-maven-plugin-markers</markersDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>

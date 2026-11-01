@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class ScriptedScreenGameTest {
 
-    static final Path SAMPLE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/script/scripted_pause.omui");
+    static final Path SAMPLE = Path.of("src/test/resources/openmason-fixtures/ui/script/scripted_pause.omui");
 
     private static final class FakeServices implements GameUiHost.Services {
         final List<String> calls = new ArrayList<>();
@@ -57,7 +57,7 @@ class ScriptedScreenGameTest {
         // UI scripting has no fallback: fail, never skip silently, without the native library (#292).
         if (!CendaLua.isAvailable()) {
             assumeTrue(Boolean.getBoolean("ui.script.allowMissingNative"), "Cenda Lua host unavailable");
-            throw new AssertionError("Cenda Lua host unavailable (build openmason-engine/cenda/build-kernels.sh): "
+            throw new AssertionError("Cenda Lua host unavailable (the Open Mason engine-core jar has no Cenda library for this platform: scripts/openmason-local.sh): "
                 + com.openmason.engine.ui.script.UiNativeHealth.check().problems());
         }
         assumeTrue(Files.exists(SAMPLE), "engine sample missing: " + SAMPLE.toAbsolutePath());

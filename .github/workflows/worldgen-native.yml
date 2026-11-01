@@ -1,0 +1,89 @@
+# Builds Stonebreak's own worldgen library (stonebreak-game/native, #386) on every supported platform
+# against the Open Mason Cenda SDK of the engine version Stonebreak pins (#388: the shared FastNoise2
+# pin + noise_nodes.hpp), runs its native tests, then proves the Java side loads it through the
+# SBW_ABI_VERSION handshake and still generates bit-identical chunks next to the published engine-core
+# jar's libcenda_kernels. requireNative turns a library that cannot load into a failure, never a skip.
+#
+# The engine's own native CI (Cenda kernels, the Lua and Yoga hosts) lives in Sonar-Arts/OpenMason.
+name: worldgen-native
+
+on:
+  push:
+    paths:
+      - "stonebreak-game/native/**"
+      - "stonebreak-game/src/main/java/com/stonebreak/world/generation/**"
+      - "pom.xml"
+      - ".github/workflows/worldgen-native.yml"
+  pull_request:
+    paths:
+      - "stonebreak-game/native/**"
+      - "stonebreak-game/src/main/java/com/stonebreak/world/generation/**"
+      - "pom.xml"
+      - ".github/workflows/worldgen-native.yml"
+  # Stonebreak follows the OpenMason main snapshot for now, so an engine-side change (FastNoise2 pin,
+  # noise_nodes.hpp, CendaKernels) can break worldgen parity without any commit here: check daily.
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+# Checkout + build + test only: the job never writes to the repo, issues or packages.
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Reading GitHub Packages needs a token even for public packages (see build.yml).
+      GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Unpack the Open Mason Cenda SDK
+        run: mvn -B -ntp -U -s .mvn/settings.xml -f stonebreak-game/native/pom.xml initialize
+
+      - name: Configure (release)
+        working-directory: stonebreak-game/native
+        run: cmake --preset release -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/stonebreak-native-deps"
+
+      - name: Build
+        working-directory: stonebreak-game/native
+        run: cmake --build --preset release --parallel
+
+      - name: Native tests (worldgen)
+        working-directory: stonebreak-game/native
+        timeout-minutes: 10
+        run: ctest --preset release
+
+      - name: Skija runtime libraries (Linux)
+        # libskija.so links libEGL/libGL even for CPU raster surfaces; the bare runner has neither.
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libegl1 libgl1 libfontconfig1
+
+      - name: Java worldgen handshake + parity suites
+        run: >
+          mvn -B -q -ntp -U -s .mvn/settings.xml -pl stonebreak-game test
+          -Dtest='WorldgenNativesTest,WormCarverParityTest,FusedChunkGenParityTest,NativeCarverIntegrationTest'
+          -Dsurefire.failIfNoSpecifiedTests=false
+          -Dstonebreak.worldgen.requireNative=true
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: surefire-${{ matrix.os }}
+          path: stonebreak-game/target/surefire-reports/

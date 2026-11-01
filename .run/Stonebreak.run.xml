@@ -9,10 +9,11 @@
     <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">
-      <!-- Rebuilds Cenda (openmason-engine/cenda/pom.xml, exec:exec@cenda-kernels; its own glue POM since the #387 split) before each launch. -->
-      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/openmason-engine/cenda/pom.xml" goal="exec:exec@cenda-kernels" />
-      <!-- Rebuilds Stonebreak's own worldgen natives (stonebreak-game/native/pom.xml, exec:exec@worldgen-natives, #386). -->
-      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/stonebreak-game/native/pom.xml" goal="exec:exec@worldgen-natives" />
+      <!-- Cenda (libcenda_kernels) comes packaged in the Open Mason engine-core jar since #388, so there is
+           no engine build step. Dev loop against an OpenMason checkout: scripts/openmason-local.sh. -->
+      <!-- Unpacks Open Mason's Cenda SDK (initialize) and rebuilds Stonebreak's own worldgen natives
+           (stonebreak-game/native/pom.xml, exec:exec@worldgen-natives, #386). -->
+      <option name="Maven.BeforeRunTask" enabled="true" file="$PROJECT_DIR$/stonebreak-game/native/pom.xml" goal="initialize exec:exec@worldgen-natives" />
       <option name="Make" enabled="true" />
     </method>
   </configuration>

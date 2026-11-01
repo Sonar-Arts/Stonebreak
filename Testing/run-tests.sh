@@ -122,6 +122,11 @@ LINE_VALUE="${SECOND_LINE#* }"
 
 read -r -a MODULES <<<"$MODULES_STR"
 
+# A local Open Mason override (scripts/openmason-local.sh --use) changes what this run tests against.
+if [[ -f "$ROOT/.mvn/maven.config" ]] && grep -q 'openmason.version' "$ROOT/.mvn/maven.config"; then
+  echo "NOTE: .mvn/maven.config overrides Open Mason: $(grep -o 'openmason.version=[^ ]*' "$ROOT/.mvn/maven.config")"
+fi
+
 # ── Clean stale reports ─────────────────────────────────────────────
 for m in "${MODULES[@]}"; do
   rm -rf "$ROOT/$m/target/surefire-reports"
@@ -139,8 +144,8 @@ MVN_EXIT=0
 
 # Determine if every module is present (full reactor needed)
 ALL_MODULES=false
-for required_module in openmason-engine/engine-core openmason-engine/engine-ui openmason-engine/engine-voxel \
-    openmason-engine/samples/core-consumer stonebreak-game openmason-tool openmason-plugin-stonebreak; do
+read -r -a ALL_TEST_MODULES <<<"$(python3 "$HARNESS" modules)"
+for required_module in "${ALL_TEST_MODULES[@]}"; do
   found=false
   for m in "${MODULES[@]}"; do
     if [[ "$m" == "$required_module" ]]; then

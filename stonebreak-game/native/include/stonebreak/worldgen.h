@@ -6,7 +6,8 @@
  *
  * Noise parity with the engine: the terrain channels are built with the
  * engine's shared cenda/noise_nodes.hpp against the same pinned FastNoise2
- * (openmason-engine/cenda/cmake/CendaFastNoise2.cmake), so channel values are
+ * (Open Mason's cmake/CendaFastNoise2.cmake, delivered by its Cenda SDK at
+ * the engine version the game runs with, #388), so channel values are
  * bit-identical to what CendaKernels' ck_gen_grid_* return to Java.
  *
  * The kernels emit a FIXED 16 x 256 x 16 volume (Stonebreak's Standard

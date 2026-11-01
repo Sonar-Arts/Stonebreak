@@ -53,7 +53,7 @@ class WorkbenchDocumentLifecycleTest {
     void reopeningReleasesEverythingAndLateActionsAreRefused() throws Exception {
         if (!CendaLua.isAvailable()) {
             assumeTrue(Boolean.getBoolean("ui.script.allowMissingNative"), "Cenda Lua host unavailable");
-            throw new AssertionError("Cenda Lua host unavailable (build openmason-engine/cenda/build-kernels.sh)");
+            throw new AssertionError("Cenda Lua host unavailable (the Open Mason engine-core jar has no Cenda library for this platform: scripts/openmason-local.sh)");
         }
         SbuiArchive sbui = GameUiDocuments.readScreen(WorkbenchScreen.DOCUMENT_ID);
         WorkbenchFixtures.Table table = WorkbenchFixtures.table("stocked");
