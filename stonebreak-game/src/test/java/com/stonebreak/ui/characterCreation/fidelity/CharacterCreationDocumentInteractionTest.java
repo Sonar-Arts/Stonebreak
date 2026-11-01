@@ -10,7 +10,6 @@ import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
 import com.stonebreak.rpg.backgrounds.BackgroundRegistry;
 import com.stonebreak.items.weapon.WeaponGroup;
-import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.proficiency.ProficiencyRank;
 import com.stonebreak.rpg.classes.ClassRegistry;
@@ -108,11 +107,9 @@ class CharacterCreationDocumentInteractionTest {
                 click(stage, "invest3");
                 rightClick(stage, "invest3");
                 assertEquals(0, stats.getSkillLevel(skill));
-                click(stage, "mode1");
-                click(stage, "train1");
+                click(stage, "train1"); // the Weapons section, under General in the same column
                 rightClick(stage, "train1");
                 assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[1]));
-                click(stage, "mode0");
 
                 click(stage, "talent2");
                 click(stage, "acquire0");
@@ -171,18 +168,15 @@ class CharacterCreationDocumentInteractionTest {
                 stage.view.input().wheel(pane.x() + 10, pane.y() + 10, 0, -10, 0);
                 stage.settle();
                 stage.host.characterCreation().poll();
-                assertEquals(SkillRegistry.ALL.size() * 42f - 320f, screen.state().getSkillScroll(), 1e-4,
-                    "ten notches down, clamped at the list's end");
+                float column = 30f + (SkillRegistry.ALL.size() + WeaponGroup.values().length) * 42f + 10f + 30f + 31.32f;
+                assertEquals(Math.max(0f, column - screen.state().getSkillViewport()), screen.state().getSkillScroll(),
+                    1e-3, "ten notches down, clamped at the end of the General and Weapons sections");
 
-                // the Weapons list: the starting WTP trains one group, then every Train is dead
-                click(stage, "mode1");
-                assertEquals(SkillListMode.WEAPONS, screen.state().getSkillMode());
+                // the Weapons section: the starting WTP trains one group, then every Train is dead
                 click(stage, "train1");
                 assertEquals(ProficiencyRank.TRAINED, stats.getProficiency(WeaponGroup.values()[1]));
                 click(stage, "train2");
                 assertEquals(ProficiencyRank.UNTRAINED, stats.getProficiency(WeaponGroup.values()[2]), "no WTP left");
-                click(stage, "mode0");
-                assertEquals(SkillListMode.GENERAL, screen.state().getSkillMode());
 
                 click(stage, "talent2");
                 assertEquals(TalentSubTab.FEATS, screen.state().getTalentSubTab());

@@ -1233,8 +1233,6 @@
       "classScroll": 0,
       "skillScroll": 0,
       "featScroll": 0,
-      "isGeneral": true,
-      "isWeapons": false,
       "wtpHint": "Earn 1 WTP per 5 ranks in each class. Any class's ranks train any weapon."
     },
     "ccTree": {
@@ -2682,12 +2680,6 @@
       "contract": "stonebreak:screen.character-creation",
       "params": {
         "id": "string"
-      }
-    },
-    "stonebreak:screen.character-creation.skill-mode": {
-      "contract": "stonebreak:screen.character-creation",
-      "params": {
-        "mode": "string"
       }
     },
     "stonebreak:screen.character-creation.train": {

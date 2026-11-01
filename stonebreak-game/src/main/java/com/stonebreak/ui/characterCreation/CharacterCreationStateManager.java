@@ -3,7 +3,6 @@ package com.stonebreak.ui.characterCreation;
 import com.stonebreak.player.CharacterStats;
 import com.openmason.engine.ui.masonry.MButton;
 import com.openmason.engine.ui.masonry.MStyle;
-import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 
 /**
@@ -36,7 +35,8 @@ public final class CharacterCreationStateManager {
     private float classTreeOverflow = 0f;
 
     private TalentSubTab talentSubTab = TalentSubTab.CLASS_ABILITIES;
-    private SkillListMode skillMode = SkillListMode.GENERAL;
+    /** The Skills pane's clip (General and Weapons sections, one scroll) height, as last laid out. */
+    private float skillViewport = 320f;
 
     private float mouseX = 0f;
     private float mouseY = 0f;
@@ -95,9 +95,8 @@ public final class CharacterCreationStateManager {
     public TalentSubTab getTalentSubTab()             { return talentSubTab; }
     public void         setTalentSubTab(TalentSubTab t) { this.talentSubTab = t; }
 
-    /** The Skills pane's list: general skills (SP) or weapon training (WTP). */
-    public SkillListMode getSkillMode()                 { return skillMode; }
-    public void          setSkillMode(SkillListMode m)  { if (m != null) this.skillMode = m; }
+    public float getSkillViewport()        { return skillViewport; }
+    public void  setSkillViewport(float v) { this.skillViewport = v; }
 
     public float getMouseX() { return mouseX; }
     public float getMouseY() { return mouseY; }
@@ -116,7 +115,6 @@ public final class CharacterCreationStateManager {
         this.classTreeSelected  = null;
         this.classTreeOverflow  = 0f;
         this.talentSubTab       = TalentSubTab.CLASS_ABILITIES;
-        this.skillMode          = SkillListMode.GENERAL;
         this.mouseX            = 0f;
         this.mouseY            = 0f;
     }

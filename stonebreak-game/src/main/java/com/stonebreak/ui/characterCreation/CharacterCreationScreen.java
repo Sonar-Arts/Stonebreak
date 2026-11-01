@@ -58,6 +58,12 @@ public final class CharacterCreationScreen {
 
     // ─────────────────────────────────────────────── The document's seams (#301)
 
+    /** The Skills pane's column, as the document lays it out: header, row (40 + 2 gap), gap above Weapons, hint. */
+    private static final float SECTION_HEADER_H = 30f;
+    private static final float SKILL_ROW_H = 40f + 2f;
+    private static final float SECTION_GAP = 10f;
+    private static final float WTP_HINT_H = 31.32f;
+
     /** The shipped document: {@code ui/documents/character_creation.sbui}. */
     public static final String DOCUMENT_ID = "character_creation";
 
@@ -81,10 +87,19 @@ public final class CharacterCreationScreen {
         if (i >= 0 && i < com.stonebreak.rpg.classes.ClassRegistry.ALL.size()) {
             state.setClassScroll(clamp(state.getClassScroll(), state.getClassTreeOverflow()));
         }
-        state.setSkillScroll(clamp(state.getSkillScroll(),
-                com.stonebreak.rpg.skills.SkillRegistry.ALL.size() * (40f + 2f) - 320f));
+        state.setSkillScroll(clamp(state.getSkillScroll(), skillContentHeight() - state.getSkillViewport()));
         state.setFeatScroll(clamp(state.getFeatScroll(),
                 com.stonebreak.rpg.feats.FeatRegistry.ALL.size() * (54f + 4f) - 320f));
+    }
+
+    /**
+     * The Skills pane's scrolled column (the document's {@code skill-scroll}): the General header, a row per skill,
+     * the Weapons header, a row per weapon group, the WTP hint.
+     */
+    private float skillContentHeight() {
+        int weapons = com.stonebreak.rpg.proficiency.WeaponTraining.rows(state.getCharacterStats()).size();
+        return SECTION_HEADER_H + (com.stonebreak.rpg.skills.SkillRegistry.ALL.size() + weapons) * SKILL_ROW_H
+                + SECTION_GAP + SECTION_HEADER_H + WTP_HINT_H;
     }
 
     private static float clamp(float v, float overflow) {

@@ -10,7 +10,6 @@ import com.openmason.engine.ui.data.UiHost;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.PlayerLooks;
 import com.stonebreak.items.weapon.WeaponGroup;
-import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.rpg.proficiency.WeaponTraining;
 import com.stonebreak.rpg.backgrounds.BackgroundDefinition;
@@ -36,15 +35,15 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Character creation ({@code stonebreak:screen.character-creation} 4: #301, v2 the Daedalus Talents tab and Undo, v3
- * weapon training, v4 the Grim Dawn style class tree). {@link CharacterCreationScreen}
+ * weapon training, v4 the Grim Dawn style class tree, v5 the Skills pane's General and Weapons sections in one scroll). {@link CharacterCreationScreen}
  * stays the controller (its stats, the scroll offsets, every rule, Back/Next and join mode); the document shows
  * it. Root {@code characterCreation}: the active {@code tab} and the {@code pane} shown (the tab, or inside Talents
  * its sub-tab: CLASS_ABILITIES / SKILLS / FEATS), the window {@code layout} (panels, tab strip, content, the Talents
  * sub-tab bar and the content under it, the preview frame: float window pixels, as {@link CharacterCreationLayout}
  * computes them), {@code tabs} (label geometry measured with the game font), the sub-tab bar's {@code talents}
  * (slot x/width within the bar, as MTabBar splits it) and {@code talentBaseline}, footer labels and {@code undoDisabled}, the preview labels, the four point counters, the class
- * header, the six ability {@code tiles}, the three clamped scroll offsets and the Skills pane's list
- * ({@code isGeneral} / {@code isWeapons}, {@code wtpHint}). Collections {@code ccBackgrounds},
+ * header, the six ability {@code tiles}, the three clamped scroll offsets and the Skills pane's
+ * {@code wtpHint}. Collections {@code ccBackgrounds},
  * {@code ccClasses}, {@code ccSkills}, {@code ccWeapons} (one per weapon
  * group, v3), {@code ccFeats}, {@code ccHair}, {@code ccHats}; cell {@code ccTree} (v4: the selected class's talent
  * tree, a {@link ClassTreeModel}).
@@ -53,7 +52,7 @@ import java.util.concurrent.CompletableFuture;
  * (back / next / undo: the last point allocation), {@code .background {id}},
  * {@code .ability {index, delta}}, {@code .class {id}}, {@code .rank {key}} (one rank of the shown class's tree
  * node), {@code .hover {key}} (the node under the pointer, "" for none), {@code .skill {id}},
- * {@code .skill-mode {mode}} (general, weapons), {@code .train {id}} (a weapon group name, spends WTP),
+ * {@code .train {id}} (a weapon group name, spends WTP),
  * {@code .feat {id}}, {@code .refund {target, key}} (a right press: one point of a rank / ability / skill / train
  * / feat back, {@link com.stonebreak.ui.characterCreation.CharacterCreationActionHandler#onRefund}), {@code .hair {id}}, {@code .hat {id}},
  * {@code .wheel {dy}}; each refuses unless the screen
@@ -62,13 +61,16 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class CharacterCreationContracts {
 
-    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 4);
+    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 5);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
     /** The Talents sub-tab bar (MTabBar, labels unscaled): inset, height, the gap above the pane under it. */
     private static final float TALENT_BAR_PAD = 8f;
     private static final float TALENT_BAR_H = 30f;
     private static final float TALENT_CONTENT_GAP = 6f;
+    /** The Skills pane's scroll clip (document {@code skill-clip}): its top under the SP line, its bottom margin. */
+    private static final float SKILL_CLIP_TOP = 36f;
+    private static final float SKILL_CLIP_BOTTOM = 8f;
     private static final String[] TALENT_LABELS = {"Class Abilities", "Skills", "Feats"};
 
     private static final DataType RECT = DataType.list(DataType.number(), null);
@@ -92,7 +94,7 @@ public final class CharacterCreationContracts {
             "score", DataType.string(), "mod", DataType.string(), "bonus", DataType.string(),
             "bonusUp", DataType.bool(), "minusEnabled", DataType.bool(), "plusEnabled", DataType.bool()), "tile"),
         "classScroll", DataType.number(), "skillScroll", DataType.number(), "featScroll", DataType.number(),
-        "isGeneral", DataType.bool(), "isWeapons", DataType.bool(), "wtpHint", DataType.string());
+        "wtpHint", DataType.string());
     static final DataType.ListOf BACKGROUNDS = DataType.list(DataType.object("id", DataType.string(),
         "name", DataType.string(), "description", DataType.string(), "bonus", DataType.string(),
         "selected", DataType.bool()), "id");
@@ -220,16 +222,6 @@ public final class CharacterCreationContracts {
             }
             return null;
         });
-        action(ui, "skill-mode", DataType.object("mode", DataType.string()), (c, a) -> {
-            switch (str(a, "mode")) {
-                case "general" -> c.actions().onSelectSkillMode(SkillListMode.GENERAL);
-                case "weapons" -> c.actions().onSelectSkillMode(SkillListMode.WEAPONS);
-                default -> {
-                    return "no such skill list";
-                }
-            }
-            return null;
-        });
         action(ui, "train", id, (c, a) -> {
             WeaponGroup group = WeaponTraining.group(str(a, "id"));
             if (group == null) {
@@ -273,6 +265,7 @@ public final class CharacterCreationContracts {
         int h = size == null ? 1080 : size[1];
         if (c != null) {
             c.updateLabelsForMode();
+            c.state().setSkillViewport(skillViewport(c.layout(), w, h));
             c.clampScrolls();
         }
         UiValue s = state(c, w, h);
@@ -368,10 +361,7 @@ public final class CharacterCreationContracts {
             + (bgId != null ? capitalize(bgId) : "No Background")));
         m.put("ap", UiValue.of("AP Remaining: " + stats.getRemainingAp()));
         m.put("cp", UiValue.of("CP Remaining: " + stats.getRemainingCp()));
-        // the Skills pane's header follows its list: SP for general skills, the Weapon Training grant for weapons
-        boolean weapons = st != null && st.getSkillMode() == SkillListMode.WEAPONS;
-        m.put("sp", UiValue.of(weapons ? "WTP Remaining: " + stats.getRemainingWtp()
-            : "SP Remaining: " + stats.getRemainingSkillPoints() + "    WTP: " + stats.getRemainingWtp()));
+        m.put("sp", UiValue.of("SP Remaining: " + stats.getRemainingSkillPoints() + "    WTP: " + stats.getRemainingWtp()));
         m.put("fp", UiValue.of("FP Remaining: " + stats.getRemainingFeatPoints()));
 
         int sel = st == null ? -1 : st.getSelectedClassIndex();
@@ -401,8 +391,6 @@ public final class CharacterCreationContracts {
         m.put("tiles", new UiValue.Arr(tiles));
         m.put("classScroll", UiValue.of(st == null ? 0 : st.getClassScroll()));
         m.put("skillScroll", UiValue.of(st == null ? 0 : st.getSkillScroll()));
-        m.put("isGeneral", UiValue.of(!weapons));
-        m.put("isWeapons", UiValue.of(weapons));
         m.put("wtpHint", UiValue.of(WeaponTraining.hint()));
         m.put("featScroll", UiValue.of(st == null ? 0 : st.getFeatScroll()));
         return new UiValue.Obj(m);
@@ -441,15 +429,28 @@ public final class CharacterCreationContracts {
         if (sel < 0 || sel >= ClassRegistry.ALL.size()) {
             return ClassTreeModel.empty();
         }
-        CharacterCreationLayout layout = c.layout();
-        CharacterCreationLayout.Rect right = layout.rightPanel(w, h);
-        CharacterCreationLayout.Rect content = layout.tabContent(right, layout.tabBar(right));
-        float paneH = content.bottom() - (content.y() + TALENT_BAR_PAD + TALENT_BAR_H + TALENT_CONTENT_GAP);
+        CharacterCreationLayout.Rect content = talentTabContent(c.layout(), w, h);
+        float paneH = talentPaneHeight(content);
         UiValue.Obj t = (UiValue.Obj) ClassTreeModel.build(c.getCharacterStats(), ClassRegistry.ALL.get(sel),
             c.state().getClassTreeFocus(), 1f, content.width() - TREE_LEFT - TREE_RIGHT,
             paneH - TREE_TOP - TREE_BOTTOM);
         c.state().setClassTreeOverflow((float) (num(t, "contentH") - num(t, "clipH")));
         return t;
+    }
+
+    /** The Skills pane's scroll clip height in a {@code w}x{@code h} window (its General and Weapons sections). */
+    public static float skillViewport(CharacterCreationLayout layout, int w, int h) {
+        return talentPaneHeight(talentTabContent(layout, w, h)) - SKILL_CLIP_TOP - SKILL_CLIP_BOTTOM;
+    }
+
+    private static CharacterCreationLayout.Rect talentTabContent(CharacterCreationLayout layout, int w, int h) {
+        CharacterCreationLayout.Rect right = layout.rightPanel(w, h);
+        return layout.tabContent(right, layout.tabBar(right));
+    }
+
+    /** The height of a Talents sub-tab's pane: the tab content under the sub-tab bar. */
+    private static float talentPaneHeight(CharacterCreationLayout.Rect content) {
+        return content.bottom() - (content.y() + TALENT_BAR_PAD + TALENT_BAR_H + TALENT_CONTENT_GAP);
     }
 
     private static List<UiValue> skills(CharacterStats stats) {
