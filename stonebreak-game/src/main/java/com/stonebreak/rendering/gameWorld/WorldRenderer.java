@@ -305,7 +305,8 @@ public class WorldRenderer {
                 cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
         precipitationFog.prepare(!cameraUnderwater, weatherEffects);
         // The Shade's night ground fog; underwater the murk replaces it too.
-        groundFog.prepare(!cameraUnderwater, sky, world.terrain(), cameraPos);
+        groundFog.prepare(!cameraUnderwater, sky, world.terrain(), cameraPos,
+                projectionMatrix, player.getViewMatrix());
 
         if (cameraUnderwater) {
             // Fog alone cannot hide the horizon, because it only tints pixels

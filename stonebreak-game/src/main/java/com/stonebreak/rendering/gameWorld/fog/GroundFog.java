@@ -10,6 +10,7 @@ import com.stonebreak.world.ShadeNight;
 import com.stonebreak.world.generation.TerrainGenerator;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.joml.Vector4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
@@ -25,6 +26,10 @@ import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
  * {@link #renderScreen} fogs the sky and the opaque terrain in one full-screen pass over
  * the scene depth; what draws after it (creatures, drops, water, clouds, glass) includes
  * {@code ground_fog.glsl} ({@link #glsl}) and fogs itself ({@link #applyTo}).
+ * <p>
+ * The march is clipped to {@link #box}, the Shade's extent on the map between the lowest
+ * and highest fog, and the map carries its edge fade baked in ({@link #RIM}); a frame whose
+ * view does not reach that box has no fog at all ({@link #visible}).
  */
 public final class GroundFog {
 
@@ -58,11 +63,44 @@ public final class GroundFog {
     private final int texture;
     private final FloatBuffer upload = BufferUtils.createFloatBuffer(ShadeFogMap.CELLS * ShadeFogMap.CELLS * 2);
     private ShadeFogMap.Grid uploaded;
+    /** World space: where the fog of {@link #uploaded} can be (x, z on the map; y, the slab). */
+    private final Vector3f boxMin = new Vector3f();
+    private final Vector3f boxMax = new Vector3f();
     private boolean enabled;
     private float density;
     private final Vector3f color = new Vector3f();
     private final Vector3f origin = new Vector3f();
     private final Matrix4f invViewProj = new Matrix4f();
+    private final Matrix4f viewProj = new Matrix4f();
+    private final Vector3f renderMin = new Vector3f();
+    private final Vector3f renderMax = new Vector3f();
+    private final Vector4f plane = new Vector4f();
+    private static final int[] SIDE_PLANES = {Matrix4f.PLANE_NX, Matrix4f.PLANE_PX, Matrix4f.PLANE_NY, Matrix4f.PLANE_PY};
+
+    /**
+     * Each map cell's fade over the map's outer eighth, so the map's edge never shows as a
+     * wall: what {@code ground_fog.glsl} once worked out at every step, at the cell's centre.
+     */
+    static final float[] RIM = rimFade();
+
+    private static float[] rimFade() {
+        int n = ShadeFogMap.CELLS;
+        float[] rim = new float[n * n];
+        for (int iz = 0; iz < n; iz++) {
+            for (int ix = 0; ix < n; ix++) {
+                float edge = Math.min(edgeDistance(ix), edgeDistance(iz));
+                float t = Math.min(1f, edge / 0.125f);
+                rim[iz * n + ix] = t * t * (3f - 2f * t);
+            }
+        }
+        return rim;
+    }
+
+    /** How far cell {@code i}'s centre is from the map's nearer edge, as a fraction of the map. */
+    private static float edgeDistance(int i) {
+        float uv = (i + 0.5f) / ShadeFogMap.CELLS;
+        return Math.min(uv, 1f - uv);
+    }
 
     public GroundFog() {
         screenShader = new ShaderProgram();
@@ -100,18 +138,22 @@ public final class GroundFog {
 
     /**
      * Takes this frame's fog. With {@code active} false (the camera underwater) or no sky
-     * there is none; the map still follows the camera, so it is ready by sunset.
+     * there is none, nor when the view ({@code projection}, render-space {@code view})
+     * does not reach the Shade; the map still follows the camera, so it is ready by sunset.
      */
-    public void prepare(boolean active, SkyLight sky, TerrainGenerator terrain, Vector3f cameraWorldPos) {
+    public void prepare(boolean active, SkyLight sky, TerrainGenerator terrain, Vector3f cameraWorldPos,
+                        Matrix4f projection, Matrix4f view) {
         map.focus(cameraWorldPos.x, cameraWorldPos.z, terrain);
         float strength = active && sky != null ? nightStrength(sky.sunDir().y) : 0f;
         ShadeFogMap.Grid grid = map.grid();
         enabled = strength > 0f && grid != null && grid.hasShade();
         if (!enabled) return;
-        density = DENSITY * strength;
         if (grid != uploaded) {
             uploadGrid(grid);
         }
+        enabled = visible(viewProj.set(projection).mul(view), toRender(boxMin, renderMin), toRender(boxMax, renderMax), plane);
+        if (!enabled) return;
+        density = DENSITY * strength;
         // Lit by the sky at dusk; by night the moon keeps it a faint pale grey that reads
         // against the dark ground without glowing.
         Vector3f horizon = sky.horizon();
@@ -124,15 +166,69 @@ public final class GroundFog {
         float[] coverage = grid.coverage();
         float[] height = grid.height();
         for (int i = 0; i < coverage.length; i++) {
-            upload.put(coverage[i]).put(height[i]);
+            upload.put(coverage[i] * RIM[i]).put(height[i]);
         }
         upload.flip();
+        box(grid, boxMin, boxMax);
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + TEXTURE_UNIT);
         glBindTexture(GL_TEXTURE_2D, texture);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, ShadeFogMap.CELLS, ShadeFogMap.CELLS, GL30.GL_RG, GL_FLOAT, upload);
         GL13.glActiveTexture(previousUnit);
         uploaded = grid;
+    }
+
+    /**
+     * Where {@code grid}'s fog can be, in world space: x and z span the cells with any Shade
+     * coverage, out to where the linear filter stops reaching them (half a cell past their
+     * edges) and no further than the map; y spans the slab from {@link #BELOW} under the
+     * lowest Shade ground to {@link #DEPTH} over the highest. Needs {@code grid.hasShade()}.
+     */
+    static void box(ShadeFogMap.Grid grid, Vector3f min, Vector3f max) {
+        int n = ShadeFogMap.CELLS;
+        int minX = n, minZ = n, maxX = -1, maxZ = -1;
+        float[] coverage = grid.coverage();
+        for (int iz = 0; iz < n; iz++) {
+            for (int ix = 0; ix < n; ix++) {
+                if (coverage[iz * n + ix] > 0f) {
+                    minX = Math.min(minX, ix);
+                    maxX = Math.max(maxX, ix);
+                    minZ = Math.min(minZ, iz);
+                    maxZ = Math.max(maxZ, iz);
+                }
+            }
+        }
+        float cell = ShadeFogMap.CELL;
+        float size = ShadeFogMap.SIZE_BLOCKS;
+        min.set(grid.originX() + Math.max(0f, minX * cell - cell / 2f),
+                grid.minGround() - BELOW,
+                grid.originZ() + Math.max(0f, minZ * cell - cell / 2f));
+        max.set(grid.originX() + Math.min(size, (maxX + 1) * cell + cell / 2f),
+                grid.maxGround() + DEPTH,
+                grid.originZ() + Math.min(size, (maxZ + 1) * cell + cell / 2f));
+    }
+
+    /** {@code world} moved into render space, into {@code dest}; render space keeps y. */
+    private static Vector3f toRender(Vector3f world, Vector3f dest) {
+        return dest.set(world.x - RenderOrigin.x(), world.y, world.z - RenderOrigin.z());
+    }
+
+    /**
+     * Whether any ray from the eye through the screen crosses the box: tested against the
+     * frustum's four side planes only. Not the far plane, since rays to the sky march past
+     * it; not the near one, since the eye inside the box lies on every side plane.
+     * Conservative: a box near a frustum corner may pass and still be off screen.
+     */
+    static boolean visible(Matrix4f viewProj, Vector3f min, Vector3f max, Vector4f plane) {
+        for (int side : SIDE_PLANES) {
+            viewProj.frustumPlane(side, plane);
+            // The box corner furthest along the plane's inward normal.
+            float x = plane.x >= 0f ? max.x : min.x;
+            float y = plane.y >= 0f ? max.y : min.y;
+            float z = plane.z >= 0f ? max.z : min.z;
+            if (plane.x * x + plane.y * y + plane.z * z + plane.w < 0f) return false;
+        }
+        return true;
     }
 
     /**
@@ -195,8 +291,8 @@ public final class GroundFog {
         origin.set(grid.originX() - RenderOrigin.x(), 0f, grid.originZ() - RenderOrigin.z());
         shader.setVec3("u_groundFogOrigin", origin);
         shader.setFloat("u_groundFogSize", ShadeFogMap.SIZE_BLOCKS);
-        shader.setFloat("u_groundFogBottom", grid.minGround() - BELOW);
-        shader.setFloat("u_groundFogTop", grid.maxGround() + DEPTH);
+        shader.setVec3("u_groundFogBoxMin", toRender(boxMin, renderMin));
+        shader.setVec3("u_groundFogBoxMax", toRender(boxMax, renderMax));
         shader.setFloat("u_groundFogDepth", DEPTH);
         shader.setFloat("u_groundFogBelow", BELOW);
         shader.setFloat("u_groundFogDensity", density);
