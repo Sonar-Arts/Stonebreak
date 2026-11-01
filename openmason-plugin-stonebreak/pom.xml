@@ -22,6 +22,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- The version stamped into the drop-in jar's manifest (build.yml passes nightly-<sha>);
+             local builds keep the POM version. -->
+        <plugin.release.version>${project.version}</plugin.release.version>
     </properties>
 
     <dependencies>
@@ -69,6 +72,80 @@
                         -Dorg.lwjgl.util.NoChecks=true
                     </argLine>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!-- openmason-plugin-stonebreak-<ver>-dropin.jar: the file users put in Open
+                                 Mason's plugin folder (PluginManager.pluginDirs(): <data dir>/plugins or
+                                 -Dopenmason.plugins.dir). Open Mason loads it on its own class loader over
+                                 the editor's, finds the plugin through META-INF/services, and supplies the
+                                 engine, LWJGL, Skija, ImGui, Netty, Jackson and logging itself. So the jar
+                                 carries only the plugin, the game it reads (registries, SBO data, UI host)
+                                 and the game's dependencies Open Mason does not have; build.yml fails if
+                                 that list drifts from the dependency tree. Platform-independent: the
+                                 game's natives (worldgen) and music are left out. The main artifact stays
+                                 the plain jar. -->
+                            <shadedArtifactAttached>true</shadedArtifactAttached>
+                            <shadedClassifierName>dropin</shadedClassifierName>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <includes>
+                                    <include>com.stonebreak:*</include>
+                                    <!-- Game-only dependencies (not on Open Mason's class path). -->
+                                    <include>com.openmason:openmason-engine-voxel</include>
+                                    <include>org.xerial:sqlite-jdbc</include>
+                                    <include>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</include>
+                                </includes>
+                            </artifactSet>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <!-- Loaded from the class path, not as modules: several
+                                             module-infos would only collide. -->
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
+                                        <!-- Signatures of shaded dependencies no longer match. -->
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>com.stonebreak:stonebreak-game</artifact>
+                                    <excludes>
+                                        <!-- Game runtime only: music (~126 MB), the worldgen natives, the
+                                             game's logging config (Open Mason's own applies). -->
+                                        <exclude>songs/**</exclude>
+                                        <exclude>natives/**</exclude>
+                                        <exclude>logback.xml</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <!-- sqlite-jdbc / Jackson ship per-release classes. -->
+                                        <Multi-Release>true</Multi-Release>
+                                        <Implementation-Title>Open Mason Stonebreak plugin</Implementation-Title>
+                                        <Implementation-Version>${plugin.release.version}</Implementation-Version>
+                                        <OpenMason-Version>${openmason.version}</OpenMason-Version>
+                                    </manifestEntries>
+                                </transformer>
+                                <!-- Merges the plugin's and the game's (UI theme) service files. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

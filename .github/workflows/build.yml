@@ -1,8 +1,8 @@
 # Compiles and packages the reactor (stonebreak-game, the Open Mason plugin, the worldgen glue) on every
 # supported platform, so a change that breaks the build on one OS shows up before merge.
-# Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh), and the
-# shaded jars are not uploaded or released. The root POM's OS-activated profiles pick the
-# LWJGL/Skija natives for each runner.
+# Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh). The root
+# POM's OS-activated profiles pick the LWJGL/Skija natives for each runner. On pushes to main the
+# Open Mason drop-in plugin jar is uploaded as a workflow artifact; plugin-nightly.yml publishes it.
 #
 # Open Mason (the engine and the tool) comes from GitHub Packages at the root POM's openmason.version
 # (#388; for now a snapshot following OpenMason main, so every mvn call here passes -U to fetch the
@@ -82,7 +82,10 @@ jobs:
         # -DskipTests still compiles the test sources, so broken tests fail the build.
         env:
           GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: mvn -B -ntp -U -s .mvn/settings.xml package -DskipTests
+        # plugin.release.version stamps the drop-in plugin's manifest (plugin-nightly.yml ships it).
+        run: >
+          mvn -B -ntp -U -s .mvn/settings.xml package -DskipTests
+          -Dplugin.release.version=nightly-${GITHUB_SHA::7}
 
       - name: Verify Cenda + worldgen natives are packaged
         # The Cenda library arrives inside the published engine-core jar; the worldgen library is
@@ -126,3 +129,46 @@ jobs:
             fi
           done
           exit $status
+
+      - name: Check the Open Mason drop-in plugin
+        # openmason-plugin-stonebreak-*-dropin.jar is what users put in Open Mason's plugin folder:
+        # the plugin + the game + the game's dependencies Open Mason lacks, one jar for every OS. The
+        # script checks its contents, that its bundled dependencies match the dependency trees, and
+        # that Open Mason's own loader registers it (scripts/plugin-dropin-check.sh). Linux only:
+        # the jar is platform-independent.
+        if: runner.os == 'Linux'
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: scripts/plugin-dropin-check.sh -B -ntp -s .mvn/settings.xml
+
+      - name: Stage the plugin for the nightly
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p plugin-stage
+          # A fixed name: the nightly release's download URL never changes.
+          cp openmason-plugin-stonebreak/target/openmason-plugin-stonebreak-*-dropin.jar \
+             plugin-stage/openmason-plugin-stonebreak-nightly.jar
+          # The Open Mason build this was made against: the POM version, plus the resolved snapshot
+          # (timestamp-build) when it came from GitHub Packages.
+          om=$(mvn -B -q -ntp -s .mvn/settings.xml help:evaluate -Dexpression=openmason.version -DforceStdout)
+          resolved="$om"
+          meta="$HOME/.m2/repository/com/openmason/openmason-tool/$om/maven-metadata-github.xml"
+          if [[ "$om" == *-SNAPSHOT && -f "$meta" ]]; then
+            ts=$(sed -n 's:.*<timestamp>\(.*\)</timestamp>.*:\1:p' "$meta" | head -n 1)
+            bn=$(sed -n 's:.*<buildNumber>\(.*\)</buildNumber>.*:\1:p' "$meta" | head -n 1)
+            if [[ -n "$ts" && -n "$bn" ]]; then resolved="${om%-SNAPSHOT}-$ts-$bn"; fi
+          fi
+          printf '%s\n%s\n' "$om" "$resolved" > plugin-stage/openmason-version.txt
+          ls -la plugin-stage
+
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: plugin-dropin
+          path: plugin-stage/
+          if-no-files-found: error
+          # plugin-nightly.yml picks it up minutes later; nothing else reads it.
+          retention-days: 3
+          compression-level: 0   # jars are already compressed
