@@ -81,8 +81,31 @@ else
 fi
 
 # 3. Load it the way Open Mason does
-version=$("${MVN[@]}" help:evaluate -Dexpression=openmason.version -DforceStdout)
-"${MVN[@]}" dependency:copy -Dartifact="com.openmason:openmason-tool:$version:jar:shaded" -DoutputDirectory="$WORK"
+# -N: these are root-POM calls; recursing would repeat them in every reactor module.
+version=$("${MVN[@]}" -N help:evaluate -Dexpression=openmason.version -DforceStdout)
+# -U: always ask GitHub Packages for the newest snapshot, whatever an earlier step cached.
+"${MVN[@]}" -N -U dependency:copy -Dartifact="com.openmason:openmason-tool:$version:jar:shaded" \
+  -DoutputDirectory="$WORK/tool"
+# copy keeps a remote snapshot's timestamped version (useBaseVersion=false by default), e.g.
+# openmason-tool-0.1.0-20261101.095012-15-shaded.jar: find the file instead of assuming its name.
+tools=("$WORK"/tool/openmason-tool-*-shaded.jar)
+if [[ ${#tools[@]} -ne 1 ]]; then
+  ls -la "$WORK/tool" || true
+  echo "::error::expected one openmason-tool shaded jar from dependency:copy, found ${#tools[@]}"
+  exit 1
+fi
+tool="${tools[0]}"
+resolved=$(basename "$tool"); resolved=${resolved#openmason-tool-}; resolved=${resolved%-shaded.jar}
+echo "Open Mason $version resolved to build $resolved ($(basename "$tool"))"
+if ! jar tf "$tool" | grep -qx 'com/openmason/main/plugins/PluginManager.class'; then
+  echo "::error::$(basename "$tool") has no com/openmason/main/plugins/PluginManager (not the tool's runnable jar?)"
+  exit 1
+fi
+# Drop-in loading (Sonar-Arts/OpenMason cb4ef588): an older snapshot cannot load the plugin at all.
+if ! javap -cp "$tool" com.openmason.main.plugins.PluginManager | grep -q ' discoverJars('; then
+  echo "::error::Open Mason build $resolved predates drop-in plugin loading (no PluginManager.discoverJars): publish a newer OpenMason snapshot"
+  exit 1
+fi
 cp "$jar" "$WORK/plugins/"
 cat > "$WORK/DropInProbe.java" <<'EOF'
 import com.openmason.main.plugins.EditorRegistries;
@@ -102,7 +125,7 @@ public class DropInProbe {
 }
 EOF
 rc=0
-out=$(java --enable-native-access=ALL-UNNAMED -cp "$WORK/openmason-tool-$version-shaded.jar" \
+out=$(java --enable-native-access=ALL-UNNAMED -cp "$tool" \
         "$WORK/DropInProbe.java" "$WORK/plugins" stonebreak 2>&1) || rc=$?
 grep -E '^plugin |ERROR|Exception' <<<"$out" || true
 [[ $rc -eq 0 ]] || { err "Open Mason $version did not load and register the drop-in plugin"; tail -n 40 <<<"$out"; }
