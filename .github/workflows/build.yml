@@ -139,7 +139,8 @@ jobs:
         if: runner.os == 'Linux'
         env:
           GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
-        run: scripts/plugin-dropin-check.sh -B -ntp -s .mvn/settings.xml
+        # Through bash: core.fileMode is false here, so the executable bit is not committed.
+        run: bash scripts/plugin-dropin-check.sh -B -ntp -s .mvn/settings.xml
 
       - name: Stage the plugin for the nightly
         if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/main'
