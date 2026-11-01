@@ -291,7 +291,7 @@ public final class ChunkCodec {
         if (zstd && !CendaKernels.isAvailable()) {
             throw new IOException("Chunk payload v" + version
                 + " is zstd-compressed and requires the Cenda native kernels "
-                + "(build openmason-engine/cenda, release preset)");
+                + "(packaged in the Open Mason engine-core jar; scripts/openmason-local.sh rebuilds it)");
         }
     }
 

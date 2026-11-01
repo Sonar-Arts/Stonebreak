@@ -80,9 +80,10 @@ public final class GlossaryView {
 
     static UiValue.Obj value(GlossaryScreen screen, EntityType type, EntityDiscoveries d, PlayerStats stats) {
         Map<String, UiValue> m = new LinkedHashMap<>();
-        int total = EntityType.GLOSSARY_TYPES.length;
+        EntityType[] types = screen.glossaryTypes();
+        int total = types.length;
         int seen = 0;
-        for (EntityType t : EntityType.GLOSSARY_TYPES) {
+        for (EntityType t : types) {
             if (!GlossaryScreen.discoveredVariants(t, d).isEmpty()) {
                 seen++;
             }
@@ -133,8 +134,9 @@ public final class GlossaryView {
 
     static List<UiValue> rows(GlossaryScreen screen, EntityDiscoveries d) {
         List<UiValue> out = new ArrayList<>();
-        for (int i = 0; i < EntityType.GLOSSARY_TYPES.length; i++) {
-            EntityType t = EntityType.GLOSSARY_TYPES[i];
+        EntityType[] types = screen.glossaryTypes();
+        for (int i = 0; i < types.length; i++) {
+            EntityType t = types[i];
             int seen = GlossaryScreen.discoveredVariants(t, d).size();
             String[] all = t.getTextureVariants();
             int totalVariants = all != null ? all.length : 0;

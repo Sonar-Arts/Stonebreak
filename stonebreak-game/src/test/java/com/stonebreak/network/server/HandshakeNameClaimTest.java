@@ -1,6 +1,6 @@
 package com.stonebreak.network.server;
 
-import com.openmason.engine.net.protocol.ProtocolVersion;
+import com.stonebreak.network.ProtocolVersion;
 import com.openmason.engine.net.server.ServerConnection;
 import com.stonebreak.network.PlayerNames;
 import com.stonebreak.network.packet.handshake.HandshakeC2S;

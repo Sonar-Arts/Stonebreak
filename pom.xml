@@ -9,13 +9,45 @@
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
+    <!-- Open Mason (the engine modules and the tool) lives in Sonar-Arts/OpenMason since #388 and is
+         consumed as published artifacts at ${openmason.version} (for now a snapshot that follows
+         OpenMason main): GitHub Packages (a read:packages token under server id "github"), or a
+         local build installed by scripts/openmason-local.sh, which is also the cross-repo dev loop. -->
     <modules>
-        <module>openmason-engine</module>
         <module>stonebreak-game</module>
-        <module>openmason-tool</module>
+        <!-- Stonebreak's Open Mason plugin (#382): depends on the tool and the game -->
+        <module>openmason-plugin-stonebreak</module>
+        <!-- Launch glue for Stonebreak's worldgen natives (#386): pom packaging, no dependencies.
+             Unpacks the Open Mason Cenda SDK (shared FastNoise2 pin + noise_nodes.hpp, #388) at
+             initialize, and is a reactor module so IntelliJ imports it — the Stonebreak run
+             configuration's Maven before-launch task (initialize exec:exec@worldgen-natives) only
+             runs against an imported Maven project, and silently stops the launch otherwise. -->
+        <module>stonebreak-game/native</module>
     </modules>
 
+    <repositories>
+        <!-- Open Mason releases and snapshots. Other artifacts still come from Maven Central. -->
+        <repository>
+            <id>github</id>
+            <name>Open Mason (GitHub Packages)</name>
+            <url>https://maven.pkg.github.com/Sonar-Arts/OpenMason</url>
+            <releases><enabled>true</enabled></releases>
+            <!-- Following OpenMason main: look for a newer snapshot at most hourly (CI forces it with -U). -->
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>interval:60</updatePolicy>
+            </snapshots>
+        </repository>
+    </repositories>
+
     <properties>
+        <!-- The Open Mason version Stonebreak builds against (engine modules, tool, Cenda SDK). For now
+             this FOLLOWS OPENMASON MAIN: publish.yml republishes this snapshot on every push to main,
+             CI re-checks it on every build (-U) and local builds re-check it hourly (repository
+             below). Pin a release (e.g. 0.1.0) once builds ship to players. The dev loop
+             (scripts/openmason-local.sh, use mode) overrides it with your own checkout's
+             0.0.0-local-SNAPSHOT via the gitignored .mvn/maven.config. -->
+        <openmason.version>0.1.0-SNAPSHOT</openmason.version>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -25,11 +57,12 @@
              these for Linux/macOS so the build is cross-platform. -->
         <lwjgl.natives>natives-windows</lwjgl.natives>
         <skija.artifact>skija-windows-x64</skija.artifact>
-        <!-- Classpath folder the built Cenda library is packaged under (natives/<this>/);
-             must match CendaKernels.nativePlatform(). -->
+        <!-- Classpath folder the worldgen library is packaged under (natives/<this>/); must match
+             the engine's NativeLibraryExtractor platform names (the Open Mason engine-core jar uses
+             the same layout for libcenda_kernels). -->
         <cenda.natives.dir>windows-x86_64</cenda.natives.dir>
-        <!-- Shell that runs cenda/build-kernels.sh for the IDE's before-launch step
-             (exec:exec@cenda-kernels). The Windows profile points it at Git Bash; override
+        <!-- Shell that runs stonebreak-game/native/build-worldgen.sh for the IDE's before-launch step
+             (exec:exec@worldgen-natives). The Windows profile points it at Git Bash; override
              with -Dcenda.bash=<path> for a non-default Git install. -->
         <cenda.bash>bash</cenda.bash>
         <jackson.version>2.22.4</jackson.version>
@@ -43,6 +76,28 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Open Mason (#388) -->
+            <dependency>
+                <groupId>com.openmason</groupId>
+                <artifactId>openmason-engine-core</artifactId>
+                <version>${openmason.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openmason</groupId>
+                <artifactId>openmason-engine-ui</artifactId>
+                <version>${openmason.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openmason</groupId>
+                <artifactId>openmason-engine-voxel</artifactId>
+                <version>${openmason.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openmason</groupId>
+                <artifactId>openmason-tool</artifactId>
+                <version>${openmason.version}</version>
+            </dependency>
+
             <!-- LWJGL core -->
             <dependency>
                 <groupId>org.lwjgl</groupId>

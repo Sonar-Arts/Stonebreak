@@ -1,2 +1,0 @@
-save_targets
-ui_prompt_status

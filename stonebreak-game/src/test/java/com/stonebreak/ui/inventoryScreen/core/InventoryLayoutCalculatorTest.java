@@ -1,12 +1,12 @@
 package com.stonebreak.ui.inventoryScreen.core;
 
+import com.stonebreak.ui.theme.StonePainter;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import com.openmason.engine.ui.masonry.MPainter;
 import com.stonebreak.ui.inventoryScreen.core.InventoryLayoutCalculator.InventoryLayout;
 import com.stonebreak.ui.support.Resolutions;
 import com.stonebreak.ui.support.UiLayoutAssert;
@@ -183,7 +183,7 @@ class InventoryLayoutCalculatorTest {
 
     private void assertArrowAligned(InventoryLayout layout, int arrowSize, String label) {
         float gridRight = layout.craftingElementsStartX + layout.craftInputGridVisualWidth;
-        float[] arrow = MPainter.craftingArrowPlacement(
+        float[] arrow = StonePainter.craftingArrowPlacement(
                 gridRight, layout.outputSlotX, layout.outputSlotY, slotSize(), arrowSize);
 
         assertEquals(layout.outputSlotY + slotSize() / 2f, arrow[1] + arrowSize / 2f, 0.001f,

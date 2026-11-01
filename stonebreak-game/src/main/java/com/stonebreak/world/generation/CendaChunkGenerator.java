@@ -1,6 +1,5 @@
 package com.stonebreak.world.generation;
 
-import com.openmason.engine.cenda.CendaKernels;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.cco.data.CcoBlockStorage;
 import com.openmason.engine.voxel.cco.data.palette.CcoPaletteSection;
@@ -18,7 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Front-end for the fused native chunk generator ({@code ck_generate_chunk}):
+ * Front-end for the fused native chunk generator ({@code sbw_generate_chunk} in the game's
+ * own worldgen library, {@link WorldgenNatives} — #386):
  * assembles the create-time context from the SAME sources the Java path uses
  * ({@link NoiseRouter} channel packing, {@link HeightMapGenerator} splines,
  * {@link Density3D} node params, {@link TerrainGenerationSystem}'s biome block
@@ -36,7 +36,7 @@ public final class CendaChunkGenerator {
     private static final int SECTION_VOLUME = 4096;
     private static final int SECTION_COUNT = WORLD_HEIGHT / 16;
 
-    /** Kernel biome-flag bits (lockstep with cenda/kernels.h). */
+    /** Kernel biome-flag bits (lockstep with stonebreak/worldgen.h). */
     private static final byte FLAG_MAGMA = 1;
     private static final byte FLAG_DRY_BELOW_SEA = 2;
     /** Biome reads the crag channel in the overhang band — see BiomeSurfaceConfig.Entry. */
@@ -71,7 +71,7 @@ public final class CendaChunkGenerator {
     private static final boolean KERNEL_HAS_CAVE_MODEL = true;
 
     public static long createContext(long seed) {
-        if (!CendaKernels.isAvailable() || !KERNEL_HAS_CAVE_MODEL) {
+        if (!WorldgenNatives.isAvailable() || !KERNEL_HAS_CAVE_MODEL) {
             return 0L;
         }
         NoiseRouter.ShapeChannelParams ch = NoiseRouter.shapeChannelParams(seed);
@@ -129,7 +129,7 @@ public final class CendaChunkGenerator {
             BlockType.BEDROCK.getId(), BlockType.MAGMA.getId(),
         };
 
-        return CendaKernels.chunkGenCreate(seed,
+        return WorldgenNatives.chunkGenCreate(seed,
             ch.seeds(), ch.octaves(), ch.gain(), ch.lacunarity(), ch.freq(), ch.xOff(), ch.zOff(),
             HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
             HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE,
@@ -165,7 +165,7 @@ public final class CendaChunkGenerator {
         }
         short[] blocks = BLOCKS_SCRATCH.get();
         int[] heightmap = new int[CHUNK_SIZE * CHUNK_SIZE];
-        long nonAir = CendaKernels.generateChunk(ctx, chunkX, chunkZ, heights, ordinals,
+        long nonAir = WorldgenNatives.generateChunk(ctx, chunkX, chunkZ, heights, ordinals,
             surfaceCarveMask, blocks, heightmap);
         if (nonAir < 0) {
             return null;

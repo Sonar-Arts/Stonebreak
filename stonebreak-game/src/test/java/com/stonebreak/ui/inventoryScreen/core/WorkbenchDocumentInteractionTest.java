@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.ui.fidelity.UiRaster;
@@ -91,7 +91,7 @@ class WorkbenchDocumentInteractionTest {
     void theDocumentAndTheLegacyScreenReachTheSameStateAfterEveryStep() throws Exception {
         if (!CendaLua.isAvailable()) {
             assumeTrue(Boolean.getBoolean("ui.script.allowMissingNative"), "Cenda Lua host unavailable");
-            throw new AssertionError("Cenda Lua host unavailable (build openmason-engine/cenda/build-kernels.sh)");
+            throw new AssertionError("Cenda Lua host unavailable (the Open Mason engine-core jar has no Cenda library for this platform: scripts/openmason-local.sh)");
         }
         WorkbenchFixtures.Table legacyTable = table();
         WorkbenchInputManager[] in = new WorkbenchInputManager[1];

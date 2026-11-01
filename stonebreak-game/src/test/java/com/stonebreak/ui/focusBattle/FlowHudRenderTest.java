@@ -14,7 +14,7 @@ import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.masonry.MGauge;
 import com.openmason.engine.ui.masonry.MPipRow;
 import com.openmason.engine.ui.masonry.MStyle;
-import com.openmason.engine.ui.masonry.MWorldMarker;
+import com.stonebreak.ui.masonry.MWorldMarker;
 import com.stonebreak.ui.focusBattle.elements.BattleFloaters;
 import com.stonebreak.ui.focusBattle.elements.EncounterTransition;
 import com.stonebreak.ui.focusBattle.elements.TargetCursor;

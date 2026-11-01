@@ -10,7 +10,7 @@ module stonebreak.game {
     requires org.lwjgl.glfw;
     requires org.lwjgl.stb;
     // OpenAL is now used by the engine audio subsystem (com.openmason.engine.audio);
-    // the game reaches it through openmason.engine, so no direct requires is needed.
+    // the game reaches it through openmason.engine.core, so no direct requires is needed.
 
     // Skija (Skia bindings). Maven coords: io.github.humbleui:skija-windows-x64,
     // which pulls skija-shared (Java classes) and types (Point/Rect/RRect) transitively.
@@ -22,7 +22,9 @@ module stonebreak.game {
     requires org.joml;
     
     // OpenMason Engine for shared rendering and format support
-    requires openmason.engine;
+    requires openmason.engine.core;
+    requires openmason.engine.ui;
+    requires openmason.engine.voxel;
 
     // Netty transport: ServerPlayer detects in-JVM hosts via LocalChannel
     // (io.netty.channel.local). buffer comes transitively through the engine,
@@ -52,6 +54,7 @@ module stonebreak.game {
     exports com.stonebreak.blocks;
     exports com.stonebreak.blocks.registry;
     exports com.stonebreak.items;
+    exports com.stonebreak.gameplay;           // SBO game data (stonebreak:gameplay extension, #383)
     exports com.stonebreak.items.registry;
 
     // Export rendering packages for OpenMason
@@ -67,6 +70,12 @@ module stonebreak.game {
 
     // UI hosting seams other hosts use (#285 GameUiAssets, #286 GameUiResources for the Open Mason preview)
     exports com.stonebreak.ui.runtime;
+    exports com.stonebreak.ui.theme;            // Stonebreak UI theme (#384): the OM plugin registers it
+    exports com.stonebreak.ui.masonry;          // Stonebreak's own Masonry widgets (#384)
+
+    // #384: the stonebreak: surfaces/symbols/ItemSlot and their legacy bare aliases
+    provides com.openmason.engine.ui.theme.UiThemeProvider with com.stonebreak.ui.theme.StonebreakUiTheme;
+    provides com.openmason.engine.format.omui.UiVocabularyProvider with com.stonebreak.ui.theme.StonebreakUiTheme;
     exports com.stonebreak.ui.runtime.contracts;
 
     // Open packages for Jackson JSON processing
@@ -92,7 +101,7 @@ module stonebreak.game {
     exports com.stonebreak.network to org.junit.platform.commons;
     opens com.stonebreak.network to org.junit.platform.commons;
 
-    // Export and open remaining MMS packages (most moved to openmason-engine)
+    // Export and open remaining MMS packages (most moved to the Open Mason engine)
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;

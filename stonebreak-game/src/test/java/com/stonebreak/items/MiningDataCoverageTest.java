@@ -1,5 +1,6 @@
 package com.stonebreak.items;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.registry.ItemRegistry;
@@ -47,7 +48,7 @@ class MiningDataCoverageTest {
             String local = e.objectId().substring(e.objectId().indexOf(':') + 1);
             boolean looksLikeTool = local.endsWith("pickaxe") || local.endsWith("axe") || local.endsWith("shovel");
             if (looksLikeTool && !NOT_MINING_TOOLS.contains(e.objectId())
-                    && e.sboData().manifest().tool() == null) {
+                    && SboGameplay.of(e.sboData().manifest()).tool() == null) {
                 missing.add(e.objectId());
             }
         }
@@ -62,7 +63,7 @@ class MiningDataCoverageTest {
         }
         List<String> dangling = new ArrayList<>();
         for (ItemRegistry.ItemEntry e : ItemRegistry.getInstance().all()) {
-            SBOFormat.ToolData tool = e.sboData().manifest().tool();
+            SboGameplay.ToolData tool = SboGameplay.of(e.sboData().manifest()).tool();
             if (tool == null) continue;
             assertTrue(!tool.materials().isEmpty(), e.objectId() + " is a tool with no materials");
             for (String m : tool.materials()) {
@@ -75,12 +76,12 @@ class MiningDataCoverageTest {
     @Test
     void everyAuthoredToolResolvesThroughItemType() {
         for (ItemRegistry.ItemEntry e : ItemRegistry.getInstance().all()) {
-            if (e.sboData().manifest().tool() == null) continue;
+            if (SboGameplay.of(e.sboData().manifest()).tool() == null) continue;
             ItemType type = ItemType.getByObjectId(e.objectId());
             assertNotNull(type, e.objectId() + " has tool data but no ItemType");
             assertEquals(e.objectId(), ItemType.objectIdFor(type),
                     "objectIdFor must map back, or ToolMiningRules can't find " + e.objectId());
-            assertEquals(e.sboData().manifest().tool(), ToolMiningRules.toolDataFor(type));
+            assertEquals(SboGameplay.of(e.sboData().manifest()).tool(), ToolMiningRules.toolDataFor(type));
         }
     }
 }

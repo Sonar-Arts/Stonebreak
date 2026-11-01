@@ -101,7 +101,7 @@ class FurnaceLayoutTest {
     /** The layout maths agree with the committed legacy oracle, exactly (same integer maths). */
     @Test
     void layoutRectsMatchTheCommittedLegacyOracle() throws IOException {
-        Path oracle = Path.of("../openmason-engine/src/test/resources/ui/fixtures/legacy-geometry.json");
+        Path oracle = Path.of("src/test/resources/openmason-fixtures/ui/fixtures/legacy-geometry.json");
         assumeTrue(Files.isRegularFile(oracle), "engine fixture not next to this module");
         float previous = Settings.getInstance().getUiScale();
         int compared = 0;

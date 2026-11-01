@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Search existing issues first. Engine or toolset bugs go in the Open Mason Bug Report.
+        Search existing issues first. Engine or toolset bugs go to https://github.com/Sonar-Arts/OpenMason/issues.
 
   - type: textarea
     id: description

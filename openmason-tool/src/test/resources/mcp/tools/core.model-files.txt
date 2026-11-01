@@ -1,3 +1,0 @@
-model_new
-model_open
-model_save

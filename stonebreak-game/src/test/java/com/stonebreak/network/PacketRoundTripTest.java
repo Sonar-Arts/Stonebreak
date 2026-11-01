@@ -65,6 +65,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("regression")
 class PacketRoundTripTest {
 
+    /** The world dimensions the game installs at startup (GameBootstrap): the chunk codec reads them (#385). */
+    @org.junit.jupiter.api.BeforeAll
+    static void installWorldDimensions() {
+        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
+            com.stonebreak.world.operations.WorldConfiguration.voxelConfig());
+    }
+
+
     private static <T extends Packet> T roundTrip(PacketCodec<T> codec, T value) {
         ByteBuf buf = Unpooled.buffer();
         try {
@@ -361,7 +369,7 @@ class PacketRoundTripTest {
                 }
             }
         }
-        var blocks = com.openmason.engine.net.protocol.codec.ChunkBlockPayload.ofSnapshot(storage);
+        var blocks = com.openmason.engine.voxel.net.ChunkBlockPayload.ofSnapshot(storage);
         byte[] meta = new byte[600];
         java.util.Arrays.fill(meta, (byte) 3);
         ChunkDataS2C packet = new ChunkDataS2C(4, -2, blocks, meta);
@@ -395,7 +403,7 @@ class PacketRoundTripTest {
                 16, com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT, 16,
                 com.stonebreak.blocks.BlockType.AIR);
         storage.set(3, 40, 5, com.stonebreak.blocks.BlockType.STONE);
-        var blocks = com.openmason.engine.net.protocol.codec.ChunkBlockPayload.ofSnapshot(storage);
+        var blocks = com.openmason.engine.voxel.net.ChunkBlockPayload.ofSnapshot(storage);
 
         ChunkDataS2C decoded = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(2, 9, blocks, new byte[0]));
         assertArrayEquals(blocks.encoded(), decoded.payload());

@@ -1,6 +1,6 @@
 package com.stonebreak.network.bridge;
 
-import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.net.VoxelChunkCodec;
 import com.openmason.engine.net.replication.BlockSetter;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.IVoxelChunkData;
@@ -22,6 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 @Tag("regression")
 class VoxelChunkBulkCodecTest {
+
+    /** The world dimensions the game installs at startup (GameBootstrap): the chunk codec reads them (#385). */
+    @org.junit.jupiter.api.BeforeAll
+    static void installWorldDimensions() {
+        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
+            com.stonebreak.world.operations.WorldConfiguration.voxelConfig());
+    }
+
 
     @Test
     void bulkEncodeIsByteIdenticalAndBulkDecodeCellIdentical() {

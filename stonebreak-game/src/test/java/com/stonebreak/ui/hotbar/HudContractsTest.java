@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.ui.data.DataCell;
 import com.openmason.engine.ui.data.DataCollection;

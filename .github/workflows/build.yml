@@ -1,13 +1,19 @@
-# Compiles and packages the whole reactor (openmason-engine, stonebreak-game, openmason-tool) on
-# every supported platform, so a change that breaks the build on one OS shows up before merge.
-# Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh), and the
-# shaded jars are not uploaded or released. The root POM's OS-activated profiles pick the
-# LWJGL/Skija natives for each runner.
+# Compiles and packages the reactor (stonebreak-game, the Open Mason plugin, the worldgen glue) on every
+# supported platform, so a change that breaks the build on one OS shows up before merge.
+# Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh). The root
+# POM's OS-activated profiles pick the LWJGL/Skija natives for each runner. On pushes to main the
+# Open Mason drop-in plugin jar is uploaded as a workflow artifact; plugin-nightly.yml publishes it.
 #
-# Cenda is built first (release preset) so the engine POM packages it as natives/<platform>/ and
-# the shaded game and tool jars carry it: UI scripting and layout have no Java fallback, so a jar
-# without the library is broken, and this job fails rather than package one. The native tests
-# and the Java ABI handshake suites stay in cenda-native.yml.
+# Open Mason (the engine and the tool) comes from GitHub Packages at the root POM's openmason.version
+# (#388; for now a snapshot following OpenMason main, so every mvn call here passes -U to fetch the
+# newest one and the jars and the Cenda SDK come from the same publish); its engine-core jar already carries every platform's Cenda library, so the shaded game jar
+# gets it from there, and this job fails if it does not (UI scripting and layout have no Java
+# fallback). Stonebreak's own worldgen library (stonebreak-game/native, #386) is built here against
+# the Open Mason Cenda SDK of the same version and packaged into the game jar; it has a Java
+# fallback, but a release without it generates on the slow path, so the job checks it too.
+#
+# Reading GitHub Packages needs a token even for public packages: the workflow token, or the
+# OPENMASON_PACKAGES_TOKEN secret (a read:packages token) if the workflow token is refused.
 name: build
 
 on:
@@ -26,6 +32,7 @@ on:
 # Checkout + build only: the job never writes to the repo, issues or packages.
 permissions:
   contents: read
+  packages: read
 
 # A newer push to the same branch/PR supersedes the running build.
 concurrency:
@@ -49,32 +56,41 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure Cenda (release)
-        working-directory: openmason-engine/cenda
-        # FETCHCONTENT_BASE_DIR overrides the preset's $HOME cache, which Windows runners lack.
-        # Tests are cenda-native.yml's job, so skip building them here.
-        run: >
-          cmake --preset release
-          -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/cenda-deps"
-          -DBUILD_TESTING=OFF
-
-      - name: Build Cenda
-        working-directory: openmason-engine/cenda
-        run: cmake --build --preset release --parallel
-
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
           cache: maven
 
-      - name: Build Stonebreak + Open Mason
-        # -DskipTests still compiles the test sources, so broken tests fail the build.
-        run: mvn -B -ntp -s .mvn/settings.xml package -DskipTests
+      - name: Unpack the Open Mason Cenda SDK
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: mvn -B -ntp -U -s .mvn/settings.xml -f stonebreak-game/native/pom.xml initialize
 
-      - name: Verify Cenda is packaged
-        # The POM's copy-resources step skips a missing library silently (local tool-only builds),
-        # so check every jar that ships it. The platform dir must match cenda.natives.dir.
+      - name: Configure Stonebreak worldgen natives (release)
+        working-directory: stonebreak-game/native
+        run: >
+          cmake --preset release
+          -DFETCHCONTENT_BASE_DIR="${{ runner.temp }}/stonebreak-native-deps"
+          -DBUILD_TESTING=OFF
+
+      - name: Build Stonebreak worldgen natives
+        working-directory: stonebreak-game/native
+        run: cmake --build --preset release --parallel
+
+      - name: Build Stonebreak + the Open Mason plugin
+        # -DskipTests still compiles the test sources, so broken tests fail the build.
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        # plugin.release.version stamps the drop-in plugin's manifest (plugin-nightly.yml ships it).
+        run: >
+          mvn -B -ntp -U -s .mvn/settings.xml package -DskipTests
+          -Dplugin.release.version=nightly-${GITHUB_SHA::7}
+
+      - name: Verify Cenda + worldgen natives are packaged
+        # The Cenda library arrives inside the published engine-core jar; the worldgen library is
+        # copied by the game POM, which skips a missing one silently. The platform dir must match
+        # cenda.natives.dir.
         run: |
           case "${{ runner.os }}" in
             Linux) os=linux; lib=libcenda_kernels.so ;;
@@ -88,9 +104,7 @@ jobs:
           esac
           entry="natives/$os-$arch/$lib"
           status=0
-          for jar in openmason-engine/target/openmason-engine-*.jar \
-                     stonebreak-game/target/stonebreak-game-*-shaded.jar \
-                     openmason-tool/target/openmason-tool-*.jar; do
+          for jar in stonebreak-game/target/stonebreak-game-*-shaded.jar; do
             case "$jar" in *-sources.jar|*-javadoc.jar|*/original-*) continue ;; esac
             if [[ ! -f "$jar" ]]; then
               echo "::error::expected jar not found: $jar"; status=1
@@ -100,4 +114,62 @@ jobs:
               echo "::error::$jar is missing $entry"; status=1
             fi
           done
+          # The game's own worldgen library (#386) rides the game jars only.
+          case "${{ runner.os }}" in
+            Linux) wlib=libstonebreak_worldgen.so ;;
+            macOS) wlib=libstonebreak_worldgen.dylib ;;
+            Windows) wlib=stonebreak_worldgen.dll ;;
+          esac
+          wentry="natives/$os-$arch/$wlib"
+          for jar in stonebreak-game/target/stonebreak-game-*-shaded.jar; do
+            if jar tf "$jar" | grep -qx "$wentry"; then
+              echo "$jar: $wentry"
+            else
+              echo "::error::$jar is missing $wentry"; status=1
+            fi
+          done
           exit $status
+
+      - name: Check the Open Mason drop-in plugin
+        # openmason-plugin-stonebreak-*-dropin.jar is what users put in Open Mason's plugin folder:
+        # the plugin + the game + the game's dependencies Open Mason lacks, one jar for every OS. The
+        # script checks its contents, that its bundled dependencies match the dependency trees, and
+        # that Open Mason's own loader registers it (scripts/plugin-dropin-check.sh). Linux only:
+        # the jar is platform-independent.
+        if: runner.os == 'Linux'
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        # Through bash: core.fileMode is false here, so the executable bit is not committed.
+        run: bash scripts/plugin-dropin-check.sh -B -ntp -U -s .mvn/settings.xml
+
+      - name: Stage the plugin for the nightly
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.OPENMASON_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p plugin-stage
+          # A fixed name: the nightly release's download URL never changes.
+          cp openmason-plugin-stonebreak/target/openmason-plugin-stonebreak-*-dropin.jar \
+             plugin-stage/openmason-plugin-stonebreak-nightly.jar
+          # The Open Mason build this was made against: the POM version, plus the resolved snapshot
+          # (timestamp-build) when it came from GitHub Packages.
+          om=$(mvn -B -q -ntp -s .mvn/settings.xml help:evaluate -Dexpression=openmason.version -DforceStdout)
+          resolved="$om"
+          meta="$HOME/.m2/repository/com/openmason/openmason-tool/$om/maven-metadata-github.xml"
+          if [[ "$om" == *-SNAPSHOT && -f "$meta" ]]; then
+            ts=$(sed -n 's:.*<timestamp>\(.*\)</timestamp>.*:\1:p' "$meta" | head -n 1)
+            bn=$(sed -n 's:.*<buildNumber>\(.*\)</buildNumber>.*:\1:p' "$meta" | head -n 1)
+            if [[ -n "$ts" && -n "$bn" ]]; then resolved="${om%-SNAPSHOT}-$ts-$bn"; fi
+          fi
+          printf '%s\n%s\n' "$om" "$resolved" > plugin-stage/openmason-version.txt
+          ls -la plugin-stage
+
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: plugin-dropin
+          path: plugin-stage/
+          if-no-files-found: error
+          # plugin-nightly.yml picks it up minutes later; nothing else reads it.
+          retention-days: 3
+          compression-level: 0   # jars are already compressed

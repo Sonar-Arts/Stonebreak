@@ -16,10 +16,11 @@ import com.stonebreak.world.operations.WorldConfiguration;
 /**
  * Snapshot builder + kernel front-end for the native chunk mesher.
  *
- * One snapshot per mesh build: the chunk's blocks as a flat short[65536]
- * (index y*256 + z*16 + x == section*4096 + CCO cell index), the four
+ * One snapshot per mesh build: the chunk's blocks as a flat short[CS*CS*WH]
+ * (index (y*CS + z)*CS + x == section*CS*CS*16 + CCO cell index), the four
  * neighbor border planes + four diagonal corner columns for cross-chunk
- * culling/AO, and the 18x18 sky heightmap ring. Special (non-cube) cells are
+ * culling/AO, and the (CS+2)^2 sky heightmap ring. The kernel takes the
+ * world's dimensions as arguments (#385). Special (non-cube) cells are
  * collected during extraction so the Java pass only visits those instead of
  * re-walking all 65k cells.
  */
@@ -50,7 +51,7 @@ public final class CendaMesher {
         final short[] cornerPn = new short[WH];
         final short[] cornerNp = new short[WH];
         final short[] cornerPp = new short[WH];
-        final short[] heights = new short[18 * 18];
+        final short[] heights = new short[(CS + 2) * (CS + 2)];
         int[] special = new int[256];
     }
 
@@ -61,34 +62,24 @@ public final class CendaMesher {
     }
 
     /**
-     * World height the native {@code ck_mesh_chunk} kernel is compiled for. Its
-     * own {@code WH} constant is 256 and it CLAMPS the caller's {@code max_y} to
-     * {@code WH - 1} (mesher.cpp), so on a taller world it silently returns only
-     * the bottom 256 blocks of every column — no error, no partial flag.
-     */
-    public static final int KERNEL_WORLD_HEIGHT = 256;
-
-    /**
      * True when the native mesher may be used for this world.
      *
-     * <p>Declines when {@link WorldConfiguration#WORLD_HEIGHT} exceeds what the
-     * kernel can address. That is not a tuning knob: {@code MmsCcoAdapter} treats
-     * a successful kernel call as authoritative and skips the Java cube loop
-     * entirely, so a truncating kernel means everything above y=255 is never
-     * meshed. This branch runs a 1024-tall world with sea level at 320, so the
-     * whole surface would go missing while the Java-side special cells (crosses,
-     * SBO stamps, water) still drew — flowers floating over an empty world.
-     * Rebuild the kernel for the taller column to get the native path back.
+     * <p>The kernel takes the world's chunk size and height as arguments (#385; it
+     * used to be compiled for 16x256 and silently truncated taller columns), so the
+     * only dimension that can rule it out is a chunk wider than its row masks
+     * ({@link CendaKernels#MESH_MAX_CHUNK_SIZE}). That is not a tuning knob either:
+     * {@code MmsCcoAdapter} treats a successful kernel call as authoritative, so the
+     * kernel is never handed a chunk it cannot mesh whole.
      */
     public static boolean enabled() {
-        boolean fitsKernel = WorldConfiguration.WORLD_HEIGHT <= KERNEL_WORLD_HEIGHT;
+        boolean fitsKernel = CS <= CendaKernels.MESH_MAX_CHUNK_SIZE;
         boolean on = CendaKernels.isAvailable() && fitsKernel
             && !"java".equalsIgnoreCase(System.getProperty("stonebreak.mesher.backend", "auto"));
         if (BACKEND_LOGGED.compareAndSet(false, true)) {
             System.out.printf("[CendaMesher] backend=%s%s%n", on ? "native" : "java",
                 !fitsKernel
-                    ? " (kernel meshes only " + KERNEL_WORLD_HEIGHT + " blocks; WORLD_HEIGHT is "
-                        + WorldConfiguration.WORLD_HEIGHT + ")"
+                    ? " (kernel meshes chunks up to " + CendaKernels.MESH_MAX_CHUNK_SIZE + " wide; CHUNK_SIZE is "
+                        + CS + ")"
                     : "");
         }
         return on;
@@ -129,7 +120,7 @@ public final class CendaMesher {
             return specialCount;
         }
 
-        /** Packed flat index of the i-th special cell: y*256 + z*16 + x. */
+        /** Packed flat index of the i-th special cell: (y*CS + z)*CS + x. */
         public int specialCell(int i) {
             return specialCells[i];
         }
@@ -201,7 +192,7 @@ public final class CendaMesher {
                 int h = lightingContext != null
                     ? lightingContext.getColumnHeight(baseX + lx, baseZ + lz)
                     : -1;
-                heights[(lz + 1) * 18 + (lx + 1)] = (short) h;
+                heights[(lz + 1) * (CS + 2) + (lx + 1)] = (short) h;
             }
         }
 
@@ -217,7 +208,7 @@ public final class CendaMesher {
     public static int mesh(Snapshot snap, boolean smooth, float[][] holder) {
         float[] out = QUAD_BUFFER.get();
         while (true) {
-            int result = CendaKernels.meshChunk(snap.blocks, classTable(), BlockType.AIR.getId(),
+            int result = CendaKernels.meshChunk(snap.blocks, CS, WH, classTable(), BlockType.AIR.getId(),
                 snap.planeXn, snap.planeXp, snap.planeZn, snap.planeZp,
                 snap.cornerNn, snap.cornerPn, snap.cornerNp, snap.cornerPp,
                 snap.heights, snap.maxY, smooth, out);

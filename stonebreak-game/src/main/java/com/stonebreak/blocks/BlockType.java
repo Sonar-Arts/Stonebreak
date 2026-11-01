@@ -1,5 +1,6 @@
 package com.stonebreak.blocks;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.voxel.RenderLayer;
 import com.openmason.engine.voxel.IBlockType;
@@ -159,7 +160,7 @@ public final class BlockType implements Item, IBlockType {
             if (BY_NAME.containsKey(enumName) || BY_ID.containsKey(entry.numericId())) {
                 continue; // already represented by a sentinel or a static-final field
             }
-            SBOFormat.GameProperties gp = entry.properties();
+            SboGameplay.GameProperties gp = entry.properties();
             BlockType bt = new BlockType(
                     enumName, gp.numericId(), entry.displayName(),
                     gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness(),
@@ -232,7 +233,7 @@ public final class BlockType implements Item, IBlockType {
                 .orElseThrow(() -> new IllegalStateException(
                         "BlockType." + enumName + " requires SBO '" + objectId
                                 + "' but none is registered. Check sbo/blocks/."));
-        SBOFormat.GameProperties gp = entry.properties();
+        SboGameplay.GameProperties gp = entry.properties();
         BlockType bt = new BlockType(
                 enumName, gp.numericId(), entry.displayName(),
                 gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.hardness(),

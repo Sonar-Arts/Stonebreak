@@ -6,7 +6,7 @@ import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.battle.api.CombatantView;
 import com.stonebreak.battle.api.TelegraphView;
-import com.openmason.engine.ui.masonry.MCastBar;
+import com.stonebreak.ui.masonry.MCastBar;
 import com.openmason.engine.ui.masonry.MChipRow;
 import com.openmason.engine.ui.masonry.MColor;
 import com.openmason.engine.ui.masonry.MGauge;

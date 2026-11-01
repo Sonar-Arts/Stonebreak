@@ -11,6 +11,15 @@ public class WorldConfiguration {
     public static final int SEA_LEVEL = 64;
 
     /**
+     * The world's dimensions as the engine takes them (#385): installed with
+     * {@code CcoBounds.configure} at startup, which checks them against the engine's
+     * storage and mesh-format limits ({@code VoxelWorldLimits}) and fails loudly.
+     */
+    public static com.openmason.engine.voxel.VoxelWorldConfig voxelConfig() {
+        return new com.openmason.engine.voxel.VoxelWorldConfig(CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL);
+    }
+
+    /**
      * Sentinel water level for a column that holds no standing water. The cave
      * carvers take a per-column water plane so they can keep off water beds and
      * banks; on this branch the only standing water is the ocean, so a column is

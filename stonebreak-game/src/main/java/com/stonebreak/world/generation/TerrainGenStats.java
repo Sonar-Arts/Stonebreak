@@ -16,7 +16,7 @@ public final class TerrainGenStats {
 
     /** Which generation path produced a chunk. */
     public enum Mode {
-        /** Fused native kernel ({@code ck_generate_chunk}). */
+        /** Fused native kernel ({@code sbw_generate_chunk}, game worldgen natives). */
         FUSED,
         /** Native noise/carver kernels with the Java block-fill loop. */
         MIXED,

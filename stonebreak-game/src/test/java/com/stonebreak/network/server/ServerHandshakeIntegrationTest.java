@@ -1,6 +1,6 @@
 package com.stonebreak.network.server;
 
-import com.openmason.engine.net.protocol.ProtocolVersion;
+import com.stonebreak.network.ProtocolVersion;
 import com.openmason.engine.net.protocol.codec.WireCompression;
 import com.stonebreak.network.packet.chat.ChatMessageC2S;
 import com.stonebreak.network.packet.chat.ChatMessageS2C;

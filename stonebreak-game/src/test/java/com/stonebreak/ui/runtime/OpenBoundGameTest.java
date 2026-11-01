@@ -1,6 +1,6 @@
 package com.stonebreak.ui.runtime;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiArchive.UiDependencies;
 import com.openmason.engine.format.omui.OmuiReader;
@@ -51,8 +51,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class OpenBoundGameTest {
 
-    static final Path GRAPH_PAUSE = Path.of("../openmason-engine/src/test/resources/ui/script/graph_pause.omui");
-    static final Path SCRIPTED_PAUSE = Path.of("../openmason-engine/src/test/resources/ui/script/scripted_pause.omui");
+    static final Path GRAPH_PAUSE = Path.of("src/test/resources/openmason-fixtures/ui/script/graph_pause.omui");
+    static final Path SCRIPTED_PAUSE = Path.of("src/test/resources/openmason-fixtures/ui/script/scripted_pause.omui");
 
     private static final class FakeServices implements GameUiHost.Services {
         final List<String> calls = new ArrayList<>();
@@ -72,7 +72,7 @@ class OpenBoundGameTest {
     private static void requireLua() {
         if (!CendaLua.isAvailable()) {
             assumeTrue(Boolean.getBoolean("ui.script.allowMissingNative"), "Cenda Lua host unavailable");
-            throw new AssertionError("Cenda Lua host unavailable (build openmason-engine/cenda/build-kernels.sh): "
+            throw new AssertionError("Cenda Lua host unavailable (the Open Mason engine-core jar has no Cenda library for this platform: scripts/openmason-local.sh): "
                 + com.openmason.engine.ui.script.UiNativeHealth.check().problems());
         }
     }

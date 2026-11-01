@@ -3,7 +3,7 @@ package com.stonebreak.network.server;
 import com.openmason.engine.net.client.ClientInboundQueue;
 import com.openmason.engine.net.client.NetworkClient;
 import com.openmason.engine.net.protocol.Packet;
-import com.openmason.engine.net.protocol.ProtocolVersion;
+import com.stonebreak.network.ProtocolVersion;
 import com.openmason.engine.net.protocol.codec.WireCompression;
 import com.openmason.engine.net.transport.NetAddress;
 import com.stonebreak.network.StonebreakProtocol;

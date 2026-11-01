@@ -1,6 +1,5 @@
 package com.stonebreak.world.generation;
 
-import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.world.generation.heightmap.CarveMaskKey;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.heightmap.PerlinWormCarver;
@@ -20,7 +19,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The coverage the native worm-carver port needs and no other test provides: the
- * Java {@link PerlinWormCarver} walk bit-for-bit against {@code CendaKernels.carveWorms}
+ * Java {@link PerlinWormCarver} walk bit-for-bit against {@code WorldgenNatives.carveWorms}
  * on the same seed. {@code FusedChunkGenParityTest} compares C++ walker vs C++ walker
  * (both of its paths run the kernel), and the cave tests supply a height oracle that
  * disables the native carver context — so before this test, nothing failed if the two
@@ -49,7 +48,7 @@ class WormCarverParityTest {
 
     @Test
     void javaWalkMatchesNativeKernel() {
-        assumeTrue(CendaKernels.isAvailable(), "Cenda kernels not built");
+        assumeTrue(WorldgenNatives.isAvailable(), "Stonebreak worldgen natives not built (stonebreak-game/native)");
         assumeTrue(TerrainNoise.backend() == TerrainNoise.Backend.NATIVE, "native backend inactive");
 
         HeightMapGenerator heightMap = new HeightMapGenerator(new NoiseRouter(SEED));
@@ -81,7 +80,7 @@ class WormCarverParityTest {
                 float[] anchors = anchorChunks == null ? null : collectAnchorPoints(javaCarver, chunkX, chunkZ, scanRadius, anchorChunks);
 
                 long[] mask = new long[1024];
-                long carved = CendaKernels.carveWorms(ctx, chunkX, chunkZ, chunkHeights,
+                long carved = WorldgenNatives.carveWorms(ctx, chunkX, chunkZ, chunkHeights,
                     anchorChunks, anchors, mask);
                 assumeTrue(carved >= 0, "kernel carveWorms failed (ABI mismatch? rebuild kernels)");
                 BitSet nativeMask = BitSet.valueOf(mask);
@@ -89,7 +88,7 @@ class WormCarverParityTest {
                 assertEquals(javaMask, nativeMask, () -> describeDivergence(chunkX, chunkZ, javaMask, nativeMask));
             }
         } finally {
-            CendaKernels.terrainDestroy(ctx);
+            WorldgenNatives.terrainDestroy(ctx);
         }
     }
 

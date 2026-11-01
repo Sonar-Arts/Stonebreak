@@ -158,7 +158,7 @@ public class Game {
         services.setChatSystem(chatSystem);
         // UI scripting and layout have no fallback (#292): hand-shake at launch and say so in-game.
         for (String problem : com.openmason.engine.ui.script.UiNativeHealth.check().problems()) {
-            chatSystem.addMessage(problem + " - rebuild: openmason-engine/cenda/build-kernels.sh",
+            chatSystem.addMessage(problem + " - reinstall Open Mason with its natives: scripts/openmason-local.sh",
                 new float[]{1.0f, 0.35f, 0.35f, 1.0f});
         }
 

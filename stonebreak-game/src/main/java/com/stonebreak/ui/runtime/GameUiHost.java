@@ -408,6 +408,9 @@ public final class GameUiHost {
         debug = new com.stonebreak.ui.runtime.contracts.DebugContracts(host);
         host.data().register("glossaryAbilities", glossary.abilities(), GLOSSARY);
         PROVIDERS.forEach(host::offerProvider);
+        // game widgets (#384): a document naming stonebreak:ItemSlot declares it under providers
+        host.offerProvider(com.stonebreak.ui.theme.StonebreakWidgets.ITEM_SLOT,
+            com.stonebreak.ui.theme.StonebreakWidgets.ITEM_SLOT_DESCRIPTOR.version());
         registerActions();
     }
 

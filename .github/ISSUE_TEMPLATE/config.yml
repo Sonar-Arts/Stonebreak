@@ -1,1 +1,5 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Open Mason issues
+    url: https://github.com/Sonar-Arts/OpenMason/issues/new/choose
+    about: Engine, toolset, file format and plugin bugs or features belong in the Open Mason repository.

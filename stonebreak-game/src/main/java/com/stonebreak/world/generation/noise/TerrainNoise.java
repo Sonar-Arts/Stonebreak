@@ -52,6 +52,13 @@ public final class TerrainNoise {
         if (backend == Backend.NATIVE) {
             LOGGER.info("World-gen noise backend: NATIVE FastNoise2 ({}) — terrain differs from the Java backend",
                 CendaKernels.simdLevel());
+            if (!com.stonebreak.world.generation.WorldgenNatives.isAvailable()) {
+                // Engine noise without the game's worldgen library (#386): heights still match, but
+                // worms walk the Java carver (libm trig may differ in the last ulp) and every chunk
+                // takes the slower legacy path. Build stonebreak-game/native to restore it.
+                LOGGER.warn("World-gen: native noise is on but the Stonebreak worldgen natives are not loaded; "
+                    + "worm carving and chunk generation use the Java path (build stonebreak-game/native)");
+            }
         } else {
             LOGGER.info("World-gen noise backend: JAVA (classic simplex)");
         }
@@ -179,14 +186,14 @@ public final class TerrainNoise {
     /** Registers native terrain-context cleanup against the owner's lifetime. */
     public static void destroyTerrainOnCollect(Object owner, long ctx) {
         if (ctx != 0L) {
-            CLEANER.register(owner, () -> CendaKernels.terrainDestroy(ctx));
+            CLEANER.register(owner, () -> com.stonebreak.world.generation.WorldgenNatives.terrainDestroy(ctx));
         }
     }
 
     /** Registers fused chunk-generator context cleanup against the owner's lifetime. */
     public static void destroyChunkGenOnCollect(Object owner, long ctx) {
         if (ctx != 0L) {
-            CLEANER.register(owner, () -> CendaKernels.chunkGenDestroy(ctx));
+            CLEANER.register(owner, () -> com.stonebreak.world.generation.WorldgenNatives.chunkGenDestroy(ctx));
         }
     }
 

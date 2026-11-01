@@ -6,7 +6,7 @@ import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
 import com.openmason.engine.ui.runtime.UiRect;
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.Tag;
@@ -46,7 +46,7 @@ class PauseDocumentGateTest {
     private static void requireLua() {
         if (!CendaLua.isAvailable()) {
             assumeTrue(Boolean.getBoolean("ui.script.allowMissingNative"), "Cenda Lua host unavailable");
-            throw new AssertionError("Cenda Lua host unavailable (build openmason-engine/cenda/build-kernels.sh): "
+            throw new AssertionError("Cenda Lua host unavailable (the Open Mason engine-core jar has no Cenda library for this platform: scripts/openmason-local.sh): "
                 + com.openmason.engine.ui.script.UiNativeHealth.check().problems());
         }
     }

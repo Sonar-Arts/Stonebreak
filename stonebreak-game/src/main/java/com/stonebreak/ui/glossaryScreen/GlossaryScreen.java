@@ -79,7 +79,16 @@ public class GlossaryScreen {
     public int getSelectedEntityIndex() { return selectedEntityIndex; }
 
     public EntityType getSelectedEntityType() {
-        return EntityType.GLOSSARY_TYPES[selectedEntityIndex];
+        return glossaryTypes()[selectedEntityIndex];
+    }
+
+    /**
+     * The mobs the glossary lists, in sidebar order: {@link EntityType#GLOSSARY_TYPES}. Fidelity
+     * fixtures pin it to the set their frozen captures were recorded with, so a new mob does not
+     * read as a rendering change.
+     */
+    public EntityType[] glossaryTypes() {
+        return EntityType.GLOSSARY_TYPES;
     }
 
     /**
@@ -94,7 +103,7 @@ public class GlossaryScreen {
 
     /** Selects sidebar row {@code index}. @return false when there is no such row */
     public boolean select(int index) {
-        if (index < 0 || index >= EntityType.GLOSSARY_TYPES.length) {
+        if (index < 0 || index >= glossaryTypes().length) {
             return false;
         }
         selectedEntityIndex = index;

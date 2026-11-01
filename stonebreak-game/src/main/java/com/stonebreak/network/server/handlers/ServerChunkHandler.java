@@ -1,7 +1,7 @@
 package com.stonebreak.network.server.handlers;
 
-import com.openmason.engine.net.protocol.codec.ChunkBlockPayload;
-import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.net.ChunkBlockPayload;
+import com.openmason.engine.voxel.net.VoxelChunkCodec;
 import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.openmason.engine.util.LongIntHashMap;
 import com.stonebreak.network.packet.world.ChunkDataS2C;

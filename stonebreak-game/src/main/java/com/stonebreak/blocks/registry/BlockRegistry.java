@@ -1,5 +1,6 @@
 package com.stonebreak.blocks.registry;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
@@ -19,7 +20,7 @@ import java.util.Optional;
  *
  * <p>Indexed by both namespaced object ID (e.g. {@code "stonebreak:dirt"}) and
  * stable numeric ID (the value persisted in chunk save files). Both indices
- * are populated from the SBO manifest's {@link SBOFormat.GameProperties} block
+ * are populated from the SBO manifest's {@link SboGameplay.GameProperties} block
  * (format 1.1+); 1.0 SBOs are skipped with a warning since they lack the
  * gameplay metadata needed to register.
  *
@@ -80,7 +81,7 @@ public final class BlockRegistry {
         int loaded = 0;
         int skipped = 0;
         for (SBOParseResult result : sboRegistry.getAll()) {
-            SBOFormat.GameProperties gp = result.manifest().gameProperties();
+            SboGameplay.GameProperties gp = SboGameplay.of(result.manifest()).gameProperties();
             if (gp == null) {
                 logger.warn("Skipping legacy SBO without gameProperties: {} ({}). Run SBOMetadataBackfill.",
                         result.getObjectName(), result.getObjectId());
@@ -180,7 +181,7 @@ public final class BlockRegistry {
     public record BlockEntry(
             String objectId,
             String displayName,
-            SBOFormat.GameProperties properties,
+            SboGameplay.GameProperties properties,
             SBOParseResult sboData
     ) {
         public int numericId() { return properties.numericId(); }
@@ -189,12 +190,18 @@ public final class BlockRegistry {
         public boolean breakable() { return properties.breakable(); }
         public int atlasX() { return properties.atlasX(); }
         public int atlasY() { return properties.atlasY(); }
-        public boolean transparent() { return properties.transparent(); }
+        /** The SBO's transparency flag (core format data, #383). */
+        public boolean transparent() { return rendering().transparent(); }
         public boolean flower() { return properties.flower(); }
         public boolean stackable() { return properties.stackable(); }
         public int maxStackSize() { return properties.maxStackSize(); }
         public boolean placeable() { return properties.placeable(); }
-        public String renderLayer() { return properties.renderLayerOrDefault(); }
+        /** The SBO's render layer (core format data, #383). */
+        public String renderLayer() { return rendering().renderLayer(); }
+        private SBOFormat.Rendering rendering() {
+            return sboData != null && sboData.manifest() != null
+                    ? sboData.manifest().rendering() : SBOFormat.Rendering.DEFAULT;
+        }
         public String category() { return properties.categoryOrDefault(); }
     }
 }

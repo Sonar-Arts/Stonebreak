@@ -59,9 +59,7 @@ public final class ServerHarness implements AutoCloseable {
             throws InterruptedException {
         // The engine bounds the game installs at startup (GameBootstrap.configureEngine): feature
         // population and the CCO coordinate helpers read them.
-        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
-                new com.openmason.engine.voxel.VoxelWorldConfig(WorldConfiguration.CHUNK_SIZE,
-                        WorldConfiguration.WORLD_HEIGHT, WorldConfiguration.SEA_LEVEL));
+        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(WorldConfiguration.voxelConfig());
         String previousDataDir = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
         System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
         IntegratedServer server = new IntegratedServer(limits, silenceTimeoutNs, keepaliveIntervalTicks);

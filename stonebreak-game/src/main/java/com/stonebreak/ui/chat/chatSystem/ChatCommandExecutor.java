@@ -50,6 +50,21 @@ public class ChatCommandExecutor {
     }
 
     /**
+     * Removes the command registered under {@code name} (and that command's other names).
+     * Fidelity fixtures use it to pin the command list their frozen captures were recorded with.
+     *
+     * @return true when a command was removed
+     */
+    public boolean unregisterCommand(String name) {
+        ChatCommand command = name == null ? null : commands.get(name.toLowerCase());
+        if (command == null) {
+            return false;
+        }
+        commands.values().removeIf(c -> c == command);
+        return true;
+    }
+
+    /**
      * Register a command under its name and each of its aliases
      */
     private void registerCommand(ChatCommand command) {

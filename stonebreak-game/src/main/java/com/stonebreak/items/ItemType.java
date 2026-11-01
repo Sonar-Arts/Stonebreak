@@ -1,5 +1,6 @@
 package com.stonebreak.items;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.items.registry.ItemRegistry;
 import com.stonebreak.items.weapon.WeaponRules;
@@ -130,7 +131,7 @@ public final class ItemType implements Item {
             if (BY_NAME.containsKey(enumName) || BY_ID.containsKey(entry.numericId())) {
                 continue;
             }
-            SBOFormat.GameProperties gp = entry.properties();
+            SboGameplay.GameProperties gp = entry.properties();
             ItemCategory category = ItemRegistry.parseCategoryOrDefault(gp.categoryOrDefault());
             ItemType it = new ItemType(
                     enumName, gp.numericId(), entry.displayName(),
@@ -179,7 +180,7 @@ public final class ItemType implements Item {
                 .orElseThrow(() -> new IllegalStateException(
                         "ItemType." + enumName + " requires SBO '" + objectId
                                 + "' but none is registered. Check sbo/items/."));
-        SBOFormat.GameProperties gp = entry.properties();
+        SboGameplay.GameProperties gp = entry.properties();
         ItemCategory category = ItemRegistry.parseCategoryOrDefault(gp.categoryOrDefault());
         ItemType it = new ItemType(
                 enumName, gp.numericId(), entry.displayName(),

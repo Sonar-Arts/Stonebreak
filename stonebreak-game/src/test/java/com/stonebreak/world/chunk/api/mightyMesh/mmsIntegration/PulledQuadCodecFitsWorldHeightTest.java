@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Ties the pulled-quad Y budgets to {@link WorldConfiguration#WORLD_HEIGHT}.
  *
- * <p>{@code PulledQuadWorldHeightTest} lives in openmason-engine, which cannot
+ * <p>{@code PulledQuadWorldHeightTest} lives in the Open Mason engine, which cannot
  * see {@code WorldConfiguration}, so it pins the codecs against a hardcoded
  * 1023. That leaves the actual invariant — "the codecs reach the top of THIS
  * world" — unguarded, and its failure mode is silent: {@code FastLodMesher}

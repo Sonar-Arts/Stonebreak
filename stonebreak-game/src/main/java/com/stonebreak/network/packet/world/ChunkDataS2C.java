@@ -3,14 +3,14 @@ package com.stonebreak.network.packet.world;
 import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
-import com.openmason.engine.net.protocol.codec.ChunkBlockPayload;
+import com.openmason.engine.voxel.net.ChunkBlockPayload;
 import com.openmason.engine.net.protocol.codec.WireCompression;
 import io.netty.buffer.ByteBuf;
 
 /**
  * Server → client: a full chunk snapshot. {@code blocks} is the chunk's block storage — a
  * copy-on-write snapshot when the server built it, which a LOCAL (singleplayer) client installs
- * as is, or {@link com.openmason.engine.net.protocol.codec.VoxelChunkCodec} bytes, which a TCP
+ * as is, or {@link com.openmason.engine.voxel.net.VoxelChunkCodec} bytes, which a TCP
  * connection writes (encoding the snapshot on the network thread, once per snapshot however
  * many players receive it). {@code metaPayload} is the game-side chunk metadata blob (snow
  * layers, block states — see {@code GameChunkMetaCodec}), empty when the chunk carries none.

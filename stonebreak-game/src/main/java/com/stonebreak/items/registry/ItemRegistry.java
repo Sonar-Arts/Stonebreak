@@ -1,5 +1,6 @@
 package com.stonebreak.items.registry;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.format.sbo.SBOParser;
@@ -30,7 +31,7 @@ import java.util.stream.Stream;
  *
  * <p>Indexed by both namespaced object ID (e.g. {@code "stonebreak:sword"})
  * and stable numeric ID. The numeric ID is sourced from the SBO's
- * {@link SBOFormat.GameProperties} and lives in the 1000+ range to avoid
+ * {@link SboGameplay.GameProperties} and lives in the 1000+ range to avoid
  * collision with block IDs.
  */
 public final class ItemRegistry {
@@ -75,7 +76,7 @@ public final class ItemRegistry {
                     continue;
                 }
 
-                SBOFormat.GameProperties gp = result.manifest().gameProperties();
+                SboGameplay.GameProperties gp = SboGameplay.of(result.manifest()).gameProperties();
                 if (gp == null) {
                     logger.warn("Skipping item SBO missing gameProperties: {}", result.getObjectId());
                     continue;
@@ -204,7 +205,7 @@ public final class ItemRegistry {
     public record ItemEntry(
             String objectId,
             String displayName,
-            SBOFormat.GameProperties properties,
+            SboGameplay.GameProperties properties,
             SBOParseResult sboData
     ) {
         public int numericId() { return properties.numericId(); }

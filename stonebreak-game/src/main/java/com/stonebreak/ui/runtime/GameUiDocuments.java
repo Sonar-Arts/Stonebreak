@@ -144,7 +144,7 @@ public final class GameUiDocuments {
      * @param converters Java converters for names no script declares, or null
      * @throws UiActivationException listing every unmet activation or asset need
      * @throws IllegalStateException when the input gate blocks the screen
-     * @throws com.openmason.engine.cenda.CendaLuaUnavailableException when the screen has
+     * @throws com.openmason.engine.ui.cenda.CendaLuaUnavailableException when the screen has
      *         code-behind and the Lua host cannot load
      */
     public static UiDocumentView openBound(SbuiArchive sbui, Map<String, Path> packs, Supplier<Typeface> typeface,
