@@ -507,7 +507,7 @@ public class WorldRenderer {
         // correct), and opaque blocks in front still occlude them via depth testing.
         effectsRenderer.renderAll(player);
 
-        // Render player arm last (if not paused) to appear in front of entities
+        // Render player arm last to appear in front of entities
         renderPlayerArm(player);
     }
     
@@ -882,7 +882,10 @@ public class WorldRenderer {
      */
     private void renderPlayerArm(Player player) {
         GameState currentState = Game.getInstance().getState();
+        // PAUSED included: the pause menu draws over a live view of the world (the HUD stays
+        // too, see FrameRenderer.HUD_STATES), so the arm/body must not vanish behind it.
         boolean activeState = currentState == GameState.PLAYING
+                || currentState == GameState.PAUSED
                 || currentState == GameState.INVENTORY_UI
                 || currentState == GameState.CHARACTER_SHEET_UI
                 || currentState == GameState.RECIPE_BOOK_UI
