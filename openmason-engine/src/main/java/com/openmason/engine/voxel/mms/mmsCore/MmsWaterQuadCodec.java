@@ -32,6 +32,12 @@ import java.nio.ByteBuffer;
 public final class MmsWaterQuadCodec {
 
     public static final int QUAD_BYTES = 16;
+    /** Largest x/z of a record, blocks from the region origin: 8 bits. */
+    public static final int MAX_LOCAL_XZ = 255;
+    /** Largest y of a record (absolute world Y): 10 bits. */
+    public static final int MAX_Y = 1023;
+    /** Largest in-plane extent ({@code w}, {@code h}) of one record: 4 bits each. */
+    public static final int MAX_EXTENT = 16;
     /** Vertex Y offsets are stored from one block BELOW the cell base. */
     public static final float Y_BASE_OFFSET = -1f;
     public static final float Y_STEP = 1f / 128f;
@@ -56,10 +62,10 @@ public final class MmsWaterQuadCodec {
      *              edge and open visible seams; distant water needs no waves.
      */
     public static int word0(int x, int y, int z, int face, boolean falling, boolean source, boolean sheet) {
-        check(x, 0, 255, "x");
+        check(x, 0, MAX_LOCAL_XZ, "x");
         // The mesh origin's Y is 0, so y is absolute world Y: 10 bits covers WORLD_HEIGHT 1024.
-        check(y, 0, 1023, "y");
-        check(z, 0, 255, "z");
+        check(y, 0, MAX_Y, "y");
+        check(z, 0, MAX_LOCAL_XZ, "z");
         check(face, 0, 5, "face");
         return x | (y << 8) | (z << 18) | (face << 26) | ((falling ? 1 : 0) << 29) | ((source ? 1 : 0) << 30)
             | ((sheet ? 1 : 0) << 31);
@@ -117,8 +123,8 @@ public final class MmsWaterQuadCodec {
 
     /** @param inset the face touches a translucent block and sits {@link #INSET} inside its cell */
     public static int word3(int w, int h, int flow, int depth, boolean inset) {
-        check(w, 1, 16, "w");
-        check(h, 1, 16, "h");
+        check(w, 1, MAX_EXTENT, "w");
+        check(h, 1, MAX_EXTENT, "h");
         check(flow, NO_FLOW, 7, "flow");
         check(depth, 0, 255, "depth");
         return (w - 1) | ((h - 1) << 4) | ((flow + 1) << 8) | (depth << 12) | ((inset ? 1 : 0) << 20);

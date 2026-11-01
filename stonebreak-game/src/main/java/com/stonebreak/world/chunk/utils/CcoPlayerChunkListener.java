@@ -1,11 +1,11 @@
 package com.stonebreak.world.chunk.utils;
 
-import com.openmason.engine.voxel.cco.core.CcoPlayerTracker;
+import com.openmason.engine.voxel.cco.core.CcoPositionTracker;
 import org.joml.Vector3f;
 
 /**
  * CCO-integrated listener for player chunk boundary crossings.
- * This demonstrates how to use the CcoPlayerTracker to respond to player movement.
+ * This demonstrates how to use the CcoPositionTracker to respond to player movement.
  *
  * Example Use Cases:
  * - Trigger chunk loading/unloading based on player movement
@@ -18,7 +18,7 @@ import org.joml.Vector3f;
  * - Single Responsibility (only handles chunk notifications)
  * - KISS - simple, focused implementation
  */
-public class CcoPlayerChunkListener implements CcoPlayerTracker.PositionChangeListener {
+public class CcoPlayerChunkListener implements CcoPositionTracker.PositionChangeListener {
 
     private final ChunkManager chunkManager;
     private boolean debugLogging = false;

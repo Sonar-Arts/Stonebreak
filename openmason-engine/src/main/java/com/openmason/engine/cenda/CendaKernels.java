@@ -31,7 +31,7 @@ import java.nio.file.Path;
 public final class CendaKernels {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CendaKernels.class);
-    private static final int EXPECTED_ABI = 11;
+    private static final int EXPECTED_ABI = 12; // 12 (#385): ck_mesh_chunk takes chunk_size + world_height
 
     private static final boolean AVAILABLE;
     private static final String SIMD_LEVEL;
@@ -116,7 +116,8 @@ public final class CendaKernels {
                 meshChunk = linker.downcallHandle(
                     find(lookup, "ck_mesh_chunk"),
                     FunctionDescriptor.of(ValueLayout.JAVA_INT,
-                        ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                        ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS,
                         ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                         ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -482,20 +483,29 @@ public final class CendaKernels {
     // ═══════════════════════ Chunk mesher ═══════════════════════
 
     /**
-     * Culls + lights one chunk's standard-cube faces natively. Layouts and
-     * semantics per cenda/kernels.h (ck_mesh_chunk). Returns the number of
-     * quad records written to {@code outQuads} (9 floats each), or a negative
-     * count if the output array is too small (retry with {@code -result * 9}
-     * floats), or Integer.MIN_VALUE when the library is unavailable.
+     * Widest chunk {@link #meshChunk} takes ({@code CK_MESH_MAX_CHUNK_SIZE}: a native row mask
+     * holds one bit per z). Wider worlds mesh on the Java path.
      */
-    public static int meshChunk(short[] blocks, byte[] classTable, int airId,
+    public static final int MESH_MAX_CHUNK_SIZE = 16;
+
+    /**
+     * Culls + lights one {@code chunkSize × worldHeight × chunkSize} chunk's standard-cube faces
+     * natively. Layouts and semantics per cenda/kernels.h (ck_mesh_chunk): {@code blocks} is
+     * {@code chunkSize² × worldHeight} ids, the border planes {@code worldHeight × chunkSize},
+     * the corner columns {@code worldHeight}, {@code heights} {@code (chunkSize + 2)²}. Returns
+     * the number of quad records written to {@code outQuads} (9 floats each), or a negative
+     * count if the output array is too small (retry with {@code -result * 9} floats), or
+     * Integer.MIN_VALUE when the library is unavailable or the dimensions are out of range
+     * ({@code chunkSize} past {@link #MESH_MAX_CHUNK_SIZE}).
+     */
+    public static int meshChunk(short[] blocks, int chunkSize, int worldHeight, byte[] classTable, int airId,
                                 short[] planeXn, short[] planeXp,
                                 short[] planeZn, short[] planeZp,
                                 short[] cornerNn, short[] cornerPn,
                                 short[] cornerNp, short[] cornerPp,
                                 short[] heights18, int maxY, boolean smooth,
                                 float[] outQuads) {
-        if (!AVAILABLE) {
+        if (!AVAILABLE || chunkSize < 1 || chunkSize > MESH_MAX_CHUNK_SIZE || worldHeight < 1) {
             return Integer.MIN_VALUE;
         }
         int capQuads = outQuads.length / 9;
@@ -505,7 +515,7 @@ public final class CendaKernels {
             MemorySegment heightsSeg = scratchFrom(2, heights18);
             MemorySegment outSeg = scratch(3, (long) capQuads * 9 * Float.BYTES);
             int result = (int) MESH_CHUNK.invokeExact(
-                blocksSeg, clsSeg, classTable.length, airId,
+                blocksSeg, chunkSize, worldHeight, clsSeg, classTable.length, airId,
                 scratchFromNullable(4, planeXn), scratchFromNullable(5, planeXp),
                 scratchFromNullable(6, planeZn), scratchFromNullable(7, planeZp),
                 scratchFromNullable(8, cornerNn), scratchFromNullable(9, cornerPn),

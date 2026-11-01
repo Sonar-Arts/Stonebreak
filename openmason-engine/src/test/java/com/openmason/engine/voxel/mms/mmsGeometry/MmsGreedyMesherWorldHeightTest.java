@@ -44,7 +44,7 @@ class MmsGreedyMesherWorldHeightTest {
 
     private static int mergedCount(int y, int face) {
         float[][] holder = new float[1][];
-        return MmsGreedyMesher.merge(sheet(y, face), 256, holder);
+        return MmsGreedyMesher.merge(sheet(y, face), 256, 16, holder);
     }
 
     @Test

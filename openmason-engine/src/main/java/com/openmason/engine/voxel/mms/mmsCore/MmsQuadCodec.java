@@ -36,6 +36,13 @@ public final class MmsQuadCodec {
     public static final int QUAD_BYTES = 16;
     /** Texture unit the region/handle binds its quad buffer texture to. */
     public static final int QUAD_TEXTURE_UNIT = 7;
+    /** Largest x/z of a record, blocks from the mesh (region) origin: 8 bits. */
+    public static final int MAX_LOCAL_XZ = 255;
+    /** Largest y of a record (absolute world Y, the mesh origin's Y is 0): 10 bits. */
+    public static final int MAX_Y = 1023;
+    /** Largest in-plane extent ({@code w}, {@code h}) of one record, blocks: 4 bits each. */
+    public static final int MAX_EXTENT = 16;
+
     /** Most quads one shared-EBO draw can address with u16 indices. */
     public static final int MAX_QUADS_PER_DRAW = 65536 / 4;
 
@@ -45,9 +52,9 @@ public final class MmsQuadCodec {
     // ─── Packing ───────────────────────────────────────────────────────────
 
     public static int word0(int x, int y, int z, int face) {
-        check(x, 0, 255, "x");
-        check(y, 0, 1023, "y");
-        check(z, 0, 255, "z");
+        check(x, 0, MAX_LOCAL_XZ, "x");
+        check(y, 0, MAX_Y, "y");
+        check(z, 0, MAX_LOCAL_XZ, "z");
         check(face, 0, 5, "face");
         return x | (y << 8) | (z << 18) | (face << 26);
     }
@@ -55,8 +62,8 @@ public final class MmsQuadCodec {
     /** {@code w} rides in word1: word0 gave its top nibble to the wider y field. */
     public static int word1(int w, int h, int orientation, boolean alpha, boolean translucent,
                             int layer) {
-        check(w, 1, 16, "w");
-        check(h, 1, 16, "h");
+        check(w, 1, MAX_EXTENT, "w");
+        check(h, 1, MAX_EXTENT, "h");
         check(orientation, 0, 7, "orientation");
         check(layer, 0, 65535, "layer");
         return (h - 1) | (orientation << 4) | ((alpha ? 1 : 0) << 7) | ((translucent ? 1 : 0) << 8)

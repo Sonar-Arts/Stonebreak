@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CK_ABI_VERSION 11
+#define CK_ABI_VERSION 12 /* 12 (#385): ck_mesh_chunk takes chunk_size + world_height */
 
 /* ABI handshake — Java refuses to use the lib if this doesn't match. */
 int32_t ck_abi_version(void);
@@ -57,34 +57,43 @@ int32_t ck_gen_grid_3d(void* node, float* out,
 
 /* ════════════════════════ Chunk mesher ════════════════════════
  *
- * Culls + lights the standard-cube faces of one 16x256x16 chunk, replicating
- * the Java MmsCcoAdapter/VertexLightSampler semantics bit-for-bit (no libm in
- * this path, so exact float parity is achievable and tested).
+ * Culls + lights the standard-cube faces of one cs x wh x cs chunk (cs =
+ * chunk_size, 1..CK_MESH_MAX_CHUNK_SIZE; wh = world_height, any positive
+ * height — #385), replicating the Java MmsCcoAdapter/VertexLightSampler
+ * semantics bit-for-bit (no libm in this path, so exact float parity is
+ * achievable and tested).
  *
- * Block array index: idx = y*256 + z*16 + x  (== section*4096 + CCO cellIndex).
+ * Block array index: idx = (y*cs + z)*cs + x  (== section*cs*cs*16 + CCO cellIndex).
  * Faces: 0 top(+y) 1 bottom(-y) 2 north(-z) 3 south(+z) 4 east(+x) 5 west(-x).
  *
  * class_table: one byte per block id (index = id), bit flags below. Ids not in
  * the table are treated as 0 (skipped, non-transparent, non-solid).
  *
- * Border planes carry neighbor-chunk block ids at local x==-1 / x==16
- * (index [y*16+z]) and z==-1 / z==16 (index [y*16+x]); corner columns carry
- * the diagonal-neighbor column at (-1,-1),(16,-1),(-1,16),(16,16) (index [y]).
+ * Border planes carry neighbor-chunk block ids at local x==-1 / x==cs
+ * (index [y*cs+z]) and z==-1 / z==cs (index [y*cs+x]); corner columns carry
+ * the diagonal-neighbor column at (-1,-1),(cs,-1),(-1,cs),(cs,cs) (index [y]).
  * Pass NULL for an unloaded neighbor: culling then sees AIR and ambient
  * occlusion sees non-solid, exactly like the Java path.
  *
- * heights: 18x18 sky heightmap, index [(lz+1)*18 + (lx+1)], world Y of the
- * first free cell above the column's topmost opaque block; -1 = unloaded.
+ * heights: (cs+2)x(cs+2) sky heightmap, index [(lz+1)*(cs+2) + (lx+1)], world
+ * Y of the first free cell above the column's topmost opaque block; -1 = unloaded.
  *
  * Output: quad records of 9 floats {lx, ly, lz, face, blockId, l0, l1, l2, l3}
  * where l0..l3 are the per-corner light values in FACE_VERTEX_OFFSETS corner
- * order. Returns the quad count, or -(needed) if cap_quads is too small. */
+ * order. Returns the quad count, -(needed) if cap_quads is too small, or
+ * CK_MESH_BAD_ARGS for a null array or a dimension out of range. */
+
+/* Widest chunk the mesher takes: a row mask is a uint16 with one bit per lz. */
+#define CK_MESH_MAX_CHUNK_SIZE 16
+/* Invalid arguments (never a valid count or a retry size). */
+#define CK_MESH_BAD_ARGS INT32_MIN
 
 #define CK_CLASS_CUBE 1u         /* meshed as a standard cube by this kernel */
 #define CK_CLASS_TRANSPARENT 2u  /* BlockType.isTransparent() */
 #define CK_CLASS_OPAQUE_LIGHT 4u /* solid for AO (BlockOpacity.isOpaque)     */
 
 int32_t ck_mesh_chunk(const int16_t* blocks,
+                      int32_t chunk_size, int32_t world_height,
                       const uint8_t* class_table, int32_t class_table_len,
                       int32_t air_id,
                       const int16_t* plane_xn, const int16_t* plane_xp,

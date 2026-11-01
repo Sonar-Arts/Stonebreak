@@ -63,13 +63,70 @@ struct MeshFixture {
     }
 
     int mesh(int maxY, bool smooth) {
-        return ck_mesh_chunk(blocks.data(), cls.data(), 4, AIR,
+        return ck_mesh_chunk(blocks.data(), 16, 256, cls.data(), 4, AIR,
                              nullptr, nullptr, nullptr, nullptr,
                              nullptr, nullptr, nullptr, nullptr,
                              heights.data(), maxY, smooth ? 1 : 0,
                              out.data(), 20000);
     }
 };
+
+
+/* #385: the mesher takes its dimensions as arguments. A small chunk and a tall
+ * column must mesh like the 16x256 one (lone block = 6 lit faces, both culling
+ * implementations byte-identical), and out-of-range sizes are refused. */
+void testMesherDimensions() {
+    std::array<uint8_t, 4> cls{};
+    cls[STONE] = CK_CLASS_CUBE | CK_CLASS_OPAQUE_LIGHT;
+    cls[LEAVES] = CK_CLASS_CUBE | CK_CLASS_TRANSPARENT;
+    std::vector<float> outA(9 * 4000), outB(9 * 4000);
+
+    struct Dims { int cs, wh, y; };
+    for (const Dims d : {Dims{8, 64, 40}, Dims{16, 1024, 900}, Dims{5, 32, 31}}) {
+        std::vector<int16_t> blocks(static_cast<std::size_t>(d.cs * d.cs * d.wh), AIR);
+        std::vector<int16_t> heights(static_cast<std::size_t>((d.cs + 2) * (d.cs + 2)), 0);
+        auto at = [&](int x, int y, int z) -> int16_t& {
+            return blocks[static_cast<std::size_t>((y * d.cs + z) * d.cs + x)];
+        };
+        at(d.cs / 2, d.y, d.cs / 2) = STONE;            // lone block near the top
+        at(0, 1, 0) = STONE;                             // touches the x/z borders
+        at(d.cs - 1, 1, d.cs - 1) = LEAVES;
+        at(d.cs - 2, 1, d.cs - 1) = STONE;
+        setEnv("CENDA_MESHER_IMPL", "scalar");
+        const int nA = ck_mesh_chunk(blocks.data(), d.cs, d.wh, cls.data(), 4, AIR,
+                                     nullptr, nullptr, nullptr, nullptr,
+                                     nullptr, nullptr, nullptr, nullptr,
+                                     heights.data(), d.wh - 1, 1, outA.data(), 4000);
+        unsetEnv("CENDA_MESHER_IMPL");
+        const int nB = ck_mesh_chunk(blocks.data(), d.cs, d.wh, cls.data(), 4, AIR,
+                                     nullptr, nullptr, nullptr, nullptr,
+                                     nullptr, nullptr, nullptr, nullptr,
+                                     heights.data(), d.wh - 1, 1, outB.data(), 4000);
+        check(nA > 0 && nA == nB, "dims: scalar and bitmask agree on the count");
+        check(nA > 0 && nA == nB
+              && std::memcmp(outA.data(), outB.data(), sizeof(float) * 9 * static_cast<std::size_t>(nA)) == 0,
+              "dims: scalar and bitmask are byte-identical");
+        int lone = 0;
+        for (int q = 0; q < nB; q++) {
+            if (static_cast<int>(outB[static_cast<std::size_t>(q) * 9 + 1]) == d.y) lone++;
+        }
+        check(lone == 6, "dims: the lone block high in the column emits 6 faces");
+    }
+
+    std::vector<int16_t> blocks(16 * 16 * 16, AIR);
+    std::vector<int16_t> heights(18 * 18, 0);
+    std::vector<float> out(9);
+    for (const int cs : {0, 17, -1}) {
+        check(ck_mesh_chunk(blocks.data(), cs, 16, cls.data(), 4, AIR, nullptr, nullptr, nullptr, nullptr,
+                            nullptr, nullptr, nullptr, nullptr, heights.data(), 15, 1, out.data(), 1)
+                  == CK_MESH_BAD_ARGS,
+              "dims: a chunk size outside 1..CK_MESH_MAX_CHUNK_SIZE is refused");
+    }
+    check(ck_mesh_chunk(blocks.data(), 16, 0, cls.data(), 4, AIR, nullptr, nullptr, nullptr, nullptr,
+                        nullptr, nullptr, nullptr, nullptr, heights.data(), 15, 1, out.data(), 1)
+              == CK_MESH_BAD_ARGS,
+          "dims: a non-positive world height is refused");
+}
 
 void testMesher() {
     { // lone opaque block: 6 faces, fully lit, AO-free
@@ -148,7 +205,7 @@ void testMesher() {
         MeshFixture f;
         f.set(5, 10, 5, STONE);
         std::array<float, 9> tiny{};
-        int n = ck_mesh_chunk(f.blocks.data(), f.cls.data(), 4, AIR,
+        int n = ck_mesh_chunk(f.blocks.data(), 16, 256, f.cls.data(), 4, AIR,
                               nullptr, nullptr, nullptr, nullptr,
                               nullptr, nullptr, nullptr, nullptr,
                               f.heights.data(), 20, 1, tiny.data(), 1);
@@ -181,11 +238,11 @@ void checkScalarBitmaskParity(const std::vector<int16_t>& blocks,
     static std::vector<float> outA(9 * 250000);
     static std::vector<float> outB(9 * 250000);
     setEnv("CENDA_MESHER_IMPL", "scalar");
-    int nA = ck_mesh_chunk(blocks.data(), cls, clsLen, AIR, pxn, pxp, pzn, pzp,
+    int nA = ck_mesh_chunk(blocks.data(), 16, 256, cls, clsLen, AIR, pxn, pxp, pzn, pzp,
                            cnn, cpn, cnp, cpp2, heights.data(), maxY, smooth,
                            outA.data(), 250000);
     unsetEnv("CENDA_MESHER_IMPL");
-    int nB = ck_mesh_chunk(blocks.data(), cls, clsLen, AIR, pxn, pxp, pzn, pzp,
+    int nB = ck_mesh_chunk(blocks.data(), 16, 256, cls, clsLen, AIR, pxn, pxp, pzn, pzp,
                            cnn, cpn, cnp, cpp2, heights.data(), maxY, smooth,
                            outB.data(), 250000);
     check(nA == nB, what);
@@ -305,12 +362,12 @@ void testMesherParity() {
         std::array<int16_t, 18 * 18> heights{};
         std::array<float, 9> tiny{};
         setEnv("CENDA_MESHER_IMPL", "scalar");
-        int nA = ck_mesh_chunk(blocks.data(), cls.data(), 6, AIR,
+        int nA = ck_mesh_chunk(blocks.data(), 16, 256, cls.data(), 6, AIR,
                                nullptr, nullptr, nullptr, nullptr,
                                nullptr, nullptr, nullptr, nullptr,
                                heights.data(), 20, 1, tiny.data(), 1);
         unsetEnv("CENDA_MESHER_IMPL");
-        int nB = ck_mesh_chunk(blocks.data(), cls.data(), 6, AIR,
+        int nB = ck_mesh_chunk(blocks.data(), 16, 256, cls.data(), 6, AIR,
                                nullptr, nullptr, nullptr, nullptr,
                                nullptr, nullptr, nullptr, nullptr,
                                heights.data(), 20, 1, tiny.data(), 1);
@@ -590,6 +647,7 @@ void testZstd() {
 
 int main() {
     testMesher();
+    testMesherDimensions();
     testMesherParity();
     testCarver();
     testGenerator();

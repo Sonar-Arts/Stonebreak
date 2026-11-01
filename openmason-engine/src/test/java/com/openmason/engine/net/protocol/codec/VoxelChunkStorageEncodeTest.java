@@ -26,8 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("regression")
 class VoxelChunkStorageEncodeTest {
 
-    private static final int W = VoxelChunkCodec.CHUNK_W;
-    private static final int H = VoxelChunkCodec.CHUNK_H;
+    private static final int W = 16;
+    private static final int H = 256;
+    private static final VoxelChunkCodec.Layout LAYOUT = new VoxelChunkCodec.Layout(W, H);
 
     /** Minimal block keyed on id; one instance per id, as palettes compare by identity. */
     private record TestBlock(int id) implements IBlockType {
@@ -76,7 +77,7 @@ class VoxelChunkStorageEncodeTest {
     private static int[] decode(byte[] payload) {
         int[] out = new int[W * H * W];
         BlockSetter sink = (x, y, z, type) -> out[(y * W + z) * W + x] = type.getId();
-        VoxelChunkCodec.decodeInto(payload, sink, RESOLVER);
+        VoxelChunkCodec.decodeInto(payload, sink, RESOLVER, LAYOUT);
         return out;
     }
 
@@ -92,7 +93,7 @@ class VoxelChunkStorageEncodeTest {
     @Test
     void storageEncodeRoundTripsEveryTier() {
         CcoPalettedChunkStorage storage = everyTier();
-        assertArrayEquals(cells(storage), decode(VoxelChunkCodec.encode(storage)));
+        assertArrayEquals(cells(storage), decode(VoxelChunkCodec.encode(storage, LAYOUT)));
     }
 
     @Test
@@ -103,13 +104,13 @@ class VoxelChunkStorageEncodeTest {
             public int getChunkX() { return 0; }
             public int getChunkZ() { return 0; }
         };
-        assertArrayEquals(decode(VoxelChunkCodec.encode(cellView)), decode(VoxelChunkCodec.encode(storage)));
+        assertArrayEquals(decode(VoxelChunkCodec.encode(cellView, LAYOUT)), decode(VoxelChunkCodec.encode(storage, LAYOUT)));
     }
 
     @Test
     void uniformSectionsShipInThreeBytes() {
-        byte[] payload = VoxelChunkCodec.encode(emptyStorage());
-        assertEquals(VoxelChunkCodec.SECTIONS_PER_CHUNK * 3, payload.length);
+        byte[] payload = VoxelChunkCodec.encode(emptyStorage(), LAYOUT);
+        assertEquals(LAYOUT.sections() * 3, payload.length);
     }
 
     @Test
@@ -138,7 +139,7 @@ class VoxelChunkStorageEncodeTest {
 
     @Test
     void wirePayloadCarriesNoSnapshot() {
-        byte[] bytes = VoxelChunkCodec.encode(emptyStorage());
+        byte[] bytes = VoxelChunkCodec.encode(emptyStorage(), LAYOUT);
         ChunkBlockPayload payload = ChunkBlockPayload.ofEncoded(bytes);
         assertNull(payload.snapshot());
         assertSame(bytes, payload.encoded());

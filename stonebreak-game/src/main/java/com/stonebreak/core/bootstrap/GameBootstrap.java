@@ -78,11 +78,7 @@ public final class GameBootstrap {
      * The world reference is filled in later by {@link World} itself.
      */
     public static void configureEngine(BlockTextureArray blockTextureArray, Renderer renderer) {
-        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
-                new com.openmason.engine.voxel.VoxelWorldConfig(
-                        WorldConfiguration.CHUNK_SIZE,
-                        WorldConfiguration.WORLD_HEIGHT,
-                        WorldConfiguration.SEA_LEVEL));
+        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(WorldConfiguration.voxelConfig());
 
         com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.initialize(blockTextureArray, null);
         logger.debug("[MMS-API] Mighty Mesh System pre-initialized (World will be set later)");

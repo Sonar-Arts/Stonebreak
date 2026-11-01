@@ -40,8 +40,11 @@ class MmsGreedyMesherTest {
         quad(buf, i, x, y, z, face, id, light, light, light, light);
     }
 
+    /** The 16-wide chunk these cases are written for. */
+    private static final int CHUNK = 16;
+
     private static int merge(float[] quads, int count, float[][] holder) {
-        return MmsGreedyMesher.merge(quads, count, holder);
+        return MmsGreedyMesher.merge(quads, count, CHUNK, holder);
     }
 
     // ── basic merging ────────────────────────────────────────────────────
@@ -272,5 +275,36 @@ class MmsGreedyMesherTest {
 
     private static long key(int x, int y, int z, int face, int id) {
         return ((long) id << 40) | ((long) face << 32) | ((long) y << 16) | ((long) z << 8) | x;
+    }
+
+    /**
+     * #385: the chunk size is the caller's. A uniform top plane merges into one rectangle the size
+     * of a small chunk; on a chunk wider than a pulled quad record can span, runs stop at
+     * {@code MmsQuadCodec.MAX_EXTENT} so every rectangle still fits one record.
+     */
+    @Test
+    void theChunkSizeIsTheCallersAndRunsStopAtTheRecordExtent() {
+        float[][] holder = new float[1][];
+        for (int cs : new int[]{8, 32}) {
+            float[] in = new float[IN * cs * cs];
+            int n = 0;
+            for (int z = 0; z < cs; z++) {
+                for (int x = 0; x < cs; x++) {
+                    uniformQuad(in, n++, x, 64, z, 0, 1, 1f);
+                }
+            }
+            int out = MmsGreedyMesher.merge(in, n, cs, holder);
+            int extent = Math.min(cs, com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec.MAX_EXTENT);
+            int per = cs / extent;
+            assertEquals(per * per, out, cs + "-wide plane");
+            int area = 0;
+            for (int q = 0; q < out; q++) {
+                int w = (int) holder[0][q * OUT + 5];
+                int h = (int) holder[0][q * OUT + 6];
+                assertTrue(w <= extent && h <= extent, "rectangle fits one record");
+                area += w * h;
+            }
+            assertEquals(cs * cs, area, "every face covered exactly once");
+        }
     }
 }

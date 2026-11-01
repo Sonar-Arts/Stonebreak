@@ -165,7 +165,7 @@ class CendaMesherKernelTest {
     private static void assertKernelMatchesReference(Fixture f, boolean smooth) {
         Map<Integer, float[]> expected = referenceMesh(f, smooth);
         float[] out = new float[9 * 70000];
-        int n = CendaKernels.meshChunk(f.blocks(), CLASS_TABLE, AIR,
+        int n = CendaKernels.meshChunk(f.blocks(), 16, 256, CLASS_TABLE, AIR, // the fixture's 16x256 chunk
             f.planeXn(), f.planeXp(), f.planeZn(), f.planeZp(),
             f.cornerNn(), f.cornerPn(), f.cornerNp(), f.cornerPp(),
             f.heights(), f.maxY(), smooth, out);

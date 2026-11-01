@@ -1,5 +1,7 @@
 package com.openmason.engine.voxel.mms.mmsGeometry;
 
+import com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec;
+
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -9,10 +11,14 @@ import java.util.concurrent.atomic.LongAdder;
  * native {@code ck_mesh_chunk} kernel and the Java fallback emit the same
  * format): {@code [x, y, z, face, blockId, l0, l1, l2, l3]} per quad, where
  * {@code l0..l3} are the per-corner light values in face-corner order. Axis
- * ranges are chunk-local: x/z in [0,16), y in [0, {@link #MAX_WORLD_HEIGHT}).
- * The plane grid is sized from the tallest quad in the stream rather than a
- * fixed world height, so a 1024-tall world merges exactly as a 256-tall one
- * does — see {@link #MAX_WORLD_HEIGHT}.
+ * ranges are chunk-local: x/z in [0, chunkSize), y in [0, {@link #MAX_WORLD_HEIGHT}).
+ * The chunk size is the caller's (the world's {@code VoxelWorldConfig}, #385) and
+ * the plane grid is sized from the tallest quad in the stream rather than a
+ * fixed world height, so a tall world merges exactly as a short one does.
+ *
+ * <p>Runs along the chunk's own axes (the width axis, and z for ±Y faces) stop at
+ * {@link MmsQuadCodec#MAX_EXTENT}, the most one pulled quad record can span, so a
+ * chunk wider than that still meshes into records rather than oversize faces.
  *
  * <p>Adjacent coplanar quads merge into one rectangle when they have the same
  * block id and ALL EIGHT corner lights are one identical value. That is the
@@ -45,17 +51,12 @@ public final class MmsGreedyMesher {
     /** Floats per output record: x, y, z, face, id, w, h, l0..l3. */
     public static final int OUT_STRIDE = 11;
 
-    private static final int CS = 16;   // chunk size (matches ck_mesh_chunk)
-
     /**
      * Ceiling on the addressable Y span. The grid is allocated to fit the
      * tallest quad actually seen, so this only bounds a pathological input;
      * quads above it pass through unmerged instead of forcing a huge alloc.
      */
     public static final int MAX_WORLD_HEIGHT = 4096;
-
-    /** Initial grid height — grown on demand for taller worlds. */
-    private static final int INITIAL_WH = 256;
 
     // Cumulative effectiveness counters (read by debug overlays).
     private static final LongAdder QUADS_IN = new LongAdder();
@@ -64,10 +65,11 @@ public final class MmsGreedyMesher {
     /**
      * Per-thread working state. The grid stores quadIndex+1 per occupied cell
      * (0 = empty); only cells actually touched by the current call are written
-     * and re-cleared, so the 256 KB array is never bulk-reset.
+     * and re-cleared, so the array is never bulk-reset. It grows to the largest
+     * chunk footprint seen on the thread.
      */
     private static final class Scratch {
-        int[] grid = new int[CS * CS * INITIAL_WH];
+        int[] grid = new int[0];
         final int[][] dirQuads = new int[6][];
         final int[] dirCounts = new int[6];
         float[] out = new float[OUT_STRIDE * 4096];
@@ -97,14 +99,14 @@ public final class MmsGreedyMesher {
     /**
      * Grid cell for a quad of the given face direction. The in-plane "width"
      * axis (x, or z for the ±X faces) is the innermost index (+1 per step) and
-     * the "height" axis strides by {@link #CS}, so run extension is pointer
-     * arithmetic. All three layouts address the same 65536-cell space.
+     * the "height" axis strides by {@code cs}, so run extension is pointer
+     * arithmetic. All three layouts address the same {@code cs*cs*wh}-cell space.
      */
-    private static int cellIndex(int face, int x, int y, int z, int wh) {
+    private static int cellIndex(int face, int x, int y, int z, int cs, int wh) {
         return switch (face) {
-            case 0, 1 -> (y * CS + z) * CS + x;  // width x, height z, plane y
-            case 2, 3 -> (z * wh + y) * CS + x;  // width x, height y, plane z
-            default -> (x * wh + y) * CS + z;    // width z, height y, plane x
+            case 0, 1 -> (y * cs + z) * cs + x;  // width x, height z, plane y
+            case 2, 3 -> (z * wh + y) * cs + x;  // width x, height y, plane z
+            default -> (x * wh + y) * cs + z;    // width z, height y, plane x
         };
     }
 
@@ -118,8 +120,9 @@ public final class MmsGreedyMesher {
         return face <= 1 ? z : y;
     }
 
-    private static int vLimit(int face, int wh) {
-        return face <= 1 ? CS : wh;
+    /** Exclusive end of the height axis: the chunk side for ±Y faces, else the grid height. */
+    private static int vLimit(int face, int cs, int wh) {
+        return face <= 1 ? cs : wh;
     }
 
     /**
@@ -130,10 +133,15 @@ public final class MmsGreedyMesher {
      *
      * @param quads     input records, {@link #IN_STRIDE} floats each
      * @param quadCount number of input records
+     * @param chunkSize the chunk's side in blocks (x/z range of the records)
      * @param outHolder length-1 array receiving the output buffer
      * @return number of output records
      */
-    public static int merge(float[] quads, int quadCount, float[][] outHolder) {
+    public static int merge(float[] quads, int quadCount, int chunkSize, float[][] outHolder) {
+        if (chunkSize <= 0) {
+            throw new IllegalArgumentException("chunkSize must be positive: " + chunkSize);
+        }
+        final int cs = chunkSize;
         Scratch s = SCRATCH.get();
         int required = quadCount * OUT_STRIDE;
         if (s.out.length < required) {
@@ -155,7 +163,7 @@ public final class MmsGreedyMesher {
             int z = (int) quads[base + 2];
             int face = (int) quads[base + 3];
             if (face < 0 || face >= 6
-                || x < 0 || x >= CS || z < 0 || z >= CS || y < 0 || y >= MAX_WORLD_HEIGHT) {
+                || x < 0 || x >= cs || z < 0 || z >= cs || y < 0 || y >= MAX_WORLD_HEIGHT) {
                 outCount = emit(out, outCount, quads, base, 1, 1);
                 continue;
             }
@@ -170,13 +178,13 @@ public final class MmsGreedyMesher {
             list[counts[face]++] = qi;
         }
 
-        // Size the plane grid to the tallest quad in this stream. A fixed 256 here
-        // silently disabled ALL merging above y=255 (every quad fell through the
+        // Size the plane grid to the tallest quad in this stream. A fixed world height
+        // here once silently disabled ALL merging above it (every quad fell through the
         // bounds check unmerged), which on a 1024-tall world meant a ~256x quad
         // explosion for surface terrain and blew MmsQuadCodec.MAX_QUADS_PER_DRAW.
-        int wh = Math.max(INITIAL_WH, maxY + 1);
-        if (s.grid.length < CS * CS * wh) {
-            s.grid = new int[CS * CS * wh];  // fresh array is all-zero, as the algorithm requires
+        int wh = maxY + 1;
+        if (s.grid.length < cs * cs * wh) {
+            s.grid = new int[cs * cs * wh];  // fresh array is all-zero, as the algorithm requires
         }
         int[] grid = s.grid;
         for (int face = 0; face < 6; face++) {
@@ -190,17 +198,20 @@ public final class MmsGreedyMesher {
             for (int i = 0; i < n; i++) {
                 int base = list[i] * IN_STRIDE;
                 grid[cellIndex(face, (int) quads[base], (int) quads[base + 1],
-                    (int) quads[base + 2], wh)] = list[i] + 1;
+                    (int) quads[base + 2], cs, wh)] = list[i] + 1;
             }
 
-            int vMax = vLimit(face, wh);
+            int vMax = vLimit(face, cs, wh);
+            // a record spans at most MAX_EXTENT along a chunk axis (no-op for chunks up to that size)
+            int uRun = Math.min(cs, MmsQuadCodec.MAX_EXTENT);
+            int vRun = face <= 1 ? uRun : Integer.MAX_VALUE;
             for (int i = 0; i < n; i++) {
                 int qi = list[i];
                 int base = qi * IN_STRIDE;
                 int x = (int) quads[base];
                 int y = (int) quads[base + 1];
                 int z = (int) quads[base + 2];
-                int cell = cellIndex(face, x, y, z, wh);
+                int cell = cellIndex(face, x, y, z, cs, wh);
                 if (grid[cell] != qi + 1) {
                     continue; // consumed by an earlier rectangle
                 }
@@ -221,15 +232,15 @@ public final class MmsGreedyMesher {
 
                 // Extend along the width axis.
                 int w = 1;
-                while (u + w < CS && matches(quads, grid[cell + w], id, l0)) {
+                while (u + w < cs && w < uRun && matches(quads, grid[cell + w], id, l0)) {
                     w++;
                 }
 
                 // Extend along the height axis: the whole width row must match.
                 int h = 1;
                 height:
-                while (v + h < vMax) {
-                    int rowBase = cell + h * CS;
+                while (v + h < vMax && h < vRun) {
+                    int rowBase = cell + h * cs;
                     for (int k = 0; k < w; k++) {
                         if (!matches(quads, grid[rowBase + k], id, l0)) {
                             break height;
@@ -240,7 +251,7 @@ public final class MmsGreedyMesher {
 
                 // Consume the rectangle.
                 for (int r = 0; r < h; r++) {
-                    int rowBase = cell + r * CS;
+                    int rowBase = cell + r * cs;
                     for (int k = 0; k < w; k++) {
                         grid[rowBase + k] = 0;
                     }
@@ -252,7 +263,7 @@ public final class MmsGreedyMesher {
             for (int i = 0; i < n; i++) {
                 int base = list[i] * IN_STRIDE;
                 grid[cellIndex(face, (int) quads[base], (int) quads[base + 1],
-                    (int) quads[base + 2], wh)] = 0;
+                    (int) quads[base + 2], cs, wh)] = 0;
             }
         }
 

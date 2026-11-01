@@ -20,8 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("regression")
 class VoxelChunkCodecTest {
 
-    private static final int W = VoxelChunkCodec.CHUNK_W;   // 16
-    private static final int H = VoxelChunkCodec.CHUNK_H;   // 256
+    private static final int W = 16;
+    private static final int H = 256;
+    private static final VoxelChunkCodec.Layout LAYOUT = new VoxelChunkCodec.Layout(W, H);
     private static final int SECTION_H = VoxelChunkCodec.SECTION_H;
 
     // ─── Test doubles ─────────────────────────────────────────────────────────
@@ -51,9 +52,9 @@ class VoxelChunkCodecTest {
     @Test
     void allAirRoundTripsAsSingle() {
         FakeChunk chunk = new FakeChunk(); // all zeros
-        byte[] payload = VoxelChunkCodec.encode(chunk);
+        byte[] payload = VoxelChunkCodec.encode(chunk, LAYOUT);
         // 16 sections, each SINGLE = 1 tag byte + 2 id bytes.
-        assertTrue(payload.length <= VoxelChunkCodec.SECTIONS_PER_CHUNK * 3,
+        assertTrue(payload.length <= LAYOUT.sections() * 3,
             "all-air chunk should encode as SINGLE sections, got " + payload.length + " bytes");
         assertRoundTrip(chunk);
     }
@@ -92,13 +93,53 @@ class VoxelChunkCodecTest {
         assertRoundTrip(chunk);
     }
 
+    /**
+     * #385: the layout is the world's, not 16x256. Every strategy round-trips on a narrow short
+     * chunk and a tall one, and the decode cap grows with the layout (an all-DIRECT 16x1024
+     * chunk is larger than the old fixed 200 KiB cap).
+     */
+    @Test
+    void otherWorldDimensionsRoundTrip() {
+        for (VoxelChunkCodec.Layout layout : new VoxelChunkCodec.Layout[]{
+                new VoxelChunkCodec.Layout(8, 64), new VoxelChunkCodec.Layout(16, 1024),
+                new VoxelChunkCodec.Layout(5, 32)}) {
+            int cs = layout.chunkSize();
+            int wh = layout.worldHeight();
+            int[][][] ids = new int[cs][wh][cs];
+            Random r = new Random(4242L + cs);
+            for (int x = 0; x < cs; x++)
+                for (int y = 0; y < wh; y++)
+                    for (int z = 0; z < cs; z++)
+                        // section 0 DIRECT (> 256 ids), section 1 SINGLE, the rest PALETTED
+                        ids[x][y][z] = y < SECTION_H ? 1 + ((x * 31 + y * 7 + z * 131) % 1000)
+                            : y < 2 * SECTION_H ? 0 : 1 + r.nextInt(5);
+            IVoxelChunkData chunk = new IVoxelChunkData() {
+                public IBlockType getBlock(int x, int y, int z) { return new TestBlock(ids[x][y][z]); }
+                public int getChunkX() { return 0; }
+                public int getChunkZ() { return 0; }
+            };
+            byte[] payload = VoxelChunkCodec.encode(chunk, layout);
+            int[][][] out = new int[cs][wh][cs];
+            VoxelChunkCodec.decodeInto(payload, (x, y, z, t) -> out[x][y][z] = t.getId(), RESOLVER, layout);
+            for (int x = 0; x < cs; x++)
+                for (int y = 0; y < wh; y++)
+                    assertArrayEquals(ids[x][y], out[x][y], layout + " mismatch at x=" + x + " y=" + y);
+        }
+        VoxelChunkCodec.Layout tall = new VoxelChunkCodec.Layout(16, 1024);
+        assertTrue(tall.maxEncodedBytes() >= tall.sections() * (1 + 2 * tall.blocksPerSection()),
+            "the decode cap admits an all-DIRECT chunk of the layout");
+        assertTrue(LAYOUT.maxEncodedBytes() == 200 * 1024, "the 16x256 cap is unchanged");
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> new VoxelChunkCodec.Layout(16, 100), "height must be whole sections");
+    }
+
     // ─── Helper ──────────────────────────────────────────────────────────────
 
     private static void assertRoundTrip(FakeChunk chunk) {
-        byte[] payload = VoxelChunkCodec.encode(chunk);
+        byte[] payload = VoxelChunkCodec.encode(chunk, LAYOUT);
         int[][][] out = new int[W][H][W];
         BlockSetter sink = (x, y, z, type) -> out[x][y][z] = type.getId();
-        VoxelChunkCodec.decodeInto(payload, sink, RESOLVER);
+        VoxelChunkCodec.decodeInto(payload, sink, RESOLVER, LAYOUT);
         for (int x = 0; x < W; x++)
             for (int y = 0; y < H; y++)
                 assertArrayEquals(chunk.ids[x][y], out[x][y],

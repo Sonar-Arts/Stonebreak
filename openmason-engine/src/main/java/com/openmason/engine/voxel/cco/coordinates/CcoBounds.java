@@ -17,13 +17,16 @@ public final class CcoBounds {
     }
 
     /**
-     * Configures the world dimensions used by all bounds checks.
-     * Must be called once at startup before any bounds methods are used.
+     * Configures the world dimensions used by all bounds checks, the chunk wire codec and the
+     * meshers. Must be called once at startup before any bounds methods are used.
      *
      * @param worldConfig The voxel world configuration
+     * @throws IllegalArgumentException when the dimensions break a storage or mesh-format limit
+     *         ({@link com.openmason.engine.voxel.VoxelWorldLimits}, #385): fails loudly instead of
+     *         corrupting meshes later
      */
     public static void configure(VoxelWorldConfig worldConfig) {
-        config = worldConfig;
+        config = com.openmason.engine.voxel.VoxelWorldLimits.requireSupported(worldConfig);
     }
 
     /**

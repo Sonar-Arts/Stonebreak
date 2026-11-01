@@ -65,6 +65,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("regression")
 class PacketRoundTripTest {
 
+    /** The world dimensions the game installs at startup (GameBootstrap): the chunk codec reads them (#385). */
+    @org.junit.jupiter.api.BeforeAll
+    static void installWorldDimensions() {
+        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
+            com.stonebreak.world.operations.WorldConfiguration.voxelConfig());
+    }
+
+
     private static <T extends Packet> T roundTrip(PacketCodec<T> codec, T value) {
         ByteBuf buf = Unpooled.buffer();
         try {

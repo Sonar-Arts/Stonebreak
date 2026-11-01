@@ -8,23 +8,26 @@
  * order, same floats — enforced by the C++ scalar-vs-bitmask memcmp fuzz test):
  *  - scalar: the original per-cell 6-probe loop (CENDA_MESHER_IMPL=scalar).
  *  - bitmask (default): one linear classification sweep builds z-packed
- *    uint16 row masks (bit = lz, row = lx*256 + ly), then all six face-cull
+ *    uint16 row masks (bit = lz, row = lx*wh + ly), then all six face-cull
  *    masks per row are a couple of ANDs/shifts; tzcnt iteration over the set
  *    bits skips empty/buried cells without touching them. Only face EXISTENCE
  *    is bitmasked — per-corner lighting runs unchanged on emitted faces, and
  *    transparent cubes (per-id `adj != id` part of the rule is not class-maskable) fall back
- *    to the scalar probe per cell. Portable <bit> ops only, no intrinsics. */
+ *    to the scalar probe per cell. Portable <bit> ops only, no intrinsics.
+ *
+ * Dimensions are the caller's (#385): chunk_size 1..CK_MESH_MAX_CHUNK_SIZE (a
+ * row mask holds one bit per lz, so 16 at most) and any positive world_height;
+ * the row masks live in per-thread buffers grown to the largest column seen. */
 #include "cenda/kernels.h"
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 namespace {
-
-constexpr int CS = 16;   // chunk size
-constexpr int WH = 256;  // world height
 
 // MmsCuboidGenerator.FACE_VERTEX_OFFSETS, verbatim.
 constexpr int FACE_OFFSETS[6][4][3] = {
@@ -61,6 +64,8 @@ struct MeshInput {
     const int16_t* cornerNp;
     const int16_t* cornerPp;
     const int16_t* heights;
+    int cs;   // chunk size (x and z)
+    int wh;   // world height
 
     [[nodiscard]] uint8_t classOf(int32_t id) const {
         return (id >= 0 && id < clsLen) ? cls[id] : 0;
@@ -68,23 +73,23 @@ struct MeshInput {
 
     // Axis-aligned neighbor id for culling; unloaded neighbor/world edge = AIR.
     [[nodiscard]] int32_t adjacentId(int x, int y, int z) const {
-        if (y < 0 || y >= WH) return airId;
-        if (x >= 0 && x < CS && z >= 0 && z < CS) {
-            return blocks[(y * CS + z) * CS + x];
+        if (y < 0 || y >= wh) return airId;
+        if (x >= 0 && x < cs && z >= 0 && z < cs) {
+            return blocks[(y * cs + z) * cs + x];
         }
-        if (x < 0)  return planeXn ? planeXn[y * CS + z] : airId;
-        if (x >= CS) return planeXp ? planeXp[y * CS + z] : airId;
-        if (z < 0)  return planeZn ? planeZn[y * CS + x] : airId;
-        return planeZp ? planeZp[y * CS + x] : airId;
+        if (x < 0)  return planeXn ? planeXn[y * cs + z] : airId;
+        if (x >= cs) return planeXp ? planeXp[y * cs + z] : airId;
+        if (z < 0)  return planeZn ? planeZn[y * cs + x] : airId;
+        return planeZp ? planeZp[y * cs + x] : airId;
     }
 
     // WorldLightingContext.isSolidAt: unloaded chunk / out-of-height = false.
     [[nodiscard]] bool isSolidAt(int x, int y, int z) const {
-        if (y < 0 || y >= WH) return false;
-        const bool xn = x < 0, xp = x >= CS, zn = z < 0, zp = z >= CS;
+        if (y < 0 || y >= wh) return false;
+        const bool xn = x < 0, xp = x >= cs, zn = z < 0, zp = z >= cs;
         const int16_t* col = nullptr;
         if (!xn && !xp && !zn && !zp) {
-            return (classOf(blocks[(y * CS + z) * CS + x]) & CK_CLASS_OPAQUE_LIGHT) != 0;
+            return (classOf(blocks[(y * cs + z) * cs + x]) & CK_CLASS_OPAQUE_LIGHT) != 0;
         }
         if (xn && zn) col = cornerNn;
         else if (xp && zn) col = cornerPn;
@@ -97,15 +102,15 @@ struct MeshInput {
         }
         if (xn || xp) {
             const int16_t* plane = xn ? planeXn : planeXp;
-            return plane != nullptr && (classOf(plane[y * CS + z]) & CK_CLASS_OPAQUE_LIGHT) != 0;
+            return plane != nullptr && (classOf(plane[y * cs + z]) & CK_CLASS_OPAQUE_LIGHT) != 0;
         }
         const int16_t* plane = zn ? planeZn : planeZp;
-        return plane != nullptr && (classOf(plane[y * CS + x]) & CK_CLASS_OPAQUE_LIGHT) != 0;
+        return plane != nullptr && (classOf(plane[y * cs + x]) & CK_CLASS_OPAQUE_LIGHT) != 0;
     }
 
-    // heights grid lookup, local coords in [-1, 16].
+    // heights grid lookup, local coords in [-1, cs]: a (cs+2)^2 grid.
     [[nodiscard]] int columnHeight(int lx, int lz) const {
-        return heights[(lz + 1) * 18 + (lx + 1)];
+        return heights[(lz + 1) * (cs + 2) + (lx + 1)];
     }
 };
 
@@ -125,7 +130,7 @@ float skyFactor(const MeshInput& in, int ivx, int ivy, int ivz, int face, bool s
                 case 4: cx = ivx;     cy = ivy + a; cz = ivz + b; break;
                 default: cx = ivx - 1; cy = ivy + a; cz = ivz + b; break;
             }
-            // Columns can only be probed at [-1,16] — vertex coords are [0,16]
+            // Columns can only be probed at [-1,cs] — vertex coords are [0,cs]
             // and a,b are non-positive, matching the Java sampler's reach.
             int h = in.columnHeight(cx, cz);
             if (h < 0) continue;
@@ -205,10 +210,11 @@ void emitQuad(const MeshInput& in, EmitState& es, int lx, int ly, int lz,
 int32_t meshScalar(const MeshInput& in, int max_y, bool smooth,
                    float* out_quads, int32_t cap_quads) {
     EmitState es{out_quads, cap_quads};
-    for (int lx = 0; lx < CS; lx++) {
+    const int cs = in.cs;
+    for (int lx = 0; lx < cs; lx++) {
         for (int ly = 0; ly <= max_y; ly++) {
-            for (int lz = 0; lz < CS; lz++) {
-                const int32_t id = in.blocks[(ly * CS + lz) * CS + lx];
+            for (int lz = 0; lz < cs; lz++) {
+                const int32_t id = in.blocks[(ly * cs + lz) * cs + lx];
                 const uint8_t cls = in.classOf(id);
                 if ((cls & CK_CLASS_CUBE) == 0) {
                     continue;
@@ -229,28 +235,45 @@ int32_t meshScalar(const MeshInput& in, int max_y, bool smooth,
  *
  * Row layout: uint16 per (lx, ly), bit = lz. All six neighbor directions are
  * one row lookup (±x: adjacent lx column or a border table; ±y: adjacent ly
- * row or all-air 0xFFFF at the world caps; ±z: a 1-bit shift of the row with
- * the border bit injected). Ascending (lx, ly, tzcnt-lz, face) iteration
- * reproduces the scalar emission order exactly. */
+ * row or all-air (every lz bit set) at the world caps; ±z: a 1-bit shift of the
+ * row with the border bit injected). Ascending (lx, ly, tzcnt-lz, face)
+ * iteration reproduces the scalar emission order exactly. */
 
 struct Masks {
-    uint16_t opq[CS * WH];   // opaque cubes (CUBE set, TRANSPARENT clear)
-    uint16_t tcube[CS * WH]; // transparent cubes (CUBE and TRANSPARENT)
-    uint16_t n[CS * WH];     // "renderable-against": air OR transparent class
-    uint16_t pxnN[WH];       // N-predicate of plane_xn, bit = z (NULL plane = air)
-    uint16_t pxpN[WH];
-    uint16_t znN[WH];        // N-predicate of plane_zn, bit = x
-    uint16_t zpN[WH];
+    std::vector<uint16_t> opq;   // [cs*wh] opaque cubes (CUBE set, TRANSPARENT clear)
+    std::vector<uint16_t> tcube; // [cs*wh] transparent cubes (CUBE and TRANSPARENT)
+    std::vector<uint16_t> n;     // [cs*wh] "renderable-against": air OR transparent class
+    std::vector<uint16_t> pxnN;  // [wh] N-predicate of plane_xn, bit = z (NULL plane = air)
+    std::vector<uint16_t> pxpN;
+    std::vector<uint16_t> znN;   // [wh] N-predicate of plane_zn, bit = x
+    std::vector<uint16_t> zpN;
+    uint16_t full = 0;           // every lz bit of a row: (1 << cs) - 1
+
+    /* Sizes the buffers for a cs x wh column (grow only) and zeroes the cell masks. */
+    void prepare(int cs, int wh) {
+        const auto cells = static_cast<size_t>(cs) * static_cast<size_t>(wh);
+        for (auto* v : {&opq, &tcube, &n}) {
+            if (v->size() < cells) v->resize(cells);
+            std::fill(v->begin(), v->begin() + static_cast<ptrdiff_t>(cells), uint16_t{0});
+        }
+        for (auto* v : {&pxnN, &pxpN, &znN, &zpN}) {
+            if (v->size() < static_cast<size_t>(wh)) v->resize(static_cast<size_t>(wh));
+        }
+        full = static_cast<uint16_t>((1u << cs) - 1u);
+    }
 };
 
 /* One linear sweep over blocks[] in memory order classifies every cell once.
- * Build range must reach maxYb = min(max_y+1, 255): cells above max_y are
+ * Build range must reach maxYb = min(max_y+1, wh-1): cells above max_y are
  * never emitted but ARE read as +y neighbors (the scalar path probes real
  * block data there). */
 void buildMasks(const MeshInput& in, int maxYb, Masks& m) {
-    std::memset(m.opq, 0, sizeof(m.opq));
-    std::memset(m.tcube, 0, sizeof(m.tcube));
-    std::memset(m.n, 0, sizeof(m.n));
+    const int CS = in.cs;
+    const int WH = in.wh;
+    m.prepare(CS, WH);
+    uint16_t* const opq = m.opq.data();
+    uint16_t* const tcube = m.tcube.data();
+    uint16_t* const nm = m.n.data();
 
     for (int y = 0; y <= maxYb; y++) {
         for (int z = 0; z < CS; z++) {
@@ -259,17 +282,17 @@ void buildMasks(const MeshInput& in, int maxYb, Masks& m) {
             for (int x = 0; x < CS; x++) {
                 const int32_t id = row[x];
                 if (id == in.airId) {
-                    m.n[x * WH + y] = static_cast<uint16_t>(m.n[x * WH + y] | zbit);
+                    nm[x * WH + y] = static_cast<uint16_t>(nm[x * WH + y] | zbit);
                     continue;
                 }
                 const uint8_t c = in.classOf(id);
                 if ((c & CK_CLASS_TRANSPARENT) != 0) {
-                    m.n[x * WH + y] = static_cast<uint16_t>(m.n[x * WH + y] | zbit);
+                    nm[x * WH + y] = static_cast<uint16_t>(nm[x * WH + y] | zbit);
                     if ((c & CK_CLASS_CUBE) != 0) {
-                        m.tcube[x * WH + y] = static_cast<uint16_t>(m.tcube[x * WH + y] | zbit);
+                        tcube[x * WH + y] = static_cast<uint16_t>(tcube[x * WH + y] | zbit);
                     }
                 } else if ((c & CK_CLASS_CUBE) != 0) {
-                    m.opq[x * WH + y] = static_cast<uint16_t>(m.opq[x * WH + y] | zbit);
+                    opq[x * WH + y] = static_cast<uint16_t>(opq[x * WH + y] | zbit);
                 }
             }
         }
@@ -278,10 +301,10 @@ void buildMasks(const MeshInput& in, int maxYb, Masks& m) {
     for (int y = 0; y < WH; y++) {
         uint16_t xn = 0, xp = 0, zn = 0, zp = 0;
         if (y <= maxYb) {
-            if (in.planeXn == nullptr) xn = 0xFFFF;
-            if (in.planeXp == nullptr) xp = 0xFFFF;
-            if (in.planeZn == nullptr) zn = 0xFFFF;
-            if (in.planeZp == nullptr) zp = 0xFFFF;
+            if (in.planeXn == nullptr) xn = m.full;
+            if (in.planeXp == nullptr) xp = m.full;
+            if (in.planeZn == nullptr) zn = m.full;
+            if (in.planeZp == nullptr) zp = m.full;
             for (int i = 0; i < CS; i++) {
                 const auto bit = static_cast<uint16_t>(1u << i);
                 if (in.planeXn != nullptr) {
@@ -310,37 +333,44 @@ void buildMasks(const MeshInput& in, int maxYb, Masks& m) {
                 }
             }
         }
-        m.pxnN[y] = xn;
-        m.pxpN[y] = xp;
-        m.znN[y] = zn;
-        m.zpN[y] = zp;
+        m.pxnN.data()[y] = xn;
+        m.pxpN.data()[y] = xp;
+        m.znN.data()[y] = zn;
+        m.zpN.data()[y] = zp;
     }
 }
 
 int32_t meshBitmask(const MeshInput& in, int max_y, bool smooth, const Masks& m,
                     float* out_quads, int32_t cap_quads) {
     EmitState es{out_quads, cap_quads};
+    const int CS = in.cs;
+    const int WH = in.wh;
+    const uint16_t* const nm = m.n.data();
+    const uint16_t* const opqM = m.opq.data();
+    const uint16_t* const tcubeM = m.tcube.data();
+    const uint16_t* const znM = m.znN.data();
+    const uint16_t* const zpM = m.zpN.data();
     for (int lx = 0; lx < CS; lx++) {
-        const uint16_t* selfNCol = &m.n[lx * WH];
-        const uint16_t* westN = (lx > 0) ? &m.n[(lx - 1) * WH] : m.pxnN;
-        const uint16_t* eastN = (lx < CS - 1) ? &m.n[(lx + 1) * WH] : m.pxpN;
+        const uint16_t* selfNCol = nm + lx * WH;
+        const uint16_t* westN = (lx > 0) ? nm + (lx - 1) * WH : m.pxnN.data();
+        const uint16_t* eastN = (lx < CS - 1) ? nm + (lx + 1) * WH : m.pxpN.data();
         for (int ly = 0; ly <= max_y; ly++) {
-            const uint16_t opq = m.opq[lx * WH + ly];
-            const uint16_t tc = m.tcube[lx * WH + ly];
+            const uint16_t opq = opqM[lx * WH + ly];
+            const uint16_t tc = tcubeM[lx * WH + ly];
             if ((opq | tc) == 0) {
                 continue; // all-air / non-cube row: 2 loads and done
             }
             const uint16_t selfN = selfNCol[ly];
             const uint16_t fTop = static_cast<uint16_t>(
-                opq & ((ly < WH - 1) ? selfNCol[ly + 1] : uint16_t{0xFFFF}));
+                opq & ((ly < WH - 1) ? selfNCol[ly + 1] : m.full));
             const uint16_t fBottom = static_cast<uint16_t>(
-                opq & ((ly > 0) ? selfNCol[ly - 1] : uint16_t{0xFFFF}));
-            const uint16_t znBit = static_cast<uint16_t>((m.znN[ly] >> lx) & 1u);
-            const uint16_t zpBit = static_cast<uint16_t>((m.zpN[ly] >> lx) & 1u);
+                opq & ((ly > 0) ? selfNCol[ly - 1] : m.full));
+            const uint16_t znBit = static_cast<uint16_t>((znM[ly] >> lx) & 1u);
+            const uint16_t zpBit = static_cast<uint16_t>((zpM[ly] >> lx) & 1u);
             const uint16_t fNorth = static_cast<uint16_t>(
                 opq & static_cast<uint16_t>((selfN << 1) | znBit));
             const uint16_t fSouth = static_cast<uint16_t>(
-                opq & static_cast<uint16_t>((selfN >> 1) | (zpBit << 15)));
+                opq & static_cast<uint16_t>((selfN >> 1) | (zpBit << (CS - 1))));
             const uint16_t fEast = static_cast<uint16_t>(opq & eastN[ly]);
             const uint16_t fWest = static_cast<uint16_t>(opq & westN[ly]);
 
@@ -374,6 +404,7 @@ int32_t meshBitmask(const MeshInput& in, int max_y, bool smooth, const Masks& m,
 } // namespace
 
 extern "C" int32_t ck_mesh_chunk(const int16_t* blocks,
+                                 int32_t chunk_size, int32_t world_height,
                                  const uint8_t* class_table, int32_t class_table_len,
                                  int32_t air_id,
                                  const int16_t* plane_xn, const int16_t* plane_xp,
@@ -383,22 +414,25 @@ extern "C" int32_t ck_mesh_chunk(const int16_t* blocks,
                                  const int16_t* heights,
                                  int32_t max_y, int32_t smooth_lighting,
                                  float* out_quads, int32_t cap_quads) {
-    if (blocks == nullptr || class_table == nullptr || heights == nullptr || out_quads == nullptr) {
-        return -1;
+    if (blocks == nullptr || class_table == nullptr || heights == nullptr || out_quads == nullptr
+            || chunk_size < 1 || chunk_size > CK_MESH_MAX_CHUNK_SIZE || world_height < 1) {
+        return CK_MESH_BAD_ARGS;
     }
+    const int WH = world_height;
     if (max_y >= WH) max_y = WH - 1;
     const bool smooth = smooth_lighting != 0;
 
     const MeshInput in{blocks, class_table, class_table_len, air_id,
                        plane_xn, plane_xp, plane_zn, plane_zp,
-                       corner_nn, corner_pn, corner_np, corner_pp, heights};
+                       corner_nn, corner_pn, corner_np, corner_pp, heights,
+                       chunk_size, world_height};
 
     const char* impl = std::getenv("CENDA_MESHER_IMPL");
     if (impl != nullptr && std::strcmp(impl, "scalar") == 0) {
         return meshScalar(in, max_y, smooth, out_quads, cap_quads);
     }
 
-    Masks m;
+    thread_local Masks m;
     buildMasks(in, (max_y + 1 < WH) ? max_y + 1 : WH - 1, m);
     return meshBitmask(in, max_y, smooth, m, out_quads, cap_quads);
 }

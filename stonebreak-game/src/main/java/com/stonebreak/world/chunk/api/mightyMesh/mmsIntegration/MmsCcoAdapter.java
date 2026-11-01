@@ -444,7 +444,7 @@ public class MmsCcoAdapter {
                                     int chunkX, int chunkZ) {
         if (greedyMeshingEnabled) {
             float[][] holder = MERGE_HOLDER.get();
-            int mergedCount = MmsGreedyMesher.merge(quads, quadCount, holder);
+            int mergedCount = MmsGreedyMesher.merge(quads, quadCount, WorldConfiguration.CHUNK_SIZE, holder);
             float[] merged = holder[0];
             for (int q = 0; q < mergedCount; q++) {
                 int base = q * MmsGreedyMesher.OUT_STRIDE;
@@ -528,8 +528,9 @@ public class MmsCcoAdapter {
             int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
             int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
             if (orient >= 0 && layer >= 0 && layer <= 65535
-                    && qx >= 0 && qx <= 255 && qz >= 0 && qz <= 255 && ly >= 0 && ly <= 1023
-                    && w >= 1 && w <= 16 && h >= 1 && h <= 16
+                    && qx >= 0 && qx <= MmsQuadCodec.MAX_LOCAL_XZ && qz >= 0 && qz <= MmsQuadCodec.MAX_LOCAL_XZ
+                    && ly >= 0 && ly <= MmsQuadCodec.MAX_Y
+                    && w >= 1 && w <= MmsQuadCodec.MAX_EXTENT && h >= 1 && h <= MmsQuadCodec.MAX_EXTENT
                     && quads.addQuad(qx, ly, qz, face, w, h, orient, alphaFlags[0] != 0f, false, layer,
                         l0, l1, l2, l3)) {
                 return;
@@ -599,9 +600,9 @@ public class MmsCcoAdapter {
                                   int chunkX, int chunkZ) {
         for (int i = 0; i < snap.specialCount(); i++) {
             int idx = snap.specialCell(i);
-            int lx = idx & 15;
-            int lz = (idx >> 4) & 15;
-            int ly = idx >> 8;
+            int lx = idx % WorldConfiguration.CHUNK_SIZE;
+            int lz = (idx / WorldConfiguration.CHUNK_SIZE) % WorldConfiguration.CHUNK_SIZE;
+            int ly = idx / (WorldConfiguration.CHUNK_SIZE * WorldConfiguration.CHUNK_SIZE);
             BlockType blockType = (BlockType) chunkData.getBlock(lx, ly, lz);
             if (blockType == null || blockType == BlockType.AIR) {
                 continue;
