@@ -86,7 +86,6 @@ public final class InputHandler {
             case VOLUME -> adjustSlider(stateManager.getVolumeSlider(), direction * SettingsConfig.VOLUME_STEP);
             case MUSIC_VOLUME -> adjustSlider(stateManager.getMusicVolumeSlider(), direction * SettingsConfig.VOLUME_STEP);
             case MUSIC_ENABLED -> { if (direction != 0) actionHandler.toggleMusic(); }
-            case ARM_MODEL -> adjustArmModel(direction);
             case CROSSHAIR_STYLE -> adjustCrosshairStyle(direction);
             case CROSSHAIR_SIZE -> adjustSlider(stateManager.getCrosshairSizeSlider(), direction * SettingsConfig.CROSSHAIR_SIZE_STEP);
             case PLAYER_NAME_TAGS -> { if (direction != 0) actionHandler.togglePlayerNameTags(); }
@@ -120,21 +119,6 @@ public final class InputHandler {
             int next = Math.max(0, Math.min(max, currentIndex + direction));
             settings.setResolutionByIndex(next);
             stateManager.setSelectedResolutionIndex(next);
-            dropdown.setSelectedIndex(next);
-        }
-    }
-
-    private void adjustArmModel(int direction) {
-        MDropdown dropdown = stateManager.getArmModelButton();
-        if (dropdown.isOpen()) {
-            dropdown.adjustSelection(direction);
-            stateManager.setSelectedArmModelIndex(dropdown.selectedIndex());
-        } else {
-            int currentIndex = stateManager.getSelectedArmModelIndex();
-            int max = SettingsConfig.ARM_MODEL_TYPES.length - 1;
-            int next = Math.max(0, Math.min(max, currentIndex + direction));
-            settings.setArmModelType(SettingsConfig.ARM_MODEL_TYPES[next]);
-            stateManager.setSelectedArmModelIndex(next);
             dropdown.setSelectedIndex(next);
         }
     }

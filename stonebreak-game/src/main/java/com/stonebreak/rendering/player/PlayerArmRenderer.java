@@ -13,7 +13,6 @@ import static org.lwjgl.opengl.GL11.*;
 
 // Project Imports
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.config.Settings;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Player;
@@ -82,13 +81,7 @@ public class PlayerArmRenderer {
      * Initializes the arm renderer by creating required resources.
      */
     private void initialize() {
-        // Create the appropriate arm model based on settings
-        Settings settings = Settings.getInstance();
-        if (settings.isSlimArms()) {
-            armGeometry.createSlimArmVao();
-        } else {
-            armGeometry.createRegularArmVao();
-        }
+        armGeometry.createRegularArmVao();
         armTexture.createArmTexture();
     }
     
@@ -373,9 +366,7 @@ public class PlayerArmRenderer {
         // Use original texture colors
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
 
-        // Render arm geometry using appropriate model type from settings
-        Settings settings = Settings.getInstance();
-        GL30.glBindVertexArray(armGeometry.getArmVao(settings.isSlimArms()));
+        GL30.glBindVertexArray(armGeometry.getArmVao());
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 
         // Restore UI-element flag so subsequent terrain draws use phong.

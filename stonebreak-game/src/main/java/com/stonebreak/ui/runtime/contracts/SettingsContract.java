@@ -74,8 +74,6 @@ public final class SettingsContract {
         add("musicEnabled", DataType.bool(), s -> UiValue.of(s.getMusicEnabled()), (s, v) -> s.setMusicEnabled(b(v)),
             null, Live.PUSHED);
         // player model
-        add("armModelType", DataType.string(), s -> UiValue.of(s.getArmModelType()), (s, v) -> s.setArmModelType(str(v)),
-            oneOf("arm model", SettingsConfig.ARM_MODEL_TYPES), Live.ON_APPLY);
         add("selectedHat", DataType.string(), s -> UiValue.of(s.getSelectedHat()), (s, v) -> s.setSelectedHat(str(v)),
             null, Live.ON_APPLY);
         add("selectedHair", DataType.string(), s -> UiValue.of(s.getSelectedHair()), (s, v) -> s.setSelectedHair(str(v)),

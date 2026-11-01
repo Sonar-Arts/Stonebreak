@@ -47,7 +47,6 @@ public class ActionHandler {
             case VOLUME -> {} // Volume handled by mouse/keyboard interaction
             case MUSIC_VOLUME -> {} // Music volume handled by mouse/keyboard interaction
             case MUSIC_ENABLED -> toggleMusic();
-            case ARM_MODEL -> stateManager.getArmModelButton().toggle();
             case CROSSHAIR_STYLE -> stateManager.getCrosshairStyleButton().toggle();
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case PLAYER_NAME_TAGS -> togglePlayerNameTags();
@@ -174,15 +173,6 @@ public class ActionHandler {
         int newIndex = stateManager.getResolutionButton().selectedIndex();
         settings.setResolutionByIndex(newIndex);
         stateManager.setSelectedResolutionIndex(newIndex);
-    }
-
-    /**
-     * Callback for when arm model selection changes.
-     */
-    public void onArmModelChange() {
-        int newIndex = stateManager.getArmModelButton().selectedIndex();
-        settings.setArmModelType(com.stonebreak.ui.settingsMenu.config.SettingsConfig.ARM_MODEL_TYPES[newIndex]);
-        stateManager.setSelectedArmModelIndex(newIndex);
     }
 
     /**

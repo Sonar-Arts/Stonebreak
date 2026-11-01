@@ -28,7 +28,6 @@ class SettingsPersistenceTest {
         s.setMasterVolume(0.25f);
         s.setMusicVolume(0.75f);
         s.setMusicEnabled(false);
-        s.setArmModelType("SLIM");
         s.setSelectedHat("TOP_HAT");
         s.setSelectedHair("MALE_HAIR_2");
         s.setCrosshairStyle("DOT");
@@ -70,7 +69,6 @@ class SettingsPersistenceTest {
         assertEquals(expected.getMasterVolume(), actual.getMasterVolume(), EPS);
         assertEquals(expected.getMusicVolume(), actual.getMusicVolume(), EPS);
         assertEquals(expected.getMusicEnabled(), actual.getMusicEnabled());
-        assertEquals(expected.getArmModelType(), actual.getArmModelType());
         assertEquals(expected.getSelectedHat(), actual.getSelectedHat());
         assertEquals(expected.getSelectedHair(), actual.getSelectedHair());
         assertEquals(expected.getCrosshairStyle(), actual.getCrosshairStyle());
@@ -134,7 +132,7 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(41, tree.size());
+        assertEquals(40, tree.size());
         assertTrue(tree.has("selectedAccessory"));
         assertTrue(tree.has("pauseSingleplayerWorld"));
         assertTrue(tree.has("windowWidth"));
@@ -191,8 +189,7 @@ class SettingsPersistenceTest {
                   "uiScale": 12.0,
                   "shadowDistance": 1,
                   "masterVolume": -3.0,
-                  "shadowQuality": "ULTRA",
-                  "armModelType": "GIGANTIC"
+                  "shadowQuality": "ULTRA"
                 }
                 """));
 
@@ -201,7 +198,6 @@ class SettingsPersistenceTest {
         assertEquals(Settings.MIN_SHADOW_DISTANCE, loaded.getShadowDistance());
         assertEquals(0.0f, loaded.getMasterVolume(), EPS);
         assertEquals("MEDIUM", loaded.getShadowQuality());
-        assertEquals("REGULAR", loaded.getArmModelType());
     }
 
     @Test
@@ -215,15 +211,14 @@ class SettingsPersistenceTest {
     }
 
     @Test
-    void slimArmsFlagTracksTheArmModelType() {
+    void retiredArmModelKeyIsIgnoredAndNotWrittenBack() throws Exception {
         Settings loaded = new Settings();
-        loaded.apply(fullyPopulated().toJson());
+        loaded.apply(MAPPER.readTree("""
+                { "armModelType": "SLIM", "masterVolume": 0.4 }
+                """));
 
-        assertTrue(loaded.isSlimArms());
-
-        loaded.setSlimArms(false);
-        assertFalse(loaded.isSlimArms());
-        assertEquals("REGULAR", loaded.getArmModelType());
+        assertEquals(0.4f, loaded.getMasterVolume(), EPS);
+        assertFalse(loaded.toJson().has("armModelType"));
     }
 
     @Test

@@ -30,7 +30,6 @@ public final class StateManager {
     private MButton applyButton;
     private MButton backButton;
     private MDropdown resolutionButton;
-    private MDropdown armModelButton;
     private MDropdown crosshairStyleButton;
     private MSlider volumeSlider;
     private MSlider musicVolumeSlider;
@@ -69,7 +68,6 @@ public final class StateManager {
             case VOLUME           -> volumeSlider;
             case MUSIC_VOLUME     -> musicVolumeSlider;
             case MUSIC_ENABLED    -> musicEnabledButton;
-            case ARM_MODEL        -> armModelButton;
             case CROSSHAIR_STYLE  -> crosshairStyleButton;
             case CROSSHAIR_SIZE   -> crosshairSizeSlider;
             case PLAYER_NAME_TAGS -> playerNameTagsButton;
@@ -106,7 +104,7 @@ public final class StateManager {
 
     /** The open dropdown (at most one is), or null. */
     public MDropdown openDropdown() {
-        for (MDropdown d : new MDropdown[]{resolutionButton, armModelButton, crosshairStyleButton,
+        for (MDropdown d : new MDropdown[]{resolutionButton, crosshairStyleButton,
                 shadowQualityButton, lodQualityButton}) {
             if (d != null && d.isOpen()) return d;
         }
@@ -144,7 +142,6 @@ public final class StateManager {
     private GameState previousState = GameState.MAIN_MENU;
 
     private int selectedResolutionIndex = 0;
-    private int selectedArmModelIndex = 0;
     private int selectedCrosshairStyleIndex = 0;
     private int selectedShadowQualityIndex = 1;
     private int selectedLodQualityIndex = 1;
@@ -165,7 +162,6 @@ public final class StateManager {
 
     private void initSettingsState() {
         selectedResolutionIndex = settings.getCurrentResolutionIndex();
-        selectedArmModelIndex = SettingsConfig.findArmModelIndex(settings.getArmModelType());
         selectedCrosshairStyleIndex = SettingsConfig.findCrosshairStyleIndex(settings.getCrosshairStyle());
         selectedShadowQualityIndex = SettingsConfig.findShadowQualityIndex(settings.getShadowQuality());
         selectedLodQualityIndex = SettingsConfig.findLodQualityIndex(settings.getLodQuality());
@@ -212,10 +208,6 @@ public final class StateManager {
         resolutionButton = new MDropdown("Resolution", resolutionStrings).itemHeight(dih);
         resolutionButton.size(bw, bh);
         resolutionButton.setSelectedIndex(selectedResolutionIndex);
-
-        armModelButton = new MDropdown("Arm Model", SettingsConfig.ARM_MODEL_NAMES).itemHeight(dih);
-        armModelButton.size(bw, bh);
-        armModelButton.setSelectedIndex(selectedArmModelIndex);
 
         crosshairStyleButton = new MDropdown("Crosshair", SettingsConfig.CROSSHAIR_STYLE_NAMES).itemHeight(dih);
         crosshairStyleButton.size(bw, bh);
@@ -294,7 +286,7 @@ public final class StateManager {
 
         // Text on every settings widget tracks the UI scale (opt-in; persists across resizeWidgets).
         for (MWidget w : new MWidget[]{
-                applyButton, backButton, resolutionButton, armModelButton, crosshairStyleButton,
+                applyButton, backButton, resolutionButton, crosshairStyleButton,
                 volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, pauseWorldButton, leafTransparencyButton, waterShaderButton,
                 cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
                 smoothLightingButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
@@ -319,7 +311,6 @@ public final class StateManager {
         applyButton.size(bw, bh);
         backButton.size(bw, bh);
         resolutionButton.size(bw, bh).itemHeight(dih);
-        armModelButton.size(bw, bh).itemHeight(dih);
         crosshairStyleButton.size(bw, bh).itemHeight(dih);
         volumeSlider.size(sw, sh);
         musicVolumeSlider.size(sw, sh);
@@ -354,7 +345,7 @@ public final class StateManager {
      * free of behavioral logic.
      */
     public void setCallbacks(Runnable applyAction, Runnable backAction, Runnable resolutionAction,
-                             Runnable armModelAction, Runnable crosshairStyleAction,
+                             Runnable crosshairStyleAction,
                              java.util.function.Consumer<Float> volumeAction,
                              java.util.function.Consumer<Float> musicVolumeAction,
                              Runnable musicEnabledAction,
@@ -378,7 +369,6 @@ public final class StateManager {
         applyButton.setOnClick(applyAction);
         backButton.setOnClick(backAction);
         resolutionButton.setOnSelectionChanged(resolutionAction);
-        armModelButton.setOnSelectionChanged(armModelAction);
         crosshairStyleButton.setOnSelectionChanged(crosshairStyleAction);
         volumeSlider.setOnChange(volumeAction);
         musicVolumeSlider.setOnChange(musicVolumeAction);
@@ -426,7 +416,6 @@ public final class StateManager {
         }
         // Setting buttons are hover-only; no persistent selection on them.
         resolutionButton.setSelected(false);
-        armModelButton.setSelected(false);
         crosshairStyleButton.setSelected(false);
         volumeSlider.setSelected(false);
         musicVolumeSlider.setSelected(false);
@@ -455,7 +444,6 @@ public final class StateManager {
 
     public void closeAllDropdowns() {
         if (resolutionButton != null) resolutionButton.close();
-        if (armModelButton != null) armModelButton.close();
         if (crosshairStyleButton != null) crosshairStyleButton.close();
         if (shadowQualityButton != null) shadowQualityButton.close();
         if (lodQualityButton != null) lodQualityButton.close();
@@ -497,7 +485,6 @@ public final class StateManager {
 
     public void refreshLabels() {
         resolutionButton.setText("Resolution: " + settings.getCurrentResolutionString());
-        armModelButton.setText("Arm Model: " + SettingsConfig.ARM_MODEL_NAMES[selectedArmModelIndex]);
         crosshairStyleButton.setText("Crosshair: " + SettingsConfig.CROSSHAIR_STYLE_NAMES[selectedCrosshairStyleIndex]);
         musicEnabledButton.setText(musicEnabledLabel());
         playerNameTagsButton.setText(playerNameTagsLabel());
@@ -629,9 +616,6 @@ public final class StateManager {
     public int getSelectedResolutionIndex() { return selectedResolutionIndex; }
     public void setSelectedResolutionIndex(int i) { this.selectedResolutionIndex = i; }
 
-    public int getSelectedArmModelIndex() { return selectedArmModelIndex; }
-    public void setSelectedArmModelIndex(int i) { this.selectedArmModelIndex = i; }
-
     public int getSelectedCrosshairStyleIndex() { return selectedCrosshairStyleIndex; }
     public void setSelectedCrosshairStyleIndex(int i) { this.selectedCrosshairStyleIndex = i; }
 
@@ -643,7 +627,6 @@ public final class StateManager {
     public MButton getApplyButton() { return applyButton; }
     public MButton getBackButton() { return backButton; }
     public MDropdown getResolutionButton() { return resolutionButton; }
-    public MDropdown getArmModelButton() { return armModelButton; }
     public MDropdown getCrosshairStyleButton() { return crosshairStyleButton; }
     public MSlider getVolumeSlider() { return volumeSlider; }
     public MSlider getMusicVolumeSlider() { return musicVolumeSlider; }

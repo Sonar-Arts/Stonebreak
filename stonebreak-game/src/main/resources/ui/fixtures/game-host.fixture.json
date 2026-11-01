@@ -274,7 +274,6 @@
       "masterVolume": 0.5,
       "musicVolume": 0.5,
       "musicEnabled": true,
-      "armModelType": "REGULAR",
       "selectedHat": "NONE",
       "selectedHair": "NONE",
       "crosshairStyle": "SIMPLE_CROSS",

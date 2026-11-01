@@ -511,10 +511,8 @@
         "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
         "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
         "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
-        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
-        "row2" : [ 910.0, 555.0, 300.0, 60.0 ],
-        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
-        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ],
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
         "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
       },
       "hits" : {
@@ -527,10 +525,8 @@
         "category4" : [ 640.0, 560.0, 150.0, 35.0 ],
         "category5" : [ 640.0, 600.0, 150.0, 35.0 ],
         "row0" : [ 860.0, 405.0, 400.0, 40.0 ],
-        "row1" : [ 860.0, 485.0, 400.0, 40.0 ],
-        "row2" : [ 910.0, 555.0, 300.0, 60.0 ],
-        "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
-        "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ]
+        "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ]
       },
       "actions" : {
         "apply" : "stonebreak:screen.settings.press apply",
@@ -543,9 +539,7 @@
         "category5" : "stonebreak:screen.settings.press category5",
         "row0" : "stonebreak:screen.settings.press row0",
         "row1" : "stonebreak:screen.settings.press row1",
-        "row2" : "stonebreak:screen.settings.press row2",
-        "row3" : "stonebreak:screen.settings.press row3",
-        "scrollbar" : "stonebreak:screen.settings.scrollbar"
+        "row2" : "stonebreak:screen.settings.press row2"
       }
     },
     "settings-extras_1920x1080_s1" : {
@@ -704,19 +698,25 @@
     },
     "settings-advanced-open_1920x1080_s1" : {
       "rects" : {
-        "item0" : [ 860.0, 445.0, 400.0, 30.0 ],
-        "item1" : [ 860.0, 475.0, 400.0, 30.0 ],
-        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+        "item0" : [ 860.0, 605.0, 400.0, 30.0 ],
+        "item1" : [ 860.0, 635.0, 400.0, 30.0 ],
+        "item2" : [ 860.0, 665.0, 400.0, 30.0 ],
+        "item3" : [ 860.0, 695.0, 400.0, 30.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 40.0 ]
       },
       "hits" : {
-        "item0" : [ 860.0, 445.0, 400.0, 29.99997 ],
-        "item1" : [ 860.0, 475.0, 400.0, 29.99997 ],
-        "row0" : [ 860.0, 405.0, 400.0, 40.0 ]
+        "item0" : [ 860.0, 605.0, 400.0, 29.999939 ],
+        "item1" : [ 860.0, 635.0, 400.0, 29.999939 ],
+        "item2" : [ 860.0, 665.0, 400.0, 29.999939 ],
+        "item3" : [ 860.0, 695.0, 400.0, 30.0 ],
+        "row2" : [ 860.0, 565.0, 400.0, 39.99994 ]
       },
       "actions" : {
         "item0" : "stonebreak:screen.settings.press item0",
         "item1" : "stonebreak:screen.settings.press item1",
-        "row0" : "stonebreak:screen.settings.press row0"
+        "item2" : "stonebreak:screen.settings.press item2",
+        "item3" : "stonebreak:screen.settings.press item3",
+        "row2" : "stonebreak:screen.settings.press row2"
       }
     },
     "settings-general-confirm_1920x1080_s1" : {
