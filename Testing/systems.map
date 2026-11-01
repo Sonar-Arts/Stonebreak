@@ -9,30 +9,37 @@
 # harness.py validates this on every run and aborts on drift.
 
 # ---- engine ----
-cenda	openmason-engine	com/openmason/engine/cenda/**/*Test
+cenda	openmason-engine/engine-core	com/openmason/engine/cenda/**/*Test
+cenda	openmason-engine/engine-ui	com/openmason/engine/ui/cenda/**/*Test
 cenda	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest,com/stonebreak/world/CendaChunkBenchmarkTest
-formats	openmason-engine	com/openmason/engine/format/**/*Test
-networking	openmason-engine	com/openmason/engine/net/**/*Test
+formats	openmason-engine/engine-core	com/openmason/engine/format/**/*Test
+formats	openmason-engine/engine-ui	com/openmason/engine/format/**/*Test
+networking	openmason-engine/engine-core	com/openmason/engine/net/**/*Test
+networking	openmason-engine/engine-voxel	com/openmason/engine/net/**/*Test,com/openmason/engine/voxel/net/**/*Test
 networking	stonebreak-game	com/stonebreak/network/**/*Test
-mesh-editing	openmason-engine	com/openmason/engine/rendering/model/**/*Test
-viewer	openmason-engine	com/openmason/engine/rendering/viewer/**/*Test
-cco	openmason-engine	com/openmason/engine/voxel/cco/**/*Test
-mms	openmason-engine	com/openmason/engine/voxel/mms/**/*Test
+mesh-editing	openmason-engine/engine-core	com/openmason/engine/rendering/model/**/*Test
+viewer	openmason-engine/engine-core	com/openmason/engine/rendering/viewer/**/*Test
+cco	openmason-engine/engine-voxel	com/openmason/engine/voxel/cco/**/*Test
+mms	openmason-engine/engine-voxel	com/openmason/engine/voxel/mms/**/*Test
 mms	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/**/*Test,!com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest
-sbo	openmason-engine	com/openmason/engine/voxel/sbo/**/*Test
-lighting	openmason-engine	com/openmason/engine/voxel/lighting/**/*Test
+sbo	openmason-engine/engine-voxel	com/openmason/engine/voxel/sbo/**/*Test
+lighting	openmason-engine/engine-voxel	com/openmason/engine/voxel/lighting/**/*Test
 lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test,com/stonebreak/world/lighting/**/*Test
-engine-util	openmason-engine	com/openmason/engine/util/**/*Test,com/openmason/engine/rendering/gl/**/*Test,com/openmason/engine/rendering/sprite/**/*Test
-cearl	openmason-engine	com/openmason/engine/cearl/**/*Test,com/openmason/engine/vram/**/*Test
+engine-util	openmason-engine/engine-core	com/openmason/engine/util/**/*Test,com/openmason/engine/rendering/gl/**/*Test,com/openmason/engine/rendering/sprite/**/*Test
+cearl	openmason-engine/engine-core	com/openmason/engine/cearl/**/*Test,com/openmason/engine/vram/**/*Test
 cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
-wayfind	openmason-engine	com/openmason/engine/wayfind/**/*Test
-shaders	openmason-engine	com/openmason/engine/rendering/shaders/**/*Test,com/openmason/engine/rendering/RenderOriginTest
+wayfind	openmason-engine/engine-core	com/openmason/engine/wayfind/**/*Test
+wayfind	openmason-engine/engine-voxel	com/openmason/engine/wayfind/**/*Test
+shaders	openmason-engine/engine-core	com/openmason/engine/rendering/shaders/**/*Test,com/openmason/engine/rendering/RenderOriginTest
 shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
-shadow	openmason-engine	com/openmason/engine/rendering/shadow/**/*Test
-sky	openmason-engine	com/openmason/engine/rendering/sky/**/*Test
-ui-program	openmason-engine	com/openmason/engine/ui/**/*Test
-audio	openmason-engine	com/openmason/engine/audio/**/*Test
-boundaries	openmason-engine	com/openmason/engine/boundary/**/*Test
+shadow	openmason-engine/engine-core	com/openmason/engine/rendering/shadow/**/*Test
+sky	openmason-engine/engine-core	com/openmason/engine/rendering/sky/**/*Test
+ui-program	openmason-engine/engine-ui	com/openmason/engine/ui/**/*Test,!com/openmason/engine/ui/cenda/**,!com/openmason/engine/ui/boundary/**
+audio	openmason-engine/engine-core	com/openmason/engine/audio/**/*Test
+boundaries	openmason-engine/engine-core	com/openmason/engine/boundary/**/*Test
+boundaries	openmason-engine/engine-ui	com/openmason/engine/ui/boundary/**/*Test
+boundaries	openmason-engine/engine-voxel	com/openmason/engine/voxel/boundary/**/*Test
+boundaries	openmason-engine/samples/core-consumer	com/openmason/samples/**/*Test
 
 # ---- game ----
 audio	stonebreak-game	com/stonebreak/audio/**/*Test

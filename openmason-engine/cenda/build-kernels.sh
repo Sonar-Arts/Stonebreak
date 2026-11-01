@@ -3,7 +3,7 @@
 # Builds the Cenda native kernels (libcenda_kernels.so) from the CURRENT sources.
 #
 # Wired into the "Stonebreak" IntelliJ run configuration as a before-launch step
-# (the engine POM's exec:exec@cenda-kernels, which picks a bash per OS), so launching
+# (exec:exec@cenda-kernels on openmason-engine/cenda/pom.xml, which picks a bash per OS), so launching
 # the game always runs against a lib built from the checked-out tree. Also safe to
 # run by hand:
 #
@@ -89,7 +89,7 @@ fi
 # version the sources export must match the one the Java FFM binding expects, or
 # CendaKernels rejects the library at load time and every native path falls back.
 HEADER="$HERE/native/kernels/include/cenda/kernels.h"
-BINDING="$HERE/../src/main/java/com/openmason/engine/cenda/CendaKernels.java"
+BINDING="$HERE/../engine-core/src/main/java/com/openmason/engine/cenda/CendaKernels.java"
 if [[ -f "$HEADER" && -f "$BINDING" ]]; then
   NATIVE_ABI="$(sed -n 's/^#define CK_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$HEADER" | head -1)"
   JAVA_ABI="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$BINDING" | head -1)"
@@ -105,7 +105,7 @@ fi
 # handshake. UI scripting has no Java fallback, so a mismatch here means scripted UI
 # documents fail to load — CendaLua throws with this same diagnostic at startup.
 LUA_HEADER="$HERE/native/kernels/include/cenda/lua_host.h"
-LUA_BINDING="$HERE/../src/main/java/com/openmason/engine/cenda/CendaLua.java"
+LUA_BINDING="$HERE/../engine-ui/src/main/java/com/openmason/engine/ui/cenda/CendaLua.java"
 if [[ -f "$LUA_HEADER" && -f "$LUA_BINDING" ]]; then
   NATIVE_CL="$(sed -n 's/^#define CL_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$LUA_HEADER" | head -1)"
   JAVA_CL="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$LUA_BINDING" | head -1)"
@@ -118,7 +118,7 @@ fi
 
 # And for the retained Yoga tree (#287): migrated UI has no Java layout fallback either.
 FLEX_HEADER="$HERE/native/kernels/include/cenda/flex.h"
-FLEX_BINDING="$HERE/../src/main/java/com/openmason/engine/cenda/CendaFlex.java"
+FLEX_BINDING="$HERE/../engine-ui/src/main/java/com/openmason/engine/ui/cenda/CendaFlex.java"
 if [[ -f "$FLEX_HEADER" && -f "$FLEX_BINDING" ]]; then
   NATIVE_CF="$(sed -n 's/^#define CF_ABI_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' "$FLEX_HEADER" | head -1)"
   JAVA_CF="$(sed -n 's/.*EXPECTED_ABI[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' "$FLEX_BINDING" | head -1)"

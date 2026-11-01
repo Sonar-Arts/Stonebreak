@@ -7,7 +7,7 @@ import java.io.InputStream;
 /**
  * Loads game-owned sound resources into the engine {@link SoundSystem}.
  *
- * <p>The engine audio classes live in the {@code openmason.engine} module, while the {@code .wav}
+ * <p>The engine audio classes live in the {@code openmason.engine.core} module, while the {@code .wav}
  * assets live in this game module under {@code /sounds/}. JPMS resource lookup is module-confined,
  * so an engine class cannot resolve a game resource via {@code getResourceAsStream}. This helper
  * resolves the resource against <em>this</em> (game) module and hands the engine a stream to decode,

@@ -19,7 +19,7 @@ These game classes stay as facades, so the 136 game files that import Masonry ke
 - `MTextureRegistry` reads game classpath SBTs and SBO item icons into the engine cache.
 
 Tests moved with the code: 332 widget tests now run in the engine (`ui-program` system) with a pinned font,
-`openmason-engine/src/test/resources/fonts/Minecraft.ttf`.
+`openmason-engine/engine-ui/src/test/resources/fonts/Minecraft.ttf`.
 
 ## 1. Host services
 

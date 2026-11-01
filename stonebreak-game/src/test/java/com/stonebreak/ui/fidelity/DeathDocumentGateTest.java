@@ -1,6 +1,6 @@
 package com.stonebreak.ui.fidelity;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.ui.fidelity.FidelityCase;
 import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;

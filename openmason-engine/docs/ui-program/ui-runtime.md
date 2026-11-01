@@ -5,7 +5,7 @@ laid-out and painted element tree.
 
 | Part | Where |
 | --- | --- |
-| Java reference | `openmason-engine/src/main/java/com/openmason/engine/ui/runtime`, plus `style/`, `widget/`, `layout/`, `paint/` |
+| Java reference | `openmason-engine/engine-ui/src/main/java/com/openmason/engine/ui/runtime`, plus `style/`, `widget/`, `layout/`, `paint/` |
 | Native layout host | `cenda/native/kernels/{include/cenda/flex.h,src/flex_host.cpp}` |
 | Game host | `com.stonebreak.ui.runtime.GameUiDocuments` |
 | Editor host | `openmason-tool` `systems/uiPreview/UiDocumentPreviewPanel` |

@@ -1,6 +1,6 @@
 package com.stonebreak.ui.furnace.core;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.format.omui.UiValue;
 import com.openmason.engine.format.sbui.SbuiArchive;
 import com.openmason.engine.ui.data.CallSite;

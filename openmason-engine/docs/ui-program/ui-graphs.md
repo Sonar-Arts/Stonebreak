@@ -17,7 +17,7 @@ never edited.
 | Debugger | `engine/ui/script/GraphDebugger` (hits, watches, breakpoints over debug builds) |
 | Editing model | `engine/ui/graph/edit`: `GraphEditor`, `GraphLayout`, `PaletteEntry`; `GraphScripts` (Convert to script) |
 | Editor UI | `openmason-tool` `systems/uiPreview/graph/` (dev window beside the UI document preview) |
-| Samples | `openmason-engine/src/test/resources/ui/script/graph_pause.omui` (built by `ScriptSamples.graphPause`) |
+| Samples | `openmason-engine/engine-ui/src/test/resources/ui/script/graph_pause.omui` (built by `ScriptSamples.graphPause`) |
 
 ## 1. Model
 

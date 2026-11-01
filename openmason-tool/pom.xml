@@ -137,9 +137,16 @@
         </dependency>
 
         <!-- OpenMason Engine for shared rendering and format support -->
+        <!-- Open Mason engine (#387 split): core + UI; the tool never reads the voxel stack -->
         <dependency>
             <groupId>com.stonebreak</groupId>
-            <artifactId>openmason-engine</artifactId>
+            <artifactId>openmason-engine-core</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>openmason-engine-ui</artifactId>
             <version>1.0-SNAPSHOT</version>
             <scope>compile</scope>
         </dependency>

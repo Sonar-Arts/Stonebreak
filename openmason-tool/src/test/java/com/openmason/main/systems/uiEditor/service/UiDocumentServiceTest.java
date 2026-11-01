@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Document lifecycle of the UI editor: create, save, reopen, SBUI copies, import, recovery (#293). */
 class UiDocumentServiceTest {
 
-    static final Path FIXTURES = Path.of("../openmason-engine/src/test/resources/ui/omui");
+    static final Path FIXTURES = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/omui");
 
     @TempDir
     Path project;

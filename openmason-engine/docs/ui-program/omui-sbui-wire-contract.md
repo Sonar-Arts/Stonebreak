@@ -1,8 +1,8 @@
 # OMUI / SBUI wire contract (#284)
 
 Normative description of the `.omui` (authoring) and `.sbui` (game export) archives, schema **1.0**. The Java
-reference implementation is `openmason-engine/src/main/java/com/openmason/engine/format/{omui,sbui,uiarchive}`.
-The golden fixtures that pin this contract are in `openmason-engine/src/test/resources/ui/omui/`
+reference implementation is `openmason-engine/engine-ui/src/main/java/com/openmason/engine/format/{omui,sbui,uiarchive}`.
+The golden fixtures that pin this contract are in `openmason-engine/engine-ui/src/test/resources/ui/omui/`
 (see [Conformance fixtures](#conformance-fixtures)). A future C++ reader or writer conforms when it reproduces
 those fixtures.
 
@@ -517,7 +517,7 @@ Command line: `com.openmason.engine.format.uiarchive.UiArchiveTool`, with the co
 
 ## Conformance fixtures
 
-`openmason-engine/src/test/resources/ui/omui/`, pinned by `GoldenFixtureTest`. Regenerate with
+`openmason-engine/engine-ui/src/test/resources/ui/omui/`, pinned by `GoldenFixtureTest`. Regenerate with
 `-Dui.fixtures.write=true` after an intentional change, then review the `pause_menu/` diff.
 
 | File | What it pins |

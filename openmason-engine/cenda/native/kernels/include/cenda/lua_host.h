@@ -1,5 +1,5 @@
 /* Cenda Lua host — sandboxed Lua 5.5 states for UI scripting, consumed by
- * Java via FFM (com.openmason.engine.cenda.CendaLua).
+ * Java via FFM (com.openmason.engine.ui.cenda.CendaLua).
  *
  * #283 feasibility spike: the smallest ABI that lets us measure state
  * lifecycle, crossing costs, sandbox enforcement and cancellation. #292 added

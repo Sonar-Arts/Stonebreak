@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Headless command and undo/redo behaviour of the UI editor's document model (#293). */
 class UiCommandsTest {
 
-    static final Path PAUSE = Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui");
+    static final Path PAUSE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/omui/pause_menu.omui");
 
     private UiEditorDocument doc;
     private OmuiArchive original;

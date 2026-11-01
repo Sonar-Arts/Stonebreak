@@ -1,10 +1,10 @@
-# Compiles and packages the whole reactor (openmason-engine, stonebreak-game, openmason-tool) on
+# Compiles and packages the whole reactor (the engine modules, stonebreak-game, openmason-tool, the plugin) on
 # every supported platform, so a change that breaks the build on one OS shows up before merge.
 # Build only: tests are compiled but not run (the test harness is Testing/run-tests.sh), and the
 # shaded jars are not uploaded or released. The root POM's OS-activated profiles pick the
 # LWJGL/Skija natives for each runner.
 #
-# Cenda is built first (release preset) so the engine POM packages it as natives/<platform>/ and
+# Cenda is built first (release preset) so engine-core's POM packages it as natives/<platform>/ and
 # the shaded game and tool jars carry it: UI scripting and layout have no Java fallback, so a jar
 # without the library is broken, and this job fails rather than package one. Stonebreak's own
 # worldgen library (stonebreak-game/native, #386) is built next and packaged into the game jar the
@@ -101,7 +101,7 @@ jobs:
           esac
           entry="natives/$os-$arch/$lib"
           status=0
-          for jar in openmason-engine/target/openmason-engine-*.jar \
+          for jar in openmason-engine/engine-core/target/openmason-engine-core-*.jar \
                      stonebreak-game/target/stonebreak-game-*-shaded.jar \
                      openmason-tool/target/openmason-tool-*.jar; do
             case "$jar" in *-sources.jar|*-javadoc.jar|*/original-*) continue ;; esac

@@ -6,8 +6,8 @@ validation and the same lifetime rules.
 
 | Part | Where |
 | --- | --- |
-| Host contract (data, actions, scopes, edits, fixtures) | `openmason-engine/src/main/java/com/openmason/engine/ui/data` |
-| Bindings, list views, activation gate | `openmason-engine/src/main/java/com/openmason/engine/ui/runtime/binding` |
+| Host contract (data, actions, scopes, edits, fixtures) | `openmason-engine/engine-ui/src/main/java/com/openmason/engine/ui/data` |
+| Bindings, list views, activation gate | `openmason-engine/engine-ui/src/main/java/com/openmason/engine/ui/runtime/binding` |
 | Game host | `com.stonebreak.ui.runtime.GameUiHost` (+ `GameUiDocuments.openBound/bind/activationGate`) |
 | Editor host | `openmason-tool` `systems/uiPreview/UiDocumentPreviewPanel` on `FixtureHost` |
 

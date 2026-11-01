@@ -139,7 +139,8 @@ MVN_EXIT=0
 
 # Determine if every module is present (full reactor needed)
 ALL_MODULES=false
-for required_module in openmason-engine stonebreak-game openmason-tool openmason-plugin-stonebreak; do
+for required_module in openmason-engine/engine-core openmason-engine/engine-ui openmason-engine/engine-voxel \
+    openmason-engine/samples/core-consumer stonebreak-game openmason-tool openmason-plugin-stonebreak; do
   found=false
   for m in "${MODULES[@]}"; do
     if [[ "$m" == "$required_module" ]]; then

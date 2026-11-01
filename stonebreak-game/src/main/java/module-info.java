@@ -10,7 +10,7 @@ module stonebreak.game {
     requires org.lwjgl.glfw;
     requires org.lwjgl.stb;
     // OpenAL is now used by the engine audio subsystem (com.openmason.engine.audio);
-    // the game reaches it through openmason.engine, so no direct requires is needed.
+    // the game reaches it through openmason.engine.core, so no direct requires is needed.
 
     // Skija (Skia bindings). Maven coords: io.github.humbleui:skija-windows-x64,
     // which pulls skija-shared (Java classes) and types (Point/Rect/RRect) transitively.
@@ -22,7 +22,9 @@ module stonebreak.game {
     requires org.joml;
     
     // OpenMason Engine for shared rendering and format support
-    requires openmason.engine;
+    requires openmason.engine.core;
+    requires openmason.engine.ui;
+    requires openmason.engine.voxel;
 
     // Netty transport: ServerPlayer detects in-JVM hosts via LocalChannel
     // (io.netty.channel.local). buffer comes transitively through the engine,

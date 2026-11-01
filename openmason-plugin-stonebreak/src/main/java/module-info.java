@@ -4,7 +4,8 @@
  */
 module openmason.plugin.stonebreak {
     requires com.openmason;
-    requires openmason.engine;
+    requires openmason.engine.core;
+    requires openmason.engine.ui;
     requires stonebreak.game;
 
     requires org.lwjgl;

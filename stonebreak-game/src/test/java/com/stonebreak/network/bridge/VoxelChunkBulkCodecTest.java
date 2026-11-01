@@ -1,6 +1,6 @@
 package com.stonebreak.network.bridge;
 
-import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.net.VoxelChunkCodec;
 import com.openmason.engine.net.replication.BlockSetter;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.IVoxelChunkData;

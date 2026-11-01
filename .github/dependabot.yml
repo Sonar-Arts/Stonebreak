@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Root reactor covers openmason-engine, stonebreak-game and openmason-tool
+  # Root reactor covers the engine modules (openmason-engine/*), stonebreak-game, openmason-tool and the plugin
   - package-ecosystem: "maven"
     directory: "/"
     schedule:

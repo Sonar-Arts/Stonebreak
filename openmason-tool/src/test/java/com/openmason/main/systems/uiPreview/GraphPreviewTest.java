@@ -1,6 +1,6 @@
 package com.openmason.main.systems.uiPreview;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.engine.ui.data.FixtureHost;
@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class GraphPreviewTest {
 
-    static final Path SAMPLE = Path.of("../openmason-engine/src/test/resources/ui/script/graph_pause.omui");
+    static final Path SAMPLE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/script/graph_pause.omui");
 
     @Test
     void theGraphSampleRunsInThePreviewWithTraces() throws Exception {

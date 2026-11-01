@@ -268,7 +268,7 @@ class UiToolsEndToEndTest {
 
         // an in-place save of a game-resources file goes through the policy (no Save Sheet here = declined)
         Path gameUi = Files.createDirectories(tmp.resolve("game/ui")).resolve("pause_menu.omui");
-        Files.copy(Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui"), gameUi);
+        Files.copy(Path.of("../openmason-engine/engine-ui/src/test/resources/ui/omui/pause_menu.omui"), gameUi);
         byte[] shipped = Files.readAllBytes(gameUi);
         call("ui_open", "{\"path\":\"game:ui/pause_menu.omui\"}");
         call("ui_ops", "{\"ops\":[{\"op\":\"set_prop\",\"keys\":\"title\",\"prop\":\"text\",\"value\":\"x\"}]}");
@@ -282,7 +282,7 @@ class UiToolsEndToEndTest {
         // a newer crash-recovery copy left by another session (a crash) blocks automation saves until
         // the author decides; this session's own autosave never does (UiAgentHardeningTest)
         Path rec = Files.createDirectories(project.resolve("UI/rec")).resolve("pause_menu.omui");
-        Files.copy(Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui"), rec);
+        Files.copy(Path.of("../openmason-engine/engine-ui/src/test/resources/ui/omui/pause_menu.omui"), rec);
         Files.setLastModifiedTime(rec, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
         call("ui_open", "{\"path\":\"project:UI/rec/pause_menu.omui\"}");
         call("ui_ops", "{\"ops\":[{\"op\":\"set_prop\",\"keys\":\"title\",\"prop\":\"text\",\"value\":\"y\"}]}");

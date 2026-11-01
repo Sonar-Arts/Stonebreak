@@ -1,6 +1,6 @@
 package com.stonebreak.network;
 
-import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.net.VoxelChunkCodec;
 import com.openmason.engine.voxel.VoxelWorldLimits;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;

@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /** The scene of a real graph (the engine's pause sample): boxes, roles, links, and the canvas hit tests over them. */
 class GraphSceneTest {
 
-    private static final Path SAMPLE = Path.of("../openmason-engine/src/test/resources/ui/script/graph_pause.omui");
+    private static final Path SAMPLE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/script/graph_pause.omui");
 
     private static GraphScene scene(GraphEditor ed) {
         return GraphScene.build(ed, "", s -> s.length() * 7.0);

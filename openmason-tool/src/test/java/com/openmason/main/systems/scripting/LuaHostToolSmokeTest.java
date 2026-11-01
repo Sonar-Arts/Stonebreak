@@ -1,7 +1,7 @@
 package com.openmason.main.systems.scripting;
 
-import com.openmason.engine.cenda.CendaLua;
-import com.openmason.engine.cenda.LuaState;
+import com.openmason.engine.ui.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.LuaState;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 

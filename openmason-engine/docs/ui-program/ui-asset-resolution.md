@@ -1,8 +1,8 @@
 # UI asset resolution, embedding and portable export (#285)
 
 How the dependency rows of the [wire contract](omui-sbui-wire-contract.md) (§5.6, §7.1) turn into bytes, in the
-editor and in the game. Reference implementation: `openmason-engine/src/main/java/com/openmason/engine/ui/assets/`
-(no GL, no tool or game dependency). Tests: `openmason-engine/src/test/java/com/openmason/engine/ui/assets/`
+editor and in the game. Reference implementation: `openmason-engine/engine-ui/src/main/java/com/openmason/engine/ui/assets/`
+(no GL, no tool or game dependency). Tests: `openmason-engine/engine-ui/src/test/java/com/openmason/engine/ui/assets/`
 (system `ui-program`).
 
 ## 1. Identity

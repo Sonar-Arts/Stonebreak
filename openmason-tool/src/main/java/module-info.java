@@ -55,7 +55,8 @@ module com.openmason {
     requires jdk.httpserver;
     
     // OpenMason Engine for shared rendering and format support
-    requires openmason.engine;
+    requires openmason.engine.core;
+    requires openmason.engine.ui; // no voxel: the tool never reads the voxel stack (#387)
 
     // No game module (#382): games plug in through com.openmason.api (Stonebreak: the
     // openmason.plugin.stonebreak module, found on the module path through the `uses` below).

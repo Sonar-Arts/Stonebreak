@@ -36,7 +36,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-MODULES = ["openmason-engine", "stonebreak-game", "openmason-tool", "openmason-plugin-stonebreak"]
+MODULES = ["openmason-engine/engine-core", "openmason-engine/engine-ui", "openmason-engine/engine-voxel",
+           "openmason-engine/samples/core-consumer",
+           "stonebreak-game", "openmason-tool", "openmason-plugin-stonebreak"]
 TAG_SCOPES = ("integration", "regression")
 REGISTRY = HERE / "systems.map"
 SKIP_IGNORE = HERE / "skip-ignore.list"

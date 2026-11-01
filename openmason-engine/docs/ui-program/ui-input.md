@@ -6,10 +6,10 @@ One interaction model for every Stonebreak UI document. It is built on the runti
 
 | Part | Where |
 | --- | --- |
-| Router, events, focus, drag, text fields | `openmason-engine/.../ui/runtime/input` |
-| Text editing model (graphemes, selection, IME) | `openmason-engine/.../ui/text` |
-| Localization (messages, plurals, pseudo-locale) | `openmason-engine/.../ui/l10n` |
-| Semantic tree | `openmason-engine/.../ui/runtime/access` |
+| Router, events, focus, drag, text fields | `openmason-engine/engine-ui/.../ui/runtime/input` |
+| Text editing model (graphemes, selection, IME) | `openmason-engine/engine-ui/.../ui/text` |
+| Localization (messages, plurals, pseudo-locale) | `openmason-engine/engine-ui/.../ui/l10n` |
+| Semantic tree | `openmason-engine/engine-ui/.../ui/runtime/access` |
 | Game host | `com.stonebreak.ui.runtime.GameUiInput` (+ `GamepadUiSource`), called first by `input/MenuInputRouter` |
 | Editor host | `openmason-tool` `systems/uiPreview/UiDocumentPreviewPanel` via `PreviewInput` and `platform/ToolInputTap` |
 

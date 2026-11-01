@@ -1,6 +1,6 @@
 package com.stonebreak.ui.furnace.core;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.ui.runtime.input.PointerEvent;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;

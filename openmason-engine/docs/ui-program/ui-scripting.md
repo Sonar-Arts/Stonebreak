@@ -14,7 +14,7 @@ script contexts as code-behind.
 | Canvas | `Canvas` widget (`ui-canvas` feature), `UiCanvasCommands`, `paint/CanvasPainter` |
 | Editor support | `UiApiCatalog`, `UiApiStubs` (LuaLS), `UiScriptChecker`; tool `UiDocumentPreviewPanel` "Scripts" section |
 | Game host | `com.stonebreak.ui.runtime.GameUiDocuments.scripts/openBound/reload`, `GameUiScriptServices`, the dev overlay |
-| Samples | `openmason-engine/src/test/resources/ui/script/{scripted_pause,minigame}.omui` (sources under `samples/`) |
+| Samples | `openmason-engine/engine-ui/src/test/resources/ui/script/{scripted_pause,minigame}.omui` (sources under `samples/`) |
 
 ## 1. Native host and loading
 

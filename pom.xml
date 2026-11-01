@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>openmason-engine</module>
+        <module>openmason-engine</module> <!-- aggregator: engine-core, engine-ui, engine-voxel, cenda glue, samples (#387) -->
         <module>stonebreak-game</module>
         <module>openmason-tool</module>
         <!-- Stonebreak's Open Mason plugin (#382): depends on the tool and the game -->

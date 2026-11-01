@@ -1,7 +1,7 @@
 package com.stonebreak.network.server.handlers;
 
 import com.openmason.engine.net.protocol.Packet;
-import com.openmason.engine.net.protocol.codec.ChunkBlockPayload;
+import com.openmason.engine.voxel.net.ChunkBlockPayload;
 import com.openmason.engine.net.server.ConnectionRegistry;
 import com.openmason.engine.net.server.ServerConnection;
 import com.stonebreak.blocks.BlockType;

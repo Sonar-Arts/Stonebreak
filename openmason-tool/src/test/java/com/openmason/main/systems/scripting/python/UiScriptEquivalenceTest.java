@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("integration")
 class UiScriptEquivalenceTest {
 
-    private static final Path PAUSE = Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui");
+    private static final Path PAUSE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/omui/pause_menu.omui");
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static PythonScriptEngine engine;
 

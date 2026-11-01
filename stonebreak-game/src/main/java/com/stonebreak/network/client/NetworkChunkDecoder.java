@@ -3,7 +3,7 @@ package com.stonebreak.network.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.openmason.engine.net.protocol.codec.VoxelChunkCodec;
+import com.openmason.engine.voxel.net.VoxelChunkCodec;
 import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.network.bridge.GameBlockTypeResolver;

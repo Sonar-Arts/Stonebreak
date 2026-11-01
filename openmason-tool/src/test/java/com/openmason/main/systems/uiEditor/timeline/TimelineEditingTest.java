@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Timeline authoring (#295): clip edits as undoable commands, scrubbing that never edits, save/export round trips. */
 class TimelineEditingTest {
 
-    static final Path PAUSE = Path.of("../openmason-engine/src/test/resources/ui/omui/pause_menu.omui");
+    static final Path PAUSE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/omui/pause_menu.omui");
     static final TrackId OPACITY = new TrackId("panel", "style:opacity");
     static final TrackId SLIDE = new TrackId("panel", "style:translate-y");
 

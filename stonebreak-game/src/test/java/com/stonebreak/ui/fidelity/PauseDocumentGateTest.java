@@ -6,7 +6,7 @@ import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
 import com.openmason.engine.ui.runtime.UiRect;
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.ui.runtime.GameUiDocuments;
 import org.junit.jupiter.api.Tag;

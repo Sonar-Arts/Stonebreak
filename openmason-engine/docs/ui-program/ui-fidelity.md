@@ -193,7 +193,7 @@ Where the numbers show up:
 The #283 numbers were measured on the dev machine. Run this on the slowest supported machine:
 
 ```
-mvn test -pl openmason-engine -Dtest=UiBudgetBenchTest -Dui.bench=true
+mvn test -pl openmason-engine/engine-ui -am -Dtest=UiBudgetBenchTest -Dsurefire.failIfNoSpecifiedTests=false -Dui.bench=true
 ```
 
 It prints relayout time for a 100-element menu and Lua time per frame for the scripted pause and the

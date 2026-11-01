@@ -1,6 +1,6 @@
 package com.stonebreak.ui.runtime;
 
-import com.openmason.engine.cenda.CendaLua;
+import com.openmason.engine.ui.cenda.CendaLua;
 import com.openmason.engine.format.omui.OmuiArchive;
 import com.openmason.engine.format.omui.OmuiReader;
 import com.openmason.engine.format.omui.UiValue;
@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class GraphScreenGameTest {
 
-    static final Path SAMPLE = Path.of("../openmason-engine/src/test/resources/ui/script/graph_pause.omui");
+    static final Path SAMPLE = Path.of("../openmason-engine/engine-ui/src/test/resources/ui/script/graph_pause.omui");
 
     private static final class FakeServices implements GameUiHost.Services {
         final List<String> calls = new ArrayList<>();

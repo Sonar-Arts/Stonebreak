@@ -2,7 +2,7 @@ package com.stonebreak.network.server.bench;
 
 import com.openmason.engine.net.client.NetworkClient;
 import com.openmason.engine.net.protocol.ProtocolPhase;
-import com.openmason.engine.net.protocol.codec.ChunkBlockPayload;
+import com.openmason.engine.voxel.net.ChunkBlockPayload;
 import com.openmason.engine.net.protocol.codec.WireCompression;
 import com.openmason.engine.net.server.NetworkServer;
 import com.openmason.engine.net.server.ServerConnection;
@@ -40,7 +40,7 @@ import static org.mockito.Mockito.mock;
  * Issue #346: server tick and network cost with several simulated TCP clients and a fixed mob
  * count. Gated on {@code -Dstonebreak.bench=true}:
  * <pre>
- *   mvn test -pl openmason-engine,stonebreak-game -am -Dsurefire.failIfNoSpecifiedTests=false \
+ *   mvn test -pl stonebreak-game -am -Dsurefire.failIfNoSpecifiedTests=false \
  *       -Dtest=ServerTickBenchTest -Dstonebreak.bench=true \
  *       [-Dbench.clients=8] [-Dbench.mobs=400] [-Dbench.ticks=600] [-Dbench.chunks=2]
  *       [-Dbench.noBatch=true] [-Dbench.noCompression=true]
