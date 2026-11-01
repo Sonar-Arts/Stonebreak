@@ -108,24 +108,14 @@ jobs:
           rm plugin-stage/openmason-version.txt
           short=${HEAD_SHA::7}
           {
-            echo "Stonebreak's Open Mason plugin, built from [\`$short\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$HEAD_SHA) against Open Mason \`$resolved\`."
+            echo "Nightly build of the Stonebreak plugin for Open Mason from [\`$short\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$HEAD_SHA), built against Open Mason \`$resolved\`."
             echo
-            echo "**Install:** put \`openmason-plugin-stonebreak-nightly.jar\` in Open Mason's plugin folder and"
-            echo "restart Open Mason (Preferences > Plugins shows the folder):"
-            echo
-            echo "- Linux: \`~/.local/share/OpenMason/plugins/\` (or \`\$XDG_DATA_HOME/OpenMason/plugins/\`)"
-            echo "- Windows: \`%APPDATA%\\OpenMason\\plugins\\\`"
-            echo "- macOS: \`~/Library/Application Support/OpenMason/plugins/\`"
-            echo
-            echo "or point \`-Dopenmason.plugins.dir=<folder>\` at another folder. One jar for every OS; it carries"
-            echo "the plugin and the Stonebreak data it edits, and uses Open Mason's own engine and libraries."
-            echo
-            echo "Untested nightly build of main. Built against Open Mason \`$om\`: use an Open Mason from"
-            echo "the same period, since the plugin follows Open Mason main."
+            echo "To install, copy \`openmason-plugin-stonebreak-nightly.jar\` into Open Mason's plugins folder and restart."
+            echo "Preferences > Plugins shows where the folder is. Set your Stonebreak checkout under Preferences > Stonebreak."
             if [[ -n "$LAST" ]]; then
               echo
-              echo "### Plugin-related changes since the previous nightly"
-              git log --no-merges --format='- %h %s' "$LAST..$HEAD_SHA" -- $PLUGIN_PATHS | head -n 40
+              echo "### Changes"
+              git log --no-merges --format='- %s (%h)' "$LAST..$HEAD_SHA" -- $PLUGIN_PATHS | head -n 40
             fi
           } > notes.md
           cat notes.md
