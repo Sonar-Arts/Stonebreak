@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
-import com.openmason.main.systems.menus.dialogs.EditorWidgets;
+
+import com.stonebreak.gameplay.SboGameplay;import com.openmason.main.systems.menus.dialogs.EditorWidgets;
 import com.openmason.main.systems.menus.dialogs.SoundsEditor;
 
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
@@ -28,7 +29,7 @@ import java.util.Set;
 /**
  * Drops tab body for the SBO editor.
  *
- * <p>Edits {@link SBOFormat.DropData} (SBO 1.8+): what this block yields when
+ * <p>Edits {@link SboGameplay.DropData} (SBO 1.8+): what this block yields when
  * broken. The section has two parts:
  * <ul>
  *   <li><b>Default drops</b> — one card per drop line (item tile, name, count
@@ -72,18 +73,18 @@ public class SBODropsSection implements AutoCloseable {
 
         EditableDrop() {}
 
-        EditableDrop(SBOFormat.DropEntry e) {
+        EditableDrop(SboGameplay.DropEntry e) {
             this.objectId = e.objectId();
             this.min.set(e.minCount());
             this.max.set(e.maxCount());
             this.chancePct.set(e.chance() * 100f);
         }
 
-        SBOFormat.DropEntry toEntry() {
+        SboGameplay.DropEntry toEntry() {
             int lo = Math.max(0, min.get());
             int hi = Math.max(lo, max.get());
             float ch = Math.max(0f, Math.min(100f, chancePct.get())) / 100f;
-            return new SBOFormat.DropEntry(objectId, lo, hi, ch);
+            return new SboGameplay.DropEntry(objectId, lo, hi, ch);
         }
 
         String countLabel() {
@@ -104,9 +105,9 @@ public class SBODropsSection implements AutoCloseable {
 
         EditableOverride() {}
 
-        EditableOverride(SBOFormat.ToolDropOverride o) {
+        EditableOverride(SboGameplay.ToolDropOverride o) {
             this.toolObjectId = o.toolObjectId();
-            for (SBOFormat.DropEntry e : o.drops()) drops.add(new EditableDrop(e));
+            for (SboGameplay.DropEntry e : o.drops()) drops.add(new EditableDrop(e));
         }
     }
 
@@ -125,13 +126,13 @@ public class SBODropsSection implements AutoCloseable {
         this.onDirty = onDirty != null ? onDirty : () -> {};
     }
 
-    public void setFromDropData(SBOFormat.DropData data) {
+    public void setFromDropData(SboGameplay.DropData data) {
         defaults.clear();
         overrides.clear();
         enabled.set(data != null);
         if (data != null) {
-            for (SBOFormat.DropEntry e : data.drops()) defaults.add(new EditableDrop(e));
-            for (SBOFormat.ToolDropOverride o : data.toolOverrides()) overrides.add(new EditableOverride(o));
+            for (SboGameplay.DropEntry e : data.drops()) defaults.add(new EditableDrop(e));
+            for (SboGameplay.ToolDropOverride o : data.toolOverrides()) overrides.add(new EditableOverride(o));
         }
     }
 
@@ -140,16 +141,16 @@ public class SBODropsSection implements AutoCloseable {
      * game default). When enabled, always returns a table — possibly empty,
      * which the game reads as "drops nothing".
      */
-    public SBOFormat.DropData toDropData() {
+    public SboGameplay.DropData toDropData() {
         if (!enabled.get()) return null;
-        List<SBOFormat.ToolDropOverride> outOverrides = new ArrayList<>(overrides.size());
+        List<SboGameplay.ToolDropOverride> outOverrides = new ArrayList<>(overrides.size());
         Set<String> seenTools = new HashSet<>();
         for (EditableOverride o : overrides) {
             // Blank or duplicate tool keys are silently dropped — the format record rejects them.
             if (o.toolObjectId == null || o.toolObjectId.isBlank() || !seenTools.add(o.toolObjectId)) continue;
-            outOverrides.add(new SBOFormat.ToolDropOverride(o.toolObjectId, collect(o.drops)));
+            outOverrides.add(new SboGameplay.ToolDropOverride(o.toolObjectId, collect(o.drops)));
         }
-        return new SBOFormat.DropData(collect(defaults), outOverrides);
+        return new SboGameplay.DropData(collect(defaults), outOverrides);
     }
 
     /** Returns a human-readable problem with the current table, or {@code null} when it is saveable. */
@@ -164,8 +165,8 @@ public class SBODropsSection implements AutoCloseable {
         return null;
     }
 
-    private static List<SBOFormat.DropEntry> collect(List<EditableDrop> rows) {
-        List<SBOFormat.DropEntry> out = new ArrayList<>(rows.size());
+    private static List<SboGameplay.DropEntry> collect(List<EditableDrop> rows) {
+        List<SboGameplay.DropEntry> out = new ArrayList<>(rows.size());
         for (EditableDrop d : rows) {
             // Blank items are silently dropped — the format record rejects them.
             if (d.objectId == null || d.objectId.isBlank()) continue;

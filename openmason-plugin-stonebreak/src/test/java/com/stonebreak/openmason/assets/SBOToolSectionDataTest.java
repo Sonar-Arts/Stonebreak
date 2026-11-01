@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,8 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 @Tag("regression")
 class SBOToolSectionDataTest {
 
-    private static SBOFormat.ToolData pick() {
-        return new SBOFormat.ToolData("pickaxe", 1, 0.2f, List.of("stone", "ore"), 131, 2.5f);
+    private static SboGameplay.ToolData pick() {
+        return new SboGameplay.ToolData("pickaxe", 1, 0.2f, List.of("stone", "ore"), 131, 2.5f);
     }
 
     @Test
@@ -28,7 +29,7 @@ class SBOToolSectionDataTest {
         assertNull(section.validate());
         assertEquals(pick(), section.toToolData());
 
-        SBOFormat.ToolData bare = new SBOFormat.ToolData("shovel", 0, 0.5f, List.of("dirt"), null, null);
+        SboGameplay.ToolData bare = new SboGameplay.ToolData("shovel", 0, 0.5f, List.of("dirt"), null, null);
         section.setFromToolData(bare);
         assertEquals(bare, section.toToolData(), "unset optional stats stay unset");
     }
@@ -44,30 +45,31 @@ class SBOToolSectionDataTest {
     @Test
     void toolWithoutMaterialsIsRejected() {
         SBOToolSection section = new SBOToolSection(null);
-        section.setFromToolData(new SBOFormat.ToolData("pickaxe", 0, 0.5f, List.of(), null, null));
+        section.setFromToolData(new SboGameplay.ToolData("pickaxe", 0, 0.5f, List.of(), null, null));
         assertNotNull(section.validate());
     }
 
     @Test
     void miningIndexCollectsMaterialsAndSortsTools() {
-        SBOFormat.GameProperties stone = new SBOFormat.GameProperties(1, 4f, true, true, 0, 0, "OPAQUE",
-                false, false, false, 64, "BLOCKS", true, "stone", 0);
-        SBOFormat.GameProperties plain = new SBOFormat.GameProperties(2, 1f, true, true, 0, 0, "OPAQUE",
-                false, false, false, 64, "BLOCKS", true);
+        SboGameplay.GameProperties stone = new SboGameplay.GameProperties(1, 4f, true, true, 0, 0,
+                false, false, 64, "BLOCKS", true, "stone", 0);
+        SboGameplay.GameProperties plain = new SboGameplay.GameProperties(2, 1f, true, true, 0, 0,
+                false, false, 64, "BLOCKS", true, null, 0);
         SBOMiningIndex idx = SBOMiningIndex.of(List.of(
                 doc("t:stone", stone, null),
                 doc("t:plain", plain, null),
                 doc("t:stone_pick", null, pick()),
-                doc("t:wood_pick", null, new SBOFormat.ToolData("pickaxe", 0, 0.5f, List.of("stone"), null, null)),
-                doc("t:axe", null, new SBOFormat.ToolData("axe", 0, 0.5f, List.of("wood"), null, null))));
+                doc("t:wood_pick", null, new SboGameplay.ToolData("pickaxe", 0, 0.5f, List.of("stone"), null, null)),
+                doc("t:axe", null, new SboGameplay.ToolData("axe", 0, 0.5f, List.of("wood"), null, null))));
         assertEquals(List.of("ore", "stone", "wood"), idx.materials(), "block + tool materials, sorted, unique");
         assertEquals(List.of("t:axe", "t:wood_pick", "t:stone_pick"),
                 idx.tools().stream().map(SBOMiningIndex.KnownTool::objectId).toList(),
                 "grouped by class, then tier");
     }
 
-    private static SBOFormat.Document doc(String id, SBOFormat.GameProperties gp, SBOFormat.ToolData tool) {
-        return new SBOFormat.Document("1.9", id, id, tool != null ? "item" : "block", "p", "c", "a",
-                null, null, "model.omo", null, gp, null, null, null, null, null, null, null, tool, null);
+    private static SBOFormat.Document doc(String id, SboGameplay.GameProperties gp, SboGameplay.ToolData tool) {
+        SBOFormat.Document d = new SBOFormat.Document("1.11", id, id, tool != null ? "item" : "block", "p", "c", "a",
+                null, null, "model.omo", null, null, null, null, null, null);
+        return SboGameplay.NONE.withGameProperties(gp).withTool(tool).applyTo(d);
     }
 }

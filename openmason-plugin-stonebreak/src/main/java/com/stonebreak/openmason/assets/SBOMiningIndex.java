@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.main.systems.menus.dialogs.SBOObjectIndex;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParser;
@@ -26,7 +27,7 @@ public final class SBOMiningIndex {
     private static final Logger logger = LoggerFactory.getLogger(SBOMiningIndex.class);
 
     /** One mining tool found on disk. */
-    public record KnownTool(String objectId, String displayName, SBOFormat.ToolData tool) {}
+    public record KnownTool(String objectId, String displayName, SboGameplay.ToolData tool) {}
 
     private static volatile SBOMiningIndex shared;
 
@@ -43,12 +44,13 @@ public final class SBOMiningIndex {
         Set<String> materials = new TreeSet<>();
         List<KnownTool> tools = new ArrayList<>();
         for (SBOFormat.Document d : manifests) {
-            if (d.gameProperties() != null && d.gameProperties().material() != null) {
-                materials.add(d.gameProperties().material());
+            SboGameplay g = SboGameplay.of(d);
+            if (g.gameProperties() != null && g.gameProperties().material() != null) {
+                materials.add(g.gameProperties().material());
             }
-            if (d.tool() != null) {
-                tools.add(new KnownTool(d.objectId(), d.objectName(), d.tool()));
-                materials.addAll(d.tool().materials());
+            if (g.tool() != null) {
+                tools.add(new KnownTool(d.objectId(), d.objectName(), g.tool()));
+                materials.addAll(g.tool().materials());
             }
         }
         tools.sort(Comparator.comparing((KnownTool t) -> t.tool().toolClass())

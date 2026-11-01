@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets.mcp;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.engine.format.sbe.SBEFormat;
@@ -77,12 +78,12 @@ class AssetExportBuilderTest {
         assertEquals("default", p.getObjectPack());
         assertFalse(p.getAuthor().isBlank());
         assertTrue(p.isValid(), p.getValidationError());
-        assertNotNull(p.getGameProperties(), "blocks always get game properties");
-        assertTrue(p.getGameProperties().numericId() > 0, "next free block id is suggested");
-        assertTrue(p.getGameProperties().solid());
-        assertEquals("BLOCKS", p.getGameProperties().categoryOrDefault());
+        assertNotNull(SboGameplay.of(p).gameProperties(), "blocks always get game properties");
+        assertTrue(SboGameplay.of(p).gameProperties().numericId() > 0, "next free block id is suggested");
+        assertTrue(SboGameplay.of(p).gameProperties().solid());
+        assertEquals("BLOCKS", SboGameplay.of(p).gameProperties().categoryOrDefault());
         assertFalse(p.isStatesEnabled());
-        assertNull(p.getDrops());
+        assertNull(SboGameplay.of(p).drops());
     }
 
     @Test
@@ -108,17 +109,17 @@ class AssetExportBuilderTest {
         assertEquals("stonebreak:test_lamp", d.objectId());
         assertEquals("block", d.objectType());
         assertEquals("a lamp", d.description());
-        assertEquals(9001, d.gameProperties().numericId());
-        assertEquals(2.5f, d.gameProperties().hardness(), 1e-6);
-        assertEquals("CUTOUT", d.gameProperties().renderLayerOrDefault());
-        assertTrue(d.gameProperties().transparent());
+        assertEquals(9001, SboGameplay.of(d).gameProperties().numericId());
+        assertEquals(2.5f, SboGameplay.of(d).gameProperties().hardness(), 1e-6);
+        assertEquals("CUTOUT", d.rendering().renderLayer());
+        assertTrue(d.rendering().transparent());
         assertEquals(2, d.states().size());
         assertEquals("on", d.defaultStateName());
         assertEquals(1, d.sounds().sounds().size());
         assertEquals("/sounds/GrassWalk.wav", d.sounds().sounds().get(0).resourcePath());
-        assertEquals(1, d.drops().drops().size());
-        assertEquals(0.75f, d.drops().drops().get(0).chance(), 1e-6);
-        assertEquals(1, d.drops().toolOverrides().size());
+        assertEquals(1, SboGameplay.of(d).drops().drops().size());
+        assertEquals(0.75f, SboGameplay.of(d).drops().drops().get(0).chance(), 1e-6);
+        assertEquals(1, SboGameplay.of(d).drops().toolOverrides().size());
 
         Map<String, Object> described = AssetExportBuilder.describe(d);
         assertEquals("stonebreak:test_lamp", described.get("objectId"));
@@ -174,18 +175,18 @@ class AssetExportBuilderTest {
                 """));
         assertEquals("patched", patched.description());
         assertEquals(base.objectId(), patched.objectId());
-        assertEquals(9002, patched.gameProperties().numericId(), "unnamed fields keep their value");
-        assertEquals(7f, patched.gameProperties().hardness(), 1e-6);
-        assertEquals(800, patched.fuel().burnTicks());
+        assertEquals(9002, SboGameplay.of(patched).gameProperties().numericId(), "unnamed fields keep their value");
+        assertEquals(7f, SboGameplay.of(patched).gameProperties().hardness(), 1e-6);
+        assertEquals(800, SboGameplay.of(patched).fuel().burnTicks());
         assertEquals(1, patched.sounds().sounds().size());
-        assertNotNull(patched.drops());
-        assertTrue(patched.drops().drops().isEmpty(), "\"drops\": [] means drops nothing");
+        assertNotNull(SboGameplay.of(patched).drops());
+        assertTrue(SboGameplay.of(patched).drops().drops().isEmpty(), "\"drops\": [] means drops nothing");
 
         SBOFormat.Document cleared = AssetExportBuilder.patchSbo(patched,
                 json("{\"gameProperties\":null,\"drops\":null,\"fuel\":null}"));
-        assertNull(cleared.gameProperties());
-        assertNull(cleared.drops());
-        assertNull(cleared.fuel());
+        assertNull(SboGameplay.of(cleared).gameProperties());
+        assertNull(SboGameplay.of(cleared).drops());
+        assertNull(SboGameplay.of(cleared).fuel());
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> AssetExportBuilder.patchSbo(base,
@@ -204,18 +205,18 @@ class AssetExportBuilderTest {
         Path out = tmp.resolve("t_pick.sbo");
         assertTrue(new SBOSerializer().export(p, omo, out.toString()));
         SBOFormat.Document d = new SBOParser().parseRaw(out).manifest();
-        assertEquals("stone", d.gameProperties().material());
-        assertEquals(2, d.gameProperties().requiredTier(), "tier names resolve on gameProperties too");
-        assertEquals(new SBOFormat.ToolData("pickaxe", 1, 0.2f, java.util.List.of("stone", "ore"), 131, null),
-                d.tool());
+        assertEquals("stone", SboGameplay.of(d).gameProperties().material());
+        assertEquals(2, SboGameplay.of(d).gameProperties().requiredTier(), "tier names resolve on gameProperties too");
+        assertEquals(new SboGameplay.ToolData("pickaxe", 1, 0.2f, java.util.List.of("stone", "ore"), 131, null),
+                SboGameplay.of(d).tool());
 
         SBOFormat.Document patched = AssetExportBuilder.patchSbo(d, json(
                 "{\"tool\":{\"toolClass\":\"axe\",\"tier\":0,\"speedMultiplier\":0.5,\"materials\":[\"wood\"]},"
                         + "\"gameProperties\":{\"requiredTier\":0}}"));
-        assertEquals("axe", patched.tool().toolClass());
-        assertEquals(java.util.List.of("wood"), patched.tool().materials());
-        assertEquals("stone", patched.gameProperties().material(), "unnamed gameProperties fields keep their value");
-        assertEquals(0, patched.gameProperties().requiredTier());
+        assertEquals("axe", SboGameplay.of(patched).tool().toolClass());
+        assertEquals(java.util.List.of("wood"), SboGameplay.of(patched).tool().materials());
+        assertEquals("stone", SboGameplay.of(patched).gameProperties().material(), "unnamed gameProperties fields keep their value");
+        assertEquals(0, SboGameplay.of(patched).gameProperties().requiredTier());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> tool = (Map<String, Object>) AssetExportBuilder.describe(patched).get("tool");
@@ -230,24 +231,24 @@ class AssetExportBuilderTest {
 
     @Test
     void spriteDefaultsMatchTheTextureOnlyPayload() throws Exception {
-        SBOFormat.GameProperties gp = AssetExportBuilder.spriteGameProperties(null, 1234);
+        SboGameplay.GameProperties gp = AssetExportBuilder.spriteGameProperties(null, 1234);
         assertEquals(1234, gp.numericId());
         assertEquals(0f, gp.hardness(), 1e-6);
         assertFalse(gp.solid());
         assertTrue(gp.breakable());
         assertEquals(-1, gp.atlasX());
         assertEquals(-1, gp.atlasY());
-        assertEquals("CUTOUT", gp.renderLayerOrDefault());
-        assertTrue(gp.transparent());
+        assertEquals(new SBOFormat.Rendering("CUTOUT", true), AssetExportBuilder.SPRITE_RENDERING,
+                "sprites render alpha-tested and see-through (core rendering since #383)");
         assertEquals(64, gp.maxStackSize());
         assertEquals("TOOLS", gp.categoryOrDefault());
         assertFalse(gp.placeable());
 
-        SBOFormat.GameProperties patched = AssetExportBuilder.spriteGameProperties(
+        SboGameplay.GameProperties patched = AssetExportBuilder.spriteGameProperties(
                 json("{\"maxStackSize\":1,\"category\":\"food\"}"), 1234);
         assertEquals(1, patched.maxStackSize());
         assertEquals("FOOD", patched.categoryOrDefault());
-        assertEquals("CUTOUT", patched.renderLayerOrDefault(), "unnamed fields keep the sprite default");
+        assertFalse(patched.placeable(), "unnamed fields keep the sprite default");
     }
 
     @Test
@@ -260,7 +261,8 @@ class AssetExportBuilderTest {
         p.setObjectType(SBOFormat.ObjectType.ITEM);
         p.setObjectPack("default");
         p.setAuthor("tester");
-        p.setGameProperties(AssetExportBuilder.spriteGameProperties(null, 4321));
+        SboGameplay.NONE.withGameProperties(AssetExportBuilder.spriteGameProperties(null, 4321)).applyTo(p);
+        p.setRendering(AssetExportBuilder.SPRITE_RENDERING);
         assertTrue(p.isValid(), p.getValidationError());
 
         Path out = tmp.resolve("test_sword.sbo");
@@ -270,9 +272,9 @@ class AssetExportBuilderTest {
         assertEquals("item", doc.objectType());
         assertNull(doc.omoFilename(), "texture-only SBOs carry no model");
         assertNotNull(doc.textureFilename());
-        assertEquals(4321, doc.gameProperties().numericId());
-        assertEquals("CUTOUT", doc.gameProperties().renderLayerOrDefault());
-        assertFalse(doc.gameProperties().placeable());
+        assertEquals(4321, SboGameplay.of(doc).gameProperties().numericId());
+        assertEquals("CUTOUT", doc.rendering().renderLayer());
+        assertFalse(SboGameplay.of(doc).gameProperties().placeable());
     }
 
     @Test
@@ -284,10 +286,10 @@ class AssetExportBuilderTest {
         assertEquals("Iron Sword", p.getObjectName());
         assertEquals("stonebreak:iron_sword", p.getObjectId());
         assertEquals(SBOFormat.ObjectType.ITEM, p.getObjectType());
-        assertNotNull(p.getGameProperties(), "items always get game properties");
-        assertTrue(p.getGameProperties().numericId() > 0, "next free item id is suggested");
-        assertEquals(AssetExportBuilder.spriteGameProperties(null, p.getGameProperties().numericId()),
-                p.getGameProperties());
+        assertNotNull(SboGameplay.of(p).gameProperties(), "items always get game properties");
+        assertTrue(SboGameplay.of(p).gameProperties().numericId() > 0, "next free item id is suggested");
+        assertEquals(AssetExportBuilder.spriteGameProperties(null, SboGameplay.of(p).gameProperties().numericId()),
+                SboGameplay.of(p).gameProperties());
 
         SBOFormat.ExportParameters states = AssetExportBuilder.sboTexture(
                 json("{\"states\":[{\"name\":\"idle\"},{\"name\":\"alt\",\"omt\":\"Alt.omt\"}]}"),

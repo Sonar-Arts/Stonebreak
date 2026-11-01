@@ -1,5 +1,7 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.items.ToolMiningRules;
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.main.systems.menus.dialogs.EditorWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.themes.utils.ThemeColors.Tone;
@@ -17,7 +19,7 @@ import java.util.Locale;
 /**
  * Tool tab body for the SBO editor.
  *
- * <p>Edits {@link SBOFormat.ToolData} (SBO 1.9+): whether this item is a
+ * <p>Edits {@link SboGameplay.ToolData} (SBO 1.9+): whether this item is a
  * mining tool, its tool class and tier, the hardness multiplier it applies
  * (lower = faster), the block materials it is effective on, and the optional
  * durability / attack-damage stats (stored, not yet read by the game).
@@ -46,7 +48,7 @@ public class SBOToolSection {
         this.onDirty = onDirty != null ? onDirty : () -> {};
     }
 
-    public void setFromToolData(SBOFormat.ToolData data) {
+    public void setFromToolData(SboGameplay.ToolData data) {
         enabled.set(data != null);
         materials.clear();
         customMaterial.set("");
@@ -72,9 +74,9 @@ public class SBOToolSection {
      * {@code null} when the item is not a mining tool (manifest field absent).
      * Call {@link #validate()} first — an invalid form throws here.
      */
-    public SBOFormat.ToolData toToolData() {
+    public SboGameplay.ToolData toToolData() {
         if (!enabled.get()) return null;
-        return new SBOFormat.ToolData(
+        return new SboGameplay.ToolData(
                 toolClass.get(),
                 Math.max(0, tier.get()),
                 speedMultiplier.get(),
@@ -121,7 +123,7 @@ public class SBOToolSection {
             onDirty.run();
         }
         ImGui.sameLine();
-        ImGui.textDisabled("(" + SBOFormat.ToolData.tierName(tier.get()) + ")");
+        ImGui.textDisabled("(" + ToolMiningRules.tierName(tier.get()) + ")");
         if (ImGui.inputFloat("Speed Multiplier", speedMultiplier, 0.05f, 0.1f, "%.2f")) {
             if (speedMultiplier.get() < 0.01f) speedMultiplier.set(0.01f);
             onDirty.run();
@@ -133,7 +135,7 @@ public class SBOToolSection {
         } else {
             ImGui.textDisabled(String.format(Locale.ROOT,
                     "Block hardness x %.2f: %.1fx faster than by hand (floored at %.1f s).",
-                    m, 1f / m, SBOFormat.ToolData.MIN_EFFECTIVE_HARDNESS));
+                    m, 1f / m, ToolMiningRules.MIN_EFFECTIVE_HARDNESS));
         }
 
         ThemedWidgets.sectionLabel("Effective On");
@@ -200,7 +202,7 @@ public class SBOToolSection {
         ImGui.popItemWidth();
         ImGui.sameLine();
         if (ImGui.button("Add##tool_mat_custom_add")) {
-            String mat = SBOFormat.normalizeMaterial(customMaterial.get());
+            String mat = SboGameplay.normalizeMaterial(customMaterial.get());
             if (mat != null && !materials.contains(mat)) {
                 materials.add(mat);
                 onDirty.run();

@@ -1,5 +1,6 @@
 package com.stonebreak.items.weapon;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.registry.ItemRegistry;
@@ -15,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Resolves the melee {@link WeaponStats} of an item.
  *
  * <p>Data-driven (SBO 1.10, authored in Open Mason's SBO editor): a weapon's
- * item SBO carries a {@code weapon} section ({@link SBOFormat.WeaponData}:
+ * item SBO carries a {@code weapon} section ({@link SboGameplay.WeaponData}:
  * group, damage type, damage and swing seconds). Any item without one —
  * blocks, materials, food — strikes like a bare fist ({@link WeaponStats#UNARMED}),
  * as does a section naming a group or damage type the game does not know.
@@ -42,7 +43,7 @@ public final class WeaponRules {
         try {
             return ItemRegistry.getInstance().get(objectId)
                     .map(e -> e.sboData() != null && e.sboData().manifest() != null
-                            ? e.sboData().manifest().weapon() : null)
+                            ? SboGameplay.of(e.sboData().manifest()).weapon() : null)
                     .flatMap(w -> toStats(objectId, w));
         } catch (RuntimeException ex) {
             logger.warn("Failed to read weapon data for {}: {}", item, ex.getMessage());
@@ -50,7 +51,7 @@ public final class WeaponRules {
         }
     }
 
-    private static Optional<WeaponStats> toStats(String objectId, SBOFormat.WeaponData w) {
+    private static Optional<WeaponStats> toStats(String objectId, SboGameplay.WeaponData w) {
         try {
             return Optional.of(new WeaponStats(
                     WeaponGroup.valueOf(w.group().toUpperCase(Locale.ROOT)),

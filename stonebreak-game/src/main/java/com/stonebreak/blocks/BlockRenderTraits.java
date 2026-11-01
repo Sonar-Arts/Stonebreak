@@ -56,14 +56,17 @@ public record BlockRenderTraits(
     public static BlockRenderTraits from(BlockRegistry.BlockEntry entry) {
         List<ParsedMaterialData> materials = entry.sboData() != null ? entry.sboData().materials() : null;
         boolean animated = entry.sboData() != null && entry.sboData().hasAnimations();
-        return resolve(entry.properties(), materials, animated);
+        SBOFormat.Rendering rendering = entry.sboData() != null && entry.sboData().manifest() != null
+                ? entry.sboData().manifest().rendering() : null;
+        return resolve(rendering, materials, animated);
     }
 
     /**
-     * Resolve from the raw SBO pieces. {@code properties} and {@code materials}
-     * may be null (legacy assets), in which case the block is an opaque cube.
+     * Resolve from the raw SBO pieces: the manifest's {@code rendering} (#383: core format data,
+     * read from {@code gameProperties} in older files) and the model's face materials. Either may
+     * be null (legacy assets), in which case the block is an opaque cube.
      */
-    public static BlockRenderTraits resolve(SBOFormat.GameProperties properties,
+    public static BlockRenderTraits resolve(SBOFormat.Rendering properties,
                                             List<ParsedMaterialData> materials,
                                             boolean animated) {
         RenderLayer layer = properties != null

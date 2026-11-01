@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openmason.engine.format.sbo.SBOFormat;
@@ -115,7 +116,7 @@ public final class AtlasSlots {
                 .filter(SBOObjectIndex.Entry::isBlock).map(SBOObjectIndex.Entry::sourcePath).toList()) {
             try {
                 SBOParser.RawParse raw = parser.parseRaw(path);
-                SBOFormat.GameProperties gp = raw.manifest().gameProperties();
+                SboGameplay.GameProperties gp = SboGameplay.of(raw.manifest()).gameProperties();
                 if (gp == null) continue;
                 int c = gp.atlasX();
                 int r = gp.atlasY();

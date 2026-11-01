@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.main.systems.menus.dialogs.EditorWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
@@ -11,7 +12,7 @@ import imgui.type.ImString;
 /**
  * Weapon tab body for the SBO editor.
  *
- * <p>Edits {@link SBOFormat.WeaponData} (SBO 1.10+): whether this item is a
+ * <p>Edits {@link SboGameplay.WeaponData} (SBO 1.10+): whether this item is a
  * melee weapon, its weapon group and damage type, base damage per hit, and
  * the swing time between hits for a trained wielder.
  *
@@ -35,7 +36,7 @@ public class SBOWeaponSection {
         this.onDirty = onDirty != null ? onDirty : () -> {};
     }
 
-    public void setFromWeaponData(SBOFormat.WeaponData data) {
+    public void setFromWeaponData(SboGameplay.WeaponData data) {
         enabled.set(data != null);
         group.set(data != null ? data.group() : "");
         damageType.set(data != null ? data.damageType() : "");
@@ -47,9 +48,9 @@ public class SBOWeaponSection {
      * {@code null} when the item is not a weapon (manifest field absent).
      * Call {@link #validate()} first — an invalid form throws here.
      */
-    public SBOFormat.WeaponData toWeaponData() {
+    public SboGameplay.WeaponData toWeaponData() {
         if (!enabled.get()) return null;
-        return new SBOFormat.WeaponData(group.get(), damageType.get(), damage.get(), swingSeconds.get());
+        return new SboGameplay.WeaponData(group.get(), damageType.get(), damage.get(), swingSeconds.get());
     }
 
     /** {@code null} when the form can be saved; otherwise the first blocking problem. */

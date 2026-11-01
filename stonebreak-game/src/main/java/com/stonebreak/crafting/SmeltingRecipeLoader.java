@@ -1,5 +1,6 @@
 package com.stonebreak.crafting;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
@@ -60,7 +61,7 @@ public final class SmeltingRecipeLoader {
     private static int harvestRecipes(String outputObjectId,
                                        SBOParseResult sbo,
                                        SmeltingManager smeltingManager) {
-        if (sbo == null || !sbo.manifest().hasSmeltingRecipes()) {
+        if (sbo == null || !SboGameplay.of(sbo.manifest()).hasSmeltingRecipes()) {
             return 0;
         }
 
@@ -71,9 +72,9 @@ public final class SmeltingRecipeLoader {
         }
 
         int count = 0;
-        var entries = sbo.manifest().smeltingRecipes().recipes();
+        var entries = SboGameplay.of(sbo.manifest()).smeltingRecipes().recipes();
         for (int i = 0; i < entries.size(); i++) {
-            SBOFormat.SmeltingRecipeEntry entry = entries.get(i);
+            SboGameplay.SmeltingRecipeEntry entry = entries.get(i);
             Item input = resolveItem(entry.inputObjectId());
             if (input == null) {
                 logger.warn("Smelting recipe for {} #{} references unknown input '{}' — skipping",
@@ -100,7 +101,7 @@ public final class SmeltingRecipeLoader {
     private static int harvestFuel(String objectId,
                                     SBOParseResult sbo,
                                     SmeltingManager smeltingManager) {
-        if (sbo == null || !sbo.manifest().hasFuel()) {
+        if (sbo == null || !SboGameplay.of(sbo.manifest()).hasFuel()) {
             return 0;
         }
         Item item = resolveItem(objectId);
@@ -108,7 +109,7 @@ public final class SmeltingRecipeLoader {
             logger.warn("Cannot register fuel for unknown objectId: {}", objectId);
             return 0;
         }
-        smeltingManager.registerFuel(item, sbo.manifest().fuel().burnTicks());
+        smeltingManager.registerFuel(item, SboGameplay.of(sbo.manifest()).fuel().burnTicks());
         return 1;
     }
 

@@ -1,5 +1,6 @@
 package com.stonebreak.crafting;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
@@ -19,7 +20,7 @@ import java.util.List;
  *
  * <p>Recipes are declared on the SBO whose item is the recipe's <em>output</em>.
  * Every block and item registered through {@link BlockRegistry} / {@link ItemRegistry}
- * is inspected; any {@link SBOFormat.RecipeData} block found is converted into
+ * is inspected; any {@link SboGameplay.RecipeData} block found is converted into
  * one or more {@link Recipe} entries and registered with the supplied
  * {@link CraftingManager}.
  *
@@ -63,7 +64,7 @@ public final class RecipeLoader {
     private static int harvest(String outputObjectId,
                                 SBOParseResult sbo,
                                 CraftingManager craftingManager) {
-        if (sbo == null || !sbo.manifest().hasRecipes()) {
+        if (sbo == null || !SboGameplay.of(sbo.manifest()).hasRecipes()) {
             return 0;
         }
 
@@ -74,9 +75,9 @@ public final class RecipeLoader {
         }
 
         int count = 0;
-        List<SBOFormat.ShapedRecipe> shapedList = sbo.manifest().recipes().shaped();
+        List<SboGameplay.ShapedRecipe> shapedList = SboGameplay.of(sbo.manifest()).recipes().shaped();
         for (int i = 0; i < shapedList.size(); i++) {
-            SBOFormat.ShapedRecipe shaped = shapedList.get(i);
+            SboGameplay.ShapedRecipe shaped = shapedList.get(i);
             Recipe recipe = buildRecipe(outputObjectId, outputItem, shaped, i);
             if (recipe == null) {
                 continue;
@@ -89,7 +90,7 @@ public final class RecipeLoader {
 
     private static Recipe buildRecipe(String outputObjectId,
                                        Item outputItem,
-                                       SBOFormat.ShapedRecipe shaped,
+                                       SboGameplay.ShapedRecipe shaped,
                                        int recipeIndex) {
         int width = shaped.width();
         int height = shaped.height();

@@ -36,7 +36,7 @@ class SBESoundRoundTripTest {
         SBEFormat.ExportParameters params = new SBEFormat.ExportParameters();
         params.setObjectId("test:goose");
         params.setObjectName("Goose");
-        params.setEntityType(SBEFormat.EntityType.MOB);
+        params.setEntityType("mob");
         params.setObjectPack("test");
         params.setAuthor("junit");
         return params;

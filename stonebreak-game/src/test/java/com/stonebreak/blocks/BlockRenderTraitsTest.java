@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class BlockRenderTraitsTest {
 
-    private static SBOFormat.GameProperties props(String renderLayer, boolean transparent) {
-        return new SBOFormat.GameProperties(1, 1f, true, true, 0, 0,
-                renderLayer, transparent, false, false, 64, "BLOCKS", true);
+    /** The manifest's rendering fields (core SBO data since #383). */
+    private static SBOFormat.Rendering props(String renderLayer, boolean transparent) {
+        return new SBOFormat.Rendering(renderLayer, transparent);
     }
 
     private static ParsedMaterialData material(String renderLayer) {

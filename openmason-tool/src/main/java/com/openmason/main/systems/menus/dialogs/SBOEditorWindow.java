@@ -64,7 +64,7 @@ public class SBOEditorWindow {
     private final ImString description = new ImString(1024);
     private final ImInt objectTypeIndex = new ImInt(0);
 
-    // Container-level rendering fields, stored in the gameProperties block when it exists.
+    // The SBO's rendering fields (core format data, #383).
     private final ImInt renderLayerIndex = new ImInt(0);
     private final ImBoolean transparent = new ImBoolean(false);
 
@@ -244,9 +244,8 @@ public class SBOEditorWindow {
         description.set(doc.description() != null ? doc.description() : "");
         objectTypeIndex.set(indexOf(OBJECT_TYPE_LABELS, doc.objectType()));
 
-        SBOFormat.GameProperties gp = doc.gameProperties();
-        renderLayerIndex.set(gp != null ? indexOf(RENDER_LAYER_LABELS, gp.renderLayerOrDefault()) : 0);
-        transparent.set(gp != null && gp.transparent());
+        renderLayerIndex.set(indexOf(RENDER_LAYER_LABELS, doc.rendering().renderLayer()));
+        transparent.set(doc.rendering().transparent());
 
         statesEditor.load(doc, loadedStateBytes, loadedStateClipBytes, loadedDefaultBytes);
         soundsEditor.load(doc.sounds(),
@@ -327,20 +326,16 @@ public class SBOEditorWindow {
     }
 
     /**
-     * Render layer + transparency: container-level fields every game's renderer reads, stored in
-     * the gameProperties block (they are only written when the SBO has one).
+     * Render layer + transparency: container-level fields every game's renderer reads (the SBO's
+     * {@code rendering}; older files kept them in their gameProperties block).
      */
     private void renderRenderingControls() {
         ThemedWidgets.sectionLabel("Rendering");
-        boolean stored = buildEditedDocument().gameProperties() != null;
         ImGui.pushItemWidth(EditorWidgets.NUMERIC_ID_WIDTH);
         if (ImGui.combo("Render Layer", renderLayerIndex, RENDER_LAYER_LABELS)) dirty = true;
         ImGui.popItemWidth();
         ImGui.sameLine();
         if (ImGui.checkbox("Transparent", transparent)) dirty = true;
-        if (!stored) {
-            ImGui.textDisabled("Not saved: this SBO has no gameProperties block to store them in.");
-        }
     }
 
     private void saveInPlace() {
@@ -429,7 +424,7 @@ public class SBOEditorWindow {
 
     /**
      * The edited manifest: the core form over the loaded manifest (whose game data is kept as it
-     * was), then each section's form, then the core rendering fields into the gameProperties block.
+     * was), then each section's form.
      */
     private SBOFormat.Document buildEditedDocument() {
         SBOFormat.Document core = new SBOFormat.Document(
@@ -444,21 +439,13 @@ public class SBOEditorWindow {
                 loadedManifest.createdAt(),
                 loadedManifest.omoFilename(),
                 loadedManifest.textureFilename(),
-                loadedManifest.gameProperties(),
+                new SBOFormat.Rendering(RENDER_LAYER_LABELS[renderLayerIndex.get()], transparent.get()),
                 statesEditor.toStateEntries(),
                 statesEditor.defaultStateName(),
-                loadedManifest.recipes(),
-                loadedManifest.smeltingRecipes(),
-                loadedManifest.fuel(),
                 soundsEditor.toSoundData(),
-                loadedManifest.drops(),
-                loadedManifest.tool(),
-                loadedManifest.weapon()
+                loadedManifest.extensions() // game data: kept as loaded unless a section changes it
         );
-        SBOFormat.Document edited = sections.write(core);
-        SBOFormat.GameProperties gp = edited.gameProperties();
-        return gp == null ? edited : edited.withGameProperties(
-                gp.withRendering(RENDER_LAYER_LABELS[renderLayerIndex.get()], transparent.get()));
+        return sections.write(core);
     }
 
     private static int indexOf(String[] arr, String value) {

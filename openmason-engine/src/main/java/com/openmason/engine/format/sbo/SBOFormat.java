@@ -5,13 +5,18 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
+import com.openmason.engine.format.ext.FormatExtensionCodec;
+import com.openmason.engine.format.ext.FormatExtensions;
+
 /**
  * Stonebreak Object (.SBO) file format specification.
  *
  * <p>SBO files are the game-ready export format for Open Mason assets.
- * They wrap an OMO model and its corresponding OMT texture data with
- * additional Stonebreak-specific metadata including object identity,
- * classification, integrity verification, and author attribution.
+ * They wrap an OMO model or an OMT texture with object identity,
+ * classification, render layer, states, sounds, integrity verification and
+ * author attribution. Game data rides in namespaced {@code extensions}
+ * ({@link FormatExtensions}, read through a game's {@link FormatExtensionCodec});
+ * the engine never interprets it.
  *
  * <p>ZIP Structure:
  * <ul>
@@ -22,76 +27,32 @@ import java.util.Objects;
  * <p>Version History:
  * <ul>
  *   <li>1.0 - Initial format with object identity, type, pack, checksum, and author signage</li>
- *   <li>1.1 - Added optional {@link GameProperties} block carrying gameplay metadata
- *       (numeric ID, hardness, solid/breakable flags, atlas coords, render layer,
- *       transparency, flower flag, stackable flag, max stack size, item category,
- *       placeable flag). Allows the game to populate its block/item registry directly
- *       from SBO files without an enforced enum.</li>
- *   <li>1.2 - Texture-only payload variant. Embedded asset is now optional OMO XOR
- *       optional OMT — manifest carries either {@code omoFile} (model-bearing SBO,
- *       e.g. blocks) or {@code textureFile} (texture-only SBO, e.g. sprite items).
- *       Exactly one must be present. Replaces the SBT-as-item flow.</li>
- *   <li>1.3 - Optional named states. Manifest may carry a {@code states[]} list,
- *       each entry mapping a state name to an embedded asset under
- *       {@code states/<name>/model.omo} or {@code states/<name>/texture.omt}.
- *       The default state's bytes are also written to the legacy
- *       {@code model.omo}/{@code texture.omt} entry so 1.2 readers still load.
- *       Used at runtime to switch between visual variants of one logical
- *       object (e.g. empty/water/milk wooden bucket).</li>
- *   <li>1.4 - Optional crafting {@link RecipeData} block. Each SBO may declare the
- *       shaped recipes that produce its own item, removing the need for a
- *       hardcoded recipe registry on the game side. Older readers ignore the
- *       field; the game scans all SBOs at startup and harvests recipes whose
- *       output is the SBO's own object.</li>
- *   <li>1.5 - Optional {@link SmeltingRecipeData} and {@link FuelData} blocks.
- *       The smelting block, like crafting, is owned by the recipe's output SBO
- *       (input is referenced by {@code objectId}). The fuel block describes the
- *       burn time of the SBO's own item when used as furnace fuel. Both fields
- *       are nullable; older readers ignore them.</li>
- *   <li>1.6 - Optional per-state animation clips (mirrors the SBE format).
- *       A state may embed a raw {@code .omanim} clip under
- *       {@code states/<name>/clip.omanim}; the manifest state entry gains an
- *       {@code animation} ref ({@link AnimationRef}: file, checksum, clipName,
- *       duration, fps, loop, requiredParts). The loop flag is resolved at
- *       export via {@link LoopMode} (clip default, forced loop, or play-once)
- *       so the game can play one-shot clips that hold their final pose (e.g.
- *       a door opening) or looping clips (e.g. a spinning fan). Model-bearing
- *       SBOs only; older readers ignore both the field and the ZIP entry.</li>
- *   <li>1.7 - Optional {@code sounds[]} block (shared wire shape with SBE 1.4,
- *       see {@link com.openmason.engine.format.sound.SoundData}). Each entry
- *       binds an event name — the standard block events {@code break} /
- *       {@code hit} / {@code place} / {@code step}, or any custom name — to an
- *       audio sample that is either embedded under {@code sounds/} or
- *       referenced by game classpath resource path (so many blocks can share
- *       one shipped sample), plus volume and a random pitch range. Multiple
- *       entries per event give playback variation. Older readers ignore the
- *       field and any {@code sounds/} entries.</li>
- *   <li>1.8 - Optional {@code drops} block (see {@link DropData}). Declares
- *       what a block yields when broken: a default drop list (each entry an
- *       item/block {@code objectId} with an inclusive count range and a
- *       chance) plus per-tool overrides keyed by the breaking tool's
- *       {@code objectId}. When the section is present it is authoritative —
- *       an empty default list means the block drops nothing; when absent the
- *       game falls back to its built-in rule (a block drops itself). Manifest
- *       only, no ZIP payload; older readers ignore the field.</li>
- *   <li>1.9 - Mining data. Item SBOs may carry an optional {@code tool}
- *       section (see {@link ToolData}): a tool class, a tier, a hardness
- *       multiplier and the block materials it is effective on (plus optional
- *       durability / attack damage). Block {@link GameProperties} gain an
- *       optional {@code material} and {@code requiredTier}. A tool speeds up
- *       breaking a block when the block's material is in the tool's list and
- *       the tool's tier is at least the block's required tier. Manifest only;
- *       older readers ignore both.</li>
- *   <li>1.10 - Combat data. Item SBOs may carry an optional {@code weapon}
- *       section (see {@link WeaponData}): a weapon group, a damage type, base
- *       melee damage and the swing time between hits. Supersedes
- *       {@link ToolData#attackDamage()}. Manifest only; older readers ignore it.</li>
+ *   <li>1.1 - Optional {@code gameProperties} block (game metadata; since 1.11 a game extension).</li>
+ *   <li>1.2 - Texture-only payload variant: {@code omoFile} XOR {@code textureFile}.</li>
+ *   <li>1.3 - Optional named states ({@code states[]}, assets under {@code states/<name>/}); the
+ *       default state's bytes also sit in the legacy {@code model.omo}/{@code texture.omt} entry.</li>
+ *   <li>1.4 - Optional crafting {@code recipes} (game data; since 1.11 a game extension).</li>
+ *   <li>1.5 - Optional {@code smeltingRecipes} and {@code fuel} (game data; since 1.11 a game extension).</li>
+ *   <li>1.6 - Optional per-state animation clips ({@code states/<name>/clip.omanim} +
+ *       {@link AnimationRef}; loop resolved at export via {@link LoopMode}).</li>
+ *   <li>1.7 - Optional {@code sounds[]} block (shared with SBE 1.4, see
+ *       {@link com.openmason.engine.format.sound.SoundData}).</li>
+ *   <li>1.8 - Optional {@code drops} table (game data; since 1.11 a game extension).</li>
+ *   <li>1.9 - Mining data: item {@code tool} section, block material/required tier (game data;
+ *       since 1.11 a game extension).</li>
+ *   <li>1.10 - Combat data: item {@code weapon} section (game data; since 1.11 a game extension).</li>
+ *   <li>1.11 - Namespaced {@code extensions} (#383): game data moves out of the format into
+ *       {@code "<namespace>:<name>": {...}} members the engine keeps as written (unknown ones
+ *       byte for byte). The render layer and transparency become the top-level
+ *       {@code rendering} object ({@link Rendering}); older files' {@code gameProperties} still
+ *       supply them. Top-level fields of older files the format no longer owns are kept and
+ *       written back unchanged until the game that owns them moves them into its extension.</li>
  * </ul>
  */
 public final class SBOFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.10";
+    public static final String FORMAT_VERSION = "1.11";
 
     /** File extension for SBO files */
     public static final String FILE_EXTENSION = ".sbo";
@@ -325,30 +286,18 @@ public final class SBOFormat {
      *                         default state's asset for 1.2 reader back-compat.
      * @param textureFilename  filename of the legacy/default OMT entry in the ZIP
      *                         (texture-only SBOs); null for model-bearing SBOs.
-     * @param gameProperties   optional gameplay metadata (1.1+); null for legacy 1.0 files
+     * @param rendering        render layer + transparency (1.11 top-level; older files:
+     *                         their gameProperties block); never null
      * @param states           optional named states (1.3+). Empty list when the SBO
      *                         has no states (default-only behavior). When non-empty,
      *                         exactly one entry's name must equal {@code defaultStateName}.
      * @param defaultStateName name of the default state (1.3+); null when {@code states}
      *                         is empty.
-     * @param recipes          optional crafting recipes (1.4+) whose output is this SBO's
-     *                         own object. {@code null} or empty list means no recipes.
-     * @param smeltingRecipes  optional smelting recipes (1.5+) whose output is this SBO's
-     *                         own object. Each entry names the input via objectId.
-     *                         {@code null} or empty list means no smelting recipes.
-     * @param fuel             optional fuel descriptor (1.5+) declaring how long this
-     *                         SBO's own item burns when used as furnace fuel.
-     *                         {@code null} means the item is not a fuel.
      * @param sounds           optional sound bindings (1.7+): event name → audio
      *                         sample (embedded or resource-referenced).
      *                         {@code null} means the object declares no sounds.
-     * @param drops            optional drop table (1.8+): what breaking this
-     *                         block yields, with per-tool overrides.
-     *                         {@code null} means "use the game's default rule".
-     * @param tool             optional mining-tool descriptor (1.9+) for item
-     *                         SBOs. {@code null} means the item is not a mining tool.
-     * @param weapon           optional melee-weapon descriptor (1.10+) for item
-     *                         SBOs. {@code null} means the item is not a weapon.
+     * @param extensions       namespaced game data (1.11+) and the top-level fields older
+     *                         files wrote that the format no longer owns; never null
      */
     public record Document(
             String version,
@@ -362,18 +311,15 @@ public final class SBOFormat {
             String createdAt,
             String omoFilename,
             String textureFilename,
-            GameProperties gameProperties,
+            Rendering rendering,
             List<StateEntry> states,
             String defaultStateName,
-            RecipeData recipes,
-            SmeltingRecipeData smeltingRecipes,
-            FuelData fuel,
             com.openmason.engine.format.sound.SoundData sounds,
-            DropData drops,
-            ToolData tool,
-            WeaponData weapon
+            FormatExtensions extensions
     ) {
         public Document {
+            rendering = rendering == null ? Rendering.DEFAULT : rendering;
+            extensions = extensions == null ? FormatExtensions.EMPTY : extensions;
             Objects.requireNonNull(version, "version cannot be null");
             Objects.requireNonNull(objectId, "objectId cannot be null");
             Objects.requireNonNull(objectName, "objectName cannot be null");
@@ -416,41 +362,25 @@ public final class SBOFormat {
             }
         }
 
-        // Copies with one game-data field replaced (#431: editor sections own one field each).
 
-        /** Copy with {@code gameProperties} replaced. */
-        public Document withGameProperties(GameProperties value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, value, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, drops, tool, weapon);
+        /** Copy with the rendering fields replaced. */
+        public Document withRendering(Rendering value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, value, states, defaultStateName, sounds, extensions);
         }
 
-        /** Copy with {@code recipes} replaced. */
-        public Document withRecipes(RecipeData value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, value, smeltingRecipes, fuel, sounds, drops, tool, weapon);
+        /** Copy with the extensions (and foreign legacy fields) replaced. */
+        public Document withExtensions(FormatExtensions value) {
+            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, rendering, states, defaultStateName, sounds, value);
         }
 
-        /** Copy with {@code smeltingRecipes} replaced. */
-        public Document withSmeltingRecipes(SmeltingRecipeData value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, value, fuel, sounds, drops, tool, weapon);
+        /** The typed extension {@code codec} reads (see {@link FormatExtensions#get}). */
+        public <T> java.util.Optional<T> extension(FormatExtensionCodec<T> codec) {
+            return extensions.get(codec);
         }
 
-        /** Copy with {@code fuel} replaced. */
-        public Document withFuel(FuelData value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, value, sounds, drops, tool, weapon);
-        }
-
-        /** Copy with {@code drops} replaced. */
-        public Document withDrops(DropData value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, value, tool, weapon);
-        }
-
-        /** Copy with {@code tool} replaced. */
-        public Document withTool(ToolData value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, drops, value, weapon);
-        }
-
-        /** Copy with {@code weapon} replaced. */
-        public Document withWeapon(WeaponData value) {
-            return new Document(version, objectId, objectName, objectType, objectPack, checksum, author, description, createdAt, omoFilename, textureFilename, gameProperties, states, defaultStateName, recipes, smeltingRecipes, fuel, sounds, drops, tool, value);
+        /** Copy with the {@code codec} extension set to {@code value} (null removes it). */
+        public <T> Document withExtension(FormatExtensionCodec<T> codec, T value) {
+            return withExtensions(extensions.with(codec, value));
         }
 
         /** True when this SBO carries an embedded OMO model. */
@@ -477,536 +407,36 @@ public final class SBOFormat {
             return false;
         }
 
-        /** True when this SBO declares one or more crafting recipes (1.4+). */
-        public boolean hasRecipes() {
-            return recipes != null && recipes.shaped() != null && !recipes.shaped().isEmpty();
-        }
 
-        /** True when this SBO declares one or more smelting recipes (1.5+). */
-        public boolean hasSmeltingRecipes() {
-            return smeltingRecipes != null
-                    && smeltingRecipes.recipes() != null
-                    && !smeltingRecipes.recipes().isEmpty();
-        }
 
-        /** True when this SBO declares fuel data (1.5+). */
-        public boolean hasFuel() {
-            return fuel != null && fuel.burnTicks() > 0;
-        }
 
         /** True when this SBO declares one or more sound bindings (1.7+). */
         public boolean hasSounds() {
             return sounds != null && !sounds.isEmpty();
         }
 
-        /**
-         * True when this SBO carries a drop table (1.8+). Note that a present
-         * but empty table is meaningful ("drops nothing"), so this is a
-         * presence check, not an emptiness check.
-         */
-        public boolean hasDrops() {
-            return drops != null;
-        }
 
-        /** True when this SBO declares itself a mining tool (1.9+). */
-        public boolean hasTool() {
-            return tool != null;
-        }
 
-        /** True when this SBO declares itself a weapon (1.10+). */
-        public boolean hasWeapon() {
-            return weapon != null;
-        }
     }
 
     /**
-     * Optional melee-weapon descriptor embedded in an item SBO manifest (1.10+).
+     * The container-level rendering fields every game reads (#383; before 1.11 they lived in the
+     * game's {@code gameProperties} block, which the parser still reads them from).
      *
-     * <p>The group and damage type are free-form, lowercased names so the
-     * format stays game-agnostic; the game maps them onto its own enums.
-     *
-     * @param group        how the weapon is wielded ({@code one_handed},
-     *                     {@code two_handed}, {@code ranged}, ...); never blank
-     * @param damageType   kind of damage a hit deals ({@code slashing},
-     *                     {@code piercing}, {@code blunt}, ...); never blank
-     * @param damage       base damage per hit, {@code >= 0}
-     * @param swingSeconds base seconds between hits, {@code > 0}
+     * @param renderLayer {@code OPAQUE}, {@code CUTOUT} or {@code TRANSLUCENT}: the chunk render pass
+     *                    (CUTOUT is alpha-tested, TRANSLUCENT alpha-blended and sorted); together with
+     *                    the {@code renderLayer} of the embedded model's face materials (most
+     *                    permissive wins). Upper-cased; blank/null = OPAQUE.
+     * @param transparent whether neighbouring faces still render through this object (it cannot
+     *                    occlude them); any non-OPAQUE layer implies it
      */
-    public record WeaponData(String group, String damageType, float damage, float swingSeconds) {
+    public record Rendering(String renderLayer, boolean transparent) {
+        /** An opaque, occluding object. */
+        public static final Rendering DEFAULT = new Rendering("OPAQUE", false);
 
-        public WeaponData {
-            group = normalizeName(group, "group");
-            damageType = normalizeName(damageType, "damageType");
-            if (!Float.isFinite(damage) || damage < 0f) {
-                throw new IllegalArgumentException("damage must be >= 0, got " + damage);
-            }
-            if (!Float.isFinite(swingSeconds) || swingSeconds <= 0f) {
-                throw new IllegalArgumentException("swingSeconds must be > 0, got " + swingSeconds);
-            }
-        }
-
-        private static String normalizeName(String value, String field) {
-            Objects.requireNonNull(value, field + " cannot be null");
-            String n = value.trim().toLowerCase(java.util.Locale.ROOT);
-            if (n.isEmpty()) {
-                throw new IllegalArgumentException(field + " cannot be blank");
-            }
-            return n;
-        }
-    }
-
-    /**
-     * Optional mining-tool descriptor embedded in an item SBO manifest (1.9+).
-     *
-     * <p>Declares which block materials the tool breaks efficiently and by how
-     * much. Resolution (see {@link #hardnessMultiplier}): a block is sped up
-     * when its {@link GameProperties#material()} is in {@code materials} and
-     * {@code tier >= block.requiredTier}; its hardness is then multiplied by
-     * {@code speedMultiplier} (lower = faster), floored at
-     * {@link #MIN_EFFECTIVE_HARDNESS}. Anything else breaks at full hardness.
-     *
-     * @param toolClass       free-form tool kind ({@code pickaxe}, {@code axe},
-     *                        {@code shovel}, ...); lowercased, never blank
-     * @param tier            tool tier, {@code >= 0} (see {@link #TIER_NAMES})
-     * @param speedMultiplier hardness multiplier on matching blocks, {@code > 0}
-     * @param materials       block materials this tool is effective on;
-     *                        lowercased, de-duplicated, never null, may be empty
-     * @param durability      optional uses before breaking ({@code >= 1});
-     *                        {@code null} = unspecified. Not read by the game yet.
-     * @param attackDamage    optional melee damage ({@code >= 0}); {@code null}
-     *                        = unspecified. Superseded by {@link WeaponData#damage()}
-     *                        (1.10); not read by the game.
-     */
-    public record ToolData(
-            String toolClass,
-            int tier,
-            float speedMultiplier,
-            List<String> materials,
-            Integer durability,
-            Float attackDamage
-    ) {
-        /** Display names for tiers 0..n; a tier past the end is shown numerically. */
-        public static final List<String> TIER_NAMES = List.of("wood", "stone", "iron", "diamond");
-
-        /** Hardness floor once a tool applies, so a tool never makes a break instantaneous. */
-        public static final float MIN_EFFECTIVE_HARDNESS = 0.1f;
-
-        public ToolData {
-            Objects.requireNonNull(toolClass, "toolClass cannot be null");
-            toolClass = toolClass.trim().toLowerCase(java.util.Locale.ROOT);
-            if (toolClass.isEmpty()) {
-                throw new IllegalArgumentException("toolClass cannot be blank");
-            }
-            if (tier < 0) {
-                throw new IllegalArgumentException("tier must be >= 0, got " + tier);
-            }
-            if (!Float.isFinite(speedMultiplier) || speedMultiplier <= 0f) {
-                throw new IllegalArgumentException("speedMultiplier must be > 0, got " + speedMultiplier);
-            }
-            java.util.LinkedHashSet<String> normalized = new java.util.LinkedHashSet<>();
-            if (materials != null) {
-                for (String m : materials) {
-                    String n = normalizeMaterial(m);
-                    if (n != null) normalized.add(n);
-                }
-            }
-            materials = List.copyOf(normalized);
-            if (durability != null && durability < 1) {
-                throw new IllegalArgumentException("durability must be >= 1, got " + durability);
-            }
-            if (attackDamage != null && (!Float.isFinite(attackDamage) || attackDamage < 0f)) {
-                throw new IllegalArgumentException("attackDamage must be >= 0, got " + attackDamage);
-            }
-        }
-
-        /** True when this tool speeds up a block of {@code material} needing {@code requiredTier}. */
-        public boolean isEffectiveOn(String material, int requiredTier) {
-            String m = normalizeMaterial(material);
-            return m != null && tier >= requiredTier && materials.contains(m);
-        }
-
-        /**
-         * Hardness multiplier for a block of {@code material} needing
-         * {@code requiredTier}: {@code speedMultiplier} when effective, else 1.
-         */
-        public float hardnessMultiplier(String material, int requiredTier) {
-            return isEffectiveOn(material, requiredTier) ? speedMultiplier : 1.0f;
-        }
-
-        /**
-         * Effective break hardness of a block under {@code tool} (nullable =
-         * bare hands): the multiplier applied with the {@link #MIN_EFFECTIVE_HARDNESS}
-         * floor. A multiplier {@code >= 1} leaves the hardness untouched.
-         */
-        public static float effectiveHardness(ToolData tool, String material, int requiredTier, float hardness) {
-            float multiplier = tool == null ? 1.0f : tool.hardnessMultiplier(material, requiredTier);
-            if (multiplier >= 1.0f) {
-                return hardness;
-            }
-            return Math.max(MIN_EFFECTIVE_HARDNESS, hardness * multiplier);
-        }
-
-        /** Display name for a tier ("stone"), or its number when unnamed. */
-        public static String tierName(int tier) {
-            return tier >= 0 && tier < TIER_NAMES.size() ? TIER_NAMES.get(tier) : String.valueOf(tier);
-        }
-
-        /**
-         * Parses a tier written as a number or a name from {@link #TIER_NAMES}
-         * (case-insensitive; "wooden" is accepted for "wood"). Returns -1 when
-         * the text is neither.
-         */
-        public static int parseTier(String text) {
-            if (text == null) return -1;
-            String t = text.trim().toLowerCase(java.util.Locale.ROOT);
-            if (t.equals("wooden")) t = "wood";
-            int named = TIER_NAMES.indexOf(t);
-            if (named >= 0) return named;
-            try {
-                return Integer.parseInt(t);
-            } catch (NumberFormatException ex) {
-                return -1;
-            }
-        }
-    }
-
-    /** Lowercased, trimmed material name, or {@code null} when blank (1.9+). */
-    public static String normalizeMaterial(String material) {
-        if (material == null) return null;
-        String m = material.trim().toLowerCase(java.util.Locale.ROOT);
-        return m.isEmpty() ? null : m;
-    }
-
-    /**
-     * Optional drop table embedded in a block SBO manifest (format version 1.8+).
-     *
-     * <p>Describes what the block yields when broken. {@code drops} is the
-     * default list, used whenever no tool override matches the breaking tool
-     * (including breaking by hand). {@code toolOverrides} replace — not
-     * augment — the default list when the breaking tool's {@code objectId}
-     * matches; the first matching override wins.
-     *
-     * <p>Presence of this section is authoritative: an empty {@code drops} list
-     * means the block drops nothing. Blocks whose manifest has no section fall
-     * back to the game's built-in rule.
-     *
-     * @param drops         default drop entries; never null but may be empty
-     * @param toolOverrides per-tool replacement lists; never null but may be empty
-     */
-    public record DropData(List<DropEntry> drops, List<ToolDropOverride> toolOverrides) {
-        public DropData {
-            drops = drops == null ? Collections.emptyList() : List.copyOf(drops);
-            toolOverrides = toolOverrides == null ? Collections.emptyList() : List.copyOf(toolOverrides);
-            java.util.Set<String> seen = new java.util.HashSet<>();
-            for (ToolDropOverride o : toolOverrides) {
-                if (!seen.add(o.toolObjectId())) {
-                    throw new IllegalArgumentException("duplicate tool override: " + o.toolObjectId());
-                }
-            }
-        }
-
-        /** Convenience: an explicitly empty table ("drops nothing"). */
-        public static DropData nothing() {
-            return new DropData(Collections.emptyList(), Collections.emptyList());
-        }
-
-        /**
-         * Resolves the drop list that applies when the block is broken with the
-         * given tool: the matching override's list, or the default list when
-         * {@code toolObjectId} is null or has no override.
-         */
-        public List<DropEntry> dropsFor(String toolObjectId) {
-            if (toolObjectId != null) {
-                for (ToolDropOverride o : toolOverrides) {
-                    if (o.toolObjectId().equals(toolObjectId)) return o.drops();
-                }
-            }
-            return drops;
-        }
-
-        /** True when both the default list and every override are empty. */
-        public boolean isEmpty() {
-            if (!drops.isEmpty()) return false;
-            for (ToolDropOverride o : toolOverrides) {
-                if (!o.drops().isEmpty()) return false;
-            }
-            return true;
-        }
-    }
-
-    /**
-     * One drop line (1.8+): an item or block, an inclusive count range and a
-     * probability that the line yields anything at all.
-     *
-     * @param objectId SBO {@code objectId} of the dropped item or block
-     *                 (e.g. {@code "stonebreak:clay_chunk"})
-     * @param minCount minimum count when the line fires (>= 0)
-     * @param maxCount maximum count when the line fires (>= minCount)
-     * @param chance   probability in {@code [0, 1]} that the line fires
-     */
-    public record DropEntry(String objectId, int minCount, int maxCount, float chance) {
-        public DropEntry {
-            Objects.requireNonNull(objectId, "objectId cannot be null");
-            if (objectId.isBlank()) {
-                throw new IllegalArgumentException("objectId cannot be blank");
-            }
-            if (minCount < 0) {
-                throw new IllegalArgumentException("minCount must be >= 0, got " + minCount);
-            }
-            if (maxCount < minCount) {
-                throw new IllegalArgumentException(
-                        "maxCount must be >= minCount, got " + maxCount + " < " + minCount);
-            }
-            if (Float.isNaN(chance) || chance < 0f || chance > 1f) {
-                throw new IllegalArgumentException("chance must be in [0,1], got " + chance);
-            }
-        }
-
-        /** A guaranteed drop of exactly {@code count}. */
-        public static DropEntry of(String objectId, int count) {
-            return new DropEntry(objectId, count, count, 1f);
-        }
-    }
-
-    /**
-     * A per-tool replacement for the default drop list (1.8+).
-     *
-     * @param toolObjectId SBO {@code objectId} of the breaking tool
-     *                     (e.g. {@code "stonebreak:stone_shovel"})
-     * @param drops        drop lines used instead of the defaults; never null,
-     *                     may be empty (= this tool yields nothing)
-     */
-    public record ToolDropOverride(String toolObjectId, List<DropEntry> drops) {
-        public ToolDropOverride {
-            Objects.requireNonNull(toolObjectId, "toolObjectId cannot be null");
-            if (toolObjectId.isBlank()) {
-                throw new IllegalArgumentException("toolObjectId cannot be blank");
-            }
-            drops = drops == null ? Collections.emptyList() : List.copyOf(drops);
-        }
-    }
-
-    /**
-     * Optional smelting recipe block embedded in an SBO manifest (format version 1.5+).
-     *
-     * <p>Like {@link RecipeData}, smelting recipes are declared on the SBO that
-     * <em>produces</em> the output. Each entry references its input by SBO
-     * {@code objectId}; the output is implicit (the SBO's own object) and may
-     * be produced in {@code outputCount} copies per smelt.
-     *
-     * @param recipes list of smelting recipes; never null but may be empty
-     */
-    public record SmeltingRecipeData(List<SmeltingRecipeEntry> recipes) {
-        public SmeltingRecipeData {
-            recipes = recipes == null ? Collections.emptyList() : List.copyOf(recipes);
-        }
-    }
-
-    /**
-     * One smelting recipe (1.5+).
-     *
-     * <p>The output is implicit: the SBO that owns this recipe.
-     *
-     * @param inputObjectId SBO {@code objectId} of the input ingredient
-     *                      (e.g. {@code "stonebreak:cobblestone"})
-     * @param outputCount   number of output items produced per smelt (>= 1)
-     */
-    public record SmeltingRecipeEntry(
-            String inputObjectId,
-            int outputCount
-    ) {
-        public SmeltingRecipeEntry {
-            Objects.requireNonNull(inputObjectId, "inputObjectId cannot be null");
-            if (inputObjectId.isBlank()) {
-                throw new IllegalArgumentException("inputObjectId cannot be blank");
-            }
-            if (outputCount < 1) {
-                throw new IllegalArgumentException("outputCount must be >= 1, got " + outputCount);
-            }
-        }
-    }
-
-    /**
-     * Optional fuel descriptor embedded in an SBO manifest (format version 1.5+).
-     *
-     * <p>Declares that the SBO's own item burns as furnace fuel for the given
-     * number of game-ticks per unit.
-     *
-     * @param burnTicks burn time per unit, in game-ticks (>= 1)
-     */
-    public record FuelData(int burnTicks) {
-        public FuelData {
-            if (burnTicks < 1) {
-                throw new IllegalArgumentException("burnTicks must be >= 1, got " + burnTicks);
-            }
-        }
-    }
-
-    /**
-     * Optional crafting recipe block embedded in an SBO manifest (format version 1.4+).
-     *
-     * <p>Recipes declared here produce the SBO's own object as output. The game
-     * scans every SBO at startup, reads this block (when present), and registers
-     * the resulting {@code Recipe} entries with its {@code CraftingManager}.
-     *
-     * <p>Currently only shaped recipes are supported. Field is forward-compatible:
-     * future shapeless / smelting / etc. variants would be added as additional
-     * sibling lists, leaving {@code shaped} alone.
-     *
-     * @param shaped list of shaped recipes; never null but may be empty
-     */
-    public record RecipeData(List<ShapedRecipe> shaped) {
-        public RecipeData {
-            shaped = shaped == null ? Collections.emptyList() : List.copyOf(shaped);
-        }
-    }
-
-    /**
-     * One shaped crafting recipe (1.4+).
-     *
-     * <p>The output is implicit: the SBO that owns this recipe. {@code outputCount}
-     * specifies how many copies of that output are produced.
-     *
-     * <p>{@code pattern} is a row-major flat list of length {@code width * height}.
-     * Each slot is either an SBO {@code objectId} (e.g. {@code "stonebreak:oak_log"})
-     * or an empty string for an empty cell. The game resolves these to
-     * {@code ItemStack} instances at recipe-load time.
-     *
-     * @param width       horizontal extent of the pattern (1..3)
-     * @param height      vertical extent of the pattern (1..3)
-     * @param pattern     row-major slot list of length {@code width * height};
-     *                    each entry is an objectId or {@code ""} for empty
-     * @param outputCount number of output items produced per craft (>= 1)
-     */
-    public record ShapedRecipe(
-            int width,
-            int height,
-            List<String> pattern,
-            int outputCount
-    ) {
-        public ShapedRecipe {
-            if (width < 1 || width > 3) {
-                throw new IllegalArgumentException("recipe width must be 1..3, got " + width);
-            }
-            if (height < 1 || height > 3) {
-                throw new IllegalArgumentException("recipe height must be 1..3, got " + height);
-            }
-            Objects.requireNonNull(pattern, "pattern cannot be null");
-            if (pattern.size() != width * height) {
-                throw new IllegalArgumentException(
-                        "pattern size " + pattern.size() + " does not match "
-                                + width + "x" + height + " (= " + (width * height) + ")");
-            }
-            if (outputCount < 1) {
-                throw new IllegalArgumentException("outputCount must be >= 1, got " + outputCount);
-            }
-            // Normalize null entries to empty strings for safety; copy for immutability.
-            List<String> normalized = new ArrayList<>(pattern.size());
-            for (String slot : pattern) {
-                normalized.add(slot == null ? "" : slot);
-            }
-            pattern = List.copyOf(normalized);
-        }
-    }
-
-    /**
-     * Optional gameplay metadata embedded in an SBO manifest (format version 1.1+).
-     *
-     * <p>This block lets the game populate its block/item registry directly from
-     * the SBO file rather than relying on an enforced enum. All fields are
-     * primitive or nullable so the registry can fall back to defaults when an
-     * older 1.0 SBO is encountered.
-     *
-     * <p>Field semantics:
-     * <ul>
-     *   <li>{@code numericId} - stable numeric ID used by the chunk save format.
-     *       Must be unique across the registry. Required for blocks (so saves are
-     *       portable); items use a separate ID space (1000+).</li>
-     *   <li>{@code hardness} - seconds to break with bare hands. Use
-     *       {@link Float#POSITIVE_INFINITY} for unbreakable.</li>
-     *   <li>{@code solid} - whether the block has collision geometry.</li>
-     *   <li>{@code breakable} - whether players can break the block.</li>
-     *   <li>{@code atlasX}, {@code atlasY} - texture atlas coords for the
-     *       inventory/hotbar icon (legacy field; -1 means "no icon").</li>
-     *   <li>{@code renderLayer} - "OPAQUE", "CUTOUT", or "TRANSLUCENT". Selects the
-     *       chunk render pass: CUTOUT is alpha-tested (leaves, flowers), TRANSLUCENT
-     *       is alpha-blended and sorted (ice, glass). This field, together with the
-     *       {@code renderLayer} of the authored face materials in the embedded OMO
-     *       (most permissive wins), is the game's only source for which pass a block
-     *       needs — there is no block list in code.</li>
-     *   <li>{@code transparent} - whether neighbouring faces should still render
-     *       through this block (e.g. glass, water, leaves), i.e. the block cannot
-     *       occlude its neighbours. Any non-OPAQUE {@code renderLayer} implies it.</li>
-     *   <li>{@code flower} - whether water flow can break this block.</li>
-     *   <li>{@code stackable} - whether the block supports layered stacking
-     *       (e.g. snow).</li>
-     *   <li>{@code maxStackSize} - inventory stack size (default 64 for blocks).</li>
-     *   <li>{@code category} - item category for inventory grouping ("BLOCKS",
-     *       "TOOLS", "MATERIALS", etc.).</li>
-     *   <li>{@code placeable} - whether the item can be placed in the world as a
-     *       block. True for all blocks; false for tool/material items.</li>
-     *   <li>{@code material} (1.9+) - block material name ({@code stone},
-     *       {@code wood}, {@code dirt}, ...) that {@link ToolData#materials()}
-     *       lists refer to. Lowercased; {@code null} = no material, so no tool
-     *       speeds the block up.</li>
-     *   <li>{@code requiredTier} (1.9+) - minimum {@link ToolData#tier()} for a
-     *       tool to speed this block up; {@code 0} = any tier.</li>
-     * </ul>
-     */
-    public record GameProperties(
-            int numericId,
-            float hardness,
-            boolean solid,
-            boolean breakable,
-            int atlasX,
-            int atlasY,
-            String renderLayer,
-            boolean transparent,
-            boolean flower,
-            boolean stackable,
-            int maxStackSize,
-            String category,
-            boolean placeable,
-            String material,
-            int requiredTier
-    ) {
-        public GameProperties {
-            // renderLayer and category may be null; parser will default them.
-            material = normalizeMaterial(material);
-            requiredTier = Math.max(0, requiredTier);
-        }
-
-        /** Pre-1.9 convenience constructor: no material, any tier. */
-        public GameProperties(int numericId, float hardness, boolean solid, boolean breakable,
-                              int atlasX, int atlasY, String renderLayer, boolean transparent,
-                              boolean flower, boolean stackable, int maxStackSize, String category,
-                              boolean placeable) {
-            this(numericId, hardness, solid, breakable, atlasX, atlasY, renderLayer, transparent,
-                    flower, stackable, maxStackSize, category, placeable, null, 0);
-        }
-
-        /** Copy with the 1.9 mining fields replaced. */
-        public GameProperties withMining(String newMaterial, int newRequiredTier) {
-            return new GameProperties(numericId, hardness, solid, breakable, atlasX, atlasY,
-                    renderLayer, transparent, flower, stackable, maxStackSize, category,
-                    placeable, newMaterial, newRequiredTier);
-        }
-
-        /** Copy with the container-level rendering fields (render layer, transparency) replaced. */
-        public GameProperties withRendering(String newRenderLayer, boolean newTransparent) {
-            return new GameProperties(numericId, hardness, solid, breakable, atlasX, atlasY,
-                    newRenderLayer, newTransparent, flower, stackable, maxStackSize, category,
-                    placeable, material, requiredTier);
-        }
-
-        /** Convenience: returns the render layer or "OPAQUE" if absent. */
-        public String renderLayerOrDefault() {
-            return renderLayer != null && !renderLayer.isBlank() ? renderLayer : "OPAQUE";
-        }
-
-        /** Convenience: returns the category or "BLOCKS" if absent. */
-        public String categoryOrDefault() {
-            return category != null && !category.isBlank() ? category : "BLOCKS";
+        public Rendering {
+            renderLayer = renderLayer == null || renderLayer.isBlank()
+                    ? "OPAQUE" : renderLayer.trim().toUpperCase(java.util.Locale.ROOT);
         }
     }
 
@@ -1049,22 +479,33 @@ public final class SBOFormat {
         private String objectPack = "default";
         private String author = "";
         private String description = "";
-        private GameProperties gameProperties;
+        private Rendering rendering = Rendering.DEFAULT;
+        private FormatExtensions extensions = FormatExtensions.EMPTY;
         private boolean statesEnabled = false;
         private final List<StateSpec> states = new ArrayList<>();
         private String defaultStateName = "";
-        private RecipeData recipes;
-        private SmeltingRecipeData smeltingRecipes;
-        private FuelData fuel;
         private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
-        private DropData drops;
-        private ToolData tool;
-        private WeaponData weapon;
 
         public ExportParameters() {}
 
-        public GameProperties getGameProperties() { return gameProperties; }
-        public void setGameProperties(GameProperties gameProperties) { this.gameProperties = gameProperties; }
+        public Rendering getRendering() { return rendering; }
+        public void setRendering(Rendering rendering) { this.rendering = rendering != null ? rendering : Rendering.DEFAULT; }
+
+        /** Extensions written into the new file (#383). */
+        public FormatExtensions getExtensions() { return extensions; }
+        public void setExtensions(FormatExtensions extensions) {
+            this.extensions = extensions != null ? extensions : FormatExtensions.EMPTY;
+        }
+
+        /** Sets (null removes) the {@code codec} extension of the new file. */
+        public <T> void setExtension(FormatExtensionCodec<T> codec, T value) {
+            this.extensions = extensions.with(codec, value);
+        }
+
+        /** The {@code codec} extension set so far. */
+        public <T> java.util.Optional<T> getExtension(FormatExtensionCodec<T> codec) {
+            return extensions.get(codec);
+        }
 
         public String getObjectId() { return objectId; }
         public void setObjectId(String objectId) { this.objectId = objectId != null ? objectId : ""; }
@@ -1096,29 +537,11 @@ public final class SBOFormat {
         public String getDefaultStateName() { return defaultStateName; }
         public void setDefaultStateName(String name) { this.defaultStateName = name != null ? name : ""; }
 
-        public RecipeData getRecipes() { return recipes; }
-        public void setRecipes(RecipeData recipes) { this.recipes = recipes; }
-
-        public SmeltingRecipeData getSmeltingRecipes() { return smeltingRecipes; }
-        public void setSmeltingRecipes(SmeltingRecipeData smeltingRecipes) { this.smeltingRecipes = smeltingRecipes; }
-
-        public FuelData getFuel() { return fuel; }
-        public void setFuel(FuelData fuel) { this.fuel = fuel; }
-
         public List<com.openmason.engine.format.sound.SoundSpec> getSounds() { return sounds; }
         public void setSounds(List<com.openmason.engine.format.sound.SoundSpec> newSounds) {
             sounds.clear();
             if (newSounds != null) sounds.addAll(newSounds);
         }
-
-        public DropData getDrops() { return drops; }
-        public void setDrops(DropData drops) { this.drops = drops; }
-
-        public ToolData getTool() { return tool; }
-        public void setTool(ToolData tool) { this.tool = tool; }
-
-        public WeaponData getWeapon() { return weapon; }
-        public void setWeapon(WeaponData weapon) { this.weapon = weapon; }
 
         /**
          * Validates that all required fields are populated.

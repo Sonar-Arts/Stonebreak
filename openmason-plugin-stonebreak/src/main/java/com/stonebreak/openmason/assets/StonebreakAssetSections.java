@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.api.PluginContext;
 import com.openmason.api.asset.AssetEditorSection;
 import com.openmason.api.asset.AssetSectionContribution;
@@ -8,6 +9,7 @@ import com.openmason.api.asset.AssetSurface;
 import com.openmason.engine.format.sbe.SBEFormat;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.themes.utils.ThemeColors;
+import com.stonebreak.mobs.sbe.SbeEntityKind;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import imgui.ImGui;
 import imgui.type.ImInt;
@@ -18,9 +20,8 @@ import java.util.List;
  * Stonebreak's game data in the SBO/SBE editor and export windows (#431). The tab order matches the
  * pre-#431 editor: Metadata, Game Properties, States, Recipes, Smelting, Sounds, Drops, Tool, Weapon.
  *
- * <p>Until #383 moves the gameplay fields into a namespaced {@code stonebreak:gameplay} extension,
- * these sections read and write the legacy {@code SBOFormat}/{@code SBEFormat} fields; only their
- * {@code load}/{@code write} bodies change then.
+ * <p>The SBO sections read and write the {@code stonebreak:gameplay} extension ({@link SboGameplay},
+ * #383); an older file's top-level fields are read through it and move into the extension on save.
  */
 public final class StonebreakAssetSections {
 
@@ -72,7 +73,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public void load(SBOFormat.Document doc) {
-            form.setFromRecipeData(doc.recipes());
+            form.setFromRecipeData(SboGameplay.of(doc).recipes());
         }
 
         @Override
@@ -82,7 +83,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
-            return doc.withRecipes(form.toRecipeData());
+            return SboGameplay.of(doc).withRecipes(form.toRecipeData()).applyTo(doc);
         }
 
         @Override
@@ -107,7 +108,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public void load(SBOFormat.Document doc) {
-            form.setFromSmeltingData(doc.smeltingRecipes());
+            form.setFromSmeltingData(SboGameplay.of(doc).smeltingRecipes());
         }
 
         @Override
@@ -117,7 +118,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
-            return doc.withSmeltingRecipes(form.toSmeltingRecipeData());
+            return SboGameplay.of(doc).withSmeltingRecipes(form.toSmeltingRecipeData()).applyTo(doc);
         }
     }
 
@@ -136,7 +137,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public void load(SBOFormat.Document doc) {
-            form.setFromDropData(doc.drops());
+            form.setFromDropData(SboGameplay.of(doc).drops());
         }
 
         @Override
@@ -151,7 +152,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
-            return doc.withDrops(form.toDropData());
+            return SboGameplay.of(doc).withDrops(form.toDropData()).applyTo(doc);
         }
 
         @Override
@@ -177,7 +178,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public void load(SBOFormat.Document doc) {
-            form.setFromToolData(doc.tool());
+            form.setFromToolData(SboGameplay.of(doc).tool());
         }
 
         @Override
@@ -194,7 +195,7 @@ public final class StonebreakAssetSections {
         /** An invalid form only reaches here from a snapshot (writes validate first): keep the last good data. */
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
-            return form.validate() == null ? doc.withTool(form.toToolData()) : doc;
+            return form.validate() == null ? SboGameplay.of(doc).withTool(form.toToolData()).applyTo(doc) : doc;
         }
 
         @Override
@@ -220,7 +221,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public void load(SBOFormat.Document doc) {
-            form.setFromWeaponData(doc.weapon());
+            form.setFromWeaponData(SboGameplay.of(doc).weapon());
         }
 
         @Override
@@ -236,7 +237,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
-            return form.validate() == null ? doc.withWeapon(form.toWeaponData()) : doc;
+            return form.validate() == null ? SboGameplay.of(doc).withWeapon(form.toWeaponData()).applyTo(doc) : doc;
         }
     }
 
@@ -251,12 +252,14 @@ public final class StonebreakAssetSections {
     // ── SBE ──────────────────────────────────────────────────────────────────
 
     /** Stonebreak's entity types, in picker order (the {@code sbe} target folders follow them). */
-    static final String[] ENTITY_TYPE_LABELS = { "Mob", "NPC", "Projectile", "Vehicle", "Other" };
+    static final String[] ENTITY_TYPE_LABELS = java.util.Arrays.stream(SbeEntityKind.values())
+            .map(SbeEntityKind::label).toArray(String[]::new);
 
+    /** The picker row of {@code id}; unknown names show as the first entry, as before #431. */
     static int entityTypeIndex(String id) {
         if (id == null) return 0;
-        for (int i = 0; i < ENTITY_TYPE_LABELS.length; i++) {
-            if (ENTITY_TYPE_LABELS[i].equalsIgnoreCase(id)) return i;
+        for (SbeEntityKind k : SbeEntityKind.values()) {
+            if (k.id().equalsIgnoreCase(id.trim())) return k.ordinal();
         }
         return 0;
     }
@@ -292,7 +295,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public SBEFormat.Document write(SBEFormat.Document doc) {
-            return doc.withEntityType(SBEFormat.EntityType.values()[index.get()].getId());
+            return doc.withEntityType(SbeEntityKind.values()[index.get()].id());
         }
     }
 
@@ -322,7 +325,7 @@ public final class StonebreakAssetSections {
 
         @Override
         public SBEFormat.ExportParameters write(SBEFormat.ExportParameters params) {
-            params.setEntityType(SBEFormat.EntityType.values()[index.get()]);
+            params.setEntityType(SbeEntityKind.values()[index.get()].id());
             return params;
         }
     }

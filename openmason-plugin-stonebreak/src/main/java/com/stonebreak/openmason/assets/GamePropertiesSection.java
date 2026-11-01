@@ -1,5 +1,7 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
+import com.stonebreak.items.ToolMiningRules;
 import com.openmason.api.asset.AssetEditorSection;
 import com.openmason.api.asset.AssetSectionHost;
 import com.openmason.engine.format.sbo.SBOFormat;
@@ -18,10 +20,10 @@ import java.util.Locale;
 
 /**
  * The SBO editor's Game Properties tab (#431, was {@code SBOEditorWindow.renderGamePropertiesTab}):
- * Stonebreak's {@code gameProperties} block (numeric id, hardness, solid/breakable/placeable,
- * atlas tile, flower, stacking, category), the block mining controls with a live break-time
- * preview, and the item's fuel value. The render layer and transparency stay on the core Metadata
- * tab; this section keeps whatever the window put there.
+ * Stonebreak's {@code gameProperties} (numeric id, hardness, solid/breakable/placeable, atlas tile,
+ * flower, stacking, category), the block mining controls with a live break-time preview, and the
+ * item's fuel value, all in the {@code stonebreak:gameplay} extension (#383). The render layer and
+ * transparency are the SBO's own {@code rendering}, on the core Metadata tab.
  */
 final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Document> {
 
@@ -59,7 +61,8 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
 
     @Override
     public void load(SBOFormat.Document doc) {
-        SBOFormat.GameProperties gp = doc.gameProperties();
+        SboGameplay data = SboGameplay.of(doc);
+        SboGameplay.GameProperties gp = data.gameProperties();
         hasGameProperties = gp != null;
         if (gp != null) {
             numericId.set(gp.numericId());
@@ -76,25 +79,23 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
             material.set(gp.material() != null ? gp.material() : "");
             requiredTier.set(gp.requiredTier());
         }
-        isFuel = doc.fuel() != null;
-        fuelBurnTicks.set(doc.fuel() != null ? doc.fuel().burnTicks() : 1600);
+        isFuel = data.fuel() != null;
+        fuelBurnTicks.set(data.fuel() != null ? data.fuel().burnTicks() : 1600);
     }
 
     @Override
     public SBOFormat.Document write(SBOFormat.Document doc) {
-        SBOFormat.GameProperties current = doc.gameProperties();
-        SBOFormat.GameProperties gp = hasGameProperties
-                ? new SBOFormat.GameProperties(
+        SboGameplay.GameProperties gp = hasGameProperties
+                ? new SboGameplay.GameProperties(
                         numericId.get(), hardness.get(), solid.get(), breakable.get(),
                         atlasX.get(), atlasY.get(),
-                        current != null ? current.renderLayerOrDefault() : "OPAQUE",
-                        current != null && current.transparent(),
                         flower.get(), stackable.get(),
                         maxStackSize.get(), category.get().trim(), placeable.get(),
                         material.get(), requiredTier.get())
                 : null;
-        return doc.withGameProperties(gp)
-                .withFuel(isFuel ? new SBOFormat.FuelData(Math.max(1, fuelBurnTicks.get())) : null);
+        return SboGameplay.of(doc).withGameProperties(gp)
+                .withFuel(isFuel ? new SboGameplay.FuelData(Math.max(1, fuelBurnTicks.get())) : null)
+                .applyTo(doc);
     }
 
     @Override
@@ -221,12 +222,12 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         ImGui.popItemWidth();
         ImGui.sameLine();
         ImGui.textDisabled(requiredTier.get() == 0 ? "(any tool)"
-                : "(" + SBOFormat.ToolData.tierName(requiredTier.get()) + " or better)");
+                : "(" + ToolMiningRules.tierName(requiredTier.get()) + " or better)");
         renderBreakTimePreview();
     }
 
     private void renderBreakTimePreview() {
-        String mat = SBOFormat.normalizeMaterial(material.get());
+        String mat = SboGameplay.normalizeMaterial(material.get());
         float hard = hardness.get();
         List<SBOMiningIndex.KnownTool> tools = SBOMiningIndex.shared().tools();
         ImGui.dummy(0, 2);
@@ -242,9 +243,9 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         ImGui.tableHeadersRow();
         previewRow("Bare hands", "-", hard, false);
         for (SBOMiningIndex.KnownTool t : tools) {
-            float eff = SBOFormat.ToolData.effectiveHardness(t.tool(), mat, requiredTier.get(), hard);
-            previewRow(t.displayName(), SBOFormat.ToolData.tierName(t.tool().tier()), eff,
-                    !t.tool().isEffectiveOn(mat, requiredTier.get()));
+            float eff = ToolMiningRules.effectiveHardness(t.tool(), mat, requiredTier.get(), hard);
+            previewRow(t.displayName(), ToolMiningRules.tierName(t.tool().tier()), eff,
+                    !ToolMiningRules.isEffectiveOn(t.tool(), mat, requiredTier.get()));
         }
         ImGui.endTable();
         if (tools.isEmpty()) {

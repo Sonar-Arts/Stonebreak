@@ -82,7 +82,7 @@ class AssetSectionSetTest {
 
     private static SBEFormat.Document doc() {
         return new SBEFormat.Document("1.4", "test:thing", "Thing", "mob", "default", "x", "me", null,
-                "now", "model.omo", List.of(), List.of(), null);
+                "now", "model.omo", List.of(), List.of(), null, null);
     }
 
     @Test

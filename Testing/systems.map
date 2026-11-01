@@ -39,7 +39,7 @@ audio	stonebreak-game	com/stonebreak/audio/**/*Test
 blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test
 water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test,com/stonebreak/world/chunk/ChunkWaterLayerTest,com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/chunk/WaterSurfaceClosureTest
 core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test,com/stonebreak/world/TimeOfDayTest,com/stonebreak/world/DeterministicRandomTest,com/stonebreak/world/SnowLayerManagerTest
-items	stonebreak-game	com/stonebreak/items/**/*Test
+items	stonebreak-game	com/stonebreak/items/**/*Test,com/stonebreak/gameplay/**/*Test
 weather	stonebreak-game	com/stonebreak/world/weather/**/*Test,com/stonebreak/world/MoonCycleTest
 input	stonebreak-game	com/stonebreak/input/**/*Test
 crafting	stonebreak-game	com/stonebreak/crafting/**/*Test

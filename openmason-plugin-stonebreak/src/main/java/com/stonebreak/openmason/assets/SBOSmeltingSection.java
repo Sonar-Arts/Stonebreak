@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.main.systems.menus.dialogs.EditorWidgets;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
 import com.openmason.engine.format.sbo.SBOFormat;
@@ -13,7 +14,7 @@ import java.util.function.Supplier;
 /**
  * Smelting tab body for the SBO editor.
  *
- * <p>Edits {@link SBOFormat.SmeltingRecipeData} — smelting recipes that produce
+ * <p>Edits {@link SboGameplay.SmeltingRecipeData} — smelting recipes that produce
  * this SBO's own item (each entry references its input by objectId). Rendered
  * as icon-tile rows: input tile → output tile ×count, sharing the ingredient
  * picker, icon cache and recent-ingredients MRU with the Recipes tab.
@@ -36,13 +37,13 @@ public class SBOSmeltingSection {
 
         EditableSmeltingEntry() {}
 
-        EditableSmeltingEntry(SBOFormat.SmeltingRecipeEntry e) {
+        EditableSmeltingEntry(SboGameplay.SmeltingRecipeEntry e) {
             this.inputObjectId = e.inputObjectId();
             this.outputCount = e.outputCount();
         }
 
-        SBOFormat.SmeltingRecipeEntry toEntry() {
-            return new SBOFormat.SmeltingRecipeEntry(
+        SboGameplay.SmeltingRecipeEntry toEntry() {
+            return new SboGameplay.SmeltingRecipeEntry(
                     inputObjectId == null ? "" : inputObjectId,
                     Math.max(1, outputCount)
             );
@@ -64,25 +65,25 @@ public class SBOSmeltingSection {
         this.selfObjectId = selfObjectId != null ? selfObjectId : () -> "";
     }
 
-    public void setFromSmeltingData(SBOFormat.SmeltingRecipeData smeltingData) {
+    public void setFromSmeltingData(SboGameplay.SmeltingRecipeData smeltingData) {
         recipes.clear();
         if (smeltingData != null) {
-            for (SBOFormat.SmeltingRecipeEntry e : smeltingData.recipes()) {
+            for (SboGameplay.SmeltingRecipeEntry e : smeltingData.recipes()) {
                 recipes.add(new EditableSmeltingEntry(e));
             }
         }
     }
 
     /** Returns null when there are no recipes (so the manifest field stays absent). */
-    public SBOFormat.SmeltingRecipeData toSmeltingRecipeData() {
+    public SboGameplay.SmeltingRecipeData toSmeltingRecipeData() {
         if (recipes.isEmpty()) return null;
-        List<SBOFormat.SmeltingRecipeEntry> out = new ArrayList<>(recipes.size());
+        List<SboGameplay.SmeltingRecipeEntry> out = new ArrayList<>(recipes.size());
         for (EditableSmeltingEntry e : recipes) {
             // Blank inputs are silently dropped — the format record rejects them.
             if (e.inputObjectId == null || e.inputObjectId.isBlank()) continue;
             out.add(e.toEntry());
         }
-        return out.isEmpty() ? null : new SBOFormat.SmeltingRecipeData(out);
+        return out.isEmpty() ? null : new SboGameplay.SmeltingRecipeData(out);
     }
 
     public void render() {

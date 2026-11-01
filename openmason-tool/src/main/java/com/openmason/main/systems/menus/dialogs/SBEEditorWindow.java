@@ -460,7 +460,8 @@ public class SBEEditorWindow {
                 loadedManifest.omoFilename(),
                 statesEditor.toStateEntries(),
                 variantsEditor.toVariantEntries(),
-                soundsEditor.toSoundData()
+                soundsEditor.toSoundData(),
+                loadedManifest.extensions() // game data: kept as loaded unless a section changes it
         ));
     }
 

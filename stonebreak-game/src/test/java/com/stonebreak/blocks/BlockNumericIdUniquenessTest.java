@@ -1,5 +1,6 @@
 package com.stonebreak.blocks;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
@@ -29,7 +30,7 @@ class BlockNumericIdUniquenessTest {
 
         Map<Integer, List<String>> byId = new TreeMap<>();
         for (SBOParseResult result : sbo.getAll()) {
-            SBOFormat.GameProperties gp = result.manifest().gameProperties();
+            SboGameplay.GameProperties gp = SboGameplay.of(result.manifest()).gameProperties();
             if (gp == null || gp.numericId() < 0) continue;
             byId.computeIfAbsent(gp.numericId(), id -> new ArrayList<>()).add(result.getObjectId());
         }

@@ -29,7 +29,10 @@
   `sbo/models`, `sbe/Mobs`, `sbe/Clothing`, `sbe/PlayerCustomize`,
   `sbe/Particles`. An item SBO must never sit in `sbo/blocks` (it becomes a
   phantom block).
-- SBO manifests carry Stonebreak game data: gameProperties (hardness, solid,
+- SBO manifests carry Stonebreak game data in the `extensions` member
+  `"stonebreak:gameplay"` (SBO 1.11; older files, including the shipped ones,
+  keep the same sections as top-level fields): gameProperties (hardness, solid,
   material, requiredTier, stack size, category, atlas X/Y, numericId), crafting
-  recipes, smelting, fuel, drops and the item `tool` section. Block numericIds
+  recipes, smelting, fuel, drops and the item `tool` / `weapon` sections. The
+  render layer and transparency are the format's own top-level `rendering`. Block numericIds
   are unique (AIR 0 and WATER 8 are reserved); new items start at 1000.

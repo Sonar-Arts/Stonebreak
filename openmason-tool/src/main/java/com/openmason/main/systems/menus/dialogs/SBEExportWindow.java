@@ -381,7 +381,7 @@ public class SBEExportWindow {
 
     /** The entity type the sections chose (the engine default without one): picks the target folder. */
     private String entityTypeId() {
-        return buildParameters().getEntityType().getId();
+        return buildParameters().getEntityType();
     }
 
     private int tabIndex(String key) {
@@ -449,7 +449,7 @@ public class SBEExportWindow {
         }
 
         String targetDir = GameTargets.shared().folderPathFor(BuiltinFileTypes.SBE.id(),
-                params.getEntityType().getId());
+                params.getEntityType());
         String fileName = GameTargets.shared().suggestedFileName(objectName.get(), "sbe", "entity.sbe");
 
         fileDialogService.showSaveSBEDialog(fileName, targetDir, filePath -> {

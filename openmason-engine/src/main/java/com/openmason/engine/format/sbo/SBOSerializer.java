@@ -1,6 +1,7 @@
 package com.openmason.engine.format.sbo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.format.ext.ManifestJson;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.openmason.engine.format.sound.SoundData;
 import com.openmason.engine.format.sound.SoundDef;
@@ -254,16 +255,11 @@ public class SBOSerializer {
                 Instant.now().toString(),
                 model ? legacyEntry : null,
                 model ? null : legacyEntry,
-                params.getGameProperties(),
+                params.getRendering(),
                 stateEntries,
                 defaultStateName,
-                params.getRecipes(),
-                params.getSmeltingRecipes(),
-                params.getFuel(),
                 sounds.data(),
-                params.getDrops(),
-                params.getTool(),
-                params.getWeapon()
+                params.getExtensions()
         );
 
         Path tempFile = Files.createTempFile("sbo_export_", ".tmp");
@@ -433,16 +429,11 @@ public class SBOSerializer {
                 document.createdAt() != null ? document.createdAt() : Instant.now().toString(),
                 model ? legacyEntry : null,
                 model ? null : legacyEntry,
-                document.gameProperties(),
+                document.rendering(),
                 rebuiltStates,
                 rebuiltStates.isEmpty() ? null : document.defaultStateName(),
-                document.recipes(),
-                document.smeltingRecipes(),
-                document.fuel(),
                 rebuiltSounds.data(),
-                document.drops(),
-                document.tool(),
-                document.weapon()
+                document.extensions()
         );
 
         outputPath = SBOFormat.ensureExtension(outputPath);
@@ -466,9 +457,8 @@ public class SBOSerializer {
                 writeSoundEntries(zos, rebuiltSounds);
             }
             Files.move(tempFile, Path.of(outputPath), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            logger.info("Saved .SBO file: {} (states={}, recipes={})",
-                    outputPath, rebuiltStates.size(),
-                    finalDoc.hasRecipes() ? finalDoc.recipes().shaped().size() : 0);
+            logger.info("Saved .SBO file: {} (states={}, extensions={})",
+                    outputPath, rebuiltStates.size(), finalDoc.extensions().keys());
             return true;
         } catch (IOException e) {
             logger.error("Error saving .SBO file: {}", outputPath, e);
@@ -484,7 +474,8 @@ public class SBOSerializer {
         zos.putNextEntry(manifestEntry);
 
         ManifestDTO dto = new ManifestDTO(document);
-        String json = objectMapper.writeValueAsString(dto);
+        // Core fields from the DTO, then the foreign fields and extensions exactly as they were read (#383).
+        String json = ManifestJson.write(objectMapper.valueToTree(dto), document.extensions());
         byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8);
 
         zos.write(jsonBytes);
@@ -707,16 +698,10 @@ public class SBOSerializer {
         public String createdAt;
         public String omoFile;
         public String textureFile;
-        public GamePropertiesDTO gameProperties;
+        public RenderingDTO rendering;
         public List<StateEntryDTO> states;
         public String defaultState;
-        public RecipeDataDTO recipes;
-        public SmeltingRecipeDataDTO smeltingRecipes;
-        public FuelDataDTO fuel;
         public List<SoundJson.SoundDefDTO> sounds;
-        public DropDataDTO drops;
-        public ToolDataDTO tool;
-        public WeaponDataDTO weapon;
 
         public ManifestDTO(SBOFormat.Document doc) {
             this.version = doc.version();
@@ -731,9 +716,7 @@ public class SBOSerializer {
             this.createdAt = doc.createdAt();
             this.omoFile = doc.omoFilename();
             this.textureFile = doc.textureFilename();
-            this.gameProperties = doc.gameProperties() != null
-                    ? new GamePropertiesDTO(doc.gameProperties())
-                    : null;
+            this.rendering = new RenderingDTO(doc.rendering());
             if (doc.hasStates()) {
                 this.states = new ArrayList<>();
                 for (SBOFormat.StateEntry e : doc.states()) {
@@ -744,150 +727,7 @@ public class SBOSerializer {
                 this.states = null;
                 this.defaultState = null;
             }
-            this.recipes = doc.hasRecipes() ? new RecipeDataDTO(doc.recipes()) : null;
-            this.smeltingRecipes = doc.hasSmeltingRecipes()
-                    ? new SmeltingRecipeDataDTO(doc.smeltingRecipes())
-                    : null;
-            this.fuel = doc.hasFuel() ? new FuelDataDTO(doc.fuel()) : null;
             this.sounds = SoundJson.toDto(doc.sounds());
-            // Presence is meaningful (empty = drops nothing), so write whenever set.
-            this.drops = doc.hasDrops() ? new DropDataDTO(doc.drops()) : null;
-            this.tool = doc.hasTool() ? new ToolDataDTO(doc.tool()) : null;
-            this.weapon = doc.hasWeapon() ? new WeaponDataDTO(doc.weapon()) : null;
-        }
-    }
-
-    /** DTO mirror of {@link SBOFormat.WeaponData} (1.10+). */
-    private static class WeaponDataDTO {
-        public String group;
-        public String damageType;
-        public float damage;
-        public float swingSeconds;
-
-        public WeaponDataDTO(SBOFormat.WeaponData w) {
-            this.group = w.group();
-            this.damageType = w.damageType();
-            this.damage = w.damage();
-            this.swingSeconds = w.swingSeconds();
-        }
-    }
-
-    /** DTO mirror of {@link SBOFormat.ToolData} (1.9+); unset optional stats are omitted. */
-    private static class ToolDataDTO {
-        public String toolClass;
-        public int tier;
-        public float speedMultiplier;
-        public List<String> materials;
-        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        public Integer durability;
-        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        public Float attackDamage;
-
-        public ToolDataDTO(SBOFormat.ToolData t) {
-            this.toolClass = t.toolClass();
-            this.tier = t.tier();
-            this.speedMultiplier = t.speedMultiplier();
-            this.materials = new ArrayList<>(t.materials());
-            this.durability = t.durability();
-            this.attackDamage = t.attackDamage();
-        }
-    }
-
-    private static class DropDataDTO {
-        @com.fasterxml.jackson.annotation.JsonProperty("default")
-        public List<DropEntryDTO> defaultDrops;
-        public List<ToolDropOverrideDTO> byTool;
-
-        public DropDataDTO(SBOFormat.DropData data) {
-            this.defaultDrops = toDtos(data.drops());
-            this.byTool = new ArrayList<>(data.toolOverrides().size());
-            for (SBOFormat.ToolDropOverride o : data.toolOverrides()) {
-                this.byTool.add(new ToolDropOverrideDTO(o));
-            }
-        }
-
-        static List<DropEntryDTO> toDtos(List<SBOFormat.DropEntry> entries) {
-            List<DropEntryDTO> out = new ArrayList<>(entries.size());
-            for (SBOFormat.DropEntry e : entries) out.add(new DropEntryDTO(e));
-            return out;
-        }
-    }
-
-    private static class ToolDropOverrideDTO {
-        public String tool;
-        public List<DropEntryDTO> drops;
-
-        public ToolDropOverrideDTO(SBOFormat.ToolDropOverride o) {
-            this.tool = o.toolObjectId();
-            this.drops = DropDataDTO.toDtos(o.drops());
-        }
-    }
-
-    private static class DropEntryDTO {
-        public String objectId;
-        public int min;
-        public int max;
-        public float chance;
-
-        public DropEntryDTO(SBOFormat.DropEntry e) {
-            this.objectId = e.objectId();
-            this.min = e.minCount();
-            this.max = e.maxCount();
-            this.chance = e.chance();
-        }
-    }
-
-    private static class SmeltingRecipeDataDTO {
-        public List<SmeltingRecipeEntryDTO> recipes;
-
-        public SmeltingRecipeDataDTO(SBOFormat.SmeltingRecipeData data) {
-            this.recipes = new ArrayList<>(data.recipes().size());
-            for (SBOFormat.SmeltingRecipeEntry e : data.recipes()) {
-                this.recipes.add(new SmeltingRecipeEntryDTO(e));
-            }
-        }
-    }
-
-    private static class SmeltingRecipeEntryDTO {
-        public String input;
-        public int outputCount;
-
-        public SmeltingRecipeEntryDTO(SBOFormat.SmeltingRecipeEntry e) {
-            this.input = e.inputObjectId();
-            this.outputCount = e.outputCount();
-        }
-    }
-
-    private static class FuelDataDTO {
-        public int burnTicks;
-
-        public FuelDataDTO(SBOFormat.FuelData f) {
-            this.burnTicks = f.burnTicks();
-        }
-    }
-
-    private static class RecipeDataDTO {
-        public List<ShapedRecipeDTO> shaped;
-
-        public RecipeDataDTO(SBOFormat.RecipeData data) {
-            this.shaped = new ArrayList<>(data.shaped().size());
-            for (SBOFormat.ShapedRecipe r : data.shaped()) {
-                this.shaped.add(new ShapedRecipeDTO(r));
-            }
-        }
-    }
-
-    private static class ShapedRecipeDTO {
-        public int width;
-        public int height;
-        public List<String> pattern;
-        public int outputCount;
-
-        public ShapedRecipeDTO(SBOFormat.ShapedRecipe r) {
-            this.width = r.width();
-            this.height = r.height();
-            this.pattern = r.pattern();
-            this.outputCount = r.outputCount();
         }
     }
 
@@ -928,46 +768,14 @@ public class SBOSerializer {
         }
     }
 
-    /**
-     * DTO mirror of {@link SBOFormat.GameProperties} for Jackson serialization.
-     * Float.POSITIVE_INFINITY hardness serializes as the string "Infinity" via
-     * Jackson; the parser reads it back via {@code asDouble()} which handles it.
-     */
-    private static class GamePropertiesDTO {
-        public int numericId;
-        public float hardness;
-        public boolean solid;
-        public boolean breakable;
-        public int atlasX;
-        public int atlasY;
+    /** DTO mirror of {@link SBOFormat.Rendering} (1.11+). */
+    private static class RenderingDTO {
         public String renderLayer;
         public boolean transparent;
-        public boolean flower;
-        public boolean stackable;
-        public int maxStackSize;
-        public String category;
-        public boolean placeable;
-        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-        public String material;
-        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_DEFAULT)
-        public int requiredTier;
 
-        public GamePropertiesDTO(SBOFormat.GameProperties gp) {
-            this.numericId = gp.numericId();
-            this.hardness = gp.hardness();
-            this.solid = gp.solid();
-            this.breakable = gp.breakable();
-            this.atlasX = gp.atlasX();
-            this.atlasY = gp.atlasY();
-            this.renderLayer = gp.renderLayer();
-            this.transparent = gp.transparent();
-            this.flower = gp.flower();
-            this.stackable = gp.stackable();
-            this.maxStackSize = gp.maxStackSize();
-            this.category = gp.category();
-            this.placeable = gp.placeable();
-            this.material = gp.material();
-            this.requiredTier = gp.requiredTier();
+        public RenderingDTO(SBOFormat.Rendering r) {
+            this.renderLayer = r.renderLayer();
+            this.transparent = r.transparent();
         }
     }
 }

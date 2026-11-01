@@ -42,12 +42,16 @@ import java.util.Objects;
  *       {@code ambient}) to an audio sample, embedded under {@code sounds/} or
  *       referenced by game classpath resource path, plus volume and a random
  *       pitch range. Older readers ignore the field and the ZIP entries.</li>
+ *   <li>1.5 - Namespaced {@code extensions} (#383, shared with SBO 1.11, see
+ *       {@link com.openmason.engine.format.ext.FormatExtensions}): game data the engine keeps as
+ *       written, unknown members byte for byte; foreign top-level fields are kept too. The
+ *       {@code entityType} is a free-form name (the engine's MOB/NPC/... enum moved to the game).</li>
  * </ul>
  */
 public final class SBEFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.4";
+    public static final String FORMAT_VERSION = "1.5";
 
     /** File extension for SBE files */
     public static final String FILE_EXTENSION = ".sbe";
@@ -123,26 +127,11 @@ public final class SBEFormat {
         return SOUNDS_DIR_PREFIX + event + "_" + index + "." + ext;
     }
 
-    /** Entity type classification used by the Stonebreak engine. */
-    public enum EntityType {
-        MOB("mob"),
-        NPC("npc"),
-        PROJECTILE("projectile"),
-        VEHICLE("vehicle"),
-        OTHER("other");
-
-        private final String id;
-        EntityType(String id) { this.id = id; }
-        public String getId() { return id; }
-
-        public static EntityType fromId(String id) {
-            if (id == null) return OTHER;
-            for (EntityType type : values()) {
-                if (type.id.equalsIgnoreCase(id)) return type;
-            }
-            return OTHER;
-        }
-    }
+    /**
+     * The entity type an SBE gets when nothing chooses one (#383: the type is a free-form,
+     * lower-case name; which names exist is a game's vocabulary, e.g. Stonebreak's mob/npc/...).
+     */
+    public static final String DEFAULT_ENTITY_TYPE = "other";
 
     /**
      * Reference to an embedded asset blob.
@@ -274,9 +263,11 @@ public final class SBEFormat {
             String omoFilename,
             List<StateEntry> states,
             List<VariantEntry> variants,
-            com.openmason.engine.format.sound.SoundData sounds
+            com.openmason.engine.format.sound.SoundData sounds,
+            com.openmason.engine.format.ext.FormatExtensions extensions
     ) {
         public Document {
+            extensions = extensions == null ? com.openmason.engine.format.ext.FormatExtensions.EMPTY : extensions;
             Objects.requireNonNull(version, "version cannot be null");
             Objects.requireNonNull(objectId, "objectId cannot be null");
             Objects.requireNonNull(objectName, "objectName cannot be null");
@@ -296,7 +287,23 @@ public final class SBEFormat {
         /** Copy with {@code entityType} replaced (#431: the entity-type picker is a game section). */
         public Document withEntityType(String value) {
             return new Document(version, objectId, objectName, value, objectPack, checksum, author,
-                    description, createdAt, omoFilename, states, variants, sounds);
+                    description, createdAt, omoFilename, states, variants, sounds, extensions);
+        }
+
+        /** Copy with the extensions (and foreign legacy fields) replaced. */
+        public Document withExtensions(com.openmason.engine.format.ext.FormatExtensions value) {
+            return new Document(version, objectId, objectName, entityType, objectPack, checksum, author,
+                    description, createdAt, omoFilename, states, variants, sounds, value);
+        }
+
+        /** The typed extension {@code codec} reads. */
+        public <T> java.util.Optional<T> extension(com.openmason.engine.format.ext.FormatExtensionCodec<T> codec) {
+            return extensions.get(codec);
+        }
+
+        /** Copy with the {@code codec} extension set to {@code value} (null removes it). */
+        public <T> Document withExtension(com.openmason.engine.format.ext.FormatExtensionCodec<T> codec, T value) {
+            return withExtensions(extensions.with(codec, value));
         }
 
         public boolean hasStates() { return !states.isEmpty(); }
@@ -336,7 +343,9 @@ public final class SBEFormat {
     public static final class ExportParameters {
         private String objectId = "";
         private String objectName = "";
-        private EntityType entityType = EntityType.MOB;
+        private String entityType = DEFAULT_ENTITY_TYPE;
+        private com.openmason.engine.format.ext.FormatExtensions extensions =
+                com.openmason.engine.format.ext.FormatExtensions.EMPTY;
         private String objectPack = "default";
         private String author = "";
         private String description = "";
@@ -352,8 +361,18 @@ public final class SBEFormat {
         public String getObjectName() { return objectName; }
         public void setObjectName(String objectName) { this.objectName = objectName != null ? objectName : ""; }
 
-        public EntityType getEntityType() { return entityType; }
-        public void setEntityType(EntityType entityType) { this.entityType = entityType != null ? entityType : EntityType.MOB; }
+        /** Free-form, lower-case entity type name (blank = {@link #DEFAULT_ENTITY_TYPE}). */
+        public String getEntityType() { return entityType; }
+        public void setEntityType(String entityType) {
+            this.entityType = entityType == null || entityType.isBlank()
+                    ? DEFAULT_ENTITY_TYPE : entityType.trim().toLowerCase(java.util.Locale.ROOT);
+        }
+
+        /** Extensions written into the new file (#383). */
+        public com.openmason.engine.format.ext.FormatExtensions getExtensions() { return extensions; }
+        public void setExtensions(com.openmason.engine.format.ext.FormatExtensions extensions) {
+            this.extensions = extensions != null ? extensions : com.openmason.engine.format.ext.FormatExtensions.EMPTY;
+        }
 
         public String getObjectPack() { return objectPack; }
         public void setObjectPack(String objectPack) { this.objectPack = objectPack != null ? objectPack : ""; }

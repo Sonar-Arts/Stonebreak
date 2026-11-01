@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.api.PluginInfo;
 import com.openmason.api.asset.AssetSectionContribution;
 import com.openmason.api.asset.AssetSurface;
@@ -64,9 +65,9 @@ class StonebreakAssetSectionsTest {
         }
     }
 
+    /** Identity, rendering and the Stonebreak game data, whichever layout it is stored in. */
     private static List<Object> gameData(SBOFormat.Document d) {
-        return Arrays.asList(d.objectId(), d.objectType(), d.gameProperties(), d.recipes(), d.smeltingRecipes(),
-                d.fuel(), d.drops(), d.tool(), d.weapon());
+        return Arrays.asList(d.objectId(), d.objectType(), d.rendering(), SboGameplay.of(d));
     }
 
     @Test
@@ -90,8 +91,8 @@ class StonebreakAssetSectionsTest {
                 new AssetSectionSet.Tab("core.metadata", "Metadata", 0, null),
                 new AssetSectionSet.Tab("core.states", "States", 200, null),
                 new AssetSectionSet.Tab("core.sounds", "Sounds", 500, null));
-        set.load(new SBOFormat.Document("1.10", "stonebreak:x", "X", "block", "default", "-", "me", null, "now",
-                "model.omo", null, null, List.of(), null, null, null, null, null, null, null, null));
+        set.load(new SBOFormat.Document("1.11", "stonebreak:x", "X", "block", "default", "-", "me", null, "now",
+                "model.omo", null, null, List.of(), null, null, null));
         assertEquals(List.of("Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops",
                 "Tool", "Weapon"), set.tabs(core).stream().map(AssetSectionSet.Tab::label).toList());
         set.close();
@@ -110,7 +111,13 @@ class StonebreakAssetSectionsTest {
 
             Path out = tmp.resolve(file.getFileName());
             assertTrue(editor.writeDocumentTo(out.toString()), file.toString());
-            assertEquals(gameData(original), gameData(parser.parseRaw(out).manifest()), "re-saved " + file);
+            SBOFormat.Document resaved = parser.parseRaw(out).manifest();
+            assertEquals(gameData(original), gameData(resaved), "re-saved " + file);
+            // Saved by the Stonebreak sections: the namespaced layout (#383), no legacy fields left.
+            assertTrue(java.util.Collections.disjoint(resaved.extensions().legacyFieldNames(),
+                    com.stonebreak.gameplay.SboGameplayCodec.LEGACY_FIELDS), file.toString());
+            assertEquals(!SboGameplay.of(original).isEmpty(),
+                    resaved.extensions().has(com.stonebreak.gameplay.SboGameplayCodec.KEY), file.toString());
             editor.close();
         }
     }
@@ -122,7 +129,7 @@ class StonebreakAssetSectionsTest {
             SBEFormat.Document original = parser.parseRaw(file).manifest();
             SBEEditorWindow editor = new SBEEditorWindow(null, null);
             assertTrue(editor.openFile(file.toString()), file.toString());
-            assertEquals(SBEFormat.EntityType.fromId(original.entityType()).getId(),
+            assertEquals(com.stonebreak.mobs.sbe.SbeEntityKind.fromId(original.entityType()).id(),
                     editor.snapshotDocument().entityType(), file.toString());
         }
     }
@@ -134,20 +141,20 @@ class StonebreakAssetSectionsTest {
         SBOParser parser = new SBOParser();
         SBOFormat.Document a = parser.parseRaw(blocks.get(0)).manifest();
         SBOFormat.Document b = parser.parseRaw(blocks.get(1)).manifest();
-        assertNotNull(a.gameProperties());
-        assertNotNull(b.gameProperties());
+        SboGameplay.GameProperties gp = SboGameplay.of(a).gameProperties();
+        SboGameplay.GameProperties other = SboGameplay.of(b).gameProperties();
+        assertNotNull(gp);
+        assertNotNull(other);
 
         SBOEditorWindow editor = new SBOEditorWindow(null, null);
         assertTrue(editor.openFile(blocks.get(0).toString()));
         assertNull(editor.validateForWrite());
-        SBOFormat.GameProperties gp = a.gameProperties();
-        editor.applyDocument(a.withGameProperties(new SBOFormat.GameProperties(b.gameProperties().numericId(),
-                gp.hardness(), gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.renderLayer(),
-                gp.transparent(), gp.flower(), gp.stackable(), gp.maxStackSize(), gp.category(), gp.placeable(),
-                gp.material(), gp.requiredTier())));
+        editor.applyDocument(SboGameplay.of(a).withGameProperties(new SboGameplay.GameProperties(other.numericId(),
+                gp.hardness(), gp.solid(), gp.breakable(), gp.atlasX(), gp.atlasY(), gp.flower(), gp.stackable(),
+                gp.maxStackSize(), gp.category(), gp.placeable(), gp.material(), gp.requiredTier())).applyTo(a));
         String problem = editor.validateForWrite();
         assertNotNull(problem);
-        assertTrue(problem.startsWith("numeric_id_conflict: " + b.gameProperties().numericId()), problem);
+        assertTrue(problem.startsWith("numeric_id_conflict: " + other.numericId()), problem);
     }
 
     @Test
@@ -155,8 +162,9 @@ class StonebreakAssetSectionsTest {
         ExportGamePropertiesSection section = new ExportGamePropertiesSection(new SboHost());
         section.load(new SBOFormat.ExportParameters());
         SBOFormat.ExportParameters params = section.write(new SBOFormat.ExportParameters());
-        assertNotNull(params.getGameProperties(), "a block gets the next free numeric id");
-        assertTrue(params.getGameProperties().numericId() > 0);
+        SboGameplay.GameProperties gp = SboGameplay.of(params).gameProperties();
+        assertNotNull(gp, "a block gets the next free numeric id");
+        assertTrue(gp.numericId() > 0);
         assertNull(section.validate());
     }
 

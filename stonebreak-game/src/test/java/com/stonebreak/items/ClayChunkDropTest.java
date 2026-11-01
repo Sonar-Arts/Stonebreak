@@ -1,5 +1,6 @@
 package com.stonebreak.items;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.drops.BlockDropTables;
@@ -41,9 +42,9 @@ class ClayChunkDropTest {
 
     @Test
     void claySboCarriesTheChunkDropTable() {
-        SBOFormat.DropData table = BlockDropTables.tableFor(BlockType.CLAY);
+        SboGameplay.DropData table = BlockDropTables.tableFor(BlockType.CLAY);
         assertNotNull(table, "SB_Clay.sbo must declare a drops table");
-        assertEquals(List.of(new SBOFormat.DropEntry("stonebreak:clay_chunk", 3, 4, 1f)),
+        assertEquals(List.of(new SboGameplay.DropEntry("stonebreak:clay_chunk", 3, 4, 1f)),
                 table.dropsFor(null));
     }
 

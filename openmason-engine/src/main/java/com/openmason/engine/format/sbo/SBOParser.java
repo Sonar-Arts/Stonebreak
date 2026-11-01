@@ -1,6 +1,7 @@
 package com.openmason.engine.format.sbo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openmason.engine.format.ext.ManifestJson;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.sound.SoundData;
 import com.openmason.engine.format.sound.SoundDef;
@@ -221,31 +222,15 @@ public class SBOParser {
         }
     }
 
+    /** Top-level manifest fields the SBO format owns; everything else is kept for its owner (#383). */
+    static final java.util.Set<String> CORE_FIELDS = java.util.Set.of(
+            "version", "objectId", "objectName", "objectType", "objectPack", "checksum", "checksumAlgorithm",
+            "author", "description", "createdAt", "omoFile", "textureFile", "rendering", "states",
+            "defaultState", "sounds", ManifestJson.EXTENSIONS_FIELD);
+
     private SBOFormat.Document parseManifest(byte[] jsonBytes) throws IOException {
         String json = new String(jsonBytes, StandardCharsets.UTF_8);
         var root = objectMapper.readTree(json);
-
-        SBOFormat.GameProperties gameProperties = null;
-        if (root.has("gameProperties") && !root.get("gameProperties").isNull()) {
-            var gp = root.get("gameProperties");
-            gameProperties = new SBOFormat.GameProperties(
-                    gp.has("numericId") ? gp.get("numericId").asInt() : -1,
-                    gp.has("hardness") ? (float) gp.get("hardness").asDouble() : 1.0f,
-                    !gp.has("solid") || gp.get("solid").asBoolean(),
-                    !gp.has("breakable") || gp.get("breakable").asBoolean(),
-                    gp.has("atlasX") ? gp.get("atlasX").asInt() : -1,
-                    gp.has("atlasY") ? gp.get("atlasY").asInt() : -1,
-                    gp.has("renderLayer") ? gp.get("renderLayer").asText() : null,
-                    gp.has("transparent") && gp.get("transparent").asBoolean(),
-                    gp.has("flower") && gp.get("flower").asBoolean(),
-                    gp.has("stackable") && gp.get("stackable").asBoolean(),
-                    gp.has("maxStackSize") ? gp.get("maxStackSize").asInt() : 64,
-                    gp.has("category") ? gp.get("category").asText() : null,
-                    !gp.has("placeable") || gp.get("placeable").asBoolean(),
-                    gp.hasNonNull("material") ? gp.get("material").asText() : null,
-                    gp.has("requiredTier") ? readTier(gp.get("requiredTier"), "gameProperties.requiredTier") : 0
-            );
-        }
 
         String omoFile = root.has("omoFile") && !root.get("omoFile").isNull()
                 ? nullIfBlank(root.get("omoFile").asText()) : null;
@@ -287,73 +272,7 @@ public class SBOParser {
                     ? root.get("defaultState").asText() : null;
         }
 
-        SBOFormat.RecipeData recipes = null;
-        if (root.has("recipes") && !root.get("recipes").isNull()) {
-            var recipesNode = root.get("recipes");
-            List<SBOFormat.ShapedRecipe> shaped = new ArrayList<>();
-            if (recipesNode.has("shaped") && recipesNode.get("shaped").isArray()) {
-                for (var rNode : recipesNode.get("shaped")) {
-                    int width = rNode.has("width") ? rNode.get("width").asInt() : 0;
-                    int height = rNode.has("height") ? rNode.get("height").asInt() : 0;
-                    int outputCount = rNode.has("outputCount") ? rNode.get("outputCount").asInt() : 1;
-                    List<String> pattern = new ArrayList<>();
-                    if (rNode.has("pattern") && rNode.get("pattern").isArray()) {
-                        for (var slot : rNode.get("pattern")) {
-                            pattern.add(slot.isNull() ? "" : slot.asText());
-                        }
-                    }
-                    try {
-                        shaped.add(new SBOFormat.ShapedRecipe(width, height, pattern, outputCount));
-                    } catch (IllegalArgumentException ex) {
-                        logger.warn("Skipping invalid shaped recipe in manifest: {}", ex.getMessage());
-                    }
-                }
-            }
-            if (!shaped.isEmpty()) {
-                recipes = new SBOFormat.RecipeData(shaped);
-            }
-        }
-
-        SBOFormat.SmeltingRecipeData smeltingRecipes = null;
-        if (root.has("smeltingRecipes") && !root.get("smeltingRecipes").isNull()) {
-            var smeltNode = root.get("smeltingRecipes");
-            List<SBOFormat.SmeltingRecipeEntry> smeltList = new ArrayList<>();
-            if (smeltNode.has("recipes") && smeltNode.get("recipes").isArray()) {
-                for (var rNode : smeltNode.get("recipes")) {
-                    String input = rNode.has("input") ? rNode.get("input").asText() : "";
-                    int outputCount = rNode.has("outputCount") ? rNode.get("outputCount").asInt() : 1;
-                    try {
-                        smeltList.add(new SBOFormat.SmeltingRecipeEntry(input, outputCount));
-                    } catch (IllegalArgumentException ex) {
-                        logger.warn("Skipping invalid smelting recipe in manifest: {}", ex.getMessage());
-                    }
-                }
-            }
-            if (!smeltList.isEmpty()) {
-                smeltingRecipes = new SBOFormat.SmeltingRecipeData(smeltList);
-            }
-        }
-
-        SBOFormat.FuelData fuel = null;
-        if (root.has("fuel") && !root.get("fuel").isNull()) {
-            var fuelNode = root.get("fuel");
-            int burnTicks = fuelNode.has("burnTicks") ? fuelNode.get("burnTicks").asInt() : 0;
-            if (burnTicks > 0) {
-                try {
-                    fuel = new SBOFormat.FuelData(burnTicks);
-                } catch (IllegalArgumentException ex) {
-                    logger.warn("Skipping invalid fuel block in manifest: {}", ex.getMessage());
-                }
-            }
-        }
-
         SoundData sounds = SoundJson.read(root);
-
-        SBOFormat.DropData drops = parseDrops(root);
-
-        SBOFormat.ToolData tool = parseTool(root);
-
-        SBOFormat.WeaponData weapon = parseWeapon(root);
 
         return new SBOFormat.Document(
                 root.get("version").asText(),
@@ -367,129 +286,29 @@ public class SBOParser {
                 root.has("createdAt") ? root.get("createdAt").asText() : null,
                 omoFile,
                 textureFile,
-                gameProperties,
+                readRendering(root),
                 states,
                 defaultState,
-                recipes,
-                smeltingRecipes,
-                fuel,
                 sounds,
-                drops,
-                tool,
-                weapon
+                ManifestJson.readExtensions(json, CORE_FIELDS)
         );
     }
 
     /**
-     * Reads the optional 1.10+ {@code weapon} section. Returns {@code null} when
-     * the key is absent or the section is invalid (logged), so a malformed
-     * weapon degrades to "not a weapon" rather than failing the whole SBO.
+     * The top-level {@code rendering} object (1.11+); older files keep the render layer and
+     * transparency in their {@code gameProperties} block, read from there.
      */
-    static SBOFormat.WeaponData parseWeapon(com.fasterxml.jackson.databind.JsonNode root) {
-        if (!root.has("weapon") || root.get("weapon").isNull() || !root.get("weapon").isObject()) {
-            return null;
+    static SBOFormat.Rendering readRendering(com.fasterxml.jackson.databind.JsonNode root) {
+        var r = root.get("rendering");
+        if (r == null || !r.isObject()) {
+            r = root.get("gameProperties");
         }
-        var w = root.get("weapon");
-        try {
-            return new SBOFormat.WeaponData(
-                    w.has("group") ? w.get("group").asText() : "",
-                    w.has("damageType") ? w.get("damageType").asText() : "",
-                    w.has("damage") ? (float) w.get("damage").asDouble() : -1f,
-                    w.has("swingSeconds") ? (float) w.get("swingSeconds").asDouble() : 0f);
-        } catch (IllegalArgumentException ex) {
-            logger.warn("Ignoring invalid weapon block in manifest: {}", ex.getMessage());
-            return null;
+        if (r == null || !r.isObject()) {
+            return SBOFormat.Rendering.DEFAULT;
         }
-    }
-
-    /**
-     * Reads the optional 1.9+ {@code tool} section. Returns {@code null} when
-     * the key is absent or the section is invalid (logged), so a malformed
-     * tool degrades to "not a mining tool" rather than failing the whole SBO.
-     */
-    static SBOFormat.ToolData parseTool(com.fasterxml.jackson.databind.JsonNode root) {
-        if (!root.has("tool") || root.get("tool").isNull() || !root.get("tool").isObject()) {
-            return null;
-        }
-        var t = root.get("tool");
-        List<String> materials = new ArrayList<>();
-        if (t.has("materials") && t.get("materials").isArray()) {
-            for (var m : t.get("materials")) materials.add(m.asText());
-        }
-        try {
-            return new SBOFormat.ToolData(
-                    t.has("toolClass") ? t.get("toolClass").asText() : "",
-                    t.has("tier") ? readTier(t.get("tier"), "tool.tier") : 0,
-                    t.has("speedMultiplier") ? (float) t.get("speedMultiplier").asDouble() : 1.0f,
-                    materials,
-                    t.hasNonNull("durability") ? t.get("durability").asInt() : null,
-                    t.hasNonNull("attackDamage") ? (float) t.get("attackDamage").asDouble() : null);
-        } catch (IllegalArgumentException ex) {
-            logger.warn("Ignoring invalid tool block in manifest: {}", ex.getMessage());
-            return null;
-        }
-    }
-
-    /** A tier written as an int or a tier name ("stone"); unreadable values become 0 with a warning. */
-    private static int readTier(com.fasterxml.jackson.databind.JsonNode node, String where) {
-        if (node == null || node.isNull()) return 0;
-        if (node.isNumber()) return node.asInt();
-        int tier = SBOFormat.ToolData.parseTier(node.asText());
-        if (tier < 0) {
-            logger.warn("Unknown tier '{}' at {} — treating as 0", node.asText(), where);
-            return 0;
-        }
-        return tier;
-    }
-
-    /**
-     * Reads the optional 1.8+ {@code drops} section. Returns {@code null} when
-     * the key is absent (or not an object) so older manifests keep the game's
-     * default rule; a present section always yields a {@link SBOFormat.DropData},
-     * even an empty one ("drops nothing"). Invalid lines are skipped with a warning.
-     */
-    static SBOFormat.DropData parseDrops(com.fasterxml.jackson.databind.JsonNode root) {
-        if (!root.has("drops") || root.get("drops").isNull() || !root.get("drops").isObject()) {
-            return null;
-        }
-        var dropsNode = root.get("drops");
-        List<SBOFormat.DropEntry> defaults = readDropEntries(dropsNode.get("default"), "default");
-        List<SBOFormat.ToolDropOverride> overrides = new ArrayList<>();
-        if (dropsNode.has("byTool") && dropsNode.get("byTool").isArray()) {
-            for (var oNode : dropsNode.get("byTool")) {
-                String tool = oNode.has("tool") ? oNode.get("tool").asText() : "";
-                List<SBOFormat.DropEntry> lines = readDropEntries(oNode.get("drops"), "byTool[" + tool + "]");
-                try {
-                    overrides.add(new SBOFormat.ToolDropOverride(tool, lines));
-                } catch (IllegalArgumentException ex) {
-                    logger.warn("Skipping invalid tool drop override in manifest: {}", ex.getMessage());
-                }
-            }
-        }
-        try {
-            return new SBOFormat.DropData(defaults, overrides);
-        } catch (IllegalArgumentException ex) {
-            logger.warn("Ignoring invalid drops block in manifest: {}", ex.getMessage());
-            return null;
-        }
-    }
-
-    private static List<SBOFormat.DropEntry> readDropEntries(
-            com.fasterxml.jackson.databind.JsonNode arr, String where) {
-        List<SBOFormat.DropEntry> out = new ArrayList<>();
-        if (arr == null || !arr.isArray()) return out;
-        for (var dNode : arr) {
-            String objectId = dNode.has("objectId") ? dNode.get("objectId").asText() : "";
-            int min = dNode.has("min") ? dNode.get("min").asInt() : 1;
-            int max = dNode.has("max") ? dNode.get("max").asInt() : min;
-            float chance = dNode.has("chance") ? (float) dNode.get("chance").asDouble() : 1f;
-            try {
-                out.add(new SBOFormat.DropEntry(objectId, min, max, chance));
-            } catch (IllegalArgumentException ex) {
-                logger.warn("Skipping invalid drop entry ({}) in manifest: {}", where, ex.getMessage());
-            }
-        }
-        return out;
+        return new SBOFormat.Rendering(
+                r.hasNonNull("renderLayer") ? r.get("renderLayer").asText() : null,
+                r.has("transparent") && r.get("transparent").asBoolean());
     }
 
     private static String nullIfBlank(String s) {

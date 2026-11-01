@@ -109,6 +109,8 @@ public class AssetLensService {
                     doc.states().stream().map(SBOFormat.StateEntry::name).toList()));
             inventory.put("defaultState", doc.defaultStateName());
             inventory.set("sounds", mapper.valueToTree(soundEventNames(doc.sounds())));
+            // Stonebreak's game data, decoded from whichever layout the file uses (#383).
+            out.set("gameplay", mapper.valueToTree(com.stonebreak.gameplay.SboGameplay.of(doc)));
         } else if (digest.manifest() instanceof SBEFormat.Document doc) {
             inventory.set("states", mapper.valueToTree(
                     doc.states().stream().map(SBEFormat.StateEntry::name).toList()));

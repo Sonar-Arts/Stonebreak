@@ -57,6 +57,15 @@ class AssetLensServiceTest {
         assertEquals("stonebreak:cow", manifest.get("id").asText());
         assertTrue(manifest.get("inventory").get("modelBearing").asBoolean());
 
+        // An SBO's Stonebreak data is decoded under "gameplay" whatever its layout (#383); the
+        // shipped files are legacy-layout, so it comes from their top-level fields.
+        ObjectNode stone = service.manifest("stonebreak:cobblestone");
+        assertEquals(29, stone.path("gameplay").path("gameProperties").path("numericId").asInt(), stone.toString());
+        assertEquals("stone", stone.path("gameplay").path("gameProperties").path("material").asText());
+        assertEquals("OPAQUE", stone.path("manifest").path("rendering").path("renderLayer").asText());
+        assertTrue(stone.path("manifest").path("extensions").path("legacyFields").has("gameProperties"),
+                stone.toString());
+
         Map<String, Object> summary = service.meshSummary("stonebreak:cow", null, null);
         assertTrue((Boolean) summary.get("modelBearing"));
         assertNotNull(summary.get("totals"));

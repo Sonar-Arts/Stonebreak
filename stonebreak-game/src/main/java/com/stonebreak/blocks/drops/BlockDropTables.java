@@ -1,5 +1,6 @@
 package com.stonebreak.blocks.drops;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
@@ -24,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * not the client's {@code SBOBlockBridge} — because drops are spawned on the
  * server thread (see {@code DropUtil.handleBlockBroken}).
  *
- * <p>Semantics (mirrors {@link SBOFormat.DropData}): a block with no table
+ * <p>Semantics (mirrors {@link SboGameplay.DropData}): a block with no table
  * yields {@code null} from {@link #tableFor}, meaning "use the built-in rule";
  * a present table is authoritative (empty = drops nothing). The breaking
  * tool's {@code objectId} selects a per-tool override, otherwise the default
@@ -39,12 +40,12 @@ public final class BlockDropTables {
     public record RolledDrop(Item item, int count) {}
 
     /** Per-block cache; {@code Optional.empty()} = block has no table. */
-    private static final Map<BlockType, Optional<SBOFormat.DropData>> CACHE = new ConcurrentHashMap<>();
+    private static final Map<BlockType, Optional<SboGameplay.DropData>> CACHE = new ConcurrentHashMap<>();
 
     private BlockDropTables() {}
 
     /** The block's authored drop table, or {@code null} when its SBO has none. */
-    public static SBOFormat.DropData tableFor(BlockType block) {
+    public static SboGameplay.DropData tableFor(BlockType block) {
         if (block == null) return null;
         return CACHE.computeIfAbsent(block, BlockDropTables::lookup).orElse(null);
     }
@@ -60,7 +61,7 @@ public final class BlockDropTables {
      * possibly-empty list of drops.
      */
     public static List<RolledDrop> roll(BlockType block, ItemType tool, Random random) {
-        SBOFormat.DropData table = tableFor(block);
+        SboGameplay.DropData table = tableFor(block);
         if (table == null) return null;
         return roll(table, ItemType.objectIdFor(tool), random);
     }
@@ -69,10 +70,10 @@ public final class BlockDropTables {
      * Pure roll of a table: applies the tool override selection, each line's
      * chance and count range, and resolves objectIds to game items.
      */
-    public static List<RolledDrop> roll(SBOFormat.DropData table, String toolObjectId, Random random) {
-        List<SBOFormat.DropEntry> lines = table.dropsFor(toolObjectId);
+    public static List<RolledDrop> roll(SboGameplay.DropData table, String toolObjectId, Random random) {
+        List<SboGameplay.DropEntry> lines = table.dropsFor(toolObjectId);
         List<RolledDrop> out = new ArrayList<>(lines.size());
-        for (SBOFormat.DropEntry line : lines) {
+        for (SboGameplay.DropEntry line : lines) {
             if (line.chance() < 1f && random.nextFloat() >= line.chance()) continue;
             int span = line.maxCount() - line.minCount() + 1;
             int count = line.minCount() + (span > 1 ? random.nextInt(span) : 0);
@@ -99,11 +100,11 @@ public final class BlockDropTables {
         CACHE.clear();
     }
 
-    private static Optional<SBOFormat.DropData> lookup(BlockType block) {
+    private static Optional<SboGameplay.DropData> lookup(BlockType block) {
         try {
             return BlockRegistry.getInstance().getById(block.getId())
                     .map(e -> e.sboData() != null && e.sboData().manifest() != null
-                            ? e.sboData().manifest().drops() : null);
+                            ? SboGameplay.of(e.sboData().manifest()).drops() : null);
         } catch (RuntimeException ex) {
             logger.warn("Failed to read drop table for {}: {}", block, ex.getMessage());
             return Optional.empty();

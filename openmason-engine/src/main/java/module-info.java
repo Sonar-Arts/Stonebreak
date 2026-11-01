@@ -153,6 +153,7 @@ module openmason.engine {
     exports com.openmason.engine.format.oma;
     exports com.openmason.engine.format.mesh;
     exports com.openmason.engine.format.sound;
+    exports com.openmason.engine.format.ext;
     exports com.openmason.engine.format.omui;
     exports com.openmason.engine.format.omui.io;
     exports com.openmason.engine.format.sbui;

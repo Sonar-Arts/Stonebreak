@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.main.systems.mortar.core.MortarFrameResult;
 import com.openmason.main.systems.mortar.core.MortarRegion;
@@ -26,7 +27,7 @@ import java.util.function.Supplier;
 /**
  * Recipes tab body for the SBO editor.
  *
- * <p>Edits the {@link SBOFormat.RecipeData} of an SBO: a list of shaped
+ * <p>Edits the {@link SboGameplay.RecipeData} of an SBO: a list of shaped
  * recipes whose output is the SBO's own item. Each recipe is an N×M grid of
  * objectId slots plus an output count.
  *
@@ -55,7 +56,7 @@ public class SBORecipeSection implements AutoCloseable {
             Arrays.fill(slots, "");
         }
 
-        EditableRecipe(SBOFormat.ShapedRecipe r) {
+        EditableRecipe(SboGameplay.ShapedRecipe r) {
             this.width = r.width();
             this.height = r.height();
             this.outputCount = Math.max(1, r.outputCount());
@@ -77,7 +78,7 @@ public class SBORecipeSection implements AutoCloseable {
             System.arraycopy(other.slots, 0, this.slots, 0, 9);
         }
 
-        SBOFormat.ShapedRecipe toShaped() {
+        SboGameplay.ShapedRecipe toShaped() {
             List<String> flat = new ArrayList<>(width * height);
             for (int row = 0; row < height; row++) {
                 for (int col = 0; col < width; col++) {
@@ -85,7 +86,7 @@ public class SBORecipeSection implements AutoCloseable {
                     flat.add(slot == null ? "" : slot);
                 }
             }
-            return new SBOFormat.ShapedRecipe(width, height, flat, outputCount);
+            return new SboGameplay.ShapedRecipe(width, height, flat, outputCount);
         }
 
         RecipeClipboard.PatternClip toClip() {
@@ -158,10 +159,10 @@ public class SBORecipeSection implements AutoCloseable {
         this.selfObjectId = selfObjectId != null ? selfObjectId : () -> "";
     }
 
-    public void setFromRecipeData(SBOFormat.RecipeData data) {
+    public void setFromRecipeData(SboGameplay.RecipeData data) {
         recipes.clear();
         if (data != null) {
-            for (SBOFormat.ShapedRecipe r : data.shaped()) {
+            for (SboGameplay.ShapedRecipe r : data.shaped()) {
                 recipes.add(new EditableRecipe(r));
             }
         }
@@ -170,11 +171,11 @@ public class SBORecipeSection implements AutoCloseable {
     }
 
     /** Returns null when there are no recipes (so the manifest field stays absent). */
-    public SBOFormat.RecipeData toRecipeData() {
+    public SboGameplay.RecipeData toRecipeData() {
         if (recipes.isEmpty()) return null;
-        List<SBOFormat.ShapedRecipe> shaped = new ArrayList<>(recipes.size());
+        List<SboGameplay.ShapedRecipe> shaped = new ArrayList<>(recipes.size());
         for (EditableRecipe r : recipes) shaped.add(r.toShaped());
-        return new SBOFormat.RecipeData(shaped);
+        return new SboGameplay.RecipeData(shaped);
     }
 
     public void render() {

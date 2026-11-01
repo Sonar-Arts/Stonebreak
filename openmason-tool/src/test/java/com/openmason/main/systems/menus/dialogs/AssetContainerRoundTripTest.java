@@ -48,20 +48,21 @@ class AssetContainerRoundTripTest {
     static SBOFormat.Document comparable(SBOFormat.Document d) {
         return new SBOFormat.Document("-", d.objectId(), d.objectName(), d.objectType(), d.objectPack(),
                 "-", d.author(), d.description(), d.createdAt(), d.omoFilename(), d.textureFilename(),
-                d.gameProperties(), d.states(), d.defaultStateName(), d.recipes(), d.smeltingRecipes(), d.fuel(),
-                d.sounds(), d.drops(), d.tool(), d.weapon());
+                d.rendering(), d.states(), d.defaultStateName(), d.sounds(), d.extensions());
     }
 
-    /** Identity + every game-data field (the snapshot leaves embedded-file checksums to the serializer). */
+    /**
+     * Identity, rendering and all the game data the editor cannot see (extensions + the legacy
+     * top-level fields of older files). The snapshot leaves embedded-file checksums to the serializer.
+     */
     static List<Object> gameData(SBOFormat.Document d) {
-        return java.util.Arrays.asList(d.objectId(), d.objectType(), d.gameProperties(), d.recipes(),
-                d.smeltingRecipes(), d.fuel(), d.drops(), d.tool(), d.weapon());
+        return java.util.Arrays.asList(d.objectId(), d.objectType(), d.rendering(), d.extensions());
     }
 
     static SBEFormat.Document comparable(SBEFormat.Document d) {
         return new SBEFormat.Document("-", d.objectId(), d.objectName(), d.entityType(), d.objectPack(),
                 "-", d.author(), d.description(), d.createdAt(), d.omoFilename(), d.states(), d.variants(),
-                d.sounds());
+                d.sounds(), d.extensions());
     }
 
     @Test
@@ -80,8 +81,7 @@ class AssetContainerRoundTripTest {
             Path out = tmp.resolve(file.getFileName());
             assertTrue(editor.writeDocumentTo(out.toString()), file.toString());
             assertEquals(comparable(original), comparable(parser.parseRaw(out).manifest()), "re-saved " + file);
-            if (original.gameProperties() != null || original.hasRecipes() || original.hasDrops()
-                    || original.hasTool() || original.hasWeapon()) {
+            if (!original.extensions().isEmpty()) {
                 withGameData++;
             }
         }

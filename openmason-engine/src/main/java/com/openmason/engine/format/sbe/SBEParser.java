@@ -266,10 +266,18 @@ public class SBEParser {
         return new ArchiveContents(manifestBytes, entries);
     }
 
+    /** Top-level manifest fields the SBE format owns; everything else is kept for its owner (#383). */
+    static final java.util.Set<String> CORE_FIELDS = java.util.Set.of(
+            "version", "objectId", "objectName", "entityType", "objectPack", "checksum", "checksumAlgorithm",
+            "author", "description", "createdAt", "omoFile", "states", "variants", "sounds",
+            com.openmason.engine.format.ext.ManifestJson.EXTENSIONS_FIELD);
+
     private SBEFormat.Document readManifest(byte[] manifestBytes) throws IOException {
         JsonNode root;
+        String manifestText;
         try {
             root = objectMapper.readTree(manifestBytes);
+            manifestText = new String(manifestBytes, java.nio.charset.StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new SBEParseException("Malformed manifest.json", e);
         }
@@ -294,10 +302,11 @@ public class SBEParser {
             return new SBEFormat.Document(
                     version != null ? version : SBEFormat.FORMAT_VERSION,
                     objectId, objectName,
-                    entityType != null ? entityType : SBEFormat.EntityType.OTHER.getId(),
+                    entityType != null ? entityType : SBEFormat.DEFAULT_ENTITY_TYPE,
                     objectPack, checksum, author, description, createdAt,
                     omoFile, states, variants,
-                    SoundJson.read(root)
+                    SoundJson.read(root),
+                    com.openmason.engine.format.ext.ManifestJson.readExtensions(manifestText, CORE_FIELDS)
             );
         } catch (NullPointerException e) {
             throw new SBEParseException("Manifest is missing a required field: " + e.getMessage(), e);

@@ -1,5 +1,8 @@
 package com.stonebreak.openmason.assets.mcp;
 
+import com.stonebreak.items.ToolMiningRules;
+import com.stonebreak.mobs.sbe.SbeEntityKind;
+import com.stonebreak.gameplay.SboGameplay;
 import com.stonebreak.openmason.assets.AtlasSlots;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.openmason.engine.format.sbe.SBEFormat;
@@ -108,6 +111,7 @@ public final class AssetExportBuilder {
         params.setAuthor(text(n, "author", defaultAuthor()));
         params.setDescription(text(n, "description", ""));
 
+        SboGameplay gameplay = SboGameplay.NONE;
         NumericIdValidator.Domain domain = NumericIdValidator.domainFor(type.getId());
         JsonNode gp = n.get("gameProperties");
         boolean wantsGp = (gp != null && !gp.isNull()) || n.hasNonNull("numericId")
@@ -116,9 +120,10 @@ public final class AssetExportBuilder {
             int numericId = n.hasNonNull("numericId") ? n.get("numericId").asInt()
                     : gp != null && gp.hasNonNull("numericId") ? gp.get("numericId").asInt()
                     : NumericIdValidator.suggestNextFreeId(domain);
-            params.setGameProperties(texture
+            gameplay = gameplay.withGameProperties(texture
                     ? spriteGameProperties(gp, numericId)
                     : gameProperties(gp, type == SBOFormat.ObjectType.BLOCK, numericId));
+            params.setRendering(rendering(gp, texture ? SPRITE_RENDERING : SBOFormat.Rendering.DEFAULT));
         }
 
         String sourceKey = texture ? "omt" : "omo";
@@ -148,19 +153,36 @@ public final class AssetExportBuilder {
 
         params.setSounds(sounds(n.get("sounds"), files));
         if (n.has("drops")) {
-            params.setDrops(drops(n.get("drops")));
+            gameplay = gameplay.withDrops(drops(n.get("drops")));
         }
         if (n.has("tool")) {
-            params.setTool(tool(n.get("tool")));
+            gameplay = gameplay.withTool(tool(n.get("tool")));
         }
         if (n.has("weapon")) {
-            params.setWeapon(weapon(n.get("weapon")));
+            gameplay = gameplay.withWeapon(weapon(n.get("weapon")));
         }
+        gameplay.applyTo(params); // the stonebreak:gameplay extension (#383)
         return params;
     }
 
+    /** Texture-only (sprite item) rendering: alpha-tested, see-through. */
+    public static final SBOFormat.Rendering SPRITE_RENDERING = new SBOFormat.Rendering("CUTOUT", true);
+
+    /**
+     * The SBO's core rendering from an agent's {@code gameProperties} object: its {@code renderLayer}
+     * and {@code transparent} keys (kept there in the tool API although the format now stores them
+     * as {@code rendering}, #383) over {@code base}.
+     */
+    public static SBOFormat.Rendering rendering(JsonNode g, SBOFormat.Rendering base) {
+        if (g == null || g.isNull()) {
+            return base;
+        }
+        return new SBOFormat.Rendering(text(g, "renderLayer", base.renderLayer()),
+                g.path("transparent").asBoolean(base.transparent()));
+    }
+
     /** Merge a partial {@code gameProperties} object over the model export defaults. */
-    public static SBOFormat.GameProperties gameProperties(JsonNode gp, boolean isBlock, int numericId) {
+    public static SboGameplay.GameProperties gameProperties(JsonNode gp, boolean isBlock, int numericId) {
         JsonNode g = gp == null || gp.isNull() ? com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode() : gp;
         int atlasX = g.path("atlasX").asInt(Integer.MIN_VALUE);
         int atlasY = g.path("atlasY").asInt(Integer.MIN_VALUE);
@@ -169,14 +191,12 @@ public final class AssetExportBuilder {
             if (atlasX == Integer.MIN_VALUE) atlasX = slot[0];
             if (atlasY == Integer.MIN_VALUE) atlasY = slot[1];
         }
-        return new SBOFormat.GameProperties(
+        return new SboGameplay.GameProperties(
                 numericId,
                 (float) g.path("hardness").asDouble(1.0),
                 g.path("solid").asBoolean(isBlock),
                 g.path("breakable").asBoolean(true),
                 atlasX, atlasY,
-                text(g, "renderLayer", "OPAQUE").toUpperCase(Locale.ROOT),
-                g.path("transparent").asBoolean(false),
                 g.path("flower").asBoolean(false),
                 g.path("stackable").asBoolean(true),
                 g.path("maxStackSize").asInt(64),
@@ -188,39 +208,37 @@ public final class AssetExportBuilder {
 
     /**
      * Merge a partial {@code gameProperties} object over the texture-only
-     * (sprite item) defaults: not solid, breakable, no atlas tile, CUTOUT layer
-     * with transparency, max stack 64, TOOLS category, not placeable. These are
-     * the values the SBT-to-SBO migration emits for sprite items.
+     * (sprite item) defaults: not solid, breakable, no atlas tile, max stack 64,
+     * TOOLS category, not placeable (the rendering is {@link #SPRITE_RENDERING}).
+     * These are the values the SBT-to-SBO migration emits for sprite items.
      */
-    public static SBOFormat.GameProperties spriteGameProperties(JsonNode gp, int numericId) {
-        SBOFormat.GameProperties defaults = new SBOFormat.GameProperties(
+    public static SboGameplay.GameProperties spriteGameProperties(JsonNode gp, int numericId) {
+        SboGameplay.GameProperties defaults = new SboGameplay.GameProperties(
                 numericId,
                 /* hardness    */ 0.0f,
                 /* solid       */ false,
                 /* breakable   */ true,
                 /* atlasX      */ -1,
                 /* atlasY      */ -1,
-                /* renderLayer */ "CUTOUT",
-                /* transparent */ true,
                 /* flower      */ false,
                 /* stackable   */ false,
                 /* maxStack    */ 64,
                 /* category    */ "TOOLS",
-                /* placeable   */ false);
+                /* placeable   */ false,
+                /* material    */ null,
+                /* reqTier     */ 0);
         return gp == null || gp.isNull() ? defaults : patchGameProperties(defaults, gp);
     }
 
     /** Merge a partial {@code gameProperties} patch over an existing record. */
-    static SBOFormat.GameProperties patchGameProperties(SBOFormat.GameProperties base, JsonNode g) {
-        return new SBOFormat.GameProperties(
+    static SboGameplay.GameProperties patchGameProperties(SboGameplay.GameProperties base, JsonNode g) {
+        return new SboGameplay.GameProperties(
                 g.path("numericId").asInt(base.numericId()),
                 (float) g.path("hardness").asDouble(base.hardness()),
                 g.path("solid").asBoolean(base.solid()),
                 g.path("breakable").asBoolean(base.breakable()),
                 g.path("atlasX").asInt(base.atlasX()),
                 g.path("atlasY").asInt(base.atlasY()),
-                text(g, "renderLayer", base.renderLayerOrDefault()).toUpperCase(Locale.ROOT),
-                g.path("transparent").asBoolean(base.transparent()),
                 g.path("flower").asBoolean(base.flower()),
                 g.path("stackable").asBoolean(base.stackable()),
                 g.path("maxStackSize").asInt(base.maxStackSize()),
@@ -231,12 +249,12 @@ public final class AssetExportBuilder {
                         : base.requiredTier());
     }
 
-    public static SBOFormat.DropData drops(JsonNode d) {
+    public static SboGameplay.DropData drops(JsonNode d) {
         if (d == null || d.isNull()) {
             return null;
         }
-        List<SBOFormat.DropEntry> entries = new ArrayList<>();
-        List<SBOFormat.ToolDropOverride> overrides = new ArrayList<>();
+        List<SboGameplay.DropEntry> entries = new ArrayList<>();
+        List<SboGameplay.ToolDropOverride> overrides = new ArrayList<>();
         JsonNode list = d.isArray() ? d : d.get("drops");
         if (list != null) {
             for (JsonNode e : list) {
@@ -246,22 +264,22 @@ public final class AssetExportBuilder {
         JsonNode tools = d.isArray() ? null : d.get("toolOverrides");
         if (tools != null) {
             for (JsonNode t : tools) {
-                List<SBOFormat.DropEntry> te = new ArrayList<>();
+                List<SboGameplay.DropEntry> te = new ArrayList<>();
                 for (JsonNode e : t.path("drops")) {
                     te.add(dropEntry(e));
                 }
-                overrides.add(new SBOFormat.ToolDropOverride(
+                overrides.add(new SboGameplay.ToolDropOverride(
                         text(t, "tool", text(t, "toolObjectId", "")), te));
             }
         }
-        return new SBOFormat.DropData(entries, overrides);
+        return new SboGameplay.DropData(entries, overrides);
     }
 
     /**
      * Mining-tool section (SBO 1.9): {@code {toolClass, tier, speedMultiplier,
      * materials[], durability?, attackDamage?}}; {@code null} = not a tool.
      */
-    public static SBOFormat.ToolData tool(JsonNode t) {
+    public static SboGameplay.ToolData tool(JsonNode t) {
         if (t == null || t.isNull()) {
             return null;
         }
@@ -270,7 +288,7 @@ public final class AssetExportBuilder {
             materials.add(m.asText());
         }
         try {
-            return new SBOFormat.ToolData(
+            return new SboGameplay.ToolData(
                     text(t, "toolClass", ""),
                     t.has("tier") ? tier(t.get("tier"), "tool.tier") : 0,
                     (float) t.path("speedMultiplier").asDouble(1.0),
@@ -286,12 +304,12 @@ public final class AssetExportBuilder {
      * Melee-weapon section (SBO 1.10): {@code {group, damageType, damage,
      * swingSeconds}}; {@code null} = not a weapon.
      */
-    public static SBOFormat.WeaponData weapon(JsonNode w) {
+    public static SboGameplay.WeaponData weapon(JsonNode w) {
         if (w == null || w.isNull()) {
             return null;
         }
         try {
-            return new SBOFormat.WeaponData(
+            return new SboGameplay.WeaponData(
                     text(w, "group", ""),
                     text(w, "damageType", ""),
                     (float) w.path("damage").asDouble(-1),
@@ -303,19 +321,19 @@ public final class AssetExportBuilder {
 
     /** A tier as an int or a tier name ({@code wood|stone|iron|diamond}). */
     private static int tier(JsonNode v, String where) {
-        int tier = v.isNumber() ? v.asInt() : SBOFormat.ToolData.parseTier(v.asText());
+        int tier = v.isNumber() ? v.asInt() : ToolMiningRules.parseTier(v.asText());
         if (tier < 0) {
             throw new IllegalArgumentException("invalid_params: " + where + " '" + v.asText()
-                    + "' — use an int >= 0 or one of " + SBOFormat.ToolData.TIER_NAMES);
+                    + "' — use an int >= 0 or one of " + ToolMiningRules.TIER_NAMES);
         }
         return tier;
     }
 
-    private static SBOFormat.DropEntry dropEntry(JsonNode e) {
+    private static SboGameplay.DropEntry dropEntry(JsonNode e) {
         String id = text(e, "objectId", text(e, "item", ""));
         int min = e.path("min").asInt(e.path("minCount").asInt(1));
         int max = e.path("max").asInt(e.path("maxCount").asInt(min));
-        return new SBOFormat.DropEntry(id, min, max, (float) e.path("chance").asDouble(1.0));
+        return new SboGameplay.DropEntry(id, min, max, (float) e.path("chance").asDouble(1.0));
     }
 
     public static List<SoundSpec> sounds(JsonNode arr, Function<String, Path> files) {
@@ -355,7 +373,7 @@ public final class AssetExportBuilder {
         String name = text(n, "objectName", cleanName(defaultName));
         params.setObjectName(name);
         params.setObjectId(text(n, "objectId", GameTargets.shared().qualify(slug(name))));
-        params.setEntityType(SBEFormat.EntityType.fromId(text(n, "entityType", "mob")));
+        params.setEntityType(SbeEntityKind.fromId(text(n, "entityType", "mob")).id());
         params.setObjectPack(text(n, "objectPack", "default"));
         params.setAuthor(text(n, "author", defaultAuthor()));
         params.setDescription(text(n, "description", ""));
@@ -407,7 +425,8 @@ public final class AssetExportBuilder {
         out.put("createdAt", d.createdAt());
         out.put("omoFilename", d.omoFilename());
         out.put("textureFilename", d.textureFilename());
-        SBOFormat.GameProperties gp = d.gameProperties();
+        SboGameplay g0 = SboGameplay.of(d);
+        SboGameplay.GameProperties gp = g0.gameProperties();
         if (gp != null) {
             Map<String, Object> g = new LinkedHashMap<>();
             g.put("numericId", gp.numericId());
@@ -416,8 +435,8 @@ public final class AssetExportBuilder {
             g.put("breakable", gp.breakable());
             g.put("atlasX", gp.atlasX());
             g.put("atlasY", gp.atlasY());
-            g.put("renderLayer", gp.renderLayerOrDefault());
-            g.put("transparent", gp.transparent());
+            g.put("renderLayer", d.rendering().renderLayer());
+            g.put("transparent", d.rendering().transparent());
             g.put("flower", gp.flower());
             g.put("stackable", gp.stackable());
             g.put("maxStackSize", gp.maxStackSize());
@@ -442,13 +461,16 @@ public final class AssetExportBuilder {
         }
         out.put("states", states);
         out.put("defaultStateName", d.defaultStateName());
-        out.put("recipeCount", d.recipes() == null ? 0 : d.recipes().shaped().size());
-        out.put("smeltingRecipeCount", d.smeltingRecipes() == null ? 0 : d.smeltingRecipes().recipes().size());
-        out.put("fuelBurnTicks", d.fuel() == null ? null : d.fuel().burnTicks());
+        out.put("recipeCount", g0.recipes() == null ? 0 : g0.recipes().shaped().size());
+        out.put("smeltingRecipeCount", g0.smeltingRecipes() == null ? 0 : g0.smeltingRecipes().recipes().size());
+        out.put("fuelBurnTicks", g0.fuel() == null ? null : g0.fuel().burnTicks());
         out.put("sounds", sounds(d.sounds()));
-        out.put("drops", describeDrops(d.drops()));
-        out.put("tool", describeTool(d.tool()));
-        out.put("weapon", describeWeapon(d.weapon()));
+        out.put("drops", describeDrops(g0.drops()));
+        out.put("tool", describeTool(g0.tool()));
+        out.put("weapon", describeWeapon(g0.weapon()));
+        out.put("rendering", Map.of("renderLayer", d.rendering().renderLayer(),
+                "transparent", d.rendering().transparent()));
+        out.put("extensions", List.copyOf(d.extensions().keys()));
         return out;
     }
 
@@ -518,7 +540,7 @@ public final class AssetExportBuilder {
         return out;
     }
 
-    private static Map<String, Object> describeTool(SBOFormat.ToolData tool) {
+    private static Map<String, Object> describeTool(SboGameplay.ToolData tool) {
         if (tool == null) {
             return null;
         }
@@ -532,7 +554,7 @@ public final class AssetExportBuilder {
         return out;
     }
 
-    private static Map<String, Object> describeWeapon(SBOFormat.WeaponData weapon) {
+    private static Map<String, Object> describeWeapon(SboGameplay.WeaponData weapon) {
         if (weapon == null) {
             return null;
         }
@@ -544,14 +566,14 @@ public final class AssetExportBuilder {
         return out;
     }
 
-    private static Map<String, Object> describeDrops(SBOFormat.DropData drops) {
+    private static Map<String, Object> describeDrops(SboGameplay.DropData drops) {
         if (drops == null) {
             return null;
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("drops", dropRows(drops.drops()));
         List<Map<String, Object>> tools = new ArrayList<>();
-        for (SBOFormat.ToolDropOverride t : drops.toolOverrides()) {
+        for (SboGameplay.ToolDropOverride t : drops.toolOverrides()) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("tool", t.toolObjectId());
             m.put("drops", dropRows(t.drops()));
@@ -561,9 +583,9 @@ public final class AssetExportBuilder {
         return out;
     }
 
-    private static List<Map<String, Object>> dropRows(List<SBOFormat.DropEntry> entries) {
+    private static List<Map<String, Object>> dropRows(List<SboGameplay.DropEntry> entries) {
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (SBOFormat.DropEntry e : entries) {
+        for (SboGameplay.DropEntry e : entries) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("objectId", e.objectId());
             m.put("min", e.minCount());
@@ -585,25 +607,32 @@ public final class AssetExportBuilder {
      * (each replaced; null removes). States, recipes and embedded bytes are untouched.
      */
     public static SBOFormat.Document patchSbo(SBOFormat.Document b, JsonNode p) {
-        SBOFormat.GameProperties gp = b.gameProperties();
+        SboGameplay g = SboGameplay.of(b);
+        SboGameplay.GameProperties gp = g.gameProperties();
+        SBOFormat.Rendering rendering = b.rendering();
         if (p.has("gameProperties")) {
-            JsonNode g = p.get("gameProperties");
-            gp = g.isNull() ? null
-                    : gp == null ? gameProperties(g, "block".equalsIgnoreCase(b.objectType()),
-                    g.path("numericId").asInt(-1))
-                    : patchGameProperties(gp, g);
+            JsonNode gpPatch = p.get("gameProperties");
+            gp = gpPatch.isNull() ? null
+                    : gp == null ? gameProperties(gpPatch, "block".equalsIgnoreCase(b.objectType()),
+                    gpPatch.path("numericId").asInt(-1))
+                    : patchGameProperties(gp, gpPatch);
+            rendering = rendering(gpPatch, rendering);
         }
-        SBOFormat.FuelData fuel = b.fuel();
+        if (p.hasNonNull("rendering")) {
+            rendering = rendering(p.get("rendering"), rendering);
+        }
+        SboGameplay.FuelData fuel = g.fuel();
         if (p.has("fuel")) {
             JsonNode f = p.get("fuel");
-            fuel = f.isNull() ? null : new SBOFormat.FuelData(Math.max(1,
+            fuel = f.isNull() ? null : new SboGameplay.FuelData(Math.max(1,
                     f.isNumber() ? f.asInt() : f.path("burnTicks").asInt(1600)));
         }
         SoundData sounds = p.has("sounds") ? patchSounds(b.sounds(), p.get("sounds")) : b.sounds();
-        SBOFormat.DropData drops = p.has("drops") ? drops(p.get("drops")) : b.drops();
-        SBOFormat.ToolData tool = p.has("tool") ? tool(p.get("tool")) : b.tool();
-        SBOFormat.WeaponData weapon = p.has("weapon") ? weapon(p.get("weapon")) : b.weapon();
-        return new SBOFormat.Document(
+        g = g.withGameProperties(gp).withFuel(fuel)
+                .withDrops(p.has("drops") ? drops(p.get("drops")) : g.drops())
+                .withTool(p.has("tool") ? tool(p.get("tool")) : g.tool())
+                .withWeapon(p.has("weapon") ? weapon(p.get("weapon")) : g.weapon());
+        SBOFormat.Document patched = new SBOFormat.Document(
                 b.version(),
                 text(p, "objectId", b.objectId()),
                 text(p, "objectName", b.objectName()),
@@ -615,9 +644,10 @@ public final class AssetExportBuilder {
                 p.has("description") ? (p.get("description").isNull() ? null : p.get("description").asText())
                         : b.description(),
                 b.createdAt(), b.omoFilename(), b.textureFilename(),
-                gp, b.states(),
+                rendering, b.states(),
                 text(p, "defaultStateName", b.defaultStateName()),
-                b.recipes(), b.smeltingRecipes(), fuel, sounds, drops, tool, weapon);
+                sounds, b.extensions());
+        return g.applyTo(patched);
     }
 
     /** Same idea for SBE: objectId/Name, entityType, objectPack, author, description, sounds. */
@@ -627,14 +657,14 @@ public final class AssetExportBuilder {
                 b.version(),
                 text(p, "objectId", b.objectId()),
                 text(p, "objectName", b.objectName()),
-                p.hasNonNull("entityType") ? SBEFormat.EntityType.fromId(p.get("entityType").asText()).getId()
+                p.hasNonNull("entityType") ? SbeEntityKind.fromId(p.get("entityType").asText()).id()
                         : b.entityType(),
                 text(p, "objectPack", b.objectPack()),
                 b.checksum(),
                 text(p, "author", b.author()),
                 p.has("description") ? (p.get("description").isNull() ? null : p.get("description").asText())
                         : b.description(),
-                b.createdAt(), b.omoFilename(), b.states(), b.variants(), sounds);
+                b.createdAt(), b.omoFilename(), b.states(), b.variants(), sounds, b.extensions());
     }
 
     private static SoundData patchSounds(SoundData base, JsonNode arr) {

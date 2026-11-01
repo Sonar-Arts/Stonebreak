@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets.mcp;
-import com.openmason.main.systems.mcp.McpApprovals;
+
+import com.stonebreak.gameplay.SboGameplay;import com.openmason.main.systems.mcp.McpApprovals;
 
 import com.openmason.main.systems.mcp.ModelFileService;
 import com.openmason.main.systems.mcp.TextureEditingService;
@@ -139,8 +140,9 @@ public final class AssetExportService {
             throw new IllegalArgumentException("invalid_params: " + err);
         }
         NumericIdValidator.Domain domain = NumericIdValidator.domainFor(p.getObjectType().getId());
-        if (p.getGameProperties() != null) {
-            int id = p.getGameProperties().numericId();
+        SboGameplay.GameProperties gp = SboGameplay.of(p).gameProperties();
+        if (gp != null) {
+            int id = gp.numericId();
             if (domain == NumericIdValidator.Domain.BLOCK && id <= 0) {
                 throw new IllegalArgumentException("invalid_params: numericId must be > 0 for blocks");
             }
@@ -200,8 +202,8 @@ public final class AssetExportService {
         Path omoPath = omo.path();
         WriteOutcome out = writes.save(
                 suggestTargetFolder(WriteRequest.of(WriteKind.SBE, filePath, prompt, overwrite, suggested),
-                        WriteKind.SBE, p.getEntityType().getId())
-                        .withDetails(List.of("Entity: " + p.getObjectId() + " (" + p.getEntityType().getId() + ")",
+                        WriteKind.SBE, p.getEntityType())
+                        .withDetails(List.of("Entity: " + p.getObjectId() + " (" + p.getEntityType() + ")",
                                 "Model: " + omoPath.getFileName())),
                 target -> sbeSerializer.export(p, omoPath, target.toString()));
         Map<String, Object> result = outcomeMap(out, "exported");

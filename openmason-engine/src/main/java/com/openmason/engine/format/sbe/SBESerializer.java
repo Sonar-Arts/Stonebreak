@@ -98,7 +98,7 @@ public class SBESerializer {
                     SBEFormat.FORMAT_VERSION,
                     params.getObjectId(),
                     params.getObjectName(),
-                    params.getEntityType().getId(),
+                    params.getEntityType(),
                     params.getObjectPack(),
                     checksum,
                     params.getAuthor(),
@@ -107,7 +107,8 @@ public class SBESerializer {
                     SBEFormat.EMBEDDED_OMO_FILENAME,
                     stateEntries,
                     variantEntries,
-                    resolvedSounds.data()
+                    resolvedSounds.data(),
+                    params.getExtensions()
             );
 
             writeArchive(outputPath, document, omoBytes, resolved, resolvedVariants, resolvedSounds);
@@ -228,7 +229,8 @@ public class SBESerializer {
                     SBEFormat.EMBEDDED_OMO_FILENAME,
                     rebuilt,
                     rebuiltVariants,
-                    rebuiltSounds.data()
+                    rebuiltSounds.data(),
+                    document.extensions()
             );
 
             writeArchive(outputPath, finalDoc, omoBytes, resolved, resolvedVariants, rebuiltSounds);
@@ -508,7 +510,9 @@ public class SBESerializer {
         zos.putNextEntry(manifestEntry);
 
         ManifestDTO dto = new ManifestDTO(document);
-        byte[] jsonBytes = objectMapper.writeValueAsString(dto).getBytes(StandardCharsets.UTF_8);
+        // Core fields from the DTO, then the foreign fields and extensions exactly as they were read (#383).
+        byte[] jsonBytes = com.openmason.engine.format.ext.ManifestJson
+                .write(objectMapper.valueToTree(dto), document.extensions()).getBytes(StandardCharsets.UTF_8);
         zos.write(jsonBytes);
         zos.flush();
         zos.closeEntry();

@@ -1,5 +1,6 @@
 package com.stonebreak.openmason.assets;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.api.asset.AssetEditorSection;
 import com.openmason.api.asset.AssetSectionHost;
 import com.openmason.engine.format.sbo.SBOFormat;
@@ -113,15 +114,17 @@ final class ExportGamePropertiesSection implements AssetEditorSection<SBOFormat.
 
     /**
      * Minimal {@code GameProperties} from the Numeric ID and the defaults for the object type and
-     * payload; the full set (atlas coords, hardness, render layer...) is authored in the SBO Editor.
+     * payload, in the {@code stonebreak:gameplay} extension, plus the payload's default rendering;
+     * the full set (atlas coords, hardness, render layer...) is authored in the SBO Editor.
      */
     @Override
     public SBOFormat.ExportParameters write(SBOFormat.ExportParameters params) {
         suggestNumericIdForType();
         if (numericId.get() >= 0) {
-            params.setGameProperties(host.texturePayload()
+            SboGameplay.of(params).withGameProperties(host.texturePayload()
                     ? AssetExportBuilder.spriteGameProperties(null, numericId.get())
-                    : AssetExportBuilder.gameProperties(null, blockSelected(), numericId.get()));
+                    : AssetExportBuilder.gameProperties(null, blockSelected(), numericId.get())).applyTo(params);
+            params.setRendering(host.texturePayload() ? AssetExportBuilder.SPRITE_RENDERING : SBOFormat.Rendering.DEFAULT);
         }
         return params;
     }

@@ -1,5 +1,6 @@
 package com.stonebreak.items.weapon;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.registry.ItemRegistry;
@@ -30,7 +31,7 @@ class WeaponDataCoverageTest {
         List<String> missing = new ArrayList<>();
         for (String id : WEAPONS) {
             boolean has = ItemRegistry.getInstance().get(id)
-                    .map(e -> e.sboData().manifest().weapon() != null).orElse(false);
+                    .map(e -> SboGameplay.of(e.sboData().manifest()).weapon() != null).orElse(false);
             if (!has) missing.add(id);
         }
         assertEquals(List.of(), missing, "weapon SBOs without a weapon section");
@@ -40,7 +41,7 @@ class WeaponDataCoverageTest {
     void everyAuthoredWeaponResolvesToGameStats() {
         List<String> unknown = new ArrayList<>();
         for (ItemRegistry.ItemEntry e : ItemRegistry.getInstance().all()) {
-            SBOFormat.WeaponData w = e.sboData().manifest().weapon();
+            SboGameplay.WeaponData w = SboGameplay.of(e.sboData().manifest()).weapon();
             if (w == null) continue;
             if (!names(WeaponGroup.values()).contains(w.group())
                     || !names(DamageType.values()).contains(w.damageType())) {

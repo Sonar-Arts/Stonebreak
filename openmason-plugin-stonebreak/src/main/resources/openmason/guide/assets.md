@@ -9,7 +9,7 @@ game target has no assets here.
 
 - `asset_list {query?, kind?, type?, limit?, offset?, refresh?}` — ranked
   search over every SBO (blocks/items/models) and SBE (all sbe/ folders).
-- `asset_manifest {asset}` — full manifest (gameProperties, recipes, drops, tool,
+- `asset_manifest {asset}` — full manifest (Stonebreak data decoded under `gameplay`: gameProperties, recipes, drops, tool,
   sounds) + states/variants inventory.
 - `asset_mesh_summary {asset, state?, variant?}` — parts, counts, bounds,
   materials, attachment points.

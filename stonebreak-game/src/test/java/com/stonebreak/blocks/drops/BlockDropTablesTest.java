@@ -1,5 +1,6 @@
 package com.stonebreak.blocks.drops;
 
+import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.engine.format.sbo.SBOFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemType;
@@ -22,10 +23,10 @@ class BlockDropTablesTest {
 
     @Test
     void toolOverrideReplacesDefaultsAndUnknownToolUsesDefaults() {
-        SBOFormat.DropData table = new SBOFormat.DropData(
-                List.of(SBOFormat.DropEntry.of(COBBLE, 1)),
-                List.of(new SBOFormat.ToolDropOverride("stonebreak:wooden_shovel",
-                        List.of(SBOFormat.DropEntry.of(CHUNK, 2)))));
+        SboGameplay.DropData table = new SboGameplay.DropData(
+                List.of(SboGameplay.DropEntry.of(COBBLE, 1)),
+                List.of(new SboGameplay.ToolDropOverride("stonebreak:wooden_shovel",
+                        List.of(SboGameplay.DropEntry.of(CHUNK, 2)))));
         Random r = new Random(7);
 
         List<BlockDropTables.RolledDrop> byHand = BlockDropTables.roll(table, null, r);
@@ -40,16 +41,16 @@ class BlockDropTablesTest {
 
     @Test
     void emptyOverrideMeansThatToolYieldsNothing() {
-        SBOFormat.DropData table = new SBOFormat.DropData(
-                List.of(SBOFormat.DropEntry.of(COBBLE, 1)),
-                List.of(new SBOFormat.ToolDropOverride("stonebreak:wooden_axe", List.of())));
+        SboGameplay.DropData table = new SboGameplay.DropData(
+                List.of(SboGameplay.DropEntry.of(COBBLE, 1)),
+                List.of(new SboGameplay.ToolDropOverride("stonebreak:wooden_axe", List.of())));
         assertTrue(BlockDropTables.roll(table, "stonebreak:wooden_axe", new Random(1)).isEmpty());
     }
 
     @Test
     void chanceAndCountRangeAreHonoured() {
-        SBOFormat.DropData table = new SBOFormat.DropData(
-                List.of(new SBOFormat.DropEntry(CHUNK, 2, 5, 0.5f)), List.of());
+        SboGameplay.DropData table = new SboGameplay.DropData(
+                List.of(new SboGameplay.DropEntry(CHUNK, 2, 5, 0.5f)), List.of());
         Random r = new Random(42);
         int fired = 0;
         for (int i = 0; i < 4000; i++) {
@@ -65,10 +66,10 @@ class BlockDropTablesTest {
 
     @Test
     void zeroCountRollsAndUnknownObjectIdsAreSkipped() {
-        SBOFormat.DropData table = new SBOFormat.DropData(
-                List.of(new SBOFormat.DropEntry(CHUNK, 0, 0, 1f),
-                        SBOFormat.DropEntry.of("stonebreak:does_not_exist", 3),
-                        SBOFormat.DropEntry.of(COBBLE, 1)),
+        SboGameplay.DropData table = new SboGameplay.DropData(
+                List.of(new SboGameplay.DropEntry(CHUNK, 0, 0, 1f),
+                        SboGameplay.DropEntry.of("stonebreak:does_not_exist", 3),
+                        SboGameplay.DropEntry.of(COBBLE, 1)),
                 List.of());
         List<BlockDropTables.RolledDrop> out = BlockDropTables.roll(table, null, new Random(3));
         assertEquals(List.of(new BlockDropTables.RolledDrop(BlockType.COBBLESTONE, 1)), out);
