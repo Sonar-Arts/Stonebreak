@@ -1,9 +1,10 @@
 package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.world.generation.heightmap.DistilledShape;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
-/** Ocean-to-inland gradient. Raw range is [-1, 1]. */
+/** Continent weight of the distilled shape: 0 = open ocean, 1 = continent (label kept for the mapper UI). */
 public final class ContinentalnessVisualizer implements NoiseVisualizer {
 
     private final NoiseRouter router;
@@ -16,11 +17,13 @@ public final class ContinentalnessVisualizer implements NoiseVisualizer {
 
     @Override
     public float sample(int worldX, int worldZ) {
-        return router.continentalness(worldX, worldZ);
+        DistilledShape.Column c = new DistilledShape.Column();
+        router.shape().column(worldX, worldZ, c);
+        return (float) c.land;
     }
 
     @Override
     public float normalize(float raw) {
-        return (raw + 1f) * 0.5f;
+        return raw;
     }
 }

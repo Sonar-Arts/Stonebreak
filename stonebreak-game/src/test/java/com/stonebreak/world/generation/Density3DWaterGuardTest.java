@@ -50,7 +50,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class Density3DWaterGuardTest {
 
-    private static final long SEED = 13579L;
+    /**
+     * The coast's bank must sit in a band-carving biome for the gate-liveness check to mean
+     * anything: under the 2026-11-01 distilled Standard shape, 13579's bank is PLAINS (band 0.10,
+     * never fires unguarded here); 13581's is TUNDRA (0.18).
+     */
+    private static final long SEED = 13581L;
     private static final int CHUNK = WorldConfiguration.CHUNK_SIZE;
     private static final int REGION = 4;
     /** Mirrors Density3D.WATER_CLEARANCE. */

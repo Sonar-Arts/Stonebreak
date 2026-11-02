@@ -1,9 +1,10 @@
 package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.world.generation.heightmap.DistilledShape;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
-/** Signed ridged mountain channel. Raw range [-1, 1]. */
+/** Mountain-range body of the distilled shape, along-chain weighted, 0..1 (label kept for the mapper UI). */
 public final class PeaksValleysVisualizer implements NoiseVisualizer {
 
     private final NoiseRouter router;
@@ -16,11 +17,13 @@ public final class PeaksValleysVisualizer implements NoiseVisualizer {
 
     @Override
     public float sample(int worldX, int worldZ) {
-        return router.peaksValleys(worldX, worldZ);
+        DistilledShape.Column c = new DistilledShape.Column();
+        router.shape().column(worldX, worldZ, c);
+        return (float) c.mountain;
     }
 
     @Override
     public float normalize(float raw) {
-        return (raw + 1f) * 0.5f;
+        return raw;
     }
 }

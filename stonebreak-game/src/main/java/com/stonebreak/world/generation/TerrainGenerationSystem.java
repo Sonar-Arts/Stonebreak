@@ -186,9 +186,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
 
     /** A native worm-carver context for {@code seed}, released when {@code owner} is collected. */
     static long createNativeCarverContext(Object owner, long seed) {
-        long ctx = NoiseRouter.createCarverTerrainContext(seed,
-            HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
-            HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
+        long ctx = NoiseRouter.createCarverTerrainContext(seed);
         com.stonebreak.world.generation.noise.TerrainNoise.destroyTerrainOnCollect(owner, ctx);
         return ctx;
     }
@@ -246,13 +244,14 @@ public class TerrainGenerationSystem implements TerrainGenerator {
     }
 
     /**
-     * Bumped from the default {@code "standard"} when submerged columns became OCEAN: nodes
-     * sampled before that carry the old sea floor. Scoped to Standard so DaedalusTGM-Exp
-     * worlds, whose terrain did not change, keep their nodes.
+     * Bumped whenever Standard terrain changes so cached FastLOD nodes are never served for a
+     * different shape: {@code "standard"} -> {@code "standard:ocean"} (submerged columns became
+     * OCEAN) -> {@code "standard:distilled-1"} (2026-11-01, the DaedalusTGM-Exp-distilled shape).
+     * Scoped to Standard so DaedalusTGM-Exp worlds, whose terrain did not change, keep their nodes.
      */
     @Override
     public String lodCacheTag() {
-        return "standard:ocean";
+        return "standard:distilled-1";
     }
 
     /** True when the fused native generator owns terrain for this system (test/diagnostic hook). */
@@ -260,16 +259,12 @@ public class TerrainGenerationSystem implements TerrainGenerator {
         return fusedGenCtx != 0L;
     }
 
-    public float getContinentalnessAt(int x, int z) {
-        return noiseRouter.continentalness(x, z);
-    }
-
-    public float getErosionAt(int x, int z) {
-        return noiseRouter.erosion(x, z);
-    }
-
-    public float getPeaksValleysAt(int x, int z) {
-        return noiseRouter.peaksValleys(x, z);
+    /** Distilled-shape fields of a column (land, mountain, hilly, rough; debug + tools). */
+    public com.stonebreak.world.generation.heightmap.DistilledShape.Column getShapeAt(int x, int z) {
+        com.stonebreak.world.generation.heightmap.DistilledShape.Column c =
+            new com.stonebreak.world.generation.heightmap.DistilledShape.Column();
+        heightMapGenerator.shape().column(x, z, c);
+        return c;
     }
 
     public BiomeType getBiomeAt(int x, int z) {
@@ -544,11 +539,9 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                                com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[] outTrees,
                                boolean carved) {
         int cells = count * count;
-        float[] c = new float[cells];
-        float[] pv = new float[cells];
-        float[] e = new float[cells];
-        float[] d = new float[cells];
-        noiseRouter.fillShapeChannels(worldX0, worldZ0, count, count, stride, c, pv, e, d);
+        com.stonebreak.world.generation.heightmap.DistilledShape.Column[] cols =
+            new com.stonebreak.world.generation.heightmap.DistilledShape.Column[cells];
+        heightMapGenerator.fillColumns(worldX0, worldZ0, count, count, stride, cols);
 
         float[] tRaw = null;
         float[] mRaw = null;
@@ -566,7 +559,7 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                 int idx = ix * count + iz;
                 int wx = worldX0 + ix * stride;
                 int wz = worldZ0 + iz * stride;
-                int rawHeight = heightMapGenerator.heightFromChannels(c[idx], pv[idx], e[idx], d[idx]);
+                int rawHeight = cols[idx].height;
                 int height = (carved ? carvedSurfaceHeight(wx, wz) - Y_OFFSET : rawHeight);
                 outHeights[idx] = height + Y_OFFSET;
                 int waterLevel = rawHeight < SEA_LEVEL ? SEA_LEVEL + Y_OFFSET : WorldConfiguration.NO_WATER;
@@ -577,9 +570,9 @@ public class TerrainGenerationSystem implements TerrainGenerator {
                 // by the SHAPED height (no detail), matching the per-point path.
                 // Biome is resolved for submerged columns too — their surface
                 // is the real seabed block (see getSurfaceBlockAt).
-                int shaped = heightMapGenerator.shapedFromChannels(c[idx], pv[idx], e[idx]);
-                BiomeType biome = biomeManager.selectBiome(new com.stonebreak.world.generation.noise.MultiNoiseSample(
-                    c[idx], e[idx], pv[idx],
+                int shaped = cols[idx].shapedHeight;
+                BiomeType biome = biomeManager.selectBiome(com.stonebreak.world.generation.noise.NoiseRouter.sampleOf(
+                    cols[idx],
                     com.stonebreak.world.generation.noise.NoiseRouter.temperatureFromRaw(tRaw[idx], shaped),
                     com.stonebreak.world.generation.noise.NoiseRouter.moistureFromRaw(mRaw[idx])),
                     rawHeight);

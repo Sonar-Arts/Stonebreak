@@ -37,11 +37,7 @@ class WorldgenNativesTest {
     @Test
     void createsAndCarvesWithoutTheEngineLibraryHoldingTheKernels() {
         assumeTrue(WorldgenNatives.isAvailable(), "Stonebreak worldgen natives not built");
-        long ctx = com.stonebreak.world.generation.noise.NoiseRouter.createCarverTerrainContext(424242L,
-            com.stonebreak.world.generation.heightmap.HeightMapGenerator.splineXs(),
-            com.stonebreak.world.generation.heightmap.HeightMapGenerator.splineYs(),
-            com.stonebreak.world.generation.heightmap.HeightMapGenerator.splineSizes(),
-            com.stonebreak.world.generation.heightmap.HeightMapGenerator.DETAIL_AMPLITUDE);
+        long ctx = com.stonebreak.world.generation.noise.NoiseRouter.createCarverTerrainContext(424242L);
         assertNotEquals(0L, ctx, "terrain context");
         try {
             int[] heights = new int[256];

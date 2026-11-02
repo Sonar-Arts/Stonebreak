@@ -1,149 +1,95 @@
 package com.stonebreak.world.generation.heightmap;
 
 import com.stonebreak.world.generation.StandardTerrain;
-import com.openmason.engine.util.SplineInterpolator;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Generates terrain height from three independent noise channels routed through {@link NoiseRouter}:
- * <ul>
- *   <li><b>Continentalness</b> → base elevation spline (land/ocean).</li>
- *   <li><b>Peaks/Valleys</b> → signed mountain offset spline.</li>
- *   <li><b>Erosion</b> → peak strength (0 = flat, 1 = full peaks).</li>
- * </ul>
- * A low-amplitude detail noise adds ±3 block fuzz for surface texture.
+ * The Standard generator's height oracle: {@link DistilledShape} (DaedalusTGM-Exp's continents,
+ * ranges and hill provinces, fitted to the model's output) through the model's height curve.
  *
  * Biomes do NOT contribute to terrain shape. They are selected to match the shape
- * downstream via {@code BiomeSelector}.
- *
- * Final height = base(C) + pv(PV) * peakStrength(E) + detail
+ * downstream via {@code BiomeSelector}, from the same column fields.
  */
 public class HeightMapGenerator implements SurfaceHeights {
-    private static final int WORLD_HEIGHT = StandardTerrain.WORLD_HEIGHT;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
     private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
 
-    /** Max absolute detail offset in blocks. Keeps biomes from looking samey. */
-    public static final float DETAIL_AMPLITUDE = 3f;
-
-    // Spline control points, exported so the native carver's terrain context
-    // evaluates the EXACT same height formula. Order: base(C), peak(PV),
-    // erosion->peakStrength(E).
-    //
-    // base: continentalness → elevation (blocks) — previous deep-ocean/coast/
-    // inland profile, compressed so peaks have headroom.
-    // peak: PV → signed offset; steep midrange so typical |pv| ~ 0.2–0.4 still
-    // produces visible hills instead of flat ground.
-    // strength: erosion → peak multiplier, biased high so mountains appear by
-    // default; only strong positive erosion flattens them into plateaus.
-    private static final double[][] BASE_POINTS = {
-        {-1.0, 70}, {-0.8, 20}, {-0.4, 58}, {-0.2, 66},
-        {0.1, 72}, {0.3, 88}, {0.7, 100}, {1.0, 115}};
-    private static final double[][] PEAK_POINTS = {
-        {-1.0, -20}, {-0.3, -5}, {0.0, 0}, {0.15, 10},
-        {0.3, 25}, {0.5, 55}, {0.7, 85}, {1.0, 110}};
-    private static final double[][] STRENGTH_POINTS = {
-        {-1.0, 1.00}, {-0.3, 0.95}, {0.2, 0.80}, {0.6, 0.35}, {1.0, 0.10}};
-
-    private final NoiseRouter noise;
-    private final SplineInterpolator baseSpline;
-    private final SplineInterpolator peakSpline;
-    private final SplineInterpolator erosionToPeakStrength;
+    private final DistilledShape shape;
 
     public HeightMapGenerator(NoiseRouter noise) {
-        this.noise = noise;
-        this.baseSpline = splineOf(BASE_POINTS);
-        this.peakSpline = splineOf(PEAK_POINTS);
-        this.erosionToPeakStrength = splineOf(STRENGTH_POINTS);
+        this.shape = noise.shape();
     }
 
-    private static SplineInterpolator splineOf(double[][] points) {
-        SplineInterpolator spline = new SplineInterpolator();
-        for (double[] point : points) {
-            spline.addPoint(point[0], point[1]);
-        }
-        return spline;
+    public DistilledShape shape() {
+        return shape;
     }
 
-    /** Concatenated spline X coordinates (base, peak, strength) for the native carver. */
-    public static double[] splineXs() {
-        return concatColumn(0);
-    }
-
-    /** Concatenated spline Y coordinates (base, peak, strength) for the native carver. */
-    public static double[] splineYs() {
-        return concatColumn(1);
-    }
-
-    /** Per-spline point counts (base, peak, strength) for the native carver. */
-    public static int[] splineSizes() {
-        return new int[]{BASE_POINTS.length, PEAK_POINTS.length, STRENGTH_POINTS.length};
-    }
-
-    private static double[] concatColumn(int column) {
-        double[] out = new double[BASE_POINTS.length + PEAK_POINTS.length + STRENGTH_POINTS.length];
-        int i = 0;
-        for (double[][] points : new double[][][]{BASE_POINTS, PEAK_POINTS, STRENGTH_POINTS}) {
-            for (double[] point : points) {
-                out[i++] = point[column];
-            }
-        }
-        return out;
-    }
-
-    /** Base elevation from continentalness alone (ignores PV/erosion/detail). */
+    /** Debug view of the large-scale shape: the column without its block-space detail fuzz. */
     public int baseHeight(int x, int z) {
-        return clampToWorld((int) baseSpline.interpolate(noise.continentalness(x, z)));
+        return shapedHeight(x, z);
     }
 
-    /** Elevation including peaks/valleys but without surface detail (debug + biome temperature). */
+    /** Elevation without surface detail (debug + biome temperature). */
     public int shapedHeight(int x, int z) {
-        return shapedFromChannels(noise.continentalness(x, z), noise.peaksValleys(x, z), noise.erosion(x, z));
-    }
-
-    /** {@link #shapedHeight} from already-sampled channel values (batched paths). */
-    public int shapedFromChannels(float c, float pv, float e) {
-        float base = (float) baseSpline.interpolate(c);
-        float peak = (float) peakSpline.interpolate(pv);
-        float strength = (float) erosionToPeakStrength.interpolate(e);
-        return clampToWorld(Math.round(base + peak * strength));
+        DistilledShape.Column c = new DistilledShape.Column();
+        shape.column(x, z, c);
+        return c.shapedHeight;
     }
 
     /** Final surface height including detail noise. */
     public int generateHeight(int x, int z) {
-        return heightFromChannels(noise.continentalness(x, z), noise.peaksValleys(x, z),
-            noise.erosion(x, z), noise.detail(x, z));
+        return shape.height(x, z);
     }
 
     /**
-     * The single height formula, shared by the per-point path and the batched
-     * chunk path so both produce identical results from identical channel values.
+     * One column's shape fields with THIS oracle's heights. A subclass is a height oracle (the
+     * test seam {@code TerrainGenerationSystem(seed, heightMap)} runs the whole stack on a known
+     * surface): its {@link #generateHeight} / {@link #shapedHeight} stay authoritative, so biome
+     * rules that read the height (shore strip, low-lying swamps, altitude chill) follow the
+     * supplied surface, not the seed's own.
      */
-    public int heightFromChannels(float c, float pv, float e, float d) {
-        float base = (float) baseSpline.interpolate(c);
-        float peak = (float) peakSpline.interpolate(pv);
-        float strength = (float) erosionToPeakStrength.interpolate(e);
-        float detail = d * DETAIL_AMPLITUDE;
-        return clampToWorld(Math.round(base + peak * strength + detail));
+    public void column(int x, int z, DistilledShape.Column out) {
+        shape.column(x, z, out);
+        if (isHeightOracle()) {
+            out.shapedHeight = shapedHeight(x, z);
+            out.height = generateHeight(x, z);
+        }
     }
 
     /**
-     * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z].
-     * Channels are batch-filled (one SIMD call each on the native backend)
-     * and combined per cell — values match {@link #generateHeight} exactly.
+     * Batched {@link #column}s, {@code out[ix*countZ + iz]} at {@code (baseX + ix*stride,
+     * baseZ + iz*stride)}; every value equals the per-point {@link #column} at the same position.
+     */
+    public void fillColumns(int baseX, int baseZ, int countX, int countZ, int stride,
+                            DistilledShape.Column[] out) {
+        shape.fill(baseX, baseZ, countX, countZ, stride, out);
+        if (isHeightOracle()) {
+            for (int ix = 0; ix < countX; ix++) {
+                for (int iz = 0; iz < countZ; iz++) {
+                    DistilledShape.Column c = out[ix * countZ + iz];
+                    int x = baseX + ix * stride, z = baseZ + iz * stride;
+                    c.shapedHeight = shapedHeight(x, z);
+                    c.height = generateHeight(x, z);
+                }
+            }
+        }
+    }
+
+    /** True for subclasses: they supply heights; the seed's shape only supplies the fields. */
+    private boolean isHeightOracle() {
+        return getClass() != HeightMapGenerator.class;
+    }
+
+    /**
+     * Fills a 16x16 final-height grid for the given chunk, indexed [x*16+z]. Values match
+     * {@link #generateHeight} exactly.
      */
     public void populateChunkHeights(int chunkX, int chunkZ, int[] out) {
-        int baseX = chunkX * CHUNK_SIZE;
-        int baseZ = chunkZ * CHUNK_SIZE;
-        int cells = CHUNK_SIZE * CHUNK_SIZE;
-        float[] c = new float[cells];
-        float[] pv = new float[cells];
-        float[] e = new float[cells];
-        float[] d = new float[cells];
-        noise.fillShapeChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, c, pv, e, d);
-        for (int i = 0; i < cells; i++) {
-            out[i] = heightFromChannels(c[i], pv[i], e[i], d[i]);
+        DistilledShape.Column[] cols = new DistilledShape.Column[CHUNK_SIZE * CHUNK_SIZE];
+        shape.fill(chunkX * CHUNK_SIZE, chunkZ * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE, 1, cols);
+        for (int i = 0; i < cols.length; i++) {
+            out[i] = cols[i].height;
         }
     }
 
@@ -164,7 +110,7 @@ public class HeightMapGenerator implements SurfaceHeights {
     /**
      * Water level for a column, or {@link WorldConfiguration#NO_WATER} when it is dry.
      *
-     * <p>This branch has no rivers or lakes — the only standing water is the ocean that
+     * <p>Standard has no rivers or lakes — the only standing water is the sea that
      * {@code determineBlockType} fills in below {@code SEA_LEVEL}. So a column is wet
      * exactly when its surface is submerged, and its water level is sea level.
      */
@@ -174,10 +120,5 @@ public class HeightMapGenerator implements SurfaceHeights {
 
     private static int waterLevelFor(int height) {
         return height < SEA_LEVEL ? SEA_LEVEL : WorldConfiguration.NO_WATER;
-    }
-
-
-    private static int clampToWorld(int height) {
-        return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));
     }
 }

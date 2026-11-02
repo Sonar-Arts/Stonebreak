@@ -23,6 +23,8 @@
 #include "java_compat.hpp"
 #include "cenda/noise_nodes.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <bit>
 #include <cmath>
 #include <cstdint>
@@ -146,16 +148,196 @@ inline int32_t nativeSeedOf(int64_t v) { // Long.hashCode
     return static_cast<int32_t>(static_cast<uint32_t>(u ^ (u >> 32)));
 }
 
+
+/* ── DistilledShape.java (heightmap) ─────────────────────────────────────────
+ * The Standard terrain shape distilled from DaedalusTGM-Exp. Mirrors
+ * DistilledShape.evaluate / Lattice / HeightCurveTable.interpolate line for line
+ * and in the same operation order: only + - * /, sqrt, fabs, min/max, floor, so
+ * with -ffp-contract=off every height is bit-identical to Java's. Constants and
+ * the height-curve table come from Java (DistilledShape.nativeArgs, SBW ABI 2);
+ * nothing numeric is duplicated here except the formula's literal shape factors. */
+struct DistilledShape {
+    enum Channel { CONT = 0, WARP_X, WARP_Z, RANGE, SPUR, ALONG, HILLS, HILLY, VALLEY, TEXTURE, DETAIL, CHANNELS };
+    enum K {
+        K_HOME_RADIUS = 0, K_HOME_AMP, K_CONT_OFFSET, K_CONT_WIDTH, K_WARP_AMP,
+        K_SPINE_WIDTH, K_ALONG_BIAS, K_SPINE_M, K_SPUR_M, K_FOOT_M,
+        K_HILL_BIAS, K_HILL_SOFTNESS, K_HILL_PLAINS_M, K_HILL_COUNTRY_M, K_LAND_BASE_M,
+        K_SEA_FLOOR_M, K_ROUGH_FLOOR, K_ROUGH_HILL, K_VALLEY_M, K_VALLEY_EXP,
+        K_TEXTURE_M, K_TEXTURE_FLOOR_M, K_DETAIL_BLOCKS, K_PEAK_KNEE_M, K_PEAK_SPAN_M,
+        K_STD2, K_STD3, K_STD4, K_CURVE_MIN, K_CURVE_STEP, K_LATTICE, K_COUNT
+    };
+
+    FastNoise::SmartNode<> node[CHANNELS];
+    int32_t seed[CHANNELS]{};
+    double k[K_COUNT]{};
+    std::vector<double> curve;
+    int lattice = 16;
+    uint64_t serial = 0; // distinguishes contexts in the thread-local lattice cache
+
+    struct Column {
+        int height = 0;
+        int shapedHeight = 0;
+    };
+
+    // Java channel axis convention: FastNoise2 X carries worldZ, Y carries worldX (offsets are 0).
+    [[nodiscard]] float sample(int c, int x, int z) const {
+        return node[c]->GenSingle2D(static_cast<float>(z), static_cast<float>(x), seed[c]);
+    }
+
+    [[nodiscard]] float sampleAt(int c, float x, float z) const {
+        return node[c]->GenSingle2D(z, x, seed[c]);
+    }
+
+    static double bell(double u) {
+        double t = std::max(1.0 - u / 3.0, 0.0);
+        return t * t * t;
+    }
+
+    static double smoothstep(double x) {
+        double t = std::max(0.0, std::min(1.0, x));
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    static double sq(double v) { return v * v; }
+
+    static double clamp01(double v) { return std::max(0.0, std::min(1.0, v)); }
+
+    static double valleyShape(double a, double e) {
+        if (e == 0.5) return std::sqrt(a);
+        if (e == 1.0) return a;
+        if (e == 1.5) return a * std::sqrt(a);
+        return a * a;
+    }
+
+    static double bspline(double t, int i) {
+        double u = 1.0 - t;
+        double t2 = t * t;
+        double t3 = t * t * t;
+        switch (i) {
+            case 0: return u * u * u / 6.0;
+            case 1: return (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0;
+            case 2: return (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0;
+            default: return t3 / 6.0;
+        }
+    }
+
+    static int clampHeight(double floored) {
+        int h = static_cast<int>(floored);
+        if (h < 1) h = 1;
+        if (h > WORLD_HEIGHT - 1) h = WORLD_HEIGHT - 1;
+        return h;
+    }
+
+    // HeightCurveTable.interpolate
+    [[nodiscard]] double curveBlocks(double e) const {
+        double t = (e - k[K_CURVE_MIN]) / k[K_CURVE_STEP];
+        if (t <= 0.0) return curve.front();
+        const auto last = static_cast<double>(curve.size() - 1);
+        if (t >= last) return curve.back();
+        const auto i = static_cast<size_t>(std::floor(t));
+        double f = t - static_cast<double>(i);
+        return curve[i] + f * (curve[i + 1] - curve[i]);
+    }
+
+    struct Node { int64_t key; uint64_t serial; float range; float spur; };
+
+    // DistilledShape.Lattice.node — warped range/spur at lattice node (li, lj).
+    [[nodiscard]] Node latticeNode(int32_t li, int32_t lj) const {
+        static constexpr int BITS = 13;
+        thread_local Node cache[1 << BITS] = {};
+        const int64_t key = (static_cast<int64_t>(li) << 32)
+                            ^ static_cast<int64_t>(static_cast<uint32_t>(lj));
+        const auto slot = static_cast<size_t>(
+            (static_cast<uint64_t>(key) * 0x9E3779B97F4A7C15ULL) >> (64 - BITS));
+        Node& n = cache[slot];
+        if (n.serial == serial && n.key == key) {
+            return n;
+        }
+        const int gx = li * lattice;
+        const int gz = lj * lattice;
+        const float wx = sample(WARP_X, gx, gz);
+        const float wz = sample(WARP_Z, gx, gz);
+        const auto px = static_cast<float>(static_cast<double>(gx) + k[K_WARP_AMP] * static_cast<double>(wx));
+        const auto pz = static_cast<float>(static_cast<double>(gz) + k[K_WARP_AMP] * static_cast<double>(wz));
+        n = Node{key, serial, sampleAt(RANGE, px, pz), sampleAt(SPUR, px, pz)};
+        return n;
+    }
+
+    // DistilledShape.Lattice.interpolate: {range, spur} in one pass over the 4 x 4 nodes.
+    void latticeFields(int x, int z, double& range, double& spur) const {
+        const int lx = stonebreak::javaFloorDiv(x, lattice);
+        const int lz = stonebreak::javaFloorDiv(z, lattice);
+        const double tx = static_cast<double>(x - lx * lattice) / static_cast<double>(lattice);
+        const double tz = static_cast<double>(z - lz * lattice) / static_cast<double>(lattice);
+        const double wz[4] = {bspline(tz, 0), bspline(tz, 1), bspline(tz, 2), bspline(tz, 3)};
+        double r = 0.0, s = 0.0;
+        for (int a = 0; a < 4; a++) {
+            const double wa = bspline(tx, a);
+            for (int b = 0; b < 4; b++) {
+                const Node n = latticeNode(lx - 1 + a, lz - 1 + b);
+                const double w = wa * wz[b];
+                r += w * static_cast<double>(n.range);
+                s += w * static_cast<double>(n.spur);
+            }
+        }
+        range = r;
+        spur = s;
+    }
+
+    // DistilledShape.evaluate (per point: channel samples are GenSingle2D, equal to Java's grid fills).
+    [[nodiscard]] Column column(int x, int z) const {
+        const double contRaw = sample(CONT, x, z);
+        const double alongRaw = sample(ALONG, x, z);
+        const double hillsRaw = sample(HILLS, x, z);
+        const double hillyRaw = sample(HILLY, x, z);
+        const double valleyRaw = sample(VALLEY, x, z);
+        const double textureRaw = sample(TEXTURE, x, z);
+        const double detailRaw = sample(DETAIL, x, z);
+
+        const double xd = x, zd = z;
+        const double home = bell((xd * xd + zd * zd) / (2.0 * k[K_HOME_RADIUS] * k[K_HOME_RADIUS]));
+        const double cont = contRaw + k[K_HOME_AMP] * home;
+        const double land = smoothstep((cont + k[K_CONT_OFFSET]) / k[K_CONT_WIDTH]);
+
+        double fRange = 0.0, fSpur = 0.0;
+        latticeFields(x, z, fRange, fSpur);
+        const double nRange = fRange / k[K_STD2];
+        const double nSpur = fSpur / k[K_STD2];
+        const double w = k[K_SPINE_WIDTH];
+        const double spine = bell(sq(nRange / w));
+        const double foot = bell(sq(nRange / (2.4 * w)));
+        const double body = bell(sq(nRange / (1.6 * w)));
+        const double spur = bell(sq(nSpur / 0.6)) * body;
+        const double along = smoothstep((alongRaw / k[K_STD2] + k[K_ALONG_BIAS]) / 1.2);
+        const double hills = hillsRaw;
+        double hilly = smoothstep((hillyRaw / k[K_STD3] + k[K_HILL_BIAS]) / k[K_HILL_SOFTNESS]);
+        hilly = std::max(hilly, 0.55 * home);
+
+        const double mountains = along * (k[K_SPINE_M] * spine + k[K_SPUR_M] * spur + k[K_FOOT_M] * foot);
+        const double hillM = k[K_HILL_PLAINS_M] + (k[K_HILL_COUNTRY_M] - k[K_HILL_PLAINS_M]) * hilly
+                             + 200.0 * along * foot;
+        const double trend = k[K_SEA_FLOOR_M] + (k[K_LAND_BASE_M] - k[K_SEA_FLOOR_M]) * land * (0.6 + 0.5 * cont)
+                             + land * (mountains + hillM * hills);
+        const double rough = clamp01(k[K_ROUGH_FLOOR] + k[K_ROUGH_HILL] * hilly
+                                     + along * (0.9 * spine + 0.45 * spur + 0.25 * foot)
+                                     + 0.25 * (0.3 + along * foot) * std::fabs(hills)) * land;
+        const double a = std::fabs(valleyRaw) / (2.0 * k[K_STD4]);
+        const double valleys = k[K_VALLEY_M] * rough * (valleyShape(a, k[K_VALLEY_EXP]) - 0.5);
+        const double tex = (k[K_TEXTURE_FLOOR_M] + (k[K_TEXTURE_M] - k[K_TEXTURE_FLOOR_M]) * rough) * textureRaw;
+        double e = trend + valleys + tex;
+        const double over = std::max(e - k[K_PEAK_KNEE_M], 0.0);
+        e = e - over + over / (1.0 + over / k[K_PEAK_SPAN_M]);
+
+        const double blocks = curveBlocks(e);
+        Column out;
+        out.shapedHeight = clampHeight(std::floor(blocks));
+        out.height = clampHeight(std::floor(blocks + k[K_DETAIL_BLOCKS] * detailRaw));
+        return out;
+    }
+};
+
 struct TerrainCtx {
-    // Channels order: continentalness, peaksValleys, erosion, detail.
-    FastNoise::SmartNode<> channel[4];
-    int32_t channelSeed[4]{};
-    int32_t xOff[4]{};
-    int32_t zOff[4]{};
-    SplineLinear splineBase;
-    SplineLinear splinePeak;
-    SplineLinear splineStrength;
-    float detailAmplitude = 0;
+    DistilledShape shape;
 
     int64_t seed = 0;
     FastNoise::SmartNode<> headingNoise;
@@ -165,26 +347,9 @@ struct TerrainCtx {
     int32_t radiusSeed = 0;
     int32_t wobbleSeed = 0;
 
-    // Java channel axis convention: FastNoise2 X carries worldZ, Y carries worldX.
-    [[nodiscard]] float sampleChannel(int i, int x, int z) const {
-        return channel[i]->GenSingle2D(static_cast<float>(z + zOff[i]),
-                                       static_cast<float>(x + xOff[i]), channelSeed[i]);
-    }
-
-    // HeightMapGenerator.heightFromChannels, exact float/double op order.
+    // HeightMapGenerator.generateHeight == DistilledShape.height.
     [[nodiscard]] int generateHeight(int x, int z) const {
-        float c = sampleChannel(0, x, z);
-        float pv = sampleChannel(1, x, z);
-        float e = sampleChannel(2, x, z);
-        float d = sampleChannel(3, x, z);
-        float base = static_cast<float>(splineBase.interpolate(c));
-        float peak = static_cast<float>(splinePeak.interpolate(pv));
-        float strength = static_cast<float>(splineStrength.interpolate(e));
-        float detail = d * detailAmplitude;
-        int h = stonebreak::javaRoundFloat(base + peak * strength + detail);
-        if (h < 1) h = 1;
-        if (h > WORLD_HEIGHT - 1) h = WORLD_HEIGHT - 1;
-        return h;
+        return shape.column(x, z).height;
     }
 
     [[nodiscard]] float heading3D(float x, float y, float z) const {
@@ -569,27 +734,35 @@ inline TerrainCtx* terrainCreateImpl(int64_t worm_seed,
         spline_sizes == nullptr) {
         return nullptr;
     }
+    // SBW ABI 2: spline_sizes = {channels, constants, curve table length}; spline_xs = the
+    // DistilledShape constants, spline_ys = the height-curve table (DistilledShape.nativeArgs).
+    if (spline_sizes[0] != DistilledShape::CHANNELS || spline_sizes[1] < DistilledShape::K_COUNT
+            || spline_sizes[2] < 2) {
+        return nullptr;
+    }
+    static std::atomic<uint64_t> nextSerial{1};
     auto ctx = new TerrainCtx();
     ctx->seed = worm_seed;
-    ctx->detailAmplitude = detail_amplitude;
-    for (int i = 0; i < 4; i++) {
-        ctx->channel[i] = cenda::makeSimplexFbm(ch_octaves[i], ch_lacunarity[i], ch_gain[i], ch_freq[i]);
-        if (!ctx->channel[i]) {
+    DistilledShape& sh = ctx->shape;
+    for (int i = 0; i < DistilledShape::CHANNELS; i++) {
+        if (ch_xoff[i] != 0 || ch_zoff[i] != 0) { // the distilled channels carry no block offsets
             delete ctx;
             return nullptr;
         }
-        ctx->channelSeed[i] = ch_seeds[i];
-        ctx->xOff[i] = ch_xoff[i];
-        ctx->zOff[i] = ch_zoff[i];
-    }
-    SplineLinear* splines[3] = {&ctx->splineBase, &ctx->splinePeak, &ctx->splineStrength};
-    int32_t offset = 0;
-    for (int s = 0; s < 3; s++) {
-        for (int32_t p = 0; p < spline_sizes[s]; p++) {
-            splines[s]->addPoint(spline_xs[offset + p], spline_ys[offset + p]);
+        sh.node[i] = cenda::makeSimplexFbm(ch_octaves[i], ch_lacunarity[i], ch_gain[i], ch_freq[i]);
+        if (!sh.node[i]) {
+            delete ctx;
+            return nullptr;
         }
-        offset += spline_sizes[s];
+        sh.seed[i] = ch_seeds[i];
     }
+    for (int i = 0; i < DistilledShape::K_COUNT; i++) {
+        sh.k[i] = spline_xs[i];
+    }
+    sh.curve.assign(spline_ys, spline_ys + spline_sizes[2]);
+    sh.lattice = static_cast<int>(sh.k[DistilledShape::K_LATTICE]);
+    sh.serial = nextSerial.fetch_add(1);
+    (void) detail_amplitude; // carried in the constants (K_DETAIL_BLOCKS); kept in the ABI slot for the signature
     // Single-octave heading/radius noise, frequency applied at the call site
     // (positions pre-multiplied by HEADING_SCALE/RADIUS_SCALE like the Java code),
     // so the node itself is frequency 1.

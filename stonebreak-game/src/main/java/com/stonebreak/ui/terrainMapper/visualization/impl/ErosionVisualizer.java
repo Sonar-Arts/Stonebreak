@@ -1,9 +1,10 @@
 package com.stonebreak.ui.terrainMapper.visualization.impl;
 
 import com.stonebreak.ui.terrainMapper.visualization.NoiseVisualizer;
+import com.stonebreak.world.generation.heightmap.DistilledShape;
 import com.stonebreak.world.generation.noise.NoiseRouter;
 
-/** Peak strength gate. Raw range [-1, 1]; high values flatten mountains. */
+/** Smoothness of the distilled shape, 1 - roughness: high = flat, eroded ground (label kept for the mapper UI). */
 public final class ErosionVisualizer implements NoiseVisualizer {
 
     private final NoiseRouter router;
@@ -16,11 +17,13 @@ public final class ErosionVisualizer implements NoiseVisualizer {
 
     @Override
     public float sample(int worldX, int worldZ) {
-        return router.erosion(worldX, worldZ);
+        DistilledShape.Column c = new DistilledShape.Column();
+        router.shape().column(worldX, worldZ, c);
+        return (float) (1.0 - c.rough);
     }
 
     @Override
     public float normalize(float raw) {
-        return (raw + 1f) * 0.5f;
+        return raw;
     }
 }

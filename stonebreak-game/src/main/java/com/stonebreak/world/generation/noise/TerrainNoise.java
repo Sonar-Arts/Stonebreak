@@ -217,6 +217,11 @@ public final class TerrainNoise {
         }
 
         @Override
+        public float sampleAt(float x, float z) {
+            return generator.noise(x * scale + xOffsetNoise, z * scale + zOffsetNoise);
+        }
+
+        @Override
         public void fill(float[] out, int baseX, int baseZ, int countX, int countZ, int stride) {
             for (int ix = 0; ix < countX; ix++) {
                 int x = baseX + ix * stride;
@@ -259,6 +264,19 @@ public final class TerrainNoise {
         @Override
         public void fill(float[] out, int baseX, int baseZ, int countX, int countZ, int stride) {
             fillNative(out, baseX, baseZ, countX, countZ, stride);
+        }
+
+        @Override
+        public float sampleAt(float x, float z) {
+            // Fractional positions only make sense without a block offset (the distilled channels
+            // carry none); the float position goes to FastNoise2 as is.
+            float[] out = new float[1];
+            boolean ok = CendaKernels.fillGrid2D(node, out, z + zOffsetBlocks, x + xOffsetBlocks,
+                1, 1, 1f, 1f, seed);
+            if (!ok) {
+                throw new IllegalStateException("Cenda 2D noise fill failed (node=" + node + ")");
+            }
+            return out[0];
         }
 
         private void fillNative(float[] out, int baseX, int baseZ, int countX, int countZ, int stride) {

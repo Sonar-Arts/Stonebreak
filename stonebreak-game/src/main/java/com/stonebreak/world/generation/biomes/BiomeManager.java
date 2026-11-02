@@ -1,6 +1,7 @@
 package com.stonebreak.world.generation.biomes;
 
 import com.stonebreak.world.generation.StandardTerrain;
+import com.stonebreak.world.generation.heightmap.DistilledShape;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.noise.MultiNoiseSample;
 import com.stonebreak.world.generation.noise.NoiseRouter;
@@ -27,8 +28,10 @@ public class BiomeManager {
     }
 
     public BiomeType getBiome(int x, int z) {
-        return selector.select(noise.sample(x, z, heightMap.shapedHeight(x, z)),
-            isSubmerged(heightMap.generateHeight(x, z)));
+        DistilledShape.Column c = new DistilledShape.Column();
+        heightMap.column(x, z, c);
+        MultiNoiseSample s = NoiseRouter.sampleOf(c, noise.temperature(x, z, c.shapedHeight), noise.moisture(x, z));
+        return selector.select(s, isSubmerged(c.height));
     }
 
     /**
@@ -61,21 +64,15 @@ public class BiomeManager {
         int baseX = chunkX * CHUNK_SIZE;
         int baseZ = chunkZ * CHUNK_SIZE;
         int cells = CHUNK_SIZE * CHUNK_SIZE;
-        // Batch-fill all five channels (one SIMD call each on the native
-        // backend), then apply the same per-point transforms as NoiseRouter.sample.
-        float[] c = new float[cells];
-        float[] pv = new float[cells];
-        float[] e = new float[cells];
-        float[] d = new float[cells];
+        // Batch-fill the shape and the climate (one SIMD call per channel on the native
+        // backend), then apply the same per-point transforms as getBiome.
+        DistilledShape.Column[] cols = new DistilledShape.Column[cells];
         float[] tRaw = new float[cells];
         float[] mRaw = new float[cells];
-        noise.fillShapeChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, c, pv, e, d);
+        heightMap.fillColumns(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, cols);
         noise.fillClimateChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, tRaw, mRaw);
         for (int idx = 0; idx < cells; idx++) {
-            MultiNoiseSample s = new MultiNoiseSample(
-                c[idx],
-                e[idx],
-                pv[idx],
+            MultiNoiseSample s = NoiseRouter.sampleOf(cols[idx],
                 NoiseRouter.temperatureFromRaw(tRaw[idx], heights[idx]),
                 NoiseRouter.moistureFromRaw(mRaw[idx]));
             out[idx] = selector.select(s, isSubmerged(heights[idx]));

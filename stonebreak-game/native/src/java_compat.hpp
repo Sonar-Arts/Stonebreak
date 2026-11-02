@@ -110,6 +110,15 @@ inline int32_t javaFloorMod(int64_t x, int32_t y) {
     return r;
 }
 
+/* Math.floorDiv(int, int) — rounds toward negative infinity (C++ '/' truncates). */
+inline int32_t javaFloorDiv(int32_t x, int32_t y) {
+    int32_t q = x / y;
+    if ((x % y != 0) && ((x < 0) != (y < 0))) {
+        q -= 1;
+    }
+    return q;
+}
+
 inline int64_t rotateLeft(int64_t v, int distance) {
     auto u = static_cast<uint64_t>(v);
     return static_cast<int64_t>((u << distance) | (u >> (64 - distance)));
