@@ -81,7 +81,7 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         if: steps.changes.outputs.publish == 'true'
         with:
           run-id: ${{ github.event.workflow_run.id }}
