@@ -5,7 +5,7 @@ import com.openmason.api.target.GameTarget;
 import com.openmason.api.target.ResourceRoot;
 import com.openmason.api.target.UiDeployLayout;
 import com.openmason.api.target.WriteRules;
-import com.openmason.engine.rendering.model.gmr.parts.PartShapeFactory.Shape;
+import com.openmason.engine.modeling.parts.PartShapeFactory.Shape;
 import com.openmason.main.systems.io.BuiltinFileTypes;
 import com.openmason.main.systems.menus.mainHub.model.ProjectTemplate;
 

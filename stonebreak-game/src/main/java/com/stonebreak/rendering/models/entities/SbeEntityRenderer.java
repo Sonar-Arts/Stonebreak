@@ -1,78 +1,101 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.openmason.engine.diagnostics.GpuMemoryTracker;
-import com.openmason.engine.rendering.RenderOrigin;
-import com.openmason.engine.rendering.model.IndexedDrawBatch;
-import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.MaterialImage;
 import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.rendering.RenderOrigin;
+import com.openmason.engine.rendering.model.draw.ModelLighting;
+import com.openmason.engine.rendering.model.draw.ModelRenderer;
+import com.openmason.engine.rendering.model.draw.ModelShaderExtension;
+import com.openmason.engine.rendering.model.draw.UploadedModel;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rendering.shadow.ShadowUniforms;
+import com.stonebreak.mobs.sbe.AnimState;
+import com.stonebreak.rendering.gameWorld.UnderwaterFog;
+import com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer;
+import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
+import com.stonebreak.rendering.lighting.DynamicLights;
+import com.stonebreak.rendering.lighting.PointLightGlsl;
+import com.stonebreak.rendering.lighting.SceneLight;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
 
-import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
-
-import static org.lwjgl.system.MemoryUtil.memAllocFloat;
-import static org.lwjgl.system.MemoryUtil.memAllocInt;
-import static org.lwjgl.system.MemoryUtil.memAlloc;
-import static org.lwjgl.system.MemoryUtil.memFree;
-import com.stonebreak.rendering.gameWorld.UnderwaterFog;
-import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
+import java.util.function.Consumer;
 
 /**
- * Entity-blind renderer for SBE-driven mobs.
+ * Entity-blind renderer for SBE-driven models: Stonebreak's hooks around the
+ * engine {@link ModelRenderer} (#90).
  *
- * <p>Given a decoded {@link SbeEntityAsset} plus a variant name, a state name,
- * an animation time and a world transform, it renders the model — selecting the
- * variant geometry, sampling the state's animation clip per part, and drawing
- * cached contiguous material batches for each part. It knows nothing about cows or any
- * specific entity type; callers supply the entity-specific bindings.
+ * <p>Given a decoded {@link SbeEntityAsset} plus a variant, an {@link AnimState}
+ * and a world transform, it uploads the variant once ({@link UploadedModel}),
+ * poses it ({@link SbePoseSolver} → engine pose solver) and draws it through the
+ * engine's lit / flat / wireframe passes — the same draw path the Open Mason
+ * viewport uses, so models look alike in both. What stays here is what only the
+ * game knows: underwater and weather fog, time-of-day sky light and the sky-light
+ * probe, torch point lights ({@link PointLightGlsl} spliced into the engine
+ * shader) and the frame's sun shadow cascades.
  *
  * <p>GPU resources are uploaded lazily, per asset, on first render (on the GL
  * thread). Owned and driven by {@link EntityRenderer}.
  */
 public final class SbeEntityRenderer {
 
-    private ShaderProgram shader;
-    private ShaderProgram wireShader;
-    private boolean initialized;
-    private long trackedMeshBytes;
-    private long trackedTextureBytes;
-
-    /** Sun-shadow state provider; null outside the world pipeline (UI previews). */
-    private com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer shadowMapRenderer;
-
-    /** Wires the cascaded-shadow state used when rendering entities in the world. */
-    public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
-        this.shadowMapRenderer = renderer;
-    }
+    /** Torch point lights, fed to the engine shader's extra-light hooks. */
+    static final String POINT_LIGHT_EXTENSION = PointLightGlsl.UNIFORMS
+            + PointLightGlsl.FUNCTIONS
+            + """
+            vec3 modelExtraLight(vec3 worldPos, vec3 normal, float sunVisibility) {
+                return pointLightContribution(worldPos, normal,
+                        pointLightWeight(u_ambientLight, u_skyLight, sunVisibility));
+            }
+            vec3 modelApplyExtraLight(vec3 lit, vec3 albedo, vec3 extra) {
+                return applyPointLight(lit, albedo, extra);
+            }
+            """;
 
     /** UI preview rig: full ambient, no sky-light probe, no torches, no shadows. */
-    static final float UI_PREVIEW_AMBIENT = 1.0f;
-    /**
-     * UI preview key light, in <em>camera</em> space (toward the light): above, a
-     * little to the left and in front of the viewer. Camera-relative so an orbiting
-     * preview camera always sees the same lit side.
-     */
-    private static final Vector3f UI_PREVIEW_KEY_LIGHT_VIEW = new Vector3f(-0.35f, 0.6f, 0.7f).normalize();
+    static final float UI_PREVIEW_AMBIENT = ModelLighting.PREVIEW_AMBIENT;
+
+    private static final Vector3f DEFAULT_KEY_LIGHT = new Vector3f(0.4f, 0.8f, 0.4f).normalize();
+    private static final Vector3f UNDERWATER_FOG_COLOR = new Vector3f(0.1f, 0.3f, 0.5f);
+
+    private final ModelRenderer models = new ModelRenderer(
+            new ModelShaderExtension(POINT_LIGHT_EXTENSION, ShadowMapRenderer.SHADOW_TEXTURE_UNIT));
+    private boolean initialized;
+
+    /** Sun-shadow state provider; null outside the world pipeline (UI previews). */
+    private ShadowMapRenderer shadowMapRenderer;
 
     /** True while UI previews draw; see {@link #setUiPreviewLighting}. */
     private boolean uiPreviewLighting;
+
+    /** Extra flat brightness (0 = none) applied to subsequent draws. */
+    private float selfGlow = 0f;
+
     private final Matrix4f scratchInverseView = new Matrix4f();
-    private final Vector3f scratchKeyLight = new Vector3f();
+
+    /** Per-asset uploads, keyed by asset identity (assets are cached singletons), then variant. */
+    private final Map<SbeEntityAsset, Map<String, UploadedModel>> assetGpu = new IdentityHashMap<>();
+
+    private final Consumer<ShaderProgram> worldShaderState = shader -> {
+        DynamicLights.applyTo(shader);
+        if (shadowMapRenderer != null) {
+            shadowMapRenderer.applyToShader(shader);
+        }
+    };
+
+    private static final Consumer<ShaderProgram> PREVIEW_SHADER_STATE = shader -> {
+        DynamicLights.applyNoneTo(shader);
+        ShadowUniforms.applyDisabled(shader, ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
+    };
+
+    /** Wires the cascaded-shadow state used when rendering entities in the world. */
+    public void setShadowMapRenderer(ShadowMapRenderer renderer) {
+        this.shadowMapRenderer = renderer;
+    }
 
     /**
      * Switches textured draws between the world's lighting (time of day, sky
@@ -88,173 +111,15 @@ public final class SbeEntityRenderer {
         return previous;
     }
 
-    /** GPU resources for one variant of one asset. */
-    private static final class VariantGpu {
-        int vao;
-        int vbo;
-        int uvVbo;
-        int ebo;
-        SbeDrawPlan drawPlan;
-        final Map<Integer, Integer> materialTextures = new HashMap<>();
+    public void setSelfGlow(float glow) {
+        this.selfGlow = Math.max(0f, glow);
     }
-
-    /** Per-asset GPU resources, keyed by asset identity (assets are cached singletons). */
-    private final Map<SbeEntityAsset, Map<String, VariantGpu>> assetGpu = new IdentityHashMap<>();
 
     /** Initialize the shared shaders. Must run on the GL thread. */
     public void initialize() {
         if (initialized) return;
-        createShader();
-        createWireShader();
+        models.initialize();
         initialized = true;
-    }
-
-    private void createShader() {
-        String vertexShader = """
-            #version 330 core
-            layout (location = 0) in vec3 aPos;
-            layout (location = 1) in vec2 aTexCoord;
-
-            uniform mat4 model;
-            uniform mat4 view;
-            uniform mat4 projection;
-
-            out vec2 TexCoord;
-            out vec3 FragWorldPos;
-            out float ViewDepth;
-
-            void main() {
-                vec4 worldPos = model * vec4(aPos, 1.0);
-                FragWorldPos = worldPos.xyz;
-                ViewDepth = -(view * worldPos).z;
-                gl_Position = projection * view * worldPos;
-                TexCoord = aTexCoord;
-            }
-            """;
-
-        String fragmentShader = """
-            #version 330 core
-            out vec4 FragColor;
-
-            in vec2 TexCoord;
-            in vec3 FragWorldPos;
-            in float ViewDepth;
-
-            uniform sampler2D textureSampler;
-            uniform vec3 cameraPos;
-            uniform float underwaterFogDensity;
-            uniform vec3 underwaterFogColor;
-            uniform float u_ambientLight;
-            uniform vec3 u_sunDirection;
-            uniform float u_entityLight;
-            uniform float u_selfGlow;
-            """
-            + com.openmason.engine.rendering.shadow.ShadowGlsl.UNIFORMS
-            + com.openmason.engine.rendering.shadow.ShadowGlsl.FUNCTIONS
-            + com.stonebreak.rendering.lighting.PointLightGlsl.UNIFORMS
-            + com.stonebreak.rendering.lighting.PointLightGlsl.FUNCTIONS
-            + """
-            void main() {
-                vec4 texColor = texture(textureSampler, TexCoord);
-                if (texColor.a < 0.01) discard;
-
-                // SBE meshes carry no normals — derive the flat face normal from
-                // screen-space derivatives. For visible fragments this is the
-                // outward (viewer-side) normal, which is what lighting needs.
-                vec3 normal = normalize(cross(dFdx(FragWorldPos), dFdy(FragWorldPos)));
-                vec3 sunDir = normalize(u_sunDirection);
-                float diff = max(dot(normal, sunDir), 0.0);
-                float shadowFactor = csmShadowFactor(FragWorldPos, normal, ViewDepth);
-
-                // Ambient + sun diffuse (both day/night scaled), then the sampled
-                // sky light at the entity's position so mobs darken in caves.
-                float brightness = u_ambientLight * (0.5 + 0.55 * diff * shadowFactor);
-                brightness *= mix(0.3, 1.0, u_entityLight);
-                vec3 lit = texColor.rgb * min(brightness, 1.0);
-                // Dynamic point lights (torches) and the model's own glow (a
-                // torch is lit by its flame) add on top of the sky/sun term.
-                // Torchlight + the model's own glow, capped so overlapping
-                // lights fill the texture up to full brightness, never past it.
-                vec3 torch = pointLightContribution(FragWorldPos, normal,
-                        pointLightWeight(u_ambientLight, u_entityLight, shadowFactor)) + vec3(u_selfGlow);
-                lit = applyPointLight(lit, texColor.rgb, torch);
-
-                if (underwaterFogDensity > 0.0) {
-                    float dist = length(FragWorldPos - cameraPos);
-                    float fogFactor = clamp(exp(-underwaterFogDensity * dist), 0.0, 1.0);
-                    FragColor = mix(vec4(underwaterFogColor, texColor.a), vec4(lit, texColor.a), fogFactor);
-                } else {
-                    FragColor = vec4(lit, texColor.a);
-                }
-            }
-            """;
-
-        try {
-            shader = new ShaderProgram();
-            shader.createVertexShader(vertexShader);
-            shader.createFragmentShader(fragmentShader);
-            shader.link();
-            shader.createUniform("model");
-            shader.createUniform("view");
-            shader.createUniform("projection");
-            shader.createUniform("textureSampler");
-            shader.createUniform("cameraPos");
-            shader.createUniform("underwaterFogDensity");
-            shader.createUniform("underwaterFogColor");
-            // Lighting defaults: fully lit until the first draw sets the real
-            // environment (or the UI preview rig, see applyUiPreviewLighting).
-            shader.bind();
-            shader.setFloat("u_ambientLight", UI_PREVIEW_AMBIENT);
-            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
-            shader.setFloat("u_entityLight", 1.0f);
-            // The shadow sampler must live on its own unit even while disabled —
-            // sharing unit 0 with the 2D textureSampler is a GL error on strict drivers.
-            com.openmason.engine.rendering.shadow.ShadowUniforms.applyDisabled(shader,
-                    com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
-            shader.unbind();
-        } catch (Exception e) {
-            System.err.println("Failed to create SBE entity shader: " + e.getMessage());
-        }
-    }
-
-    /** Flat-colour shader used by the debug wireframe overlay. */
-    private void createWireShader() {
-        String vertexShader = """
-            #version 330 core
-            layout (location = 0) in vec3 aPos;
-
-            uniform mat4 model;
-            uniform mat4 view;
-            uniform mat4 projection;
-
-            void main() {
-                gl_Position = projection * view * model * vec4(aPos, 1.0);
-            }
-            """;
-
-        String fragmentShader = """
-            #version 330 core
-            out vec4 FragColor;
-
-            uniform vec4 color;
-
-            void main() {
-                FragColor = color;
-            }
-            """;
-
-        try {
-            wireShader = new ShaderProgram();
-            wireShader.createVertexShader(vertexShader);
-            wireShader.createFragmentShader(fragmentShader);
-            wireShader.link();
-            wireShader.createUniform("model");
-            wireShader.createUniform("view");
-            wireShader.createUniform("projection");
-            wireShader.createUniform("color");
-        } catch (Exception e) {
-            System.err.println("Failed to create SBE wireframe shader: " + e.getMessage());
-        }
     }
 
     /**
@@ -339,26 +204,25 @@ public final class SbeEntityRenderer {
         if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
-        VariantGpu gpu = resolveVariantGpu(asset, variantName);
+        UploadedModel gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        // Save GL state.
-        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
-        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        models.drawLit(gpu.mesh(), gpu.plan(), gpu,
+                SbePoseSolver.partMatrices(geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, overrides),
+                viewMatrix, projectionMatrix,
+                lighting(world, cameraPos, baseMatrix, viewMatrix),
+                uiPreviewLighting ? PREVIEW_SHADER_STATE : worldShaderState);
+    }
 
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthFunc(GL11.GL_LESS);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-
-        shader.bind();
-        shader.setUniform("view", viewMatrix);
-        shader.setUniform("projection", projectionMatrix);
-        shader.setUniform("textureSampler", 0);
-
+    /**
+     * The lit pass's environment: underwater fog by camera depth, else weather fog
+     * (never in previews); the preview rig, or the sky's ambient + key light and the
+     * sampled sky light at the model.
+     */
+    private ModelLighting lighting(com.stonebreak.world.World world, Vector3f cameraPos,
+                                   Matrix4f baseMatrix, Matrix4f viewMatrix) {
         float fogDensity = 0.0f;
-        Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
+        Vector3f fogColor = new Vector3f(UNDERWATER_FOG_COLOR);
         if (world != null && cameraPos != null
                 && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
                         (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
@@ -373,42 +237,29 @@ public final class SbeEntityRenderer {
         // cameraPos arrives in world coordinates (the underwater probe above needs
         // it that way); the shader differences it against a render-space fragment
         // position, so it crosses over here.
-        shader.setUniform("cameraPos", cameraPos != null
-                ? RenderOrigin.toRender(cameraPos, new Vector3f())
-                : new Vector3f());
-        shader.setUniform("underwaterFogDensity", fogDensity);
-        shader.setUniform("underwaterFogColor", fogColor);
+        Vector3f renderCamera = cameraPos != null ? RenderOrigin.toRender(cameraPos, new Vector3f()) : new Vector3f();
+
+        float ambient;
+        Vector3f keyDirection;
+        float skyLight;
         if (uiPreviewLighting) {
-            applyUiPreviewLighting(viewMatrix);
+            ambient = UI_PREVIEW_AMBIENT;
+            keyDirection = uiPreviewKeyLight(viewMatrix, scratchInverseView, new Vector3f());
+            skyLight = 1.0f;
         } else {
+            if (com.stonebreak.core.Game.getTimeOfDay() != null) {
+                ambient = SceneLight.ambient();
+                keyDirection = SceneLight.keyDirection();
+            } else {
+                ambient = 1.0f;
+                keyDirection = DEFAULT_KEY_LIGHT;
+            }
             // baseMatrix is render-space; the sky-light probe is a world block lookup.
-            applyEnvironmentLighting(world,
+            skyLight = sampleEntityLight(world,
                     RenderOrigin.toWorld(baseMatrix.getTranslation(new Vector3f()), new Vector3f()));
         }
-
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
-        GL30.glBindVertexArray(gpu.vao);
-
-        SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
-                headYawDeg, headPitchDeg, overrides, (partMatrix, part) -> {
-            shader.setUniform("model", partMatrix);
-            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).textured()) {
-                GL11.glBindTexture(GL11.GL_TEXTURE_2D, gpu.materialTextures.get(batch.materialId()));
-                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
-                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
-            }
-        });
-
-        GL30.glBindVertexArray(0);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        shader.unbind();
-
-        if (wasCullFaceEnabled) {
-            GL11.glEnable(GL11.GL_CULL_FACE);
-        }
-        GL20.glUseProgram(previousProgram);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
-        GL30.glBindVertexArray(previousVertexArray);
+        return new ModelLighting(ambient, keyDirection, skyLight, selfGlow,
+                fogDensity, fogColor, renderCamera, ModelLighting.DEFAULT_BASE_COLOR);
     }
 
     /**
@@ -428,59 +279,18 @@ public final class SbeEntityRenderer {
                                 float animationTime, Vector3f position, float yawDegrees,
                                 Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                 Vector4f color) {
-        if (!initialized || asset == null || wireShader == null) return;
+        if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
-        VariantGpu gpu = resolveVariantGpu(asset, variantName);
+        UploadedModel gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        // Save GL state.
-        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
-        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-        boolean wasDepthTestEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        int[] previousPolygonMode = new int[2];
-        GL11.glGetIntegerv(GL11.GL_POLYGON_MODE, previousPolygonMode);
-        float previousLineWidth = GL11.glGetFloat(GL11.GL_LINE_WIDTH);
-
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-        GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
-        GL11.glLineWidth(1.5f);
-
-        wireShader.bind();
-        wireShader.setUniform("view", viewMatrix);
-        wireShader.setUniform("projection", projectionMatrix);
-        wireShader.setUniform("color", color);
-
-        // Same base transform as render(): no re-anchoring of the model origin.
+        // Same base transform and pose as render(): no re-anchoring of the model origin.
         Matrix4f base = SbePoseSolver.baseMatrix(position, yawDegrees, scale);
-
-        GL30.glBindVertexArray(gpu.vao);
-
-        SbePoseSolver.forEachPartMatrix(geometry, asset, AnimState.single(stateName, animationTime),
-                base, 0f, 0f, (partMatrix, part) -> {
-            wireShader.setUniform("model", partMatrix);
-            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
-                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
-                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
-            }
-        });
-
-        GL30.glBindVertexArray(0);
-        wireShader.unbind();
-
-        // Restore GL state.
-        GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, previousPolygonMode[0]);
-        GL11.glLineWidth(previousLineWidth);
-        if (wasCullFaceEnabled) {
-            GL11.glEnable(GL11.GL_CULL_FACE);
-        }
-        if (wasDepthTestEnabled) {
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-        }
-        GL20.glUseProgram(previousProgram);
-        GL30.glBindVertexArray(previousVertexArray);
+        models.drawWireframe(gpu.mesh(), gpu.plan(),
+                SbePoseSolver.partMatrices(geometry, asset, AnimState.single(stateName, animationTime),
+                        base, 0f, 0f, null),
+                viewMatrix, projectionMatrix, color);
     }
 
     /**
@@ -529,100 +339,23 @@ public final class SbeEntityRenderer {
     public void renderColored(SbeEntityAsset asset, String variantName, AnimState anim,
                               Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
-        if (!initialized || asset == null || wireShader == null) return;
+        if (!initialized || asset == null) return;
 
         SbeModelGeometry geometry = asset.geometryFor(variantName);
-        VariantGpu gpu = resolveVariantGpu(asset, variantName);
+        UploadedModel gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
-        // Save GL state.
-        int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
-        boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthFunc(GL11.GL_LESS);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-
-        wireShader.bind();
-        wireShader.setUniform("view", viewMatrix);
-        wireShader.setUniform("projection", projectionMatrix);
-        wireShader.setUniform("color", color);
-
-        GL30.glBindVertexArray(gpu.vao);
-
-        SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
-                headYawDeg, headPitchDeg, (partMatrix, part) -> {
-            wireShader.setUniform("model", partMatrix);
-            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
-                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
-                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
-            }
-        });
-
-        GL30.glBindVertexArray(0);
-        wireShader.unbind();
-
-        if (wasCullFaceEnabled) {
-            GL11.glEnable(GL11.GL_CULL_FACE);
-        }
-        GL20.glUseProgram(previousProgram);
-        GL30.glBindVertexArray(previousVertexArray);
+        models.drawFlat(gpu.mesh(), gpu.plan(),
+                SbePoseSolver.partMatrices(geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, null),
+                viewMatrix, projectionMatrix, color);
     }
 
     /**
-     * Pushes the per-frame lighting environment to the (bound) entity shader:
-     * the sky's ambient + key light direction (sun, or moon at night), the sampled sky light at the entity's
-     * position (so mobs darken in caves and at night), and this frame's shadow
-     * cascade state. Falls back to fully lit outside the world pipeline.
-     */
-    private void applyEnvironmentLighting(com.stonebreak.world.World world, Vector3f position) {
-        com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
-        if (timeOfDay != null) {
-            shader.setFloat("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
-            shader.setVec3("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
-        } else {
-            shader.setFloat("u_ambientLight", 1.0f);
-            shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
-        }
-        shader.setFloat("u_entityLight", sampleEntityLight(world, position));
-        shader.setFloat("u_selfGlow", selfGlow);
-        com.stonebreak.rendering.lighting.DynamicLights.applyTo(shader);
-        if (shadowMapRenderer != null) {
-            shadowMapRenderer.applyToShader(shader);
-        }
-    }
-
-    /**
-     * Pushes the fixed UI preview rig to the (bound) entity shader: full ambient,
-     * a camera-relative key light, and every world-driven term switched off —
-     * no time of day, no sky-light probe, no torches, no sun or torch shadows.
-     */
-    private void applyUiPreviewLighting(Matrix4f viewMatrix) {
-        shader.setFloat("u_ambientLight", UI_PREVIEW_AMBIENT);
-        shader.setVec3("u_sunDirection", uiPreviewKeyLight(viewMatrix, scratchInverseView, scratchKeyLight));
-        shader.setFloat("u_entityLight", 1.0f);
-        shader.setFloat("u_selfGlow", selfGlow);
-        com.stonebreak.rendering.lighting.DynamicLights.applyNoneTo(shader);
-        com.openmason.engine.rendering.shadow.ShadowUniforms.applyDisabled(shader,
-                com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer.SHADOW_TEXTURE_UNIT);
-    }
-
-    /**
-     * The UI key light in world space (toward the light, unit length): the
-     * camera-space {@link #UI_PREVIEW_KEY_LIGHT_VIEW} rotated by the inverse view.
+     * The UI key light in world space (toward the light, unit length): the engine
+     * preview rig's camera-space key light rotated by the inverse view.
      */
     static Vector3f uiPreviewKeyLight(Matrix4f viewMatrix, Matrix4f scratch, Vector3f out) {
-        out.set(UI_PREVIEW_KEY_LIGHT_VIEW);
-        if (viewMatrix == null) return out;
-        return scratch.set(viewMatrix).invert().transformDirection(out).normalize();
-    }
-
-    /** Extra flat brightness (0 = none) applied to subsequent draws; see {@code u_selfGlow}. */
-    private float selfGlow = 0f;
-
-    public void setSelfGlow(float glow) {
-        this.selfGlow = Math.max(0f, glow);
+        return ModelLighting.previewKeyLight(viewMatrix, scratch, out);
     }
 
     /**
@@ -643,18 +376,18 @@ public final class SbeEntityRenderer {
         }
     }
 
-    /** Returns the variant's GPU resources, uploading the asset on first use. */
-    private VariantGpu resolveVariantGpu(SbeEntityAsset asset, String variantName) {
-        Map<String, VariantGpu> variants = assetGpu.get(asset);
+    /** Returns the variant's GPU upload, uploading every variant of the asset on first use. */
+    private UploadedModel resolveVariantGpu(SbeEntityAsset asset, String variantName) {
+        Map<String, UploadedModel> variants = assetGpu.get(asset);
         if (variants == null) {
             variants = new HashMap<>();
             for (Map.Entry<String, SbeModelGeometry> e : asset.variants().entrySet()) {
-                variants.put(e.getKey(), uploadVariant(e.getValue()));
+                variants.put(e.getKey(), UploadedModel.upload(e.getValue()));
             }
             assetGpu.put(asset, variants);
         }
         if (variantName != null) {
-            for (Map.Entry<String, VariantGpu> e : variants.entrySet()) {
+            for (Map.Entry<String, UploadedModel> e : variants.entrySet()) {
                 if (e.getKey().equalsIgnoreCase(variantName)) {
                     return e.getValue();
                 }
@@ -663,111 +396,16 @@ public final class SbeEntityRenderer {
         return variants.get(SbeEntityAsset.DEFAULT_VARIANT);
     }
 
-    private VariantGpu uploadVariant(SbeModelGeometry geometry) {
-        VariantGpu gpu = new VariantGpu();
-        gpu.drawPlan = new SbeDrawPlan(geometry);
-
-        gpu.vao = GL30.glGenVertexArrays();
-        gpu.vbo = GL15.glGenBuffers();
-        gpu.uvVbo = GL15.glGenBuffers();
-        gpu.ebo = GL15.glGenBuffers();
-
-        GL30.glBindVertexArray(gpu.vao);
-
-        FloatBuffer vertexBuffer = memAllocFloat(geometry.vertices().length);
-        vertexBuffer.put(geometry.vertices()).flip();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, gpu.vbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(0);
-
-        FloatBuffer uvBuffer = memAllocFloat(geometry.texCoords().length);
-        uvBuffer.put(geometry.texCoords()).flip();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, gpu.uvVbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, uvBuffer, GL15.GL_STATIC_DRAW);
-        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
-        GL20.glEnableVertexAttribArray(1);
-
-        IntBuffer indexBuffer = memAllocInt(geometry.indices().length);
-        indexBuffer.put(geometry.indices()).flip();
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, gpu.ebo);
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexBuffer, GL15.GL_STATIC_DRAW);
-
-        GL30.glBindVertexArray(0);
-
-        long meshBytes = (long) geometry.vertices().length * Float.BYTES
-                + (long) geometry.texCoords().length * Float.BYTES
-                + (long) geometry.indices().length * Integer.BYTES;
-        GpuMemoryTracker.getInstance().track(GpuMemoryTracker.Category.ENTITY_MESH, meshBytes);
-        trackedMeshBytes += meshBytes;
-
-        memFree(vertexBuffer);
-        memFree(uvBuffer);
-        memFree(indexBuffer);
-
-        // OMO files can retain many unused editor materials. Only upload the
-        // textures actually referenced by this geometry's textured batches.
-        for (int materialId : gpu.drawPlan.materialIds()) {
-            gpu.materialTextures.put(materialId, uploadTexture(geometry.materials().get(materialId)));
-        }
-        return gpu;
-    }
-
-    private int uploadTexture(MaterialImage image) {
-        int textureId = GL11.glGenTextures();
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
-
-        ByteBuffer pixels = memAlloc(image.rgba().length);
-        pixels.put(image.rgba()).flip();
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8,
-                image.width(), image.height(), 0,
-                GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
-        memFree(pixels);
-
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-
-        long bytes = (long) image.width() * image.height() * 4L;
-        GpuMemoryTracker.getInstance().track(GpuMemoryTracker.Category.TEXTURE_ATLAS, bytes);
-        trackedTextureBytes += bytes;
-        return textureId;
-    }
-
     /** Release all GPU resources. */
     public void cleanup() {
         if (!initialized) return;
-        if (shader != null) {
-            shader.cleanup();
-        }
-        if (wireShader != null) {
-            wireShader.cleanup();
-        }
-        for (Map<String, VariantGpu> variants : assetGpu.values()) {
-            for (VariantGpu gpu : variants.values()) {
-                GL30.glDeleteVertexArrays(gpu.vao);
-                GL15.glDeleteBuffers(gpu.vbo);
-                GL15.glDeleteBuffers(gpu.uvVbo);
-                GL15.glDeleteBuffers(gpu.ebo);
-                for (int textureId : gpu.materialTextures.values()) {
-                    GL11.glDeleteTextures(textureId);
-                }
+        models.cleanup();
+        for (Map<String, UploadedModel> variants : assetGpu.values()) {
+            for (UploadedModel gpu : variants.values()) {
+                gpu.close();
             }
         }
         assetGpu.clear();
-
-        if (trackedMeshBytes > 0) {
-            GpuMemoryTracker.getInstance()
-                    .untrack(GpuMemoryTracker.Category.ENTITY_MESH, trackedMeshBytes);
-            trackedMeshBytes = 0;
-        }
-        if (trackedTextureBytes > 0) {
-            GpuMemoryTracker.getInstance()
-                    .untrack(GpuMemoryTracker.Category.TEXTURE_ATLAS, trackedTextureBytes);
-            trackedTextureBytes = 0;
-        }
         initialized = false;
     }
 }
