@@ -12,15 +12,13 @@ import java.nio.IntBuffer;
  * Handles the creation of the arm mesh with authentic proportions and UV mapping.
  * 
  * Player model specifications:
- * - Regular arms: 4x12x4 pixels (classic/wide arms)
- * - Slim arms: 3x12x4 pixels (slim arms)
+ * - Arms: 4x12x4 pixels
  * - 1 pixel = 0.0625 world units (1/16th of a block)
  * - Uses 64x64 pixel skin texture format
  */
 public class ArmGeometry {
     
     private int regularArmVao;
-    private int slimArmVao;
     
     // Game scaling: 1 pixel = 0.0625 world units (1/16th of a block)
     private static final float PIXEL_SIZE = 0.0625f;
@@ -34,11 +32,6 @@ public class ArmGeometry {
     private static final float REGULAR_ARM_WIDTH = 4.0f * PIXEL_SIZE;
     private static final float REGULAR_ARM_HEIGHT = 12.0f * PIXEL_SIZE;
     private static final float REGULAR_ARM_DEPTH = 4.0f * PIXEL_SIZE;
-    
-    // Slim arm dimensions: 3x12x4 pixels
-    private static final float SLIM_ARM_WIDTH = 3.0f * PIXEL_SIZE;
-    private static final float SLIM_ARM_HEIGHT = 12.0f * PIXEL_SIZE;
-    private static final float SLIM_ARM_DEPTH = 4.0f * PIXEL_SIZE;
     
     /**
      * Creates the VAO for rendering regular arm with authentic proportions.
@@ -54,24 +47,8 @@ public class ArmGeometry {
         float armHalfHeight = REGULAR_ARM_HEIGHT / 2.0f; // 6 pixels = 0.375
         float armHalfDepth = REGULAR_ARM_DEPTH / 2.0f;   // 2 pixels = 0.125
 
-        return createArmVao(armHalfWidth, armHalfHeight, armHalfDepth, true);
-    }
-    
-    /**
-     * Creates the VAO for rendering slim arm with authentic proportions.
-     * Slim arm dimensions: 3x12x4 pixels using exact game scaling.
-     */
-    public int createSlimArmVao() {
-        if (slimArmVao != 0) {
-            return slimArmVao; // Already created
-        }
-        
-        // Calculate half-extents for slim arms
-        float armHalfWidth = SLIM_ARM_WIDTH / 2.0f;   // 1.5 pixels = 0.09375
-        float armHalfHeight = SLIM_ARM_HEIGHT / 2.0f; // 6 pixels = 0.375
-        float armHalfDepth = SLIM_ARM_DEPTH / 2.0f;   // 2 pixels = 0.125
-        
-        return createArmVao(armHalfWidth, armHalfHeight, armHalfDepth, false);
+        regularArmVao = createArmVao(armHalfWidth, armHalfHeight, armHalfDepth);
+        return regularArmVao;
     }
     
     /**
@@ -113,7 +90,7 @@ public class ArmGeometry {
      * - Top: (44,16) to (48,20) - 4px wide, 4px tall
      * - Bottom: (48,16) to (52,20) - 4px wide, 4px tall
      */
-    private int createArmVao(float armHalfWidth, float armHalfHeight, float armHalfDepth, boolean isRegular) {
+    private int createArmVao(float armHalfWidth, float armHalfHeight, float armHalfDepth) {
         // Standard UV coordinates for 64x64 skin texture (right arm)
         // Converting pixel coordinates to normalized UV (0.0 to 1.0)
         float textureWidth = 64.0f;
@@ -149,18 +126,6 @@ public class ArmGeometry {
         float bottomU2 = 52.0f / textureWidth;  // 0.8125
         float bottomV1 = 16.0f / textureHeight; // 0.25
         float bottomV2 = 20.0f / textureHeight; // 0.3125
-        
-        // For slim arms, adjust the UV coordinates slightly
-        if (!isRegular) {
-            // Slim model has 3-pixel wide arms, so adjust UV mapping
-            frontU2 = 47.0f / textureWidth;     // One pixel narrower
-            rightU2 = 43.0f / textureWidth;     // One pixel narrower  
-            leftU1 = 47.0f / textureWidth;      // Adjust for narrower arm
-            leftU2 = 51.0f / textureWidth;      // One pixel narrower
-            topU2 = 47.0f / textureWidth;       // One pixel narrower
-            bottomU1 = 47.0f / textureWidth;    // Adjust for narrower arm
-            bottomU2 = 51.0f / textureWidth;    // One pixel narrower
-        }
 
         // Define base vertex positions before rotation
         float[][] baseVertices = {
@@ -269,14 +234,7 @@ public class ArmGeometry {
         GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
         
-        // Store the VAO ID and return it
-        if (isRegular) {
-            regularArmVao = vao;
-            return regularArmVao;
-        } else {
-            slimArmVao = vao;
-            return slimArmVao;
-        }
+        return vao;
     }
     
     /**
@@ -324,15 +282,6 @@ public class ArmGeometry {
     }
     
     /**
-     * Legacy method for backward compatibility - returns regular arm VAO.
-     * @deprecated Use createRegularArmVao() or createSlimArmVao() for explicit arm type selection.
-     */
-    @Deprecated
-    public int createPlayerArmVao() {
-        return createRegularArmVao();
-    }
-    
-    /**
      * Gets the regular arm VAO ID.
      * @return VAO ID for regular 4-pixel wide arms, or 0 if not created yet
      */
@@ -341,39 +290,11 @@ public class ArmGeometry {
     }
     
     /**
-     * Gets the slim arm VAO ID.
-     * @return VAO ID for slim 3-pixel wide arms, or 0 if not created yet
+     * Gets the arm VAO, creating it on first use.
+     * @return VAO ID for the 4-pixel wide arm
      */
-    public int getSlimArmVao() {
-        return slimArmVao;
-    }
-    
-    /**
-     * Legacy method for backward compatibility - returns regular arm VAO.
-     * @deprecated Use getRegularArmVao() or getSlimArmVao() for explicit arm type selection.
-     */
-    @Deprecated
     public int getArmVao() {
-        return getRegularArmVao();
-    }
-    
-    /**
-     * Gets the appropriate arm VAO based on player model type.
-     * @param isSlimModel true for slim model (3-pixel arms), false for regular/classic model (4-pixel arms)
-     * @return VAO ID for the appropriate arm model
-     */
-    public int getArmVao(boolean isSlimModel) {
-        if (isSlimModel) {
-            if (slimArmVao == 0) {
-                createSlimArmVao();
-            }
-            return slimArmVao;
-        } else {
-            if (regularArmVao == 0) {
-                createRegularArmVao();
-            }
-            return regularArmVao;
-        }
+        return createRegularArmVao();
     }
     
     /**
@@ -383,10 +304,6 @@ public class ArmGeometry {
         if (regularArmVao != 0) {
             GL30.glDeleteVertexArrays(regularArmVao);
             regularArmVao = 0;
-        }
-        if (slimArmVao != 0) {
-            GL30.glDeleteVertexArrays(slimArmVao);
-            slimArmVao = 0;
         }
     }
 }

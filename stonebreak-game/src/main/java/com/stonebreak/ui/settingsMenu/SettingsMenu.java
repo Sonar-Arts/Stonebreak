@@ -41,7 +41,6 @@ public final class SettingsMenu {
                 actionHandler::applySettings,
                 actionHandler::goBack,
                 actionHandler::onResolutionChange,
-                actionHandler::onArmModelChange,
                 actionHandler::onCrosshairStyleChange,
                 actionHandler::onVolumeChange,
                 actionHandler::onMusicVolumeChange,

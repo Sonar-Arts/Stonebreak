@@ -9,15 +9,6 @@ public final class SettingsConfig {
     // Prevent instantiation
     private SettingsConfig() {}
     
-    // ===== ARM MODEL CONFIGURATION =====
-    public static final String[] ARM_MODEL_TYPES = {
-        "REGULAR", "SLIM"
-    };
-    
-    public static final String[] ARM_MODEL_NAMES = {
-        "Regular (4px wide)", "Slim (3px wide)"
-    };
-    
     // ===== CROSSHAIR CONFIGURATION =====
     public static final String[] CROSSHAIR_STYLES = {
         "SIMPLE_CROSS", "DOT", "CIRCLE", "SQUARE", "T_SHAPE", "PLUS_DOT"
@@ -106,7 +97,6 @@ public final class SettingsConfig {
     
     // ===== BUTTON POSITIONING OFFSETS (Updated for settings panel) =====
     public static final float RESOLUTION_BUTTON_Y_OFFSET = -120;
-    public static final float ARM_MODEL_BUTTON_Y_OFFSET = -80;
     public static final float CROSSHAIR_STYLE_BUTTON_Y_OFFSET = -40;
     public static final float APPLY_BUTTON_Y_OFFSET = 100;
     public static final float BACK_BUTTON_Y_OFFSET = 150;
@@ -154,20 +144,6 @@ public final class SettingsConfig {
     public static float getScaledScrollItemSpacing()     { return SCROLL_ITEM_SPACING            * s(); }
     public static float getScaledScrollContentPadding()  { return SCROLL_CONTENT_PADDING         * s(); }
 
-    /**
-     * Gets the arm model index for the specified type.
-     * @param currentArmModel the arm model type to find
-     * @return the index, or 0 if not found
-     */
-    public static int findArmModelIndex(String currentArmModel) {
-        for (int i = 0; i < ARM_MODEL_TYPES.length; i++) {
-            if (ARM_MODEL_TYPES[i].equals(currentArmModel)) {
-                return i;
-            }
-        }
-        return 0; // Default to first type if not found
-    }
-    
     /**
      * Gets the shadow quality index for the specified tier.
      * @param currentQuality the shadow quality value to find

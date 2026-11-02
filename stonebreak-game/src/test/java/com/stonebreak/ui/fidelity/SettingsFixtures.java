@@ -31,7 +31,6 @@ public final class SettingsFixtures {
         s.setMasterVolume(0.8f);
         s.setMusicVolume(0.45f);
         s.setMusicEnabled(true);
-        s.setArmModelType("REGULAR");
         s.setCrosshairStyle("SIMPLE_CROSS");
         s.setCrosshairSize(16f);
         s.setPlayerNameTagsEnabled(true);

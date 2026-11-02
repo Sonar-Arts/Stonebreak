@@ -30,9 +30,6 @@ public class Settings {
     private float musicVolume = 0.6f;
     private boolean musicEnabled = true;
 
-    // Player model settings
-    private String armModelType = "REGULAR"; // "REGULAR" or "SLIM"
-
     // Hair and clothing are independent cosmetic slots.
     private String selectedHat = "NONE";
     private String selectedHair = "NONE";
@@ -159,7 +156,6 @@ public class Settings {
             floatField("masterVolume", Settings::getMasterVolume, Settings::setMasterVolume),
             floatField("musicVolume", Settings::getMusicVolume, Settings::setMusicVolume),
             boolField("musicEnabled", Settings::getMusicEnabled, Settings::setMusicEnabled),
-            stringField("armModelType", Settings::getArmModelType, Settings::setArmModelType),
             stringField("selectedHat", Settings::getSelectedHat, Settings::setSelectedHat),
             stringField("selectedHair", Settings::getSelectedHair, Settings::setSelectedHair),
             stringField("selectedAccessory", Settings::getSelectedAccessory, Settings::setSelectedAccessory),
@@ -332,8 +328,6 @@ public class Settings {
     public boolean getMusicEnabled() { return musicEnabled; }
 
     // Player model getters
-    public String getArmModelType() { return armModelType; }
-    public boolean isSlimArms() { return "SLIM".equals(armModelType); }
     public String getSelectedHat() { return selectedHat; }
     public String getSelectedHair() { return selectedHair; }
     public String getSelectedAccessory() { return selectedAccessory; }
@@ -397,19 +391,6 @@ public class Settings {
     }
 
     // Player model setters
-    public void setArmModelType(String armModelType) {
-        if ("REGULAR".equals(armModelType) || "SLIM".equals(armModelType)) {
-            this.armModelType = armModelType;
-        } else {
-            logger.warn("Invalid arm model type '{}'; defaulting to REGULAR", armModelType);
-            this.armModelType = "REGULAR";
-        }
-    }
-    
-    public void setSlimArms(boolean slim) {
-        this.armModelType = slim ? "SLIM" : "REGULAR";
-    }
-
     public void setSelectedHat(String hatId) {
         this.selectedHat = (hatId == null || hatId.isBlank()) ? "NONE" : hatId;
     }
