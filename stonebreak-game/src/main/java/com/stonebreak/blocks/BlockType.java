@@ -118,8 +118,8 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType COBBLESTONE = fromRegistry("stonebreak:cobblestone", "COBBLESTONE");
     public static final BlockType GRAVEL = fromRegistry("stonebreak:gravel", "GRAVEL");
     public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
-    public static final BlockType RED_SAND_COBBLESTONE = fromRegistry("stonebreak:red_sand_cobblestone", "RED_SAND_COBBLESTONE");
-    public static final BlockType SAND_COBBLESTONE = fromRegistry("stonebreak:sand_cobblestone", "SAND_COBBLESTONE");
+    public static final BlockType COBBLED_RED_SANDSTONE = fromRegistry("stonebreak:cobbled_red_sandstone", "COBBLED_RED_SANDSTONE");
+    public static final BlockType COBBLED_SANDSTONE = fromRegistry("stonebreak:cobbled_sandstone", "COBBLED_SANDSTONE");
     // Brick / stone-brick building blocks (SBO: bricks_block / stone_bricks) —
     // solid stone-family blocks (SBO material "stone", so pickaxes speed them up).
     public static final BlockType BRICKS_BLOCK = fromRegistry("stonebreak:bricks_block", "BRICKS_BLOCK");

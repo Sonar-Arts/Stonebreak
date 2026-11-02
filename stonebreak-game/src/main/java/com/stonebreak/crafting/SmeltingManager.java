@@ -68,6 +68,20 @@ public class SmeltingManager {
     }
 
     /**
+     * Registers a burn time only when {@code item} has none yet, so an item's own fuel declaration
+     * wins over a fuel-table entry (which may cover a whole dictionary).
+     *
+     * @return true when registered
+     */
+    public boolean registerFuelIfAbsent(Item item, int burnTicks) {
+        if (fuelTimes.containsKey(item)) {
+            return false;
+        }
+        registerFuel(item, burnTicks);
+        return fuelTimes.containsKey(item);
+    }
+
+    /**
      * Returns burn-time in ticks for the given item, or 0 if not a fuel.
      */
     public int getBurnTime(ItemStack fuel) {

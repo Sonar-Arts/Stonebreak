@@ -346,8 +346,8 @@ public class DropUtil {
         // Mining substitutions: a few blocks drop something other than
         // themselves. Most fall through to the brokenBlock itself.
         if (brokenBlock == BlockType.STONE) return BlockType.COBBLESTONE;
-        if (brokenBlock == BlockType.RED_SANDSTONE) return BlockType.RED_SAND_COBBLESTONE;
-        if (brokenBlock == BlockType.SANDSTONE) return BlockType.SAND_COBBLESTONE;
+        if (brokenBlock == BlockType.RED_SANDSTONE) return BlockType.COBBLED_RED_SANDSTONE;
+        if (brokenBlock == BlockType.SANDSTONE) return BlockType.COBBLED_SANDSTONE;
         if (brokenBlock == BlockType.GRASS) return BlockType.DIRT;
         // Future: IRON_ORE / COAL_ORE should drop ingot/coal items here once
         // those items exist. Currently they drop themselves via the fallthrough.

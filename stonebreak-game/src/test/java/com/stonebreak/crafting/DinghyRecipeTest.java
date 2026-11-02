@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The dinghy recipe from its SBO: shovel _ shovel / plank iron-chunk plank / plank plank plank,
- * with all five planks of one wood.
+ * where every plank slot is {@code #stonebreak:wooden_planks} (any plank, woods may be mixed).
  */
 class DinghyRecipeTest {
 
@@ -51,10 +51,11 @@ class DinghyRecipeTest {
     }
 
     @Test
-    void mixedWoodsDoNotCraft() {
+    void mixedWoodsCraftADinghy() {
         ItemStack out = MANAGER.craftItem(grid(BlockType.WOOD_PLANKS, BlockType.PINE_WOOD_PLANKS,
                 ItemType.getByObjectId("stonebreak:iron_chunk")));
-        assertTrue(out == null || out.isEmpty() || out.getItem() != ItemType.DINGHY);
+        assertTrue(out != null && !out.isEmpty());
+        assertEquals(ItemType.DINGHY, out.getItem());
     }
 
     @Test

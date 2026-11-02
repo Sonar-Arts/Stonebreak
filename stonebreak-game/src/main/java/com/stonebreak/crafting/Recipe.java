@@ -2,6 +2,7 @@ package com.stonebreak.crafting;
 
 import com.stonebreak.items.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -12,13 +13,14 @@ import java.util.Objects;
  */
 public class Recipe {
     private final String id;
-    private final List<List<ItemStack>> inputPattern; // Inner list is a row, outer list is the grid
+    private final List<List<Ingredient>> ingredients; // per-slot ingredient; null = empty slot
+    private final List<List<ItemStack>> inputPattern; // representative stacks (first dictionary member)
     private final ItemStack output;
     private final int recipeWidth;
     private final int recipeHeight;
 
     /**
-     * Constructs a new Recipe.
+     * Constructs a recipe whose every slot demands one specific item.
      *
      * @param id A unique identifier for this recipe.
      * @param inputPattern A list of lists representing the crafting grid pattern.
@@ -27,11 +29,26 @@ public class Recipe {
      * @param output The ItemStack produced by this recipe.
      */
     public Recipe(String id, List<List<ItemStack>> inputPattern, ItemStack output) {
+        this(id, toIngredients(Objects.requireNonNull(inputPattern, "Input pattern cannot be null")),
+                inputPattern, output);
+    }
+
+    /**
+     * Builds a recipe from per-slot {@link Ingredient}s, so a slot may accept any member of an
+     * {@link ItemDictionary}. {@code null} cells are empty slots.
+     */
+    public static Recipe ofIngredients(String id, List<List<Ingredient>> ingredients, ItemStack output) {
+        Objects.requireNonNull(ingredients, "Input pattern cannot be null");
+        return new Recipe(id, ingredients, toRepresentatives(ingredients), output);
+    }
+
+    private Recipe(String id, List<List<Ingredient>> ingredients, List<List<ItemStack>> inputPattern,
+                   ItemStack output) {
         Objects.requireNonNull(id, "Recipe ID cannot be null");
-        Objects.requireNonNull(inputPattern, "Input pattern cannot be null");
         Objects.requireNonNull(output, "Output ItemStack cannot be null");
 
         this.id = id;
+        this.ingredients = ingredients;
         this.inputPattern = inputPattern;
         this.output = output;
 
@@ -53,10 +70,53 @@ public class Recipe {
         }
     }
 
+    private static List<List<Ingredient>> toIngredients(List<List<ItemStack>> pattern) {
+        List<List<Ingredient>> out = new ArrayList<>(pattern.size());
+        for (List<ItemStack> row : pattern) {
+            if (row == null) {
+                out.add(null);
+                continue;
+            }
+            List<Ingredient> r = new ArrayList<>(row.size());
+            for (ItemStack st : row) {
+                r.add(st == null || st.getItem() == null ? null : new Ingredient.Single(st.getItem()));
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
+    private static List<List<ItemStack>> toRepresentatives(List<List<Ingredient>> pattern) {
+        List<List<ItemStack>> out = new ArrayList<>(pattern.size());
+        for (List<Ingredient> row : pattern) {
+            if (row == null) {
+                out.add(null);
+                continue;
+            }
+            List<ItemStack> r = new ArrayList<>(row.size());
+            for (Ingredient ing : row) {
+                r.add(ing == null ? null : new ItemStack(ing.representative(), 1));
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
     public String getId() {
         return id;
     }
 
+    /**
+     * Per-slot ingredients (rows of columns, {@code null} = empty slot). A dictionary slot accepts
+     * any member; prefer this over {@link #getInputPattern()} whenever every accepted item matters.
+     */
+    public List<List<Ingredient>> getIngredientPattern() {
+        return ingredients;
+    }
+
+    /**
+     * The pattern as representative stacks: a dictionary slot shows its first member.
+     */
     public List<List<ItemStack>> getInputPattern() {
         return inputPattern;
     }
@@ -151,12 +211,13 @@ public class Recipe {
                     return false; // Recipe expects an item, but grid slot is empty
                 }
                 if (recipeItem != null && gridItem != null && !gridItem.isEmpty()) {
-                    // Match by Item singleton identity. ItemType and BlockType
-                    // each maintain a single instance per registered objectId,
-                    // so reference equality is the canonical "same kind" test
-                    // and immune to the numericId collisions that plague the
-                    // SBO data (e.g. stick and wooden_axe both declaring 1013).
-                    if (recipeItem.getItem() != gridItem.getItem()) {
+                    // Match by Item singleton identity (a dictionary slot: membership). ItemType
+                    // and BlockType each maintain a single instance per registered objectId, so
+                    // reference equality is the canonical "same kind" test and immune to the
+                    // numericId collisions that plague the SBO data (e.g. stick and wooden_axe
+                    // both declaring 1013).
+                    Ingredient ingredient = ingredients.get(r).get(c);
+                    if (ingredient == null || !ingredient.test(gridItem.getItem())) {
                         return false;
                     }
                     if (gridItem.getCount() < recipeItem.getCount()) {

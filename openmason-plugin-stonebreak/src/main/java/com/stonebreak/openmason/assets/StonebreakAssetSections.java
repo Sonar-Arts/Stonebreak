@@ -37,6 +37,8 @@ public final class StonebreakAssetSections {
                         RecipesSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.smelting", AssetSurface.SBO_EDITOR, 400,
                         SmeltingSection::new),
+                new AssetSectionContribution<>("stonebreak.sbo.fuel-table", AssetSurface.SBO_EDITOR, 450,
+                        FuelTableSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.drops", AssetSurface.SBO_EDITOR, 600,
                         DropsSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.tool", AssetSurface.SBO_EDITOR, 700,
@@ -119,6 +121,35 @@ public final class StonebreakAssetSections {
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
             return SboGameplay.of(doc).withSmeltingRecipes(form.toSmeltingRecipeData()).applyTo(doc);
+        }
+    }
+
+    /** Fuel table: burn times for other objects / whole dictionaries (the furnace carries the game's). */
+    static final class FuelTableSection implements AssetEditorSection<SBOFormat.Document> {
+        final SBOFuelTableSection form;
+
+        FuelTableSection(AssetSectionHost host) {
+            this.form = new SBOFuelTableSection(host::markDirty);
+        }
+
+        @Override
+        public String title() {
+            return "Fuel Table";
+        }
+
+        @Override
+        public void load(SBOFormat.Document doc) {
+            form.setFrom(SboGameplay.of(doc).fuelTable());
+        }
+
+        @Override
+        public void render() {
+            form.render();
+        }
+
+        @Override
+        public SBOFormat.Document write(SBOFormat.Document doc) {
+            return SboGameplay.of(doc).withFuelTable(form.toFuelTableData()).applyTo(doc);
         }
     }
 

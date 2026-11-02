@@ -155,7 +155,7 @@ public class SurfaceDecorationGenerator {
         } else if (roll < BADLANDS_GRAVEL_CHANCE) {
             replacement = BlockType.GRAVEL;
         } else if (roll < BADLANDS_COBBLE_CHANCE) {
-            replacement = BlockType.RED_SAND_COBBLESTONE;
+            replacement = BlockType.COBBLED_RED_SANDSTONE;
         } else {
             return;
         }

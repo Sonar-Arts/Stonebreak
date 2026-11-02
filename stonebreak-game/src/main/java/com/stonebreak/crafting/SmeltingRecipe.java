@@ -15,6 +15,7 @@ import java.util.Objects;
 public class SmeltingRecipe {
 
     private final String id;
+    private final Ingredient ingredient;
     private final ItemStack input;
     private final ItemStack output;
 
@@ -24,10 +25,21 @@ public class SmeltingRecipe {
      * @param output the smelted result
      */
     public SmeltingRecipe(String id, ItemStack input, ItemStack output) {
+        this(id, new Ingredient.Single(Objects.requireNonNull(input, "Input cannot be null").getItem()),
+                input, output);
+    }
+
+    /** A recipe whose input may be any member of a dictionary (or one specific item). */
+    public static SmeltingRecipe ofIngredient(String id, Ingredient ingredient, ItemStack output) {
+        Objects.requireNonNull(ingredient, "Input cannot be null");
+        return new SmeltingRecipe(id, ingredient, new ItemStack(ingredient.representative(), 1), output);
+    }
+
+    private SmeltingRecipe(String id, Ingredient ingredient, ItemStack input, ItemStack output) {
         Objects.requireNonNull(id, "Recipe ID cannot be null");
-        Objects.requireNonNull(input, "Input cannot be null");
         Objects.requireNonNull(output, "Output cannot be null");
         this.id = id;
+        this.ingredient = ingredient;
         this.input = input;
         this.output = output;
     }
@@ -36,6 +48,12 @@ public class SmeltingRecipe {
         return id;
     }
 
+    /** What this recipe accepts as input (an item, or any member of a dictionary). */
+    public Ingredient getIngredient() {
+        return ingredient;
+    }
+
+    /** A representative input stack (a dictionary input shows its first member). */
     public ItemStack getInput() {
         return input;
     }
@@ -51,7 +69,7 @@ public class SmeltingRecipe {
      */
     public boolean matches(ItemStack candidate) {
         if (candidate == null || candidate.isEmpty()) return false;
-        return candidate.getItem() == input.getItem();
+        return ingredient.test(candidate.getItem());
     }
 
     @Override

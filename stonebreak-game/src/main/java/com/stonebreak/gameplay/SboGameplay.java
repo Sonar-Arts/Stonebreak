@@ -25,6 +25,9 @@ import java.util.Objects;
  * @param drops           what breaking this block yields (present = authoritative, even empty)
  * @param tool            the item's mining-tool data
  * @param weapon          the item's melee-weapon data
+ * @param dictionaries    ids of the item dictionaries this object belongs to (never null), e.g.
+ *                        {@code stonebreak:wooden_planks}; recipes name one as {@code #id}
+ * @param fuelTable       burn times for other objects / whole dictionaries (the furnace's)
  */
 public record SboGameplay(
         GameProperties gameProperties,
@@ -33,8 +36,53 @@ public record SboGameplay(
         FuelData fuel,
         DropData drops,
         ToolData tool,
-        WeaponData weapon
+        WeaponData weapon,
+        List<String> dictionaries,
+        FuelTableData fuelTable
 ) {
+
+    /** Normalises {@code dictionaries}: never null, no blanks, no duplicates, order kept. */
+    public SboGameplay {
+        dictionaries = normaliseDictionaries(dictionaries);
+    }
+
+    /** The legacy seven-part constructor: no dictionaries, no fuel table. */
+    public SboGameplay(GameProperties gameProperties, RecipeData recipes, SmeltingRecipeData smeltingRecipes,
+                       FuelData fuel, DropData drops, ToolData tool, WeaponData weapon) {
+        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, List.of(), null);
+    }
+
+    private static List<String> normaliseDictionaries(List<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        var out = new java.util.LinkedHashSet<String>();
+        for (String id : ids) {
+            if (id == null) continue;
+            String t = id.strip();
+            if (t.startsWith(DICTIONARY_PREFIX)) t = t.substring(DICTIONARY_PREFIX.length()).strip();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Prefix that marks an ingredient reference (recipe slot, smelting input, fuel-table entry) as a
+     * dictionary rather than one specific object: {@code "#stonebreak:wooden_planks"}.
+     */
+    public static final String DICTIONARY_PREFIX = "#";
+
+    /** A dictionary id for people: {@code stonebreak:wooden_planks} (or {@code #...}) → {@code "Wooden Planks"}. */
+    public static String dictionaryDisplayName(String dictionaryId) {
+        String id = dictionaryId == null ? "" : dictionaryId.strip();
+        if (id.startsWith(DICTIONARY_PREFIX)) id = id.substring(DICTIONARY_PREFIX.length());
+        String path = id.substring(id.indexOf(':') + 1);
+        StringBuilder sb = new StringBuilder();
+        for (String word : path.split("[_\\s]+")) {
+            if (word.isEmpty()) continue;
+            if (!sb.isEmpty()) sb.append(' ');
+            sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return sb.toString();
+    }
 
     /** No game data. */
     public static final SboGameplay NONE = new SboGameplay(null, null, null, null, null, null, null);
@@ -61,35 +109,54 @@ public record SboGameplay(
 
     public boolean isEmpty() {
         return gameProperties == null && recipes == null && smeltingRecipes == null && fuel == null
-                && drops == null && tool == null && weapon == null;
+                && drops == null && tool == null && weapon == null && dictionaries.isEmpty() && fuelTable == null;
     }
 
     public SboGameplay withGameProperties(GameProperties v) {
-        return new SboGameplay(v, recipes, smeltingRecipes, fuel, drops, tool, weapon);
+        return new SboGameplay(v, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable);
     }
 
     public SboGameplay withRecipes(RecipeData v) {
-        return new SboGameplay(gameProperties, v, smeltingRecipes, fuel, drops, tool, weapon);
+        return new SboGameplay(gameProperties, v, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable);
     }
 
     public SboGameplay withSmeltingRecipes(SmeltingRecipeData v) {
-        return new SboGameplay(gameProperties, recipes, v, fuel, drops, tool, weapon);
+        return new SboGameplay(gameProperties, recipes, v, fuel, drops, tool, weapon, dictionaries, fuelTable);
     }
 
     public SboGameplay withFuel(FuelData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, v, drops, tool, weapon);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, v, drops, tool, weapon, dictionaries, fuelTable);
     }
 
     public SboGameplay withDrops(DropData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, v, tool, weapon);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, v, tool, weapon, dictionaries, fuelTable);
     }
 
     public SboGameplay withTool(ToolData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, v, weapon);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, v, weapon, dictionaries, fuelTable);
     }
 
     public SboGameplay withWeapon(WeaponData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, v);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, v, dictionaries, fuelTable);
+    }
+
+    /** Replaces the dictionaries this object belongs to (null/empty = none). */
+    public SboGameplay withDictionaries(List<String> v) {
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, v, fuelTable);
+    }
+
+    public SboGameplay withFuelTable(FuelTableData v) {
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, v);
+    }
+
+    /** True when this object is a member of at least one dictionary. */
+    public boolean hasDictionaries() {
+        return !dictionaries.isEmpty();
+    }
+
+    /** True when this SBO carries a fuel table (present but empty = no extra fuels). */
+    public boolean hasFuelTable() {
+        return fuelTable != null;
     }
 
     /** True when this SBO declares one or more crafting recipes. */
@@ -384,6 +451,37 @@ public record SboGameplay(
             if (burnTicks < 1) {
                 throw new IllegalArgumentException("burnTicks must be >= 1, got " + burnTicks);
             }
+        }
+    }
+
+    /**
+     * Fuel table: burn times for objects that do not declare their own {@link FuelData}. Lets one
+     * SBO (the furnace) make a whole dictionary burnable, e.g. {@code "#stonebreak:logs"} → 300.
+     * An object's own {@code fuel} always takes precedence over a table entry.
+     *
+     * @param entries fuel entries; never null but may be empty
+     */
+    public record FuelTableData(List<FuelTableEntry> entries) {
+        public FuelTableData {
+            entries = entries == null ? Collections.emptyList() : List.copyOf(entries);
+        }
+    }
+
+    /**
+     * One fuel-table entry.
+     *
+     * @param ingredient an objectId, or {@code #}-prefixed dictionary id; never blank
+     * @param burnTicks  burn time per unit, in game-ticks (>= 1)
+     */
+    public record FuelTableEntry(String ingredient, int burnTicks) {
+        public FuelTableEntry {
+            if (ingredient == null || ingredient.isBlank()) {
+                throw new IllegalArgumentException("fuel table ingredient must not be blank");
+            }
+            if (burnTicks < 1) {
+                throw new IllegalArgumentException("burnTicks must be >= 1, got " + burnTicks);
+            }
+            ingredient = ingredient.strip();
         }
     }
 

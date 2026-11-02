@@ -93,7 +93,7 @@ class StonebreakAssetSectionsTest {
                 new AssetSectionSet.Tab("core.sounds", "Sounds", 500, null));
         set.load(new SBOFormat.Document("1.11", "stonebreak:x", "X", "block", "default", "-", "me", null, "now",
                 "model.omo", null, null, List.of(), null, null, null));
-        assertEquals(List.of("Metadata", "Game Properties", "States", "Recipes", "Smelting", "Sounds", "Drops",
+        assertEquals(List.of("Metadata", "Game Properties", "States", "Recipes", "Smelting", "Fuel Table", "Sounds", "Drops",
                 "Tool", "Weapon"), set.tabs(core).stream().map(AssetSectionSet.Tab::label).toList());
         set.close();
     }

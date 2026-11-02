@@ -8,6 +8,7 @@ import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.crafting.Ingredient;
 import com.stonebreak.crafting.Recipe;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
@@ -172,16 +173,28 @@ public final class RecipeBookContracts {
         return new UiValue.Obj(m);
     }
 
+    /** Milliseconds each member of a dictionary slot is shown before the next one. */
+    static final long DICTIONARY_CYCLE_MS = 1000L;
+
     private static UiValue detail(RecipeScreen r) {
         Recipe sel = r == null ? null : r.state().getPopupState().getSelectedRecipe();
-        ItemStack[][] pattern = sel == null ? null : sel.getPattern();
+        List<List<Ingredient>> pattern = sel == null ? null : sel.getIngredientPattern();
+        long tick = System.currentTimeMillis() / DICTIONARY_CYCLE_MS;
         Map<String, UiValue> out = new LinkedHashMap<>();
         for (int row = 0; row < RecipeBookConstants.DETAIL_INPUT_GRID; row++) {
+            List<Ingredient> cells = pattern != null && row < pattern.size() ? pattern.get(row) : null;
             for (int col = 0; col < RecipeBookConstants.DETAIL_INPUT_GRID; col++) {
-                ItemStack st = pattern != null && row < pattern.length && col < pattern[row].length
-                    ? pattern[row][col] : null;
+                Ingredient ing = cells != null && col < cells.size() ? cells.get(col) : null;
                 String slot = "in" + (row * 3 + col);
-                out.put(slot, cell(slot, st, name(st)));
+                if (ing == null) {
+                    out.put(slot, cell(slot, null, ""));
+                } else {
+                    // A dictionary slot cycles through its members on the wall clock.
+                    List<Item> shown = ing.displayItems();
+                    ItemStack st = new ItemStack(shown.get((int) (tick % shown.size())), 1);
+                    String tooltip = ing instanceof Ingredient.Dictionary d ? "Any " + d.displayName() : name(st);
+                    out.put(slot, cell(slot, st, tooltip));
+                }
             }
         }
         ItemStack output = sel == null ? null : sel.getOutput();

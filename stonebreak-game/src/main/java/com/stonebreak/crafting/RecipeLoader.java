@@ -1,13 +1,10 @@
 package com.stonebreak.crafting;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
 import com.openmason.engine.format.sbo.SBOParseResult;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.items.ItemType;
 import com.stonebreak.items.registry.ItemRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,13 +45,14 @@ public final class RecipeLoader {
         }
 
         int registered = 0;
+        ItemDictionary dictionary = ItemDictionary.fromRegistries();
 
         for (BlockRegistry.BlockEntry entry : BlockRegistry.getInstance().all()) {
-            registered += harvest(entry.objectId(), entry.sboData(), craftingManager);
+            registered += harvest(entry.objectId(), entry.sboData(), dictionary, craftingManager);
         }
         // A snapshot: resolving an output may first initialise ItemType, which rescans the registry.
         for (ItemRegistry.ItemEntry entry : java.util.List.copyOf(ItemRegistry.getInstance().all())) {
-            registered += harvest(entry.objectId(), entry.sboData(), craftingManager);
+            registered += harvest(entry.objectId(), entry.sboData(), dictionary, craftingManager);
         }
 
         logger.info("RecipeLoader: registered {} recipe(s) from SBO files", registered);
@@ -63,12 +61,13 @@ public final class RecipeLoader {
 
     private static int harvest(String outputObjectId,
                                 SBOParseResult sbo,
+                                ItemDictionary dictionary,
                                 CraftingManager craftingManager) {
         if (sbo == null || !SboGameplay.of(sbo.manifest()).hasRecipes()) {
             return 0;
         }
 
-        Item outputItem = resolveItem(outputObjectId);
+        Item outputItem = ItemResolver.resolve(outputObjectId);
         if (outputItem == null) {
             logger.warn("Cannot register recipes for unknown output objectId: {}", outputObjectId);
             return 0;
@@ -78,7 +77,7 @@ public final class RecipeLoader {
         List<SboGameplay.ShapedRecipe> shapedList = SboGameplay.of(sbo.manifest()).recipes().shaped();
         for (int i = 0; i < shapedList.size(); i++) {
             SboGameplay.ShapedRecipe shaped = shapedList.get(i);
-            Recipe recipe = buildRecipe(outputObjectId, outputItem, shaped, i);
+            Recipe recipe = buildRecipe(outputObjectId, outputItem, shaped, i, dictionary);
             if (recipe == null) {
                 continue;
             }
@@ -91,7 +90,8 @@ public final class RecipeLoader {
     private static Recipe buildRecipe(String outputObjectId,
                                        Item outputItem,
                                        SboGameplay.ShapedRecipe shaped,
-                                       int recipeIndex) {
+                                       int recipeIndex,
+                                       ItemDictionary dictionary) {
         int width = shaped.width();
         int height = shaped.height();
         List<String> flat = shaped.pattern();
@@ -120,22 +120,23 @@ public final class RecipeLoader {
         int trimmedHeight = maxR - minR + 1;
         int trimmedWidth = maxC - minC + 1;
 
-        List<List<ItemStack>> rows = new ArrayList<>(trimmedHeight);
+        List<List<Ingredient>> rows = new ArrayList<>(trimmedHeight);
         for (int r = 0; r < trimmedHeight; r++) {
-            List<ItemStack> row = new ArrayList<>(trimmedWidth);
+            List<Ingredient> row = new ArrayList<>(trimmedWidth);
             for (int c = 0; c < trimmedWidth; c++) {
                 String slotId = flat.get((minR + r) * width + (minC + c));
                 if (slotId == null || slotId.isBlank()) {
                     row.add(null);
                     continue;
                 }
-                Item ingredient = resolveItem(slotId);
+                Ingredient ingredient = Ingredient.parse(slotId, dictionary);
                 if (ingredient == null) {
-                    logger.warn("Recipe for {} #{} references unknown ingredient '{}' — skipping recipe",
-                            outputObjectId, recipeIndex, slotId);
+                    logger.warn("Recipe for {} #{} references unknown {} '{}' — skipping recipe",
+                            outputObjectId, recipeIndex,
+                            Ingredient.isDictionaryRef(slotId) ? "(or empty) dictionary" : "ingredient", slotId);
                     return null;
                 }
-                row.add(new ItemStack(ingredient, 1));
+                row.add(ingredient);
             }
             rows.add(row);
         }
@@ -143,32 +144,10 @@ public final class RecipeLoader {
         String recipeId = outputObjectId.replace(':', '_') + "_recipe_" + recipeIndex;
         ItemStack output = new ItemStack(outputItem, shaped.outputCount());
         try {
-            return new Recipe(recipeId, rows, output);
+            return Recipe.ofIngredients(recipeId, rows, output);
         } catch (RuntimeException ex) {
             logger.warn("Failed to build recipe {}: {}", recipeId, ex.getMessage());
             return null;
         }
-    }
-
-    /**
-     * Resolve an SBO {@code objectId} to a concrete {@link Item}. Blocks are
-     * resolved through {@link BlockRegistry} -> {@link BlockType#getById(int)};
-     * items go through {@link ItemRegistry} -> {@link ItemType#getById(int)}.
-     *
-     * @return the resolved item, or {@code null} if unknown
-     */
-    /**
-     * Resolve an SBO {@code objectId} to a concrete {@link Item} purely by
-     * name. Both {@link BlockType} and {@link ItemType} maintain a
-     * {@code BY_OBJECT_ID} index populated whenever a type is registered from
-     * an SBO source (or, for PNG-backed sentinels, mapped explicitly).
-     */
-    private static Item resolveItem(String objectId) {
-        if (objectId == null || objectId.isBlank()) {
-            return null;
-        }
-        BlockType bt = BlockType.getByObjectId(objectId);
-        if (bt != null) return bt;
-        return ItemType.getByObjectId(objectId);
     }
 }

@@ -103,8 +103,8 @@ class ToolMiningRulesTest {
         return new BlockType[]{
                 BlockType.STONE,
                 BlockType.COBBLESTONE,
-                BlockType.SAND_COBBLESTONE,
-                BlockType.RED_SAND_COBBLESTONE,
+                BlockType.COBBLED_SANDSTONE,
+                BlockType.COBBLED_RED_SANDSTONE,
                 BlockType.SANDSTONE,
                 BlockType.RED_SANDSTONE,
                 BlockType.BRICKS_BLOCK,

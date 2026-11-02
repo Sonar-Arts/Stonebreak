@@ -15,6 +15,7 @@ import imgui.type.ImFloat;
 import imgui.type.ImInt;
 import imgui.type.ImString;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -49,6 +50,9 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
     // Fuel (1.5+): lives in the top-level Document.fuel field, shown here since it's an item property.
     private boolean isFuel;
     private final ImInt fuelBurnTicks = new ImInt(1600);
+    // Item dictionaries this object belongs to (recipes accept any member as "#id").
+    private final List<String> dictionaries = new ArrayList<>();
+    private final ImString newDictionary = new ImString(96);
 
     GamePropertiesSection(AssetSectionHost host) {
         this.host = host;
@@ -81,6 +85,9 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         }
         isFuel = data.fuel() != null;
         fuelBurnTicks.set(data.fuel() != null ? data.fuel().burnTicks() : 1600);
+        dictionaries.clear();
+        dictionaries.addAll(data.dictionaries());
+        newDictionary.set("");
     }
 
     @Override
@@ -95,6 +102,7 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
                 : null;
         return SboGameplay.of(doc).withGameProperties(gp)
                 .withFuel(isFuel ? new SboGameplay.FuelData(Math.max(1, fuelBurnTicks.get())) : null)
+                .withDictionaries(dictionaries)
                 .applyTo(doc);
     }
 
@@ -126,6 +134,7 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
     @Override
     public void written() {
         SBOMiningIndex.invalidate(); // materials may have changed
+        SBODictionaryIndex.invalidate(); // dictionary membership may have changed
     }
 
     @Override
@@ -143,6 +152,7 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         if (!hasGameProperties) {
             ImGui.textDisabled("This SBO has no gameProperties block (legacy 1.0).");
             ImGui.dummy(0, 4);
+            renderDictionaryControls();
             renderFuelControls();
             return;
         }
@@ -187,8 +197,64 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         if (ImGui.inputInt("Max Stack Size", maxStackSize))  host.markDirty();
         if (ImGui.inputText("Category", category))           host.markDirty();
         ImGui.popItemWidth();
+        renderDictionaryControls();
         ImGui.dummy(0, 4);
         renderFuelControls();
+    }
+
+    /**
+     * The item dictionaries this object is a member of. A recipe slot, smelting input or fuel-table
+     * entry written {@code #id} accepts every member, so e.g. a new plank joins every plank recipe
+     * by declaring {@code stonebreak:wooden_planks} here.
+     */
+    private void renderDictionaryControls() {
+        ThemedWidgets.sectionLabel("Dictionaries");
+        if (dictionaries.isEmpty()) {
+            ImGui.textDisabled("Not in any dictionary.");
+        }
+        for (int i = 0; i < dictionaries.size(); i++) {
+            String id = dictionaries.get(i);
+            if (ImGui.smallButton("x##dict_rm_" + i)) {
+                dictionaries.remove(i);
+                host.markDirty();
+                break;
+            }
+            ImGui.sameLine();
+            ImGui.text(SBODictionaryIndex.ref(id));
+            int others = (int) SBODictionaryIndex.shared().members(id).stream()
+                    .filter(m -> !m.equals(host.objectId())).count();
+            ImGui.sameLine();
+            ImGui.textDisabled(others == 0 ? "(no other members)" : "(+" + others + " other member" + (others == 1 ? ")" : "s)"));
+        }
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
+        boolean enter = ImGui.inputTextWithHint("##dict_new", "e.g. stonebreak:wooden_planks", newDictionary,
+                imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue);
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        if (ImGui.smallButton("Add##dict_add") || enter) {
+            addDictionary(newDictionary.get());
+            newDictionary.set("");
+        }
+        ImGui.sameLine();
+        ImGui.pushItemWidth(EditorWidgets.LOOP_COMBO_WIDTH);
+        if (ImGui.beginCombo("##dict_known", "Known")) {
+            for (String id : SBODictionaryIndex.shared().ids()) {
+                if (ImGui.selectable(SBODictionaryIndex.ref(id), dictionaries.contains(id))) {
+                    addDictionary(id);
+                }
+            }
+            ImGui.endCombo();
+        }
+        ImGui.popItemWidth();
+        ImGui.textDisabled("Recipes use a dictionary as \"#id\" in a slot: any member fits.");
+    }
+
+    private void addDictionary(String raw) {
+        String id = SBODictionaryIndex.strip(raw);
+        if (!id.isEmpty() && !dictionaries.contains(id)) {
+            dictionaries.add(id);
+            host.markDirty();
+        }
     }
 
     /** Material + required tier (1.9+) and a live break-time preview per known tool. */

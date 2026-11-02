@@ -117,7 +117,8 @@ public class SBOSmeltingSection {
             }
             if (ImGui.isItemHovered()) {
                 ImGui.setTooltip(hasInput
-                        ? r.inputObjectId + "\nClick to change - right-click to clear"
+                        ? SBODictionaryIndex.shared().describe(r.inputObjectId)
+                                + "\nClick to change - right-click to clear"
                         : "Click to pick the smelting input");
             }
             if (pickClicked) {
@@ -185,6 +186,7 @@ public class SBOSmeltingSection {
     private static String shortLabel(String objectId) {
         int colon = objectId.indexOf(':');
         String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;
+        if (SBODictionaryIndex.isRef(objectId) && !local.startsWith("#")) local = "#" + local;
         if (local.length() > 7) local = local.substring(0, 6) + "..";
         return local;
     }

@@ -37,7 +37,8 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
 
     /** The top-level fields SBO 1.1–1.10 used for this data. */
     public static final Set<String> LEGACY_FIELDS = Set.of(
-            "gameProperties", "recipes", "smeltingRecipes", "fuel", "drops", "tool", "weapon");
+            "gameProperties", "recipes", "smeltingRecipes", "fuel", "drops", "tool", "weapon",
+            "dictionaries", "fuelTable");
 
     private SboGameplayCodec() {
     }
@@ -60,7 +61,7 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
             throw new IllegalArgumentException(KEY + " must be an object");
         }
         return new SboGameplay(readGameProperties(root), readRecipes(root), readSmelting(root), readFuel(root),
-                readDrops(root), readTool(root), readWeapon(root));
+                readDrops(root), readTool(root), readWeapon(root), readDictionaries(root), readFuelTable(root));
     }
 
     private static boolean present(JsonNode root, String field) {
@@ -127,6 +128,38 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
             }
         }
         return list.isEmpty() ? null : new SboGameplay.SmeltingRecipeData(list);
+    }
+
+    static List<String> readDictionaries(JsonNode root) {
+        if (!present(root, "dictionaries")) return List.of();
+        var node = root.get("dictionaries");
+        if (!node.isArray()) {
+            logger.warn("Ignoring non-array 'dictionaries' in manifest");
+            return List.of();
+        }
+        List<String> ids = new ArrayList<>();
+        for (var id : node) {
+            if (id.isTextual()) ids.add(id.asText());
+        }
+        return ids; // the record strips blanks/duplicates
+    }
+
+    static SboGameplay.FuelTableData readFuelTable(JsonNode root) {
+        if (!present(root, "fuelTable")) return null;
+        var node = root.get("fuelTable");
+        List<SboGameplay.FuelTableEntry> list = new ArrayList<>();
+        if (node.has("entries") && node.get("entries").isArray()) {
+            for (var e : node.get("entries")) {
+                String ingredient = e.has("ingredient") ? e.get("ingredient").asText() : "";
+                int burnTicks = e.has("burnTicks") ? e.get("burnTicks").asInt() : 0;
+                try {
+                    list.add(new SboGameplay.FuelTableEntry(ingredient, burnTicks));
+                } catch (IllegalArgumentException ex) {
+                    logger.warn("Skipping invalid fuel table entry in manifest: {}", ex.getMessage());
+                }
+            }
+        }
+        return new SboGameplay.FuelTableData(list);
     }
 
     static SboGameplay.FuelData readFuel(JsonNode root) {
@@ -250,6 +283,17 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
         if (g.hasDrops()) out.set("drops", encode(g.drops()));
         if (g.hasTool()) out.set("tool", encode(g.tool()));
         if (g.hasWeapon()) out.set("weapon", encode(g.weapon()));
+        if (g.hasDictionaries()) {
+            ArrayNode ids = out.putArray("dictionaries");
+            g.dictionaries().forEach(ids::add);
+        }
+        if (g.hasFuelTable()) {
+            ArrayNode entries = JSON.createArrayNode();
+            for (SboGameplay.FuelTableEntry e : g.fuelTable().entries()) {
+                entries.addObject().put("ingredient", e.ingredient()).put("burnTicks", e.burnTicks());
+            }
+            out.putObject("fuelTable").set("entries", entries);
+        }
         return out;
     }
 
