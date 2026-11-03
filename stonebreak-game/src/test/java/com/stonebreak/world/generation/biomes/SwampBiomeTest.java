@@ -20,26 +20,26 @@ class SwampBiomeTest {
 
     private final BiomeSelector selector = new BiomeSelector();
 
-    /** c, erosion, pv, temperature, moisture. */
-    private BiomeType select(float c, float e, float pv, float t, float m) {
-        return selector.select(new MultiNoiseSample(c, e, pv, t, m), false);
+    /** land, mountain, hilly, rough, shaped height, temperature, moisture (DistilledShape fields + climate). */
+    private BiomeType select(float land, float mountain, float hilly, float rough, int height, float t, float m) {
+        return selector.select(new MultiNoiseSample(land, mountain, hilly, rough, height, t, m), false);
     }
 
     @Test
     void flatWetTemperateLowlandIsSwamp() {
-        assertEquals(BiomeType.SWAMP, select(0.0f, 0.5f, 0.0f, 0.5f, 0.8f));
-        assertEquals(BiomeType.SWAMP, select(-0.1f, 0.3f, -0.2f, 0.7f, 0.7f));
+        assertEquals(BiomeType.SWAMP, select(1.0f, 0.0f, 0.1f, 0.15f, 70, 0.5f, 0.8f));
+        assertEquals(BiomeType.SWAMP, select(0.9f, 0.05f, 0.0f, 0.25f, 78, 0.7f, 0.7f));
     }
 
     @Test
     void notSwampWhenHillyHighValleyCoastalDryOrCold() {
-        assertNotEquals(BiomeType.SWAMP, select(0.0f, 0.5f, 0.2f, 0.5f, 0.8f));   // hilly
-        assertNotEquals(BiomeType.SWAMP, select(0.0f, 0.5f, 0.6f, 0.5f, 0.8f));   // mountain
-        assertNotEquals(BiomeType.SWAMP, select(0.5f, 0.5f, 0.0f, 0.5f, 0.8f));   // high inland
-        assertNotEquals(BiomeType.SWAMP, select(0.0f, 0.5f, -0.5f, 0.5f, 0.8f));  // valley floor
-        assertNotEquals(BiomeType.SWAMP, select(-0.3f, 0.5f, 0.0f, 0.5f, 0.8f));  // coast
-        assertNotEquals(BiomeType.SWAMP, select(0.0f, 0.5f, 0.0f, 0.5f, 0.5f));   // dry
-        assertNotEquals(BiomeType.SWAMP, select(0.0f, 0.5f, 0.0f, 0.3f, 0.8f));   // cold
+        assertNotEquals(BiomeType.SWAMP, select(1.0f, 0.0f, 0.8f, 0.15f, 70, 0.5f, 0.8f));  // hill country
+        assertNotEquals(BiomeType.SWAMP, select(1.0f, 0.7f, 0.1f, 0.15f, 70, 0.5f, 0.8f));  // range body
+        assertNotEquals(BiomeType.SWAMP, select(1.0f, 0.0f, 0.1f, 0.15f, 95, 0.5f, 0.8f));  // high ground
+        assertNotEquals(BiomeType.SWAMP, select(1.0f, 0.0f, 0.1f, 0.6f, 70, 0.5f, 0.8f));   // rugged ground
+        assertNotEquals(BiomeType.SWAMP, select(0.7f, 0.0f, 0.1f, 0.15f, 65, 0.5f, 0.8f));  // shore strip
+        assertNotEquals(BiomeType.SWAMP, select(1.0f, 0.0f, 0.1f, 0.15f, 70, 0.5f, 0.5f));  // dry
+        assertNotEquals(BiomeType.SWAMP, select(1.0f, 0.0f, 0.1f, 0.15f, 70, 0.3f, 0.8f));  // cold
     }
 
     @Test

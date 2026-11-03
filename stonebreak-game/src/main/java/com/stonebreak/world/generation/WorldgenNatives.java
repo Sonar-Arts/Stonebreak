@@ -33,7 +33,7 @@ import java.util.Optional;
 public final class WorldgenNatives {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorldgenNatives.class);
-    private static final int EXPECTED_ABI = 1; // 1 (#386): split out of the engine's CK ABI 12
+    private static final int EXPECTED_ABI = 2; // 1 (#386): split out of the engine's CK ABI 12; 2: distilled Standard shape (11 channels + constants + curve table)
 
     /** Where the library is looked for. */
     static final NativeLibraryLocator.Spec LIBRARY = new NativeLibraryLocator.Spec(
@@ -205,8 +205,13 @@ public final class WorldgenNatives {
     // ═══════════════════════ Worm carver ═══════════════════════
 
     /**
-     * Creates a native terrain context (channel nodes + splines + worm state). Returns 0 when
+     * Creates a native terrain context (shape channel nodes + worm state). Returns 0 when
      * unavailable or on invalid input. Destroy with {@link #terrainDestroy}.
+     *
+     * <p>Since ABI 2 the "spline" slots carry the distilled shape
+     * ({@link com.stonebreak.world.generation.heightmap.DistilledShape.NativeArgs}): {@code splineXs} =
+     * formula constants, {@code splineYs} = height-curve table, {@code splineSizes} = {channels,
+     * constants, table length}, {@code detailAmplitude} = detail blocks.
      */
     public static long terrainCreate(long seed,
                                      int[] chSeeds, int[] chOctaves,

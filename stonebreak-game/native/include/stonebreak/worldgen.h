@@ -31,7 +31,7 @@
 extern "C" {
 #endif
 
-#define SBW_ABI_VERSION 1 /* 1 (#386): split out of the engine's CK ABI 12 */
+#define SBW_ABI_VERSION 2 /* 1 (#386): split out of the engine's CK ABI 12; 2: distilled Standard shape (11 channels, constants + curve table in the spline slots) */
 
 /* ABI handshake — WorldgenNatives refuses the lib if this doesn't match. */
 SBW_API int32_t sbw_abi_version(void);
@@ -39,13 +39,17 @@ SBW_API int32_t sbw_abi_version(void);
 /* ════════════════════════ Worm carver ════════════════════════
  *
  * Full port of PerlinWormCarver over a native terrain context (the same
- * FastNoise2 channel nodes the Java NoiseRouter uses + linear splines).
+ * FastNoise2 channel nodes and formula as the Java DistilledShape).
  * Deterministic per seed, but NOT bit-identical to the Java carver (libm trig
  * differs across languages) — callers gate it on the native noise backend so
  * one implementation owns a world's caves.
  *
- * Channels order everywhere: continentalness, peaksValleys, erosion, detail.
- * Splines order: base(C), peak(PV), erosion->peakStrength(E).
+ * ABI 2 terrain params (DistilledShape.nativeArgs): ch_* = the 11 shape channels in
+ * DistilledShape order (cont, warpX, warpZ, range, spur, along, hills, hilly, valley,
+ * texture, detail; offsets must be 0); spline_xs = the DistilledShape constants
+ * (DistilledShape::K_* order), spline_ys = the height-curve table (HeightCurveTable),
+ * spline_sizes = {11, constant count, table length}; detail_amplitude = detail blocks
+ * (informational, the constants carry it).
  *
  * anchors: per worm-bearing source chunk that has a cavern connector target,
  * 2 ints (srcChunkX, srcChunkZ) + 3 floats (x,y,z anchor). Java precomputes

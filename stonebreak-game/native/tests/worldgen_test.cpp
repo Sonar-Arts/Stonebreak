@@ -21,29 +21,48 @@ void check(bool ok, const char* what) {
     }
 }
 
+/* ABI 2 terrain fixture: the DistilledShape layout (11 channels, constants, curve table),
+ * with representative numbers. Exact values are the Java parity suites' business. */
+struct ShapeFixture {
+    int32_t seeds[11];
+    int32_t octaves[11] = {4, 2, 2, 2, 2, 2, 4, 3, 4, 4, 3};
+    float gain[11];
+    float lac[11];
+    float freq[11];
+    int32_t xoff[11] = {};
+    int32_t zoff[11] = {};
+    double k[31] = {
+        600.0, 0.7, 0.29, 0.13, 440.0,          // home radius/amp, cont offset/width, warp amp
+        0.59, -0.04, 2250.0, 2400.0, 390.0,     // spine width, along bias, spine/spur/foot m
+        -0.14, 2.39, 184.0, 140.0, 518.0,       // hill bias/softness, plains/country m, land base
+        -290.0, 0.14, 0.82, 535.0, 1.0,         // sea floor, rough floor/hill, valley m/exp
+        43.7, 3.8, 0.6, 4300.0, 850.0,          // texture m/floor, detail blocks, peak knee/span
+        0.405, 0.3555, 0.3337, -2000.0, 1.0,    // fbm std 2/3/4, curve min/step
+        16.0};                                  // warp lattice
+    std::vector<double> curve;
+    int32_t sizes[3] = {11, 31, 0};
+
+    explicit ShapeFixture(int64_t seed) {
+        const int offs[11] = {2, 21, 22, 8, 23, 24, 25, 26, 27, 28, 3};
+        const double periods[11] = {6500, 1660, 1660, 2950, 340, 2590, 242, 1795, 411, 46, 45};
+        for (int i = 0; i < 11; i++) {
+            const auto v = static_cast<uint64_t>(seed + offs[i]);
+            seeds[i] = static_cast<int32_t>(static_cast<uint32_t>(v ^ (v >> 32)));
+            gain[i] = 0.5f;
+            lac[i] = 2.0f;
+            freq[i] = static_cast<float>(1.0 / periods[i]);
+        }
+        for (int e = -2000; e <= 7000; e++) {           // monotone, spans y < 0 .. > 255
+            curve.push_back(64.0 + e / 24.0);
+        }
+        sizes[2] = static_cast<int32_t>(curve.size());
+    }
+};
+
 void* makeTerrainCtx(int64_t seed) {
-    // Mirrors NoiseRouter channel configs (c, pv, e, d) + HeightMapGenerator splines.
-    const int32_t seeds[4] = {
-        static_cast<int32_t>((seed + 2) ^ ((seed + 2) >> 32)),
-        static_cast<int32_t>((seed + 8) ^ ((seed + 8) >> 32)),
-        static_cast<int32_t>((seed + 5) ^ ((seed + 5) >> 32)),
-        static_cast<int32_t>((seed + 3) ^ ((seed + 3) >> 32)),
-    };
-    const int32_t octaves[4] = {8, 5, 5, 3};
-    const float gain[4] = {0.45f, 0.45f, 0.40f, 0.50f};
-    const float lac[4] = {2.0f, 2.0f, 2.0f, 2.0f};
-    const float freq[4] = {1.0f / 800.0f, 1.0f / 260.0f, 1.0f / 900.0f, 1.0f / 45.0f};
-    const int32_t xoff[4] = {0, 80860, 20700, 0};
-    const int32_t zoff[4] = {0, 20020, -15300, 0};
-    const double sx[] = {-1.0, -0.8, -0.4, -0.2, 0.1, 0.3, 0.7, 1.0,
-                         -1.0, -0.3, 0.0, 0.15, 0.3, 0.5, 0.7, 1.0,
-                         -1.0, -0.3, 0.2, 0.6, 1.0};
-    const double sy[] = {70, 20, 58, 66, 72, 88, 100, 115,
-                         -20, -5, 0, 10, 25, 55, 85, 110,
-                         1.00, 0.95, 0.80, 0.35, 0.10};
-    const int32_t sizes[3] = {8, 8, 5};
-    return sbw_terrain_create(seed, seeds, octaves, gain, lac, freq, xoff, zoff,
-                             sx, sy, sizes, 3.0f);
+    ShapeFixture f(seed);
+    return sbw_terrain_create(seed, f.seeds, f.octaves, f.gain, f.lac, f.freq, f.xoff, f.zoff,
+                             f.k, f.curve.data(), f.sizes, 0.6f);
 }
 
 void testCarver() {
@@ -93,27 +112,9 @@ void testCarver() {
 }
 
 void* makeChunkGenCtx(int64_t seed) {
-    // Same channel/spline fixture as makeTerrainCtx, plus synthetic block ids
+    // Same shape fixture as makeTerrainCtx, plus synthetic block ids
     // and a 2-biome table: biome 0 = plains-like, biome 1 = dry magma desert.
-    const int32_t seeds[4] = {
-        static_cast<int32_t>((seed + 2) ^ ((seed + 2) >> 32)),
-        static_cast<int32_t>((seed + 8) ^ ((seed + 8) >> 32)),
-        static_cast<int32_t>((seed + 5) ^ ((seed + 5) >> 32)),
-        static_cast<int32_t>((seed + 3) ^ ((seed + 3) >> 32)),
-    };
-    const int32_t octaves[4] = {8, 5, 5, 3};
-    const float gain[4] = {0.45f, 0.45f, 0.40f, 0.50f};
-    const float lac[4] = {2.0f, 2.0f, 2.0f, 2.0f};
-    const float freq[4] = {1.0f / 800.0f, 1.0f / 260.0f, 1.0f / 900.0f, 1.0f / 45.0f};
-    const int32_t xoff[4] = {0, 80860, 20700, 0};
-    const int32_t zoff[4] = {0, 20020, -15300, 0};
-    const double sx[] = {-1.0, -0.8, -0.4, -0.2, 0.1, 0.3, 0.7, 1.0,
-                         -1.0, -0.3, 0.0, 0.15, 0.3, 0.5, 0.7, 1.0,
-                         -1.0, -0.3, 0.2, 0.6, 1.0};
-    const double sy[] = {70, 20, 58, 66, 72, 88, 100, 115,
-                         -20, -5, 0, 10, 25, 55, 85, 110,
-                         1.00, 0.95, 0.80, 0.35, 0.10};
-    const int32_t sizes[3] = {8, 8, 5};
+    ShapeFixture f(seed);
 
     const int32_t blockIds[5] = {0, 9, 1, 7, 8}; // air, water, stone, bedrock, magma
     const int16_t surf[2] = {4, 6};
@@ -147,8 +148,8 @@ void* makeChunkGenCtx(int64_t seed) {
     const double cy[] = {2.0, 0.90, 0.68, 0.55, 0.47, 0.44};
     const int32_t cSizes[1] = {6};
 
-    return sbw_chunkgen_create(seed, seeds, octaves, gain, lac, freq, xoff, zoff,
-                              sx, sy, sizes, 3.0f,
+    return sbw_chunkgen_create(seed, f.seeds, f.octaves, f.gain, f.lac, f.freq, f.xoff, f.zoff,
+                              f.k, f.curve.data(), f.sizes, 0.6f,
                               dSeeds, dOct, dGain, dLac, dFreq,
                               cx, cy, cSizes,
                               blockIds, 2, surf, sub, cave, overhang, flags,

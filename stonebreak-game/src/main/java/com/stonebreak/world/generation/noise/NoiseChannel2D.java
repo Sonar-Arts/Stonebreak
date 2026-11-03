@@ -21,4 +21,11 @@ public interface NoiseChannel2D {
      * block positions {@code (baseX + ix*stride, baseZ + iz*stride)}.
      */
     void fill(float[] out, int baseX, int baseZ, int countX, int countZ, int stride);
+
+    /**
+     * The channel at a fractional block position (the distilled generator's warped lattice
+     * nodes). On the native backend this is one 1x1 grid fill at the float position, which the
+     * native worldgen library reproduces with {@code GenSingle2D} at the same floats.
+     */
+    float sampleAt(float x, float z);
 }

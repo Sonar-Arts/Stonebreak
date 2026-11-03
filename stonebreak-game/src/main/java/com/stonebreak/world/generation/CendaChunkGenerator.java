@@ -20,7 +20,7 @@ import java.util.List;
  * Front-end for the fused native chunk generator ({@code sbw_generate_chunk} in the game's
  * own worldgen library, {@link WorldgenNatives} — #386):
  * assembles the create-time context from the SAME sources the Java path uses
- * ({@link NoiseRouter} channel packing, {@link HeightMapGenerator} splines,
+ * ({@link com.stonebreak.world.generation.heightmap.DistilledShape} channels + constants + curve table,
  * {@link Density3D} node params, {@link TerrainGenerationSystem}'s biome block
  * switches, {@link BiomeSurfaceConfig}, {@link BlockOpacity}), then turns
  * kernel output into paletted CCO storage via the bulk section-install path —
@@ -74,7 +74,8 @@ public final class CendaChunkGenerator {
         if (!WorldgenNatives.isAvailable() || !KERNEL_HAS_CAVE_MODEL) {
             return 0L;
         }
-        NoiseRouter.ShapeChannelParams ch = NoiseRouter.shapeChannelParams(seed);
+        com.stonebreak.world.generation.heightmap.DistilledShape.NativeArgs ch =
+            new com.stonebreak.world.generation.heightmap.DistilledShape(seed).nativeArgs();
         Density3D.NodeParams[] density = Density3D.nodeParams(seed);
         int[] densitySeeds = new int[density.length];
         int[] densityOctaves = new int[density.length];
@@ -131,8 +132,7 @@ public final class CendaChunkGenerator {
 
         return WorldgenNatives.chunkGenCreate(seed,
             ch.seeds(), ch.octaves(), ch.gain(), ch.lacunarity(), ch.freq(), ch.xOff(), ch.zOff(),
-            HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
-            HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE,
+            ch.constants(), ch.curveTable(), ch.sizes(), ch.detailBlocks(),
             densitySeeds, densityOctaves, densityGain, densityLacunarity, densityFreq,
             Density3D.thresholdSplineXs(), Density3D.thresholdSplineYs(),
             Density3D.thresholdSplineSizes(),

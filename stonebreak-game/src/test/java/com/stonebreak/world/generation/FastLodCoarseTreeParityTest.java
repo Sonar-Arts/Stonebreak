@@ -24,7 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class FastLodCoarseTreeParityTest {
 
-    private static final long SEED = 20260820L;
+    /**
+     * A forested spawn under the current Standard shape (2026-11-01 distilled terrain: 20260820
+     * fell on a near-treeless home region, 27 L0 trees; 20260822 carries ~760).
+     */
+    private static final long SEED = 20260822L;
     private static final int CHUNK = WorldConfiguration.CHUNK_SIZE;
     private static final int SWEEP = 24;
 

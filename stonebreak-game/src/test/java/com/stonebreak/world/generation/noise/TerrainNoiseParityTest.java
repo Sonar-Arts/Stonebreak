@@ -1,10 +1,12 @@
 package com.stonebreak.world.generation.noise;
 
+import com.stonebreak.world.generation.heightmap.DistilledShape;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -27,23 +29,23 @@ class TerrainNoiseParityTest {
         NoiseRouter router = new NoiseRouter(SEED);
         int baseX = -3200, baseZ = 4816; // arbitrary, crosses zero on neither axis
         int n = 16;
-        float[] c = new float[n * n];
-        float[] pv = new float[n * n];
-        float[] e = new float[n * n];
-        float[] d = new float[n * n];
+        DistilledShape.Column[] cols = new DistilledShape.Column[n * n];
         float[] tRaw = new float[n * n];
         float[] mRaw = new float[n * n];
-        router.fillShapeChannels(baseX, baseZ, n, n, 1, c, pv, e, d);
+        router.shape().fill(baseX, baseZ, n, n, 1, cols);
         router.fillClimateChannels(baseX, baseZ, n, n, 1, tRaw, mRaw);
 
         for (int x = 0; x < n; x++) {
             for (int z = 0; z < n; z++) {
                 int idx = x * n + z;
                 int wx = baseX + x, wz = baseZ + z;
-                assertEquals(router.continentalness(wx, wz), c[idx], "continentalness (" + wx + "," + wz + ")");
-                assertEquals(router.peaksValleys(wx, wz), pv[idx], "peaksValleys (" + wx + "," + wz + ")");
-                assertEquals(router.erosion(wx, wz), e[idx], "erosion (" + wx + "," + wz + ")");
-                assertEquals(router.detail(wx, wz), d[idx], "detail (" + wx + "," + wz + ")");
+                DistilledShape.Column p = new DistilledShape.Column();
+                router.shape().column(wx, wz, p);
+                assertEquals(p.height, cols[idx].height, "height (" + wx + "," + wz + ")");
+                assertEquals(p.shapedHeight, cols[idx].shapedHeight, "shaped (" + wx + "," + wz + ")");
+                assertEquals(p.land, cols[idx].land, "land (" + wx + "," + wz + ")");
+                assertEquals(p.mountain, cols[idx].mountain, "mountain (" + wx + "," + wz + ")");
+                assertEquals(p.rough, cols[idx].rough, "rough (" + wx + "," + wz + ")");
                 assertEquals(router.moisture(wx, wz), NoiseRouter.moistureFromRaw(mRaw[idx]), "moisture");
                 assertEquals(router.temperature(wx, wz, 80),
                     NoiseRouter.temperatureFromRaw(tRaw[idx], 80), "temperature");
@@ -75,15 +77,14 @@ class TerrainNoiseParityTest {
         // same values as per-point sampling at those coordinates.
         NoiseRouter router = new NoiseRouter(SEED);
         int stride = 8, n = 6, baseX = 1024, baseZ = -512;
-        float[] c = new float[n * n];
-        float[] pv = new float[n * n];
-        float[] e = new float[n * n];
-        float[] d = new float[n * n];
-        router.fillShapeChannels(baseX, baseZ, n, n, stride, c, pv, e, d);
+        DistilledShape.Column[] cols = new DistilledShape.Column[n * n];
+        router.shape().fill(baseX, baseZ, n, n, stride, cols);
         for (int ix = 0; ix < n; ix++) {
             for (int iz = 0; iz < n; iz++) {
-                assertEquals(router.continentalness(baseX + ix * stride, baseZ + iz * stride),
-                    c[ix * n + iz], "strided continentalness");
+                DistilledShape.Column p = new DistilledShape.Column();
+                router.shape().column(baseX + ix * stride, baseZ + iz * stride, p);
+                assertEquals(p.elevationM, cols[ix * n + iz].elevationM, "strided elevation");
+                assertEquals(p.height, cols[ix * n + iz].height, "strided height");
             }
         }
     }
@@ -93,10 +94,14 @@ class TerrainNoiseParityTest {
         NoiseRouter a1 = new NoiseRouter(SEED);
         NoiseRouter a2 = new NoiseRouter(SEED);
         NoiseRouter b = new NoiseRouter(SEED + 1);
-        assertEquals(a1.continentalness(100, 200), a2.continentalness(100, 200),
-            "same seed must reproduce exactly");
-        assertNotEquals(a1.continentalness(100, 200), b.continentalness(100, 200),
-            "different seeds must diverge");
+        DistilledShape.Column c1 = new DistilledShape.Column();
+        DistilledShape.Column c2 = new DistilledShape.Column();
+        DistilledShape.Column c3 = new DistilledShape.Column();
+        a1.shape().column(100, 200, c1);
+        a2.shape().column(100, 200, c2);
+        b.shape().column(100, 200, c3);
+        assertEquals(c1.elevationM, c2.elevationM, "same seed must reproduce exactly");
+        assertNotEquals(c1.elevationM, c3.elevationM, "different seeds must diverge");
     }
 
     @Test
@@ -109,15 +114,25 @@ class TerrainNoiseParityTest {
         var surface = new com.stonebreak.blocks.BlockType[count * count];
         var trees = new com.stonebreak.world.generation.features.VegetationGenerator.TreeSample[count * count];
         terrain.sampleColumns(x0, z0, count, stride, heights, null, surface, trees);
+        int cut = 0;
         for (int ix = 0; ix < count; ix++) {
             for (int iz = 0; iz < count; iz++) {
                 int idx = ix * count + iz;
                 int wx = x0 + ix * stride, wz = z0 + iz * stride;
-                assertEquals(terrain.getFinalTerrainHeightAt(wx, wz), heights[idx], "height @" + wx + "," + wz);
+                // sampleColumns reports the CARVED top (a ravine or sinkhole on the probe grid lowers
+                // it), so its per-point counterpart is carvedSurfaceHeight, not the raw height.
+                assertEquals(terrain.carvedSurfaceHeight(wx, wz), heights[idx], "height @" + wx + "," + wz);
+                if (heights[idx] != terrain.getFinalTerrainHeightAt(wx, wz)) {
+                    // A cut column exposes stone and grows no tree; the per-point surface/tree API
+                    // describes the uncut column, so it has nothing to compare against here.
+                    cut++;
+                    continue;
+                }
                 assertEquals(terrain.getSurfaceBlockAt(wx, wz), surface[idx], "surface @" + wx + "," + wz);
                 assertEquals(terrain.getTreeAt(wx, wz), trees[idx], "tree @" + wx + "," + wz);
             }
         }
+        assertTrue(cut < count * count / 4, "most probe columns must be uncut to compare surfaces: " + cut);
     }
 
     @Test

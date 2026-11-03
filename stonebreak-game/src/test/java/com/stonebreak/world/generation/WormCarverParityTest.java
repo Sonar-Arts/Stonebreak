@@ -54,9 +54,7 @@ class WormCarverParityTest {
         HeightMapGenerator heightMap = new HeightMapGenerator(new NoiseRouter(SEED));
         PerlinWormCarver javaCarver = new PerlinWormCarver(SEED, heightMap);
 
-        long ctx = NoiseRouter.createCarverTerrainContext(SEED,
-            HeightMapGenerator.splineXs(), HeightMapGenerator.splineYs(),
-            HeightMapGenerator.splineSizes(), HeightMapGenerator.DETAIL_AMPLITUDE);
+        long ctx = NoiseRouter.createCarverTerrainContext(SEED);
         try {
             List<int[]> targets = pickTargets(javaCarver);
             assertFalse(targets.isEmpty(), "seed " + SEED + " found no worm chunks in the scanned region");

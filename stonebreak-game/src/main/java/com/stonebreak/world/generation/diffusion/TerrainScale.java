@@ -44,6 +44,16 @@ public final class TerrainScale {
 
     private TerrainScale() {}
 
+    /** {@link #CURVE_RATES}, copied: the distilled Standard generator's height curve uses the same knobs. */
+    public static double[] curveRates() {
+        return CURVE_RATES.clone();
+    }
+
+    /** {@link #CURVE_KNOTS}, copied. */
+    public static double[] curveKnots() {
+        return CURVE_KNOTS.clone();
+    }
+
     /**
      * The world config TGMPipe is handed in its handshake, as JSON — keys match
      * {@code terrain_slm.world.world_config.WorldConfig} exactly (the service rejects a missing or

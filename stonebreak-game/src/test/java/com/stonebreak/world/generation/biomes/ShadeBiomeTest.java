@@ -20,28 +20,28 @@ class ShadeBiomeTest {
 
     private final BiomeSelector selector = new BiomeSelector();
 
-    /** c, erosion, pv, temperature, moisture. */
-    private BiomeType select(float c, float e, float pv, float t, float m) {
-        return selector.select(new MultiNoiseSample(c, e, pv, t, m), false);
+    /** land, mountain, hilly, rough, shaped height, temperature, moisture (DistilledShape fields + climate). */
+    private BiomeType select(float land, float mountain, float hilly, float rough, int height, float t, float m) {
+        return selector.select(new MultiNoiseSample(land, mountain, hilly, rough, height, t, m), false);
     }
 
     @Test
     void dryTemperateFlatAndHillyLandIsShade() {
-        assertEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.0f, 0.5f, 0.35f));   // flat
-        assertEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.2f, 0.45f, 0.32f));  // hilly
-        assertEquals(BiomeType.SHADE, select(0.0f, 0.5f, -0.5f, 0.55f, 0.40f)); // valley floor
+        assertEquals(BiomeType.SHADE, select(1.0f, 0.0f, 0.1f, 0.15f, 90, 0.5f, 0.35f));   // flat
+        assertEquals(BiomeType.SHADE, select(1.0f, 0.0f, 0.5f, 0.30f, 125, 0.45f, 0.32f)); // hill country
+        assertEquals(BiomeType.SHADE, select(1.0f, 0.5f, 0.1f, 0.30f, 130, 0.55f, 0.40f)); // range flank
     }
 
     @Test
     void notShadeWhenWetAridColdWarmCoastalMountainOrSubmerged() {
-        assertNotEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.0f, 0.5f, 0.55f));   // moist: plains
-        assertNotEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.0f, 0.5f, 0.27f));   // arid: plains
-        assertNotEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.0f, 0.3f, 0.35f));   // cold
-        assertNotEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.0f, 0.7f, 0.35f));   // warm: red sand
-        assertNotEquals(BiomeType.SHADE, select(-0.3f, 0.5f, 0.0f, 0.5f, 0.35f));  // coast
-        assertNotEquals(BiomeType.SHADE, select(0.3f, 0.5f, 0.6f, 0.5f, 0.35f));   // mountain
+        assertNotEquals(BiomeType.SHADE, select(1.0f, 0.0f, 0.1f, 0.15f, 90, 0.5f, 0.55f));  // moist: plains
+        assertNotEquals(BiomeType.SHADE, select(1.0f, 0.0f, 0.1f, 0.15f, 90, 0.5f, 0.27f));  // arid: plains
+        assertNotEquals(BiomeType.SHADE, select(1.0f, 0.0f, 0.1f, 0.15f, 90, 0.3f, 0.35f));  // cold
+        assertNotEquals(BiomeType.SHADE, select(1.0f, 0.0f, 0.1f, 0.15f, 90, 0.7f, 0.35f));  // warm: red sand
+        assertNotEquals(BiomeType.SHADE, select(0.7f, 0.0f, 0.1f, 0.15f, 65, 0.5f, 0.35f));  // shore strip
+        assertNotEquals(BiomeType.SHADE, select(1.0f, 0.7f, 0.1f, 0.15f, 170, 0.5f, 0.35f)); // range body
         assertNotEquals(BiomeType.SHADE,
-            selector.select(new MultiNoiseSample(0.3f, 0.5f, 0.0f, 0.5f, 0.35f), true));
+            selector.select(new MultiNoiseSample(1.0f, 0.0f, 0.1f, 0.15f, 60, 0.5f, 0.35f), true));
     }
 
     @Test
