@@ -496,6 +496,8 @@ public final class ServerPlayer {
     private volatile boolean flying = false;
     private volatile boolean spectator = false;
     private volatile int gameMode = 0;
+    /** /invincible (cheats): every hit lands for nothing. Lasts the session — never saved. */
+    private volatile boolean invincible = false;
 
     /** True once the replica has been seeded (welcome/creation) — syncs are meaningful after this. */
     private volatile boolean inventorySeeded = false;
@@ -630,6 +632,8 @@ public final class ServerPlayer {
     public void setSpectator(boolean spectator) { this.spectator = spectator; }
     public int gameMode() { return gameMode; }
     public void setGameMode(int gameMode) { this.gameMode = gameMode; }
+    public boolean invincible() { return invincible; }
+    public void setInvincible(boolean invincible) { this.invincible = invincible; }
 
     // ─── Toss rate limiting (DropItemC2S is a debit request now) ────────────────
     /** Max toss requests per rolling window (hostile/buggy client containment). */

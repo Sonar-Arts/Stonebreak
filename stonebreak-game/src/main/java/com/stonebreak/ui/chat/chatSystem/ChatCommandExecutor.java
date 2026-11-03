@@ -47,6 +47,7 @@ public class ChatCommandExecutor {
         registerCommand(new LevelCommand());
         registerCommand(new WeatherCommand());
         registerCommand(new PvpCommand());
+        registerCommand(new InvincibleCommand());
     }
 
     /**

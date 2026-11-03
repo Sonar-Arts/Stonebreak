@@ -42,6 +42,7 @@ public final class ServerCommandHandler {
             case "obtain" -> handleObtain(sp, parts, ctx);
             case "spawn" -> handleSpawn(sp, parts, ctx);
             case "pvp" -> handlePvp(sp, parts, ctx);
+            case "invincible" -> handleInvincible(sp, parts, ctx);
             default -> {
                 return false;
             }
@@ -80,6 +81,36 @@ public final class ServerCommandHandler {
         ctx.broadcast(new com.stonebreak.network.packet.world.PvpStateS2C(enable), false);
         ctx.broadcast(new ChatMessageS2C(-1, "Server",
                 sp.username() + " turned PvP " + (enable ? "on." : "off.")), false);
+    }
+
+    /**
+     * /invincible [on|off] — the sender takes no damage (falls, cactus, fire, mobs, arrows,
+     * other players) until it is turned off or they leave; no argument toggles. Turning it on
+     * needs the SERVER's cheats flag; turning it off never does.
+     */
+    private void handleInvincible(ServerPlayer sp, String[] args, ServerWorldContext ctx) {
+        boolean enable;
+        if (args.length < 2) {
+            enable = !sp.invincible();
+        } else {
+            Boolean parsed = switch (args[1].toLowerCase()) {
+                case "on", "true", "enable", "1" -> true;
+                case "off", "false", "disable", "0" -> false;
+                default -> null;
+            };
+            if (parsed == null) {
+                reply(sp, "Usage: /invincible [on|off]");
+                return;
+            }
+            enable = parsed;
+        }
+        ServerLevel level = ctx.serverLevel();
+        if (enable && (level == null || !level.cheatsEnabled())) {
+            reply(sp, "Cheats are not enabled on this world.");
+            return;
+        }
+        sp.setInvincible(enable);
+        reply(sp, enable ? "Invincibility enabled — you take no damage." : "Invincibility disabled.");
     }
 
     /**

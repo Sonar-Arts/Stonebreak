@@ -240,11 +240,11 @@ public final class ServerHealthHandler {
 
     /**
      * {@code amount} of {@code cause} damage to {@code sp}; returns what it took (a dead or
-     * unpositioned player takes nothing, a dodge negates combat damage). A blow that empties
-     * the health kills.
+     * unpositioned player takes nothing, a dodge negates combat damage, an invincible player
+     * takes nothing but a life it gives up itself). A blow that empties the health kills.
      */
     public float hurt(ServerPlayer sp, float amount, byte cause, long nowNs, ServerWorldContext ctx) {
-        if (!sp.isLiveInWorld()) {
+        if (!sp.isLiveInWorld() || (sp.invincible() && cause != PlayerHealthS2C.CAUSE_SELF)) {
             return 0f;
         }
         float taken = sp.vitals().damage(amount, cause, nowNs);
