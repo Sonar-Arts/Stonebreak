@@ -34,7 +34,13 @@ public final class SboCubeFaces {
      * emitted as individual pulled quads instead of raw triangles.
      */
     private final boolean[] perCell;
-    private final boolean[] shaped; // SBO block that is NOT a cube (stairs, slabs, crosses…)
+    /**
+     * Non-cube SBO block whose flush geometry leaves some boundary plane open
+     * (stairs, slabs, crosses…), so it can't hide a neighbour's face. A
+     * non-cube that still closes all six planes — an ore cube with nuggets
+     * poking out — occludes like any cube.
+     */
+    private final boolean[] shaped;
 
     public SboCubeFaces(SBOStampEmitter emitter) {
         int maxId = 0;
@@ -51,10 +57,20 @@ public final class SboCubeFaces {
                 continue;
             }
             int id = type.getId();
-            if (!tryBuildCube(emitter, type, id)) {
+            if (!tryBuildCube(emitter, type, id) && !occludesEveryFace(emitter, type)) {
                 shaped[id] = true;
             }
         }
+    }
+
+    /** True when every state variant's flush geometry fills all six boundary planes. */
+    private static boolean occludesEveryFace(SBOStampEmitter emitter, BlockType type) {
+        for (int face = 0; face < 6; face++) {
+            if (!emitter.getCache().occludesFace(type, face)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean tryBuildCube(SBOStampEmitter emitter, BlockType type, int id) {
@@ -65,8 +81,9 @@ public final class SboCubeFaces {
         // (per-cell height) stay per-cell but still pull as quads.
         boolean needsPerCell = emitter.isTranslucent(type) || type == BlockType.SNOW;
         BlockStamp stamp = emitter.getCache().get(type);
-        if (stamp == null || stamp.faces() == null || stamp.faces().length != 6) {
-            return false;
+        if (stamp == null || stamp.faces() == null || stamp.faces().length != 6
+                || stamp.hasProtrusions()) {
+            return false; // protruding detail (ore nuggets) only the stamp emitter draws
         }
         float[][] uv = new float[6][8];
         float[] layer = new float[6];

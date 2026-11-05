@@ -724,9 +724,28 @@ public class WorldRenderer {
     }
 
     /**
-     * Render opaque pass (non-water parts of chunks).
+     * Back-face culling for opaque cube quads in the opaque pass (see
+     * {@code u_cullBackQuads} in world.vert). {@code -Dstonebreak.backfaceCull=false}
+     * turns it off for A/B comparisons.
+     */
+    private static final boolean BACKFACE_CULL =
+        !"false".equalsIgnoreCase(System.getProperty("stonebreak.backfaceCull"));
+
+    /**
+     * Render opaque pass (non-water parts of chunks), dropping opaque cube
+     * faces that point away from the camera. Scoped to this pass only: the
+     * same shader draws items, entities and FastLOD, which must not be culled.
      */
     private void renderOpaquePass(List<Chunk> visibleChunks) {
+        shaderProgram.setUniform("u_cullBackQuads", BACKFACE_CULL);
+        try {
+            drawOpaqueAtlas(visibleChunks);
+        } finally {
+            shaderProgram.setUniform("u_cullBackQuads", false);
+        }
+    }
+
+    private void drawOpaqueAtlas(List<Chunk> visibleChunks) {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending

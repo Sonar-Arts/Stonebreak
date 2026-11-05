@@ -31,6 +31,14 @@ uniform bool u_transformUVsForItem;
 uniform vec2 u_atlasUVOffset;
 uniform vec2 u_atlasUVScale;
 uniform bool u_isUIElement;
+// Back-face culling for the opaque terrain pass, per quad here rather than
+// with GL_CULL_FACE: the same multidraw carries alpha-tested cubes (leaves),
+// whose far faces must keep showing through their holes, and authored stamp
+// geometry (crosses, stairs, ore nuggets). Only opaque pulled cube quads take
+// the test — axis-aligned, exact face normal, one plane coordinate shared by
+// all four corners, so every corner of a quad makes the same decision.
+uniform bool u_cullBackQuads;
+uniform vec3 u_viewPos; // render space, like fragPos
 // ── Vertex pulling (MmsVertexFormat.QUAD16) ──────────────────────────────
 // When a VAO's origin attribute carries w < 0 the mesh has NO per-vertex
 // attributes: each quad is one RGBA32UI texel (MmsQuadCodec) and this stage
@@ -149,6 +157,7 @@ void main() {
     vec3 nrm;
     vec4 flags;
     float layer;
+    bool backFacing = false;
     if (aOrigin.w < -2.5) {
         // Unknown pulled tag (e.g. water's -3): never decode it as LOD.
         localPos = aOrigin.xyz;
@@ -162,6 +171,8 @@ void main() {
     } else if (aOrigin.w < 0.0) {
         pullQuad(localPos, uv, nrm, flags, layer);
         localPos += aOrigin.xyz;
+        backFacing = u_cullBackQuads && flags.y < 0.5 && flags.z < 0.5
+            && dot(nrm, u_viewPos - (modelMatrix * vec4(localPos, 1.0)).xyz) < 0.0;
     } else {
         localPos = aOrigin.xyz + position * aOrigin.w;
         uv = texCoord;
@@ -170,6 +181,10 @@ void main() {
         layer = aLayer;
     }
     gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(localPos, 1.0);
+    if (backFacing) {
+        // All corners land outside the same clip plane: the rasterizer drops the quad.
+        gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    }
     if (u_transformUVsForItem) {
         outTexCoord = u_atlasUVOffset + uv * u_atlasUVScale;
     } else {

@@ -86,6 +86,9 @@ public class ResourceManager {
         shaderProgram.createUniform("u_keyLight");
         shaderProgram.setUniform("u_keyLight", new org.joml.Vector3f(1f, 1f, 1f));
         shaderProgram.createUniform("u_viewPos");
+        // Per-quad back-face cull (world.vert); only the opaque terrain pass turns it on.
+        shaderProgram.createUniform("u_cullBackQuads");
+        shaderProgram.setUniform("u_cullBackQuads", false);
         shaderProgram.createUniform("u_playerLight");
         // Default to -1 so terrain (which never sets this) falls through to the per-vertex light.
         shaderProgram.setUniform("u_playerLight", -1.0f);
