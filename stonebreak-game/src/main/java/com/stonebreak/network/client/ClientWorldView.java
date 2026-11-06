@@ -1087,6 +1087,12 @@ public final class ClientWorldView {
     public long getPendingWorldSeed() { return pendingWorldSeed; }
 
     private void handleTimeSync(TimeSyncS2C ts) {
+        if (!com.stonebreak.world.TimeOfDay.isValidTotalTicks(ts.worldTimeTicks())
+                || !com.stonebreak.world.TimeOfDay.isValidTimeSpeed(ts.timeSpeed())) {
+            // A bad sample (NaN speed, overflowing tick) would break the clock for good.
+            System.err.println("[CLIENT] Dropping invalid TimeSyncS2C: " + ts);
+            return;
+        }
         pendingServerTimeTicks = ts.worldTimeTicks();
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {
