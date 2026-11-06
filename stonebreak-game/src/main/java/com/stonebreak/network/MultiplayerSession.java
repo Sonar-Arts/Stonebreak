@@ -1009,7 +1009,7 @@ public final class MultiplayerSession {
                 player.giveStartingItems();
                 System.out.println("[NET] New world — gave the local player starting items.");
             }
-            String notice = level.playerLoadNotice();
+            String notice = level.loadNotice();
             if (notice != null) {
                 Game game = Game.getInstance();
                 game.runOnMainThread(() -> {

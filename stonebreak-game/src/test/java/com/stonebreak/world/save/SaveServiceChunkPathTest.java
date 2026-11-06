@@ -327,8 +327,7 @@ class SaveServiceChunkPathTest {
             SaveService.LoadResult result = svc.loadWorld().get(WAIT, TimeUnit.SECONDS);
             assertFalse(result.isSuccess());
             assertNotNull(result.getError());
-            assertFalse(result.getError().equals("World metadata not found"),
-                "damaged metadata must not read as a missing world");
+            assertFalse(result.isWorldMissing(), "damaged metadata must not read as a missing world");
         }
     }
 }
