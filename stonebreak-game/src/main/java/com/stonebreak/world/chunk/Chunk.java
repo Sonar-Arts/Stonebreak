@@ -110,7 +110,7 @@ public class Chunk {
         this.writer = bundle.writer;
         this.stateManager = bundle.stateManager;
         this.dirtyTracker = bundle.dirtyTracker;
-        this.mesh = new ChunkMeshLifecycle(x, z, stateManager, dirtyTracker);
+        this.mesh = new ChunkMeshLifecycle(stateManager);
     }
 
     // ===== Block Operations (CCO-based) =====
@@ -228,20 +228,6 @@ public class Chunk {
     }
 
     // ===== Mesh Operations (delegated to ChunkMeshLifecycle) =====
-
-    /**
-     * Builds the mesh data for this chunk using MMS API. This is CPU-intensive and can be run on a worker thread.
-     */
-    public void buildAndPrepareMeshData(World world) {
-        mesh.buildAndPrepareMeshData(this, world);
-    }
-
-    /**
-     * Applies the prepared mesh data to OpenGL using MMS API. This must be called on the main GL thread.
-     */
-    public void applyPreparedDataToGL() {
-        mesh.applyPreparedDataToGL();
-    }
 
     /**
      * Renders the chunk using MMS API.
@@ -531,7 +517,7 @@ public class Chunk {
 
     /**
      * Sets the pending chunk mesh result from the mesh pipeline.
-     * This ensures the SBO mesh is available for GPU upload in applyPreparedDataToGL().
+     * Holds the water/stamp/SBO parts until the pipeline's GL upload step consumes them.
      */
     public void setPendingChunkMeshResult(ChunkMeshResult result) {
         mesh.setPendingChunkMeshResult(result);
