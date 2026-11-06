@@ -25,7 +25,7 @@ SWAMP_LAND_SHARE = 0.055   # DaedalusTGM-Exp v4 sample: 4.26% of all columns at 
 COAST_MAX_Y, COAST_MAX_LAND, BEACH_MAX_MOUNTAIN = SEA + 2, 0.999, 0.15
 T_COLD, M_WET = 0.38, 0.65
 SWAMP_MAX_Y, SWAMP_MAX_MOUNTAIN = 80, 0.1
-CHILL = 200.0
+CHILL_START_Y, CHILL = 110, 250.0   # NoiseRouter altitude chill
 
 
 def load(d: Path, lod: int):
@@ -39,7 +39,7 @@ def load(d: Path, lod: int):
         out["h"].append(h)
         for k, plane in zip(("land", "mountain", "hilly", "rough"), fl[:4]):
             out[k].append(plane)
-        out["t"].append(np.clip(fl[4] * 0.5 + 0.5 - np.maximum(h - SEA, 0) / CHILL, 0, 1))  # final ~ shaped
+        out["t"].append(np.clip(fl[4] * 0.5 + 0.5 - np.maximum(h - CHILL_START_Y, 0) / CHILL, 0, 1))  # final ~ shaped
         out["m"].append(fl[5] * 0.5 + 0.5)
     return {k: np.concatenate(v) for k, v in out.items()}
 
