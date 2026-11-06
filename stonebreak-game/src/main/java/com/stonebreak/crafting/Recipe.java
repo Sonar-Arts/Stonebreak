@@ -108,73 +108,44 @@ public class Recipe {
      * @return True if the recipe matches, false otherwise.
      */
     public boolean matches(List<List<ItemStack>> inputGrid, int startRow, int startCol) {
-        if (inputGrid == null) {
-            return false;
-        }
-        int inputGridHeight = inputGrid.size();
-        int inputGridWidth = inputGrid.isEmpty() || inputGrid.get(0) == null ? 0 : inputGrid.get(0).size();
-
-        // Check if recipe can fit at the given offset
-        if (startRow + recipeHeight > inputGridHeight || startCol + recipeWidth > inputGridWidth) {
+        if (inputGrid == null || startRow < 0 || startCol < 0
+                || startRow + recipeHeight > inputGrid.size()) {
             return false;
         }
 
-
+        // Only the recipe-sized window at (startRow, startCol) is checked. The caller
+        // (CraftingManager) is responsible for ensuring nothing sits outside it.
         for (int r = 0; r < recipeHeight; r++) {
             List<ItemStack> recipeRow = inputPattern.get(r);
             List<ItemStack> gridRow = inputGrid.get(startRow + r);
-
-            if (recipeRow == null) { // Should not happen with current constructor validation
-                continue;
-            }
-            if (gridRow == null && recipeWidth > 0) { // An empty row in input grid where recipe expects items
+            // A null grid row reads as all-empty; a present row must be wide enough.
+            if (gridRow != null && startCol + recipeWidth > gridRow.size()) {
                 return false;
             }
 
             for (int c = 0; c < recipeWidth; c++) {
                 ItemStack recipeItem = recipeRow.get(c);
-                ItemStack gridItem = (gridRow != null && c < gridRow.size()) ? gridRow.get(c) : null;
+                ItemStack gridItem = gridRow != null ? gridRow.get(startCol + c) : null;
+                boolean gridEmpty = gridItem == null || gridItem.isEmpty();
 
-
-                // Using a simplified comparison for now.
-                // In a full system, this would compare item types and potentially amounts/metadata.
-                if (recipeItem == null && gridItem == null) {
-                    continue; // Both empty, slot matches
+                if (recipeItem == null) {
+                    if (!gridEmpty) {
+                        return false; // Shaped recipe expects this slot empty
+                    }
+                    continue;
                 }
-                if (recipeItem == null && (gridItem != null && !gridItem.isEmpty())) {
-                     // Recipe expects empty, but grid has an item in this part of the recipe's bounds
-                    // However, for shapeless, this might be fine. For shaped, it must be empty.
-                    // For now, for shaped recipes, if recipe expects empty, grid must be empty.
+                // Match by Item singleton identity. ItemType and BlockType
+                // each maintain a single instance per registered objectId,
+                // so reference equality is the canonical "same kind" test
+                // and immune to the numericId collisions that plague the
+                // SBO data (e.g. stick and wooden_axe both declaring 1013).
+                if (gridEmpty
+                        || recipeItem.getItem() != gridItem.getItem()
+                        || gridItem.getCount() < recipeItem.getCount()) {
                     return false;
-                }
-                if (recipeItem != null && (gridItem == null || gridItem.isEmpty())) {
-                    return false; // Recipe expects an item, but grid slot is empty
-                }
-                if (recipeItem != null && gridItem != null && !gridItem.isEmpty()) {
-                    // Match by Item singleton identity. ItemType and BlockType
-                    // each maintain a single instance per registered objectId,
-                    // so reference equality is the canonical "same kind" test
-                    // and immune to the numericId collisions that plague the
-                    // SBO data (e.g. stick and wooden_axe both declaring 1013).
-                    if (recipeItem.getItem() != gridItem.getItem()) {
-                        return false;
-                    }
-                    if (gridItem.getCount() < recipeItem.getCount()) {
-                        return false;
-                    }
                 }
             }
         }
-        
-        // After checking the recipe pattern, ensure no other items are in the crafting grid
-        // within the bounds defined by the recipe dimensions, effectively creating a "tight fit".
-        // However, the instruction "checking if a recipe fits within the provided grid and
-        // if the recipe's dimensions match the non-empty part of the input grid" implies
-        // we should consider a compact version of the input.
-
-        // The current `matches` logic correctly checks if the recipe's non-null items match items
-        // in the grid and recipe's null items match nulls in the grid for the specific subgrid.
-        // The CraftingManager will be responsible for finding the "effective" input grid.
         return true;
     }
 
