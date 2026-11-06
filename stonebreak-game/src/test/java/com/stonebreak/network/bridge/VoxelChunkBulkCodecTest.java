@@ -10,6 +10,7 @@ import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.voxel.ChunkDataAdapter;
 import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 import com.stonebreak.world.generation.diffusion.TGMPipeException;
+import com.stonebreak.world.generation.diffusion.tgmpipe.RequiresDaedalus;
 import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Tag;
@@ -29,11 +30,12 @@ import static org.junit.jupiter.api.Assumptions.abort;
  * byte-identical on encode and cell-identical on decode versus the legacy
  * per-cell paths — old and new builds must interoperate on the wire.
  *
- * <p>The test chunk comes from {@value TGMPipe#MODEL_NAME} (through TGMPipe). Without it — no venv,
- * the service won't start, or it can't produce the chunk in {@link #GENERATE_TIMEOUT_SECONDS}
- * (a GPU too small for it falls back to the CPU and stalls) — the test is skipped, not failed.
+ * <p>The test chunk comes from {@value TGMPipe#MODEL_NAME} (through TGMPipe). On a machine below its
+ * system requirements ({@link RequiresDaedalus}), or without it — no venv, the service won't start,
+ * or it can't produce the chunk in {@link #GENERATE_TIMEOUT_SECONDS} — the test is skipped, not failed.
  */
 @Tag("regression")
+@RequiresDaedalus
 class VoxelChunkBulkCodecTest {
 
     private static final long GENERATE_TIMEOUT_SECONDS = 120;

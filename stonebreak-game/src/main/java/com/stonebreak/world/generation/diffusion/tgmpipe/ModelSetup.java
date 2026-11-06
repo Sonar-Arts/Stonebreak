@@ -282,6 +282,16 @@ public final class ModelSetup {
             unavailableKnownBefore = knownUnavailable;
             workNeeded = !(envOk && kernelsOk);
         }
+        // Before the up-to-date shortcut: an installed model is still disabled on a machine below the bar.
+        DaedalusRequirements.Verdict requirements = DaedalusRequirements.check();
+        if (!requirements.met()) {
+            log.println("system: " + requirements.specs());
+            synchronized (lock) {
+                workNeeded = false;
+            }
+            unavailable(p, "Below system requirements", DaedalusRequirements.disabledMessage(requirements));
+            return;
+        }
         if (envOk && kernelsOk) {
             for (StepId id : StepId.values()) set(id, Status.SKIPPED, "up to date", -1);
             finish(Outcome.READY, null);
@@ -293,17 +303,8 @@ public final class ModelSetup {
         set(StepId.GPU, Status.RUNNING, "", -1);
         String gpu = nvidiaGpu(log);
         if (gpu == null) {
-            String why = "no NVIDIA graphics card found (the terrain model needs one); standard terrain still works";
-            set(StepId.GPU, Status.FAILED, "No NVIDIA GPU found", -1);
-            for (StepId id : List.of(StepId.UV, StepId.ENVIRONMENT, StepId.VERIFY, StepId.KERNELS)) {
-                set(id, Status.SKIPPED, "", -1);
-            }
-            try {
-                Files.writeString(p.slmDir.resolve(UNAVAILABLE_MARKER), why + "\n");
-            } catch (IOException ignored) {
-                // the marker only keeps the screen from reappearing every launch
-            }
-            finish(Outcome.UNAVAILABLE, why);
+            unavailable(p, "No NVIDIA GPU found",
+                    "no NVIDIA graphics card found (the terrain model needs one); standard terrain still works");
             return;
         }
         set(StepId.GPU, Status.DONE, gpu, -1);
@@ -332,6 +333,20 @@ public final class ModelSetup {
         warmUp(p, log);
         writeStamp(p, envHash, kernelHash);
         finish(Outcome.READY, null);
+    }
+
+    /** Ends setup with the model unusable on this machine: the GPU step failed, the rest skipped, nothing downloaded. */
+    private void unavailable(Paths p, String gpuDetail, String why) {
+        set(StepId.GPU, Status.FAILED, gpuDetail, -1);
+        for (StepId id : List.of(StepId.UV, StepId.ENVIRONMENT, StepId.VERIFY, StepId.KERNELS)) {
+            set(id, Status.SKIPPED, "", -1);
+        }
+        try {
+            Files.writeString(p.slmDir.resolve(UNAVAILABLE_MARKER), why + "\n");
+        } catch (IOException ignored) {
+            // the marker only keeps the screen from reappearing every launch
+        }
+        finish(Outcome.UNAVAILABLE, why);
     }
 
     private static final Pattern DL_START = Pattern.compile("^\\s*Downloading (\\S+).*\\(([\\d.]+)\\s*([KMGT]?i?B)\\)\\s*$");

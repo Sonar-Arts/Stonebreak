@@ -43,6 +43,7 @@ module stonebreak.game {
     // Java base modules
     requires java.desktop;
     requires java.management;
+    requires jdk.management;  // DaedalusRequirements reads total system RAM
     requires java.logging;
     requires java.net.http;   // ModelSetup downloads uv on a first launch without it
     requires java.sql;        // SQLite JDBC driver for FastLod persistent cache
