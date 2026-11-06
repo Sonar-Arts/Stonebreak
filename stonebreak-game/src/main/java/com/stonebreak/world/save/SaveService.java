@@ -358,7 +358,9 @@ public class SaveService implements AutoCloseable {
                 WorldData data = worldOpt.get();
                 System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
                 return loadPlayerInto(data);
-            } catch (IOException e) {
+            } catch (IOException | RuntimeException e) {
+                // RuntimeException: the deserializer rejects damaged JSON with one. Reported as a
+                // failed load like an I/O error — never as "not found", and never as a failed future.
                 System.err.printf("[LOAD] Failed in %dms: %s%n", System.currentTimeMillis() - start, e.getMessage());
                 return new LoadResult(false, e.getMessage(), null, null);
             }

@@ -3,10 +3,8 @@ package com.stonebreak.world.save.io;
 import com.stonebreak.world.save.model.ChunkData;
 
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Collection;
 import java.util.Optional;
 
@@ -46,22 +44,7 @@ public final class ChunkStorage {
         Path target = chunkFile(chunk.getChunkX(), chunk.getChunkZ());
         ensureParentExists(target);
 
-        byte[] payload = ChunkCodec.encode(chunk);
-        // Unique temp name per write: a fixed sibling name races when two
-        // threads save the same chunk concurrently (the loser's move throws
-        // NoSuchFileException after the winner consumed the shared temp file).
-        Path temp = target.resolveSibling(target.getFileName() + "."
-            + Long.toUnsignedString(System.nanoTime(), 36)
-            + "-" + Thread.currentThread().threadId() + ".tmp");
-
-        Files.write(temp, payload);
-        try {
-            Files.move(temp, target,
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        AtomicFiles.write(target, ChunkCodec.encode(chunk));
     }
 
     public Optional<ChunkData> loadChunk(int chunkX, int chunkZ) throws IOException {

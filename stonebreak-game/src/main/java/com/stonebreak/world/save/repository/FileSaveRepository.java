@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.repository;
 
+import com.stonebreak.world.save.io.AtomicFiles;
 import com.stonebreak.world.save.io.ChunkStorage;
 import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.PlayerData;
@@ -8,12 +9,9 @@ import com.stonebreak.world.save.serialization.JsonPlayerSerializer;
 import com.stonebreak.world.save.serialization.JsonWorldSerializer;
 
 import java.io.IOException;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.Collection;
 import java.util.Optional;
 
@@ -45,7 +43,7 @@ public class FileSaveRepository {
 
     public void saveWorld(WorldData world) throws IOException {
         ensureWorldDirectory();
-        writeAtomic(metadataFile, worldSerializer.serialize(world));
+        AtomicFiles.write(metadataFile, worldSerializer.serialize(world));
     }
 
     public Optional<WorldData> loadWorld() throws IOException {
@@ -58,7 +56,7 @@ public class FileSaveRepository {
 
     public void savePlayer(PlayerData player) throws IOException {
         ensureWorldDirectory();
-        writeAtomic(playerFile, playerSerializer.serialize(player));
+        AtomicFiles.write(playerFile, playerSerializer.serialize(player));
     }
 
     public Optional<PlayerData> loadPlayer() throws IOException {
@@ -92,7 +90,7 @@ public class FileSaveRepository {
 
     public void saveNamedPlayerBytes(String username, byte[] json) throws IOException {
         ensureWorldDirectory();
-        writeAtomic(namedPlayerFile(username), json);
+        AtomicFiles.write(namedPlayerFile(username), json);
     }
 
     public Optional<byte[]> loadNamedPlayerBytes(String username) throws IOException {
@@ -186,58 +184,5 @@ public class FileSaveRepository {
 
     public void close() {
         // no-op: kept for API parity with legacy implementation
-    }
-
-    private void writeAtomic(Path target, byte[] payload) throws IOException {
-        // Unique temp name per write — a fixed sibling name races when two
-        // threads write the same target concurrently (autosave + manual flush
-        // both writing metadata.json, or two saves of one named player).
-        Path temp = target.resolveSibling(target.getFileName() + "."
-            + Long.toUnsignedString(System.nanoTime(), 36)
-            + "-" + Thread.currentThread().threadId() + ".tmp");
-        if (target.getParent() != null && !Files.exists(target.getParent())) {
-            Files.createDirectories(target.getParent());
-        }
-        Files.write(temp, payload);
-        try {
-            for (int attempt = 1; ; attempt++) {
-                try {
-                    replace(temp, target);
-                    return;
-                } catch (AccessDeniedException e) {
-                    // Windows refuses to rename over a file another thread has open — a load
-                    // of the same player reading it. The read is brief, so wait it out.
-                    if (attempt >= REPLACE_ATTEMPTS) {
-                        throw e;
-                    }
-                    sleepBeforeRetry(attempt);
-                }
-            }
-        } catch (IOException | RuntimeException e) {
-            Files.deleteIfExists(temp);
-            throw e;
-        }
-    }
-
-    /** Tries for about a second in all before a write fails. */
-    private static final int REPLACE_ATTEMPTS = 20;
-
-    private static void replace(Path temp, Path target) throws IOException {
-        try {
-            Files.move(temp, target,
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
-
-    private static void sleepBeforeRetry(int attempt) throws IOException {
-        try {
-            Thread.sleep(Math.min(attempt * 5L, 100L));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new java.io.InterruptedIOException("interrupted while retrying a save");
-        }
     }
 }

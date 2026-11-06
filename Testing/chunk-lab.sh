@@ -13,6 +13,8 @@
 # Ledgers land in "Dev Working/bench/chunk-lab/tier<N>/<label>.json" (gitignored).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=python.sh
+source "$ROOT/Testing/python.sh"
 
 TIER="${1:-}"; LABEL="${2:-}"
 if [[ -z "$TIER" || -z "$LABEL" ]]; then
@@ -54,7 +56,7 @@ echo "[chunk-lab] tier $TIER label '$LABEL' gl=$GL ${EXTRA[*]:-}"
 if [[ ! -f "$LEDGER" ]]; then
   echo "[chunk-lab] no ledger written — see output above" >&2; exit 1
 fi
-python3 "$ROOT/Testing/chunk-lab-diff.py" "$LEDGER" "$OUT/tier$TIER/baseline.json"
+"${PY[@]}" "$ROOT/Testing/chunk-lab-diff.py" "$LEDGER" "$OUT/tier$TIER/baseline.json"
 if $MAKE_BASELINE; then
   cp "$LEDGER" "$OUT/tier$TIER/baseline.json"
   echo "[chunk-lab] baseline for tier $TIER := $LABEL"
