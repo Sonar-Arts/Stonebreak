@@ -1,5 +1,6 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
 
+import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.world.World;
@@ -172,6 +173,11 @@ public final class MmsMeshPipeline {
         }
 
         synchronized (chunk) {
+            // A stale reference to an unloaded chunk would otherwise sit in
+            // chunksToGenerateMesh / chunkPriorityMap and pin the whole Chunk.
+            if (chunk.isMeshRetired()) {
+                return;
+            }
             // Check if chunk is ready for mesh generation
             if (!isReadyForMeshGeneration(chunk)) {
                 return;
@@ -228,6 +234,10 @@ public final class MmsMeshPipeline {
         Iterator<Chunk> iterator = reusableChunkSortList.iterator();
         while (iterator.hasNext() && processedThisFrame < currentMeshBuildsPerFrame) {
             Chunk chunk = iterator.next();
+            if (chunk.isMeshRetired()) {
+                // Unloaded after the snapshot was taken.
+                continue;
+            }
 
             // Initial-mesh neighbor gate: leave the chunk queued (it is retried
             // every frame and typically released by its last neighbor landing).
@@ -243,11 +253,10 @@ public final class MmsMeshPipeline {
             processedThisFrame++;
         }
 
-        // Log if we're throttling
-        if (!chunksToGenerateMesh.isEmpty() && processedThisFrame > 0) {
-            // Chunks remaining will be processed next frame
-            // This spreads the load across multiple frames to prevent stuttering
-        }
+        // Drop the snapshot's references: when the queue next goes idle this
+        // method early-returns before clear(), and a stale list would pin
+        // (possibly unloaded) Chunks until the next build burst.
+        reusableChunkSortList.clear();
     }
 
     /**
@@ -269,8 +278,18 @@ public final class MmsMeshPipeline {
                 && world.hasChunkAt(cx, cz + 1) && world.hasChunkAt(cx, cz - 1)) {
             return false;
         }
-        Long since = initialMeshDeferredSince.putIfAbsent(chunk, now);
-        return since == null || now - since < INITIAL_MESH_NEIGHBOR_WAIT_NANOS;
+        // get() first: putIfAbsent would box `now` on every frame a chunk waits.
+        Long since = initialMeshDeferredSince.get(chunk);
+        if (since == null) {
+            initialMeshDeferredSince.put(chunk, now);
+            // removeChunkFromQueues retires before removing, so a put racing an
+            // unload is caught here instead of pinning the Chunk forever.
+            if (chunk.isMeshRetired()) {
+                initialMeshDeferredSince.remove(chunk);
+            }
+            return true;
+        }
+        return now - since < INITIAL_MESH_NEIGHBOR_WAIT_NANOS;
     }
 
     /**
@@ -290,10 +309,6 @@ public final class MmsMeshPipeline {
         // If between LOW and HIGH, keep current value
     }
 
-    private static int debugProcessCallCount = 0;
-    private static int debugGLUploadCount = 0;
-    private static int debugGLUploadSuccessCount = 0;
-
     /**
      * Mesh generation worker task.
      * Runs on worker thread pool.
@@ -303,7 +318,6 @@ public final class MmsMeshPipeline {
      */
     private void processMeshGenerationTask(World world, Chunk chunk) {
         boolean success = false;
-        MmsMeshData meshData = null;
         // Consume the pending remesh request at build START, before any chunk
         // data is read. A markMeshDirty arriving after this point refers to
         // data this build may not see (neighbor chunk payload installed,
@@ -337,54 +351,52 @@ public final class MmsMeshPipeline {
                 throw new IllegalStateException("MMS API not initialized");
             }
 
-            com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = MmsAPI.getInstance().generateChunkMesh(chunk);
-            meshData = meshResult.atlasMesh();
+            ChunkMeshResult meshResult = MmsAPI.getInstance().generateChunkMesh(chunk);
+            MmsMeshData atlasMesh = meshResult.atlasMesh();
             // The build COMPLETED (no exception), so it is not a failure even if it produced no
             // geometry — a chunk with no visible faces (fully enclosed, all-air, or off-view
             // border) legitimately yields an empty mesh. Only thrown exceptions are retried.
             success = true;
-            meshedOnce.add(chunk);
             com.stonebreak.world.chunk.utils.ChunkPipelineStats.MESHED.increment();
             // Any part counts: a rebuild that empties one part (e.g. the last
             // water in a chunk drained) must still reach the upload step so the
             // stale handle for that part gets cleared.
-            boolean hasGeometry = (meshData != null && !meshData.isEmpty())
+            boolean hasGeometry = (atlasMesh != null && !atlasMesh.isEmpty())
                 || meshResult.hasWaterMesh()
                 || meshResult.hasSBOMesh()
                 || meshResult.hasStampMesh();
+            int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
 
-            if (hasGeometry) {
-                // Store the full mesh result on the chunk so SBO mesh also gets uploaded
-                chunk.setPendingChunkMeshResult(meshResult);
-
-                // Get priority for this chunk (default to world generation priority)
-                int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
-
-                // Queue for GL upload with priority
-                MeshUploadTask uploadTask = new MeshUploadTask(chunk, meshData, priority,
-                        anyNeighborUnloaded,
-                        neighborUnloadedNorth, neighborUnloadedSouth,
-                        neighborUnloadedEast, neighborUnloadedWest);
-                meshesReadyForGLUpload.offer(uploadTask);
-                chunksInUploadQueue.add(chunk);
-
-                // Mark chunk state as CPU ready. The dirty flag was consumed at
-                // build start; do NOT clear it here — if it is set again, a
-                // remesh request arrived mid-build and the GPU upload step
-                // rechecks and reschedules once the mesh goes live.
-                synchronized (chunk) {
-                    chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
+            // Publish under the chunk lock so it is atomic with removeChunkFromQueues'
+            // retirement: a chunk unloaded mid-build must not be re-added to meshedOnce
+            // (retaining the whole Chunk forever) or queued for an upload whose GPU
+            // handles nothing would ever free.
+            synchronized (chunk) {
+                if (chunk.isMeshRetired()) {
+                    return;
                 }
-            } else {
-                // Valid empty result: mark it "meshed" so markMeshGenerationComplete
-                // doesn't re-dirty it into a rebuild loop. Keep any existing GPU mesh
-                // (a transient empty build must not blank a rendered chunk). The dirty
-                // flag was consumed at build start; if set again, the worker-end
-                // recheck in the finally block reschedules.
-                synchronized (chunk) {
-                    if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GPU_UPLOADED)) {
-                        chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
-                    }
+                meshedOnce.add(chunk);
+                if (hasGeometry) {
+                    // The task is the sole owner of the CPU mesh data; dropping
+                    // it (upload done, or unload) releases the arrays.
+                    meshesReadyForGLUpload.offer(new MeshUploadTask(chunk, meshResult, priority,
+                            anyNeighborUnloaded,
+                            neighborUnloadedNorth, neighborUnloadedSouth,
+                            neighborUnloadedEast, neighborUnloadedWest));
+                    chunksInUploadQueue.add(chunk);
+
+                    // Mark chunk state as CPU ready. The dirty flag was consumed at
+                    // build start; do NOT clear it here — if it is set again, a
+                    // remesh request arrived mid-build and the GPU upload step
+                    // rechecks and reschedules once the mesh goes live.
+                    chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
+                } else if (!chunk.getCcoStateManager().hasState(CcoChunkState.MESH_GPU_UPLOADED)) {
+                    // Valid empty result: mark it "meshed" so markMeshGenerationComplete
+                    // doesn't re-dirty it into a rebuild loop. Keep any existing GPU mesh
+                    // (a transient empty build must not blank a rendered chunk). The dirty
+                    // flag was consumed at build start; if set again, the worker-end
+                    // recheck in the finally block reschedules.
+                    chunk.getCcoStateManager().addState(CcoChunkState.MESH_CPU_READY);
                 }
             }
 
@@ -420,6 +432,14 @@ public final class MmsMeshPipeline {
      */
     private void handleGenerationResult(Chunk chunk, boolean success) {
         if (!success) {
+            synchronized (chunk) {
+                if (chunk.isMeshRetired()) {
+                    // Unloaded mid-build: a retry would re-add it to the retry
+                    // map/queue after removeChunkFromQueues already ran.
+                    chunkRetryCount.remove(chunk);
+                    return;
+                }
+            }
             int retryCount = chunkRetryCount.getOrDefault(chunk, 0);
             if (retryCount < WorldConfiguration.MAX_FAILED_CHUNK_RETRIES) {
                 chunkRetryCount.put(chunk, retryCount + 1);
@@ -462,13 +482,6 @@ public final class MmsMeshPipeline {
             return;
         }
 
-        // Debug: Log first few calls
-        if (debugGLUploadCount < 3) {
-            System.out.println("[MmsMeshPipeline.applyPendingGLUpdates] Called with " +
-                meshesReadyForGLUpload.size() + " meshes ready for upload");
-            debugGLUploadCount++;
-        }
-
         MeshUploadTask task;
         int updatesThisFrame = 0;
         // Wall-clock budget is the real limiter; the adaptive count (24..64)
@@ -477,8 +490,6 @@ public final class MmsMeshPipeline {
         long uploadDeadline = System.nanoTime() + GL_UPLOAD_BUDGET_NANOS;
 
         while ((task = meshesReadyForGLUpload.poll()) != null) {
-            chunksInUploadQueue.remove(task.chunk);
-
             // Player modifications bypass batch limit for instant feedback
             boolean isPlayerPriority = task.priority >= PRIORITY_PLAYER_MODIFICATION;
 
@@ -488,13 +499,23 @@ public final class MmsMeshPipeline {
             if (!isPlayerPriority && updatesThisFrame >= 1
                     && (updatesThisFrame >= maxUpdatesPerFrame
                         || System.nanoTime() >= uploadDeadline)) {
-                // Put task back and stop processing
+                // Put task back and stop processing. chunksInUploadQueue still
+                // holds the chunk, so no second build (and second mesh copy)
+                // can be scheduled for it in the meantime.
                 meshesReadyForGLUpload.offer(task);
-                chunksInUploadQueue.add(task.chunk);
                 break;
             }
+            chunksInUploadQueue.remove(task.chunk);
 
+            ChunkMeshResult meshResult = task.meshResult;
+            MmsMeshData atlasMesh = meshResult.atlasMesh();
             try {
+                if (task.chunk.isMeshRetired()) {
+                    // Unloaded while queued (the poll above can race
+                    // removeChunkFromQueues): its handles were already released,
+                    // and anything uploaded now would never be freed.
+                    continue;
+                }
                 // Upload the atlas mesh. It may legitimately be empty when the
                 // result reached upload only for its water/SBO parts — in that
                 // case the stale atlas handle is cleared instead. Region mode
@@ -505,21 +526,32 @@ public final class MmsMeshPipeline {
                 com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle regionHandle = null;
                 MmsRenderableHandle handle = null;
                 boolean atlasTranslucent = false;
-                if (task.meshData != null && !task.meshData.isEmpty()) {
-                    atlasTranslucent = task.meshData.hasTranslucentGeometry();
+                if (atlasMesh != null && !atlasMesh.isEmpty()) {
+                    atlasTranslucent = atlasMesh.hasTranslucentGeometry();
                     if (regionMode) {
                         regionHandle = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer
                             .getInstance().upload(
                                 com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
-                                task.chunk.getChunkX(), task.chunk.getChunkZ(), task.meshData);
+                                task.chunk.getChunkX(), task.chunk.getChunkZ(), atlasMesh);
                     }
                     if (regionHandle == null) {
-                        handle = MmsAPI.getInstance().uploadMeshToGPU(task.meshData);
+                        handle = MmsAPI.getInstance().uploadMeshToGPU(atlasMesh);
                     }
                 }
 
                 // Store handle in chunk for rendering
                 synchronized (task.chunk) {
+                    if (task.chunk.isMeshRetired()) {
+                        // Unloaded during the atlas upload above: release what was
+                        // just created and install nothing.
+                        if (handle != null) {
+                            handlesPendingGpuCleanup.offer(handle);
+                        }
+                        if (regionHandle != null) {
+                            handlesPendingGpuCleanup.offer(regionHandle);
+                        }
+                        continue;
+                    }
                     // Clean up old handles if they exist (either representation)
                     MmsRenderableHandle oldHandle = task.chunk.getMmsRenderableHandle();
                     if (oldHandle != null) {
@@ -536,8 +568,6 @@ public final class MmsMeshPipeline {
                     task.chunk.setRegionAtlasHandle(regionHandle);
                     task.chunk.setAtlasHasTranslucent(atlasTranslucent);
 
-                    com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult meshResult = task.chunk.getPendingChunkMeshResult();
-
                     // Water mesh: swap inside the SAME synchronized block as the
                     // atlas handle so a frame can never draw new atlas + stale
                     // water. When this rebuild produced no water, the handle is
@@ -553,7 +583,7 @@ public final class MmsMeshPipeline {
                     }
                     com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle newRegionWater = null;
                     MmsRenderableHandle newWater = null;
-                    if (meshResult != null && meshResult.hasWaterMesh()) {
+                    if (meshResult.hasWaterMesh()) {
                         if (regionMode) {
                             newRegionWater = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer
                                 .getInstance().upload(
@@ -580,7 +610,7 @@ public final class MmsMeshPipeline {
                     }
                     com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle newRegionStamp = null;
                     MmsRenderableHandle newStamp = null;
-                    if (meshResult != null && meshResult.hasStampMesh()) {
+                    if (meshResult.hasStampMesh()) {
                         if (regionMode) {
                             newRegionStamp = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer
                                 .getInstance().upload(
@@ -608,11 +638,11 @@ public final class MmsMeshPipeline {
                         }
                         task.chunk.setSBORenderDataList(null);
                     }
-                    if (meshResult != null && meshResult.hasSBOMesh()) {
+                    if (meshResult.hasSBOMesh()) {
                         // Upload new SBO entries
                         java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> newSboList =
                                 new java.util.ArrayList<>(meshResult.sboEntries().size());
-                        for (com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult.SBOEntry entry : meshResult.sboEntries()) {
+                        for (ChunkMeshResult.SBOEntry entry : meshResult.sboEntries()) {
                             MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(entry.meshData());
                             newSboList.add(new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, entry.batches()));
                         }
@@ -657,10 +687,9 @@ public final class MmsMeshPipeline {
                     updatesThisFrame, maxUpdatesPerFrame,
                     meshesReadyForGLUpload.size());
             } finally {
-                // Always release CPU-side mesh data regardless of success/failure
-                // to prevent large float arrays from being retained by MeshUploadTask or Chunk
-                task.meshData = null;
-                task.chunk.setPendingChunkMeshResult(null);
+                // Always release CPU-side mesh data regardless of success/failure;
+                // the task is its only owner.
+                task.meshResult = null;
             }
         }
 
@@ -772,6 +801,12 @@ public final class MmsMeshPipeline {
             return;
         }
 
+        // Retire first, under the chunk lock: worker publication and the GL
+        // upload check this flag under the same lock, so after this point
+        // nothing can re-add the chunk to the structures purged below.
+        synchronized (chunk) {
+            chunk.retireMesh();
+        }
         chunksToGenerateMesh.remove(chunk);
         chunkRetryCount.remove(chunk);
         chunksFailedToGenerateMesh.remove(chunk);
@@ -993,7 +1028,9 @@ public final class MmsMeshPipeline {
      */
     private static class MeshUploadTask implements Comparable<MeshUploadTask> {
         final Chunk chunk;
-        MmsMeshData meshData; // Non-final to allow explicit cleanup after GPU upload
+        // Sole owner of the CPU mesh data between build and upload. Non-final
+        // so the upload step can drop it as soon as it's consumed.
+        ChunkMeshResult meshResult;
         final int priority;
         final long timestamp;
         // Snapshot of which neighbors were unloaded when the build started;
@@ -1004,12 +1041,12 @@ public final class MmsMeshPipeline {
         final boolean neighborUnloadedEast;
         final boolean neighborUnloadedWest;
 
-        MeshUploadTask(Chunk chunk, MmsMeshData meshData, int priority,
+        MeshUploadTask(Chunk chunk, ChunkMeshResult meshResult, int priority,
                        boolean anyNeighborUnloadedAtBuildStart,
                        boolean neighborUnloadedNorth, boolean neighborUnloadedSouth,
                        boolean neighborUnloadedEast, boolean neighborUnloadedWest) {
             this.chunk = chunk;
-            this.meshData = meshData;
+            this.meshResult = meshResult;
             this.priority = priority;
             this.timestamp = System.nanoTime();
             this.anyNeighborUnloadedAtBuildStart = anyNeighborUnloadedAtBuildStart;

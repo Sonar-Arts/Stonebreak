@@ -13,7 +13,6 @@ import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializable
 import com.openmason.engine.voxel.cco.operations.CcoBlockReader;
 import com.openmason.engine.voxel.cco.operations.CcoBlockWriter;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
-import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.lighting.ChunkHeightMap;
 import com.openmason.engine.voxel.lighting.ColumnOpacityProbe;
@@ -516,15 +515,15 @@ public class Chunk {
     }
 
     /**
-     * Sets the pending chunk mesh result from the mesh pipeline.
-     * Holds the water/stamp/SBO parts until the pipeline's GL upload step consumes them.
+     * Marks this chunk as unloaded for the mesh pipeline: no further mesh will
+     * be scheduled, published or uploaded for it. Call under the chunk lock.
      */
-    public void setPendingChunkMeshResult(ChunkMeshResult result) {
-        mesh.setPendingChunkMeshResult(result);
+    public void retireMesh() {
+        mesh.retireMesh();
     }
 
-    public ChunkMeshResult getPendingChunkMeshResult() {
-        return mesh.getPendingChunkMeshResult();
+    public boolean isMeshRetired() {
+        return mesh.isMeshRetired();
     }
 
     public void setSBORenderDataList(List<com.openmason.engine.voxel.sbo.SBORenderData> dataList) {
@@ -532,24 +531,7 @@ public class Chunk {
     }
 
     /**
-     * Cleans up CPU-side resources. Safe to call from any thread.
-     * NOTE: Block array cleanup removed - blocks must remain accessible for
-     * collision detection and neighbor chunk meshing during unload.
-     * Memory will be released when the Chunk object itself is garbage collected.
-     */
-    public void cleanupCpuResources() {
-        mesh.cleanupCpuResources();
-
-        // Block array intentionally NOT cleared here - it's needed for:
-        // 1. Player collision detection during chunk unload
-        // 2. Neighbor chunk meshing (edge blocks must be accessible)
-        // 3. Saving dirty chunks (requires block data)
-        // Memory will be freed when the entire Chunk object is GC'd
-    }
-
-    /**
      * Cleans up GPU resources using MMS API. MUST be called from the main OpenGL thread.
-     * Also clears any pending CPU-side mesh data to prevent retention after unload.
      */
     public void cleanupGpuResources() {
         mesh.cleanupGpuResources();

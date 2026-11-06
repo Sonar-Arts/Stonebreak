@@ -1,7 +1,6 @@
 package com.stonebreak.world.chunk;
 
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
-import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
 import com.openmason.engine.voxel.sbo.SBORenderData;
@@ -9,11 +8,11 @@ import com.openmason.engine.voxel.sbo.SBORenderData;
 import java.util.List;
 
 /**
- * Owns a chunk's mesh state: the CPU-side pending mesh result, the GPU-side
- * renderable handles (legacy per-chunk VAOs and region-arena segments for
+ * Owns a chunk's mesh state: the GPU-side renderable handles (legacy per-chunk VAOs and region-arena segments for
  * atlas / water / stamp geometry), SBO render data, the {@code meshGenerated}
- * flag, and their draw and cleanup. Building and uploading are driven by
- * {@code MmsMeshPipeline} through the setters below. The {@link Chunk} facade
+ * and retired flags, and their draw and cleanup. Building and uploading are
+ * driven by {@code MmsMeshPipeline} through the setters below; the pipeline's
+ * upload task, not the chunk, owns the CPU-side mesh data in between. The {@link Chunk} facade
  * delegates all mesh-related public methods here so the chunk itself stays a
  * block container.
  */
@@ -21,9 +20,6 @@ final class ChunkMeshLifecycle {
 
     private final CcoAtomicStateManager stateManager;
 
-    // Full mesh result between worker build and GL upload; nulled by the
-    // pipeline after upload (success or failure) so mesh arrays aren't retained.
-    private ChunkMeshResult pendingChunkMeshResult;
     private MmsRenderableHandle renderableHandle;
     // Water geometry lives in its own handle, drawn by the dedicated
     // WaterRenderer after the world's transparent pass (never by render()).
@@ -46,6 +42,10 @@ final class ChunkMeshLifecycle {
     private boolean atlasHasTranslucent;
     private List<SBORenderData> sboRenderDataList;
     private boolean meshGenerated = false;
+    // Set once on unload (under the chunk lock); the mesh pipeline then refuses
+    // to schedule, publish or upload for this chunk. Never cleared: a reloaded
+    // chunk is a new Chunk instance.
+    private volatile boolean meshRetired = false;
 
     ChunkMeshLifecycle(CcoAtomicStateManager stateManager) {
         this.stateManager = stateManager;
@@ -83,14 +83,8 @@ final class ChunkMeshLifecycle {
 
     // ===== Cleanup =====
 
-    /** Drops pending CPU-side mesh data. Safe to call from any thread. */
-    void cleanupCpuResources() {
-        pendingChunkMeshResult = null;
-    }
-
     /**
      * Closes all GPU resources. MUST be called from the main OpenGL thread.
-     * Also clears any pending CPU-side mesh data to prevent retention after unload.
      */
     void cleanupGpuResources() {
         renderableHandle = close(renderableHandle);
@@ -107,7 +101,6 @@ final class ChunkMeshLifecycle {
         }
         atlasHasTranslucent = false;
         meshGenerated = false;
-        pendingChunkMeshResult = null;
     }
 
     /** Closes {@code handle} if non-null; always returns null for field reassignment. */
@@ -140,12 +133,12 @@ final class ChunkMeshLifecycle {
         this.atlasHasTranslucent = hasTranslucent;
     }
 
-    ChunkMeshResult getPendingChunkMeshResult() {
-        return pendingChunkMeshResult;
+    boolean isMeshRetired() {
+        return meshRetired;
     }
 
-    void setPendingChunkMeshResult(ChunkMeshResult result) {
-        this.pendingChunkMeshResult = result;
+    void retireMesh() {
+        this.meshRetired = true;
     }
 
     List<SBORenderData> getSBORenderDataList() {
