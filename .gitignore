@@ -174,7 +174,7 @@ QWEN.md
 # Written to the working directory by the game on a crash
 crash_log.txt
 
-# F2 screenshots, written to the working directory by the game
+# F2 screenshots fallback (normally <Pictures>/Stonebreak; used when that folder is unavailable)
 /screenshots/
 
 # Python bytecode (Testing/harness.py)
