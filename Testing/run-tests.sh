@@ -4,6 +4,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 HARNESS="$HERE/harness.py"
+# shellcheck source=python.sh
+source "$HERE/python.sh"
 
 # ── Argument parsing ────────────────────────────────────────────────
 LIST=0
@@ -75,7 +77,7 @@ fi
 
 # ── --list short-circuit ────────────────────────────────────────────
 if [[ "$LIST" -eq 1 ]]; then
-  exec python3 "$HARNESS" list
+  exec "${PY[@]}" "$HARNESS" list
 fi
 
 # Join scope words with commas
@@ -108,7 +110,7 @@ export JAVA_HOME="$CAND"
 export PATH="$JAVA_HOME/bin:$PATH"
 
 # ── Resolve scope ───────────────────────────────────────────────────
-RESOLVED="$(python3 "$HARNESS" resolve --scope "$SCOPE")"
+RESOLVED="$("${PY[@]}" "$HARNESS" resolve --scope "$SCOPE")"
 # Split with mapfile, not `echo | head`: under pipefail the early-exiting
 # reader SIGPIPEs echo once the TESTS line outgrows a write chunk (exit 141).
 mapfile -t RESOLVED_LINES <<<"$RESOLVED"
@@ -144,7 +146,7 @@ MVN_EXIT=0
 
 # Determine if every module is present (full reactor needed)
 ALL_MODULES=false
-read -r -a ALL_TEST_MODULES <<<"$(python3 "$HARNESS" modules)"
+read -r -a ALL_TEST_MODULES <<<"$("${PY[@]}" "$HARNESS" modules)"
 for required_module in "${ALL_TEST_MODULES[@]}"; do
   found=false
   for m in "${MODULES[@]}"; do
@@ -196,7 +198,7 @@ if [[ "$MVN_EXIT" -ne 0 ]]; then
   tail -n 40 "$MVN_LOG"
   echo "build/infra failure (mvn exit $MVN_EXIT) — full log: $MVN_LOG"
   if [[ -n "$REPORT" ]]; then
-    python3 "$HARNESS" infra-report --scope "$SCOPE" --report "$REPORT" --log "$MVN_LOG" --exit "$MVN_EXIT"
+    "${PY[@]}" "$HARNESS" infra-report --scope "$SCOPE" --report "$REPORT" --log "$MVN_LOG" --exit "$MVN_EXIT"
   fi
   echo "RESULT: FAIL"
   exit 2
@@ -215,4 +217,4 @@ fi
 if [[ "$SLOW" -eq 1 ]]; then
   SUMMARIZE_ARGS+=(--slow)
 fi
-exec python3 "$HARNESS" "${SUMMARIZE_ARGS[@]}"
+exec "${PY[@]}" "$HARNESS" "${SUMMARIZE_ARGS[@]}"

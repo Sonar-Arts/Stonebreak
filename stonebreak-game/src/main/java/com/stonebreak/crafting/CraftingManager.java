@@ -5,104 +5,54 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.ItemCategory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class CraftingManager {
-    private final List<Recipe> recipes;
-    // For faster lookups, especially if many recipes, can optimize by hashing/indexing recipes
-    // e.g., by output item type or primary ingredient. For now, a list is fine.
+    private static final Logger logger = LoggerFactory.getLogger(CraftingManager.class);
 
-    public CraftingManager() {
-        this.recipes = new ArrayList<>();
-        // Recipes are initialized in Game.java to avoid duplication
-    }
+    /** Key for bucketing recipes by their (already trimmed) pattern dimensions. */
+    private record Shape(int width, int height) {}
+
+    // Insertion-ordered so the first registered recipe wins when several match.
+    private final Map<String, Recipe> recipesById = new LinkedHashMap<>();
+    private final Map<Shape, List<Recipe>> recipesByShape = new HashMap<>();
 
     /**
-     * Registers a new crafting recipe.
+     * Registers a new crafting recipe. Null recipes and recipes whose ID is already
+     * registered are ignored, which keeps repeated loads idempotent.
      * @param recipe The recipe to add.
      */
     public void registerRecipe(Recipe recipe) {
-        if (recipe != null && !recipes.contains(recipe)) {
-            recipes.add(recipe);
+        if (recipe == null || recipesById.putIfAbsent(recipe.getId(), recipe) != null) {
+            return;
         }
+        recipesByShape.computeIfAbsent(new Shape(recipe.getRecipeWidth(), recipe.getRecipeHeight()),
+                k -> new ArrayList<>()).add(recipe);
     }
 
     /**
      * Attempts to craft an item based on the input grid.
-     * Iterates through registered recipes to find a match.
      *
-     * @param inputGrid A list of lists representing the crafting input (e.g., 2x2 or 3x3).
-     *                  'null' ItemStack can represent an empty slot.
-     * @return The resulting ItemStack if a recipe matches, otherwise null or an empty ItemStack.
+     * @param inputGrid A list of rows representing the crafting input (e.g., 2x2 or 3x3).
+     *                  A null or empty ItemStack represents an empty slot.
+     * @return A copy of the matching recipe's output, or null if no recipe matches.
      */
     public ItemStack craftItem(List<List<ItemStack>> inputGrid) {
-        if (inputGrid == null || inputGrid.isEmpty()) {
-            return null; // Or ItemStack.EMPTY if such a constant exists
-        }
-
-        // Determine the effective dimensions of the player's input
-        // by finding the minimal bounding box of non-null items.
-        int minRow = -1, maxRow = -1, minCol = -1, maxCol = -1;
-
-        for (int r = 0; r < inputGrid.size(); r++) {
-            List<ItemStack> row = inputGrid.get(r);
-            if (row != null) {
-                for (int c = 0; c < row.size(); c++) {
-                    if (row.get(c) != null && !row.get(c).isEmpty()) {
-                        if (minRow == -1) minRow = r;
-                        maxRow = r;
-                        if (minCol == -1 || c < minCol) minCol = c;
-                        if (c > maxCol) maxCol = c;
-                    }
-                }
-            }
-        }
-
-        // If the grid is effectively empty
-        if (minRow == -1) {
-            return null;
-        }
-
-        // Calculate effective dimensions
-        int effectiveHeight = maxRow - minRow + 1;
-        int effectiveWidth = maxCol - minCol + 1;
-        
-
-        // Create the compact input grid based on the content
-        List<List<ItemStack>> compactGrid = new ArrayList<>();
-
-        for (int r = 0; r < effectiveHeight; r++) {
-            List<ItemStack> newRow = new ArrayList<>();
-            List<ItemStack> originalRow = (minRow + r < inputGrid.size()) ? inputGrid.get(minRow + r) : null;
-            for (int c = 0; c < effectiveWidth; c++) {
-                ItemStack item = null;
-                if (originalRow != null && (minCol + c < originalRow.size())) {
-                    item = originalRow.get(minCol + c);
-                }
-                newRow.add(item); // Add item, which could be null if slot was empty
-            }
-            compactGrid.add(newRow);
-        }
-
-
-        // Try to match against registered recipes using the compact grid
-        for (Recipe recipe : recipes) {
-            // Check if dimensions match first
-            if (recipe.getRecipeHeight() == effectiveHeight && recipe.getRecipeWidth() == effectiveWidth) {
-                if (recipe.matches(compactGrid, 0, 0)) {
-                    // Found a matching recipe
-                    return recipe.getOutput().copy(); // Return a copy to prevent modification of recipe's output stack
-                }
-            }
-        }
-        
-        // No recipe matched
-        return null; // Or a specific "empty" ItemStack instance
+        Recipe recipe = getMatchedRecipe(inputGrid);
+        // Copy so callers can't mutate the recipe's output stack
+        return recipe != null ? recipe.getOutput().copy() : null;
     }
-/**
-     * Finds the recipe that matches the given input grid.
+
+    /**
+     * Finds the recipe that matches the given input grid. The input is reduced to the
+     * bounding box of its non-empty slots, so a recipe matches anywhere in the grid.
      * @param inputGrid The crafting grid input.
      * @return The matched Recipe object, or null if no recipe matches.
      */
@@ -111,17 +61,19 @@ public class CraftingManager {
             return null;
         }
 
-        int minRow = -1, maxRow = -1, minCol = -1, maxCol = -1;
+        int minRow = -1, maxRow = -1, minCol = Integer.MAX_VALUE, maxCol = -1;
         for (int r = 0; r < inputGrid.size(); r++) {
             List<ItemStack> row = inputGrid.get(r);
-            if (row != null) {
-                for (int c = 0; c < row.size(); c++) {
-                    if (row.get(c) != null && !row.get(c).isEmpty()) {
-                        if (minRow == -1) minRow = r;
-                        maxRow = r;
-                        if (minCol == -1 || c < minCol) minCol = c;
-                        if (c > maxCol) maxCol = c;
-                    }
+            if (row == null) {
+                continue;
+            }
+            for (int c = 0; c < row.size(); c++) {
+                ItemStack stack = row.get(c);
+                if (stack != null && !stack.isEmpty()) {
+                    if (minRow == -1) minRow = r;
+                    maxRow = r;
+                    if (c < minCol) minCol = c;
+                    if (c > maxCol) maxCol = c;
                 }
             }
         }
@@ -130,103 +82,87 @@ public class CraftingManager {
             return null;
         }
 
-        List<List<ItemStack>> compactGrid = new ArrayList<>();
-        int effectiveHeight = maxRow - minRow + 1;
-        int effectiveWidth = maxCol - minCol + 1;
-
-        for (int r = 0; r < effectiveHeight; r++) {
-            List<ItemStack> newRow = new ArrayList<>();
-            List<ItemStack> originalRow = (minRow + r < inputGrid.size()) ? inputGrid.get(minRow + r) : null;
-            for (int c = 0; c < effectiveWidth; c++) {
-                ItemStack item = null;
-                if (originalRow != null && (minCol + c < originalRow.size())) {
-                    item = originalRow.get(minCol + c);
-                }
-                newRow.add(item);
-            }
-            compactGrid.add(newRow);
+        List<Recipe> candidates = recipesByShape.get(new Shape(maxCol - minCol + 1, maxRow - minRow + 1));
+        if (candidates == null) {
+            return null;
         }
-
-        for (Recipe recipe : recipes) {
-            if (recipe.getRecipeHeight() == effectiveHeight && recipe.getRecipeWidth() == effectiveWidth) {
-                if (recipe.matches(compactGrid, 0, 0)) {
-                    return recipe; // Return the actual recipe object
-                }
+        // Everything outside the bounding box is empty, so matching the recipe-sized
+        // window at its corner is equivalent to matching a compacted copy of the grid.
+        for (Recipe recipe : candidates) {
+            if (recipe.matches(inputGrid, minRow, minCol)) {
+                return recipe;
             }
         }
         return null;
     }
 
     /**
-     * Returns a list of all registered recipes.
+     * Returns a list of all registered recipes, in registration order.
      * @return A new list containing all recipes.
      */
     public List<Recipe> getAllRecipes() {
-        return new ArrayList<>(this.recipes); // Return a copy to prevent external modification
+        return new ArrayList<>(recipesById.values()); // Return a copy to prevent external modification
     }
-    
+
     /**
      * Gets recipes by category.
      * @param category The item category to filter by
      * @return List of recipes that produce items in the given category
      */
     public List<Recipe> getRecipesByCategory(ItemCategory category) {
-        return recipes.stream()
+        return recipesById.values().stream()
             .filter(recipe -> recipe.getOutput().getCategory() == category)
             .toList();
     }
-    
+
     /**
      * Gets recipes that produce a specific item.
      * @param item The item to search for
      * @return List of recipes that produce the item
      */
     public List<Recipe> getRecipesForItem(Item item) {
-        return recipes.stream()
+        return recipesById.values().stream()
             .filter(recipe -> recipe.getOutput().getItem() == item)
             .toList();
     }
 
     /**
-     * Clears all recipes (useful for testing).
+     * Clears all recipes (used before reloading and in tests).
      */
     public void clearRecipes() {
-        recipes.clear();
+        recipesById.clear();
+        recipesByShape.clear();
     }
-    
+
     /**
      * Gets the number of registered recipes.
      * @return The recipe count
      */
     public int getRecipeCount() {
-        return recipes.size();
+        return recipesById.size();
     }
-
 
     /**
      * Creates an ItemStack from an item name (for convenience).
-     * @param itemName The name of the item (BlockType or ItemType)
+     * @param itemName The name of the item (BlockType or ItemType), case-insensitive for blocks
      * @param count The quantity
      * @return ItemStack or null if item not found
      */
     public static ItemStack createItemStack(String itemName, int count) {
-        // Try BlockType first
-        for (BlockType blockType : BlockType.values()) {
-            if (blockType.getName().equalsIgnoreCase(itemName)) {
-                return new ItemStack(blockType, count);
-            }
+        BlockType blockType = BlockType.getByName(itemName);
+        if (blockType != null) {
+            return new ItemStack(blockType, count);
         }
-        
-        // Try ItemType
+
         ItemType itemType = ItemType.getByName(itemName);
         if (itemType != null) {
             return new ItemStack(itemType, count);
         }
-        
-        System.err.println("Warning: Item not found: " + itemName);
+
+        logger.warn("Item not found: {}", itemName);
         return null;
     }
-    
+
     /**
      * Creates an ItemStack from an Item.
      * @param item The item (BlockType or ItemType)

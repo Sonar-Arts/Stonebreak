@@ -101,8 +101,8 @@ public final class TerrainActionHandler {
             Files.createDirectories(worldDir.resolve("chunks"));
 
             byte[] json = new JsonWorldSerializer().serialize(worldData);
-            Files.write(worldDir.resolve("world.json"), json);
-            Files.write(worldDir.resolve("metadata.json"), json);
+            com.stonebreak.world.save.io.AtomicFiles.write(worldDir.resolve("world.json"), json);
+            com.stonebreak.world.save.io.AtomicFiles.write(worldDir.resolve("metadata.json"), json);
         } catch (IOException e) {
             state.setErrorMessage("Save failed: " + e.getMessage());
             return false;

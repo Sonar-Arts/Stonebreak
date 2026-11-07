@@ -24,8 +24,15 @@ import com.stonebreak.world.generation.heightmap.DistilledShape;
 public final class NoiseRouter {
 
     private static final int SEA_LEVEL = StandardTerrain.SEA_LEVEL;
-    /** Blocks above sea level per unit temperature drop. */
-    private static final float ALTITUDE_CHILL_FACTOR = 200f;
+    /**
+     * Altitude chill starts at the floor of the hill band (BiomeSelector's calibrated y 110), not at
+     * sea level. The distilled shape stands most land at y 64..110, and chilling from sea level
+     * pushed ~52% of land into cold biomes (87% of mountain bodies to ICE_FIELDS); lowlands now keep
+     * their climate and only hills and ranges cool (~32% cold land, peaks split ice/stony).
+     */
+    private static final int ALTITUDE_CHILL_START_Y = 110;
+    /** Blocks above {@link #ALTITUDE_CHILL_START_Y} per unit temperature drop. */
+    private static final float ALTITUDE_CHILL_FACTOR = 250f;
 
     private static final float MOISTURE_SCALE         = 1f / 1500f;
     private static final float TEMPERATURE_SCALE      = 1f / 2000f;
@@ -63,7 +70,7 @@ public final class NoiseRouter {
         return moistureFromRaw(moistureNoise.sample(x, z));
     }
 
-    /** Temperature in [0, 1], cooled by altitude above sea level. */
+    /** Temperature in [0, 1], cooled by altitude above the hill band. */
     public float temperature(int x, int z, int height) {
         return temperatureFromRaw(temperatureNoise.sample(x, z), height);
     }
@@ -113,11 +120,11 @@ public final class NoiseRouter {
         return raw * 0.5f + 0.5f;
     }
 
-    /** Raw temperature channel value → [0, 1] with altitude chill. */
+    /** Raw temperature channel value → [0, 1] with altitude chill above the hill band. */
     public static float temperatureFromRaw(float raw, int height) {
         float base = raw * 0.5f + 0.5f;
-        if (height > SEA_LEVEL) {
-            base -= (height - SEA_LEVEL) / ALTITUDE_CHILL_FACTOR;
+        if (height > ALTITUDE_CHILL_START_Y) {
+            base -= (height - ALTITUDE_CHILL_START_Y) / ALTITUDE_CHILL_FACTOR;
         }
         return Math.max(0f, Math.min(1f, base));
     }

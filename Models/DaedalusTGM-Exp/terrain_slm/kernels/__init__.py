@@ -10,6 +10,9 @@
   cpu_sampler.py    the detail / relief samplers on the CPU (C++, AVX2 + FMA, fp32, Winograd)
   controls_cpu.py   procedural controls in C++ for the CPU (same op order; CPU expf differs by ~1 ulp)
 
+The CPU kernels are EXPERIMENTAL and not yet optimized (minutes per tile). The game disables Daedalus
+on machines that would run on them (DaedalusRequirements.java in stonebreak-game).
+
 On by default; `TGM_KERNELS=0` (or `GenConfig.fused_kernels=False` for the samplers) runs the plain
 torch / numpy paths everywhere. Controls and routing are exact, so they never change a tile; the
 native samplers differ (closer to fp32) from the autocast samplers, so the generator marks its

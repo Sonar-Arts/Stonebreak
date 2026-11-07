@@ -56,12 +56,12 @@ public final class ServerLevel {
     private volatile WorldData worldData;
     private final Vector3f spawn;
     private final PlayerData loadedPlayerData;
-    private final String playerLoadNotice;
+    private final String loadNotice;
 
     private ServerLevel(long seed, World world, EntityManager entityManager,
                         EntitySpawner entitySpawner, long worldTimeTicks, SaveService saveService,
                         WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData,
-                        String playerLoadNotice) {
+                        String loadNotice) {
         this.seed = seed;
         this.world = world;
         this.entityManager = entityManager;
@@ -73,7 +73,7 @@ public final class ServerLevel {
         this.worldData = worldData;
         this.spawn = spawn;
         this.loadedPlayerData = loadedPlayerData;
-        this.playerLoadNotice = playerLoadNotice;
+        this.loadNotice = loadNotice;
     }
 
     /**
@@ -96,7 +96,12 @@ public final class ServerLevel {
             SaveService.LoadResult lr = loadMetadata(save, worldName);
             throwIfInterrupted(); // the load may have finished before the interrupt was seen
 
-            boolean existing = lr != null && lr.isSuccess() && lr.getWorldData() != null;
+            if (!lr.isSuccess() && !lr.isWorldMissing()) {
+                // The world is there but could not be opened safely: booting it as new would
+                // overwrite it on the first save. SaveService left every file in place.
+                throw new IllegalStateException("World '" + worldName + "' was not opened: " + lr.getError());
+            }
+            boolean existing = lr.isSuccess() && lr.getWorldData() != null;
             WorldData worldData;
             long seed;
             long timeTicks;
@@ -182,7 +187,7 @@ public final class ServerLevel {
             }
 
             ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-                save, worldData, spawn, playerData, existing ? lr.getPlayerNotice() : null);
+                save, worldData, spawn, playerData, existing ? combinedNotice(lr) : null);
             save.setWorldTimeSource(level.timeOfDay);
             save.setWeatherSource(level.weather);
             entitySpawner.setNightSource(level.timeOfDay::isNight);
@@ -201,8 +206,10 @@ public final class ServerLevel {
     }
 
     /**
-     * Reads the world metadata. A load that fails or times out is treated as a new world (as
-     * before); an interrupt is not a failure — it propagates (issue #368).
+     * Reads the world metadata. Only {@link SaveService.LoadResult#isWorldMissing()} may boot a
+     * new world: a load that fails or times out is NOT one — treating it as new used to let the
+     * first save overwrite the real metadata — so it stops the boot. An interrupt propagates
+     * (issue #368).
      */
     private static SaveService.LoadResult loadMetadata(SaveService save, String worldName)
             throws InterruptedException {
@@ -211,10 +218,19 @@ public final class ServerLevel {
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
-            System.err.println("[SERVER-LEVEL] World metadata load failed for '" + worldName
-                + "': " + e.getMessage() + " — treating as a new world.");
-            return null;
+            throw new IllegalStateException("World '" + worldName + "' was not opened: its metadata load failed ("
+                + e + ")", e);
         }
+    }
+
+    /** The load notices for the host's chat (world first: it explains a reset clock), else null. */
+    private static String combinedNotice(SaveService.LoadResult lr) {
+        String world = lr.getWorldNotice();
+        String player = lr.getPlayerNotice();
+        if (world == null) {
+            return player;
+        }
+        return player == null ? world : world + " " + player;
     }
 
     /** Boot checkpoint: waits that already completed never see an interrupt, so look for one. */
@@ -425,8 +441,8 @@ public final class ServerLevel {
     /** Loaded player data for an integrated server, or null for a fresh world / dedicated boot. */
     public PlayerData loadedPlayerData() { return loadedPlayerData; }
 
-    /** Why the saved player data could not be restored (it was set aside, #358), else null. */
-    public String playerLoadNotice() { return playerLoadNotice; }
+    /** Why saved data could not be restored as-is (world metadata rebuilt, player data set aside, #358), else null. */
+    public String loadNotice() { return loadNotice; }
 
     /**
      * Register the in-process local player so the save service persists its inventory/position.

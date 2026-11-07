@@ -347,22 +347,75 @@ public class SaveService implements AutoCloseable {
             .thenRun(() -> System.out.printf("[SAVE] Saved %d dirty chunks%n", chunkTasks.size()));
     }
 
+    /**
+     * Loads the world metadata and player record. {@code metadata.json} is guarded like every
+     * other save file: a load that cannot be trusted never reads as a new world, whose first
+     * save would overwrite the real one.
+     * <ul>
+     *   <li>missing, nothing else saved: {@link LoadResult#isWorldMissing()}, a new world;</li>
+     *   <li>unreadable: set aside to {@code metadata.json.corrupt[.N]} and rebuilt from
+     *       {@code world.json} (seed, generator: the terrain is unchanged), with a
+     *       {@link LoadResult#getWorldNotice() notice};</li>
+     *   <li>missing although the world has saved data (e.g. set aside by an earlier load): rebuilt
+     *       the same way;</li>
+     *   <li>not rebuildable, or not readable at all (an I/O error: the file may be fine): a failed
+     *       load, file untouched. The caller must not open the world.</li>
+     * </ul>
+     */
     public CompletableFuture<LoadResult> loadWorld() {
         long start = System.currentTimeMillis();
         return CompletableFuture.supplyAsync(() -> {
             try {
                 var worldOpt = repository.loadWorld();
-                if (worldOpt.isEmpty()) {
-                    return new LoadResult(false, "World metadata not found", null, null);
+                if (worldOpt.isPresent()) {
+                    System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
+                    return loadPlayerInto(worldOpt.get(), null);
                 }
-                WorldData data = worldOpt.get();
-                System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
-                return loadPlayerInto(data);
-            } catch (IOException e) {
+                if (!repository.hasSavedWorldContent()) {
+                    return LoadResult.worldMissing();
+                }
+                return rebuildWorldData("metadata.json is missing but the world has saved data", null);
+            } catch (com.stonebreak.world.save.repository.UnreadableSaveFileException e) {
+                System.err.println("[LOAD] " + e.getMessage());
+                java.nio.file.Path aside;
+                try {
+                    aside = repository.setWorldFileAside();
+                } catch (IOException moveFailure) {
+                    // Opening the world anyway would overwrite the damaged file on the next save.
+                    return LoadResult.failed("World metadata is unreadable and could not be set aside ("
+                        + moveFailure.getMessage() + "); the world was not opened.");
+                }
+                return rebuildWorldData(e.getMessage(), aside);
+            } catch (IOException | RuntimeException e) {
                 System.err.printf("[LOAD] Failed in %dms: %s%n", System.currentTimeMillis() - start, e.getMessage());
-                return new LoadResult(false, e.getMessage(), null, null);
+                return LoadResult.failed("World metadata could not be read (" + e.getMessage()
+                    + "); the world was not opened.");
             }
         }, loadPool);
+    }
+
+    /**
+     * Rebuilds the metadata from {@code world.json}. What only {@code metadata.json} held (play
+     * time, world time, weather, world settings, the chosen spawn) starts over; the terrain does
+     * not change. {@code aside} is where the unreadable file went, or null when it was missing.
+     */
+    private LoadResult rebuildWorldData(String why, java.nio.file.Path aside) {
+        String kept = aside == null ? "" : " (the damaged file was kept as " + aside.getFileName() + ")";
+        java.util.Optional<WorldData> record;
+        try {
+            record = repository.loadWorldCreationRecord();
+        } catch (IOException | RuntimeException e) {
+            return LoadResult.failed("World metadata is lost" + kept + " and world.json cannot replace it ("
+                + e.getMessage() + "); the world was not opened.");
+        }
+        if (record.isEmpty()) {
+            return LoadResult.failed("World metadata is lost" + kept
+                + " and there is no world.json to rebuild it from; the world was not opened.");
+        }
+        String notice = "This world's metadata could not be read" + kept + "; it was rebuilt from world.json."
+            + " The terrain is unchanged, but play time, world time, weather and world settings were reset.";
+        System.err.println("[LOAD] " + why + ": " + notice);
+        return loadPlayerInto(record.get(), notice);
     }
 
     /**
@@ -370,9 +423,9 @@ public class SaveService implements AutoCloseable {
      * make the world look new (issue #358). An unreadable file is moved aside and the player
      * starts fresh in the loaded world; the result's {@link LoadResult#getPlayerNotice} says so.
      */
-    private LoadResult loadPlayerInto(WorldData data) {
+    private LoadResult loadPlayerInto(WorldData data, String worldNotice) {
         try {
-            return new LoadResult(true, null, data, repository.loadPlayer().orElse(null));
+            return new LoadResult(true, null, data, repository.loadPlayer().orElse(null), null, worldNotice);
         } catch (IOException | RuntimeException e) {
             System.err.println("[LOAD] player.json is unreadable: " + e.getMessage());
             String notice;
@@ -385,7 +438,7 @@ public class SaveService implements AutoCloseable {
                     + moveFailure.getMessage() + "); the next save will replace it.";
             }
             System.err.println("[LOAD] " + notice);
-            return new LoadResult(true, null, data, null, notice);
+            return new LoadResult(true, null, data, null, notice, worldNotice);
         }
     }
 
@@ -774,27 +827,52 @@ public class SaveService implements AutoCloseable {
                             String reason) { }
 
     public static class LoadResult {
+        static final String WORLD_NOT_FOUND = "World metadata not found";
+
         private final boolean success;
         private final String error;
         private final WorldData worldData;
         private final PlayerData playerData;
         private final String playerNotice;
+        private final String worldNotice;
 
         public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData) {
-            this(success, error, worldData, playerData, null);
+            this(success, error, worldData, playerData, null, null);
         }
 
         public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData,
                           String playerNotice) {
+            this(success, error, worldData, playerData, playerNotice, null);
+        }
+
+        public LoadResult(boolean success, String error, WorldData worldData, PlayerData playerData,
+                          String playerNotice, String worldNotice) {
             this.success = success;
             this.error = error;
             this.worldData = worldData;
             this.playerData = playerData;
             this.playerNotice = playerNotice;
+            this.worldNotice = worldNotice;
+        }
+
+        static LoadResult worldMissing() {
+            return new LoadResult(false, WORLD_NOT_FOUND, null, null);
+        }
+
+        static LoadResult failed(String error) {
+            return new LoadResult(false, error, null, null);
         }
 
         public boolean isSuccess() {
             return success;
+        }
+
+        /**
+         * True only when the world has never been saved: the one failed load that may be booted
+         * as a new world. Any other failure means the world exists but could not be opened.
+         */
+        public boolean isWorldMissing() {
+            return !success && WORLD_NOT_FOUND.equals(error);
         }
 
         public String getError() {
@@ -812,6 +890,11 @@ public class SaveService implements AutoCloseable {
         /** Message for the player when their saved data could not be restored, else null. */
         public String getPlayerNotice() {
             return playerNotice;
+        }
+
+        /** Message for the player when the world metadata had to be rebuilt, else null. */
+        public String getWorldNotice() {
+            return worldNotice;
         }
     }
 }

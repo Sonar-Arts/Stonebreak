@@ -34,6 +34,10 @@ log = logging.getLogger("tgmpipe")
 
 
 CPU_MAX_VRAM = 4 * 2**30   # "auto" runs on the CPU when the chosen GPU has this much memory or less
+# The CPU kernels (kernels/cpu_sampler.py, kernels/controls_cpu.py) are EXPERIMENTAL and not yet optimized:
+# a tile takes minutes. The game treats a machine that would land on them as below Daedalus's system
+# requirements and disables the model there (DaedalusRequirements.java, -Dstonebreak.daedalus.requirements=off
+# to bypass), so in practice this path runs only when explicitly requested.
 
 
 def pick_device(requested: str) -> str:
@@ -49,9 +53,11 @@ def pick_device(requested: str) -> str:
     if auto and torch.cuda.is_available():
         total = torch.cuda.get_device_properties(torch.device(requested)).total_memory
         if total <= CPU_MAX_VRAM:
-            log.info("%s has %.1f GB of VRAM (<= %.0f GB): running on the CPU", requested,
-                     total / 2**30, CPU_MAX_VRAM / 2**30)
+            log.warning("%s has %.1f GB of VRAM (<= %.0f GB): running on the CPU, whose kernels are"
+                        " experimental and not yet optimized", requested, total / 2**30, CPU_MAX_VRAM / 2**30)
             return "cpu"
+    if requested == "cpu":
+        log.warning("running on the CPU: the CPU kernels are experimental and not yet optimized")
     return requested
 
 

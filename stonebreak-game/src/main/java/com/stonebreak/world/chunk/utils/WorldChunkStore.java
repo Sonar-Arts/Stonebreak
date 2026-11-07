@@ -637,7 +637,6 @@ public class WorldChunkStore {
         // Heightmap is not serialized — rebuild from deserialized blocks before
         // the mesh-build samples it.
         chunk.getHeightMap().recomputeAll(chunk.getOpacityProbe());
-        chunk.cleanupCpuResources();
         if (meshPipeline != null) {
             meshPipeline.scheduleConditionalMeshBuild(chunk);
         }
@@ -684,9 +683,6 @@ public class WorldChunkStore {
     private void cleanup(Chunk chunk, int chunkX, int chunkZ) {
         if (meshPipeline != null) {
             meshPipeline.removeChunkFromQueues(chunk);
-        }
-        chunk.cleanupCpuResources();
-        if (meshPipeline != null) {
             meshPipeline.addChunkForGpuCleanup(chunk);
         }
         // Remove entities owned by THIS world's manager (two-world model): on the client render

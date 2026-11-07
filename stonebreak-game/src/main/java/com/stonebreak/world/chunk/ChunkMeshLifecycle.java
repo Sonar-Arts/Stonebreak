@@ -1,45 +1,25 @@
 package com.stonebreak.world.chunk;
 
-import com.openmason.engine.voxel.cco.data.CcoChunkState;
-import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
-import com.openmason.engine.voxel.mms.mmsCore.ChunkMeshResult;
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
 import com.openmason.engine.voxel.sbo.SBORenderData;
-import com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer;
-import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
- * Owns a chunk's mesh lifecycle: the CPU-side pending mesh results, the
- * GPU-side renderable handles (legacy per-chunk VAOs and region-arena
- * segments for atlas / water / stamp geometry), SBO render data, the
- * {@code meshGenerated} flag, and their upload, draw and cleanup. The
- * {@link Chunk} facade delegates all mesh-related public methods here so
- * the chunk itself stays a block container.
+ * Owns a chunk's mesh state: the GPU-side renderable handles (legacy per-chunk VAOs and region-arena segments for
+ * atlas / water / stamp geometry), SBO render data, the {@code meshGenerated}
+ * and retired flags, and their draw and cleanup. Building and uploading are
+ * driven by {@code MmsMeshPipeline} through the setters below; the pipeline's
+ * upload task, not the chunk, owns the CPU-side mesh data in between. The {@link Chunk} facade
+ * delegates all mesh-related public methods here so the chunk itself stays a
+ * block container.
  */
 final class ChunkMeshLifecycle {
 
-    private static final Logger logger = Logger.getLogger(Chunk.class.getName());
-
-    private static int debugRenderCallCount = 0;
-    private static int debugRenderSuccessCount = 0;
-
-    private final int x;
-    private final int z;
     private final CcoAtomicStateManager stateManager;
-    private final CcoDirtyTracker dirtyTracker;
 
-    // Mesh data and buffers (MMS-based)
-    private MmsMeshData pendingMmsMeshData;
-    private ChunkMeshResult pendingChunkMeshResult;
     private MmsRenderableHandle renderableHandle;
     // Water geometry lives in its own handle, drawn by the dedicated
     // WaterRenderer after the world's transparent pass (never by render()).
@@ -62,219 +42,25 @@ final class ChunkMeshLifecycle {
     private boolean atlasHasTranslucent;
     private List<SBORenderData> sboRenderDataList;
     private boolean meshGenerated = false;
+    // Set once on unload (under the chunk lock); the mesh pipeline then refuses
+    // to schedule, publish or upload for this chunk. Never cleared: a reloaded
+    // chunk is a new Chunk instance.
+    private volatile boolean meshRetired = false;
 
-    ChunkMeshLifecycle(int x, int z, CcoAtomicStateManager stateManager, CcoDirtyTracker dirtyTracker) {
-        this.x = x;
-        this.z = z;
+    ChunkMeshLifecycle(CcoAtomicStateManager stateManager) {
         this.stateManager = stateManager;
-        this.dirtyTracker = dirtyTracker;
-    }
-
-    // ===== Build / upload =====
-
-    /**
-     * Builds the mesh data for the chunk using MMS API. This is CPU-intensive and can be run on a worker thread.
-     */
-    void buildAndPrepareMeshData(Chunk chunk, World world) {
-        try {
-            // Generate mesh data using MMS API
-            if (!MmsAPI.isInitialized()) {
-                logger.log(Level.SEVERE, "MMS API not initialized for chunk (" + x + ", " + z + ")");
-                stateManager.removeState(CcoChunkState.MESH_GENERATING);
-                dirtyTracker.markMeshDirtyOnly();
-                return;
-            }
-
-            pendingChunkMeshResult = MmsAPI.getInstance().generateChunkMesh(chunk);
-            pendingMmsMeshData = pendingChunkMeshResult.atlasMesh();
-
-            // MMS API already updates state, but ensure consistency
-            // Mark mesh as ready for GPU upload
-            stateManager.removeState(CcoChunkState.MESH_GENERATING);
-            stateManager.addState(CcoChunkState.MESH_CPU_READY);
-
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "CRITICAL: Exception during mesh generation for chunk (" + x + ", " + z + "): "
-                + e.getMessage(), e);
-            stateManager.removeState(CcoChunkState.MESH_GENERATING);
-            dirtyTracker.markMeshDirtyOnly();
-        }
-    }
-
-    /**
-     * Applies the prepared mesh data to OpenGL using MMS API. This must be called on the main GL thread.
-     */
-    void applyPreparedDataToGL() {
-        if (!stateManager.hasState(CcoChunkState.MESH_CPU_READY)) {
-            return; // Data not ready
-        }
-
-        try {
-            if (pendingMmsMeshData == null || pendingMmsMeshData.isEmpty()) {
-                // Empty atlas mesh - clean up existing atlas resources
-                if (meshGenerated && renderableHandle != null) {
-                    renderableHandle.close();
-                    renderableHandle = null;
-                    meshGenerated = false;
-                }
-                if (regionAtlasHandle != null) {
-                    regionAtlasHandle.close();
-                    regionAtlasHandle = null;
-                    meshGenerated = false;
-                }
-                atlasHasTranslucent = false;
-                if (waterRenderableHandle != null) {
-                    waterRenderableHandle.close();
-                    waterRenderableHandle = null;
-                }
-                if (regionWaterHandle != null) {
-                    regionWaterHandle.close();
-                    regionWaterHandle = null;
-                }
-                // An empty atlas can still carry water geometry (ocean-only
-                // chunk) — upload it so this path matches the pipeline path.
-                if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasWaterMesh()) {
-                    var rr = ChunkRegionRenderer.isEnabled() ? ChunkRegionRenderer.getInstance() : null;
-                    if (rr != null) {
-                        regionWaterHandle = rr.upload(
-                            ChunkRegionRenderer.LAYER_WATER,
-                            x, z, pendingChunkMeshResult.waterMesh());
-                    }
-                    if (regionWaterHandle == null) {
-                        waterRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.waterMesh());
-                    }
-                    meshGenerated = true;
-                }
-                // A pulled-format chunk may be stamp-only (e.g. just snow layers).
-                uploadStampMesh(pendingChunkMeshResult, ChunkRegionRenderer.isEnabled());
-                stateManager.removeState(CcoChunkState.MESH_CPU_READY);
-                stateManager.addState(CcoChunkState.BLOCKS_POPULATED);
-                return;
-            }
-
-            // Upload mesh to GPU — into the shared region arenas when region
-            // rendering is enabled, else a legacy per-chunk handle.
-            if (meshGenerated && renderableHandle != null) {
-                // Clean up old handle before creating new one
-                renderableHandle.close();
-                renderableHandle = null;
-            }
-            if (regionAtlasHandle != null) {
-                regionAtlasHandle.close();
-                regionAtlasHandle = null;
-            }
-
-            var regionRenderer = ChunkRegionRenderer.isEnabled() ? ChunkRegionRenderer.getInstance() : null;
-            if (regionRenderer != null) {
-                regionAtlasHandle = regionRenderer.upload(
-                    ChunkRegionRenderer.LAYER_ATLAS,
-                    x, z, pendingMmsMeshData);
-            }
-            if (regionAtlasHandle == null) {
-                renderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingMmsMeshData);
-            }
-            atlasHasTranslucent = pendingMmsMeshData.hasTranslucentGeometry();
-            meshGenerated = true;
-            uploadStampMesh(pendingChunkMeshResult, regionRenderer != null);
-
-            // Upload the water mesh; clear the handle when this rebuild
-            // produced no water so drained water can't ghost.
-            if (waterRenderableHandle != null) {
-                waterRenderableHandle.close();
-                waterRenderableHandle = null;
-            }
-            if (regionWaterHandle != null) {
-                regionWaterHandle.close();
-                regionWaterHandle = null;
-            }
-            if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasWaterMesh()) {
-                if (regionRenderer != null) {
-                    regionWaterHandle = regionRenderer.upload(
-                        ChunkRegionRenderer.LAYER_WATER,
-                        x, z, pendingChunkMeshResult.waterMesh());
-                }
-                if (regionWaterHandle == null) {
-                    waterRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(pendingChunkMeshResult.waterMesh());
-                }
-            }
-
-            // Upload SBO meshes if present (one per block type)
-            if (pendingChunkMeshResult != null && pendingChunkMeshResult.hasSBOMesh()) {
-                closeSBORenderData();
-                sboRenderDataList = new ArrayList<>(pendingChunkMeshResult.sboEntries().size());
-                for (ChunkMeshResult.SBOEntry entry : pendingChunkMeshResult.sboEntries()) {
-                    MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(entry.meshData());
-                    sboRenderDataList.add(new SBORenderData(sboHandle, entry.batches()));
-                }
-            } else {
-                closeSBORenderData();
-                sboRenderDataList = null;
-            }
-
-            stateManager.removeState(CcoChunkState.MESH_CPU_READY);
-            stateManager.addState(CcoChunkState.MESH_GPU_UPLOADED);
-
-            // Clear dirty flags after successful upload
-            dirtyTracker.clearMeshDirty();
-
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "CRITICAL: Error during GL buffer upload for chunk (" + x + ", " + z + ")", e);
-            stateManager.removeState(CcoChunkState.MESH_CPU_READY);
-            dirtyTracker.markMeshDirtyOnly();
-        } finally {
-            pendingMmsMeshData = null;
-            pendingChunkMeshResult = null;
-        }
-    }
-
-    /** Uploads (or clears) the stamp mesh of a pending result. GL thread. */
-    private void uploadStampMesh(ChunkMeshResult result, boolean regionMode) {
-        if (stampRenderableHandle != null) {
-            stampRenderableHandle.close();
-            stampRenderableHandle = null;
-        }
-        if (regionStampHandle != null) {
-            regionStampHandle.close();
-            regionStampHandle = null;
-        }
-        if (result == null || !result.hasStampMesh()) {
-            return;
-        }
-        if (regionMode) {
-            regionStampHandle = ChunkRegionRenderer.getInstance().upload(ChunkRegionRenderer.LAYER_STAMP, x, z, result.stampMesh());
-        }
-        if (regionStampHandle == null) {
-            stampRenderableHandle = MmsAPI.getInstance().uploadMeshToGPU(result.stampMesh());
-        }
-        atlasHasTranslucent |= result.stampMesh().hasTranslucentGeometry();
-        meshGenerated = true;
     }
 
     // ===== Draw =====
 
     /**
-     * Renders the chunk using MMS API.
+     * Renders the chunk's legacy (non-region) atlas and stamp handles.
      */
     void render() {
-        // Debug: Always log first few chunks
-        if (debugRenderCallCount < 5) {
-            System.out.println("[Chunk.render] Called for (" + x + "," + z + "): " +
-                "renderable=" + stateManager.isRenderable() +
-                " meshGen=" + meshGenerated +
-                " handle=" + (renderableHandle != null));
-            debugRenderCallCount++;
-        }
-
         if (!stateManager.isRenderable() || !meshGenerated) {
             return;
         }
         if (renderableHandle != null) {
-            // Debug first few successful renders
-            if (debugRenderSuccessCount < 3) {
-                System.out.println("[Chunk.render] SUCCESS: Rendering chunk at (" + x + "," + z + ") with " +
-                    renderableHandle.getIndexCount() + " indices");
-                debugRenderSuccessCount++;
-            }
             renderableHandle.render();
         }
         // Legacy stamp geometry draws with the atlas (same shader/pass). Region-
@@ -297,57 +83,36 @@ final class ChunkMeshLifecycle {
 
     // ===== Cleanup =====
 
-    private void closeSBORenderData() {
+    /**
+     * Closes all GPU resources. MUST be called from the main OpenGL thread.
+     */
+    void cleanupGpuResources() {
+        renderableHandle = close(renderableHandle);
+        waterRenderableHandle = close(waterRenderableHandle);
+        stampRenderableHandle = close(stampRenderableHandle);
+        regionAtlasHandle = close(regionAtlasHandle);
+        regionWaterHandle = close(regionWaterHandle);
+        regionStampHandle = close(regionStampHandle);
         if (sboRenderDataList != null) {
             for (SBORenderData data : sboRenderDataList) {
                 data.close();
             }
             sboRenderDataList = null;
         }
-    }
-
-    /** Drops pending CPU-side mesh data. Safe to call from any thread. */
-    void cleanupCpuResources() {
-        pendingMmsMeshData = null;
-        pendingChunkMeshResult = null;
-    }
-
-    /**
-     * Cleans up GPU resources using MMS API. MUST be called from the main OpenGL thread.
-     * Also clears any pending CPU-side mesh data to prevent retention after unload.
-     */
-    void cleanupGpuResources() {
-        if (renderableHandle != null) {
-            renderableHandle.close();
-            renderableHandle = null;
-        }
-        if (waterRenderableHandle != null) {
-            waterRenderableHandle.close();
-            waterRenderableHandle = null;
-        }
-        if (regionAtlasHandle != null) {
-            regionAtlasHandle.close();
-            regionAtlasHandle = null;
-        }
-        if (regionWaterHandle != null) {
-            regionWaterHandle.close();
-            regionWaterHandle = null;
-        }
-        if (stampRenderableHandle != null) {
-            stampRenderableHandle.close();
-            stampRenderableHandle = null;
-        }
-        if (regionStampHandle != null) {
-            regionStampHandle.close();
-            regionStampHandle = null;
-        }
         atlasHasTranslucent = false;
-        closeSBORenderData();
         meshGenerated = false;
+    }
 
-        // Clear CPU-side mesh data that may still be pending upload
-        pendingMmsMeshData = null;
-        pendingChunkMeshResult = null;
+    /** Closes {@code handle} if non-null; always returns null for field reassignment. */
+    private static <T extends AutoCloseable> T close(T handle) {
+        if (handle != null) {
+            try {
+                handle.close();
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to close mesh handle", e);
+            }
+        }
+        return null;
     }
 
     // ===== State / handle accessors (mirrored by the Chunk facade) =====
@@ -368,12 +133,12 @@ final class ChunkMeshLifecycle {
         this.atlasHasTranslucent = hasTranslucent;
     }
 
-    ChunkMeshResult getPendingChunkMeshResult() {
-        return pendingChunkMeshResult;
+    boolean isMeshRetired() {
+        return meshRetired;
     }
 
-    void setPendingChunkMeshResult(ChunkMeshResult result) {
-        this.pendingChunkMeshResult = result;
+    void retireMesh() {
+        this.meshRetired = true;
     }
 
     List<SBORenderData> getSBORenderDataList() {

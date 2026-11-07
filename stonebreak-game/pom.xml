@@ -184,8 +184,12 @@
                 <configuration>
                     <!-- add-reads: PacketDecoderFuzzTest drives the engine's inbound chain directly
                          (Netty's codec handlers and channel attributes); test JVM only — the game
-                         itself never touches io.netty.codec. -->
-                    <argLine>-Dnet.bytebuddy.experimental=true --add-reads stonebreak.game=io.netty.codec,io.netty.common</argLine>
+                         itself never touches io.netty.codec.
+                         add-opens tgmpipe: @RequiresDaedalus's ExecutionCondition lives in that package and
+                         JUnit (unnamed module) instantiates it for tests in OTHER packages; surefire only
+                         opens it when a tgmpipe test class happens to be selected, so a filtered run of
+                         e.g. ChunkCodecZstdTest errored instead of skipping. -->
+                    <argLine>-Dnet.bytebuddy.experimental=true --add-reads stonebreak.game=io.netty.codec,io.netty.common --add-opens stonebreak.game/com.stonebreak.world.generation.diffusion.tgmpipe=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
             <!-- Stonebreak's own native library (#386: the worldgen kernels moved out of the engine's

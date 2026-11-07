@@ -468,7 +468,12 @@ public final class IntegratedServer {
         if (level == null || level.timeOfDay() == null) {
             return;
         }
-        long ticks = Math.max(0L, ts.ticks()); // absolute: the day carries the moon's phase
+        long ticks = ts.ticks(); // absolute: the day carries the moon's phase
+        if (!com.stonebreak.world.TimeOfDay.isValidTotalTicks(ticks)) {
+            System.err.println("[SERVER] Rejected world time " + ticks + " from " + sp.username()
+                + " (valid: 0.." + com.stonebreak.world.TimeOfDay.MAX_TOTAL_TICKS + ")");
+            return;
+        }
         level.timeOfDay().setTicks(ticks);
         TimeSyncS2C sync = currentTimeSync();
         if (sync != null) {

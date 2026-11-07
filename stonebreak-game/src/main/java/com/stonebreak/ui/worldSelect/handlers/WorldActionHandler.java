@@ -179,8 +179,8 @@ public class WorldActionHandler {
                     new com.stonebreak.world.save.serialization.JsonWorldSerializer();
 
                 byte[] jsonBytes = serializer.serialize(worldData);
-                java.nio.file.Files.write(worldDir.resolve("world.json"), jsonBytes);
-                java.nio.file.Files.write(worldDir.resolve("metadata.json"), jsonBytes);
+                com.stonebreak.world.save.io.AtomicFiles.write(worldDir.resolve("world.json"), jsonBytes);
+                com.stonebreak.world.save.io.AtomicFiles.write(worldDir.resolve("metadata.json"), jsonBytes);
 
                 System.out.println("World created successfully: " + worldName);
                 return true;

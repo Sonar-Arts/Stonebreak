@@ -3,6 +3,7 @@ package com.stonebreak.world.save.io;
 import com.openmason.engine.cenda.CendaKernels;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
+import com.stonebreak.world.generation.diffusion.tgmpipe.RequiresDaedalus;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.save.model.ChunkData;
 import org.junit.jupiter.api.Tag;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * blocks out, header bytes confirm the zstd path was actually taken.
  */
 @Tag("regression")
+@RequiresDaedalus
 class ChunkCodecZstdTest {
 
     @Test

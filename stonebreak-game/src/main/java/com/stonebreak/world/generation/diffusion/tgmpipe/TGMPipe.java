@@ -174,9 +174,12 @@ public final class TGMPipe {
      * answered the handshake. {@code progress} hears 0 when a start begins and 1 when it is ready;
      * it is not called at all when the service is already up.
      *
-     * @throws TGMPipeException if the service fails to start or become ready in time
+     * @throws TGMPipeException if this machine is below {@link DaedalusRequirements}, or the service fails
+     *                          to start or become ready in time
      */
     public void ensureRunning(DoubleConsumer progress) {
+        // Below the requirements the model is disabled outright (it would land on the experimental CPU kernels).
+        DaedalusRequirements.requireMet();
         // First launch installs the environment and compiles the kernels (ModelSetup, started with the
         // game): wait for it here, outside the lock, rather than launching a Python that is not there yet.
         ModelSetup.getInstance().awaitUsable(progress);

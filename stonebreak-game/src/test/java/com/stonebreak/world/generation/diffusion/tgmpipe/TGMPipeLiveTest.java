@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * its venv and a CUDA device, and takes about a minute.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@RequiresDaedalus
 class TGMPipeLiveTest {
 
     private static final int OVERVIEW_LOD = 8;

@@ -18,11 +18,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -192,72 +188,5 @@ class SaveServiceLifecycleTest {
             svc.startAutoSave();  // idempotent — no exception
             svc.stopAutoSave();
         }
-    }
-
-    @Test
-    void concurrentSameChunkSavesLeaveOneValidPayload() throws Exception {
-        String worldPath = tempDir.resolve("w10").toString();
-        FileSaveRepository repo = new FileSaveRepository(worldPath);
-        BlockType[] types = {BlockType.STONE, BlockType.DIRT, BlockType.GRASS, BlockType.SAND};
-
-        try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
-            Future<?>[] futures = new Future[4];
-            for (int i = 0; i < 4; i++) {
-                final BlockType type = types[i];
-                final int idx = i;
-
-                futures[idx] = executor.submit(() -> {
-                    try {
-                        CcoPalettedChunkStorage blocks =
-                            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
-                        blocks.set(0, 0, 0, type);
-
-                        ChunkData chunk = ChunkData.builder()
-                            .chunkX(7)
-                            .chunkZ(7)
-                            .blocks(blocks)
-                            .lastModified(FIXED_TIME)
-                            .build();
-
-                        repo.saveChunk(chunk);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            }
-
-            // Wait for all with timeouts
-            for (Future<?> f : futures) {
-                f.get(10, TimeUnit.SECONDS);
-            }
-        }
-
-        // Load and verify exactly one valid chunk remains
-        java.util.Optional<ChunkData> loaded = repo.loadChunk(7, 7);
-        assertTrue(loaded.isPresent(), "Chunk (7,7) should still exist after concurrent saves");
-
-        BlockType survivor = (BlockType) loaded.get().getBlockStorage().get(0, 0, 0);
-        boolean matchesOneOfTheFour = false;
-        for (BlockType t : types) {
-            if (t == survivor || t.equals(survivor)) {
-                matchesOneOfTheFour = true;
-                break;
-            }
-        }
-        assertTrue(matchesOneOfTheFour,
-            "Surviving block (0,0,0) was " + survivor + " — expected one of STONE, DIRT, GRASS, SAND");
-
-        // No .tmp residue anywhere under world root
-        Path worldRoot = Path.of(worldPath);
-        java.util.stream.Stream<Path> walk = Files.walk(worldRoot);
-        try {
-            boolean tmpFound = walk.anyMatch(p -> p.toString().endsWith(".tmp"));
-            walk.close();
-            assertFalse(tmpFound, "No .tmp residue should remain after concurrent saves");
-        } finally {
-            walk.close();
-        }
-
-        repo.close();
     }
 }

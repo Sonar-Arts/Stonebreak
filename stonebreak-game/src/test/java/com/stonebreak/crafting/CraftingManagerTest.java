@@ -115,6 +115,33 @@ class CraftingManagerTest {
         assertNull(manager.craftItem(verticalGrid));
     }
 
+    // ── registration order / duplicate IDs ───────────────────────────────
+
+    @Test
+    void duplicateIdKeepsFirstRecipeAndFirstRegisteredWinsAmongSameShape() {
+        CraftingManager manager = new CraftingManager();
+        Recipe first = new Recipe("a", grid(row(s(BlockType.DIRT, 1))), s(ItemType.STICK, 1));
+        Recipe sameId = new Recipe("a", grid(row(s(BlockType.STONE, 1))), s(BlockType.STONE, 1));
+        Recipe overlap = new Recipe("b", grid(row(s(BlockType.DIRT, 1))), s(BlockType.STONE, 1));
+        manager.registerRecipe(first);
+        manager.registerRecipe(sameId);
+        manager.registerRecipe(overlap);
+
+        assertEquals(2, manager.getRecipeCount());
+        assertNull(manager.getMatchedRecipe(grid(row(s(BlockType.STONE, 1)))));
+        assertSame(first, manager.getMatchedRecipe(grid(row(null, null), row(null, s(BlockType.DIRT, 1)))));
+    }
+
+    @Test
+    void clearRecipesEmptiesLookups() {
+        CraftingManager manager = new CraftingManager();
+        manager.registerRecipe(new Recipe("c", grid(row(s(BlockType.DIRT, 1))), s(ItemType.STICK, 1)));
+        manager.clearRecipes();
+
+        assertEquals(0, manager.getRecipeCount());
+        assertNull(manager.getMatchedRecipe(grid(row(s(BlockType.DIRT, 1)))));
+    }
+
     // ── craftItem returns a copy ─────────────────────────────────────────
 
     @Test

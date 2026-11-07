@@ -112,6 +112,24 @@ class RecipeTest {
         assertFalse(recipe.matches(grid(row(s(BlockType.STONE, 1))), 0, 0));
     }
 
+    @Test
+    void matchesHonorsColumnOffset() {
+        Recipe recipe = new Recipe("dirtAt", pattern(row(s(BlockType.DIRT, 1))), s(BlockType.STONE, 1));
+        List<List<ItemStack>> g = grid(row(s(BlockType.STONE, 1), s(BlockType.DIRT, 1)));
+
+        assertTrue(recipe.matches(g, 0, 1));
+        assertFalse(recipe.matches(g, 0, 0));
+    }
+
+    @Test
+    void matchesReadsNullGridRowAsEmpty() {
+        Recipe recipe = new Recipe("gap",
+                pattern(row(s(BlockType.DIRT, 1)), row((ItemStack) null), row(s(BlockType.DIRT, 1))),
+                s(BlockType.STONE, 1));
+
+        assertTrue(recipe.matches(grid(row(s(BlockType.DIRT, 1)), null, row(s(BlockType.DIRT, 1))), 0, 0));
+    }
+
     // ── equals / hashCode ────────────────────────────────────────────────
 
     @Test
