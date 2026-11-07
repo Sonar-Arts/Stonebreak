@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  * Usage: /timeset <time|preset>
  * Numbers are clock times, the same ones the game shows (debug panel, this command's reply):
  *   /timeset 18         - 6:00 PM (a bare number is the hour, 24-hour clock)
- *   /timeset 14:30      - 2:30 PM
+ *   /timeset 14:30      - 2:30 PM (the colon is optional: 1430, 14 30, 14.30, 14;30)
  *   /timeset 6pm        - 6:00 PM (also 6:30am, "6 pm")
  *   /timeset day        - noon (also night/midnight, dawn/sunrise, dusk/sunset)
  *   /timeset ticks 6000 - raw tick value (0-23999, where 0 is 6:00 AM)
@@ -25,8 +25,9 @@ import java.util.regex.Pattern;
  */
 public class TimeSetCommand implements ChatCommand {
 
-    // H, HH, H:MM or HH:MM, optionally followed by am/pm.
-    private static final Pattern CLOCK_TIME = Pattern.compile("(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?");
+    // H or HH, optionally followed by MM (after ':', ';', '.', a space, or nothing — so 1430
+    // and 630 work), optionally followed by am/pm. "630" backtracks to 6:30; "6000" is hour 60.
+    private static final Pattern CLOCK_TIME = Pattern.compile("(\\d{1,2})(?:[:;.\\s]?(\\d{2}))?\\s*(am|pm)?");
 
     @Override
     public void execute(String[] args, ChatMessageManager messageManager) {
@@ -88,7 +89,8 @@ public class TimeSetCommand implements ChatCommand {
     }
 
     /**
-     * Ticks for a clock time ({@code 18}, {@code 14:30}, {@code 6pm}, {@code 6:30 am}), or -1 if
+     * Ticks for a clock time ({@code 18}, {@code 14:30}, {@code 1430}, {@code 6pm}, {@code 630pm},
+     * {@code 6:30 am}), or -1 if
      * {@code text} isn't one. Without am/pm the hour is 24-hour (0-23); with it, 1-12.
      */
     static long parseClockTime(String text) {
@@ -207,7 +209,7 @@ public class TimeSetCommand implements ChatCommand {
 
     private void showUsage(ChatMessageManager messageManager) {
         messageManager.addMessage("Usage: /timeset <time>", ChatColors.YELLOW);
-        messageManager.addMessage("  Clock time: 18, 14:30, 6pm, 6:30am", ChatColors.LIGHT_GRAY);
+        messageManager.addMessage("  Clock time: 18, 14:30 (or 1430), 6pm, 6:30am (or 630am)", ChatColors.LIGHT_GRAY);
         messageManager.addMessage("  Presets: day, night, dawn, dusk", ChatColors.LIGHT_GRAY);
         messageManager.addMessage("  /timeset ticks <0-23999> sets raw ticks (0 = 6:00 AM)", ChatColors.LIGHT_GRAY);
         messageManager.addMessage("  /timeset moon <day> picks the moon's phase", ChatColors.LIGHT_GRAY);
