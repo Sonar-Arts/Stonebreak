@@ -190,6 +190,120 @@ public class OreVeinDistributionTest {
                         + " vs " + midDensity);
     }
 
+    /**
+     * Copper, tin, silver and gold all spawn; tin stays near the surface wherever the
+     * surface is, while silver and gold stay deep, with gold the deeper of the two.
+     *
+     * <p>The ceilings allow for vein reach: an origin is drawn inside the band, but its
+     * spheres can extend a few blocks past it.
+     */
+    @Test
+    public void metalOresSpawnInTheirBands() {
+        TallHillsTileSource tiles = new TallHillsTileSource();
+        DiffusionTerrainGenerator terrain = new DiffusionTerrainGenerator(SEED, tiles);
+        OreGenerator ores = new OreGenerator(
+                new DeterministicRandom(SEED), new HeightMapGenerator(tiles), SEED);
+
+        BlockType[] metals = {BlockType.COPPER_ORE, BlockType.TIN_ORE,
+                BlockType.SILVER_ORE, BlockType.GOLD_ORE};
+        long[] count = new long[metals.length];
+        long[] sumY = new long[metals.length];
+        int[] maxY = new int[metals.length];
+        long tinDepthSum = 0;
+        int tinMaxDepth = 0;
+        int span = METAL_REGION * CHUNK;
+        int yCap = TallHillsTileSource.MAX_HEIGHT + 1;
+        byte[] ore = new byte[span * span * yCap];
+
+        for (int cx = 0; cx < METAL_REGION; cx++) {
+            for (int cz = 0; cz < METAL_REGION; cz++) {
+                DiffusionTerrainGenerator.TerrainResult result = terrain.generateTerrainOnly(cx, cz);
+                Chunk chunk = result.chunk();
+                ColumnProfile profile = result.profile();
+                ores.generate(new ChunkGenerationContext(null, chunk, null,
+                        profile.heights(), profile.biomes(), profile.waterLevels(),
+                        profile.dominantBiome()));
+
+                for (int lx = 0; lx < CHUNK; lx++) {
+                    for (int lz = 0; lz < CHUNK; lz++) {
+                        int surface = profile.heights()[lx * CHUNK + lz];
+                        for (int y = 1; y < surface; y++) {
+                            BlockType block = chunk.getBlock(lx, y, lz);
+                            for (int m = 0; m < metals.length; m++) {
+                                if (block != metals[m]) continue;
+                                count[m]++;
+                                sumY[m] += y;
+                                ore[index(cx * CHUNK + lx, y, cz * CHUNK + lz, span, yCap)] =
+                                        (byte) (m + 1);
+                                maxY[m] = Math.max(maxY[m], y);
+                                if (block == BlockType.TIN_ORE) {
+                                    tinDepthSum += surface - y;
+                                    tinMaxDepth = Math.max(tinMaxDepth, surface - y);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        int chunks = METAL_REGION * METAL_REGION;
+        for (int m = 0; m < metals.length; m++) {
+            System.out.printf("%s: %.1f blocks/chunk, mean y %.1f, max y %d%n", metals[m],
+                    count[m] / (double) chunks, sumY[m] / (double) Math.max(1, count[m]), maxY[m]);
+            assertTrue(count[m] / (double) chunks >= METAL_PER_CHUNK_MIN[m],
+                    metals[m] + " must spawn: " + count[m] / (double) chunks + " blocks/chunk");
+        }
+        for (int m = 0; m < metals.length; m++) {
+            Components veins = components(ore, (byte) (m + 1), span, yCap);
+            System.out.printf("%s: %d veins, mean size %.2f, %.1f%% single blocks%n", metals[m],
+                    veins.count, veins.meanSize(), veins.singleFraction() * 100);
+            assertTrue(veins.meanSize() >= METAL_MEAN_COMPONENT_MIN[m],
+                    metals[m] + " veins too small: mean size " + veins.meanSize());
+            assertTrue(veins.singleFraction() <= SINGLE_BLOCK_FRACTION_MAX,
+                    metals[m] + " must spawn in groups of two or more, with only a small share"
+                            + " of lone blocks: " + veins.singleFraction() * 100 + "%");
+        }
+        double tinMeanDepth = tinDepthSum / (double) count[1];
+        System.out.printf("tin: mean depth %.1f, max depth %d%n", tinMeanDepth, tinMaxDepth);
+
+        assertTrue(tinMaxDepth <= TIN_DEPTH_CEILING,
+                "tin must stay near the surface: found " + tinMaxDepth + " blocks down");
+        assertTrue(tinMeanDepth <= TIN_MEAN_DEPTH_MAX,
+                "tin must sit mostly just under the surface: mean depth " + tinMeanDepth);
+        assertTrue(maxY[2] <= SILVER_Y_CEILING, "silver must stay deep: found at y " + maxY[2]);
+        assertTrue(maxY[3] <= GOLD_Y_CEILING, "gold must stay deep: found at y " + maxY[3]);
+        assertTrue(sumY[3] / (double) count[3] < sumY[2] / (double) count[2],
+                "gold must sit deeper than silver on average");
+    }
+
+    /**
+     * Wider than {@link #REGION}: gold yields under two veins per chunk, and the lone-block
+     * share needs a few hundred veins before one or two strays stop swinging it.
+     */
+    private static final int METAL_REGION = 14;
+    /** Floors, blocks per chunk, in the order copper, tin, silver, gold. */
+    private static final double[] METAL_PER_CHUNK_MIN = {40, 20, 8, 3};
+    /**
+     * Mean vein size floors, in the same order: copper and tin share coal's floor and
+     * silver and gold share iron's, matching the vein sizes each borrows.
+     */
+    private static final double[] METAL_MEAN_COMPONENT_MIN = {
+            COAL_MEAN_COMPONENT_MIN, COAL_MEAN_COMPONENT_MIN,
+            IRON_MEAN_COMPONENT_MIN, IRON_MEAN_COMPONENT_MIN};
+    /**
+     * Ceiling on lone blocks among the metal veins: the deliberate 5% lone-block chance,
+     * plus the 1-2% of vein pieces cut off in a chunk's edge columns, where the pairing
+     * pass cannot see the neighbour. Measured 5-7.5%. Without the pairing pass it was
+     * 9-14%, and without joined sphere centres a third of copper veins were lone.
+     */
+    private static final double SINGLE_BLOCK_FRACTION_MAX = 0.10;
+    /** Band limits from {@code OreGenerator} plus vein reach and the 4-block soil cap. */
+    private static final int TIN_DEPTH_CEILING = 40 + 4 + 6;
+    private static final double TIN_MEAN_DEPTH_MAX = 28;
+    private static final int SILVER_Y_CEILING = 52 + 6;
+    private static final int GOLD_Y_CEILING = 36 + 6;
+
     /** Band index for the depth-curve comparison, or -1 for the transition zones. */
     private static int bandOf(int y) {
         if (y < DEEP_Y_MAX) return 0;
@@ -202,12 +316,20 @@ public class OreVeinDistributionTest {
         return (x * span + z) * yCap + y;
     }
 
-    private record Components(int count, long blocks, int interior, int straddling) {
+    private record Components(int count, long blocks, int interior, int straddling, int singles) {
         double meanSize() {
             return count == 0 ? 0 : blocks / (double) count;
         }
 
         /** Of the veins that could have crossed a border, the share that did. */
+        /**
+         * Of the veins clear of the region wall, the share that are one block. Veins at the
+         * wall are excluded as for straddling: they are clipped, not genuinely that small.
+         */
+        double singleFraction() {
+            return interior == 0 ? 0 : singles / (double) interior;
+        }
+
         double straddleFraction() {
             return interior == 0 ? 0 : straddling / (double) interior;
         }
@@ -226,6 +348,7 @@ public class OreVeinDistributionTest {
         long blocks = 0;
         int interior = 0;
         int straddling = 0;
+        int singles = 0;
 
         for (int x = 0; x < span; x++) {
             for (int z = 0; z < span; z++) {
@@ -271,6 +394,9 @@ public class OreVeinDistributionTest {
                     blocks += size;
                     if (!atRegionEdge) {
                         interior++;
+                        if (size == 1) {
+                            singles++;
+                        }
                         if (chunks.size() > 1) {
                             straddling++;
                         }
@@ -278,7 +404,7 @@ public class OreVeinDistributionTest {
                 }
             }
         }
-        return new Components(count, blocks, interior, straddling);
+        return new Components(count, blocks, interior, straddling, singles);
     }
 
     private static final int[][] NEIGHBOURS = {

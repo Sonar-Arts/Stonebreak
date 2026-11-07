@@ -79,6 +79,12 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType SAND = fromRegistry("stonebreak:sand", "SAND");
     public static final BlockType COAL_ORE = fromRegistry("stonebreak:coal_ore", "COAL_ORE");
     public static final BlockType IRON_ORE = fromRegistry("stonebreak:iron_ore", "IRON_ORE");
+    // Metal ores placed as veins by world/generation/features/OreGenerator: copper anywhere,
+    // tin near the surface, silver and gold deep down.
+    public static final BlockType COPPER_ORE = fromRegistry("stonebreak:copper_ore", "COPPER_ORE");
+    public static final BlockType TIN_ORE = fromRegistry("stonebreak:tin_ore", "TIN_ORE");
+    public static final BlockType SILVER_ORE = fromRegistry("stonebreak:silver_ore", "SILVER_ORE");
+    public static final BlockType GOLD_ORE = fromRegistry("stonebreak:gold_ore", "GOLD_ORE");
     public static final BlockType RED_SAND = fromRegistry("stonebreak:red_sand", "RED_SAND");
     public static final BlockType MAGMA = fromRegistry("stonebreak:magma", "MAGMA");
     public static final BlockType CRYSTAL = fromRegistry("stonebreak:crystal", "CRYSTAL");

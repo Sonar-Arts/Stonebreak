@@ -243,9 +243,30 @@ public class Renderer {
                                 block instanceof com.stonebreak.blocks.BlockType bt
                                         && bt == com.stonebreak.blocks.BlockType.SNOW);
 
-                        pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService, translucencyPolicy);
-
                         MmsFaceCullingService cullingForNeighborLookup = sboCullingService;
+
+                        // A stalagmite's anchor draws the whole spire, and everything
+                        // above its own cell (below, when hanging) is emitted through
+                        // its top (bottom) face. The cell there is the stalagmite's own
+                        // part cell — opaque and the same type — so the opaque-vs-opaque
+                        // rule would drop that whole bucket and leave a size 2-3 spire as
+                        // a flat-topped stub. Neither side fills the shared plane, so
+                        // never cull a stalagmite face against another stalagmite.
+                        com.openmason.engine.voxel.sbo.sboRenderer.SBOCullingPolicy stampCulling =
+                                (block, lx, ly, lz, face, chunkData) -> {
+                                    if (block == com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE
+                                            && (face == com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions.MMS_TOP
+                                                || face == com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions.MMS_BOTTOM)) {
+                                        int ny = face == com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions.MMS_TOP
+                                                ? ly + 1 : ly - 1;
+                                        if (cullingForNeighborLookup.getAdjacentBlock(lx, ny, lz, chunkData)
+                                                == com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE) {
+                                            return true;
+                                        }
+                                    }
+                                    return cullingForNeighborLookup.shouldRenderFace(block, lx, ly, lz, face, chunkData);
+                                };
+                        pendingSBOEmitter = sboRendererAPI.createEmitter(stampCulling, translucencyPolicy);
 
                         // Per-face cull policy: cull a translucent block's
                         // (ice, glass) top face when a snow layer sits directly
