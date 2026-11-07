@@ -3,13 +3,15 @@ package com.stonebreak.audio;
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.world.World;
 import com.stonebreak.world.weather.ClientWeather;
+import com.stonebreak.world.weather.CloudColumn;
 import com.stonebreak.world.weather.WeatherSurface;
 import org.joml.Vector3f;
 
 /**
  * The sound of the weather at the listener: a rain loop that swells under
- * raining cloud, falls silent in snow and muffles under a roof; and thunder,
- * arriving as late after each lightning flash as sound takes to travel.
+ * raining cloud, falls silent in snow, above the cloud and inside it, and
+ * muffles under a roof; and thunder, arriving as late after each lightning
+ * flash as sound takes to travel.
  * Thunder is played 2D — the engine's positional sources fade out within
  * 50 blocks, and thunder must carry for over a kilometre.
  */
@@ -26,6 +28,12 @@ public final class WeatherAudio {
     private static final float RESPONSE_SECONDS = 2.5f;
     /** Spacing of the samples averaged around the listener: rain is heard from all around. */
     private static final float SAMPLE_SPREAD = 16f;
+    /**
+     * Blocks above a cloud's base over which its rain fades out: rain falls from
+     * the cloud's underside, so a listener inside the cloud or above it hears
+     * none of that column's rain.
+     */
+    static final float CLOUD_FADE = 16f;
     /** Below this the loop is silent rather than fading forever. */
     private static final float SILENT = 1e-3f;
 
@@ -69,12 +77,32 @@ public final class WeatherAudio {
     }
 
     private static float precipitationAround(ClientWeather weather, Vector3f p) {
-        float sum = weather.precipitationAt(p.x, p.z);
-        sum += weather.precipitationAt(p.x + SAMPLE_SPREAD, p.z);
-        sum += weather.precipitationAt(p.x - SAMPLE_SPREAD, p.z);
-        sum += weather.precipitationAt(p.x, p.z + SAMPLE_SPREAD);
-        sum += weather.precipitationAt(p.x, p.z - SAMPLE_SPREAD);
+        float sum = heardAt(weather, p.x, p.z, p.y);
+        sum += heardAt(weather, p.x + SAMPLE_SPREAD, p.z, p.y);
+        sum += heardAt(weather, p.x - SAMPLE_SPREAD, p.z, p.y);
+        sum += heardAt(weather, p.x, p.z + SAMPLE_SPREAD, p.y);
+        sum += heardAt(weather, p.x, p.z - SAMPLE_SPREAD, p.y);
         return sum / 5f;
+    }
+
+    private static float heardAt(ClientWeather weather, float x, float z, float earY) {
+        return rainHeard(weather.columnAt(x, z), earY);
+    }
+
+    /**
+     * The rain of {@code column} as heard by a listener at height {@code earY}:
+     * all of it below the cloud's base, fading to none {@link #CLOUD_FADE}
+     * blocks up into the cloud (or at its top, for a thinner one), and none
+     * above it — the rain is all below.
+     */
+    static float rainHeard(CloudColumn column, float earY) {
+        float rain = column.precipitation();
+        if (rain <= 0f) return 0f;
+        float base = column.baseY();
+        float silentAt = Math.min(base + CLOUD_FADE, column.topY());
+        if (earY <= base) return rain;
+        if (earY >= silentAt) return 0f;
+        return rain * (silentAt - earY) / (silentAt - base);
     }
 
     /** Queues thunder for each new strike, delayed by distance, and plays what is due. */

@@ -12,6 +12,11 @@ public final class DebugFormat {
     private DebugFormat() {
     }
 
+    /**
+     * Short F3 label for a GPU memory category. The enum is engine-owned (OpenMason, a separate repo) and
+     * grows on its own schedule, so categories this switch does not know yet (e.g. {@code PARTICLES}) fall
+     * back to their title-cased name instead of breaking the build against a newer or older engine.
+     */
     public static String shortCategoryName(GpuMemoryTracker.Category c) {
         return switch (c) {
             case CHUNK_MESH      -> "Chunk Meshes";
@@ -21,7 +26,19 @@ public final class DebugFormat {
             case PLAYER_GEOMETRY -> "Player Geom";
             case SHADOW_MAP      -> "Shadow Maps";
             case OTHER           -> "Other";
+            default              -> titleCase(c.name());
         };
+    }
+
+    /** {@code "SOME_NAME"} → {@code "Some Name"}. */
+    static String titleCase(String constant) {
+        StringBuilder out = new StringBuilder(constant.length());
+        for (String word : constant.split("_")) {
+            if (word.isEmpty()) continue;
+            if (out.length() > 0) out.append(' ');
+            out.append(word.charAt(0)).append(word.substring(1).toLowerCase(java.util.Locale.ROOT));
+        }
+        return out.toString();
     }
 
     public static String formatBytes(long bytes) {
