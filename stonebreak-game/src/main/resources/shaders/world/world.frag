@@ -12,6 +12,7 @@ out vec4 fragColor;
 
 #include "/shaders/shadow/csm_uniforms.glsl"
 #include "/shaders/lighting/point_lights.glsl"
+#include "/shaders/lighting/far_lights.glsl"
 #include "/shaders/shadow/csm_functions.glsl"
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shadow.glsl"
@@ -170,8 +171,9 @@ void main() {
         // they light caves and night. Player-held geometry has no world-space
         // fragPos; it is lit through u_playerLight instead.
         if (u_playerLight < 0.0) {
-            vec3 torch = pointLightContribution(fragPos, norm,
-                    pointLightWeight(u_ambientLight, worldLight, shadowFactor));
+            float torchWeight = pointLightWeight(u_ambientLight, worldLight, shadowFactor);
+            vec3 torch = pointLightContribution(fragPos, norm, torchWeight)
+                    + farLightContribution(fragPos, norm, torchWeight);
             result = applyPointLight(result, textureColor.rgb, torch);
         }
 

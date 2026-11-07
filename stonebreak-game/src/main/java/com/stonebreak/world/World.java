@@ -43,6 +43,8 @@ public class World {
             new com.stonebreak.blocks.workbench.WorkbenchStateRegistry();
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
             new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
+    private final com.stonebreak.rendering.lighting.RememberedLights rememberedLights =
+            new com.stonebreak.rendering.lighting.RememberedLights();
 
     /**
      * Mob path searching for this world. Created on first use — a world that never holds a mob
@@ -331,8 +333,12 @@ public class World {
             }
             workbenchRegistry.onChunkLoaded(chunk);
             animatedBlockRegistry.onChunkLoaded(chunk);
+            rememberedLights.onChunkLoaded(chunk);
             meshScheduler.onChunkLoaded(chunk.getX(), chunk.getZ());
         }, chunk -> {
+            // Before the registries below forget the chunk's torches: they keep lighting
+            // the FastLOD terrain that takes the chunk's place.
+            rememberedLights.onChunkUnloaded(this, chunk);
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkUnloaded(chunk);
             }
@@ -1297,6 +1303,11 @@ public class World {
      */
     public com.stonebreak.blocks.workbench.WorkbenchStateRegistry getWorkbenchRegistry() {
         return workbenchRegistry;
+    }
+
+    /** Light sources in this world's unloaded chunks, still lighting their FastLOD terrain. */
+    public com.stonebreak.rendering.lighting.RememberedLights getRememberedLights() {
+        return rememberedLights;
     }
 
     /** This world's index of animated (dynamically rendered) block positions. */

@@ -41,6 +41,14 @@ vec3 applyPointLight(vec3 lit, vec3 albedo, vec3 torch) {
     return lit + headroom * (pointLightSoftCap(torch) / POINT_LIGHT_MAX);
 }
 
+// Distance falloff shared by the shadowed near lights and the distant ones
+// (far_lights.glsl), so a torch does not change shape as it moves between them.
+float pointLightFalloff(float dist, float radius) {
+    float x = 1.0 - dist / radius;
+    float falloff = x * x * (3.0 - 2.0 * x);   // smoothstep(0,1,x)
+    return falloff * falloff;                   // tighter core, soft tail
+}
+
 vec3 pointLightContribution(vec3 worldPos, vec3 normal, float weight) {
     if (weight <= 0.0 || u_pointLightCount == 0) return vec3(0.0);
     vec3 sum = vec3(0.0);
@@ -53,9 +61,7 @@ vec3 pointLightContribution(vec3 worldPos, vec3 normal, float weight) {
         float dist = sqrt(distSq);
         vec3 l = toLight / max(dist, 1e-4);
         float diffuse = max(dot(normal, l), 0.0);
-        float x = 1.0 - dist / light.w;
-        float falloff = x * x * (3.0 - 2.0 * x);   // smoothstep(0,1,x)
-        falloff *= falloff;                         // tighter core, soft tail
+        float falloff = pointLightFalloff(dist, light.w);
         int slot = int(u_pointLightColor[i].w);
         float visibility = diffuse > 0.0 ? pointShadowVisibility(worldPos, normal, light.xyz, light.w, slot) : 0.0;
         float indirect = pointIndirectLight(worldPos, normal, light.xyz, slot)
