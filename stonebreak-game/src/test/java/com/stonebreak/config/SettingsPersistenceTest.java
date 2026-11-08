@@ -45,6 +45,7 @@ class SettingsPersistenceTest {
         s.setPlayerNameTagsEnabled(false);
         s.setPauseSingleplayerWorld(true);
         s.setHideArmWithHud(true);
+        s.setLiveMenuBackground(false);
         s.setShadowQuality("HIGH");
         s.setShadowDistance(120);
         s.setSmoothLightingEnabled(false);
@@ -89,6 +90,7 @@ class SettingsPersistenceTest {
         assertEquals(expected.getPlayerNameTagsEnabled(), actual.getPlayerNameTagsEnabled());
         assertEquals(expected.getPauseSingleplayerWorld(), actual.getPauseSingleplayerWorld());
         assertEquals(expected.getHideArmWithHud(), actual.getHideArmWithHud());
+        assertEquals(expected.getLiveMenuBackground(), actual.getLiveMenuBackground());
         assertEquals(expected.getShadowQuality(), actual.getShadowQuality());
         assertEquals(expected.getShadowDistance(), actual.getShadowDistance());
         assertEquals(expected.getSmoothLightingEnabled(), actual.getSmoothLightingEnabled());
@@ -134,10 +136,11 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(41, tree.size());
+        assertEquals(42, tree.size());
         assertTrue(tree.has("selectedAccessory"));
         assertTrue(tree.has("pauseSingleplayerWorld"));
         assertTrue(tree.has("hideArmWithHud"));
+        assertTrue(tree.has("liveMenuBackground"));
         assertTrue(tree.has("windowWidth"));
         assertTrue(tree.has("uiScale"));
         assertTrue(tree.has("multiplayerUsername"));

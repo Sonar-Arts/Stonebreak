@@ -69,9 +69,9 @@ final class FastLodLifecycle {
                 var server = com.stonebreak.network.MultiplayerSession.getServer();
                 var ctx = (server != null) ? server.worldContext() : null;
                 var level = (ctx != null) ? ctx.serverLevel() : null;
-                var save = (level != null) ? level.saveService() : null;
-                if (save != null) {
-                    worldPath = save.getWorldPath();
+                if (level != null) {
+                    // The world's save folder, or the main menu showcase's own LOD cache folder.
+                    worldPath = level.lodCachePath();
                 }
             }
             if (worldPath == null || worldPath.isEmpty()) return null;

@@ -1,0 +1,18 @@
+{
+  "seed": 1854228654,
+  "shots": [
+    {
+      "caption": "",
+      "motion": "ORBIT",
+      "eyeFrom": [-260, 236, -20],
+      "targetFrom": [-260, 122, -200],
+      "sweepDeg": 360,
+      "fov": 62,
+      "duration": 300,
+      "easing": "Linear",
+      "time": 1800,
+      "weather": "CLEAR",
+      "loop": true
+    }
+  ]
+}

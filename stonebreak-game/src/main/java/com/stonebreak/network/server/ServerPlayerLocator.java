@@ -77,7 +77,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
             return false;
         }
         for (ServerPlayer player : roster) {
-            if (!player.isLiveInWorld() || player.playerId() == ownerPlayerId
+            if (!player.isMobTargetable() || player.playerId() == ownerPlayerId
                     || !ServerHealthHandler.insideBody(player, point, margin)) {
                 continue;
             }
@@ -101,7 +101,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
         ServerPlayer best = null;
         float bestDistanceSq = Float.MAX_VALUE;
         for (ServerPlayer player : roster) {
-            if (!player.isLiveInWorld()) {
+            if (!player.isMobTargetable()) {
                 continue;
             }
             float dx = player.x() - from.x;

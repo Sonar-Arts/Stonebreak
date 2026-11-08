@@ -44,7 +44,7 @@ public final class StateNavigation {
         "statistics", (g, a) -> PauseMenuActions.openStatistics(g),
         "glossary", (g, a) -> PauseMenuActions.openGlossary(g),
         "main_menu", (g, a) -> {
-            if (Game.getWorld() != null) {
+            if (Game.isInGameWorld()) {
                 PauseMenuActions.quitToMenu(g);
             } else {
                 g.setState(GameState.MAIN_MENU);
@@ -76,7 +76,7 @@ public final class StateNavigation {
     }
 
     private static void openSettings(Game game) {
-        if (Game.getWorld() != null) {
+        if (Game.isInGameWorld()) {
             PauseMenuActions.openSettings(game);
             return;
         }

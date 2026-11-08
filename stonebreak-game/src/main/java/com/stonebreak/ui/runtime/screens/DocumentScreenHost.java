@@ -123,7 +123,7 @@ public final class DocumentScreenHost {
     /** A world is loaded and the player exists (not the intro, menus or the loading screen). */
     public static boolean worldRunning() {
         Game game = Game.getInstance();
-        return Game.getWorld() != null && Game.getPlayer() != null && game != null
+        return Game.isInGameWorld() && game != null
             && game.getState() != com.stonebreak.core.GameState.LOADING;
     }
 

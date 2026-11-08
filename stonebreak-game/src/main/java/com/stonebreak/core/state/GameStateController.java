@@ -117,7 +117,6 @@ public final class GameStateController {
         MainMenu mainMenu = game.getMainMenu();
         if (state == GameState.MAIN_MENU && mainMenu != null) {
             mainMenu.refreshSplashText();
-            mainMenu.resetTitleAnimation();
         }
 
         if (state == GameState.WORLD_SELECT && game.getWorldSelectScreen() != null) {
@@ -159,6 +158,8 @@ public final class GameStateController {
                 chatSystem.clear();
             }
             game.setCheatsEnabled(false);
+            // The live backdrop: a quiet showcase world behind the menu (no-op if one runs already).
+            com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get().onMenuEntered();
         }
 
         // Hide the F3 debug overlay when entering the settings menu so it does

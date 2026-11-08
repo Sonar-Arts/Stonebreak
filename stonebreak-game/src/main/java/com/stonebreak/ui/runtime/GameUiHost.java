@@ -132,7 +132,7 @@ import java.util.function.Consumer;
  *       "Save changes?" dialog is up</td></tr>
  *   <tr><td>{@code stonebreak:screen.multiplayer}, {@code .host-world}, {@code .join-world} 1</td><td>the
  *       multiplayer screens ({@link MultiplayerContracts})</td></tr>
- *   <tr><td>{@code stonebreak:screen.main-menu} 1</td><td>the main menu ({@link MainMenuContracts})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.main-menu} 2</td><td>the main menu ({@link MainMenuContracts})</td></tr>
  *   <tr><td>{@code stonebreak:screen.settings} 1</td><td>the settings screen's widgets
  *       ({@link SettingsMenuContracts}; the values themselves are {@code stonebreak:settings})</td></tr>
  *   <tr><td>{@code stonebreak:screen.world-select} 1</td><td>the world select screen
@@ -1010,7 +1010,7 @@ public final class GameUiHost {
          * loading) they would push the game into PAUSED and wedge it there, so they refuse.
          */
         private static boolean inWorld(String action) {
-            if (Game.getWorld() != null && Game.getPlayer() != null) {
+            if (Game.isInGameWorld()) {
                 return true;
             }
             org.slf4j.LoggerFactory.getLogger(GameUiHost.class)
@@ -1291,13 +1291,13 @@ public final class GameUiHost {
         }
 
         @Override
-        public String mainMenuTitle() {
-            var menu = mainMenu();
-            if (menu == null) {
-                return "no main menu is showing";
+        public MainMenuContracts.Backdrop mainMenuBackdrop() {
+            var showcase = com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get();
+            if (showcase.staticBackdrop()) {
+                return MainMenuContracts.Backdrop.STATIC;
             }
-            menu.clickTitle(Game.getWindowWidth(), Game.getWindowHeight());
-            return null;
+            return new MainMenuContracts.Backdrop(showcase.fade(), showcase.menuReveal(), false,
+                    "Seed " + showcase.seed(), showcase.loadProgress());
         }
 
         @Override

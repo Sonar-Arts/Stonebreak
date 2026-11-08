@@ -117,6 +117,8 @@ public final class SettingsContract {
             (s, v) -> s.setPauseSingleplayerWorld(b(v)), null, Live.READ_LIVE);
         add("hideArmWithHud", DataType.bool(), s -> UiValue.of(s.getHideArmWithHud()),
             (s, v) -> s.setHideArmWithHud(b(v)), null, Live.READ_LIVE);
+        add("liveMenuBackground", DataType.bool(), s -> UiValue.of(s.getLiveMenuBackground()),
+            (s, v) -> s.setLiveMenuBackground(b(v)), null, Live.READ_LIVE);
         add("shadowQuality", DataType.string(), s -> UiValue.of(s.getShadowQuality()),
             (s, v) -> s.setShadowQuality(str(v)), oneOf("shadow quality", SettingsConfig.SHADOW_QUALITY_VALUES),
             Live.READ_LIVE);

@@ -45,6 +45,14 @@ public final class WorldStorage {
         return appDataDir().resolve(BACKUPS_DIR_NAME);
     }
 
+    /**
+     * The main menu showcase's folder (its FastLOD cache only — the showcase world itself is never
+     * saved). A sibling of {@link #worldsRoot()}, so world discovery never lists it.
+     */
+    public static Path menuShowcaseDir() {
+        return appDataDir().resolve("menu-showcase");
+    }
+
     /** Directory for a single named world. */
     public static Path worldDir(String worldName) {
         return worldsRoot().resolve(worldName);

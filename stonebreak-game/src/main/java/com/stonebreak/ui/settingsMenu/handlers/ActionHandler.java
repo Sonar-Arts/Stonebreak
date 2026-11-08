@@ -52,6 +52,7 @@ public class ActionHandler {
             case PLAYER_NAME_TAGS -> togglePlayerNameTags();
             case PAUSE_WORLD -> togglePauseWorld();
             case HIDE_ARM_WITH_HUD -> toggleHideArmWithHud();
+            case LIVE_MENU_BACKGROUND -> toggleLiveMenuBackground();
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
@@ -299,6 +300,13 @@ public class ActionHandler {
      */
     public void toggleHideArmWithHud() {
         settings.setHideArmWithHud(!settings.getHideArmWithHud());
+    }
+
+    /**
+     * Toggles the main menu's live world backdrop (a simulated world flown by a drone camera).
+     */
+    public void toggleLiveMenuBackground() {
+        settings.setLiveMenuBackground(!settings.getLiveMenuBackground());
     }
 
     /**

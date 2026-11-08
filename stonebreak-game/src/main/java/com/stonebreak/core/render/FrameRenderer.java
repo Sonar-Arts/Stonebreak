@@ -86,6 +86,13 @@ public final class FrameRenderer {
 
         syncCrosshair(game, renderer);
 
+        // The main menu's live backdrop: the showcase world, drawn under the menu document.
+        if (game.getState() == GameState.MAIN_MENU
+                && com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get().isRenderable()
+                && resetOpenGLState()) {
+            renderWorld(game, renderer);
+        }
+
         // A state whose screen is a shipped document (the shell menus, #299) draws it here.
         boolean presented = com.stonebreak.ui.runtime.screens.StateScreens.get().paint(game.getState(), width, height);
 
@@ -95,6 +102,9 @@ public final class FrameRenderer {
 
         renderDocumentScreens(renderer, width, height);
         renderDebugOverlay(renderer);
+        if (game.getState() == GameState.MAIN_MENU) {
+            com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get().afterFrame(width, height);
+        }
         // Closes and navigations scripts asked for this frame happen only now, after the frame was
         // drawn: nothing is torn down underneath the dispatch that asked (C4).
         com.stonebreak.ui.runtime.screens.DocumentScreenHost.get().endFrame();
@@ -139,7 +149,7 @@ public final class FrameRenderer {
         if (devScreenTried || devScreen == null || devScreen.isBlank()) {
             return;
         }
-        if (Game.getWorld() == null && !Boolean.getBoolean("stonebreak.uiscreen.menu")) {
+        if (!Game.isInGameWorld() && !Boolean.getBoolean("stonebreak.uiscreen.menu")) {
             return;
         }
         devScreenTried = true;

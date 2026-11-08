@@ -56,6 +56,12 @@ public final class ClientWorldBuilder {
      */
     private volatile boolean pending = false;
 
+    /**
+     * True once the main menu showcase's render world (a {@code SHOWCASE} session) is installed and
+     * its observer camera restored: the menu may start drawing it. Cleared by every start and cancel.
+     */
+    private volatile boolean showcaseInstalled = false;
+
     public ClientWorldBuilder(Game game, WorldLifecycle worldLifecycle) {
         this.game = game;
         this.worldLifecycle = worldLifecycle;
@@ -65,6 +71,12 @@ public final class ClientWorldBuilder {
     public void cancel() {
         generation.incrementAndGet();
         pending = false;
+        showcaseInstalled = false;
+    }
+
+    /** The main menu showcase's world is installed and may be drawn (see {@link #showcaseInstalled}). */
+    public boolean isShowcaseInstalled() {
+        return showcaseInstalled && MultiplayerSession.isShowcase();
     }
 
     /** True when inbound network state can safely be applied to the current world. */
@@ -84,23 +96,27 @@ public final class ClientWorldBuilder {
             }
             game.setSaveService(null);
         }
-        game.setCurrentWorldName(worldName);
-        game.setCurrentWorldSeed(seed);
+        // The main menu showcase builds quietly behind the menu: no loading screen, no world name
+        // (nothing may mistake it for a world the player is in), and it never enters PLAYING.
+        boolean showcase = MultiplayerSession.isShowcase();
+        game.setCurrentWorldName(showcase ? null : worldName);
+        game.setCurrentWorldSeed(showcase ? 0 : seed);
         game.setCurrentWorldData(null);
 
         LoadingScreen loadingScreen = game.getLoadingScreen();
-        if (loadingScreen != null) {
+        if (loadingScreen != null && !showcase) {
             loadingScreen.show();
         }
 
         int buildGeneration = generation.incrementAndGet();
         pending = true;
+        showcaseInstalled = false;
         new Thread(() -> build(buildGeneration, seed, generatorType, spawn), "ClientWorld-Build").start();
     }
 
     /** True while {@code buildGeneration} is still the latest build AND the session is alive. */
     private boolean stillCurrent(int buildGeneration) {
-        return buildGeneration == generation.get() && MultiplayerSession.isInWorld();
+        return buildGeneration == generation.get() && MultiplayerSession.hasSession();
     }
 
     private void build(int buildGeneration, long seed, TerrainGeneratorType generatorType, Vector3f spawn) {
@@ -124,6 +140,19 @@ public final class ClientWorldBuilder {
             // arrives via PlayerDataS2C and is applied by the client view).
             MultiplayerSession.restoreLocalPlayer(player);
             adoptServerClock(seed);
+
+            if (MultiplayerSession.isShowcase()) {
+                // The showcase's player is an invisible observer camera: no collision, no gravity,
+                // no ground hold. The menu's director places it; it never enters PLAYING.
+                if (player != null) {
+                    player.setSpectator(true);
+                }
+                if (stillCurrent(buildGeneration)) {
+                    showcaseInstalled = true;
+                    logger.info("[CLIENT-WORLD] Main menu showcase world installed.");
+                }
+                return;
+            }
 
             // Wait under where the player really is: a restored player arrives at their saved position,
             // not at the world spawn the handshake carries.
@@ -217,6 +246,16 @@ public final class ClientWorldBuilder {
     private void handleBuildFailure(int buildGeneration, Exception e) {
         logger.error("[CLIENT-WORLD] Failed to build render world", e);
         if (!stillCurrent(buildGeneration)) {
+            return;
+        }
+        if (MultiplayerSession.isShowcase()) {
+            // The menu backdrop failed: end its session quietly (the menu shows its static backdrop).
+            MultiplayerSession.noteShowcaseFailure();
+            game.runOnMainThread(() -> {
+                if (stillCurrent(buildGeneration) && MultiplayerSession.isShowcase()) {
+                    MultiplayerSession.shutdown();
+                }
+            });
             return;
         }
         // The render world is unusable and Game.getWorld() still points at the PREVIOUS session's

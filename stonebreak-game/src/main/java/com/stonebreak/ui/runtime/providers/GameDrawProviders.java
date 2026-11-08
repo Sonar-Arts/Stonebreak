@@ -55,7 +55,6 @@ public final class GameDrawProviders implements AutoCloseable {
         Map.entry(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.VERSION),
         Map.entry(FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.VERSION),
         Map.entry(DirtBackdropProvider.ID, DirtBackdropProvider.VERSION),
-        Map.entry(MenuStageProvider.ID, MenuStageProvider.VERSION),
         Map.entry(ClassGaugeProvider.ID, ClassGaugeProvider.VERSION),
         Map.entry(IntroSceneProvider.OCEAN_ID, IntroSceneProvider.VERSION),
         Map.entry(IntroSceneProvider.SONAR_ID, IntroSceneProvider.VERSION),
@@ -93,7 +92,6 @@ public final class GameDrawProviders implements AutoCloseable {
         map.put(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl());
         map.put(FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings());
         map.put(DirtBackdropProvider.ID, new DirtBackdropProvider());
-        map.put(MenuStageProvider.ID, new MenuStageProvider());
         map.put(ClassGaugeProvider.ID, new ClassGaugeProvider(player, typeface));
         map.put(IntroSceneProvider.OCEAN_ID, IntroSceneProvider.ocean(IntroSceneProvider::gameScene));
         map.put(IntroSceneProvider.SONAR_ID, IntroSceneProvider.sonar(IntroSceneProvider::gameScene));
@@ -157,7 +155,6 @@ public final class GameDrawProviders implements AutoCloseable {
         return Map.ofEntries(Map.entry(FurnaceCrucibleProvider.BOWL_ID, FurnaceCrucibleProvider.bowl()),
             Map.entry(FurnaceCrucibleProvider.RINGS_ID, FurnaceCrucibleProvider.rings()),
             Map.entry(DirtBackdropProvider.ID, new DirtBackdropProvider()),
-            Map.entry(MenuStageProvider.ID, new MenuStageProvider(() -> null, () -> 0)),
             Map.entry(ClassGaugeProvider.ID, new ClassGaugeProvider(() -> null, () -> null)),
             Map.entry(IntroSceneProvider.OCEAN_ID, IntroSceneProvider.ocean(() -> null)),
             Map.entry(IntroSceneProvider.SONAR_ID, IntroSceneProvider.sonar(() -> null)),

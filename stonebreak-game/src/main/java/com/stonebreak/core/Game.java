@@ -920,6 +920,21 @@ public class Game {
         return game != null && game.clientWorldBuilder.isReady();
     }
 
+    /** The main menu showcase's render world is installed and may be drawn. */
+    public static boolean isShowcaseWorldReady() {
+        Game game = instance;
+        return game != null && game.clientWorldBuilder.isShowcaseInstalled();
+    }
+
+    /**
+     * True while a world the player plays is installed: world and player present, and not the main
+     * menu's live showcase world (which occupies the same slots behind the menu). Use this, never a
+     * bare {@code getWorld() != null}, to ask "is the player in a game?".
+     */
+    public static boolean isInGameWorld() {
+        return getWorld() != null && getPlayer() != null && !com.stonebreak.network.MultiplayerSession.isShowcase();
+    }
+
     /**
      * Builds the client render world for a joined session. See
      * {@link com.stonebreak.core.world.ClientWorldBuilder}.

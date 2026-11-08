@@ -91,6 +91,7 @@ public final class InputHandler {
             case PLAYER_NAME_TAGS -> { if (direction != 0) actionHandler.togglePlayerNameTags(); }
             case PAUSE_WORLD -> { if (direction != 0) actionHandler.togglePauseWorld(); }
             case HIDE_ARM_WITH_HUD -> { if (direction != 0) actionHandler.toggleHideArmWithHud(); }
+            case LIVE_MENU_BACKGROUND -> { if (direction != 0) actionHandler.toggleLiveMenuBackground(); }
             case LEAF_TRANSPARENCY -> { if (direction != 0) actionHandler.toggleLeafTransparency(); }
             case WATER_SHADER -> { if (direction != 0) actionHandler.toggleWaterShader(); }
             case CLOUDS_ENABLED -> { if (direction != 0) actionHandler.toggleClouds(); }

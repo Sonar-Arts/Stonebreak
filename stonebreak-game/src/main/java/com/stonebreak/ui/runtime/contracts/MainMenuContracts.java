@@ -6,9 +6,7 @@ import com.openmason.engine.ui.data.DataCell;
 import com.openmason.engine.ui.data.DataType;
 import com.openmason.engine.ui.data.HostContract;
 import com.openmason.engine.ui.data.UiHost;
-import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.MainMenu;
-import com.stonebreak.ui.mainMenu.MainMenuStage;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,23 +14,40 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The main menu's host contract ({@code stonebreak:screen.main-menu} 1, #299): root {@code mainMenu}
- * with the splash line and the title animation as {@link MainMenuStage} computes it ({@code titleX},
- * {@code titleY}, {@code shakeX}, {@code shakeY} in device pixels, {@code titleScale},
- * {@code titleRotation} in degrees, {@code splashScale} the splash's beat, {@code splashX}/{@code splashY}
- * the splash's pivot in device pixels), republished every frame it
- * moves; actions {@code .singleplayer}, {@code .multiplayer}, {@code .settings}, {@code .quit} and
- * {@code .title} (the easter-egg click). {@link MainMenu} stays the controller.
+ * The main menu's host contract ({@code stonebreak:screen.main-menu} 2): root {@code mainMenu} with
+ * <ul>
+ *   <li>{@code splash} — the splash line;</li>
+ *   <li>{@code fade} — how black the veil over the live world backdrop is, 0..1 (the showcase's dip
+ *       to black; 1 while its world loads);</li>
+ *   <li>{@code reveal} — how visible the menu itself is, 0..1 (it waits, briefly, for the world);</li>
+ *   <li>{@code loading} — how visible the "Loading main menu" screen is while it waits, 0..1, with its
+ *       {@code progress} (0..1) and {@code percent} text, styled as the world loading screen;</li>
+ *   <li>{@code staticBackdrop} — show the static dirt backdrop instead (the live one is off or failed);</li>
+ *   <li>{@code seedLine} — the corner line naming the showcase seed ("" with no live backdrop).</li>
+ * </ul>
+ * Actions {@code .singleplayer}, {@code .multiplayer}, {@code .settings}, {@code .quit}. Version 2 dropped
+ * the title animation and its {@code .title} easter-egg action with the dirt/space stage.
+ * {@link MainMenu} stays the controller; the backdrop is {@code ui.mainMenu.showcase.MenuShowcase}.
  */
 public final class MainMenuContracts {
 
-    public static final HostContract MENU = HostContract.of("stonebreak:screen.main-menu", 1);
+    public static final HostContract MENU = HostContract.of("stonebreak:screen.main-menu", 2);
     public static final List<String> CHOICES = List.of("singleplayer", "multiplayer", "settings", "quit");
 
-    public static final DataType.Obj TYPE = DataType.object("splash", DataType.string(), "splashScale", DataType.number(),
-        "titleX", DataType.number(), "titleY", DataType.number(), "titleScale", DataType.number(),
-        "titleRotation", DataType.number(), "shakeX", DataType.number(), "shakeY", DataType.number(),
-        "splashX", DataType.number(), "splashY", DataType.number());
+    public static final DataType.Obj TYPE = DataType.object("splash", DataType.string(), "fade", DataType.number(),
+        "reveal", DataType.number(), "staticBackdrop", DataType.bool(), "seedLine", DataType.string(),
+        "loading", DataType.number(), "progress", DataType.number(), "percent", DataType.string());
+
+    /** What the backdrop shows this frame. */
+    public record Backdrop(float fade, float reveal, boolean staticBackdrop, String seedLine, float progress) {
+        /** No live world: the static backdrop, the menu shown at once. */
+        public static final Backdrop STATIC = new Backdrop(0f, 1f, true, "", 1f);
+
+        /** The loading screen shows while the menu waits, and fades out as the menu fades in. */
+        public float loading() {
+            return staticBackdrop ? 0f : 1f - clamp(reveal);
+        }
+    }
 
     /** The game behind the menu; every method returns null on success or why it refused. */
     public interface Services extends MenuWindow {
@@ -46,8 +61,9 @@ public final class MainMenuContracts {
             return "no main menu is showing";
         }
 
-        default String mainMenuTitle() {
-            return "no main menu is showing";
+        /** The live backdrop's state this frame. */
+        default Backdrop mainMenuBackdrop() {
+            return Backdrop.STATIC;
         }
     }
 
@@ -57,41 +73,41 @@ public final class MainMenuContracts {
 
     public MainMenuContracts(UiHost ui, Services services) {
         this.services = services;
-        cell = ui.data().register("mainMenu", new DataCell(TYPE, value(null, 0, new int[]{1920, 1080}, 1f)), MENU);
+        cell = ui.data().register("mainMenu", new DataCell(TYPE, value(null, Backdrop.STATIC)), MENU);
         for (int i = 0; i < CHOICES.size(); i++) {
             int index = i;
             action(ui, CHOICES.get(i), () -> services.mainMenuChoose(index));
         }
-        action(ui, "title", services::mainMenuTitle);
     }
 
-    /** UI thread, once per frame: the splash beat and the title motion change continuously. */
+    /** UI thread, once per frame: the veil and the reveal move while the backdrop fades. */
     public void poll() {
         MainMenu menu = services.mainMenu();
-        UiValue v = value(menu, UiWallClock.millis(), services.menuWindow(), services.menuScale());
+        Backdrop backdrop = menu == null ? Backdrop.STATIC : services.mainMenuBackdrop();
+        UiValue v = value(menu, backdrop == null ? Backdrop.STATIC : backdrop);
         if (!v.equals(last)) {
             last = v;
             cell.set(v);
         }
     }
 
-    static UiValue.Obj value(MainMenu menu, long millis, int[] window, float scale) {
-        MainMenuStage s = menu == null ? null : menu.getStage();
+    static UiValue.Obj value(MainMenu menu, Backdrop backdrop) {
         Map<String, UiValue> m = new LinkedHashMap<>();
         String splash = menu == null ? null : menu.getCurrentSplashText();
         m.put("splash", UiValue.of(splash == null ? "" : splash));
-        m.put("splashScale", SettingsContract.exact(MainMenu.splashPulse(millis)));
-        m.put("titleX", SettingsContract.exact(s == null ? 0f : s.getTitleOffsetX()));
-        m.put("titleY", SettingsContract.exact(s == null ? 0f : s.getTitleOffsetY()));
-        m.put("titleScale", SettingsContract.exact(s == null ? 1f : s.getTitleScale()));
-        m.put("titleRotation", SettingsContract.exact(s == null ? 0f : s.getTitleRotationDeg()));
-        m.put("shakeX", SettingsContract.exact(s == null ? 0f : s.getScreenShakeX()));
-        m.put("shakeY", SettingsContract.exact(s == null ? 0f : s.getScreenShakeY()));
-        // the splash pivot (device px, exact)
-        float[] anchor = MainMenu.splashAnchor(window[0], window[1], scale);
-        m.put("splashX", SettingsContract.exact(anchor[0]));
-        m.put("splashY", SettingsContract.exact(anchor[1]));
+        m.put("fade", SettingsContract.exact(clamp(backdrop.fade())));
+        m.put("reveal", SettingsContract.exact(clamp(backdrop.reveal())));
+        m.put("staticBackdrop", UiValue.of(backdrop.staticBackdrop()));
+        m.put("seedLine", UiValue.of(backdrop.seedLine() == null ? "" : backdrop.seedLine()));
+        float progress = clamp(backdrop.progress());
+        m.put("loading", SettingsContract.exact(backdrop.loading()));
+        m.put("progress", SettingsContract.exact(progress));
+        m.put("percent", UiValue.of(Math.round(progress * 100f) + "%"));
         return new UiValue.Obj(m);
+    }
+
+    private static float clamp(float v) {
+        return Float.isFinite(v) ? Math.max(0f, Math.min(1f, v)) : 0f;
     }
 
     private void action(UiHost ui, String name, java.util.function.Supplier<String> rule) {
