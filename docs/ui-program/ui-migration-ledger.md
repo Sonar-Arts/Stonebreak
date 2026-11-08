@@ -334,7 +334,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Performance:** the drop-shadow `ImageFilter` and the 64-gon path are allocated every frame. The space bake is cached per size.
 - **Fixtures:** `ui/fidelity/LegacyMainMenuBaselineTest` + `LegacyMainMenuCapture` (#299): pinned splash and space clock,
   the stage driven in fixed 1/60 s steps through the easter egg (`shake`, `reveal`, `space`), the renderer's layout sink.
-- **Fidelity:** `main-menu/main-menu-idle_1920x1080_s1` `main-menu/main-menu-idle_1280x720_s0_75` `main-menu/main-menu-idle_3840x2160_s2` `main-menu/main-menu-idle_1921x1081_s1_25` `main-menu/main-menu-idle-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-idle-hover-quit_1920x1080_s1` `main-menu/main-menu-shake_1920x1080_s1` `main-menu/main-menu-reveal_1920x1080_s1` `main-menu/main-menu-space_1920x1080_s1` `main-menu/main-menu-space_1921x1081_s1_25`
+- **Fidelity:** `main-menu/main-menu-live_1920x1080_s1` `main-menu/main-menu-live_1280x720_s0_75` `main-menu/main-menu-live_3840x2160_s2` `main-menu/main-menu-live_1921x1081_s1_25` `main-menu/main-menu-loading_1920x1080_s1` `main-menu/main-menu-static_1920x1080_s1` `main-menu/main-menu-live-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-live-hover-quit_1920x1080_s1`
 - **Migration (#299; migrated, legacy removed in #302):** shipped as `ui/documents/main_menu.sbui` + `menu_button` and the shared logo image
   ("Stonebreak Menus": `UI/stonebreak/ui/screens/main_menu.omui`). A state screen (`runtime.screens.StateScreens`);
   `ui.mainMenu.MainMenuDocument` advances the stage where the legacy `render` did and lets the host publish before it
@@ -347,10 +347,24 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   While the document shows, the legacy menu gets no input (`MenuInputRouter.documentShowing`). New vs legacy:
   keyboard focus (Tab, arrows, Enter) instead of the level-triggered Up/W/Down/S/Enter poll (W/S are not mapped);
   during the shake, buttons are hit where they are drawn. Legacy renderer removed in #302.
-- **Gate:** `ui.fidelity.MainMenuDocumentGateTest`: idle and hover cases at `EXACT` (0 px) with the same hit regions
-  and actions; frames of the easter egg at a motion tolerance (canvas transforms vs layout offsets round apart: one
-  pixel of shift, 0.2 % of pixels, clumps up to 96 px for a flipped texel row of the tilted logo); keyboard and
-  title-click script.
+- **Redesign (2026-11-07, live-world main menu):** the menu was redesigned after its migration, JC3-style: a live
+  world behind it (`ui.mainMenu.showcase.MenuShowcase`: a quiet `SHOWCASE` session — integrated server on an
+  ephemeral, never-saved world of the pinned seed in `resources/menu/showcase.json` — flown by `ShowcaseDirector`, one
+  continuous looping drone orbit; while its world loads the menu shows "Loading main menu" with the logo and a
+  progress bar, as the world loading screen, max 10 s, then fades in with the world) and a left
+  column (logo, `menu_entry` lines with an accent bar on hover/focus, splash bottom-left, seed line bottom-right) over
+  a left scrim. The dirt/space stage, the logo-click easter egg, `MainMenuStage`, `MainMenuBackdrop`,
+  `SpaceBackgroundRenderer` and the `stonebreak:menu-stage` provider were removed. Contract
+  `stonebreak:screen.main-menu` 2: `splash`, `fade` (the black veil), `reveal` (the menu's opacity), `staticBackdrop`
+  (dirt when the live backdrop is off or failed — setting `liveMenuBackground`), `seedLine`; actions `.singleplayer`,
+  `.multiplayer`, `.settings`, `.quit`. Sources: "Stonebreak Menus" `screens/main_menu.omui` +
+  `components/menu_entry.omui` + `images/menu_scrim.png` (builder `Dev Working/ui-builders-menu/`).
+- **Decision:** the redesign has no legacy reference, so its baselines were recorded once from the reviewed document
+  (`MainMenuDocumentGateTest.refreezeTheBaselines`, opt-in) and lock it from then on; the legacy captures above
+  describe the menu before it.
+- **Gate:** `ui.fidelity.MainMenuDocumentGateTest`: revealed over the live world at the standard viewports, the
+  "Loading main menu" wait (the world loading screen's look, at 40 %), the static backdrop and two hovered entries, all at `EXACT` (0 px) with the same hit regions and actions;
+  keyboard (Tab, Down, Enter) and click script.
 
 ### world-select
 - **Kind:** screen.

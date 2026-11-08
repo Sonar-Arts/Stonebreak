@@ -57,6 +57,10 @@ public final class ServerLevel {
     private final Vector3f spawn;
     private final PlayerData loadedPlayerData;
     private final String loadNotice;
+    /** Ephemeral (main menu showcase) level: never saved, its local player is an observer camera. */
+    private boolean ephemeral;
+    /** Where the client's FastLOD cache lives for this world (its save folder), or null for none. */
+    private String lodCachePath;
 
     private ServerLevel(long seed, World world, EntityManager entityManager,
                         EntitySpawner entitySpawner, long worldTimeTicks, SaveService saveService,
@@ -74,6 +78,35 @@ public final class ServerLevel {
         this.spawn = spawn;
         this.loadedPlayerData = loadedPlayerData;
         this.loadNotice = loadNotice;
+    }
+
+    /**
+     * An ephemeral world for the main menu's live backdrop: generated from {@code seed}, never saved
+     * (no {@link SaveService} — chunks that unload are simply regenerated), its spawn the camera
+     * anchor as given (no spawn search, no pre-gen: the server streams around the camera the moment
+     * it reports in). The local player of such a level is an observer: mobs neither see nor hurt it.
+     *
+     * @param lodCacheDir where the client keeps its FastLOD cache for this seed (survives launches,
+     *                    so distant terrain is instant the second time), or null for none
+     */
+    public static ServerLevel createEphemeral(long seed, Vector3f anchor, long timeTicks,
+                                              java.nio.file.Path lodCacheDir) {
+        WorldData worldData = WorldData.builder().seed(seed)
+                .worldName(com.stonebreak.network.MultiplayerSession.SHOWCASE_WORLD_NAME)
+                .spawnPosition(new Vector3f(anchor)).hasExplicitSpawn(true).build();
+        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
+        world.setSpawnPosition(new Vector3f(anchor));
+        EntityManager entityManager = new EntityManager(world);
+        EntitySpawner entitySpawner = new EntitySpawner(world, entityManager);
+        world.setEntityManager(entityManager);
+        world.setEntitySpawner(entitySpawner);
+        ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
+                null, worldData, new Vector3f(anchor), null, null);
+        level.ephemeral = true;
+        level.lodCachePath = lodCacheDir != null ? lodCacheDir.toString() : null;
+        entitySpawner.setNightSource(level.timeOfDay::isNight);
+        System.out.println("[SERVER-LEVEL] Booted ephemeral showcase world (seed=" + seed + "), anchor=" + anchor);
+        return level;
     }
 
     /**
@@ -188,6 +221,7 @@ public final class ServerLevel {
 
             ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
                 save, worldData, spawn, playerData, existing ? combinedNotice(lr) : null);
+            level.lodCachePath = worldPath;
             save.setWorldTimeSource(level.timeOfDay);
             save.setWeatherSource(level.weather);
             entitySpawner.setNightSource(level.timeOfDay::isNight);
@@ -443,6 +477,12 @@ public final class ServerLevel {
 
     /** Why saved data could not be restored as-is (world metadata rebuilt, player data set aside, #358), else null. */
     public String loadNotice() { return loadNotice; }
+
+    /** True for the main menu showcase's ephemeral level ({@link #createEphemeral}). */
+    public boolean isEphemeral() { return ephemeral; }
+
+    /** The folder the client's FastLOD cache for this world lives in, or null for none. */
+    public String lodCachePath() { return lodCachePath; }
 
     /**
      * Register the in-process local player so the save service persists its inventory/position.

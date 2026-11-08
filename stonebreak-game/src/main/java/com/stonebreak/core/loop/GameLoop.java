@@ -106,14 +106,14 @@ public final class GameLoop {
     private boolean isMusicActive() {
         GameState state = game.getState();
         if (!MUSIC_ACTIVE_STATES.contains(state)) return false;
-        if (state == GameState.SETTINGS && Game.getWorld() != null) return false;
+        if (state == GameState.SETTINGS && Game.isInGameWorld()) return false;
         return true;
     }
 
     /** The pause menu and the screens opened from it, over a loaded world. */
     private boolean isPauseMenuState() {
         GameState state = game.getState();
-        return Game.getWorld() != null && (state == GameState.PAUSED || state == GameState.SETTINGS
+        return Game.isInGameWorld() && (state == GameState.PAUSED || state == GameState.SETTINGS
                 || state == GameState.STATISTICS || state == GameState.GLOSSARY);
     }
 
@@ -146,6 +146,12 @@ public final class GameLoop {
                 return false;
             }
             case MAIN_MENU -> {
+                // The live backdrop (a quiet showcase world flown by a drone camera): the director
+                // places the camera, then the world meshes, uploads and runs its clocks. Never the
+                // player update: the camera is not a player.
+                if (com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get().tick(deltaTime)) {
+                    tickClientWorld(deltaTime);
+                }
                 return false;
             }
             case FOCUS_BATTLE -> {
@@ -241,23 +247,7 @@ public final class GameLoop {
             return;
         }
 
-        World world = Game.getWorld();
-        Renderer renderer = Game.getRenderer();
-        // A render-only client world (two-world model) is driven by server packets: run the
-        // reduced client update (mesh building, client chunk unload sweep, FastLOD ring),
-        // never the authoritative sim. Every playable world — singleplayer included — is a
-        // createClientView world (SP = integrated server + local client), so updateClient is
-        // the live path; the full update() branch remains for non-networked/legacy worlds.
-        final boolean renderOnly = world != null && world.isRenderOnly();
-        if (world != null) {
-            if (renderOnly) {
-                worldUpdateExecutor.submit(() -> world.updateClient(renderer));
-            } else {
-                worldUpdateExecutor.submit(() -> world.update(renderer));
-            }
-            world.updateMainThread();
-            world.processGpuCleanupQueue();
-        }
+        tickWorld();
 
         Player player = Game.getPlayer();
         DeathMenu deathMenu = game.getDeathMenu();
@@ -276,16 +266,49 @@ public final class GameLoop {
             }
         }
 
+        tickEntitiesAndClocks(deltaTime);
+
+        // Entity sight tracking (client-side, throttled, FOV+proximity gated)
+        if (player != null) {
+            player.getEntitySightingTracker().update(deltaTime);
+        }
+    }
+
+    /**
+     * The world itself without the player: chunk/mesh/upload work, entities, the day clock and the
+     * weather. The main menu's live showcase runs only this (its camera is not a player).
+     */
+    private void tickClientWorld(float deltaTime) {
+        tickWorld();
+        tickEntitiesAndClocks(deltaTime);
+    }
+
+    private void tickWorld() {
+        World world = Game.getWorld();
+        Renderer renderer = Game.getRenderer();
+        // A render-only client world (two-world model) is driven by server packets: run the
+        // reduced client update (mesh building, client chunk unload sweep, FastLOD ring),
+        // never the authoritative sim. Every playable world — singleplayer included — is a
+        // createClientView world (SP = integrated server + local client), so updateClient is
+        // the live path; the full update() branch remains for non-networked/legacy worlds.
+        final boolean renderOnly = world != null && world.isRenderOnly();
+        if (world != null) {
+            if (renderOnly) {
+                worldUpdateExecutor.submit(() -> world.updateClient(renderer));
+            } else {
+                worldUpdateExecutor.submit(() -> world.update(renderer));
+            }
+            world.updateMainThread();
+            world.processGpuCleanupQueue();
+        }
+    }
+
+    private void tickEntitiesAndClocks(float deltaTime) {
         // Entity manager always ticks: on a render-only client it advances only shadow
         // interpolation (EntityManager.update already skips AI/physics for network shadows).
         com.stonebreak.mobs.entities.EntityManager entityManager = Game.getEntityManager();
         if (entityManager != null) {
             entityManager.update(deltaTime);
-        }
-
-        // Entity sight tracking (client-side, throttled, FOV+proximity gated)
-        if (player != null) {
-            player.getEntitySightingTracker().update(deltaTime);
         }
 
         // Mob spawning is server-authoritative: the sole EntitySpawner lives on ServerLevel and

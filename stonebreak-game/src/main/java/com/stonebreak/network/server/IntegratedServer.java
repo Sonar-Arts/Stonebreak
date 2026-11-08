@@ -156,7 +156,15 @@ public final class IntegratedServer {
      */
     public void start(NetAddress localAddress, NetAddress tcpAddress, String worldName, long fallbackSeed)
             throws InterruptedException {
-        ServerLevel level = ServerLevel.createAndLoad(worldName, fallbackSeed);
+        start(localAddress, tcpAddress, ServerLevel.createAndLoad(worldName, fallbackSeed));
+    }
+
+    /**
+     * Starts listening around an already booted {@code level} (an ephemeral main menu showcase
+     * level, {@link ServerLevel#createEphemeral}, or one {@link ServerLevel#createAndLoad} opened).
+     */
+    public void start(NetAddress localAddress, NetAddress tcpAddress, ServerLevel level) throws InterruptedException {
+        this.localAddress = localAddress;
         ctx.setServerLevel(level);
 
         // Wire the spawner's player-position source to the live server roster. Kept here
@@ -213,6 +221,13 @@ public final class IntegratedServer {
     public ServerWorldContext worldContext() {
         return ctx;
     }
+
+    /** The in-JVM address the local client connects to (null before {@link #start}). */
+    public NetAddress localAddress() {
+        return localAddress;
+    }
+
+    private volatile NetAddress localAddress;
 
     /** The bound TCP listen address (port 0 resolved), or null when not listening on TCP. */
     public java.net.SocketAddress tcpBoundAddress() {
@@ -809,6 +824,8 @@ public final class IntegratedServer {
             sp.setClientSecret(NameClaims.secretFor(sp.presentedSecret(), saved.secret()));
         }
         sp.assignPlayerId(stableId);
+        // The main menu showcase's camera: streams and anchors spawns, but no mob sees or hurts it.
+        sp.setObserver(sp.isLocal() && ctx.serverLevel() != null && ctx.serverLevel().isEphemeral());
         ctx.addPlayer(sp);
 
         // Fresh characters create one before entering the world: a remote player is shown

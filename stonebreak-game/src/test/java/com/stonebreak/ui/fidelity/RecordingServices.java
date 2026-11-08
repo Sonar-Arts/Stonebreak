@@ -16,7 +16,7 @@ public class RecordingServices implements GameUiHost.Services {
 
     public final List<String> calls = new ArrayList<>();
 
-    /** The main menu ({@code mainMenu}: splash and title motion), or null. */
+    /** The main menu ({@code mainMenu}: its splash), or null. */
     public com.stonebreak.ui.MainMenu mainMenu;
 
     @Override
@@ -43,10 +43,13 @@ public class RecordingServices implements GameUiHost.Services {
         return null;
     }
 
+    /** The main menu backdrop's state ({@code mainMenu.fade/reveal/staticBackdrop/seedLine}). */
+    public com.stonebreak.ui.runtime.contracts.MainMenuContracts.Backdrop mainMenuBackdrop =
+        com.stonebreak.ui.runtime.contracts.MainMenuContracts.Backdrop.STATIC;
+
     @Override
-    public String mainMenuTitle() {
-        calls.add("stonebreak:screen.main-menu.title");
-        return null;
+    public com.stonebreak.ui.runtime.contracts.MainMenuContracts.Backdrop mainMenuBackdrop() {
+        return mainMenuBackdrop;
     }
 
     /** The multiplayer screens' state ({@code hostWorld} / {@code joinWorld}), or null. */

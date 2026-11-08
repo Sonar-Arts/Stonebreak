@@ -5,63 +5,67 @@ import com.openmason.engine.ui.fidelity.FrozenCaptures;
 import com.openmason.engine.ui.fidelity.GeometryRule;
 import com.openmason.engine.ui.fidelity.MigrationGate;
 import com.openmason.engine.ui.fidelity.PixelTolerance;
+import com.openmason.engine.ui.masonry.MKeys;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 /**
- * The main menu migration gate (#299): the shipped {@code main_menu} document against the legacy
- * renderer's frozen captures at {@code FLOAT_EXACT} geometry and {@code EXACT} pixels, idle and through
- * the title easter egg (the scene, the logo's motion and drop shadow, the splash and the screen shake),
- * with the same hit regions and actions.
+ * The main menu's gate (live-world redesign, contract {@code stonebreak:screen.main-menu} 2): the shipped
+ * {@code main_menu} document against its reviewed baselines at {@code FLOAT_EXACT} geometry and
+ * {@code EXACT} pixels — revealed over the live world, its "Loading main menu" wait, over the static
+ * backdrop, and with an entry hovered — with the same hit regions and actions.
+ *
+ * <p>The redesign replaced the legacy menu, so there is no legacy reference: its baselines were
+ * recorded once from the reviewed document ({@link #refreezeTheBaselines}, opt-in) and are a
+ * regression lock from then on. An intended visual change re-records them in a reviewed commit.
  */
 @Tag("regression")
 class MainMenuDocumentGateTest {
 
-    /** Every frozen main menu capture: idle at the standard viewports, hovered buttons, the title easter egg. */
     static List<FidelityCase> cases() {
-        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("main-menu", List.of("idle"), FidelityCase.STANDARD));
+        List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("main-menu", List.of("live"), FidelityCase.STANDARD));
         FidelityCase.Viewport hd = FidelityCase.STANDARD.get(0);
-        for (String v : List.of("idle-hover-singleplayer", "idle-hover-quit", "shake", "reveal", "space")) {
+        for (String v : List.of("loading", "static", "live-hover-singleplayer", "live-hover-quit")) {
             out.add(new FidelityCase("main-menu", v, hd));
         }
-        out.add(new FidelityCase("main-menu", "space", FidelityCase.STANDARD.get(3)));
         return out;
     }
 
-    /**
-     * Frames in motion: the legacy menu moves the title and shakes the screen with canvas transforms,
-     * the document with layout offsets and its element transform, so float rounding lands a nearest
-     * texel or a glyph's sub-pixel position one pixel apart. A pixel also matches a baseline pixel one
-     * pixel away; a few drifting anti-aliased pixels are allowed. On the tilted title a whole texel row
-     * can flip (a thin line along the logo), so a clump may reach 96 pixels: still far below a missing
-     * label or icon.
-     */
-    static final PixelTolerance MOTION = new PixelTolerance(2, 0.002, 1,
-        List.of(new PixelTolerance.Region(0, 0, 4096, 4096)), 96, 96);
-
     @Test
-    void theShippedMainMenuPassesTheMigrationGate() throws Exception {
+    void theShippedMainMenuMatchesItsBaselines() throws Exception {
         DeathDocumentGateTest.requireLua();
-        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT,
-                c -> DocumentMainMenuCapture.still(c.variant()) ? PixelTolerance.EXACT : MOTION)
+        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
             .run("main-menu", cases(), FrozenCaptures.forTests("main-menu").replay(), new DocumentMainMenuCapture());
         GateAssert.passed(r);
     }
 
     @Test
-    void theKeyboardWalksTheButtonsAndTheTitleDrivesTheEasterEgg() throws Exception {
+    void theKeyboardWalksTheEntries() throws Exception {
         DeathDocumentGateTest.requireLua();
-        com.stonebreak.ui.MainMenu[] menu = new com.stonebreak.ui.MainMenu[1];
         try (DocumentStage stage = DocumentMainMenuCapture.stage(new FidelityCase(
-                "main-menu", "idle", FidelityCase.STANDARD.get(0)), menu)) {
-            stage.key(com.openmason.engine.ui.masonry.MKeys.KEY_TAB);
-            stage.key(com.openmason.engine.ui.masonry.MKeys.KEY_DOWN);
-            org.junit.jupiter.api.Assertions.assertEquals(List.of("stonebreak:screen.main-menu.multiplayer"),
-                stage.key(com.openmason.engine.ui.masonry.MKeys.KEY_ENTER), "Tab focuses the first button, Down the next");
-            org.junit.jupiter.api.Assertions.assertEquals(List.of("stonebreak:screen.main-menu.title"), stage.click("logo"));
+                "main-menu", "live", FidelityCase.STANDARD.get(0)))) {
+            stage.key(MKeys.KEY_TAB);
+            stage.key(MKeys.KEY_DOWN);
+            assertEquals(List.of("stonebreak:screen.main-menu.multiplayer"), stage.key(MKeys.KEY_ENTER),
+                "Tab focuses the first entry, Down the next");
+            assertEquals(List.of("stonebreak:screen.main-menu.quit"), stage.click("quit"));
         }
+    }
+
+    /**
+     * Opt-in ({@code -Dstonebreak.ui.mainmenu.refreeze=true}): re-records every baseline and the geometry
+     * from the shipped document. Only for a reviewed, intended change of the menu's look.
+     */
+    @Test
+    void refreezeTheBaselines() {
+        assumeTrue(Boolean.getBoolean("stonebreak.ui.mainmenu.refreeze"), "opt-in re-freeze");
+        DeathDocumentGateTest.requireLua();
+        FrozenCaptures.forTests("main-menu").record(cases(), new DocumentMainMenuCapture());
     }
 }

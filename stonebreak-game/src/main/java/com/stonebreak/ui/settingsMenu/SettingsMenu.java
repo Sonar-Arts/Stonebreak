@@ -48,6 +48,8 @@ public final class SettingsMenu {
                 actionHandler::onCrosshairSizeChange,
                 actionHandler::togglePlayerNameTags,
                 actionHandler::togglePauseWorld,
+                actionHandler::toggleHideArmWithHud,
+                actionHandler::toggleLiveMenuBackground,
                 actionHandler::toggleLeafTransparency,
                 actionHandler::toggleWaterShader,
                 actionHandler::toggleClouds,

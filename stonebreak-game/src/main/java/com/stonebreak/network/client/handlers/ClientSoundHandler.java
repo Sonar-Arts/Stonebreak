@@ -17,6 +17,9 @@ public final class ClientSoundHandler {
     }
 
     public static void apply(SoundEventS2C s) {
+        if (com.stonebreak.network.MultiplayerSession.isShowcase()) {
+            return; // the main menu's live backdrop is silent: the menu music is its only sound
+        }
         switch (s.subject()) {
             case SoundEventS2C.BLOCK -> {
                 BlockType block = BlockType.getById(s.subjectId());

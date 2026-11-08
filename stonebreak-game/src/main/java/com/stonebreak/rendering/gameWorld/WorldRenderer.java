@@ -934,9 +934,18 @@ public class WorldRenderer {
                 Vector3f cameraPos = player.getCamera().getPosition();
                 entityRenderer.renderLocalPlayer(player, player.getViewMatrix(), projectionMatrix, world, cameraPos);
             }
-        } else {
+        } else if (!armHiddenWithHud(currentState)) {
             playerArmRenderer.renderPlayerArm(player);
         }
+    }
+
+    /**
+     * F1 hid the HUD and the "Hide Arm With HUD" setting is on. Mirrors FrameRenderer's rule: the
+     * HUD only hides while PLAYING, so the arm stays behind the pause menu and in-game screens.
+     */
+    private static boolean armHiddenWithHud(GameState state) {
+        return state == GameState.PLAYING && Game.isHudHidden()
+                && com.stonebreak.config.Settings.getInstance().getHideArmWithHud();
     }
 
     /**

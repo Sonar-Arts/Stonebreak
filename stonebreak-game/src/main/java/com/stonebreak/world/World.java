@@ -500,6 +500,27 @@ public class World {
     }
 
     /**
+     * The fraction (0..1) of chunks within {@code radius} chunks (a disc) of the given chunk that
+     * {@linkplain #isChunkDrawnAt are drawn}. The main menu showcase fades in on it.
+     */
+    public float areaDrawnFraction(int centerChunkX, int centerChunkZ, int radius) {
+        int total = 0;
+        int drawn = 0;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                if (dx * dx + dz * dz > radius * radius) {
+                    continue;
+                }
+                total++;
+                if (isChunkDrawnAt(centerChunkX + dx, centerChunkZ + dz)) {
+                    drawn++;
+                }
+            }
+        }
+        return total == 0 ? 1f : (float) drawn / total;
+    }
+
+    /**
      * Gets the block type at the specified world position.
      */
     /** Additional static model colliders, queried locally by player physics. Ordinary voxel worlds have none. */

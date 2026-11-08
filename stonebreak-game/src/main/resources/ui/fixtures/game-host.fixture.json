@@ -100,13 +100,13 @@
     },
     "mainMenu": {
       "splash": "Now with more dirt!",
-      "splashScale": 1,
-      "titleX": 0,
-      "titleY": 0,
-      "titleScale": 1,
-      "titleRotation": 0,
-      "shakeX": 0,
-      "shakeY": 0
+      "fade": 0,
+      "reveal": 1,
+      "staticBackdrop": false,
+      "seedLine": "Seed 1854228654",
+      "loading": 0,
+      "progress": 1,
+      "percent": "100%"
     },
     "hostWorld": {
       "worlds": [
@@ -300,6 +300,8 @@
       "shadowsEnabled": true,
       "playerNameTagsEnabled": true,
       "pauseSingleplayerWorld": false,
+      "hideArmWithHud": false,
+      "liveMenuBackground": true,
       "shadowQuality": "MEDIUM",
       "shadowDistance": 96,
       "smoothLightingEnabled": true,
@@ -2252,9 +2254,6 @@
       "contract": "stonebreak:screen.main-menu"
     },
     "stonebreak:screen.main-menu.quit": {
-      "contract": "stonebreak:screen.main-menu"
-    },
-    "stonebreak:screen.main-menu.title": {
       "contract": "stonebreak:screen.main-menu"
     },
     "stonebreak:screen.multiplayer.host": {

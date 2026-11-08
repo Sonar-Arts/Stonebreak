@@ -151,6 +151,25 @@ public final class ServerPlayer {
         return handshakeDone && lastStateNs != 0L && !dead;
     }
 
+    /**
+     * Live and not an {@linkplain #isObserver() observer}: the players mobs see, flee from,
+     * pursue and hit.
+     */
+    public boolean isMobTargetable() {
+        return isLiveInWorld() && !observer;
+    }
+
+    /** The main menu showcase's camera: in the world (it streams, anchors spawns) but no mob sees it. */
+    public boolean isObserver() {
+        return observer;
+    }
+
+    public void setObserver(boolean observer) {
+        this.observer = observer;
+    }
+
+    private volatile boolean observer;
+
     public void updateState(float x, float y, float z, float yaw, float pitch) {
         long now = System.nanoTime();
         float dt = (now - lastStateNs) / 1.0e9f;

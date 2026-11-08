@@ -35,7 +35,12 @@ import org.joml.Vector3f;
  */
 public final class MultiplayerSession {
 
-    public enum Mode { MENU, SINGLEPLAYER, HOST, JOIN }
+    /**
+     * {@code SHOWCASE} is the main menu's live backdrop: a quiet integrated server on an ephemeral
+     * (never saved) world whose local player is an invisible camera. It is a session (the client is
+     * pumped, the world streams) but not "in a world": nothing gameplay-facing treats it as one.
+     */
+    public enum Mode { MENU, SINGLEPLAYER, HOST, JOIN, SHOWCASE }
 
     /** How often the dedicated server thread pumps {@code server.tick()} (inbound drain runs at
      *  this rate; the authoritative sim runs at 20 Hz via the tick's internal accumulator). */
@@ -94,15 +99,24 @@ public final class MultiplayerSession {
             }
         }
     }
-    /** In a world (any mode but MENU). The local player is a client whenever this is true. */
-    public static boolean isInWorld() { return mode != Mode.MENU; }
+    /**
+     * In a world the player plays (SINGLEPLAYER, HOST or JOIN). False in MENU and in the main menu's
+     * {@link Mode#SHOWCASE} backdrop session.
+     */
+    public static boolean isInWorld() { return mode != Mode.MENU && mode != Mode.SHOWCASE; }
+    /** Any session at all, the main menu's showcase included (the client is pumped). */
+    public static boolean hasSession() { return mode != Mode.MENU; }
+    /** The main menu's live backdrop session ({@link Mode#SHOWCASE}). */
+    public static boolean isShowcase() { return mode == Mode.SHOWCASE; }
     /** A real network is involved (host or remote join) — not pure singleplayer. */
     public static boolean isOnline() { return mode == Mode.HOST || mode == Mode.JOIN; }
     public static boolean isHosting() { return mode == Mode.HOST; }
     /** The local player is a client in every in-world mode (two-world model). */
     public static boolean isClient() { return mode != Mode.MENU && !com.stonebreak.battletest.BattleTestSession.isActive(); }
     /** True when an authoritative server runs in this process (singleplayer or host). */
-    public static boolean hasIntegratedServer() { return mode == Mode.SINGLEPLAYER || mode == Mode.HOST; }
+    public static boolean hasIntegratedServer() {
+        return mode == Mode.SINGLEPLAYER || mode == Mode.HOST || mode == Mode.SHOWCASE;
+    }
     public static IntegratedServer getServer() { return server; }
     public static ClientWorldView getClient() {
         return com.stonebreak.battletest.BattleTestSession.isActive() ? null : client;
@@ -479,7 +493,51 @@ public final class MultiplayerSession {
         System.out.println("[NET] Hosting world '" + worldName + "' on TCP port " + port);
     }
 
+    /**
+     * The main menu's live backdrop (issue: live-world main menu): a quiet integrated server on an
+     * ephemeral world of {@code seed} ({@link ServerLevel#createEphemeral}: nothing is saved), its
+     * local player an invisible observer camera at {@code anchor}. No loading screen; the state
+     * stays MAIN_MENU. Any real session (Play, Host, Join) shuts it down first, as it would any
+     * other session.
+     */
+    public static synchronized void startShowcase(long seed, org.joml.Vector3f anchor, long timeTicks,
+                                                  java.nio.file.Path lodCacheDir) {
+        final org.joml.Vector3f spawn = new org.joml.Vector3f(anchor);
+        startWithServer(SHOWCASE_WORLD_NAME, seed, Mode.SHOWCASE, -1, true,
+                srv -> srv.start(NetAddress.local("sb-showcase-" + System.nanoTime()), null,
+                        ServerLevel.createEphemeral(seed, spawn, timeTicks, lodCacheDir)));
+        System.out.println("[NET] Main menu showcase starting (seed " + seed + ")");
+    }
+
+    private static volatile boolean showcaseFailed;
+
+    /** Records that the showcase session died (boot or client-world build); read once by the menu. */
+    public static void noteShowcaseFailure() {
+        showcaseFailed = true;
+    }
+
+    /** True once after the showcase session failed ({@link #noteShowcaseFailure}). */
+    public static boolean consumeShowcaseFailure() {
+        boolean f = showcaseFailed;
+        showcaseFailed = false;
+        return f;
+    }
+
+    /** The name the showcase's ephemeral world carries (never a folder: nothing is saved). */
+    public static final String SHOWCASE_WORLD_NAME = "<menu showcase>";
+
     private static void startWithServer(String worldName, long seed, Mode targetMode, int tcpPort) {
+        final NetAddress tcp = tcpPort > 0 ? NetAddress.tcpBind(tcpPort) : null;
+        startWithServer(worldName, seed, targetMode, tcpPort, false,
+                srv -> srv.start(NetAddress.local("sb-local-" + System.nanoTime()), tcp, worldName, seed));
+    }
+
+    /**
+     * Starts a session around an integrated server {@code boot} brings up. {@code quiet}: no
+     * loading screen (the main menu showcase boots behind the menu).
+     */
+    private static void startWithServer(String worldName, long seed, Mode targetMode, int tcpPort, boolean quiet,
+                                        ServerRun.Starter<IntegratedServer> boot) {
         if (mode != Mode.MENU || serverRun != null) {
             shutdown(); // also stops a previous boot still running (#368)
         }
@@ -488,21 +546,18 @@ public final class MultiplayerSession {
         // The host's own name never goes through the join screen's check: an old settings file
         // may hold one the server would refuse from anyone else (issue #335).
         final String username = PlayerNames.forLocalHost(Settings.getInstance().getMultiplayerUsername());
-        final String localId = "sb-local-" + System.nanoTime();
-        final NetAddress tcp = tcpPort > 0 ? NetAddress.tcpBind(tcpPort) : null;
 
         // Up from the start of the boot, not just from WelcomeS2C: service startup, spawn search
         // and spawn-area pre-gen all happen before the Welcome and are most of a diffusion load.
         com.stonebreak.ui.LoadingScreen loadingScreen = Game.getInstance().getLoadingScreen();
-        if (loadingScreen != null) {
+        if (loadingScreen != null && !quiet) {
             loadingScreen.show();
         }
 
         // One dedicated thread: boot the authoritative world (blocking load/gen), connect the
         // in-process client, then run the server tick loop off the render thread.
         ServerRun run = new ServerRun();
-        Thread t = new Thread(() -> runServer(run, targetMode, NetAddress.local(localId), tcp,
-                worldName, seed, username), targetMode + "-Server");
+        Thread t = new Thread(() -> runServer(run, targetMode, boot, username), targetMode + "-Server");
         t.setDaemon(true);
         run.setThread(t);
         serverRun = run;
@@ -510,8 +565,8 @@ public final class MultiplayerSession {
     }
 
     /** The server thread of one session ({@code run}): boot, publish, connect, tick, stop. */
-    private static void runServer(ServerRun run, Mode targetMode, NetAddress local, NetAddress tcp,
-                                  String worldName, long seed, String username) {
+    private static void runServer(ServerRun run, Mode targetMode, ServerRun.Starter<IntegratedServer> boot,
+                                  String username) {
         try {
             // A shutdown that races the boot (quick start→quit, or a second Play while this one
             // still loads) stops THIS run: the boot then tears its own server down instead of
@@ -519,7 +574,7 @@ public final class MultiplayerSession {
             // on a host, keeps the TCP port (issue #368).
             IntegratedServer s = new IntegratedServer();
             boolean published = run.startAndPublish(s,
-                    srv -> srv.start(local, tcp, worldName, seed),
+                    boot,
                     srv -> {
                         server = srv;
                         // Attach the spawn/despawn listener so server-side spawns replicate.
@@ -531,7 +586,7 @@ public final class MultiplayerSession {
             }
 
             ClientWorldView c = new ClientWorldView();
-            c.connect(local, username);
+            c.connect(s.localAddress(), username);
             if (!run.publish(() -> client = c)) {
                 c.shutdown(); // stopped while connecting: shutdown() already ran without it
             }
@@ -557,6 +612,9 @@ public final class MultiplayerSession {
         } catch (Exception e) {
             System.err.println("[NET] Failed to start " + targetMode + ": " + e.getMessage());
             e.printStackTrace();
+            if (targetMode == Mode.SHOWCASE) {
+                noteShowcaseFailure();
+            }
             // Leave the session for real (it stayed in HOST/SINGLEPLAYER mode with no client,
             // issue #338) and don't strand the player on the loading screen. Only if no newer
             // session replaced this one meanwhile.
