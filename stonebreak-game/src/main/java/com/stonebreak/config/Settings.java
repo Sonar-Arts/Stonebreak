@@ -60,6 +60,9 @@ public class Settings {
     // the pause menu is open. Off by default — the world keeps running, as it does in multiplayer.
     private boolean pauseSingleplayerWorld = false;
 
+    // F1 (hide HUD) also hides the first-person arm and held item. Off by default — the arm stays.
+    private boolean hideArmWithHud = false;
+
     // Lighting quality — shadow map tier ("LOW"/"MEDIUM"/"HIGH"), shadow reach in
     // blocks, and baked smooth lighting (per-vertex AO + soft sky gradients).
     // Shadow quality/distance are read live by the shadow pass each frame; smooth
@@ -175,6 +178,7 @@ public class Settings {
             boolField("shadowsEnabled", Settings::getShadowsEnabled, Settings::setShadowsEnabled),
             boolField("playerNameTagsEnabled", Settings::getPlayerNameTagsEnabled, Settings::setPlayerNameTagsEnabled),
             boolField("pauseSingleplayerWorld", Settings::getPauseSingleplayerWorld, Settings::setPauseSingleplayerWorld),
+            boolField("hideArmWithHud", Settings::getHideArmWithHud, Settings::setHideArmWithHud),
             stringField("shadowQuality", Settings::getShadowQuality, Settings::setShadowQuality),
             intField("shadowDistance", Settings::getShadowDistance, Settings::setShadowDistance),
             boolField("smoothLightingEnabled", Settings::getSmoothLightingEnabled, Settings::setSmoothLightingEnabled),
@@ -351,6 +355,7 @@ public class Settings {
     public boolean getShadowsEnabled() { return shadowsEnabled; }
     public boolean getPlayerNameTagsEnabled() { return playerNameTagsEnabled; }
     public boolean getPauseSingleplayerWorld() { return pauseSingleplayerWorld; }
+    public boolean getHideArmWithHud() { return hideArmWithHud; }
     public String getShadowQuality() { return shadowQuality; }
     public int getShadowDistance() { return shadowDistance; }
     public boolean getSmoothLightingEnabled() { return smoothLightingEnabled; }
@@ -461,6 +466,10 @@ public class Settings {
 
     public void setPauseSingleplayerWorld(boolean pauseSingleplayerWorld) {
         this.pauseSingleplayerWorld = pauseSingleplayerWorld;
+    }
+
+    public void setHideArmWithHud(boolean hideArmWithHud) {
+        this.hideArmWithHud = hideArmWithHud;
     }
 
     /** Shadow map quality tier; invalid values fall back to MEDIUM. Read live by the shadow pass. */

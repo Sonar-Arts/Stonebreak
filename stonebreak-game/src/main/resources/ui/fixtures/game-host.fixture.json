@@ -292,6 +292,7 @@
       "shadowsEnabled": true,
       "playerNameTagsEnabled": true,
       "pauseSingleplayerWorld": false,
+      "hideArmWithHud": false,
       "shadowQuality": "MEDIUM",
       "shadowDistance": 96,
       "smoothLightingEnabled": true,

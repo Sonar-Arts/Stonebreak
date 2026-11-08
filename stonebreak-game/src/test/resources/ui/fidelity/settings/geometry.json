@@ -556,6 +556,7 @@
         "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
         "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
         "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "row4" : [ 860.0, 725.0, 400.0, 40.0 ],
         "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ],
         "viewport" : [ 835.0, 365.0, 450.0, 330.0 ]
       },
@@ -572,6 +573,7 @@
         "row1" : [ 910.0, 475.0, 300.0, 60.0 ],
         "row2" : [ 860.0, 565.0, 400.0, 40.0 ],
         "row3" : [ 860.0, 645.0, 400.0, 40.0 ],
+        "row4" : [ 1060.0, 745.0, 0.0, 0.0 ],
         "scrollbar" : [ 1264.0, 370.0, 25.0, 320.0 ]
       },
       "actions" : {
@@ -587,6 +589,7 @@
         "row1" : "stonebreak:screen.settings.press row1",
         "row2" : "stonebreak:screen.settings.press row2",
         "row3" : "stonebreak:screen.settings.press row3",
+        "row4" : "stonebreak:screen.settings.press apply",
         "scrollbar" : "stonebreak:screen.settings.scrollbar"
       }
     },

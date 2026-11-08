@@ -51,6 +51,7 @@ public class ActionHandler {
             case CROSSHAIR_SIZE -> {} // Crosshair size handled by mouse/keyboard interaction
             case PLAYER_NAME_TAGS -> togglePlayerNameTags();
             case PAUSE_WORLD -> togglePauseWorld();
+            case HIDE_ARM_WITH_HUD -> toggleHideArmWithHud();
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
@@ -291,6 +292,13 @@ public class ActionHandler {
      */
     public void togglePauseWorld() {
         settings.setPauseSingleplayerWorld(!settings.getPauseSingleplayerWorld());
+    }
+
+    /**
+     * Toggles whether hiding the HUD (F1) also hides the first-person arm and held item.
+     */
+    public void toggleHideArmWithHud() {
+        settings.setHideArmWithHud(!settings.getHideArmWithHud());
     }
 
     /**
