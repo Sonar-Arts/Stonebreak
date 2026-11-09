@@ -21,7 +21,7 @@ public final class StonebreakGameTarget {
     public static final String ID = "stonebreak";
 
     /** The game module's source resource tree, relative to the repository root. */
-    static final String SOURCE_TREE = "stonebreak-game/src/main/resources";
+    public static final String SOURCE_TREE = "stonebreak-game/src/main/resources";
 
     /** Names the resource tree directly, overriding the search from the working directory. */
     public static final String RESOURCES_PROPERTY = "openmason.target.stonebreak.resources";
