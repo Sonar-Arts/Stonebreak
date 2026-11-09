@@ -104,6 +104,19 @@ final class WorldUpdateOrchestrator {
         if (cactusContact != null) cactusContact.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistry;
         if (fr != null) fr.tick(world, deltaTime);
+        populateFeatures(tickStart);
+    }
+
+    /**
+     * Chunk loads and feature population only (the streaming half of {@link #updateSimulation}):
+     * the main menu's preview of a saved world, which streams but must not simulate.
+     */
+    void updateStreaming(long tickStart) {
+        if (chunkStore != null) chunkStore.installCompletedLoads();
+        populateFeatures(tickStart);
+    }
+
+    private void populateFeatures(long tickStart) {
         if (chunkStore != null) {
             // Throughput-bound feature population: drain against the tick's own
             // clock (leave ~20 ms of the 50 ms period for entity sim + chunk

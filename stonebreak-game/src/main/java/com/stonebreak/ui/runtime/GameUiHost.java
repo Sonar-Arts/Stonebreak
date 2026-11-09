@@ -132,7 +132,7 @@ import java.util.function.Consumer;
  *       "Save changes?" dialog is up</td></tr>
  *   <tr><td>{@code stonebreak:screen.multiplayer}, {@code .host-world}, {@code .join-world} 1</td><td>the
  *       multiplayer screens ({@link MultiplayerContracts})</td></tr>
- *   <tr><td>{@code stonebreak:screen.main-menu} 2</td><td>the main menu ({@link MainMenuContracts})</td></tr>
+ *   <tr><td>{@code stonebreak:screen.main-menu} 3</td><td>the main menu ({@link MainMenuContracts})</td></tr>
  *   <tr><td>{@code stonebreak:screen.settings} 1</td><td>the settings screen's widgets
  *       ({@link SettingsMenuContracts}; the values themselves are {@code stonebreak:settings})</td></tr>
  *   <tr><td>{@code stonebreak:screen.world-select} 1</td><td>the world select screen
@@ -1293,11 +1293,11 @@ public final class GameUiHost {
         @Override
         public MainMenuContracts.Backdrop mainMenuBackdrop() {
             var showcase = com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get();
-            if (showcase.staticBackdrop()) {
-                return MainMenuContracts.Backdrop.STATIC;
-            }
-            return new MainMenuContracts.Backdrop(showcase.fade(), showcase.menuReveal(), false,
-                    "Seed " + showcase.seed(), showcase.loadProgress());
+            MainMenuContracts.Backdrop backdrop = showcase.staticBackdrop()
+                    ? MainMenuContracts.Backdrop.STATIC
+                    : new MainMenuContracts.Backdrop(showcase.fade(), showcase.menuReveal(), false,
+                            showcase.seedLine(), showcase.loadProgress());
+            return backdrop.withResume(showcase.canResume(), showcase.menuExit());
         }
 
         @Override

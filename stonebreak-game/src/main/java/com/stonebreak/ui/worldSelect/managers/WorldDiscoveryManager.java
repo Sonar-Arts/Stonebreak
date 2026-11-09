@@ -18,7 +18,12 @@ import java.time.LocalDateTime;
  */
 public class WorldDiscoveryManager {
 
+    /** The creation record: written once when the world is made, never rewritten. */
     private static final String WORLD_DATA_FILENAME = "world.json";
+    /** The live metadata every save rewrites (last played, play time, world time). */
+    private static final String METADATA_FILENAME = "metadata.json";
+    private final com.stonebreak.world.save.serialization.JsonWorldSerializer metadataSerializer =
+        new com.stonebreak.world.save.serialization.JsonWorldSerializer();
 
     private final ObjectMapper objectMapper;
     private final WorldStatsService statsService = new WorldStatsService();
@@ -156,9 +161,20 @@ public class WorldDiscoveryManager {
     }
 
     /**
-     * Loads world data from the file system.
+     * Loads world data from the file system: the live {@code metadata.json} when it reads (it has
+     * the real last-played time and play time), else the {@code world.json} creation record, whose
+     * last-played time is only when the world was made.
      */
     private WorldData loadWorldData(String worldName) {
+        Path metadataPath = WorldStorage.worldDir(worldName).resolve(METADATA_FILENAME);
+        if (Files.exists(metadataPath)) {
+            try {
+                return metadataSerializer.deserialize(Files.readAllBytes(metadataPath));
+            } catch (IOException | RuntimeException e) {
+                System.err.println("Unreadable " + METADATA_FILENAME + " for world '" + worldName
+                    + "', using its creation record: " + e.getMessage());
+            }
+        }
         try {
             Path worldDataPath = WorldStorage.worldDir(worldName).resolve(WORLD_DATA_FILENAME);
 

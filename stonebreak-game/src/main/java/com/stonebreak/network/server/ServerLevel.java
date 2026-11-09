@@ -59,6 +59,12 @@ public final class ServerLevel {
     private final String loadNotice;
     /** Ephemeral (main menu showcase) level: never saved, its local player is an observer camera. */
     private boolean ephemeral;
+    /**
+     * The main menu's preview of a saved world ({@link #createAndLoad(String, long, boolean)}):
+     * loaded and streamed but held — nothing simulates, no clock moves, nothing is written —
+     * until {@link #promoteFromPreview} makes it the world being played.
+     */
+    private volatile boolean preview;
     /** Where the client's FastLOD cache lives for this world (its save folder), or null for none. */
     private String lodCachePath;
 
@@ -121,8 +127,22 @@ public final class ServerLevel {
      * closes what it opened (save service, headless world) before it throws.
      */
     public static ServerLevel createAndLoad(String worldName, long fallbackSeed) throws InterruptedException {
+        return createAndLoad(worldName, fallbackSeed, false);
+    }
+
+    /**
+     * {@link #createAndLoad(String, long)}, or with {@code preview} the main menu's held preview
+     * of the saved world: its save service never writes (from before the first chunk loads, so
+     * not even spawn pre-gen reaches disk), no autosave runs, and the server ticks only
+     * {@link #tickPreview} until {@link #promoteFromPreview}.
+     */
+    public static ServerLevel createAndLoad(String worldName, long fallbackSeed, boolean preview)
+            throws InterruptedException {
         String worldPath = com.stonebreak.world.save.WorldStorage.worldPath(worldName);
         SaveService save = new SaveService(worldPath);
+        if (preview) {
+            save.suspendWrites();
+        }
         World world = null;
         EntityManager entityManager = null;
         try {
@@ -228,10 +248,13 @@ public final class ServerLevel {
             world.setDaylightSource(level.timeOfDay::getAmbientLightLevel);
             world.setNightFogSource(() -> com.stonebreak.world.ShadeNight.fogStrength(level.timeOfDay));
 
-            save.startAutoSave();
+            level.preview = preview;
+            if (!preview) {
+                save.startAutoSave();
+            }
 
             System.out.println("[SERVER-LEVEL] Booted '" + worldName + "' (seed=" + seed
-                + ", " + (existing ? "loaded" : "new") + "), spawn=" + spawn);
+                + ", " + (existing ? "loaded" : "new") + (preview ? ", menu preview" : "") + "), spawn=" + spawn);
             return level;
         } catch (InterruptedException | RuntimeException | Error e) {
             abandonBoot(save, entityManager, world);
@@ -481,6 +504,29 @@ public final class ServerLevel {
     /** True for the main menu showcase's ephemeral level ({@link #createEphemeral}). */
     public boolean isEphemeral() { return ephemeral; }
 
+    /** True while this is the main menu's held preview of a saved world (see {@link #preview}). */
+    public boolean isPreview() { return preview; }
+
+    /**
+     * The player resumed the previewed world: it becomes the world being played. The weather
+     * clock takes the value the menu's clouds drifted to (the client ran it on, so the sky does
+     * not jump back); the day clock never moved. Writes resume and autosave starts. Tick thread.
+     */
+    public void promoteFromPreview(double weatherSeconds) {
+        if (!preview) {
+            return;
+        }
+        if (Double.isFinite(weatherSeconds) && weatherSeconds >= weather.seconds()) {
+            weather.setSeconds(weatherSeconds);
+        }
+        preview = false;
+        if (saveService != null) {
+            saveService.resumeWrites();
+            saveService.startAutoSave();
+        }
+        System.out.println("[SERVER-LEVEL] Menu preview resumed: the world is live.");
+    }
+
     /** The folder the client's FastLOD cache for this world lives in, or null for none. */
     public String lodCachePath() { return lodCachePath; }
 
@@ -509,11 +555,23 @@ public final class ServerLevel {
      * headless server world, never touching GL.
      */
     public void tick(float deltaTime) {
+        if (preview) {
+            tickPreview();
+            return;
+        }
         world.updateSimulation(deltaTime);
         entityManager.update(deltaTime);
         entitySpawner.update(deltaTime);
         timeOfDay.update(deltaTime);
         weather.advance(deltaTime);
+    }
+
+    /**
+     * The held preview's tick: chunks still load and stream (the camera must see the world), but
+     * no water, growth, furnace, mob, spawner, day clock or weather step runs.
+     */
+    public void tickPreview() {
+        world.updateStreaming();
     }
 
     public void cleanup() {

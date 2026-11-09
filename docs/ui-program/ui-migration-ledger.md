@@ -334,7 +334,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Performance:** the drop-shadow `ImageFilter` and the 64-gon path are allocated every frame. The space bake is cached per size.
 - **Fixtures:** `ui/fidelity/LegacyMainMenuBaselineTest` + `LegacyMainMenuCapture` (#299): pinned splash and space clock,
   the stage driven in fixed 1/60 s steps through the easter egg (`shake`, `reveal`, `space`), the renderer's layout sink.
-- **Fidelity:** `main-menu/main-menu-live_1920x1080_s1` `main-menu/main-menu-live_1280x720_s0_75` `main-menu/main-menu-live_3840x2160_s2` `main-menu/main-menu-live_1921x1081_s1_25` `main-menu/main-menu-loading_1920x1080_s1` `main-menu/main-menu-static_1920x1080_s1` `main-menu/main-menu-live-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-live-hover-quit_1920x1080_s1`
+- **Fidelity:** `main-menu/main-menu-live_1920x1080_s1` `main-menu/main-menu-live_1280x720_s0_75` `main-menu/main-menu-live_3840x2160_s2` `main-menu/main-menu-live_1921x1081_s1_25` `main-menu/main-menu-loading_1920x1080_s1` `main-menu/main-menu-static_1920x1080_s1` `main-menu/main-menu-live-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-live-hover-quit_1920x1080_s1` `main-menu/main-menu-live-resume_1920x1080_s1` `main-menu/main-menu-live-resume-exit_1920x1080_s1`
 - **Migration (#299; migrated, legacy removed in #302):** shipped as `ui/documents/main_menu.sbui` + `menu_button` and the shared logo image
   ("Stonebreak Menus": `UI/stonebreak/ui/screens/main_menu.omui`). A state screen (`runtime.screens.StateScreens`);
   `ui.mainMenu.MainMenuDocument` advances the stage where the legacy `render` did and lets the host publish before it
@@ -359,12 +359,24 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   (dirt when the live backdrop is off or failed — setting `liveMenuBackground`), `seedLine`; actions `.singleplayer`,
   `.multiplayer`, `.settings`, `.quit`. Sources: "Stonebreak Menus" `screens/main_menu.omui` +
   `components/menu_entry.omui` + `images/menu_scrim.png` (builder `Dev Working/ui-builders-menu/`).
+- **Resume (2026-11-08):** with a saved world, the backdrop is the player's **last-played world** (by `metadata.json`'s
+  `lastPlayed`; the world list now reads it too) in a held `PREVIEW` session — `ServerLevel.createAndLoad(…, preview)`
+  streams but never simulates (no water/growth/mobs/spawner/day clock/weather tick, `IntegratedServer.previewTick`) and
+  its `SaveService` writes nothing (`suspendWrites`) — the camera orbiting the player. The seed showcase remains for
+  no saved world. Contract `stonebreak:screen.main-menu` 3 adds `canResume` (shows the RESUME entry, first) and `exit`
+  (Resume's slide-off, 0..1: column, scrim and splash slide left, the seed line right, each fading) and the
+  `.resume` action, appended to the choices so earlier indices hold. Resume (`MenuShowcase.resume`) flies the camera
+  into the player's eye (`ResumeTransition`) and promotes the session to `SINGLEPLAYER` in place
+  (`MultiplayerSession.promotePreview`: the server adopts the client's drifted weather clock, resumes writes and
+  autosave); with no preview on screen it loads the world the ordinary way. Edited through the `UiArchiveTool`
+  round trip (the "Stonebreak Menus" source was not on disk): re-export from the source must carry these changes.
 - **Decision:** the redesign has no legacy reference, so its baselines were recorded once from the reviewed document
   (`MainMenuDocumentGateTest.refreezeTheBaselines`, opt-in) and lock it from then on; the legacy captures above
   describe the menu before it.
 - **Gate:** `ui.fidelity.MainMenuDocumentGateTest`: revealed over the live world at the standard viewports, the
-  "Loading main menu" wait (the world loading screen's look, at 40 %), the static backdrop and two hovered entries, all at `EXACT` (0 px) with the same hit regions and actions;
-  keyboard (Tab, Down, Enter) and click script.
+  "Loading main menu" wait (the world loading screen's look, at 40 %), the static backdrop, two hovered entries, and the
+  RESUME entry shown and a fifth slid off, all at `EXACT` (0 px) with the same hit regions and actions;
+  keyboard (Tab, Down, Enter) and click script; with a world to resume, Tab focuses RESUME first.
 
 ### world-select
 - **Kind:** screen.

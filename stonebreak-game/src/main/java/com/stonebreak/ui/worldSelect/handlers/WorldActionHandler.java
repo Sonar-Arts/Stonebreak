@@ -258,6 +258,9 @@ public class WorldActionHandler {
             System.err.println("Cannot delete world: invalid name");
             return;
         }
+        // The main menu may be previewing this very world behind the screens: end that first, so
+        // nothing holds its folder open (or writes into it) while it is deleted.
+        com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get().releaseWorld(worldName);
         java.nio.file.Path worldDir = com.stonebreak.world.save.WorldStorage.worldDir(worldName);
         if (!java.nio.file.Files.exists(worldDir)) {
             System.err.println("Cannot delete world: directory missing for '" + worldName + "'");

@@ -407,6 +407,10 @@ public final class IntegratedServer {
         // on every tick, for as long as it kept throwing.
         long tickStart = System.nanoTime();
         ServerLevel level = ctx.serverLevel();
+        if (level != null && level.isPreview()) {
+            previewTick(level, tickStart);
+            return;
+        }
         if (level != null) {
             runTickStep("world", () -> level.tick(TICK_PERIOD_NS / 1_000_000_000f));
         }
@@ -458,6 +462,37 @@ public final class IntegratedServer {
             }
         }
         chunkHandler.onTickEnded(System.nanoTime() - tickStart, ctx.players());
+    }
+
+    /**
+     * The main menu's held preview of a saved world ({@link ServerLevel#isPreview}): the camera
+     * still gets its chunks and the mobs standing in them, but nothing simulates — no health,
+     * fishing or decoy step, and no time/weather sync (the client's clouds drift on their own
+     * and must not be pulled back to the held server clock). Local players only: no keepalive.
+     */
+    private void previewTick(ServerLevel level, long tickStart) {
+        runTickStep("world", level::tickPreview);
+        runTickStep("entities", () -> entityHandler.tick(ctx));
+        runTickStep("chunks", () -> chunkHandler.tick(ctx));
+        for (ServerPlayer sp : ctx.players()) {
+            sp.flushInventoryResync();
+        }
+        chunkHandler.onTickEnded(System.nanoTime() - tickStart, ctx.players());
+    }
+
+    /**
+     * The player resumed the menu's preview of this world ({@link ServerLevel#promoteFromPreview}):
+     * from the next tick it simulates and saves like any singleplayer world. Any thread.
+     */
+    public void promotePreview(double weatherSeconds) {
+        executeOnTick(() -> {
+            ServerLevel level = ctx.serverLevel();
+            if (level != null) {
+                level.promoteFromPreview(weatherSeconds);
+            }
+            lastTickNs = System.nanoTime();
+            tickAccumulatorNs = 0; // no catch-up burst for the time spent in the menu
+        });
     }
 
     private static void runTickStep(String name, Runnable step) {

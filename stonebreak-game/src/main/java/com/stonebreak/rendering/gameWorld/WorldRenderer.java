@@ -925,6 +925,10 @@ public class WorldRenderer {
                 || currentState == GameState.RECIPE_BOOK_UI
                 || currentState == GameState.WORKBENCH_UI
                 || currentState == GameState.FURNACE_UI;
+        if (currentState == GameState.MAIN_MENU && com.stonebreak.network.MultiplayerSession.isPreview()) {
+            renderPreviewBody(player);
+            return;
+        }
         if (!activeState) return;
 
         if (player.isThirdPerson()) {
@@ -937,6 +941,28 @@ public class WorldRenderer {
         } else if (!armHiddenWithHud(currentState)) {
             playerArmRenderer.renderPlayerArm(player);
         }
+    }
+
+    /** Closer than this to the eye, the main menu preview's camera would see inside the head. */
+    private static final float PREVIEW_BODY_MIN_EYE_DISTANCE = 0.6f;
+
+    /**
+     * The main menu's preview of the last-played world: its camera orbits the player, so the whole
+     * body is drawn, until Resume brings the camera into the eye.
+     */
+    private void renderPreviewBody(Player player) {
+        if (entityRenderer == null) {
+            return;
+        }
+        Vector3f cameraPos = player.getCamera().getPosition();
+        Vector3f feet = player.getPosition();
+        float dx = cameraPos.x - feet.x;
+        float dy = cameraPos.y - (feet.y + com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET);
+        float dz = cameraPos.z - feet.z;
+        if (dx * dx + dy * dy + dz * dz < PREVIEW_BODY_MIN_EYE_DISTANCE * PREVIEW_BODY_MIN_EYE_DISTANCE) {
+            return;
+        }
+        entityRenderer.renderLocalPlayer(player, player.getViewMatrix(), projectionMatrix, Game.getWorld(), cameraPos);
     }
 
     /**

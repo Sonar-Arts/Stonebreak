@@ -374,6 +374,15 @@ public class World {
     }
 
     /**
+     * The streaming half of {@link #updateSimulation} alone: finished chunk loads join the world
+     * and feature population (deterministic generation) runs, but nothing simulates — no water,
+     * growth, furnaces. The main menu's preview of a saved world ticks only this.
+     */
+    public void updateStreaming() {
+        updates.updateStreaming(System.nanoTime());
+    }
+
+    /**
      * Render-only client update, run by {@code GameLoop} on a {@link #createClientView} world.
      * Mirrors {@link #update} but drops every authoritative-sim step — no water flow, no furnace
      * smelting, no feature population — because the server owns all of that and pushes results

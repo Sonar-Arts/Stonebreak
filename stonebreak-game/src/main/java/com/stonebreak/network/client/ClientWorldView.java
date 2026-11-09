@@ -1102,7 +1102,8 @@ public final class ClientWorldView {
         if (clock != null) {
             clock.nudgeTo(ts.worldTimeTicks());
             clock.setTimeSpeed(ts.timeSpeed());
-            clock.setFrozen(ts.frozen());
+            // The main menu's preview holds the day clock however the world's own is set.
+            clock.setFrozen(ts.frozen() || com.stonebreak.network.MultiplayerSession.isPreview());
         }
     }
 

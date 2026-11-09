@@ -39,8 +39,13 @@ public final class MultiplayerSession {
      * {@code SHOWCASE} is the main menu's live backdrop: a quiet integrated server on an ephemeral
      * (never saved) world whose local player is an invisible camera. It is a session (the client is
      * pumped, the world streams) but not "in a world": nothing gameplay-facing treats it as one.
+     *
+     * <p>{@code PREVIEW} is the other main menu backdrop: the player's last-played world, loaded by
+     * an integrated server that holds it (streams, never simulates or saves) behind the menu.
+     * Resume promotes it to {@code SINGLEPLAYER} in place ({@link #promotePreview}). Like the
+     * showcase it is a session but not "in a world".
      */
-    public enum Mode { MENU, SINGLEPLAYER, HOST, JOIN, SHOWCASE }
+    public enum Mode { MENU, SINGLEPLAYER, HOST, JOIN, SHOWCASE, PREVIEW }
 
     /** How often the dedicated server thread pumps {@code server.tick()} (inbound drain runs at
      *  this rate; the authoritative sim runs at 20 Hz via the tick's internal accumulator). */
@@ -101,13 +106,17 @@ public final class MultiplayerSession {
     }
     /**
      * In a world the player plays (SINGLEPLAYER, HOST or JOIN). False in MENU and in the main menu's
-     * {@link Mode#SHOWCASE} backdrop session.
+     * backdrop sessions ({@link Mode#SHOWCASE}, {@link Mode#PREVIEW}).
      */
-    public static boolean isInWorld() { return mode != Mode.MENU && mode != Mode.SHOWCASE; }
-    /** Any session at all, the main menu's showcase included (the client is pumped). */
+    public static boolean isInWorld() { return mode != Mode.MENU && !isMenuBackdrop(); }
+    /** Any session at all, the main menu's backdrops included (the client is pumped). */
     public static boolean hasSession() { return mode != Mode.MENU; }
-    /** The main menu's live backdrop session ({@link Mode#SHOWCASE}). */
+    /** The main menu's live seed-showcase backdrop session ({@link Mode#SHOWCASE}). */
     public static boolean isShowcase() { return mode == Mode.SHOWCASE; }
+    /** The main menu's held preview of the player's last-played world ({@link Mode#PREVIEW}). */
+    public static boolean isPreview() { return mode == Mode.PREVIEW; }
+    /** Either main menu backdrop session: the seed showcase or the preview of a saved world. */
+    public static boolean isMenuBackdrop() { return mode == Mode.SHOWCASE || mode == Mode.PREVIEW; }
     /** A real network is involved (host or remote join) — not pure singleplayer. */
     public static boolean isOnline() { return mode == Mode.HOST || mode == Mode.JOIN; }
     public static boolean isHosting() { return mode == Mode.HOST; }
@@ -115,7 +124,7 @@ public final class MultiplayerSession {
     public static boolean isClient() { return mode != Mode.MENU && !com.stonebreak.battletest.BattleTestSession.isActive(); }
     /** True when an authoritative server runs in this process (singleplayer or host). */
     public static boolean hasIntegratedServer() {
-        return mode == Mode.SINGLEPLAYER || mode == Mode.HOST || mode == Mode.SHOWCASE;
+        return mode == Mode.SINGLEPLAYER || mode == Mode.HOST || isMenuBackdrop();
     }
     public static IntegratedServer getServer() { return server; }
     public static ClientWorldView getClient() {
@@ -509,6 +518,34 @@ public final class MultiplayerSession {
         System.out.println("[NET] Main menu showcase starting (seed " + seed + ")");
     }
 
+    /**
+     * The main menu's backdrop of the player's last-played world: an integrated server that loads
+     * {@code worldName} held ({@link ServerLevel#createAndLoad(String, long, boolean)}: it streams but
+     * nothing simulates, no clock moves, nothing is written). No loading screen; the state stays
+     * MAIN_MENU until {@link #promotePreview}. Any other session shuts it down, unsaved.
+     */
+    public static synchronized void startPreview(String worldName, long seed) {
+        startWithServer(worldName, seed, Mode.PREVIEW, -1, true,
+                srv -> srv.start(NetAddress.local("sb-preview-" + System.nanoTime()), null,
+                        ServerLevel.createAndLoad(worldName, seed, true)));
+        System.out.println("[NET] Main menu preview of '" + worldName + "' starting");
+    }
+
+    /**
+     * Resume: the held preview becomes the singleplayer world, in place (no reload). The server
+     * adopts {@code weatherSeconds} (the clouds the menu drifted), then simulates and saves from
+     * its next tick. False when there is no preview to promote. Main thread.
+     */
+    public static synchronized boolean promotePreview(double weatherSeconds) {
+        IntegratedServer s = server;
+        if (mode != Mode.PREVIEW || s == null) {
+            return false;
+        }
+        s.promotePreview(weatherSeconds);
+        setMode(Mode.SINGLEPLAYER);
+        return true;
+    }
+
     private static volatile boolean showcaseFailed;
 
     /** Records that the showcase session died (boot or client-world build); read once by the menu. */
@@ -612,7 +649,7 @@ public final class MultiplayerSession {
         } catch (Exception e) {
             System.err.println("[NET] Failed to start " + targetMode + ": " + e.getMessage());
             e.printStackTrace();
-            if (targetMode == Mode.SHOWCASE) {
+            if (targetMode == Mode.SHOWCASE || targetMode == Mode.PREVIEW) {
                 noteShowcaseFailure();
             }
             // Leave the session for real (it stayed in HOST/SINGLEPLAYER mode with no client,

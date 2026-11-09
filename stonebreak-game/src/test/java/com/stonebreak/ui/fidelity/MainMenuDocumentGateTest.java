@@ -16,10 +16,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The main menu's gate (live-world redesign, contract {@code stonebreak:screen.main-menu} 2): the shipped
+ * The main menu's gate (live-world redesign, contract {@code stonebreak:screen.main-menu} 3): the shipped
  * {@code main_menu} document against its reviewed baselines at {@code FLOAT_EXACT} geometry and
  * {@code EXACT} pixels — revealed over the live world, its "Loading main menu" wait, over the static
- * backdrop, and with an entry hovered — with the same hit regions and actions.
+ * backdrop, with an entry hovered, and with the RESUME entry shown and starting to slide off — with the same
+ * hit regions and actions.
  *
  * <p>The redesign replaced the legacy menu, so there is no legacy reference: its baselines were
  * recorded once from the reviewed document ({@link #refreezeTheBaselines}, opt-in) and are a
@@ -31,7 +32,8 @@ class MainMenuDocumentGateTest {
     static List<FidelityCase> cases() {
         List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("main-menu", List.of("live"), FidelityCase.STANDARD));
         FidelityCase.Viewport hd = FidelityCase.STANDARD.get(0);
-        for (String v : List.of("loading", "static", "live-hover-singleplayer", "live-hover-quit")) {
+        for (String v : List.of("loading", "static", "live-hover-singleplayer", "live-hover-quit",
+                "live-resume", "live-resume-exit")) {
             out.add(new FidelityCase("main-menu", v, hd));
         }
         return out;
@@ -55,6 +57,18 @@ class MainMenuDocumentGateTest {
             assertEquals(List.of("stonebreak:screen.main-menu.multiplayer"), stage.key(MKeys.KEY_ENTER),
                 "Tab focuses the first entry, Down the next");
             assertEquals(List.of("stonebreak:screen.main-menu.quit"), stage.click("quit"));
+        }
+    }
+
+    @Test
+    void resumeLeadsTheEntriesOnlyWhenThereIsAWorld() throws Exception {
+        DeathDocumentGateTest.requireLua();
+        try (DocumentStage stage = DocumentMainMenuCapture.stage(new FidelityCase(
+                "main-menu", "live-resume", FidelityCase.STANDARD.get(0)))) {
+            stage.key(MKeys.KEY_TAB);
+            assertEquals(List.of("stonebreak:screen.main-menu.resume"), stage.key(MKeys.KEY_ENTER),
+                "with a world to resume, Tab focuses RESUME first");
+            assertEquals(List.of("stonebreak:screen.main-menu.resume"), stage.click("resume"));
         }
     }
 

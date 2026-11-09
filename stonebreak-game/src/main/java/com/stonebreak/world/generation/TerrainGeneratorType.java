@@ -26,6 +26,11 @@ public enum TerrainGeneratorType {
         public TerrainGenerator create(long seed) {
             return new DiffusionTerrainGenerator(seed);
         }
+
+        @Override
+        public boolean needsModelService() {
+            return true;
+        }
     };
 
     private final String displayName;
@@ -39,6 +44,15 @@ public enum TerrainGeneratorType {
     }
 
     public abstract TerrainGenerator create(long seed);
+
+    /**
+     * True when {@link #create} starts (and blocks on) an external model service — TGMPipe for
+     * DaedalusTGM-Exp. Anything that should stay cheap, like the main menu's backdrop, must not
+     * build such a generator until the player asks for the world.
+     */
+    public boolean needsModelService() {
+        return false;
+    }
 
     /** Parses a persisted or networked name; anything unrecognised falls back to {@code fallback}. */
     public static TerrainGeneratorType parse(String name, TerrainGeneratorType fallback) {

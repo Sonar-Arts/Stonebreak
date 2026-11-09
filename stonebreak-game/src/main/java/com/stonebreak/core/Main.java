@@ -196,6 +196,7 @@ public class Main {
             maybeAutoTorch();
             maybeAutoBattle();
             maybeAutoScreenshot();
+            maybeAutoResume();
             maybeAutoResize();
             maybeAutoFly();
             window.swapBuffers();
@@ -979,6 +980,75 @@ public class Main {
         for (int y = 0; y < hh; y++) for (int x = 0; x < w; x++) { int i = ((hh - 1 - y) * w + x) * 4;
             img.setRGB(x, y, ((px.get(i) & 0xFF) << 16) | ((px.get(i + 1) & 0xFF) << 8) | (px.get(i + 2) & 0xFF)); }
         try { javax.imageio.ImageIO.write(img, "png", new java.io.File(file)); } catch (java.io.IOException e) { e.printStackTrace(); }
+    }
+
+    // ─── Dev: -Dstonebreak.autoresume=<seconds>[:<dir>] ──────────────────────
+
+    private long autoResumeDeadlineNanos = -1;
+    private int autoResumeShot = -1;
+    private long autoResumePlayingNanos = -1;
+
+    /**
+     * Development shortcut for the main menu's Resume: N seconds after the menu's live preview of the
+     * last-played world is on screen, presses RESUME as a click would. With a {@code <dir>}, writes
+     * {@code resume-menu.png} as it presses, {@code resume-mid.png} half way through the move and
+     * {@code resume-playing.png} two seconds into play. Inert unless the property is set.
+     */
+    private void maybeAutoResume() {
+        String spec = System.getProperty("stonebreak.autoresume");
+        if (spec == null || spec.isBlank() || autoResumeShot >= 3) {
+            return;
+        }
+        var showcase = com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get();
+        GameState state = Game.getInstance().getState();
+        String[] parts = spec.split(":", 2);
+        String dir = parts.length > 1 ? parts[1] : null;
+        if (autoResumeShot < 0) {
+            if (state != GameState.MAIN_MENU || !showcase.isRenderable()) {
+                return;
+            }
+            if (autoResumeDeadlineNanos < 0) {
+                double seconds = 20;
+                try {
+                    seconds = Double.parseDouble(parts[0]);
+                } catch (NumberFormatException ignored) {
+                    // keep the default
+                }
+                autoResumeDeadlineNanos = System.nanoTime() + (long) (seconds * 1e9);
+                return;
+            }
+            if (System.nanoTime() < autoResumeDeadlineNanos) {
+                return;
+            }
+            autoResumeShot(dir, "resume-menu.png");
+            System.out.println("[autoresume] pressing RESUME");
+            Game.getInstance().getMainMenu().choose(4);
+            autoResumeShot = 1;
+            return;
+        }
+        if (autoResumeShot == 1 && showcase.isResuming() && showcase.menuExit() >= 0.5f) {
+            autoResumeShot(dir, "resume-mid.png");
+            autoResumeShot = 2;
+            return;
+        }
+        if (autoResumeShot >= 1 && state == GameState.PLAYING) {
+            if (autoResumePlayingNanos < 0) {
+                autoResumePlayingNanos = System.nanoTime();
+                System.out.println("[autoresume] playing");
+            } else if (System.nanoTime() - autoResumePlayingNanos > 2_000_000_000L) {
+                autoResumeShot(dir, "resume-playing.png");
+                autoResumeShot = 3;
+            }
+        }
+    }
+
+    private void autoResumeShot(String dir, String name) {
+        if (dir != null && !dir.isBlank()) {
+            String file = java.nio.file.Path.of(dir, name).toString();
+            if (com.stonebreak.core.dev.DevScreenshot.capture(file, window.width(), window.height())) {
+                System.out.println("[autoresume] wrote " + file);
+            }
+        }
     }
 
     // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────

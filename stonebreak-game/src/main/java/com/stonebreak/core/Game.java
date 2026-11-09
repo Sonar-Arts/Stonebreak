@@ -920,19 +920,19 @@ public class Game {
         return game != null && game.clientWorldBuilder.isReady();
     }
 
-    /** The main menu showcase's render world is installed and may be drawn. */
-    public static boolean isShowcaseWorldReady() {
+    /** The main menu backdrop's render world (showcase or preview) is installed and may be drawn. */
+    public static boolean isBackdropWorldReady() {
         Game game = instance;
-        return game != null && game.clientWorldBuilder.isShowcaseInstalled();
+        return game != null && game.clientWorldBuilder.isBackdropInstalled();
     }
 
     /**
      * True while a world the player plays is installed: world and player present, and not the main
-     * menu's live showcase world (which occupies the same slots behind the menu). Use this, never a
+     * menu's live backdrop world, the showcase or the preview (which occupy the same slots behind the menu). Use this, never a
      * bare {@code getWorld() != null}, to ask "is the player in a game?".
      */
     public static boolean isInGameWorld() {
-        return getWorld() != null && getPlayer() != null && !com.stonebreak.network.MultiplayerSession.isShowcase();
+        return getWorld() != null && getPlayer() != null && !com.stonebreak.network.MultiplayerSession.isMenuBackdrop();
     }
 
     /**

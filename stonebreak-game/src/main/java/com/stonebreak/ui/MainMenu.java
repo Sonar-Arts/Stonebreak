@@ -24,8 +24,16 @@ public class MainMenu {
         this.currentSplashText = splashTextManager.getRandomSplashText();
     }
 
-    /** Runs entry {@code index} (0 Singleplayer, 1 Multiplayer, 2 Settings, 3 Quit) as a click does. */
+    /**
+     * Runs entry {@code index} (0 Singleplayer, 1 Multiplayer, 2 Settings, 3 Quit, 4 Resume) as a
+     * click does. Ignored while Resume is sliding the menu off.
+     */
     public void choose(int index) {
+        com.stonebreak.ui.mainMenu.showcase.MenuShowcase showcase =
+                com.stonebreak.ui.mainMenu.showcase.MenuShowcase.get();
+        if (showcase.isResuming()) {
+            return;
+        }
         switch (index) {
             case 0 -> // Play - Go to world select screen
                 Game.getInstance().setState(GameState.WORLD_SELECT);
@@ -40,6 +48,8 @@ public class MainMenu {
             }
             case 3 -> // Exit
                 System.exit(0);
+            case 4 -> // Resume the last-played world
+                showcase.resume();
         }
     }
 
