@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -122,5 +123,48 @@ class SettingsDocumentGateTest {
             stage.services.settingsLive.clear(); // Escape would leave the screen
             assertEquals(List.of("stonebreak:screen.settings.key " + MKeys.KEY_ESCAPE), stage.key(MKeys.KEY_ESCAPE));
         }
+    }
+
+    /**
+     * Opt-in ({@code -Dstonebreak.ui.settings.refreeze=<variant>,...}, e.g. {@code advanced,advanced-open}):
+     * re-records ONLY the named settings captures (PNG + their geometry.json entry) from the shipped document,
+     * leaving every other baseline byte-for-byte alone. For a reviewed, intended change of those screens — a new
+     * setting row (the frozen legacy oracle cannot know rows added after #302) — never to make a failure go away.
+     */
+    @Test
+    void refreezeNamedCases() throws Exception {
+        String names = System.getProperty("stonebreak.ui.settings.refreeze", "");
+        org.junit.jupiter.api.Assumptions.assumeFalse(names.isBlank(), "opt-in re-freeze");
+        DeathDocumentGateTest.requireLua();
+        FrozenCaptures frozen = FrozenCaptures.forTests("settings");
+        java.nio.file.Path geometry = frozen.geometryFile();
+        var json = new com.fasterxml.jackson.databind.ObjectMapper()
+                .enable(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT);
+        var root = (com.fasterxml.jackson.databind.node.ObjectNode) json.readTree(geometry.toFile());
+        var all = (com.fasterxml.jackson.databind.node.ObjectNode) root.get("cases");
+        DocumentSettingsCapture live = new DocumentSettingsCapture();
+        for (String variant : names.split(",")) {
+            FidelityCase c = at(variant.strip());
+            assertTrue(all.has(c.id()), "no frozen case " + c.id());
+            MigrationGate.Capture cap = live.render(c);
+            cap.image().write(geometry.resolveSibling(c.id() + ".png"));
+            var node = json.createObjectNode();
+            writeRects(node.putObject("rects"), cap.rects());
+            writeRects(node.putObject("hits"), cap.hits());
+            var actions = node.putObject("actions");
+            new TreeMap<>(cap.actions()).forEach(actions::put);
+            all.set(c.id(), node);
+        }
+        json.writeValue(geometry.toFile(), root);
+    }
+
+    private static void writeRects(com.fasterxml.jackson.databind.node.ObjectNode into,
+                                   java.util.Map<String, float[]> rects) {
+        new TreeMap<>(rects).forEach((name, r) -> {
+            var a = into.putArray(name);
+            for (float v : r) {
+                a.add(v);
+            }
+        });
     }
 }

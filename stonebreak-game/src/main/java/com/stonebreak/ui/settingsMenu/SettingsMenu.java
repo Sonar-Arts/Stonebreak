@@ -58,6 +58,8 @@ public final class SettingsMenu {
                 actionHandler::onShadowQualityChange,
                 actionHandler::onShadowDistanceChange,
                 actionHandler::toggleSmoothLighting,
+                actionHandler::toggleParticles,
+                actionHandler::onParticleDensityChange,
                 actionHandler::onRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,

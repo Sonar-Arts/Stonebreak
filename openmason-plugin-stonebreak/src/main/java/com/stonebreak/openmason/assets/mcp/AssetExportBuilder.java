@@ -465,6 +465,7 @@ public final class AssetExportBuilder {
         out.put("smeltingRecipeCount", g0.smeltingRecipes() == null ? 0 : g0.smeltingRecipes().recipes().size());
         out.put("fuelBurnTicks", g0.fuel() == null ? null : g0.fuel().burnTicks());
         out.put("sounds", sounds(d.sounds()));
+        out.put("fx", fx(d.fx()));
         out.put("drops", describeDrops(g0.drops()));
         out.put("tool", describeTool(g0.tool()));
         out.put("weapon", describeWeapon(g0.weapon()));
@@ -505,6 +506,7 @@ public final class AssetExportBuilder {
         }
         out.put("variants", variants);
         out.put("sounds", sounds(d.sounds()));
+        out.put("fx", fx(d.fx()));
         return out;
     }
 
@@ -646,7 +648,7 @@ public final class AssetExportBuilder {
                 b.createdAt(), b.omoFilename(), b.textureFilename(),
                 rendering, b.states(),
                 text(p, "defaultStateName", b.defaultStateName()),
-                sounds, b.extensions());
+                sounds, patchFx(b.fx(), p), b.extensions());
         return g.applyTo(patched);
     }
 
@@ -664,7 +666,22 @@ public final class AssetExportBuilder {
                 text(p, "author", b.author()),
                 p.has("description") ? (p.get("description").isNull() ? null : p.get("description").asText())
                         : b.description(),
-                b.createdAt(), b.omoFilename(), b.states(), b.variants(), sounds, b.extensions());
+                b.createdAt(), b.omoFilename(), b.states(), b.variants(), sounds, patchFx(b.fx(), p), b.extensions());
+    }
+
+    /** The FX bindings (SBO 1.12 / SBE 1.6 {@code fx[]}) in their manifest wire shape, or null. */
+    private static Object fx(com.openmason.engine.format.fx.FxData data) {
+        return data == null || data.isEmpty() ? null : com.openmason.engine.format.fx.FxJson.toJson(data);
+    }
+
+    /** {@code fx} replaces the bindings wholesale (manifest wire shape); null/[] removes them; absent keeps. */
+    private static com.openmason.engine.format.fx.FxData patchFx(com.openmason.engine.format.fx.FxData base,
+                                                                JsonNode p) {
+        if (!p.has("fx")) {
+            return base;
+        }
+        com.openmason.engine.format.fx.FxData next = com.openmason.engine.format.fx.FxJson.read(p);
+        return next == null || next.isEmpty() ? null : next;
     }
 
     private static SoundData patchSounds(SoundData base, JsonNode arr) {

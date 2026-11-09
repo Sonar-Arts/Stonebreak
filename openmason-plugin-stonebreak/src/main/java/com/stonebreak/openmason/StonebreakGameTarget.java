@@ -47,6 +47,8 @@ public final class StonebreakGameTarget {
                         .subtype(sbe, "clothing", "sbe/Clothing")
                         .subtype(sbe, "playercustomize", "sbe/PlayerCustomize")
                         .subtype(sbe, "particle", "sbe/Particles")
+                        // Shipped FX (#435): the SBFX export target deploys here.
+                        .base(com.stonebreak.openmason.fx.SbfxExport.FILE_TYPE_ID, com.stonebreak.openmason.fx.SbfxExport.FOLDER)
                         .build())
                 .assetFilePrefix("SB_")
                 .writes(WriteRules.SHIPPED_ASSETS)

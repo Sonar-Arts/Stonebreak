@@ -275,7 +275,9 @@ public class RemotePlayer extends LivingEntity {
             }
         } else if (partiallyInWater && !wasPartiallyInWaterLastFrame && deltaTime > 0f) {
             float impactSpeed = Math.max(0f, -dy / deltaTime);
-            splashParticles.burst(position, impactSpeed);
+            if (!com.stonebreak.fx.bindings.EntityFx.splash(EntityType.REMOTE_PLAYER, position, impactSpeed)) {
+                splashParticles.burst(position, impactSpeed);
+            }
             rippleParticles.spawn(position);
             rippleSpawnTimer = 0f;
         }

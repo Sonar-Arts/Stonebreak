@@ -37,6 +37,13 @@ public final class DynamicLights {
     private static final Vector3f[] positions = new Vector3f[PointLightGlsl.MAX_LIGHTS];
     /** Who carries each light: a remote player for their held torch, null otherwise. */
     private static final Entity[] holders = new Entity[PointLightGlsl.MAX_LIGHTS];
+    /**
+     * What each light is, for consumers that follow the same selection (ambient FX, #437): the placed block or,
+     * for a torch someone carries, the torch block; null for the local held torch (a view-model, not in the world).
+     */
+    private static final BlockType[] sourceBlocks = new BlockType[PointLightGlsl.MAX_LIGHTS];
+    /** Stable identity of each light across frames: a packed block position, or the carrying player. */
+    private static final long[] sourceKeys = new long[PointLightGlsl.MAX_LIGHTS];
     private static final Vector3f scratch = new Vector3f();
     private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
@@ -85,6 +92,7 @@ public final class DynamicLights {
         frame++;
         count = 0;
         Arrays.fill(holders, null);
+        Arrays.fill(sourceBlocks, null);
         shadowsEnabled = false;
         indirectEnabled = false;
         held = world != null && player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player);
@@ -120,6 +128,8 @@ public final class DynamicLights {
                 if (nearest.holder(i) instanceof RemotePlayer rp) {
                     remoteTorchPosition(world, rp, positions[count]);
                     holders[count] = rp;
+                    sourceBlocks[count] = BlockType.TORCH_PLACED;
+                    sourceKeys[count] = com.stonebreak.fx.bindings.AmbientSources.holderKey(rp.getPlayerId());
                     // Each holder flickers on its own phase, as placed torches do.
                     float phase = (rp.getPlayerId() & 0xFF) / 256f * TorchLight.PROFILE.period();
                     addLight(TorchLight.PROFILE, totalTime + phase);
@@ -129,6 +139,8 @@ public final class DynamicLights {
                 BlockLightSource source = BlockLightSource.of(world.getBlockAt(pos.x(), pos.y(), pos.z()));
                 if (source == null) continue;
                 source.emitterPosition(world, pos, positions[count]);
+                sourceBlocks[count] = world.getBlockAt(pos.x(), pos.y(), pos.z());
+                sourceKeys[count] = com.stonebreak.fx.bindings.AmbientSources.blockKey(pos.x(), pos.y(), pos.z());
                 LightProfile profile = source.profile();
                 addLight(profile, totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, profile.period()));
             }
@@ -219,6 +231,15 @@ public final class DynamicLights {
      * local player's must not ({@link #heldTorchIndex}).
      */
     public static Entity holder(int index) { return holders[index]; }
+
+    /**
+     * The block light {@code index} comes from (a carried torch reports the torch block), or null for the local
+     * held torch. Ambient FX (#437) start their block's {@code ambient} bindings from this selection.
+     */
+    public static BlockType sourceBlock(int index) { return sourceBlocks[index]; }
+
+    /** Stable identity of light {@code index} across frames (see {@link #sourceBlock}). */
+    public static long sourceKey(int index) { return sourceKeys[index]; }
 
     /** Called after the depth pass, before any receiver renders. */
     public static void enableShadows() { shadowsEnabled = true; }

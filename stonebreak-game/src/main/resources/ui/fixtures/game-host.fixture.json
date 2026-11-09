@@ -294,6 +294,8 @@
       "pauseSingleplayerWorld": false,
       "hideArmWithHud": false,
       "liveMenuBackground": true,
+      "particlesEnabled": true,
+      "particleDensity": 1,
       "shadowQuality": "MEDIUM",
       "shadowDistance": 96,
       "smoothLightingEnabled": true,

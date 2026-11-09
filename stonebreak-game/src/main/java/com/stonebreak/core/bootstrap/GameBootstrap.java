@@ -70,6 +70,8 @@ public final class GameBootstrap {
     public static void initializeEntityAssets() {
         int count = SbeEntityRegistry.scanAndLoad();
         logger.debug("SBE entity registry loaded {} entit(ies)", count);
+        // Shipped FX (Stonebreak#435): decoded up front like the SBEs, so the first break pays nothing.
+        com.stonebreak.fx.sbfx.ShippedFx.scanAndLoad();
     }
 
     /**

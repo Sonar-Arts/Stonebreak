@@ -174,6 +174,7 @@ public class MobSounds {
                 (int) Math.floor(position.z));
 
         BlockSounds.playStepAt(ground, new Vector3f(position.x, feetY, position.z), stepVolume);
+        com.stonebreak.fx.bindings.BlockFx.stepAt(ground, position.x, feetY, position.z);
     }
 
     /**

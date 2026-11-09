@@ -77,6 +77,8 @@ public class WorldRenderer {
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
     private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
     private final com.stonebreak.rendering.gameWorld.effects.WorldEffectsRenderer effectsRenderer;
+    /** Open Mason FX (Stonebreak#436): simulation, ambient FX and the particle draw around the water pass. */
+    private final com.stonebreak.rendering.gameWorld.particles.ParticlePass particlePass;
 
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -129,6 +131,12 @@ public class WorldRenderer {
         this.waterRenderer = new com.stonebreak.rendering.gameWorld.water.WaterRenderer();
         this.effectsRenderer = new com.stonebreak.rendering.gameWorld.effects.WorldEffectsRenderer(
                 shaderProgram, projectionMatrix, entityRenderer);
+        this.particlePass = new com.stonebreak.rendering.gameWorld.particles.ParticlePass(precipitationFog);
+    }
+
+    /** The FX pass (F3 statistics). */
+    public com.stonebreak.rendering.gameWorld.particles.ParticlePass getParticlePass() {
+        return particlePass;
     }
     
     /**
@@ -200,6 +208,8 @@ public class WorldRenderer {
         // included) once; the world, water and entity shaders all read the same set.
         com.stonebreak.rendering.lighting.DynamicLights.update(
                 world, player, player.getCamera().getPosition(), totalTime, collectRemotePlayers());
+        // FX step once per frame; ambient FX (torch flames, furnace smoke) follow that light selection.
+        particlePass.update(world, player, totalTime);
 
         // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
         // from TimeOfDay, so resolve the values they need here (static fallback when absent).
@@ -476,12 +486,22 @@ public class WorldRenderer {
         // the nearest water surface's depth in the depth buffer, so later
         // passes (fire bolts, particles) are occluded by water in front of
         // them — physically correct compositing.
+        // FX beyond the water surface (under it, seen from above) draw before the water so it blends over
+        // them; the camera's side draws after it (drawFront below). Soft particles read a copy of the depth
+        // made here, which holds the opaque scene.
+        particlePass.drawBehind(player, projectionMatrix, ambientLightLevel, cameraUnderwater,
+                fogColor, fogStart, fogEnd);
+        checkGLError("After particles behind water");
+
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
                 cloudRenderer, precipitationFog);
         checkGLError("After water pass");
+
+        particlePass.drawFront();
+        checkGLError("After particles in front of water");
 
         if (!cameraUnderwater) {
             // Rain and snow fall below the clouds and in front of them. Before
@@ -1083,6 +1103,7 @@ public class WorldRenderer {
         if (waterRenderer != null) {
             waterRenderer.cleanup();
         }
+        particlePass.close();
         if (lodRegionBatcher != null) {
             lodRegionBatcher.cleanup();
         }

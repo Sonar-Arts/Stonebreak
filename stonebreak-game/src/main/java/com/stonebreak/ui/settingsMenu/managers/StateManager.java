@@ -47,6 +47,8 @@ public final class StateManager {
     private MDropdown shadowQualityButton;
     private MSlider shadowDistanceSlider;
     private MButton smoothLightingButton;
+    private MButton particlesButton;
+    private MSlider particleDensitySlider;
     private MSlider renderDistanceSlider;
     private MSlider lodDistanceSlider;
     private MButton lodEnabledButton;
@@ -84,6 +86,8 @@ public final class StateManager {
             case SHADOW_QUALITY   -> shadowQualityButton;
             case SHADOW_DISTANCE  -> shadowDistanceSlider;
             case SMOOTH_LIGHTING  -> smoothLightingButton;
+            case PARTICLES        -> particlesButton;
+            case PARTICLE_DENSITY -> particleDensitySlider;
             case RENDER_DISTANCE  -> renderDistanceSlider;
             case LOD_DISTANCE     -> lodDistanceSlider;
             case LOD_ENABLED      -> lodEnabledButton;
@@ -100,6 +104,7 @@ public final class StateManager {
                 || type == CategoryState.SettingType.MUSIC_VOLUME
                 || type == CategoryState.SettingType.CROSSHAIR_SIZE
                 || type == CategoryState.SettingType.SHADOW_DISTANCE
+                || type == CategoryState.SettingType.PARTICLE_DENSITY
                 || type == CategoryState.SettingType.RENDER_DISTANCE
                 || type == CategoryState.SettingType.LOD_DISTANCE
                 || type == CategoryState.SettingType.MAX_FPS
@@ -118,6 +123,7 @@ public final class StateManager {
     /** Every slider, for drag routing. */
     public MSlider[] sliders() {
         return new MSlider[]{volumeSlider, musicVolumeSlider, crosshairSizeSlider, shadowDistanceSlider,
+                particleDensitySlider,
                 renderDistanceSlider, lodDistanceSlider, maxFpsSlider, uiScaleSlider};
     }
 
@@ -257,6 +263,13 @@ public final class StateManager {
 
         smoothLightingButton = new MButton(smoothLightingLabel()).size(bw, bh);
 
+        particlesButton = new MButton(particlesLabel()).size(bw, bh);
+        particleDensitySlider = new MSlider(particleDensityLabel(),
+                SettingsConfig.MIN_PARTICLE_DENSITY, SettingsConfig.MAX_PARTICLE_DENSITY,
+                Math.round(settings.getParticleDensity() * 100f))
+                .trackHeight(sh).showPercent(false);
+        particleDensitySlider.size(sw, sh);
+
         renderDistanceSlider = new MSlider(renderDistanceLabel(),
                 SettingsConfig.MIN_RENDER_DISTANCE, SettingsConfig.MAX_RENDER_DISTANCE,
                 settings.getRenderDistance())
@@ -295,7 +308,7 @@ public final class StateManager {
                 applyButton, backButton, resolutionButton, crosshairStyleButton,
                 volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, pauseWorldButton, hideArmWithHudButton, liveMenuBackgroundButton, leafTransparencyButton, waterShaderButton,
                 cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
-                smoothLightingButton, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
+                smoothLightingButton, particlesButton, particleDensitySlider, renderDistanceSlider, lodDistanceSlider, lodEnabledButton,
                 lodQualityButton, vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
             w.scaleText(true);
         }
@@ -334,6 +347,8 @@ public final class StateManager {
         shadowQualityButton.size(bw, bh).itemHeight(dih);
         shadowDistanceSlider.size(sw, sh);
         smoothLightingButton.size(bw, bh);
+        particlesButton.size(bw, bh);
+        particleDensitySlider.size(sw, sh);
         renderDistanceSlider.size(sw, sh);
         lodDistanceSlider.size(sw, sh);
         lodEnabledButton.size(bw, bh);
@@ -367,6 +382,8 @@ public final class StateManager {
                              Runnable shadowQualityAction,
                              java.util.function.Consumer<Float> shadowDistanceAction,
                              Runnable smoothLightingAction,
+                             Runnable particlesAction,
+                             java.util.function.Consumer<Float> particleDensityAction,
                              java.util.function.Consumer<Float> renderDistanceAction,
                              java.util.function.Consumer<Float> lodDistanceAction,
                              Runnable lodEnabledAction,
@@ -396,6 +413,8 @@ public final class StateManager {
         shadowQualityButton.setOnSelectionChanged(shadowQualityAction);
         shadowDistanceSlider.setOnChange(shadowDistanceAction);
         smoothLightingButton.setOnClick(smoothLightingAction);
+        particlesButton.setOnClick(particlesAction);
+        particleDensitySlider.setOnChange(particleDensityAction);
         renderDistanceSlider.setOnChange(renderDistanceAction);
         lodDistanceSlider.setOnChange(lodDistanceAction);
         lodEnabledButton.setOnClick(lodEnabledAction);
@@ -447,6 +466,8 @@ public final class StateManager {
         shadowQualityButton.setSelected(false);
         shadowDistanceSlider.setSelected(false);
         smoothLightingButton.setSelected(false);
+        particlesButton.setSelected(false);
+        particleDensitySlider.setSelected(false);
         renderDistanceSlider.setSelected(false);
         lodDistanceSlider.setSelected(false);
         lodEnabledButton.setSelected(false);
@@ -513,6 +534,8 @@ public final class StateManager {
         shadowQualityButton.setText("Shadow Quality: " + SettingsConfig.SHADOW_QUALITY_NAMES[selectedShadowQualityIndex]);
         shadowDistanceSlider.setLabel(shadowDistanceLabel());
         smoothLightingButton.setText(smoothLightingLabel());
+        particlesButton.setText(particlesLabel());
+        particleDensitySlider.setLabel(particleDensityLabel());
         renderDistanceSlider.setLabel(renderDistanceLabel());
         lodDistanceSlider.setLabel(lodDistanceLabel());
         lodEnabledButton.setText(lodEnabledLabel());
@@ -568,6 +591,14 @@ public final class StateManager {
 
     private String smoothLightingLabel() {
         return "Smooth Lighting: " + (settings.getSmoothLightingEnabled() ? "ON" : "OFF");
+    }
+
+    private String particlesLabel() {
+        return "Particles: " + (settings.getParticlesEnabled() ? "ON" : "OFF");
+    }
+
+    private String particleDensityLabel() {
+        return "Particle Density: " + Math.round(settings.getParticleDensity() * 100f) + "%";
     }
 
     private String renderDistanceLabel() {
@@ -669,6 +700,8 @@ public final class StateManager {
     public MDropdown getLodQualityButton() { return lodQualityButton; }
     public MSlider getShadowDistanceSlider() { return shadowDistanceSlider; }
     public MButton getSmoothLightingButton() { return smoothLightingButton; }
+    public MButton getParticlesButton() { return particlesButton; }
+    public MSlider getParticleDensitySlider() { return particleDensitySlider; }
     public MSlider getRenderDistanceSlider() { return renderDistanceSlider; }
     public MSlider getLodDistanceSlider() { return lodDistanceSlider; }
     public MButton getLodEnabledButton() { return lodEnabledButton; }

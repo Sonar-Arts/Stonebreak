@@ -125,6 +125,10 @@ public final class SettingsContract {
         add("shadowDistance", DataType.integer(), s -> UiValue.of(s.getShadowDistance()),
             (s, v) -> s.setShadowDistance(i(v)), range(Settings.MIN_SHADOW_DISTANCE, Settings.MAX_SHADOW_DISTANCE,
                 "shadow distance"), Live.READ_LIVE);
+        add("particlesEnabled", DataType.bool(), s -> UiValue.of(s.getParticlesEnabled()),
+            (s, v) -> s.setParticlesEnabled(b(v)), null, Live.READ_LIVE);
+        add("particleDensity", DataType.number(), s -> exact(s.getParticleDensity()),
+            (s, v) -> s.setParticleDensity(f(v)), range(0.25f, 1f, "particle density"), Live.READ_LIVE);
         add("smoothLightingEnabled", DataType.bool(), s -> UiValue.of(s.getSmoothLightingEnabled()),
             (s, v) -> s.setSmoothLightingEnabled(b(v)), null, Live.PUSHED);
         // world

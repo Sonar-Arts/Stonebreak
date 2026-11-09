@@ -34,6 +34,7 @@ public class PlayerSounds {
         BlockType groundBlock = world.getBlockAt(
                 (int) Math.floor(feet.x), (int) Math.floor(feet.y - 0.1f), (int) Math.floor(feet.z));
         BlockSounds.playStepAt(groundBlock, feet, STEP_VOLUME);
+        com.stonebreak.fx.bindings.BlockFx.stepAt(groundBlock, feet.x, feet.y, feet.z);
     }
 
     /**
@@ -49,6 +50,7 @@ public class PlayerSounds {
 
         // The block's SBO declares its own step sound (or none = silent).
         BlockSounds.playStepLocal(groundBlock, STEP_VOLUME);
+        com.stonebreak.fx.bindings.BlockFx.stepAt(groundBlock, position.x, position.y, position.z);
     }
 
 }

@@ -55,6 +55,7 @@ module stonebreak.game {
     exports com.stonebreak.blocks;
     exports com.stonebreak.blocks.registry;
     exports com.stonebreak.items;
+    exports com.stonebreak.fx.sbfx;            // shipped FX container (#435): the OM plugin exports it
     exports com.stonebreak.gameplay;           // SBO game data (stonebreak:gameplay extension, #383)
     exports com.stonebreak.items.registry;
 
