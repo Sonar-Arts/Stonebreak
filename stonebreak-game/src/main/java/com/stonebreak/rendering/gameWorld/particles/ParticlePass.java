@@ -20,6 +20,9 @@ import com.stonebreak.fx.sbfx.ShippedFx;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.gameWorld.SceneDepthCopy;
 import com.stonebreak.rendering.gameWorld.UnderwaterFog;
+import com.stonebreak.rendering.gameWorld.clouds.CloudRenderer;
+import com.stonebreak.rendering.gameWorld.clouds.CloudsInFront;
+import com.stonebreak.world.weather.CloudType;
 import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
 import com.stonebreak.rendering.lighting.DynamicLights;
 import com.stonebreak.world.World;
@@ -67,6 +70,11 @@ public final class ParticlePass implements AutoCloseable {
     static final float SEA_SURFACE = WorldConfiguration.SEA_LEVEL - 1 + WaterHeightUtil.MAX_WATER_HEIGHT;
 
     private final PrecipitationFog precipitationFog;
+    /** Clouds particles composite behind ({@link CloudsInFront}); null = none. */
+    private final CloudRenderer clouds;
+    /** This draw's cloud textures (0 = no clouds drawn this frame) and what they replaced on the units. */
+    private int cloudBuffer, cloudDistance;
+    private int savedCloudBuffer, savedCloudDistance;
     private final FxRuntime runtime;
     private final BlockParticleCollider collider = new BlockParticleCollider();
     private final AmbientFx ambient = new AmbientFx();
@@ -85,15 +93,24 @@ public final class ParticlePass implements AutoCloseable {
     private int prepared;
     private float skyExposure = 1f;
     private float fogStart, fogEnd;
+    /** Game time of the last spawn into a GPU-simulated effect (GPU particles are not in the CPU live count). */
+    private float lastGpuSpawn = Float.NEGATIVE_INFINITY;
+    private float now;
+    /** This frame's drawBehind drew (CPU particles prepared, or GPU ones possibly alive): drawFront follows it. */
+    private boolean drawing;
 
-    public ParticlePass(PrecipitationFog precipitationFog) {
+    public ParticlePass(PrecipitationFog precipitationFog, CloudRenderer clouds) {
         this.precipitationFog = precipitationFog;
+        this.clouds = clouds;
         FxLibrary library = ShippedFx.library();
         if (library.size() == 0) {
             library = ShippedFx.scanAndLoad();
         }
         this.runtime = new FxRuntime(library, FxRuntime.DEFAULT_BUDGET, new GameFxHost(ShippedFx::library));
         runtime.setCollider(collider);
+        if ("off".equalsIgnoreCase(System.getProperty("stonebreak.fx.gpu", "auto").trim())) {
+            runtime.particles().disableGpu(); // dev/A-B: GPU effects simulate on the CPU
+        }
         this.renderer = new ParticleRenderer(ParticleShaderGlsl.extension());
         frame.maxDistance = MAX_DISTANCE;
         frame.uniforms = uniforms;
@@ -106,6 +123,26 @@ public final class ParticlePass implements AutoCloseable {
 
     public AmbientFx ambient() {
         return ambient;
+    }
+
+    /**
+     * A caller spawned into a GPU-simulated effect at game time {@code totalTime}: the pass keeps stepping and
+     * drawing for {@link #GPU_LINGER} seconds after (GPU particles are not in the CPU live count, and their own
+     * read-back count lags a few frames).
+     */
+    public void markGpuSpawn(float totalTime) {
+        lastGpuSpawn = totalTime;
+    }
+
+    /** Longest a spawned GPU particle (and its sub-emitter children) may outlive its spawn, seconds. */
+    static final float GPU_LINGER = 12f;
+
+    private boolean gpuMayBeAlive() {
+        if (!runtime.particles().gpuEnabled()) {
+            return false;
+        }
+        var gpu = renderer.gpu();
+        return now - lastGpuSpawn < GPU_LINGER || (gpu != null && gpu.lastAlive() > 0);
     }
 
     /** Particles prepared for this frame (F3). */
@@ -124,6 +161,7 @@ public final class ParticlePass implements AutoCloseable {
     public void update(World world, Player player, float totalTime) {
         float dt = Float.isNaN(lastTime) ? 0f : Math.clamp(totalTime - lastTime, 0f, MAX_DT);
         lastTime = totalTime;
+        now = totalTime;
         boolean enabled = Fx.enabled();
         if (world != lastWorld || (wasEnabled && !enabled)) {
             ambient.clear();
@@ -151,7 +189,11 @@ public final class ParticlePass implements AutoCloseable {
     public void drawBehind(Player player, Matrix4f projection, float ambientLight, boolean underwater,
                            Vector3f distanceFogColor, float distanceFogStart, float distanceFogEnd) {
         prepared = 0;
-        if (!Fx.enabled() || player == null || runtime.liveParticles() == 0) {
+        drawing = false;
+        // A system running GPU effects is prepared every frame even when idle: the engine moves its GPU effects to
+        // the CPU for good once no renderer has stepped them for a few seconds.
+        boolean gpu = runtime.particles().gpuEnabled();
+        if (!Fx.enabled() || player == null || (runtime.liveParticles() == 0 && !gpu)) {
             return;
         }
         ensureSprites();
@@ -174,18 +216,46 @@ public final class ParticlePass implements AutoCloseable {
             fogColor.set(distanceFogColor);
         }
         prepared = renderer.prepare(runtime.particles(), frame);
-        if (prepared == 0) {
+        drawing = prepared > 0 || gpuMayBeAlive();
+        if (!drawing) {
             return;
         }
         copyDepth();
+        bindClouds();
         renderer.drawBehind();
+        restoreClouds();
     }
 
     /** Draws the particles on the camera's side of the water surface. Call after the water pass. */
     public void drawFront() {
-        if (prepared > 0) {
+        if (drawing) {
+            bindClouds();
             renderer.drawFront();
+            restoreClouds();
         }
+    }
+
+    /** Binds this frame's cloud buffer + distances on the {@link CloudsInFront} units (the water pass in between rebinds them). */
+    private void bindClouds() {
+        cloudBuffer = clouds != null ? clouds.transmittanceTexture() : 0;
+        cloudDistance = cloudBuffer != 0 ? clouds.distanceTexture() : 0;
+        int previousUnit = glGetInteger(GL_ACTIVE_TEXTURE);
+        glActiveTexture(GL_TEXTURE0 + CloudsInFront.TEXTURE_UNIT);
+        savedCloudBuffer = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, cloudBuffer);
+        glActiveTexture(GL_TEXTURE0 + CloudsInFront.DISTANCE_TEXTURE_UNIT);
+        savedCloudDistance = glGetInteger(GL_TEXTURE_BINDING_2D);
+        glBindTexture(GL_TEXTURE_2D, cloudDistance);
+        glActiveTexture(previousUnit);
+    }
+
+    private void restoreClouds() {
+        int previousUnit = glGetInteger(GL_ACTIVE_TEXTURE);
+        glActiveTexture(GL_TEXTURE0 + CloudsInFront.TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, savedCloudBuffer);
+        glActiveTexture(GL_TEXTURE0 + CloudsInFront.DISTANCE_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, savedCloudDistance);
+        glActiveTexture(previousUnit);
     }
 
     private void copyDepth() {
@@ -226,6 +296,10 @@ public final class ParticlePass implements AutoCloseable {
         shader.setFloat("u_sbFogStart", fogStart);
         shader.setFloat("u_sbFogEnd", fogEnd);
         shader.setVec3("u_sbFogColor", fogColor);
+        CloudsInFront.bindSampler(shader);
+        shader.setBool("u_cloudsInFront", cloudBuffer != 0 && cloudDistance != 0);
+        shader.setFloat("u_cloudSlabBottom", CloudType.slabBottom());
+        shader.setFloat("u_cloudSlabTop", CloudType.slabTop());
     }
 
     private static float sampleSky(World world, Vector3f cam) {

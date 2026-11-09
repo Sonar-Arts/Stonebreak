@@ -156,11 +156,14 @@ public final class PrecipitationRenderer {
      * no depth writes), behind any cloud drawn nearer than a lane. {@code clouds}
      * must hold this frame's cloud field ({@code CloudRenderer.mapsReady()}).
      *
-     * @param snow share of the ground around the camera where it snows (far lanes)
-     * @param fog  the rain fog between the eye and each lane
+     * @param snow     share of the ground around the camera where it snows (far lanes)
+     * @param fog      the rain fog between the eye and each lane
+     * @param drawNear false while FX particles ({@link PrecipitationFx}) draw the near rain: only the far ring
      */
     public void render(World world, CloudRenderer cloudRenderer, PrecipitationFog fog, Matrix4f projection,
-                       Matrix4f view, Vector3f cameraWorldPos, float time, float ambientLight, float snow) {
+                       Matrix4f view, Vector3f cameraWorldPos, float time, float ambientLight, float snow,
+                       boolean drawNear) {
+        int firstRing = drawNear ? 0 : 1;
         if (world == null || cloudRenderer == null) return;
         CloudUniforms clouds = cloudRenderer.uniforms();
 
@@ -178,7 +181,11 @@ public final class PrecipitationRenderer {
         int previousLanes = glGetInteger(GL_TEXTURE_BINDING_2D);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + GROUND_TEXTURE_UNIT);
         int previousGround = glGetInteger(GL_TEXTURE_BINDING_2D);
-        uploadGround(world, cameraWorldPos);
+        if (drawNear) {
+            uploadGround(world, cameraWorldPos);
+        } else {
+            glBindTexture(GL_TEXTURE_2D, groundTexture); // the far ring never reads it: no upload
+        }
         RenderOrigin.toRender(cameraWorldPos, renderCamera);
 
         // Pass 1: what each lane of each ring sees above it.
@@ -192,7 +199,7 @@ public final class PrecipitationRenderer {
         fieldShader.setInt("uGround", GROUND_TEXTURE_UNIT);
         fieldShader.setVec2("uGroundOrigin", groundOrigin);
         fieldShader.setFloat("uSnow", snow);
-        for (int i = 0; i < RINGS.length; i++) {
+        for (int i = firstRing; i < RINGS.length; i++) {
             Ring ring = RINGS[i];
             lanes[i].bind();
             applyLanes(fieldShader, ring);
@@ -224,7 +231,7 @@ public final class PrecipitationRenderer {
         shader.setFloat("uAmbient", ambientLight);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + LANES_TEXTURE_UNIT);
         glBindVertexArray(vao);
-        for (int i = 0; i < RINGS.length; i++) {
+        for (int i = firstRing; i < RINGS.length; i++) {
             Ring ring = RINGS[i];
             glBindTexture(GL_TEXTURE_2D, lanes[i].getColorTexture());
             applyLanes(shader, ring);

@@ -358,6 +358,9 @@ public final class GameWindow {
      * <p>swapInterval is left at 0 unconditionally so the driver never blocks us — the frame-budget
      * sleep in the game loop does the work.</p>
      */
+    /** Dev: {@code -Dstonebreak.uncapped=true} lifts every frame cap for this session (benchmarks). */
+    private static final boolean UNCAPPED = Boolean.getBoolean("stonebreak.uncapped");
+
     public void applyVsyncSetting() {
         glfwSwapInterval(0);
         Settings settings = Settings.getInstance();
@@ -373,6 +376,9 @@ public final class GameWindow {
      * VSync is on, and the user's Max FPS setting when it is not Unlimited.
      */
     public long frameBudgetNanos() {
+        if (UNCAPPED) {
+            return 0L; // dev: -Dstonebreak.uncapped=true (benchmarks), never saved
+        }
         Settings settings = Settings.getInstance();
         int cap = Integer.MAX_VALUE;
         if (settings.isVsyncEnabled() && monitorRefreshHz > 0) {

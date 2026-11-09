@@ -14,7 +14,9 @@ import com.stonebreak.rendering.lighting.PointLightGlsl;
  *       same daylight suppression and the same soft cap as {@code point_lights.glsl}.</li>
  *   <li>{@code particleColor}: the rain/snow fog ({@code precip_fog.glsl}, shared with every world surface) and
  *       the atmospheric distance fog toward the sky colour, measured horizontally like the world shader's. Applied
- *       to every particle, premultiplied: additive ones (a = 0) fade, others are covered.</li>
+ *       to every particle, premultiplied: additive ones (a = 0) fade, others are covered. Then the particle is
+ *       composited behind any cloud nearer than it ({@code clouds_in_front.glsl}'s rule, once per particle: the
+ *       clouds were drawn before the particles and write no depth).</li>
  * </ul>
  */
 public final class ParticleShaderGlsl {
@@ -33,8 +35,38 @@ public final class ParticleShaderGlsl {
             uniform float u_sbFogStart;      // distance fog, horizontal blocks (end <= start = off)
             uniform float u_sbFogEnd;
             uniform vec3 u_sbFogColor;
+            // clouds_in_front.glsl's inputs (CloudsInFront units); u_cloudsInFront false = no clouds this frame.
+            uniform sampler2D u_cloudBuffer;
+            uniform sampler2D u_cloudDistanceBuffer;
+            uniform bool u_cloudsInFront;
+            uniform float u_cloudSlabBottom;
+            uniform float u_cloudSlabTop;
 
             %s
+
+            // clouds_in_front.glsl's behindClouds for a premultiplied particle at renderPos. Vertex stage, so the
+            // screen position comes from the projection instead of gl_FragCoord. The frame holds
+            // cloud + T * scene; writing T * color + a * cloud at alpha a gives cloud + T * (color + (1 - a) scene).
+            vec4 sbBehindClouds(vec4 color, vec3 renderPos) {
+                if (!u_cloudsInFront) return color;
+                vec3 ray = renderPos - u_camPos;
+                float d = length(ray);
+                float dy = ray.y / max(d, 1e-4);
+                if (u_camPos.y < u_cloudSlabBottom) {
+                    if (dy <= 1e-5 || d * dy < u_cloudSlabBottom - u_camPos.y) return color;
+                } else if (u_camPos.y > u_cloudSlabTop) {
+                    if (dy >= -1e-5 || d * dy > u_cloudSlabTop - u_camPos.y) return color;
+                }
+                vec4 clip = u_viewProj * vec4(renderPos, 1.0);
+                if (clip.w <= 1e-4) return color;
+                vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
+                if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return color;
+                float cloudDist = textureLod(u_cloudDistanceBuffer, uv, 0.0).r;
+                if (cloudDist < 0.0) return color;
+                float inFront = 1.0 - smoothstep(d * 0.95, d * 1.05, cloudDist);
+                vec4 cloud = textureLod(u_cloudBuffer, uv, 0.0);
+                return mix(color, vec4(color.rgb * cloud.a + cloud.rgb * color.a, color.a), inFront);
+            }
 
             vec3 particleLight(vec3 renderPos) {
                 vec3 light = vec3(u_ambient);
@@ -66,7 +98,7 @@ public final class ParticleShaderGlsl {
                     float h = clamp((length(toP.xz) - u_sbFogStart) / (u_sbFogEnd - u_sbFogStart), 0.0, 1.0);
                     rgb = mix(rgb, u_sbFogColor * color.a, h);
                 }
-                return vec4(rgb, color.a);
+                return sbBehindClouds(vec4(rgb, color.a), renderPos);
             }
             """.formatted(PointLightGlsl.MAX_LIGHTS, PRECIP_FOG);
 
