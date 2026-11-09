@@ -20,10 +20,18 @@ public record LightProfile(float red, float green, float blue, float peak, float
 
     /** Intensity multiplier in {@code [floor, 1]} for the given loop-elapsed time. */
     public float intensity(float elapsed) {
+        return floor + (1f - floor) * pulse(elapsed);
+    }
+
+    /**
+     * The eased pulse in {@code [0, 1]} for the given loop-elapsed time: 0 at the loop ends, 1 at its midpoint.
+     * For the torch this is the ember's authored swell (the {@code flicker} clip's ease-in-out scale keys), so
+     * anything that follows it — the light, the ambient FX's {@code pulse} parameter — stays on the model's beat.
+     */
+    public float pulse(float elapsed) {
         float t = elapsed / period;
         t -= (float) Math.floor(t);
         float tri = t < 0.5f ? t * 2f : 2f - t * 2f;          // 0 → 1 → 0 across the loop
-        float eased = tri * tri * (3f - 2f * tri);              // ease-in-out
-        return floor + (1f - floor) * eased;
+        return tri * tri * (3f - 2f * tri);                     // ease-in-out
     }
 }

@@ -35,7 +35,8 @@ class FxRuntimeAllocationTest {
         MovingSources sources = new MovingSources();
         FxData debris = data(def("break", "stonebreak:block_debris", 0, 0, 0,
                 java.util.Map.of("amount", com.openmason.engine.format.fx.FxParamValue.scalar(0.5f)), true));
-        FxData torch = data(def("ambient", "stonebreak:torch_flame"));
+        // Torches run a pulse-aware FX, so the per-frame pulse feed is inside the measured frame.
+        FxData torch = data(def("ambient", "stonebreak:torch_flame"), def("ambient", "test:pulse-glow"));
         Function<BlockType, FxData> bindings = b -> b == BlockType.TORCH_PLACED ? torch : debris;
         ToIntFunction<BlockType> tints = b -> 0x7A6A5AFF;
 
@@ -88,5 +89,7 @@ class FxRuntimeAllocationTest {
             }
             return out.set(i * 3 + 0.5f, 65.6f, 0.5f);
         }
+
+        @Override public float pulse(int i) { return ((t + i * 17) % 72) / 72f; }
     }
 }

@@ -598,7 +598,7 @@ public class Main {
                             && below != null && below.isSolid()) {
                         if (world.setBlockAt(x, y, z, torchBlock, true, ground)) placed++;
                         // Survival worlds refuse a dev placement server-side; the flame FX itself still shows.
-                        com.stonebreak.fx.Fx.play("stonebreak:torch_flame", x + 0.5, y + 0.62, z + 0.5);
+                        com.stonebreak.fx.Fx.play("stonebreak:torch_fire", x + 0.5, y + 0.62, z + 0.5);
                         break;
                     }
                 }

@@ -3,6 +3,7 @@ package com.stonebreak.fx.bindings;
 import com.openmason.engine.format.fx.FxData;
 import com.openmason.engine.format.fx.FxDef;
 import com.openmason.engine.rendering.particles.FxInstance;
+import com.openmason.engine.rendering.particles.FxParameter;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.fx.FxParams;
 import com.stonebreak.fx.FxRuntime;
@@ -16,7 +17,9 @@ import java.util.function.ToIntFunction;
  * Keeps the {@code ambient} FX of nearby sources running (Stonebreak#437): a torch's flame and embers, a lit
  * furnace's smoke. Each frame {@link #sync} starts the FX of sources that appeared, moves those that move (a torch
  * another player carries) and fades out those that left the selection (out of range, unlit, broken). Ambient
- * bindings play at the source's emitter position plus their offset.
+ * bindings play at the source's emitter position plus their offset. An FX that declares
+ * {@link FxRuntime#PARAM_PULSE} gets the source's animation pulse every frame, so a torch's flame swells with its
+ * ember's {@code flicker} clip.
  *
  * <p>Fixed pools sized to the light budget: allocation-free per frame. Main thread.
  */
@@ -38,6 +41,8 @@ public final class AmbientFx {
     private final int[] counts = new int[SLOTS];
     private final FxInstance[][] instances = new FxInstance[SLOTS][PER_SOURCE];
     private final float[][] offsets = new float[SLOTS][PER_SOURCE * 3];
+    /** Each instance's {@link FxRuntime#PARAM_PULSE} parameter index, or -1 when its FX has none. */
+    private final int[][] pulseParams = new int[SLOTS][PER_SOURCE];
     private final Vector3f scratch = new Vector3f();
     private float density = Float.NaN;
 
@@ -77,6 +82,7 @@ public final class AmbientFx {
             } else {
                 move(slot, p);
             }
+            pulse(slot, sources.pulse(i));
             seen[slot] = true;
         }
         boolean densityChanged = runtime.density() != density;
@@ -111,6 +117,12 @@ public final class AmbientFx {
                 retire(s, 0f);
             }
         }
+    }
+
+    /** The {@code k}-th running instance of source {@code key}, or null (tests). */
+    FxInstance instanceOf(long key, int k) {
+        int slot = find(key);
+        return slot >= 0 && k < counts[slot] ? instances[slot][k] : null;
     }
 
     private int find(long key) {
@@ -151,6 +163,9 @@ public final class AmbientFx {
             offsets[slot][count * 3] = def.offsetX();
             offsets[slot][count * 3 + 1] = def.offsetY();
             offsets[slot][count * 3 + 2] = def.offsetZ();
+            FxParameter pulse = FxParams.find(inst.system(), FxRuntime.PARAM_PULSE);
+            pulseParams[slot][count] = pulse != null && pulse.type() == FxParameter.Type.FLOAT
+                    ? inst.paramIndex(FxRuntime.PARAM_PULSE) : -1;
             count++;
         }
         // A source whose FX did not play still takes the slot (count 0): it is not retried every frame.
@@ -168,6 +183,20 @@ public final class AmbientFx {
             double x = p.x + off[k * 3], y = p.y + off[k * 3 + 1], z = p.z + off[k * 3 + 2];
             if (inst.x() != x || inst.y() != y || inst.z() != z) {
                 inst.move(x, y, z);
+            }
+        }
+    }
+
+    /** Feeds the source's pulse to the instances that declare it; a source without one keeps their default. */
+    private void pulse(int slot, float pulse) {
+        if (Float.isNaN(pulse)) {
+            return;
+        }
+        float value = Math.clamp(pulse, 0f, 1f);
+        for (int k = 0; k < counts[slot]; k++) {
+            int index = pulseParams[slot][k];
+            if (index >= 0) {
+                instances[slot][k].setParam(index, value);
             }
         }
     }

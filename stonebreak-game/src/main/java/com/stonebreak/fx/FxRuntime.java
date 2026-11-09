@@ -35,6 +35,9 @@ import java.util.Set;
  *       BURST so the setting thins every effect.</li>
  *   <li>{@value #PARAM_TINT} (color) — an asset binding's {@code tintFromTexture} colour (debris like its block).</li>
  *   <li>{@value #PARAM_INTENSITY} (float) — scaled by how strong the event was (a splash's impact speed).</li>
+ *   <li>{@value #PARAM_PULSE} (float, 0..1) — an ambient source's animation pulse, set every frame: a torch's
+ *       ember swell (0 at the {@code flicker} clip's ends, 1 at its midpoint, the same phase the model and its
+ *       light use). Bind it to SIZE/RATE so the particles breathe with the model.</li>
  * </ul>
  */
 public final class FxRuntime implements AutoCloseable {
@@ -49,6 +52,7 @@ public final class FxRuntime implements AutoCloseable {
     public static final String PARAM_DENSITY = "density";
     public static final String PARAM_TINT = "tint";
     public static final String PARAM_INTENSITY = "intensity";
+    public static final String PARAM_PULSE = "pulse";
 
     private final FxLibrary library;
     private final ParticleSystem particles;

@@ -44,6 +44,8 @@ public final class DynamicLights {
     private static final BlockType[] sourceBlocks = new BlockType[PointLightGlsl.MAX_LIGHTS];
     /** Stable identity of each light across frames: a packed block position, or the carrying player. */
     private static final long[] sourceKeys = new long[PointLightGlsl.MAX_LIGHTS];
+    /** Each light's flicker pulse this frame, {@code [0, 1]} ({@link LightProfile#pulse}). */
+    private static final float[] pulses = new float[PointLightGlsl.MAX_LIGHTS];
     private static final Vector3f scratch = new Vector3f();
     private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
@@ -197,7 +199,9 @@ public final class DynamicLights {
         // shaders subtract it from a render-space fragment position. The origin is
         // fixed for the frame before update() runs (Renderer.renderWorld).
         positionData.put(p.x - RenderOrigin.x()).put(p.y).put(p.z - RenderOrigin.z()).put(PointLightGlsl.RADIUS);
-        float k = profile.peak() * profile.intensity(elapsed);
+        float pulse = profile.pulse(elapsed);
+        pulses[count] = pulse;
+        float k = profile.peak() * (profile.floor() + (1f - profile.floor()) * pulse);
         colorData.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(count);
         count++;
     }
@@ -240,6 +244,12 @@ public final class DynamicLights {
 
     /** Stable identity of light {@code index} across frames (see {@link #sourceBlock}). */
     public static long sourceKey(int index) { return sourceKeys[index]; }
+
+    /**
+     * Light {@code index}'s flicker pulse this frame, {@code [0, 1]}: for a torch, where its ember is in the
+     * {@code flicker} clip's swell (same per-position phase the model renders with). Ambient FX follow it.
+     */
+    public static float pulse(int index) { return pulses[index]; }
 
     /** Called after the depth pass, before any receiver renders. */
     public static void enableShadows() { shadowsEnabled = true; }

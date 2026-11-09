@@ -40,14 +40,21 @@ public final class FxFixtures {
             .bind(FxBinding.of(FxRuntime.PARAM_DENSITY, FxBinding.Target.RATE))
             .build();
 
+    /** {@link #GLOW} that also breathes with its source's animation ({@link FxRuntime#PARAM_PULSE} → size). */
+    public static final FxSystem PULSE_GLOW = GLOW.toBuilder().name("pulse-glow")
+            .parameter(FxParameter.scalar(FxRuntime.PARAM_PULSE, 0.5f))
+            .bind(FxBinding.mapped(FxRuntime.PARAM_PULSE, FxBinding.Target.SIZE, null, 0.5f, 0.75f))
+            .build();
+
     private FxFixtures() {
     }
 
-    /** The first content plus {@code test:probe} and {@code test:glow}. */
+    /** The first content plus {@code test:probe}, {@code test:glow} and {@code test:pulse-glow}. */
     public static FxLibrary library() {
         List<SbfxDocument> docs = new ArrayList<>(FirstFxContent.all().values());
         docs.add(new SbfxDocument("test:probe", OmfxDocument.of(PROBE)));
         docs.add(new SbfxDocument("test:glow", OmfxDocument.of(GLOW)));
+        docs.add(new SbfxDocument("test:pulse-glow", OmfxDocument.of(PULSE_GLOW)));
         return new FxLibrary(docs);
     }
 

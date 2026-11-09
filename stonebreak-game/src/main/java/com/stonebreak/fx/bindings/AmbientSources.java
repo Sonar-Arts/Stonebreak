@@ -22,6 +22,14 @@ public interface AmbientSources {
     /** World position the source emits from (a torch's ember, a furnace's mouth), into {@code out}. */
     Vector3f position(int i, Vector3f out);
 
+    /**
+     * Source {@code i}'s animation pulse this frame, {@code [0, 1]} (a torch's ember swell), or NaN when it has
+     * none. Fed to the FX's {@code pulse} parameter ({@link com.stonebreak.fx.FxRuntime#PARAM_PULSE}).
+     */
+    default float pulse(int i) {
+        return Float.NaN;
+    }
+
     /** No sources. */
     AmbientSources NONE = new AmbientSources() {
         @Override public int count() { return 0; }

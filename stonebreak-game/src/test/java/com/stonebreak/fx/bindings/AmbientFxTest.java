@@ -22,10 +22,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Ambient FX follow the light selection (Stonebreak#437): start, move, fade out, restart on a changed block. */
 class AmbientFxTest {
 
+    /** Stands in for a block whose ambient FX follow its animation (one pulse-aware FX, one plain). */
+    private static final BlockType PULSING = BlockType.COAL_ORE;
+
     private final FakeSources sources = new FakeSources();
     private final Function<BlockType, FxData> bindings = block -> block == BlockType.TORCH_PLACED
             ? data(def("ambient", "test:glow"), def("break", "test:probe"))
             : block == BlockType.FURNACE ? data(def("ambient", "test:glow", 0, 0.5f, 0, java.util.Map.of(), false))
+            : block == PULSING ? data(def("ambient", "test:pulse-glow"), def("ambient", "test:glow"))
             : new FxData(List.of());
     private final ToIntFunction<BlockType> tints = b -> 0xFFFFFFFF;
     private FxRuntime runtime;
@@ -106,6 +110,44 @@ class AmbientFxTest {
     }
 
     @Test
+    void theSourcesPulseReachesEveryFxThatDeclaresIt() {
+        long key = AmbientSources.blockKey(1, 64, 1);
+        sources.add(PULSING, key, 1.5f, 64.6f, 1.5f, 0.25f);
+        frame();
+        assertEquals(2, runtime.instanceCount());
+        com.openmason.engine.rendering.particles.FxInstance pulsing = instance(key, "pulse-glow");
+        assertEquals(0.25f, pulsing.param(FxRuntime.PARAM_PULSE), 1e-6f);
+
+        sources.pulses.set(0, 1f);
+        frame();
+        assertEquals(1f, pulsing.param(FxRuntime.PARAM_PULSE), 1e-6f, "updated every frame, not only at start");
+
+        sources.pulses.set(0, 3f);
+        frame();
+        assertEquals(1f, pulsing.param(FxRuntime.PARAM_PULSE), 1e-6f, "clamped to [0, 1]");
+        // The plain FX has no pulse parameter: it ran the same frames without complaint.
+        assertTrue(instance(key, "glow").isAlive());
+    }
+
+    @Test
+    void aSourceWithoutAPulseLeavesTheAuthoredDefault() {
+        long key = AmbientSources.blockKey(1, 64, 1);
+        sources.add(PULSING, key, 1.5f, 64.6f, 1.5f);
+        frame();
+        assertEquals(0.5f, instance(key, "pulse-glow").param(FxRuntime.PARAM_PULSE), 1e-6f);
+    }
+
+    private com.openmason.engine.rendering.particles.FxInstance instance(long key, String system) {
+        for (int k = 0; k < AmbientFx.PER_SOURCE; k++) {
+            com.openmason.engine.rendering.particles.FxInstance inst = ambient.instanceOf(key, k);
+            if (inst != null && inst.system().name().equals(system)) {
+                return inst;
+            }
+        }
+        throw new AssertionError(system + " is not running");
+    }
+
+    @Test
     void blockAndHolderKeysNeverCollide() {
         assertTrue(AmbientSources.blockKey(-1, 0, -1) >= 0);
         assertTrue(AmbientSources.holderKey(0) < 0);
@@ -117,22 +159,30 @@ class AmbientFxTest {
         final List<BlockType> blocks = new ArrayList<>();
         final List<Long> keys = new ArrayList<>();
         final List<Vector3f> positions = new ArrayList<>();
+        final List<Float> pulses = new ArrayList<>();
 
         void add(BlockType block, long key, float x, float y, float z) {
+            add(block, key, x, y, z, Float.NaN);
+        }
+
+        void add(BlockType block, long key, float x, float y, float z, float pulse) {
             blocks.add(block);
             keys.add(key);
             positions.add(new Vector3f(x, y, z));
+            pulses.add(pulse);
         }
 
         void clear() {
             blocks.clear();
             keys.clear();
             positions.clear();
+            pulses.clear();
         }
 
         @Override public int count() { return blocks.size(); }
         @Override public BlockType block(int i) { return blocks.get(i); }
         @Override public long key(int i) { return keys.get(i); }
         @Override public Vector3f position(int i, Vector3f out) { return out.set(positions.get(i)); }
+        @Override public float pulse(int i) { return pulses.get(i); }
     }
 }

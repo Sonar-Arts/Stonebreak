@@ -34,4 +34,9 @@ public final class LightAmbientSources implements AmbientSources {
     public Vector3f position(int i, Vector3f out) {
         return DynamicLights.position(i, out);
     }
+
+    @Override
+    public float pulse(int i) {
+        return DynamicLights.pulse(i);
+    }
 }

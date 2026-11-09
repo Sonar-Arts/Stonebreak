@@ -57,6 +57,18 @@ class ShippedFxTest {
     }
 
     @Test
+    void thePlacedTorchsFlameBreathesWithItsEmber() {
+        FxSystem fire = library.find("stonebreak:torch_fire");
+        assertNotNull(fire, "stonebreak:torch_fire is shipped");
+        FxParameter pulse = FxParams.find(fire, FxRuntime.PARAM_PULSE);
+        assertNotNull(pulse, "declares the pulse the game feeds from the flicker clip");
+        assertEquals(FxParameter.Type.FLOAT, pulse.type());
+        assertTrue(fire.bindings().stream().anyMatch(b -> b.parameter().equals(FxRuntime.PARAM_PULSE)),
+                "the pulse drives something");
+        assertTrue(fire.endless(), "ambient FX run until their torch leaves the selection");
+    }
+
+    @Test
     void everyShippedFxCompilesInTheRuntime() {
         try (FxWorld world = new FxWorld(new ParticleSystem(256))) {
             for (SbfxDocument doc : library.documents()) {
