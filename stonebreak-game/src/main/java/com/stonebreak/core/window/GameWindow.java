@@ -6,6 +6,7 @@ import java.nio.IntBuffer;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.system.Callback;
 import org.lwjgl.system.MemoryStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +68,12 @@ public final class GameWindow {
      */
     private int monitorRefreshHz = 60;
 
-    private ResizeListener resizeListener = (w, h) -> { };
+    /** Dev: {@code -Dstonebreak.uncapped=true} lifts every frame cap for this session (benchmarks). */
+    private static final boolean UNCAPPED = Boolean.getBoolean("stonebreak.uncapped");
+
+    private static final ResizeListener NO_RESIZE_LISTENER = (_, _) -> { };
+
+    private ResizeListener resizeListener = NO_RESIZE_LISTENER;
 
     public GameWindow(int width, int height) {
         this.width = width;
@@ -87,7 +93,7 @@ public final class GameWindow {
     }
 
     public void setResizeListener(ResizeListener listener) {
-        this.resizeListener = listener != null ? listener : (w, h) -> { };
+        this.resizeListener = listener != null ? listener : NO_RESIZE_LISTENER;
     }
 
     /**
@@ -117,9 +123,14 @@ public final class GameWindow {
         center();
 
         // Capture the VSync target from the monitor the window actually sits on (not always the
-        // primary), and keep it current as monitors are hot-plugged.
+        // primary), and keep it current as monitors are hot-plugged. Main frees this callback at
+        // shutdown; any callback it replaces is freed here.
         refreshMonitorHz();
-        glfwSetMonitorCallback((monitor, event) -> refreshMonitorHz());
+        try (Callback previous = glfwSetMonitorCallback((_, _) -> refreshMonitorHz())) {
+            if (previous != null) {
+                logger.debug("[Display] Replaced an existing GLFW monitor callback");
+            }
+        }
 
         glfwMakeContextCurrent(handle);
         applyVsyncSetting();
@@ -373,10 +384,13 @@ public final class GameWindow {
      * VSync is on, and the user's Max FPS setting when it is not Unlimited.
      */
     public long frameBudgetNanos() {
+        if (UNCAPPED) {
+            return 0L; // dev: -Dstonebreak.uncapped=true (benchmarks), never saved
+        }
         Settings settings = Settings.getInstance();
         int cap = Integer.MAX_VALUE;
         if (settings.isVsyncEnabled() && monitorRefreshHz > 0) {
-            cap = Math.min(cap, monitorRefreshHz);
+            cap = monitorRefreshHz;
         }
         if (!settings.isMaxFpsUnlimited()) {
             cap = Math.min(cap, settings.getMaxFps());

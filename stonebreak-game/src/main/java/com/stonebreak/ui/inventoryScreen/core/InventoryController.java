@@ -81,7 +81,7 @@ public class InventoryController {
     }
 
     public void displayHotbarItemTooltip(com.stonebreak.blocks.BlockType blockType) {
-        hotbarScreen.displayItemTooltip(blockType);
+        hotbarScreen.displayItemTooltip((com.stonebreak.items.Item) blockType);
     }
 
     public void displayHotbarItemTooltip(com.stonebreak.items.Item item) {

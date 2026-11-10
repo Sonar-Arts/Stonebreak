@@ -72,7 +72,7 @@ public final class DirtBackdropProvider implements UiPaintHost.UiDrawProvider {
         if (dirt == null) {
             try (InputStream in = DirtBackdropProvider.class.getResourceAsStream("/ui/mainMenu/Dirt.png")) {
                 if (in != null) {
-                    dirt = Image.makeFromEncoded(in.readAllBytes());
+                    dirt = Image.makeDeferredFromEncodedBytes(in.readAllBytes());
                 }
             } catch (java.io.IOException e) {
                 org.slf4j.LoggerFactory.getLogger(DirtBackdropProvider.class).warn("[ui] Dirt.png unreadable", e);

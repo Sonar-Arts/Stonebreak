@@ -62,6 +62,11 @@ public class Settings {
 
     // F1 (hide HUD) also hides the first-person arm and held item. Off by default — the arm stays.
     private boolean hideArmWithHud = false;
+
+    // Particle FX (Stonebreak#436): on/off, and a density 0.25..1 every FX's "density" parameter starts at
+    // (shipped FX bind it to their emission), so lower settings thin every effect.
+    private boolean particlesEnabled = true;
+    private float particleDensity = 1.0f;
     /** The main menu's live world backdrop (a quiet simulated world flown by a drone camera). */
     private boolean liveMenuBackground = true;
 
@@ -181,6 +186,8 @@ public class Settings {
             boolField("playerNameTagsEnabled", Settings::getPlayerNameTagsEnabled, Settings::setPlayerNameTagsEnabled),
             boolField("pauseSingleplayerWorld", Settings::getPauseSingleplayerWorld, Settings::setPauseSingleplayerWorld),
             boolField("hideArmWithHud", Settings::getHideArmWithHud, Settings::setHideArmWithHud),
+            boolField("particlesEnabled", Settings::getParticlesEnabled, Settings::setParticlesEnabled),
+            floatField("particleDensity", Settings::getParticleDensity, Settings::setParticleDensity),
             boolField("liveMenuBackground", Settings::getLiveMenuBackground, Settings::setLiveMenuBackground),
             stringField("shadowQuality", Settings::getShadowQuality, Settings::setShadowQuality),
             intField("shadowDistance", Settings::getShadowDistance, Settings::setShadowDistance),
@@ -359,6 +366,8 @@ public class Settings {
     public boolean getPlayerNameTagsEnabled() { return playerNameTagsEnabled; }
     public boolean getPauseSingleplayerWorld() { return pauseSingleplayerWorld; }
     public boolean getHideArmWithHud() { return hideArmWithHud; }
+    public boolean getParticlesEnabled() { return particlesEnabled; }
+    public float getParticleDensity() { return particleDensity; }
     public boolean getLiveMenuBackground() { return liveMenuBackground; }
     public String getShadowQuality() { return shadowQuality; }
     public int getShadowDistance() { return shadowDistance; }
@@ -474,6 +483,17 @@ public class Settings {
 
     public void setHideArmWithHud(boolean hideArmWithHud) {
         this.hideArmWithHud = hideArmWithHud;
+    }
+
+    public void setParticlesEnabled(boolean particlesEnabled) {
+        this.particlesEnabled = particlesEnabled;
+    }
+
+    /** Particle density, clamped to 0.25..1 (non-finite values keep the current density). */
+    public void setParticleDensity(float particleDensity) {
+        if (Float.isFinite(particleDensity)) {
+            this.particleDensity = Math.clamp(particleDensity, 0.25f, 1.0f);
+        }
     }
 
     public void setLiveMenuBackground(boolean liveMenuBackground) {

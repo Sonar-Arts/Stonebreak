@@ -100,6 +100,8 @@ public final class InputHandler {
             case SHADOW_QUALITY -> adjustShadowQuality(direction);
             case SHADOW_DISTANCE -> adjustSlider(stateManager.getShadowDistanceSlider(), direction * SettingsConfig.SHADOW_DISTANCE_STEP);
             case SMOOTH_LIGHTING -> { if (direction != 0) actionHandler.toggleSmoothLighting(); }
+            case PARTICLES -> { if (direction != 0) actionHandler.toggleParticles(); }
+            case PARTICLE_DENSITY -> adjustSlider(stateManager.getParticleDensitySlider(), direction * SettingsConfig.PARTICLE_DENSITY_STEP);
             case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }

@@ -116,6 +116,11 @@ public class Game {
         }
     }
 
+    /** True on the thread that runs the game loop (and owns GL, OpenAL and the FX runtime). */
+    public boolean isMainThread() {
+        return Thread.currentThread() == mainThread;
+    }
+
     /**
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.

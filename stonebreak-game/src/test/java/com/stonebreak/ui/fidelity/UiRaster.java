@@ -114,7 +114,7 @@ public final class UiRaster implements AutoCloseable {
             if (in == null) {
                 throw new IllegalStateException("game image missing: " + resource);
             }
-            return io.github.humbleui.skija.Image.makeFromEncoded(in.readAllBytes());
+            return io.github.humbleui.skija.Image.makeDeferredFromEncodedBytes(in.readAllBytes());
         } catch (Exception e) {
             throw new IllegalStateException("could not load " + resource, e);
         }

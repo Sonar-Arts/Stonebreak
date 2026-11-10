@@ -65,6 +65,7 @@ public class BlockBreaker {
         hitSoundTimer += Game.getDeltaTime();
         if (hitSoundTimer >= HIT_SOUND_INTERVAL && breakingProgress < 1.0f) {
             BlockSounds.playHit(blockType, breakingBlock.x, breakingBlock.y, breakingBlock.z);
+            com.stonebreak.fx.bindings.BlockFx.hitAt(blockType, breakingBlock.x, breakingBlock.y, breakingBlock.z);
             hitSoundTimer = 0.0f;
         }
 
@@ -88,6 +89,7 @@ public class BlockBreaker {
             hitSoundTimer = 0.0f;
             if (blockType.getHardness() > 0.0f) {
                 BlockSounds.playHit(blockType, blockPos.x, blockPos.y, blockPos.z);
+                com.stonebreak.fx.bindings.BlockFx.hitAt(blockType, blockPos.x, blockPos.y, blockPos.z);
                 // The server times the break from this start (issue #333); our progress
                 // restarted, so its clock does too.
                 com.stonebreak.network.MultiplayerSession.sendBreakStart(blockPos.x, blockPos.y, blockPos.z);
@@ -133,5 +135,6 @@ public class BlockBreaker {
         // local drop (in the client EM) alongside the server-spawned shadow.
         world.setBlockAt(pos.x, pos.y, pos.z, BlockType.AIR, true);
         BlockSounds.playBreak(blockType, pos.x, pos.y, pos.z);
+        com.stonebreak.fx.bindings.BlockFx.breakAt(blockType, pos.x, pos.y, pos.z);
     }
 }

@@ -20,7 +20,7 @@ public final class EmojiImageCache {
                     System.err.println("[EmojiImageCache] Missing resource: " + t.resourcePath);
                     return null;
                 }
-                return Image.makeFromEncoded(in.readAllBytes());
+                return Image.makeDeferredFromEncodedBytes(in.readAllBytes());
             } catch (IOException e) {
                 System.err.println("[EmojiImageCache] Failed to load " + t.resourcePath + ": " + e.getMessage());
                 return null;

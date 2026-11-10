@@ -106,6 +106,13 @@ public final class DebugInfoPanel implements DebugPanel {
                     lodBatcher.publishedCommands(), lodBatcher.publishedRegionDraws()));
             }
         }
+        com.stonebreak.fx.FxRuntime fx = com.stonebreak.fx.Fx.installed();
+        if (fx != null) {
+            // Particle VRAM is the "Particles" row of the VRAM panel (GpuMemoryTracker PARTICLES).
+            panel.row("Particles", !com.stonebreak.fx.Fx.enabled() ? "off"
+                : String.format("%,d / %,d live, %d FX, %.2f ms sim", fx.liveParticles(), fx.budget(),
+                    fx.instanceCount(), fx.lastUpdateNanos() / 1e6));
+        }
         panel.row("Nav", DebugDiagnostics.navigationSummary(world));
         com.stonebreak.world.TimeOfDay clock = Game.getTimeOfDay();
         if (clock != null) {

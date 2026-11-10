@@ -23,7 +23,11 @@ final class PlayerWaterEffects {
     void update(float dt, PhysicsState state, boolean eyesSubmerged) {
         if (state.justEnteredWaterThisFrame()) {
             float impactSpeed = Math.max(0f, -state.getVelocity().y);
-            splashParticles.burst(state.getPosition(), impactSpeed);
+            // The player SBE's "splash" FX binding owns the splash when it has one (#437).
+            if (!com.stonebreak.fx.bindings.EntityFx.splash(
+                    com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER, state.getPosition(), impactSpeed)) {
+                splashParticles.burst(state.getPosition(), impactSpeed);
+            }
             rippleParticles.spawn(state.getPosition());
             rippleSpawnTimer = 0f;
         }

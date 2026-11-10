@@ -23,7 +23,7 @@ public final class AbilityIconCache {
                     System.err.println("[AbilityIconCache] Missing resource: " + path);
                     return null;
                 }
-                return Image.makeFromEncoded(in.readAllBytes());
+                return Image.makeDeferredFromEncodedBytes(in.readAllBytes());
             } catch (IOException e) {
                 System.err.println("[AbilityIconCache] Failed to load " + path + ": " + e.getMessage());
                 return null;

@@ -55,6 +55,7 @@ module stonebreak.game{
     exports com.stonebreak.blocks;
     exports com.stonebreak.blocks.registry;
     exports com.stonebreak.items;
+    exports com.stonebreak.fx.sbfx;            // shipped FX container (#435): the OM plugin exports it
     exports com.stonebreak.gameplay;           // SBO game data (stonebreak:gameplay extension, #383)
     exports com.stonebreak.items.registry;
 
@@ -91,16 +92,6 @@ module stonebreak.game{
     opens com.stonebreak.world.save.model to com.fasterxml.jackson.databind;
     opens com.stonebreak.world.save.repository to com.fasterxml.jackson.databind;
     opens com.stonebreak.world.save.serialization to com.fasterxml.jackson.databind;
-
-    // Export and open packages for JUnit testing
-    exports com.stonebreak.world.save to org.junit.platform.commons;
-    exports com.stonebreak.world.chunk to org.junit.platform.commons;
-    opens com.stonebreak.world.save to org.junit.platform.commons;
-    opens com.stonebreak.world.chunk to org.junit.platform.commons;
-    exports com.stonebreak.world.chunk.utils to org.junit.platform.commons;
-    opens com.stonebreak.world.chunk.utils to org.junit.platform.commons;
-    exports com.stonebreak.network to org.junit.platform.commons;
-    opens com.stonebreak.network to org.junit.platform.commons;
 
     // Export and open remaining MMS packages (most moved to the Open Mason engine)
     exports com.stonebreak.world.chunk.api.mightyMesh.mmsCore;

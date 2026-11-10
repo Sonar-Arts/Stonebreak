@@ -59,7 +59,7 @@ public class SkijaUIBackend extends GpuMasonryBackend implements UIBackend {
                 return null;
             }
             byte[] bytes = in.readAllBytes();
-            return Image.makeFromEncoded(bytes);
+            return Image.makeDeferredFromEncodedBytes(bytes);
         } catch (IOException e) {
             System.err.println("[Skija] Failed to load image: " + e.getMessage());
             return null;

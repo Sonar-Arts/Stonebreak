@@ -47,6 +47,7 @@ public final class EntitySounds {
         if (world == null) return;
         if (world == Game.getWorld()) {
             playAt(entity, event);
+            com.stonebreak.fx.bindings.EntityFx.playAtFeet(entity, event);
             return;
         }
         ServerMutationSinks sinks = world.serverSinks();

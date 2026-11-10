@@ -194,6 +194,7 @@ public class Main {
             maybeAutoFurnace();
             maybeAutoScreen();
             maybeAutoTorch();
+            maybeAutoFx();
             maybeAutoBattle();
             maybeAutoScreenshot();
             maybeAutoResume();
@@ -492,6 +493,131 @@ public class Main {
                 + " wall=" + w + " @" + (px + 6) + "," + (py + 1) + "," + (pz + 1)
                 + " [" + world.getBlockStateAt(px + 6, py + 1, pz + 1) + "]"
                 + " held=" + (inv.getSelectedHotbarSlot() != null ? inv.getSelectedHotbarSlot().getItem().getName() : "-"));
+    }
+
+    // ─── Dev: -Dstonebreak.autofx=<seconds> ──────────────────────────────────
+
+    private long autoFxStartNanos = -1;
+    private long autoFxNextNanos;
+    private boolean autoFxOff;
+    private boolean autoFxStaged;
+    private float autoFxLookX = Float.NaN, autoFxLookY, autoFxLookZ;
+
+    /**
+     * Development shortcut for FX shots (Stonebreak#436/#437): N seconds after entering the world, and every
+     * 0.7 s from then on, plays every first-content asset binding in front of the camera through the real
+     * binding paths — stone, dirt, wood and leaf debris (their SBOs' {@code break}), dust from a step on dirt,
+     * and the player SBE's {@code splash}. Torch flames and furnace smoke come from real blocks: combine with
+     * {@code stonebreak.autotorch} / {@code stonebreak.autofurnace}. Inert unless the property is set.
+     * Options after the seconds: {@code :torches} places ground torches on the air above the ground ahead (their
+     * SBO's {@code ambient} flame — placing into air passes the server's edit rules, clearing would not), plus a
+     * standing furnace-smoke FX beside them; {@code :night} sets midnight; {@code :quiet} skips the bursts.
+     */
+    private void maybeAutoFx() {
+        if (autoFxOff) {
+            return;
+        }
+        String spec = System.getProperty("stonebreak.autofx");
+        if (spec == null || spec.isBlank()) {
+            autoFxOff = true;
+            return;
+        }
+        if (Game.getInstance().getState() != GameState.PLAYING) {
+            return;
+        }
+        long now = System.nanoTime();
+        if (autoFxStartNanos < 0) {
+            double seconds = 5;
+            try {
+                seconds = Double.parseDouble(spec.trim().split(":")[0]);
+            } catch (NumberFormatException ignored) {
+                // keep default
+            }
+            autoFxStartNanos = now + (long) (seconds * 1e9);
+            autoFxNextNanos = autoFxStartNanos;
+            return;
+        }
+        if (!Float.isNaN(autoFxLookX)) {
+            aimCameraAt(autoFxLookX, autoFxLookY, autoFxLookZ);
+        }
+        if (now < autoFxNextNanos || Game.getPlayer() == null) {
+            return;
+        }
+        autoFxNextNanos = now + 700_000_000L;
+        java.util.List<String> opts = java.util.Arrays.asList(spec.trim().split(":"));
+        if (!autoFxStaged) {
+            autoFxStaged = true;
+            stageAutoFx(opts);
+        }
+        if (opts.contains("quiet")) {
+            return;
+        }
+        var camera = Game.getPlayer().getCamera();
+        org.joml.Vector3f eye = camera.getPosition();
+        org.joml.Vector3f front = new org.joml.Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
+        org.joml.Vector3f right = new org.joml.Vector3f(-front.z, 0, front.x);
+        com.stonebreak.blocks.BlockType[] blocks = {com.stonebreak.blocks.BlockType.STONE,
+                com.stonebreak.blocks.BlockType.DIRT, com.stonebreak.blocks.BlockType.WOOD,
+                com.stonebreak.blocks.BlockType.LEAVES};
+        for (int i = 0; i < blocks.length; i++) {
+            float side = (i - 1.5f) * 1.6f;
+            int x = (int) Math.floor(eye.x + front.x * 4 + right.x * side);
+            int y = (int) Math.floor(eye.y - 0.2f);
+            int z = (int) Math.floor(eye.z + front.z * 4 + right.z * side);
+            com.stonebreak.fx.bindings.BlockFx.breakAt(blocks[i], x, y, z);
+        }
+        com.stonebreak.fx.bindings.BlockFx.stepAt(com.stonebreak.blocks.BlockType.DIRT,
+                eye.x + front.x * 3 - right.x * 1.2f, eye.y - 1.6f, eye.z + front.z * 3 - right.z * 1.2f);
+        com.stonebreak.fx.bindings.EntityFx.splash(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER,
+                new org.joml.Vector3f(eye.x + front.x * 3 + right.x * 1.5f, eye.y - 1.6f,
+                        eye.z + front.z * 3 + right.z * 1.5f), 9f);
+        com.stonebreak.fx.FxRuntime rt = com.stonebreak.fx.Fx.installed();
+        if (rt != null) {
+            System.out.printf("[autofx] live=%d instances=%d sim=%.3fms enabled=%s%n", rt.liveParticles(),
+                    rt.instanceCount(), rt.lastUpdateNanos() / 1e6, com.stonebreak.fx.Fx.enabled());
+        }
+    }
+
+    /** {@link #maybeAutoFx}'s one-time staging: torches on the ground ahead, night, a standing smoke FX. */
+    private void stageAutoFx(java.util.List<String> opts) {
+        var world = Game.getWorld();
+        var player = Game.getPlayer();
+        if (world == null || player == null) return;
+        org.joml.Vector3f pos = player.getPosition();
+        org.joml.Vector3f front = new org.joml.Vector3f(player.getCamera().getFront().x, 0,
+                player.getCamera().getFront().z).normalize();
+        if (opts.contains("torches")) {
+            var torchBlock = com.stonebreak.blocks.torch.TorchBlock.block();
+            String ground = com.stonebreak.blocks.torch.TorchState.ground().toStateString();
+            int placed = 0;
+            for (int i = 0; i < 5; i++) {
+                float side = (i - 2) * 1.7f;
+                int x = (int) Math.floor(pos.x + front.x * 4.5f - front.z * side);
+                int z = (int) Math.floor(pos.z + front.z * 4.5f + front.x * side);
+                for (int y = (int) Math.floor(pos.y) + 3; y > pos.y - 6; y--) {
+                    var below = world.getBlockAt(x, y - 1, z);
+                    if (world.getBlockAt(x, y, z) == com.stonebreak.blocks.BlockType.AIR
+                            && below != null && below.isSolid()) {
+                        if (world.setBlockAt(x, y, z, torchBlock, true, ground)) placed++;
+                        // Survival worlds refuse a dev placement server-side; the flame FX itself still shows.
+                        com.stonebreak.fx.Fx.play("stonebreak:torch_fire", x + 0.5, y + 0.62, z + 0.5);
+                        break;
+                    }
+                }
+            }
+            double sx = pos.x + front.x * 6.5f, sz = pos.z + front.z * 6.5f;
+            var smoke = com.stonebreak.fx.Fx.play("stonebreak:furnace_smoke", sx, pos.y + 0.5, sz);
+            autoFxLookX = (float) (pos.x + front.x * 4.5f);
+            autoFxLookY = pos.y + 0.3f;
+            autoFxLookZ = (float) (pos.z + front.z * 4.5f);
+            System.out.println("[autofx] torches placed=" + placed + " smoke=" + (smoke != null));
+        }
+        if (opts.contains("night")) {
+            long day = Game.getTimeOfDay() != null ? Game.getTimeOfDay().getDay() : 0L;
+            long midnight = day * com.stonebreak.world.TimeOfDay.TICKS_PER_DAY + 18000L;
+            com.stonebreak.network.MultiplayerSession.requestServerTimeSet(midnight);
+            if (Game.getTimeOfDay() != null) Game.getTimeOfDay().setTicks(midnight);
+        }
     }
 
     private void aimCameraAt(float x, float y, float z) {

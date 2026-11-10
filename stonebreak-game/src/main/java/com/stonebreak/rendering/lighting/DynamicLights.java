@@ -46,6 +46,15 @@ public final class DynamicLights {
     private static final Vector3f[] positions = new Vector3f[PointLightGlsl.MAX_LIGHTS];
     /** Who carries each light: a remote player for their held torch, null otherwise. */
     private static final Entity[] holders = new Entity[PointLightGlsl.MAX_LIGHTS];
+    /**
+     * What each light is, for consumers that follow the same selection (ambient FX, #437): the placed block or,
+     * for a torch someone carries, the torch block; null for the local held torch (a view-model, not in the world).
+     */
+    private static final BlockType[] sourceBlocks = new BlockType[PointLightGlsl.MAX_LIGHTS];
+    /** Stable identity of each light across frames: a packed block position, or the carrying player. */
+    private static final long[] sourceKeys = new long[PointLightGlsl.MAX_LIGHTS];
+    /** Each light's flicker pulse this frame, {@code [0, 1]} ({@link LightProfile#pulse}). */
+    private static final float[] pulses = new float[PointLightGlsl.MAX_LIGHTS];
     private static final Vector3f scratch = new Vector3f();
     private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
@@ -105,6 +114,7 @@ public final class DynamicLights {
         count = 0;
         farCount = 0;
         Arrays.fill(holders, null);
+        Arrays.fill(sourceBlocks, null);
         shadowsEnabled = false;
         indirectEnabled = false;
         held = world != null && player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player);
@@ -152,10 +162,14 @@ public final class DynamicLights {
                 Vector3f out = near ? positions[count] : scratch;
                 LightProfile profile;
                 float elapsed;
+                BlockType sourceBlock;
+                long sourceKey;
                 if (nearest.holder(i) instanceof RemotePlayer rp) {
                     remoteTorchPosition(world, rp, out);
                     if (near) holders[count] = rp;
                     profile = TorchLight.PROFILE;
+                    sourceBlock = BlockType.TORCH_PLACED;
+                    sourceKey = com.stonebreak.fx.bindings.AmbientSources.holderKey(rp.getPlayerId());
                     // Each holder flickers on its own phase, as placed torches do.
                     elapsed = totalTime + (rp.getPlayerId() & 0xFF) / 256f * profile.period();
                 } else {
@@ -164,15 +178,22 @@ public final class DynamicLights {
                     if (light != null) {
                         out.set(light.x(), light.y(), light.z());
                         profile = light.source().profile();
+                        // Its chunk is unloaded: nothing there to start ambient FX on.
+                        sourceBlock = null;
                     } else {
-                        BlockLightSource source = BlockLightSource.of(world.getBlockAt(pos.x(), pos.y(), pos.z()));
+                        sourceBlock = world.getBlockAt(pos.x(), pos.y(), pos.z());
+                        BlockLightSource source = BlockLightSource.of(sourceBlock);
                         if (source == null) continue;
                         source.emitterPosition(world, pos, out);
                         profile = source.profile();
                     }
+                    sourceKey = com.stonebreak.fx.bindings.AmbientSources.blockKey(pos.x(), pos.y(), pos.z());
                     elapsed = totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, profile.period());
                 }
                 if (near) {
+                    // Ambient FX (#437) follow the near tier only.
+                    sourceBlocks[count] = sourceBlock;
+                    sourceKeys[count] = sourceKey;
                     addLight(profile, elapsed);
                 } else {
                     putLight(farPositionData, farColorData, out, profile, elapsed, 0f);
@@ -236,6 +257,7 @@ public final class DynamicLights {
 
     /** A near light at {@code positions[count]}, whose shadow slot is its index. */
     private static void addLight(LightProfile profile, float elapsed) {
+        pulses[count] = profile.pulse(elapsed);
         putLight(positionData, colorData, positions[count], profile, elapsed, count);
         count++;
     }
@@ -283,6 +305,21 @@ public final class DynamicLights {
      * local player's must not ({@link #heldTorchIndex}).
      */
     public static Entity holder(int index) { return holders[index]; }
+
+    /**
+     * The block light {@code index} comes from (a carried torch reports the torch block), or null for the local
+     * held torch. Ambient FX (#437) start their block's {@code ambient} bindings from this selection.
+     */
+    public static BlockType sourceBlock(int index) { return sourceBlocks[index]; }
+
+    /** Stable identity of light {@code index} across frames (see {@link #sourceBlock}). */
+    public static long sourceKey(int index) { return sourceKeys[index]; }
+
+    /**
+     * Light {@code index}'s flicker pulse this frame, {@code [0, 1]}: for a torch, where its ember is in the
+     * {@code flicker} clip's swell (same per-position phase the model renders with). Ambient FX follow it.
+     */
+    public static float pulse(int index) { return pulses[index]; }
 
     /** Called after the depth pass, before any receiver renders. */
     public static void enableShadows() { shadowsEnabled = true; }

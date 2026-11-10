@@ -72,6 +72,10 @@ public final class StonebreakPlugin implements OpenMasonPlugin {
         StonebreakResources resources = StonebreakResources.install(StonebreakResources.defaultSettingsFile());
         context.preferencePages().register(new StonebreakPreferencePage(resources));
         context.gameTargets().register(StonebreakGameTarget.create());
+        // Shipped FX: .omfx systems export (and deploy) as self-contained .sbfx (#435).
+        context.fxExporters().register(com.stonebreak.openmason.fx.SbfxExport.target());
+        // ...and the shipped ones are known to the SBO/SBE editors' FX bindings check and picker.
+        context.fxCatalogSources().register(com.stonebreak.openmason.fx.SbfxCatalog.source());
         // The stone screens' surfaces, symbols and ItemSlot (#384) for the UI editor and preview. The
         // engine also finds them as a service when the game module is on the boot layer; registering
         // here covers a plugin loaded in its own module layer (idempotent either way).

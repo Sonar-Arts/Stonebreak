@@ -27,6 +27,19 @@ class TorchLightTest {
     }
 
     @Test
+    void theFxPulseIsTheEmbersSwellNormalised() {
+        LightProfile p = TorchLight.PROFILE;
+        float d = TorchLight.CLIP_DURATION;
+        assertEquals(0f, p.pulse(0f), 1e-6f, "clip start: ember at rest");
+        assertEquals(1f, p.pulse(d * 0.5f), 1e-6f, "0.6 s: the ember's 1.08 swell key");
+        assertEquals(0f, p.pulse(d), 1e-4f, "clip end");
+        for (float t = 0f; t < 3f; t += 0.05f) {
+            assertEquals(p.floor() + (1f - p.floor()) * p.pulse(t), p.intensity(t), 1e-6f,
+                    "the light and the FX read the same pulse");
+        }
+    }
+
+    @Test
     void staysInASaneRange() {
         for (float t = 0f; t < 10f; t += 0.01f) {
             float i = TorchLight.intensity(t);

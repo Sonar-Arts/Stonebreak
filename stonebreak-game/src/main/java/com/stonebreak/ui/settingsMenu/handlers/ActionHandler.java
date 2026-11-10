@@ -61,6 +61,8 @@ public class ActionHandler {
             case SHADOW_QUALITY -> stateManager.getShadowQualityButton().toggle();
             case SHADOW_DISTANCE -> {} // Shadow distance handled by mouse/keyboard interaction
             case SMOOTH_LIGHTING -> toggleSmoothLighting();
+            case PARTICLES -> toggleParticles();
+            case PARTICLE_DENSITY -> {} // Particle density handled by mouse/keyboard interaction
             case LOD_ENABLED -> toggleLodEnabled();
             case LOD_QUALITY -> stateManager.getLodQualityButton().toggle();
             case VSYNC -> toggleVsync();
@@ -378,6 +380,16 @@ public class ActionHandler {
      */
     public void onShadowDistanceChange(Float newValue) {
         settings.setShadowDistance(Math.round(newValue));
+    }
+
+    /** Toggles particle FX; read live by the world's FX pass (switching off clears every effect). */
+    public void toggleParticles() {
+        settings.setParticlesEnabled(!settings.getParticlesEnabled());
+    }
+
+    /** Particle density slider (percent); read live, new FX start at it and ambient FX follow. */
+    public void onParticleDensityChange(Float percent) {
+        settings.setParticleDensity(Math.round(percent / 5f) * 5f / 100f);
     }
 
     /**

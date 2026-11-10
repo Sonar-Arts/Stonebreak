@@ -35,6 +35,11 @@ public final class SettingsConfig {
     public static final float MIN_SHADOW_DISTANCE = com.stonebreak.config.Settings.MIN_SHADOW_DISTANCE;
     public static final float MAX_SHADOW_DISTANCE = com.stonebreak.config.Settings.MAX_SHADOW_DISTANCE;
     public static final float SHADOW_DISTANCE_STEP = 16.0f;
+
+    // Particle density in percent (Settings stores 0.25..1).
+    public static final float MIN_PARTICLE_DENSITY = 25.0f;
+    public static final float MAX_PARTICLE_DENSITY = 100.0f;
+    public static final float PARTICLE_DENSITY_STEP = 25.0f;
     
     // ===== UI DIMENSIONS =====
     public static final float BUTTON_WIDTH = 400;

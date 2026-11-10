@@ -32,6 +32,8 @@ import com.stonebreak.rendering.gameWorld.clouds.CloudRenderer;
 import com.stonebreak.rendering.gameWorld.clouds.CloudsInFront;
 import com.stonebreak.rendering.gameWorld.weather.LightningRenderer;
 import com.stonebreak.rendering.gameWorld.weather.PrecipitationFog;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationBench;
+import com.stonebreak.rendering.gameWorld.weather.PrecipitationFx;
 import com.stonebreak.rendering.gameWorld.weather.PrecipitationRenderer;
 import com.stonebreak.rendering.gameWorld.weather.WeatherEffects;
 import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
@@ -78,6 +80,10 @@ public class WorldRenderer {
     private final ChunkFrustumCuller frustumCuller = new ChunkFrustumCuller();
     private final com.stonebreak.rendering.models.entities.FishingLineRenderer fishingLineRenderer;
     private final com.stonebreak.rendering.gameWorld.effects.WorldEffectsRenderer effectsRenderer;
+    /** Open Mason FX (Stonebreak#436): simulation, ambient FX and the particle draw around the water pass. */
+    private final com.stonebreak.rendering.gameWorld.particles.ParticlePass particlePass;
+    /** Near rain and snow as FX particles (the lanes keep the far ring); {@code -Dstonebreak.rain=lanes} = A/B. */
+    private final PrecipitationFx precipitationFx;
 
     // Reusable lists to avoid allocations during rendering
     private final List<Chunk> reusableSortedChunks = new ArrayList<>();
@@ -132,6 +138,13 @@ public class WorldRenderer {
         this.waterRenderer = new com.stonebreak.rendering.gameWorld.water.WaterRenderer();
         this.effectsRenderer = new com.stonebreak.rendering.gameWorld.effects.WorldEffectsRenderer(
                 shaderProgram, projectionMatrix, entityRenderer);
+        this.particlePass = new com.stonebreak.rendering.gameWorld.particles.ParticlePass(precipitationFog, cloudRenderer);
+        this.precipitationFx = new PrecipitationFx(particlePass);
+    }
+
+    /** The FX pass (F3 statistics). */
+    public com.stonebreak.rendering.gameWorld.particles.ParticlePass getParticlePass() {
+        return particlePass;
     }
     
     /**
@@ -203,6 +216,12 @@ public class WorldRenderer {
         // included) once; the world, water and entity shaders all read the same set.
         com.stonebreak.rendering.lighting.DynamicLights.update(
                 world, player, player.getCamera().getPosition(), totalTime, collectRemotePlayers());
+        PrecipitationBench bench = PrecipitationBench.get();
+        if (bench != null) bench.beginFrame();
+        // FX step once per frame; ambient FX (torch flames, furnace smoke) follow that light selection.
+        if (bench != null) bench.begin(PrecipitationBench.Section.FX_UPDATE);
+        particlePass.update(world, player, totalTime);
+        if (bench != null) bench.end(PrecipitationBench.Section.FX_UPDATE);
 
         // Get time of day system for lighting. The engine sky/cloud renderers are decoupled
         // from TimeOfDay, so resolve the values they need here (static fallback when absent).
@@ -307,6 +326,10 @@ public class WorldRenderer {
         // The Shade's night ground fog; underwater the murk replaces it too.
         groundFog.prepare(!cameraUnderwater, sky, world.terrain(), cameraPos,
                 projectionMatrix, player.getViewMatrix());
+        // Near rain and snow drops for the FX pass (drawn with the other particles, before the water).
+        if (bench != null) bench.begin(PrecipitationBench.Section.SPAWN);
+        precipitationFx.update(world, weather, cameraPos, totalTime, cameraUnderwater);
+        if (bench != null) bench.end(PrecipitationBench.Section.SPAWN);
 
         if (cameraUnderwater) {
             // Fog alone cannot hide the horizon, because it only tints pixels
@@ -489,6 +512,15 @@ public class WorldRenderer {
         // the nearest water surface's depth in the depth buffer, so later
         // passes (fire bolts, particles) are occluded by water in front of
         // them — physically correct compositing.
+        // FX beyond the water surface (under it, seen from above) draw before the water so it blends over
+        // them; the camera's side draws after it (drawFront below). Soft particles read a copy of the depth
+        // made here, which holds the opaque scene.
+        if (bench != null) bench.begin(PrecipitationBench.Section.FX_BEHIND);
+        particlePass.drawBehind(player, projectionMatrix, ambientLightLevel, cameraUnderwater,
+                fogColor, fogStart, fogEnd);
+        if (bench != null) bench.end(PrecipitationBench.Section.FX_BEHIND);
+        checkGLError("After particles behind water");
+
         waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
@@ -496,14 +528,22 @@ public class WorldRenderer {
                 cloudRenderer, precipitationFog, groundFog);
         checkGLError("After water pass");
 
+        if (bench != null) bench.begin(PrecipitationBench.Section.FX_FRONT);
+        particlePass.drawFront();
+        if (bench != null) bench.end(PrecipitationBench.Section.FX_FRONT);
+        checkGLError("After particles in front of water");
+
         if (!cameraUnderwater) {
             // Rain and snow fall below the clouds and in front of them. Before
             // glass and ice: those write depth, so rain drawn after them vanished
             // behind every window; drawn first, it shows through them, tinted by
             // them. (Rain in front of a pane takes the pane's faint tint too.)
             if (cloudRenderer.mapsReady()) {
+                if (bench != null) bench.begin(PrecipitationBench.Section.LANES);
                 precipitationRenderer.render(world, cloudRenderer, precipitationFog, projectionMatrix,
-                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel, weatherEffects.snow());
+                        player.getViewMatrix(), cameraPos, totalTime, ambientLightLevel, weatherEffects.snow(),
+                        !precipitationFx.active());
+                if (bench != null) bench.end(PrecipitationBench.Section.LANES);
             }
             checkGLError("After precipitation rendering");
         }
@@ -522,6 +562,12 @@ public class WorldRenderer {
 
         // Render player arm last to appear in front of entities
         renderPlayerArm(player);
+        if (bench != null) {
+            var gpu = particlePass.renderer().gpu();
+            bench.endFrame(precipitationFx.active() ? "particles" + (gpu != null ? "-gpu" : "-cpu") : "lanes",
+                    precipitationFx.spawnedLastFrame(),
+                    particlePass.runtime().liveParticles() + (gpu != null ? gpu.lastAlive() : 0));
+        }
     }
     
     /**
@@ -1144,6 +1190,7 @@ public class WorldRenderer {
         if (waterRenderer != null) {
             waterRenderer.cleanup();
         }
+        particlePass.close();
         if (lodRegionBatcher != null) {
             lodRegionBatcher.cleanup();
         }
