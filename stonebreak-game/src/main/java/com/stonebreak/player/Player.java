@@ -253,6 +253,8 @@ public class Player {
     public float getHealth() { return c.health.getHealth(); }
     public float getMaxHealth() { return c.health.getMaxHealth(); }
     public boolean isDead() { return c.health.isDead(); }
+    /** True when there is no health left to restore — food can't be eaten then. */
+    public boolean isFullHealth() { return getHealth() >= getMaxHealth(); }
     public int getHearts() { return c.health.getHearts(); }
     public void setHealth(float h) { c.health.setHealth(h); }
     public void damage(float amount) {

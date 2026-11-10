@@ -116,8 +116,8 @@ final class WorldMouseHandler {
             return;
         }
 
-        // Food consumption takes priority over block placement.
-        if (!held.isEmpty() && held.isFood()) {
+        // Food consumption takes priority over block placement; a full-health player can't eat.
+        if (!held.isEmpty() && held.isFood() && !player.isFullHealth()) {
             ItemType foodType = held.asItemType();
             if (foodType != null && foodType.getHealAmount() > 0) {
                 player.heal(foodType.getHealAmount());

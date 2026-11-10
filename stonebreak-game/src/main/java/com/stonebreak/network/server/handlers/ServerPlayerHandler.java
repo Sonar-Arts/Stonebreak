@@ -306,7 +306,8 @@ public final class ServerPlayerHandler {
      */
     public void handleConsumeHeld(ServerPlayer sp, ConsumeHeldC2S c) {
         sp.recordActionSeq(c.seq());
-        if (!sp.isDead() && sp.inventory().consumeHeldFood(c.itemId())) {
+        // Full health refuses the bite: nothing to restore, so the food isn't spent.
+        if (!sp.isDead() && !sp.vitals().isFullHealth() && sp.inventory().consumeHeldFood(c.itemId())) {
             // The food heals the server-owned health (#343); the client's heal was a prediction.
             com.stonebreak.items.ItemType food = com.stonebreak.items.ItemType.getById(c.itemId());
             if (food != null) {

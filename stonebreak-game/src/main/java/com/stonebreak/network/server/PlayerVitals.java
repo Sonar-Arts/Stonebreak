@@ -65,6 +65,7 @@ public final class PlayerVitals {
 
     public float health() { return health; }
     public float maxHealth() { return maxHealth; }
+    public boolean isFullHealth() { return health >= maxHealth; }
     public byte lastCause() { return lastCause; }
 
     /** Sets the health outright (a loaded save, a seeded character), clamped to the maximum. */

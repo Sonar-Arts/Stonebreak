@@ -105,6 +105,7 @@ class ConsumeHeldFoodTest {
     void handlerAnswersWithAnAcknowledgingSync() {
         ServerPlayer sp = new ServerPlayer(mock(ServerConnection.class), 7);
         sp.inventory().setSlot(0, new ItemStack(ItemType.BANANA, 2));
+        sp.vitals().damage(10f, com.stonebreak.network.packet.player.PlayerHealthS2C.CAUSE_MOB, 0L);
 
         new ServerPlayerHandler().handleConsumeHeld(sp, new ConsumeHeldC2S(BANANA, 41));
 
@@ -113,6 +114,21 @@ class ConsumeHeldFoodTest {
         verify(sp.connection()).send(sent.capture(), anyBoolean());
         InventorySyncS2C sync = (InventorySyncS2C) sent.getValue();
         assertEquals(41, sync.ack(), "the reply acknowledges the eat, so it may replace the prediction");
+    }
+
+    @Test
+    void fullHealthRefusesTheBiteButStillAcknowledgesIt() {
+        ServerPlayer sp = new ServerPlayer(mock(ServerConnection.class), 7);
+        sp.inventory().setSlot(0, new ItemStack(ItemType.BANANA, 2));
+        float full = sp.health();
+
+        new ServerPlayerHandler().handleConsumeHeld(sp, new ConsumeHeldC2S(BANANA, 42));
+
+        assertEquals(2, sp.inventory().slot(0).getCount(), "nothing to restore, so the food isn't spent");
+        assertEquals(full, sp.health(), 1e-4f);
+        ArgumentCaptor<Packet> sent = ArgumentCaptor.forClass(Packet.class);
+        verify(sp.connection()).send(sent.capture(), anyBoolean());
+        assertEquals(42, ((InventorySyncS2C) sent.getValue()).ack(), "a refusal still corrects the mirror");
     }
 
     private static void put(Inventory client, ServerInventory server, int slot, ItemStack stack) {
