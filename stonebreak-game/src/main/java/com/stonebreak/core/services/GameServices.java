@@ -3,7 +3,7 @@ package com.stonebreak.core.services;
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.audio.MusicManager;
 import com.stonebreak.audio.PlayerSounds;
-import com.stonebreak.audio.emitters.SoundEmitterManager;
+import com.openmason.engine.audio.emitters.SoundEmitterManager;
 import com.stonebreak.crafting.CraftingManager;
 import com.stonebreak.crafting.SmeltingManager;
 import com.stonebreak.input.InputHandler;

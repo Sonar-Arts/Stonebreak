@@ -163,19 +163,6 @@
                 <version>${skija.version}</version>
             </dependency>
 
-            <!-- LWJGL OpenAL for audio -->
-            <dependency>
-                <groupId>org.lwjgl</groupId>
-                <artifactId>lwjgl-openal</artifactId>
-                <version>${lwjgl.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.lwjgl</groupId>
-                <artifactId>lwjgl-openal</artifactId>
-                <version>${lwjgl.version}</version>
-                <classifier>${lwjgl.natives}</classifier>
-                <scope>runtime</scope>
-            </dependency>
             
             <!-- Java OpenGL Math Library -->
             <dependency>

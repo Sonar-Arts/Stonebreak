@@ -78,6 +78,11 @@ public final class GameLoop {
         com.stonebreak.player.Player listener = Game.getPlayer();
         weatherAudio.update(hearWeather ? Game.getWeather() : null, Game.getWorld(),
                 listener != null ? listener.getCamera().getPosition() : new org.joml.Vector3f(), deltaTime);
+        // Native mixer housekeeping: releases the memory of sounds freed since the last frame.
+        com.openmason.engine.audio.SoundSystem sounds = Game.getSoundSystem();
+        if (sounds != null) {
+            sounds.update();
+        }
 
         if (!routeStateUpdate(deltaTime)) {
             return;
@@ -236,8 +241,8 @@ public final class GameLoop {
             chatSystem.update(deltaTime);
         }
 
-        com.stonebreak.audio.emitters.SoundEmitterManager soundEmitterManager = Game.getSoundEmitterManager();
-        if (soundEmitterManager != null) {
+        com.openmason.engine.audio.emitters.SoundEmitterManager soundEmitterManager = Game.getSoundEmitterManager();
+        if (soundEmitterManager != null && Game.getWorld() != null) { // emitters only sound in a world
             soundEmitterManager.update(deltaTime);
         }
 

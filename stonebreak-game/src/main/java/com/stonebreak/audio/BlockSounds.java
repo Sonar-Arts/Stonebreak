@@ -1,6 +1,7 @@
 package com.stonebreak.audio;
 
-import com.openmason.engine.audio.SoundSystem;
+import com.openmason.engine.audio.SoundEventCache;
+import com.openmason.engine.audio.SoundEvents;
 import com.openmason.engine.format.sbo.SBOParseResult;
 import com.openmason.engine.format.sound.SoundData;
 import com.stonebreak.blocks.BlockType;
@@ -8,9 +9,6 @@ import com.stonebreak.core.Game;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import org.joml.Vector3f;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Data-driven block sound playback. Every block↔sound association lives in
@@ -25,24 +23,20 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #playEventAt(BlockType, String, float, float, float, float)} for those.
  *
  * <p>Resolution is lazy and cached per block type: the first trigger for a
- * block registers its samples with the {@link SoundSystem} (deduped across
- * blocks that share a sample — see {@link ResolvedSoundEvents}).
+ * block loads its samples into the engine sound system (deduped across blocks
+ * that share a sample — see {@link SoundEvents}). Safe from any thread: the
+ * native mixer queues plays, so nothing is handed to the main thread.
  */
 public final class BlockSounds {
 
-    private static final Map<BlockType, ResolvedSoundEvents> CACHE = new ConcurrentHashMap<>();
+    private static final SoundEventCache<BlockType> CACHE = new SoundEventCache<>(BlockSounds::resolve);
 
     private BlockSounds() {
     }
 
     /** Footstep for the local player: 2D, listener-relative. */
     public static void playStepLocal(BlockType block, float volumeScale) {
-        MainThreadAudio.run(() -> {
-            ResolvedSoundEvents.Entry entry = pick(block, SoundData.EVENT_STEP);
-            SoundSystem soundSystem = Game.getSoundSystem();
-            if (entry == null || soundSystem == null) return;
-            soundSystem.playSound(entry.soundKey(), entry.volume() * volumeScale, entry.pitch());
-        });
+        eventsFor(block).play2D(Game.getSoundSystem(), SoundData.EVENT_STEP, volumeScale);
     }
 
     /** Footstep for a mob: positional 3D at the mob's feet. */
@@ -65,47 +59,28 @@ public final class BlockSounds {
         playEventAt(block, SoundData.EVENT_PLACE, x + 0.5f, y + 0.5f, z + 0.5f, 1f);
     }
 
-    /**
-     * Any (possibly custom) event as positional 3D audio; unbound events no-op. Runs on the main
-     * thread whichever thread asks ({@link MainThreadAudio}) — resolving an event registers its
-     * samples with OpenAL, so the lookup is handed over too, not just the play.
-     */
+    /** Any (possibly custom) event as positional 3D audio; unbound events no-op. */
     public static void playEventAt(BlockType block, String event,
                                    float x, float y, float z, float volumeScale) {
-        MainThreadAudio.run(() -> {
-            ResolvedSoundEvents.Entry entry = pick(block, event);
-            SoundSystem soundSystem = Game.getSoundSystem();
-            if (entry == null || soundSystem == null) return;
-            soundSystem.playSoundAt3D(entry.soundKey(), entry.volume() * volumeScale,
-                    entry.pitch(), x, y, z);
-        });
+        eventsFor(block).playAt(Game.getSoundSystem(), event, x, y, z, volumeScale);
     }
 
     /** Drop all cached resolutions (e.g. after the SBO bridge re-initializes). */
     public static void invalidate() {
-        CACHE.clear();
+        CACHE.invalidate();
     }
 
-    private static ResolvedSoundEvents.Entry pick(BlockType block, String event) {
-        if (block == null || block == BlockType.AIR) return null;
-        return eventsFor(block).pick(event);
+    private static SoundEvents eventsFor(BlockType block) {
+        return block == null || block == BlockType.AIR ? SoundEvents.EMPTY : CACHE.get(block);
     }
 
-    private static ResolvedSoundEvents eventsFor(BlockType block) {
-        ResolvedSoundEvents cached = CACHE.get(block);
-        if (cached != null) return cached;
-
+    /** Null while the SBO bridge or audio is not up yet, so the miss is not cached. */
+    private static SoundEvents resolve(BlockType block) {
         Renderer renderer = Game.getRenderer();
         SBOBlockBridge bridge = renderer != null ? renderer.getSBOBlockBridge() : null;
         SBOParseResult sbo = bridge != null ? bridge.getSBODefinition(block) : null;
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (sbo == null || soundSystem == null) {
-            // The bridge/audio may simply not be ready yet — don't cache the miss.
-            return ResolvedSoundEvents.EMPTY;
-        }
-        ResolvedSoundEvents resolved = ResolvedSoundEvents.resolve(
-                soundSystem, sbo.getObjectId(), sbo.sounds(), sbo::soundBytesFor);
-        CACHE.put(block, resolved);
-        return resolved;
+        if (sbo == null || Game.getSoundSystem() == null) return null;
+        return SoundEvents.resolve(Game.getSoundSystem(), sbo.getObjectId(), sbo.sounds(), sbo::soundBytesFor,
+                GameSoundLoader.RESOURCES);
     }
 }

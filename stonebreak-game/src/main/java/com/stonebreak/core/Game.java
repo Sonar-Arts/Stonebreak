@@ -116,7 +116,7 @@ public class Game {
         }
     }
 
-    /** True on the thread that runs the game loop (and owns GL, OpenAL and the FX runtime). */
+    /** True on the thread that runs the game loop (and owns GL and the FX runtime). */
     public boolean isMainThread() {
         return Thread.currentThread() == mainThread;
     }
@@ -137,8 +137,7 @@ public class Game {
         services.setMouseCaptureManager(new MouseCaptureManager(window));
 
         // Audio comes up BEFORE the screens: the startup intro registers its sonar sound from
-        // its constructor, and OpenAL calls made before the context exists abort with
-        // "No ALCapabilities instance has been set".
+        // its constructor, and a sound loaded before the engine starts is skipped (silent).
         SoundSystem soundSystem = SoundSystem.getInstance();
         services.setSoundSystem(soundSystem);
         com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(soundSystem);
@@ -167,7 +166,7 @@ public class Game {
                 new float[]{1.0f, 0.35f, 0.35f, 1.0f});
         }
 
-        services.setSoundEmitterManager(new com.stonebreak.audio.emitters.SoundEmitterManager());
+        services.setSoundEmitterManager(new com.openmason.engine.audio.emitters.SoundEmitterManager());
 
         services.setMemoryLeakDetector(com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection());
         services.setDebugOverlay(com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay());
@@ -649,7 +648,7 @@ public class Game {
     /**
      * Gets the sound emitter manager.
      */
-    public static com.stonebreak.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
+    public static com.openmason.engine.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
         return getInstance().services.soundEmitterManager();
     }
 

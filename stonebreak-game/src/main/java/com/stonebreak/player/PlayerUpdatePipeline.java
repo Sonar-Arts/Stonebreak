@@ -64,6 +64,7 @@ final class PlayerUpdatePipeline {
         } else {
             c.swimming.updateWaterState(); // boarded from a swim: the eyes are dry now
             Game.getSoundSystem().setEnvironmentGain(1.0f);
+            Game.getSoundSystem().setEnvironmentLowPass(0f);
         }
 
         Vector3f p = state.getPosition();
@@ -118,8 +119,9 @@ final class PlayerUpdatePipeline {
     /** Water state and effects, gravity, integration with collision, ground check and damping. */
     private void updateBodyPhysics(float dt) {
         c.swimming.updateWaterState();
-        Game.getSoundSystem().setEnvironmentGain(
-                c.swimming.isInWater() ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
+        boolean underwater = c.swimming.isInWater();
+        Game.getSoundSystem().setEnvironmentGain(underwater ? PlayerConstants.UNDERWATER_AUDIO_DUCK_GAIN : 1.0f);
+        Game.getSoundSystem().setEnvironmentLowPass(underwater ? PlayerConstants.UNDERWATER_AUDIO_LOWPASS_HZ : 0f);
         waterEffects.update(dt, state, c.swimming.isInWater());
         c.swimming.applyAntiFloatingPreIntegration(c.flight.isFlying(),
                 c.jumpHandler.getLastNormalJumpTime(), c.jumpHandler.getNormalJumpGracePeriod());

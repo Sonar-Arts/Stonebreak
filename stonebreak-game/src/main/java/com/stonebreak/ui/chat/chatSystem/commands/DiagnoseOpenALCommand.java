@@ -6,7 +6,8 @@ import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
 import com.stonebreak.ui.chat.chatSystem.commands.util.CommandValidator;
 
 /**
- * Command to diagnose OpenAL 3D audio
+ * Prints the native audio engine's state (device, voices, loaded sounds). Keeps its old
+ * {@code diagnose_openal} name and description: the chat fidelity gate renders both (frozen captures).
  */
 public class DiagnoseOpenALCommand implements ChatCommand {
 
@@ -16,9 +17,9 @@ public class DiagnoseOpenALCommand implements ChatCommand {
             return;
         }
 
-        messageManager.addMessage("Running OpenAL 3D audio diagnosis...", ChatColors.CYAN);
+        messageManager.addMessage("Running audio engine diagnosis...", ChatColors.CYAN);
         messageManager.addMessage("Check console for detailed information!", ChatColors.YELLOW);
-        Game.getSoundSystem().diagnoseOpenAL3D();
+        Game.getSoundSystem().testBasicFunctionality();
     }
 
     @Override

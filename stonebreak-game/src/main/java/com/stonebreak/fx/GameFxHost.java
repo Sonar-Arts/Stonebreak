@@ -4,7 +4,8 @@ import com.openmason.engine.audio.SoundSystem;
 import com.openmason.engine.rendering.particles.FxHost;
 import com.openmason.engine.rendering.particles.FxInstance;
 import com.openmason.engine.rendering.particles.FxSystem;
-import com.stonebreak.audio.ResolvedSoundEvents;
+import com.openmason.engine.audio.SoundEvents;
+import com.stonebreak.audio.GameSoundLoader;
 import com.stonebreak.core.Game;
 import com.stonebreak.fx.sbfx.SbfxDocument;
 
@@ -14,16 +15,16 @@ import java.util.function.Supplier;
 
 /**
  * The game side of FX systems: their sound cues play the samples embedded in their SBFX ({@code format.sound}
- * definitions + {@code sounds/} files), registered through {@link ResolvedSoundEvents} exactly like SBO/SBE
+ * definitions + {@code sounds/} files), registered through {@link SoundEvents} exactly like SBO/SBE
  * sounds — content-keyed, so a sample shared with a block loads once. Forwarded FX events have no game logic yet.
  *
- * <p>Runs on the thread that updates the {@link FxRuntime} (the main thread, which owns OpenAL).
+ * <p>Runs on the thread that updates the {@link FxRuntime} (the main thread).
  */
 public final class GameFxHost implements FxHost {
 
     private final Supplier<FxLibrary> library;
     private final Supplier<SoundSystem> sounds;
-    private final Map<FxSystem, ResolvedSoundEvents> resolved = new IdentityHashMap<>();
+    private final Map<FxSystem, SoundEvents> resolved = new IdentityHashMap<>();
 
     public GameFxHost(Supplier<FxLibrary> library) {
         this(library, Game::getSoundSystem);
@@ -43,20 +44,16 @@ public final class GameFxHost implements FxHost {
         if (soundSystem == null) {
             return;
         }
-        ResolvedSoundEvents.Entry entry = eventsFor(instance.system(), soundSystem).pick(sound);
-        if (entry != null) {
-            soundSystem.playSoundAt3D(entry.soundKey(), entry.volume() * volume, entry.pitch(),
-                    (float) x, (float) y, (float) z);
-        }
+        eventsFor(instance.system(), soundSystem).playAt(soundSystem, sound, (float) x, (float) y, (float) z, volume);
     }
 
-    private ResolvedSoundEvents eventsFor(FxSystem system, SoundSystem soundSystem) {
-        ResolvedSoundEvents events = resolved.get(system);
+    private SoundEvents eventsFor(FxSystem system, SoundSystem soundSystem) {
+        SoundEvents events = resolved.get(system);
         if (events == null) {
             SbfxDocument doc = library.get().documentOf(system);
             String owner = doc != null ? doc.objectId() : system.name();
-            events = ResolvedSoundEvents.resolve(soundSystem, owner, system.sounds(),
-                    doc != null ? doc.fx()::soundFile : path -> null);
+            events = SoundEvents.resolve(soundSystem, owner, system.sounds(),
+                    doc != null ? doc.fx()::soundFile : path -> null, GameSoundLoader.RESOURCES);
             resolved.put(system, events);
         }
         return events;

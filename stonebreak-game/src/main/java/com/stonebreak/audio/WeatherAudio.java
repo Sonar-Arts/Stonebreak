@@ -1,5 +1,6 @@
 package com.stonebreak.audio;
 
+import com.openmason.engine.audio.DelayedSoundQueue;
 import com.openmason.engine.audio.SoundSystem;
 import com.stonebreak.world.World;
 import com.stonebreak.world.weather.ClientWeather;
@@ -37,8 +38,6 @@ public final class WeatherAudio {
     /** Below this the loop is silent rather than fading forever. */
     private static final float SILENT = 1e-3f;
 
-    /** Speed of sound, blocks per second: how late thunder follows its flash. */
-    private static final double SOUND_SPEED = 343.0;
     /** Thunder is heard this far; beyond it the flash is silent. */
     private static final double THUNDER_RANGE = 1500.0;
     /** Distance at which thunder's volume has halved. */
@@ -46,9 +45,8 @@ public final class WeatherAudio {
     /** Claps arriving closer together than this are heard as one, the louder. */
     private static final double THUNDER_MERGE_SECONDS = 0.4;
 
-    private record Thunder(double atSeconds, String sound, float volume, float pitch) {}
-
-    private final java.util.List<Thunder> pendingThunder = new java.util.ArrayList<>();
+    /** Thunder on its way: as late after each flash as sound takes to travel. */
+    private final DelayedSoundQueue pendingThunder = new DelayedSoundQueue(THUNDER_MERGE_SECONDS);
     private double lastSeconds = Double.NaN;
     private float level;
 
@@ -119,29 +117,12 @@ public final class WeatherAudio {
                 float volume = (float) (1.0 / (1.0 + d / THUNDER_HALF_DISTANCE));
                 // Far thunder rumbles lower.
                 float pitch = (float) (1.0 - 0.25 * Math.min(1.0, d / THUNDER_RANGE));
-                queue(new Thunder(strike.seconds() + d / SOUND_SPEED,
-                        THUNDER[(int) Math.floorMod(strike.seed(), (long) THUNDER.length)], volume, pitch));
+                pendingThunder.schedule(DelayedSoundQueue.arrival(strike.seconds(), d),
+                        THUNDER[(int) Math.floorMod(strike.seed(), (long) THUNDER.length)], volume, pitch);
             }
         }
         lastSeconds = now;
-        for (var it = pendingThunder.iterator(); it.hasNext(); ) {
-            Thunder t = it.next();
-            if (t.atSeconds() <= now) {
-                SoundSystem.getInstance().playAmbient(t.sound(), t.volume(), t.pitch());
-                it.remove();
-            }
-        }
+        pendingThunder.playDue(now, SoundSystem.getInstance());
     }
 
-    /** Adds {@code t}, or folds it into a clap already due within {@link #THUNDER_MERGE_SECONDS}. */
-    private void queue(Thunder t) {
-        for (int i = 0; i < pendingThunder.size(); i++) {
-            Thunder other = pendingThunder.get(i);
-            if (Math.abs(other.atSeconds() - t.atSeconds()) < THUNDER_MERGE_SECONDS) {
-                if (t.volume() > other.volume()) pendingThunder.set(i, t);
-                return;
-            }
-        }
-        pendingThunder.add(t);
-    }
 }

@@ -70,8 +70,8 @@ public final class GameScreens {
      * Builds the screens that exist for the whole run.
      *
      * <p>Call this only once the sound system is initialized: {@link SonarArtsIntroScreen} registers
-     * its sonar sample from its constructor, and an OpenAL call made before the context exists
-     * aborts the process with "No ALCapabilities instance has been set".</p>
+     * its sonar sample from its constructor, and a sample loaded before the audio engine starts is
+     * skipped, leaving the intro silent.</p>
      */
     public void createShellScreens(Renderer renderer) {
         var skija = renderer.getSkijaBackend();

@@ -1,6 +1,7 @@
 package com.stonebreak.audio;
 
-import com.openmason.engine.audio.SoundSystem;
+import com.openmason.engine.audio.SoundEventCache;
+import com.openmason.engine.audio.SoundEvents;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
@@ -8,9 +9,6 @@ import com.openmason.engine.entity.sbe.SbeEntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.World;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Data-driven entity sound playback from an SBE's {@code sounds[]} section
@@ -30,7 +28,7 @@ public final class EntitySounds {
     /** Standard entity event: idle/ambient vocalization. */
     public static final String EVENT_AMBIENT = "ambient";
 
-    private static final Map<String, ResolvedSoundEvents> CACHE = new ConcurrentHashMap<>();
+    private static final SoundEventCache<String> CACHE = new SoundEventCache<>(EntitySounds::resolve);
 
     private EntitySounds() {
     }
@@ -61,8 +59,7 @@ public final class EntitySounds {
 
     /**
      * Plays {@code event} from the entity's SBE at the entity's position
-     * (positional 3D). Unbound events and non-SBE entities no-op. Runs on the main thread
-     * whichever thread asks ({@link MainThreadAudio}), from where the entity stood when asked.
+     * (positional 3D). Unbound events and non-SBE entities no-op. Safe from any thread.
      */
     public static void playAt(Entity entity, String event) {
         if (entity == null) return;
@@ -77,34 +74,19 @@ public final class EntitySounds {
      */
     public static void playAt(EntityType type, String event, float x, float y, float z) {
         if (type == null) return;
-        MainThreadAudio.run(() -> {
-            ResolvedSoundEvents.Entry entry = eventsFor(type).pick(event);
-            SoundSystem soundSystem = Game.getSoundSystem();
-            if (entry == null || soundSystem == null) return;
-            soundSystem.playSoundAt3D(entry.soundKey(), entry.volume(), entry.pitch(), x, y, z);
-        });
+        CACHE.get(type.getSbeObjectId()).playAt(Game.getSoundSystem(), event, x, y, z, 1f);
     }
 
     /** Drop all cached resolutions (e.g. after the SBE registry reloads). */
     public static void invalidate() {
-        CACHE.clear();
+        CACHE.invalidate();
     }
 
-    private static ResolvedSoundEvents eventsFor(EntityType type) {
-        String objectId = type.getSbeObjectId();
-        if (objectId == null) return ResolvedSoundEvents.EMPTY;
-
-        ResolvedSoundEvents cached = CACHE.get(objectId);
-        if (cached != null) return cached;
-
+    /** Null while the SBE registry or audio is not up yet, so the miss is not cached. */
+    private static SoundEvents resolve(String objectId) {
         SbeEntityAsset asset = SbeEntityRegistry.get(objectId);
-        SoundSystem soundSystem = Game.getSoundSystem();
-        if (asset == null || soundSystem == null) {
-            return ResolvedSoundEvents.EMPTY; // registry/audio not ready — don't cache
-        }
-        ResolvedSoundEvents resolved = ResolvedSoundEvents.resolve(
-                soundSystem, objectId, asset.sounds(), asset::soundBytesFor);
-        CACHE.put(objectId, resolved);
-        return resolved;
+        if (asset == null || Game.getSoundSystem() == null) return null;
+        return SoundEvents.resolve(Game.getSoundSystem(), objectId, asset.sounds(), asset::soundBytesFor,
+                GameSoundLoader.RESOURCES);
     }
 }

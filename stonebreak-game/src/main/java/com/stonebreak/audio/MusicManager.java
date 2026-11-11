@@ -1,69 +1,57 @@
 package com.stonebreak.audio;
 
+import com.openmason.engine.audio.MusicDirector;
+import com.openmason.engine.audio.MusicDirector.Track;
 import com.openmason.engine.audio.SoundSystem;
 
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
- * Plays background music from small fixed playlists, one per {@link Scene}: the menu playlist while a
- * menu screen is active (main menu, world select/creation, multiplayer menus, settings) and the
- * battle playlist while a Focus battle is running. Within a scene it advances to the next track
- * whenever the current one finishes (a one-track playlist therefore loops). Changing scene stops the
- * old track at once; coming back to a scene resumes its playlist from the NEXT track, as the menu
- * music always has; {@link Scene#NONE}
- * is silence (ordinary gameplay).
+ * Stonebreak's background music: the menu playlist while a menu screen is active (main menu, world
+ * select/creation, multiplayer menus, settings) and the battle playlist while a Focus battle runs;
+ * {@link Scene#NONE} is silence (ordinary gameplay). Playlist rules — advance on finish, a one-track
+ * playlist loops, coming back to a scene resumes from its NEXT track — are the engine's
+ * {@link MusicDirector}; this class holds the playlists.
  *
- * <p>Which scene is active is the caller's responsibility to classify, not this class's — see
- * {@code GameLoop.musicScene()}. Tracks are large (~30MB+ .wav files under {@code /songs/}) so each
- * scene's tracks are decoded lazily on its first activation rather than eagerly at startup alongside
- * the tiny SFX in {@code GameBootstrap.configureSoundSystem}.
+ * <p>Which scene is active is the caller's to classify — see {@code GameLoop.musicScene()}. Tracks
+ * are Ogg Vorbis under {@code /songs/}, streamed while they play, and loaded on their scene's first
+ * activation (or {@link #preload}).
  */
 public final class MusicManager {
 
     /** What kind of moment the game is in, as far as music is concerned. */
     public enum Scene { NONE, MENU, BATTLE }
 
-    private record Track(String name, String resourcePath) {
-    }
-
     private static final List<Track> MENU_PLAYLIST = List.of(
-            new Track("music_venusian_drift", "/songs/menu music/Venusian Drift.wav"),
-            new Track("music_whispering_woods", "/songs/menu music/Whispering Woods (Lofi Lullaby).wav")
+            new Track("music_venusian_drift", "/songs/menu music/Venusian Drift.ogg"),
+            new Track("music_whispering_woods", "/songs/menu music/Whispering Woods (Lofi Lullaby).ogg")
     );
 
-    // "No More Weakness.wav" remains bundled for future use.
+    // "No More Weakness.ogg" remains bundled for future use.
     private static final List<Track> BATTLE_PLAYLIST = List.of(
-            new Track("music_the_deadly_dance", "/songs/battle music/The Deadly Dance.wav")
+            new Track("music_the_deadly_dance", "/songs/battle music/The Deadly Dance.ogg")
     );
 
-    private final SoundSystem soundSystem;
-    private final Set<Scene> loadedScenes = EnumSet.noneOf(Scene.class);
-
-    private boolean enabled;
-    private Scene playingScene = Scene.NONE;
-    /** Last track played per scene, so returning to a scene moves on to its NEXT track. */
-    private final java.util.EnumMap<Scene, Integer> lastTrack = new java.util.EnumMap<>(Scene.class);
+    private final MusicDirector<Scene> director;
 
     public MusicManager(SoundSystem soundSystem) {
-        this.soundSystem = soundSystem;
+        this.director = new MusicDirector<>(soundSystem,
+                Map.of(Scene.MENU, MENU_PLAYLIST, Scene.BATTLE, BATTLE_PLAYLIST),
+                GameSoundLoader.MUSIC);
     }
 
     public boolean isEnabled() {
-        return enabled;
+        return director.isEnabled();
     }
 
-    /**
-     * Toggles the setting only — whether a track is actually audible is decided by
-     * {@link #update(float, Scene)}'s scene on the next tick.
-     */
+    /** Toggles the setting only; {@link #update(float, Scene)} applies it on the next tick. */
     public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
+        director.setEnabled(enabled);
     }
 
     public void setVolume(float volume) {
-        soundSystem.setMusicVolume(volume);
+        director.setVolume(volume);
     }
 
     /**
@@ -72,50 +60,11 @@ public final class MusicManager {
      * change of scene switches playlist immediately.
      */
     public void update(float deltaTime, Scene scene) {
-        Scene wanted = enabled && scene != null ? scene : Scene.NONE;
-        if (wanted != playingScene) {
-            if (playingScene != Scene.NONE) {
-                soundSystem.stopMusic();
-            }
-            playingScene = wanted;
-        }
-        if (wanted == Scene.NONE) {
-            return;
-        }
-        ensureTracksLoaded(wanted);
-        if (!soundSystem.isMusicPlaying()) {
-            playTrack(wanted, nextTrackIndex(wanted));
-        }
+        director.update(scene == Scene.NONE ? null : scene);
     }
 
-    /**
-     * Decodes a scene's tracks now instead of on its first activation, so the (large, synchronous)
-     * decode can be paid at a moment of the caller's choosing rather than as a hitch when the scene
-     * starts. Idempotent.
-     */
+    /** Loads a scene's tracks ahead of its first activation. Idempotent. */
     public void preload(Scene scene) {
-        if (scene != null && scene != Scene.NONE) {
-            ensureTracksLoaded(scene);
-        }
-    }
-
-    private static List<Track> playlist(Scene scene) {
-        return scene == Scene.BATTLE ? BATTLE_PLAYLIST : MENU_PLAYLIST;
-    }
-
-    private void ensureTracksLoaded(Scene scene) {
-        if (!loadedScenes.add(scene)) return;
-        for (Track track : playlist(scene)) {
-            GameSoundLoader.loadMusic(soundSystem, track.name(), track.resourcePath());
-        }
-    }
-
-    private int nextTrackIndex(Scene scene) {
-        return (lastTrack.getOrDefault(scene, -1) + 1) % playlist(scene).size();
-    }
-
-    private void playTrack(Scene scene, int index) {
-        lastTrack.put(scene, index);
-        soundSystem.playMusic(playlist(scene).get(index).name());
+        if (scene != null && scene != Scene.NONE) director.preload(scene);
     }
 }

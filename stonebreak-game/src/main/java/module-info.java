@@ -9,8 +9,7 @@ module stonebreak.game {
     requires org.lwjgl.opengl;
     requires org.lwjgl.glfw;
     requires org.lwjgl.stb;
-    // OpenAL is now used by the engine audio subsystem (com.openmason.engine.audio);
-    // the game reaches it through openmason.engine.core, so no direct requires is needed.
+    // Audio is the engine's native Cenda mixer (com.openmason.engine.audio); no OpenAL.
 
     // Skija (Skia bindings). Maven coords: io.github.humbleui:skija-windows-x64,
     // which pulls skija-shared (Java classes) and types (Point/Rect/RRect) transitively.

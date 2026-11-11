@@ -24,7 +24,7 @@ public class SpawnSoundEmitCommand implements ChatCommand {
 
         var emitterManager = Game.getSoundEmitterManager();
         if (emitterManager != null) {
-            emitterManager.spawnBlockPickupEmitter(spawnPos);
+            emitterManager.addEmitter(new com.stonebreak.audio.emitters.types.BlockPickupSoundEmitter(spawnPos));
             messageManager.addMessage(
                 String.format("Sound emitter spawned at (%.1f, %.1f, %.1f)",
                     spawnPos.x, spawnPos.y, spawnPos.z),
