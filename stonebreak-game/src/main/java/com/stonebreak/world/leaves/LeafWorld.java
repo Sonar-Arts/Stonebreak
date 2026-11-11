@@ -27,6 +27,16 @@ public interface LeafWorld {
     void setBlock(int x, int y, int z, BlockType type);
 
     /**
+     * Whether the leaf at these coords was placed by a player
+     * ({@link com.stonebreak.blocks.leaves.LeafState#PLACED}). Such a leaf never
+     * decays. It still carries support through itself like any leaf, but it is
+     * not an anchor: only logs hold a canopy up.
+     */
+    default boolean isPersistent(int x, int y, int z) {
+        return false;
+    }
+
+    /**
      * Exclusive upper Y bound worth scanning for foliage in a column, for the
      * chunk-load rescan. Everything above the tallest tree a column can hold is
      * open sky, and reading it back block by block costs the loading thread real

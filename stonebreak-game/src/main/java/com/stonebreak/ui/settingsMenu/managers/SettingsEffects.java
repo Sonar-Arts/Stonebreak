@@ -59,6 +59,15 @@ public final class SettingsEffects {
         rebuildLoadedChunks("leaf transparency");
     }
 
+    /**
+     * Neighbour-driven shapes (rounded leaves) are baked into chunk meshes, so those
+     * are rebuilt. The crack overlay reads the setting every frame. Distant LOD
+     * canopies stay boxes: LOD quads can't hold a sub-half-block bevel.
+     */
+    public static void connectedShapes() {
+        rebuildLoadedChunks("connected shapes");
+    }
+
     /** Smooth lighting is baked into meshes: remesh so the change is visible at once. */
     public static void smoothLighting() {
         rebuildLoadedChunks("smooth lighting");

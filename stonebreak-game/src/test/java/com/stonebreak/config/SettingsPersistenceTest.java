@@ -38,6 +38,7 @@ class SettingsPersistenceTest {
         s.setCrosshairColor(0.1f, 0.2f, 0.3f);
         s.setCrosshairOutline(false);
         s.setLeafTransparency(false);
+        s.setConnectedShapes(false);
         s.setWaterShaderEnabled(false);
         s.setCloudsEnabled(false);
         s.setGodRaysEnabled(false);
@@ -83,6 +84,7 @@ class SettingsPersistenceTest {
         assertEquals(expected.getCrosshairColorB(), actual.getCrosshairColorB(), EPS);
         assertEquals(expected.getCrosshairOutline(), actual.getCrosshairOutline());
         assertEquals(expected.getLeafTransparency(), actual.getLeafTransparency());
+        assertEquals(expected.getConnectedShapes(), actual.getConnectedShapes());
         assertEquals(expected.getWaterShaderEnabled(), actual.getWaterShaderEnabled());
         assertEquals(expected.getCloudsEnabled(), actual.getCloudsEnabled());
         assertEquals(expected.getGodRaysEnabled(), actual.getGodRaysEnabled());
@@ -136,7 +138,8 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(44, tree.size());
+        assertEquals(45, tree.size());
+        assertTrue(tree.has("connectedShapes"));
         assertTrue(tree.has("selectedAccessory"));
         assertTrue(tree.has("particlesEnabled"));
         assertTrue(tree.has("particleDensity"));

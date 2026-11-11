@@ -51,6 +51,7 @@ public final class SettingsMenu {
                 actionHandler::toggleHideArmWithHud,
                 actionHandler::toggleLiveMenuBackground,
                 actionHandler::toggleLeafTransparency,
+                actionHandler::toggleConnectedShapes,
                 actionHandler::toggleWaterShader,
                 actionHandler::toggleClouds,
                 actionHandler::toggleGodRays,

@@ -48,6 +48,7 @@ public class Settings {
 
     // Quality settings
     private boolean leafTransparency = true;
+    private boolean connectedShapes = true;
     private boolean waterShaderEnabled = true;
     private boolean cloudsEnabled = true;
     private boolean godRaysEnabled = true;
@@ -179,6 +180,7 @@ public class Settings {
             floatField("crosshairColorB", s -> s.crosshairColorB, (s, v) -> s.crosshairColorB = v),
             boolField("crosshairOutline", Settings::getCrosshairOutline, Settings::setCrosshairOutline),
             boolField("leafTransparency", Settings::getLeafTransparency, Settings::setLeafTransparency),
+            boolField("connectedShapes", Settings::getConnectedShapes, Settings::setConnectedShapes),
             boolField("waterShaderEnabled", Settings::getWaterShaderEnabled, Settings::setWaterShaderEnabled),
             boolField("cloudsEnabled", Settings::getCloudsEnabled, Settings::setCloudsEnabled),
             boolField("godRaysEnabled", Settings::getGodRaysEnabled, Settings::setGodRaysEnabled),
@@ -359,6 +361,11 @@ public class Settings {
 
     // Quality getters
     public boolean getLeafTransparency() { return leafTransparency; }
+    /**
+     * Blocks take the neighbour-driven shape their SBO's multipart table gives them (rounded
+     * leaves): world meshes and the crack overlay. Never collision, which every client must agree on.
+     */
+    public boolean getConnectedShapes() { return connectedShapes; }
     public boolean getWaterShaderEnabled() { return waterShaderEnabled; }
     public boolean getCloudsEnabled() { return cloudsEnabled; }
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
@@ -455,6 +462,10 @@ public class Settings {
     // Quality setters
     public void setLeafTransparency(boolean leafTransparency) {
         this.leafTransparency = leafTransparency;
+    }
+
+    public void setConnectedShapes(boolean connectedShapes) {
+        this.connectedShapes = connectedShapes;
     }
 
     public void setWaterShaderEnabled(boolean waterShaderEnabled) {

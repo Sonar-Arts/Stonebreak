@@ -18,7 +18,7 @@ import java.util.List;
 
 /**
  * Stonebreak's game data in the SBO/SBE editor and export windows (#431). The tab order matches the
- * pre-#431 editor: Metadata, Game Properties, States, Recipes, Smelting, Sounds, Drops, Tool, Weapon.
+ * pre-#431 editor: Metadata, Game Properties, States, Neighbour Shapes, Recipes, Smelting, Sounds, Drops, Tool, Weapon.
  *
  * <p>The SBO sections read and write the {@code stonebreak:gameplay} extension ({@link SboGameplay},
  * #383); an older file's top-level fields are read through it and move into the extension on save.
@@ -33,6 +33,8 @@ public final class StonebreakAssetSections {
         return List.of(
                 new AssetSectionContribution<>("stonebreak.sbo.game-properties", AssetSurface.SBO_EDITOR, 100,
                         GamePropertiesSection::new),
+                new AssetSectionContribution<>("stonebreak.sbo.neighbour-shapes", AssetSurface.SBO_EDITOR, 250,
+                        MultipartSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.recipes", AssetSurface.SBO_EDITOR, 300,
                         RecipesSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.smelting", AssetSurface.SBO_EDITOR, 400,

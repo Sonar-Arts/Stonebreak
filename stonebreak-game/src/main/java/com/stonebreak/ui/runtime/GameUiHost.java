@@ -1058,6 +1058,7 @@ public final class GameUiHost {
                 case "lodQuality" -> SettingsEffects.lodQuality(s.getLodQuality());
                 case "vsyncEnabled" -> SettingsEffects.vsync();
                 case "leafTransparency" -> SettingsEffects.leafTransparency();
+                case "connectedShapes" -> SettingsEffects.connectedShapes();
                 case "smoothLightingEnabled" -> SettingsEffects.smoothLighting();
                 default -> { }
             }

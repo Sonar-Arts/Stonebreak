@@ -38,18 +38,40 @@ public record SboGameplay(
         ToolData tool,
         WeaponData weapon,
         List<String> dictionaries,
-        FuelTableData fuelTable
+        FuelTableData fuelTable,
+        List<String> connectTags,
+        MultipartData multipart
 ) {
 
     /** Normalises {@code dictionaries}: never null, no blanks, no duplicates, order kept. */
     public SboGameplay {
         dictionaries = normaliseDictionaries(dictionaries);
+        connectTags = normaliseTags(connectTags);
     }
 
-    /** The legacy seven-part constructor: no dictionaries, no fuel table. */
+    /** The legacy seven-part constructor: no dictionaries, no fuel table, no shape data. */
     public SboGameplay(GameProperties gameProperties, RecipeData recipes, SmeltingRecipeData smeltingRecipes,
                        FuelData fuel, DropData drops, ToolData tool, WeaponData weapon) {
-        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, List.of(), null);
+        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, List.of(), null, List.of(), null);
+    }
+
+    /** Before shape data: dictionaries and a fuel table, no connect tags or multipart. */
+    public SboGameplay(GameProperties gameProperties, RecipeData recipes, SmeltingRecipeData smeltingRecipes,
+                       FuelData fuel, DropData drops, ToolData tool, WeaponData weapon,
+                       List<String> dictionaries, FuelTableData fuelTable) {
+        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable,
+                List.of(), null);
+    }
+
+    private static List<String> normaliseTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return List.of();
+        var out = new java.util.LinkedHashSet<String>();
+        for (String tag : tags) {
+            if (tag == null) continue;
+            String t = tag.strip();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return List.copyOf(out);
     }
 
     private static List<String> normaliseDictionaries(List<String> ids) {
@@ -109,44 +131,71 @@ public record SboGameplay(
 
     public boolean isEmpty() {
         return gameProperties == null && recipes == null && smeltingRecipes == null && fuel == null
-                && drops == null && tool == null && weapon == null && dictionaries.isEmpty() && fuelTable == null;
+                && drops == null && tool == null && weapon == null && dictionaries.isEmpty() && fuelTable == null
+                && connectTags.isEmpty() && multipart == null;
     }
 
     public SboGameplay withGameProperties(GameProperties v) {
-        return new SboGameplay(v, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable);
+        return new SboGameplay(v, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withRecipes(RecipeData v) {
-        return new SboGameplay(gameProperties, v, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable);
+        return new SboGameplay(gameProperties, v, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withSmeltingRecipes(SmeltingRecipeData v) {
-        return new SboGameplay(gameProperties, recipes, v, fuel, drops, tool, weapon, dictionaries, fuelTable);
+        return new SboGameplay(gameProperties, recipes, v, fuel, drops, tool, weapon, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withFuel(FuelData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, v, drops, tool, weapon, dictionaries, fuelTable);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, v, drops, tool, weapon, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withDrops(DropData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, v, tool, weapon, dictionaries, fuelTable);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, v, tool, weapon, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withTool(ToolData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, v, weapon, dictionaries, fuelTable);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, v, weapon, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withWeapon(WeaponData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, v, dictionaries, fuelTable);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, v, dictionaries,
+                fuelTable, connectTags, multipart);
     }
 
     /** Replaces the dictionaries this object belongs to (null/empty = none). */
     public SboGameplay withDictionaries(List<String> v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, v, fuelTable);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, v,
+                fuelTable, connectTags, multipart);
     }
 
     public SboGameplay withFuelTable(FuelTableData v) {
-        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, v);
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
+                v, connectTags, multipart);
+    }
+
+    /** Replaces the tags neighbours' multipart conditions can test this block for. */
+    public SboGameplay withConnectTags(List<String> v) {
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
+                fuelTable, v, multipart);
+    }
+
+    /** Replaces the neighbour-driven shape (null/empty = none). */
+    public SboGameplay withMultipart(MultipartData v) {
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
+                fuelTable, connectTags, v == null || v.parts().isEmpty() ? null : v);
+    }
+
+    /** True when this SBO's shape depends on its neighbours. */
+    public boolean hasMultipart() {
+        return multipart != null && !multipart.parts().isEmpty();
     }
 
     /** True when this object is a member of at least one dictionary. */

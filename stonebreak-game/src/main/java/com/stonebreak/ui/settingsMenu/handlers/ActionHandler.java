@@ -54,6 +54,7 @@ public class ActionHandler {
             case HIDE_ARM_WITH_HUD -> toggleHideArmWithHud();
             case LIVE_MENU_BACKGROUND -> toggleLiveMenuBackground();
             case LEAF_TRANSPARENCY -> toggleLeafTransparency();
+            case CONNECTED_SHAPES -> toggleConnectedShapes();
             case WATER_SHADER -> toggleWaterShader();
             case CLOUDS_ENABLED -> toggleClouds();
             case GOD_RAYS -> toggleGodRays();
@@ -397,6 +398,14 @@ public class ActionHandler {
      * setter pushes the flag to the engine mesh sampler; loaded chunks are then
      * rebuilt so the change is visible immediately, mirroring leaf transparency.
      */
+    /** Toggles rounded leaf edges; chunk and LOD meshes are rebuilt so the change shows at once. */
+    public void toggleConnectedShapes() {
+        boolean now = !settings.getConnectedShapes();
+        settings.setConnectedShapes(now);
+        System.out.println("Connected shapes toggled to: " + (now ? "ON" : "OFF"));
+        SettingsEffects.connectedShapes();
+    }
+
     public void toggleSmoothLighting() {
         boolean now = !settings.getSmoothLightingEnabled();
         settings.setSmoothLightingEnabled(now);

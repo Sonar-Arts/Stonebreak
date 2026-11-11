@@ -147,6 +147,9 @@ public class MmsCcoAdapter {
     private static final ThreadLocal<float[][]> MERGE_HOLDER = ThreadLocal.withInitial(() -> new float[1][]);
     private static final ThreadLocal<float[][]> SBO_CUBE_SCRATCH =
         ThreadLocal.withInitial(() -> new float[][]{new float[4], new float[4]});
+    private static final ThreadLocal<float[]> FACE_FRAME = ThreadLocal.withInitial(() -> new float[8]);
+    private static final ThreadLocal<MultipartCellExtractor> MULTIPART_CELLS =
+        ThreadLocal.withInitial(MultipartCellExtractor::new);
 
     /**
      * Creates a CCO adapter with the specified services.
@@ -314,7 +317,7 @@ public class MmsCcoAdapter {
                         com.openmason.engine.voxel.lighting.VertexLightSampler.isSmoothLightingEnabled(),
                         quadHolder);
                     if (quadCount >= 0) {
-                        emitCubeQuadStream(atlasBuilder, quadHolder[0], quadCount, chunkX, chunkZ);
+                        emitCubeQuadStream(atlasBuilder, quadHolder[0], quadCount, chunkData);
                         emitSpecialCells(atlasBuilder, waterBuilder, snap, chunkData, chunkX, chunkZ);
                         nativeDone = true;
                     }
@@ -367,7 +370,7 @@ public class MmsCcoAdapter {
                             if (emitPerCellCube(blockType, lx, ly, lz, chunkX, chunkZ, chunkData, blockHeight)) {
                                 continue;
                             }
-                            String stateName = chunkData.getBlockState(lx, ly, lz);
+                            String stateName = stampStateName(blockType, lx, ly, lz, chunkData);
                             sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
                                     worldX, worldY, worldZ, chunkData, blockHeight, stateName);
                             continue;
@@ -392,7 +395,7 @@ public class MmsCcoAdapter {
             }
 
             if (classicSink != null && classicSink.count > 0) {
-                emitCubeQuadStream(atlasBuilder, classicSink.quads, classicSink.count, chunkX, chunkZ);
+                emitCubeQuadStream(atlasBuilder, classicSink.quads, classicSink.count, chunkData);
             }
 
             // Build final meshes (solids in the atlas mesh, water in its own)
@@ -439,9 +442,25 @@ public class MmsCcoAdapter {
      * classic path collects the identical format) into the atlas builder,
      * greedily merging coplanar same-block/same-light runs first when enabled.
      * Culling and per-corner lights were already computed upstream.
+     *
+     * <p>With connected shapes on, cube cells whose neighbours give them another
+     * shape (a leaf with a rounded edge) leave the stream first and are drawn from
+     * that shape's stamp; every other face (including leaves buried in a canopy)
+     * merges as before.
      */
     private void emitCubeQuadStream(MmsMeshBuilder builder, float[] quads, int quadCount,
-                                    int chunkX, int chunkZ) {
+                                    CcoChunkData chunkData) {
+        int chunkX = chunkData.getChunkX();
+        int chunkZ = chunkData.getChunkZ();
+        SboCubeFaces cubes = sboCubes;
+        if (cubes != null && sboStampEmitter != null
+                && com.stonebreak.config.Settings.getInstance().getConnectedShapes()) {
+            quadCount = MULTIPART_CELLS.get().extract(quads, quadCount, cubes,
+                (x, y, z) -> getAdjacentBlock(x, y, z, chunkData),
+                (type, lx, ly, lz, key) -> sboStampEmitter.emitBlock(builder, type, lx, ly, lz,
+                    lx + chunkX * WorldConfiguration.CHUNK_SIZE + 0.5f, ly + 0.5f,
+                    lz + chunkZ * WorldConfiguration.CHUNK_SIZE + 0.5f, chunkData, 1.0f, key));
+        }
         if (greedyMeshingEnabled) {
             float[][] holder = MERGE_HOLDER.get();
             int mergedCount = MmsGreedyMesher.merge(quads, quadCount, WorldConfiguration.CHUNK_SIZE, holder);
@@ -488,50 +507,30 @@ public class MmsCcoAdapter {
 
         float[] vertices = cuboidGenerator.generateScaledFaceVertices(face, worldX, worldY, worldZ, w, h);
         float[] normals = cuboidGenerator.generateFaceNormals(face);
-        float[] texCoords;
-        float[] alphaFlags;
-        float[] layers;
-        SboCubeFaces cubes = sboCubes;
-        if (cubes != null && cubes.isCube(blockType)) {
-            // SBO unit cube: texture frame + layer from its stamp; alpha test for
-            // cutout cubes (leaves) as the stamp emitter would set it.
-            texCoords = cubes.texCoords(blockType, face);
-            float layer = cubes.layer(blockType, face);
-            float alpha = blockType.isTransparent() ? 1f : 0f;
-            float[][] scratch = SBO_CUBE_SCRATCH.get();
-            layers = scratch[0];
-            alphaFlags = scratch[1];
-            java.util.Arrays.fill(layers, layer);
-            java.util.Arrays.fill(alphaFlags, alpha);
-        } else {
-            texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
-            alphaFlags = textureMapper.generateAlphaFlags(blockType);
-            layers = textureMapper.generateFaceLayers(blockType, face);
-        }
-
-        // Affine UV frame from the mapper's unit-square corners: any authored
-        // rotation/flip is preserved, unit rectangles reproduce the base
-        // coordinates exactly.
+        float[] frame = FACE_FRAME.get();
+        faceFrame(blockType, face, frame);
         int uAxis = MmsCuboidGenerator.uAxis(face);
         int vAxis = MmsCuboidGenerator.vAxis(face);
-        float u00 = texCoords[UV_C00[face] * 2];
-        float v00 = texCoords[UV_C00[face] * 2 + 1];
-        float duU = texCoords[UV_C10[face] * 2] - u00;
-        float duV = texCoords[UV_C10[face] * 2 + 1] - v00;
-        float dvU = texCoords[UV_C01[face] * 2] - u00;
-        float dvV = texCoords[UV_C01[face] * 2 + 1] - v00;
+        float u00 = frame[0];
+        float v00 = frame[1];
+        float duU = frame[2];
+        float duV = frame[3];
+        float dvU = frame[4];
+        float dvV = frame[5];
+        float layerValue = frame[6];
+        float alphaFlag = frame[7];
 
         MmsQuadMeshBuilder quads = ACTIVE_QUAD_BUILDER.get();
         if (quads != null) {
             int orient = MmsQuadCodec.orientation(u00, v00, duU, duV, dvU, dvV);
-            int layer = Math.round(layers[0]);
+            int layer = Math.round(layerValue);
             int qx = lx + chunkX * WorldConfiguration.CHUNK_SIZE - (int) quads.originX();
             int qz = lz + chunkZ * WorldConfiguration.CHUNK_SIZE - (int) quads.originZ();
             if (orient >= 0 && layer >= 0 && layer <= 65535
                     && qx >= 0 && qx <= MmsQuadCodec.MAX_LOCAL_XZ && qz >= 0 && qz <= MmsQuadCodec.MAX_LOCAL_XZ
                     && ly >= 0 && ly <= MmsQuadCodec.MAX_Y
                     && w >= 1 && w <= MmsQuadCodec.MAX_EXTENT && h >= 1 && h <= MmsQuadCodec.MAX_EXTENT
-                    && quads.addQuad(qx, ly, qz, face, w, h, orient, alphaFlags[0] != 0f, false, layer,
+                    && quads.addQuad(qx, ly, qz, face, w, h, orient, alphaFlag != 0f, false, layer,
                         l0, l1, l2, l3)) {
                 return;
             }
@@ -555,10 +554,46 @@ public class MmsCcoAdapter {
                 vertices[vIdx], vertices[vIdx + 1], vertices[vIdx + 2],
                 u00 + a * duU + b * dvU, v00 + a * duV + b * dvV,
                 normals[vIdx], normals[vIdx + 1], normals[vIdx + 2],
-                0.0f, alphaFlags[i], 0.0f, lights[i], layers[i]
+                0.0f, alphaFlag, 0.0f, lights[i], layerValue
             );
         }
         builder.endFace();
+    }
+
+    /**
+     * A block face's texture frame, written to {@code out} as
+     * {@code u00, v00, duU, duV, dvU, dvV, layer, alpha}. The UV of an in-plane point
+     * {@code (a, b)} along the face's {@code (uAxis, vAxis)} is
+     * {@code (u00 + a·duU + b·dvU, v00 + a·duV + b·dvV)}: an affine frame taken from
+     * the mapper's unit-square corners, so authored rotations and flips survive, and
+     * unit rectangles reproduce the base coordinates exactly.
+     */
+    private void faceFrame(BlockType blockType, int face, float[] out) {
+        float[] texCoords;
+        float layer;
+        float alpha;
+        SboCubeFaces cubes = sboCubes;
+        if (cubes != null && cubes.isCube(blockType)) {
+            // SBO unit cube: texture frame + layer from its stamp; alpha test for
+            // cutout cubes (leaves) as the stamp emitter would set it.
+            texCoords = cubes.texCoords(blockType, face);
+            layer = cubes.layer(blockType, face);
+            alpha = blockType.isTransparent() ? 1f : 0f;
+        } else {
+            texCoords = textureMapper.generateFaceTextureCoordinates(blockType, face);
+            alpha = textureMapper.generateAlphaFlags(blockType)[0];
+            layer = textureMapper.generateFaceLayers(blockType, face)[0];
+        }
+        float u00 = texCoords[UV_C00[face] * 2];
+        float v00 = texCoords[UV_C00[face] * 2 + 1];
+        out[0] = u00;
+        out[1] = v00;
+        out[2] = texCoords[UV_C10[face] * 2] - u00;
+        out[3] = texCoords[UV_C10[face] * 2 + 1] - v00;
+        out[4] = texCoords[UV_C01[face] * 2] - u00;
+        out[5] = texCoords[UV_C01[face] * 2 + 1] - v00;
+        out[6] = layer;
+        out[7] = alpha;
     }
 
     /**
@@ -624,7 +659,7 @@ public class MmsCcoAdapter {
                 if (emitPerCellCube(blockType, lx, ly, lz, chunkX, chunkZ, chunkData, blockHeight)) {
                     continue;
                 }
-                String stateName = chunkData.getBlockState(lx, ly, lz);
+                String stateName = stampStateName(blockType, lx, ly, lz, chunkData);
                 sboStampEmitter.emitBlock(atlasBuilder, blockType, lx, ly, lz,
                         worldX, worldY, worldZ, chunkData, blockHeight, stateName);
                 continue;
@@ -1007,6 +1042,19 @@ public class MmsCcoAdapter {
      * @param chunkData Current chunk data
      * @return Block type at adjacent position
      */
+    /**
+     * The stamp variant a stamp-path cell draws: its neighbour-driven shape when its block has
+     * one (and connected shapes are on), else the variant its stored block state names.
+     */
+    private String stampStateName(BlockType blockType, int lx, int ly, int lz, CcoChunkData chunkData) {
+        com.stonebreak.blocks.multipart.MultipartShape shape =
+            com.stonebreak.blocks.multipart.MultipartRegistry.of(blockType);
+        if (shape != null && com.stonebreak.config.Settings.getInstance().getConnectedShapes()) {
+            return shape.key(shape.evaluate((x, y, z) -> getAdjacentBlock(x, y, z, chunkData), lx, ly, lz));
+        }
+        return chunkData.getBlockState(lx, ly, lz);
+    }
+
     private BlockType getAdjacentBlock(int adjX, int adjY, int adjZ, CcoChunkData chunkData) {
         // Check if within current chunk bounds
         if (adjX >= 0 && adjX < WorldConfiguration.CHUNK_SIZE &&

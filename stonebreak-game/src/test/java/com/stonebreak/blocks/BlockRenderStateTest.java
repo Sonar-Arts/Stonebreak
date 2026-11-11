@@ -51,6 +51,13 @@ class BlockRenderStateTest {
     }
 
     @Test
+    void thePlacedLeafMarkerNamesNoVariant() {
+        // It only steers leaf decay; writing it right after placement must not queue a remesh.
+        assertNull(BlockRenderState.meshVariantKey(com.stonebreak.blocks.leaves.LeafState.PLACED));
+        assertFalse(BlockRenderState.affectsMesh(null, com.stonebreak.blocks.leaves.LeafState.PLACED));
+    }
+
+    @Test
     void absentStatesHaveNoVariant() {
         assertNull(BlockRenderState.meshVariantKey(null));
         assertNull(BlockRenderState.meshVariantKey(""));

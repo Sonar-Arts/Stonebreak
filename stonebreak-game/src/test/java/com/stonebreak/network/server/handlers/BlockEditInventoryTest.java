@@ -405,6 +405,25 @@ class BlockEditInventoryTest {
     }
 
     @Test
+    void aLeafThePlayerPlacesIsMarkedSoItNeverDecays() {
+        inv().setSlot(0, new ItemStack(BlockType.PINE_LEAVES, 4));
+
+        edit(0, 64, 2, BlockType.PINE_LEAVES, BlockType.AIR);
+
+        assertEquals(BlockType.PINE_LEAVES, blocks.get(key(0, 64, 2)));
+        assertEquals(com.stonebreak.blocks.leaves.LeafState.PLACED, states.get(key(0, 64, 2)));
+    }
+
+    @Test
+    void otherPlacementsCarryNoLeafMarker() {
+        inv().setSlot(0, new ItemStack(BlockType.STONE, 4));
+
+        edit(0, 64, 2, BlockType.STONE, BlockType.AIR);
+
+        assertEquals(null, states.get(key(0, 64, 2)));
+    }
+
+    @Test
     void placingTheLastHeldBlockRefillsTheSelectedSlot() {
         // Mirrors Inventory.removeItem's auto-switch, so the next sync doesn't move the stack back.
         inv().setSlot(0, new ItemStack(BlockType.STONE, 1));

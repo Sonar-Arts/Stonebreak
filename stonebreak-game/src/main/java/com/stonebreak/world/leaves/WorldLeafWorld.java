@@ -42,6 +42,11 @@ public final class WorldLeafWorld implements LeafWorld {
     }
 
     @Override
+    public boolean isPersistent(int x, int y, int z) {
+        return com.stonebreak.blocks.leaves.LeafState.isPlaced(world.getBlockStateAt(x, y, z));
+    }
+
+    @Override
     public int foliageScanTop(int x, int z) {
         // The generator knows where the ground is without the chunk being
         // resident, and nothing grows more than a canopy above it: the tallest

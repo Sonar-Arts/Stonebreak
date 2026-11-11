@@ -45,7 +45,7 @@ public final class SettingsMenuContracts {
 
     public static final HostContract SCREEN = HostContract.of("stonebreak:screen.settings", 1);
     /** The most rows a category has, and the longest dropdown list (the resolutions). */
-    public static final int MAX_ROWS = 8;
+    public static final int MAX_ROWS = 9;
     public static final int MAX_ITEMS = 7;
 
     static final DataType.Obj ITEM = DataType.object("id", DataType.string(), "text", DataType.string(),

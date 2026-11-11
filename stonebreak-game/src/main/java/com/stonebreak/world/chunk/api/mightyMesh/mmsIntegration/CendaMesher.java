@@ -273,6 +273,22 @@ public final class CendaMesher {
         return table;
     }
 
+    /**
+     * Whether a block fills its whole cell as a cube: the mesher's own cube class
+     * (no air, water, crosses, animated blocks or shaped SBO stamps such as stairs,
+     * slabs, torches and snow layers). This is the {@code full_cube} neighbour test of
+     * SBO multipart tables (a rounded leaf keeps an edge sharp only where a face touches
+     * one of these).
+     */
+    public static boolean isFullCube(BlockType type) {
+        if (type == null) {
+            return false;
+        }
+        byte[] table = classTable();
+        int id = type.getId();
+        return id >= 0 && id < table.length && (table[id] & CendaKernels.CLASS_CUBE) != 0;
+    }
+
     private static byte classify(BlockType type, java.util.function.Predicate<BlockType> isSboStampBlock) {
         byte cls = 0;
         if (type.isTransparent()) {

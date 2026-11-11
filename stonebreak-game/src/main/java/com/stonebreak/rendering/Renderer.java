@@ -207,6 +207,7 @@ public class Renderer {
                         // turned with no per-instance work.
                         registerStairRotations(sboRendererAPI.getStampCache(), sboBlockMap.keySet());
                         registerStalagmiteVariants(sboRendererAPI.getStampCache());
+                        com.stonebreak.rendering.sbo.MultipartStamps.register(sboRendererAPI.getStampCache());
 
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
                         sboCullingService = new MmsFaceCullingService();
@@ -216,8 +217,10 @@ public class Renderer {
                         // its model actually fills that boundary plane. Keeps
                         // the open side of a stair from cutting a hole in the
                         // block behind it.
-                        sboCullingService.setFaceOcclusionPolicy(
-                                sboRendererAPI.getStampCache()::occludesFace);
+                        com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache stamps =
+                                sboRendererAPI.getStampCache();
+                        sboCullingService.setFaceOcclusionPolicy((block, face) ->
+                                com.stonebreak.rendering.sbo.MultipartStamps.occludesFace(stamps, block, face));
 
                         // Translucency policy: the block's SBO-resolved render
                         // layer (BlockRenderTraits) — no code-side list of
@@ -382,6 +385,11 @@ public class Renderer {
         cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.UPPER, nothing);
         cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.LOWER, nothing);
         logger.debug("[Renderer] Registered {} stalagmite variants", registered);
+    }
+
+    /** The baked SBO block stamps, or null if SBO initialization failed. */
+    public com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache getSboStampCache() {
+        return sboRendererAPI != null ? sboRendererAPI.getStampCache() : null;
     }
 
     /**

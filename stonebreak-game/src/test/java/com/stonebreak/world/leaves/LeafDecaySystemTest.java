@@ -150,7 +150,72 @@ class LeafDecaySystemTest {
         sim.advanceTicks(SETTLE_TICKS);
 
         assertTrue(world.isLeaf(11, 10, 10), "leaf touching a log must survive");
-        assertFalse(world.isLeaf(20, 20, 20), "hand-placed floating leaf must decay");
+        assertFalse(world.isLeaf(20, 20, 20), "an unmarked floating leaf must decay");
+    }
+
+    // ===== 4b. Player-placed leaves never decay, and never anchor =====
+
+    @Test
+    void playerPlacedFloatingLeafNeverDecays() {
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        world.placeByPlayer(sim, 20, 20, 20, BlockType.LEAVES);
+        world.placeByPlayer(sim, 21, 20, 20, BlockType.PINE_LEAVES);
+
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertTrue(world.isLeaf(20, 20, 20), "a player-placed leaf must never decay");
+        assertTrue(world.isLeaf(21, 20, 20), "every leaf type honours the marker");
+        assertEquals(0, world.removals.size());
+    }
+
+    @Test
+    void playerPlacedLeafDoesNotAnchorNaturalLeaves() {
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        // A natural leaf touching only a placed leaf, with no log anywhere.
+        world.placeByPlayer(sim, 15, 15, 15, BlockType.LEAVES);
+        world.placeBlock(sim, 16, 15, 15, BlockType.LEAVES);
+
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertTrue(world.isLeaf(15, 15, 15), "the placed leaf stays");
+        assertFalse(world.isLeaf(16, 15, 15), "a placed leaf is not a log: the natural one decays");
+    }
+
+    @Test
+    void naturalLeafReachingLogThroughPlacedLeafSurvives() {
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        world.setBlock(10, 10, 10, BlockType.WOOD);
+        world.placeByPlayer(sim, 11, 10, 10, BlockType.LEAVES);
+        world.placeBlock(sim, 12, 10, 10, BlockType.LEAVES);
+
+        sim.advanceTicks(SETTLE_TICKS);
+        assertTrue(world.isLeaf(12, 10, 10), "support conducts through a placed leaf");
+
+        // Chop the log: the natural leaf goes, the placed one stays.
+        world.placeBlock(sim, 10, 10, 10, BlockType.AIR);
+        sim.advanceTicks(SETTLE_TICKS);
+        assertTrue(world.isLeaf(11, 10, 10), "the placed leaf survives the chop");
+        assertFalse(world.isLeaf(12, 10, 10), "the natural leaf decays once its log is gone");
+    }
+
+    @Test
+    void breakingAndReplacingNaturallyClearsTheMarker() {
+        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+        LeafDecaySystem sim = new LeafDecaySystem(world);
+
+        world.placeByPlayer(sim, 20, 20, 20, BlockType.LEAVES);
+        sim.advanceTicks(SETTLE_TICKS);
+        world.placeBlock(sim, 20, 20, 20, BlockType.AIR);   // broken: the marker goes with it
+        world.placeBlock(sim, 20, 20, 20, BlockType.LEAVES); // e.g. a sapling growing into the cell
+        sim.advanceTicks(SETTLE_TICKS);
+
+        assertFalse(world.isLeaf(20, 20, 20), "an unmarked leaf in the same cell decays");
     }
 
     // ===== 5. Fast but not instant: the canopy collapses staggered =====

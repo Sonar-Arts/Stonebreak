@@ -41,6 +41,12 @@ public final class SboCubeFaces {
      * poking out — occludes like any cube.
      */
     private final boolean[] shaped;
+    /**
+     * Per block id, for a cube block whose shape depends on its neighbours (rounded leaves): per
+     * neighbour combination, whether that combination's shape is still a plain unit cube. Cells
+     * that resolve to one stay on the cube path; the rest are drawn from their stamp.
+     */
+    private final boolean[][] cubeMasks;
 
     public SboCubeFaces(SBOStampEmitter emitter) {
         int maxId = 0;
@@ -52,6 +58,7 @@ public final class SboCubeFaces {
         cube = new boolean[maxId + 1];
         perCell = new boolean[maxId + 1];
         shaped = new boolean[maxId + 1];
+        cubeMasks = new boolean[maxId + 1][];
         for (BlockType type : BlockType.values()) {
             if (!emitter.hasBlock(type)) {
                 continue;
@@ -74,7 +81,11 @@ public final class SboCubeFaces {
     }
 
     private boolean tryBuildCube(SBOStampEmitter emitter, BlockType type, int id) {
-        if (emitter.getCache().variantCount(type) != 1) {
+        com.stonebreak.blocks.multipart.MultipartShape multipart =
+            com.stonebreak.blocks.multipart.MultipartRegistry.of(type);
+        // A multipart block's states are its parts, not alternatives to the default model, so
+        // only its default stamp decides whether it is a cube.
+        if (multipart == null && emitter.getCache().variantCount(type) != 1) {
             return false;
         }
         // Translucent blocks (per-face opacity overrides) and snow layers
@@ -105,6 +116,17 @@ public final class SboCubeFaces {
         }
         texCoords[id] = uv;
         layers[id] = layer;
+        if (multipart != null) {
+            if (needsPerCell) {
+                return false; // per-cell cubes have no kernel records to swap out
+            }
+            boolean[] masks = new boolean[multipart.maskCount()];
+            for (int mask = 0; mask < masks.length; mask++) {
+                masks[mask] = com.stonebreak.rendering.sbo.StampComposer.isUnitCube(
+                    emitter.getCache().get(type, multipart.key(mask)));
+            }
+            cubeMasks[id] = masks;
+        }
         if (needsPerCell) {
             perCell[id] = true;
         } else {
@@ -169,6 +191,22 @@ public final class SboCubeFaces {
         }
         layerOut[li] = layer;
         return true;
+    }
+
+    /**
+     * For a cube block with a neighbour-driven shape: whether the cell with neighbour combination
+     * {@code mask} is still a plain cube. False for blocks without one.
+     */
+    public boolean isCubeMask(BlockType type, int mask) {
+        int id = type.getId();
+        boolean[] masks = id < cubeMasks.length ? cubeMasks[id] : null;
+        return masks != null && masks[mask];
+    }
+
+    /** True for a cube block whose cells can resolve to other shapes by their neighbours. */
+    public boolean hasCubeMasks(BlockType type) {
+        int id = type.getId();
+        return id < cubeMasks.length && cubeMasks[id] != null;
     }
 
     /** True when this SBO block is an exact unit cube and may take the cube path. */

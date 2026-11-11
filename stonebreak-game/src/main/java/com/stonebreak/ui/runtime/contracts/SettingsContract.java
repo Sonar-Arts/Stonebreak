@@ -103,6 +103,8 @@ public final class SettingsContract {
         // graphics (the renderers read these every frame)
         add("leafTransparency", DataType.bool(), s -> UiValue.of(s.getLeafTransparency()),
             (s, v) -> s.setLeafTransparency(b(v)), null, Live.PUSHED);
+        add("connectedShapes", DataType.bool(), s -> UiValue.of(s.getConnectedShapes()),
+            (s, v) -> s.setConnectedShapes(b(v)), null, Live.PUSHED);
         add("waterShaderEnabled", DataType.bool(), s -> UiValue.of(s.getWaterShaderEnabled()),
             (s, v) -> s.setWaterShaderEnabled(b(v)), null, Live.READ_LIVE);
         add("cloudsEnabled", DataType.bool(), s -> UiValue.of(s.getCloudsEnabled()), (s, v) -> s.setCloudsEnabled(b(v)),

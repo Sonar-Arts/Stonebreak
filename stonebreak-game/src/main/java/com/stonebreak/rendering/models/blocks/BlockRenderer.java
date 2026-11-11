@@ -24,6 +24,12 @@ import static org.lwjgl.opengl.GL20.*;
 public class BlockRenderer {
     private int crackTextureId;
     private int blockOverlayVao;
+    /**
+     * Crack overlays for neighbour-driven shapes, by the stamp they wrap: {vao, vbo, vertexCount};
+     * built on first use. Stamps are baked once at startup, so identity is a stable key.
+     */
+    private final java.util.Map<com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp, int[]> shapedOverlays =
+            new java.util.IdentityHashMap<>();
 
     public BlockRenderer() {
         initialize();
@@ -104,10 +110,12 @@ public class BlockRenderer {
         float sizeX = 1.0f;
         float sizeY = 1.0f;
         float sizeZ = 1.0f;
+        int[] shaped = null;
         com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
         if (world != null) {
             com.stonebreak.blocks.BlockType bt =
                     world.getBlockAt(breakingBlock.x, breakingBlock.y, breakingBlock.z);
+            shaped = shapedOverlay(world, breakingBlock, bt);
             if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)) {
                 float[] b = com.stonebreak.blocks.anim.AnimatedBlockShapes
                         .worldAabb(world, breakingBlock.x, breakingBlock.y, breakingBlock.z, bt);
@@ -135,9 +143,15 @@ public class BlockRenderer {
         // Set color with some transparency
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 0.8f));
         
-        // Render the block overlay
-        GL30.glBindVertexArray(blockOverlayVao);
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        // Render the block overlay: a neighbour-shaped block (rounded leaf) wraps its own
+        // shape, anything else the cube
+        if (shaped != null) {
+            GL30.glBindVertexArray(shaped[0]);
+            glDrawArrays(GL_TRIANGLES, 0, shaped[2]);
+        } else {
+            GL30.glBindVertexArray(blockOverlayVao);
+            glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        }
         GL30.glBindVertexArray(0);
         
         // Restore state
@@ -389,6 +403,72 @@ public class BlockRenderer {
     }
 
     /**
+     * The crack overlay for a block whose shape follows its neighbours, when the cell's current
+     * shape is not a plain cube: the same stamp the chunk mesher drew, so the cracks hug it.
+     * Null for every other block (they take the cube).
+     */
+    private int[] shapedOverlay(com.stonebreak.world.World world, Vector3i p, com.stonebreak.blocks.BlockType bt) {
+        com.stonebreak.blocks.multipart.MultipartShape shape = com.stonebreak.blocks.multipart.MultipartRegistry.of(bt);
+        if (shape == null || !com.stonebreak.config.Settings.getInstance().getConnectedShapes()) {
+            return null;
+        }
+        com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
+        com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache cache =
+                renderer != null ? renderer.getSboStampCache() : null;
+        if (cache == null) {
+            return null;
+        }
+        int mask = shape.evaluate(world::getBlockAt, p.x, p.y, p.z);
+        com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp stamp = cache.get(bt, shape.key(mask));
+        if (stamp == null || com.stonebreak.rendering.sbo.StampComposer.isUnitCube(stamp)) {
+            return null;
+        }
+        return shapedOverlays.computeIfAbsent(stamp, BlockRenderer::buildOverlay);
+    }
+
+    /**
+     * Uploads a stamp's every triangle (flush, interior and protruding; the cracks show whatever
+     * part is visible) as the overlay's position + UV layout. Stamp positions are centred on the
+     * cell and the overlay's are cell-local, hence the half-block shift. Stamp UVs are tile-local,
+     * so the crack texture tiles once per face just like on the cube.
+     */
+    private static int[] buildOverlay(com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp stamp) {
+        java.util.List<com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp> parts = new java.util.ArrayList<>();
+        for (int f = 0; f < 6; f++) {
+            parts.add(stamp.faces()[f]);
+            parts.add(stamp.interior()[f]);
+            parts.addAll(java.util.Arrays.asList(stamp.protruding()[f]));
+        }
+        int vertexCount = 0;
+        for (var part : parts) {
+            vertexCount += part.vertexCount();
+        }
+        FloatBuffer buffer = BufferUtils.createFloatBuffer(vertexCount * 5);
+        for (var part : parts) {
+            float[] pos = part.positions();
+            float[] uv = part.atlasUVs();
+            for (int v = 0; v < part.vertexCount(); v++) {
+                buffer.put(pos[v * 3] + 0.5f).put(pos[v * 3 + 1] + 0.5f).put(pos[v * 3 + 2] + 0.5f)
+                        .put(uv[v * 2]).put(uv[v * 2 + 1]);
+            }
+        }
+        buffer.flip();
+
+        int vao = GL30.glGenVertexArrays();
+        GL30.glBindVertexArray(vao);
+        int vbo = GL20.glGenBuffers();
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, vbo);
+        GL20.glBufferData(GL20.GL_ARRAY_BUFFER, buffer, GL20.GL_STATIC_DRAW);
+        GL20.glVertexAttribPointer(0, 3, GL20.GL_FLOAT, false, 5 * Float.BYTES, 0);
+        GL20.glEnableVertexAttribArray(0);
+        GL20.glVertexAttribPointer(1, 2, GL20.GL_FLOAT, false, 5 * Float.BYTES, 3 * Float.BYTES);
+        GL20.glEnableVertexAttribArray(1);
+        GL20.glBindBuffer(GL20.GL_ARRAY_BUFFER, 0);
+        GL30.glBindVertexArray(0);
+        return new int[]{vao, vbo, vertexCount};
+    }
+
+    /**
      * Cleanup method to release resources.
      */
     public void cleanup() {
@@ -403,5 +483,10 @@ public class BlockRenderer {
             GL30.glDeleteVertexArrays(blockOverlayVao);
             blockOverlayVao = 0;
         }
+        for (int[] overlay : shapedOverlays.values()) {
+            GL30.glDeleteVertexArrays(overlay[0]);
+            GL20.glDeleteBuffers(overlay[1]);
+        }
+        shapedOverlays.clear();
     }
 }

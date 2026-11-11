@@ -733,6 +733,12 @@ public final class ServerBlockHandler {
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
             queueStateEcho(c.x(), c.y(), c.z());
         }
+        // Leaf placement: a leaf the player placed never decays. Only this server world
+        // runs decay and the marker draws nothing, so there's no echo. Worldgen and
+        // sapling growth never come through here, so their leaves stay natural.
+        if (incoming != null && incoming.isLeaves() && prev != incoming) {
+            world.setBlockStateAt(c.x(), c.y(), c.z(), com.stonebreak.blocks.leaves.LeafState.PLACED);
+        }
         // Torch placement: Ground/Side + facing depend on which FACE the placer
         // clicked, which only the client knows — it proposes the state in the
         // packet and the server validates it against its own world (the support

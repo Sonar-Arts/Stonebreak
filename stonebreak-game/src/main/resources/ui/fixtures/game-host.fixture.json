@@ -296,6 +296,7 @@
       "crosshairColorB": 1,
       "crosshairOutline": true,
       "leafTransparency": true,
+      "connectedShapes": true,
       "waterShaderEnabled": true,
       "cloudsEnabled": true,
       "godRaysEnabled": true,

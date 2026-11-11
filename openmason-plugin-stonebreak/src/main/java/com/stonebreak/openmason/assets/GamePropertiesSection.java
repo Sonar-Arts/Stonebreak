@@ -53,6 +53,9 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
     // Item dictionaries this object belongs to (recipes accept any member as "#id").
     private final List<String> dictionaries = new ArrayList<>();
     private final ImString newDictionary = new ImString(96);
+    // Tags neighbours' multipart conditions test this block for ("tag:<id>"); shape only.
+    private final List<String> connectTags = new ArrayList<>();
+    private final ImString newConnectTag = new ImString(96);
 
     GamePropertiesSection(AssetSectionHost host) {
         this.host = host;
@@ -88,6 +91,9 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         dictionaries.clear();
         dictionaries.addAll(data.dictionaries());
         newDictionary.set("");
+        connectTags.clear();
+        connectTags.addAll(data.connectTags());
+        newConnectTag.set("");
     }
 
     @Override
@@ -103,6 +109,7 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         return SboGameplay.of(doc).withGameProperties(gp)
                 .withFuel(isFuel ? new SboGameplay.FuelData(Math.max(1, fuelBurnTicks.get())) : null)
                 .withDictionaries(dictionaries)
+                .withConnectTags(connectTags)
                 .applyTo(doc);
     }
 
@@ -153,6 +160,7 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
             ImGui.textDisabled("This SBO has no gameProperties block (legacy 1.0).");
             ImGui.dummy(0, 4);
             renderDictionaryControls();
+            renderConnectTagControls();
             renderFuelControls();
             return;
         }
@@ -198,8 +206,44 @@ final class GamePropertiesSection implements AssetEditorSection<SBOFormat.Docume
         if (ImGui.inputText("Category", category))           host.markDirty();
         ImGui.popItemWidth();
         renderDictionaryControls();
+        renderConnectTagControls();
         ImGui.dummy(0, 4);
         renderFuelControls();
+    }
+
+    /**
+     * Tags other blocks' Neighbour Shapes conditions can test this block for: a fence's arm
+     * condition {@code tag:stonebreak:fence_connectable} reaches every block listing that tag.
+     * Shape only; crafting reads Dictionaries.
+     */
+    private void renderConnectTagControls() {
+        ThemedWidgets.sectionLabel("Connect Tags");
+        if (connectTags.isEmpty()) {
+            ImGui.textDisabled("No connect tags.");
+        }
+        for (int i = 0; i < connectTags.size(); i++) {
+            if (ImGui.smallButton("x##ctag_rm_" + i)) {
+                connectTags.remove(i);
+                host.markDirty();
+                break;
+            }
+            ImGui.sameLine();
+            ImGui.text(connectTags.get(i));
+        }
+        ImGui.pushItemWidth(EditorWidgets.NAME_FIELD_WIDTH);
+        boolean enter = ImGui.inputTextWithHint("##ctag_new", "e.g. stonebreak:fence_connectable", newConnectTag,
+                imgui.flag.ImGuiInputTextFlags.EnterReturnsTrue);
+        ImGui.popItemWidth();
+        ImGui.sameLine();
+        if (ImGui.smallButton("Add##ctag_add") || enter) {
+            String tag = newConnectTag.get().strip();
+            if (!tag.isEmpty() && !connectTags.contains(tag)) {
+                connectTags.add(tag);
+                host.markDirty();
+            }
+            newConnectTag.set("");
+        }
+        ImGui.textDisabled("Neighbour Shapes conditions test a neighbour for these as \"tag:<id>\".");
     }
 
     /**

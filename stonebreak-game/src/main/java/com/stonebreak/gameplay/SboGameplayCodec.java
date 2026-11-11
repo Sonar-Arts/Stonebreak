@@ -38,7 +38,7 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
     /** The top-level fields SBO 1.1–1.10 used for this data. */
     public static final Set<String> LEGACY_FIELDS = Set.of(
             "gameProperties", "recipes", "smeltingRecipes", "fuel", "drops", "tool", "weapon",
-            "dictionaries", "fuelTable");
+            "dictionaries", "fuelTable", "connectTags", "multipart");
 
     private SboGameplayCodec() {
     }
@@ -61,7 +61,8 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
             throw new IllegalArgumentException(KEY + " must be an object");
         }
         return new SboGameplay(readGameProperties(root), readRecipes(root), readSmelting(root), readFuel(root),
-                readDrops(root), readTool(root), readWeapon(root), readDictionaries(root), readFuelTable(root));
+                readDrops(root), readTool(root), readWeapon(root), readDictionaries(root), readFuelTable(root),
+                readConnectTags(root), readMultipart(root));
     }
 
     private static boolean present(JsonNode root, String field) {
@@ -142,6 +143,72 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
             if (id.isTextual()) ids.add(id.asText());
         }
         return ids; // the record strips blanks/duplicates
+    }
+
+    static List<String> readConnectTags(JsonNode root) {
+        if (!present(root, "connectTags")) return List.of();
+        var node = root.get("connectTags");
+        if (!node.isArray()) {
+            logger.warn("Ignoring non-array 'connectTags' in manifest");
+            return List.of();
+        }
+        List<String> tags = new ArrayList<>();
+        for (var tag : node) {
+            if (tag.isTextual()) tags.add(tag.asText());
+        }
+        return tags; // the record strips blanks/duplicates
+    }
+
+    /**
+     * The {@code multipart} section. A malformed part is skipped (logged), so one bad row can't
+     * strip a block of its whole shape; a section with no valid part reads as absent.
+     */
+    static MultipartData readMultipart(JsonNode root) {
+        if (!present(root, "multipart")) return null;
+        var node = root.get("multipart");
+        if (!node.isArray()) {
+            logger.warn("Ignoring non-array 'multipart' in manifest");
+            return null;
+        }
+        List<MultipartData.Part> parts = new ArrayList<>();
+        for (var pNode : node) {
+            try {
+                parts.add(readPart(pNode));
+            } catch (IllegalArgumentException ex) {
+                logger.warn("Skipping invalid multipart part in manifest: {}", ex.getMessage());
+            }
+        }
+        return parts.isEmpty() ? null : new MultipartData(parts);
+    }
+
+    private static MultipartData.Part readPart(JsonNode pNode) {
+        String state = pNode.hasNonNull("state") ? pNode.get("state").asText() : "";
+        var when = new java.util.EnumMap<MultipartData.Side, MultipartData.Condition>(MultipartData.Side.class);
+        JsonNode whenNode = pNode.get("when");
+        if (whenNode != null && whenNode.isObject()) {
+            var fields = whenNode.fields();
+            while (fields.hasNext()) {
+                var field = fields.next();
+                MultipartData.Side side = MultipartData.Side.ofKey(field.getKey());
+                if (side == null) {
+                    throw new IllegalArgumentException("unknown side '" + field.getKey() + "'");
+                }
+                when.put(side, MultipartData.Condition.parse(field.getValue().asText()));
+            }
+        }
+        List<MultipartData.Box> boxes = new ArrayList<>();
+        JsonNode boxesNode = pNode.get("boxes");
+        if (boxesNode != null && boxesNode.isArray()) {
+            for (var b : boxesNode) {
+                if (!b.isArray() || b.size() != 6) {
+                    throw new IllegalArgumentException("a box is [minX, minY, minZ, maxX, maxY, maxZ]");
+                }
+                boxes.add(new MultipartData.Box((float) b.get(0).asDouble(), (float) b.get(1).asDouble(),
+                        (float) b.get(2).asDouble(), (float) b.get(3).asDouble(), (float) b.get(4).asDouble(),
+                        (float) b.get(5).asDouble()));
+            }
+        }
+        return new MultipartData.Part(state, when, boxes);
     }
 
     static SboGameplay.FuelTableData readFuelTable(JsonNode root) {
@@ -294,7 +361,32 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
             }
             out.putObject("fuelTable").set("entries", entries);
         }
+        if (!g.connectTags().isEmpty()) {
+            ArrayNode tags = out.putArray("connectTags");
+            g.connectTags().forEach(tags::add);
+        }
+        if (g.hasMultipart()) out.set("multipart", encode(g.multipart()));
         return out;
+    }
+
+    private static ArrayNode encode(MultipartData data) {
+        ArrayNode parts = JSON.createArrayNode();
+        for (MultipartData.Part part : data.parts()) {
+            ObjectNode n = parts.addObject();
+            n.put("state", part.state());
+            if (!part.when().isEmpty()) {
+                ObjectNode when = n.putObject("when");
+                part.when().forEach((side, condition) -> when.put(side.key(), condition.encode()));
+            }
+            if (!part.boxes().isEmpty()) {
+                ArrayNode boxes = n.putArray("boxes");
+                for (MultipartData.Box b : part.boxes()) {
+                    boxes.addArray().add(b.minX()).add(b.minY()).add(b.minZ())
+                            .add(b.maxX()).add(b.maxY()).add(b.maxZ());
+                }
+            }
+        }
+        return parts;
     }
 
     /**

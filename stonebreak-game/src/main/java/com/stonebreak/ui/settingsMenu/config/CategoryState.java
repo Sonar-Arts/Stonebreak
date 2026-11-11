@@ -7,7 +7,7 @@ package com.stonebreak.ui.settingsMenu.config;
 public enum CategoryState {
     // ===== CATEGORIES =====
     GENERAL(0, new SettingType[]{SettingType.RESOLUTION, SettingType.UI_SCALE}),
-    QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS, SettingType.SHADOWS, SettingType.SHADOW_QUALITY, SettingType.SHADOW_DISTANCE, SettingType.SMOOTH_LIGHTING}),
+    QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.CONNECTED_SHAPES, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS, SettingType.SHADOWS, SettingType.SHADOW_QUALITY, SettingType.SHADOW_DISTANCE, SettingType.SMOOTH_LIGHTING}),
     PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
     ADVANCED(3, new SettingType[]{SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE, SettingType.LOD_QUALITY, SettingType.PARTICLES, SettingType.PARTICLE_DENSITY}),
     EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE, SettingType.PLAYER_NAME_TAGS, SettingType.PAUSE_WORLD, SettingType.HIDE_ARM_WITH_HUD, SettingType.LIVE_MENU_BACKGROUND}),
@@ -95,7 +95,8 @@ public enum CategoryState {
         HIDE_ARM_WITH_HUD(26),
         LIVE_MENU_BACKGROUND(27),
         PARTICLES(28),
-        PARTICLE_DENSITY(29);
+        PARTICLE_DENSITY(29),
+        CONNECTED_SHAPES(30);
         
         private final int index;
         

@@ -46,6 +46,9 @@ public final class BlockRenderState {
         if (com.stonebreak.blocks.workbench.WorkbenchState.isWorkbenchState(raw)) {
             return null; // grid edits must never remesh the chunk
         }
+        if (com.stonebreak.blocks.leaves.LeafState.isPlaced(raw)) {
+            return null; // the placed-leaf marker only steers decay; it draws nothing
+        }
         int colon = raw.indexOf(':');
         if (colon < 0) {
             return raw;
