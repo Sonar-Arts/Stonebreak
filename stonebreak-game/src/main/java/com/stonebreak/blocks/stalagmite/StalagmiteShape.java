@@ -1,11 +1,11 @@
 package com.stonebreak.blocks.stalagmite;
 
 import com.openmason.engine.format.omo.OMOReader;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
-import com.openmason.engine.entity.sbe.SbeEntityLoader;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityModelLoader;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -97,7 +97,7 @@ public final class StalagmiteShape {
                 Math.max(c1[0], c2[0]), maxY, Math.max(c1[1], c2[1])};
     }
 
-    /** {@code SBOStampRotator}'s quarter turn: one turn maps +Z onto +X. */
+    /** {@code StampRotator}'s quarter turn: one turn maps +Z onto +X. */
     private static float[] turn(float x, float z, int turns) {
         return switch (Math.floorMod(turns, 4)) {
             case 1 -> new float[]{z, -x};
@@ -139,7 +139,7 @@ public final class StalagmiteShape {
         if (omo == null) {
             return null;
         }
-        SbeModelGeometry geometry = SbeEntityLoader.buildGeometry(omo);
+        EntityGeometry geometry = EntityModelLoader.buildGeometry(omo);
         return triangleBounds(geometry.vertices(), geometry.indices());
     }
 

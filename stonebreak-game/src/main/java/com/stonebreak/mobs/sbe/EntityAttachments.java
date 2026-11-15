@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +33,7 @@ public final class EntityAttachments {
     }
 
     /** Attaches a model in its default variant; see {@link #attach(Object, String, AttachmentVisual)}. */
-    public static void attach(Object entityKey, String socketName, SbeEntityAsset asset) {
+    public static void attach(Object entityKey, String socketName, EntityAsset asset) {
         attach(entityKey, socketName, new AttachmentVisual.Model(asset));
     }
 

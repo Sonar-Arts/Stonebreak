@@ -4,14 +4,14 @@ import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.api.PluginInfo;
 import com.openmason.api.asset.AssetSectionContribution;
 import com.openmason.api.asset.AssetSurface;
-import com.openmason.engine.format.sbe.SBEFormat;
-import com.openmason.engine.format.sbe.SBEParser;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbe.SBEFormat;
+import com.stonebreak.format.sbe.SBEParser;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParser;
 import com.openmason.main.plugins.EditorRegistries;
 import com.openmason.main.systems.menus.dialogs.AssetSectionSet;
-import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
-import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
+import com.stonebreak.openmason.editor.SBEEditorWindow;
+import com.stonebreak.openmason.editor.SBOEditorWindow;
 import com.stonebreak.openmason.StonebreakGameTarget;
 import com.stonebreak.openmason.StonebreakPlugin;
 import com.stonebreak.openmason.StonebreakSession;
@@ -80,13 +80,27 @@ class StonebreakAssetSectionsTest {
         assertTrue(registries.mcpTools().all().stream().anyMatch(g -> g.id().equals("stonebreak.assets")));
         assertTrue(registries.mcpTools().all().stream().anyMatch(g -> g.id().equals("stonebreak.lens")));
         assertTrue(registries.guideTopics().all().stream().anyMatch(t -> t.id().equals("assets")));
-        // The containers are core now (#431): the plugin no longer registers their file types.
-        assertTrue(registries.fileTypes().all().isEmpty(), registries.fileTypes().all().toString());
+        // The containers are the plugin's again (OpenMason#88): SBO/SBE/SBT are its asset kinds, each with
+        // its file type, codec and windows; SBO/SBE open in their editors, SBT has no opener.
+        assertEquals(List.of("sbo", "sbe", "sbt"), registries.assetFormats().all().stream()
+                .map(com.openmason.api.asset.AssetFormatContribution::id).toList());
+        assertEquals(List.of("sbo", "sbe", "sbt"), registries.fileTypes().all().stream()
+                .map(com.openmason.api.files.FileType::id).toList());
+        assertEquals(List.of("sbo", "sbe"), registries.fileOpeners().all().stream()
+                .map(com.openmason.api.files.FileOpener::fileTypeId).toList());
+        assertTrue(registries.assetSurfaces().containsAll(List.of(
+                com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR,
+                com.stonebreak.openmason.editor.StonebreakSurfaces.SBE_EXPORT)));
+        assertEquals(List.of("stonebreak.texture.export-sbt", "stonebreak.texture.export-sbo",
+                        "stonebreak.texture.sbo-editor"),
+                registries.textureActions().stream().map(com.openmason.api.asset.TextureAction::id).toList());
+        // Headless (no editor services): nothing is built, every window renders nothing.
+        registries.assetWindows().forEach(w -> w.render().run());
     }
 
     @Test
     void theEditorTabsKeepTheirPre431Order() {
-        AssetSectionSet<SBOFormat.Document> set = new AssetSectionSet<>(AssetSurface.SBO_EDITOR, new SboHost());
+        AssetSectionSet<SBOFormat.Document> set = new AssetSectionSet<>(com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, new SboHost());
         List<AssetSectionSet.Tab> core = List.of(
                 new AssetSectionSet.Tab("core.metadata", "Metadata", 0, null),
                 new AssetSectionSet.Tab("core.states", "States", 200, null),
@@ -170,7 +184,7 @@ class StonebreakAssetSectionsTest {
 
     /** A block being edited, as the SBO windows describe it. */
     private static final class SboHost implements com.openmason.api.asset.AssetSectionHost {
-        @Override public AssetSurface<?> surface() { return AssetSurface.SBO_EDITOR; }
+        @Override public AssetSurface<?> surface() { return com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR; }
         @Override public String objectId() { return "stonebreak:test_block"; }
         @Override public String objectType() { return "block"; }
         @Override public boolean texturePayload() { return false; }

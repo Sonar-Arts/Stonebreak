@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -20,17 +20,17 @@ class SbePosePartOverridesTest {
     private static final float EPS = 1e-4f;
 
     /** An oarlock at (1, 0, 0) with an oar pivoting on it, and a blade riding the oar. */
-    private static final SbePart LOCK = new SbePart("lock", "oarlock", null, new Vector3f(),
+    private static final EntityPart LOCK = new EntityPart("lock", "oarlock", null, new Vector3f(),
             new Vector3f(1, 0, 0), new Vector3f(), new Vector3f(1, 1, 1), List.of());
-    private static final SbePart OAR = new SbePart("oar", "oar_r", "lock", new Vector3f(),
+    private static final EntityPart OAR = new EntityPart("oar", "oar_r", "lock", new Vector3f(),
             new Vector3f(), new Vector3f(), new Vector3f(1, 1, 1), List.of());
-    private static final SbePart BLADE = new SbePart("blade", "blade_r", "oar", new Vector3f(),
+    private static final EntityPart BLADE = new EntityPart("blade", "blade_r", "oar", new Vector3f(),
             new Vector3f(1, 0, 0), new Vector3f(), new Vector3f(1, 1, 1), List.of());
 
     private static Map<String, Matrix4f> solve(SbePoseSolver.PartOverrides overrides) {
-        SbeModelGeometry g = new SbeModelGeometry(new float[0], new float[0], new int[0],
+        EntityGeometry g = new EntityGeometry(new float[0], new float[0], new int[0],
                 List.of(LOCK, OAR, BLADE), Map.of(), 0f, List.of());
-        SbeEntityAsset a = new SbeEntityAsset("test:boat", Map.of(SbeEntityAsset.DEFAULT_VARIANT, g), Map.of());
+        EntityAsset a = new EntityAsset("test:boat", Map.of(EntityAsset.DEFAULT_VARIANT, g), Map.of());
         Map<String, Matrix4f> out = new HashMap<>();
         SbePoseSolver.forEachPartMatrix(g, a, null, new Matrix4f(), 0f, 0f, overrides,
                 (m, p) -> out.put(p.name(), new Matrix4f(m)));

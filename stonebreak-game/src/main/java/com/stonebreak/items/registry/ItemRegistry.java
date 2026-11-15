@@ -1,9 +1,9 @@
 package com.stonebreak.items.registry;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParser;
 import com.stonebreak.items.ItemCategory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,6 +1,6 @@
 package com.stonebreak.gameplay;
 
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 
 import java.util.ArrayList;
 import java.util.Collections;

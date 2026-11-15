@@ -6,9 +6,9 @@ import com.openmason.engine.ui.runtime.UiElement;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.EntityAttachments;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import org.joml.Matrix4f;
@@ -56,13 +56,13 @@ public final class EntityPreviewProvider extends GlPreviewProvider {
         }
         UiValue.Obj p = element.prop("params") instanceof UiValue.Obj o ? o : UiValue.Obj.EMPTY;
         String entity = text(p, "entity", PLAYER);
-        String variant = text(p, "variant", SbeEntityAsset.DEFAULT_VARIANT);
+        String variant = text(p, "variant", EntityAsset.DEFAULT_VARIANT);
         boolean player = PLAYER.equalsIgnoreCase(entity);
         EntityType type = player ? EntityType.REMOTE_PLAYER : entityType(entity);
         if (type == null) {
             return false;
         }
-        float[] b = bounds(type, player ? SbeEntityAsset.DEFAULT_VARIANT : variant);
+        float[] b = bounds(type, player ? EntityAsset.DEFAULT_VARIANT : variant);
         if (b == null) {
             return false;
         }
@@ -135,8 +135,8 @@ public final class EntityPreviewProvider extends GlPreviewProvider {
         if (cached != null) {
             return cached;
         }
-        SbeEntityAsset asset = SbeEntityRegistry.get(type.getSbeObjectId());
-        SbeModelGeometry geo = asset == null ? null : asset.geometryFor(variant);
+        EntityAsset asset = SbeEntityRegistry.get(type.getSbeObjectId());
+        EntityGeometry geo = asset == null ? null : asset.geometryFor(variant);
         float[] v = geo == null ? null : geo.vertices();
         if (v == null || v.length < 3) {
             return null;

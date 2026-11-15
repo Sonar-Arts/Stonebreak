@@ -1,8 +1,8 @@
 package com.stonebreak.blocks;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import org.junit.jupiter.api.Test;
 

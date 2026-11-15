@@ -4,8 +4,8 @@ import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityPart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Authored reaction assets exercised through Stonebreak's real pose sampler. */
 class ArchonReactionAnimationTest {
-    private static final SbeEntityAsset ASSET = GameSbeAssets.load("/sbe/Mobs/SB_Ice_Archon.sbe");
+    private static final EntityAsset ASSET = GameSbeAssets.load("/sbe/Mobs/SB_Ice_Archon.sbe");
 
     private static JsonNode contract() throws IOException {
         try (var in = ArchonReactionAnimationTest.class.getResourceAsStream("/sbe/Mobs/ice-archon-combat/clips.json")) {
@@ -38,7 +38,7 @@ class ArchonReactionAnimationTest {
     @Test
     void everyReactionBindsAndMatchesItsTimingContract() throws IOException {
         assertEquals("stonebreak:ice_archon", ASSET.objectId());
-        var ids = ASSET.geometryFor("Default").parts().stream().map(SbePart::id).collect(Collectors.toSet());
+        var ids = ASSET.geometryFor("Default").parts().stream().map(EntityPart::id).collect(Collectors.toSet());
         for (var spec : contract().get("clips")) {
             String name = spec.get("state").asText();
             var clip = ASSET.clipFor(name);

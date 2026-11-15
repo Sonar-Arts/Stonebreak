@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.rendering.model.draw.ClipLayers;
 import com.openmason.engine.rendering.model.draw.ModelPoseSolver;
@@ -17,7 +17,7 @@ import java.util.List;
 /**
  * Stonebreak's view of the engine pose solver ({@link ModelPoseSolver}, #90):
  * resolves the game's named, layered {@link AnimState} against an
- * {@link SbeEntityAsset}'s clips into the engine's neutral {@link ClipLayers},
+ * {@link EntityAsset}'s clips into the engine's neutral {@link ClipLayers},
  * then delegates. All transform math — base matrix, hierarchy deltas, head
  * tracking, overlays, sockets — lives in the engine; see {@link ModelPoseSolver}
  * for the pipeline.
@@ -27,7 +27,7 @@ public final class SbePoseSolver {
     /** Receives the computed world matrix for one animated part. */
     @FunctionalInterface
     public interface PartConsumer {
-        void accept(Matrix4f partMatrix, SbePart part);
+        void accept(Matrix4f partMatrix, EntityPart part);
     }
 
     /**
@@ -49,7 +49,7 @@ public final class SbePoseSolver {
     }
 
     /** The asset's clips for {@code anim}: base state + live overlays (unknown names drop out). */
-    public static ClipLayers clipLayers(SbeEntityAsset asset, AnimState anim) {
+    public static ClipLayers clipLayers(EntityAsset asset, AnimState anim) {
         if (asset == null || anim == null) return ClipLayers.REST;
         ParsedAnimClip base = asset.clipFor(anim.baseState());
         if (!anim.hasOverlays()) {
@@ -65,8 +65,8 @@ public final class SbePoseSolver {
         return new ClipLayers(base, anim.baseTime(), overlays);
     }
 
-    /** {@link #forEachPartMatrix(SbeModelGeometry, SbeEntityAsset, AnimState, Matrix4f, float, float, PartOverrides, PartConsumer)} without overrides. */
-    public static void forEachPartMatrix(SbeModelGeometry geometry, SbeEntityAsset asset,
+    /** {@link #forEachPartMatrix(EntityGeometry, EntityAsset, AnimState, Matrix4f, float, float, PartOverrides, PartConsumer)} without overrides. */
+    public static void forEachPartMatrix(EntityGeometry geometry, EntityAsset asset,
                                          AnimState anim, Matrix4f base,
                                          float headYawDeg, float headPitchDeg,
                                          PartConsumer consumer) {
@@ -74,7 +74,7 @@ public final class SbePoseSolver {
     }
 
     /** Per-part world matrices for the frame (see {@link ModelPoseSolver#forEachPartMatrix}). */
-    public static void forEachPartMatrix(SbeModelGeometry geometry, SbeEntityAsset asset,
+    public static void forEachPartMatrix(EntityGeometry geometry, EntityAsset asset,
                                          AnimState anim, Matrix4f base,
                                          float headYawDeg, float headPitchDeg,
                                          PartOverrides overrides, PartConsumer consumer) {
@@ -83,7 +83,7 @@ public final class SbePoseSolver {
     }
 
     /** The posed part matrices as a renderer input. */
-    static PartMatrices partMatrices(SbeModelGeometry geometry, SbeEntityAsset asset, AnimState anim,
+    static PartMatrices partMatrices(EntityGeometry geometry, EntityAsset asset, AnimState anim,
                                      Matrix4f base, float headYawDeg, float headPitchDeg,
                                      PartOverrides overrides) {
         return ModelPoseSolver.partMatrices(geometry, clipLayers(asset, anim), base,
@@ -95,7 +95,7 @@ public final class SbePoseSolver {
      * {@code null} when unknown or its host part is gone (see
      * {@link ModelPoseSolver#socketWorldMatrix}).
      */
-    public static Matrix4f socketWorldMatrix(SbeEntityAsset asset, String variantName,
+    public static Matrix4f socketWorldMatrix(EntityAsset asset, String variantName,
                                              AnimState anim, Matrix4f base,
                                              float headYawDeg, float headPitchDeg,
                                              String socketName, Matrix4f dest) {

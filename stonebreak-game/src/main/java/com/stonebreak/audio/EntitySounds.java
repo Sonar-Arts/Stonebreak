@@ -5,7 +5,7 @@ import com.openmason.engine.audio.SoundEvents;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.World;
@@ -84,7 +84,7 @@ public final class EntitySounds {
 
     /** Null while the SBE registry or audio is not up yet, so the miss is not cached. */
     private static SoundEvents resolve(String objectId) {
-        SbeEntityAsset asset = SbeEntityRegistry.get(objectId);
+        EntityAsset asset = SbeEntityRegistry.get(objectId);
         if (asset == null || Game.getSoundSystem() == null) return null;
         return SoundEvents.resolve(Game.getSoundSystem(), objectId, asset.sounds(), asset::soundBytesFor,
                 GameSoundLoader.RESOURCES);

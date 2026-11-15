@@ -1,9 +1,9 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
-import com.openmason.engine.entity.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityAttachmentPoint;
+import com.openmason.engine.entity.model.EntityModelLoader;
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMaterialData;
@@ -29,9 +29,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@link SbeEntityLoader#buildGeometry(OMOReader.ReadResult)} threads OMO
- * attachment points through to {@link SbeModelGeometry}, and
- * {@link SbeEntityLoader#loadAttachable} decodes accessory assets across
+ * {@link EntityModelLoader#buildGeometry(OMOReader.ReadResult)} threads OMO
+ * attachment points through to {@link EntityGeometry}, and
+ * {@link EntityModelLoader#loadAttachable} decodes accessory assets across
  * formats (bare .omo, .sbo with embedded model).
  */
 class SbeEntityLoaderAttachmentTest {
@@ -72,9 +72,9 @@ class SbeEntityLoaderAttachmentTest {
         Path omo = dir.resolve("acc.omo");
         Files.write(omo, buildOmoBytes());
 
-        SbeEntityAsset asset = SbeEntityLoader.loadAttachable(omo);
-        assertNotNull(asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT));
-        assertEquals(1, asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT).parts().size());
+        EntityAsset asset = EntityModelLoader.loadAttachable(omo);
+        assertNotNull(asset.geometryFor(EntityAsset.DEFAULT_VARIANT));
+        assertEquals(1, asset.geometryFor(EntityAsset.DEFAULT_VARIANT).parts().size());
         assertTrue(asset.clips().isEmpty());
     }
 
@@ -87,8 +87,8 @@ class SbeEntityLoaderAttachmentTest {
         Files.write(sbo, zip("manifest.json", sboManifest.getBytes(StandardCharsets.UTF_8),
                 "model.omo", buildOmoBytes()));
 
-        SbeEntityAsset asset = SbeEntityLoader.loadAttachable(sbo);
-        SbeModelGeometry geometry = asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
+        EntityAsset asset = EntityModelLoader.loadAttachable(sbo);
+        EntityGeometry geometry = asset.geometryFor(EntityAsset.DEFAULT_VARIANT);
         assertNotNull(geometry);
         assertFalse(geometry.parts().isEmpty());
     }
@@ -100,7 +100,7 @@ class SbeEntityLoaderAttachmentTest {
                 "texture.omt", new byte[]{1, 2, 3}));
 
         IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> SbeEntityLoader.loadAttachable(sbo));
+                () -> EntityModelLoader.loadAttachable(sbo));
         assertTrue(e.getCause().getMessage().contains("no embedded model"));
     }
 
@@ -122,7 +122,7 @@ class SbeEntityLoaderAttachmentTest {
 
     @Test
     void attachmentPointsAreThreadedIntoGeometry() throws IOException {
-        SbeModelGeometry geometry = SbeEntityLoader.buildGeometry(readResult(List.of(
+        EntityGeometry geometry = EntityModelLoader.buildGeometry(readResult(List.of(
                 new OMOFormat.AttachmentPointEntry("a1", "face", "p-head", "head",
                         0f, 1.5f, 0.25f, 0f, 180f, 0f, 0.5f, 0.5f, 0.5f),
                 new OMOFormat.AttachmentPointEntry("a2", "root_socket", null, null,
@@ -130,7 +130,7 @@ class SbeEntityLoaderAttachmentTest {
 
         assertEquals(2, geometry.attachmentPoints().size());
 
-        SbeAttachmentPoint face = geometry.attachmentPoints().get(0);
+        EntityAttachmentPoint face = geometry.attachmentPoints().get(0);
         assertEquals("a1", face.id());
         assertEquals("face", face.name());
         assertEquals("p-head", face.parentPartId());
@@ -139,7 +139,7 @@ class SbeEntityLoaderAttachmentTest {
         assertEquals(180f, face.localRotDeg().y);
         assertEquals(0.5f, face.localScale().x);
 
-        SbeAttachmentPoint root = geometry.attachmentPoints().get(1);
+        EntityAttachmentPoint root = geometry.attachmentPoints().get(1);
         assertNull(root.parentPartId());
         assertTrue(root.isModelRoot());
         assertEquals(3f, root.localPos().z);
@@ -148,7 +148,7 @@ class SbeEntityLoaderAttachmentTest {
 
     @Test
     void noAttachmentPointsYieldsEmptyList() throws IOException {
-        SbeModelGeometry geometry = SbeEntityLoader.buildGeometry(readResult(List.of()));
+        EntityGeometry geometry = EntityModelLoader.buildGeometry(readResult(List.of()));
         assertTrue(geometry.attachmentPoints().isEmpty());
     }
 
@@ -162,10 +162,10 @@ class SbeEntityLoaderAttachmentTest {
                 new byte[]{1, 2, 3}, "OPAQUE", false, -1);
         var unused = new OMOReader.ReadResult(base.document(), base.meshData(), List.of(),
                 List.of(retired), null, List.of(), List.of());
-        assertTrue(SbeEntityLoader.buildGeometry(unused).materials().isEmpty());
+        assertTrue(EntityModelLoader.buildGeometry(unused).materials().isEmpty());
         var referenced = new OMOReader.ReadResult(base.document(), base.meshData(),
                 List.of(new ParsedFaceMapping(0, 7, 0, 0, 1, 1, 0)),
                 List.of(retired), null, List.of(), List.of());
-        assertThrows(IOException.class, () -> SbeEntityLoader.buildGeometry(referenced));
+        assertThrows(IOException.class, () -> EntityModelLoader.buildGeometry(referenced));
     }
 }

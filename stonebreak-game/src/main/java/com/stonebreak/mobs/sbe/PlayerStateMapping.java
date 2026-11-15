@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 
 /**
  * Maps the player's local movement state to an animation state name authored
@@ -45,7 +45,7 @@ public final class PlayerStateMapping {
     }
 
     /** Authored two-step cycle duration; defaults keep movement usable if the asset is unavailable. */
-    public static float gaitDuration(PlayerMovementState state, SbeEntityAsset asset) {
+    public static float gaitDuration(PlayerMovementState state, EntityAsset asset) {
         if (state != PlayerMovementState.WALKING && state != PlayerMovementState.SPRINTING) return 0f;
         var clip = asset == null ? null : asset.clipFor(sbeState(state));
         if (clip != null && Float.isFinite(clip.duration()) && clip.duration() > 0f) return clip.duration();

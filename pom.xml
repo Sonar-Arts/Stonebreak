@@ -14,6 +14,8 @@
          OpenMason main): GitHub Packages (a read:packages token under server id "github"), or a
          local build installed by scripts/openmason-local.sh, which is also the cross-repo dev loop. -->
     <modules>
+        <!-- Stonebreak's asset containers SBO/SBE/SBT (OpenMason#88): game formats, out of the engine -->
+        <module>stonebreak-formats</module>
         <module>stonebreak-game</module>
         <!-- Stonebreak's Open Mason plugin (#382): depends on the tool and the game -->
         <module>openmason-plugin-stonebreak</module>
@@ -76,6 +78,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.stonebreak</groupId>
+                <artifactId>stonebreak-formats</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- Open Mason (#388) -->
             <dependency>
                 <groupId>com.openmason</groupId>

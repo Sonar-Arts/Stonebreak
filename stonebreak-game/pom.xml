@@ -20,6 +20,10 @@
         <!-- Open Mason engine (Sonar-Arts/OpenMason, #388): all three engine modules, at the root POM's
              ${openmason.version} -->
         <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>stonebreak-formats</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-core</artifactId>
         </dependency>

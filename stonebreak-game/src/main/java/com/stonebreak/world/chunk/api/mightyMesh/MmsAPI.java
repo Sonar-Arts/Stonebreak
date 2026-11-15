@@ -615,9 +615,9 @@ public final class MmsAPI {
      * Sets the SBO stamp emitter on the CCO adapter.
      * Call this after the SBO Renderer API is initialized.
      *
-     * @param emitter the stamp emitter from SBORendererAPI
+     * @param emitter the stamp emitter from StampRendererAPI
      */
-    public void setSBOStampEmitter(com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter emitter) {
+    public void setSBOStampEmitter(com.openmason.engine.voxel.stamp.render.StampEmitter emitter) {
         if (ccoAdapter != null) {
             ccoAdapter.setSBOStampEmitter(emitter);
         }
@@ -642,7 +642,7 @@ public final class MmsAPI {
      * Call this after SBO mesh processing is initialized.
      */
     public void setSBODispatcher(com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher dispatcher,
-                                com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider provider) {
+                                com.openmason.engine.voxel.mms.mmsIntegration.MmsStampBlockProvider provider) {
         if (ccoAdapter != null) {
             ccoAdapter.setSBODispatcher(dispatcher, provider);
         }

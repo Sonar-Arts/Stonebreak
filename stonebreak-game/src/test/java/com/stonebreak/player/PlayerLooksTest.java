@@ -1,12 +1,12 @@
 package com.stonebreak.player;
 
 import com.stonebreak.mobs.sbe.GameSbeAssets;
-import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
+import com.openmason.engine.entity.model.EntityAttachmentPoint;
 import com.stonebreak.mobs.sbe.EntityAttachments;
 import java.util.List;
 import java.util.stream.Stream;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -53,8 +53,8 @@ class PlayerLooksTest {
     void everyHatAssetDecodesFromTheClasspath() {
         for (PlayerLooks.CosmeticOption option : allOptions()) {
             if (option.resourcePath() == null) continue;
-            SbeEntityAsset asset = GameSbeAssets.loadAttachableResource(option.resourcePath());
-            assertNotNull(asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT),
+            EntityAsset asset = GameSbeAssets.loadAttachableResource(option.resourcePath());
+            assertNotNull(asset.geometryFor(EntityAsset.DEFAULT_VARIANT),
                     option.id() + " asset has no default geometry: " + option.resourcePath());
             if (option.variant() != null) {
                 assertTrue(asset.variants().containsKey(option.variant()),
@@ -66,11 +66,11 @@ class PlayerLooksTest {
 
     @Test
     void playerModelHasEverySocketOptionsMountTo() {
-        SbeEntityAsset player = GameSbeAssets.loadAttachableResource("/sbe/Mobs/SB_Player.sbe");
-        SbeModelGeometry geometry = player.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
+        EntityAsset player = GameSbeAssets.loadAttachableResource("/sbe/Mobs/SB_Player.sbe");
+        EntityGeometry geometry = player.geometryFor(EntityAsset.DEFAULT_VARIANT);
         assertNotNull(geometry);
         Set<String> playerSockets = new HashSet<>();
-        for (SbeAttachmentPoint point : geometry.attachmentPoints()) {
+        for (EntityAttachmentPoint point : geometry.attachmentPoints()) {
             playerSockets.add(point.name().toUpperCase());
         }
         for (PlayerLooks.CosmeticOption option : allOptions()) {

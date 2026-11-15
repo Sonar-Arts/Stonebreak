@@ -2,16 +2,16 @@ package com.stonebreak.rendering.models.blocks;
 
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.omo.OMOReader;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.anim.AnimatedBlockRegistry;
 import com.stonebreak.blocks.door.DoorState;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeEntityLoader;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityModelLoader;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.rendering.models.entities.SbeEntityRenderer;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.world.World;
@@ -33,7 +33,7 @@ import java.util.Set;
  * (they are excluded from the SBO stamp map at startup).
  *
  * <p>Each animated block type is lazily wrapped in a synthetic
- * {@link SbeEntityAsset}: geometry from the SBO's default-state OMO through
+ * {@link EntityAsset}: geometry from the SBO's default-state OMO through
  * the same pipeline mob models use, clips from the embedded {@code .omanim}s
  * with the manifest {@code AnimationRef}'s authored loop flag applied (a
  * play-once clip clamps at its last keyframe, so a door's "Open" swing holds
@@ -67,7 +67,7 @@ public final class AnimatedBlockRenderer {
 
     /** Lazily built per animated block type; a build failure is cached so a
      *  broken asset logs once instead of every frame. */
-    private final Map<BlockType, SbeEntityAsset> assets = new HashMap<>();
+    private final Map<BlockType, EntityAsset> assets = new HashMap<>();
     private final Set<BlockType> failedAssets = new HashSet<>();
 
     /** Render-thread-only clip timing per tracked position. */
@@ -142,7 +142,7 @@ public final class AnimatedBlockRenderer {
                 continue;
             }
             if (shadow && com.stonebreak.blocks.torch.TorchBlock.isTorch(type)) continue;
-            SbeEntityAsset asset = assetFor(type);
+            EntityAsset asset = assetFor(type);
             if (asset == null) continue;
 
             // Resolve render state + orientation from the block-state string.
@@ -196,14 +196,14 @@ public final class AnimatedBlockRenderer {
 
             reusablePosition.set(pos.x() + anchorX, pos.y(), pos.z() + anchorZ);
             if (shadow) {
-                sbeRenderer.renderColored(asset, SbeEntityAsset.DEFAULT_VARIANT,
+                sbeRenderer.renderColored(asset, EntityAsset.DEFAULT_VARIANT,
                         renderState, elapsed, reusablePosition, yaw, unitScale,
                         viewMatrix, projectionMatrix, SHADOW_COLOR);
                 continue;
             }
             // A torch is its own light source: it never reads as unlit.
             sbeRenderer.setSelfGlow(torch ? TORCH_SELF_GLOW : 0f);
-            sbeRenderer.render(asset, SbeEntityAsset.DEFAULT_VARIANT,
+            sbeRenderer.render(asset, EntityAsset.DEFAULT_VARIANT,
                     AnimState.single(renderState, elapsed), reusablePosition, yaw, unitScale,
                     viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
         }
@@ -233,7 +233,7 @@ public final class AnimatedBlockRenderer {
         return name != null ? name : "";
     }
 
-    private float clipDuration(SbeEntityAsset asset, String stateName) {
+    private float clipDuration(EntityAsset asset, String stateName) {
         ParsedAnimClip clip = asset.clipFor(stateName);
         return clip != null ? clip.duration() : 0f;
     }
@@ -243,8 +243,8 @@ public final class AnimatedBlockRenderer {
      * default-state OMO geometry + one clip per state, with each clip's loop
      * flag replaced by the SBO manifest's authored loop choice.
      */
-    private SbeEntityAsset assetFor(BlockType type) {
-        SbeEntityAsset cached = assets.get(type);
+    private EntityAsset assetFor(BlockType type) {
+        EntityAsset cached = assets.get(type);
         if (cached != null) return cached;
         if (failedAssets.contains(type)) return null;
 
@@ -257,7 +257,7 @@ public final class AnimatedBlockRenderer {
             if (omo == null) {
                 throw new IOException("no state model for animated block " + type.name());
             }
-            SbeModelGeometry geometry = SbeEntityLoader.buildGeometry(omo);
+            EntityGeometry geometry = EntityModelLoader.buildGeometry(omo);
 
             Map<String, ParsedAnimClip> clips = new LinkedHashMap<>();
             for (SBOFormat.StateEntry state : sbo.manifest().states()) {
@@ -272,8 +272,8 @@ public final class AnimatedBlockRenderer {
                 clips.put(state.name(), clip);
             }
 
-            SbeEntityAsset asset = new SbeEntityAsset(sbo.getObjectId(),
-                    Map.of(SbeEntityAsset.DEFAULT_VARIANT, geometry), clips);
+            EntityAsset asset = new EntityAsset(sbo.getObjectId(),
+                    Map.of(EntityAsset.DEFAULT_VARIANT, geometry), clips);
             assets.put(type, asset);
             logger.info("Built animated block asset for {}: {} state clip(s)",
                     type.name(), clips.size());

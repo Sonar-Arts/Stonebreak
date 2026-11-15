@@ -1,7 +1,7 @@
 package com.stonebreak.items.weapon;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.registry.ItemRegistry;
 import org.slf4j.Logger;

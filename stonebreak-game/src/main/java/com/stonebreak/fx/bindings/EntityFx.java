@@ -1,6 +1,6 @@
 package com.stonebreak.fx.bindings;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.format.fx.FxData;
 import com.stonebreak.fx.Fx;
 import com.stonebreak.fx.FxRuntime;
@@ -126,7 +126,7 @@ public final class EntityFx {
         if (SbeEntityRegistry.size() == 0) {
             return null;
         }
-        SbeEntityAsset asset = SbeEntityRegistry.get(objectId);
+        EntityAsset asset = SbeEntityRegistry.get(objectId);
         if (asset == null || asset.fx() == null) {
             return NONE;
         }

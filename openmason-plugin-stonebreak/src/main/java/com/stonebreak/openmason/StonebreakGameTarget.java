@@ -30,8 +30,8 @@ public final class StonebreakGameTarget {
     }
 
     public static GameTarget create() {
-        String sbo = BuiltinFileTypes.SBO.id();
-        String sbe = BuiltinFileTypes.SBE.id();
+        String sbo = com.stonebreak.openmason.editor.StonebreakFileTypes.SBO.id();
+        String sbe = com.stonebreak.openmason.editor.StonebreakFileTypes.SBE.id();
         return GameTarget.builder(ID, "Stonebreak")
                 .namespace("stonebreak")
                 // The game's packaged resources are on this plugin's loader (it requires the game).
@@ -73,7 +73,7 @@ public final class StonebreakGameTarget {
                 .model("Log", Shape.CUBE)
                 .model("Planks", Shape.CUBE)
                 // The game's own stair shape (all wood stairs share it), without the wood texture.
-                .modelFromTargetSbo("Stairs", "sbo/blocks/SB_Oak_Stairs.sbo")
+                .modelFromTargetAsset("Stairs", "sbo/blocks/SB_Oak_Stairs.sbo")
                 .model("Leaves", Shape.CUBE)
                 .model("Sapling", Shape.CROSS)
                 .model("Grass", Shape.CUBE)

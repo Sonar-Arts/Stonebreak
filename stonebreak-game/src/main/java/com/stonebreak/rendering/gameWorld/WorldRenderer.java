@@ -808,10 +808,10 @@ public class WorldRenderer {
     private void renderSBOPass(List<Chunk> visibleChunks) {
         int sboCount = 0;
         for (Chunk chunk : visibleChunks) {
-            java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> sboList = chunk.getSBORenderDataList();
+            java.util.List<com.openmason.engine.voxel.stamp.StampRenderData> sboList = chunk.getSBORenderDataList();
             if (sboList != null && !sboList.isEmpty()) {
                 sboCount++;
-                for (com.openmason.engine.voxel.sbo.SBORenderData sboData : sboList) {
+                for (com.openmason.engine.voxel.stamp.StampRenderData sboData : sboList) {
                     sboData.render();
                 }
             }

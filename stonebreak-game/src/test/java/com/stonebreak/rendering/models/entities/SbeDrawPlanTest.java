@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.openmason.engine.entity.sbe.SbeFace;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityFace;
+import com.openmason.engine.entity.model.EntityPart;
 import com.openmason.engine.rendering.model.draw.ModelDrawPlan;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import org.junit.jupiter.api.Test;
@@ -29,7 +29,7 @@ class SbeDrawPlanTest {
             int faces = 0, batches = 0;
             var usedMaterials = new HashSet<Integer>();
             for (int p = 0; p < geometry.parts().size(); p++) {
-                SbePart part = geometry.parts().get(p);
+                EntityPart part = geometry.parts().get(p);
                 var original = part.faces();
                 faces += original.size();
                 batches += plan.forPart(p).textured().size();
@@ -50,7 +50,7 @@ class SbeDrawPlanTest {
                 int[] materialsAfter = plan.forPart(p).textured().stream().flatMapToInt(b ->
                         IntStream.range(0, b.indexCount()).map(i -> b.materialId())).toArray();
                 assertArrayEquals(materialsBefore, materialsAfter, name + " / " + part.name());
-                for (SbeFace face : original) usedMaterials.add(face.materialId());
+                for (EntityFace face : original) usedMaterials.add(face.materialId());
             }
             assertTrue(batches < faces / 100, name + ": " + faces + " -> " + batches);
             assertTrue(usedMaterials.containsAll(geometry.materials().keySet()), "Unused textures decoded");

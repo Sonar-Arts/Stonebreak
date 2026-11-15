@@ -21,9 +21,9 @@ import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import com.stonebreak.rendering.sbo.SBOHandMeshRegistry;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBORendererAPI;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.stamp.render.StampRendererAPI;
+import com.openmason.engine.voxel.stamp.render.StampEmitter;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.ui.chat.ChatSystem;
 import org.joml.Matrix4f;
@@ -51,8 +51,8 @@ public class Renderer {
     private final BlockDisplayMeshes displayMeshes;
     
     // SBO renderer API (deferred emitter setup until MmsAPI is initialized)
-    private SBORendererAPI sboRendererAPI;
-    private SBOStampEmitter pendingSBOEmitter;
+    private StampRendererAPI sboRendererAPI;
+    private StampEmitter pendingSBOEmitter;
     private MmsFaceCullingService sboCullingService;
 
     // SBO bridge for debug/query access
@@ -198,8 +198,9 @@ public class Renderer {
                 if (!sboBlockMap.isEmpty()) {
                     // Initialize the SBO Renderer API — processes all SBO meshes into stamps
                     var arrayAdapter = new com.stonebreak.world.chunk.api.voxel.TextureArrayAdapter(blockTextureArray);
-                    sboRendererAPI = new SBORendererAPI();
-                    int processed = sboRendererAPI.initialize(sboBlockMap, arrayAdapter, arrayAdapter);
+                    sboRendererAPI = new StampRendererAPI();
+                    int processed = sboRendererAPI.initialize(
+                            com.stonebreak.rendering.sbo.SboBlockModels.of(sboBlockMap), arrayAdapter, arrayAdapter);
 
                     if (processed > 0) {
                         // Stairs are orientable: bake one stamp per facing under
@@ -292,13 +293,13 @@ public class Renderer {
      * one rule is what stops a stair from silently meshing un-rotated.
      */
     private static void registerStairRotations(
-            com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache cache,
+            com.openmason.engine.voxel.stamp.render.StampCache cache,
             java.util.Collection<com.stonebreak.blocks.BlockType> types) {
         for (com.stonebreak.blocks.BlockType type : types) {
             if (!type.isStairs()) {
                 continue;
             }
-            com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp base = cache.get(type);
+            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp base = cache.get(type);
             if (base == null) {
                 continue;
             }
@@ -307,7 +308,7 @@ public class Renderer {
                 String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
                         com.stonebreak.blocks.stairs.StairState.stateStringFor(facing));
                 cache.put(type, key,
-                        com.openmason.engine.voxel.sbo.SBOStampRotator.rotateY(base, facing.quarterTurns()));
+                        com.openmason.engine.voxel.stamp.StampRotator.rotateY(base, facing.quarterTurns()));
             }
             logger.debug("[Renderer] Registered {} stair orientations for {}",
                     com.stonebreak.blocks.stairs.StairState.Facing.values().length, type.name());
@@ -323,7 +324,7 @@ public class Renderer {
      * there and, having no flush geometry, never hides a neighbour's face.
      */
     private static void registerStalagmiteVariants(
-            com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache cache) {
+            com.openmason.engine.voxel.stamp.render.StampCache cache) {
         com.stonebreak.blocks.BlockType type = com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE;
         if (type == null || !cache.has(type)) {
             return;
@@ -331,33 +332,33 @@ public class Renderer {
         int registered = 0;
         for (int size = 1; size <= com.stonebreak.blocks.stalagmite.Stalagmite.MAX_SIZE; size++) {
             String sboState = new com.stonebreak.blocks.stalagmite.StalagmiteState(size, false, null).sboStateName();
-            com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp upright = cache.get(type, sboState);
+            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp upright = cache.get(type, sboState);
             if (upright == null) {
                 continue;
             }
-            com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp hanging =
-                    com.openmason.engine.voxel.sbo.SBOStampRotator.flipY(upright);
+            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp hanging =
+                    com.openmason.engine.voxel.stamp.StampRotator.flipY(upright);
             for (boolean hang : new boolean[]{false, true}) {
                 for (com.stonebreak.blocks.stairs.StairState.Facing facing
                         : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
                     String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
                             new com.stonebreak.blocks.stalagmite.StalagmiteState(size, hang, facing).toStateString());
-                    cache.put(type, key, com.openmason.engine.voxel.sbo.SBOStampRotator
+                    cache.put(type, key, com.openmason.engine.voxel.stamp.StampRotator
                             .rotateY(hang ? hanging : upright, facing.quarterTurns()));
                     registered++;
                 }
             }
         }
 
-        int faceCount = com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions.FACE_COUNT;
-        com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp[] faces =
-                new com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp[faceCount];
-        com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp empty =
-                new com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp(
+        int faceCount = com.openmason.engine.voxel.stamp.render.StampFaceConventions.FACE_COUNT;
+        com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp[] faces =
+                new com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp[faceCount];
+        com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp empty =
+                new com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp(
                         new float[0], new float[0], new float[0], new float[0], 0);
         java.util.Arrays.fill(faces, empty);
-        com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp nothing =
-                new com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp(
+        com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp nothing =
+                new com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp(
                         faces, faces.clone(), new boolean[faceCount]);
         cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.UPPER, nothing);
         cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.LOWER, nothing);

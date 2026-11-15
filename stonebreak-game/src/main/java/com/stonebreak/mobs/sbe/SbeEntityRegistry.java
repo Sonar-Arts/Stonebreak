@@ -1,7 +1,7 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityModelLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +27,7 @@ import java.util.stream.Stream;
  *
  * <p>Mirrors {@code SBOBlockRegistry}: drop a {@code .sbe} file into the
  * {@code sbe/Mobs/} resource folder and {@link #scanAndLoad()} discovers,
- * decodes (via {@link SbeEntityLoader}) and registers it under the object id
+ * decodes (via {@link EntityModelLoader}) and registers it under the object id
  * declared in its manifest — no per-entity loader class required.
  *
  * <p>Entities reference their asset by object id (see
@@ -40,7 +40,7 @@ public final class SbeEntityRegistry {
     /** Resource folders scanned for {@code .sbe} files: creatures, and vehicles (the dinghy). */
     private static final List<String> SBE_RESOURCE_PATHS = List.of("sbe/Mobs", "sbe/Vehicles");
 
-    private static final Map<String, SbeEntityAsset> BY_OBJECT_ID = new LinkedHashMap<>();
+    private static final Map<String, EntityAsset> BY_OBJECT_ID = new LinkedHashMap<>();
 
     private SbeEntityRegistry() {
         throw new UnsupportedOperationException("Utility class");
@@ -59,7 +59,7 @@ public final class SbeEntityRegistry {
         com.stonebreak.fx.bindings.EntityFx.invalidate();
         for (String resourcePath : discover()) {
             try {
-                SbeEntityAsset asset = GameSbeAssets.load(resourcePath);
+                EntityAsset asset = GameSbeAssets.load(resourcePath);
                 BY_OBJECT_ID.put(asset.objectId(), asset);
             } catch (RuntimeException e) {
                 logger.error("Failed to load SBE file: {}", resourcePath, e);
@@ -74,7 +74,7 @@ public final class SbeEntityRegistry {
      * Asset for an SBE object id (e.g. {@code stonebreak:cow}), or {@code null}
      * if none is registered.
      */
-    public static SbeEntityAsset get(String objectId) {
+    public static EntityAsset get(String objectId) {
         return objectId == null ? null : BY_OBJECT_ID.get(objectId);
     }
 
@@ -84,7 +84,7 @@ public final class SbeEntityRegistry {
     }
 
     /** All registered entity assets. */
-    public static Collection<SbeEntityAsset> getAll() {
+    public static Collection<EntityAsset> getAll() {
         return Collections.unmodifiableCollection(BY_OBJECT_ID.values());
     }
 
@@ -95,7 +95,7 @@ public final class SbeEntityRegistry {
 
     /**
      * Discover {@code .sbe} files under {@link #SBE_RESOURCE_PATHS}, returning
-     * absolute classpath resource paths suitable for {@link SbeEntityLoader}.
+     * absolute classpath resource paths suitable for {@link EntityModelLoader}.
      * Checks the development filesystem first, then the classpath (incl. JARs).
      */
     private static List<String> discover() {

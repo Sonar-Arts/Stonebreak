@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.format.mesh.ParsedMeshData;
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.voxel.sbo.SBOPlanarGeometry;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.stamp.StampPlanarGeometry;
 import com.stonebreak.blocks.BlockType;
 import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
 import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
@@ -21,7 +21,7 @@ import java.util.Set;
  *
  * <p>Without this registry, {@code HandItemRenderer} falls back to a generic
  * cross or cube, which means a custom rose SBO's two-plane geometry is
- * visible in-world (via {@code SBORendererAPI}) but held-in-hand always
+ * visible in-world (via {@code StampRendererAPI}) but held-in-hand always
  * renders as a symmetric cross. This class closes that gap by converting each
  * SBO's {@link ParsedMeshData} into a {@link BlockDisplayMeshes} layered mesh
  * sized to the hand viewport, sampling the block texture array with the
@@ -76,7 +76,7 @@ public class SBOHandMeshRegistry {
             SBOParseResult sbo = bridge.getSBODefinition(type);
             ParsedMeshData mesh = sbo.meshData();
             // Pane and X models (saplings) display like flowers: the flat model, not a cube.
-            boolean cutout = type.isFlower() || SBOPlanarGeometry.isPlanar(mesh);
+            boolean cutout = type.isFlower() || StampPlanarGeometry.isPlanar(mesh);
             if (!cutout && !multiFace) continue;
             if (mesh == null || !mesh.hasGeometry() || mesh.indices() == null) {
                 logger.debug("No SBO geometry for {} — falling back to the cross/cube display mesh", type);
@@ -213,15 +213,15 @@ public class SBOHandMeshRegistry {
         // chunk mesher uses, so a model with more than six faces (a stair has
         // ten) picks the right layer per triangle instead of clamping the
         // authored GMR id into the bottom face.
-        com.openmason.engine.voxel.sbo.SBONormalComputer.ProcessedMesh processed =
-                com.openmason.engine.voxel.sbo.SBONormalComputer.compute(
+        com.openmason.engine.voxel.stamp.StampNormalComputer.ProcessedMesh processed =
+                com.openmason.engine.voxel.stamp.StampNormalComputer.compute(
                         verts, mesh.texCoords(), indices);
         float[] deVerts = processed.vertices();
         float[] deUvs = processed.texCoords();
         int[] triFaces = processed.triangleFaces();
         boolean[] triFlush = processed.triangleFlush();
         // Interior detail triangles ride their own authored material's layer, the
-        // same rule the chunk mesher applies (SBOMeshProcessor), so the held item
+        // same rule the chunk mesher applies (StampMeshProcessor), so the held item
         // and the placed block texture identically.
         int[] authoredFaces = mesh.triangleToFaceId();
         boolean hasAuthoredFaces = authoredFaces != null && authoredFaces.length >= triFaces.length;

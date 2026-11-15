@@ -1,7 +1,7 @@
 package com.stonebreak.player;
 
 import com.openmason.engine.format.oma.ParsedAnimClip;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 import java.util.List;
@@ -27,7 +27,7 @@ class PlayerBodyAnimationTest {
 
     @Test
     void audioAndPoseUseAuthoredDurationEvenDuringAttack() {
-        var asset = new SbeEntityAsset("test:player", Map.of(), Map.of("sprinting",
+        var asset = new EntityAsset("test:player", Map.of(), Map.of("sprinting",
                 new ParsedAnimClip("Sprint", 30, 2f, true, List.of())));
         var body = new PlayerBodyAnimation();
         body.update(0.25f, false, true, velocity, front, SPRINTING, false, asset);

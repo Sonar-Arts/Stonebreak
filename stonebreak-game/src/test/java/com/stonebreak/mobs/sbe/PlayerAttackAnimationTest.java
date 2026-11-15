@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +38,7 @@ class PlayerAttackAnimationTest {
 
     @Test
     void heldAttackRepeatsAfterTheAuthoredDuration() {
-        var asset = new SbeEntityAsset("test:player", Map.of(), Map.of("attacking",
+        var asset = new EntityAsset("test:player", Map.of(), Map.of("attacking",
                 new ParsedAnimClip("Punch", 30f, 1.2f, false, List.of())));
         var animation = new PlayerAttackAnimation();
         animation.update(0.01f, true, asset);

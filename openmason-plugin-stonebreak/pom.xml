@@ -38,6 +38,11 @@
             <artifactId>stonebreak-game</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+        <!-- SBO/SBE/SBT (OpenMason#88): the editors this plugin contributes read and write them -->
+        <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>stonebreak-formats</artifactId>
+        </dependency>
 
         <!-- Testing (versions managed by parent POM) -->
         <dependency>

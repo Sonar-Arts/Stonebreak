@@ -4,7 +4,7 @@ import com.stonebreak.mobs.sbe.OverlayAnimState;
 import com.stonebreak.mobs.sbe.PlayerAttackAnimation;
 import com.stonebreak.mobs.sbe.PlayerGaitClock;
 import com.stonebreak.mobs.sbe.PlayerStateMapping;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import org.joml.Vector3f;
 
 /**
@@ -26,7 +26,7 @@ final class PlayerBodyAnimation {
 
     void update(float dt, boolean attacking, boolean onGround, Vector3f velocity, Vector3f cameraFront,
                 PlayerStateMapping.PlayerMovementState movementState, boolean physicallyInWater,
-                SbeEntityAsset asset) {
+                EntityAsset asset) {
         // Advance body animation clocks (used by third-person renderer).
         bodyAnimationTime += dt;
         if (!onGround) jumpEventTime += dt; else jumpEventTime = 0f;

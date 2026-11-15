@@ -103,7 +103,7 @@ class StairStateTest {
         assertEquals(1.0f, mapped[1], EPS);
     }
 
-    /** JOML rotateY in cell space, matching SBOStampRotator. */
+    /** JOML rotateY in cell space, matching StampRotator. */
     private static float[] rotateCell(float x, float z, int turns) {
         float u = x - 0.5f;
         float v = z - 0.5f;

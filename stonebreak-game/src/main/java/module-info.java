@@ -21,6 +21,7 @@ module stonebreak.game {
     requires org.joml;
     
     // OpenMason Engine for shared rendering and format support
+    requires transitive stonebreak.formats; // SBO/SBE/SBT (OpenMason#88); the plugin reads them too
     requires openmason.engine.core;
     requires openmason.engine.ui;
     requires openmason.engine.platform; // window, input devices, frame loop (#96)

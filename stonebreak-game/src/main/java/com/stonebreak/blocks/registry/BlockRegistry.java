@@ -1,8 +1,8 @@
 package com.stonebreak.blocks.registry;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.rendering.sbo.SBOBlockRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

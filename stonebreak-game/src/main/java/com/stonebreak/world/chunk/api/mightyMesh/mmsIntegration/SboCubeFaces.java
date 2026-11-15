@@ -1,9 +1,9 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
+import com.openmason.engine.voxel.stamp.render.StampEmitter;
 import com.stonebreak.blocks.BlockType;
 
 /**
@@ -36,7 +36,7 @@ public final class SboCubeFaces {
     private final boolean[] perCell;
     private final boolean[] shaped; // SBO block that is NOT a cube (stairs, slabs, crosses…)
 
-    public SboCubeFaces(SBOStampEmitter emitter) {
+    public SboCubeFaces(StampEmitter emitter) {
         int maxId = 0;
         for (BlockType type : BlockType.values()) {
             maxId = Math.max(maxId, type.getId());
@@ -57,7 +57,7 @@ public final class SboCubeFaces {
         }
     }
 
-    private boolean tryBuildCube(SBOStampEmitter emitter, BlockType type, int id) {
+    private boolean tryBuildCube(StampEmitter emitter, BlockType type, int id) {
         if (emitter.getCache().variantCount(type) != 1) {
             return false;
         }

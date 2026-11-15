@@ -2,7 +2,7 @@ package com.stonebreak.audio;
 
 import com.openmason.engine.audio.SoundEventCache;
 import com.openmason.engine.audio.SoundEvents;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.openmason.engine.format.sound.SoundData;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;

@@ -3,7 +3,7 @@ package com.stonebreak.rendering.player;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.mobs.sbe.OverlayAnimState;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import org.joml.Matrix4f;
 
 import java.util.List;
@@ -28,7 +28,7 @@ final class FirstPersonArmPose {
         return dest.setPerspective((float) Math.toRadians(70), aspect, 0.02f, 10f);
     }
 
-    static AnimState animation(SbeEntityAsset arm, float idleTime, OverlayAnimState attack) {
+    static AnimState animation(EntityAsset arm, float idleTime, OverlayAnimState attack) {
         var clip = arm.clipFor("attacking");
         if (clip == null || !attack.isVisible()) return AnimState.single("idle", idleTime);
         return new AnimState("idle", idleTime, List.of(new AnimState.Overlay("attacking", attack.time(),

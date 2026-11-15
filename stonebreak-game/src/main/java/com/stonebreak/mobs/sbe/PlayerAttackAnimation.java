@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 
 /**
  * Plays a complete authored body attack independently of mining/combat pulse timing.
@@ -12,7 +12,7 @@ public final class PlayerAttackAnimation {
     private boolean playing;
     private float duration;
 
-    public void update(float dt, boolean attacking, SbeEntityAsset asset) {
+    public void update(float dt, boolean attacking, EntityAsset asset) {
         if (!Float.isFinite(dt) || dt < 0f) return;
         if (playing) {
             overlay.update(dt, true);

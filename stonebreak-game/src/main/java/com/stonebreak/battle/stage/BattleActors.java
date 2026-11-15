@@ -6,9 +6,9 @@ import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.EntityAttachments;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -70,7 +70,7 @@ public final class BattleActors {
 
         if (monkPose.presence() > MIN_VISIBLE_PRESENCE) {
             ActorPlacement.Placement at = ActorPlacement.place(layout, CombatantId.MONK, monkPose,
-                    restMinY(EntityType.REMOTE_PLAYER.getSbeObjectId(), SbeEntityAsset.DEFAULT_VARIANT), 1f, false);
+                    restMinY(EntityType.REMOTE_PLAYER.getSbeObjectId(), EntityAsset.DEFAULT_VARIANT), 1f, false);
             // LOCAL_PLAYER attachments: the monk wears the player's own hair and clothing.
             entityRenderer.renderStagedPlayer(monkPose.sbeState(), monkPose.clipTime(), at.position(),
                     at.yawDegrees(), unitScale, view, projection, EntityAttachments.LOCAL_PLAYER);
@@ -104,14 +104,14 @@ public final class BattleActors {
 
     /** Rest-pose "feet" height of an asset's model space; 0 (origin at the feet) when unknown. */
     private static float restMinY(String objectId, String variant) {
-        SbeEntityAsset asset = SbeEntityRegistry.get(objectId);
+        EntityAsset asset = SbeEntityRegistry.get(objectId);
         if (asset == null && !missingAssetLogged) {
             // The preview renderer skips an unknown object id silently: without this the fight would
             // run against an invisible opponent with nothing in the log.
             missingAssetLogged = true;
             logger.error("Battle actor asset '{}' is not registered; it will not be drawn", objectId);
         }
-        SbeModelGeometry geometry = asset == null ? null : asset.geometryFor(variant);
+        EntityGeometry geometry = asset == null ? null : asset.geometryFor(variant);
         return geometry == null ? 0f : geometry.restMinY();
     }
 }

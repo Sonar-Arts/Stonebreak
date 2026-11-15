@@ -215,11 +215,11 @@ public class EntityRenderer {
      */
     public boolean renderItemModel(com.stonebreak.items.ItemModels.ItemModel model, Matrix4f base,
                                    Matrix4f viewMatrix, Matrix4f projectionMatrix, boolean uiLighting) {
-        com.openmason.engine.entity.sbe.SbeEntityAsset asset =
+        com.openmason.engine.entity.model.EntityAsset asset =
                 com.stonebreak.mobs.sbe.SbeEntityRegistry.get(model.sbeObjectId());
         if (!initialized || asset == null) return false;
         Runnable draw = () -> sbeEntityRenderer.render(asset,
-                com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, base,
+                com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT, null, base,
                 viewMatrix, projectionMatrix, uiLighting ? null : com.stonebreak.core.Game.getWorld(),
                 null, 0f, 0f);
         if (uiLighting) {

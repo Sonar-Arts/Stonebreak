@@ -39,7 +39,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 PROJECT = "Stonebreak"
 STATE_NAME = "stonebreak-tests"
-MODULES = ["stonebreak-game",
+MODULES = ["stonebreak-formats",
+           "stonebreak-game",
            "openmason-plugin-stonebreak"]
 TAG_SCOPES = ("integration", "regression")
 REGISTRY = HERE / "systems.map"

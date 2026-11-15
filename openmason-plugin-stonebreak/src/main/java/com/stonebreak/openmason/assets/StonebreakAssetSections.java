@@ -6,8 +6,8 @@ import com.openmason.api.asset.AssetEditorSection;
 import com.openmason.api.asset.AssetSectionContribution;
 import com.openmason.api.asset.AssetSectionHost;
 import com.openmason.api.asset.AssetSurface;
-import com.openmason.engine.format.sbe.SBEFormat;
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbe.SBEFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.openmason.main.systems.themes.utils.ThemeColors;
 import com.stonebreak.mobs.sbe.SbeEntityKind;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;
@@ -31,23 +31,23 @@ public final class StonebreakAssetSections {
     /** Every section this plugin contributes. */
     public static List<AssetSectionContribution<?>> all() {
         return List.of(
-                new AssetSectionContribution<>("stonebreak.sbo.game-properties", AssetSurface.SBO_EDITOR, 100,
+                new AssetSectionContribution<>("stonebreak.sbo.game-properties", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 100,
                         GamePropertiesSection::new),
-                new AssetSectionContribution<>("stonebreak.sbo.recipes", AssetSurface.SBO_EDITOR, 300,
+                new AssetSectionContribution<>("stonebreak.sbo.recipes", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 300,
                         RecipesSection::new),
-                new AssetSectionContribution<>("stonebreak.sbo.smelting", AssetSurface.SBO_EDITOR, 400,
+                new AssetSectionContribution<>("stonebreak.sbo.smelting", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 400,
                         SmeltingSection::new),
-                new AssetSectionContribution<>("stonebreak.sbo.drops", AssetSurface.SBO_EDITOR, 600,
+                new AssetSectionContribution<>("stonebreak.sbo.drops", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 600,
                         DropsSection::new),
-                new AssetSectionContribution<>("stonebreak.sbo.tool", AssetSurface.SBO_EDITOR, 700,
+                new AssetSectionContribution<>("stonebreak.sbo.tool", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 700,
                         ToolSection::new),
-                new AssetSectionContribution<>("stonebreak.sbo.weapon", AssetSurface.SBO_EDITOR, 800,
+                new AssetSectionContribution<>("stonebreak.sbo.weapon", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 800,
                         WeaponSection::new),
-                new AssetSectionContribution<>("stonebreak.sbo-export.game-properties", AssetSurface.SBO_EXPORT,
+                new AssetSectionContribution<>("stonebreak.sbo-export.game-properties", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EXPORT,
                         100, ExportGamePropertiesSection::new),
-                new AssetSectionContribution<>("stonebreak.sbe.entity-type", AssetSurface.SBE_EDITOR, 100,
+                new AssetSectionContribution<>("stonebreak.sbe.entity-type", com.stonebreak.openmason.editor.StonebreakSurfaces.SBE_EDITOR, 100,
                         h -> new EntityTypeEditorSection(h)),
-                new AssetSectionContribution<>("stonebreak.sbe-export.entity-type", AssetSurface.SBE_EXPORT, 100,
+                new AssetSectionContribution<>("stonebreak.sbe-export.entity-type", com.stonebreak.openmason.editor.StonebreakSurfaces.SBE_EXPORT, 100,
                         h -> new EntityTypeExportSection()));
     }
 

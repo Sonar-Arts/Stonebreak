@@ -1,8 +1,8 @@
 package com.stonebreak.gameplay;
 
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParser;
-import com.openmason.engine.format.sbo.SBOSerializer;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOSerializer;
 import com.stonebreak.items.ToolMiningRules;
 
 import org.junit.jupiter.api.Tag;

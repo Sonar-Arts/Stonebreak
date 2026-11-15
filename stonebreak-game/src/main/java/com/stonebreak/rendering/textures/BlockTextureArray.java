@@ -4,8 +4,8 @@ import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.omo.OMOReader;
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.stamp.render.StampFaceConventions;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.rendering.sbo.SBOTextureExtractor;
@@ -256,8 +256,8 @@ public class BlockTextureArray {
         }
 
         for (int mmsFace = 0; mmsFace < 6; mmsFace++) {
-            String faceName = SBOFaceConventions.mmsToAtlasName(mmsFace);
-            int gmrFaceId = SBOFaceConventions.atlasNameToGmr(faceName);
+            String faceName = StampFaceConventions.mmsToAtlasName(mmsFace);
+            int gmrFaceId = StampFaceConventions.atlasNameToGmr(faceName);
             BufferedImage faceTexture = null;
             if (gmrFaceId >= 0) {
                 Integer materialId = faceToMaterialId.get(gmrFaceId);
@@ -323,8 +323,8 @@ public class BlockTextureArray {
         }
 
         for (int mmsFace = 0; mmsFace < 6; mmsFace++) {
-            String faceName = SBOFaceConventions.mmsToAtlasName(mmsFace);
-            int gmrFaceId = SBOFaceConventions.atlasNameToGmr(faceName);
+            String faceName = StampFaceConventions.mmsToAtlasName(mmsFace);
+            int gmrFaceId = StampFaceConventions.atlasNameToGmr(faceName);
             BufferedImage faceTexture = null;
             if (gmrFaceId >= 0) {
                 Integer materialId = faceToMaterialId.get(gmrFaceId);

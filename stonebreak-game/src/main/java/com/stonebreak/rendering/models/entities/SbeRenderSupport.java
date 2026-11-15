@@ -1,8 +1,8 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.stonebreak.mobs.entities.LivingEntity;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
 import org.joml.Vector3f;
 
 /**
@@ -23,9 +23,9 @@ final class SbeRenderSupport {
      * feet gets a zero offset; any other authoring (e.g. origin at the feet)
      * is corrected here instead of floating or sinking.
      */
-    static Vector3f groundAnchoredPosition(LivingEntity mob, SbeEntityAsset asset) {
+    static Vector3f groundAnchoredPosition(LivingEntity mob, EntityAsset asset) {
         Vector3f position = mob.getPosition();
-        SbeModelGeometry geometry =
+        EntityGeometry geometry =
                 asset == null ? null : asset.geometryFor(mob.getTextureVariant());
         if (geometry == null) {
             return position;
@@ -40,14 +40,14 @@ final class SbeRenderSupport {
      * no materials) must be drawn via {@link SbeEntityRenderer#renderColored};
      * the textured path would skip every face and render nothing.
      */
-    static boolean isTextured(SbeEntityAsset asset) {
-        SbeModelGeometry geometry = asset == null ? null
-                : asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
+    static boolean isTextured(EntityAsset asset) {
+        EntityGeometry geometry = asset == null ? null
+                : asset.geometryFor(EntityAsset.DEFAULT_VARIANT);
         return geometry != null && !geometry.materials().isEmpty();
     }
 
     /** The shared player SBE asset (remote players, decoys, local third-person), or null. */
-    static SbeEntityAsset playerAsset() {
+    static EntityAsset playerAsset() {
         return com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
                 com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId());
     }

@@ -18,7 +18,7 @@ final class BobberRenderer {
     private final FallbackCubeRenderer fallback;
 
     // Cached bobber SBE asset — loaded once on first render.
-    private com.openmason.engine.entity.sbe.SbeEntityAsset bobberAsset;
+    private com.openmason.engine.entity.model.EntityAsset bobberAsset;
     private boolean bobberAssetLoadAttempted = false;
 
     BobberRenderer(SbeEntityRenderer sbeEntityRenderer, FallbackCubeRenderer fallback) {
@@ -46,7 +46,7 @@ final class BobberRenderer {
             try {
                 sbeEntityRenderer.render(
                         bobberAsset,
-                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
                         null,
                         0.0f,
                         renderPos,
