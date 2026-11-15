@@ -39,6 +39,7 @@ public class EntityRenderer {
             new PlayerFigureRenderer(sbeEntityRenderer, remotePlayerRenderer, attachmentRenderer);
     private final FallbackCubeRenderer fallbackCubeRenderer = new FallbackCubeRenderer(simpleCubePipeline);
     private final ArrowRenderer arrowRenderer = new ArrowRenderer(socketItems);
+    private final MeatRackItemRenderer meatRackItemRenderer = new MeatRackItemRenderer(socketItems);
     private final GlowCubeRenderer glowCubeRenderer = new GlowCubeRenderer(simpleCubePipeline);
     private final FireBoltRenderer fireBoltRenderer = new FireBoltRenderer();
     private final BobberRenderer bobberRenderer = new BobberRenderer(sbeEntityRenderer, fallbackCubeRenderer);
@@ -52,6 +53,11 @@ public class EntityRenderer {
      */
     public SocketItemQueue socketItems() {
         return socketItems;
+    }
+
+    /** Queues the food hanging on nearby meat racks for the drop pass (see {@link MeatRackItemRenderer}). */
+    public void queueMeatRackItems(com.stonebreak.world.World world, Vector3f cameraPos) {
+        meatRackItemRenderer.queue(world, cameraPos);
     }
 
     /**

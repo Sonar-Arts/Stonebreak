@@ -487,6 +487,11 @@ public class Game {
         return screens.furnaceScreen();
     }
 
+    /** The chest screen. */
+    public com.stonebreak.ui.chest.ChestScreen getChestScreen() {
+        return screens.chestScreen();
+    }
+
     /** The Focus battle HUD screen (shell screen; bound per encounter by the battle coordinator). */
     public com.stonebreak.ui.focusBattle.FocusBattleScreen getFocusBattleScreen() {
         return screens.focusBattleScreen();
@@ -697,6 +702,16 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFurnaceScreen()}. */
     public void closeFurnaceScreen() {
         stateController.closeFurnaceScreen();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openChestScreen(com.openmason.engine.util.BlockPos)}. */
+    public void openChestScreen(com.openmason.engine.util.BlockPos pos) {
+        stateController.openChestScreen(pos);
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeChestScreen()}. */
+    public void closeChestScreen() {
+        stateController.closeChestScreen();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFocusBattle()}. */

@@ -159,6 +159,14 @@ public final class BlockType implements Item, IBlockType {
     // blocks/blueberrybush/BlueberryBushState). Grows via world/growth/BlueberryBushGrowthSystem;
     // a ripe bush is picked with right-click and goes back to Mature instead of breaking.
     public static final BlockType BLUEBERRY_BUSH = fromRegistry("stonebreak:blueberry_bush", "BLUEBERRY_BUSH");
+    /** Cooks raw meat put on it; a goblin camp gathers round one (blocks.campfire). */
+    public static final BlockType CAMPFIRE = fromRegistry("stonebreak:campfire", "CAMPFIRE");
+    /** Twenty-seven slots of storage (blocks.container.ChestState). */
+    public static final BlockType CHEST = fromRegistry("stonebreak:chest", "CHEST");
+    /** Goblin camp structures (mobs.goblin.camp.CampBuilder). */
+    public static final BlockType BEDROLL = fromRegistry("stonebreak:bedroll", "BEDROLL");
+    public static final BlockType MEAT_RACK = fromRegistry("stonebreak:meat_rack", "MEAT_RACK");
+    public static final BlockType PALISADE = fromRegistry("stonebreak:palisade", "PALISADE");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType

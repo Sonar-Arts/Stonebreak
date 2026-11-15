@@ -4,6 +4,9 @@ import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.furnace.FurnaceState;
 import com.stonebreak.blocks.furnace.FurnaceStateRegistry;
+import com.stonebreak.blocks.container.ChestState;
+import com.stonebreak.blocks.container.SlotGridRegistry;
+import com.stonebreak.blocks.container.SlotGridState;
 import com.stonebreak.blocks.workbench.WorkbenchState;
 import com.stonebreak.blocks.workbench.WorkbenchStateRegistry;
 import com.stonebreak.crafting.CraftingManager;
@@ -133,6 +136,9 @@ public final class ContainerActionProcessor {
                 && ctx.world() != null && ctx.world().getWorkbenchRegistry() != null) {
             ctx.world().getWorkbenchRegistry().persist(ctx.world(),
                     new BlockPos(a.x(), a.y(), a.z()));
+        } else if (a.containerKind() == ContainerActionC2S.ContainerKind.CHEST
+                && ctx.world() != null && ctx.world().getChestRegistry() != null) {
+            ctx.world().getChestRegistry().persist(ctx.world(), new BlockPos(a.x(), a.y(), a.z()));
         } else if (a.containerKind() == ContainerActionC2S.ContainerKind.FURNACE
                 && ctx.world() != null && ctx.world().getFurnaceRegistry() != null) {
             ctx.world().getFurnaceRegistry().persist(ctx.world(),
@@ -162,6 +168,7 @@ public final class ContainerActionProcessor {
         BlockType expected = switch (a.containerKind()) {
             case ContainerActionC2S.ContainerKind.FURNACE -> BlockType.FURNACE;
             case ContainerActionC2S.ContainerKind.WORKBENCH -> BlockType.WORKBENCH;
+            case ContainerActionC2S.ContainerKind.CHEST -> BlockType.CHEST;
             default -> null;
         };
         return expected != null && ctx.world() != null
@@ -188,6 +195,9 @@ public final class ContainerActionProcessor {
             state = s == null ? null : s.toStateString();
         } else if (a.containerKind() == ContainerActionC2S.ContainerKind.WORKBENCH) {
             WorkbenchState s = workbenchAt(sp, a, ctx);
+            state = s == null ? null : s.toStateString();
+        } else if (a.containerKind() == ContainerActionC2S.ContainerKind.CHEST) {
+            ChestState s = chestAt(sp, a, ctx);
             state = s == null ? null : s.toStateString();
         } else {
             return;
@@ -337,6 +347,19 @@ public final class ContainerActionProcessor {
             return false;
         }
         byte region = a.region();
+        if (a.containerKind() == ContainerActionC2S.ContainerKind.CHEST
+                && (region == ContainerActionC2S.Region.PLAYER_HOTBAR
+                    || region == ContainerActionC2S.Region.PLAYER_MAIN)) {
+            // With a chest open, a player stack goes into the chest — as much as fits.
+            ChestState chest = chestAt(sp, a, ctx);
+            if (chest == null || !SlotGridState.fill(chest.getSlots(), s)) {
+                return false;
+            }
+            if (s.isEmpty()) {
+                slot.set(ItemStackStateCodec.empty());
+            }
+            return true;
+        }
         if (region == ContainerActionC2S.Region.PLAYER_HOTBAR
                 || region == ContainerActionC2S.Region.PLAYER_MAIN) {
             // hotbar ↔ main: move as much as fits into the other region
@@ -604,6 +627,7 @@ public final class ContainerActionProcessor {
                 FurnaceState::setOutput);
             case ContainerActionC2S.Region.WORKBENCH_GRID -> workbenchGridView(sp, a, ctx, slot);
             case ContainerActionC2S.Region.WORKBENCH_OUT -> null;
+            case ContainerActionC2S.Region.CHEST_SLOTS -> gridView(chestAt(sp, a, ctx), slot);
             default -> null;
         };
     }
@@ -655,8 +679,12 @@ public final class ContainerActionProcessor {
 
     private SlotView workbenchGridView(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx,
                                        int slot) {
-        WorkbenchState state = workbenchAt(sp, a, ctx);
-        if (state == null || slot < 0 || slot >= WorkbenchState.SLOT_COUNT) {
+        return gridView(workbenchAt(sp, a, ctx), slot);
+    }
+
+    /** One slot of a block's slot grid (a crafting table's, a chest's). */
+    private static SlotView gridView(SlotGridState state, int slot) {
+        if (state == null || slot < 0 || slot >= state.slotCount()) {
             return null;
         }
         final int idx = slot;
@@ -696,7 +724,17 @@ public final class ContainerActionProcessor {
 
     private WorkbenchState workbenchAt(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
         World world = ctx.world();
-        WorkbenchStateRegistry registry = world == null ? null : world.getWorkbenchRegistry();
+        return gridAt(sp, a, world, world == null ? null : world.getWorkbenchRegistry(), BlockType.WORKBENCH);
+    }
+
+    private ChestState chestAt(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
+        World world = ctx.world();
+        return gridAt(sp, a, world, world == null ? null : world.getChestRegistry(), BlockType.CHEST);
+    }
+
+    /** The {@code block}'s grid at the action's cell, when the player can reach it; else null. */
+    private <S extends SlotGridState> S gridAt(ServerPlayer sp, ContainerActionC2S a, World world,
+                                               SlotGridRegistry<S> registry, BlockType block) {
         if (registry == null || a.y() < 0 || a.y() >= com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT) {
             return null;
         }
@@ -708,7 +746,7 @@ public final class ContainerActionProcessor {
                 return null;
             }
         }
-        if (world.getBlockAt(a.x(), a.y(), a.z()) != BlockType.WORKBENCH) {
+        if (world.getBlockAt(a.x(), a.y(), a.z()) != block) {
             return null;
         }
         return registry.getOrCreate(new BlockPos(a.x(), a.y(), a.z()));
@@ -783,7 +821,9 @@ public final class ContainerActionProcessor {
             case ContainerActionC2S.Region.PLAYER_HOTBAR, ContainerActionC2S.Region.PLAYER_MAIN ->
                     kind == ContainerActionC2S.ContainerKind.FURNACE
                             || kind == ContainerActionC2S.ContainerKind.WORKBENCH
-                            || kind == ContainerActionC2S.ContainerKind.INVENTORY;
+                            || kind == ContainerActionC2S.ContainerKind.INVENTORY
+                            || kind == ContainerActionC2S.ContainerKind.CHEST;
+            case ContainerActionC2S.Region.CHEST_SLOTS -> kind == ContainerActionC2S.ContainerKind.CHEST;
             case ContainerActionC2S.Region.FURNACE_ING, ContainerActionC2S.Region.FURNACE_FUEL,
                  ContainerActionC2S.Region.FURNACE_OUT ->
                     kind == ContainerActionC2S.ContainerKind.FURNACE;

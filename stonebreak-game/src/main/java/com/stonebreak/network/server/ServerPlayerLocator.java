@@ -1,9 +1,9 @@
 package com.stonebreak.network.server;
 
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
+import com.stonebreak.mobs.entities.ai.perception.SightLine;
 import com.stonebreak.network.packet.player.PlayerHealthS2C;
 import com.stonebreak.network.server.handlers.ServerHealthHandler;
-import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -37,9 +37,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
     private final ServerWorldContext ctx;
     private final ServerHealthHandler health;
 
-    private RaycastEngine sightRay;
-    /** The world {@link #sightRay} was built over. */
-    private World sightWorld;
+    private final SightLine sight = new SightLine();
 
     /** @param roster a live view of the connected players ({@link ServerWorldContext#players()}) */
     public ServerPlayerLocator(Collection<ServerPlayer> roster) {
@@ -123,16 +121,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
         if (world == null) {
             return true;
         }
-        Vector3f dir = new Vector3f(player.x(), player.y() + CHEST_HEIGHT, player.z()).sub(eye);
-        float dist = dir.length();
-        if (dist < 1.0e-4f) {
-            return true;
-        }
-        if (sightRay == null || sightWorld != world) {
-            sightRay = new RaycastEngine(null, null, world);
-            sightWorld = world;
-        }
-        return sightRay.distanceToFirstSolid(eye, dir.div(dist), dist, throughLeaves) >= dist;
+        return sight.clear(world, eye, new Vector3f(player.x(), player.y() + CHEST_HEIGHT, player.z()), throughLeaves);
     }
 
     /** The nearest player takes the blow, shoved horizontally away from {@code from}. */

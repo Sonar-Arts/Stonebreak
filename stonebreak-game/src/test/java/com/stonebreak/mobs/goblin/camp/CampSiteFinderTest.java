@@ -1,0 +1,157 @@
+package com.stonebreak.mobs.goblin.camp;
+
+import com.stonebreak.blocks.BlockType;
+import org.joml.Vector3i;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Where a goblin band makes camp: a roomy dark cave a few blocks under the surface that it can
+ * walk out of — and when every cave about is sealed, one it can dig its way into.
+ */
+class CampSiteFinderTest {
+
+    private static final int TOP = FakeTerrain.GROUND_TOP;
+
+    private static CampSitePlan search(CampTerrain terrain, int x, int z) {
+        CampSiteFinder finder = new CampSiteFinder(terrain, new org.joml.Vector3i(x, TOP + 1, z), cell -> true);
+        int guard = 0;
+        while (!finder.step(200)) {
+            assertTrue(++guard < 1000, "the search ends");
+        }
+        return finder.result();
+    }
+
+    /** A 7x7 room, floor at TOP-5, three blocks high. */
+    private static void room(FakeTerrain t, int cx, int cz) {
+        t.carve(cx - 3, TOP - 5, cz - 3, cx + 3, TOP - 3, cz + 3);
+    }
+
+    /** A sloping walkway from the room's east wall up to the surface. */
+    private static void openTheRoomEast(FakeTerrain t, int cx, int cz) {
+        int y = TOP - 5;
+        for (int x = cx + 4; y <= TOP + 1; x++, y++) {
+            t.carve(x, y, cz, x, y + 2, cz);
+        }
+    }
+
+    @Test
+    void solidGroundHasNowhereToCamp() {
+        assertNull(search(new FakeTerrain(), 0, 0));
+    }
+
+    @Test
+    void anOpenCaveIsChosenAndNeedsNoDigging() {
+        FakeTerrain t = new FakeTerrain();
+        room(t, 6, 0);
+        openTheRoomEast(t, 6, 0);
+        CampSitePlan plan = search(t, 0, 0);
+        assertNotNull(plan);
+        assertFalse(plan.needsDigging());
+        Vector3i site = plan.site();
+        assertTrue(t.standable(site.x, site.y, site.z) && t.covered(site.x, site.y, site.z));
+        assertTrue(Math.abs(site.x - 6) <= 3 && Math.abs(site.z) <= 3, "inside the room: " + site);
+    }
+
+    @Test
+    void aSealedCaveIsDugIntoUpAStair() {
+        FakeTerrain t = new FakeTerrain();
+        room(t, 0, 0);
+        CampSitePlan plan = search(t, 0, 0);
+        assertNotNull(plan, "a sealed cave can still be dug into");
+        assertTrue(plan.needsDigging());
+        assertTrue(plan.dig().size() <= EntrancePlanner.MAX_STEPS * 3);
+        // Dig it out and the band can walk in from the sky.
+        for (Vector3i c : plan.dig()) {
+            t.set(c.x, c.y, c.z, BlockType.AIR);
+        }
+        assertTrue(CampSiteFinder.reachesSky(t, plan.site()));
+    }
+
+    @Test
+    void aTinyHoleIsNoRoomForACamp() {
+        FakeTerrain t = new FakeTerrain();
+        t.carve(0, TOP - 5, 0, 1, TOP - 4, 1);
+        assertNull(search(t, 0, 0));
+    }
+
+    @Test
+    void aSiteTheCallerRulesOutIsNotChosen() {
+        FakeTerrain t = new FakeTerrain();
+        room(t, 6, 0);
+        openTheRoomEast(t, 6, 0);
+        CampSiteFinder finder = new CampSiteFinder(t, new org.joml.Vector3i(0, TOP + 1, 0), cell -> false);
+        while (!finder.step(500)) { }
+        assertNull(finder.result());
+    }
+
+    @Test
+    void theEntranceDigsNoWaterOrBedrock() {
+        FakeTerrain t = new FakeTerrain();
+        Vector3i site = new Vector3i(0, TOP - 5, 0);
+        t.carve(0, TOP - 5, 0, 0, TOP - 4, 0);
+        // Water on the second step of every staircase but the westward one.
+        t.set(2, TOP - 5 + 2, 0, BlockType.WATER);
+        t.set(0, TOP - 5 + 2, 2, BlockType.WATER);
+        t.set(0, TOP - 5 + 2, -2, BlockType.WATER);
+        var cells = EntrancePlanner.plan(t, site);
+        assertNotNull(cells, "west is still dry");
+        for (Vector3i c : cells) {
+            assertTrue(c.x < 0 && c.z == 0, "only west: " + c);
+        }
+        // Bedrock that way too, and there is no way in at all.
+        t.set(-2, TOP - 5 + 2, 0, BlockType.BEDROCK);
+        assertNull(EntrancePlanner.plan(t, site));
+    }
+
+    @Test
+    void aRoofedHouseIsNoCamp() {
+        FakeTerrain t = new FakeTerrain();
+        room(t, 6, 0);
+        openTheRoomEast(t, 6, 0);
+        // The same room, but someone boarded its ceiling: a cellar, not a cave.
+        for (int x = 3; x <= 9; x++) {
+            for (int z = -3; z <= 3; z++) {
+                t.set(x, TOP - 2, z, BlockType.WOOD_PLANKS);
+            }
+        }
+        assertNull(search(t, 0, 0));
+    }
+
+    @Test
+    void theEntranceDigsThroughNothingBuilt() {
+        FakeTerrain t = new FakeTerrain();
+        Vector3i site = new Vector3i(0, TOP - 5, 0);
+        t.carve(0, TOP - 5, 0, 0, TOP - 4, 0);
+        // Somebody's cellar wall on the second step of every staircase but the westward one.
+        t.set(2, TOP - 5 + 2, 0, BlockType.COBBLESTONE);
+        t.set(0, TOP - 5 + 2, 2, BlockType.WOOD_PLANKS);
+        t.set(0, TOP - 5 + 2, -2, BlockType.CHEST);
+        var cells = EntrancePlanner.plan(t, site);
+        assertNotNull(cells, "west is plain rock");
+        for (Vector3i c : cells) {
+            assertTrue(c.x < 0 && c.z == 0, "only west: " + c);
+        }
+        t.set(-2, TOP - 5 + 2, 0, BlockType.FURNACE);
+        assertNull(EntrancePlanner.plan(t, site));
+    }
+
+    @Test
+    void goblinsDigOnlyWhatTheWorldMade() {
+        assertTrue(NaturalGround.isDiggable(BlockType.STONE));
+        assertTrue(NaturalGround.isDiggable(BlockType.DIRT));
+        assertTrue(NaturalGround.isDiggable(BlockType.IRON_ORE));
+        assertFalse(NaturalGround.isDiggable(BlockType.BEDROCK));
+        assertFalse(NaturalGround.isDiggable(BlockType.AIR));
+        assertFalse(NaturalGround.isDiggable(BlockType.CHEST));
+        assertFalse(NaturalGround.isDiggable(BlockType.WOOD_PLANKS));
+        assertFalse(NaturalGround.isDiggable(BlockType.COBBLESTONE));
+        assertFalse(NaturalGround.isDiggable(null), "unloaded ground");
+        assertTrue(NaturalGround.isNatural(BlockType.WATER));
+        assertFalse(NaturalGround.isNatural(BlockType.TORCH_PLACED));
+    }
+}

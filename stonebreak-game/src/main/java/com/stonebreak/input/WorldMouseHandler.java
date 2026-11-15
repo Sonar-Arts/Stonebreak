@@ -116,6 +116,16 @@ final class WorldMouseHandler {
             return;
         }
 
+        // Raw meat (anything smeltable) aimed at a campfire goes on the fire instead of being eaten.
+        if (!held.isEmpty() && tryCookOnCampfire(player, held)) {
+            return;
+        }
+
+        // Food aimed at a meat rack hangs on its hooks instead of being eaten.
+        if (!held.isEmpty() && tryHangOnMeatRack(player, held)) {
+            return;
+        }
+
         // Food consumption takes priority over block placement; a full-health player can't eat.
         if (!held.isEmpty() && held.isFood() && !player.isFullHealth()) {
             ItemType foodType = held.asItemType();
@@ -179,6 +189,27 @@ final class WorldMouseHandler {
         }
     }
 
+    private static boolean tryCookOnCampfire(Player player, ItemStack held) {
+        if (!com.stonebreak.blocks.campfire.CampfireState.isCookable(
+                Game.getInstance().getSmeltingManager(), held.getItem())) {
+            return false; // nothing to cook: no need to look for a fire
+        }
+        Vector3i target = player.raycast();
+        return target != null
+                && Game.getWorld().getBlockAt(target.x, target.y, target.z) == BlockType.CAMPFIRE
+                && com.stonebreak.blocks.campfire.CampfireInteraction.tryCook(player, held, target.x, target.y, target.z);
+    }
+
+    private static boolean tryHangOnMeatRack(Player player, ItemStack held) {
+        if (!com.stonebreak.blocks.meatrack.MeatRackState.accepts(held.getItem())) {
+            return false; // not food: no need to look for a rack
+        }
+        Vector3i target = player.raycast();
+        return target != null
+                && Game.getWorld().getBlockAt(target.x, target.y, target.z) == BlockType.MEAT_RACK
+                && com.stonebreak.blocks.meatrack.MeatRackInteraction.tryHang(player, held, target.x, target.y, target.z);
+    }
+
     private static boolean isAimingAtGrass(Player player) {
         Vector3i target = player.raycast();
         return target != null
@@ -198,6 +229,9 @@ final class WorldMouseHandler {
         if (targetedBlockType == BlockType.WORKBENCH) {
             Game.getInstance().openWorkbenchScreen(
                     new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
+        } else if (targetedBlockType == BlockType.CHEST) {
+            Game.getInstance().openChestScreen(
+                    new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
         } else if (targetedBlockType == BlockType.FURNACE) {
             Game.getInstance().openFurnaceScreen(
                     new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
@@ -207,6 +241,11 @@ final class WorldMouseHandler {
         } else if (targetedBlockType == BlockType.BLUEBERRY_BUSH
                 && BlueberryBushInteraction.tryHarvest(player, targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
             // Picked a ripe bush: it goes back to Mature instead of breaking.
+        } else if (targetedBlockType == BlockType.MEAT_RACK
+                && player.getInventory().getSelectedHotbarSlot().isEmpty()
+                && com.stonebreak.blocks.meatrack.MeatRackInteraction.tryTake(
+                        targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
+            // Empty-handed: took the food off the last filled hook.
         } else if (targetedBlockType == BlockType.OAK_DOOR) {
             // Toggle the door open/closed — plays the target state's one-shot
             // clip and holds the final pose.

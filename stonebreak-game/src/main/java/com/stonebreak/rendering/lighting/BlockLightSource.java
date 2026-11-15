@@ -47,6 +47,29 @@ enum BlockLightSource {
     },
 
     /**
+     * A campfire glows from just above its logs, brighter than a torch and on its own flicker
+     * (the {@code Campfire_flicker} clip runs 2 s). Indexed with the torches: both are animated blocks.
+     */
+    CAMPFIRE(new LightProfile(1.00f, 0.66f, 0.32f, 1.35f, 2.0f, 0.75f)) {
+        @Override Iterable<BlockPos> candidates(World world) {
+            return world.getAnimatedBlockRegistry().positions();
+        }
+
+        @Override boolean isBlock(BlockType type) {
+            return type == BlockType.CAMPFIRE;
+        }
+
+        @Override Vector3f emitterPosition(World world, BlockPos pos, Vector3f out) {
+            return out.set(pos.x() + 0.5f, pos.y() + 0.45f, pos.z() + 0.5f);
+        }
+
+        @Override boolean rememberEmitter(Chunk chunk, int lx, int ly, int lz, BlockPos pos, Vector3f out) {
+            out.set(pos.x() + 0.5f, pos.y() + 0.45f, pos.z() + 0.5f);
+            return true;
+        }
+    },
+
+    /**
      * A lit furnace glows from its mouth. The furnace is a solid full block, so the
      * light sits just outside the mouth face rather than at the block centre, where
      * its own voxel would black it out in the shadow and bounce passes. A mouth

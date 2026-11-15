@@ -10,6 +10,7 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.MobAI;
+import com.stonebreak.mobs.entities.ai.behavior.ThreatSense;
 import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
@@ -55,7 +56,8 @@ public class Cow extends LivingEntity {
         // when hit. (No AwarenessController: the investigate/pursue drive made cows slowly
         // gravitate toward the player; awareness stays reserved for hostile mobs.)
         this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
-                new FleeBehavior(10.0f, 4.0f, 1.0f),
+                new FleeBehavior(10.0f, 4.0f, 1.0f)
+                        .withThreat(ThreatSense.ofTypes(16.0f, EntityType.GOBLIN), 10.0f, 16.0f),
                 StandStillBehavior.idle(0.4f, 3.0f, 8.0f),
                 new WanderBehavior(0.4f, 3.0f, 8.0f, 0.8f),
                 StandStillBehavior.graze(0.2f, 3.0f, 8.0f));
@@ -120,7 +122,7 @@ public class Cow extends LivingEntity {
      */
     @Override
     public void onDamage(float damage, DamageSource source) {
-        if (source == DamageSource.PLAYER) {
+        if (source == DamageSource.PLAYER || source == DamageSource.MOB) {
             applyPlayerKnockback();
         }
         mobAI.onDamaged(damage);
@@ -139,10 +141,11 @@ public class Cow extends LivingEntity {
 
     @Override
     public ItemStack[] getDrops() {
+        ItemStack beef = new ItemStack(ItemType.RAW_BEEF, 1);
         if (Math.random() < 0.40) {
-            return new ItemStack[] { new ItemStack(ItemType.LEATHER, 1) };
+            return new ItemStack[] { beef, new ItemStack(ItemType.LEATHER, 1) };
         }
-        return new ItemStack[0];
+        return new ItemStack[] { beef };
     }
 
     @Override

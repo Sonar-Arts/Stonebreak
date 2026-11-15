@@ -207,6 +207,12 @@ public final class GameLoop {
                     furnaceScreen.update(deltaTime);
                 }
             }
+            case CHEST_UI -> {
+                com.stonebreak.ui.chest.ChestScreen chestScreen = game.getChestScreen();
+                if (chestScreen != null && chestScreen.isVisible()) {
+                    chestScreen.update(deltaTime);
+                }
+            }
             // No per-frame character screen update needed; world continues to run.
             default -> {
                 return false;

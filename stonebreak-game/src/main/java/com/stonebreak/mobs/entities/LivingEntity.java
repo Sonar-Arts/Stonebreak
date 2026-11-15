@@ -451,6 +451,12 @@ public abstract class LivingEntity extends Entity {
     public LivingEntity getForcedAttackTarget() { return combat.getForcedAttackTarget(); }
 
     /**
+     * Whether this mob counts {@code other} as one of its own — never fights it, never shoots it.
+     * By default a mob's own kind; goblins draw the line by pack and camp instead.
+     */
+    public boolean isAllyOf(LivingEntity other) { return other != null && other.getType() == getType(); }
+
+    /**
      * Makes the entity face a specific direction, honoring the entity type's
      * model yaw offset so all rotation paths (AI steering, awareness pursuit)
      * agree on which way the model points.
@@ -658,7 +664,13 @@ public abstract class LivingEntity extends Entity {
         ARROW,
         BLEED,
         /** Player-cast spell damage. Credits the player and interacts with Amplified/Spellmarked. */
-        ARCANE;
+        ARCANE,
+        /**
+         * One mob attacking another — a goblin hunting a sheep. Never credits a player, never
+         * alerts the victim's stealth awareness (that assumes a player attacker), and a kill makes
+         * no death noise. MUST stay last: sources travel the wire as their ordinal.
+         */
+        MOB;
 
         /**
          * Whether this source counts as magical for the Amplified debuff. Only ARCANE for

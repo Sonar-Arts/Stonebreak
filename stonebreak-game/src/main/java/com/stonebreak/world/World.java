@@ -38,9 +38,19 @@ public class World {
     private final ChunkManager chunkManager;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
+    /** Cooking and goblin camps at campfires; authoritative worlds only (see getCampfireRegistry). */
+    private final com.stonebreak.blocks.campfire.CampfireRegistry campfireRegistry;
+    /** Goblin camps in this world; only ever populated on authoritative worlds. */
+    private final com.stonebreak.mobs.goblin.camp.CampRegistry goblinCamps;
     // Per-world crafting-table grids (issue #307), same two-world split as the furnaces.
     private final com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry =
             new com.stonebreak.blocks.workbench.WorkbenchStateRegistry();
+    // Per-world chests, the same two-world split as the crafting tables.
+    private final com.stonebreak.blocks.container.ChestRegistry chestRegistry =
+            new com.stonebreak.blocks.container.ChestRegistry();
+    // Per-world meat racks: the hooks' food, the same two-world split as the chests.
+    private final com.stonebreak.blocks.meatrack.MeatRackRegistry meatRackRegistry =
+            new com.stonebreak.blocks.meatrack.MeatRackRegistry();
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
             new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
     private final com.stonebreak.rendering.lighting.RememberedLights rememberedLights =
@@ -230,6 +240,9 @@ public class World {
             // very early bootstrap / tests
         }
         this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(smelting);
+        this.campfireRegistry = new com.stonebreak.blocks.campfire.CampfireRegistry(smelting);
+        // Eager: it must be the fires' anchor before the first chunk carrying a camp loads.
+        this.goblinCamps = new com.stonebreak.mobs.goblin.camp.CampRegistry(this);
         // Gameplay snow mutations (not putRaw hydration): mark the chunk save-dirty so the
         // layer counts persist (v3 save format), and forward to the server snow replication
         // sink when installed (headless server world only).
@@ -305,7 +318,7 @@ public class World {
         this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, terrainSystem);
         this.networkChunkInstaller = new NetworkChunkInstaller(
-                chunkStore, snowLayerManager, furnaceRegistry, workbenchRegistry, animatedBlockRegistry, meshScheduler);
+                chunkStore, snowLayerManager, furnaceRegistry, java.util.List.of(workbenchRegistry, chestRegistry, meatRackRegistry), animatedBlockRegistry, meshScheduler);
         this.updates = new WorldUpdateOrchestrator(
                 this, waterSim, leafDecay, saplingGrowth, blueberryBushGrowth, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
 
@@ -327,11 +340,14 @@ public class World {
                 }
                 saplingGrowth.onChunkLoaded(chunk);
                 blueberryBushGrowth.onChunkLoaded(chunk);
+                campfireRegistry.onChunkLoaded(chunk);
             }
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkLoaded(chunk);
             }
             workbenchRegistry.onChunkLoaded(chunk);
+            chestRegistry.onChunkLoaded(chunk);
+            meatRackRegistry.onChunkLoaded(chunk);
             animatedBlockRegistry.onChunkLoaded(chunk);
             rememberedLights.onChunkLoaded(chunk);
             meshScheduler.onChunkLoaded(chunk.getX(), chunk.getZ());
@@ -342,7 +358,12 @@ public class World {
             if (furnaceRegistry != null) {
                 furnaceRegistry.onChunkUnloaded(chunk);
             }
+            if (!renderOnly) {
+                campfireRegistry.onChunkUnloaded(chunk);
+            }
             workbenchRegistry.onChunkUnloaded(chunk);
+            chestRegistry.onChunkUnloaded(chunk);
+            meatRackRegistry.onChunkUnloaded(chunk);
             animatedBlockRegistry.onChunkUnloaded(chunk);
             // Water state is chunk-owned (ChunkWaterLayer) and leaves with the chunk;
             // the sim just drops its pending queue entries. Snow layers remain a
@@ -353,6 +374,13 @@ public class World {
             saplingGrowth.onChunkUnloaded(chunk);
             blueberryBushGrowth.onChunkUnloaded(chunk);
             snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
+        });
+        // Before the save snapshot: a camp freezes into its fire, and the fire's state is written
+        // while the chunk is still resident, so the save carries it. Authoritative worlds only.
+        this.chunkStore.setBeforeUnloadListener(chunk -> {
+            if (!renderOnly) {
+                campfireRegistry.freezeCamps(this, chunk);
+            }
         });
     }
     
@@ -1331,6 +1359,29 @@ public class World {
      * grids; a client render world holds a display copy fed by streamed chunk states and
      * {@code BlockStateS2C} echoes.
      */
+    /**
+     * This world's campfires: what is cooking on them and the goblin camps they anchor. Fed only
+     * on authoritative worlds — a client draws a fire from its block and state string alone.
+     */
+    public com.stonebreak.blocks.campfire.CampfireRegistry getCampfireRegistry() {
+        return campfireRegistry;
+    }
+
+    /** This world's goblin camps (server-side); never null. */
+    public com.stonebreak.mobs.goblin.camp.CampRegistry goblinCamps() {
+        return goblinCamps;
+    }
+
+    /** This world's chests, PER-WORLD like {@link #getWorkbenchRegistry()}. */
+    public com.stonebreak.blocks.container.ChestRegistry getChestRegistry() {
+        return chestRegistry;
+    }
+
+    /** This world's meat racks, PER-WORLD like {@link #getChestRegistry()}. */
+    public com.stonebreak.blocks.meatrack.MeatRackRegistry getMeatRackRegistry() {
+        return meatRackRegistry;
+    }
+
     public com.stonebreak.blocks.workbench.WorkbenchStateRegistry getWorkbenchRegistry() {
         return workbenchRegistry;
     }

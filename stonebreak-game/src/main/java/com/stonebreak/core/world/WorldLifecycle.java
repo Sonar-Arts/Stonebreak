@@ -133,6 +133,10 @@ public final class WorldLifecycle {
                 cursorToInventory(game.getFurnaceScreen().getController().getInputManager(), game);
                 game.getFurnaceScreen().close();
             }
+            if (game.getChestScreen() != null && game.getChestScreen().isVisible()) {
+                cursorToInventory(game.getChestScreen().getController().getInputManager(), game);
+                game.getChestScreen().close();
+            }
             if (game.getInventoryScreen() != null) game.getInventoryScreen().returnHeldItemsToPlayer();
         } catch (RuntimeException e) {
             System.err.println("[WORLD-ISOLATION] Error returning crafting grids: " + e.getMessage());

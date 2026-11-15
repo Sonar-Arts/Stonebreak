@@ -15,20 +15,21 @@ final class NetworkChunkInstaller {
     private final WorldChunkStore chunkStore;
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
-    private final com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry;
+    /** Crafting tables, chests: the blocks whose slots live in their chunk's states. */
+    private final java.util.List<? extends com.stonebreak.blocks.container.SlotGridRegistry<?>> slotGrids;
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry;
     private final ChunkMeshScheduler meshScheduler;
 
     NetworkChunkInstaller(WorldChunkStore chunkStore,
                           SnowLayerManager snowLayerManager,
                           com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry,
-                          com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry,
+                          java.util.List<? extends com.stonebreak.blocks.container.SlotGridRegistry<?>> slotGrids,
                           com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry,
                           ChunkMeshScheduler meshScheduler) {
         this.chunkStore = chunkStore;
         this.snowLayerManager = snowLayerManager;
         this.furnaceRegistry = furnaceRegistry;
-        this.workbenchRegistry = workbenchRegistry;
+        this.slotGrids = slotGrids;
         this.animatedBlockRegistry = animatedBlockRegistry;
         this.meshScheduler = meshScheduler;
     }
@@ -113,10 +114,12 @@ final class NetworkChunkInstaller {
                 if (!meta.blockStates().isEmpty() && furnaceRegistry != null) {
                     furnaceRegistry.onChunkLoaded(chunk);
                 }
-                // Same for crafting-table grids (issue #307): a joiner must see the items
-                // already in a table, or their first edit would overwrite them.
-                if (!meta.blockStates().isEmpty() && workbenchRegistry != null) {
-                    workbenchRegistry.onChunkLoaded(chunk);
+                // Same for crafting-table grids (issue #307) and chests: a joiner must see the
+                // items already in one, or their first edit would overwrite them.
+                if (!meta.blockStates().isEmpty()) {
+                    for (var grids : slotGrids) {
+                        grids.onChunkLoaded(chunk);
+                    }
                 }
                 // Same re-hydration for animated blocks (doors): the load-time
                 // scan saw an all-air placeholder with no states, so streamed

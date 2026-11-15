@@ -142,6 +142,10 @@ public final class AnimatedBlockRenderer {
                 continue;
             }
             if (shadow && com.stonebreak.blocks.torch.TorchBlock.isTorch(type)) continue;
+            // A campfire's light sits inside its own log teepee and flame planes, so drawing
+            // them would black out nearly every ray — it never shadows its own fire. Other
+            // campfires still cast for this light. In the shadow pass cameraPos is the light.
+            if (shadow && type == BlockType.CAMPFIRE && holdsPoint(pos, cameraPos)) continue;
             SbeEntityAsset asset = assetFor(type);
             if (asset == null) continue;
 
@@ -150,6 +154,7 @@ public final class AnimatedBlockRenderer {
             String renderState;
             float yaw;
             float anchorX;
+            float anchorY = 0f;
             float anchorZ;
             boolean torch = com.stonebreak.blocks.torch.TorchBlock.isTorch(type);
             if (type == BlockType.OAK_DOOR || DoorState.isDoorState(raw)) {
@@ -168,10 +173,17 @@ public final class AnimatedBlockRenderer {
                 anchorX = 0.5f;
                 anchorZ = 0.5f;
             } else {
-                renderState = raw != null && !raw.isBlank() ? raw : defaultStateOf(type);
+                // prefix:state=<clip>;payload strings (a campfire's cooking, a camp) pick their
+                // clip by the state key alone.
+                String variant = com.stonebreak.blocks.BlockRenderState.meshVariantKey(raw);
+                renderState = variant != null ? variant : defaultStateOf(type);
                 yaw = 0f;
-                anchorX = 0f;
-                anchorZ = 0f;
+                // Plain block SBOs (the campfire) are authored like static blocks: centred
+                // on the model origin, spanning -0.5..0.5. Put that origin at the cell centre
+                // (AnimatedBlockShapes.worldAabb targets the same spot).
+                anchorX = com.stonebreak.blocks.anim.AnimatedBlockShapes.PLAIN_MODEL_ANCHOR;
+                anchorY = com.stonebreak.blocks.anim.AnimatedBlockShapes.PLAIN_MODEL_ANCHOR;
+                anchorZ = com.stonebreak.blocks.anim.AnimatedBlockShapes.PLAIN_MODEL_ANCHOR;
             }
 
             Playback playback = playbacks.get(pos);
@@ -194,7 +206,7 @@ public final class AnimatedBlockRenderer {
             }
             float elapsed = totalTime - playback.startTime;
 
-            reusablePosition.set(pos.x() + anchorX, pos.y(), pos.z() + anchorZ);
+            reusablePosition.set(pos.x() + anchorX, pos.y() + anchorY, pos.z() + anchorZ);
             if (shadow) {
                 sbeRenderer.renderColored(asset, SbeEntityAsset.DEFAULT_VARIANT,
                         renderState, elapsed, reusablePosition, yaw, unitScale,
@@ -208,6 +220,13 @@ public final class AnimatedBlockRenderer {
                     viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
         }
         sbeRenderer.setSelfGlow(0f);
+    }
+
+    /** True when world-space {@code point} lies inside the cell at {@code pos}. */
+    private static boolean holdsPoint(BlockPos pos, Vector3f point) {
+        return (int) Math.floor(point.x) == pos.x()
+                && (int) Math.floor(point.y) == pos.y()
+                && (int) Math.floor(point.z) == pos.z();
     }
 
     /** Extra flat brightness a torch model draws with (it is lit by its own flame). */

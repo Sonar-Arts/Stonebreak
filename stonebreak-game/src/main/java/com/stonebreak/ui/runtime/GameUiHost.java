@@ -64,6 +64,8 @@ import java.util.function.Consumer;
  *   <tr><td>{@code stonebreak:crafting} 1</td><td>collection {@code crafting} ({@code craft:0..n-1}) and
  *       root {@code craftOutput} of the open crafting screen; {@code stonebreak:crafting.recipes}
  *       ({@link com.stonebreak.ui.runtime.contracts.CraftingContracts}, #300)</td></tr>
+ *   <tr><td>{@code stonebreak:chest} 1</td><td>collection {@code chest} ({@code chest:0..26}) of the
+ *       open chest ({@link com.stonebreak.ui.runtime.contracts.ChestContracts})</td></tr>
  *   <tr><td>{@code stonebreak:player.character} 1, {@code stonebreak:screen.inventory} 1</td><td>root
  *       {@code character} (the inventory's side columns) and {@code .tab {tab}}
  *       ({@link com.stonebreak.ui.runtime.contracts.InventoryContracts}, #300)</td></tr>
@@ -348,6 +350,7 @@ public final class GameUiHost {
     private final WorldSelectContracts worldSelect;
     private final SettingsMenuContracts settingsMenu;
     private final com.stonebreak.ui.runtime.contracts.CraftingContracts crafting;
+    private final com.stonebreak.ui.runtime.contracts.ChestContracts chest;
     private final com.stonebreak.ui.runtime.contracts.InventoryContracts inventoryScreen;
     private final com.stonebreak.ui.runtime.contracts.HudContracts hud;
     private final com.stonebreak.ui.runtime.contracts.CrosshairContracts crosshair;
@@ -391,6 +394,7 @@ public final class GameUiHost {
         mainMenu = new MainMenuContracts(host, services);
         worldSelect = new WorldSelectContracts(host, services);
         settingsMenu = new SettingsMenuContracts(host, services);
+        chest = new com.stonebreak.ui.runtime.contracts.ChestContracts(host, services::openContainer);
         crafting = new com.stonebreak.ui.runtime.contracts.CraftingContracts(host, services::openContainer,
             services::openRecipeBook);
         inventoryScreen = new com.stonebreak.ui.runtime.contracts.InventoryContracts(host, services);
@@ -625,6 +629,7 @@ public final class GameUiHost {
         }
         ContainerSlotInput screen = services.openContainer();
         crafting.poll();
+        chest.poll();
         inventoryScreen.poll();
         hud.poll();
         crosshair.poll();
@@ -672,6 +677,7 @@ public final class GameUiHost {
         lastCarried = null;
         carried.set(SlotRecords.emptyStack());
         crafting.clear();
+        chest.clear();
         inventoryScreen.clear();
         hud.clear();
         worldHud.clear();
@@ -1089,6 +1095,9 @@ public final class GameUiHost {
             if (game.getFurnaceScreen() != null && game.getFurnaceScreen().isVisible()) {
                 return game.getFurnaceScreen().getController().getInputManager();
             }
+            if (game.getChestScreen() != null && game.getChestScreen().isVisible()) {
+                return game.getChestScreen().getController().getInputManager();
+            }
             if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
                 return game.getWorkbenchScreen().getSlotInput();
             }
@@ -1103,6 +1112,8 @@ public final class GameUiHost {
             Game game = Game.getInstance();
             if (game.getFurnaceScreen() != null && game.getFurnaceScreen().isVisible()) {
                 game.closeFurnaceScreen();
+            } else if (game.getChestScreen() != null && game.getChestScreen().isVisible()) {
+                game.closeChestScreen();
             } else if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
                 game.closeWorkbenchScreen();
             } else if (game.getInventoryScreen() != null && game.getInventoryScreen().isVisible()) {

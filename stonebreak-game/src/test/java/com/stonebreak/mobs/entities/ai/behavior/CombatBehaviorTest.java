@@ -22,6 +22,7 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -265,5 +266,60 @@ class CombatBehaviorTest {
         playerAhead(bow().maxRange() + 5f);
         runToEnd(ranged, 5f);
         assertTrue(shots.isEmpty());
+    }
+
+    // ── Other targets (goblins hunting livestock) ───────────────────────────
+
+    /** Prey standing wherever the test puts it, recording the blows it takes. */
+    private static final class FakePrey implements AttackTarget {
+        Vector3f position;
+        final List<Float> hits = new ArrayList<>();
+
+        @Override public boolean engaged(AiContext c) { return position != null; }
+        @Override public Vector3f position(AiContext c) { return position; }
+        @Override public boolean canSee(AiContext c, Vector3f eye) { return position != null; }
+        @Override public boolean hurt(AiContext c, float amount, float knockback) { hits.add(amount); return true; }
+        @Override public float aimHeight(AiContext c) { return 0.5f; }
+        @Override public boolean noisy(AiContext c) { return false; }
+    }
+
+    @Test
+    void aSwingLandsOnPreyWithoutAnyPlayerAround() {
+        aware(AwarenessController.AwarenessState.UNAWARE);
+        FakePrey prey = new FakePrey();
+        prey.position = new Vector3f(0, 64, -1f);
+        MeleeAttackBehavior melee = new MeleeAttackBehavior(dagger(), AttackTarget.playerFirst(prey));
+        assertTrue(melee.canStart(context));
+        runToEnd(melee, 5f);
+        assertEquals(List.of(dagger().damage()), prey.hits);
+        assertTrue(players.hits.isEmpty());
+    }
+
+    @Test
+    void anAlertedGoblinTurnsFromItsPreyToThePlayer() {
+        AwarenessController awareness = aware(AwarenessController.AwarenessState.UNAWARE);
+        FakePrey prey = new FakePrey();
+        prey.position = new Vector3f(0, 64, -1f);
+        playerAhead(1f);
+        AttackTarget target = AttackTarget.playerFirst(prey);
+        assertSame(prey.position, target.position(context), "unaware of the player: the prey");
+
+        awareness.applyReplicatedState(AwarenessController.AwarenessState.ALERTED);
+        MeleeAttackBehavior melee = new MeleeAttackBehavior(dagger(), target);
+        runToEnd(melee, 5f);
+        assertEquals(List.of(dagger().damage()), players.hits, "the player takes the blow");
+        assertTrue(prey.hits.isEmpty());
+    }
+
+    @Test
+    void anArcherShootsAtItsPreysBody() {
+        aware(AwarenessController.AwarenessState.UNAWARE);
+        FakePrey prey = new FakePrey();
+        prey.position = new Vector3f(0, 64, -10f);
+        RangedAttackBehavior ranged = new RangedAttackBehavior(bow(), recordShots, AttackTarget.playerFirst(prey));
+        assertTrue(ranged.canStart(context));
+        runToEnd(ranged, 5f);
+        assertEquals(1, shots.size());
+        assertTrue(shots.get(0).velocity().z < 0, "toward the prey");
     }
 }

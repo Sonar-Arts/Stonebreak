@@ -6,11 +6,13 @@ import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemType;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.MobAI;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.entities.ai.behavior.ThreatSense;
 import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
@@ -44,7 +46,8 @@ public class Sheep extends LivingEntity {
         this.textureVariant = textureVariant != null ? textureVariant : "default";
         // Sheep personality: slightly restless — more wandering than a cow, and it bolts when hit.
         this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
-                new FleeBehavior(10.0f, 4.0f, 1.0f),
+                new FleeBehavior(10.0f, 4.0f, 1.0f)
+                        .withThreat(ThreatSense.ofTypes(16.0f, EntityType.GOBLIN), 10.0f, 16.0f),
                 StandStillBehavior.idle(0.35f, 2.5f, 7.0f),
                 new WanderBehavior(0.45f, 3.0f, 8.0f, 0.85f),
                 StandStillBehavior.graze(0.2f, 2.5f, 7.0f));
@@ -123,7 +126,7 @@ public class Sheep extends LivingEntity {
 
     @Override
     public void onDamage(float damage, DamageSource source) {
-        if (source == DamageSource.PLAYER) {
+        if (source == DamageSource.PLAYER || source == DamageSource.MOB) {
             applyPlayerKnockback();
         }
         mobAI.onDamaged(damage);
@@ -132,11 +135,15 @@ public class Sheep extends LivingEntity {
     @Override
     protected void onDeath() {
         mobAI.cleanup();
+        for (ItemStack drop : getDrops()) {
+            DropUtil.createItemDrop(world, getPosition(), drop);
+        }
     }
 
+    /** Wool comes from shearing, not from killing it. */
     @Override
     public ItemStack[] getDrops() {
-        return new ItemStack[0];
+        return new ItemStack[] { new ItemStack(ItemType.RAW_MUTTON, 1) };
     }
 
     @Override

@@ -57,6 +57,8 @@ public class WorldChunkStore {
 
     private Consumer<Chunk> loadListener;
     private Consumer<Chunk> unloadListener;
+    /** Runs while an unloading chunk is still resident, before its save snapshot (see unloadChunk). */
+    private Consumer<Chunk> beforeUnloadListener;
 
     // Client render-view worlds generate NO terrain — every chunk arrives from the server
     // (installNetworkChunk). When disabled, generate() yields an empty all-air chunk that the
@@ -103,6 +105,16 @@ public class WorldChunkStore {
     public void setChunkListeners(Consumer<Chunk> loadListener, Consumer<Chunk> unloadListener) {
         this.loadListener = loadListener;
         this.unloadListener = unloadListener;
+    }
+
+    /**
+     * A hook for state that must be written INTO an unloading chunk to be saved with it (a goblin
+     * camp freezing into its fire). It runs while the chunk is still resident — so world writes
+     * reach it and mark it dirty — and before the save snapshot; the unload listener runs after
+     * the snapshot, too late to change what is saved.
+     */
+    public void setBeforeUnloadListener(Consumer<Chunk> beforeUnloadListener) {
+        this.beforeUnloadListener = beforeUnloadListener;
     }
 
     /**
@@ -327,6 +339,10 @@ public class WorldChunkStore {
     public void unloadChunk(int chunkX, int chunkZ) {
         ChunkPosition pos = positionCache.get(chunkX, chunkZ);
         pendingColumnProfiles.remove(pos);
+        Chunk resident = chunks.get(pos);
+        if (resident != null && beforeUnloadListener != null) {
+            notify(beforeUnloadListener, resident);
+        }
         Chunk chunk = chunks.remove(pos);
         if (chunk == null) {
             // Chunk doesn't exist, but still clean up position cache entry

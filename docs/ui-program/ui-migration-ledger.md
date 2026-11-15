@@ -172,6 +172,7 @@ These apply to every row unless the row says otherwise.
 | dragged-item-layer | overlay | the inventory/workbench/furnace documents (cursor layer) | per-frame immediate | migrated |
 | workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | migrated |
 | furnace | screen | `ui.furnace.FurnaceScreen` | per-world | migrated |
+| chest | screen | `ui.chest.ChestScreen` (document-native: `chest.sbui` from the start, no legacy renderer) | per-world | n/a |
 | recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | migrated |
 | recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` (the document router tooltip) | per-world | migrated |
 | character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | migrated |
@@ -1212,6 +1213,17 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   items conserved, and what the document shows equals the state). Live (`-Dstonebreak.autofurnace=3
   -Dstonebreak.autofurnace.ui=30`, rolled back vs not): the panels agree except icon pixels under count digits
   (atlas-rendered block icons vs direct GL) and the world behind the translucent panel.
+
+### chest
+
+- **Owner:** `com.stonebreak.ui.chest.ChestScreen` with `ChestController`, `ChestInputManager`, `ChestLayout` and the
+  presentation `ChestDocument`.
+- **Entry:** right-click a CHEST block (`WorldMouseHandler`) → `GSC.openChestScreen`. CHEST_UI is **unpaused**, like the
+  furnace.
+- **Status n/a:** born as a document (`ui/documents/chest.sbui`, derived from `furnace.sbui`'s source with
+  `UiArchiveTool`: the crucible band replaced by a 9×3 `chest` grid bound to `stonebreak:chest` 1). There was never a
+  legacy renderer to migrate from, so there is no fidelity baseline or MigrationGate; `ChestDocumentTest` opens the
+  shipped document on a real `GameUiHost` and moves a stack through its slot addresses.
 
 ### recipe-book
 - **Kind:** overlay (full panel over the hotbar).

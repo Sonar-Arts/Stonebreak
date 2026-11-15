@@ -200,6 +200,7 @@ public class Main {
             maybeAutoResume();
             maybeAutoResize();
             maybeAutoFly();
+            maybeAutoChat();
             window.swapBuffers();
 
             if (!sleepToFrameBudget(System.nanoTime() - frameStartNanos)) {
@@ -1015,6 +1016,61 @@ public class Main {
                 + com.stonebreak.battle.stage.FocusBattle.isStartPending() + ")");
         autoBattleScript = com.stonebreak.battle.stage.BattleAutoScript.parse(parts);
         autoBattleSkipIntro = parts.length > 1 && parts[1].trim().equalsIgnoreCase("skipintro");
+    }
+
+    // ─── Dev: -Dstonebreak.autochat=<seconds>:<line>[;<line>...][|<seconds>:...] ──
+
+    private long autoChatStartNanos = -1;
+    private java.util.ArrayDeque<String> autoChatGroups;
+
+    /**
+     * Types chat lines as the player at set times into the world, exactly as if entered in the
+     * chat box — so server-side commands go to the server like any other. Groups are
+     * {@code <seconds>:<line>;<line>} joined by {@code |}, seconds counted from entering the world
+     * and in ascending order. Drives in-game checks that need a setup, e.g. a goblin hunt:
+     * {@code -Dstonebreak.autochat="5:/cheats 1;/spawn sheep 4;/spawn goblin 3|60:/goblins"}.
+     * Inert unless set.
+     */
+    private void maybeAutoChat() {
+        if (autoChatGroups == null) {
+            String spec = System.getProperty("stonebreak.autochat");
+            autoChatGroups = new java.util.ArrayDeque<>();
+            if (spec != null && !spec.isBlank()) {
+                autoChatGroups.addAll(java.util.List.of(spec.split("\\|")));
+            }
+        }
+        if (autoChatGroups.isEmpty() || Game.getInstance().getState() != GameState.PLAYING) {
+            return;
+        }
+        if (autoChatStartNanos < 0) {
+            autoChatStartNanos = System.nanoTime();
+        }
+        String group = autoChatGroups.peek();
+        int colon = group.indexOf(':');
+        double seconds = 5;
+        try {
+            seconds = Double.parseDouble(colon > 0 ? group.substring(0, colon).trim() : "5");
+        } catch (NumberFormatException ignored) {
+            // keep default
+        }
+        if (System.nanoTime() - autoChatStartNanos < (long) (seconds * 1e9)) {
+            return;
+        }
+        autoChatGroups.poll();
+        var chat = Game.getInstance().getChatSystem();
+        if (chat == null) {
+            System.err.println("[autochat] no chat system");
+            return;
+        }
+        for (String line : group.substring(colon + 1).split(";")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            chat.openChat();
+            chat.setInput(line.trim());
+            chat.handleEnter();
+            System.out.println("[autochat] " + line.trim());
+        }
     }
 
     // ─── Dev: -Dstonebreak.autopause=<seconds>[:online] ─────────────────────────

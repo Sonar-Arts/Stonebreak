@@ -95,7 +95,7 @@ public class BlockIconRenderer {
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
                                 int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
-        if (type == null || type.getAtlasX() == -1) {
+        if (!com.stonebreak.rendering.sbo.SBOHandMeshRegistry.isDisplayable(type)) {
             return; // Nothing to draw
         }
 

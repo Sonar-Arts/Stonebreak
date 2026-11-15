@@ -155,7 +155,7 @@ public final class MenuInputRouter {
             return;
         }
         switch (state) {
-            case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI, FURNACE_UI ->
+            case PLAYING, PAUSED, WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, CHARACTER_SHEET_UI, FURNACE_UI, CHEST_UI ->
                     pollInGame(game);
             default -> { }
         }

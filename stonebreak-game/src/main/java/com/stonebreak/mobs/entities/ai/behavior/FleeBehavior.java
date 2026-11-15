@@ -34,7 +34,15 @@ public final class FleeBehavior implements Behavior {
     private final float sprintTriggerRange;
     private final float safeRange;
 
+    /** Non-player threats (a goblin, to a sheep) and the ranges they trigger and release a flight at. */
+    private ThreatSense threats = ThreatSense.NONE;
+    private float threatTriggerRange;
+    private float threatSafeRange;
+    /** Whether a hit sets off a flight; off for a mob whose reaction to being hit is another behaviour's. */
+    private boolean armOnHit = true;
+
     private final Vector3f threat = new Vector3f();
+    private final Vector3f sensed = new Vector3f();
     private final Vector3f target = new Vector3f();
     private boolean threatKnown;
     /** The threat came from a hit, which already says who to run from. */
@@ -62,6 +70,30 @@ public final class FleeBehavior implements Behavior {
         this(distance, durationSeconds, speedMultiplier, 0.0f, 0.0f, 0.0f);
     }
 
+    /**
+     * Also bolts from what {@code sense} perceives — within {@code triggerRange} it starts a
+     * flight, which runs until the threat is past {@code safeRange}.
+     *
+     * @return this, for chaining off the constructor
+     */
+    public FleeBehavior withThreat(ThreatSense sense, float triggerRange, float safeRange) {
+        this.threats = sense;
+        this.threatTriggerRange = triggerRange;
+        this.threatSafeRange = safeRange;
+        return this;
+    }
+
+    /**
+     * Flees only on proximity, never because it was hit — for a mob that reacts to a hit some
+     * other way (a chicken freezes; see StartleBehavior).
+     *
+     * @return this, for chaining
+     */
+    public FleeBehavior ignoringHits() {
+        this.armOnHit = false;
+        return this;
+    }
+
     @Override
     public int priority() {
         return PRIORITY;
@@ -74,6 +106,9 @@ public final class FleeBehavior implements Behavior {
 
     @Override
     public void onDamaged(AiContext context, float damage) {
+        if (!armOnHit) {
+            return;
+        }
         Vector3f attacker = context.attacker();
         Vector3f player = attacker != null ? attacker : context.nearestPlayer();
         if (player != null) {
@@ -93,13 +128,14 @@ public final class FleeBehavior implements Behavior {
         if (threatKnown && remaining > 0.0f) {
             return true;
         }
-        return playerWithin(context, triggerRange(context));
+        return playerWithin(context, triggerRange(context)) || sensedWithin(context, threatTriggerRange) != null;
     }
 
     @Override
     public boolean shouldContinue(AiContext context) {
         // Hysteresis: keep going until the timer runs out AND the player is properly clear.
-        return remaining > 0.0f || playerWithin(context, safeRange);
+        return remaining > 0.0f || playerWithin(context, safeRange)
+                || sensedWithin(context, threatSafeRange) != null;
     }
 
     @Override
@@ -114,7 +150,7 @@ public final class FleeBehavior implements Behavior {
     public void tick(AiContext context, float deltaTime) {
         remaining -= deltaTime;
         // A fleeing mob keeps the player at its back even as the player follows.
-        if (playerWithin(context, safeRange)) {
+        if (playerWithin(context, safeRange) || sensedWithin(context, threatSafeRange) != null) {
             rememberThreat(context);
         }
         if (context.nav().isSettled()) {
@@ -131,9 +167,19 @@ public final class FleeBehavior implements Behavior {
         return range > 0.0f && context.distanceToNearestPlayer() <= range;
     }
 
+    /** The nearest sensed non-player threat within {@code range}, or null. Scratch. */
+    private Vector3f sensedWithin(AiContext context, float range) {
+        return range > 0.0f ? threats.nearest(context, range, sensed) : null;
+    }
+
+    /** Runs from the nearer of the nearest player and the nearest sensed threat. */
     private void rememberThreat(AiContext context) {
+        Vector3f other = sensedWithin(context, Math.max(threatTriggerRange, threatSafeRange));
         Vector3f player = context.nearestPlayer();
-        if (player != null) {
+        if (other != null && (player == null || context.distanceTo(other) < context.distanceTo(player))) {
+            threat.set(other);
+            threatKnown = true;
+        } else if (player != null) {
             threat.set(player);
             threatKnown = true;
         }

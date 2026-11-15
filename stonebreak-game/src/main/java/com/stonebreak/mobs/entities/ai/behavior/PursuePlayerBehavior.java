@@ -24,7 +24,6 @@ import java.util.EnumSet;
 public final class PursuePlayerBehavior implements Behavior {
 
     private static final int PRIORITY = 10;
-    private static final float TURN_SPEED = 360.0f;
 
     /** Close enough to be "at" a remembered spot — a chase, not a docking manoeuvre. */
     private static final float ARRIVAL_RADIUS = 1.5f;
@@ -35,7 +34,7 @@ public final class PursuePlayerBehavior implements Behavior {
     private final float pursueSpeedMultiplier;
 
     private final Vector3f target = new Vector3f();
-    private boolean holding;
+    private final CloseIn closeIn = new CloseIn();
 
     /**
      * @param holdDistance stop closing in on an alerted target once this near, and just face them
@@ -69,7 +68,7 @@ public final class PursuePlayerBehavior implements Behavior {
 
     @Override
     public void start(AiContext context) {
-        holding = false;
+        closeIn.reset();
     }
 
     @Override
@@ -77,30 +76,16 @@ public final class PursuePlayerBehavior implements Behavior {
         if (awareness.getState() == AwarenessController.AwarenessState.ALERTED) {
             Vector3f player = context.targetPlayer();
             if (player != null) {
-                closeIn(context, player);
+                closeIn.toward(context, player, holdDistance, pursueSpeedMultiplier);
                 return;
             }
         }
-        holding = false;
+        closeIn.reset();
         Vector3f destination = awareness.lastKnownPlayerPosition(target);
         if (destination != null) {
             boolean alerted = awareness.getState() == AwarenessController.AwarenessState.ALERTED;
             context.nav().moveTo(destination, ARRIVAL_RADIUS,
                     alerted ? pursueSpeedMultiplier : investigateSpeedMultiplier);
-        }
-    }
-
-    private void closeIn(AiContext context, Vector3f player) {
-        if (context.entity().getPosition().distance(player) > holdDistance) {
-            holding = false;
-            context.nav().moveTo(player, Math.max(1.0f, holdDistance * 0.8f), pursueSpeedMultiplier);
-        } else {
-            if (!holding) {
-                context.nav().stop();
-                holding = true;
-            }
-            context.steering().stopMoving();
-            context.faceTarget(TURN_SPEED);
         }
     }
 
@@ -111,7 +96,7 @@ public final class PursuePlayerBehavior implements Behavior {
 
     @Override
     public MobBehaviorState animationState() {
-        return holding ? MobBehaviorState.IDLE : MobBehaviorState.WANDERING;
+        return closeIn.holding() ? MobBehaviorState.IDLE : MobBehaviorState.WANDERING;
     }
 
     @Override
@@ -119,6 +104,6 @@ public final class PursuePlayerBehavior implements Behavior {
         if (awareness.getState() != AwarenessController.AwarenessState.ALERTED) {
             return "Investigate";
         }
-        return holding ? "Hold" : "Pursue";
+        return closeIn.holding() ? "Hold" : "Pursue";
     }
 }

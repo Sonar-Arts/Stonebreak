@@ -16,13 +16,15 @@ import org.joml.Vector3f;
  * @param groupMax largest group
  * @param cap      most of this type alive near the players at once
  * @param minDistance least distance from the player it spawns near (on top of the spawner's own floor)
+ * @param spacing  least distance a new group keeps from any living mob of its type, so one band never
+ *                 spawns on top of another; 0 for none
  * @param shadeClockSeconds every this many seconds a player stays in the Shade, a group comes for
  *                 them ({@link ShadeClock}); 0 spawns on the spawner's interval, near anyone
  * @param when     whether the time is right
  * @param where    whether a chosen spot (for a player at {@code anchor}) will do
  */
 record HostileSpawnRule(EntityType type, Chance chance, int groupMin, int groupMax, int cap,
-                        float minDistance, float shadeClockSeconds, When when, Where where) {
+                        float minDistance, float spacing, float shadeClockSeconds, When when, Where where) {
 
     /** Time gate: {@code night} from the spawner's clock, fog from the world. */
     @FunctionalInterface
@@ -49,17 +51,31 @@ record HostileSpawnRule(EntityType type, Chance chance, int groupMin, int groupM
     /** Each 20-second roll at a spot in the Shade has this chance: about one band a night, not one a roll. */
     static final float GOBLIN_SHADE_CHANCE = 0.02f;
 
-    /** Night-time goblin bands, anywhere, but rarely in the Shade, which belongs to the Vestiges. */
+    /**
+     * A new goblin band lands at least this far from every goblin already about — twice
+     * {@code GoblinPack.ENCOUNTER_RADIUS}, so it neither stacks on a band nor spawns straight into a brawl.
+     */
+    static final float GOBLIN_SPACING = 32f;
+
+    /**
+     * Night-time goblin bands, anywhere but a camp's territory — there only the camp's own goblins
+     * live — and rarely in the Shade, which belongs to the Vestiges.
+     */
     static final HostileSpawnRule GOBLIN = new HostileSpawnRule(EntityType.GOBLIN,
-            (world, spot) -> isShade(world, spot) ? GOBLIN_SHADE_CHANCE : 1f, 2, 4, 8, 0f, 0f,
-            (world, night) -> night, (world, spot, anchor) -> true);
+            (world, spot) -> isShade(world, spot) ? GOBLIN_SHADE_CHANCE : 1f, 2, 4, 8, 0f, GOBLIN_SPACING, 0f,
+            (world, night) -> night, (world, spot, anchor) -> !inCampTerritory(world, spot));
+
+    static boolean inCampTerritory(World world, Vector3f spot) {
+        com.stonebreak.mobs.goblin.camp.CampRegistry camps = world != null ? world.goblinCamps() : null;
+        return camps != null && camps.campWithin(spot, com.stonebreak.mobs.goblin.camp.CampRegistry.TERRITORY);
+    }
 
     /**
      * The Shade's Vestiges: alone or a pair, never more than two about, only in the full night fog, each
      * time a player's {@link #VESTIGE_SHADE_CLOCK_SECONDS} clock in the Shade comes round, at a spot in
      * it. They start beyond what the fog lets anyone see.
      */
-    static final HostileSpawnRule VESTIGE = new HostileSpawnRule(EntityType.VESTIGE, (world, spot) -> 1f, 1, 2, 2, 32f,
+    static final HostileSpawnRule VESTIGE = new HostileSpawnRule(EntityType.VESTIGE, (world, spot) -> 1f, 1, 2, 2, 32f, 0f,
             VESTIGE_SHADE_CLOCK_SECONDS,
             (world, night) -> world != null && world.getNightFog() >= VESTIGE_MIN_FOG,
             (world, spot, anchor) -> isShade(world, spot) && isShade(world, anchor));

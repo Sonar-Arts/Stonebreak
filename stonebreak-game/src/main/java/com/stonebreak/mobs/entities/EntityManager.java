@@ -175,6 +175,11 @@ public class EntityManager {
         }
     }
     private void fireRemoved(Entity e) {
+        try {
+            e.onRemovedFromWorld();
+        } catch (Exception ex) {
+            System.err.println("[EntityManager] onRemovedFromWorld threw: " + ex);
+        }
         // A persistable entity leaving the world (death/despawn) changes its chunk's saved contents
         // but not its blocks; mark that chunk dirty so the next save rewrites it WITHOUT the entity
         // instead of leaving a stale snapshot that would resurrect it on reload. No-op on the client

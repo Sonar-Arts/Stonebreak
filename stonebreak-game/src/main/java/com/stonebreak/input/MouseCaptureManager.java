@@ -75,7 +75,7 @@ public class MouseCaptureManager {
                 }
                 return true; // Normal gameplay
             }
-            case WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, PAUSED, CHARACTER_SHEET_UI, FURNACE_UI -> {
+            case WORKBENCH_UI, RECIPE_BOOK_UI, INVENTORY_UI, PAUSED, CHARACTER_SHEET_UI, FURNACE_UI, CHEST_UI -> {
                 return false;
             }
             case MAIN_MENU, LOADING, SETTINGS -> {

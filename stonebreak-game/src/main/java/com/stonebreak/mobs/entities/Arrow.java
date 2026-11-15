@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
+import com.stonebreak.items.weapon.DamageType;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
@@ -83,7 +84,7 @@ public class Arrow extends Entity {
             return;
         }
 
-        if (shooter != null ? strikePlayer() : strikeEntity()) {
+        if (shooter != null ? strikePlayer() || strikeMob() : strikeEntity()) {
             alive = false;
             return;
         }
@@ -108,6 +109,26 @@ public class Arrow extends Entity {
             return false;
         }
         Game.getPlayer().damage(mobArrowDamage);
+        return true;
+    }
+
+    /**
+     * A mob's arrow that missed every player: hits the first other mob on its path — a goblin's
+     * quarry, a rival goblin, or a cow that wandered into the line of fire. Never the shooter or
+     * one of its allies.
+     */
+    private boolean strikeMob() {
+        EntityManager em = OwningEntityManager.of(this);
+        if (em == null) {
+            return false;
+        }
+        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN,
+                e -> e != shooter && !shooter.isAllyOf(e));
+        if (le == null) {
+            return false;
+        }
+        le.damage(mobArrowDamage, LivingEntity.DamageSource.MOB, DamageType.PIERCING,
+                shooter.getPosition(), false);
         return true;
     }
 

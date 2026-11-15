@@ -159,4 +159,52 @@ class FleeBehaviorTest {
         assertTrue(placid.canStart(context),
                 "a mob hurt by nothing it can see still runs somewhere");
     }
+
+    // ── Non-player threats (livestock and goblins) ──────────────────────────
+
+    /** A goblin wherever the test puts one, sensed at any range the flight asks about. */
+    private static final class FakeThreat implements ThreatSense {
+        Vector3f position;
+
+        @Override
+        public Vector3f nearest(AiContext context, float range, Vector3f out) {
+            return position != null && context.distanceTo(position) <= range ? out.set(position) : null;
+        }
+    }
+
+    @Test
+    void livestockBoltsFromANearbyGoblinAndKeepsGoingUntilClear() {
+        FakeThreat goblin = new FakeThreat();
+        FleeBehavior cow = new FleeBehavior(10.0f, 0.0f, 1.0f).withThreat(goblin, 10.0f, 16.0f);
+        goblin.position = new Vector3f(12, 64, 0);
+        assertFalse(cow.canStart(context), "not close enough to notice");
+        goblin.position = new Vector3f(8, 64, 0);
+        assertTrue(cow.canStart(context));
+        goblin.position = new Vector3f(14, 64, 0);
+        assertTrue(cow.shouldContinue(context), "still too close to stop running");
+        goblin.position = new Vector3f(20, 64, 0);
+        assertFalse(cow.shouldContinue(context));
+    }
+
+    @Test
+    void itRunsFromTheGoblinNotTheFarAwayPlayer() {
+        AiContext navigating = new AiContext(
+                mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
+        FakeThreat goblin = new FakeThreat();
+        goblin.position = new Vector3f(5, 64, 0);
+        players.position = new Vector3f(-30, 64, 0);
+        FleeBehavior cow = new FleeBehavior(10.0f, 4.0f, 1.0f).withThreat(goblin, 10.0f, 16.0f);
+        cow.start(navigating);
+        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        assertTrue(retreat.x < mob.getPosition().x, "flees west, away from the goblin: " + retreat);
+    }
+
+    @Test
+    void aChickenThatOnlyFleesGoblinsIgnoresAHit() {
+        FleeBehavior chicken = new FleeBehavior(6.0f, 3.0f, 1.0f).ignoringHits()
+                .withThreat(new FakeThreat(), 8.0f, 12.0f);
+        players.position = new Vector3f(2, 64, 0);
+        chicken.onDamaged(context, 1.0f);
+        assertFalse(chicken.canStart(context), "a hit startles it instead");
+    }
 }

@@ -5,6 +5,7 @@ import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,12 +126,19 @@ final class HostileSpawner {
             return; // try again next interval
         }
         int size = Math.min(room, rule.groupMin() + random.nextInt(rule.groupMax() - rule.groupMin() + 1));
+        List<Entity> group = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             Vector3f pos = i == 0 ? spot : sites.jitterStandable(spot);
             if (pos != null && sites.isValidSpawnLocation(pos, rule.type())
                     && rule.where().allows(sites.world(), pos, anchor.position())) {
-                entityManager.spawnEntity(rule.type(), pos);
+                Entity spawned = entityManager.spawnEntity(rule.type(), pos);
+                if (spawned != null) {
+                    group.add(spawned);
+                }
             }
+        }
+        if (!group.isEmpty()) {
+            group.get(0).onSpawnedWithGroup(group); // a goblin band becomes one pack
         }
     }
 
@@ -143,11 +151,25 @@ final class HostileSpawner {
         for (int attempt = 0; attempt < SPOT_ATTEMPTS; attempt++) {
             Vector3f spot = sites.findSpawnNear(anchor, MAX_DISTANCE);
             if (spot != null && spot.distance(anchor) >= rule.minDistance()
-                    && rule.where().allows(world, spot, anchor)) {
+                    && rule.where().allows(world, spot, anchor) && !crowded(rule, spot)) {
                 return spot;
             }
         }
         return null;
+    }
+
+    /** Whether a living mob of the rule's type is within its {@link HostileSpawnRule#spacing() spacing} of {@code spot}. */
+    private boolean crowded(HostileSpawnRule rule, Vector3f spot) {
+        if (rule.spacing() <= 0f) {
+            return false;
+        }
+        for (Entity entity : entityManager.getAllEntitiesIncludingPending()) {
+            if (entity.isAlive() && entity.getType() == rule.type()
+                    && entity.getPosition().distance(spot) < rule.spacing()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void despawnStragglers() {
@@ -157,6 +179,7 @@ final class HostileSpawner {
         }
         for (Entity entity : entityManager.getAllEntitiesIncludingPending()) {
             if (entity.isAlive() && isRuled(entity.getType()) && !entity.isCommandSpawned()
+                    && entity.despawnsWhenFar()
                     && !withinDistance(entity.getPosition(), anchors, DESPAWN_DISTANCE)) {
                 entityManager.removeEntity(entity);
             }

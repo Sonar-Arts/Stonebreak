@@ -206,8 +206,16 @@ public final class IntegratedServer {
             level.world().getBlueberryBushGrowth().setStageListener((x, y, z) ->
                 blockHandler.queueStateEcho(x, y, z));
         }
+        // Campfire contents and camp data → BlockStateS2C, same dedup-at-source rule.
+        level.world().getCampfireRegistry().setStateChangeListener((pos, state) ->
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
         // Crafting-table grid changes (issue #307) → BlockStateS2C, same dedup-at-source rule.
         level.world().getWorkbenchRegistry().setStateChangeListener((pos, state) ->
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
+        level.world().getChestRegistry().setStateChangeListener((pos, state) ->
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
+        // Meat-rack hooks → BlockStateS2C, so every client draws the food that hangs there.
+        level.world().getMeatRackRegistry().setStateChangeListener((pos, state) ->
             blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
 
         networkServer.start(localAddress, tcpAddress);

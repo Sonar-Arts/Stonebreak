@@ -9,7 +9,14 @@ import com.stonebreak.network.packet.chat.ChatMessageS2C;
 import com.stonebreak.network.server.ServerLevel;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
+import com.stonebreak.mobs.goblin.Goblin;
+import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import org.joml.Vector3f;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Server-side chat commands. The client forwards every command flagged
@@ -41,6 +48,7 @@ public final class ServerCommandHandler {
         switch (parts[0].toLowerCase()) {
             case "obtain" -> handleObtain(sp, parts, ctx);
             case "spawn" -> handleSpawn(sp, parts, ctx);
+            case "goblins" -> handleGoblins(sp, ctx);
             case "pvp" -> handlePvp(sp, parts, ctx);
             case "invincible" -> handleInvincible(sp, parts, ctx);
             default -> {
@@ -214,6 +222,7 @@ public final class ServerCommandHandler {
                 sp.y() + (float) Math.sin(pitch) * SPAWN_DISTANCE,
                 sp.z() + (float) (Math.sin(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE);
         int spawned = 0;
+        List<Entity> group = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             // Jitter x/z slightly so multiple spawns don't stack on a single point.
             float jitterX = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
@@ -221,8 +230,12 @@ public final class ServerCommandHandler {
             Entity entity = em.spawnEntity(type, new Vector3f(base).add(jitterX, 0f, jitterZ));
             if (entity != null) {
                 entity.setCommandSpawned(true);
+                group.add(entity);
                 spawned++;
             }
+        }
+        if (!group.isEmpty()) {
+            group.get(0).onSpawnedWithGroup(group); // goblins spawned together are one pack
         }
 
         if (spawned == count) {
@@ -232,6 +245,76 @@ public final class ServerCommandHandler {
         } else {
             reply(sp, "Failed to spawn " + type.getDisplayName() + "!");
         }
+    }
+
+    /** How far /goblins looks for packs. */
+    private static final float GOBLINS_RADIUS = 64.0f;
+
+    /** /goblins — the goblin packs near the sender, for watching hunts (cheats only). */
+    private void handleGoblins(ServerPlayer sp, ServerWorldContext ctx) {
+        ServerLevel level = ctx.serverLevel();
+        if (level == null || !level.cheatsEnabled()) {
+            reply(sp, "Cheats are not enabled on this world.");
+            return;
+        }
+        EntityManager em = ctx.entityManager();
+        if (em == null) {
+            return;
+        }
+        Vector3f at = new Vector3f(sp.x(), sp.y(), sp.z());
+        Set<GoblinPack> packs = new LinkedHashSet<>();
+        for (Entity e : em.getEntitiesInRange(at, GOBLINS_RADIUS)) {
+            if (e instanceof Goblin g) {
+                packs.add(g.pack());
+            }
+        }
+        if (packs.isEmpty()) {
+            reply(sp, "No goblins within " + (int) GOBLINS_RADIUS + " blocks.");
+            return;
+        }
+        for (GoblinPack pack : packs) {
+            Goblin leader = pack.leader();
+            if (leader == null) {
+                continue;
+            }
+            var quarry = pack.quarry();
+            var camp = pack.camp();
+            String home = camp != null
+                    ? String.format("camp at %d %d %d (%d goblins, stash %d, carried %d, on fire %d)",
+                            camp.fire().x(), camp.fire().y(), camp.fire().z(), camp.population(),
+                            camp.stash().food(), pack.carried().food(), onFire(ctx, camp.fire()))
+                    : pack.plan() != null
+                            ? String.format("making camp at %d %d %d%s", pack.plan().site().x, pack.plan().site().y,
+                                    pack.plan().site().z, pack.plan().needsDigging() ? " (digging)" : "")
+                            : "no camp";
+            if (pack.enemy() != null) {
+                home += ", fighting a pack of " + pack.enemy().size();
+            }
+            if (pack.raidTarget() != null) {
+                home += String.format(", raiding %d %d %d", pack.raidTarget().x(), pack.raidTarget().y(),
+                        pack.raidTarget().z());
+            }
+            var ai = leader.getAI();
+            String doing = (ai == null ? "?" : ai.activeBehaviorName() + "/" + ai.nav().status())
+                    + (leader.pack() == pack ? "" : " UNTICKED(leader in another pack)")
+                    + (leader.isAlive() ? "" : " DEAD-LEADER");
+            replyAndLog(sp, String.format("Pack of %d @ %.0f %.0f %.0f [%s]: %s, food %.1f, quarry %s, rest %.0fs, %s",
+                    pack.size(), leader.getX(), leader.getY(), leader.getZ(), doing, pack.task(),
+                    pack.ledger().foodInHand(pack.food()),
+                    quarry != null ? quarry.getType().getDisplayName() : "none",
+                    pack.ledger().cooldown(), home));
+        }
+    }
+
+    /** A /goblins line also goes to the server log, where a scripted run can read it. */
+    private static void replyAndLog(ServerPlayer sp, String message) {
+        System.out.println("[goblins] " + message);
+        reply(sp, message);
+    }
+
+    private static int onFire(ServerWorldContext ctx, com.openmason.engine.util.BlockPos fire) {
+        var state = ctx.world() == null ? null : ctx.world().getCampfireRegistry().get(fire);
+        return state == null ? -1 : state.contents().size();
     }
 
     private static void reply(ServerPlayer sp, String message) {

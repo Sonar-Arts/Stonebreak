@@ -2,7 +2,10 @@ package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.format.mesh.ParsedMeshData;
 import com.openmason.engine.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.RenderLayer;
+import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
 import com.openmason.engine.voxel.sbo.SBOPlanarGeometry;
+import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
 import com.stonebreak.blocks.BlockType;
 import com.openmason.engine.rendering.blockdisplay.DisplayMesh;
 import com.openmason.engine.rendering.blockdisplay.BlockDisplayMeshes;
@@ -40,7 +43,7 @@ public class SBOHandMeshRegistry {
     private final BlockDisplayMeshes displayMeshes;
     private final BlockTextureArray textureArray;
     private final Map<BlockType, DisplayMesh> meshesByBlock = new HashMap<>();
-    /** Blocks drawn from a single-layer cutout mesh: flowers and pane / X models. */
+    /** Blocks drawn with alpha test: flowers, pane / X models and CUTOUT-layer shaped models. */
     private final Set<BlockType> cutoutMeshBlocks = new HashSet<>();
 
     public SBOHandMeshRegistry(BlockDisplayMeshes displayMeshes, BlockTextureArray textureArray) {
@@ -50,12 +53,16 @@ public class SBOHandMeshRegistry {
 
     /**
      * Build hand-rendering meshes for all SBO blocks whose in-world shape is
-     * not a plain cube: flowers (cross planes) and animated blocks (doors).
+     * not a plain cube: flowers (cross planes), animated blocks (doors, the
+     * campfire) and every shaped block (stairs, stalagmites, chests, racks…).
      *
-     * @param bridge the populated SBO bridge
+     * @param bridge     the populated SBO bridge
+     * @param stampCache the baked world stamps, or null; a block whose default
+     *                   stamp leaves any boundary plane open is shaped, the same
+     *                   rule the chunk mesher uses to keep it off the cube path
      * @return number of meshes built
      */
-    public int buildMeshes(SBOBlockBridge bridge) {
+    public int buildMeshes(SBOBlockBridge bridge, SBOStampCache stampCache) {
         meshesByBlock.clear();
         cutoutMeshBlocks.clear();
         if (displayMeshes == null) {
@@ -70,7 +77,8 @@ public class SBOHandMeshRegistry {
             // layers. A stalagmite item is always a size-1 stalagmite, which is the SBO's
             // default model — so drops, icons and the held item show that shape.
             boolean multiFace = animated || type.isStairs()
-                    || type == BlockType.LIMESTONE_STALAGMITE || type == BlockType.CACTUS;
+                    || type == BlockType.LIMESTONE_STALAGMITE || type == BlockType.CACTUS
+                    || isShaped(stampCache, type);
             if (!bridge.isSBOBlock(type)) continue;
 
             SBOParseResult sbo = bridge.getSBODefinition(type);
@@ -89,6 +97,9 @@ public class SBOHandMeshRegistry {
                 // Multi-face model (door, stairs): per-triangle texture layers.
                 resource = displayMeshes.createLayeredMesh(name,
                         buildInterleavedPerFace(type, mesh), sequentialIndices(mesh.indices().length));
+                if (type.getRenderLayer() == RenderLayer.CUTOUT) {
+                    cutoutMeshBlocks.add(type); // see-through texels (a rack's gaps) need alpha test
+                }
             } else {
                 // Flowers and pane / X models: one layer everywhere (unchanged path).
                 int layer = textureArray.getBlockFaceLayer(type, 0);
@@ -107,6 +118,34 @@ public class SBOHandMeshRegistry {
     }
 
     /**
+     * True when a held, dropped or slotted block has something to draw: legacy
+     * atlas coordinates, or an SBO model (SBO-only blocks such as the campfire
+     * declare {@code atlasX/Y = -1} and texture from the block texture array).
+     */
+    public static boolean isDisplayable(BlockType type) {
+        // One rule for hand, drops and every UI slot: Item.hasIcon.
+        return type != null && type != BlockType.AIR && type.hasIcon();
+    }
+
+    /**
+     * True when the block's default world stamp leaves part of some boundary
+     * plane open — it is not a cube, so a cube in hand would misrepresent it.
+     * Cube-like blocks with detail (ore nuggets) fill every plane and stay cubes.
+     */
+    private static boolean isShaped(SBOStampCache stampCache, BlockType type) {
+        BlockStamp stamp = stampCache != null ? stampCache.get(type) : null;
+        if (stamp == null || stamp.occludesFace() == null) {
+            return false;
+        }
+        for (boolean occludes : stamp.occludesFace()) {
+            if (!occludes) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Get the SBO-derived hand mesh for a block, or null if none exists.
      * Callers should fall back to their default rendering path on null.
      */
@@ -116,8 +155,9 @@ public class SBOHandMeshRegistry {
     }
 
     /**
-     * True when the block's display mesh is a flower or pane / X model — one
-     * texture with transparent cut-outs, so it must be drawn with alpha test.
+     * True when the block's display mesh has transparent cut-outs (a flower,
+     * a pane / X model, a CUTOUT-layer shaped model), so it must be drawn
+     * with alpha test.
      */
     public boolean isCutoutMesh(BlockType type) {
         return type != null && cutoutMeshBlocks.contains(type);

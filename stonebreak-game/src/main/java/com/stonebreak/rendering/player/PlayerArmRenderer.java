@@ -299,10 +299,8 @@ public class PlayerArmRenderer {
             com.stonebreak.items.ItemModels.ItemModel model = com.stonebreak.items.ItemModels.of(selectedItem.getItem());
             if (selectedItem.isPlaceable()) {
                 info.selectedBlockType = selectedItem.asBlockType();
-                info.isDisplayingBlock = (info.selectedBlockType != null && 
-                                         info.selectedBlockType != BlockType.AIR &&
-                                         info.selectedBlockType.getAtlasX() >= 0 && 
-                                         info.selectedBlockType.getAtlasY() >= 0);
+                info.isDisplayingBlock = com.stonebreak.rendering.sbo.SBOHandMeshRegistry
+                        .isDisplayable(info.selectedBlockType);
                 info.displayingItem = info.isDisplayingBlock;
             } else if (model != null) {
                 info.selectedItemType = selectedItem.asItemType();

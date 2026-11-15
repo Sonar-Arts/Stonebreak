@@ -109,17 +109,30 @@ public final class AiContext {
      * @return degrees still left to turn, or {@link Float#MAX_VALUE} when there is no player
      */
     public float faceTarget(float turnSpeedDegPerSec) {
-        Vector3f player = targetPlayer();
-        if (player == null) {
+        return facePoint(targetPlayer(), turnSpeedDegPerSec);
+    }
+
+    /**
+     * Turns the mob toward {@code point} without moving it; a turn speed of zero only measures.
+     *
+     * @return degrees still left to turn, or {@link Float#MAX_VALUE} when {@code point} is null
+     */
+    public float facePoint(Vector3f point, float turnSpeedDegPerSec) {
+        if (point == null) {
             return Float.MAX_VALUE;
         }
-        Vector3f toPlayer = faceScratch.set(player).sub(entity.getPosition());
-        toPlayer.y = 0;
-        if (toPlayer.lengthSquared() < 1.0e-6f) {
+        Vector3f toPoint = faceScratch.set(point).sub(entity.getPosition());
+        toPoint.y = 0;
+        if (toPoint.lengthSquared() < 1.0e-6f) {
             return 0.0f;
         }
-        steering().faceDirection(toPlayer, turnSpeedDegPerSec, deltaTime);
-        return steering().yawErrorTo(toPlayer);
+        steering().faceDirection(toPoint, turnSpeedDegPerSec, deltaTime);
+        return steering().yawErrorTo(toPoint);
+    }
+
+    /** Distance from this mob to {@code point}, or {@link Float#MAX_VALUE} when it is null. */
+    public float distanceTo(Vector3f point) {
+        return point == null ? Float.MAX_VALUE : entity.getPosition().distance(point);
     }
 
     /** Whether {@link #targetPlayer()} is in clear sight from {@code eye}. */

@@ -104,7 +104,7 @@ public class Renderer {
         // texture array (initializeSBOBlocks above) are populated.
         if (sboBlockBridge != null && sboBlockBridge.size() > 0) {
             sboHandMeshRegistry = new SBOHandMeshRegistry(displayMeshes, blockTextureArray);
-            int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge);
+            int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge, getSboStampCache());
             logger.debug("[Renderer] SBO hand-mesh registry: built {} flower meshes", built);
         }
 

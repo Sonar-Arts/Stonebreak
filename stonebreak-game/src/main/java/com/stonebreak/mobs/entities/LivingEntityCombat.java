@@ -149,10 +149,11 @@ final class LivingEntityCombat {
             }
         }
         lastAttackerPosition = attackerPos;
-        if (!owner.alive && owner.world != null && !owner.world.isRenderOnly()) {
+        if (!owner.alive && owner.world != null && !owner.world.isRenderOnly() && source != DamageSource.MOB) {
             // A death is the loudest thing there is (#321) and nearby mobs come to look — unless
             // the victim never knew it was hunted: then it is only a body slumping. The state is
-            // still the one from before this blow (onAttacked below never runs on the dead).
+            // still the one from before this blow (onAttacked below never runs on the dead). A hunted
+            // animal dying to a goblin is not news: it would pull the hunting pack into investigating.
             boolean caughtUnaware = owner.awareness != null && owner.awareness.caughtUnaware();
             com.stonebreak.mobs.entities.ai.perception.NoiseBus.emitIn(owner.world, position,
                 com.stonebreak.mobs.entities.ai.perception.Loudness.ofDeath(caughtUnaware), owner);

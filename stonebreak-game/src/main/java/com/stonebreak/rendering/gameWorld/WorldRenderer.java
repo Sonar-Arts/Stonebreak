@@ -970,7 +970,8 @@ public class WorldRenderer {
                 || currentState == GameState.CHARACTER_SHEET_UI
                 || currentState == GameState.RECIPE_BOOK_UI
                 || currentState == GameState.WORKBENCH_UI
-                || currentState == GameState.FURNACE_UI;
+                || currentState == GameState.FURNACE_UI
+                || currentState == GameState.CHEST_UI;
         if (currentState == GameState.MAIN_MENU && com.stonebreak.network.MultiplayerSession.isPreview()) {
             renderPreviewBody(player);
             return;
@@ -1064,6 +1065,7 @@ public class WorldRenderer {
             dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
         if (entityRenderer != null) {
+            entityRenderer.queueMeatRackItems(world, cameraPos);
             dropRenderer.renderSocketItems(entityRenderer.socketItems(), shaderProgram, projectionMatrix,
                     player.getViewMatrix(), cameraPos);
         }

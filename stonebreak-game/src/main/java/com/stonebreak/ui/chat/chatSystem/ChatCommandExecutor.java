@@ -33,6 +33,7 @@ public class ChatCommandExecutor {
         registerCommand(new HelpCommand());
         registerCommand(new ObtainCommand());
         registerCommand(new SpawnCommand());
+        registerCommand(new GoblinsCommand());
         registerCommand(new SpawnSoundEmitCommand());
         registerCommand(new Test3DAudioCommand());
         registerCommand(new Test3DNearCommand());

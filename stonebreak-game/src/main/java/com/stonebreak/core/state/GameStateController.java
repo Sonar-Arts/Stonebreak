@@ -186,7 +186,7 @@ public final class GameStateController {
                  WORLD_SELECT, CHARACTER_CREATION, TERRAIN_MAPPER, STATISTICS, GLOSSARY -> paused = true;
             // FOCUS_BATTLE keeps its own clock (GameLoop ticks FocusBattle instead of the world), so it
             // is never "paused"; opening the pause menu over it switches to PAUSED like any other state.
-            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI, FURNACE_UI,
+            case PLAYING, INVENTORY_UI, RECIPE_BOOK_UI, CHARACTER_SHEET_UI, FURNACE_UI, CHEST_UI,
                  FOCUS_BATTLE -> paused = false;
         }
     }
@@ -358,6 +358,24 @@ public final class GameStateController {
         }
     }
 
+    public void openChestScreen(com.openmason.engine.util.BlockPos pos) {
+        com.stonebreak.ui.chest.ChestScreen chestScreen = game.getChestScreen();
+        if (chestScreen != null && currentState == GameState.PLAYING && !paused) {
+            setState(GameState.CHEST_UI);
+            chestScreen.open(pos);
+        }
+    }
+
+    public void closeChestScreen() {
+        com.stonebreak.ui.chest.ChestScreen chestScreen = game.getChestScreen();
+        if (chestScreen != null && chestScreen.isVisible()) {
+            chestScreen.close();
+            if (currentState == GameState.CHEST_UI) {
+                setState(GameState.PLAYING);
+            }
+        }
+    }
+
     /** Enters the Focus battle state. Only from live gameplay; the coordinator owns everything else. */
     public void openFocusBattle() {
         if (currentState == GameState.PLAYING && !paused) {
@@ -468,6 +486,7 @@ public final class GameStateController {
         }
         closeWorkbenchScreen();
         closeFurnaceScreen();
+        closeChestScreen();
         endRpgSession();
         com.stonebreak.ui.saveChanges.SaveChangesDialog saveChangesDialog = game.getSaveChangesDialog();
         if (saveChangesDialog != null) {

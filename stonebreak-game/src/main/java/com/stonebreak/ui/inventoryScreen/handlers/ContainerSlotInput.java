@@ -46,6 +46,11 @@ public interface ContainerSlotInput {
         return null;
     }
 
+    /** The open storage block's slots (a chest's), read in place, or null when the screen has none. */
+    default com.stonebreak.items.ItemStack[] containerSlots() {
+        return null;
+    }
+
     /** What the crafting grid makes now, or null. */
     default com.stonebreak.items.ItemStack craftingOutput() {
         return null;

@@ -104,6 +104,8 @@ final class WorldUpdateOrchestrator {
         if (cactusContact != null) cactusContact.tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistry;
         if (fr != null) fr.tick(world, deltaTime);
+        if (world.getCampfireRegistry() != null) world.getCampfireRegistry().tick(world, deltaTime);
+        if (world.goblinCamps() != null) world.goblinCamps().tick(deltaTime);
         populateFeatures(tickStart);
     }
 

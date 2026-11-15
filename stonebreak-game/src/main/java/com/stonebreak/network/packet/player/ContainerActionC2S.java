@@ -45,6 +45,7 @@ public record ContainerActionC2S(int x, int y, int z,
         public static final byte FURNACE = 0;
         public static final byte WORKBENCH = 1;
         public static final byte INVENTORY = 2;
+        public static final byte CHEST = 3;
         private ContainerKind() {}
     }
 
@@ -64,6 +65,7 @@ public record ContainerActionC2S(int x, int y, int z,
         public static final byte WORKBENCH_OUT = 6;
         public static final byte INV_CRAFT_GRID = 7;
         public static final byte INV_CRAFT_OUT = 8;
+        public static final byte CHEST_SLOTS = 9;
         private Region() {}
     }
 

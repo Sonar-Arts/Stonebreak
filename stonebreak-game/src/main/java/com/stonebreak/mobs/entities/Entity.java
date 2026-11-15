@@ -221,6 +221,21 @@ public abstract class Entity {
      */
     public boolean isPersistent() { return true; }
 
+    /**
+     * Called once this entity has left its manager, alive or not: killed, despawned, or unloaded
+     * with its chunk. For an entity to let go of whatever it is part of (a goblin, its pack).
+     */
+    public void onRemovedFromWorld() { }
+
+    /** Whether the hostile spawner may despawn this mob when no player is near. */
+    public boolean despawnsWhenFar() { return true; }
+
+    /**
+     * Called on the first of a group the natural spawner brought in together, with the whole
+     * group (this one included) — for mobs that band up, like a goblin pack.
+     */
+    public void onSpawnedWithGroup(java.util.List<Entity> group) { }
+
     // Setters
     public void setPosition(Vector3f position) { this.position.set(position); }
     public void setVelocity(Vector3f velocity) { this.velocity.set(velocity); }

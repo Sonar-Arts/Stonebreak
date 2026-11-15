@@ -670,6 +670,19 @@ public final class ServerBlockHandler {
                 // The SERVER world's registry (per-world) — drops contents authoritatively.
                 world.getFurnaceRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
             }
+            if (prev == BlockType.CHEST) {
+                world.getChestRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
+                        new Vector3f(sp.x(), sp.y(), sp.z()));
+            }
+            if (prev == BlockType.MEAT_RACK) {
+                // The food on its hooks drops with it.
+                world.getMeatRackRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
+                        new Vector3f(sp.x(), sp.y(), sp.z()));
+            }
+            if (prev == BlockType.CAMPFIRE) {
+                // Spills what was cooking; a goblin camp anchored here disbands.
+                world.getCampfireRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
+            }
             if (prev == BlockType.WORKBENCH) {
                 // Issue #307: the grid's items drop with the table, never vanish.
                 world.getWorkbenchRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
@@ -704,6 +717,15 @@ public final class ServerBlockHandler {
         // registry drops whatever a table previously broken at this cell held.
         if (incoming == BlockType.WORKBENCH) {
             world.getWorkbenchRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
+        }
+        if (incoming == BlockType.CHEST) {
+            world.getChestRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
+        }
+        if (incoming == BlockType.CAMPFIRE) {
+            world.getCampfireRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
+        }
+        if (incoming == BlockType.MEAT_RACK) {
+            world.getMeatRackRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
         }
         // Door placement: initialize the authoritative state (closed, panel on the placer's
         // edge) and echo it so every client — the placer included — agrees on the facing.
@@ -932,6 +954,14 @@ public final class ServerBlockHandler {
         // Blueberry bush: the toggle intent picks a ripe bush. The growth system sets it back
         // to Mature; its stage listener queues the state echo (IntegratedServer), and the berry
         // drops replicate as entities. An unripe bush ignores the intent.
+        if (target == BlockType.CAMPFIRE) {
+            cookOnCampfire(sp, world, t.x(), t.y(), t.z());
+            return;
+        }
+        if (target == BlockType.MEAT_RACK) {
+            useMeatRack(sp, world, t.x(), t.y(), t.z());
+            return;
+        }
         if (target == BlockType.BLUEBERRY_BUSH) {
             com.stonebreak.blocks.blueberrybush.BlueberryBushHarvest.harvest(
                     world, t.x(), t.y(), t.z(), new Vector3f(sp.x(), sp.y(), sp.z()));
@@ -956,6 +986,58 @@ public final class ServerBlockHandler {
         }
         ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
                 t.x(), t.y(), t.z(), next.toStateString()), false);
+    }
+
+    /**
+     * The toggle intent on a campfire puts one of the held item on it to cook. The client
+     * already took it from its hand; a refusal (nothing cookable held, the fire full) syncs
+     * the sender so it comes back.
+     */
+    private void cookOnCampfire(ServerPlayer sp, World world, int x, int y, int z) {
+        com.stonebreak.blocks.campfire.CampfireRegistry fires = world.getCampfireRegistry();
+        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(x, y, z);
+        com.stonebreak.blocks.campfire.CampfireState fire = fires.get(pos);
+        int heldId = sp.inventory().heldItemId();
+        com.stonebreak.items.Item held = sp.inventory().slot(sp.inventory().selectedHotbarSlot()).getItem();
+        if (fire == null || !fire.hasFreeSpot() || !fires.isCookable(held)
+                || sp.inventory().debitOneWithAutoSwitch(heldId) == null
+                || !fires.cook(world, pos, held)) {
+            syncInventory(sp);
+        }
+    }
+
+    /**
+     * The toggle intent on a meat rack: with food held, the held stack goes on the hooks as far as
+     * there is room; empty-handed, the food on the last filled hook comes back into the inventory
+     * (whatever does not fit stays on its hook). The inventory is synced either way — the client
+     * predicted only how much it hung, from a display copy that may be behind.
+     */
+    private void useMeatRack(ServerPlayer sp, World world, int x, int y, int z) {
+        com.stonebreak.blocks.meatrack.MeatRackRegistry racks = world.getMeatRackRegistry();
+        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(x, y, z);
+        com.stonebreak.blocks.meatrack.MeatRackState rack = racks.getOrCreate(pos);
+        com.stonebreak.items.ItemStack held = sp.inventory().slot(sp.inventory().selectedHotbarSlot());
+        if (!held.isEmpty()) {
+            int fits = rack.roomFor(held);
+            com.stonebreak.items.ItemStack taken = fits > 0
+                    ? sp.inventory().debitStack(held.getBlockTypeId(), fits, held.getState())
+                    : null;
+            if (taken != null) {
+                rack.hang(taken);
+            }
+        } else {
+            int hook = rack.lastFilledHook();
+            if (hook >= 0) {
+                com.stonebreak.items.ItemStack food = rack.takeLast();
+                int added = sp.inventory().addStack(food);
+                if (added < food.getCount()) {
+                    food.setCount(food.getCount() - added);
+                    rack.restore(hook, food);
+                }
+            }
+        }
+        racks.persist(world, pos);
+        syncInventory(sp);
     }
 
     /**

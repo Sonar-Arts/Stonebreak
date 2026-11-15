@@ -173,6 +173,12 @@ public class BlockPlacer {
                 // Predictive: a new table starts empty, even where a broken one held items.
                 world.getWorkbenchRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
             }
+            if (selectedBlockType == BlockType.CHEST) {
+                world.getChestRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
+            }
+            if (selectedBlockType == BlockType.MEAT_RACK) {
+                world.getMeatRackRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
+            }
         }
     }
 
