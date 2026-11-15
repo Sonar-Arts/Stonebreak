@@ -63,7 +63,6 @@ public class Game {
     // Game state
     private final com.stonebreak.core.state.GameStateController stateController =
             new com.stonebreak.core.state.GameStateController(this);
-    private long lastFrameTime;
     private float deltaTime;
     private float totalTimeElapsed = 0.0f; // Added to track total time for animations
     private final com.stonebreak.core.loop.GameLoop gameLoop =
@@ -80,7 +79,7 @@ public class Game {
         com.stonebreak.network.MultiplayerSession::requestServerCheatsSet);
 
     // Window dimensions and handle
-    private long window;
+    private com.openmason.engine.platform.window.Window window;
     private int windowWidth;
     private int windowHeight;
 
@@ -88,7 +87,6 @@ public class Game {
      * Private constructor for singleton pattern.
      */
     private Game() {
-        lastFrameTime = System.nanoTime();
     }
     
     /**
@@ -125,7 +123,8 @@ public class Game {
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
-    public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
+    public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler,
+                                   com.openmason.engine.platform.window.Window window) {
         this.window = window;
         // Terrain model setup (environment install + GPU kernel compile) runs in the background from the
         // very start, under the intro; the setup screen after the intro shows it if it still has work.
@@ -283,18 +282,12 @@ public class Game {
     }
 
     /**
-     * Per-frame tick: computes delta time, accumulates total time, then
-     * delegates to {@link com.stonebreak.core.loop.GameLoop#tick(float)}.
+     * Per-frame tick: takes the frame delta (the engine {@code FrameLoop} measures it and clamps it
+     * to 0.1 s, #96), accumulates total time, then delegates to
+     * {@link com.stonebreak.core.loop.GameLoop#tick(float)}.
      */
-    public void update() {
-        long currentTime = System.nanoTime();
-        deltaTime = (currentTime - lastFrameTime) / 1_000_000_000.0f;
-        lastFrameTime = currentTime;
-
-        if (deltaTime > 0.1f) {
-            deltaTime = 0.1f;
-        }
-
+    public void update(float dt) {
+        deltaTime = dt;
         totalTimeElapsed += deltaTime;
 
         Runnable task;
@@ -328,9 +321,9 @@ public class Game {
     }
 
     /**
-     * Gets window handle for GLFW operations.
+     * The game window (engine platform layer, #96), or null before startup.
      */
-    public long getWindow() {
+    public com.openmason.engine.platform.window.Window getWindow() {
         return window;
     }
 

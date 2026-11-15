@@ -94,6 +94,11 @@
             </dependency>
             <dependency>
                 <groupId>com.openmason</groupId>
+                <artifactId>openmason-engine-platform</artifactId>
+                <version>${openmason.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openmason</groupId>
                 <artifactId>openmason-tool</artifactId>
                 <version>${openmason.version}</version>
             </dependency>

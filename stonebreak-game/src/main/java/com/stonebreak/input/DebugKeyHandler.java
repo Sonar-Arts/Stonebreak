@@ -1,5 +1,7 @@
 package com.stonebreak.input;
 
+import com.openmason.engine.input.KeyEdges;
+
 import org.joml.Vector3f;
 
 import com.openmason.engine.diagnostics.MemoryProfiler;
@@ -35,9 +37,9 @@ final class DebugKeyHandler {
     private static final float[] CHAT_GREEN = {0.0f, 1.0f, 0.0f, 1.0f};
     private static final float[] CHAT_RED = {1.0f, 0.0f, 0.0f, 1.0f};
 
-    private final KeyEdgeTracker keys;
+    private final KeyEdges keys;
 
-    DebugKeyHandler(KeyEdgeTracker keys) {
+    DebugKeyHandler(KeyEdges keys) {
         this.keys = keys;
     }
 

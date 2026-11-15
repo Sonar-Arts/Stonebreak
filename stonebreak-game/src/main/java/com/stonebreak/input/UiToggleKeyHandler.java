@@ -1,5 +1,6 @@
 package com.stonebreak.input;
 
+import com.openmason.engine.input.ActionKeys;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
@@ -13,26 +14,23 @@ import com.stonebreak.ui.saveChanges.SaveChangesDialog;
 import com.stonebreak.ui.statisticsScreen.StatisticsScreen;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_C;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_Q;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_T;
 
 /**
- * Edge-triggered keys that open/close UI surfaces or act on the current
- * selection: Escape (close-topmost / pause), E (inventory), C (character
- * sheet), T (chat), Q (drop item).
+ * Edge-triggered actions that open/close UI surfaces or act on the current
+ * selection ({@link GameplayAction}; defaults: Escape close-topmost / pause,
+ * E inventory, C character sheet, T chat, Q drop item).
  */
 final class UiToggleKeyHandler {
 
-    private static final int[] TOGGLE_KEYS = {GLFW_KEY_ESCAPE, GLFW_KEY_E, GLFW_KEY_C, GLFW_KEY_T, GLFW_KEY_Q};
+    private static final GameplayAction[] TOGGLE_ACTIONS = {
+        GameplayAction.PAUSE, GameplayAction.INVENTORY, GameplayAction.CHARACTER, GameplayAction.CHAT,
+        GameplayAction.DROP_ITEM};
 
-    private final KeyEdgeTracker keys;
-    /** Keys handed over while held; each stays inert until it is seen released. */
-    private final java.util.BitSet suppressedUntilReleased = new java.util.BitSet();
+    private final ActionKeys<GameplayAction> keys;
+    /** Actions handed over while held; each stays inert until it is seen released. */
+    private final java.util.EnumSet<GameplayAction> suppressedUntilReleased = java.util.EnumSet.noneOf(GameplayAction.class);
 
-    UiToggleKeyHandler(KeyEdgeTracker keys) {
+    UiToggleKeyHandler(ActionKeys<GameplayAction> keys) {
         this.keys = keys;
     }
 
@@ -40,20 +38,18 @@ final class UiToggleKeyHandler {
      * These keys are not polled during a Focus battle (its HUD takes key events instead), so the
      * edge tracker is stale when polling resumes and a key still held from the battle would read as
      * a new press: Escape would close the pause menu it just opened, E would open the inventory on
-     * leaving the result panel. Marked keys do nothing until released.
+     * leaving the result panel. Marked actions do nothing until released.
      */
     void suppressUntilReleased() {
-        for (int key : TOGGLE_KEYS) {
-            suppressedUntilReleased.set(key);
-        }
+        suppressedUntilReleased.addAll(java.util.List.of(TOGGLE_ACTIONS));
     }
 
-    /** {@link KeyEdgeTracker#pressedOnce} that honours {@link #suppressUntilReleased()}. */
-    private boolean pressed(int key) {
-        boolean fired = keys.pressedOnce(key); // always poll so the edge tracker stays in sync
-        if (suppressedUntilReleased.get(key)) {
-            if (!keys.isDown(key)) {
-                suppressedUntilReleased.clear(key);
+    /** {@link ActionKeys#pressedOnce} that honours {@link #suppressUntilReleased()}. */
+    private boolean pressed(GameplayAction action) {
+        boolean fired = keys.pressedOnce(action); // always poll so the edges stay in sync
+        if (suppressedUntilReleased.contains(action)) {
+            if (!keys.held(action)) {
+                suppressedUntilReleased.remove(action);
             }
             return false;
         }
@@ -75,7 +71,7 @@ final class UiToggleKeyHandler {
      * via the key callback, so an open chat swallows the press here.
      */
     void pollEscape() {
-        if (!pressed(GLFW_KEY_ESCAPE)) {
+        if (!pressed(GameplayAction.PAUSE)) {
             return;
         }
 
@@ -145,7 +141,7 @@ final class UiToggleKeyHandler {
 
     /** E toggles the inventory, unless another UI surface already owns the screen. */
     void pollInventoryToggle() {
-        if (!pressed(GLFW_KEY_E) || battleOwnsToggles()) {
+        if (!pressed(GameplayAction.INVENTORY) || battleOwnsToggles()) {
             return;
         }
 
@@ -196,7 +192,7 @@ final class UiToggleKeyHandler {
 
     /** C toggles the character sheet; closes an open inventory first so the two never stack. */
     void pollCharacterToggle() {
-        if (!pressed(GLFW_KEY_C) || battleOwnsToggles()) {
+        if (!pressed(GameplayAction.CHARACTER) || battleOwnsToggles()) {
             return;
         }
 
@@ -243,7 +239,7 @@ final class UiToggleKeyHandler {
 
     /** T opens chat from gameplay-adjacent states. */
     void pollChatOpen() {
-        if (!pressed(GLFW_KEY_T) || battleOwnsToggles()) {
+        if (!pressed(GameplayAction.CHAT) || battleOwnsToggles()) {
             return;
         }
 
@@ -267,7 +263,7 @@ final class UiToggleKeyHandler {
 
     /** Q drops a single item from the selected hotbar slot. */
     void pollItemDrop() {
-        if (!pressed(GLFW_KEY_Q) || battleOwnsToggles()) {
+        if (!pressed(GameplayAction.DROP_ITEM) || battleOwnsToggles()) {
             return;
         }
 

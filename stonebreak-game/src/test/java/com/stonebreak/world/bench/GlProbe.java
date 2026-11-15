@@ -10,7 +10,8 @@ import com.openmason.engine.voxel.mms.mmsRegion.MmsArenaSim;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
 import com.openmason.engine.vram.VramPlans;
-import com.stonebreak.core.window.DisplayBackend;
+import com.openmason.engine.platform.window.BackendPolicy;
+import com.openmason.engine.platform.window.DisplayBackend;
 import com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer;
 import com.stonebreak.rendering.vram.CearlBootstrap;
 import com.stonebreak.world.chunk.Chunk;
@@ -27,7 +28,7 @@ import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
- * The lab's real-GL arm: opens a hidden GLFW window (the {@code GameWindow}
+ * The lab's real-GL arm: opens a hidden GLFW window (the engine {@code Window}
  * recipe minus {@code glfwShowWindow}), installs the CEARL plan against the
  * detected VRAM, uploads every measured mesh through the production region
  * arenas ({@link ChunkRegionRenderer#upload}), and reports what the engine
@@ -56,7 +57,7 @@ final class GlProbe {
         long window = 0;
         boolean glfw = false;
         try {
-            DisplayBackend.initialize();
+            DisplayBackend.initialize(BackendPolicy.AUTO_WAYLAND);
             glfw = true;
             GLFW.glfwDefaultWindowHints();
             GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);

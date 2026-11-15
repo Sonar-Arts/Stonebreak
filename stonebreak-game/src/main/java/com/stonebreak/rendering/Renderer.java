@@ -123,7 +123,7 @@ public class Renderer {
         uiRenderer.initializeBlockIconRenderer(displayMeshes, blockTextureArray, sboHandMeshRegistry, configManager.getWindowHeight());
 
         com.openmason.engine.ui.masonry.MasonryEnvironment.installClipboard(
-                new com.stonebreak.rendering.UI.backend.skija.GlfwClipboard());
+                new com.openmason.engine.platform.window.Clipboard(com.stonebreak.core.Main::getWindowHandle));
         skijaBackend = new SkijaUIBackend();
         try {
             skijaBackend.initialize(configManager.getWindowWidth(), configManager.getWindowHeight());

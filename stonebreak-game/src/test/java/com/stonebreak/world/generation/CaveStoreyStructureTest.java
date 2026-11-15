@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.generation.heightmap.CaveWaterTable;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
+import com.stonebreak.world.generation.noise.TerrainNoise;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -32,14 +33,23 @@ public class CaveStoreyStructureTest {
     private static final int REGION = 6;
 
     /**
-     * How much more "in a gallery" carved rock must be than rock in general.
+     * How much more "in a gallery" carved rock must be than rock in general, per noise backend.
      *
-     * <p>1.0 would mean carving ignores the water table entirely — the storey-less mush this
-     * test exists to catch. Kept well above that but well below the raw ratio the tuning
-     * currently produces, so ordinary retuning does not trip it and switching the mechanism
-     * off does.
+     * <p>The floor has to sit between the ratio with the gallery mechanism switched OFF
+     * ({@code Density3D.SPAG_GALLERY_BONUS = 0} and {@code PerlinWormCarver.GALLERY_DAMP = 1}) and
+     * the ratio the tuning produces with it ON, so ordinary retuning does not trip it and switching
+     * the mechanism off does. Off is not 1.0: carving still prefers some depths for other reasons
+     * (worm placement, the epiphreatic pitch zones), and how much differs by backend. The two
+     * backends use different simplex implementations, so they need their own floors: native ON is
+     * below Java OFF, and one shared floor would either fail native or pass Java with storeys off.
+     *
+     * <p>Measured 2026-11-15 (after the noise router's altitude chill moved to y 110, 4ea3d20a),
+     * seed {@value #SEED}, {@value #REGION}x{@value #REGION} chunks:
+     * native ON 1.616 / OFF 1.300; Java ON 2.166 / OFF 1.703 (spaghetti bonus alone off: 1.787).
+     * The old single floor 1.65 (from native 1.699 / Java 1.844 in Aug 2026) sat 3% under native.
      */
-    private static final double MIN_GALLERY_ENRICHMENT = 1.65;  // measured 1.699 native / 1.844 Java
+    private static final double MIN_GALLERY_ENRICHMENT_NATIVE = 1.50;
+    private static final double MIN_GALLERY_ENRICHMENT_JAVA = 1.95;
 
     @Test
     public void carvedVolumeClustersIntoWaterTableStoreys() {
@@ -92,9 +102,13 @@ public class CaveStoreyStructureTest {
                         + "%.4f over %d carved / %d sub-surface cells)%n",
                 enrichment, carvedMean, baselineMean, carvedCount, allCount);
 
-        assertTrue(enrichment >= MIN_GALLERY_ENRICHMENT, String.format(
+        TerrainNoise.Backend backend = TerrainNoise.backend();
+        double floor = backend == TerrainNoise.Backend.NATIVE
+                ? MIN_GALLERY_ENRICHMENT_NATIVE : MIN_GALLERY_ENRICHMENT_JAVA;
+        assertTrue(enrichment >= floor, String.format(
                 "carved volume is only %.3fx as close to a gallery level as rock in general "
-                        + "(need %.2fx) — caves are not forming storeys, they are uniform mush",
-                enrichment, MIN_GALLERY_ENRICHMENT));
+                        + "(need %.2fx on the %s backend) — caves are not forming storeys, they "
+                        + "are uniform mush",
+                enrichment, floor, backend));
     }
 }

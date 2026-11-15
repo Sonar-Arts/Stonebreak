@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Deliberately does NOT test {@code handlePaste()}, {@code handleCopy()},
  * {@code copyToClipboard(...)}, or {@code handleTab(...)} — those reach
- * {@code Game.getInstance().getWindow()} and GLFW clipboard functions.
+ * the game window's clipboard ({@code Main.getWindowHandle()}, engine {@code Clipboard}).
  *
  * <p>Regression: a change to {@code handleCharInput} that accepts non-printable
  * characters or allows the buffer to exceed 256 chars would corrupt chat commands

@@ -6,7 +6,8 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsQuadCodec;
 import com.openmason.engine.voxel.mms.mmsCore.MmsQuadMeshBuilder;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
-import com.stonebreak.core.window.DisplayBackend;
+import com.openmason.engine.platform.window.BackendPolicy;
+import com.openmason.engine.platform.window.DisplayBackend;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.BufferUtils;
@@ -48,7 +49,7 @@ class PulledQuadRenderTest {
     @Test
     void pulledQuadCoversTheSamePixelsAsCompact20() throws Exception {
         assumeTrue(Boolean.getBoolean("stonebreak.bench"), "manual GL test (-Dstonebreak.bench=true)");
-        DisplayBackend.initialize();
+        DisplayBackend.initialize(BackendPolicy.AUTO_WAYLAND);
         GLFW.glfwDefaultWindowHints();
         GLFW.glfwWindowHint(GLFW.GLFW_VISIBLE, GLFW.GLFW_FALSE);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);

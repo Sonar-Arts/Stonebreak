@@ -31,6 +31,11 @@
             <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-voxel</artifactId>
         </dependency>
+        <!-- window, input devices, frame loop over GLFW (#96) -->
+        <dependency>
+            <groupId>com.openmason</groupId>
+            <artifactId>openmason-engine-platform</artifactId>
+        </dependency>
 
         <!-- LWJGL core -->
         <dependency>

@@ -1,16 +1,19 @@
 package com.stonebreak.core;
 
 import org.lwjgl.Version;
-import org.lwjgl.glfw.GLFWErrorCallback;
-import org.lwjgl.glfw.GLFWMonitorCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.openmason.engine.diagnostics.MemoryProfiler;
+import com.openmason.engine.loop.FramePacing;
+import com.openmason.engine.platform.input.InputChain;
+import com.openmason.engine.platform.loop.FrameLoop;
+import com.openmason.engine.platform.window.BackendPolicy;
+import com.openmason.engine.platform.window.DisplayBackend;
+import com.openmason.engine.platform.window.Window;
+import com.openmason.engine.platform.window.WindowSpec;
 import com.stonebreak.config.Settings;
 import com.stonebreak.core.render.FrameRenderer;
-import com.stonebreak.core.window.DisplayBackend;
-import com.stonebreak.core.window.GameWindow;
 import com.stonebreak.input.InputHandler;
 import com.stonebreak.input.MenuInputRouter;
 import com.stonebreak.rendering.Renderer;
@@ -18,18 +21,24 @@ import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.rendering.vram.CearlBootstrap;
 import com.stonebreak.world.World;
 
-import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.opengl.GL11.GL_BACK;
+import static org.lwjgl.opengl.GL11.GL_CCW;
+import static org.lwjgl.opengl.GL11.GL_CULL_FACE;
 import static org.lwjgl.opengl.GL11.GL_DEPTH_TEST;
 import static org.lwjgl.opengl.GL11.glClearColor;
+import static org.lwjgl.opengl.GL11.glCullFace;
 import static org.lwjgl.opengl.GL11.glEnable;
+import static org.lwjgl.opengl.GL11.glFrontFace;
 
 /**
  * Entry point for Stonebreak: owns the application lifecycle — start up, run the frame loop, shut
  * down — and nothing else.
  *
- * <p>The pieces it drives each own one concern: {@link DisplayBackend} picks and starts the GLFW
- * platform, {@link GameWindow} owns the window and its GL context, {@link MenuInputRouter} decides
- * which screen an input event belongs to, and {@link FrameRenderer} draws the frame.</p>
+ * <p>The pieces it drives each own one concern. The engine's platform layer (#96) picks and starts
+ * the GLFW backend ({@link DisplayBackend}, native Wayland unless the NVIDIA driver is blocklisted),
+ * owns the window and its GL context ({@link Window}) and runs the frame loop ({@link FrameLoop});
+ * {@link MenuInputRouter} decides which screen an input event belongs to, and {@link FrameRenderer}
+ * draws the frame.</p>
  */
 public class Main {
 
@@ -37,17 +46,22 @@ public class Main {
 
     private static final String WINDOW_TITLE = "Stonebreak";
 
+    /** Largest frame delta the game simulates; a longer stall arrives as one 0.1 s step. */
+    private static final float MAX_FRAME_DELTA = 0.1f;
+
+    /** Dev: {@code -Dstonebreak.uncapped=true} lifts every frame cap for this session (benchmarks). */
+    private static final boolean UNCAPPED = Boolean.getBoolean("stonebreak.uncapped");
+
     /** Static handle for the few systems that need to reach the live window (settings, resolution). */
     private static Main instance;
 
-    private GameWindow window;
+    private Window window;
+    private FrameLoop frameLoop;
     private MenuInputRouter inputRouter;
     private FrameRenderer frameRenderer;
 
     private Renderer renderer;
     private InputHandler inputHandler;
-
-    private boolean running = false;
 
     public static void main(String[] args) {
         GcEnforcement.enforce();
@@ -74,14 +88,31 @@ public class Main {
         Settings settings = Settings.getInstance();
         logger.info("Settings loaded - Window size: {}x{}", settings.getWindowWidth(), settings.getWindowHeight());
 
-        DisplayBackend.initialize();
+        DisplayBackend.initialize(BackendPolicy.AUTO_WAYLAND);
 
-        window = new GameWindow(settings.getWindowWidth(), settings.getWindowHeight());
-        window.setResizeListener(this::onFramebufferResized);
+        // GL 3.2 compatibility profile; swap interval 0 always: VSync is the limiter's monitor-rate
+        // cap (see frameBudgetNanos), never a driver block.
+        window = new Window(WindowSpec.builder(WINDOW_TITLE, settings.getWindowWidth(), settings.getWindowHeight())
+                .gl(3, 2, WindowSpec.GlProfile.COMPAT)
+                .waylandAppId("stonebreak")
+                .swapInterval(0)
+                .build());
+        window.addResizeListener(this::onFramebufferResized);
+        window.setCloseHandler(() -> {
+            logger.debug("Window close requested - initiating shutdown...");
+            if (frameLoop != null) {
+                frameLoop.stop();
+            }
+        });
         inputRouter = new MenuInputRouter(window);
         frameRenderer = new FrameRenderer(window);
 
-        window.create(WINDOW_TITLE);
+        window.create();
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
+        logVsyncSetting();
         installCallbacks();
         // Compile the CEARL program and install its VRAM plan BEFORE any
         // renderer exists: region arenas and the staging ring read the plan
@@ -99,51 +130,78 @@ public class Main {
     }
 
     /**
-     * Wires GLFW's callbacks to the input router. Each one only adapts the raw GLFW signature —
-     * which screen an event reaches is {@link MenuInputRouter}'s decision, not this class's.
+     * Joins the window's input chain. Each method only adapts the event: which screen it reaches is
+     * {@link MenuInputRouter}'s decision, not this class's. Window size, framebuffer, position and
+     * close callbacks are the engine window's own.
      */
     private void installCallbacks() {
-        long handle = window.handle();
-
-        glfwSetKeyCallback(handle, (win, key, scancode, action, mods) -> inputRouter.onKey(key, action, mods));
         // UI documents see letter keys by their layout label (Ctrl+Z on QWERTZ is the key labelled Z).
-        com.stonebreak.ui.runtime.GameUiInput.get().setKeyTranslator(
-                key -> com.openmason.engine.ui.runtime.input.LayoutKeys.translate(key, 0,
-                        org.lwjgl.glfw.GLFW::glfwGetKeyName));
-        glfwSetCharCallback(handle, (win, codepoint) -> inputRouter.onCharacter(codepoint));
-        glfwSetMouseButtonCallback(handle, (win, button, action, mods) ->
-                inputRouter.onMouseButton(button, action, mods));
-        glfwSetCursorPosCallback(handle, (win, x, y) -> inputRouter.onMouseMove(x, y));
-        glfwSetScrollCallback(handle, (win, xOffset, yOffset) -> inputRouter.onScroll(xOffset, yOffset));
-
-        glfwSetFramebufferSizeCallback(handle, (win, w, h) -> window.onFramebufferResized(w, h));
-        // Window (screen-coordinate) size can change independently of the framebuffer on
-        // Wayland/HiDPI; keep the cursor-to-UI scale in sync.
-        glfwSetWindowSizeCallback(handle, (win, w, h) -> window.updateCursorScale());
-        // A moved window may now be on a different monitor, so the VSync target changes. (Never fires
-        // on Wayland — there refreshMonitorHz caps at the fastest monitor instead.)
-        glfwSetWindowPosCallback(handle, (win, x, y) -> window.refreshMonitorHz());
-
-        glfwSetWindowFocusCallback(handle, (win, focused) -> {
-            if (!focused) {
-                // Releases made while unfocused never arrive: end UI drags, captures and held keys now (#288).
-                com.stonebreak.ui.runtime.GameUiInput.get().windowFocusLost();
+        com.stonebreak.ui.runtime.GameUiInput.get().setKeyTranslator(key -> Window.layoutKey(key, 0));
+        window.input().add(new InputChain.Listener() {
+            @Override
+            public void key(int key, int scancode, int action, int mods) {
+                inputRouter.onKey(key, action, mods);
             }
-            var mouseCapture = Game.getInstance().getMouseCaptureManager();
-            if (mouseCapture == null) {
-                return;
+
+            @Override
+            public void character(int codePoint) {
+                inputRouter.onCharacter(codePoint);
             }
-            if (focused) {
-                mouseCapture.updateCaptureState();
-            } else {
-                mouseCapture.temporaryRelease();
+
+            @Override
+            public void mouseButton(int button, int action, int mods) {
+                inputRouter.onMouseButton(button, action, mods);
+            }
+
+            @Override
+            public void cursor(double x, double y) {
+                inputRouter.onMouseMove(x, y);
+            }
+
+            @Override
+            public void scroll(double xOffset, double yOffset) {
+                inputRouter.onScroll(xOffset, yOffset);
+            }
+
+            @Override
+            public void focus(boolean focused) {
+                if (!focused) {
+                    // Releases made while unfocused never arrive: end UI drags, captures and held keys now (#288).
+                    com.stonebreak.ui.runtime.GameUiInput.get().windowFocusLost();
+                }
+                var mouseCapture = Game.getInstance().getMouseCaptureManager();
+                if (mouseCapture == null) {
+                    return;
+                }
+                if (focused) {
+                    mouseCapture.updateCaptureState();
+                } else {
+                    mouseCapture.temporaryRelease();
+                }
             }
         });
+    }
 
-        glfwSetWindowCloseCallback(handle, win -> {
-            logger.debug("Window close requested - initiating shutdown...");
-            running = false;
-        });
+    /**
+     * The frame budget: the lowest of the monitor rate (VSync on) and Max FPS (unless Unlimited);
+     * 0 = no sleep. VSync here caps at the monitor's refresh rate with the limiter instead of the
+     * driver's swap-interval 1, which halves the rate whenever a frame misses vblank.
+     */
+    private static long frameBudgetNanos(Window w) {
+        if (UNCAPPED) {
+            return 0L; // dev: -Dstonebreak.uncapped=true (benchmarks), never saved
+        }
+        Settings settings = Settings.getInstance();
+        return FramePacing.budgetNanos(settings.isVsyncEnabled(), w.monitorRefreshHz(),
+                settings.isMaxFpsUnlimited() ? 0 : settings.getMaxFps());
+    }
+
+    private void logVsyncSetting() {
+        Settings settings = Settings.getInstance();
+        String fpsCap = settings.isMaxFpsUnlimited() ? "unlimited" : settings.getMaxFps() + " FPS";
+        logger.info("[Display] VSync {}, Max FPS {}",
+                settings.isVsyncEnabled() ? "enabled (cap " + window.monitorRefreshHz() + " Hz)" : "disabled",
+                fpsCap);
     }
 
     private void initializeGameComponents() {
@@ -157,11 +215,9 @@ public class Main {
         inputRouter.setInputHandler(inputHandler);
 
         BlockTextureArray textureAtlas = renderer.getBlockTextureArray();
-        Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window.handle());
+        Game.getInstance().initCoreComponents(renderer, textureAtlas, inputHandler, window);
         Game.getInstance().setWindowDimensions(window.width(), window.height());
         profiler.takeSnapshot("after_game_init");
-
-        running = true;
 
         Game.logDetailedMemoryInfo("Core game components initialized - no world created");
         profiler.compareSnapshots("before_initialization", "after_game_init");
@@ -169,41 +225,54 @@ public class Main {
 
     // ─── Frame loop ───────────────────────────────────────────────────────────
 
-    @SuppressWarnings("BusyWait")
+    /**
+     * The engine frame loop: poll, {@code Game.update(dt)} with dt clamped to 0.1 s, render, swap,
+     * then sleep to the frame budget. Dev automation runs after the update and before the swap.
+     */
     private void loop() {
         glClearColor(0.5f, 0.8f, 1.0f, 0.0f);
         glEnable(GL_DEPTH_TEST);
 
-        while (!window.shouldClose() && running) {
-            long frameStartNanos = System.nanoTime();
-
-            if (inputHandler != null) {
-                inputHandler.prepareForNewFrame();
+        frameLoop = new FrameLoop(window, MAX_FRAME_DELTA, Main::frameBudgetNanos);
+        frameLoop.run(new FrameLoop.Frame() {
+            @Override
+            public void beforePoll() {
+                if (inputHandler != null) {
+                    inputHandler.prepareForNewFrame();
+                }
             }
-            glfwPollEvents();
 
-            Game.getInstance().update();
-            maybeAutoStartWorld();
-            maybeAutoView();
-            maybeAutoPause();
-            Game.displayDebugInfo();
-            inputRouter.pollActiveScreen();
-
-            frameRenderer.renderFrame();
-            com.stonebreak.core.render.Screenshots.captureIfRequested(window.width(), window.height());
-            maybeAutoFurnace();
-            maybeAutoScreen();
-            maybeAutoTorch();
-            maybeAutoFx();
-            maybeAutoBattle();
-            maybeAutoScreenshot();
-            maybeAutoFly();
-            window.swapBuffers();
-
-            if (!sleepToFrameBudget(System.nanoTime() - frameStartNanos)) {
-                break;
+            @Override
+            public void update(float dt) {
+                Game.getInstance().update(dt);
             }
-        }
+
+            @Override
+            public void afterUpdate() {
+                maybeAutoStartWorld();
+                maybeAutoView();
+                maybeAutoPause();
+                Game.displayDebugInfo();
+                inputRouter.pollActiveScreen();
+            }
+
+            @Override
+            public void render() {
+                frameRenderer.renderFrame();
+            }
+
+            @Override
+            public void beforeSwap() {
+                com.stonebreak.core.render.Screenshots.captureIfRequested(window.width(), window.height());
+                maybeAutoFurnace();
+                maybeAutoScreen();
+                maybeAutoTorch();
+                maybeAutoFx();
+                maybeAutoBattle();
+                maybeAutoScreenshot();
+                maybeAutoFly();
+            }
+        });
     }
 
     // ─── Dev: -Dstonebreak.autoworld=<name>[:<seed>] ─────────────────────────
@@ -979,7 +1048,7 @@ public class Main {
             if (autoBattleScript != null
                     && autoBattleScript.frame(Game.getDeltaTime(), window.width(), window.height())) {
                 autoBattleScript = null;
-                running = false;
+                stopLoop();
             }
             return;
         }
@@ -1159,7 +1228,7 @@ public class Main {
             System.err.println("[autoscreenshot] failed: " + e.getMessage());
         }
         if (parts.length > 2 && "quit".equalsIgnoreCase(parts[2])) {
-            running = false;
+            stopLoop();
         }
     }
 
@@ -1244,7 +1313,7 @@ public class Main {
                 Thread.currentThread().interrupt();
             }
             System.out.println("[autofly] done after " + autoFlyFrame + " frames, skipped " + autoFlySkipped);
-            running = false;
+            stopLoop();
             return;
         }
         // Fixed-rate path (not dt-integrated) so runs at different FPS cover the same ground.
@@ -1401,30 +1470,6 @@ public class Main {
         }
     }
 
-    /**
-     * Paces the loop to the active FPS cap. A budget of 0 means uncapped, so no sleep happens.
-     *
-     * @return false if the sleep was interrupted and the loop should exit
-     */
-    private boolean sleepToFrameBudget(long frameTimeNanos) {
-        long budgetNanos = window.frameBudgetNanos();
-        long remainingNanos = budgetNanos - frameTimeNanos;
-        if (remainingNanos <= 0) {
-            return true;
-        }
-        long millis = remainingNanos / 1_000_000;
-        if (millis <= 0) {
-            return true;
-        }
-        try {
-            Thread.sleep(millis, (int) (remainingNanos % 1_000_000));
-            return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-    }
-
     // ─── Shutdown ─────────────────────────────────────────────────────────────
 
     private void cleanup() {
@@ -1472,15 +1517,7 @@ public class Main {
 
         Game.forceGCAndReport("Final cleanup");
 
-        GLFWMonitorCallback monitorCallback = glfwSetMonitorCallback(null);
-        if (monitorCallback != null) {
-            monitorCallback.free();
-        }
-        glfwTerminate();
-        GLFWErrorCallback errorCallback = glfwSetErrorCallback(null);
-        if (errorCallback != null) {
-            errorCallback.free();
-        }
+        DisplayBackend.terminate();
     }
 
     // ─── Access for systems that outlive a single screen ──────────────────────
@@ -1497,10 +1534,33 @@ public class Main {
         }
     }
 
-    /** Applies the persisted VSync preference to the frame limiter. */
+    /**
+     * Applies the persisted VSync preference. The limiter reads the settings every frame, so this
+     * only re-asserts swap interval 0 and logs the active cap.
+     */
     public static void applyVsyncSetting() {
+        if (instance != null && instance.window != null && instance.window.handle() != 0) {
+            instance.window.setSwapInterval(0);
+            instance.logVsyncSetting();
+        }
+    }
+
+    /** Dev automation: quit after the current frame. */
+    private void stopLoop() {
+        if (frameLoop != null) {
+            frameLoop.stop();
+        }
+    }
+
+    /** The live game window, or null before startup completes. */
+    public static Window window() {
+        return instance != null ? instance.window : null;
+    }
+
+    /** Ends the frame loop after the current frame (dev benchmarks that quit when done). */
+    public static void requestClose() {
         if (instance != null && instance.window != null) {
-            instance.window.applyVsyncSetting();
+            instance.window.requestClose();
         }
     }
 }

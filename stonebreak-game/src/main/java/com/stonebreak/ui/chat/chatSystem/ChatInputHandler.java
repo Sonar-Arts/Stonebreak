@@ -1,15 +1,16 @@
 package com.stonebreak.ui.chat.chatSystem;
 
-import com.stonebreak.core.Game;
-
-import static org.lwjgl.glfw.GLFW.glfwGetClipboardString;
-import static org.lwjgl.glfw.GLFW.glfwSetClipboardString;
+import com.openmason.engine.platform.window.Clipboard;
+import com.stonebreak.core.Main;
 
 /**
  * Handles all chat input operations including character input, backspace, copy, and paste.
  * Follows Single Responsibility Principle by focusing solely on input management.
  */
 public class ChatInputHandler {
+    /** The game window's clipboard (engine, #96); reads empty before the window exists. */
+    private static final Clipboard CLIPBOARD = new Clipboard(Main::getWindowHandle);
+
     private static final int MAX_INPUT_LENGTH = 256;
     private static final char MIN_VALID_CHAR = 32;
     private static final char MAX_VALID_CHAR = 126;
@@ -47,13 +48,8 @@ public class ChatInputHandler {
      */
     public void handlePaste() {
         try {
-            long window = Game.getInstance().getWindow();
-            if (window == 0) {
-                return;
-            }
-
-            String clipboardText = glfwGetClipboardString(window);
-            if (clipboardText == null || clipboardText.isEmpty()) {
+            String clipboardText = CLIPBOARD.read();
+            if (clipboardText.isEmpty()) {
                 return;
             }
 
@@ -80,9 +76,8 @@ public class ChatInputHandler {
      */
     public void copyToClipboard(String text) {
         try {
-            long window = Game.getInstance().getWindow();
-            if (window != 0 && text != null && !text.isEmpty()) {
-                glfwSetClipboardString(window, text);
+            if (text != null && !text.isEmpty()) {
+                CLIPBOARD.write(text);
             }
         } catch (Exception e) {
             System.err.println("Failed to copy to clipboard: " + e.getMessage());

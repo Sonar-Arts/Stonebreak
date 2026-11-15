@@ -114,29 +114,25 @@ public class SettingsManager {
      * Applies window resolution changes to the actual window.
      */
     private void applyWindowResize() {
-        long windowHandle = Main.getWindowHandle();
-        if (windowHandle == 0) {
+        com.openmason.engine.platform.window.Window window = Main.window();
+        if (window == null || window.handle() == 0) {
             System.err.println("Warning: Could not apply window resolution - window handle is null");
             return;
         }
-        
+
         int newWidth = settings.getWindowWidth();
         int newHeight = settings.getWindowHeight();
 
         // Skip the resize entirely when the size is unchanged. Every "Apply"
         // funnels through here, and forcing a redundant glfwSetWindowSize causes
         // a needless compositor round-trip that visibly glitches on Wayland.
-        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-            java.nio.IntBuffer curW = stack.mallocInt(1);
-            java.nio.IntBuffer curH = stack.mallocInt(1);
-            org.lwjgl.glfw.GLFW.glfwGetWindowSize(windowHandle, curW, curH);
-            if (curW.get(0) == newWidth && curH.get(0) == newHeight) {
-                return;
-            }
+        int[] current = window.windowSize();
+        if (current[0] == newWidth && current[1] == newHeight) {
+            return;
         }
 
         // Apply window size change
-        org.lwjgl.glfw.GLFW.glfwSetWindowSize(windowHandle, newWidth, newHeight);
+        window.setWindowSize(newWidth, newHeight);
 
         // Re-sync render/UI state from the ACTUAL framebuffer size. The
         // compositor may clamp/ignore the requested size (or defer the resize
