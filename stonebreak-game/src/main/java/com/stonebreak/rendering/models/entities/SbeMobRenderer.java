@@ -41,7 +41,7 @@ final class SbeMobRenderer {
     }
 
     private static float clipTime(LivingEntity mob) {
-        return mob.getAI().clipTime(mob.getAnimationController().getTotalAnimationTime());
+        return mob.getAI().clipTime();
     }
 
     /** Lit, textured draw of the mob followed by its socket attachments. */

@@ -56,8 +56,11 @@ public abstract class LivingEntity extends Entity {
      */
     protected MobAI mobAI;
 
-    /** Clip clock for SBE-driven rendering; ticked every update. */
-    protected final AnimationController animationController;
+    /**
+     * Clip clock for SBE-driven rendering (the engine's native clip clock while this entity is in an
+     * {@link EntityManager}); the continuous half is ticked every update, the state half by the AI.
+     */
+    protected final EntityClipClock clipClock = new EntityClipClock();
 
     /**
      * Footsteps, sized from this mob's own dimensions. Lives here rather than in each mob class so
@@ -102,7 +105,6 @@ public abstract class LivingEntity extends Entity {
         this.isMoving = false;
         this.interactionRange = 3.0f;
         this.lastInteractionTime = 0;
-        this.animationController = new AnimationController(this);
         this.footsteps = hasFootsteps() ? MobSounds.forEntity(world, this) : null;
     }
 
@@ -148,7 +150,7 @@ public abstract class LivingEntity extends Entity {
         }
 
         // Advance the clip clock; SBE renderers sample animations from it.
-        animationController.updateAnimations(deltaTime);
+        clipClock.advance(deltaTime, 0.0f);
 
         // Footsteps are heard where the mob is RENDERED: a client-local mob in a render-only
         // world plays them here; a server-world mob's are played by its client shadow
@@ -540,7 +542,7 @@ public abstract class LivingEntity extends Entity {
     public MobAI getAI() { return mobAI; }
 
     /** The clip clock SBE renderers sample animation time from. */
-    public AnimationController getAnimationController() { return animationController; }
+    public EntityClipClock getClipClock() { return clipClock; }
 
     /** Appearance variant rendered from the SBE asset. */
     public String getTextureVariant() { return textureVariant; }
@@ -569,10 +571,9 @@ public abstract class LivingEntity extends Entity {
      */
     @Override
     public void updateClientVisuals(float deltaTime) {
-        animationController.updateAnimations(deltaTime);
-        if (mobAI != null) {
-            mobAI.advanceClientClock(deltaTime);
-        }
+        // One native call advances both halves: the continuous clock, and the AI state clock
+        // (MobAI.advanceClientClock) so one-shot clips play through.
+        clipClock.advance(deltaTime, mobAI != null ? deltaTime : 0.0f);
         if (footsteps != null) {
             footsteps.updateSounds(this); // stride from the interpolated position
         }

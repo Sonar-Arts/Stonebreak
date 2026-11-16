@@ -297,6 +297,19 @@ public enum EntityType {
         };
     }
 
+    /** {@link #descriptor()} flag: the type is a living creature. */
+    public static final int TYPE_FLAG_LIVING = 1;
+
+    /**
+     * This type as the engine's entity model sees it (OpenMason #114): body size, leg height, model
+     * yaw offset and SBE model id. {@link EntityManager} defines every type in its native world
+     * with it; the engine id of a type is its {@link #ordinal()}.
+     */
+    public com.openmason.engine.entity.EntityTypeDesc descriptor() {
+        return new com.openmason.engine.entity.EntityTypeDesc(width, height, length, legHeight,
+                getModelYawOffsetDegrees(), isLiving ? TYPE_FLAG_LIVING : 0, sbeObjectId);
+    }
+
     /**
      * Checks if this entity type represents a living creature.
      */
