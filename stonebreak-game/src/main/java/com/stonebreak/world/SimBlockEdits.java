@@ -23,4 +23,23 @@ public final class SimBlockEdits {
         }
         return true;
     }
+
+    /**
+     * Sets the block and then its state string (a spiked wall's lean), replicating both: the
+     * state goes out behind the block batch, like a player placement's echo. A {@code null}
+     * state is just {@link #set(World, int, int, int, BlockType)}.
+     */
+    public static boolean set(World world, int x, int y, int z, BlockType type, String state) {
+        if (!set(world, x, y, z, type)) {
+            return false;
+        }
+        if (state != null) {
+            world.setBlockStateAt(x, y, z, state);
+            ServerMutationSinks.StateSink sink = world.serverSinks().states();
+            if (sink != null) {
+                sink.onServerStateChange(x, y, z);
+            }
+        }
+        return true;
+    }
 }

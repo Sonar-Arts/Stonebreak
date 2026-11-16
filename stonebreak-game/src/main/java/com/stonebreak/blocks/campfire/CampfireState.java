@@ -18,7 +18,9 @@ import java.util.List;
  *
  * <p>State string: {@code campfire:state=Lit[;cook=<id>@<seconds>,...][;camp=<data>]}. The
  * {@code state=} key is the mesh/clip variant ({@code BlockRenderState.meshVariantKey}), so the
- * payload after it never remeshes or restarts the flicker.
+ * payload after it never remeshes or restarts the flicker. Cook entries are by spot, an empty
+ * spot written {@code 0@0} (trailing empties dropped), so food keeps its stone when a neighbour
+ * comes off — clients draw each spot on its own stone ({@code CampfireFoodRenderer}).
  */
 public final class CampfireState {
 
@@ -105,6 +107,16 @@ public final class CampfireState {
         return done == null ? List.of() : done;
     }
 
+    /** The item id cooking on spot {@code slot}, 0 when the spot is empty. */
+    public int itemAt(int slot) {
+        return cooking[slot];
+    }
+
+    /** Seconds spot {@code slot} has cooked, out of {@link #COOK_SECONDS}. */
+    public float progressAt(int slot) {
+        return progress[slot];
+    }
+
     /** What is still on the fire, uncooked — spilled when the fire is broken. */
     public List<ItemStack> contents() {
         List<ItemStack> out = new ArrayList<>();
@@ -118,12 +130,18 @@ public final class CampfireState {
 
     public String toStateString() {
         StringBuilder sb = new StringBuilder(PREFIX).append("state=").append(LIT);
+        int last = SLOTS - 1;
+        while (last >= 0 && cooking[last] == 0) {
+            last--;
+        }
         StringBuilder cook = new StringBuilder();
-        for (int i = 0; i < SLOTS; i++) {
-            if (cooking[i] != 0) {
-                if (!cook.isEmpty()) {
-                    cook.append(',');
-                }
+        for (int i = 0; i <= last; i++) {
+            if (i > 0) {
+                cook.append(',');
+            }
+            if (cooking[i] == 0) {
+                cook.append("0@0"); // keeps the later spots on their own stones
+            } else {
                 cook.append(cooking[i]).append('@').append(Math.round(progress[i] * 10) / 10f);
             }
         }
@@ -159,8 +177,9 @@ public final class CampfireState {
                         continue;
                     }
                     try {
-                        s.cooking[slot] = Integer.parseInt(entry.substring(0, at));
-                        s.progress[slot] = Float.parseFloat(entry.substring(at + 1));
+                        int id = Integer.parseInt(entry.substring(0, at));
+                        s.cooking[slot] = Math.max(id, 0);
+                        s.progress[slot] = id > 0 ? Float.parseFloat(entry.substring(at + 1)) : 0.0f;
                         slot++;
                     } catch (NumberFormatException ignored) {
                         // skip a damaged entry

@@ -9,7 +9,9 @@ import java.util.Objects;
 
 /**
  * A block's neighbour-driven shape ({@code multipart} in an SBO): a list of parts, each one of the
- * SBO's own states, drawn whenever its conditions on the six neighbours all hold. A fence is a post
+ * SBO's own states, drawn whenever its conditions on the neighbours (six faces, four horizontal
+ * diagonals) all hold. A state listed on several parts is drawn once when any of them holds, so a
+ * part can be drawn under either of two conditions. A fence is a post
  * with no conditions plus one arm per side ({@code north: tag:stonebreak:fence_connectable}). Rounded
  * leaves are flat faces, edge strips and corner caps keyed on which neighbours are full cubes.
  *
@@ -30,9 +32,14 @@ public record MultipartData(List<Part> parts) {
         parts = parts == null ? Collections.emptyList() : List.copyOf(parts);
     }
 
-    /** The six neighbours, in the chunk mesher's face order (the ordinal is the face index). */
+    /**
+     * The neighbours a condition can name: the six faces, in the chunk mesher's face order (for
+     * those the ordinal is the face index), then the four horizontal diagonals, so a wall can join
+     * a neighbour standing on its corner (Diagonal Fences style).
+     */
     public enum Side {
-        UP(0, 1, 0), DOWN(0, -1, 0), NORTH(0, 0, -1), SOUTH(0, 0, 1), EAST(1, 0, 0), WEST(-1, 0, 0);
+        UP(0, 1, 0), DOWN(0, -1, 0), NORTH(0, 0, -1), SOUTH(0, 0, 1), EAST(1, 0, 0), WEST(-1, 0, 0),
+        NORTHEAST(1, 0, -1), NORTHWEST(-1, 0, -1), SOUTHEAST(1, 0, 1), SOUTHWEST(-1, 0, 1);
 
         public final int dx;
         public final int dy;
@@ -44,7 +51,7 @@ public record MultipartData(List<Part> parts) {
             this.dz = dz;
         }
 
-        /** The manifest key: {@code "up"}, {@code "north"}... */
+        /** The manifest key: {@code "up"}, {@code "north"}, {@code "northeast"}... */
         public String key() {
             return name().toLowerCase(Locale.ROOT);
         }

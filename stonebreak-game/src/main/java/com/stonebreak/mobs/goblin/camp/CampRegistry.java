@@ -356,7 +356,7 @@ public final class CampRegistry implements CampAnchor {
                 c -> (c.x == fire.x() && c.y == fire.y() && c.z == fire.z())
                         || (chest != null && c.x == chest.x() && c.y == chest.y() && c.z == chest.z()));
         if (next != null) {
-            SimBlockEdits.set(world, next.cell().x, next.cell().y, next.cell().z, next.block());
+            SimBlockEdits.set(world, next.cell().x, next.cell().y, next.cell().z, next.block(), next.state());
         }
     }
 

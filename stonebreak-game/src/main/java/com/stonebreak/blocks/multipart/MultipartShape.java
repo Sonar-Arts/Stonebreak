@@ -21,6 +21,12 @@ import java.util.function.Predicate;
  * a cell costs one neighbour read per atom and an array lookup.
  *
  * <p>Negation does not add an atom: {@code !full_cube} reads the same bit as {@code full_cube}.
+ *
+ * <p><b>Facing.</b> The table is written in the model's own frame. A block whose model turns with
+ * a stored facing (the spiked wall) passes its quarter turns to {@link #evaluate(Neighbours, int,
+ * int, int, int)}: each side is turned the same way the stamp is
+ * ({@code StampRotator.rotateY}), so "east" in the table is whatever the turned model's east
+ * points at, and {@link #key(int, int)} names the composite baked turned that far.
  */
 public final class MultipartShape {
 
@@ -45,11 +51,14 @@ public final class MultipartShape {
     /** Per part: the atom bits it constrains, and the values they must have. */
     private final int[] partCare;
     private final int[] partWant;
-    private final String[] keys;
+    /** Per quarter turn, per mask: the stamp-cache key. */
+    private final String[][] keys;
+    /** Per quarter turn, per atom: the world offset its side points at, {dx, dy, dz}. */
+    private final int[][][] offsets;
     /** Per mask: the drawn parts' states, in table order. */
     private final List<List<String>> states;
-    /** Per mask: 6 floats per collision box (min xyz, max xyz); empty when none. */
-    private final float[][] boxes;
+    /** Per quarter turn, per mask: 6 floats per collision box (min xyz, max xyz); empty when none. */
+    private final float[][][] boxes;
     private final boolean anyBoxes;
 
     /**
@@ -103,19 +112,34 @@ public final class MultipartShape {
             partWant[p] = want;
         }
 
+        this.offsets = new int[4][atoms.length][];
+        for (int turns = 0; turns < 4; turns++) {
+            for (int a = 0; a < atoms.length; a++) {
+                MultipartData.Side side = atoms[a].side();
+                offsets[turns][a] = turn(side.dx, side.dy, side.dz, turns);
+            }
+        }
+
         int masks = 1 << atoms.length;
-        this.keys = new String[masks];
+        this.keys = new String[4][masks];
         this.states = new ArrayList<>(masks);
-        this.boxes = new float[masks][];
+        this.boxes = new float[4][masks][];
         boolean any = false;
         for (int mask = 0; mask < masks; mask++) {
-            keys[mask] = (KEY_PREFIX + mask).intern();
+            keys[0][mask] = (KEY_PREFIX + mask).intern();
+            for (int turns = 1; turns < 4; turns++) {
+                keys[turns][mask] = (KEY_PREFIX + mask + "@" + turns).intern();
+            }
             List<String> drawn = new ArrayList<>();
             List<MultipartData.Box> collision = new ArrayList<>();
             for (int p = 0; p < parts.size(); p++) {
                 if ((mask & partCare[p]) == partWant[p]) {
-                    drawn.add(parts.get(p).state());
-                    collision.addAll(parts.get(p).boxes());
+                    // A state on several rows is one part with alternative conditions: draw it
+                    // once, with the boxes of the first row that holds.
+                    if (!drawn.contains(parts.get(p).state())) {
+                        drawn.add(parts.get(p).state());
+                        collision.addAll(parts.get(p).boxes());
+                    }
                 }
             }
             states.add(Collections.unmodifiableList(drawn));
@@ -125,7 +149,10 @@ public final class MultipartShape {
                 System.arraycopy(new float[]{box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ()},
                         0, flat, b * 6, 6);
             }
-            boxes[mask] = flat;
+            boxes[0][mask] = flat;
+            for (int turns = 1; turns < 4; turns++) {
+                boxes[turns][mask] = turnBoxes(flat, turns);
+            }
             any |= flat.length > 0;
         }
         this.anyBoxes = any;
@@ -137,18 +164,36 @@ public final class MultipartShape {
 
     /** Number of distinct neighbour combinations: {@code 2^atoms}. */
     public int maskCount() {
-        return keys.length;
+        return keys[0].length;
     }
 
     /** The mask of the cell at {@code (x, y, z)}: bit {@code a} set when atom {@code a}'s test passes. */
     public int evaluate(Neighbours neighbours, int x, int y, int z) {
+        return evaluate(neighbours, x, y, z, 0);
+    }
+
+    /**
+     * The mask of a cell whose model is turned {@code quarterTurns} × 90° about +Y: the table's
+     * sides are read turned with it.
+     */
+    public int evaluate(Neighbours neighbours, int x, int y, int z, int quarterTurns) {
+        int[][] turned = offsets[Math.floorMod(quarterTurns, 4)];
         int mask = 0;
         for (int a = 0; a < atoms.length; a++) {
-            Atom atom = atoms[a];
-            BlockType n = neighbours.at(x + atom.side().dx, y + atom.side().dy, z + atom.side().dz);
-            if (test(a, n)) mask |= 1 << a;
+            int[] o = turned[a];
+            if (test(a, neighbours.at(x + o[0], y + o[1], z + o[2]))) mask |= 1 << a;
         }
         return mask;
+    }
+
+    /** {@code (dx, dy, dz)} turned like {@code StampRotator.rotateY}: one turn takes +Z (south) to +X (east). */
+    static int[] turn(int dx, int dy, int dz, int quarterTurns) {
+        return switch (Math.floorMod(quarterTurns, 4)) {
+            case 1 -> new int[]{dz, dy, -dx};
+            case 2 -> new int[]{-dx, dy, -dz};
+            case 3 -> new int[]{-dz, dy, dx};
+            default -> new int[]{dx, dy, dz};
+        };
     }
 
     private boolean test(int a, BlockType n) {
@@ -161,7 +206,12 @@ public final class MultipartShape {
 
     /** The stamp-cache key the shape for {@code mask} is registered under. */
     public String key(int mask) {
-        return keys[mask];
+        return keys[0][mask];
+    }
+
+    /** The key of {@code mask}'s shape turned {@code quarterTurns} × 90° about +Y. */
+    public String key(int mask, int quarterTurns) {
+        return keys[Math.floorMod(quarterTurns, 4)][mask];
     }
 
     /** The SBO states drawn for {@code mask}, in table order. */
@@ -171,7 +221,43 @@ public final class MultipartShape {
 
     /** Collision boxes for {@code mask}: 6 floats each (min xyz, max xyz, cell space). */
     public float[] boxes(int mask) {
-        return boxes[mask];
+        return boxes[0][mask];
+    }
+
+    /**
+     * Collision boxes for {@code mask} of a cell turned {@code quarterTurns} × 90° about +Y, turned
+     * about the cell centre the same way its stamp is, so they stay on the geometry they wrap.
+     */
+    public float[] boxes(int mask, int quarterTurns) {
+        return boxes[Math.floorMod(quarterTurns, 4)][mask];
+    }
+
+    /** Cell-space boxes turned about the cell centre like {@link #turn}. */
+    static float[] turnBoxes(float[] flat, int quarterTurns) {
+        float[] out = new float[flat.length];
+        for (int b = 0; b < flat.length; b += 6) {
+            float[] a = turnPoint(flat[b], flat[b + 2], quarterTurns);
+            float[] c = turnPoint(flat[b + 3], flat[b + 5], quarterTurns);
+            out[b] = Math.min(a[0], c[0]);
+            out[b + 1] = flat[b + 1];
+            out[b + 2] = Math.min(a[1], c[1]);
+            out[b + 3] = Math.max(a[0], c[0]);
+            out[b + 4] = flat[b + 4];
+            out[b + 5] = Math.max(a[1], c[1]);
+        }
+        return out;
+    }
+
+    /** A cell-space {@code (x, z)} turned about the cell centre: one turn takes +Z to +X, as {@link #turn}. */
+    private static float[] turnPoint(float x, float z, int quarterTurns) {
+        float dx = x - 0.5f;
+        float dz = z - 0.5f;
+        return switch (Math.floorMod(quarterTurns, 4)) {
+            case 1 -> new float[]{0.5f + dz, 0.5f - dx};
+            case 2 -> new float[]{0.5f - dx, 0.5f - dz};
+            case 3 -> new float[]{0.5f - dz, 0.5f + dx};
+            default -> new float[]{x, z};
+        };
     }
 
     /** True when some neighbour combination gives this block collision boxes. */

@@ -70,6 +70,22 @@ class MultipartShapeTest {
     }
 
     @Test
+    void boxesTurnWithTheStampAboutTheCellCentre() {
+        MultipartShape shape = fence();
+        int joined = shape.evaluate(around(BlockType.WOOD, BlockType.AIR, BlockType.AIR), 0, 0, 0);
+        float[] arm = {0.4375f, 0f, 0f, 0.5625f, 1.5f, 0.375f}; // the north arm, unturned
+        float[] turned = java.util.Arrays.copyOfRange(shape.boxes(joined, 1), 6, 12);
+        // One turn takes +Z (south) to +X (east), so north (-Z) goes to west (-X).
+        assertArrayEquals(new float[]{0f, 0f, 0.4375f, 0.375f, 1.5f, 0.5625f}, turned, 1e-6f);
+        assertArrayEquals(new float[]{0.4375f, 0f, 0.625f, 0.5625f, 1.5f, 1f},
+                java.util.Arrays.copyOfRange(shape.boxes(joined, 2), 6, 12), 1e-6f, "north goes south");
+        assertArrayEquals(new float[]{0.625f, 0f, 0.4375f, 1f, 1.5f, 0.5625f},
+                java.util.Arrays.copyOfRange(shape.boxes(joined, 3), 6, 12), 1e-6f, "north goes east");
+        assertArrayEquals(arm, java.util.Arrays.copyOfRange(shape.boxes(joined, 4), 6, 12), "four turns is none");
+        assertArrayEquals(shape.boxes(joined), shape.boxes(joined, 0));
+    }
+
+    @Test
     void keysAreDistinctPerCombination() {
         MultipartShape shape = fence();
         java.util.Set<String> keys = new java.util.HashSet<>();

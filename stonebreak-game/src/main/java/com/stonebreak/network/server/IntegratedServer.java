@@ -188,6 +188,9 @@ public final class IntegratedServer {
         // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
         // render live flow heights instead of full-height columns.
         level.world().serverSinks().setWaterSink(blockHandler::onServerWaterChange);
+        // State strings the simulation writes with a block it builds (a camp's spiked wall leans)
+        // → BlockStateS2C, queued behind the block batches like a placement echo.
+        level.world().serverSinks().setStateSink(blockHandler::queueStateEcho);
         // Sounds the simulation makes (a mob's hurt/death voice) → SoundEventS2C to the players
         // near it (issue #344); the tick thread never plays into the host client's mixer (#340).
         level.world().serverSinks().setSoundSink((type, event, x, y, z) -> ServerSounds.sendNear(ctx,

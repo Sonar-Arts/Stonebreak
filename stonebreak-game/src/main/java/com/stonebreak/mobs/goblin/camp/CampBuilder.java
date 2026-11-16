@@ -2,6 +2,7 @@ package com.stonebreak.mobs.goblin.camp;
 
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.palisade.PalisadeState;
 import org.joml.Vector3i;
 
 import java.util.HashSet;
@@ -11,8 +12,8 @@ import java.util.function.Predicate;
 
 /**
  * What a camp builds as it grows, one piece at a time: a bedroll for every goblin once it is four
- * strong, then a meat rack by the fire and a palisade of stakes either side of the cave mouth once it
- * is eight. Never on the walk out to the sky, so the camp's way in stays open.
+ * strong, then a meat rack by the fire and a spiked wall either side of the cave mouth, leaning out,
+ * once it is eight. Never on the walk out to the sky, so the camp's way in stays open.
  *
  * <p>Pure planning over {@link CampTerrain}: {@link #next} says which block goes where; the registry
  * places it.
@@ -26,8 +27,12 @@ public final class CampBuilder {
     /** How far from the fire the camp builds. */
     static final int RADIUS = 4;
 
-    /** A block to place. */
-    public record Placement(Vector3i cell, BlockType block) { }
+    /** A block to place, with the state to write on it ({@code null}: none). */
+    public record Placement(Vector3i cell, BlockType block, String state) {
+        Placement(Vector3i cell, BlockType block) {
+            this(cell, block, null);
+        }
+    }
 
     private CampBuilder() {
     }
@@ -65,13 +70,15 @@ public final class CampBuilder {
             }
         }
         if (walkway != null && walkway.size() >= 2) {
+            // The wall leans its points out of the cave mouth, at whoever comes in.
+            String lean = outward(walkway).toStateString();
             for (Vector3i flank : flanks(walkway)) {
                 // Where a tunnel surfaces it runs in a cutting: the ground beside it is up to three higher.
                 for (int dy = 0; dy <= 3; dy++) {
                     Vector3i stake = new Vector3i(flank.x, flank.y + dy, flank.z);
                     if (empty(terrain, stake) && terrain.standable(stake.x, stake.y, stake.z)
                             && !keepClear.contains(stake) && !reserved.test(stake)) {
-                        return new Placement(stake, BlockType.PALISADE);
+                        return new Placement(stake, BlockType.PALISADE, lean);
                     }
                 }
             }
@@ -91,15 +98,26 @@ public final class CampBuilder {
         return hearth;
     }
 
-    /** The cells either side of the walk where it meets the sky: the cave mouth's two posts, inside and out. */
+    /** The lean that points a spiked wall out along the walk's last step, away from the camp. */
+    static PalisadeState outward(List<Vector3i> walkway) {
+        Vector3i out = walkway.get(walkway.size() - 1);
+        Vector3i in = walkway.get(walkway.size() - 2);
+        return PalisadeState.leaningToward(out.x - in.x, out.z - in.z);
+    }
+
+    /**
+     * The cells either side of the walk where it meets the sky, two deep on each side, in one row
+     * across the mouth: spiked walls join their side neighbours, so a row across stands as one wall
+     * with the walk as its gap (two rows along the walk would join into walls lining the passage).
+     */
     static List<Vector3i> flanks(List<Vector3i> walkway) {
         Vector3i out = walkway.get(walkway.size() - 1);
         Vector3i in = walkway.get(walkway.size() - 2);
         int dx = out.x - in.x;
         int dz = out.z - in.z;
         return List.of(
-                new Vector3i(in.x + dz, in.y, in.z - dx), new Vector3i(in.x - dz, in.y, in.z + dx),
-                new Vector3i(out.x + dz, out.y, out.z - dx), new Vector3i(out.x - dz, out.y, out.z + dx));
+                new Vector3i(out.x + dz, out.y, out.z - dx), new Vector3i(out.x - dz, out.y, out.z + dx),
+                new Vector3i(out.x + 2 * dz, out.y, out.z - 2 * dx), new Vector3i(out.x - 2 * dz, out.y, out.z + 2 * dx));
     }
 
     /** The nearest covered floor cell round the fire, at least {@code minDistance} from it. */

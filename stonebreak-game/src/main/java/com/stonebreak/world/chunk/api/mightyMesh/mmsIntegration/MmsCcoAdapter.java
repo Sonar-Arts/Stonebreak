@@ -1044,15 +1044,19 @@ public class MmsCcoAdapter {
      */
     /**
      * The stamp variant a stamp-path cell draws: its neighbour-driven shape when its block has
-     * one (and connected shapes are on), else the variant its stored block state names.
+     * one (and connected shapes are on), turned to the facing its state stores, else the variant
+     * its stored block state names.
      */
     private String stampStateName(BlockType blockType, int lx, int ly, int lz, CcoChunkData chunkData) {
         com.stonebreak.blocks.multipart.MultipartShape shape =
             com.stonebreak.blocks.multipart.MultipartRegistry.of(blockType);
+        String state = chunkData.getBlockState(lx, ly, lz);
         if (shape != null && com.stonebreak.config.Settings.getInstance().getConnectedShapes()) {
-            return shape.key(shape.evaluate((x, y, z) -> getAdjacentBlock(x, y, z, chunkData), lx, ly, lz));
+            int turns = com.stonebreak.blocks.BlockFacing.quarterTurns(blockType, state);
+            return shape.key(shape.evaluate((x, y, z) -> getAdjacentBlock(x, y, z, chunkData), lx, ly, lz, turns),
+                turns);
         }
-        return chunkData.getBlockState(lx, ly, lz);
+        return state;
     }
 
     private BlockType getAdjacentBlock(int adjX, int adjY, int adjZ, CcoChunkData chunkData) {

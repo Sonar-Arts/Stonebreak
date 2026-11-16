@@ -68,6 +68,22 @@ class CampfireStateTest {
     }
 
     @Test
+    void foodKeepsItsSpotWhenANeighbourComesOff() {
+        CampfireState fire = new CampfireState(POS);
+        fire.put(SMELTING, ItemType.RAW_BEEF);
+        fire.tick(SMELTING, 2.0f);
+        fire.put(SMELTING, ItemType.RAW_CHICKEN);
+        assertEquals(1, fire.tick(SMELTING, CampfireState.COOK_SECONDS - 2.0f).size(), "the beef is done");
+
+        CampfireState back = CampfireState.parse(POS, fire.toStateString());
+        assertEquals(0, back.itemAt(0), "the beef's stone is bare");
+        assertEquals(ItemType.RAW_CHICKEN.getId(), back.itemAt(1), "the chicken stays on its own stone");
+        assertEquals(CampfireState.COOK_SECONDS - 2.0f, back.progressAt(1), 0.05f);
+        assertTrue(back.put(SMELTING, ItemType.RAW_BEEF));
+        assertEquals(ItemType.RAW_BEEF.getId(), back.itemAt(0), "new food takes the first bare stone");
+    }
+
+    @Test
     void aPlainFireCarriesNoCamp() {
         assertNull(CampfireState.parse(POS, new CampfireState(POS).toStateString()).campData());
         assertNull(CampfireState.parse(POS, null).campData());

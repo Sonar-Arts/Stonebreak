@@ -91,7 +91,7 @@ final class MultipartSection implements AssetEditorSection<SBOFormat.Document> {
         }
         int flags = ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit
                 | ImGuiTableFlags.ScrollX;
-        if (!rows.isEmpty() && ImGui.beginTable("##multipart", 9, flags)) {
+        if (!rows.isEmpty() && ImGui.beginTable("##multipart", MultipartData.Side.values().length + 3, flags)) {
             ImGui.tableSetupColumn("State");
             for (MultipartData.Side side : MultipartData.Side.values()) {
                 ImGui.tableSetupColumn(side.key());

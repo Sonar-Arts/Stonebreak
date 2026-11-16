@@ -202,11 +202,11 @@ public class Renderer {
                             com.stonebreak.rendering.sbo.SboBlockModels.of(sboBlockMap), arrayAdapter, arrayAdapter);
 
                     if (processed > 0) {
-                        // Stairs are orientable: bake one stamp per facing under
-                        // that facing's state string, so the mesher's existing
-                        // "block state selects a mesh variant" path draws them
-                        // turned with no per-instance work.
-                        registerStairRotations(sboRendererAPI.getStampCache(), sboBlockMap.keySet());
+                        // Stairs and spiked walls are orientable: bake one stamp per
+                        // facing under that facing's state string, so the mesher's
+                        // existing "block state selects a mesh variant" path draws
+                        // them turned with no per-instance work.
+                        registerFacingRotations(sboRendererAPI.getStampCache(), sboBlockMap.keySet());
                         registerStalagmiteVariants(sboRendererAPI.getStampCache());
                         com.stonebreak.rendering.sbo.MultipartStamps.register(sboRendererAPI.getStampCache());
 
@@ -306,34 +306,32 @@ public class Renderer {
     }
 
     /**
-     * Registers a pre-rotated stamp for each stair facing. Rotating once at
-     * startup (four cheap array copies per stair type) keeps the per-chunk mesh
-     * path exactly as it was — look the stamp up by state name and copy it.
+     * Registers a pre-rotated stamp for each facing of every orientable block — stairs and the
+     * spiked wall. Rotating once at startup (four cheap array copies per type) keeps the
+     * per-chunk mesh path exactly as it was — look the stamp up by state name and copy it.
      *
-     * <p>The key is the state string {@code StairState} writes at placement,
-     * run through the same {@code BlockRenderState.meshVariantKey} projection
-     * the mesher applies when it reads the state back. Deriving both ends from
-     * one rule is what stops a stair from silently meshing un-rotated.
+     * <p>The key is the state string the block writes at placement, run through the same
+     * {@code BlockRenderState.meshVariantKey} projection the mesher applies when it reads the
+     * state back. Deriving both ends from one rule is what stops a block from silently meshing
+     * un-rotated.
      */
-    private static void registerStairRotations(
+    private static void registerFacingRotations(
             com.openmason.engine.voxel.stamp.render.StampCache cache,
             java.util.Collection<com.stonebreak.blocks.BlockType> types) {
         for (com.stonebreak.blocks.BlockType type : types) {
-            if (!type.isStairs()) {
-                continue;
-            }
-            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp base = cache.get(type);
+            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp base =
+                    com.stonebreak.blocks.BlockFacing.isOrientable(type) ? cache.get(type) : null;
             if (base == null) {
                 continue;
             }
             for (com.stonebreak.blocks.stairs.StairState.Facing facing
                     : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
                 String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
-                        com.stonebreak.blocks.stairs.StairState.stateStringFor(facing));
+                        com.stonebreak.blocks.BlockFacing.stateStringFor(type, facing));
                 cache.put(type, key,
                         com.openmason.engine.voxel.stamp.StampRotator.rotateY(base, facing.quarterTurns()));
             }
-            logger.debug("[Renderer] Registered {} stair orientations for {}",
+            logger.debug("[Renderer] Registered {} orientations for {}",
                     com.stonebreak.blocks.stairs.StairState.Facing.values().length, type.name());
         }
     }

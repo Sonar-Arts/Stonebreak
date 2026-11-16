@@ -1066,6 +1066,7 @@ public class WorldRenderer {
         }
         if (entityRenderer != null) {
             entityRenderer.queueMeatRackItems(world, cameraPos);
+            entityRenderer.queueCampfireFood(world, cameraPos);
             dropRenderer.renderSocketItems(entityRenderer.socketItems(), shaderProgram, projectionMatrix,
                     player.getViewMatrix(), cameraPos);
         }

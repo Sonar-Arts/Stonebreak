@@ -418,8 +418,9 @@ public class BlockRenderer {
         if (cache == null) {
             return null;
         }
-        int mask = shape.evaluate(world::getBlockAt, p.x, p.y, p.z);
-        com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp stamp = cache.get(bt, shape.key(mask));
+        int turns = com.stonebreak.blocks.BlockFacing.quarterTurns(bt, world.getBlockStateAt(p.x, p.y, p.z));
+        int mask = shape.evaluate(world::getBlockAt, p.x, p.y, p.z, turns);
+        com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp stamp = cache.get(bt, shape.key(mask, turns));
         if (stamp == null || com.stonebreak.rendering.sbo.StampComposer.isUnitCube(stamp)) {
             return null;
         }

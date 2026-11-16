@@ -1,7 +1,9 @@
 package com.stonebreak.rendering.sbo;
 
 import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampRotator;
 import com.openmason.engine.voxel.stamp.render.StampCache;
+import com.stonebreak.blocks.BlockFacing;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.multipart.MultipartRegistry;
 import com.stonebreak.blocks.multipart.MultipartShape;
@@ -71,16 +73,32 @@ public final class MultipartStamps {
             }
             parts.put(state, stamp);
         }
+        // A block that turns with its facing gets every combination baked at each of its four
+        // turns. Many masks draw the same parts, so each distinct part list is composed (and
+        // turned) once and shared.
+        int turnCount = BlockFacing.isOrientable(type) ? 4 : 1;
+        Map<List<String>, BlockStamp[]> composed = new HashMap<>();
         for (int mask = 0; mask < shape.maskCount(); mask++) {
-            List<BlockStamp> drawn = new ArrayList<>();
-            for (String state : shape.states(mask)) {
-                BlockStamp part = parts.get(state);
-                if (part != null) {
-                    drawn.add(part);
+            BlockStamp[] turned = composed.computeIfAbsent(shape.states(mask), states -> {
+                List<BlockStamp> drawn = new ArrayList<>();
+                for (String state : states) {
+                    BlockStamp part = parts.get(state);
+                    if (part != null) {
+                        drawn.add(part);
+                    }
                 }
+                BlockStamp stamp = StampComposer.compose(drawn);
+                BlockStamp[] out = new BlockStamp[turnCount];
+                for (int turns = 0; turns < turnCount; turns++) {
+                    out[turns] = StampRotator.rotateY(stamp, turns);
+                }
+                return out;
+            });
+            for (int turns = 0; turns < turnCount; turns++) {
+                cache.put(type, shape.key(mask, turns), turned[turns]);
             }
-            cache.put(type, shape.key(mask), StampComposer.compose(drawn));
         }
-        logger.debug("Registered {} multipart shapes for {}", shape.maskCount(), type.name());
+        logger.debug("Registered {} multipart shapes ({} distinct) x {} turns for {}",
+                shape.maskCount(), composed.size(), turnCount, type.name());
     }
 }

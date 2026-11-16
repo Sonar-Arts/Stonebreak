@@ -619,7 +619,12 @@ public class DropRenderer {
             modelView.set(viewMatrix).mul(entry.socketMatrix());
             shaderProgram.setUniform("viewMatrix", modelView);
             groundFogAt(shaderProgram, entry.socketMatrix());
-            voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
+            if (entry.cooksInto() != null && SpriteVoxelizer.isVoxelizable(entry.cooksInto())) {
+                voxelizedSpriteRenderer.renderCookingSprite(entry.type(), entry.cooksInto(), entry.cooked(),
+                        SOCKET_SPRITE_TRANSFORM);
+            } else {
+                voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
+            }
         }
 
         // Same shared-state restore as renderHeldItems: later passes assume the camera view.

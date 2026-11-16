@@ -53,7 +53,11 @@ public final class BlockShape {
         com.stonebreak.blocks.multipart.MultipartShape shape =
                 com.stonebreak.blocks.multipart.MultipartRegistry.of(block);
         if (shape != null && shape.hasBoxes()) {
-            return boxHeight(shape.boxes(shape.evaluate(world::getBlockAt, x, y, z)),
+            // A shape that turns with a stored facing (the spiked wall) reads its sides and boxes
+            // turned with it, exactly as its stamp is drawn.
+            int turns = BlockFacing.isOrientable(block)
+                    ? BlockFacing.quarterTurns(block, world.getBlockStateAt(x, y, z)) : 0;
+            return boxHeight(shape.boxes(shape.evaluate(world::getBlockAt, x, y, z, turns), turns),
                     minX - x, minZ - z, maxX - x, maxZ - z);
         }
         return block.getCollisionHeight();

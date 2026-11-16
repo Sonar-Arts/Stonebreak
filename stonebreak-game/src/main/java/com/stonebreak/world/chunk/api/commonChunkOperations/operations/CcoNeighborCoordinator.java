@@ -133,6 +133,21 @@ public class CcoNeighborCoordinator {
     }
 
     /**
+     * Marks and schedules the diagonal neighbor chunk when the changed block sits on a chunk
+     * corner. Shapes that read their corner neighbours (a spiked wall joining one diagonally)
+     * mesh against that chunk too; the seam neighbors are {@link #markAndScheduleNeighbors}'.
+     */
+    public void markAndScheduleCornerNeighbor(int chunkX, int chunkZ, int localX, int localZ,
+                                              Consumer<Chunk> meshBuildScheduler) {
+        int last = WorldConfiguration.CHUNK_SIZE - 1;
+        int dx = localX == 0 ? -1 : localX == last ? 1 : 0;
+        int dz = localZ == 0 ? -1 : localZ == last ? 1 : 0;
+        if (dx != 0 && dz != 0) {
+            markAndScheduleNeighbor(chunkX + dx, chunkZ + dz, meshBuildScheduler);
+        }
+    }
+
+    /**
      * Ensures all cardinal neighbors (N, S, E, W) are ready for rendering.
      * Schedules mesh builds for any neighbors that are populated but don't have meshes.
      *

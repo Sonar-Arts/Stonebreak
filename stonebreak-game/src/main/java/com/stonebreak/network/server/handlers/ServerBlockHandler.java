@@ -755,6 +755,17 @@ public final class ServerBlockHandler {
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
             queueStateEcho(c.x(), c.y(), c.z());
         }
+        // Spiked-wall placement: the lean is authoritative like a stair's facing. The placer's
+        // proposal (any of the four is legitimate); none: away from them along their yaw.
+        if (incoming == BlockType.PALISADE) {
+            String placed = (c.hasPlacementState()
+                    && com.stonebreak.blocks.palisade.PalisadeState.isPalisadeState(c.placementState())
+                    ? com.stonebreak.blocks.palisade.PalisadeState.parse(c.placementState())
+                    : new com.stonebreak.blocks.palisade.PalisadeState(
+                            com.stonebreak.blocks.stairs.StairState.Facing.fromYaw(sp.yaw()))).toStateString();
+            world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
+            queueStateEcho(c.x(), c.y(), c.z());
+        }
         // Leaf placement: a leaf the player placed never decays. Only this server world
         // runs decay and the marker draws nothing, so there's no echo. Worldgen and
         // sapling growth never come through here, so their leaves stay natural.

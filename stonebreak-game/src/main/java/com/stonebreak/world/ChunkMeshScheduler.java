@@ -131,10 +131,14 @@ final class ChunkMeshScheduler {
                     c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_PLAYER_MODIFICATION));
                 neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ,
                     c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_NEIGHBOR_CHUNK));
+                neighborCoordinator.markAndScheduleCornerNeighbor(chunkX, chunkZ, localX, localZ,
+                    c -> meshPipeline.scheduleConditionalMeshBuild(c, MmsMeshPipeline.PRIORITY_NEIGHBOR_CHUNK));
             } else {
                 // NORMAL PATH: World gen/loading - standard priority async mesh generation
                 markChunkForMeshRebuildWithScheduling(chunk, meshPipeline::scheduleConditionalMeshBuild);
                 neighborCoordinator.markAndScheduleNeighbors(chunkX, chunkZ, localX, localZ, meshPipeline::scheduleConditionalMeshBuild);
+                neighborCoordinator.markAndScheduleCornerNeighbor(chunkX, chunkZ, localX, localZ,
+                    meshPipeline::scheduleConditionalMeshBuild);
             }
         }
     }

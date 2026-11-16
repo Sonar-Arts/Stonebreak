@@ -2,6 +2,8 @@ package com.stonebreak.mobs.goblin.camp;
 
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.palisade.PalisadeState;
+import com.stonebreak.blocks.stairs.StairState;
 import org.joml.Vector3i;
 import org.junit.jupiter.api.Test;
 
@@ -67,5 +69,16 @@ class CampBuilderTest {
         assertEquals(1, built.stream().filter(p -> p.block() == BlockType.MEAT_RACK).count());
         assertTrue(built.stream().anyMatch(p -> p.block() == BlockType.PALISADE), "stakes at the mouth: " + built);
         assertNotNull(CampSiteFinder.pathToSky(t, new Vector3i(1, FLOOR, 0)), "the camp can still walk out");
+    }
+
+    @Test
+    void theSpikedWallLeansOutOfTheCaveMouth() {
+        List<CampBuilder.Placement> walls = buildOut(cave(), 8).stream()
+                .filter(p -> p.block() == BlockType.PALISADE).toList();
+        assertTrue(!walls.isEmpty(), "stakes at the mouth");
+        for (CampBuilder.Placement wall : walls) {
+            // The cave opens to the east, so every stake points east, away from the fire.
+            assertEquals(StairState.Facing.EAST, PalisadeState.parse(wall.state()).facing(), wall.toString());
+        }
     }
 }

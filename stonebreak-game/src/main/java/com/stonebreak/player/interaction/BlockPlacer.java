@@ -133,6 +133,18 @@ public class BlockPlacer {
             placementState = com.stonebreak.blocks.stairs.StairState
                     .placedFromLook(look.x, look.z).toStateString();
         }
+        // Spiked wall: the stakes lean away from the placer, the way they look, unless that would
+        // lean a stretch to a wall it joins against the way that wall leans it.
+        if (selectedBlockType == BlockType.PALISADE) {
+            Vector3f look = raycastEngine.eyeDirection();
+            final Vector3i at = placePos;
+            placementState = com.stonebreak.blocks.palisade.PalisadeState
+                    .placedBeside(look.x, look.z, (dx, dz) -> world.getBlockAt(at.x + dx, at.y, at.z + dz) == BlockType.PALISADE
+                            ? com.stonebreak.blocks.palisade.PalisadeState.parse(
+                                    world.getBlockStateAt(at.x + dx, at.y, at.z + dz)).facing()
+                            : null)
+                    .toStateString();
+        }
         if (selectedBlockType == BlockType.OAK_DOOR) {
             Vector3f playerPos = state.getPosition();
             placementState = com.stonebreak.blocks.door.DoorState
