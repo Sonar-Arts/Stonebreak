@@ -1,6 +1,5 @@
 package com.stonebreak.mobs.entities;
 
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.effects.FireTrailParticles;
 import com.stonebreak.world.World;
@@ -18,16 +17,13 @@ public class FireBolt extends Entity {
     private static final float DAMAGE     = 8.0f;
     // Body boxes are grown by the bolt's half-size when it sweeps through them.
     private static final float HIT_MARGIN = 0.15f;
-    // Largest distance the bolt is allowed to advance between collision samples.
-    // Sub-stepping the per-frame move at this granularity stops fast bolts from
-    // tunnelling through thin blocks or skipping past mobs at low frame rates.
-    private static final float COLLISION_STEP = 0.25f;
     /** How long an impacted bolt stays (at least): the longest trail/burst particle's life. */
     private static final float IMPACT_LINGER = 0.75f;
     /** Replicated (EntityAnimS2C) when the bolt hits, so a client shadow bursts and hides its core. */
     static final String IMPACT_STATE = "Impact";
 
     private final Vector3f direction;
+    private final com.openmason.engine.physics.RayHit rayHit = new com.openmason.engine.physics.RayHit();
     // Once true the bolt has hit something and stops moving; it stays alive only
     // long enough for its trail/impact particles to fade out before despawning.
     private boolean impacted = false;
@@ -74,34 +70,37 @@ public class FireBolt extends Entity {
             return;
         }
 
-        // Advance the bolt in small sub-steps so collision is checked along the
-        // whole travel segment rather than only at the destination point.
-        float remaining = BOLT_SPEED * deltaTime;
+        // One swept move per update (OpenMason #117): the bolt's box against every block shape,
+        // door and model in its path, and the centre line against water — no frame rate lets a fast
+        // bolt tunnel through a thin block or skip past a mob.
+        float travel = BOLT_SPEED * deltaTime;
+        Vector3f end = new Vector3f(direction).mul(travel).add(position);
+        float reach = 1.0f; // fraction of the move before the first block or water
+        if (world != null && travel > 0.0f) {
+            com.stonebreak.world.physics.WorldPhysics physics = com.stonebreak.world.physics.WorldPhysics.of(world);
+            if (physics.sweep(position.x, position.y, position.z, end.x, end.y, end.z,
+                    HIT_MARGIN, HIT_MARGIN, HIT_MARGIN, com.stonebreak.world.physics.WorldPhysics.PROJECTILE_MASK, rayHit)) {
+                reach = rayHit.distance;
+            }
+            if (physics.raycast(position.x, position.y, position.z, direction.x, direction.y, direction.z, travel,
+                    0, com.stonebreak.world.physics.WorldPhysics.WATER, rayHit)) {
+                reach = Math.min(reach, rayHit.distance / travel);
+            }
+        }
+        Vector3f stop = new Vector3f(direction).mul(travel * reach).add(position);
+
+        // Entity collision — the first living entity on the stretch it actually flew.
         EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
-        while (remaining > 0.0f && !impacted) {
-            float stepLen = Math.min(COLLISION_STEP, remaining);
-            remaining -= stepLen;
-
-            Vector3f newPos = new Vector3f(direction).mul(stepLen).add(position);
-
-            // Block collision at the leading sample point.
-            BlockType block = world.getBlockAt(
-                    (int) Math.floor(newPos.x),
-                    (int) Math.floor(newPos.y),
-                    (int) Math.floor(newPos.z));
-            if (block != null && block != BlockType.AIR) {
-                impact();
-                return;
-            }
-
-            // Entity collision — damage the first living entity on this sub-step.
-            LivingEntity hit = em != null ? ProjectileSweep.firstHit(em, position, newPos, HIT_MARGIN) : null;
-            position.set(newPos);
-            if (hit != null) {
-                ProjectileDamage.deal(this, hit, DAMAGE, LivingEntity.DamageSource.FIRE);
-                impact();
-                return;
-            }
+        LivingEntity hit = em != null ? ProjectileSweep.firstHit(em, position, stop, HIT_MARGIN) : null;
+        position.set(stop);
+        if (hit != null) {
+            ProjectileDamage.deal(this, hit, DAMAGE, LivingEntity.DamageSource.FIRE);
+            impact();
+            return;
+        }
+        if (reach < 1.0f) {
+            impact();
+            return;
         }
 
         // Spawn fire trail particles behind the bolt — only where it is drawn: the server world's

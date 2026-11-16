@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.player.physics.CollisionHandler;
-import com.stonebreak.player.physics.GroundChecker;
 import com.stonebreak.player.state.PhysicsState;
 import org.junit.jupiter.api.Test;
 
@@ -35,13 +34,15 @@ class BattleTestArenaTest {
                 state.getPosition().set(spawn.position());
                 var collision = new CollisionHandler(state, world);
                 assertFalse(collision.isPlayerInsideSolidBlock());
+                // Sunk a little into the court: lifted onto it, then lands and stays standing.
                 state.getPosition().y = .01f;
                 state.getVelocity().y = -1;
-                collision.resolveY();
+                collision.move(0.05f);
                 assertEquals(.024f, state.getPosition().y, .0001);
                 assertTrue(state.isOnGround());
-                new GroundChecker(state, collision).check();
+                collision.move(0.05f);
                 assertTrue(state.isOnGround());
+                assertEquals(.024f, state.getPosition().y, .0001);
             }
             assertEquals(BlockType.AIR, world.getBlockAt(0, 0, 0));
             assertFalse(world.setBlockAt(0, 0, 0, BlockType.STONE));
@@ -55,16 +56,21 @@ class BattleTestArenaTest {
         var world = new BattleTestWorld(BattleTestArena.load());
         try {
             var state = new PhysicsState();
-            state.getPosition().set(7.3f, .024f, 5);
+            // Running at the cover from a block away: stopped short of where the old per-axis
+            // resolver pushed an overlapping body back to, velocity cleared.
+            state.getPosition().set(6.3f, .024f, 5);
+            state.setOnGround(true);
             state.getVelocity().x = 3;
             var collision = new CollisionHandler(state, world);
-            collision.resolveX();
+            collision.move(0.5f);
             assertTrue(state.getPosition().x < 7.3f);
             assertEquals(0, state.getVelocity().x);
+            assertTrue((collision.lastContacts() & com.openmason.engine.physics.PhysicsBody.CONTACT_POS_X) != 0);
+            // The central gate stays open.
             state.getPosition().set(0, .024f, -13.8f);
             state.getVelocity().set(0, 0, -3);
-            collision.resolveZ();
-            assertEquals(-13.8f, state.getPosition().z, .0001);
+            collision.move(0.05f);
+            assertEquals(-13.95f, state.getPosition().z, .0001);
         } finally {
             world.cleanup();
         }
@@ -74,13 +80,15 @@ class BattleTestArenaTest {
         var world = new BattleTestWorld(BattleTestArena.load());
         try {
             var state = new PhysicsState();
-            state.getPosition().set(0, -.195f, 16.1f);
+            // Walking up the entrance steps: climbed (not walled off), speed kept.
+            state.getPosition().set(0, -.195f, 16.4f);
             state.setOnGround(true);
             state.getVelocity().z = -2;
             var collision = new CollisionHandler(state, world);
-            collision.resolveZ();
-            assertEquals(.01f, state.getPosition().y, .001);
+            collision.move(0.25f);
+            assertEquals(0f, state.getPosition().y, .001);
             assertEquals(-2, state.getVelocity().z);
+            assertTrue((collision.lastContacts() & com.openmason.engine.physics.PhysicsBody.CONTACT_STEPPED) != 0);
         } finally {
             world.cleanup();
         }

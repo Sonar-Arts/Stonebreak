@@ -159,6 +159,7 @@ public final class ClientBlockHandler {
             }
             int y = baseY + ly;
             chunk.getWaterLayer().set(lx, y, lz, value);
+            world.invalidatePhysicsWater(baseX + lx, y, baseZ + lz);
             world.triggerChunkRebuild(baseX + lx, y, baseZ + lz);
             if (lx == 0) {
                 world.triggerChunkRebuild(baseX - 1, y, baseZ + lz);
@@ -194,6 +195,8 @@ public final class ClientBlockHandler {
                 com.stonebreak.world.chunk.utils.LocalBlockKey.pack(
                     Math.floorMod(s.x(), 16), s.y(), Math.floorMod(s.z(), 16)));
             chunk.setBlockState(Math.floorMod(s.x(), 16), s.y(), Math.floorMod(s.z(), 16), s.state());
+            world.invalidatePhysicsBlock(s.x(), s.y(), s.z());
+            world.getAnimatedBlockRegistry().onStateChanged(s.x(), s.y(), s.z());
             // Remesh only when the drawn variant actually changes — a furnace's
             // contents/progress arrive every cook tick, a stair's facing lands
             // once at placement.

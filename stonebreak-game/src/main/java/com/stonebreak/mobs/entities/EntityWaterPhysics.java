@@ -1,6 +1,5 @@
 package com.stonebreak.mobs.entities;
 
-import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.blocks.waterSystem.WaterSubmersion;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
@@ -26,16 +25,16 @@ import org.joml.Vector3f;
 public final class EntityWaterPhysics {
 
     /** The speed a body drifts upward under buoyancy alone. A rise, not a launch. */
-    private static final float BUOYANCY_DRIFT_SPEED = 1.2f;
+    static final float BUOYANCY_DRIFT_SPEED = 1.2f;
 
     /**
      * A body floats with roughly this fraction of itself under. Below it the water stops pushing
      * up, which is what makes a floating mob settle instead of bobbing out of the water entirely.
      */
-    private static final float FLOAT_SUBMERSION = 0.55f;
+    static final float FLOAT_SUBMERSION = 0.55f;
 
     /** Vertical damping in water, per second. Frame-rate independent via exp(). */
-    private static final float VERTICAL_DRAG = 2.2f;
+    static final float VERTICAL_DRAG = 2.2f;
 
     /** How much of its land speed a fully submerged body keeps. */
     private static final float SUBMERGED_SPEED_FACTOR = 0.55f;
@@ -74,23 +73,6 @@ public final class EntityWaterPhysics {
     }
 
     /**
-     * Applies one tick of water forces to a submerged entity: blended gravity, buoyancy toward the
-     * surface, vertical drag and the flow of the current.
-     *
-     * @param submersion the entity's submersion fraction, from {@link #submersion}; must be &gt; 0
-     */
-    public static void apply(World world, Entity entity, float submersion, float deltaTime) {
-        Vector3f velocity = entity.getVelocity();
-        velocity.y = verticalVelocityAfter(velocity.y, submersion, deltaTime);
-        entity.setVelocity(velocity);
-
-        // The current carries the entity; this reads and writes velocity itself.
-        WaterFlowPhysics.applyWaterFlowForce(world, entity.getPosition(), velocity,
-                deltaTime, entity.getWidth(), entity.getHeight());
-        entity.setVelocity(velocity);
-    }
-
-    /**
      * One tick of vertical water forces, as a pure function of the current vertical speed and how
      * deep the body is: weight, buoyancy and drag.
      *
@@ -100,31 +82,15 @@ public final class EntityWaterPhysics {
      * walked its floor forever.
      */
     public static float verticalVelocityAfter(float velocityY, float submersion, float deltaTime) {
-        float result = velocityY + verticalAcceleration(submersion) * deltaTime;
-
-        // Buoyancy alone tops out at a drift: a body rises to the surface and stays there rather
-        // than being flung out of the pond. A deliberate stroke is already faster than the drift,
-        // so this never damps one — it only limits what buoyancy by itself can build up to.
-        if (velocityY < BUOYANCY_DRIFT_SPEED) {
-            result = Math.min(result, BUOYANCY_DRIFT_SPEED);
-        }
-
-        return result * (float) Math.exp(-VERTICAL_DRAG * submersion * deltaTime);
-    }
-
-    /**
-     * Net vertical acceleration at a given submersion — Archimedes, with the float line as the
-     * point of neutral buoyancy.
-     *
-     * <p>Expressed as one term on purpose. Modelling it as "weakened gravity plus a lift force"
-     * looks equivalent and is not: the two fight, and where they happen to balance depends on both
-     * constants. That is how mobs ended up floating at 87% submerged when the intent was 55% —
-     * barely breaking the surface, too low to see the shore, let alone climb it. Here the
-     * equilibrium is exactly {@link #FLOAT_SUBMERSION} by construction, and the expression still
-     * reduces to real gravity as the body leaves the water.
-     */
-    private static float verticalAcceleration(float submersion) {
-        return Entity.GRAVITY * (1.0f - submersion / FLOAT_SUBMERSION);
+        // The rule lives in the engine (cp_buoyancy_vy, OpenMason #117) with these constants as
+        // its parameters: weight and buoyancy as one term, Entity.GRAVITY * (1 - submersion /
+        // FLOAT_SUBMERSION), so the equilibrium is exactly FLOAT_SUBMERSION by construction and the
+        // expression reduces to real gravity as the body leaves the water (modelling it as weakened
+        // gravity plus a lift force made mobs float 87% under instead of 55%); buoyancy alone tops
+        // out at the drift speed (a rise, not a launch — a deliberate stroke is already faster and is
+        // never damped by the cap); then vertical drag scaled by submersion.
+        return com.openmason.engine.physics.PhysicsWorld.buoyancyVy(velocityY, submersion, deltaTime,
+                EntityCollision.INTEGRATOR);
     }
 
     /**

@@ -1,6 +1,5 @@
 package com.stonebreak.blocks.waterSystem;
 
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 
 /**
@@ -32,30 +31,10 @@ public final class WaterSubmersion {
         if (world == null || height <= 0.0f) {
             return 0.0f;
         }
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        int feetBlockY = (int) Math.floor(feetY);
-        int headBlockY = (int) Math.floor(feetY + height);
-
-        // The highest water block the body spans decides the surface; one block above catches a
-        // body whose head is just under a surface sitting inside the next cell up.
-        int topWaterY = Integer.MIN_VALUE;
-        for (int y = feetBlockY; y <= headBlockY + 1; y++) {
-            if (world.getBlockAt(blockX, y, blockZ) == BlockType.WATER) {
-                topWaterY = y;
-            }
-        }
-        if (topWaterY == Integer.MIN_VALUE) {
-            return 0.0f;
-        }
-
-        float heightFraction = WaterHeightUtil.resolveSurfaceHeightFraction(world, blockX, topWaterY, blockZ);
-        if (Float.isNaN(heightFraction)) {
-            heightFraction = WaterHeightUtil.MAX_WATER_HEIGHT;
-        }
-        float surfaceY = topWaterY + heightFraction;
-        float submergedDepth = Math.max(0.0f, Math.min(height, surfaceY - feetY));
-        return submergedDepth / height;
+        // The engine measures it over its cell cache (OpenMason #117): the highest water cell of the
+        // column between the feet and one cell above the head decides the surface, at that cell's
+        // real surface height.
+        return com.stonebreak.world.physics.WorldPhysics.of(world).measureFluid(x, feetY, z, height, 0f, feetY, height).submersion;
     }
 
     /** Whether any part of the body is in water. */

@@ -47,6 +47,7 @@ public final class WorldFlowWorld implements FlowWorld {
         }
         chunk.setBlock(Math.floorMod(x, WorldConfiguration.CHUNK_SIZE), y,
                        Math.floorMod(z, WorldConfiguration.CHUNK_SIZE), type);
+        world.invalidatePhysicsBlock(x, y, z);
         markDirty(x, z);
 
         // Report the mutation to the integrated server's replication funnel
@@ -76,6 +77,7 @@ public final class WorldFlowWorld implements FlowWorld {
         }
         chunk.getWaterLayer().set(Math.floorMod(x, WorldConfiguration.CHUNK_SIZE), y,
                                   Math.floorMod(z, WorldConfiguration.CHUNK_SIZE), value);
+        world.invalidatePhysicsWater(x, y, z);
     }
 
     @Override

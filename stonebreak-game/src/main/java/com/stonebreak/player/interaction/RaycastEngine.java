@@ -1,10 +1,12 @@
 package com.stonebreak.player.interaction;
 
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.physics.RayHit;
+import com.openmason.engine.util.BlockPos;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
+import com.stonebreak.world.physics.WorldPhysics;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 import java.util.List;
@@ -13,13 +15,12 @@ import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.RAY_CAST_DISTANCE;
 
 /**
- * Performs voxel ray-marching from the player's eye to find targeted blocks. Three
- * variants cover breaking/placement (ignore water) and bucket interactions (detect
- * water). Also provides a ray/plane intersection helper used by face-picking logic.
+ * Rays from the player's eye through the engine physics (exact voxel DDA against block shapes and
+ * model boxes, OpenMason #117) to find targeted blocks. Three variants cover breaking/placement
+ * (ignore water), bucket interactions (detect water) and line of sight. Also provides a ray/plane
+ * intersection helper used by face-picking logic.
  */
 public class RaycastEngine {
-
-    private static final float STEP_SIZE = 0.025f;
 
     private final PhysicsState state;
     private final Camera camera;
@@ -54,17 +55,8 @@ public class RaycastEngine {
     public Vector3i raycastIncludingWater() {
         Vector3f origin = eyeOrigin();
         Vector3f direction = camera.getFront();
-        for (float d = 0; d < RAY_CAST_DISTANCE; d += STEP_SIZE) {
-            Vector3f p = new Vector3f(direction).mul(d).add(origin);
-            int bx = (int) Math.floor(p.x);
-            int by = (int) Math.floor(p.y);
-            int bz = (int) Math.floor(p.z);
-            BlockType bt = world.getBlockAt(bx, by, bz);
-            if (bt != BlockType.AIR) {
-                return new Vector3i(bx, by, bz);
-            }
-        }
-        return null;
+        return cellOf(cast(origin, direction, RAY_CAST_DISTANCE,
+                WorldPhysics.PICK_MASK | WorldPhysics.DOOR_CELL, WorldPhysics.WATER));
     }
 
     public Vector3f eyeOrigin() {
@@ -132,123 +124,45 @@ public class RaycastEngine {
     }
 
     /**
-     * Distance along the ray to the first solid (non-air, non-water) block, or
-     * {@link Float#MAX_VALUE} if the ray is clear out to {@code maxDistance}.
+     * Distance along the ray to the first thing that blocks sight — a block (stairs and stalagmites
+     * by their shape: the open part of a cell lets the ray through), a door panel, a torch or a scene
+     * collider; water and open doorways are clear — or {@link Float#MAX_VALUE} if the ray is clear
+     * out to {@code maxDistance}.
      */
     public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
-        List<PanelTarget> panels = doorPanelsNear(origin, maxDistance);
-        List<float[]> sceneBoxes = world.getStaticCollisionBoxes(origin, maxDistance);
-        for (float d = 0; d < maxDistance; d += STEP_SIZE) {
-            Vector3f p = new Vector3f(direction).mul(d).add(origin);
-            for (float[] box : sceneBoxes) {
-                if (insidePanel(box, p)) return d;
-            }
-            for (PanelTarget panel : panels) {
-                if (insidePanel(panel.box, p)) {
-                    return d; // a door blocks line-of-sight exactly where its panel is
-                }
-            }
-            int bx = (int) Math.floor(p.x);
-            int by = (int) Math.floor(p.y);
-            int bz = (int) Math.floor(p.z);
-            BlockType bt = world.getBlockAt(bx, by, bz);
-            if (bt != BlockType.AIR && bt != BlockType.WATER
-                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)
-                    && fillsPoint(bt, p, bx, by, bz)) {
-                return d;
-            }
-        }
-        return Float.MAX_VALUE;
+        RayHit h = cast(origin, direction, maxDistance, WorldPhysics.SIGHT_MASK, 0);
+        return h == null ? Float.MAX_VALUE : h.distance;
     }
 
     /**
-     * Whether the block in a cell actually occupies the ray's sample point.
-     * Shaped blocks (stairs) leave part of their cell open, so a ray crossing
-     * the open part must carry on to whatever stands behind it — otherwise you
-     * would target, break and lose line of sight to a stair's empty corner.
+     * The cell targeted along a ray: the first block surface (shaped blocks by their shape, so a
+     * stair's open corner lets the ray through to what stands behind it), or — hitting a door panel
+     * or torch model anywhere — that block's anchor cell (break, toggle and the crack overlay all
+     * key on it). Animated cells are never targets themselves: the ray passes an open doorway.
      */
-    private boolean fillsPoint(BlockType type, Vector3f p, int bx, int by, int bz) {
-        if (type == BlockType.LIMESTONE_STALAGMITE) {
-            // Only the spire itself is a target; the air beside it lets the ray through.
-            return com.stonebreak.blocks.stalagmite.StalagmiteShape.contains(world, bx, by, bz, p.x, p.y, p.z);
-        }
-        if (!type.isStairs()) {
-            return true;
-        }
-        float step = com.stonebreak.blocks.stairs.StairShape
-                .stepHeight(world, bx, by, bz, type, p.x, p.z, p.x, p.z);
-        return p.y - by <= step;
-    }
-
     private Vector3i marchToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
-        List<PanelTarget> panels = doorPanelsNear(origin, maxDistance);
-        for (float d = 0; d < maxDistance; d += STEP_SIZE) {
-            Vector3f p = new Vector3f(direction).mul(d).add(origin);
-
-            // Model-centric door targeting: hitting the panel anywhere —
-            // either block of its 2-tall model, open or closed pose — targets
-            // the door's anchor cell (break, toggle, crack overlay all key on it).
-            for (PanelTarget panel : panels) {
-                if (insidePanel(panel.box, p)) {
-                    return new Vector3i(panel.anchor);
-                }
-            }
-
-            int bx = (int) Math.floor(p.x);
-            int by = (int) Math.floor(p.y);
-            int bz = (int) Math.floor(p.z);
-            BlockType bt = world.getBlockAt(bx, by, bz);
-            if (bt != BlockType.AIR && bt != BlockType.WATER
-                    && !com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(bt)
-                    && fillsPoint(bt, p, bx, by, bz)) {
-                // Animated cells are never colliders themselves — the ray
-                // passes through an open doorway and hits what's behind.
-                return new Vector3i(bx, by, bz);
-            }
-        }
-        return null;
+        return cellOf(cast(origin, direction, maxDistance, WorldPhysics.PICK_MASK, 0));
     }
 
-    // ─── Door panel targets (model-tied AABBs) ───────────────────────────────
+    private final RayHit hit = new RayHit();
 
-    private static final class PanelTarget {
-        final float[] box;
-        final Vector3i anchor;
-
-        PanelTarget(float[] box, Vector3i anchor) {
-            this.box = box;
-            this.anchor = anchor;
+    private RayHit cast(Vector3f origin, Vector3f direction, float maxDistance, int mask, int fluidMask) {
+        if (world == null) {
+            return null;
         }
+        boolean any = com.stonebreak.world.physics.WorldPhysics.of(world).raycast(origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
+                maxDistance, mask, fluidMask, hit);
+        return any ? hit : null;
     }
 
-    /**
-     * Animated-block models (door panels) close enough for the ray to reach,
-     * as world AABBs from {@code AnimatedBlockShapes.worldAabb} — the geometry
-     * posed at the current state's clip end pose, i.e. exactly what is
-     * rendered. Doors are sparse, so this is normally an empty list.
-     */
-    private List<PanelTarget> doorPanelsNear(Vector3f origin, float maxDistance) {
-        List<PanelTarget> panels = null;
-        float reach = maxDistance + 3f; // a posed model extends at most ~2 blocks from its anchor
-        float reachSq = reach * reach;
-        for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
-            float dx = pos.x() + 0.5f - origin.x;
-            float dy = pos.y() + 1.0f - origin.y;
-            float dz = pos.z() + 0.5f - origin.z;
-            if (dx * dx + dy * dy + dz * dz > reachSq) continue;
-            BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
-            if (!com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)) continue;
-            float[] box = com.stonebreak.blocks.anim.AnimatedBlockShapes
-                    .worldAabb(world, pos.x(), pos.y(), pos.z(), type);
-            if (panels == null) panels = new java.util.ArrayList<>(2);
-            panels.add(new PanelTarget(box, new Vector3i(pos.x(), pos.y(), pos.z())));
+    private static Vector3i cellOf(RayHit h) {
+        if (h == null) {
+            return null;
         }
-        return panels == null ? List.of() : panels;
-    }
-
-    private static boolean insidePanel(float[] b, Vector3f p) {
-        return p.x >= b[0] && p.x <= b[3]
-                && p.y >= b[1] && p.y <= b[4]
-                && p.z >= b[2] && p.z <= b[5];
+        if (h.kind == RayHit.KIND_BOX && h.user != 0L) {
+            BlockPos anchor = WorldPhysics.BlockPosKey.unpack(h.user);
+            return new Vector3i(anchor.x(), anchor.y(), anchor.z());
+        }
+        return new Vector3i(h.x, h.y, h.z);
     }
 }

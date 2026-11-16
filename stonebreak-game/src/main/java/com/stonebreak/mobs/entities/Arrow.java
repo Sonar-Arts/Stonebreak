@@ -1,6 +1,5 @@
 package com.stonebreak.mobs.entities;
 
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
@@ -27,6 +26,7 @@ public class Arrow extends Entity {
      * so {@code lastPosition → position} is the path it just flew.
      */
     private final Vector3f lastPosition;
+    private final com.openmason.engine.physics.RayHit rayHit = new com.openmason.engine.physics.RayHit();
 
     /** The mob that loosed this arrow, or null for a player's arrow. */
     private LivingEntity shooter;
@@ -64,16 +64,21 @@ public class Arrow extends Entity {
             return;
         }
 
-        // Block collision — check leading edge in travel direction
-        Vector3f front = new Vector3f(velocity).normalize().mul(length * 0.5f);
-        Vector3f tip = new Vector3f(position).add(front);
-        int bx = (int) Math.floor(tip.x);
-        int by = (int) Math.floor(tip.y);
-        int bz = (int) Math.floor(tip.z);
-        BlockType block = world.getBlockAt(bx, by, bz);
-        if (block != null && block != BlockType.AIR) {
-            alive = false;
-            return;
+        // Block collision — the tip's path since the last update (OpenMason #117): any block surface,
+        // door or model, or water, between where the arrow was and where its tip is now. A
+        // full-draw arrow covers more than two blocks per server tick; a point test at the tip
+        // let it pass through thin ones.
+        if (world != null && velocity.lengthSquared() > 0.0f) {
+            Vector3f front = new Vector3f(velocity).normalize().mul(length * 0.5f);
+            Vector3f tip = new Vector3f(position).add(front);
+            Vector3f path = new Vector3f(tip).sub(lastPosition);
+            float distance = path.length();
+            if (distance > 0.0f && com.stonebreak.world.physics.WorldPhysics.of(world).raycast(lastPosition.x, lastPosition.y, lastPosition.z,
+                    path.x, path.y, path.z, distance, com.stonebreak.world.physics.WorldPhysics.PROJECTILE_MASK,
+                    com.stonebreak.world.physics.WorldPhysics.WATER, rayHit)) {
+                alive = false;
+                return;
+            }
         }
 
         if (shooter != null ? strikePlayer() : strikeEntity()) {
