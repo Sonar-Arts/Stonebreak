@@ -1,6 +1,6 @@
 package com.stonebreak.openmason.assets;
 
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.stonebreak.gameplay.SboGameplay;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

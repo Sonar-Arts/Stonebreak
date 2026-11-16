@@ -1,9 +1,9 @@
 package com.stonebreak.rendering.models.entities;
 
 import com.openmason.engine.rendering.model.IndexedDrawBatch;
-import com.openmason.engine.entity.sbe.SbeFace;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityFace;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
 
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -15,15 +15,15 @@ import java.util.Set;
 final class SbeDrawPlan {
     record PartBatches(List<IndexedDrawBatch> textured, List<IndexedDrawBatch> untextured) {}
 
-    private final Map<SbePart, PartBatches> parts = new IdentityHashMap<>();
+    private final Map<EntityPart, PartBatches> parts = new IdentityHashMap<>();
     private final Set<Integer> materialIds;
 
-    SbeDrawPlan(SbeModelGeometry geometry) {
+    SbeDrawPlan(EntityGeometry geometry) {
         Set<Integer> usedMaterials = new HashSet<>();
-        for (SbePart part : geometry.parts()) {
+        for (EntityPart part : geometry.parts()) {
             var textured = new IndexedDrawBatch.Builder();
             var untextured = new IndexedDrawBatch.Builder();
-            for (SbeFace face : part.faces()) {
+            for (EntityFace face : part.faces()) {
                 if ((long) face.indexStart() + face.indexCount() > geometry.indices().length) {
                     throw new IllegalArgumentException("Face index range exceeds mesh: " + face.faceId());
                 }
@@ -40,7 +40,7 @@ final class SbeDrawPlan {
         materialIds = Set.copyOf(usedMaterials);
     }
 
-    PartBatches forPart(SbePart part) {
+    PartBatches forPart(EntityPart part) {
         return parts.get(part);
     }
 

@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.sbo;
 
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

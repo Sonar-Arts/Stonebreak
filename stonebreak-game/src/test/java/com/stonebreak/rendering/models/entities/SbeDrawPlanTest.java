@@ -1,9 +1,9 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
-import com.openmason.engine.entity.sbe.SbeFace;
-import com.openmason.engine.entity.sbe.MaterialImage;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
+import com.openmason.engine.entity.model.EntityFace;
+import com.openmason.engine.entity.model.MaterialImage;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.openmason.engine.rendering.model.IndexedDrawBatch;
 import com.stonebreak.mobs.sbe.*;
@@ -20,17 +20,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class SbeDrawPlanTest {
     private static final MaterialImage IMAGE = new MaterialImage(1, 1, new byte[]{1, 2, 3, -1});
 
-    private static SbePart part(String id, SbeFace... faces) {
-        return new SbePart(id, id, null, new Vector3f(), new Vector3f(), new Vector3f(),
+    private static EntityPart part(String id, EntityFace... faces) {
+        return new EntityPart(id, id, null, new Vector3f(), new Vector3f(), new Vector3f(),
                 new Vector3f(1), List.of(faces));
     }
 
     @Test
     void coalescesWithinEachAnimatedPartAndSkipsOnlyUntexturedFaces() {
-        SbePart first = part("head", new SbeFace(0, 7, 0, 6), new SbeFace(1, 7, 6, 3),
-                new SbeFace(2, 99, 9, 3), new SbeFace(3, 7, 12, 6), new SbeFace(4, 8, 18, 3));
-        SbePart second = part("jaw", new SbeFace(5, 8, 21, 3));
-        var geometry = new SbeModelGeometry(new float[0], new float[0], new int[24],
+        EntityPart first = part("head", new EntityFace(0, 7, 0, 6), new EntityFace(1, 7, 6, 3),
+                new EntityFace(2, 99, 9, 3), new EntityFace(3, 7, 12, 6), new EntityFace(4, 8, 18, 3));
+        EntityPart second = part("jaw", new EntityFace(5, 8, 21, 3));
+        var geometry = new EntityGeometry(new float[0], new float[0], new int[24],
                 List.of(first, second), Map.of(7, IMAGE, 8, IMAGE, 123, IMAGE), 0, List.of());
         var plan = new SbeDrawPlan(geometry);
 
@@ -44,9 +44,9 @@ class SbeDrawPlanTest {
 
     @Test
     void preservesSparseAndOutOfOrderUntexturedRanges() {
-        SbePart part = part("sparse", new SbeFace(0, -1, 9, 3), new SbeFace(1, -1, 0, 3),
-                new SbeFace(2, -1, 6, 3));
-        var geometry = new SbeModelGeometry(new float[0], new float[0], new int[12],
+        EntityPart part = part("sparse", new EntityFace(0, -1, 9, 3), new EntityFace(1, -1, 0, 3),
+                new EntityFace(2, -1, 6, 3));
+        var geometry = new EntityGeometry(new float[0], new float[0], new int[12],
                 List.of(part), Map.of(), 0, List.of());
         var plan = new SbeDrawPlan(geometry);
         assertTrue(plan.forPart(part).textured().isEmpty());
@@ -56,8 +56,8 @@ class SbeDrawPlanTest {
 
     @Test
     void rejectsRangesBeyondTheUploadedIndexBuffer() {
-        var geometry = new SbeModelGeometry(new float[0], new float[0], new int[3],
-                List.of(part("bad", new SbeFace(0, 1, 0, 6))), Map.of(1, IMAGE), 0, List.of());
+        var geometry = new EntityGeometry(new float[0], new float[0], new int[3],
+                List.of(part("bad", new EntityFace(0, 1, 0, 6))), Map.of(1, IMAGE), 0, List.of());
         assertThrows(IllegalArgumentException.class, () -> new SbeDrawPlan(geometry));
     }
 
@@ -70,7 +70,7 @@ class SbeDrawPlanTest {
             var plan = new SbeDrawPlan(geometry);
             int faces = 0, batches = 0;
             var usedMaterials = new HashSet<Integer>();
-            for (SbePart part : geometry.parts()) {
+            for (EntityPart part : geometry.parts()) {
                 var original = part.faces();
                 faces += original.size();
                 batches += plan.forPart(part).textured().size();
@@ -91,7 +91,7 @@ class SbeDrawPlanTest {
                 int[] materialsAfter = plan.forPart(part).textured().stream().flatMapToInt(b ->
                         IntStream.range(0, b.indexCount()).map(i -> b.materialId())).toArray();
                 assertArrayEquals(materialsBefore, materialsAfter, name + " / " + part.name());
-                for (SbeFace face : original) usedMaterials.add(face.materialId());
+                for (EntityFace face : original) usedMaterials.add(face.materialId());
             }
             assertTrue(batches < faces / 100, name + ": " + faces + " -> " + batches);
             assertTrue(usedMaterials.containsAll(geometry.materials().keySet()), "Unused textures decoded");

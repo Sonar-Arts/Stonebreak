@@ -1,7 +1,7 @@
 package com.stonebreak.fx.bindings;
 
 import com.openmason.engine.format.fx.FxData;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.fx.Fx;

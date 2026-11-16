@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.player;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityPart;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
@@ -56,7 +56,7 @@ class FirstPersonArmPoseTest {
         }
     }
 
-    private static Vector3f point(SbeEntityAsset asset, AnimState anim, Matrix4f base) {
+    private static Vector3f point(EntityAsset asset, AnimState anim, Matrix4f base) {
         var result = new Vector3f();
         SbePoseSolver.forEachPartMatrix(asset.geometryFor("Default"), asset, anim, base, 0, 0,
                 (m, p) -> { if (p.name().equals("fist")) m.transformPosition(new Vector3f(.036f, -.566f, -.008f), result); });
@@ -67,10 +67,10 @@ class FirstPersonArmPoseTest {
     void exportedArmHasClosedFingerGeometryAndCompatibleClips() {
         var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
         var geometry = asset.geometryFor("Default");
-        var names = geometry.parts().stream().map(SbePart::name).collect(Collectors.toSet());
+        var names = geometry.parts().stream().map(EntityPart::name).collect(Collectors.toSet());
         assertTrue(names.containsAll(List.of("upper_arm", "forearm", "wrist_cuff", "wrist_guard", "fist")));
         assertEquals(5, names.size());
-        var ids = geometry.parts().stream().map(SbePart::id).collect(Collectors.toSet());
+        var ids = geometry.parts().stream().map(EntityPart::id).collect(Collectors.toSet());
         for (var clip : asset.clips().values()) {
             clip.tracks().forEach(track -> assertTrue(ids.contains(track.partId())));
         }
@@ -95,7 +95,7 @@ class FirstPersonArmPoseTest {
         }
     }
 
-    private static Map<String, Matrix4f> matrices(SbeEntityAsset asset, String clip, float time) {
+    private static Map<String, Matrix4f> matrices(EntityAsset asset, String clip, float time) {
         Map<String, Matrix4f> result = new HashMap<>();
         SbePoseSolver.forEachPartMatrix(asset.geometryFor("Default"), asset, AnimState.single(clip, time),
                 new Matrix4f(), 0, 0, (m, p) -> result.put(p.name(), new Matrix4f(m)));

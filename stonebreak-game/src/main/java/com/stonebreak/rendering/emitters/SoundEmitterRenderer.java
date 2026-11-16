@@ -13,7 +13,7 @@ import org.lwjgl.opengl.GL30;
 import static org.lwjgl.opengl.GL11.*;
 
 import com.openmason.engine.rendering.RenderOrigin;
-import com.stonebreak.audio.emitters.SoundEmitter;
+import com.openmason.engine.audio.emitters.SoundEmitter;
 import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;

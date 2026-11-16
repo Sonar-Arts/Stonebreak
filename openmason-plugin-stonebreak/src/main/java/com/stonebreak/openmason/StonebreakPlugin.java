@@ -18,12 +18,11 @@ import java.util.Set;
 
 /**
  * Stonebreak's tooling for Open Mason (#382, epic #390): the Stonebreak game target (#380: its
- * folders, UI host and numeric-id registries), the game-data sections of the SBO/SBE editor and
- * export windows (#431: game properties, mining, fuel, recipes, smelting, drops, tool, weapon,
- * entity type), the asset export and asset-lens MCP tools, the {@code assets} guide topic, the
- * {@code stonebreak_conventions} knowledge pack, the game-item viewport content and the New Biome
- * template. The windows themselves, the .sbo/.sbe/.sbt file types and the .SBT viewport content
- * are core (#431).
+ * folders, UI host and numeric-id registries), the SBO/SBE/SBT asset kinds (OpenMason#88: file types,
+ * codecs, the editor/export windows and their menus), the game-data sections of those windows (#431:
+ * game properties, mining, fuel, recipes, smelting, drops, tool, weapon, entity type), the asset export
+ * and asset-lens MCP tools, the {@code assets} guide topic, the {@code stonebreak_conventions} knowledge
+ * pack, the game-item viewport content and the New Biome template.
  *
  * <p>This module depends on the tool and on {@code stonebreak-game}; the tool never depends on it.
  * The tool finds it on the module path ({@code provides com.openmason.api.OpenMasonPlugin}) or the
@@ -51,7 +50,9 @@ public final class StonebreakPlugin implements OpenMasonPlugin {
     @Override
     public void register(PluginContext context) {
         ServiceRegistry services = context.services();
-        // Game data in the (core) SBO/SBE editor and export windows (#431).
+        // The SBO/SBE/SBT asset kinds: file types, codecs, editor/export windows, menus (OpenMason#88).
+        new com.stonebreak.openmason.editor.StonebreakEditors(services).register(context);
+        // Game data in the SBO/SBE editor and export windows (#431).
         StonebreakAssetSections.register(context);
 
         StonebreakMcpTools.all().forEach(context.mcpTools()::register);

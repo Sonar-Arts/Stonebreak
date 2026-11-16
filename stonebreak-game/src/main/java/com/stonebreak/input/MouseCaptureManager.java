@@ -1,54 +1,45 @@
 package com.stonebreak.input;
 
-import static org.lwjgl.glfw.GLFW.*;
+import com.openmason.engine.platform.input.PointerCapture;
+import com.openmason.engine.platform.window.Window;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.player.Camera;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 
 /**
- * Mouse capture management system for handling cursor modes and camera movement.
- * This system provides a clean, non-hacky implementation that properly accounts
- * for all game states, phases, and menus.
+ * Stonebreak's mouse-capture rules: which game states, menus and documents keep the cursor free,
+ * and when look input reaches the {@link Camera}. The mechanics (hiding/locking the cursor with raw
+ * motion, focus requests, temporary release on focus loss, jump-free deltas x sensitivity) are the
+ * engine's {@link PointerCapture} (#96).
  */
 public class MouseCaptureManager {
-    
-    private final long window;
-    private boolean isMouseCaptured = false;
-    private boolean firstMouseMovement = true;
-    private float lastMouseX = 0.0f;
-    private float lastMouseY = 0.0f;
-    private float mouseSensitivity = 0.1f;
-    
+
+    private final PointerCapture pointer;
+
     // Camera reference for mouse look
     private Camera camera;
-    
-    public MouseCaptureManager(long window) {
-        this.window = window;
+
+    public MouseCaptureManager(Window window) {
+        this.pointer = new PointerCapture(window, 0.1f);
     }
-    
+
     /**
      * Sets the camera reference for mouse look functionality.
      */
     public void setCamera(Camera camera) {
         this.camera = camera;
     }
-    
+
     /**
      * Updates mouse capture state based on current game state.
      * This should be called whenever the game state changes.
      */
     public void updateCaptureState() {
         GameState currentState = Game.getInstance().getState();
-        boolean shouldCapture = shouldCaptureMouseForState(currentState);
-        
-        if (shouldCapture && !isMouseCaptured) {
-            captureMouse();
-        } else if (!shouldCapture && isMouseCaptured) {
-            releaseMouse();
-        }
+        pointer.setCaptured(shouldCaptureMouseForState(currentState));
     }
-    
+
     /**
      * Determines if mouse should be captured for the given game state.
      */
@@ -93,105 +84,19 @@ public class MouseCaptureManager {
     }
     
     /**
-     * Captures the mouse cursor and enables camera look.
-     */
-    private void captureMouse() {
-        // Check if window is focused
-        boolean windowFocused = glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
-
-        if (!windowFocused) {
-            glfwRequestWindowAttention(window);
-            // Wayland compositors do not let clients steal input focus;
-            // glfwFocusWindow would only emit GLFW_FEATURE_UNAVAILABLE (the
-            // attention request above is the supported path there).
-            if (glfwGetPlatform() != GLFW_PLATFORM_WAYLAND) {
-                glfwFocusWindow(window);
-
-                // Give a small delay for the focus to take effect
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }
-
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        // Unfiltered deltas for camera look — keeps mouse feel consistent
-        // across backends (on Wayland the accelerated relative-pointer stream
-        // is used otherwise).
-        if (glfwRawMouseMotionSupported()) {
-            glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-        }
-        isMouseCaptured = true;
-        firstMouseMovement = true; // Reset to prevent jump on capture
-        
-        // Get current cursor position to avoid initial jump
-        double[] xpos = new double[1];
-        double[] ypos = new double[1];
-        glfwGetCursorPos(window, xpos, ypos);
-        lastMouseX = (float) xpos[0];
-        lastMouseY = (float) ypos[0];
-    }
-    
-    /**
-     * Releases the mouse cursor and disables camera look.
-     */
-    private void releaseMouse() {
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        isMouseCaptured = false;
-        firstMouseMovement = true; // Reset for next capture
-    }
-    
-    /**
      * Processes mouse movement for camera look.
      * This should be called from the GLFW cursor position callback.
      */
     public void processMouseMovement(double xpos, double ypos) {
-        float mouseX = (float) xpos;
-        float mouseY = (float) ypos;
-        
-        // Only process camera movement if mouse is captured
-        if (!isMouseCaptured || camera == null) {
-            // Update last position even when not captured to prevent jumps
-            lastMouseX = mouseX;
-            lastMouseY = mouseY;
-            return;
-        }
-        
-        // Additional safety check - don't process camera movement if chat is open
-        Game game = Game.getInstance();
-        ChatSystem chatSystem = game.getChatSystem();
-        if (chatSystem != null && chatSystem.isOpen()) {
-            // Update last position to prevent jumps when chat closes
-            lastMouseX = mouseX;
-            lastMouseY = mouseY;
-            return;
-        }
-        
-        // Handle first mouse movement to prevent camera jump
-        if (firstMouseMovement) {
-            lastMouseX = mouseX;
-            lastMouseY = mouseY;
-            firstMouseMovement = false;
-            return;
-        }
-        
-        // Calculate mouse movement offset
-        float xOffset = mouseX - lastMouseX;
-        float yOffset = lastMouseY - mouseY; // Reversed since y-coordinates go from bottom to top
-        
-        lastMouseX = mouseX;
-        lastMouseY = mouseY;
-        
-        // Apply sensitivity
-        xOffset *= mouseSensitivity;
-        yOffset *= mouseSensitivity;
-        
-        // Apply to camera
-        camera.processMouseMovement(xOffset, yOffset);
+        // Look only while captured, with a camera, and with no chat open; otherwise only the anchor
+        // follows the cursor, so nothing jumps when look resumes.
+        Camera target = camera;
+        ChatSystem chatSystem = Game.getInstance().getChatSystem();
+        boolean chatOpen = chatSystem != null && chatSystem.isOpen();
+        pointer.onCursor(xpos, ypos, target != null && !chatOpen,
+                target == null ? null : target::processMouseMovement);
     }
-    
+
     /**
      * Forces mouse capture state update.
      * Useful when game state changes require immediate mouse capture update.
@@ -199,53 +104,48 @@ public class MouseCaptureManager {
     public void forceUpdate() {
         updateCaptureState();
     }
-    
+
     /**
      * Checks if mouse is currently captured.
      */
     public boolean isMouseCaptured() {
-        return isMouseCaptured;
+        return pointer.isCaptured();
     }
-    
+
     /**
      * Sets mouse sensitivity for camera movement.
      */
     public void setMouseSensitivity(float sensitivity) {
-        this.mouseSensitivity = Math.max(0.01f, Math.min(1.0f, sensitivity));
+        pointer.setSensitivity(Math.max(0.01f, Math.min(1.0f, sensitivity)));
     }
-    
+
     /**
      * Gets current mouse sensitivity.
      */
     public float getMouseSensitivity() {
-        return mouseSensitivity;
+        return pointer.sensitivity();
     }
-    
+
     /**
      * Temporarily releases mouse (useful for ALT+TAB scenarios).
      */
     public void temporaryRelease() {
-        if (isMouseCaptured) {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        }
+        pointer.temporaryRelease();
     }
-    
+
     /**
      * Restores mouse capture after temporary release.
      */
     public void restoreCapture() {
-        if (isMouseCaptured) {
-            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            firstMouseMovement = true; // Prevent jump on restore
-        }
+        pointer.restoreCapture();
     }
-    
+
     /**
      * Cleanup resources.
      */
     public void cleanup() {
-        if (isMouseCaptured) {
-            releaseMouse();
+        if (pointer.isCaptured()) {
+            pointer.release();
         }
     }
 }

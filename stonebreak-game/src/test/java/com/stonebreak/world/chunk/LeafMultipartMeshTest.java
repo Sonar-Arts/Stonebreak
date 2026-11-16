@@ -1,6 +1,6 @@
 package com.stonebreak.world.chunk;
 
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOParser;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
 import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
@@ -9,10 +9,10 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.render.StampCache;
+import com.openmason.engine.voxel.stamp.render.StampEmitter;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.multipart.MultipartRegistry;
 import com.stonebreak.blocks.multipart.MultipartShape;
@@ -44,7 +44,7 @@ class LeafMultipartMeshTest {
     private static final int TOP = 0, BOTTOM = 1, NORTH = 2, SOUTH = 3, EAST = 4, WEST = 5;
 
     private boolean previousSetting;
-    private SBOStampCache cache;
+    private StampCache cache;
     private MultipartShape shape;
     private TestWorld world;
     private MmsCcoAdapter adapter;
@@ -54,9 +54,9 @@ class LeafMultipartMeshTest {
     void setUp() throws Exception {
         previousSetting = Settings.getInstance().getConnectedShapes();
         com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(WorldConfiguration.voxelConfig());
-        cache = new SBOStampCache();
-        assertTrue(new SBOMeshProcessor().process(BlockType.LEAVES,
-            new SBOParser().parse(Path.of("src/main/resources/sbo/blocks/SB_Leaves.sbo")),
+        cache = new StampCache();
+        assertTrue(new StampMeshProcessor().process(BlockType.LEAVES,
+            com.stonebreak.rendering.sbo.SboBlockModels.of(new SBOParser().parse(Path.of("src/main/resources/sbo/blocks/SB_Leaves.sbo"))),
             (block, face) -> new float[]{0f, 0f, 1f, 1f}, (block, face) -> face, cache));
         shape = MultipartRegistry.of(BlockType.LEAVES);
         MultipartStamps.register(cache, shape);
@@ -66,7 +66,7 @@ class LeafMultipartMeshTest {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
         adapter = new MmsCcoAdapter(new UnitUvTextureMapper(), world);
         adapter.setGreedyMeshingEnabled(false); // one record per face keeps the counts exact
-        adapter.setSBOStampEmitter(new SBOStampEmitter(cache, culling));
+        adapter.setSBOStampEmitter(new StampEmitter(cache, culling));
         chunk = new Chunk(0, 0);
         world.setChunk(0, 0, chunk);
     }

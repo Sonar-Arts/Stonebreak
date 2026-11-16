@@ -52,10 +52,13 @@ public class Density3DWaterGuardTest {
 
     /**
      * The coast's bank must sit in a band-carving biome for the gate-liveness check to mean
-     * anything: under the 2026-11-01 distilled Standard shape, 13579's bank is PLAINS (band 0.10,
-     * never fires unguarded here); 13581's is TUNDRA (0.18).
+     * anything, on BOTH noise backends (they pick different biomes for the same seed). Re-scouted
+     * 2026-11-15 after the noise router's altitude chill moved to start at y 110 (4ea3d20a): the
+     * bank (sea level + 40) is no longer chilled, so 13581's bank turned SNOWY_PLAINS and never
+     * band-carves here. 13608: RED_SAND_DESERT native (281 sealed cells would breach unguarded),
+     * TUNDRA Java (236). Seeds 13570..13699 all held the invariant on both backends.
      */
-    private static final long SEED = 13581L;
+    private static final long SEED = 13608L;
     private static final int CHUNK = WorldConfiguration.CHUNK_SIZE;
     private static final int REGION = 4;
     /** Mirrors Density3D.WATER_CLEARANCE. */

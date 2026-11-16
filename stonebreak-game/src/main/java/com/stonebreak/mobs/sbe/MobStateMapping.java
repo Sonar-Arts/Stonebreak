@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 
@@ -12,7 +12,7 @@ import com.stonebreak.mobs.entities.ai.MobBehaviorState;
  * {@code Wingflap}, and the combat set {@code Stab}, {@code Smash}, {@code DrawBow},
  * {@code ReleaseBow}, plus the Vestige's {@code Float}, {@code PeekLean}, {@code JerkBack},
  * {@code Woosh}, {@code Cast}, {@code Scratch} and {@code Dissolve}); the goose's asset was authored in lowercase with a {@code flying} clip instead
- * of the ground-only set. Names are matched exactly — {@link SbeEntityAsset#clipFor(String)} is
+ * of the ground-only set. Names are matched exactly — {@link EntityAsset#clipFor(String)} is
  * case-sensitive — so the per-asset difference lives here rather than in a second mapping class
  * beside the mob it belongs to.
  *

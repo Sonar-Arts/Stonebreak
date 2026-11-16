@@ -28,7 +28,7 @@ public class BlockRenderer {
      * Crack overlays for neighbour-driven shapes, by the stamp they wrap: {vao, vbo, vertexCount};
      * built on first use. Stamps are baked once at startup, so identity is a stable key.
      */
-    private final java.util.Map<com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp, int[]> shapedOverlays =
+    private final java.util.Map<com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp, int[]> shapedOverlays =
             new java.util.IdentityHashMap<>();
 
     public BlockRenderer() {
@@ -413,13 +413,13 @@ public class BlockRenderer {
             return null;
         }
         com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
-        com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache cache =
+        com.openmason.engine.voxel.stamp.render.StampCache cache =
                 renderer != null ? renderer.getSboStampCache() : null;
         if (cache == null) {
             return null;
         }
         int mask = shape.evaluate(world::getBlockAt, p.x, p.y, p.z);
-        com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp stamp = cache.get(bt, shape.key(mask));
+        com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp stamp = cache.get(bt, shape.key(mask));
         if (stamp == null || com.stonebreak.rendering.sbo.StampComposer.isUnitCube(stamp)) {
             return null;
         }
@@ -432,8 +432,8 @@ public class BlockRenderer {
      * cell and the overlay's are cell-local, hence the half-block shift. Stamp UVs are tile-local,
      * so the crack texture tiles once per face just like on the cube.
      */
-    private static int[] buildOverlay(com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp stamp) {
-        java.util.List<com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp> parts = new java.util.ArrayList<>();
+    private static int[] buildOverlay(com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp stamp) {
+        java.util.List<com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp> parts = new java.util.ArrayList<>();
         for (int f = 0; f < 6; f++) {
             parts.add(stamp.faces()[f]);
             parts.add(stamp.interior()[f]);

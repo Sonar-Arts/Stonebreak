@@ -1,6 +1,6 @@
 package com.stonebreak.world.chunk;
 
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOParser;
 import com.openmason.engine.voxel.IBlockType;
 import com.openmason.engine.voxel.ILayerIndexProvider;
 import com.openmason.engine.voxel.cco.core.CcoChunkData;
@@ -9,12 +9,12 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsBufferLayout;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsFaceCullingService;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
+import com.openmason.engine.voxel.stamp.render.StampFaceConventions;
+import com.openmason.engine.voxel.stamp.render.StampCache;
+import com.openmason.engine.voxel.stamp.render.StampEmitter;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.MmsCcoAdapter;
@@ -42,24 +42,24 @@ public class OreNuggetCullingTest {
     private static final int CX = 8, CY = 20, CZ = 8; // the ore cell
 
     private BlockStamp oreStamp;
-    private SBOStampEmitter emitter;
+    private StampEmitter emitter;
 
     @BeforeEach
     void setUp() throws Exception {
         com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(WorldConfiguration.voxelConfig());
         com.openmason.engine.voxel.lighting.VertexLightSampler.setSmoothLightingEnabled(true);
-        SBOStampCache cache = new SBOStampCache();
+        StampCache cache = new StampCache();
         ILayerIndexProvider layers = (block, face) -> face;
-        SBOMeshProcessor processor = new SBOMeshProcessor();
+        StampMeshProcessor processor = new StampMeshProcessor();
         assertTrue(processor.process(BlockType.COAL_ORE,
-                new SBOParser().parse(Path.of("src/main/resources/sbo/blocks/SB_Coal_Ore.sbo")),
+                com.stonebreak.rendering.sbo.SboBlockModels.of(new SBOParser().parse(Path.of("src/main/resources/sbo/blocks/SB_Coal_Ore.sbo"))),
                 (block, face) -> new float[]{0f, 0f, 1f, 1f}, layers, cache));
         oreStamp = cache.get(BlockType.COAL_ORE);
         assertTrue(oreStamp.hasProtrusions(), "fixture: the coal ore model must carry nuggets");
 
         MmsFaceCullingService culling = new MmsFaceCullingService();
         culling.setFaceOcclusionPolicy(cache::occludesFace);
-        emitter = new SBOStampEmitter(cache, culling);
+        emitter = new StampEmitter(cache, culling);
     }
 
     /** A 5×5×5 stone cube around the ore cell, {@code centre} at its middle. */
@@ -107,7 +107,7 @@ public class OreNuggetCullingTest {
     void anOreOpenOnOneSideDrawsOnlyThatSidesFaceAndNuggets() {
         ChunkMeshResult ore = mesh(stoneCube(BlockType.COAL_ORE, true));
 
-        int top = SBOFaceConventions.MMS_TOP;
+        int top = StampFaceConventions.MMS_TOP;
         int expected = oreStamp.faces()[top].vertexCount();
         for (FaceStamp along : oreStamp.protruding()[top]) {
             expected += along.vertexCount();

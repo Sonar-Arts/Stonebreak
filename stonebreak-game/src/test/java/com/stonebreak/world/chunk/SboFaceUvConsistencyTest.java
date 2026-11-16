@@ -2,8 +2,8 @@ package com.stonebreak.world.chunk;
 
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMeshData;
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParser;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;

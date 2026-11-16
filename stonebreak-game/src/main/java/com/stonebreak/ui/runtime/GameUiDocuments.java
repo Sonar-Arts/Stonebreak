@@ -328,8 +328,8 @@ public final class GameUiDocuments {
      * Skia frame, then the paint inside it.
      *
      * <p>UI space is framebuffer pixels: {@code width}/{@code height} are the framebuffer size
-     * ({@code GameWindow.width()}, from {@code glfwGetFramebufferSize}) and pointer input arrives in
-     * the same space ({@code GameWindow.toUiX}), so layout and hit-testing agree on HiDPI
+     * (engine {@code Window.width()}, from {@code glfwGetFramebufferSize}) and pointer input arrives in
+     * the same space ({@code Window.toUiX}), so layout and hit-testing agree on HiDPI
      * displays. The pixel ratio stays 1, as for every legacy Skija screen: the player's UI scale
      * setting is the only magnification, so documents match the legacy screens they replace.
      *

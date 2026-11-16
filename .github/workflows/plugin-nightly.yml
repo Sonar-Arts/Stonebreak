@@ -31,9 +31,10 @@ concurrency:
 env:
   HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
   # What the nightly ships: the plugin, the game it bundles (registries, SBO data, UI host), the
-  # build that assembles them.
+  # SBO/SBE/SBT formats (OpenMason#88), the build that assembles them.
   PLUGIN_PATHS: >-
     openmason-plugin-stonebreak
+    stonebreak-formats
     stonebreak-game/src/main
     stonebreak-game/pom.xml
     pom.xml

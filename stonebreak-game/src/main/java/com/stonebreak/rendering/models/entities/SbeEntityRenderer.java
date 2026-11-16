@@ -4,9 +4,9 @@ import com.openmason.engine.diagnostics.GpuMemoryTracker;
 import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.rendering.model.IndexedDrawBatch;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.MaterialImage;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.MaterialImage;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.gameWorld.fog.GroundFog;
 import org.joml.Matrix4f;
@@ -36,7 +36,7 @@ import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
 /**
  * Entity-blind renderer for SBE-driven mobs.
  *
- * <p>Given a decoded {@link SbeEntityAsset} plus a variant name, a state name,
+ * <p>Given a decoded {@link EntityAsset} plus a variant name, a state name,
  * an animation time and a world transform, it renders the model — selecting the
  * variant geometry, sampling the state's animation clip per part, and drawing
  * cached contiguous material batches for each part. It knows nothing about cows or any
@@ -132,7 +132,7 @@ public final class SbeEntityRenderer {
     }
 
     /** Per-asset GPU resources, keyed by asset identity (assets are cached singletons). */
-    private final Map<SbeEntityAsset, Map<String, VariantGpu>> assetGpu = new IdentityHashMap<>();
+    private final Map<EntityAsset, Map<String, VariantGpu>> assetGpu = new IdentityHashMap<>();
 
     /** Initialize the shared shaders. Must run on the GL thread. */
     public void initialize() {
@@ -325,7 +325,7 @@ public final class SbeEntityRenderer {
      * @param world         world, for underwater fog detection (may be null)
      * @param cameraPos     camera position, for fog distance (may be null)
      */
-    public void render(SbeEntityAsset asset, String variantName, String stateName,
+    public void render(EntityAsset asset, String variantName, String stateName,
                        float animationTime, Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos) {
@@ -340,7 +340,7 @@ public final class SbeEntityRenderer {
      * no head turn. Used by the third-person local player so the head tracks the
      * cursor while the body faces the movement direction.
      */
-    public void render(SbeEntityAsset asset, String variantName, String stateName,
+    public void render(EntityAsset asset, String variantName, String stateName,
                        float animationTime, Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
@@ -355,7 +355,7 @@ public final class SbeEntityRenderer {
      * clip plus any active overlays, resolving each overlay's part mask,
      * fades, and priority from its clip metadata.
      */
-    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+    public void render(EntityAsset asset, String variantName, AnimState anim,
                        Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
@@ -372,7 +372,7 @@ public final class SbeEntityRenderer {
      * transform instead of position/yaw/scale — used to draw attached models
      * at a socket's world frame (see {@link SbePoseSolver#socketWorldMatrix}).
      */
-    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+    public void render(EntityAsset asset, String variantName, AnimState anim,
                        Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
                        float headYawDeg, float headPitchDeg) {
@@ -384,14 +384,14 @@ public final class SbeEntityRenderer {
      * Matrix-based entry point with code-driven part rotations layered over the clip
      * (see {@link SbePoseSolver.PartOverrides}); {@code overrides} may be null.
      */
-    public void render(SbeEntityAsset asset, String variantName, AnimState anim,
+    public void render(EntityAsset asset, String variantName, AnimState anim,
                        Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                        com.stonebreak.world.World world, Vector3f cameraPos,
                        float headYawDeg, float headPitchDeg,
                        SbePoseSolver.PartOverrides overrides) {
         if (!initialized || asset == null) return;
 
-        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        EntityGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
@@ -510,13 +510,13 @@ public final class SbeEntityRenderer {
      *
      * @param color RGBA line colour
      */
-    public void renderWireframe(SbeEntityAsset asset, String variantName, String stateName,
+    public void renderWireframe(EntityAsset asset, String variantName, String stateName,
                                 float animationTime, Vector3f position, float yawDegrees,
                                 Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                 Vector4f color) {
         if (!initialized || asset == null || wireShader == null) return;
 
-        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        EntityGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
@@ -579,7 +579,7 @@ public final class SbeEntityRenderer {
      *
      * @param color RGBA solid colour to fill the model with
      */
-    public void renderColored(SbeEntityAsset asset, String variantName, String stateName,
+    public void renderColored(EntityAsset asset, String variantName, String stateName,
                               float animationTime, Vector3f position, float yawDegrees,
                               Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color) {
@@ -588,7 +588,7 @@ public final class SbeEntityRenderer {
     }
 
     /** Flat-coloured variant of {@link #render} with optional head turn (see that method). */
-    public void renderColored(SbeEntityAsset asset, String variantName, String stateName,
+    public void renderColored(EntityAsset asset, String variantName, String stateName,
                               float animationTime, Vector3f position, float yawDegrees,
                               Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
@@ -596,10 +596,10 @@ public final class SbeEntityRenderer {
                 yawDegrees, scale, viewMatrix, projectionMatrix, color, headYawDeg, headPitchDeg);
     }
 
-    /** Layered flat-coloured variant — see {@link #render(SbeEntityAsset, String, AnimState,
+    /** Layered flat-coloured variant — see {@link #render(EntityAsset, String, AnimState,
      * Vector3f, float, Vector3f, Matrix4f, Matrix4f, com.stonebreak.world.World, Vector3f,
      * float, float)}. */
-    public void renderColored(SbeEntityAsset asset, String variantName, AnimState anim,
+    public void renderColored(EntityAsset asset, String variantName, AnimState anim,
                               Vector3f position, float yawDegrees,
                               Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
@@ -609,15 +609,15 @@ public final class SbeEntityRenderer {
 
     /**
      * Matrix-based flat-coloured entry point — see the matrix-based
-     * {@link #render(SbeEntityAsset, String, AnimState, Matrix4f, Matrix4f,
+     * {@link #render(EntityAsset, String, AnimState, Matrix4f, Matrix4f,
      * Matrix4f, com.stonebreak.world.World, Vector3f, float, float)}.
      */
-    public void renderColored(SbeEntityAsset asset, String variantName, AnimState anim,
+    public void renderColored(EntityAsset asset, String variantName, AnimState anim,
                               Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null || wireShader == null) return;
 
-        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        EntityGeometry geometry = asset.geometryFor(variantName);
         VariantGpu gpu = resolveVariantGpu(asset, variantName);
         if (geometry == null || gpu == null) return;
 
@@ -730,11 +730,11 @@ public final class SbeEntityRenderer {
     }
 
     /** Returns the variant's GPU resources, uploading the asset on first use. */
-    private VariantGpu resolveVariantGpu(SbeEntityAsset asset, String variantName) {
+    private VariantGpu resolveVariantGpu(EntityAsset asset, String variantName) {
         Map<String, VariantGpu> variants = assetGpu.get(asset);
         if (variants == null) {
             variants = new HashMap<>();
-            for (Map.Entry<String, SbeModelGeometry> e : asset.variants().entrySet()) {
+            for (Map.Entry<String, EntityGeometry> e : asset.variants().entrySet()) {
                 variants.put(e.getKey(), uploadVariant(e.getValue()));
             }
             assetGpu.put(asset, variants);
@@ -746,10 +746,10 @@ public final class SbeEntityRenderer {
                 }
             }
         }
-        return variants.get(SbeEntityAsset.DEFAULT_VARIANT);
+        return variants.get(EntityAsset.DEFAULT_VARIANT);
     }
 
-    private VariantGpu uploadVariant(SbeModelGeometry geometry) {
+    private VariantGpu uploadVariant(EntityGeometry geometry) {
         VariantGpu gpu = new VariantGpu();
         gpu.drawPlan = new SbeDrawPlan(geometry);
 

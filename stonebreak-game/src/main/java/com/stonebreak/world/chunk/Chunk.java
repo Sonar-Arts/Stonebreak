@@ -510,7 +510,7 @@ public class Chunk {
      * Gets the list of SBO render data entries for blocks rendered with SBO textures.
      * @return SBO render data list, or null if no SBO blocks in this chunk
      */
-    public List<com.openmason.engine.voxel.sbo.SBORenderData> getSBORenderDataList() {
+    public List<com.openmason.engine.voxel.stamp.StampRenderData> getSBORenderDataList() {
         return mesh.getSBORenderDataList();
     }
 
@@ -526,7 +526,7 @@ public class Chunk {
         return mesh.isMeshRetired();
     }
 
-    public void setSBORenderDataList(List<com.openmason.engine.voxel.sbo.SBORenderData> dataList) {
+    public void setSBORenderDataList(List<com.openmason.engine.voxel.stamp.StampRenderData> dataList) {
         mesh.setSBORenderDataList(dataList);
     }
 

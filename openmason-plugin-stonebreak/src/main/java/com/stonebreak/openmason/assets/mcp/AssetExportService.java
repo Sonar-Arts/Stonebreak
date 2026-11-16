@@ -5,22 +5,22 @@ import com.stonebreak.gameplay.SboGameplay;import com.openmason.main.systems.mcp
 import com.openmason.main.systems.mcp.ModelFileService;
 import com.openmason.main.systems.mcp.TextureEditingService;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.openmason.engine.format.sbe.AnimationCompatibility;
-import com.openmason.engine.format.sbe.SBEFormat;
-import com.openmason.engine.format.sbe.SBESerializer;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOSerializer;
+import com.openmason.engine.format.oma.AnimationCompatibility;
+import com.stonebreak.format.sbe.SBEFormat;
+import com.stonebreak.format.sbe.SBESerializer;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOSerializer;
 import com.openmason.main.systems.services.EditorServices;
-import com.openmason.main.systems.assets.AssetCatalog;
-import com.openmason.main.systems.assets.AssetEntry;
+import com.stonebreak.openmason.catalog.AssetCatalog;
+import com.stonebreak.openmason.catalog.AssetEntry;
 import com.openmason.main.systems.io.AssetWriteService;
 import com.openmason.main.systems.io.AssetWriteService.WriteOutcome;
 import com.openmason.main.systems.io.AssetWriteService.WriteRequest;
 import com.openmason.main.systems.io.WriteKind;
 import com.openmason.main.systems.io.WriteRoot;
 import com.openmason.main.systems.target.GameTargets;
-import com.openmason.main.systems.menus.dialogs.SBEEditorWindow;
-import com.openmason.main.systems.menus.dialogs.SBOEditorWindow;
+import com.stonebreak.openmason.editor.SBEEditorWindow;
+import com.stonebreak.openmason.editor.SBOEditorWindow;
 import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
 import com.openmason.main.systems.stateHandling.ModelState;
 import com.openmason.main.systems.threading.MainThreadExecutor;
@@ -165,8 +165,8 @@ public final class AssetExportService {
                                          AssetWriteService.Writer writer) {
         String suggested = GameTargets.shared().suggestedFileName(p.getObjectName(), "sbo", "object.sbo");
         WriteOutcome out = writes.save(
-                suggestTargetFolder(WriteRequest.of(WriteKind.SBO, filePath, prompt, overwrite, suggested),
-                        WriteKind.SBO, p.getObjectType().getId())
+                suggestTargetFolder(WriteRequest.of(com.stonebreak.openmason.editor.StonebreakFileTypes.SBO_KIND, filePath, prompt, overwrite, suggested),
+                        com.stonebreak.openmason.editor.StonebreakFileTypes.SBO_KIND, p.getObjectType().getId())
                         .withDetails(List.of("Object: " + p.getObjectId() + " (" + p.getObjectType().getId() + ")",
                                 sourceDetail)),
                 writer);
@@ -201,8 +201,8 @@ public final class AssetExportService {
         String suggested = GameTargets.shared().suggestedFileName(p.getObjectName(), "sbe", "entity.sbe");
         Path omoPath = omo.path();
         WriteOutcome out = writes.save(
-                suggestTargetFolder(WriteRequest.of(WriteKind.SBE, filePath, prompt, overwrite, suggested),
-                        WriteKind.SBE, p.getEntityType())
+                suggestTargetFolder(WriteRequest.of(com.stonebreak.openmason.editor.StonebreakFileTypes.SBE_KIND, filePath, prompt, overwrite, suggested),
+                        com.stonebreak.openmason.editor.StonebreakFileTypes.SBE_KIND, p.getEntityType())
                         .withDetails(List.of("Entity: " + p.getObjectId() + " (" + p.getEntityType() + ")",
                                 "Model: " + omoPath.getFileName())),
                 target -> sbeSerializer.export(p, omoPath, target.toString()));
@@ -280,7 +280,7 @@ public final class AssetExportService {
             throw new IllegalArgumentException("invalid_draft: " + problem);
         }
         Path current = onMain(editor::path);
-        WriteKind wk = kind == Kind.SBO ? WriteKind.SBO : WriteKind.SBE;
+        WriteKind wk = kind == Kind.SBO ? com.stonebreak.openmason.editor.StonebreakFileTypes.SBO_KIND : com.stonebreak.openmason.editor.StonebreakFileTypes.SBE_KIND;
         String suggested = current != null ? current.getFileName().toString() : wk.fallbackName();
         AssetWriteService.Writer writer = target -> editor.write(target.toString());
         WriteOutcome out;
@@ -471,7 +471,7 @@ public final class AssetExportService {
             return entry.sourcePath();
         }
         Path p = writes.sandbox().resolveExisting(asset);
-        var type = kind == Kind.SBO ? com.openmason.main.systems.io.BuiltinFileTypes.SBO : com.openmason.main.systems.io.BuiltinFileTypes.SBE;
+        var type = kind == Kind.SBO ? com.stonebreak.openmason.editor.StonebreakFileTypes.SBO : com.stonebreak.openmason.editor.StonebreakFileTypes.SBE;
         if (!type.matches(p)) {
             throw new IllegalArgumentException("wrong_kind: " + asset + " is not a " + type.extension() + " file");
         }
@@ -528,8 +528,8 @@ public final class AssetExportService {
         if (editorServices == null) {
             throw new IllegalStateException("Open Mason UI is not running — the editors are unavailable");
         }
-        return kind == Kind.SBO ? new SboEditor(requireWindow(editorServices.getSBOEditorWindow(), kind))
-                : new SbeEditor(requireWindow(editorServices.getSBEEditorWindow(), kind));
+        return kind == Kind.SBO ? new SboEditor(requireWindow(editorServices.registry().find(com.stonebreak.openmason.editor.SBOEditorWindow.class).orElse(null), kind))
+                : new SbeEditor(requireWindow(editorServices.registry().find(com.stonebreak.openmason.editor.SBEEditorWindow.class).orElse(null), kind));
     }
 
     private static <W> W requireWindow(W window, Kind kind) {

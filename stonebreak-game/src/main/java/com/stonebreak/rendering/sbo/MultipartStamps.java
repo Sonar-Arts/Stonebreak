@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.sbo;
 
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.render.StampCache;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.multipart.MultipartRegistry;
 import com.stonebreak.blocks.multipart.MultipartShape;
@@ -36,7 +36,7 @@ public final class MultipartStamps {
      * multipart block answers with its default model instead: a side is only ever flat and
      * filled where its neighbour fills the cell, which is exactly when the question is asked.
      */
-    public static boolean occludesFace(SBOStampCache cache, com.openmason.engine.voxel.IBlockType block, int face) {
+    public static boolean occludesFace(StampCache cache, com.openmason.engine.voxel.IBlockType block, int face) {
         if (block instanceof BlockType type && MultipartRegistry.of(type) != null) {
             BlockStamp base = cache.get(type);
             if (base != null && face >= 0 && face < base.occludesFace().length) {
@@ -47,14 +47,14 @@ public final class MultipartStamps {
     }
 
     /** Registers every compiled shape whose block has a stamp. */
-    public static void register(SBOStampCache cache) {
+    public static void register(StampCache cache) {
         for (MultipartShape shape : MultipartRegistry.all()) {
             register(cache, shape);
         }
     }
 
     /** Registers one block's shapes; does nothing when the block has no stamp. */
-    public static void register(SBOStampCache cache, MultipartShape shape) {
+    public static void register(StampCache cache, MultipartShape shape) {
         BlockType type = shape.owner();
         BlockStamp base = cache.get(type);
         if (base == null) {

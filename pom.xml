@@ -14,6 +14,8 @@
          OpenMason main): GitHub Packages (a read:packages token under server id "github"), or a
          local build installed by scripts/openmason-local.sh, which is also the cross-repo dev loop. -->
     <modules>
+        <!-- Stonebreak's asset containers SBO/SBE/SBT (OpenMason#88): game formats, out of the engine -->
+        <module>stonebreak-formats</module>
         <module>stonebreak-game</module>
         <!-- Stonebreak's Open Mason plugin (#382): depends on the tool and the game -->
         <module>openmason-plugin-stonebreak</module>
@@ -71,11 +73,16 @@
         <mockito.version>5.24.0</mockito.version>
         <skija.version>0.143.18</skija.version>
         <sqlite.version>3.54.1.0</sqlite.version>
-        <netty.version>4.2.19.Final</netty.version>
+        <netty.version>4.2.20.Final</netty.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.stonebreak</groupId>
+                <artifactId>stonebreak-formats</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <!-- Open Mason (#388) -->
             <dependency>
                 <groupId>com.openmason</groupId>
@@ -90,6 +97,11 @@
             <dependency>
                 <groupId>com.openmason</groupId>
                 <artifactId>openmason-engine-voxel</artifactId>
+                <version>${openmason.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.openmason</groupId>
+                <artifactId>openmason-engine-platform</artifactId>
                 <version>${openmason.version}</version>
             </dependency>
             <dependency>
@@ -163,19 +175,6 @@
                 <version>${skija.version}</version>
             </dependency>
 
-            <!-- LWJGL OpenAL for audio -->
-            <dependency>
-                <groupId>org.lwjgl</groupId>
-                <artifactId>lwjgl-openal</artifactId>
-                <version>${lwjgl.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.lwjgl</groupId>
-                <artifactId>lwjgl-openal</artifactId>
-                <version>${lwjgl.version}</version>
-                <classifier>${lwjgl.natives}</classifier>
-                <scope>runtime</scope>
-            </dependency>
             
             <!-- Java OpenGL Math Library -->
             <dependency>

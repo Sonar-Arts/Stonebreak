@@ -26,7 +26,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.Player;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.emitters.SoundEmitterRenderer;
-import com.stonebreak.audio.emitters.SoundEmitter;
+import com.openmason.engine.audio.emitters.SoundEmitter;
 
 /**
  * Renderer for debug line visualisations: entity AI path trails.
@@ -184,7 +184,7 @@ public class DebugRenderer {
             return;
         }
 
-        com.stonebreak.audio.emitters.SoundEmitterManager emitterManager = Game.getSoundEmitterManager();
+        com.openmason.engine.audio.emitters.SoundEmitterManager emitterManager = Game.getSoundEmitterManager();
         if (emitterManager != null && soundEmitterRenderer != null) {
             List<SoundEmitter> emitters = emitterManager.getDebugVisibleEmitters();
             soundEmitterRenderer.renderSoundEmitters(emitters, debugMode);

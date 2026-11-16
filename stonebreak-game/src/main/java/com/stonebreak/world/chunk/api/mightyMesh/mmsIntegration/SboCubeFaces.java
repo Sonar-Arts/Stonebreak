@@ -1,9 +1,9 @@
 package com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
+import com.openmason.engine.voxel.stamp.render.StampEmitter;
 import com.stonebreak.blocks.BlockType;
 
 /**
@@ -48,7 +48,7 @@ public final class SboCubeFaces {
      */
     private final boolean[][] cubeMasks;
 
-    public SboCubeFaces(SBOStampEmitter emitter) {
+    public SboCubeFaces(StampEmitter emitter) {
         int maxId = 0;
         for (BlockType type : BlockType.values()) {
             maxId = Math.max(maxId, type.getId());
@@ -71,7 +71,7 @@ public final class SboCubeFaces {
     }
 
     /** True when every state variant's flush geometry fills all six boundary planes. */
-    private static boolean occludesEveryFace(SBOStampEmitter emitter, BlockType type) {
+    private static boolean occludesEveryFace(StampEmitter emitter, BlockType type) {
         for (int face = 0; face < 6; face++) {
             if (!emitter.getCache().occludesFace(type, face)) {
                 return false;
@@ -80,7 +80,7 @@ public final class SboCubeFaces {
         return true;
     }
 
-    private boolean tryBuildCube(SBOStampEmitter emitter, BlockType type, int id) {
+    private boolean tryBuildCube(StampEmitter emitter, BlockType type, int id) {
         com.stonebreak.blocks.multipart.MultipartShape multipart =
             com.stonebreak.blocks.multipart.MultipartRegistry.of(type);
         // A multipart block's states are its parts, not alternatives to the default model, so

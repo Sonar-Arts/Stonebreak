@@ -3,7 +3,7 @@ package com.stonebreak.openmason.assets;
 import com.stonebreak.gameplay.SboGameplay;
 import com.openmason.api.asset.AssetEditorSection;
 import com.openmason.api.asset.AssetSectionHost;
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.openmason.main.systems.menus.dialogs.EditorWidgets;
 import com.openmason.main.systems.menus.dialogs.validation.NumericIdValidator;
 import com.openmason.main.systems.themes.utils.ThemedWidgets;

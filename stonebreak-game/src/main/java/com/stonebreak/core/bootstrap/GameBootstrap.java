@@ -29,7 +29,7 @@ public final class GameBootstrap {
     }
 
     /**
-     * Initializes OpenAL, loads the global (non-asset) sound samples, and
+     * Starts the native audio engine, loads the global (non-asset) sound samples, and
      * applies the saved master-volume setting. Block/entity sounds are NOT
      * loaded here — they are declared per asset in SBO/SBE {@code sounds[]}
      * sections and resolved lazily on first playback (see

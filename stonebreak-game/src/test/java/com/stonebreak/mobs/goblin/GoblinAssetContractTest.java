@@ -7,8 +7,8 @@ import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 import com.stonebreak.mobs.sbe.Clothing;
 import com.stonebreak.mobs.sbe.MobStateMapping;
-import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAttachmentPoint;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +30,7 @@ class GoblinAssetContractTest {
 
     private static final float CLIP_TOLERANCE_SECONDS = 0.02f;
 
-    private final SbeEntityAsset goblin = GameSbeAssets.load("/sbe/Mobs/SB_Goblin.sbe");
+    private final EntityAsset goblin = GameSbeAssets.load("/sbe/Mobs/SB_Goblin.sbe");
 
     private ParsedAnimClip clipFor(MobBehaviorState state) {
         String name = MobStateMapping.sbeState(EntityType.GOBLIN, state);
@@ -74,7 +74,7 @@ class GoblinAssetContractTest {
     @Test
     void everySocketALoadoutUsesExists() {
         Set<String> sockets = new HashSet<>();
-        for (SbeAttachmentPoint point : goblin.geometryFor(SbeEntityAsset.DEFAULT_VARIANT).attachmentPoints()) {
+        for (EntityAttachmentPoint point : goblin.geometryFor(EntityAsset.DEFAULT_VARIANT).attachmentPoints()) {
             sockets.add(point.name().toLowerCase(Locale.ROOT));
         }
         Set<String> needed = new HashSet<>(Set.of(Clothing.HAT_SOCKET, Clothing.EARRING_SOCKET));
@@ -90,7 +90,7 @@ class GoblinAssetContractTest {
     @Test
     void everyCosmeticDecodesWithItsVariants() {
         for (String path : new String[] {Clothing.PIRATE_HAT, Clothing.GOLD_EARRING, Clothing.BANDANA}) {
-            assertNotNull(GameSbeAssets.loadAttachableResource(path).geometryFor(SbeEntityAsset.DEFAULT_VARIANT), path);
+            assertNotNull(GameSbeAssets.loadAttachableResource(path).geometryFor(EntityAsset.DEFAULT_VARIANT), path);
         }
         Set<String> colors = GameSbeAssets.loadAttachableResource(Clothing.BANDANA).variants().keySet();
         assertTrue(colors.containsAll(Clothing.BANDANA_COLORS), "bandana colours " + colors);

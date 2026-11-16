@@ -17,6 +17,7 @@ cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
 shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
 
 # ---- game ----
+formats	stonebreak-formats	com/stonebreak/format/**/*Test
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
 fx	stonebreak-game	com/stonebreak/fx/**/*Test
 blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test

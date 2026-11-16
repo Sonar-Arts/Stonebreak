@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.items.ItemType;
 
 /**
@@ -11,9 +11,9 @@ import com.stonebreak.items.ItemType;
 public sealed interface AttachmentVisual {
 
     /** An SBE/OMO model, drawn in the given appearance variant (e.g. a bandana colour). */
-    record Model(SbeEntityAsset asset, String variant) implements AttachmentVisual {
-        public Model(SbeEntityAsset asset) {
-            this(asset, SbeEntityAsset.DEFAULT_VARIANT);
+    record Model(EntityAsset asset, String variant) implements AttachmentVisual {
+        public Model(EntityAsset asset) {
+            this(asset, EntityAsset.DEFAULT_VARIANT);
         }
     }
 

@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.sbo;
 
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

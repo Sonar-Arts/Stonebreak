@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.vestige;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.format.sound.SoundDef;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class VestigeAssetContractTest {
 
-    private final SbeEntityAsset vestige = GameSbeAssets.load("/sbe/Mobs/SB_Vestige.sbe");
+    private final EntityAsset vestige = GameSbeAssets.load("/sbe/Mobs/SB_Vestige.sbe");
 
     @Test
     void theAssetIsTheVestige() {

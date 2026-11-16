@@ -159,7 +159,7 @@ public final class ChunkFootprintLab {
             samples.add(new ChunkSample(c[0], c[1], genNanos[i], genAlloc[i], meshNs, meshAlloc,
                 ramProbe.probe(chunk),
                 stats(result.atlasMesh()), stats(result.waterMesh()), stats(result.stampMesh()),
-                result.sboEntries() == null ? 0 : result.sboEntries().size(),
+                result.blockStamps() == null ? 0 : result.blockStamps().size(),
                 MmsGreedyMesher.quadsIn() - qi0, MmsGreedyMesher.quadsOut() - qo0));
         }
         long tierQuadsIn = MmsGreedyMesher.quadsIn() - quadsIn0;

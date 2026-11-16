@@ -58,13 +58,14 @@ import java.util.List;
  * <p>{@link #tick()} runs on the dedicated {@code <Mode>-Server} daemon thread (see
  * {@code MultiplayerSession.startWithServer}): it drains the inbound queue
  * (connect/disconnect/handshake inline, PLAY packets routed to handlers) and then advances
- * a fixed <b>20 Hz</b> replication step (the 50 ms accumulator + 5-tick spiral-of-death
- * clamp inherited from the old session pump). Netty event-loop threads only ever enqueue.
+ * a fixed <b>20 Hz</b> replication step (the engine's headless {@code FixedStep}, #96: a 50 ms
+ * period with a 5-tick spiral-of-death clamp, inherited from the old session pump). Netty
+ * event-loop threads only ever enqueue.
  */
 public final class IntegratedServer {
 
     private static final long TICK_PERIOD_NS = 50_000_000L;        // 20 Hz
-    private static final long MAX_ACCUMULATOR_NS = TICK_PERIOD_NS * 5;
+    private static final int MAX_CATCH_UP_TICKS = 5;
     /** Persist connected remote players' inventories this often (~30 s at 20 Hz) for crash safety. */
     private static final int REMOTE_PLAYER_SAVE_INTERVAL_TICKS = 600;
     private int remotePlayerSaveCounter = 0;
@@ -93,8 +94,9 @@ public final class IntegratedServer {
     /** Server-owned player health, death and respawn (issue #343). */
     private final com.stonebreak.network.server.handlers.ServerHealthHandler healthHandler;
 
-    private long lastTickNs = 0L;
-    private long tickAccumulatorNs = 0L;
+    /** The 20 Hz step: banks wall time, hands out whole ticks, clamps catch-up at 5 ticks. */
+    private final com.openmason.engine.loop.FixedStep step =
+            new com.openmason.engine.loop.FixedStep(TICK_PERIOD_NS, MAX_CATCH_UP_TICKS);
     /**
      * Inbound envelopes handled per drain (issue #336): a flood cannot hold the tick in the
      * drain; the rest wait for the next one (and the engine pauses reading the flooder).
@@ -222,8 +224,7 @@ public final class IntegratedServer {
         chunkHandler.onSessionStart();
         playerHandler.onSessionStart();
         entityHandler.onSessionStart(ctx);
-        lastTickNs = System.nanoTime();
-        tickAccumulatorNs = 0L;
+        step.reset(System.nanoTime());
     }
 
     public ServerWorldContext worldContext() {
@@ -358,15 +359,13 @@ public final class IntegratedServer {
             for (ServerPlayer sp : ctx.players()) {
                 sp.flushInventoryResync();
             }
-            lastTickNs = System.nanoTime();
-            tickAccumulatorNs = 0; // resume without a catch-up burst
+            step.reset(System.nanoTime()); // resume without a catch-up burst
             return;
         }
         wasPausedByHost = false;
         // The command-only local arena suspends the saved singleplayer world, including replication.
         if (com.stonebreak.battletest.BattleTestSession.isActive()) {
-            lastTickNs = System.nanoTime();
-            tickAccumulatorNs = 0;
+            step.reset(System.nanoTime());
             return;
         }
         ServerInboundQueue queue = networkServer.inboundQueue();
@@ -378,24 +377,15 @@ public final class IntegratedServer {
         }
 
         long now = System.nanoTime();
-        if (lastTickNs == 0L) {
-            lastTickNs = now;
+        long skipped = step.advance(now);
+        if (skipped > 0 && now - lastOverloadWarnNs > OVERLOAD_WARN_INTERVAL_NS) {
+            lastOverloadWarnNs = now;
+            System.err.println("[SERVER] Can't keep up! Skipping " + skipped + " tick(s).");
         }
-        tickAccumulatorNs += now - lastTickNs;
-        lastTickNs = now;
-        if (tickAccumulatorNs > MAX_ACCUMULATOR_NS) {
-            long skipped = (tickAccumulatorNs - MAX_ACCUMULATOR_NS) / TICK_PERIOD_NS;
-            tickAccumulatorNs = MAX_ACCUMULATOR_NS;
-            if (skipped > 0 && now - lastOverloadWarnNs > OVERLOAD_WARN_INTERVAL_NS) {
-                lastOverloadWarnNs = now;
-                System.err.println("[SERVER] Can't keep up! Skipping " + skipped + " tick(s).");
-            }
-        }
-        while (tickAccumulatorNs >= TICK_PERIOD_NS) {
-            tickAccumulatorNs -= TICK_PERIOD_NS;
+        while (step.consumeTick()) {
             replicationTick();
             batch.flush(); // each tick of a catch-up burst goes out as it finishes
-            if (tickAccumulatorNs >= TICK_PERIOD_NS) {
+            if (step.hasPendingTick()) {
                 // Catching up: packets that arrived during the last tick apply before the next
                 // one (as Minecraft runs its queued tasks between ticks), so input isn't held
                 // back for a whole catch-up burst.
@@ -498,8 +488,7 @@ public final class IntegratedServer {
             if (level != null) {
                 level.promoteFromPreview(weatherSeconds);
             }
-            lastTickNs = System.nanoTime();
-            tickAccumulatorNs = 0; // no catch-up burst for the time spent in the menu
+            step.reset(System.nanoTime()); // no catch-up burst for the time spent in the menu
         });
     }
 

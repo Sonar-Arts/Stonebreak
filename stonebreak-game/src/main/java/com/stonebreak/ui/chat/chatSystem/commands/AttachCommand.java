@@ -7,11 +7,11 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.sbe.EntityAttachments;
-import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeEntityLoader;
+import com.openmason.engine.entity.model.EntityAttachmentPoint;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityModelLoader;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.chat.chatSystem.ChatMessageManager;
 import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
@@ -79,7 +79,7 @@ public class AttachCommand implements ChatCommand {
         // and the (already-stripped) trailing target selector.
         String assetPath = String.join(" ",
                 java.util.Arrays.copyOfRange(args, 1, effectiveArgs));
-        SbeEntityAsset accessory;
+        EntityAsset accessory;
         try {
             accessory = loadAccessory(assetPath);
         } catch (Exception e) {
@@ -103,10 +103,10 @@ public class AttachCommand implements ChatCommand {
      * path is tried as a game classpath resource (assets shipped under
      * {@code src/main/resources/}, e.g. {@code /sbe/Clothing/SB_Tophat.sbe}).
      */
-    private static SbeEntityAsset loadAccessory(String path) {
+    private static EntityAsset loadAccessory(String path) {
         Path file = Path.of(path);
         if (java.nio.file.Files.exists(file)) {
-            return SbeEntityLoader.loadAttachable(file);
+            return EntityModelLoader.loadAttachable(file);
         }
         String resource = path.startsWith("/") ? path : "/" + path;
         if (GameSbeAssets.class.getResource(resource) != null) {
@@ -117,7 +117,7 @@ public class AttachCommand implements ChatCommand {
     }
 
     /** The attachment key, the host asset (for socket lookup), and a chat label. */
-    private record Target(Object key, SbeEntityAsset asset, String label) {}
+    private record Target(Object key, EntityAsset asset, String label) {}
 
     private Target resolveTarget(String targetArg, ChatMessageManager messageManager) {
         if (targetArg.equals("mob")) {
@@ -127,10 +127,10 @@ public class AttachCommand implements ChatCommand {
                         + " blocks", ChatColors.RED);
                 return null;
             }
-            SbeEntityAsset asset = SbeEntityRegistry.get(mob.getType().getSbeObjectId());
+            EntityAsset asset = SbeEntityRegistry.get(mob.getType().getSbeObjectId());
             return new Target(mob, asset, mob.getType().name().toLowerCase());
         }
-        SbeEntityAsset asset = SbeEntityRegistry.get(
+        EntityAsset asset = SbeEntityRegistry.get(
                 EntityType.REMOTE_PLAYER.getSbeObjectId());
         if (asset == null) {
             messageManager.addMessage("Player model not loaded", ChatColors.RED);
@@ -163,9 +163,9 @@ public class AttachCommand implements ChatCommand {
     }
 
     private void listSockets(Target target, ChatMessageManager messageManager) {
-        SbeModelGeometry geometry = target.asset() == null ? null
-                : target.asset().geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
-        List<SbeAttachmentPoint> sockets = geometry == null ? List.of()
+        EntityGeometry geometry = target.asset() == null ? null
+                : target.asset().geometryFor(EntityAsset.DEFAULT_VARIANT);
+        List<EntityAttachmentPoint> sockets = geometry == null ? List.of()
                 : geometry.attachmentPoints();
         if (sockets.isEmpty()) {
             messageManager.addMessage("No sockets on " + target.label()
@@ -173,18 +173,18 @@ public class AttachCommand implements ChatCommand {
             return;
         }
         StringBuilder names = new StringBuilder();
-        for (SbeAttachmentPoint socket : sockets) {
+        for (EntityAttachmentPoint socket : sockets) {
             if (!names.isEmpty()) names.append(", ");
             names.append(socket.name());
         }
         messageManager.addMessage("Sockets on " + target.label() + ": " + names, ChatColors.GREEN);
     }
 
-    private static SbeAttachmentPoint findSocket(SbeEntityAsset asset, String socketName) {
-        SbeModelGeometry geometry = asset == null ? null
-                : asset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
+    private static EntityAttachmentPoint findSocket(EntityAsset asset, String socketName) {
+        EntityGeometry geometry = asset == null ? null
+                : asset.geometryFor(EntityAsset.DEFAULT_VARIANT);
         if (geometry == null) return null;
-        for (SbeAttachmentPoint socket : geometry.attachmentPoints()) {
+        for (EntityAttachmentPoint socket : geometry.attachmentPoints()) {
             if (socket.name().equalsIgnoreCase(socketName)) {
                 return socket;
             }
@@ -214,12 +214,12 @@ public class AttachCommand implements ChatCommand {
         if (args.length == 0) {
             java.util.List<String> out = new java.util.ArrayList<>();
             addIfPrefixed(out, "clear", currentArg);
-            SbeEntityAsset playerAsset = SbeEntityRegistry.get(
+            EntityAsset playerAsset = SbeEntityRegistry.get(
                     EntityType.REMOTE_PLAYER.getSbeObjectId());
-            SbeModelGeometry geometry = playerAsset == null ? null
-                    : playerAsset.geometryFor(SbeEntityAsset.DEFAULT_VARIANT);
+            EntityGeometry geometry = playerAsset == null ? null
+                    : playerAsset.geometryFor(EntityAsset.DEFAULT_VARIANT);
             if (geometry != null) {
-                for (SbeAttachmentPoint socket : geometry.attachmentPoints()) {
+                for (EntityAttachmentPoint socket : geometry.attachmentPoints()) {
                     addIfPrefixed(out, socket.name(), currentArg);
                 }
             }

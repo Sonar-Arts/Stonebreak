@@ -76,7 +76,8 @@ public final class GameUiInput {
     /** Bottom to top. */
     private final List<Entry> entries = new ArrayList<>();
     private List<UiDocumentView> viewsSnapshot = List.of();
-    private final GamepadUiSource gamepads = new GamepadUiSource();
+    private final com.openmason.engine.platform.input.GamepadSource gamepads =
+            new com.openmason.engine.platform.input.GamepadSource();
     /** Keys whose press a document consumed; up for polling until released. */
     private final BitSet uiHeld = new BitSet();
     private boolean cursorCaptured;

@@ -1,6 +1,6 @@
 package com.stonebreak.battle.stage;
 
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.battle.api.ActorPose;
 import com.stonebreak.battle.api.BattleStageLayout;
 import com.stonebreak.battle.api.CombatantId;
@@ -74,7 +74,7 @@ public final class ActorPlacement {
     /**
      * Places one combatant for this frame.
      *
-     * @param restMinY     lowest rest-pose model-space Y of the asset ({@code SbeModelGeometry.restMinY})
+     * @param restMinY     lowest rest-pose model-space Y of the asset ({@code EntityGeometry.restMinY})
      * @param scaleY       vertical render scale
      * @param sinkOnFade   true to lower the actor into the floor as {@code pose.presence()} falls
      */

@@ -76,7 +76,7 @@ jobs:
 
       - name: Java worldgen handshake + parity suites
         run: >
-          mvn -B -q -ntp -U -s .mvn/settings.xml -pl stonebreak-game test
+          mvn -B -q -ntp -U -s .mvn/settings.xml -pl stonebreak-game -am test
           -Dtest='WorldgenNativesTest,WormCarverParityTest,FusedChunkGenParityTest,NativeCarverIntegrationTest'
           -Dsurefire.failIfNoSpecifiedTests=false
           -Dstonebreak.worldgen.requireNative=true

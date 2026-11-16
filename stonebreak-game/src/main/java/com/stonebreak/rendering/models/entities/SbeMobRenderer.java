@@ -32,7 +32,7 @@ final class SbeMobRenderer {
                 && mob.getAI() != null;
     }
 
-    private static com.openmason.engine.entity.sbe.SbeEntityAsset assetFor(EntityType type) {
+    private static com.openmason.engine.entity.model.EntityAsset assetFor(EntityType type) {
         return com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
     }
 
@@ -48,7 +48,7 @@ final class SbeMobRenderer {
     void render(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                 com.stonebreak.world.World world, Vector3f cameraPos) {
         EntityType entityType = mob.getType();
-        com.openmason.engine.entity.sbe.SbeEntityAsset asset = assetFor(entityType);
+        com.openmason.engine.entity.model.EntityAsset asset = assetFor(entityType);
         String stateName = stateName(entityType, mob);
         float clipTime = clipTime(mob);
         Vector3f anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
@@ -102,7 +102,7 @@ final class SbeMobRenderer {
     /** Flat-colored draw with the same bindings as {@link #render} (shadow-caster pass). */
     void renderColored(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector4f color) {
         EntityType type = mob.getType();
-        com.openmason.engine.entity.sbe.SbeEntityAsset asset = assetFor(type);
+        com.openmason.engine.entity.model.EntityAsset asset = assetFor(type);
         sbeEntityRenderer.renderColored(
                 asset,
                 mob.getTextureVariant(),
@@ -115,7 +115,7 @@ final class SbeMobRenderer {
     /** Debug wireframe with the same bindings as {@link #render}, so it tracks the model exactly. */
     void renderWireframe(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector4f color) {
         EntityType entityType = mob.getType();
-        com.openmason.engine.entity.sbe.SbeEntityAsset asset = assetFor(entityType);
+        com.openmason.engine.entity.model.EntityAsset asset = assetFor(entityType);
         sbeEntityRenderer.renderWireframe(
                 asset,
                 mob.getTextureVariant(),
@@ -131,7 +131,7 @@ final class SbeMobRenderer {
     void renderPreview(EntityType type, String variant, String stateName,
                        float animationTime, Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
-        com.openmason.engine.entity.sbe.SbeEntityAsset asset = assetFor(type);
+        com.openmason.engine.entity.model.EntityAsset asset = assetFor(type);
         if (asset == null) return;
         sbeEntityRenderer.render(asset, variant, stateName, animationTime,
                 position, yawDegrees, scale, viewMatrix, projectionMatrix, null, null);
@@ -149,7 +149,7 @@ final class SbeMobRenderer {
     void renderPreviewByObjectId(String sbeObjectId, String variant, String stateName,
                                  float animationTime, Vector3f position, float yawDegrees,
                                  Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
-        com.openmason.engine.entity.sbe.SbeEntityAsset asset =
+        com.openmason.engine.entity.model.EntityAsset asset =
                 com.stonebreak.mobs.sbe.SbeEntityRegistry.get(sbeObjectId);
         if (asset == null) return;
         if (SbeRenderSupport.isTextured(asset)) {

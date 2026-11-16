@@ -1,7 +1,7 @@
 package com.stonebreak.mobs.entities;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 
 import java.util.Map;
@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * authored) — what a hitbox must cover for a hit to land wherever the player sees the mob.
  *
  * <p>Measured from the same SBE geometry the renderer draws, so a model change moves the hitbox
- * with it. Only indexed vertices count, as for {@link SbeModelGeometry#restMinY()}.
+ * with it. Only indexed vertices count, as for {@link EntityGeometry#restMinY()}.
  */
 public record ModelBounds(float minX, float maxX, float minY, float maxY, float minZ, float maxZ) {
 
@@ -26,14 +26,14 @@ public record ModelBounds(float minX, float maxX, float minY, float maxY, float 
             return null;
         }
         return CACHE.computeIfAbsent(objectId + '#' + variant, key -> {
-            SbeEntityAsset asset = SbeEntityRegistry.get(objectId);
-            SbeModelGeometry geometry = asset == null ? null : asset.geometryFor(variant);
+            EntityAsset asset = SbeEntityRegistry.get(objectId);
+            EntityGeometry geometry = asset == null ? null : asset.geometryFor(variant);
             return Optional.ofNullable(geometry == null ? null : of(geometry));
         }).orElse(null);
     }
 
     /** The bounds of {@code geometry}'s rest pose, or null when it draws nothing. */
-    public static ModelBounds of(SbeModelGeometry geometry) {
+    public static ModelBounds of(EntityGeometry geometry) {
         float[] v = geometry.vertices();
         int[] indices = geometry.indices();
         if (indices.length == 0) {

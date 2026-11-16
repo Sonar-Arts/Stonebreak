@@ -7,7 +7,7 @@ import org.lwjgl.system.MemoryStack;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.core.window.GameWindow;
+import com.openmason.engine.platform.window.Window;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.runtime.GameUiInput;
 
@@ -23,12 +23,12 @@ import com.stonebreak.ui.runtime.GameUiInput;
  */
 public final class MenuInputRouter {
 
-    private final GameWindow window;
+    private final Window window;
     private InputHandler inputHandler;
     /** Keys whose PRESS the battle HUD saw; see {@link #routeBattleKey}. */
     private final java.util.BitSet battleKeysDown = new java.util.BitSet();
 
-    public MenuInputRouter(GameWindow window) {
+    public MenuInputRouter(Window window) {
         this.window = window;
     }
 

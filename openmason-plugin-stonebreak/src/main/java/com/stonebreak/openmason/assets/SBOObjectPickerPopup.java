@@ -1,7 +1,7 @@
 package com.stonebreak.openmason.assets;
 
 import com.openmason.main.systems.menus.dialogs.ModalDialogs;
-import com.openmason.main.systems.menus.dialogs.SBOObjectIndex;
+import com.stonebreak.openmason.editor.SBOObjectIndex;
 import imgui.ImGui;
 import imgui.flag.ImGuiSelectableFlags;
 import imgui.flag.ImGuiStyleVar;

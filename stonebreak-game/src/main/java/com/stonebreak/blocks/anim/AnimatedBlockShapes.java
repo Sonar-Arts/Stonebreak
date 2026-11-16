@@ -5,14 +5,14 @@ import com.openmason.engine.format.oma.OMAReader;
 import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
 import com.openmason.engine.format.omo.OMOReader;
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.door.DoorState;
 import com.stonebreak.blocks.registry.BlockRegistry;
-import com.openmason.engine.entity.sbe.SbeEntityLoader;
-import com.openmason.engine.entity.sbe.SbeFace;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityModelLoader;
+import com.openmason.engine.entity.model.EntityFace;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -117,7 +117,7 @@ public final class AnimatedBlockShapes {
         if (omo == null) {
             return UNIT_CELL;
         }
-        SbeModelGeometry geometry = SbeEntityLoader.buildGeometry(omo);
+        EntityGeometry geometry = EntityModelLoader.buildGeometry(omo);
 
         byte[] clipBytes = sbo.clipBytesFor(stateName);
         ParsedAnimClip clip = clipBytes != null ? new OMAReader().read(clipBytes) : null;
@@ -135,7 +135,7 @@ public final class AnimatedBlockShapes {
         Matrix4f restInverse = new Matrix4f();
         Vector3f p = new Vector3f();
 
-        for (SbePart part : geometry.parts()) {
+        for (EntityPart part : geometry.parts()) {
             ParsedAnimTrack track = clip != null ? findTrack(clip, part) : null;
             pose.identity();
             if (track != null && !track.keyframes().isEmpty()) {
@@ -148,7 +148,7 @@ public final class AnimatedBlockShapes {
                         end.position(), end.rotationDeg(), end.scale(), part.restOrigin())
                         .mul(restInverse);
             }
-            for (SbeFace face : part.faces()) {
+            for (EntityFace face : part.faces()) {
                 for (int i = face.indexStart(); i < face.indexStart() + face.indexCount(); i++) {
                     int vi = indices[i] * 3;
                     p.set(vertices[vi], vertices[vi + 1], vertices[vi + 2]);
@@ -173,7 +173,7 @@ public final class AnimatedBlockShapes {
     }
 
     /** Track lookup mirroring SbeEntityRenderer: part id first, then part name. */
-    private static ParsedAnimTrack findTrack(ParsedAnimClip clip, SbePart part) {
+    private static ParsedAnimTrack findTrack(ParsedAnimClip clip, EntityPart part) {
         ParsedAnimTrack track = clip.trackByPartId().get(part.id());
         if (track != null) return track;
         for (ParsedAnimTrack t : clip.tracks()) {

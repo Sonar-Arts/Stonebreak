@@ -2,8 +2,8 @@ package com.stonebreak.openmason;
 
 import com.openmason.api.target.NumericIdSource;
 import com.openmason.api.target.ResourceRoot;
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParser;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.gameplay.SboGameplay;

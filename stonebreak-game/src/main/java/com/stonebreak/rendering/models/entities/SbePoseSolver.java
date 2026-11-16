@@ -6,10 +6,10 @@ import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
 import com.openmason.engine.rendering.RenderOrigin;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAttachmentPoint;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -38,7 +38,7 @@ import java.util.Map;
  * Head tracking inserts {@code Ry(yaw) · Rx(pitch)} before the head's local
  * pose rotation, so its descendants inherit the turn about the animated neck.
  * Socket positions/rotations/scales are authored in rest-pose model space (see
- * {@link SbeAttachmentPoint}), so:
+ * {@link EntityAttachmentPoint}), so:
  * <pre>
  *   socketWorld = partMatrix(host part) · T(localPos) · R_xyz(localRotDeg) · S(localScale)
  * </pre>
@@ -50,7 +50,7 @@ public final class SbePoseSolver {
     /** Receives the computed world matrix for one animated part. */
     @FunctionalInterface
     public interface PartConsumer {
-        void accept(Matrix4f partMatrix, SbePart part);
+        void accept(Matrix4f partMatrix, EntityPart part);
     }
 
     /**
@@ -99,7 +99,7 @@ public final class SbePoseSolver {
      * pose by its weight; unmasked parts keep the base pose. {@code headYawDeg}/
      * {@code headPitchDeg} rotate the head and its descendants about its neck pivot.
      */
-    public static void forEachPartMatrix(SbeModelGeometry geometry, SbeEntityAsset asset,
+    public static void forEachPartMatrix(EntityGeometry geometry, EntityAsset asset,
                                          AnimState anim, Matrix4f base,
                                          float headYawDeg, float headPitchDeg,
                                          PartConsumer consumer) {
@@ -107,14 +107,14 @@ public final class SbePoseSolver {
     }
 
     /** {@link #forEachPartMatrix} with code-driven part rotations (null for none). */
-    public static void forEachPartMatrix(SbeModelGeometry geometry, SbeEntityAsset asset,
+    public static void forEachPartMatrix(EntityGeometry geometry, EntityAsset asset,
                                          AnimState anim, Matrix4f base,
                                          float headYawDeg, float headPitchDeg,
                                          PartOverrides overrides, PartConsumer consumer) {
         ResolvedAnim resolved = resolveAnim(asset, anim);
         Matrix4f partMatrix = new Matrix4f();
         HierarchyFrame frame = new HierarchyFrame(geometry, resolved, headYawDeg, headPitchDeg, overrides);
-        for (SbePart part : geometry.parts()) {
+        for (EntityPart part : geometry.parts()) {
             computePartMatrix(partMatrix, frame, part, base);
             consumer.accept(partMatrix, part);
         }
@@ -127,16 +127,16 @@ public final class SbePoseSolver {
      * model (id and name fallback both miss), so callers skip rendering rather
      * than mount at the model origin.
      */
-    public static Matrix4f socketWorldMatrix(SbeEntityAsset asset, String variantName,
+    public static Matrix4f socketWorldMatrix(EntityAsset asset, String variantName,
                                              AnimState anim, Matrix4f base,
                                              float headYawDeg, float headPitchDeg,
                                              String socketName, Matrix4f dest) {
         if (asset == null || socketName == null) return null;
-        SbeModelGeometry geometry = asset.geometryFor(variantName);
+        EntityGeometry geometry = asset.geometryFor(variantName);
         if (geometry == null) return null;
 
-        SbeAttachmentPoint socket = null;
-        for (SbeAttachmentPoint candidate : geometry.attachmentPoints()) {
+        EntityAttachmentPoint socket = null;
+        for (EntityAttachmentPoint candidate : geometry.attachmentPoints()) {
             if (socketName.equalsIgnoreCase(candidate.name())) {
                 socket = candidate;
                 break;
@@ -147,7 +147,7 @@ public final class SbePoseSolver {
         if (socket.isModelRoot()) {
             dest.set(base);
         } else {
-            SbePart host = resolveHostPart(geometry, socket);
+            EntityPart host = resolveHostPart(geometry, socket);
             if (host == null) return null;
             ResolvedAnim resolved = resolveAnim(asset, anim);
             computePartMatrix(dest, new HierarchyFrame(geometry, resolved, headYawDeg, headPitchDeg, null),
@@ -166,16 +166,16 @@ public final class SbePoseSolver {
     }
 
     /** Host part by id, falling back to name; null when both miss. */
-    private static SbePart resolveHostPart(SbeModelGeometry geometry, SbeAttachmentPoint socket) {
+    private static EntityPart resolveHostPart(EntityGeometry geometry, EntityAttachmentPoint socket) {
         if (socket.parentPartId() != null && !socket.parentPartId().isBlank()) {
-            for (SbePart part : geometry.parts()) {
+            for (EntityPart part : geometry.parts()) {
                 if (socket.parentPartId().equals(part.id())) {
                     return part;
                 }
             }
         }
         if (socket.parentPartName() != null && !socket.parentPartName().isBlank()) {
-            for (SbePart part : geometry.parts()) {
+            for (EntityPart part : geometry.parts()) {
                 if (socket.parentPartName().equals(part.name())) {
                     return part;
                 }
@@ -190,7 +190,7 @@ public final class SbePoseSolver {
      * {@link HierarchyFrame#delta}.
      */
     private static void computePartMatrix(Matrix4f dest, HierarchyFrame frame,
-                                          SbePart part, Matrix4f base) {
+                                          EntityPart part, Matrix4f base) {
         Matrix4f delta = frame.delta(part);
         if (delta == null) {
             dest.set(base);
@@ -203,7 +203,7 @@ public final class SbePoseSolver {
      * Samples a part's own local pose for the frame: {@code null} when nothing
      * animates it (its local transform is exactly its rest transform).
      */
-    private static AnimSampler.PartPose samplePartPose(SbePart part, ResolvedAnim resolved) {
+    private static AnimSampler.PartPose samplePartPose(EntityPart part, ResolvedAnim resolved) {
         ParsedAnimTrack track = resolved.baseTracks().get(part.id());
         if (track == null) {
             track = trackByName(resolved.baseClip(), part.name());
@@ -244,14 +244,14 @@ public final class SbePoseSolver {
         private final float headYawRad;
         private final float headPitchRad;
         private final PartOverrides overrides;
-        private final Map<String, SbePart> byId;
+        private final Map<String, EntityPart> byId;
         private final Map<String, Matrix4f> deltas = new java.util.HashMap<>();
         private final Map<String, Matrix4f> restWorld = new java.util.HashMap<>();
         /** Sentinel for "no delta" (identity) so the memo can record it. */
         private static final Matrix4f IDENTITY = new Matrix4f();
         private static final int MAX_DEPTH = 32;
 
-        HierarchyFrame(SbeModelGeometry geometry, ResolvedAnim resolved,
+        HierarchyFrame(EntityGeometry geometry, ResolvedAnim resolved,
                        float headYawDeg, float headPitchDeg, PartOverrides overrides) {
             this.resolved = resolved;
             this.overrides = overrides;
@@ -259,31 +259,31 @@ public final class SbePoseSolver {
             this.headYawRad = (float) Math.toRadians(headYawDeg);
             this.headPitchRad = (float) Math.toRadians(headPitchDeg);
             this.byId = new java.util.HashMap<>(geometry.parts().size() * 2);
-            for (SbePart p : geometry.parts()) {
+            for (EntityPart p : geometry.parts()) {
                 if (p.id() != null) byId.put(p.id(), p);
             }
         }
 
-        private SbePart parentOf(SbePart part) {
+        private EntityPart parentOf(EntityPart part) {
             String pid = part.parentId();
             if (pid == null || pid.isBlank()) return null;
-            SbePart parent = byId.get(pid);
+            EntityPart parent = byId.get(pid);
             return parent == part ? null : parent;
         }
 
         /** Model-space delta for the part, or {@code null} when it is identity. */
-        Matrix4f delta(SbePart part) {
+        Matrix4f delta(EntityPart part) {
             return delta(part, 0);
         }
 
-        private Matrix4f delta(SbePart part, int depth) {
+        private Matrix4f delta(EntityPart part, int depth) {
             Matrix4f cached = deltas.get(part.id());
             if (cached != null) return cached == IDENTITY ? null : cached;
 
             AnimSampler.PartPose pose = samplePartPose(part, resolved);
             boolean trackedHead = headPartId != null && headPartId.equals(part.id());
             Vector3f extraRot = overrides != null ? overrides.extraRotationDeg(part.name()) : null;
-            SbePart parent = depth < MAX_DEPTH ? parentOf(part) : null;
+            EntityPart parent = depth < MAX_DEPTH ? parentOf(part) : null;
             Matrix4f parentDelta = parent != null ? delta(parent, depth + 1) : null;
 
             Matrix4f result;
@@ -320,11 +320,11 @@ public final class SbePoseSolver {
         }
 
         /** Rest transform of a part chained from the root (model space). */
-        private Matrix4f restWorld(SbePart part, int depth) {
+        private Matrix4f restWorld(EntityPart part, int depth) {
             Matrix4f cached = restWorld.get(part.id());
             if (cached != null) return cached;
             Matrix4f m = new Matrix4f();
-            SbePart parent = depth < MAX_DEPTH ? parentOf(part) : null;
+            EntityPart parent = depth < MAX_DEPTH ? parentOf(part) : null;
             if (parent != null) m.set(restWorld(parent, depth + 1));
             partTransform(m, part.restPos(), part.restRot(), part.restScale(), part.restOrigin());
             restWorld.put(part.id(), m);
@@ -347,7 +347,7 @@ public final class SbePoseSolver {
      * ({@link AnimLayering#clipWeight}); zero-weight or unknown overlays are
      * dropped so the per-part loop stays on its fast path.
      */
-    private static ResolvedAnim resolveAnim(SbeEntityAsset asset, AnimState anim) {
+    private static ResolvedAnim resolveAnim(EntityAsset asset, AnimState anim) {
         ParsedAnimClip baseClip = anim != null ? asset.clipFor(anim.baseState()) : null;
         float baseTime = 0f;
         Map<String, ParsedAnimTrack> baseTracks = Collections.emptyMap();
@@ -379,9 +379,9 @@ public final class SbePoseSolver {
      * case-insensitive), or {@code null} if none — in which case head tracking is a
      * no-op and the whole body simply uses the base yaw. Logs the resolution once.
      */
-    private static String headPartId(SbeModelGeometry geometry) {
+    private static String headPartId(EntityGeometry geometry) {
         String found = null;
-        for (SbePart part : geometry.parts()) {
+        for (EntityPart part : geometry.parts()) {
             String n = part.name();
             if (n != null && n.toLowerCase(java.util.Locale.ROOT).contains("head")) {
                 found = part.id();
@@ -391,7 +391,7 @@ public final class SbePoseSolver {
         if (!headLookupLogged) {
             headLookupLogged = true;
             StringBuilder names = new StringBuilder();
-            for (SbePart part : geometry.parts()) {
+            for (EntityPart part : geometry.parts()) {
                 names.append(part.name()).append(' ');
             }
             System.out.println("[SbePoseSolver] Head-tracking part lookup: head="

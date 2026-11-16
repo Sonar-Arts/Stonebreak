@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.sbo;
 
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
 
 import java.util.List;
 
@@ -78,7 +78,7 @@ public final class StampComposer {
 
     /** Area the flush triangles cover on face {@code face}'s boundary plane. */
     private static float flushArea(FaceStamp stamp, int face) {
-        int axis = com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions.axisOf(face);
+        int axis = com.openmason.engine.voxel.stamp.render.StampFaceConventions.axisOf(face);
         int u = (axis + 1) % 3;
         int w = (axis + 2) % 3;
         float[] p = stamp.positions();

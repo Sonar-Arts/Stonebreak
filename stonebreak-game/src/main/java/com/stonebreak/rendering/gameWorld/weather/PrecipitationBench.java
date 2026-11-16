@@ -150,8 +150,7 @@ public final class PrecipitationBench {
             done = true;
             report();
             if (quit) {
-                long window = org.lwjgl.glfw.GLFW.glfwGetCurrentContext();
-                if (window != 0L) org.lwjgl.glfw.GLFW.glfwSetWindowShouldClose(window, true);
+                com.stonebreak.core.Main.requestClose();
             }
         }
     }

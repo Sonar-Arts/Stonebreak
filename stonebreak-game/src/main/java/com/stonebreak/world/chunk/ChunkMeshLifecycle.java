@@ -3,7 +3,7 @@ package com.stonebreak.world.chunk;
 import com.openmason.engine.voxel.cco.state.CcoAtomicStateManager;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
-import com.openmason.engine.voxel.sbo.SBORenderData;
+import com.openmason.engine.voxel.stamp.StampRenderData;
 
 import java.util.List;
 
@@ -40,7 +40,7 @@ final class ChunkMeshLifecycle {
     // Whether the current atlas mesh contains any translucent (ice) geometry —
     // lets the transparent pass skip chunks that would contribute nothing.
     private boolean atlasHasTranslucent;
-    private List<SBORenderData> sboRenderDataList;
+    private List<StampRenderData> sboRenderDataList;
     private boolean meshGenerated = false;
     // Set once on unload (under the chunk lock); the mesh pipeline then refuses
     // to schedule, publish or upload for this chunk. Never cleared: a reloaded
@@ -94,7 +94,7 @@ final class ChunkMeshLifecycle {
         regionWaterHandle = close(regionWaterHandle);
         regionStampHandle = close(regionStampHandle);
         if (sboRenderDataList != null) {
-            for (SBORenderData data : sboRenderDataList) {
+            for (StampRenderData data : sboRenderDataList) {
                 data.close();
             }
             sboRenderDataList = null;
@@ -141,11 +141,11 @@ final class ChunkMeshLifecycle {
         this.meshRetired = true;
     }
 
-    List<SBORenderData> getSBORenderDataList() {
+    List<StampRenderData> getSBORenderDataList() {
         return sboRenderDataList;
     }
 
-    void setSBORenderDataList(List<SBORenderData> dataList) {
+    void setSBORenderDataList(List<StampRenderData> dataList) {
         this.sboRenderDataList = dataList;
     }
 

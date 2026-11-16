@@ -20,6 +20,10 @@
         <!-- Open Mason engine (Sonar-Arts/OpenMason, #388): all three engine modules, at the root POM's
              ${openmason.version} -->
         <dependency>
+            <groupId>com.stonebreak</groupId>
+            <artifactId>stonebreak-formats</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-core</artifactId>
         </dependency>
@@ -30,6 +34,11 @@
         <dependency>
             <groupId>com.openmason</groupId>
             <artifactId>openmason-engine-voxel</artifactId>
+        </dependency>
+        <!-- window, input devices, frame loop over GLFW (#96) -->
+        <dependency>
+            <groupId>com.openmason</groupId>
+            <artifactId>openmason-engine-platform</artifactId>
         </dependency>
 
         <!-- LWJGL core -->
@@ -86,17 +95,6 @@
             <artifactId>${skija.artifact}</artifactId>
         </dependency>
 
-        <!-- LWJGL OpenAL for audio -->
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-openal</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.lwjgl</groupId>
-            <artifactId>lwjgl-openal</artifactId>
-            <classifier>${lwjgl.natives}</classifier>
-            <scope>runtime</scope>
-        </dependency>
         
         <!-- Java OpenGL Math Library -->
         <dependency>
@@ -149,13 +147,13 @@
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
-            <version>1.18.16</version>
+            <version>1.18.17</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy-agent</artifactId>
-            <version>1.18.16</version>
+            <version>1.18.17</version>
             <scope>test</scope>
         </dependency>
 

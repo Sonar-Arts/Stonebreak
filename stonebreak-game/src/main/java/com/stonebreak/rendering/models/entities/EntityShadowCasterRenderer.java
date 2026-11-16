@@ -82,10 +82,10 @@ final class EntityShadowCasterRenderer {
         // model isn't drawn to screen but its shadow still should be.
         if (player != null && lightFrustum.testSphere(player.getPosition().x,
                 player.getPosition().y + 1f, player.getPosition().z, 2f)) {
-            com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+            com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,
-                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
                         player.getBodyEventTime(),
                         player.getPosition(), player.getBodyYaw(), unitScale,
@@ -111,10 +111,10 @@ final class EntityShadowCasterRenderer {
 
         if ((type == EntityType.REMOTE_PLAYER || type == EntityType.ILLUSION_DECOY)
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            com.openmason.engine.entity.sbe.SbeEntityAsset asset = SbeRenderSupport.playerAsset();
+            com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,
-                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT,
+                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
                         com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
                         rp.getBodyAnimationTime(),
                         rp.getPosition(), rp.getBodyYaw(), rp.getScale(),
@@ -122,11 +122,11 @@ final class EntityShadowCasterRenderer {
             }
         }
         if (type == EntityType.DINGHY) {
-            com.openmason.engine.entity.sbe.SbeEntityAsset asset =
+            com.openmason.engine.entity.model.EntityAsset asset =
                     com.stonebreak.mobs.sbe.SbeEntityRegistry.get(type.getSbeObjectId());
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,
-                        com.openmason.engine.entity.sbe.SbeEntityAsset.DEFAULT_VARIANT, null, 0f,
+                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT, null, 0f,
                         entity.getPosition(), entity.getYaw(), entity.getScale(),
                         lightView, lightProj, SHADOW_CASTER_COLOR);
             }

@@ -2,7 +2,7 @@ package com.stonebreak.audio.emitters.types;
 
 import org.joml.Vector3f;
 import com.openmason.engine.audio.SoundSystem;
-import com.stonebreak.audio.emitters.SoundEmitter;
+import com.openmason.engine.audio.emitters.SoundEmitter;
 
 /**
  * A sound emitter that plays the block pickup sound effect at regular intervals.
@@ -56,6 +56,12 @@ public class BlockPickupSoundEmitter extends SoundEmitter {
             // This ensures the emitter still functions even if the specific sound isn't loaded
             System.err.println("BlockPickupSoundEmitter: '" + SOUND_NAME + "' sound not loaded at position " + position);
         }
+    }
+
+    /** Silent until a world and a player exist. */
+    @Override
+    protected boolean canPlaySounds() {
+        return com.stonebreak.core.Game.getWorld() != null && com.stonebreak.core.Game.getPlayer() != null;
     }
 
     @Override

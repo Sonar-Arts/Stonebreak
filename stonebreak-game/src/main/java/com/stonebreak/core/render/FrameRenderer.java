@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
-import com.stonebreak.core.window.GameWindow;
+import com.openmason.engine.platform.window.Window;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.ui.worldHud.DamageNumbers;
@@ -54,14 +54,14 @@ public final class FrameRenderer {
             GameState.PLAYING, GameState.PAUSED, GameState.INVENTORY_UI, GameState.RECIPE_BOOK_UI,
             GameState.CHARACTER_SHEET_UI, GameState.FURNACE_UI, GameState.WORKBENCH_UI, GameState.CHEST_UI);
 
-    private final GameWindow window;
+    private final Window window;
     private final com.stonebreak.ui.runtime.DevDocumentOverlay devDocument =
             new com.stonebreak.ui.runtime.DevDocumentOverlay();
     private final String devScreen = System.getProperty("stonebreak.uiscreen");
     private boolean devScreenTried;
     private boolean firstRender = true;
 
-    public FrameRenderer(GameWindow window) {
+    public FrameRenderer(Window window) {
         this.window = window;
     }
 

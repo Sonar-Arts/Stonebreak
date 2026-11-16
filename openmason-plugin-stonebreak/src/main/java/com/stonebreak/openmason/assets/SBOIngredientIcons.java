@@ -1,11 +1,11 @@
 package com.stonebreak.openmason.assets;
-import com.openmason.main.systems.menus.dialogs.SBOObjectIndex;
+import com.stonebreak.openmason.editor.SBOObjectIndex;
 
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.omo.OMOReader;
 import com.openmason.engine.format.omt.OMTArchive;
 import com.openmason.engine.format.omt.OMTReader;
-import com.openmason.engine.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOParser;
 import io.github.humbleui.skija.Image;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;

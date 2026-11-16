@@ -1,6 +1,6 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.vehicles.Dinghy;
 import org.joml.Matrix4f;
@@ -22,12 +22,12 @@ final class DinghyRenderer {
 
     void render(Dinghy dinghy, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                 com.stonebreak.world.World world, Vector3f cameraPos) {
-        SbeEntityAsset asset = SbeEntityRegistry.get(dinghy.getType().getSbeObjectId());
+        EntityAsset asset = SbeEntityRegistry.get(dinghy.getType().getSbeObjectId());
         if (asset == null) {
             fallback.render(dinghy, viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
-        sbeEntityRenderer.render(asset, SbeEntityAsset.DEFAULT_VARIANT, null,
+        sbeEntityRenderer.render(asset, EntityAsset.DEFAULT_VARIANT, null,
                 SbePoseSolver.baseMatrix(dinghy.getPosition(), dinghy.getYaw(), dinghy.getScale()),
                 viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f,
                 dinghy.getStroke()::extraRotationDeg);

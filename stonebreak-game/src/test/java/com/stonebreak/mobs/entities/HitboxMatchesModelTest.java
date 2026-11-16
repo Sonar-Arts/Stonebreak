@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.entities;
 
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
+import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
@@ -56,7 +56,7 @@ class HitboxMatchesModelTest {
 
     /** The world-space box around the model's vertices, placed as SbePoseSolver + SbeRenderSupport place it. */
     private static Entity.BoundingBox renderedModel(LivingEntity le) {
-        SbeModelGeometry geometry = SbeEntityRegistry.get(le.modelObjectId()).geometryFor(le.getTextureVariant());
+        EntityGeometry geometry = SbeEntityRegistry.get(le.modelObjectId()).geometryFor(le.getTextureVariant());
         Vector3f p = le.getPosition();
         float anchorY = p.y - le.getLegHeight() - geometry.restMinY() * le.getScale().y + le.renderLift();
         Matrix4f model = new Matrix4f().translate(p.x, anchorY, p.z)

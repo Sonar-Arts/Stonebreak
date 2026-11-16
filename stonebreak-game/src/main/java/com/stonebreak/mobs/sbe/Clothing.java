@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.sbe;
 
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 
 import java.util.List;
 
@@ -42,9 +42,9 @@ public final class Clothing {
             return;
         }
         try {
-            SbeEntityAsset asset = GameSbeAssets.loadAttachableResource(resourcePath);
+            EntityAsset asset = GameSbeAssets.loadAttachableResource(resourcePath);
             EntityAttachments.attach(entityKey, socket, new AttachmentVisual.Model(asset,
-                    variant != null ? variant : SbeEntityAsset.DEFAULT_VARIANT));
+                    variant != null ? variant : EntityAsset.DEFAULT_VARIANT));
         } catch (Exception e) {
             System.err.println("Failed to load cosmetic asset " + resourcePath + ": " + e.getMessage());
         }

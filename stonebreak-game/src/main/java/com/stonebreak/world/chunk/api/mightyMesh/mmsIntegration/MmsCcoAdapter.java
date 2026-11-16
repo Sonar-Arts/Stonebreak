@@ -17,14 +17,14 @@ import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshBuilderPool;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsIntegration.MmsBlockGeometryDispatcher;
-import com.openmason.engine.voxel.mms.mmsIntegration.MmsSBOBlockProvider;
+import com.openmason.engine.voxel.mms.mmsIntegration.MmsStampBlockProvider;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCuboidGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsCrossGenerator;
 import com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry.MmsWaterGenerator;
 import com.openmason.engine.voxel.mms.mmsTexturing.MmsTextureMapper;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampEmitter;
+import com.openmason.engine.voxel.stamp.render.StampFaceConventions;
+import com.openmason.engine.voxel.stamp.render.StampEmitter;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,7 +69,7 @@ public class MmsCcoAdapter {
         new java.util.concurrent.atomic.AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicInteger debugFallbacks =
         new java.util.concurrent.atomic.AtomicInteger();
-    private SBOStampEmitter sboStampEmitter; // SBO block stamp emission via SBORendererAPI
+    private StampEmitter sboStampEmitter; // SBO block stamp emission via StampRendererAPI
 
     /**
      * Greedy merging of coplanar same-block/same-light cube faces (both the
@@ -195,9 +195,9 @@ public class MmsCcoAdapter {
      * Sets the SBO stamp emitter for block geometry emission.
      * SBO blocks are emitted via the emitter during the block iteration loop.
      *
-     * @param emitter the SBO stamp emitter from SBORendererAPI
+     * @param emitter the SBO stamp emitter from StampRendererAPI
      */
-    public void setSBOStampEmitter(SBOStampEmitter emitter) {
+    public void setSBOStampEmitter(StampEmitter emitter) {
         this.sboStampEmitter = emitter;
         // Per-vertex shadow sampling — heightmap sky occlusion + classic AO.
         // Deterministic at first mesh build; no seed races, no stale data.
@@ -236,7 +236,7 @@ public class MmsCcoAdapter {
      * @param dispatcher the SBO geometry dispatcher
      * @param provider   the SBO block provider
      */
-    public void setSBODispatcher(MmsBlockGeometryDispatcher dispatcher, MmsSBOBlockProvider provider) {
+    public void setSBODispatcher(MmsBlockGeometryDispatcher dispatcher, MmsStampBlockProvider provider) {
         // Legacy path: if no stamp emitter is set, this method is still called
         // The Renderer will set the stamp emitter directly via setSBOStampEmitter
         logger.debug("[MmsCcoAdapter] SBO dispatcher set (legacy path)");
@@ -1025,7 +1025,7 @@ public class MmsCcoAdapter {
         // MmsFaceCullingService's one-way occlusion rule and the Cenda class
         // table's shaped-is-transparent flag — keep in lockstep.
         if (sboStampEmitter != null
-                && !sboStampEmitter.getCache().occludesFace(adjacentBlock, SBOFaceConventions.opposite(face))) {
+                && !sboStampEmitter.getCache().occludesFace(adjacentBlock, StampFaceConventions.opposite(face))) {
             return true;
         }
 
@@ -1147,7 +1147,7 @@ public class MmsCcoAdapter {
                                     CcoChunkData chunkData, float blockHeight) {
         MmsQuadMeshBuilder quads = ACTIVE_QUAD_BUILDER.get();
         SboCubeFaces cubes = sboCubes;
-        SBOStampEmitter emitter = sboStampEmitter;
+        StampEmitter emitter = sboStampEmitter;
         if (quads == null || cubes == null || emitter == null || !cubes.isPerCellCube(blockType)
                 || quads.isFull()) {
             return false;

@@ -1,10 +1,10 @@
 package com.stonebreak.blocks.multipart;
 
-import com.openmason.engine.format.sbo.SBOParser;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.BlockStamp;
-import com.openmason.engine.voxel.sbo.SBOMeshProcessor.FaceStamp;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOStampCache;
+import com.stonebreak.format.sbo.SBOParser;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
+import com.openmason.engine.voxel.stamp.render.StampCache;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.sbo.MultipartStamps;
 import com.stonebreak.rendering.sbo.StampComposer;
@@ -51,9 +51,9 @@ class LeafMultipartShapeTest {
         assertEquals(64, shape.maskCount(), "six full_cube atoms");
         assertTrue(!shape.hasBoxes(), "leaves keep their full-cube collision");
 
-        SBOStampCache cache = new SBOStampCache();
-        assertTrue(new SBOMeshProcessor().process(leaves,
-                new SBOParser().parse(Path.of("src/main/resources/sbo/blocks/" + sbo + ".sbo")),
+        StampCache cache = new StampCache();
+        assertTrue(new StampMeshProcessor().process(leaves,
+                com.stonebreak.rendering.sbo.SboBlockModels.of(new SBOParser().parse(Path.of("src/main/resources/sbo/blocks/" + sbo + ".sbo"))),
                 (block, face) -> new float[]{0f, 0f, 1f, 1f}, (block, face) -> face, cache));
         MultipartStamps.register(cache, shape);
 

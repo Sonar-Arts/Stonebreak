@@ -2,9 +2,9 @@ package com.stonebreak.gameplay;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openmason.engine.format.sbo.SBOFormat;
-import com.openmason.engine.format.sbo.SBOParser;
-import com.openmason.engine.format.sbo.SBOSerializer;
+import com.stonebreak.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOParser;
+import com.stonebreak.format.sbo.SBOSerializer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

@@ -1,9 +1,9 @@
 package com.stonebreak.blocks.stairs;
 
 import com.openmason.engine.format.mesh.ParsedMeshData;
-import com.openmason.engine.format.sbo.SBOParseResult;
-import com.openmason.engine.voxel.sbo.SBONormalComputer;
-import com.openmason.engine.voxel.sbo.sboRenderer.SBOFaceConventions;
+import com.stonebreak.format.sbo.SBOParseResult;
+import com.openmason.engine.voxel.stamp.StampNormalComputer;
+import com.openmason.engine.voxel.stamp.render.StampFaceConventions;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import org.slf4j.Logger;
@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Nothing here is hardcoded to a particular asset: the profile is every
  * upward-facing surface of the block's SBO model — the same triangles the
  * renderer buckets into {@code MMS_TOP}, classified by
- * {@link SBONormalComputer}. Re-export the asset with four steps instead of
+ * {@link StampNormalComputer}. Re-export the asset with four steps instead of
  * three and collision, ground height and targeting all follow.
  *
  * <p>Queries are in <em>cell space</em>: both horizontal coordinates in
@@ -151,14 +151,14 @@ public final class StairShape {
 
             // Same classification the chunk mesher uses, so the collidable
             // steps are exactly the surfaces drawn facing up.
-            SBONormalComputer.ProcessedMesh processed = SBONormalComputer.compute(
+            StampNormalComputer.ProcessedMesh processed = StampNormalComputer.compute(
                     mesh.vertices(), mesh.texCoords(), mesh.indices());
             float[] verts = processed.vertices();
             int[] faces = processed.triangleFaces();
 
             List<Plate> plates = new ArrayList<>();
             for (int tri = 0; tri < faces.length; tri++) {
-                if (faces[tri] != SBOFaceConventions.MMS_TOP) {
+                if (faces[tri] != StampFaceConventions.MMS_TOP) {
                     continue;
                 }
                 int base = tri * 9;

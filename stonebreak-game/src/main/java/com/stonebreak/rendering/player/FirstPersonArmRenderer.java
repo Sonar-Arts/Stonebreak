@@ -2,7 +2,7 @@ package com.stonebreak.rendering.player;
 
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.core.Game;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.mobs.sbe.PlayerStateMapping;
 import com.stonebreak.mobs.entities.EntityType;
@@ -21,7 +21,7 @@ final class FirstPersonArmRenderer {
     private final SbeEntityRenderer renderer = new SbeEntityRenderer();
     private final Matrix4f worldTransform = new Matrix4f();
     private final Matrix4f handProjection = new Matrix4f();
-    private SbeEntityAsset asset;
+    private EntityAsset asset;
     private boolean unavailable;
 
     boolean render(Player player, Matrix4f projection) {

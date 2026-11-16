@@ -2,6 +2,10 @@ package com.stonebreak.input;
 
 import org.joml.Vector2f;
 
+import com.openmason.engine.input.ActionKeys;
+import com.openmason.engine.input.InputState;
+import com.openmason.engine.input.KeyEdges;
+import com.openmason.engine.platform.input.GlfwKeys;
 import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.player.Player;
@@ -9,6 +13,7 @@ import com.stonebreak.ui.characterScreen.CharacterScreen;
 import com.stonebreak.ui.chat.ChatSystem;
 import com.stonebreak.ui.inventoryScreen.InventoryScreen;
 import com.stonebreak.ui.recipeScreen.RecipeScreen;
+import com.stonebreak.ui.runtime.GameUiInput;
 import com.stonebreak.ui.workbench.WorkbenchScreen;
 
 import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
@@ -21,8 +26,9 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  *
  * Collaborators (all package-private, in this package):
  * <ul>
- *   <li>{@link MouseInputState} — button/cursor/scroll state</li>
- *   <li>{@link KeyEdgeTracker} — polled key edge detection</li>
+ *   <li>engine {@link InputState} — button/cursor/scroll state</li>
+ *   <li>engine {@link KeyEdges} — polled key edge detection, masked by open UI documents (#288)</li>
+ *   <li>engine {@link ActionKeys} over {@link GameplayAction} — the gameplay keys as actions (#96)</li>
  *   <li>{@link UiToggleKeyHandler} — Escape/E/C/T/Q UI toggles</li>
  *   <li>{@link GameplayKeyHandler} — movement, flight, abilities, breaking, hotbar keys</li>
  *   <li>{@link DebugKeyHandler} — F1 hide HUD, F2 screenshot, F3–F8 development keys</li>
@@ -34,8 +40,9 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  */
 public class InputHandler {
 
-    private final MouseInputState mouse = new MouseInputState();
-    private final KeyEdgeTracker keys;
+    private final InputState mouse = new InputState();
+    private final KeyEdges keys;
+    private final ActionKeys<GameplayAction> actions;
     private final HotbarSelector hotbar = new HotbarSelector();
     private final UiToggleKeyHandler uiToggleKeys;
     private final GameplayKeyHandler gameplayKeys;
@@ -44,9 +51,11 @@ public class InputHandler {
     private final UiMouseRouter mouseRouter;
 
     public InputHandler(long window) {
-        this.keys = new KeyEdgeTracker(window);
-        this.uiToggleKeys = new UiToggleKeyHandler(keys);
-        this.gameplayKeys = new GameplayKeyHandler(window, keys, mouse, hotbar);
+        // A key an open UI document owns reads as up, and its edge is spent (#288).
+        this.keys = new KeyEdges(GlfwKeys.source(window), key -> GameUiInput.get().masksKey(key));
+        this.actions = new ActionKeys<>(GameplayAction.defaults(), keys);
+        this.uiToggleKeys = new UiToggleKeyHandler(actions);
+        this.gameplayKeys = new GameplayKeyHandler(actions, mouse, hotbar);
         this.debugKeys = new DebugKeyHandler(keys);
         this.chatRouter = new ChatInputRouter(keys);
         this.mouseRouter = new UiMouseRouter(new WorldMouseHandler());
@@ -112,7 +121,7 @@ public class InputHandler {
     public void processMouseButton(int button, int action, int mods) {
         // Record raw state first so screens polling this frame see the event,
         // then route it to whichever UI surface (or the world) should react.
-        mouse.onButtonEvent(button, action);
+        mouse.onButton(button, action);
         mouseRouter.route(button, action);
     }
 
@@ -160,7 +169,7 @@ public class InputHandler {
 
     /** Updates the UI-space cursor position (called from Main's cursor callback). */
     public void updateMousePosition(float xpos, float ypos) {
-        mouse.setPosition(xpos, ypos);
+        mouse.setCursor(xpos, ypos);
     }
 
     // ── Mouse state polling (used by UI screens) ─────────────────────────
@@ -225,8 +234,13 @@ public class InputHandler {
         }
     }
 
-    /** True while the key is physically held (direct GLFW query). */
+    /** True while the key is held and no UI document owns it. */
     public boolean isKeyDown(int key) {
         return keys.isDown(key);
+    }
+
+    /** The gameplay bindings polled each frame (defaults: the classic keys). */
+    public ActionKeys<GameplayAction> gameplayActions() {
+        return actions;
     }
 }

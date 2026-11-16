@@ -3,7 +3,7 @@ package com.stonebreak.battle;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.battle.stage.BattleStageLayouts;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
+import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.rendering.models.entities.SbePoseSolver;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -21,13 +21,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class BattleReachTest {
 
-    private static final SbeEntityAsset MONK = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
+    private static final EntityAsset MONK = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
 
     /** Forward (authored −Z) reach of the farthest-forward of the given sockets at a clip time. */
     private static float reach(BattleClip clip, float time, String... sockets) {
         float best = 0f;
         for (String socket : sockets) {
-            Matrix4f m = SbePoseSolver.socketWorldMatrix(MONK, SbeEntityAsset.DEFAULT_VARIANT,
+            Matrix4f m = SbePoseSolver.socketWorldMatrix(MONK, EntityAsset.DEFAULT_VARIANT,
                     AnimState.single(clip.state(), time), new Matrix4f(), 0f, 0f, socket, new Matrix4f());
             assertNotNull(m, () -> "the monk asset has no socket '" + socket + "'");
             best = Math.max(best, -m.getTranslation(new Vector3f()).z);

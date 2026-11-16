@@ -4,8 +4,8 @@ import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityPart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Shipped Monk assets exercised through the actual runtime hierarchy/sampler. */
 class PlayerCombatAnimationTest {
-    private static final SbeEntityAsset ASSET = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
+    private static final EntityAsset ASSET = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
 
     private static JsonNode contract() throws IOException {
         try (var in = PlayerCombatAnimationTest.class.getResourceAsStream("/sbe/Mobs/player-combat/clips.json")) {
@@ -40,7 +40,7 @@ class PlayerCombatAnimationTest {
     @Test
     void timingContractMatchesEmbeddedClipsAndEveryTrackBinds() throws IOException {
         assertEquals("stonebreak:Player", ASSET.objectId());
-        var ids = ASSET.geometryFor("Default").parts().stream().map(SbePart::id).collect(Collectors.toSet());
+        var ids = ASSET.geometryFor("Default").parts().stream().map(EntityPart::id).collect(Collectors.toSet());
         for (var spec : contract().get("clips")) {
             String state = spec.get("state").asText();
             var clip = ASSET.clipFor(state);
@@ -106,7 +106,7 @@ class PlayerCombatAnimationTest {
         var hit = pose("strike", .38f);
         var fist = hit.get("hand_left").transformPosition(new Vector3f(.221f, .845f, -.012f));
         assertTrue(fist.z < -.45f && fist.y > 1.2f && fist.y < 1.65f, "strike contact: " + fist);
-        var parts = ASSET.geometryFor("Default").parts().stream().collect(Collectors.toMap(SbePart::name, p -> p));
+        var parts = ASSET.geometryFor("Default").parts().stream().collect(Collectors.toMap(EntityPart::name, p -> p));
         for (String side : List.of("left", "right")) {
             for (String finger : List.of("index", "middle", "ring", "little")) {
                 var proximal = parts.get("finger_" + finger + "_" + side);

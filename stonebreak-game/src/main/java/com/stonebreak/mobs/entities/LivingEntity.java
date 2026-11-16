@@ -152,8 +152,8 @@ public abstract class LivingEntity extends Entity {
 
         // Footsteps are heard where the mob is RENDERED: a client-local mob in a render-only
         // world plays them here; a server-world mob's are played by its client shadow
-        // (updateClientVisuals). Playing them here on the server world drove the client's
-        // OpenAL mixer from the server tick thread and stayed silent for remote clients.
+        // (updateClientVisuals). Playing them here on the server world would sound on the host's
+        // own mixer and stay silent for remote clients.
         if (footsteps != null && world != null && world.isRenderOnly()) {
             footsteps.updateSounds(this);
         }

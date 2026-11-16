@@ -12,15 +12,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.openmason.engine.format.mesh.ParsedFaceMapping;
 import com.openmason.engine.format.mesh.ParsedMaterialData;
 import com.openmason.engine.format.omo.OMOFormat;
-import com.openmason.engine.format.sbe.SBEFormat;
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbe.SBEFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.openmason.engine.modeling.analysis.WindingAnalyzer;
 import com.openmason.engine.modeling.editable.EditableFace;
 import com.openmason.main.systems.services.EditorServices;
-import com.openmason.main.systems.assets.AssetCatalog;
-import com.openmason.main.systems.assets.AssetEntry;
-import com.openmason.main.systems.assets.AssetModelDigest;
-import com.openmason.main.systems.assets.AssetParseCache;
+import com.stonebreak.openmason.catalog.AssetCatalog;
+import com.stonebreak.openmason.catalog.AssetEntry;
+import com.stonebreak.openmason.catalog.AssetModelDigest;
+import com.stonebreak.openmason.catalog.AssetParseCache;
 import com.openmason.main.systems.io.WriteSandbox;
 import org.joml.Vector3f;
 
@@ -489,7 +489,7 @@ public class AssetLensService {
                 if (variant != null) {
                     throw new IllegalArgumentException("SBO assets have no variants");
                 }
-                var raw = new com.openmason.engine.format.sbo.SBOParser().parseRaw(entry.sourcePath());
+                var raw = new com.stonebreak.format.sbo.SBOParser().parseRaw(entry.sourcePath());
                 if (!raw.manifest().isModelBearing()) {
                     throw new IllegalArgumentException("asset_has_no_model: '" + entry.id()
                             + "' is texture-only — use asset_texture_export / asset_texture_describe");
@@ -505,7 +505,7 @@ public class AssetLensService {
                 return raw.defaultBytes();
             }
             case SBE -> {
-                var parsed = new com.openmason.engine.format.sbe.SBEParser().parse(entry.sourcePath());
+                var parsed = new com.stonebreak.format.sbe.SBEParser().parse(entry.sourcePath());
                 if (variant != null) {
                     byte[] bytes = parsed.variantModelBytes().get(variant);
                     if (bytes == null) {
@@ -545,7 +545,7 @@ public class AssetLensService {
         }
         if (asset.contains("/") || asset.contains("\\")
                 || asset.toLowerCase(Locale.ROOT).matches(".*\\.(sbo|sbe)$")) {
-            Path p = WriteSandbox.requireAssetPath(asset,
+            Path p = WriteSandbox.requireAssetPath(asset, com.stonebreak.openmason.editor.StonebreakFileTypes.assetContainers(),
                     catalog.scanRoots().toArray(new Path[0]));
             for (AssetEntry e : catalog.listAll(true)) {
                 if (e.sourcePath().equals(p)) {

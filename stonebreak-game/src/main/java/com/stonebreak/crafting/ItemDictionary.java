@@ -1,6 +1,6 @@
 package com.stonebreak.crafting;
 
-import com.openmason.engine.format.sbo.SBOParseResult;
+import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.gameplay.SboGameplay;
 import com.stonebreak.items.Item;

@@ -2,7 +2,7 @@ package com.stonebreak.world.chunk.api.mightyMesh;
 
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
-import com.openmason.engine.voxel.sbo.SBORenderData;
+import com.openmason.engine.voxel.stamp.StampRenderData;
 import com.stonebreak.world.World;
 import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
@@ -34,8 +34,8 @@ class ChunkUnloadReleasesAllMeshesTest {
         chunk.setRegionStampHandle(mock(MmsRegionMeshHandle.class));
         chunk.setStampRenderableHandle(mock(MmsRenderableHandle.class));
         chunk.setSBORenderDataList(List.of(
-                new SBORenderData(mock(MmsRenderableHandle.class), null),
-                new SBORenderData(mock(MmsRenderableHandle.class), null)));
+                new StampRenderData(mock(MmsRenderableHandle.class), null),
+                new StampRenderData(mock(MmsRenderableHandle.class), null)));
 
         pipeline.addChunkForGpuCleanup(chunk);
 

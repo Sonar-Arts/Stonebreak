@@ -363,7 +363,7 @@ public final class MmsMeshPipeline {
             // stale handle for that part gets cleared.
             boolean hasGeometry = (atlasMesh != null && !atlasMesh.isEmpty())
                 || meshResult.hasWaterMesh()
-                || meshResult.hasSBOMesh()
+                || meshResult.hasBlockStamps()
                 || meshResult.hasStampMesh();
             int priority = chunkPriorityMap.getOrDefault(chunk, PRIORITY_WORLD_GENERATION);
 
@@ -629,22 +629,22 @@ public final class MmsMeshPipeline {
 
                     // SBO meshes (one per block type): always release the old set, like water —
                     // a rebuild that no longer has any SBO block must drop them, or they ghost.
-                    java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> oldSboList = task.chunk.getSBORenderDataList();
+                    java.util.List<com.openmason.engine.voxel.stamp.StampRenderData> oldSboList = task.chunk.getSBORenderDataList();
                     if (oldSboList != null) {
-                        for (com.openmason.engine.voxel.sbo.SBORenderData oldSbo : oldSboList) {
+                        for (com.openmason.engine.voxel.stamp.StampRenderData oldSbo : oldSboList) {
                             if (oldSbo.getHandle() != null) {
                                 handlesPendingGpuCleanup.offer(oldSbo.getHandle());
                             }
                         }
                         task.chunk.setSBORenderDataList(null);
                     }
-                    if (meshResult.hasSBOMesh()) {
+                    if (meshResult.hasBlockStamps()) {
                         // Upload new SBO entries
-                        java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> newSboList =
-                                new java.util.ArrayList<>(meshResult.sboEntries().size());
-                        for (ChunkMeshResult.SBOEntry entry : meshResult.sboEntries()) {
+                        java.util.List<com.openmason.engine.voxel.stamp.StampRenderData> newSboList =
+                                new java.util.ArrayList<>(meshResult.blockStamps().size());
+                        for (ChunkMeshResult.BlockStampEntry entry : meshResult.blockStamps()) {
                             MmsRenderableHandle sboHandle = MmsAPI.getInstance().uploadMeshToGPU(entry.meshData());
-                            newSboList.add(new com.openmason.engine.voxel.sbo.SBORenderData(sboHandle, entry.batches()));
+                            newSboList.add(new com.openmason.engine.voxel.stamp.StampRenderData(sboHandle, entry.batches()));
                         }
                         task.chunk.setSBORenderDataList(newSboList);
                     }
@@ -776,9 +776,9 @@ public final class MmsMeshPipeline {
                 handlesPendingGpuCleanup.offer(regionStamp);
                 chunk.setRegionStampHandle(null);
             }
-            java.util.List<com.openmason.engine.voxel.sbo.SBORenderData> sboList = chunk.getSBORenderDataList();
+            java.util.List<com.openmason.engine.voxel.stamp.StampRenderData> sboList = chunk.getSBORenderDataList();
             if (sboList != null) {
-                for (com.openmason.engine.voxel.sbo.SBORenderData sbo : sboList) {
+                for (com.openmason.engine.voxel.stamp.StampRenderData sbo : sboList) {
                     if (sbo.getHandle() != null) {
                         handlesPendingGpuCleanup.offer(sbo.getHandle());
                     }

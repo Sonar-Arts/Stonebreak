@@ -1,7 +1,7 @@
 package com.stonebreak.blocks;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.openmason.engine.voxel.RenderLayer;
 import com.openmason.engine.voxel.IBlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;

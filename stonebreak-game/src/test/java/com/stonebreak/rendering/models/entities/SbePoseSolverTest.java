@@ -4,10 +4,10 @@ import com.openmason.engine.format.oma.ParsedAnimClip;
 import com.openmason.engine.format.oma.ParsedAnimTrack;
 import com.openmason.engine.format.oma.ParsedKeyframe;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.openmason.engine.entity.sbe.SbeAttachmentPoint;
-import com.openmason.engine.entity.sbe.SbeEntityAsset;
-import com.openmason.engine.entity.sbe.SbeModelGeometry;
-import com.openmason.engine.entity.sbe.SbePart;
+import com.openmason.engine.entity.model.EntityAttachmentPoint;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -29,21 +29,21 @@ class SbePoseSolverTest {
 
     private static final float EPS = 1e-5f;
 
-    private static SbePart part(String id, String name, Vector3f origin) {
-        return new SbePart(id, name, null, origin,
+    private static EntityPart part(String id, String name, Vector3f origin) {
+        return new EntityPart(id, name, null, origin,
                 new Vector3f(), new Vector3f(), new Vector3f(1, 1, 1), List.of());
     }
 
-    private static SbeModelGeometry geometry(List<SbePart> parts,
-                                             List<SbeAttachmentPoint> sockets) {
-        return new SbeModelGeometry(new float[0], new float[0], new int[0],
+    private static EntityGeometry geometry(List<EntityPart> parts,
+                                             List<EntityAttachmentPoint> sockets) {
+        return new EntityGeometry(new float[0], new float[0], new int[0],
                 parts, Map.of(), 0f, sockets);
     }
 
-    private static SbeEntityAsset asset(SbeModelGeometry geometry,
+    private static EntityAsset asset(EntityGeometry geometry,
                                         Map<String, ParsedAnimClip> clips) {
-        return new SbeEntityAsset("test:asset",
-                Map.of(SbeEntityAsset.DEFAULT_VARIANT, geometry), clips);
+        return new EntityAsset("test:asset",
+                Map.of(EntityAsset.DEFAULT_VARIANT, geometry), clips);
     }
 
     /** Constant-pose clip: every sample returns the given local transform. */
@@ -81,8 +81,8 @@ class SbePoseSolverTest {
 
     @Test
     void unanimatedPartMatrixEqualsBase() {
-        SbeModelGeometry g = geometry(List.of(part("p1", "body", new Vector3f())), List.of());
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityGeometry g = geometry(List.of(part("p1", "body", new Vector3f())), List.of());
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(3, 4, 5), 90f, new Vector3f(2, 2, 2));
 
         SbePoseSolver.forEachPartMatrix(g, a, null, base, 0f, 0f,
@@ -93,10 +93,10 @@ class SbePoseSolverTest {
     void socketOnUnanimatedPartIsBaseTimesLocalOffset() {
         Vector3f localPos = new Vector3f(0f, 1.5f, 0.25f);
         Vector3f localRot = new Vector3f(0f, 180f, 0f);
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("p1", "body", new Vector3f())),
-                List.of(new SbeAttachmentPoint("a1", "face", "p1", "body", localPos, localRot)));
-        SbeEntityAsset a = asset(g, Map.of());
+                List.of(new EntityAttachmentPoint("a1", "face", "p1", "body", localPos, localRot)));
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(10, 64, -3), 45f, new Vector3f(1, 1, 1));
 
         Matrix4f actual = SbePoseSolver.socketWorldMatrix(a, null, null, base, 0f, 0f,
@@ -108,11 +108,11 @@ class SbePoseSolverTest {
 
     @Test
     void socketNameLookupIsCaseInsensitive() {
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("p1", "body", new Vector3f())),
-                List.of(new SbeAttachmentPoint("a1", "Face", "p1", "body",
+                List.of(new EntityAttachmentPoint("a1", "Face", "p1", "body",
                         new Vector3f(), new Vector3f())));
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityAsset a = asset(g, Map.of());
 
         assertNotNull(SbePoseSolver.socketWorldMatrix(a, null, null, new Matrix4f(),
                 0f, 0f, "FACE", new Matrix4f()));
@@ -128,10 +128,10 @@ class SbePoseSolverTest {
 
         // Identity rest pose (restPos 0, restRot 0, restScale 1) => M_rest = I,
         // so partMatrix = base · M_anim.
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("p1", "body", origin)),
-                List.of(new SbeAttachmentPoint("a1", "saddle", "p1", "body", localPos, localRot)));
-        SbeEntityAsset a = asset(g, Map.of("Walk", constantClip("p1", "body", animPos, animRot)));
+                List.of(new EntityAttachmentPoint("a1", "saddle", "p1", "body", localPos, localRot)));
+        EntityAsset a = asset(g, Map.of("Walk", constantClip("p1", "body", animPos, animRot)));
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(2, 0, -7), 30f, new Vector3f(1, 1, 1));
 
         Matrix4f actual = SbePoseSolver.socketWorldMatrix(a, null,
@@ -148,11 +148,11 @@ class SbePoseSolverTest {
         Vector3f localPos = new Vector3f(0f, 1f, 0f);
         Vector3f localRot = new Vector3f(0f, 90f, 0f);
         Vector3f localScale = new Vector3f(0.5f, 2f, 0.5f);
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("p1", "head", new Vector3f())),
-                List.of(new SbeAttachmentPoint("a1", "hat", "p1", "head",
+                List.of(new EntityAttachmentPoint("a1", "hat", "p1", "head",
                         localPos, localRot, localScale)));
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(4, 5, 6), 30f, new Vector3f(1, 1, 1));
 
         Matrix4f actual = SbePoseSolver.socketWorldMatrix(a, null, null, base, 0f, 0f,
@@ -165,18 +165,18 @@ class SbePoseSolverTest {
 
     @Test
     void conveniencePointConstructorDefaultsToUnitScale() {
-        SbeAttachmentPoint p = new SbeAttachmentPoint("a1", "s", null, null,
+        EntityAttachmentPoint p = new EntityAttachmentPoint("a1", "s", null, null,
                 new Vector3f(), new Vector3f());
         assertTrue(new Vector3f(1, 1, 1).equals(p.localScale(), EPS));
     }
 
     @Test
     void hostPartResolvesByNameWhenIdMisses() {
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("fresh-uuid", "head", new Vector3f())),
-                List.of(new SbeAttachmentPoint("a1", "hat", "stale-uuid", "head",
+                List.of(new EntityAttachmentPoint("a1", "hat", "stale-uuid", "head",
                         new Vector3f(0, 1, 0), new Vector3f())));
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = new Matrix4f();
 
         Matrix4f actual = SbePoseSolver.socketWorldMatrix(a, null, null, base, 0f, 0f,
@@ -187,19 +187,19 @@ class SbePoseSolverTest {
 
     @Test
     void unknownSocketReturnsNull() {
-        SbeModelGeometry g = geometry(List.of(part("p1", "body", new Vector3f())), List.of());
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityGeometry g = geometry(List.of(part("p1", "body", new Vector3f())), List.of());
+        EntityAsset a = asset(g, Map.of());
         assertNull(SbePoseSolver.socketWorldMatrix(a, null, null, new Matrix4f(),
                 0f, 0f, "nope", new Matrix4f()));
     }
 
     @Test
     void missingSpecifiedParentReturnsNullInsteadOfRootFallback() {
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("p1", "body", new Vector3f())),
-                List.of(new SbeAttachmentPoint("a1", "orphan", "gone-id", "gone-name",
+                List.of(new EntityAttachmentPoint("a1", "orphan", "gone-id", "gone-name",
                         new Vector3f(), new Vector3f())));
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityAsset a = asset(g, Map.of());
         assertNull(SbePoseSolver.socketWorldMatrix(a, null, null, new Matrix4f(),
                 0f, 0f, "orphan", new Matrix4f()));
     }
@@ -207,11 +207,11 @@ class SbePoseSolverTest {
     @Test
     void modelRootSocketUsesBaseFrame() {
         Vector3f localPos = new Vector3f(1f, 2f, 3f);
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(part("p1", "body", new Vector3f())),
-                List.of(new SbeAttachmentPoint("a1", "flag", null, null,
+                List.of(new EntityAttachmentPoint("a1", "flag", null, null,
                         localPos, new Vector3f(0, 90, 0))));
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(5, 6, 7), 120f, new Vector3f(2, 2, 2));
 
         Matrix4f actual = SbePoseSolver.socketWorldMatrix(a, null, null, base, 0f, 0f,
@@ -226,14 +226,14 @@ class SbePoseSolverTest {
         // Head part with a rest pos + origin so the neck pivot is off-origin.
         Vector3f restPos = new Vector3f(0f, 1f, 0f);
         Vector3f restOrigin = new Vector3f(0f, 0.25f, 0f);
-        SbePart head = new SbePart("h1", "head", null, restOrigin,
+        EntityPart head = new EntityPart("h1", "head", null, restOrigin,
                 restPos, new Vector3f(), new Vector3f(1, 1, 1), List.of());
         Vector3f localPos = new Vector3f(0f, 1.4f, 0.3f);
-        SbeModelGeometry g = geometry(
+        EntityGeometry g = geometry(
                 List.of(head),
-                List.of(new SbeAttachmentPoint("a1", "face", "h1", "head",
+                List.of(new EntityAttachmentPoint("a1", "face", "h1", "head",
                         localPos, new Vector3f())));
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(1, 2, 3), 10f, new Vector3f(1, 1, 1));
 
         float headYaw = 40f, headPitch = -20f;
@@ -257,16 +257,16 @@ class SbePoseSolverTest {
     @Test
     void headTurnMovesFacialChildrenAndGrandchildrenButNotBody() {
         Vector3f neck = new Vector3f(0, 1.5f, 0);
-        SbePart body = part("body", "torso", new Vector3f());
-        SbePart head = new SbePart("head", "head", "body", new Vector3f(),
+        EntityPart body = part("body", "torso", new Vector3f());
+        EntityPart head = new EntityPart("head", "head", "body", new Vector3f(),
                 neck, new Vector3f(), new Vector3f(1), List.of());
-        SbePart eye = new SbePart("eye", "eye", "head", new Vector3f(),
+        EntityPart eye = new EntityPart("eye", "eye", "head", new Vector3f(),
                 new Vector3f(0.1f, 0.2f, 0.2f), new Vector3f(), new Vector3f(1), List.of());
-        SbePart pupil = new SbePart("pupil", "pupil", "eye", new Vector3f(),
+        EntityPart pupil = new EntityPart("pupil", "pupil", "eye", new Vector3f(),
                 new Vector3f(0, 0, 0.01f), new Vector3f(), new Vector3f(1), List.of());
         // Children first: inheritance must not depend on serialized part order.
-        SbeModelGeometry g = geometry(List.of(pupil, eye, head, body), List.of());
-        SbeEntityAsset a = asset(g, Map.of());
+        EntityGeometry g = geometry(List.of(pupil, eye, head, body), List.of());
+        EntityAsset a = asset(g, Map.of());
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(3, 2, 1), 25, new Vector3f(2));
         Map<String, Matrix4f> matrices = new HashMap<>();
         SbePoseSolver.forEachPartMatrix(g, a, null, base, 45, -20,
@@ -283,15 +283,15 @@ class SbePoseSolverTest {
 
     @Test
     void headTurnFollowsAnimatedNeckAndPreservesChildAnimationAndSockets() {
-        SbePart body = new SbePart("body", "torso", null, new Vector3f(),
+        EntityPart body = new EntityPart("body", "torso", null, new Vector3f(),
                 new Vector3f(1, 0, 0), new Vector3f(0, 15, 0), new Vector3f(1), List.of());
-        SbePart head = new SbePart("head", "head", "body", new Vector3f(0, 0.1f, 0),
+        EntityPart head = new EntityPart("head", "head", "body", new Vector3f(0, 0.1f, 0),
                 new Vector3f(0, 1.5f, 0), new Vector3f(5, 0, 0), new Vector3f(1), List.of());
-        SbePart jaw = new SbePart("jaw", "jaw", "head", new Vector3f(),
+        EntityPart jaw = new EntityPart("jaw", "jaw", "head", new Vector3f(),
                 new Vector3f(0, 0.1f, 0.2f), new Vector3f(), new Vector3f(1), List.of());
         Vector3f socketPos = new Vector3f(1, 1.7f, 0.3f);
-        SbeModelGeometry g = geometry(List.of(jaw, head, body), List.of(
-                new SbeAttachmentPoint("socket", "mouth", "jaw", "jaw", socketPos, new Vector3f())));
+        EntityGeometry g = geometry(List.of(jaw, head, body), List.of(
+                new EntityAttachmentPoint("socket", "mouth", "jaw", "jaw", socketPos, new Vector3f())));
         Vector3f bodyPos = new Vector3f(1.2f, 0.4f, -0.1f);
         Vector3f bodyRot = new Vector3f(0, 35, 20);
         Vector3f headPos = new Vector3f(0.1f, 1.6f, 0);
@@ -301,7 +301,7 @@ class SbePoseSolverTest {
                 constantClip("body", "torso", bodyPos, bodyRot).tracks().getFirst(),
                 constantClip("head", "head", headPos, headRot).tracks().getFirst(),
                 constantClip("jaw", "jaw", jaw.restPos(), jawRot).tracks().getFirst()));
-        SbeEntityAsset a = asset(g, Map.of("Walk", clip));
+        EntityAsset a = asset(g, Map.of("Walk", clip));
         AnimState anim = AnimState.single("Walk", 0.5f);
         Matrix4f base = SbePoseSolver.baseMatrix(new Vector3f(3, 2, 1), 25, new Vector3f(1));
         Map<String, Matrix4f> matrices = new HashMap<>();

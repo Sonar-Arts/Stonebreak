@@ -1,5 +1,7 @@
 package com.stonebreak.input;
 
+import com.openmason.engine.input.KeyEdges;
+
 import com.stonebreak.ui.chat.ChatSystem;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;
@@ -21,9 +23,9 @@ import static org.lwjgl.glfw.GLFW.GLFW_REPEAT;
  */
 final class ChatInputRouter {
 
-    private final KeyEdgeTracker keys;
+    private final KeyEdges keys;
 
-    ChatInputRouter(KeyEdgeTracker keys) {
+    ChatInputRouter(KeyEdges keys) {
         this.keys = keys;
     }
 

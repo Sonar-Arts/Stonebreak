@@ -1,7 +1,7 @@
 package com.stonebreak.items;
 
 import com.stonebreak.gameplay.SboGameplay;
-import com.openmason.engine.format.sbo.SBOFormat;
+import com.stonebreak.format.sbo.SBOFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.drops.BlockDropTables;
 import org.junit.jupiter.api.Test;

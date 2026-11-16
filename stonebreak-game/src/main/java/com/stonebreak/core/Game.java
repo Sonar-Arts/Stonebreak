@@ -63,7 +63,6 @@ public class Game {
     // Game state
     private final com.stonebreak.core.state.GameStateController stateController =
             new com.stonebreak.core.state.GameStateController(this);
-    private long lastFrameTime;
     private float deltaTime;
     private float totalTimeElapsed = 0.0f; // Added to track total time for animations
     private final com.stonebreak.core.loop.GameLoop gameLoop =
@@ -80,7 +79,7 @@ public class Game {
         com.stonebreak.network.MultiplayerSession::requestServerCheatsSet);
 
     // Window dimensions and handle
-    private long window;
+    private com.openmason.engine.platform.window.Window window;
     private int windowWidth;
     private int windowHeight;
 
@@ -88,7 +87,6 @@ public class Game {
      * Private constructor for singleton pattern.
      */
     private Game() {
-        lastFrameTime = System.nanoTime();
     }
     
     /**
@@ -116,7 +114,7 @@ public class Game {
         }
     }
 
-    /** True on the thread that runs the game loop (and owns GL, OpenAL and the FX runtime). */
+    /** True on the thread that runs the game loop (and owns GL and the FX runtime). */
     public boolean isMainThread() {
         return Thread.currentThread() == mainThread;
     }
@@ -125,7 +123,8 @@ public class Game {
      * Initializes core game components that don't require a world or player.
      * This includes renderer, sound system, UI components, and basic systems.
      */
-    public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler, long window) {
+    public void initCoreComponents(Renderer renderer, BlockTextureArray textureAtlas, InputHandler inputHandler,
+                                   com.openmason.engine.platform.window.Window window) {
         this.window = window;
         // Terrain model setup (environment install + GPU kernel compile) runs in the background from the
         // very start, under the intro; the setup screen after the intro shows it if it still has work.
@@ -137,8 +136,7 @@ public class Game {
         services.setMouseCaptureManager(new MouseCaptureManager(window));
 
         // Audio comes up BEFORE the screens: the startup intro registers its sonar sound from
-        // its constructor, and OpenAL calls made before the context exists abort with
-        // "No ALCapabilities instance has been set".
+        // its constructor, and a sound loaded before the engine starts is skipped (silent).
         SoundSystem soundSystem = SoundSystem.getInstance();
         services.setSoundSystem(soundSystem);
         com.stonebreak.core.bootstrap.GameBootstrap.configureSoundSystem(soundSystem);
@@ -167,7 +165,7 @@ public class Game {
                 new float[]{1.0f, 0.35f, 0.35f, 1.0f});
         }
 
-        services.setSoundEmitterManager(new com.stonebreak.audio.emitters.SoundEmitterManager());
+        services.setSoundEmitterManager(new com.openmason.engine.audio.emitters.SoundEmitterManager());
 
         services.setMemoryLeakDetector(com.stonebreak.core.bootstrap.GameBootstrap.startMemoryLeakDetection());
         services.setDebugOverlay(com.stonebreak.core.bootstrap.GameBootstrap.createDebugOverlay());
@@ -284,18 +282,12 @@ public class Game {
     }
 
     /**
-     * Per-frame tick: computes delta time, accumulates total time, then
-     * delegates to {@link com.stonebreak.core.loop.GameLoop#tick(float)}.
+     * Per-frame tick: takes the frame delta (the engine {@code FrameLoop} measures it and clamps it
+     * to 0.1 s, #96), accumulates total time, then delegates to
+     * {@link com.stonebreak.core.loop.GameLoop#tick(float)}.
      */
-    public void update() {
-        long currentTime = System.nanoTime();
-        deltaTime = (currentTime - lastFrameTime) / 1_000_000_000.0f;
-        lastFrameTime = currentTime;
-
-        if (deltaTime > 0.1f) {
-            deltaTime = 0.1f;
-        }
-
+    public void update(float dt) {
+        deltaTime = dt;
         totalTimeElapsed += deltaTime;
 
         Runnable task;
@@ -329,9 +321,9 @@ public class Game {
     }
 
     /**
-     * Gets window handle for GLFW operations.
+     * The game window (engine platform layer, #96), or null before startup.
      */
-    public long getWindow() {
+    public com.openmason.engine.platform.window.Window getWindow() {
         return window;
     }
 
@@ -654,7 +646,7 @@ public class Game {
     /**
      * Gets the sound emitter manager.
      */
-    public static com.stonebreak.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
+    public static com.openmason.engine.audio.emitters.SoundEmitterManager getSoundEmitterManager() {
         return getInstance().services.soundEmitterManager();
     }
 

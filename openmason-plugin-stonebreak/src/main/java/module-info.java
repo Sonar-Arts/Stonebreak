@@ -7,6 +7,7 @@ module openmason.plugin.stonebreak {
     requires openmason.engine.core;
     requires openmason.engine.ui;
     requires stonebreak.game;
+    requires stonebreak.formats;
 
     requires org.lwjgl;
     requires org.lwjgl.opengl;

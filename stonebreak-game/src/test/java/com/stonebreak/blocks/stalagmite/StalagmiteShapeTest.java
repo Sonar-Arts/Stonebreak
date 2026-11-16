@@ -29,7 +29,7 @@ class StalagmiteShapeTest {
         float[] box = {0.1f, -0.5f, 0.2f, 0.3f, 1.5f, 0.4f};
         float[] hung = StalagmiteShape.place(box, new StalagmiteState(2, true, Facing.SOUTH));
         assertArrayEquals(new float[]{0.1f, -1.5f, 0.2f, 0.3f, 0.5f, 0.4f}, hung, EPS);
-        // One quarter turn (EAST) maps +Z onto +X, as SBOStampRotator does: (x, z) -> (z, -x).
+        // One quarter turn (EAST) maps +Z onto +X, as StampRotator does: (x, z) -> (z, -x).
         float[] east = StalagmiteShape.place(box, new StalagmiteState(2, false, Facing.EAST));
         assertArrayEquals(new float[]{0.2f, -0.5f, -0.3f, 0.4f, 1.5f, -0.1f}, east, EPS);
     }
