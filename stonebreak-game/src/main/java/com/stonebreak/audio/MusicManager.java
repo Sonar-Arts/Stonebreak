@@ -23,7 +23,10 @@ public final class MusicManager {
     /** What kind of moment the game is in, as far as music is concerned. */
     public enum Scene { NONE, MENU, BATTLE }
 
+    // Played in order from the first track (engine MusicDirector), then rotating: Look Beyond is the
+    // main menu theme, so it is what a fresh launch opens on.
     private static final List<Track> MENU_PLAYLIST = List.of(
+            new Track("music_look_beyond", "/songs/menu music/Look Beyond.ogg"),
             new Track("music_venusian_drift", "/songs/menu music/Venusian Drift.ogg"),
             new Track("music_whispering_woods", "/songs/menu music/Whispering Woods (Lofi Lullaby).ogg")
     );
