@@ -22,7 +22,8 @@ import static com.stonebreak.player.PlayerConstants.WATER_HORIZONTAL_DRAG;
 import static com.stonebreak.player.PlayerConstants.WATER_VERTICAL_DRAG;
 
 /**
- * Integrates player velocity into position with collision resolution, applies gravity
+ * Integrates player velocity into position with collision resolution (one swept move through the
+ * engine physics, which also keeps the ground flag), applies gravity
  * (context-sensitive based on swimming/flight/water-exit), applies friction and air/
  * water dampening, and processes WASD + jump input into horizontal velocity.
  */
@@ -79,14 +80,7 @@ public class MovementController {
             return;
         }
 
-        position.x += velocity.x * dt;
-        collisionHandler.resolveX();
-
-        position.y += velocity.y * dt;
-        collisionHandler.resolveY();
-
-        position.z += velocity.z * dt;
-        collisionHandler.resolveZ();
+        collisionHandler.move(dt);
     }
 
     public void applyDamping() {

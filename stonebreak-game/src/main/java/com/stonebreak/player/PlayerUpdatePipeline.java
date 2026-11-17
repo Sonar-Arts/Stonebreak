@@ -140,8 +140,6 @@ final class PlayerUpdatePipeline {
         recordDistance(dt, posBeforeIntegrate.x - prevX, posBeforeIntegrate.z - prevZ, wasOnGround, wasSprinting);
         if (c.spectator.isActive()) {
             state.setOnGround(false);
-        } else {
-            c.groundChecker.check();
         }
         c.movement.applyDamping();
     }

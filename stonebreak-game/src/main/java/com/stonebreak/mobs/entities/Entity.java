@@ -57,6 +57,13 @@ public abstract class Entity {
      */
     private boolean commandSpawned = false;
     private com.stonebreak.network.client.NetworkInterpolator interpolator;
+    /**
+     * This entity's handle in its {@link EntityManager}'s native entity world (OpenMason #114), or 0
+     * while it is in none. Set when the manager queues it; the manager clears it when it leaves.
+     */
+    private volatile long entityHandle;
+    /** The native world {@link #entityHandle} belongs to (handles are only unique per world). */
+    private volatile com.openmason.engine.entity.EntityWorld entityWorld;
     
     /**
      * Creates a new entity at the specified position.
@@ -261,6 +268,15 @@ public abstract class Entity {
         this.inWater = submersion > 0.0f;
     }
     public void setAlive(boolean alive) { this.alive = alive; }
+
+    /** The native entity-world handle, or 0 while this entity is in no {@link EntityManager}. */
+    public long getEntityHandle() { return entityHandle; }
+    /** The native entity world this entity's handle belongs to, or null. */
+    com.openmason.engine.entity.EntityWorld getEntityWorld() { return entityWorld; }
+    void setEntityHandle(com.openmason.engine.entity.EntityWorld world, long handle) {
+        this.entityWorld = world;
+        this.entityHandle = handle;
+    }
 
     public int getNetworkId() { return networkId; }
     public void setAge(float age) { this.age = age; }

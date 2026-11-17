@@ -352,7 +352,13 @@ public final class CampRegistry implements CampAnchor {
             return;
         }
         BlockPos chest = camp.chest();
-        CampBuilder.Placement next = CampBuilder.next(CampTerrain.of(world), fire, camp.population(),
+        java.util.List<com.stonebreak.mobs.goblin.Goblin> members = camp.members();
+        if (members.isEmpty()) {
+            return; // nobody to build it (and nobody whose walk out must stay clear)
+        }
+        CampWalker walker = CampWalker.of(world,
+                com.stonebreak.mobs.entities.ai.nav.NavProfiles.forEntity(members.get(0)));
+        CampBuilder.Placement next = CampBuilder.next(CampTerrain.of(world), walker, fire, camp.population(),
                 c -> (c.x == fire.x() && c.y == fire.y() && c.z == fire.z())
                         || (chest != null && c.x == chest.x() && c.y == chest.y() && c.z == chest.z()));
         if (next != null) {

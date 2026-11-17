@@ -1,7 +1,14 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.openmason.engine.wayfind.SearchLimits;
-import com.openmason.engine.wayfind.voxel.NavProfile;
+import com.openmason.engine.nav.AgentApply;
+import com.openmason.engine.nav.AgentBody;
+import com.openmason.engine.nav.AgentView;
+import com.openmason.engine.nav.GroundAgent;
+import com.openmason.engine.nav.GroundAgentDesc;
+import com.openmason.engine.nav.GroundProfile;
+import com.openmason.engine.nav.NavLimits;
+import com.openmason.engine.nav.NavPath;
+import com.openmason.engine.nav.NavWorld;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
@@ -14,11 +21,16 @@ import org.joml.Vector3f;
  * wants the mob — every tick if the target is moving — and {@link #tick} does the rest: throttling
  * searches, adopting results when they arrive, advancing along waypoints, jumping ledges the route
  * planned for, noticing when the mob is wedged, and stopping when it arrives. Behaviours never see
- * a {@link Path}, a search, or a thread.
+ * a search or a thread.
  *
- * <p>Searches are asynchronous, so there is always a window between asking and having a route. The
- * mob holds position through it rather than blundering off in the goal's rough direction — a wrong
- * first step is worse than a late one, and at a fraction of a second nobody sees the pause.
+ * <p>The agent is the engine's ({@link GroundAgent}, Open Mason {@code cn_ground_agent}, OpenMason
+ * #116), searching the world's {@link PathfindingService} and steering through the mob's
+ * {@link Steering}. This class is the game's side: Stonebreak's tuning, the mob's body each tick, and
+ * applying what the agent decided.
+ *
+ * <p>Searches run on the service's step at the end of the world tick, so there is always a tick
+ * between asking and having a route. The mob holds position through it rather than blundering off in
+ * the goal's rough direction — a wrong first step is worse than a late one.
  */
 public final class PathAgent {
 
@@ -44,11 +56,19 @@ public final class PathAgent {
     private static final float STUCK_SPEED_BLOCKS_PER_SECOND = 0.15f;
     private static final float STUCK_SECONDS = 1.5f;
 
+    /** The route planned a rise the step cannot make: jump once within this of the waypoint. */
+    private static final float JUMP_RISE_MARGIN = 0.05f;
+    private static final float JUMP_APPROACH_BLOCKS = 1.5f;
+
     /**
      * Expansion budget per search. Roughly a 30-block route through cluttered ground; beyond it the
      * partial result is a better answer than a longer search, because the world will have moved on.
      */
-    private static final SearchLimits LIMITS = new SearchLimits(600, Float.MAX_VALUE, 1.1f);
+    private static final NavLimits LIMITS = new NavLimits(600, Float.MAX_VALUE, 1.1f);
+
+    /** How far up and down a start or goal position is snapped onto a standable surface. */
+    private static final int SNAP_DOWN = 4;
+    private static final int SNAP_UP = 2;
 
     public enum Status {
         /** No destination asked for. */
@@ -65,48 +85,36 @@ public final class PathAgent {
         STUCK
     }
 
+    private static final Status[] STATUSES = Status.values();
+
     private final LivingEntity entity;
-    private final NavProfile profile;
+    private final GroundProfile profile;
     private final Steering steering;
+    private final GroundAgent agent;
 
-    private final Vector3f desiredGoal = new Vector3f();
-    private final Vector3f plannedGoal = new Vector3f();
-    private boolean hasGoal;
-    private float goalRadius = 1.0f;
-    private float speedMultiplier = 1.0f;
-
-    private Path path = Path.EMPTY;
-    private int cursor;
-
-    private PathRequest pending;
-    private PathfindingService pendingService;
-
-    private float searchCooldown;
-    private float stuckTimer;
-    private final Vector3f previousPosition = new Vector3f();
-
-    private Status status = Status.IDLE;
-
-    // Scratch, reused every tick — this runs for every mob, every tick.
-    private final Vector3f scratch = new Vector3f();
-    private final Vector3f heading = new Vector3f();
+    private final AgentBody body = new AgentBody();
+    private final AgentApply apply = new AgentApply();
 
     public PathAgent(LivingEntity entity, Steering steering) {
         this(entity, steering, NavProfiles.forEntity(entity));
     }
 
-    public PathAgent(LivingEntity entity, Steering steering, NavProfile profile) {
+    public PathAgent(LivingEntity entity, Steering steering, GroundProfile profile) {
         this.entity = entity;
         this.steering = steering;
         this.profile = profile;
-        this.previousPosition.set(entity.getPosition());
+        Vector3f position = entity.getPosition();
+        this.agent = GroundAgent.create(new GroundAgentDesc(profile, LIMITS, SNAP_DOWN, SNAP_UP,
+                REPATH_INTERVAL_SECONDS, NO_PATH_RETRY_SECONDS, SATURATED_RETRY_SECONDS, GOAL_DRIFT_BLOCKS,
+                WAYPOINT_RADIUS, WAYPOINT_VERTICAL_SLACK, STUCK_SPEED_BLOCKS_PER_SECOND, STUCK_SECONDS,
+                JUMP_RISE_MARGIN, JUMP_APPROACH_BLOCKS), position.x, position.y, position.z);
     }
 
     public Steering steering() {
         return steering;
     }
 
-    public NavProfile profile() {
+    public GroundProfile profile() {
         return profile;
     }
 
@@ -120,220 +128,37 @@ public final class PathAgent {
      * @param speedMultiplier scales the mob's base move speed while walking this route
      */
     public void moveTo(Vector3f goal, float goalRadius, float speedMultiplier) {
-        this.desiredGoal.set(goal);
-        this.goalRadius = goalRadius;
-        this.speedMultiplier = speedMultiplier;
-        if (!hasGoal) {
-            hasGoal = true;
-            status = Status.SEARCHING;
-        }
+        agent.moveTo(goal.x, goal.y, goal.z, goalRadius, speedMultiplier);
     }
 
     /** Abandons the destination and the route, and stops the mob where it stands. */
     public void stop() {
-        hasGoal = false;
-        clearPath();
-        cancelPending();
-        stuckTimer = 0.0f;
-        status = Status.IDLE;
-        steering.stopMoving();
+        agent.stop(navWorld(), apply);
+        Steering.applyTo(entity, apply);
     }
 
     /** Drops the current route but keeps the destination, forcing a fresh search. */
     public void replan() {
-        clearPath();
-        cancelPending();
-        searchCooldown = 0.0f;
+        agent.replan(navWorld());
     }
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     public void tick(float deltaTime) {
-        steering.tick(deltaTime);
-        searchCooldown = Math.max(0.0f, searchCooldown - deltaTime);
-
-        collectResult();
-
-        if (!hasGoal) {
-            return;
-        }
-
-        requestPathIfNeeded();
-        followPath(deltaTime);
-        updateStuck(deltaTime);
-    }
-
-    /** Adopts a finished search, or drops one that has become irrelevant. */
-    private void collectResult() {
-        if (pending == null) {
-            return;
-        }
-
-        PathfindingService service = service();
-        if (service != pendingService || service == null || service.isClosed()) {
-            // The world was swapped underneath us; whatever comes back describes a world this mob
-            // no longer lives in.
-            cancelPending();
-            return;
-        }
-        if (!pending.isDone()) {
-            return;
-        }
-
-        Path result = pending.result();
-        pending.goal(scratch);
-        pending = null;
-        pendingService = null;
-
-        if (!hasGoal) {
-            return;
-        }
-        if (scratch.distance(desiredGoal) > GOAL_DRIFT_BLOCKS) {
-            // The target moved while we searched; the route is already wrong.
-            searchCooldown = 0.0f;
-            return;
-        }
-        if (result == null || result.isEmpty()) {
-            status = Status.NO_PATH;
-            searchCooldown = NO_PATH_RETRY_SECONDS;
-            return;
-        }
-
-        path = result;
-        cursor = 0;
-        plannedGoal.set(scratch);
-        stuckTimer = 0.0f;
-        status = Status.FOLLOWING;
-    }
-
-    private void requestPathIfNeeded() {
-        if (pending != null || searchCooldown > 0.0f) {
-            return;
-        }
-        boolean needsRoute = path.isEmpty()
-                || cursor >= path.size()
-                || plannedGoal.distance(desiredGoal) > GOAL_DRIFT_BLOCKS;
-        if (!needsRoute) {
-            return;
-        }
-
-        PathfindingService service = service();
-        if (service == null) {
-            status = Status.NO_PATH;
-            searchCooldown = NO_PATH_RETRY_SECONDS;
-            return;
-        }
-
-        PathRequest request = service.submit(feet(scratch), desiredGoal, goalRadius, profile, LIMITS);
-        if (request == null) {
-            searchCooldown = SATURATED_RETRY_SECONDS;
-            return;
-        }
-        pending = request;
-        pendingService = service;
-        searchCooldown = REPATH_INTERVAL_SECONDS;
-        if (path.isEmpty()) {
-            status = Status.SEARCHING;
-        }
-    }
-
-    private void followPath(float deltaTime) {
-        if (path.isEmpty()) {
-            steering.stopMoving(); // hold position until a route arrives
-            return;
-        }
-        if (cursor >= path.size()) {
-            arrive();
-            return;
-        }
-
-        Vector3f position = entity.getPosition();
-        float feetY = position.y - entity.getLegHeight();
-
-        float dx = path.x(cursor) - position.x;
-        float dz = path.z(cursor) - position.z;
-        float horizontal = (float) Math.sqrt(dx * dx + dz * dz);
-
-        if (horizontal < WAYPOINT_RADIUS
-                && Math.abs(path.y(cursor) - feetY) < WAYPOINT_VERTICAL_SLACK) {
-            cursor++;
-            if (cursor >= path.size()) {
-                arrive();
-                return;
-            }
-            dx = path.x(cursor) - position.x;
-            dz = path.z(cursor) - position.z;
-            horizontal = (float) Math.sqrt(dx * dx + dz * dz);
-        }
-
-        if (horizontal < 1e-4f) {
-            steering.stopMoving();
-            return;
-        }
-        // A glider floating down onto the waypoint: hold over it rather than overshooting and
-        // circling back all the way down.
-        if (entity.getGlideSinkSpeed() > 0f && horizontal < WAYPOINT_RADIUS && !entity.isOnGround()
-                && feetY - path.y(cursor) >= WAYPOINT_VERTICAL_SLACK) {
-            steering.stopMoving();
-            status = Status.FOLLOWING;
-            return;
-        }
-
-        heading.set(dx / horizontal, 0.0f, dz / horizontal);
-        steering.steerAlong(heading, speedMultiplier, deltaTime, true);
-
-        // The route planned a rise the auto-step cannot make, so it planned a jump. Take it on the
-        // approach rather than at the wall, or the hop starts with no room to carry the body over.
-        if (path.y(cursor) - feetY > profile.maxStepUp() + 0.05f && horizontal < 1.5f) {
-            steering.requestJump();
-        }
-        status = Status.FOLLOWING;
-    }
-
-    private void arrive() {
-        clearPath();
-        steering.stopMoving();
-        status = Status.ARRIVED;
-    }
-
-    /**
-     * Notices a mob that wants to move and is not moving — pinned by another mob, wedged on
-     * geometry the route did not model — and forces a replan rather than letting it shuffle
-     * against a wall indefinitely.
-     */
-    private void updateStuck(float deltaTime) {
-        Vector3f position = entity.getPosition();
-        if (status != Status.FOLLOWING) {
-            previousPosition.set(position);
-            stuckTimer = 0.0f;
-            return;
-        }
-
-        float moved = position.distance(previousPosition);
-        previousPosition.set(position);
-
-        if (moved < STUCK_SPEED_BLOCKS_PER_SECOND * deltaTime) {
-            stuckTimer += deltaTime;
-            if (stuckTimer >= STUCK_SECONDS) {
-                stuckTimer = 0.0f;
-                clearPath();
-                searchCooldown = 0.0f;
-                status = Status.STUCK;
-            }
-        } else {
-            stuckTimer = 0.0f;
-        }
+        agent.tick(steering.engine(), navWorld(), Steering.physicsOf(entity), Steering.bodyOf(entity, body),
+                deltaTime, apply);
+        Steering.applyTo(entity, apply);
     }
 
     // ── State ────────────────────────────────────────────────────────────────
 
     public Status status() {
-        return status;
+        return STATUSES[agent.view().status()];
     }
 
     /** Whether the agent is walking a route right now. */
     public boolean isFollowing() {
-        return status == Status.FOLLOWING;
+        return status() == Status.FOLLOWING;
     }
 
     /**
@@ -341,33 +166,37 @@ public final class PathAgent {
      * got wedged. Behaviours use this to know when to pick a new goal.
      */
     public boolean isSettled() {
+        Status status = status();
         return status == Status.ARRIVED || status == Status.NO_PATH || status == Status.STUCK;
     }
 
     public boolean hasGoal() {
-        return hasGoal;
+        return agent.view().hasGoal();
     }
 
     /** Distance from the mob to its destination, or {@link Float#MAX_VALUE} when it has none. */
     public float distanceToGoal() {
-        return hasGoal ? entity.getPosition().distance(desiredGoal) : Float.MAX_VALUE;
+        AgentView view = agent.view();
+        return view.hasGoal() ? entity.getPosition().distance(view.goalX(), view.goalY(), view.goalZ())
+                : Float.MAX_VALUE;
     }
 
     // ── Debug ────────────────────────────────────────────────────────────────
 
-    /** The route being followed; never null, possibly {@link Path#EMPTY}. For the debug overlay. */
-    public Path path() {
-        return path;
+    /** The route being followed; never null, possibly {@link NavPath#EMPTY}. For the debug overlay. */
+    public NavPath path() {
+        return agent.path();
     }
 
     /** Index of the waypoint currently being walked toward. */
     public int cursor() {
-        return cursor;
+        return agent.view().cursor();
     }
 
     /** Writes the destination into {@code out}; unchanged when there is none. */
     public Vector3f goal(Vector3f out) {
-        return hasGoal ? out.set(desiredGoal) : out;
+        AgentView view = agent.view();
+        return view.hasGoal() ? out.set(view.goalX(), view.goalY(), view.goalZ()) : out;
     }
 
     /** Releases navigation state when the entity is removed. */
@@ -377,27 +206,10 @@ public final class PathAgent {
 
     // ── Internals ────────────────────────────────────────────────────────────
 
-    private void clearPath() {
-        path = Path.EMPTY;
-        cursor = 0;
-    }
-
-    private void cancelPending() {
-        if (pending != null) {
-            pending.cancel();
-            pending = null;
-            pendingService = null;
-        }
-    }
-
-    /** The mob's foot position — its origin sits at the top of its legs. */
-    private Vector3f feet(Vector3f out) {
-        Vector3f position = entity.getPosition();
-        return out.set(position.x, position.y - entity.getLegHeight(), position.z);
-    }
-
-    private PathfindingService service() {
+    /** The service of the world the mob is in now, or null (no world, or it was cleaned up). */
+    private NavWorld navWorld() {
         World world = entity.getWorld();
-        return world == null ? null : world.pathfinding();
+        PathfindingService service = world == null ? null : world.pathfinding();
+        return service == null || service.isClosed() ? null : service.nav();
     }
 }

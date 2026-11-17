@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockShape;
+import com.stonebreak.world.physics.WorldPhysics;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.util.DropSpawnResolver;
 import com.stonebreak.world.World;
@@ -140,9 +141,9 @@ public final class DropWorldCollision {
                                        float dropWidth, float dropLength) {
         float halfW = dropWidth / 2f;
         float halfL = dropLength / 2f;
-        return BlockShape.collisionHeight(world, x, y, z,
+        return com.stonebreak.world.physics.WorldPhysics.of(world).cellTop(x, y, z,
                 dropCentreX - halfW, dropCentreZ - halfL,
-                dropCentreX + halfW, dropCentreZ + halfL);
+                dropCentreX + halfW, dropCentreZ + halfL, WorldPhysics.DROP_MASK);
     }
 
     /** In-water check at explicit final coordinates (drops skip the external

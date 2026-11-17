@@ -2,7 +2,7 @@ package com.stonebreak.openmason.assets;
 
 import com.stonebreak.format.sbo.SBOFormat;
 import com.stonebreak.format.sbo.SBOParser;
-import com.openmason.main.systems.menus.dialogs.SBOObjectIndex;
+import com.stonebreak.openmason.editor.SBOObjectIndex;
 import com.stonebreak.gameplay.SboGameplay;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

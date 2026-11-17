@@ -3,7 +3,6 @@ package com.stonebreak.mobs.goblin.camp;
 import com.stonebreak.blocks.BlockType;
 import org.joml.Vector3i;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -14,9 +13,11 @@ import java.util.function.Predicate;
 /**
  * Looks for somewhere a goblin band can make camp: a dark surface cave — a roomy covered floor a
  * few blocks under the ground's top, close to where the band is — that the band can walk to from
- * where it stands, by the moves a goblin makes (a step up of one, a drop of up to three). When the best caves are all sealed, the best one that can be dug into wins
- * ({@link EntrancePlanner}). The answer is a ranked list: when the real walk to the best site fails
- * (the pathfinder is stricter than the scan), the band moves straight on to the next.
+ * where it stands. Where it can walk is the engine navigation's own answer ({@link CampWalker}: the
+ * moves and cells its routes use), so a site picked here is one its pathfinder can reach. When the
+ * best caves are all sealed, the best one that can be dug into wins ({@link EntrancePlanner}). The
+ * answer is a ranked list: when the real walk to the best site still fails (a route's own search
+ * budget is shorter than the scan's), the band moves straight on to the next.
  *
  * <p>Incremental: {@link #step} scans a budget of columns per call, so a search spreads over
  * ticks rather than stalling one. Reads only loaded terrain.
@@ -33,12 +34,12 @@ public final class CampSiteFinder {
     /** How far round a site, and how high over it, to look for anything built (NaturalGround). */
     static final int BUILT_REACH = 3;
     static final int BUILT_HEADROOM = 4;
-    /** Walkable cells the reachability search may visit before giving up. */
+    /** Walkable cells the walk out to the sky may visit before giving up. */
     static final int REACH_BUDGET = 4000;
+    /** How far round its start the walk out to the sky may go, in columns. */
+    static final int REACH_RADIUS = 64;
     /** Walkable cells the band's own walk round the search area may visit. */
     static final int WALK_BUDGET = 20000;
-    /** Highest drop a goblin takes on purpose (NavProfiles.WALKER_MAX_FALL). */
-    static final int MAX_DROP = 3;
     /** Best candidates tried for a way out before settling for digging one. */
     static final int CANDIDATES_TRIED = 12;
     /** Plans handed back, best first. */
@@ -49,6 +50,7 @@ public final class CampSiteFinder {
     private record Candidate(Vector3i cell, float score) { }
 
     private final CampTerrain terrain;
+    private final CampWalker walker;
     private final Vector3i start;
     private final int centerX;
     private final int centerZ;
@@ -60,14 +62,13 @@ public final class CampSiteFinder {
     private List<CampSitePlan> result = List.of();
 
     /**
-     * @param allowed a final say on each site — e.g. not inside another camp's territory
-     */
-    /**
+     * @param walker  where the band can walk (its leader's routes)
      * @param start   where the band stands (its leader's feet)
      * @param allowed a final say on each site — e.g. not inside another camp's territory
      */
-    public CampSiteFinder(CampTerrain terrain, Vector3i start, Predicate<Vector3i> allowed) {
+    public CampSiteFinder(CampTerrain terrain, CampWalker walker, Vector3i start, Predicate<Vector3i> allowed) {
         this.terrain = terrain;
+        this.walker = walker;
         this.start = start;
         this.centerX = start.x;
         this.centerZ = start.z;
@@ -167,7 +168,7 @@ public final class CampSiteFinder {
         if (candidates.isEmpty()) {
             return List.of();
         }
-        Set<Vector3i> walkable = walkableFrom(terrain, footing(terrain, start), RADIUS + 8);
+        Set<Vector3i> walkable = walkableFrom(walker, start, RADIUS + 8);
         candidates.sort(Comparator.comparingDouble(Candidate::score).reversed());
         List<Vector3i> distinct = new ArrayList<>();
         for (Candidate c : candidates) {
@@ -196,16 +197,6 @@ public final class CampSiteFinder {
         return plans;
     }
 
-    /** The standable cell at or just round {@code feet}: where a goblin standing there really is. */
-    static Vector3i footing(CampTerrain terrain, Vector3i feet) {
-        for (int dy = 0; dy >= -2; dy--) {
-            if (terrain.standable(feet.x, feet.y + dy, feet.z)) {
-                return new Vector3i(feet.x, feet.y + dy, feet.z);
-            }
-        }
-        return feet;
-    }
-
     /** Whether some walkable cell lies within a block of {@code cell}. */
     private static boolean nearAny(Set<Vector3i> walkable, Vector3i cell) {
         for (int dx = -1; dx <= 1; dx++) {
@@ -220,90 +211,35 @@ public final class CampSiteFinder {
         return false;
     }
 
-    /**
-     * Every cell a goblin standing at {@code from} can walk to, within {@code radius} columns: a
-     * step to a neighbouring column up one (with headroom), level, or down as far as
-     * {@link #MAX_DROP}.
-     */
-    static Set<Vector3i> walkableFrom(CampTerrain terrain, Vector3i from, int radius) {
-        Set<Vector3i> seen = new HashSet<>();
-        ArrayDeque<Vector3i> open = new ArrayDeque<>();
-        if (!terrain.standable(from.x, from.y, from.z)) {
-            return seen;
+    /** Every cell a goblin standing at {@code from} can walk to, within {@code radius} columns. */
+    static Set<Vector3i> walkableFrom(CampWalker walker, Vector3i from, int radius) {
+        com.openmason.engine.nav.NavWorld.Reach reach = walker.reach(from, radius, WALK_BUDGET);
+        Set<Vector3i> cells = new HashSet<>();
+        for (int i = 0; i < reach.count(); i++) {
+            cells.add(new Vector3i(reach.x(i), reach.y(i), reach.z(i)));
         }
-        seen.add(from);
-        open.add(from);
-        while (!open.isEmpty() && seen.size() < WALK_BUDGET) {
-            Vector3i c = open.poll();
-            for (int[] d : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-                int nx = c.x + d[0];
-                int nz = c.z + d[1];
-                if (Math.abs(nx - from.x) > radius || Math.abs(nz - from.z) > radius) {
-                    continue;
-                }
-                for (int dy = 1; dy >= -MAX_DROP; dy--) {
-                    int ny = c.y + dy;
-                    if (dy == 1 && !terrain.open(c.x, c.y + 2, c.z)) {
-                        continue; // no headroom to climb
-                    }
-                    if (dy < 0 && !(terrain.open(nx, c.y, nz) && terrain.open(nx, c.y + 1, nz))) {
-                        break; // a wall: nothing to step off into
-                    }
-                    if (terrain.standable(nx, ny, nz)) {
-                        Vector3i n = new Vector3i(nx, ny, nz);
-                        if (seen.add(n)) {
-                            open.add(n);
-                        }
-                        break; // the first floor going down is where it lands
-                    }
-                }
-            }
-        }
-        return seen;
+        return cells;
     }
 
     /** Whether a goblin standing at {@code from} can walk out to a cell under open sky. */
-    static boolean reachesSky(CampTerrain terrain, Vector3i from) {
-        return pathToSky(terrain, from) != null;
+    static boolean reachesSky(CampWalker walker, CampTerrain terrain, Vector3i from) {
+        return pathToSky(walker, terrain, from) != null;
     }
 
     /**
-     * The walk from {@code from} out to the nearest cell under open sky — {@code from} first, the
-     * open cell last — or {@code null} when there is none within {@link #REACH_BUDGET} cells.
+     * The walk from {@code from} out to the nearest cell under open sky — every cell on the way,
+     * {@code from}'s footing first, the open cell last — or {@code null} when there is none within
+     * {@link #REACH_BUDGET} walkable cells.
      */
-    public static java.util.List<Vector3i> pathToSky(CampTerrain terrain, Vector3i from) {
-        ArrayDeque<Vector3i> open = new ArrayDeque<>();
-        java.util.Map<Vector3i, Vector3i> parent = new java.util.HashMap<>();
-        open.add(from);
-        parent.put(from, from);
-        while (!open.isEmpty() && parent.size() < REACH_BUDGET) {
-            Vector3i c = open.poll();
-            if (!terrain.covered(c.x, c.y, c.z)) {
+    public static java.util.List<Vector3i> pathToSky(CampWalker walker, CampTerrain terrain, Vector3i from) {
+        com.openmason.engine.nav.NavWorld.Reach reach = walker.reach(from, REACH_RADIUS, REACH_BUDGET);
+        for (int i = 0; i < reach.count(); i++) {
+            if (!terrain.covered(reach.x(i), reach.y(i), reach.z(i))) {
                 java.util.LinkedList<Vector3i> path = new java.util.LinkedList<>();
-                for (Vector3i at = c; ; at = parent.get(at)) {
-                    path.addFirst(at);
-                    if (at.equals(from)) {
-                        return path;
-                    }
+                for (int at = i; at >= 0; at = reach.parent(at)) {
+                    path.addFirst(new Vector3i(reach.x(at), reach.y(at), reach.z(at)));
                 }
-            }
-            for (int[] d : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    int nx = c.x + d[0];
-                    int ny = c.y + dy;
-                    int nz = c.z + d[1];
-                    // Stepping up needs headroom above the cell left behind.
-                    if (dy == 1 && !terrain.open(c.x, c.y + 2, c.z)) {
-                        continue;
-                    }
-                    if (terrain.standable(nx, ny, nz)) {
-                        Vector3i n = new Vector3i(nx, ny, nz);
-                        if (!parent.containsKey(n)) {
-                            parent.put(n, c);
-                            open.add(n);
-                        }
-                    }
-                }
+                return path;
             }
         }
         return null;

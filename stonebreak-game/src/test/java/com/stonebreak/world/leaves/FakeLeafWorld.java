@@ -23,6 +23,12 @@ final class FakeLeafWorld implements LeafWorld {
     /** Cells marked player-placed; cleared when the cell changes type, like the chunk state map. */
     private final java.util.Set<Long> persistent = new java.util.HashSet<>();
 
+    /** Shapes of the mirrored physics world: what the reachability flood reads. */
+    private static final short LEAF_SHAPE = 1;
+    private static final short LOG_SHAPE = 2;
+    private static final short OTHER_SHAPE = 3;
+    private com.openmason.engine.physics.PhysicsWorld physics;
+
     FakeLeafWorld(int sizeX, int sizeY, int sizeZ) {
         this.sizeX = sizeX;
         this.sizeY = sizeY;
@@ -51,6 +57,39 @@ final class FakeLeafWorld implements LeafWorld {
         return inRegion(x, y, z);
     }
 
+    /**
+     * A physics world over this region, built as {@code WorldPhysics} builds one for these blocks
+     * (leaves {@code SOLID | PICK | LEAVES}, logs {@code ... | LOG}); outside the region is empty.
+     */
+    @Override
+    public com.openmason.engine.physics.PhysicsWorld physics() {
+        if (physics == null) {
+            physics = com.openmason.engine.physics.PhysicsWorld.create(this::fill, 4, 0, 0);
+            float[] full = {0, 0, 0, 1, 1, 1};
+            int solid = com.stonebreak.world.physics.WorldPhysics.SOLID | com.stonebreak.world.physics.WorldPhysics.PICK;
+            physics.defineShape(LEAF_SHAPE, full, solid | com.stonebreak.world.physics.WorldPhysics.LEAVES, 0);
+            physics.defineShape(LOG_SHAPE, full, solid | com.stonebreak.world.physics.WorldPhysics.LOG, 0);
+            physics.defineShape(OTHER_SHAPE, full, solid, 0);
+        }
+        return physics;
+    }
+
+    private boolean fill(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+        for (int y = 0; y < sy; y++) {
+            for (int z = 0; z < sz; z++) {
+                for (int x = 0; x < sx; x++) {
+                    BlockType block = getBlock(x0 + x, y0 + y, z0 + z);
+                    if (block == null || block == BlockType.AIR) {
+                        continue;
+                    }
+                    shapes[(y * sz + z) * sx + x] = block.isLeaves() ? LEAF_SHAPE
+                        : block.isLog() ? LOG_SHAPE : OTHER_SHAPE;
+                }
+            }
+        }
+        return true;
+    }
+
     @Override
     public void setBlock(int x, int y, int z, BlockType type) {
         if (!inRegion(x, y, z)) {
@@ -60,6 +99,9 @@ final class FakeLeafWorld implements LeafWorld {
         blocks[x][y][z] = type;
         if (previous != type) {
             persistent.remove(key(x, y, z));
+        }
+        if (physics != null) {
+            physics.invalidateCell(x, y, z); // as World.setBlockAt keeps the real cache honest
         }
         if (previous != null && previous.isLeaves() && type == BlockType.AIR) {
             removals.add(new int[]{x, y, z});

@@ -14,14 +14,12 @@ import org.joml.Vector3f;
 public class FireBolt extends Entity {
 
     private static final float BOLT_SPEED = 25.0f;
+    /** Sub-step of a bolt that flies through some blocks ({@link #flyThrough}). */
+    private static final float COLLISION_STEP = 0.25f;
     private static final float MAX_AGE    = 5.0f;
     private static final float DAMAGE     = 8.0f;
     // Body boxes are grown by the bolt's half-size when it sweeps through them.
     private static final float HIT_MARGIN = 0.15f;
-    // Largest distance the bolt is allowed to advance between collision samples.
-    // Sub-stepping the per-frame move at this granularity stops fast bolts from
-    // tunnelling through thin blocks or skipping past mobs at low frame rates.
-    private static final float COLLISION_STEP = 0.25f;
     /** How long an impacted bolt stays (at least): the longest trail/burst particle's life. */
     private static final float IMPACT_LINGER = 0.75f;
     /** Replicated (EntityAnimS2C) when the bolt hits, so a client shadow bursts and hides its core. */
@@ -29,6 +27,7 @@ public class FireBolt extends Entity {
 
     /** Unit travel direction; a homing subclass turns it in {@link #steer}. */
     protected final Vector3f direction;
+    private final com.openmason.engine.physics.RayHit rayHit = new com.openmason.engine.physics.RayHit();
     // Once true the bolt has hit something and stops moving; it stays alive only
     // long enough for its trail/impact particles to fade out before despawning.
     private boolean impacted = false;
@@ -82,31 +81,46 @@ public class FireBolt extends Entity {
         }
 
         steer(deltaTime);
-
-        // Advance the bolt in small sub-steps so collision is checked along the
-        // whole travel segment rather than only at the destination point.
-        float remaining = speed() * deltaTime;
+        float travel = speed() * deltaTime;
         heading.set(direction);
         hasHeading = true;
-        while (remaining > 0.0f && !impacted) {
-            float stepLen = Math.min(COLLISION_STEP, remaining);
-            remaining -= stepLen;
 
-            Vector3f newPos = new Vector3f(direction).mul(stepLen).add(position);
-
-            // Block collision at the leading sample point.
-            BlockType block = world.getBlockAt(
-                    (int) Math.floor(newPos.x),
-                    (int) Math.floor(newPos.y),
-                    (int) Math.floor(newPos.z));
-            if (block != null && !passesThrough(block)) {
-                impact();
+        // One swept move per update (OpenMason #117): the bolt's box against every block shape,
+        // door and model in its path, and the centre line against water — no frame rate lets a fast
+        // bolt tunnel through a thin block or skip past a mob.
+        Vector3f end = new Vector3f(direction).mul(travel).add(position);
+        float reach = 1.0f; // fraction of the move before the first block or water
+        boolean hitBlock = false;
+        int hitX = 0, hitY = 0, hitZ = 0;
+        if (world != null && travel > 0.0f) {
+            com.stonebreak.world.physics.WorldPhysics physics = com.stonebreak.world.physics.WorldPhysics.of(world);
+            if (physics.sweep(position.x, position.y, position.z, end.x, end.y, end.z,
+                    HIT_MARGIN, HIT_MARGIN, HIT_MARGIN, com.stonebreak.world.physics.WorldPhysics.PROJECTILE_MASK, rayHit)) {
+                reach = rayHit.distance;
+                hitBlock = true;
+                hitX = rayHit.x;
+                hitY = rayHit.y;
+                hitZ = rayHit.z;
+            }
+            if (physics.raycast(position.x, position.y, position.z, direction.x, direction.y, direction.z, travel,
+                    0, com.stonebreak.world.physics.WorldPhysics.WATER, rayHit)
+                    && rayHit.distance / travel < reach) {
+                reach = rayHit.distance / travel;
+                hitBlock = false; // water first
+            }
+        }
+        if (hitBlock && passesThrough(world.getBlockAt(hitX, hitY, hitZ))) {
+            // The first thing in the way is something this bolt flies on through (a wisp through
+            // leaves): sample its way along the rest of this tick's travel instead.
+            if (flyThrough(travel)) {
                 return;
             }
-
-            boolean struck = strike(position, newPos);
-            position.set(newPos);
-            if (struck) {
+        } else {
+            Vector3f stop = new Vector3f(direction).mul(travel * reach).add(position);
+            // Entity collision — whatever is on the stretch it actually flew.
+            boolean struck = strike(position, stop);
+            position.set(stop);
+            if (struck || reach < 1.0f) {
                 impact();
                 return;
             }
@@ -119,6 +133,35 @@ public class FireBolt extends Entity {
             particles.spawn(position, backDir);
             particles.update(deltaTime);
         }
+    }
+
+    /**
+     * Advances {@code travel} in {@link #COLLISION_STEP} sub-steps, sampling the block at each
+     * leading point: for a bolt that flies through some blocks ({@link #passesThrough}), which a
+     * single sweep cannot express. Returns whether the bolt hit something and is spent.
+     */
+    private boolean flyThrough(float travel) {
+        float remaining = travel;
+        while (remaining > 0.0f && !impacted) {
+            float stepLen = Math.min(COLLISION_STEP, remaining);
+            remaining -= stepLen;
+            Vector3f newPos = new Vector3f(direction).mul(stepLen).add(position);
+            BlockType block = world.getBlockAt(
+                    (int) Math.floor(newPos.x),
+                    (int) Math.floor(newPos.y),
+                    (int) Math.floor(newPos.z));
+            if (block != null && !passesThrough(block)) {
+                impact();
+                return true;
+            }
+            boolean struck = strike(position, newPos);
+            position.set(newPos);
+            if (struck) {
+                impact();
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Flight speed, blocks per second. */

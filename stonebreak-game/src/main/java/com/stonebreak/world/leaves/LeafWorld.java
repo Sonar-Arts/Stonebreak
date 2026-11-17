@@ -1,5 +1,6 @@
 package com.stonebreak.world.leaves;
 
+import com.openmason.engine.physics.PhysicsWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -17,6 +18,15 @@ public interface LeafWorld {
 
     /** Whether the position is inside the world and its chunk is resident. */
     boolean isLoaded(int x, int y, int z);
+
+    /**
+     * The physics world whose cells mirror this one, where the reachability flood runs: leaves carry
+     * {@link com.stonebreak.world.physics.WorldPhysics#LEAVES}, logs
+     * {@link com.stonebreak.world.physics.WorldPhysics#LOG}, unloaded cells are empty, and every
+     * {@link #setBlock} reaches it (through the world's physics invalidation). Called on the sim tick
+     * thread, which owns it.
+     */
+    PhysicsWorld physics();
 
     /**
      * Writes a block (AIR when a leaf decays). The production adapter routes

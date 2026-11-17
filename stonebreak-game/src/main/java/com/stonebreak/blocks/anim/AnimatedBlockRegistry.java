@@ -40,6 +40,8 @@ public final class AnimatedBlockRegistry {
     private static volatile Set<BlockType> animatedTypes;
 
     private final Set<BlockPos> positions = ConcurrentHashMap.newKeySet();
+    /** Bumped on every change that can move a model box (physics resyncs on it). */
+    private volatile int version;
 
     /** True when this block type's SBO declares per-state animation clips. */
     public static boolean isAnimatedType(BlockType type) {
@@ -67,6 +69,18 @@ public final class AnimatedBlockRegistry {
         return Collections.unmodifiableSet(types);
     }
 
+    /** Changes whenever a tracked block appears, leaves or changes state. */
+    public int version() {
+        return version;
+    }
+
+    /** A block state changed: if it is a tracked animated block, its pose (and model box) may have. */
+    public void onStateChanged(int x, int y, int z) {
+        if (positions.contains(new BlockPos(x, y, z))) {
+            version++;
+        }
+    }
+
     /** All tracked animated-block positions (live concurrent view). */
     public Set<BlockPos> positions() {
         return positions;
@@ -77,8 +91,10 @@ public final class AnimatedBlockRegistry {
     public void onBlockChanged(int x, int y, int z, BlockType previous, BlockType now) {
         if (isAnimatedType(previous) && !isAnimatedType(now)) {
             positions.remove(new BlockPos(x, y, z));
+            version++;
         } else if (isAnimatedType(now)) {
             positions.add(new BlockPos(x, y, z));
+            version++;
         }
     }
 
@@ -99,6 +115,7 @@ public final class AnimatedBlockRegistry {
                 positions.add(new BlockPos(cx * CHUNK_SIZE + lx, ly, cz * CHUNK_SIZE + lz));
             }
         }
+        version++;
     }
 
     public void onChunkUnloaded(Chunk chunk) {
@@ -113,5 +130,6 @@ public final class AnimatedBlockRegistry {
                 it.remove();
             }
         }
+        version++;
     }
 }

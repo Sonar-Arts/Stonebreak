@@ -17,8 +17,9 @@ class CampSiteFinderTest {
 
     private static final int TOP = FakeTerrain.GROUND_TOP;
 
-    private static CampSitePlan search(CampTerrain terrain, int x, int z) {
-        CampSiteFinder finder = new CampSiteFinder(terrain, new org.joml.Vector3i(x, TOP + 1, z), cell -> true);
+    private static CampSitePlan search(FakeTerrain terrain, int x, int z) {
+        CampSiteFinder finder = new CampSiteFinder(terrain, terrain.walker(), new org.joml.Vector3i(x, TOP + 1, z),
+                cell -> true);
         int guard = 0;
         while (!finder.step(200)) {
             assertTrue(++guard < 1000, "the search ends");
@@ -57,6 +58,26 @@ class CampSiteFinderTest {
         assertTrue(Math.abs(site.x - 6) <= 3 && Math.abs(site.z) <= 3, "inside the room: " + site);
     }
 
+    /**
+     * The point of asking the engine where the band can walk: the site it picks is one a goblin's
+     * own route reaches, by the same search its path agent will run.
+     */
+    @Test
+    void theChosenSiteIsOneAGoblinsRouteReaches() {
+        FakeTerrain t = new FakeTerrain();
+        room(t, 6, 0);
+        openTheRoomEast(t, 6, 0);
+        CampSitePlan plan = search(t, 0, 0);
+        assertNotNull(plan);
+        Vector3i site = plan.site();
+        com.openmason.engine.nav.NavWorld nav = t.nav();
+        long id = nav.searchGround(new com.openmason.engine.nav.NavWorld.GroundQuery(0.5f, TOP + 1, 0.5f,
+                site.x + 0.5f, site.y, site.z + 0.5f, 0f, 4, 2, FakeTerrain.goblin(),
+                new com.openmason.engine.nav.NavLimits(20_000, Float.MAX_VALUE, 1.0f)));
+        nav.step(Integer.MAX_VALUE);
+        assertTrue(nav.poll(id).reachedGoal(), "a goblin can walk to the camp it chose: " + site);
+    }
+
     @Test
     void aSealedCaveIsDugIntoUpAStair() {
         FakeTerrain t = new FakeTerrain();
@@ -69,7 +90,7 @@ class CampSiteFinderTest {
         for (Vector3i c : plan.dig()) {
             t.set(c.x, c.y, c.z, BlockType.AIR);
         }
-        assertTrue(CampSiteFinder.reachesSky(t, plan.site()));
+        assertTrue(CampSiteFinder.reachesSky(t.walker(), t, plan.site()));
     }
 
     @Test
@@ -84,7 +105,7 @@ class CampSiteFinderTest {
         FakeTerrain t = new FakeTerrain();
         room(t, 6, 0);
         openTheRoomEast(t, 6, 0);
-        CampSiteFinder finder = new CampSiteFinder(t, new org.joml.Vector3i(0, TOP + 1, 0), cell -> false);
+        CampSiteFinder finder = new CampSiteFinder(t, t.walker(), new org.joml.Vector3i(0, TOP + 1, 0), cell -> false);
         while (!finder.step(500)) { }
         assertNull(finder.result());
     }

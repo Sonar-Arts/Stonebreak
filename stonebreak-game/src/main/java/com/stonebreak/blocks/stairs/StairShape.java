@@ -131,6 +131,39 @@ public final class StairShape {
         return height;
     }
 
+    /**
+     * The stair's steps as solid boxes in cell space ({@code [0,1]}, 6 floats each: min x/y/z, max
+     * x/y/z) for a placed facing — each step plate from the cell floor up to its top. Physics
+     * collides with these, so a body meets exactly the treads {@link #maxHeightIn} describes.
+     */
+    public List<float[]> cellBoxes(StairState.Facing facing) {
+        StairState state = new StairState(facing);
+        List<float[]> out = new ArrayList<>(plates.size());
+        for (Plate plate : plates) {
+            float[] a = fromModelCell(state, plate.minX(), plate.minZ());
+            float[] b = fromModelCell(state, plate.maxX(), plate.maxZ());
+            out.add(new float[]{Math.min(a[0], b[0]), 0f, Math.min(a[1], b[1]),
+                    Math.max(a[0], b[0]), plate.top(), Math.max(a[1], b[1])});
+        }
+        return out;
+    }
+
+    /**
+     * Inverse of {@link StairState#toModelCell}: a quarter turn has order 1, 2 or 4, so the point
+     * one application before returning to the start is the preimage.
+     */
+    private static float[] fromModelCell(StairState state, float modelX, float modelZ) {
+        float[] q = {modelX, modelZ};
+        for (int i = 0; i < 4; i++) {
+            float[] next = state.toModelCell(q[0], q[1]);
+            if (Math.abs(next[0] - modelX) < 1e-5f && Math.abs(next[1] - modelZ) < 1e-5f) {
+                return q;
+            }
+            q = next;
+        }
+        return new float[]{modelX, modelZ};
+    }
+
     private static float clampToCell(float v) {
         return Math.clamp(v, 0f, 1f);
     }

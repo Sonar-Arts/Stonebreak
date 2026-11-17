@@ -154,6 +154,8 @@ class ServerPlayerLocatorTest {
 
         assertFalse(sighted.canSeeNearestPlayer(goose.getPosition(), eye));
         when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(BlockType.AIR);
+        // Sight reads the physics cache: tell it the wall went, as World.setBlockAt would.
+        com.stonebreak.world.physics.WorldPhysics.of(world).engine().invalidateAll();
         assertTrue(sighted.canSeeNearestPlayer(goose.getPosition(), eye));
     }
 }

@@ -458,6 +458,8 @@ public final class GoblinPack {
                 return;
             }
             finder = new CampSiteFinder(CampTerrain.of(world),
+                    com.stonebreak.mobs.goblin.camp.CampWalker.of(world,
+                            com.stonebreak.mobs.entities.ai.nav.NavProfiles.forEntity(leader)),
                     new org.joml.Vector3i((int) Math.floor(at.x), (int) Math.floor(at.y), (int) Math.floor(at.z)),
                     cell -> !camps.campWithin(new Vector3f(cell.x, cell.y, cell.z), CampRegistry.TERRITORY));
         }

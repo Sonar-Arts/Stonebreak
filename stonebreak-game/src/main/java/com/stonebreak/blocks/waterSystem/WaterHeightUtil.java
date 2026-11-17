@@ -26,9 +26,17 @@ public final class WaterHeightUtil {
         if (value < 0) {
             return Float.NaN;
         }
-        float height = (value == ChunkWaterLayer.SOURCE || value == ChunkWaterLayer.FALLING)
+        return surfaceFraction(value);
+    }
+
+    /**
+     * Surface height fraction (within its block) of water at a {@code getWaterLevelAt} level
+     * (0..8): sources and falling columns are full height, flowing water steps down with its level.
+     */
+    public static float surfaceFraction(int level) {
+        float height = (level == ChunkWaterLayer.SOURCE || level == ChunkWaterLayer.FALLING)
             ? MAX_WATER_HEIGHT
-            : (8 - value) * MAX_WATER_HEIGHT / 8.0f;
+            : (8 - level) * MAX_WATER_HEIGHT / 8.0f;
         return clampWaterHeight(height);
     }
 

@@ -26,7 +26,6 @@ import com.stonebreak.player.locomotion.JumpHandler;
 import com.stonebreak.player.locomotion.SpectatorController;
 import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.physics.CollisionHandler;
-import com.stonebreak.player.physics.GroundChecker;
 import com.stonebreak.player.physics.MovementController;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
@@ -41,7 +40,6 @@ final class PlayerControllers {
 
     // Physics
     final CollisionHandler collisionHandler;
-    final GroundChecker groundChecker;
     final MovementController movement;
 
     // Locomotion
@@ -83,7 +81,6 @@ final class PlayerControllers {
         IBlockPlacementService blockPlacementService = new BlockPlacementValidator(world);
 
         this.collisionHandler = new CollisionHandler(state, world);
-        this.groundChecker = new GroundChecker(state, collisionHandler);
         this.swimming = new SwimmingController(state, world);
         this.flight = new FlightController(state);
         this.jumpHandler = new JumpHandler(state);

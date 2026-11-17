@@ -505,6 +505,9 @@ public class WorldChunkStore {
                     if (meshPipeline != null) {
                         meshPipeline.scheduleConditionalMeshBuild(chunk);
                     }
+                    // Nor does it reach the physics cache (collision, navigation, the leaf-decay
+                    // flood), which may already hold this column from before the features landed.
+                    world.invalidatePhysicsChunk(x, z);
                     // Passive mobs are no longer spawned at chunk generation. Population is owned
                     // entirely by the server's continuous, visibility-capped spawner (EntitySpawner),
                     // which fills the loaded area toward a dynamic cap and lets depopulated regions

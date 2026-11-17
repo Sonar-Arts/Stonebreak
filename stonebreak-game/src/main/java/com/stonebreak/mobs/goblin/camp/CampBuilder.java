@@ -43,12 +43,13 @@ public final class CampBuilder {
      *
      * @param reserved cells that must stay clear (the chest, the fire)
      */
-    public static Placement next(CampTerrain terrain, BlockPos fire, int population, Predicate<Vector3i> reserved) {
+    public static Placement next(CampTerrain terrain, CampWalker walker, BlockPos fire, int population,
+                                 Predicate<Vector3i> reserved) {
         if (population < BEDROLL_POPULATION) {
             return null;
         }
         Vector3i hearth = new Vector3i(fire.x(), fire.y(), fire.z());
-        List<Vector3i> walkway = CampSiteFinder.pathToSky(terrain, standingBeside(terrain, hearth));
+        List<Vector3i> walkway = CampSiteFinder.pathToSky(walker, terrain, standingBeside(terrain, hearth));
         Set<Vector3i> keepClear = new HashSet<>();
         if (walkway != null) {
             for (Vector3i c : walkway) {

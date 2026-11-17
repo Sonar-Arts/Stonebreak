@@ -164,7 +164,7 @@ public class RemotePlayer extends LivingEntity {
 
     /** Shared phase for the body and its shadow, retained when changing walk/sprint pace. */
     public float getBodyAnimationTime() {
-        return gaitClock.isActive() ? gaitClock.timeSeconds() : animationController.getTotalAnimationTime();
+        return gaitClock.isActive() ? gaitClock.timeSeconds() : clipClock.totalTime();
     }
 
     /** Body facing in SBE model space (degrees) — what renderers should rotate the figure by. */
@@ -247,7 +247,7 @@ public class RemotePlayer extends LivingEntity {
         attackAnimation.update(deltaTime, PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING),
                 SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId()));
 
-        animationController.updateAnimations(deltaTime);
+        clipClock.advance(deltaTime, 0.0f);
     }
 
     /**

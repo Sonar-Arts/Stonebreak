@@ -38,7 +38,7 @@ class CampBuilderTest {
     private static List<CampBuilder.Placement> buildOut(FakeTerrain t, int population) {
         List<CampBuilder.Placement> built = new java.util.ArrayList<>();
         for (int i = 0; i < 40; i++) {
-            CampBuilder.Placement p = CampBuilder.next(t, FIRE, population, c -> false);
+            CampBuilder.Placement p = CampBuilder.next(t, t.walker(), FIRE, population, c -> false);
             if (p == null) {
                 return built;
             }
@@ -50,7 +50,8 @@ class CampBuilderTest {
 
     @Test
     void aSmallCampBuildsNothing() {
-        assertNull(CampBuilder.next(cave(), FIRE, CampBuilder.BEDROLL_POPULATION - 1, c -> false));
+        FakeTerrain small = cave();
+        assertNull(CampBuilder.next(small, small.walker(), FIRE, CampBuilder.BEDROLL_POPULATION - 1, c -> false));
     }
 
     @Test
@@ -68,7 +69,7 @@ class CampBuilderTest {
         List<CampBuilder.Placement> built = buildOut(t, 8);
         assertEquals(1, built.stream().filter(p -> p.block() == BlockType.MEAT_RACK).count());
         assertTrue(built.stream().anyMatch(p -> p.block() == BlockType.PALISADE), "stakes at the mouth: " + built);
-        assertNotNull(CampSiteFinder.pathToSky(t, new Vector3i(1, FLOOR, 0)), "the camp can still walk out");
+        assertNotNull(CampSiteFinder.pathToSky(t.walker(), t, new Vector3i(1, FLOOR, 0)), "the camp can still walk out");
     }
 
     @Test

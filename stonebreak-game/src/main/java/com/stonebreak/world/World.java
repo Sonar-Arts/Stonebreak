@@ -247,6 +247,7 @@ public class World {
         // layer counts persist (v3 save format), and forward to the server snow replication
         // sink when installed (headless server world only).
         this.snowLayerManager.setMutationListener((x, y, z, layers) -> {
+            invalidatePhysicsCell(x, y, z);
             var chunk = getChunkIfLoaded(Math.floorDiv(x, com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE),
                                          Math.floorDiv(z, com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE));
             if (chunk != null) {
@@ -350,6 +351,7 @@ public class World {
             meatRackRegistry.onChunkLoaded(chunk);
             animatedBlockRegistry.onChunkLoaded(chunk);
             rememberedLights.onChunkLoaded(chunk);
+            invalidatePhysicsChunk(chunk.getX(), chunk.getZ());
             meshScheduler.onChunkLoaded(chunk.getX(), chunk.getZ());
         }, chunk -> {
             // Before the registries below forget the chunk's torches: they keep lighting
@@ -374,6 +376,7 @@ public class World {
             saplingGrowth.onChunkUnloaded(chunk);
             blueberryBushGrowth.onChunkUnloaded(chunk);
             snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
+            invalidatePhysicsChunk(chunk.getX(), chunk.getZ());
         });
         // Before the save snapshot: a camp freezes into its fire, and the fire's state is written
         // while the chunk is still resident, so the save carries it. Authoritative worlds only.
@@ -560,6 +563,56 @@ public class World {
     /**
      * Gets the block type at the specified world position.
      */
+    // ===== Physics (engine cp_*, OpenMason #117) =====
+
+    /** Created on first use by the thread that simulates this world; see {@link #physics()}. */
+    private volatile com.stonebreak.world.physics.WorldPhysics physics;
+
+    /**
+     * This world's physics: collision, movement, rays and water over a native cell cache. Created
+     * on first use; owned by the thread that simulates the world.
+     */
+    public com.stonebreak.world.physics.WorldPhysics physics() {
+        com.stonebreak.world.physics.WorldPhysics p = physics;
+        if (p == null) {
+            synchronized (this) {
+                p = physics;
+                if (p == null) {
+                    if (cleanedUp) {
+                        throw new IllegalStateException("World is cleaned up");
+                    }
+                    p = com.stonebreak.world.physics.WorldPhysics.create(this);
+                    physics = p;
+                }
+            }
+        }
+        return p;
+    }
+
+    /** Tells physics a block or block state changed (no-op before physics exists). */
+    public void invalidatePhysicsBlock(int x, int y, int z) {
+        com.stonebreak.world.physics.WorldPhysics p = physics;
+        if (p != null) p.invalidateBlock(x, y, z);
+    }
+
+    /** Tells physics a water level changed. */
+    public void invalidatePhysicsWater(int x, int y, int z) {
+        com.stonebreak.world.physics.WorldPhysics p = physics;
+        if (p != null) p.invalidateWater(x, y, z);
+    }
+
+    /** Tells physics a cell's own shape changed (a snow layer). */
+    public void invalidatePhysicsCell(int x, int y, int z) {
+        com.stonebreak.world.physics.WorldPhysics p = physics;
+        if (p != null) p.invalidateCell(x, y, z);
+    }
+
+    /** Tells physics a chunk column arrived, left or was replaced. */
+    public void invalidatePhysicsChunk(int chunkX, int chunkZ) {
+        com.stonebreak.world.physics.WorldPhysics p = physics;
+        if (p != null) p.invalidateChunk(chunkX, chunkZ);
+    }
+
     /** Additional static model colliders, queried locally by player physics. Ordinary voxel worlds have none. */
     public java.util.List<float[]> getStaticCollisionBoxes(org.joml.Vector3f position, float range) {
         return java.util.List.of();
@@ -614,6 +667,8 @@ public class World {
         int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
         String previous = chunk.getBlockState(localX, y, localZ);
         chunk.setBlockState(localX, y, localZ, state);
+        invalidatePhysicsBlock(x, y, z);
+        animatedBlockRegistry.onStateChanged(x, y, z);
         // The state picks which mesh variant a chunk-baked block draws (a lit
         // furnace, a stair's facing), and marking the chunk dirty on its own
         // never schedules anything. Placement writes the state right after the
@@ -771,6 +826,7 @@ public class World {
         }
 
         chunk.setBlock(localX, y, localZ, blockType);
+        invalidatePhysicsBlock(x, y, z);
 
         meshScheduler.onBlockChanged(chunk, chunkX, chunkZ, localX, localZ, isPlayerModification);
 
@@ -1041,13 +1097,20 @@ public class World {
      * Cleans up resources when the game exits.
      */
     public void cleanup() {
-        // First: cancel in-flight path searches. They read this world's chunks, so they must stop
-        // before the chunk store is torn down beneath them.
+        // First: drop queued path searches. They read this world's physics cache, so the service
+        // must go before the physics does.
         cleanedUp = true;
         synchronized (pathfindingLock) {
             if (pathfinding != null) {
                 pathfinding.close();
                 pathfinding = null;
+            }
+        }
+
+        synchronized (this) {
+            if (physics != null) {
+                physics.close();
+                physics = null;
             }
         }
 
@@ -1181,12 +1244,22 @@ public class World {
     /**
      * This world's mob path searching, started on first request.
      *
-     * <p>Per world rather than global on purpose: a search reads the chunks of the world it was
-     * asked about, and {@link #cleanup()} closes the service before those chunks go away — so a
-     * world swap can never leave a worker planning routes through a world that no longer exists.
+     * <p>Per world rather than global on purpose: searches read this world's physics cache, and
+     * {@link #cleanup()} closes the service before the physics goes — so a world swap can never leave
+     * a result planned through a world that no longer exists. Created on first use by the thread that
+     * simulates the world (it is built over {@link #physics()}).
      *
      * @return the service, or null once this world has been cleaned up
      */
+    /**
+     * This world's path searching if something has already started it, else null. Never starts it
+     * (the service lives on the simulation thread's physics): for readers on other threads, such as
+     * the debug overlay, and for the per-tick {@code step}.
+     */
+    public com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfindingIfStarted() {
+        return pathfinding;
+    }
+
     public com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding() {
         com.stonebreak.mobs.entities.ai.nav.PathfindingService service = pathfinding;
         if (service != null) {
@@ -1249,7 +1322,9 @@ public class World {
      *         request a chunk resync, since the server has marked this chunk as sent.
      */
     public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload, byte[] metaPayload) {
-        return networkChunkInstaller.install(chunkX, chunkZ, payload, metaPayload);
+        boolean installed = networkChunkInstaller.install(chunkX, chunkZ, payload, metaPayload);
+        invalidatePhysicsChunk(chunkX, chunkZ);
+        return installed;
     }
 
     /**
@@ -1262,7 +1337,9 @@ public class World {
     public boolean installDecodedNetworkChunk(int chunkX, int chunkZ,
             com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded,
             int[] heights, byte[] metaPayload) {
-        return networkChunkInstaller.installDecoded(chunkX, chunkZ, decoded, heights, metaPayload);
+        boolean installed = networkChunkInstaller.installDecoded(chunkX, chunkZ, decoded, heights, metaPayload);
+        invalidatePhysicsChunk(chunkX, chunkZ);
+        return installed;
     }
 
     /**

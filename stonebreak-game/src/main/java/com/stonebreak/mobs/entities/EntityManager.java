@@ -1,14 +1,17 @@
 package com.stonebreak.mobs.entities;
 
+import com.openmason.engine.entity.EntityFilter;
+import com.openmason.engine.entity.EntityWorld;
+import com.openmason.engine.entity.HandleList;
 import org.joml.Vector3f;
 import com.stonebreak.world.World;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.player.Player;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Iterator;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -18,14 +21,36 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Central manager for all entities in the game world.
- * Handles entity lifecycle, updates, rendering, and collision detection.
+ * Central manager for all entities in one world.
+ *
+ * <p>The entity model itself is the engine's native one (OpenMason #114, {@code ce_*} through
+ * {@link EntityWorld}): it owns the handles, the deferred spawn/despawn lifecycle (so entities can be
+ * removed while the list is walked), the live order, the {@link EntityType} descriptors, the spatial
+ * index behind the range/nearest/type/chunk queries and every living entity's clip clock. This class
+ * keeps what is Stonebreak's: the entity objects (keyed by handle slot), the update rules (shadows,
+ * riders, physics per kind, mob collisions), spawning rules, listeners and save bookkeeping.
+ *
+ * <p>Every native call holds the {@link EntityWorld}'s monitor, so a query or spawn from another
+ * thread is serialized with the owner's commits instead of racing them.
  */
 public class EntityManager {
-    // Entity storage
-    private final List<Entity> entities;
-    private final List<Entity> entitiesToAdd;
-    private final List<Entity> entitiesToRemove;
+
+    /** Body flags this game pushes to the native world (the engine treats them as opaque bits). */
+    static final int BODY_ALIVE = 1;
+    static final int BODY_LIVING = 2;
+    static final int BODY_SHADOW = 4;
+    static final int BODY_PERSISTENT = 8;
+
+    private static final EntityFilter ALIVE = EntityFilter.requiring(BODY_ALIVE);
+
+    // The native entity world and the objects behind its handles (index = EntityWorld.slotOf).
+    private final EntityWorld nativeWorld;
+    private Entity[] bySlot = new Entity[256];
+    private final HandleList commitBuffer = new HandleList(64);
+    private final HandleList queryBuffer = new HandleList(64);
+
+    /** The entities in the world, in the native live order; replaced (never mutated) on commits. */
+    private volatile List<Entity> entities = new CopyOnWriteArrayList<>();
 
     // World and collision system
     private final World world;
@@ -47,15 +72,19 @@ public class EntityManager {
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     public void addListener(Listener l) { listeners.add(l); }
     public void removeListener(Listener l) { listeners.remove(l); }
-    
+
     /**
      * Creates a new entity manager for the specified world.
+     *
+     * @throws IllegalStateException when the engine's native entity model is unavailable (the
+     *         Cenda library is missing or fails its handshake); there is no Java fallback
      */
     public EntityManager(World world) {
         this.world = world;
-        this.entities = new CopyOnWriteArrayList<>(); // Thread-safe for concurrent access
-        this.entitiesToAdd = new ArrayList<>();
-        this.entitiesToRemove = new ArrayList<>();
+        this.nativeWorld = EntityWorld.create(8.0f);
+        for (EntityType type : EntityType.values()) {
+            nativeWorld.defineType(type.ordinal(), type.descriptor());
+        }
         this.collision = new EntityCollision(world);
         this.totalTime = 0.0f;
 
@@ -68,7 +97,7 @@ public class EntityManager {
             return thread;
         });
     }
-    
+
     /**
      * Updates all entities and handles entity management.
      */
@@ -79,14 +108,7 @@ public class EntityManager {
         processPendingEntityAdditions();
 
         // Add new entities
-        synchronized (entitiesToAdd) {
-            if (!entitiesToAdd.isEmpty()) {
-                List<Entity> added = new ArrayList<>(entitiesToAdd);
-                entities.addAll(entitiesToAdd);
-                entitiesToAdd.clear();
-                for (Entity e : added) fireAdded(e);
-            }
-        }
+        for (Entity e : commitSpawns()) fireAdded(e);
 
         // Update all entities
         for (Entity entity : entities) {
@@ -137,13 +159,19 @@ public class EntityManager {
                     collision.applyEntityPhysics(entity, deltaTime);
                 }
             } else {
-                // Mark dead entities for removal
-                synchronized (entitiesToRemove) {
-                    entitiesToRemove.add(entity);
-                }
+                // Dead entities leave at the end of this update (removal is deferred natively).
+                removeEntity(entity);
             }
         }
-        
+
+        // Path searches the mobs asked for this tick (adopted next tick), on this thread, bounded.
+        if (world != null && !world.isRenderOnly()) {
+            com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding = world.pathfindingIfStarted();
+            if (pathfinding != null && !pathfinding.isClosed()) {
+                pathfinding.step();
+            }
+        }
+
         // Seats: mobs climb into boats, riders are carried to their seats.
         if (world != null && world.isRenderOnly()) {
             com.stonebreak.vehicles.RiderSystem.updateClient(entities,
@@ -155,16 +183,108 @@ public class EntityManager {
 
         // Handle entity-entity collisions
         handleEntityCollisions();
-        
+
         // Remove dead entities
-        synchronized (entitiesToRemove) {
-            if (!entitiesToRemove.isEmpty()) {
-                List<Entity> removed = new ArrayList<>(entitiesToRemove);
-                entities.removeAll(entitiesToRemove);
-                entitiesToRemove.clear();
-                for (Entity e : removed) fireRemoved(e);
+        for (Entity e : commitDespawns()) fireRemoved(e);
+    }
+
+    // ---- native entity world -------------------------------------------------------------------
+
+    private static int bodyFlags(Entity e) {
+        int flags = 0;
+        if (e.isAlive()) flags |= BODY_ALIVE;
+        if (e instanceof LivingEntity) flags |= BODY_LIVING;
+        if (e.isNetworkShadow()) flags |= BODY_SHADOW;
+        if (e.isPersistent()) flags |= BODY_PERSISTENT;
+        return flags;
+    }
+
+    /** The entity behind a handle of this world, or null. Caller holds the native monitor. */
+    private Entity entityAt(long handle) {
+        int slot = EntityWorld.slotOf(handle);
+        return slot >= 0 && slot < bySlot.length ? bySlot[slot] : null;
+    }
+
+    /** Brings queued entities into the world; returns them in commit order. */
+    private List<Entity> commitSpawns() {
+        synchronized (nativeWorld) {
+            nativeWorld.commitSpawns(commitBuffer);
+            if (commitBuffer.isEmpty()) {
+                return List.of();
             }
+            List<Entity> added = new ArrayList<>(commitBuffer.size());
+            for (int i = 0; i < commitBuffer.size(); i++) {
+                long handle = commitBuffer.get(i);
+                Entity e = entityAt(handle);
+                if (e == null) continue;
+                if (e instanceof LivingEntity living) {
+                    living.getClipClock().attach(nativeWorld, handle);
+                }
+                added.add(e);
+            }
+            refreshLiveList();
+            return added;
         }
+    }
+
+    /** Takes despawned entities out of the world; returns them in despawn order. */
+    private List<Entity> commitDespawns() {
+        synchronized (nativeWorld) {
+            nativeWorld.commitDespawns(commitBuffer);
+            if (commitBuffer.isEmpty()) {
+                return List.of();
+            }
+            List<Entity> removed = new ArrayList<>(commitBuffer.size());
+            for (int i = 0; i < commitBuffer.size(); i++) {
+                long handle = commitBuffer.get(i);
+                Entity e = entityAt(handle);
+                if (e == null) continue;
+                // A retired handle still has its clock until the next despawn commit: copy it out.
+                if (e instanceof LivingEntity living) {
+                    living.getClipClock().detach();
+                }
+                bySlot[EntityWorld.slotOf(handle)] = null;
+                e.setEntityHandle(null, 0L);
+                removed.add(e);
+            }
+            refreshLiveList();
+            return removed;
+        }
+    }
+
+    /** Rebuilds {@link #entities} from the native live order. Caller holds the native monitor. */
+    private void refreshLiveList() {
+        nativeWorld.live(queryBuffer);
+        Entity[] live = new Entity[queryBuffer.size()];
+        int n = 0;
+        for (int i = 0; i < queryBuffer.size(); i++) {
+            Entity e = entityAt(queryBuffer.get(i));
+            if (e != null) live[n++] = e;
+        }
+        entities = new CopyOnWriteArrayList<>(n == live.length ? live : Arrays.copyOf(live, n));
+    }
+
+    /** Pushes every live entity's body (position, yaw, size, flags). Caller holds the native monitor. */
+    private void syncBodies() {
+        int i = 0;
+        for (Entity e : entities) {
+            long handle = e.getEntityHandle();
+            if (handle == 0L || e.getEntityWorld() != nativeWorld) continue;
+            float leg = e instanceof LivingEntity living ? living.getLegHeight() : 0.0f;
+            Vector3f p = e.position;
+            nativeWorld.body(i++, handle, p.x, p.y, p.z, e.rotation.y, e.width, e.height, e.length, leg, bodyFlags(e));
+        }
+        nativeWorld.syncBodies(i);
+    }
+
+    /** The entities behind {@link #queryBuffer}, in its (live) order. Caller holds the native monitor. */
+    private <T extends Entity> List<T> queryResults(Class<T> type) {
+        List<T> out = new ArrayList<>(queryBuffer.size());
+        for (int i = 0; i < queryBuffer.size(); i++) {
+            Entity e = entityAt(queryBuffer.get(i));
+            if (type.isInstance(e)) out.add(type.cast(e));
+        }
+        return out;
     }
 
     private void fireAdded(Entity e) {
@@ -199,7 +319,7 @@ public class EntityManager {
             }
         }
     }
-    
+
     /**
      * Renders all entities using the provided renderer.
      */
@@ -225,9 +345,7 @@ public class EntityManager {
             Vector3f safePosition = findSafeSpawnPosition(position, entity);
             entity.setPosition(safePosition);
 
-            synchronized (entitiesToAdd) {
-                entitiesToAdd.add(entity);
-            }
+            queue(entity);
         }
         return entity;
     }
@@ -246,9 +364,7 @@ public class EntityManager {
             Vector3f safePosition = findSafeSpawnPosition(position, entity);
             entity.setPosition(safePosition);
 
-            synchronized (entitiesToAdd) {
-                entitiesToAdd.add(entity);
-            }
+            queue(entity);
         }
         return entity;
     }
@@ -272,10 +388,35 @@ public class EntityManager {
      * This is used for entities created outside the spawn system, like drops.
      */
     public void addEntity(Entity entity) {
-        if (entity != null) {
-            synchronized (entitiesToAdd) {
-                entitiesToAdd.add(entity);
+        queue(entity);
+    }
+
+    /**
+     * Queues an entity into the native world (it joins at the next update). The spawn helpers use
+     * this directly, as they always queued without going through {@link #addEntity}.
+     */
+    private void queue(Entity entity) {
+        if (entity == null) {
+            return;
+        }
+        synchronized (nativeWorld) {
+            // Already queued or in this world: adding twice must not list it twice.
+            if (entity.getEntityWorld() == nativeWorld
+                    && nativeWorld.state(entity.getEntityHandle()) != EntityWorld.STATE_NONE) {
+                return;
             }
+            Vector3f p = entity.position;
+            long handle = nativeWorld.spawn(entity.getType().ordinal(), bodyFlags(entity),
+                    p.x, p.y, p.z, entity.rotation.y);
+            if (handle == 0L) {
+                throw new IllegalStateException("native entity world refused " + entity.getType());
+            }
+            int slot = EntityWorld.slotOf(handle);
+            if (slot >= bySlot.length) {
+                bySlot = Arrays.copyOf(bySlot, Math.max(bySlot.length * 2, slot + 1));
+            }
+            bySlot[slot] = entity;
+            entity.setEntityHandle(nativeWorld, handle);
         }
     }
     
@@ -312,9 +453,7 @@ public class EntityManager {
      */
     public FireBolt spawnFireBolt(Vector3f position, Vector3f direction) {
         FireBolt bolt = new FireBolt(world, position, direction);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(bolt);
-        }
+        queue(bolt);
         return bolt;
     }
 
@@ -323,9 +462,7 @@ public class EntityManager {
      */
     public Arrow spawnArrow(Vector3f position, Vector3f velocity) {
         Arrow arrow = new Arrow(world, position, velocity);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(arrow);
-        }
+        queue(arrow);
         return arrow;
     }
 
@@ -337,9 +474,7 @@ public class EntityManager {
             float damagePerHit, float spellmarkDuration, boolean pierce, float burstDamage) {
         NullSpikeProjectile spike = new NullSpikeProjectile(world, position, direction,
             damagePerHit, spellmarkDuration, pierce, burstDamage);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(spike);
-        }
+        queue(spike);
         return spike;
     }
 
@@ -351,9 +486,7 @@ public class EntityManager {
             float pullForce, float pulseDamage, float duration, boolean overloaded) {
         LeylineBreachZone zone = new LeylineBreachZone(world, position, radius,
             pullForce, pulseDamage, duration, overloaded);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(zone);
-        }
+        queue(zone);
         return zone;
     }
 
@@ -363,9 +496,7 @@ public class EntityManager {
      */
     public CaltropCluster spawnCaltropCluster(Vector3f position, float duration) {
         CaltropCluster cluster = new CaltropCluster(world, position, duration);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(cluster);
-        }
+        queue(cluster);
         return cluster;
     }
 
@@ -378,9 +509,7 @@ public class EntityManager {
             return null;
         }
         com.stonebreak.vehicles.Dinghy dinghy = new com.stonebreak.vehicles.Dinghy(world, position, yawDeg);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(dinghy);
-        }
+        queue(dinghy);
         return dinghy;
     }
 
@@ -389,9 +518,7 @@ public class EntityManager {
      */
     public FishingBobber spawnBobber(Vector3f position, Vector3f direction) {
         FishingBobber bobber = new FishingBobber(world, position, direction);
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.add(bobber);
-        }
+        queue(bobber);
         return bobber;
     }
     
@@ -523,80 +650,69 @@ public class EntityManager {
      * Removes an entity from the world.
      */
     public void removeEntity(Entity entity) {
-        synchronized (entitiesToRemove) {
-            entitiesToRemove.add(entity);
+        if (entity == null) {
+            return;
+        }
+        synchronized (nativeWorld) {
+            if (entity.getEntityWorld() != nativeWorld) {
+                return;
+            }
+            long handle = entity.getEntityHandle();
+            // A live entity leaves at the end of the update; a queued one is cancelled outright.
+            if (nativeWorld.despawn(handle) && nativeWorld.state(handle) == EntityWorld.STATE_NONE) {
+                bySlot[EntityWorld.slotOf(handle)] = null;
+                entity.setEntityHandle(null, 0L);
+            }
         }
     }
     
     /**
-     * Gets all entities within a specified range of a center position.
+     * Gets all living (alive) entities whose position lies within {@code radius} of the center, in
+     * live order. Answered by the native spatial index from the bodies as they are right now.
      */
     public List<Entity> getEntitiesInRange(Vector3f center, float radius) {
-        List<Entity> nearbyEntities = new ArrayList<>();
-        float radiusSquared = radius * radius;
-        
-        for (Entity entity : entities) {
-            if (entity.isAlive()) {
-                float distanceSquared = entity.getPosition().distanceSquared(center);
-                if (distanceSquared <= radiusSquared) {
-                    nearbyEntities.add(entity);
-                }
-            }
+        synchronized (nativeWorld) {
+            syncBodies();
+            nativeWorld.queryRadius(center.x, center.y, center.z, radius, ALIVE, queryBuffer);
+            return queryResults(Entity.class);
         }
-        
-        return nearbyEntities;
     }
-    
+
     /**
-     * Gets the nearest entity of a specific type to a position.
+     * Gets the nearest alive entity of a specific type to a position (ties: the one that entered
+     * the world first), or null.
      */
     public Entity getNearestEntity(Vector3f position, EntityType type) {
-        Entity nearest = null;
-        float nearestDistance = Float.MAX_VALUE;
-        
-        for (Entity entity : entities) {
-            if (entity.isAlive() && entity.getType() == type) {
-                float distance = entity.getPosition().distance(position);
-                if (distance < nearestDistance) {
-                    nearest = entity;
-                    nearestDistance = distance;
-                }
-            }
+        synchronized (nativeWorld) {
+            syncBodies();
+            long handle = nativeWorld.queryNearest(position.x, position.y, position.z,
+                    Float.POSITIVE_INFINITY, ALIVE.withType(type.ordinal()));
+            return handle == 0L ? null : entityAt(handle);
         }
-        
-        return nearest;
     }
-    
+
     /**
-     * Gets all entities of a specific type.
+     * Gets all alive entities of a specific type.
      */
     public List<Entity> getEntitiesByType(EntityType type) {
-        List<Entity> entitiesOfType = new ArrayList<>();
-        
-        for (Entity entity : entities) {
-            if (entity.isAlive() && entity.getType() == type) {
-                entitiesOfType.add(entity);
-            }
+        synchronized (nativeWorld) {
+            syncBodies();
+            nativeWorld.queryAll(ALIVE.withType(type.ordinal()), queryBuffer);
+            return queryResults(Entity.class);
         }
-        
-        return entitiesOfType;
     }
-    
+
     /**
-     * Gets all living entities that can interact with players.
+     * Gets all alive living entities.
      */
     public List<LivingEntity> getLivingEntities() {
-        List<LivingEntity> livingEntities = new ArrayList<>();
-        
-        for (Entity entity : entities) {
-            if (entity.isAlive() && entity instanceof LivingEntity) {
-                livingEntities.add((LivingEntity) entity);
-            }
+        synchronized (nativeWorld) {
+            syncBodies();
+            nativeWorld.queryAll(EntityFilter.requiring(BODY_ALIVE | BODY_LIVING), queryBuffer);
+            return queryResults(LivingEntity.class);
         }
-        
-        return livingEntities;
     }
-    
+
     /**
      * Handles interactions between a player and nearby entities.
      */
@@ -690,15 +806,23 @@ public class EntityManager {
         // Clear pending additions
         pendingEntityAdditions.clear();
 
-        // Remove all dead entities (CopyOnWriteArrayList doesn't support iterator.remove())
-        entities.removeIf(entity -> !entity.isAlive());
-
-        // Clear pending lists
-        synchronized (entitiesToAdd) {
-            entitiesToAdd.clear();
-        }
-        synchronized (entitiesToRemove) {
-            entitiesToRemove.clear();
+        // Drop queued spawns, take dead entities (and any queued removals) out of the world.
+        // Listeners are not told: the world is going away.
+        synchronized (nativeWorld) {
+            for (long handle : nativeWorld.pending()) {
+                Entity e = entityAt(handle);
+                if (e != null) {
+                    removeEntity(e);
+                } else {
+                    nativeWorld.despawn(handle);
+                }
+            }
+            for (Entity entity : entities) {
+                if (!entity.isAlive()) {
+                    removeEntity(entity);
+                }
+            }
+            commitDespawns();
         }
     }
     
@@ -726,44 +850,44 @@ public class EntityManager {
      * Removes all entities within a specific chunk when the chunk is unloaded.
      */
     public void removeEntitiesInChunk(int chunkX, int chunkZ) {
-        int chunkMinX = chunkX * 16;
-        int chunkMaxX = chunkMinX + 16;
-        int chunkMinZ = chunkZ * 16;
-        int chunkMaxZ = chunkMinZ + 16;
-
-        int removedCount = 0;
-
-        synchronized (entitiesToRemove) {
-            for (Entity entity : entities) {
-                if (entity.isAlive()) {
-                    // Network-driven entities (remote players + replicated
-                    // shadows) are owned by the host, not the local chunk.
-                    // Removing them on chunk unload silently desyncs them —
-                    // the host never re-broadcasts the spawn, so they vanish
-                    // forever for the local viewer.
-                    if (entity.getType() == EntityType.REMOTE_PLAYER) continue;
-                    if (entity.isNetworkShadow()) continue;
-                    Vector3f pos = entity.getPosition();
-                    // Check if entity is within the chunk bounds
-                    if (pos.x >= chunkMinX && pos.x < chunkMaxX &&
-                        pos.z >= chunkMinZ && pos.z < chunkMaxZ) {
-                        entitiesToRemove.add(entity);
-                        removedCount++;
-                    }
+        synchronized (nativeWorld) {
+            // Network-driven entities (remote players + replicated shadows) are owned by the
+            // host, not the local chunk. Removing them on chunk unload silently desyncs them —
+            // the host never re-broadcasts the spawn, so they vanish forever for the local viewer.
+            // Logging removed for performance - entity unloading happens frequently.
+            for (Entity entity : inChunk(chunkX, chunkZ, new EntityFilter(-1, BODY_ALIVE, BODY_SHADOW, 0L))) {
+                if (entity.getType() != EntityType.REMOTE_PLAYER) {
+                    removeEntity(entity);
                 }
             }
         }
-        
-        // Logging removed for performance - entity unloading happens frequently
+    }
+
+    /**
+     * Entities whose position lies in chunk column ({@code chunkX}, {@code chunkZ}) — half-open on
+     * x/z, any height — in live order, from the native index. Caller holds the native monitor.
+     */
+    private List<Entity> inChunk(int chunkX, int chunkZ, EntityFilter filter) {
+        float minX = chunkX * 16;
+        float minZ = chunkZ * 16;
+        syncBodies();
+        nativeWorld.queryBox(minX, Float.NEGATIVE_INFINITY, minZ, minX + 16, Float.POSITIVE_INFINITY, minZ + 16,
+                filter, queryBuffer);
+        return queryResults(Entity.class);
     }
 
     /**
      * Gets debug information about the entity manager.
      */
     public String getDebugInfo() {
+        int pending;
+        int removing;
+        synchronized (nativeWorld) {
+            pending = nativeWorld.pendingCount();
+            removing = nativeWorld.removingCount();
+        }
         return String.format("Entities: %d alive, %d total, %d pending add, %d pending remove",
-                getLivingEntityCount(), getEntityCount(), 
-                entitiesToAdd.size(), entitiesToRemove.size());
+                getLivingEntityCount(), getEntityCount(), pending, removing);
     }
     
     /**
@@ -771,29 +895,18 @@ public class EntityManager {
      * Used for saving chunk entity state.
      */
     public List<com.stonebreak.world.save.model.EntityData> getEntitiesInChunk(int chunkX, int chunkZ) {
-        int chunkMinX = chunkX * 16;
-        int chunkMaxX = chunkMinX + 16;
-        int chunkMinZ = chunkZ * 16;
-        int chunkMaxZ = chunkMinZ + 16;
-
+        List<Entity> inChunk;
+        synchronized (nativeWorld) {
+            inChunk = inChunk(chunkX, chunkZ, ALIVE);
+        }
         List<com.stonebreak.world.save.model.EntityData> entityDataList = new ArrayList<>();
-
-        for (Entity entity : entities) {
-            if (entity.isAlive()) {
-                Vector3f pos = entity.getPosition();
-                // Check if entity is within the chunk bounds
-                if (pos.x >= chunkMinX && pos.x < chunkMaxX &&
-                    pos.z >= chunkMinZ && pos.z < chunkMaxZ) {
-                    // Serialize entity to EntityData
-                    com.stonebreak.world.save.model.EntityData entityData =
-                        com.stonebreak.world.save.serialization.EntitySerializer.serialize(entity);
-                    if (entityData != null) {
-                        entityDataList.add(entityData);
-                    }
-                }
+        for (Entity entity : inChunk) {
+            com.stonebreak.world.save.model.EntityData entityData =
+                com.stonebreak.world.save.serialization.EntitySerializer.serialize(entity);
+            if (entityData != null) {
+                entityDataList.add(entityData);
             }
         }
-
         return entityDataList;
     }
 
@@ -832,9 +945,7 @@ public class EntityManager {
 
         Entity entity;
         while (addedThisFrame < MAX_ENTITY_ADDITIONS_PER_FRAME && (entity = pendingEntityAdditions.poll()) != null) {
-            synchronized (entitiesToAdd) {
-                entitiesToAdd.add(entity);
-            }
+            queue(entity);
             addedThisFrame++;
         }
 
@@ -850,7 +961,12 @@ public class EntityManager {
      *  update tick promotes it into {@code entities}. */
     public List<Entity> getAllEntitiesIncludingPending() {
         List<Entity> out = new ArrayList<>(entities);
-        synchronized (entitiesToAdd) { out.addAll(entitiesToAdd); }
+        synchronized (nativeWorld) {
+            for (long handle : nativeWorld.pending()) {
+                Entity e = entityAt(handle);
+                if (e != null) out.add(e);
+            }
+        }
         return out;
     }
 

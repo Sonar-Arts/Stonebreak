@@ -1,493 +1,85 @@
 package com.stonebreak.player.physics;
 
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.physics.PhysicsBody;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
+import com.stonebreak.world.physics.WorldPhysics;
 import org.joml.Vector3f;
 
 import static com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT;
 import static com.stonebreak.player.PlayerConstants.PLAYER_WIDTH;
 
 /**
- * Axis-separated collision resolution with automatic step-up onto partial and
- * full-height blocks. Each axis is resolved independently after its delta is added
- * to position; velocity is zeroed on hit to prevent sticking. Snow blocks report a
- * layered collision height via {@link World#getSnowHeight(int, int, int)}.
+ * The player's body in the engine physics ({@link WorldPhysics}, OpenMason #117): one swept move
+ * per frame that slides along walls, climbs steps while standing (anything up to half a block,
+ * snow layers and stair treads up to a full block) and mantles onto ledges mid-jump by the same
+ * limits, lands, and drops the ground flag after walking off an edge. Door panels and scene colliders are walls; animated cells, torches and stalagmite
+ * cells collide through their models.
+ *
+ * <p>A horizontal hit zeroes that axis' velocity (no sticking); a vertical hit zeroes the vertical.
  */
 public class CollisionHandler {
 
+    /** Speed given to a standing body that just walked off an edge, so gravity takes over. */
+    private static final float LEFT_GROUND_NUDGE = -0.1f;
+
     private final PhysicsState state;
     private World world;
+    private final PhysicsBody body = new PhysicsBody()
+            .box(PLAYER_WIDTH / 2, PLAYER_WIDTH / 2, 0f, PLAYER_HEIGHT)
+            .steps(WorldPhysics.PLAYER_STEP, WorldPhysics.PLAYER_PARTIAL_STEP);
 
     public CollisionHandler(PhysicsState state, World world) {
         this.state = state;
         this.world = world;
+        body.mask = WorldPhysics.PLAYER_MASK;
     }
 
     public void setWorld(World world) {
         this.world = world;
     }
 
-    public void resolveX() {
+    /**
+     * Moves the player by its velocity times {@code dt} through the world and updates the ground
+     * flag. Contacts of the move are left in {@link #lastContacts()}.
+     */
+    public void move(float dt) {
         Vector3f position = state.getPosition();
         Vector3f velocity = state.getVelocity();
-        float halfWidth = PLAYER_WIDTH / 2;
-        float correctedPositionX = position.x;
-        boolean collisionOccurred = false;
-        float stepUpHeight = 0.0f;
-
-        float playerFootY = position.y;
-        float playerHeadY = position.y + PLAYER_HEIGHT;
-        float checkMinZ = position.z - halfWidth;
-        float checkMaxZ = position.z + halfWidth;
-
-        for (int yi = (int) Math.floor(playerFootY); yi < (int) Math.ceil(playerHeadY); yi++) {
-            for (int zi = (int) Math.floor(checkMinZ); zi < (int) Math.ceil(checkMaxZ); zi++) {
-                if (velocity.x < 0) {
-                    float playerLeftEdge = position.x - halfWidth;
-                    int blockToCheckX = (int) Math.floor(playerLeftEdge);
-                    // Sample at the leading edge: on a shaped block that is the
-                    // deepest the body reaches, so it meets one tread at a time.
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
-                            playerLeftEdge, checkMinZ, playerLeftEdge, checkMaxZ);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        float stepUpNeeded = blockTop - position.y;
-                        float playerBaseY = (int) Math.floor(position.y);
-                        float playerElevation = position.y - playerBaseY;
-                        boolean canStepUp = (blockHeight < 1.0f) ||
-                                (blockHeight == 1.0f && playerElevation >= 0.5f);
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
-                                yi == (int) Math.floor(playerFootY) && position.y >= yi) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
-                            // Single-layer snow on upper row during step-up — skip wall collision
-                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
-                            float potentialNewX = (float) (blockToCheckX + 1) + halfWidth;
-                            if (!collisionOccurred || potentialNewX > correctedPositionX) {
-                                correctedPositionX = potentialNewX;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                } else if (velocity.x > 0) {
-                    float playerRightEdge = position.x + halfWidth;
-                    int blockToCheckX = (int) Math.floor(playerRightEdge);
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
-                            playerRightEdge, checkMinZ, playerRightEdge, checkMaxZ);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        float stepUpNeeded = blockTop - position.y;
-                        float playerBaseY = (int) Math.floor(position.y);
-                        float playerElevation = position.y - playerBaseY;
-                        boolean canStepUp = (blockHeight < 1.0f) ||
-                                (blockHeight == 1.0f && playerElevation >= 0.5f);
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
-                                yi == (int) Math.floor(playerFootY) && position.y >= yi) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
-                            // Single-layer snow on upper row during step-up — skip wall collision
-                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
-                            float potentialNewX = (float) blockToCheckX - halfWidth;
-                            if (!collisionOccurred || potentialNewX < correctedPositionX) {
-                                correctedPositionX = potentialNewX;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                }
-            }
+        if (world == null) {
+            position.add(velocity.x * dt, velocity.y * dt, velocity.z * dt);
+            return;
         }
-
-        // Door panels: model-tied boxes (thin, 2 tall, possibly crossing the
-        // hinge-side cell boundary when open). Merged into the same correction
-        // so cell and panel hits resolve together. No step-up — panels are walls.
-        for (float[] b : nearbyDoorPanels()) {
-            if (!overlapsPanel(b, position.x - halfWidth, playerFootY, checkMinZ,
-                    position.x + halfWidth, playerHeadY, checkMaxZ)) {
-                continue;
-            }
-            if (canStepOntoSceneBox(b)) {
-                stepUpHeight = Math.max(stepUpHeight, b[4] - position.y);
-                continue;
-            }
-            if (velocity.x < 0) {
-                float candidate = b[3] + halfWidth;
-                if (!collisionOccurred || candidate > correctedPositionX) correctedPositionX = candidate;
-                collisionOccurred = true;
-            } else if (velocity.x > 0) {
-                float candidate = b[0] - halfWidth;
-                if (!collisionOccurred || candidate < correctedPositionX) correctedPositionX = candidate;
-                collisionOccurred = true;
-            }
-        }
-
-        if (stepUpHeight > 0.0f && !collisionOccurred && state.isOnGround()) {
-            position.y += stepUpHeight + 0.01f;
-        } else if (collisionOccurred) {
-            float originalX = position.x;
-            position.x = correctedPositionX;
-            if (velocity.x > 0 && correctedPositionX < originalX) velocity.x = 0;
-            else if (velocity.x < 0 && correctedPositionX > originalX) velocity.x = 0;
+        body.position(position.x, position.y, position.z).velocity(velocity.x, velocity.y, velocity.z);
+        // AIR_STEP: a jump peaks just under one block (~0.95 at 60 fps), so hopping onto a block
+        // relies on mantling — once the feet are within the step limits of a ledge's top (half a
+        // block, a full block for snow/treads), the player climbs onto it, as the old resolver did.
+        body.flags = PhysicsBody.AIR_STEP | (state.isOnGround() ? PhysicsBody.ON_GROUND : 0);
+        com.stonebreak.world.physics.WorldPhysics.of(world).move(body, dt);
+        position.set(body.x, body.y, body.z);
+        velocity.set(body.vx, body.vy, body.vz);
+        state.setOnGround(body.onGround());
+        if (body.hasContact(PhysicsBody.CONTACT_LEFT_GROUND) && velocity.y == 0f) {
+            velocity.y = LEFT_GROUND_NUDGE;
         }
     }
 
-    public void resolveY() {
-        Vector3f position = state.getPosition();
-        Vector3f velocity = state.getVelocity();
-        float halfWidth = PLAYER_WIDTH / 2;
-        float correctedPositionY = position.y;
-        boolean collisionOccurred = false;
-        boolean downwardCollision = false;
-
-        float playerMinX = position.x - halfWidth;
-        float playerMaxX = position.x + halfWidth;
-        float playerMinZ = position.z - halfWidth;
-        float playerMaxZ = position.z + halfWidth;
-
-        for (int xi = (int) Math.floor(playerMinX); xi < (int) Math.ceil(playerMaxX); xi++) {
-            for (int zi = (int) Math.floor(playerMinZ); zi < (int) Math.ceil(playerMaxZ); zi++) {
-                if (velocity.y < 0) {
-                    int blockToCheckY = (int) Math.floor(position.y);
-                    // Whole footprint: a body rests on the tallest step its box
-                    // overlaps, exactly as it would on a stack of solid boxes.
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
-                            playerMinX, playerMinZ, playerMaxX, playerMaxZ);
-                    if (blockHeight > 0) {
-                        float blockTop = blockToCheckY + blockHeight;
-                        if (position.y < blockTop) {
-                            if (!collisionOccurred || blockTop > correctedPositionY) {
-                                correctedPositionY = blockTop;
-                            }
-                            collisionOccurred = true;
-                            downwardCollision = true;
-                        }
-                    }
-                } else if (velocity.y > 0) {
-                    int blockToCheckY = (int) Math.floor(position.y + PLAYER_HEIGHT);
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
-                            playerMinX, playerMinZ, playerMaxX, playerMaxZ);
-                    if (blockHeight > 0) {
-                        float potentialNewY = (float) blockToCheckY - PLAYER_HEIGHT;
-                        if (!collisionOccurred || potentialNewY < correctedPositionY) {
-                            correctedPositionY = potentialNewY;
-                        }
-                        collisionOccurred = true;
-                    }
-                }
-            }
-        }
-
-        // Door panels: land on top of / bump under a panel. Gated to near the
-        // panel surface so a lateral overlap (e.g. a door closed onto the
-        // player) never teleports them the panel's full 2-block height.
-        for (float[] b : nearbyDoorPanels()) {
-            if (!(playerMaxX > b[0] && playerMinX < b[3] && playerMaxZ > b[2] && playerMinZ < b[5])) {
-                continue;
-            }
-            if (velocity.y < 0 && position.y < b[4] && position.y > b[4] - 0.5f) {
-                if (!collisionOccurred || b[4] > correctedPositionY) {
-                    correctedPositionY = b[4];
-                }
-                collisionOccurred = true;
-                downwardCollision = true;
-            } else if (velocity.y > 0) {
-                float head = position.y + PLAYER_HEIGHT;
-                if (head > b[1] && head < b[1] + 0.5f) {
-                    float candidate = b[1] - PLAYER_HEIGHT;
-                    if (!collisionOccurred || candidate < correctedPositionY) {
-                        correctedPositionY = candidate;
-                    }
-                    collisionOccurred = true;
-                }
-            }
-        }
-
-        if (collisionOccurred) {
-            position.y = correctedPositionY;
-            velocity.y = 0;
-            if (downwardCollision) {
-                state.setOnGround(true);
-            } else {
-                // Hit ceiling — clear ground flag so gravity can take over.
-                state.setOnGround(false);
-            }
-        } else if (velocity.y != 0) {
-            // Moving vertically without touching anything is airborne — including a rise from an
-            // impulse (hit knockback) that, unlike a jump, never cleared the flag itself. Left set,
-            // gravity stays off and the body climbs forever.
-            state.setOnGround(false);
-        }
-    }
-
-    public void resolveZ() {
-        Vector3f position = state.getPosition();
-        Vector3f velocity = state.getVelocity();
-        float halfWidth = PLAYER_WIDTH / 2;
-        float correctedPositionZ = position.z;
-        boolean collisionOccurred = false;
-        float stepUpHeight = 0.0f;
-
-        float playerFootY = position.y;
-        float playerHeadY = position.y + PLAYER_HEIGHT;
-        float checkMinX = position.x - halfWidth;
-        float checkMaxX = position.x + halfWidth;
-
-        for (int yi = (int) Math.floor(playerFootY); yi < (int) Math.ceil(playerHeadY); yi++) {
-            for (int xi = (int) Math.floor(checkMinX); xi < (int) Math.ceil(checkMaxX); xi++) {
-                if (velocity.z < 0) {
-                    float playerFrontEdge = position.z - halfWidth;
-                    int blockToCheckZ = (int) Math.floor(playerFrontEdge);
-                    // Leading edge — see resolveX.
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
-                            checkMinX, playerFrontEdge, checkMaxX, playerFrontEdge);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        float stepUpNeeded = blockTop - position.y;
-                        float playerBaseY = (int) Math.floor(position.y);
-                        float playerElevation = position.y - playerBaseY;
-                        boolean canStepUp = (blockHeight < 1.0f) ||
-                                (blockHeight == 1.0f && playerElevation >= 0.5f);
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
-                                yi == (int) Math.floor(playerFootY) && position.y >= yi) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
-                            // Single-layer snow on upper row during step-up — skip wall collision
-                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
-                            float potentialNewZ = (float) (blockToCheckZ + 1) + halfWidth;
-                            if (!collisionOccurred || potentialNewZ > correctedPositionZ) {
-                                correctedPositionZ = potentialNewZ;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                } else if (velocity.z > 0) {
-                    float playerBackEdge = position.z + halfWidth;
-                    int blockToCheckZ = (int) Math.floor(playerBackEdge);
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
-                            checkMinX, playerBackEdge, checkMaxX, playerBackEdge);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        float stepUpNeeded = blockTop - position.y;
-                        float playerBaseY = (int) Math.floor(position.y);
-                        float playerElevation = position.y - playerBaseY;
-                        boolean canStepUp = (blockHeight < 1.0f) ||
-                                (blockHeight == 1.0f && playerElevation >= 0.5f);
-                        if (stepUpNeeded > 0.0f && stepUpNeeded <= 1.0f && canStepUp &&
-                                yi == (int) Math.floor(playerFootY) && position.y >= yi) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (yi > (int) Math.floor(playerFootY) && blockHeight <= 0.125f && stepUpHeight > 0.0f) {
-                            // Single-layer snow on upper row during step-up — skip wall collision
-                        } else if (position.y < blockTop && position.y + PLAYER_HEIGHT > yi) {
-                            float potentialNewZ = (float) blockToCheckZ - halfWidth;
-                            if (!collisionOccurred || potentialNewZ < correctedPositionZ) {
-                                correctedPositionZ = potentialNewZ;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Door panels — see resolveX for semantics.
-        for (float[] b : nearbyDoorPanels()) {
-            if (!overlapsPanel(b, checkMinX, playerFootY, position.z - halfWidth,
-                    checkMaxX, playerHeadY, position.z + halfWidth)) {
-                continue;
-            }
-            if (canStepOntoSceneBox(b)) {
-                stepUpHeight = Math.max(stepUpHeight, b[4] - position.y);
-                continue;
-            }
-            if (velocity.z < 0) {
-                float candidate = b[5] + halfWidth;
-                if (!collisionOccurred || candidate > correctedPositionZ) correctedPositionZ = candidate;
-                collisionOccurred = true;
-            } else if (velocity.z > 0) {
-                float candidate = b[2] - halfWidth;
-                if (!collisionOccurred || candidate < correctedPositionZ) correctedPositionZ = candidate;
-                collisionOccurred = true;
-            }
-        }
-
-        if (stepUpHeight > 0.0f && !collisionOccurred && state.isOnGround()) {
-            position.y += stepUpHeight + 0.01f;
-        } else if (collisionOccurred) {
-            float originalZ = position.z;
-            position.z = correctedPositionZ;
-            if (velocity.z > 0 && correctedPositionZ < originalZ) velocity.z = 0;
-            else if (velocity.z < 0 && correctedPositionZ > originalZ) velocity.z = 0;
-        }
+    /** {@code PhysicsBody.CONTACT_*} of the last {@link #move}. */
+    public int lastContacts() {
+        return body.contacts;
     }
 
     /**
-     * Returns true if the player AABB currently overlaps any solid block. Used to warn
+     * Returns true if the player's box currently overlaps anything it collides with. Used to warn
      * the player that exiting spectator mode will leave them stuck.
      */
     public boolean isPlayerInsideSolidBlock() {
-        Vector3f position = state.getPosition();
-        float halfWidth = PLAYER_WIDTH / 2;
-        int minX = (int) Math.floor(position.x - halfWidth);
-        int maxX = (int) Math.ceil(position.x + halfWidth);
-        int minY = (int) Math.floor(position.y);
-        int maxY = (int) Math.ceil(position.y + PLAYER_HEIGHT);
-        int minZ = (int) Math.floor(position.z - halfWidth);
-        int maxZ = (int) Math.ceil(position.z + halfWidth);
-
-        for (int x = minX; x < maxX; x++) {
-            for (int y = minY; y < maxY; y++) {
-                for (int z = minZ; z < maxZ; z++) {
-                    // Route through the position-aware height so state-aware
-                    // exceptions (doors, snow layers, stair steps) agree with
-                    // the sweep.
-                    float height = getBlockCollisionHeight(x, y, z,
-                            position.x - halfWidth, position.z - halfWidth,
-                            position.x + halfWidth, position.z + halfWidth);
-                    if (height > 0.0f && position.y < y + height) {
-                        return true;
-                    }
-                }
-            }
+        if (world == null) {
+            return false;
         }
-        // Door panels collide as model boxes, not cells.
-        for (float[] b : nearbyDoorPanels()) {
-            if (overlapsPanel(b, position.x - halfWidth, position.y, position.z - halfWidth,
-                    position.x + halfWidth, position.y + PLAYER_HEIGHT, position.z + halfWidth)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Collision height of a cell, taking the tallest part of any shaped block
-     * in it. Conservative by design — callers that know which part of the cell
-     * they touch should use the footprint overload instead.
-     */
-    public float getBlockCollisionHeight(int x, int y, int z) {
-        return getBlockCollisionHeight(x, y, z,
-                x, z, x + 1.0f, z + 1.0f);
-    }
-
-    /**
-     * Collision height of a cell under a world-space XZ footprint. Shaped
-     * blocks (stairs) answer with the tallest step the footprint overlaps, so
-     * a body rests on the step it is actually standing on and, when the
-     * footprint is the leading edge of a horizontal sweep, the step-up rules
-     * above lift it one tread at a time instead of walling it off.
-     */
-    public float getBlockCollisionHeight(int x, int y, int z,
-                                         float minX, float minZ, float maxX, float maxZ) {
-        BlockType type = world.getBlockAt(x, y, z);
-        if (com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)
-                || type == BlockType.LIMESTONE_STALAGMITE) {
-            // Animated blocks (doors) and stalagmites never collide as cells — the
-            // model-box pass below resolves against their actual geometry.
-            return 0.0f;
-        }
-        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z, minX, minZ, maxX, maxZ);
-    }
-
-    // ─── Animated-block collision (model-tied AABBs) ─────────────────────────
-
-    /**
-     * World AABBs of animated-block models (door panels) near enough to touch
-     * the player. Boxes come from {@code AnimatedBlockShapes.worldAabb} — the
-     * geometry posed at the current state clip's end pose, so collision always
-     * wraps exactly what is rendered (during the swing the target pose
-     * collides). Positions come from the world's AnimatedBlockRegistry, so
-     * this is a short sparse list, not a scan.
-     */
-    private boolean canStepOntoSceneBox(float[] box) {
-        float rise = box[4] - state.getPosition().y;
-        if (!state.isOnGround() || rise <= 0 || rise > .3f) return false;
-        for (float[] sceneBox : world.getStaticCollisionBoxes(state.getPosition(), 4)) {
-            if (java.util.Arrays.equals(sceneBox, box)) return true;
-        }
-        return false;
-    }
-
-    private java.util.List<float[]> nearbyDoorPanels() {
-        java.util.List<float[]> panels = new java.util.ArrayList<>(2);
-        Vector3f position = state.getPosition();
-        panels.addAll(world.getStaticCollisionBoxes(position, 4));
-        addNearbyStalagmiteBoxes(panels, position);
-        for (com.openmason.engine.util.BlockPos pos : world.getAnimatedBlockRegistry().positions()) {
-            // Quick reject: a posed model reaches at most ~2 blocks from its anchor.
-            if (Math.abs(pos.x() + 0.5f - position.x) > 4f
-                    || Math.abs(pos.z() + 0.5f - position.z) > 4f
-                    || position.y - pos.y() > 4f
-                    || pos.y() - position.y > PLAYER_HEIGHT + 2f) {
-                continue;
-            }
-            BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
-            if (!com.stonebreak.blocks.anim.AnimatedBlockRegistry.isAnimatedType(type)
-                    || com.stonebreak.blocks.torch.TorchBlock.isTorch(type)
-                    || !type.isSolid()) {
-                continue; // torches and other non-solid models (the campfire) are walk-through
-            }
-            panels.add(com.stonebreak.blocks.anim.AnimatedBlockShapes
-                    .worldAabb(world, pos.x(), pos.y(), pos.z(), type));
-        }
-        return panels;
-    }
-
-    /**
-     * Stalagmite model boxes ({@code StalagmiteShape}) for every stalagmite whose cells the
-     * player could touch this step: the player's cells plus a one-cell margin, each stalagmite
-     * counted once by its anchor. The boxes follow the tiers of the model, so the player walks
-     * around the spire they see and can stand on its tip, instead of meeting a full block.
-     */
-    private void addNearbyStalagmiteBoxes(java.util.List<float[]> out, Vector3f position) {
-        float halfWidth = PLAYER_WIDTH / 2;
-        int minX = (int) Math.floor(position.x - halfWidth) - 1;
-        int maxX = (int) Math.floor(position.x + halfWidth) + 1;
-        int minY = (int) Math.floor(position.y) - 1;
-        int maxY = (int) Math.floor(position.y + PLAYER_HEIGHT) + 1;
-        int minZ = (int) Math.floor(position.z - halfWidth) - 1;
-        int maxZ = (int) Math.floor(position.z + halfWidth) + 1;
-        com.stonebreak.blocks.stalagmite.Stalagmite.Cells cells =
-                com.stonebreak.blocks.stalagmite.Stalagmite.of(world);
-        java.util.Set<Long> anchors = null;
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                for (int y = minY; y <= maxY; y++) {
-                    if (world.getBlockAt(x, y, z) != BlockType.LIMESTONE_STALAGMITE) {
-                        continue;
-                    }
-                    int ay = com.stonebreak.blocks.stalagmite.Stalagmite.anchorY(cells, x, y, z);
-                    if (ay == Integer.MIN_VALUE) {
-                        continue;
-                    }
-                    if (anchors == null) anchors = new java.util.HashSet<>();
-                    if (anchors.add(((long) x << 40) ^ ((long) z << 20) ^ ay)) {
-                        out.addAll(com.stonebreak.blocks.stalagmite.StalagmiteShape.worldBoxes(cells, x, y, z));
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Whether a model box (door panel, stalagmite) supports a footprint whose feet are at
-     * {@code feetY} — the ground check's counterpart to the cell heights, which report 0 there.
-     */
-    public boolean modelBoxBeneath(float minX, float minZ, float maxX, float maxZ, float feetY) {
-        for (float[] b : nearbyDoorPanels()) {
-            if (maxX > b[0] && minX < b[3] && maxZ > b[2] && minZ < b[5]
-                    && b[4] >= feetY && b[4] - feetY <= 0.15f) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /** Player AABB vs panel box overlap. Box layout: {minX,minY,minZ,maxX,maxY,maxZ}. */
-    private static boolean overlapsPanel(float[] b, float minX, float minY, float minZ,
-                                         float maxX, float maxY, float maxZ) {
-        return maxX > b[0] && minX < b[3]
-                && maxY > b[1] && minY < b[4]
-                && maxZ > b[2] && minZ < b[5];
+        Vector3f p = state.getPosition();
+        float half = PLAYER_WIDTH / 2;
+        return com.stonebreak.world.physics.WorldPhysics.of(world).overlaps(p.x - half, p.y, p.z - half, p.x + half, p.y + PLAYER_HEIGHT, p.z + half,
+                WorldPhysics.PLAYER_MASK);
     }
 }

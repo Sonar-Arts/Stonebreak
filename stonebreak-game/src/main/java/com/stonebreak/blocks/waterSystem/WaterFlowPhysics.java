@@ -89,79 +89,53 @@ public final class WaterFlowPhysics {
     }
 
     /**
-     * Applies water flow forces to an entity's velocity.
+     * The force (acceleration) the current in one water cell puts on a body there: the flow
+     * direction scaled by {@value #FLOW_FORCE_MULTIPLIER} and the cell's level strength, or straight
+     * down at {@value #VERTICAL_FLOW_FORCE} in a falling column. Zero when the cell is not water.
+     * This is what the physics cache stores per water cell ({@code WorldPhysics}), so changing it
+     * changes every body's drift.
+     */
+    public static Vector3f cellForce(World world, int x, int y, int z, Vector3f out) {
+        out.set(0, 0, 0);
+        WaterBlock waterBlock = world.getWaterStateAt(x, y, z);
+        if (waterBlock == null) {
+            return out;
+        }
+        Vector3f flowDir = calculateFlowDirection(world, x, y, z);
+        float levelStrength = (WaterBlock.MAX_LEVEL - waterBlock.level() + 1) / (float) (WaterBlock.MAX_LEVEL + 1);
+        if (waterBlock.falling()) {
+            out.set(flowDir.x * FLOW_FORCE_MULTIPLIER * levelStrength,
+                    flowDir.y * VERTICAL_FLOW_FORCE,
+                    flowDir.z * FLOW_FORCE_MULTIPLIER * levelStrength);
+        } else {
+            out.set(flowDir.x * FLOW_FORCE_MULTIPLIER * levelStrength,
+                    flowDir.y * FLOW_FORCE_MULTIPLIER * levelStrength,
+                    flowDir.z * FLOW_FORCE_MULTIPLIER * levelStrength);
+        }
+        return out;
+    }
+
+    /**
+     * Applies water flow forces to an entity's velocity: the mean {@link #cellForce} of the water
+     * cells at 3 heights (0.1, half and 0.9 of {@code height} above {@code position.y}) x 5 points
+     * (centre and +-0.4 width on x and z), measured by the engine physics over its cell cache.
      *
-     * @param world The world instance
-     * @param position Entity's position
      * @param velocity Entity's current velocity (will be modified)
-     * @param deltaTime Time step for physics
-     * @param width Entity width (for sampling multiple points)
-     * @param height Entity height (for sampling multiple points)
      * @return the flow vector that was applied (zero vector if no water was sampled)
      */
     public static Vector3f applyWaterFlowForce(World world, Vector3f position, Vector3f velocity,
                                           float deltaTime, float width, float height) {
-        // Sample water flow at multiple points within the entity's volume
-        // This provides more accurate flow forces for larger entities
-
-        Vector3f totalFlow = new Vector3f(0, 0, 0);
-        int sampleCount = 0;
-
-        // Sample at feet, middle, and head height
-        float[] sampleHeights = {0.1f, height * 0.5f, height * 0.9f};
-
-        for (float sampleHeight : sampleHeights) {
-            float checkY = position.y + sampleHeight;
-            int blockY = (int) Math.floor(checkY);
-
-            // Sample at center and edges horizontally
-            float[][] horizontalOffsets = {
-                {0, 0},                      // Center
-                {width * 0.4f, 0},          // Right
-                {-width * 0.4f, 0},         // Left
-                {0, width * 0.4f},          // Back
-                {0, -width * 0.4f}          // Front
-            };
-
-            for (float[] offset : horizontalOffsets) {
-                int blockX = (int) Math.floor(position.x + offset[0]);
-                int blockZ = (int) Math.floor(position.z + offset[1]);
-
-                WaterBlock waterBlock = world.getWaterStateAt(blockX, blockY, blockZ);
-                if (waterBlock != null) {
-                    Vector3f flowDir = calculateFlowDirection(world, blockX, blockY, blockZ);
-
-                    // Scale flow force based on water level (higher levels = stronger flow)
-                    float levelStrength = (WaterBlock.MAX_LEVEL - waterBlock.level() + 1) /
-                                        (float)(WaterBlock.MAX_LEVEL + 1);
-
-                    // Falling water has stronger vertical force
-                    if (waterBlock.falling()) {
-                        totalFlow.add(flowDir.x * FLOW_FORCE_MULTIPLIER * levelStrength,
-                                    flowDir.y * VERTICAL_FLOW_FORCE,
-                                    flowDir.z * FLOW_FORCE_MULTIPLIER * levelStrength);
-                    } else {
-                        totalFlow.add(flowDir.x * FLOW_FORCE_MULTIPLIER * levelStrength,
-                                    flowDir.y * FLOW_FORCE_MULTIPLIER * levelStrength,
-                                    flowDir.z * FLOW_FORCE_MULTIPLIER * levelStrength);
-                    }
-
-                    sampleCount++;
-                }
-            }
+        if (world == null) {
+            return new Vector3f();
         }
-
-        // Average the flow forces from all sample points
-        if (sampleCount > 0) {
-            totalFlow.div(sampleCount);
-
-            // Apply the flow force to velocity
-            velocity.x += totalFlow.x * deltaTime;
-            velocity.y += totalFlow.y * deltaTime;
-            velocity.z += totalFlow.z * deltaTime;
-            return totalFlow;
+        com.openmason.engine.physics.FluidSample sample = com.stonebreak.world.physics.WorldPhysics.of(world).measureFluid(
+                position.x, position.y, position.z, height, width * 0.5f, position.y, height);
+        if (sample.flowSamples == 0) {
+            return new Vector3f(0, 0, 0);
         }
-
-        return new Vector3f(0, 0, 0);
+        velocity.x += sample.flowX * deltaTime;
+        velocity.y += sample.flowY * deltaTime;
+        velocity.z += sample.flowZ * deltaTime;
+        return new Vector3f(sample.flowX, sample.flowY, sample.flowZ);
     }
 }

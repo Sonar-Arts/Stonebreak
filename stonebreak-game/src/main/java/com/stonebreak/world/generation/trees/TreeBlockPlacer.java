@@ -48,10 +48,15 @@ public final class TreeBlockPlacer implements TreeBlockSink {
         // been meshed yet), but for deferred placements that fire AFTER a neighbouring chunk is
         // already meshed, the new blocks would sit in the chunk data with a stale GPU mesh until
         // reload. Explicitly trigger a rebuild for every chunk we wrote into.
+        //
+        // The same bypass hid the tree from physics: a brick the physics cache already held kept
+        // reading air where the trunk now stands (mobs walked through it, and leaf decay, which floods
+        // the cache, could not see the log). Invalidate what we wrote, as World.setBlockAt would.
         for (Chunk chunk : affectedChunks.keySet()) {
             int worldX = chunk.getChunkX() * CHUNK_SIZE;
             int worldZ = chunk.getChunkZ() * CHUNK_SIZE;
             world.triggerChunkRebuild(worldX, 0, worldZ);
+            world.invalidatePhysicsChunk(chunk.getChunkX(), chunk.getChunkZ());
         }
         affectedChunks.clear();
     }

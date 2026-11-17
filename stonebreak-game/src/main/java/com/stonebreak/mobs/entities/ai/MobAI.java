@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.entities.ai;
 
+import com.stonebreak.mobs.entities.EntityClipClock;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.Behavior;
@@ -32,7 +33,8 @@ public final class MobAI {
     private final PathAgent nav;
 
     private MobBehaviorState currentState = MobBehaviorState.IDLE;
-    private float stateTimer;
+    /** The entity's clip clock: its state half is this AI's state timer (OpenMason #114). */
+    private final EntityClipClock clock;
 
     /** The usual case: reacts to the players sharing the mob's world, seeded from the shared random. */
     public MobAI(LivingEntity entity, Steering steering, Behavior... behaviors) {
@@ -44,6 +46,8 @@ public final class MobAI {
     public MobAI(LivingEntity entity, PathAgent nav, PlayerLocator players, Random random,
                  List<Behavior> behaviors) {
         this.entity = entity;
+        this.clock = entity.getClipClock();
+        this.clock.setClip(currentState.ordinal(), currentState.isOneShot());
         this.nav = nav;
         this.context = new AiContext(entity, nav, random, players);
         this.controller = new BehaviorController(behaviors);
@@ -57,7 +61,7 @@ public final class MobAI {
         if (!entity.isAlive()) {
             return;
         }
-        stateTimer += deltaTime;
+        clock.advance(0.0f, deltaTime);
         controller.tick(context, deltaTime);
         nav.tick(deltaTime);
         setState(controller.animationState());
@@ -71,7 +75,7 @@ public final class MobAI {
     public void setState(MobBehaviorState newState) {
         if (newState != currentState) {
             currentState = newState;
-            stateTimer = 0.0f;
+            clock.setClip(newState.ordinal(), newState.isOneShot());
         }
     }
 
@@ -80,7 +84,7 @@ public final class MobAI {
     }
 
     public float getStateTimer() {
-        return stateTimer;
+        return clock.stateTime();
     }
 
     /**
@@ -88,7 +92,7 @@ public final class MobAI {
      * but their one-shot clips still need a clock to play through after a replicated state change.
      */
     public void advanceClientClock(float deltaTime) {
-        stateTimer += deltaTime;
+        clock.advance(0.0f, deltaTime);
     }
 
     /**
@@ -96,8 +100,8 @@ public final class MobAI {
      * entity's continuous animation clock; one-shot states use state-relative time so the clip
      * plays through once and holds instead of restarting.
      */
-    public float clipTime(float totalAnimationTime) {
-        return currentState.isOneShot() ? stateTimer : totalAnimationTime;
+    public float clipTime() {
+        return clock.clipTime();
     }
 
     /**

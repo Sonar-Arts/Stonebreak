@@ -1,18 +1,19 @@
 package com.stonebreak.mobs.vestige;
 
-import com.openmason.engine.wayfind.SearchLimits;
-import com.openmason.engine.wayfind.voxel.NavCell;
-import com.openmason.engine.wayfind.voxel.NavProfile;
-import com.openmason.engine.wayfind.voxel.NavVolume;
+import com.openmason.engine.nav.GroundProfile;
+import com.openmason.engine.nav.NavLimits;
+import com.openmason.engine.nav.NavPath;
+import com.openmason.engine.nav.NavWorld;
+import com.openmason.engine.physics.PhysicsWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityCollision;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.mobs.entities.ai.nav.NavProfiles;
-import com.stonebreak.mobs.entities.ai.nav.Path;
 import com.stonebreak.mobs.entities.ai.nav.PathfindingService;
 import com.stonebreak.world.World;
+import com.stonebreak.world.physics.WorldPhysics;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -82,8 +83,8 @@ class VestigeGlideTest {
     @Test
     void itsRoutesTakeTallDropsAndBarelyChargeForThem() {
         World world = mock(World.class);
-        NavProfile vestige = NavProfiles.forEntity(new Vestige(world, new Vector3f()));
-        NavProfile goblin = NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world));
+        GroundProfile vestige = NavProfiles.forEntity(new Vestige(world, new Vector3f()));
+        GroundProfile goblin = NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world));
         assertEquals(Vestige.MAX_GLIDE_DROP, vestige.maxFall(), 1e-6f);
         assertTrue(goblin.maxFall() < HIGH - LOW);
         assertTrue(vestige.fallCostPerBlock() < goblin.fallCostPerBlock());
@@ -95,31 +96,40 @@ class VestigeGlideTest {
         Vector3f top = new Vector3f(0.5f, HIGH, 0.5f);
         Vector3f bottom = new Vector3f(8.5f, LOW, 0.5f);
 
-        Path glide = route(NavProfiles.forEntity(new Vestige(world, new Vector3f())), top, bottom);
+        NavPath glide = route(NavProfiles.forEntity(new Vestige(world, new Vector3f())), top, bottom);
         assertTrue(glide.isComplete(), "the Vestige glides down");
         assertEquals(LOW, glide.y(glide.size() - 1), 0.01f);
 
-        Path walk = route(NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world)), top, bottom);
+        NavPath walk = route(NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world)), top, bottom);
         assertFalse(walk.isComplete(), "a ten-block drop is no route for a walker");
     }
 
-    private static Path route(NavProfile profile, Vector3f from, Vector3f to) {
-        NavVolume volume = new NavVolume() {
-            @Override
-            public int flags(int x, int y, int z) {
-                return y < 0 ? NavCell.UNKNOWN : solid(x, y) ? NavCell.SOLID : NavCell.OPEN;
+    /** A route over the cliff, planned by the native search over a physics world of it. */
+    private static NavPath route(GroundProfile profile, Vector3f from, Vector3f to) {
+        try (PhysicsWorld physics = PhysicsWorld.create(VestigeGlideTest::fillCliff, 4, 0, 0)) {
+            physics.defineShape(1, new float[] {0, 0, 0, 1, 1, 1}, WorldPhysics.SOLID | WorldPhysics.PICK, 0);
+            PathfindingService service = PathfindingService.over(physics, 256);
+            try {
+                long id = service.nav().searchGround(new NavWorld.GroundQuery(from.x, from.y, from.z, to.x, to.y, to.z,
+                        1.0f, 4, 2, profile, new NavLimits(500, Float.MAX_VALUE, 1.0f)));
+                service.step();
+                return service.nav().poll(id).path();
+            } finally {
+                service.close();
             }
-
-            @Override
-            public float topSurface(int x, int y, int z) {
-                return 1f;
-            }
-        };
-        PathfindingService service = new PathfindingService(volume, Runnable::run);
-        try {
-            return service.submit(from, to, 1.0f, profile, SearchLimits.DEFAULT).result();
-        } finally {
-            service.close();
         }
+    }
+
+    private static boolean fillCliff(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+        for (int y = 0; y < sy; y++) {
+            for (int z = 0; z < sz; z++) {
+                for (int x = 0; x < sx; x++) {
+                    if (y0 + y >= 0 && solid(x0 + x, y0 + y)) {
+                        shapes[(y * sz + z) * sx + x] = 1;
+                    }
+                }
+            }
+        }
+        return true;
     }
 }

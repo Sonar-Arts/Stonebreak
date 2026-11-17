@@ -11,7 +11,7 @@
 # ---- engine ----
 cenda	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest,com/stonebreak/world/CendaChunkBenchmarkTest
 networking	stonebreak-game	com/stonebreak/network/**/*Test
-mms	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/**/*Test,!com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest
+mms	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/**/*Test,com/stonebreak/rendering/sbo/**/*Test,!com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest
 lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test,com/stonebreak/world/lighting/**/*Test
 cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
 shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
@@ -36,6 +36,7 @@ fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/ren
 leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test,com/stonebreak/world/growth/**/*Test
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test,com/stonebreak/world/spawn/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
+physics	stonebreak-game	com/stonebreak/world/physics/**/*Test
 bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 
 # ---- tool ----

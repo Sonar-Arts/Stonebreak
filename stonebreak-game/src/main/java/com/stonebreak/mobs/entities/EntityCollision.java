@@ -1,385 +1,99 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
+import com.openmason.engine.physics.FluidSample;
+import com.openmason.engine.physics.PhysicsBody;
+import com.openmason.engine.physics.PhysicsIntegrator;
 import com.stonebreak.world.World;
-import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.physics.WorldPhysics;
+import org.joml.Vector3f;
 
 /**
- * Handles collision detection and resolution for entities in the world.
- * Provides methods for world collision, entity-entity collision, and physics application.
+ * Entities in the engine physics ({@link WorldPhysics}, OpenMason #117): world collision, gravity,
+ * water and ground friction for every non-drop entity, plus entity-entity separation.
+ *
+ * <p>An entity's body is its box: {@code width} x {@code length} around its position, from its feet
+ * ({@code position.y - legHeight} for a living entity) to {@code position.y + height}. It slides
+ * along walls (horizontal velocity is kept; steering re-sets it every tick), climbs anything up to
+ * half a block while standing, lands, and leaves the ground after walking off an edge — one swept
+ * move, so nothing tunnels at any frame time. Door cells are blocks to mobs.
+ *
+ * <p>In water the body floats (buoyancy toward {@link EntityWaterPhysics#FLOAT_SUBMERSION}, capped
+ * drift, vertical drag) and drifts with the current; dry and airborne it falls under
+ * {@link Entity#GRAVITY}; standing it slows with ground friction.
  */
 public class EntityCollision {
+
+    /**
+     * Mobs climb anything up to half a block (cows step lower than players), partial shapes (snow,
+     * slabs) no higher: they have no mantle either. A mob may step higher
+     * ({@link LivingEntity#getMaxStepUp()}). Route planning reads the same number
+     * ({@code NavProfiles}), so a route never plans a step the body will not take.
+     */
+    public static final float MOB_STEP = 0.5f;
+    private static final float GROUND_FRICTION = 5.0f;
+
+    /** Gravity, ground friction and water for every simulated entity. */
+    public static final PhysicsIntegrator INTEGRATOR = new PhysicsIntegrator(Entity.GRAVITY, GROUND_FRICTION,
+            EntityWaterPhysics.FLOAT_SUBMERSION, EntityWaterPhysics.BUOYANCY_DRIFT_SPEED,
+            EntityWaterPhysics.VERTICAL_DRAG, WorldPhysics.WATER);
+
     private final World world;
-    
+    private final PhysicsBody body = new PhysicsBody();
+    private final FluidSample sample = new FluidSample();
+
     /**
      * Creates a new collision handler for the specified world.
      */
     public EntityCollision(World world) {
         this.world = world;
     }
-    
+
+    private static float legHeight(Entity entity) {
+        return entity instanceof LivingEntity living ? living.getLegHeight() : 0.0f;
+    }
+
+    /** The step a body climbs without a jump: its own for a mob, half a block for anything else. */
+    private static float stepOf(Entity entity) {
+        return entity instanceof LivingEntity living ? living.getMaxStepUp() : MOB_STEP;
+    }
+
+    /** Loads the entity into the scratch body. */
+    private PhysicsBody bodyOf(Entity entity, Vector3f position) {
+        float step = stepOf(entity);
+        body.box(entity.getWidth() / 2.0f, entity.getLength() / 2.0f, legHeight(entity), entity.getHeight())
+            .steps(step, step)
+            .position(position.x, position.y, position.z);
+        Vector3f v = entity.getVelocity();
+        body.velocity(v.x, v.y, v.z);
+        body.mask = WorldPhysics.MOB_MASK;
+        body.flags = PhysicsBody.KEEP_VELOCITY | (entity.isOnGround() ? PhysicsBody.ON_GROUND : 0);
+        return body;
+    }
+
+    private void storeBody(Entity entity) {
+        Vector3f position = entity.getPosition();
+        position.set(body.x, body.y, body.z);
+        entity.setPosition(position);
+        Vector3f velocity = entity.getVelocity();
+        velocity.set(body.vx, body.vy, body.vz);
+        entity.setVelocity(velocity);
+        entity.setOnGround(body.onGround());
+    }
+
     /**
-     * Checks if an entity would collide with the world at a new position.
-     * Entity position represents the body bottom, collision box extends down to include legs.
+     * Checks if an entity would overlap anything it collides with at a new position.
      */
     public boolean checkWorldCollision(Entity entity, Vector3f newPosition) {
-        if (entity == null || newPosition == null) {
+        if (entity == null || newPosition == null || world == null) {
             return false;
         }
-        
-        // For new physics system, entity position is body bottom
-        // Collision box extends down to include legs for living entities
-        float bottomY = newPosition.y;
-        if (entity instanceof LivingEntity livingEntity) {
-            bottomY = newPosition.y - livingEntity.getLegHeight();
-        }
-        
-        // Create bounding box for the new position
-        Entity.BoundingBox newBounds = new Entity.BoundingBox(
-            newPosition.x - entity.getWidth() / 2.0f,
-            bottomY, // Bottom of legs for living entities, entity bottom for others
-            newPosition.z - entity.getLength() / 2.0f,
-            newPosition.x + entity.getWidth() / 2.0f,
-            newPosition.y + entity.getHeight(), // Top of body
-            newPosition.z + entity.getLength() / 2.0f
-        );
-        
-        // Check for solid blocks in the new position
-        int minX = (int) Math.floor(newBounds.minX);
-        int maxX = (int) Math.ceil(newBounds.maxX);
-        int minY = (int) Math.floor(newBounds.minY);
-        int maxY = (int) Math.ceil(newBounds.maxY);
-        int minZ = (int) Math.floor(newBounds.minZ);
-        int maxZ = (int) Math.ceil(newBounds.maxZ);
-        
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    BlockType blockType = world.getBlockAt(x, y, z);
-                    if (blockType != null && blockType != BlockType.AIR && blockType != BlockType.WATER) {
-                        return true; // Collision detected
-                    }
-                }
-            }
-        }
-        
-        return false; // No collision
-    }
-    
-    /**
-     * Gets the effective collision height of a block at the given position.
-     * For most blocks this is 1.0 (full block) or 0.0 (no collision).
-     * For snow blocks, this can be a partial height based on snow layers.
-     */
-    private float getBlockCollisionHeight(int x, int y, int z) {
-        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z);
+        float halfW = entity.getWidth() / 2.0f;
+        float halfL = entity.getLength() / 2.0f;
+        return com.stonebreak.world.physics.WorldPhysics.of(world).overlaps(newPosition.x - halfW, newPosition.y - legHeight(entity), newPosition.z - halfL,
+                newPosition.x + halfW, newPosition.y + entity.getHeight(), newPosition.z + halfL,
+                WorldPhysics.MOB_MASK);
     }
 
-    /**
-     * Collision height of a cell under a world-space XZ footprint. Shaped
-     * blocks (stairs) report the tallest step the footprint overlaps, so mobs
-     * stand on the tread beneath them and climb a staircase with the same
-     * step-up rule they use for any low ledge.
-     */
-    private float getBlockCollisionHeight(int x, int y, int z,
-                                          float minX, float minZ, float maxX, float maxZ) {
-        return com.stonebreak.blocks.BlockShape.collisionHeight(world, x, y, z, minX, minZ, maxX, maxZ);
-    }
-    
-    /**
-     * Whether a blocking cell at foot level is low enough to step onto without a jump: within the
-     * entity's own step height ({@link LivingEntity#getMaxStepUp()}; half a block for anything
-     * else), standing on the ground. A step taller than the shared half-block also needs the
-     * cells the head would rise into to be clear — a glide up a whole block must not drive the
-     * entity into a ceiling.
-     */
-    private boolean canStepUp(Entity entity, float stepUpNeeded, int yi, float entityFootY,
-                              float entityHeadY, int blockX, int blockZ) {
-        float limit = entity instanceof LivingEntity living ? living.getMaxStepUp()
-                : com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP;
-        if (!(stepUpNeeded > 0.0f) || stepUpNeeded > limit
-                || yi != (int) Math.floor(entityFootY) || !entity.isOnGround()) {
-            return false;
-        }
-        if (stepUpNeeded <= com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP) {
-            return true;
-        }
-        for (int y = (int) Math.ceil(entityHeadY); y < (int) Math.ceil(entityHeadY + stepUpNeeded); y++) {
-            com.stonebreak.blocks.BlockType above = world.getBlockAt(blockX, y, blockZ);
-            if (above != null && above.isSolid()) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * Handles collision on the X axis for entities (similar to Player).
-     */
-    private void handleCollisionX(Entity entity, Vector3f position, Vector3f velocity) {
-        float halfWidth = entity.getWidth() / 2;
-        float halfLength = entity.getLength() / 2;
-        
-        float correctedPositionX = position.x;
-        boolean collisionOccurred = false;
-        float stepUpHeight = 0.0f;
-        
-        // Calculate entity foot and head positions
-        float entityFootY = position.y;
-        float entityHeadY = position.y + entity.getHeight();
-        
-        // For living entities, adjust foot position
-        if (entity instanceof LivingEntity livingEntity) {
-            entityFootY = position.y - livingEntity.getLegHeight();
-        }
-        
-        float checkMinZ = position.z - halfLength;
-        float checkMaxZ = position.z + halfLength;
-        
-        // Iterate over the Y and Z cells the entity's volume spans
-        for (int yi = (int)Math.floor(entityFootY); yi < (int)Math.ceil(entityHeadY); yi++) {
-            for (int zi = (int)Math.floor(checkMinZ); zi < (int)Math.ceil(checkMaxZ); zi++) {
-                if (velocity.x < 0) { // Moving left
-                    float entityLeftEdge = position.x - halfWidth;
-                    int blockToCheckX = (int)Math.floor(entityLeftEdge);
-                    
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
-                        entityLeftEdge, checkMinZ, entityLeftEdge, checkMaxZ);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        
-                        // Auto step-up within the entity's step height (see canStepUp)
-                        float stepUpNeeded = blockTop - position.y;
-                        if (entity instanceof LivingEntity livingEntity) {
-                            stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
-                        }
-                        
-                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, blockToCheckX, zi)) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (entityFootY < blockTop && entityHeadY > yi) {
-                            float potentialNewX = (float)(blockToCheckX + 1) + halfWidth;
-                            if (!collisionOccurred || potentialNewX > correctedPositionX) {
-                                correctedPositionX = potentialNewX;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                } else if (velocity.x > 0) { // Moving right
-                    float entityRightEdge = position.x + halfWidth;
-                    int blockToCheckX = (int)Math.floor(entityRightEdge);
-                    
-                    float blockHeight = getBlockCollisionHeight(blockToCheckX, yi, zi,
-                        entityRightEdge, checkMinZ, entityRightEdge, checkMaxZ);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        
-                        // Auto step-up within the entity's step height (see canStepUp)
-                        float stepUpNeeded = blockTop - position.y;
-                        if (entity instanceof LivingEntity livingEntity) {
-                            stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
-                        }
-                        
-                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, blockToCheckX, zi)) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (entityFootY < blockTop && entityHeadY > yi) {
-                            float potentialNewX = (float)blockToCheckX - halfWidth;
-                            if (!collisionOccurred || potentialNewX < correctedPositionX) {
-                                correctedPositionX = potentialNewX;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Apply step-up if needed
-        if (stepUpHeight > 0.0f && !collisionOccurred && entity.isOnGround()) {
-            position.y += stepUpHeight + 0.01f;
-        } else if (collisionOccurred) {
-            position.x = correctedPositionX;
-            // Sliding is allowed, so velocity.x is not zeroed
-        }
-    }
-    
-    /**
-     * Handles collision on the Y axis for entities (similar to Player).
-     */
-    private void handleCollisionY(Entity entity, Vector3f position, Vector3f velocity) {
-        float halfWidth = entity.getWidth() / 2;
-        float halfLength = entity.getLength() / 2;
-        
-        float correctedPositionY = position.y;
-        boolean collisionOccurred = false;
-        boolean downwardCollision = false;
-        
-        float entityMinX = position.x - halfWidth;
-        float entityMaxX = position.x + halfWidth;
-        float entityMinZ = position.z - halfLength;
-        float entityMaxZ = position.z + halfLength;
-        
-        // For living entities, adjust for leg height
-        float checkBottomY = position.y;
-        if (entity instanceof LivingEntity livingEntity) {
-            checkBottomY = position.y - livingEntity.getLegHeight();
-        }
-        
-        for (int xi = (int)Math.floor(entityMinX); xi < (int)Math.ceil(entityMaxX); xi++) {
-            for (int zi = (int)Math.floor(entityMinZ); zi < (int)Math.ceil(entityMaxZ); zi++) {
-                if (velocity.y < 0) { // Moving down
-                    int blockToCheckY = (int)Math.floor(checkBottomY);
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
-                        entityMinX, entityMinZ, entityMaxX, entityMaxZ);
-                    if (blockHeight > 0) {
-                        float blockTop = blockToCheckY + blockHeight;
-                        if (checkBottomY < blockTop) {
-                            float potentialNewY = blockTop;
-                            if (entity instanceof LivingEntity livingEntity) {
-                                potentialNewY = blockTop + livingEntity.getLegHeight();
-                            }
-                            if (!collisionOccurred || potentialNewY > correctedPositionY) {
-                                correctedPositionY = potentialNewY;
-                            }
-                            collisionOccurred = true;
-                            downwardCollision = true;
-                        }
-                    }
-                } else if (velocity.y > 0) { // Moving up
-                    int blockToCheckY = (int)Math.floor(position.y + entity.getHeight());
-                    float blockHeight = getBlockCollisionHeight(xi, blockToCheckY, zi,
-                        entityMinX, entityMinZ, entityMaxX, entityMaxZ);
-                    if (blockHeight > 0) {
-                        float potentialNewY = (float)blockToCheckY - entity.getHeight();
-                        if (!collisionOccurred || potentialNewY < correctedPositionY) {
-                            correctedPositionY = potentialNewY;
-                        }
-                        collisionOccurred = true;
-                    }
-                }
-            }
-        }
-        
-        if (collisionOccurred) {
-            position.y = correctedPositionY;
-            velocity.y = 0;
-            if (downwardCollision) {
-                entity.setOnGround(true);
-            }
-        } else {
-            entity.setOnGround(false);
-        }
-    }
-    
-    /**
-     * Handles collision on the Z axis for entities (similar to Player).
-     */
-    private void handleCollisionZ(Entity entity, Vector3f position, Vector3f velocity) {
-        float halfWidth = entity.getWidth() / 2;
-        float halfLength = entity.getLength() / 2;
-        
-        float correctedPositionZ = position.z;
-        boolean collisionOccurred = false;
-        float stepUpHeight = 0.0f;
-        
-        // Calculate entity foot and head positions
-        float entityFootY = position.y;
-        float entityHeadY = position.y + entity.getHeight();
-        
-        // For living entities, adjust foot position
-        if (entity instanceof LivingEntity livingEntity) {
-            entityFootY = position.y - livingEntity.getLegHeight();
-        }
-        
-        float checkMinX = position.x - halfWidth;
-        float checkMaxX = position.x + halfWidth;
-        
-        // Iterate over the Y and X cells the entity's volume spans
-        for (int yi = (int)Math.floor(entityFootY); yi < (int)Math.ceil(entityHeadY); yi++) {
-            for (int xi = (int)Math.floor(checkMinX); xi < (int)Math.ceil(checkMaxX); xi++) {
-                if (velocity.z < 0) { // Moving towards -Z (front)
-                    float entityFrontEdge = position.z - halfLength;
-                    int blockToCheckZ = (int)Math.floor(entityFrontEdge);
-                    
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
-                        checkMinX, entityFrontEdge, checkMaxX, entityFrontEdge);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        
-                        // Auto step-up within the entity's step height (see canStepUp)
-                        float stepUpNeeded = blockTop - position.y;
-                        if (entity instanceof LivingEntity livingEntity) {
-                            stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
-                        }
-                        
-                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, xi, blockToCheckZ)) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (entityFootY < blockTop && entityHeadY > yi) {
-                            float potentialNewZ = (float)(blockToCheckZ + 1) + halfLength;
-                            if (!collisionOccurred || potentialNewZ > correctedPositionZ) {
-                                correctedPositionZ = potentialNewZ;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                } else if (velocity.z > 0) { // Moving towards +Z (back)
-                    float entityBackEdge = position.z + halfLength;
-                    int blockToCheckZ = (int)Math.floor(entityBackEdge);
-                    
-                    float blockHeight = getBlockCollisionHeight(xi, yi, blockToCheckZ,
-                        checkMinX, entityBackEdge, checkMaxX, entityBackEdge);
-                    if (blockHeight > 0) {
-                        float blockTop = yi + blockHeight;
-                        
-                        // Auto step-up within the entity's step height (see canStepUp)
-                        float stepUpNeeded = blockTop - position.y;
-                        if (entity instanceof LivingEntity livingEntity) {
-                            stepUpNeeded = blockTop - (position.y - livingEntity.getLegHeight());
-                        }
-                        
-                        if (canStepUp(entity, stepUpNeeded, yi, entityFootY, entityHeadY, xi, blockToCheckZ)) {
-                            stepUpHeight = Math.max(stepUpHeight, stepUpNeeded);
-                        } else if (entityFootY < blockTop && entityHeadY > yi) {
-                            float potentialNewZ = (float)blockToCheckZ - halfLength;
-                            if (!collisionOccurred || potentialNewZ < correctedPositionZ) {
-                                correctedPositionZ = potentialNewZ;
-                            }
-                            collisionOccurred = true;
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Apply step-up if needed
-        if (stepUpHeight > 0.0f && !collisionOccurred && entity.isOnGround()) {
-            position.y += stepUpHeight + 0.01f;
-        } else if (collisionOccurred) {
-            position.z = correctedPositionZ;
-            // Sliding is allowed, so velocity.z is not zeroed
-        }
-    }
-    
-    /**
-     * Resolves world collision for an entity by adjusting its position and velocity.
-     * This is the old simple method - use the new per-axis methods for better collision.
-     */
-    public void resolveWorldCollision(Entity entity) {
-        // This method is deprecated - use the new per-axis collision methods instead
-        // Keeping for backwards compatibility
-        
-        Vector3f position = entity.getPosition();
-        Vector3f velocity = entity.getVelocity();
-        
-        // Apply new per-axis collision handling
-        handleCollisionX(entity, position, velocity);
-        handleCollisionY(entity, position, velocity);
-        handleCollisionZ(entity, position, velocity);
-        
-        // Update entity with results
-        entity.setPosition(position);
-        entity.setVelocity(velocity);
-    }
-    
     /**
      * Checks if two entities are colliding.
      */
@@ -387,40 +101,36 @@ public class EntityCollision {
         if (entity1 == entity2 || !entity1.isAlive() || !entity2.isAlive()) {
             return false;
         }
-        
-        Entity.BoundingBox bounds1 = entity1.getBoundingBox();
-        Entity.BoundingBox bounds2 = entity2.getBoundingBox();
-        
-        return bounds1.intersects(bounds2);
+        return entity1.getBoundingBox().intersects(entity2.getBoundingBox());
     }
-    
+
     /**
      * Resolves collision between two entities by pushing them apart.
      */
     public void resolveEntityCollision(Entity entity1, Entity entity2) {
         Vector3f pos1 = entity1.getPosition();
         Vector3f pos2 = entity2.getPosition();
-        
+
         // Calculate separation vector
         Vector3f separation = new Vector3f(pos1).sub(pos2);
         separation.y = 0; // Only separate horizontally
-        
+
         float distance = separation.length();
         if (distance < 0.1f) {
             // Entities are too close, create arbitrary separation
-            separation.set((float)(Math.random() - 0.5), 0, (float)(Math.random() - 0.5));
+            separation.set((float) (Math.random() - 0.5), 0, (float) (Math.random() - 0.5));
             distance = separation.length();
         }
-        
+
         // Normalize and scale separation
         separation.normalize();
         float minSeparation = (entity1.getWidth() + entity2.getWidth()) / 2.0f + 0.1f;
         separation.mul(minSeparation - distance);
-        
+
         // Apply separation (each entity moves half the distance)
         Vector3f pos1New = new Vector3f(pos1).add(new Vector3f(separation).mul(0.5f));
         Vector3f pos2New = new Vector3f(pos2).sub(new Vector3f(separation).mul(0.5f));
-        
+
         // Only update positions if the new positions are valid
         if (!checkWorldCollision(entity1, pos1New)) {
             entity1.setPosition(pos1New);
@@ -429,70 +139,7 @@ public class EntityCollision {
             entity2.setPosition(pos2New);
         }
     }
-    
-    /**
-     * Gets the ground height at a specific position.
-     * With new physics system, this returns where the entity body bottom should be positioned.
-     */
-    public float getGroundHeight(float x, float z, Entity entity) {
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        
-        // For entities, search in a limited range around their current position to prevent teleportation
-        int startY, endY;
-        if (entity != null) {
-            int entityY = (int) Math.floor(entity.getPosition().y);
-            // Search within 5 blocks above and 10 blocks below current position
-            startY = Math.min(255, entityY + 5);
-            endY = Math.max(0, entityY - 10);
-        } else {
-            // For non-entity calls, search from top down (legacy behavior)
-            startY = 255;
-            endY = 0;
-        }
-        
-        // Search downward from starting height to find ground
-        for (int y = startY; y >= endY; y--) {
-            BlockType blockType = world.getBlockAt(blockX, y, blockZ);
-            if (blockType != null && blockType != BlockType.AIR && blockType != BlockType.WATER) {
-                float groundSurface = y + 1.0f; // Top surface of the block
-                
-                // For living entities, position the body bottom so feet touch the ground
-                if (entity instanceof LivingEntity livingEntity) {
-                    return groundSurface + livingEntity.getLegHeight();
-                }
-                
-                // For non-living entities, position at ground surface
-                return groundSurface;
-            }
-        }
-        
-        // If no ground found in range, return current entity position (don't teleport)
-        if (entity != null) {
-            return entity.getPosition().y;
-        }
-        
-        return 0.0f; // Bedrock level
-    }
-    
-    /**
-     * Gets the ground height at a specific position (legacy method for non-entity calls).
-     */
-    public float getGroundHeight(float x, float z) {
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        
-        // Search downward from a reasonable height to find ground
-        for (int y = 255; y >= 0; y--) {
-            BlockType blockType = world.getBlockAt(blockX, y, blockZ);
-            if (blockType != null && blockType != BlockType.AIR && blockType != BlockType.WATER) {
-                return y + 1.0f; // Top surface of the block
-            }
-        }
-        
-        return 0.0f; // Bedrock level
-    }
-    
+
     /**
      * Checks if an entity is in water.
      */
@@ -500,235 +147,55 @@ public class EntityCollision {
         return EntityWaterPhysics.submersion(world, entity) > 0.0f;
     }
 
-
     /**
-     * Applies physics to an entity, including ground detection and water handling.
-     * Now uses improved per-axis collision detection similar to Player class.
+     * One physics tick for an entity: water (buoyancy and the current) or gravity, the swept move,
+     * ground friction. Records the entity's submersion (measured before the move).
      */
     public void applyEntityPhysics(Entity entity, float deltaTime) {
-        Vector3f position = entity.getPosition();
-        Vector3f velocity = entity.getVelocity();
-        
-        // How deep the entity is, not merely whether it is wet — buoyancy needs the difference.
-        float submersion = EntityWaterPhysics.submersion(world, entity);
-        entity.setSubmersion(submersion);
-
-        // Drops carry their own gravity, bounce and ground-snap in update().
-        if (!(entity instanceof BlockDrop) && !(entity instanceof ItemDrop)) {
-            if (submersion > 0.0f) {
-                EntityWaterPhysics.apply(world, entity, submersion, deltaTime);
-                velocity.set(entity.getVelocity());
-            } else if (!entity.isOnGround()) {
-                velocity.y += Entity.GRAVITY * deltaTime;
-                // A glider floats down instead of dropping.
-                if (entity instanceof LivingEntity living && living.getGlideSinkSpeed() > 0f) {
-                    velocity.y = Math.max(velocity.y, -living.getGlideSinkSpeed());
-                }
-            }
-        }
-
-        // Update entity velocity first
-        entity.setVelocity(velocity);
-        
-        // Update position with per-axis collision detection (similar to Player)
-        position.x += velocity.x * deltaTime;
-        handleCollisionX(entity, position, velocity);
-        
-        position.y += velocity.y * deltaTime;
-        handleCollisionY(entity, position, velocity);
-        
-        position.z += velocity.z * deltaTime;
-        handleCollisionZ(entity, position, velocity);
-        
-        // Update entity with final position and velocity
-        entity.setPosition(position);
-        entity.setVelocity(velocity);
-        
-        // Check if entity is standing on solid ground
-        checkGroundBeneath(entity);
-        
-        // Apply frame-rate independent dampening (similar to Player)
-        if (entity.isOnGround()) {
-            // Ground friction - exponential decay
-            float friction = 5.0f; // Friction coefficient
-            float frictionFactor = (float) Math.exp(-friction * deltaTime);
-            velocity.x *= frictionFactor;
-            velocity.z *= frictionFactor;
-            entity.setVelocity(velocity);
-        }
-    }
-    
-    /**
-     * Checks if there's a solid block beneath the entity.
-     * If not, sets onGround to false so the entity will fall.
-     * This mirrors the player's ground detection logic with support for partial height blocks.
-     */
-    private void checkGroundBeneath(Entity entity) {
-        Vector3f velocity = entity.getVelocity();
-        if (entity.isOnGround() && velocity.y <= 0.1f) {
-            // Check if we're currently considered on ground and not moving upward significantly
-            float halfWidth = entity.getWidth() / 2;
-            float halfLength = entity.getLength() / 2;
-            float x1 = entity.getPosition().x - halfWidth;
-            float x2 = entity.getPosition().x + halfWidth;
-            
-            // For living entities, check beneath the legs (feet), not just beneath the body
-            float y = entity.getPosition().y - 0.1f;
-            if (entity instanceof LivingEntity livingEntity) {
-                y = entity.getPosition().y - livingEntity.getLegHeight() - 0.1f;
-            }
-            
-            float z1 = entity.getPosition().z - halfLength;
-            float z2 = entity.getPosition().z + halfLength;
-            
-            boolean blockBeneath = false;
-            
-            // Check several points beneath the entity to ensure there's ground
-            for (float checkX = x1 + 0.1f; checkX <= x2 - 0.1f; checkX += 0.3f) {
-                for (float checkZ = z1 + 0.1f; checkZ <= z2 - 0.1f; checkZ += 0.3f) {
-                    int blockX = (int) Math.floor(checkX);
-                    int blockY = (int) Math.floor(y);
-                    int blockZ = (int) Math.floor(checkZ);
-                    
-                    float blockHeight = getBlockCollisionHeight(blockX, blockY, blockZ);
-                    if (blockHeight > 0) {
-                        // Check if the block's top surface is close enough to the entity's feet
-                        float blockTop = blockY + blockHeight;
-                        if (blockTop >= y) { // Block surface is at or above the check point
-                            blockBeneath = true;
-                            break;
-                        }
-                    }
-                }
-                if (blockBeneath) {
-                    break;
-                }
-            }
-            
-            if (!blockBeneath) {
-                entity.setOnGround(false);
-                // Add a small initial velocity to start falling
-                if (velocity.y == 0) {
-                    velocity.y = -0.1f;
-                    entity.setVelocity(velocity);
-                }
-            }
-        }
-    }
-
-    /**
-     * Finds the exact ground collision point for an entity at a specific position.
-     * This method avoids grid snapping by finding the precise Y position where
-     * the entity's feet would touch the ground.
-     */
-    private float findExactGroundCollision(Entity entity, float x, float z) {
-        Vector3f currentPos = entity.getPosition();
-        float entityBottomY = currentPos.y;
-        
-        // For living entities, check from the feet level
-        if (entity instanceof LivingEntity livingEntity) {
-            entityBottomY = currentPos.y - livingEntity.getLegHeight();
-        }
-        
-        // Find the highest solid block beneath the entity
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        
-        // Search downward from current position to find ground
-        for (int y = (int) Math.floor(entityBottomY); y >= 0; y--) {
-            BlockType blockType = world.getBlockAt(blockX, y, blockZ);
-            if (blockType != null && blockType != BlockType.AIR && blockType != BlockType.WATER) {
-                float blockTop = y + 1.0f;
-                
-                // For living entities, return the body bottom position where feet would touch ground
-                if (entity instanceof LivingEntity livingEntity) {
-                    return blockTop + livingEntity.getLegHeight();
-                }
-                
-                // For non-living entities, return ground surface
-                return blockTop;
-            }
-        }
-        
-        // If no ground found, return current position to avoid teleportation
-        return currentPos.y;
-    }
-    
-    /**
-     * Ensures that a living entity is properly positioned on the ground surface
-     * and not sinking into blocks. Uses gentle correction to avoid jarring movements.
-     */
-    private void ensureProperGroundPosition(Entity entity) {
-        if (!(entity instanceof LivingEntity livingEntity)) {
+        if (world == null) {
             return;
         }
-        
-        Vector3f position = entity.getPosition();
-        
-        // Check if the entity's feet are inside a solid block
-        float feetY = position.y - livingEntity.getLegHeight();
-        int blockX = (int) Math.floor(position.x);
-        int blockZ = (int) Math.floor(position.z);
-        int feetBlockY = (int) Math.floor(feetY);
-        
-        BlockType blockAtFeet = world.getBlockAt(blockX, feetBlockY, blockZ);
-        if (blockAtFeet != null && blockAtFeet != BlockType.AIR && blockAtFeet != BlockType.WATER) {
-            // Entity's feet are in a solid block, gently move them up
-            float blockTop = feetBlockY + 1.0f;
-            float correctBodyY = blockTop + livingEntity.getLegHeight();
-            
-            // Only adjust if the correction is minimal to avoid jarring movements
-            if (correctBodyY > position.y && correctBodyY - position.y < 0.5f) {
-                Vector3f correctedPosition = new Vector3f(position.x, correctBodyY, position.z);
-                entity.setPosition(correctedPosition);
-            }
+        PhysicsBody b = bodyOf(entity, entity.getPosition());
+        // A glider floats down instead of dropping: airborne and dry, it never falls faster than its
+        // sink speed. The step adds gravity itself, so cap the speed it starts from such that, once
+        // gravity is added, the fall is at most the sink speed — gravity first, then the cap.
+        float sink = entity instanceof LivingEntity living ? living.getGlideSinkSpeed() : 0f;
+        boolean gliding = sink > 0f && !entity.isOnGround() && entity.getSubmersion() <= 0f;
+        if (gliding) {
+            b.vy = Math.max(b.vy, -sink - Entity.GRAVITY * deltaTime);
         }
+        com.stonebreak.world.physics.WorldPhysics.of(world).step(b, deltaTime, INTEGRATOR, sample);
+        if (gliding && sample.submersion <= 0f) {
+            b.vy = Math.max(b.vy, -sink);
+        }
+        entity.setSubmersion(sample.submersion);
+        storeBody(entity);
     }
-    
+
     /**
      * Specialized physics application for living entities.
      */
     public void applyLivingEntityPhysics(LivingEntity entity, float deltaTime) {
-        // Apply basic entity physics
         applyEntityPhysics(entity, deltaTime);
-
-        // Additional living entity physics can be added here
-        // such as breathing air bubbles in water, stamina-based movement, etc.
     }
 
     /**
-     * Integrates an airborne, self-propelled entity (e.g. a flying goose) for one tick using
-     * the same per-axis world-block resolvers as {@link #applyEntityPhysics}, but with NO
-     * gravity, friction, buoyancy or ground-snap — the caller's AI owns all velocity.
-     *
-     * <p>The directional resolvers slide along walls (horizontal velocity is preserved) and
-     * treat AIR/WATER as passable, so geese still cruise over and splash-land on water.
+     * Moves an airborne, self-propelled entity (e.g. a flying goose) for one tick with the same
+     * collision as {@link #applyEntityPhysics}, but with NO gravity, friction or water — the caller's
+     * AI owns all velocity. Walls slide (horizontal velocity is preserved); a vertical hit zeroes the
+     * vertical velocity and a landing sets onGround.
      *
      * @return {@code {blockedHorizontal, blockedVertical}} so the AI can react to a wall/ceiling.
      */
     public boolean[] moveAirborneWithCollision(LivingEntity entity, float deltaTime) {
-        Vector3f position = entity.getPosition();
-        Vector3f velocity = entity.getVelocity();
-
-        float targetX = position.x + velocity.x * deltaTime;
-        position.x = targetX;
-        handleCollisionX(entity, position, velocity);
-        boolean blockedX = Math.abs(position.x - targetX) > 1e-4f;
-
-        float targetY = position.y + velocity.y * deltaTime;
-        float velYBefore = velocity.y;
-        position.y = targetY;
-        handleCollisionY(entity, position, velocity); // zeroes velocity.y / sets onGround on a hit
-        boolean blockedY = Math.abs(position.y - targetY) > 1e-4f
-                || (velYBefore != 0f && velocity.y == 0f);
-
-        float targetZ = position.z + velocity.z * deltaTime;
-        position.z = targetZ;
-        handleCollisionZ(entity, position, velocity);
-        boolean blockedZ = Math.abs(position.z - targetZ) > 1e-4f;
-
-        entity.setPosition(position);
-        entity.setVelocity(velocity);
-        return new boolean[] { blockedX || blockedZ, blockedY };
+        if (world == null) {
+            return new boolean[] {false, false};
+        }
+        PhysicsBody b = bodyOf(entity, entity.getPosition());
+        com.stonebreak.world.physics.WorldPhysics.of(world).move(b, deltaTime);
+        storeBody(entity);
+        boolean blockedH = b.hasContact(PhysicsBody.CONTACT_HORIZONTAL);
+        boolean blockedV = b.hasContact(PhysicsBody.CONTACT_GROUND | PhysicsBody.CONTACT_CEILING);
+        return new boolean[] {blockedH, blockedV};
     }
 }

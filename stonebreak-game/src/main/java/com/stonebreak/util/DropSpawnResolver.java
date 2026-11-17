@@ -1,6 +1,6 @@
 package com.stonebreak.util;
 
-import com.stonebreak.blocks.BlockShape;
+import com.stonebreak.world.physics.WorldPhysics;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -17,7 +17,7 @@ import org.joml.Vector3f;
  * block-by-block to the canopy.</p>
  *
  * <p>One solidity rule with the drops' landing pass (issue #265): passability is
- * backed by {@link BlockShape#collisionHeight} — a cell is passable exactly where its
+ * backed by the engine physics' drop mask ({@link WorldPhysics#DROP_MASK}) — a cell is passable exactly where its
  * collision height is 0 — so the two can never drift: non-collidable cells (flowers,
  * wildgrass, placed torches, water) are passable AND never act as ground, and
  * collidable partial-height cells (snow layers, stairs) never host a spawn.</p>
@@ -30,17 +30,17 @@ public final class DropSpawnResolver {
     /**
      * A drop can occupy air or a non-collidable cell (flowers, water, placed torches);
      * never a collidable one. One solidity rule with the drops' landing pass (issue
-     * #265), backed by {@link BlockShape#collisionHeight} — the whole-cell form, because
+     * #265), backed by {@code BlockShape.collisionHeight} — the whole-cell form, because
      * the drop would occupy the whole cell; a null block (out of bounds) answers nothing.
      */
     public static boolean isPassable(World world, int x, int y, int z) {
-        return world == null || BlockShape.collisionHeight(world, x, y, z) <= 0f;
+        return world == null || com.stonebreak.world.physics.WorldPhysics.of(world).isOpen(x, y, z, WorldPhysics.DROP_MASK);
     }
 
     /** True when the drop's own cell collides — the drop is embedded inside a block
      *  (trunk, snow, stairs; a snow or stair cell collides at partial height). */
     public static boolean isEmbedded(World world, int x, int y, int z) {
-        return world != null && BlockShape.collisionHeight(world, x, y, z) > 0f;
+        return world != null && !com.stonebreak.world.physics.WorldPhysics.of(world).isOpen(x, y, z, WorldPhysics.DROP_MASK);
     }
 
     /**
@@ -91,25 +91,18 @@ public final class DropSpawnResolver {
      * otherwise the passable candidate whose centre is nearest the preference point.
      */
     private static Vector3f nearestPassable(World world, int[][] candidates, Vector3f preferencePoint) {
-        int best = -1;
-        float bestDistSq = Float.MAX_VALUE;
-        for (int i = 0; i < candidates.length; i++) {
-            int[] c = candidates[i];
-            if (!isPassable(world, c[0], c[1], c[2])) {
-                continue;
+        int best;
+        if (world == null) {
+            best = 0;
+        } else {
+            int[] flat = new int[candidates.length * 3];
+            for (int i = 0; i < candidates.length; i++) {
+                System.arraycopy(candidates[i], 0, flat, i * 3, 3);
             }
-            if (preferencePoint == null) {
-                best = i;
-                break;
-            }
-            float dx = c[0] + 0.5f - preferencePoint.x;
-            float dy = c[1] + 0.5f - preferencePoint.y;
-            float dz = c[2] + 0.5f - preferencePoint.z;
-            float distSq = dx * dx + dy * dy + dz * dz;
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                best = i;
-            }
+            best = preferencePoint == null
+                ? com.stonebreak.world.physics.WorldPhysics.of(world).engine().nearestOpenCell(flat, candidates.length, false, 0, 0, 0, WorldPhysics.DROP_MASK)
+                : com.stonebreak.world.physics.WorldPhysics.of(world).engine().nearestOpenCell(flat, candidates.length, true,
+                    preferencePoint.x, preferencePoint.y, preferencePoint.z, WorldPhysics.DROP_MASK);
         }
         return best < 0 ? null
                 : new Vector3f(candidates[best][0] + 0.5f, candidates[best][1] + 0.5f, candidates[best][2] + 0.5f);
