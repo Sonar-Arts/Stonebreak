@@ -578,7 +578,9 @@ public class Main {
      * {@code stonebreak.autotorch} / {@code stonebreak.autofurnace}. Inert unless the property is set.
      * Options after the seconds: {@code :torches} places ground torches on the air above the ground ahead (their
      * SBO's {@code ambient} flame — placing into air passes the server's edit rules, clearing would not), plus a
-     * standing furnace-smoke FX beside them; {@code :night} sets midnight; {@code :quiet} skips the bursts.
+     * standing furnace-smoke FX beside them; {@code :night} sets midnight; {@code :quiet} skips the bursts;
+     * {@code :gameplay} plays the Stonebreak#441 effects instead (a fire-bolt trail sweeping across the view, its
+     * impact burst, a decoy's smoke and a swimmer's ripples).
      */
     private void maybeAutoFx() {
         if (autoFxOff) {
@@ -606,6 +608,14 @@ public class Main {
         }
         if (!Float.isNaN(autoFxLookX)) {
             aimCameraAt(autoFxLookX, autoFxLookY, autoFxLookZ);
+        }
+        if (now >= autoFxStartNanos && Game.getPlayer() != null && spec.contains(":gameplay")) {
+            if (!autoFxStaged) {
+                autoFxStaged = true;
+                stageAutoFx(java.util.Arrays.asList(spec.trim().split(":")));
+            }
+            autoFxGameplay(now);
+            return;
         }
         if (now < autoFxNextNanos || Game.getPlayer() == null) {
             return;
@@ -643,6 +653,65 @@ public class Main {
             System.out.printf("[autofx] live=%d instances=%d sim=%.3fms enabled=%s%n", rt.liveParticles(),
                     rt.instanceCount(), rt.lastUpdateNanos() / 1e6, com.stonebreak.fx.Fx.enabled());
         }
+    }
+
+    private com.stonebreak.fx.TrailFx autoFxTrail;
+    private float autoFxTrailAt = Float.NaN;
+    private long autoFxLastNanos;
+
+    /**
+     * {@code :gameplay}: every frame a fire-bolt trail flies 25 blocks/s across the view 5 blocks ahead (a new
+     * streak every 8 blocks, ending in its impact burst); every 0.7 s decoy smoke on the left and a ripple on the
+     * ground (or water) to the right, all around where the camera faces (pair with {@code stonebreak.autoview}).
+     */
+    private void autoFxGameplay(long now) {
+        var camera = Game.getPlayer().getCamera();
+        org.joml.Vector3f eye = camera.getPosition();
+        org.joml.Vector3f front = new org.joml.Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
+        org.joml.Vector3f right = new org.joml.Vector3f(-front.z, 0, front.x);
+        float dt = autoFxLastNanos == 0 ? 0f : Math.min(0.1f, (now - autoFxLastNanos) / 1e9f);
+        autoFxLastNanos = now;
+        if (autoFxTrail == null) {
+            autoFxTrail = new com.stonebreak.fx.TrailFx(com.stonebreak.mobs.entities.FireBolt.TRAIL_FX);
+        }
+        float cx = eye.x + front.x * 5f, cz = eye.z + front.z * 5f, by = eye.y - 1.4f;
+        autoFxTrailAt = Float.isNaN(autoFxTrailAt) ? -4f : autoFxTrailAt + 25f * dt;
+        if (autoFxTrailAt > 4f) {
+            autoFxTrail.end();
+            com.stonebreak.fx.Fx.fire(com.stonebreak.mobs.entities.FireBolt.IMPACT_FX,
+                    cx + right.x * 4f, by, cz + right.z * 4f);
+            autoFxTrailAt = -4f;
+        }
+        autoFxTrail.follow(cx + right.x * autoFxTrailAt, by, cz + right.z * autoFxTrailAt, -right.x, 0, -right.z);
+        if (now < autoFxNextNanos) {
+            return;
+        }
+        autoFxNextNanos = now + 700_000_000L;
+        float sx = eye.x + front.x * 4f - right.x * 2.5f, sz = eye.z + front.z * 4f - right.z * 2.5f;
+        com.stonebreak.fx.Fx.fire(com.stonebreak.player.combat.illusionist.MirroredDeceitAbility.SMOKE_FX,
+                sx, autoFxSurface(sx, eye.y, sz), sz);
+        for (int i = 0; i < 2; i++) {
+            float rx = eye.x + front.x * (5f + i * 1.5f) + right.x * (1.5f + i * 0.8f);
+            float rz = eye.z + front.z * (5f + i * 1.5f) + right.z * (1.5f + i * 0.8f);
+            com.stonebreak.fx.bindings.EntityFx.ripple(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER,
+                    rx, autoFxSurface(rx, eye.y, rz), rz);
+        }
+        com.stonebreak.fx.FxRuntime rt = com.stonebreak.fx.Fx.installed();
+        if (rt != null) {
+            System.out.printf("[autofx] gameplay live=%d instances=%d%n", rt.liveParticles(), rt.instanceCount());
+        }
+    }
+
+    /** The top of the first block (or water surface) below {@code (x, fromY, z)}, scanning 12 blocks down. */
+    private static float autoFxSurface(float x, float fromY, float z) {
+        var world = Game.getWorld();
+        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
+        for (int y = (int) Math.floor(fromY); world != null && y > fromY - 12; y--) {
+            var block = world.getBlockAt(bx, y, bz);
+            if (block == com.stonebreak.blocks.BlockType.WATER) return y + 0.875f;
+            if (block != null && block != com.stonebreak.blocks.BlockType.AIR && block.isSolid()) return y + 1f;
+        }
+        return fromY - 1.62f;
     }
 
     /** {@link #maybeAutoFx}'s one-time staging: torches on the ground ahead, night, a standing smoke FX. */

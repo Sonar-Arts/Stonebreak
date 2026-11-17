@@ -1,7 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.effects.FireTrailParticles;
+import com.stonebreak.fx.Fx;
+import com.stonebreak.fx.TrailFx;
 import com.stonebreak.world.World;
 import org.joml.Vector3f;
 
@@ -17,8 +18,12 @@ public class FireBolt extends Entity {
     private static final float DAMAGE     = 8.0f;
     // Body boxes are grown by the bolt's half-size when it sweeps through them.
     private static final float HIT_MARGIN = 0.15f;
-    /** How long an impacted bolt stays (at least): the longest trail/burst particle's life. */
+    /** How long an impacted bolt stays: the longest trail/burst particle's life. */
     private static final float IMPACT_LINGER = 0.75f;
+    /** Flames streaming back from a flying bolt (Stonebreak#441; follows the bolt, launched along its back). */
+    public static final String TRAIL_FX = "stonebreak:fire_trail";
+    /** The burst of flame where the bolt strikes. */
+    public static final String IMPACT_FX = "stonebreak:fire_burst";
     /** Replicated (EntityAnimS2C) when the bolt hits, so a client shadow bursts and hides its core. */
     static final String IMPACT_STATE = "Impact";
 
@@ -28,7 +33,8 @@ public class FireBolt extends Entity {
     // long enough for its trail/impact particles to fade out before despawning.
     private boolean impacted = false;
     private float impactAge;
-    public final FireTrailParticles particles = new FireTrailParticles();
+    /** Drawn copies only (see {@link #drawsParticles}): the server world's bolt is never rendered. */
+    private final TrailFx trail = new TrailFx(TRAIL_FX);
     /** Shadow only: last interpolated position, to aim the trail behind its motion. */
     private final Vector3f lastShadowPos = new Vector3f(Float.NaN, 0f, 0f);
 
@@ -56,10 +62,7 @@ public class FireBolt extends Entity {
         // to fade (on clients too: their shadow goes when this does), then despawns.
         if (impacted) {
             impactAge += deltaTime;
-            if (drawsParticles()) {
-                particles.update(deltaTime);
-            }
-            if ((impactAge >= IMPACT_LINGER && particles.isEmpty()) || age > MAX_AGE + 2.0f) {
+            if (impactAge >= IMPACT_LINGER || age > MAX_AGE + 2.0f) {
                 alive = false;
             }
             return;
@@ -103,12 +106,10 @@ public class FireBolt extends Entity {
             return;
         }
 
-        // Spawn fire trail particles behind the bolt — only where it is drawn: the server world's
-        // copy is never rendered (clients draw their shadow's own trail).
+        // The fire trail follows the bolt — only where it is drawn: the server world's copy is
+        // never rendered (clients trail their shadow instead).
         if (drawsParticles()) {
-            Vector3f backDir = new Vector3f(direction).negate();
-            particles.spawn(position, backDir);
-            particles.update(deltaTime);
+            trail.follow(position.x, position.y, position.z, -direction.x, -direction.y, -direction.z);
         }
     }
 
@@ -123,13 +124,15 @@ public class FireBolt extends Entity {
     @Override
     public void updateClientVisuals(float deltaTime) {
         if (!impacted && !Float.isNaN(lastShadowPos.x)) {
-            Vector3f moved = new Vector3f(position).sub(lastShadowPos);
-            if (moved.lengthSquared() > 1e-6f) {
-                particles.spawn(position, moved.negate().normalize());
+            float bx = lastShadowPos.x - position.x;
+            float by = lastShadowPos.y - position.y;
+            float bz = lastShadowPos.z - position.z;
+            float len = (float) Math.sqrt(bx * bx + by * by + bz * bz);
+            if (len > 1e-3f) {
+                trail.follow(position.x, position.y, position.z, bx / len, by / len, bz / len);
             }
         }
         lastShadowPos.set(position);
-        particles.update(deltaTime);
     }
 
     @Override
@@ -145,13 +148,22 @@ public class FireBolt extends Entity {
     }
 
     /**
-     * Stops the bolt and emits an impact burst. The entity remains alive until
-     * its particles fade so the trail does not pop out of existence.
+     * Stops the bolt: the trail stops emitting and a burst of flame goes up where it struck. The
+     * entity lingers while the trail's last flames fade (its core is no longer drawn), so a client's
+     * shadow does not vanish before the impact state reaches it.
      */
     private void impact() {
         if (impacted) return;
         impacted = true;
-        particles.burst(position);
+        if (drawsParticles()) {
+            trail.end();
+            Fx.fire(IMPACT_FX, position.x, position.y, position.z);
+        }
+    }
+
+    @Override
+    public void onRemovedFromWorld() {
+        trail.end();
     }
 
     /** Whether the bolt has struck something and is now just fading out. */

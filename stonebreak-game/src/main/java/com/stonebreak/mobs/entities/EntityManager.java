@@ -313,6 +313,9 @@ public class EntityManager {
                 System.err.println("[EntityManager] Listener.onEntityRemoved threw: " + ex);
             }
         }
+        try { e.onRemovedFromWorld(); } catch (Exception ex) {
+            System.err.println("[EntityManager] onRemovedFromWorld threw: " + ex);
+        }
     }
 
     /**

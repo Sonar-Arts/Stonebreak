@@ -22,8 +22,6 @@ import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.player.state.PhysicsState;
-import com.stonebreak.rendering.effects.WaterRippleParticles;
-import com.stonebreak.rendering.effects.WaterSplashParticles;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -70,7 +68,7 @@ public class Player {
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
 
-    // Water entry splash + surface ripple particles
+    // Water entry splash + surface ripple FX
     private final PlayerWaterEffects waterEffects = new PlayerWaterEffects();
 
     // Third-person body model
@@ -529,12 +527,6 @@ public class Player {
 
     // Illusionist
     public IllusionistAbilityController getIllusionistAbilities() { return c.illusionistAbilities; }
-
-    // Water splash particles
-    public WaterSplashParticles getSplashParticles() { return waterEffects.getSplashParticles(); }
-
-    // Water surface ripples
-    public WaterRippleParticles getRippleParticles() { return waterEffects.getRippleParticles(); }
 
     // Rogue
     public RogueAbilityController getRogueAbilities() { return c.rogueAbilities; }

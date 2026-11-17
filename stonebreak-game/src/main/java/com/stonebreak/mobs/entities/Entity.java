@@ -254,6 +254,14 @@ public abstract class Entity {
     }
     public void setAlive(boolean alive) { this.alive = alive; }
 
+    /**
+     * Called once when this entity has left its {@link EntityManager} (death, despawn, a shadow the server
+     * dropped), after the manager's update: let go of anything held for it outside the entity, such as a
+     * playing FX. Not called when the whole world is torn down. No-op by default.
+     */
+    public void onRemovedFromWorld() {
+    }
+
     /** The native entity-world handle, or 0 while this entity is in no {@link EntityManager}. */
     public long getEntityHandle() { return entityHandle; }
     /** The native entity world this entity's handle belongs to, or null. */

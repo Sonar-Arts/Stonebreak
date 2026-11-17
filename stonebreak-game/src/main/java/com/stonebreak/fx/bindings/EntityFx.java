@@ -78,11 +78,22 @@ public final class EntityFx {
     /**
      * A player ({@code type}) broke the water surface at {@code feet} falling at {@code impactSpeed} blocks/s:
      * plays the SBE's {@value #EVENT_SPLASH} bindings, strength from the speed (0.35..1.6 x authored). True when
-     * the asset binds a splash, so the caller can retire its legacy splash.
+     * the asset binds a splash.
      */
     public static boolean splash(EntityType type, org.joml.Vector3f feet, float impactSpeed) {
         float intensity = Math.clamp(impactSpeed / SPLASH_REFERENCE_SPEED, 0.35f, 1.6f);
         return play(type, EVENT_SPLASH, feet.x, feet.y, feet.z, intensity);
+    }
+
+    /** Custom entity event: a ring spreading on the water surface around a swimmer (Stonebreak#441). */
+    public static final String EVENT_RIPPLE = "ripple";
+
+    /**
+     * A {@code type} swimmer disturbs the water surface at {@code (x, surfaceY, z)}: plays the SBE's
+     * {@value #EVENT_RIPPLE} bindings there. True when the asset binds a ripple.
+     */
+    public static boolean ripple(EntityType type, float x, float surfaceY, float z) {
+        return play(type, EVENT_RIPPLE, x, surfaceY, z, AssetFx.NORMAL);
     }
 
     /** {@code event} of a live entity, at its feet. */

@@ -1,54 +1,32 @@
 package com.stonebreak.player;
 
+import com.stonebreak.core.Game;
+import com.stonebreak.fx.bindings.SwimFx;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.state.PhysicsState;
-import com.stonebreak.rendering.effects.WaterRippleParticles;
-import com.stonebreak.rendering.effects.WaterSplashParticles;
 import org.joml.Vector3f;
 
 /**
- * Water entry splash and surface ripple particle effects that follow the player.
- * Owns the particle systems and the ripple spawn cadence; advanced once per tick
- * by {@link PlayerUpdatePipeline}.
+ * The local player's water entry splash and surface ripples (the player SBE's {@code splash}/{@code ripple} FX,
+ * Stonebreak#441), advanced once per tick by {@link PlayerUpdatePipeline}.
  */
 final class PlayerWaterEffects {
 
-    private final WaterSplashParticles splashParticles = new WaterSplashParticles();
-    private final WaterRippleParticles rippleParticles = new WaterRippleParticles();
-    private float rippleSpawnTimer = 0f;
+    private final SwimFx swimFx = new SwimFx();
 
     /**
      * @param eyesSubmerged true when the player's eyes are underwater (swimming state);
      *                      ripples are a surface effect and are suppressed while submerged.
      */
     void update(float dt, PhysicsState state, boolean eyesSubmerged) {
+        Vector3f feet = state.getPosition();
         if (state.justEnteredWaterThisFrame()) {
-            float impactSpeed = Math.max(0f, -state.getVelocity().y);
-            // The player SBE's "splash" FX binding owns the splash when it has one (#437).
-            if (!com.stonebreak.fx.bindings.EntityFx.splash(
-                    com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER, state.getPosition(), impactSpeed)) {
-                splashParticles.burst(state.getPosition(), impactSpeed);
-            }
-            rippleParticles.spawn(state.getPosition());
-            rippleSpawnTimer = 0f;
+            swimFx.enteredWater(EntityType.REMOTE_PLAYER, Game.getWorld(), feet,
+                    Math.max(0f, -state.getVelocity().y));
         }
-        splashParticles.update(dt);
-        // Ripples are a surface effect — suppress them once the player's eyes are
-        // submerged (fully underwater), not just "touching" water.
-        if (state.isPhysicallyInWater() && !eyesSubmerged) {
-            Vector3f vel = state.getVelocity();
-            float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-            rippleSpawnTimer += dt;
-            if (horizSpeed > PlayerConstants.WATER_RIPPLE_SPEED_THRESHOLD
-                    && rippleSpawnTimer >= PlayerConstants.WATER_RIPPLE_SPAWN_INTERVAL) {
-                rippleParticles.spawn(state.getPosition());
-                rippleSpawnTimer = 0f;
-            }
-        } else {
-            rippleSpawnTimer = 0f;
-        }
-        rippleParticles.update(dt);
+        Vector3f vel = state.getVelocity();
+        float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        swimFx.update(dt, EntityType.REMOTE_PLAYER, Game.getWorld(), feet,
+                state.isPhysicallyInWater(), eyesSubmerged, horizSpeed);
     }
-
-    WaterSplashParticles getSplashParticles() { return splashParticles; }
-    WaterRippleParticles getRippleParticles() { return rippleParticles; }
 }
