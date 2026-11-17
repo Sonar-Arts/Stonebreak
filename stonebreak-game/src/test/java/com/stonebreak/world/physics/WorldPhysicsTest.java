@@ -122,6 +122,32 @@ class WorldPhysicsTest {
     }
 
     @Test
+    void leavesAndLogsCarryTheirOwnCategoriesOnlyForTheLeafFlood() {
+        world.setBlockAt(2, 11, 2, BlockType.LEAVES);
+        world.setBlockAt(3, 11, 2, BlockType.WOOD);
+        WorldPhysics physics = world.physics();
+        assertTrue(physics.cellTop(2, 11, 2, WorldPhysics.LEAVES) > 0f);
+        assertTrue(physics.cellTop(3, 11, 2, WorldPhysics.LOG) > 0f);
+        assertTrue(physics.isOpen(3, 11, 2, WorldPhysics.LEAVES));
+        assertTrue(physics.isOpen(5, 10, 5, WorldPhysics.LEAVES | WorldPhysics.LOG), "stone is neither");
+        // Collision is unchanged: both still collide like any full block.
+        assertFalse(physics.isOpen(2, 11, 2, WorldPhysics.MOB_MASK));
+        assertFalse(physics.isOpen(3, 11, 2, WorldPhysics.PLAYER_MASK));
+    }
+
+    @Test
+    void treesPlacedByTheGeneratorReachTheCache() {
+        WorldPhysics physics = world.physics();
+        assertTrue(physics.isOpen(7, 11, 7, WorldPhysics.SOLID)); // cached as air first
+        com.stonebreak.world.generation.trees.TreeBlockPlacer placer =
+            new com.stonebreak.world.generation.trees.TreeBlockPlacer(world);
+        placer.placeBlock(7, 11, 7, BlockType.WOOD); // chunk.setBlock: bypasses World.setBlockAt
+        placer.complete();
+        assertFalse(physics.isOpen(7, 11, 7, WorldPhysics.SOLID), "a generated trunk must not be invisible");
+        assertTrue(physics.cellTop(7, 11, 7, WorldPhysics.LOG) > 0f);
+    }
+
+    @Test
     void blockPositionKeysRoundTripAndAreNeverZero() {
         int[][] cases = {{0, 0, 0}, {-1, -1, -1}, {123456, 255, -654321}, {-16_000_000, -2048, 16_000_000}};
         for (int[] c : cases) {

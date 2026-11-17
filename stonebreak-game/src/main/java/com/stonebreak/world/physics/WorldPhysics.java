@@ -44,7 +44,8 @@ import java.util.Objects;
  * (mobs and drops) and are aimed at and walked into through their posed model boxes —
  * {@link #PANEL} for doors, {@link #MODEL_PICK} for torches — kept as dynamic boxes. Shapes below a
  * full block (snow below 8 layers, slabs) are {@code SHAPE_PARTIAL}: the player climbs them up to a
- * full block. Stairs are not: their treads are each a normal half-block step.
+ * full block. Stairs are not: their treads are each a normal half-block step. Leaves and logs also
+ * carry {@link #LEAVES} / {@link #LOG}, for the leaf-decay flood (no collision mask includes them).
  *
  * <p><b>Fluids.</b> Water cells carry their surface height ({@link WaterHeightUtil}) and the force
  * of their current ({@link WaterFlowPhysics#cellForce}).
@@ -73,6 +74,10 @@ public final class WorldPhysics implements AutoCloseable {
     public static final int MODEL_PICK = 16;
     /** A static scene collider (the battle-test arena): walls and sight blockers, not blocks to target. */
     public static final int SCENE = 32;
+    /** Foliage that decays when cut off from a log (leaf decay floods through LEAVES | LOG cells). */
+    public static final int LEAVES = 64;
+    /** A trunk: what holds a canopy up. */
+    public static final int LOG = 128;
 
     /** Fluid category of water. */
     public static final int WATER = 1;
@@ -295,12 +300,15 @@ public final class WorldPhysics implements AutoCloseable {
             return cached;
         }
         float h = block.getCollisionHeight();
+        // Leaves and logs also carry their own category, which no collision mask includes: it only
+        // lets the leaf-decay flood tell foliage from stone in the same cache.
+        int tree = block.isLeaves() ? LEAVES : block.isLog() ? LOG : 0;
         int id;
         if (h > 0f) {
-            id = shapeId(new float[]{0, 0, 0, 1, Math.min(h, 1f), 1}, SOLID | PICK,
+            id = shapeId(new float[]{0, 0, 0, 1, Math.min(h, 1f), 1}, SOLID | PICK | tree,
                 h < 1f ? PhysicsWorld.SHAPE_PARTIAL : 0);
         } else {
-            id = shapeId(unitCell(), PICK, 0);
+            id = shapeId(unitCell(), PICK | tree, 0);
         }
         simpleShape.put(block, id);
         return id;

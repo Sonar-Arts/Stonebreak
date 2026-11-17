@@ -1,23 +1,24 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.nav.NavProbes;
 import com.stonebreak.world.World;
+import com.stonebreak.world.physics.WorldPhysics;
 
 /**
  * Small local airspace queries for flying behaviours — is this bit of sky clear, and how high is
  * the ground under that column. The airborne counterpart of {@link GroundProbe}, and here for the
  * same reason: a flyer holding formation or checking the corridor a second ahead of itself needs an
- * answer about one small volume this instant, and letting each behaviour scan the sky its own way
- * is how three subtly different probes end up in the codebase.
+ * answer about one small volume this instant.
  *
  * <p>Routing is {@link AirPathAgent}'s job, not this class's.
  *
- * <p><b>Unloaded chunks read as clear here</b>, which is the opposite of what
- * {@link WorldNavVolume} does for a search and is deliberate. A search is choosing between routes
- * and can afford to prefer the ones it can see; a local probe is deciding whether to swerve
- * <em>right now</em>, and treating every unloaded column as a wall would have birds jinking around
- * nothing at the edge of the loaded world. The route is what handles terrain properly; this is the
- * fine detail underneath it.
+ * <p><b>Unloaded chunks read as clear here</b>, which is the opposite of what a search does and is
+ * deliberate. A search is choosing between routes and can afford to prefer the ones it can see; a
+ * local probe is deciding whether to swerve <em>right now</em>, and treating every unloaded column as
+ * a wall would have birds jinking around nothing at the edge of the loaded world.
+ *
+ * <p>Answered from the world's physics cache by the engine ({@link NavProbes}): a cell is solid when
+ * it collides with mobs and fills its cell.
  */
 public final class AirProbe {
 
@@ -36,24 +37,7 @@ public final class AirProbe {
         if (world == null) {
             return true;
         }
-        int minX = (int) Math.floor(x - radius);
-        int maxX = (int) Math.floor(x + radius);
-        int minY = (int) Math.floor(y - radius);
-        int maxY = (int) Math.floor(y + radius);
-        int minZ = (int) Math.floor(z - radius);
-        int maxZ = (int) Math.floor(z + radius);
-
-        for (int bx = minX; bx <= maxX; bx++) {
-            for (int by = minY; by <= maxY; by++) {
-                for (int bz = minZ; bz <= maxZ; bz++) {
-                    BlockType block = world.getBlockAt(bx, by, bz);
-                    if (block != null && block.isSolid()) {
-                        return false;
-                    }
-                }
-            }
-        }
-        return true;
+        return NavProbes.isClear(WorldPhysics.of(world).engine(), x, y, z, radius, WorldPhysics.MOB_MASK);
     }
 
     /**
@@ -64,15 +48,7 @@ public final class AirProbe {
         if (world == null) {
             return Float.NEGATIVE_INFINITY;
         }
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        int centre = (int) Math.floor(fromY);
-        for (int y = centre + PEAK_SCAN_RANGE; y >= centre - PEAK_SCAN_RANGE; y--) {
-            BlockType block = world.getBlockAt(blockX, y, blockZ);
-            if (block != null && block.isSolid()) {
-                return y + 1.0f;
-            }
-        }
-        return Float.NEGATIVE_INFINITY;
+        return NavProbes.columnPeak(WorldPhysics.of(world).engine(), x, z, fromY, PEAK_SCAN_RANGE,
+                WorldPhysics.MOB_MASK);
     }
 }

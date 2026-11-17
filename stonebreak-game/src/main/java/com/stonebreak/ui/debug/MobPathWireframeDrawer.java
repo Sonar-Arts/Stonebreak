@@ -6,7 +6,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
-import com.stonebreak.mobs.entities.ai.nav.Path;
+import com.openmason.engine.nav.NavPath;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.goose.Goose;
 import com.stonebreak.network.MultiplayerSession;
@@ -149,12 +149,12 @@ public final class MobPathWireframeDrawer {
      * corridor it chose and the wingmen following it can be read against that line.
      */
     private void drawAirRoute(DebugRenderer debug, AirPathAgent route, Vector3f mobPosition) {
-        Path path = route.path();
+        NavPath path = route.path();
         if (!path.isEmpty()) {
             pathScratch.clear();
             pathScratch.add(new Vector3f(mobPosition));
             for (int i = route.cursor(); i < path.size(); i++) {
-                pathScratch.add(path.waypoint(i, new Vector3f()));
+                pathScratch.add(new Vector3f(path.x(i), path.y(i), path.z(i)));
             }
             debug.drawPath(pathScratch, PATH_COLOR);
         }
@@ -171,7 +171,7 @@ public final class MobPathWireframeDrawer {
     private void drawPlannedRoute(DebugRenderer debug, LivingEntity mob) {
         PathAgent nav = mob.getAI().nav();
         Vector3f position = mob.getPosition();
-        Path path = nav.path();
+        NavPath path = nav.path();
 
         if (!path.isEmpty()) {
             pathScratch.clear();
@@ -180,7 +180,7 @@ public final class MobPathWireframeDrawer {
             pathScratch.add(new Vector3f(position.x,
                     position.y - mob.getLegHeight() + ROUTE_GROUND_LIFT, position.z));
             for (int i = nav.cursor(); i < path.size(); i++) {
-                Vector3f waypoint = path.waypoint(i, new Vector3f());
+                Vector3f waypoint = new Vector3f(path.x(i), path.y(i), path.z(i));
                 waypoint.y += ROUTE_GROUND_LIFT;
                 pathScratch.add(waypoint);
             }

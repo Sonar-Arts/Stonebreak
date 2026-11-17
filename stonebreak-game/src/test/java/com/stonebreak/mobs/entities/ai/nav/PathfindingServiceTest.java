@@ -1,44 +1,58 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.openmason.engine.wayfind.SearchLimits;
-import com.openmason.engine.wayfind.voxel.NavProfile;
-import org.joml.Vector3f;
+import com.openmason.engine.nav.NavLimits;
+import com.openmason.engine.nav.NavPath;
+import com.openmason.engine.nav.NavWorld;
+import com.openmason.engine.physics.PhysicsWorld;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The asynchronous contract, tested without any asynchrony: the executor is injected, so these run
- * the searches on the test thread (or hold them, or drop them) and the timing disappears.
- *
- * <p>The properties here are the ones that decide whether async AI is maintainable or a source of
- * intermittent bugs — every request resolves exactly once however it ends, load sheds instead of
- * queueing without bound, and teardown leaves nothing running.
+ * The service contract: searches queue, run on {@link PathfindingService#step}, and every one ends
+ * exactly once — found, partial, empty or dropped; load sheds instead of queueing without bound; and
+ * teardown leaves nothing behind. Timing is the test's: nothing runs until it steps.
  */
 class PathfindingServiceTest {
 
     private static final int GROUND_TOP = 63;
     private static final int STAND_Y = 64;
-    private static final NavProfile WALKER = NavProfile.walker(0.9f, 0);
-    private static final Executor SAME_THREAD = Runnable::run;
+    private static final int WORLD_HEIGHT = 256;
+    private static final com.openmason.engine.nav.GroundProfile WALKER =
+            new com.openmason.engine.nav.GroundProfile(0.9f, 0, 0.5f, 1.125f, 1.5f, 3.0f, false, 3.0f, 8.0f,
+                    0.5f, 2.0f, 0.5f);
+    private static final NavLimits LIMITS = new NavLimits(500, Float.MAX_VALUE, 1.0f);
+
+    private PhysicsWorld physics;
+
+    @AfterEach
+    void tearDown() {
+        if (physics != null) {
+            physics.close();
+        }
+    }
+
+    private PathfindingService serviceOver(FlatWorldCells cells) {
+        physics = cells.physics();
+        return PathfindingService.over(physics, WORLD_HEIGHT);
+    }
 
     @Test
     void findsARouteAcrossOpenGround() {
-        PathfindingService service = new PathfindingService(new FlatNavVolume(GROUND_TOP), SAME_THREAD);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP));
 
-        PathRequest request = submit(service, 0.5f, 5.5f);
+        long request = submit(service, 0.5f, 5.5f);
 
-        assertNotNull(request);
-        assertTrue(request.isDone(), "a same-thread executor finishes before submit returns");
-        Path path = request.result();
+        assertTrue(request > 0);
+        assertNull(service.nav().poll(request), "nothing runs until the service steps");
+        service.step();
+        NavPath path = service.nav().poll(request).path();
         assertFalse(path.isEmpty());
         assertTrue(path.isComplete(), "open ground should reach the goal");
         assertEquals(5.5f, path.x(path.size() - 1), 1.0f);
@@ -48,13 +62,13 @@ class PathfindingServiceTest {
 
     @Test
     void routesAroundAnObstacle() {
-        FlatNavVolume world = new FlatNavVolume(GROUND_TOP);
+        FlatWorldCells world = new FlatWorldCells(GROUND_TOP);
         for (int z = -4; z <= 4; z++) {
             world.wall(3, z); // a wall the mob must walk around, not over
         }
-        PathfindingService service = new PathfindingService(world, SAME_THREAD);
+        PathfindingService service = serviceOver(world);
 
-        Path path = submit(service, 0.5f, 6.5f).result();
+        NavPath path = run(service, submit(service, 0.5f, 6.5f)).path();
 
         assertTrue(path.isComplete());
         boolean detoured = false;
@@ -69,13 +83,13 @@ class PathfindingServiceTest {
 
     @Test
     void anUnreachableGoalStillComesBackWithABestEffortRoute() {
-        FlatNavVolume world = new FlatNavVolume(GROUND_TOP);
+        FlatWorldCells world = new FlatWorldCells(GROUND_TOP);
         for (int z = -60; z <= 60; z++) {
             world.wall(3, z); // sealed across the whole search radius
         }
-        PathfindingService service = new PathfindingService(world, SAME_THREAD);
+        PathfindingService service = serviceOver(world);
 
-        Path path = submit(service, 0.5f, 8.5f).result();
+        NavPath path = run(service, submit(service, 0.5f, 8.5f)).path();
 
         assertFalse(path.isEmpty(), "a mob should still walk up to the wall");
         assertFalse(path.isComplete(), "and know it never got there");
@@ -85,105 +99,93 @@ class PathfindingServiceTest {
 
     @Test
     void aStartBuriedInRockResolvesToNoRoute() {
-        PathfindingService service = new PathfindingService(new FlatNavVolume(GROUND_TOP), SAME_THREAD);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP));
 
-        PathRequest request = service.submit(new Vector3f(0.5f, 10.0f, 0.5f),
-                new Vector3f(5.5f, STAND_Y, 0.5f), 1.0f, WALKER, SearchLimits.DEFAULT);
+        long request = service.nav().searchGround(new NavWorld.GroundQuery(0.5f, 10.0f, 0.5f, 5.5f, STAND_Y, 0.5f,
+                1.0f, 4, 2, WALKER, LIMITS));
 
-        assertTrue(request.isDone());
-        assertTrue(request.result().isEmpty());
+        NavWorld.Outcome outcome = run(service, request);
+        assertTrue(outcome.path().isEmpty());
+        assertEquals(NavWorld.SEARCH_NO_PATH, outcome.status());
         service.close();
     }
 
     @Test
     void aFailingWorldResolvesTheRequestInsteadOfHangingIt() {
-        PathfindingService service =
-                new PathfindingService(new FlatNavVolume(GROUND_TOP).failOnRead(), SAME_THREAD);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP).failOnRead());
 
-        PathRequest request = submit(service, 0.5f, 5.5f);
+        long request = submit(service, 0.5f, 5.5f);
 
-        assertTrue(request.isDone(), "an agent must never be left waiting on a crashed search");
-        assertTrue(request.result().isEmpty());
-        assertEquals(1, service.stats().failed());
+        // A world that cannot be read is unloaded to physics, so to navigation: unknown, no route.
+        NavWorld.Outcome outcome = run(service, request);
+        assertNotNull(outcome, "an agent must never be left waiting on a crashed search");
+        assertTrue(outcome.path().isEmpty());
         service.close();
     }
 
     @Test
     void loadShedsOnceTooManySearchesAreInFlight() {
-        ManualExecutor executor = new ManualExecutor();
-        PathfindingService service = new PathfindingService(new FlatNavVolume(GROUND_TOP), executor);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP));
 
         for (int i = 0; i < PathfindingService.DEFAULT_MAX_IN_FLIGHT; i++) {
-            assertNotNull(submit(service, 0.5f, 5.5f), "request " + i + " should be accepted");
+            assertTrue(submit(service, 0.5f, 5.5f) > 0, "request " + i + " should be accepted");
         }
 
-        assertNull(submit(service, 0.5f, 5.5f), "over the cap, submit refuses rather than queueing");
+        assertEquals(0L, submit(service, 0.5f, 5.5f), "over the cap, the service refuses rather than queueing");
         assertTrue(service.stats().rejected() > 0);
         assertEquals(PathfindingService.DEFAULT_MAX_IN_FLIGHT, service.stats().inFlight());
 
-        executor.runAll();
+        service.step();
         assertEquals(0, service.stats().inFlight(), "finished searches release their slot");
         service.close();
     }
 
     @Test
     void cancelledSearchesResolveEmptyRatherThanRunningOn() {
-        ManualExecutor executor = new ManualExecutor();
-        PathfindingService service = new PathfindingService(new FlatNavVolume(GROUND_TOP), executor);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP));
 
-        PathRequest request = submit(service, 0.5f, 5.5f);
-        assertNotNull(request);
-        request.cancel();
-        executor.runAll();
+        long request = submit(service, 0.5f, 5.5f);
+        assertTrue(request > 0);
+        service.nav().release(request);
+        service.step();
 
-        assertTrue(request.isDone());
-        assertTrue(request.result().isEmpty());
+        assertEquals(0, service.stats().completed(), "a released search never runs");
+        assertEquals(0, service.stats().inFlight());
+        assertThrows(IllegalArgumentException.class, () -> service.nav().poll(request));
         service.close();
     }
 
     @Test
     void closingCancelsInFlightWorkAndRefusesMore() {
-        ManualExecutor executor = new ManualExecutor();
-        PathfindingService service = new PathfindingService(new FlatNavVolume(GROUND_TOP), executor);
-        PathRequest inFlight = submit(service, 0.5f, 5.5f);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP));
+        long inFlight = submit(service, 0.5f, 5.5f);
+        assertTrue(inFlight > 0);
 
         service.close();
 
         assertTrue(service.isClosed());
-        assertTrue(inFlight.isCancelled(), "teardown must stop searches reading a dying world");
-        assertNull(submit(service, 0.5f, 5.5f));
-
-        executor.runAll();
-        assertTrue(inFlight.isDone(), "even a cancelled request resolves");
-        assertTrue(inFlight.result().isEmpty());
+        assertEquals(0, service.stats().inFlight(), "teardown drops what was queued");
+        assertThrows(IllegalStateException.class, () -> submit(service, 0.5f, 5.5f));
+        assertThrows(IllegalStateException.class, service::step);
     }
 
     @Test
     void closingTwiceIsHarmless() {
-        PathfindingService service = new PathfindingService(new FlatNavVolume(GROUND_TOP), SAME_THREAD);
+        PathfindingService service = serviceOver(new FlatWorldCells(GROUND_TOP));
         service.close();
         service.close();
         assertTrue(service.isClosed());
     }
 
-    private static PathRequest submit(PathfindingService service, float fromX, float toX) {
-        return service.submit(new Vector3f(fromX, STAND_Y, 0.5f),
-                new Vector3f(toX, STAND_Y, 0.5f), 1.0f, WALKER, SearchLimits.DEFAULT);
+    private static long submit(PathfindingService service, float fromX, float toX) {
+        return service.nav().searchGround(new NavWorld.GroundQuery(fromX, STAND_Y, 0.5f, toX, STAND_Y, 0.5f, 1.0f,
+                4, 2, WALKER, LIMITS));
     }
 
-    /** Holds submitted work until the test says otherwise, standing in for a busy pool. */
-    private static final class ManualExecutor implements Executor {
-        private final List<Runnable> queued = new ArrayList<>();
-
-        @Override
-        public void execute(Runnable command) {
-            queued.add(command);
-        }
-
-        void runAll() {
-            List<Runnable> pending = new ArrayList<>(queued);
-            queued.clear();
-            pending.forEach(Runnable::run);
-        }
+    private static NavWorld.Outcome run(PathfindingService service, long request) {
+        service.step();
+        NavWorld.Outcome outcome = service.nav().poll(request);
+        service.nav().release(request);
+        return outcome;
     }
 }

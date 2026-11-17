@@ -182,7 +182,7 @@ public final class DebugDiagnostics {
         // The searches happen on the authoritative world, alongside the AI that asks for them —
         // the render world's own service sits at zero forever. See navigationEntitySource().
         com.stonebreak.world.World searching = navigationWorld(world);
-        com.stonebreak.mobs.entities.ai.nav.PathfindingService service = searching.pathfinding();
+        com.stonebreak.mobs.entities.ai.nav.PathfindingService service = searching.pathfindingIfStarted();
         if (service == null) {
             return "off";
         }

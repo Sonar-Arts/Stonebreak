@@ -984,8 +984,8 @@ public class World {
      * Cleans up resources when the game exits.
      */
     public void cleanup() {
-        // First: cancel in-flight path searches. They read this world's chunks, so they must stop
-        // before the chunk store is torn down beneath them.
+        // First: drop queued path searches. They read this world's physics cache, so the service
+        // must go before the physics does.
         cleanedUp = true;
         synchronized (pathfindingLock) {
             if (pathfinding != null) {
@@ -1131,12 +1131,22 @@ public class World {
     /**
      * This world's mob path searching, started on first request.
      *
-     * <p>Per world rather than global on purpose: a search reads the chunks of the world it was
-     * asked about, and {@link #cleanup()} closes the service before those chunks go away — so a
-     * world swap can never leave a worker planning routes through a world that no longer exists.
+     * <p>Per world rather than global on purpose: searches read this world's physics cache, and
+     * {@link #cleanup()} closes the service before the physics goes — so a world swap can never leave
+     * a result planned through a world that no longer exists. Created on first use by the thread that
+     * simulates the world (it is built over {@link #physics()}).
      *
      * @return the service, or null once this world has been cleaned up
      */
+    /**
+     * This world's path searching if something has already started it, else null. Never starts it
+     * (the service lives on the simulation thread's physics): for readers on other threads, such as
+     * the debug overlay, and for the per-tick {@code step}.
+     */
+    public com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfindingIfStarted() {
+        return pathfinding;
+    }
+
     public com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding() {
         com.stonebreak.mobs.entities.ai.nav.PathfindingService service = pathfinding;
         if (service != null) {

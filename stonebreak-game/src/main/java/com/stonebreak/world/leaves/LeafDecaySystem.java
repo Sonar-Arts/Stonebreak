@@ -8,12 +8,10 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.openmason.engine.wayfind.AStar;
-import com.openmason.engine.wayfind.CancelToken;
-import com.openmason.engine.wayfind.SearchLimits;
-import com.openmason.engine.wayfind.voxel.NavNodes;
+import com.openmason.engine.nav.NavFlood;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.physics.WorldPhysics;
 
 /**
  * Vanilla-Minecraft-style leaf decay over a {@link LeafWorld}. A leaf is
@@ -31,9 +29,18 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * update that can change support: a log removed, a leaf removed (it may have
  * been the bridge holding the rest of a canopy), or a leaf placed detached
  * (hand-placed floating leaf). Each such update schedules one delayed
- * reachability pass at that position; the pass uses the engine's A* core as a
- * bounded flood ({@link LeafReachabilityDomain}) to find the candidate leaves
- * and the remaining log anchors that still hold them. This is the "check that
+ * reachability pass at that position; the pass uses the engine's flood
+ * ({@link NavFlood}, Open Mason {@code cn_flood}, over the world's physics
+ * cache, where leaves and logs carry {@link WorldPhysics#LEAVES} /
+ * {@link WorldPhysics#LOG}) to find the candidate leaves and the remaining log
+ * anchors that still hold them.
+ *
+ * <p><b>Passability mirrors vanilla.</b> Only leaves and logs are entered, along
+ * the six orthogonal directions, one step each: air is a wall and diagonals do
+ * not connect, so a leaf that merely sits diagonal to a log, with no orthogonal
+ * leaf/log chain to it, is unreachable and decays. The flood's start is always
+ * expanded whatever it now holds, which is how a removed log's cell still
+ * reaches the canopy it held. This is the "check that
  * only fires once upon block updates" the feature asks for — idle worlds spend
  * nothing. The one non-event entry point is {@link #onChunkLoaded}: pending
  * work is dropped on chunk unload (and lost on quit), so a chunk becoming
@@ -66,7 +73,7 @@ public final class LeafDecaySystem {
      */
     private static final int ANCHOR_SCAN_RADIUS = DECAY_RADIUS * 2;
 
-    /** Hard cap on expanded nodes per A* flood. A fully foliated 6-connected ball of
+    /** Hard cap on expanded cells per flood. A fully foliated 6-connected ball of
      *  radius {@link #ANCHOR_SCAN_RADIUS} (=12) has ~2.5k cells, so this leaves
      *  headroom for the anchor scan in a dense forest without truncating it. */
     private static final int SEARCH_EXPANSION_LIMIT = 8192;
@@ -98,10 +105,12 @@ public final class LeafDecaySystem {
         }
     }
 
+    /** What the flood may enter: foliage and trunks. */
+    private static final int FOLIAGE_MASK = WorldPhysics.LEAVES | WorldPhysics.LOG;
+
     private final LeafWorld world;
-    private final AStar solver = new AStar();
-    private final SearchLimits limits = new SearchLimits(SEARCH_EXPANSION_LIMIT, DECAY_RADIUS, 1.0f);
-    private final SearchLimits anchorLimits = new SearchLimits(SEARCH_EXPANSION_LIMIT, ANCHOR_SCAN_RADIUS, 1.0f);
+    /** Created on first use (it needs the native library; the scheduling paths do not). */
+    private NavFlood flood;
 
     // Delayed reachability re-evaluations, keyed by position (deduped; the
     // earliest due tick wins — a later schedule for the same cell is dropped).
@@ -263,15 +272,15 @@ public final class LeafDecaySystem {
                         continue;
                     }
                     BlockType block = world.getBlock(x, y, z);
-                    if (block == null || !NavNodes.inRange(x, y, z)) {
+                    if (block == null || !Cells.inRange(x, y, z)) {
                         continue;
                     }
                     if (block.isLeaves()) {
-                        long key = NavNodes.pack(x, y, z);
+                        long key = Cells.pack(x, y, z);
                         foliage.add(key);
                         leaves.add(key);
                     } else if (block.isLog()) {
-                        long key = NavNodes.pack(x, y, z);
+                        long key = Cells.pack(x, y, z);
                         foliage.add(key);
                         frontier.add(key);
                     }
@@ -290,16 +299,16 @@ public final class LeafDecaySystem {
             int layer = frontier.size();
             for (int i = 0; i < layer; i++) {
                 long node = frontier.poll();
-                int x = NavNodes.x(node);
-                int y = NavNodes.y(node);
-                int z = NavNodes.z(node);
+                int x = Cells.x(node);
+                int y = Cells.y(node);
+                int z = Cells.z(node);
                 for (int[] dir : ORTHOGONALS) {
                     int ny = y + dir[1];
                     if (ny < 0 || ny >= WorldConfiguration.WORLD_HEIGHT
-                        || !NavNodes.inRange(x + dir[0], ny, z + dir[2])) {
+                        || !Cells.inRange(x + dir[0], ny, z + dir[2])) {
                         continue;
                     }
-                    long neighbor = NavNodes.pack(x + dir[0], ny, z + dir[2]);
+                    long neighbor = Cells.pack(x + dir[0], ny, z + dir[2]);
                     if (foliage.contains(neighbor) && reached.add(neighbor)) {
                         frontier.add(neighbor);
                     }
@@ -367,7 +376,7 @@ public final class LeafDecaySystem {
     }
 
     private void scheduleRecompute(int x, int y, int z) {
-        enqueue(pendingRecomputes, scheduledRecomputes, NavNodes.pack(x, y, z), EVICT_DELAY_TICKS);
+        enqueue(pendingRecomputes, scheduledRecomputes, Cells.pack(x, y, z), EVICT_DELAY_TICKS);
     }
 
     private void scheduleDecay(long posKey) {
@@ -387,7 +396,7 @@ public final class LeafDecaySystem {
         }
     }
 
-    // ===== Reachability (the A* pass) =====
+    // ===== Reachability (the flood pass) =====
 
     /**
      * One reachability pass over the foliage region a trigger touched.
@@ -448,25 +457,32 @@ public final class LeafDecaySystem {
         }
     }
 
-    /** Bounded A* flood through open air/foliage; returns the leaves it reached. */
+    /** Bounded flood through foliage; returns the leaves it reached, in the order it reached them. */
     private Set<Long> floodLeaves(long start) {
-        LeafReachabilityDomain domain = new LeafReachabilityDomain(world);
-        solver.search(domain, start, limits, CancelToken.NEVER);
-        return domain.reachedLeaves();
+        NavFlood f = flood(start, DECAY_RADIUS);
+        Set<Long> leaves = new HashSet<>();
+        for (int i = 0; i < f.count(); i++) {
+            if ((f.category(i) & WorldPhysics.LEAVES) != 0) {
+                leaves.add(Cells.pack(f.x(i), f.y(i), f.z(i)));
+            }
+        }
+        return leaves;
     }
 
     /**
      * Logs that can still support the trigger's region: one radius-
      * {@link #ANCHOR_SCAN_RADIUS} flood from the trigger, collecting every log
-     * it touches. Replaces the old 17³ brute-force box scan — an order of
-     * magnitude fewer world reads, and strictly fewer useless anchors (a log
-     * separated from the region by solid blocks can support nothing in it and
-     * is no longer collected).
+     * it touches. A log separated from the region by solid blocks can support
+     * nothing in it and is not collected.
      */
     private long[] scanAnchors(long trigger) {
-        LeafReachabilityDomain domain = new LeafReachabilityDomain(world);
-        solver.search(domain, trigger, anchorLimits, CancelToken.NEVER);
-        Set<Long> anchors = domain.reachedLogs();
+        NavFlood f = flood(trigger, ANCHOR_SCAN_RADIUS);
+        Set<Long> anchors = new HashSet<>();
+        for (int i = 0; i < f.count(); i++) {
+            if ((f.category(i) & WorldPhysics.LOG) != 0) {
+                anchors.add(Cells.pack(f.x(i), f.y(i), f.z(i)));
+            }
+        }
         long[] result = new long[anchors.size()];
         int i = 0;
         for (long anchor : anchors) {
@@ -475,13 +491,22 @@ public final class LeafDecaySystem {
         return result;
     }
 
+    private NavFlood flood(long start, int radius) {
+        if (flood == null) {
+            flood = new NavFlood(SEARCH_EXPANSION_LIMIT);
+        }
+        flood.run(world.physics(), Cells.x(start), Cells.y(start), Cells.z(start), radius, FOLIAGE_MASK,
+            0, WorldConfiguration.WORLD_HEIGHT);
+        return flood;
+    }
+
     private static boolean withinManhattanAny(long candidate, long[] anchors) {
-        int cx = NavNodes.x(candidate);
-        int cy = NavNodes.y(candidate);
-        int cz = NavNodes.z(candidate);
+        int cx = Cells.x(candidate);
+        int cy = Cells.y(candidate);
+        int cz = Cells.z(candidate);
         for (long anchor : anchors) {
-            if (Math.abs(cx - NavNodes.x(anchor)) + Math.abs(cy - NavNodes.y(anchor))
-                    + Math.abs(cz - NavNodes.z(anchor)) <= DECAY_RADIUS) {
+            if (Math.abs(cx - Cells.x(anchor)) + Math.abs(cy - Cells.y(anchor))
+                    + Math.abs(cz - Cells.z(anchor)) <= DECAY_RADIUS) {
                 return true;
             }
         }
@@ -496,9 +521,9 @@ public final class LeafDecaySystem {
      * so neighbors that were only held by this leaf follow in the next ticks.
      */
     private void decayLeaf(long posKey) {
-        int x = NavNodes.x(posKey);
-        int y = NavNodes.y(posKey);
-        int z = NavNodes.z(posKey);
+        int x = Cells.x(posKey);
+        int y = Cells.y(posKey);
+        int z = Cells.z(posKey);
 
         if (!world.isLoaded(x, y, z)) {
             return;
@@ -546,9 +571,13 @@ public final class LeafDecaySystem {
      * its decay window survives.
      */
     private boolean isAnchored(int x, int y, int z) {
-        LeafReachabilityDomain domain = new LeafReachabilityDomain(world);
-        solver.search(domain, NavNodes.pack(x, y, z), limits, CancelToken.NEVER);
-        return domain.reachedLog();
+        NavFlood f = flood(Cells.pack(x, y, z), DECAY_RADIUS);
+        for (int i = 0; i < f.count(); i++) {
+            if ((f.category(i) & WorldPhysics.LOG) != 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isLeaves(BlockType block) {
@@ -572,8 +601,8 @@ public final class LeafDecaySystem {
     }
 
     private static boolean isInChunk(long posKey, int chunkX, int chunkZ) {
-        return Math.floorDiv(NavNodes.x(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX
-            && Math.floorDiv(NavNodes.z(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ;
+        return Math.floorDiv(Cells.x(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX
+            && Math.floorDiv(Cells.z(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ;
     }
 
     private static long chunkKey(int chunkX, int chunkZ) {
@@ -586,6 +615,45 @@ public final class LeafDecaySystem {
     };
 
     private record ScheduledUpdate(long posKey, long dueTick, long sequence) {
+    }
+
+    /**
+     * Cell keys: X in the top 26 bits, Y in the middle 12, Z in the low 26 (X and Z signed). The
+     * layout the engine's navigation nodes used, kept so keyed sets iterate as they always did.
+     */
+    static final class Cells {
+        private static final int Y_BITS = 12;
+        private static final int Z_BITS = 26;
+        private static final long Y_MASK = (1L << Y_BITS) - 1;
+        private static final long Z_MASK = (1L << Z_BITS) - 1;
+        private static final int Y_SHIFT = Z_BITS;
+        private static final int X_SHIFT = Z_BITS + Y_BITS;
+        private static final int MIN_HORIZONTAL = -(1 << 25);
+        private static final int MAX_HORIZONTAL = (1 << 25) - 1;
+
+        private Cells() {
+        }
+
+        static long pack(int x, int y, int z) {
+            return ((long) x << X_SHIFT) | ((long) y << Y_SHIFT) | (z & Z_MASK);
+        }
+
+        static int x(long key) {
+            return (int) (key >> X_SHIFT);
+        }
+
+        static int y(long key) {
+            return (int) ((key >>> Y_SHIFT) & Y_MASK);
+        }
+
+        static int z(long key) {
+            return (int) ((key << (64 - Z_BITS)) >> (64 - Z_BITS));
+        }
+
+        static boolean inRange(int x, int y, int z) {
+            return x >= MIN_HORIZONTAL && x <= MAX_HORIZONTAL && z >= MIN_HORIZONTAL && z <= MAX_HORIZONTAL
+                && y >= 0 && y <= Y_MASK;
+        }
     }
 
     private static final java.util.Comparator<ScheduledUpdate> SCHEDULER =

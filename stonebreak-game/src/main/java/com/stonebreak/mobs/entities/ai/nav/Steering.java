@@ -1,8 +1,15 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.nav.AgentApply;
+import com.openmason.engine.nav.AgentBody;
+import com.openmason.engine.nav.NavSteering;
+import com.openmason.engine.nav.Steer;
+import com.openmason.engine.nav.SteeringDesc;
+import com.openmason.engine.physics.PhysicsWorld;
 import com.stonebreak.mobs.entities.EntityWaterPhysics;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.world.World;
+import com.stonebreak.world.physics.WorldPhysics;
 import org.joml.Vector3f;
 
 /**
@@ -13,14 +20,15 @@ import org.joml.Vector3f;
  * body gets there, and plenty of behaviour needs one without the other — fleeing straight away from
  * a threat, paddling across water, turning to face something while standing still.
  *
+ * <p>The rules are the engine's ({@link NavSteering}, Open Mason {@code cn_steering}, OpenMason #116):
+ * the yaw turn, the obstacle probe (one cell column just past the bounding box's leading edge, a full
+ * cell with two clear above, read from the physics cache), the shore probe from water, and the one
+ * jump/stroke cooldown. This class is the game's side: Stonebreak's numbers, the mob's body as the
+ * engine sees it each call, and applying what the engine decided.
+ *
  * <p>Facing always goes through {@code EntityType.getModelYawOffsetDegrees()}, so a mob faces its
  * travel direction whichever way its SBE model was authored (cow and sheep face −Z, chicken and
  * goose face +Z).
- *
- * <p>The obstacle probe survives from the old navigator and still earns its place: it checks a
- * single block column just past the bounding box's leading edge — a whole-box query over-reports by
- * up to a block and triggers early jumps — and it handles the obstacles a route never predicted,
- * such as another mob's shove pushing this one into a wall.
  */
 public final class Steering {
 
@@ -43,11 +51,13 @@ public final class Steering {
 
     private final LivingEntity entity;
     private final float rotationSpeedDegPerSec;
-    private final float hopBoostSpeed;      // <= 0 disables the airborne hop boost
-    private final float hopDurationSeconds; // safety cap; cleared on landing
+    private final float hopBoostSpeed;
+    private final float hopDurationSeconds;
+    private final float modelYawOffset;
+    private final NavSteering engine;
 
-    private float jumpCooldownTimer;
-    private float hopTimer; // > 0 while mid-hop over an obstacle
+    private final AgentBody body = new AgentBody();
+    private final AgentApply apply = new AgentApply();
 
     public Steering(LivingEntity entity, float rotationSpeedDegPerSec,
                     float hopBoostSpeed, float hopDurationSeconds) {
@@ -55,18 +65,20 @@ public final class Steering {
         this.rotationSpeedDegPerSec = rotationSpeedDegPerSec;
         this.hopBoostSpeed = hopBoostSpeed;
         this.hopDurationSeconds = hopDurationSeconds;
+        this.modelYawOffset = entity.getType().getModelYawOffsetDegrees();
+        this.engine = NavSteering.create(new SteeringDesc(rotationSpeedDegPerSec, hopBoostSpeed, hopDurationSeconds,
+                JUMP_COOLDOWN_SECONDS, SWIM_STROKE_COOLDOWN_SECONDS, OBSTACLE_LOOK_AHEAD, FOOT_PROBE_LIFT,
+                MAX_SHORE_PROBE_CELLS, modelYawOffset, WorldPhysics.MOB_MASK));
+    }
+
+    /** The engine steering this wraps; its cooldowns are shared with the mob's {@link PathAgent}. */
+    NavSteering engine() {
+        return engine;
     }
 
     /** Advances cooldowns; call once per tick before issuing movement. */
     public void tick(float deltaTime) {
-        jumpCooldownTimer = Math.max(0.0f, jumpCooldownTimer - deltaTime);
-        // The hop boost ends as soon as the mob lands (or after the safety cap): airborne entities
-        // cannot auto-step, so the boost only matters mid-air.
-        if (entity.isOnGround()) {
-            hopTimer = 0.0f;
-        } else {
-            hopTimer = Math.max(0.0f, hopTimer - deltaTime);
-        }
+        engine.tick(entity.isOnGround(), deltaTime);
     }
 
     /**
@@ -78,57 +90,22 @@ public final class Steering {
      * @param allowJump       false to suppress the obstacle hop (swimming, for one)
      */
     public void steerAlong(Vector3f direction, float speedMultiplier, float deltaTime, boolean allowJump) {
-        rotateTowardYaw(yawFor(direction), rotationSpeedDegPerSec * deltaTime);
-
-        if (allowJump && shouldJumpObstacle(direction)) {
-            requestJump();
-        }
-
-        float speed = (hopTimer > 0.0f)
-                ? hopBoostSpeed
-                : entity.getMoveSpeed() * speedMultiplier * entity.getMoveSpeedMultiplier();
-        // Water resists. Applied here rather than as drag in the physics step because horizontal
-        // velocity is set outright every tick — damping it afterwards would just be overwritten.
-        if (entity.isInWater()) {
-            speed *= EntityWaterPhysics.speedFactor(entity.getSubmersion());
-        }
-        Vector3f velocity = entity.getVelocity();
-        velocity.x = direction.x * speed;
-        velocity.z = direction.z * speed;
-        entity.setVelocity(velocity);
+        engine.steerAlong(physicsOf(entity), bodyOf(entity, body), direction.x, direction.z, speedMultiplier,
+                deltaTime, allowJump, apply);
+        applyTo(entity, apply);
     }
 
     /**
-     * Gets the mob upward: a jump on land, a swim stroke in water.
-     *
-     * <p>Routes call this when the next waypoint is a ledge the auto-step cannot reach, and the
-     * obstacle probe calls it when something is in the way; sharing one cooldown is what stops the
-     * two firing as a double hop.
-     *
-     * <p>The water case is the one that lets a mob leave a lake. A ground jump needs ground to
-     * push off, so a floating mob asking to climb a bank used to get nothing at all and simply
-     * pressed against the shore until something else moved it.
+     * Gets the mob upward: a jump on land, a swim stroke in water. Routes and the obstacle probe
+     * share its one cooldown, which is what stops the two firing as a double hop; the water case is
+     * what lets a floating mob climb out over a bank.
      *
      * @return whether the mob actually pushed upward
      */
     public boolean requestJump() {
-        if (jumpCooldownTimer > 0.0f) {
-            return false;
-        }
-        if (entity.isInWater()) {
-            entity.swimUp();
-            jumpCooldownTimer = SWIM_STROKE_COOLDOWN_SECONDS;
-            return true;
-        }
-        if (!entity.isOnGround()) {
-            return false;
-        }
-        entity.jump();
-        jumpCooldownTimer = JUMP_COOLDOWN_SECONDS;
-        if (hopBoostSpeed > 0) {
-            hopTimer = hopDurationSeconds;
-        }
-        return true;
+        boolean pushed = engine.requestJump(bodyOf(entity, body), apply);
+        applyTo(entity, apply);
+        return pushed;
     }
 
     /** Zeroes horizontal velocity (idling, grazing, standing to look at something). */
@@ -145,124 +122,67 @@ public final class Steering {
      * the model-yaw-offset rule stays in exactly one place.
      */
     public void faceDirection(Vector3f direction, float turnSpeedDegPerSec, float deltaTime) {
-        rotateTowardYaw(yawFor(direction), turnSpeedDegPerSec * deltaTime);
+        Vector3f rotation = entity.getRotation();
+        float target = Steer.yawFor(direction.x, direction.z, modelYawOffset);
+        float yaw = Steer.turn(rotation.y, target, turnSpeedDegPerSec * deltaTime);
+        entity.setRotation(new Vector3f(rotation.x, yaw, rotation.z));
     }
 
     /**
      * How far the entity still has to turn to face {@code direction}, in degrees along the shortest
-     * arc. Always non-negative.
-     *
-     * <p>Exists so a behaviour can wait until a mob is actually pointing somewhere before acting —
-     * a goose finishing its turn before it leaves the ground — without re-deriving the target yaw
-     * itself. That derivation includes the model-yaw offset, which must stay in exactly one place:
-     * a second copy is how a mob ends up visually flying backwards.
+     * arc. Always non-negative — so a behaviour can wait until a mob is actually pointing somewhere
+     * before acting, without re-deriving the target yaw (and its model offset) itself.
      */
     public float yawErrorTo(Vector3f direction) {
-        float delta = yawFor(direction) - entity.getRotation().y;
-        while (delta > 180.0f) delta -= 360.0f;
-        while (delta < -180.0f) delta += 360.0f;
-        return Math.abs(delta);
+        return Steer.yawError(entity.getRotation().y, Steer.yawFor(direction.x, direction.z, modelYawOffset));
     }
 
-    /** World yaw (degrees) that points the entity's model along {@code direction}. */
-    private float yawFor(Vector3f direction) {
-        return (float) Math.toDegrees(Math.atan2(direction.x, direction.z))
-                + entity.getType().getModelYawOffsetDegrees();
+    // ---- the body, both ways ---------------------------------------------------------------------
+
+    /** The mob as the engine sees it this instant. */
+    static AgentBody bodyOf(LivingEntity entity, AgentBody out) {
+        Vector3f position = entity.getPosition();
+        out.x = position.x;
+        out.y = position.y;
+        out.z = position.z;
+        out.yaw = entity.getRotation().y;
+        out.legHeight = entity.getLegHeight();
+        out.halfWidth = entity.getWidth() * 0.5f;
+        out.halfLength = entity.getLength() * 0.5f;
+        out.moveSpeed = entity.getMoveSpeed();
+        out.speedMultiplier = entity.getMoveSpeedMultiplier();
+        out.onGround = entity.isOnGround();
+        out.inWater = entity.isInWater();
+        // Water resists: applied to the steered speed (horizontal velocity is set outright each tick,
+        // so drag in the physics step would just be overwritten).
+        out.waterSpeedFactor = out.inWater ? EntityWaterPhysics.speedFactor(entity.getSubmersion()) : 1.0f;
+        out.swimStrokeReach = entity.getSwimStrokeReach();
+        return out;
     }
 
-    /** Steps the entity's yaw toward {@code targetYaw} along the shortest arc, capped at {@code maxStep}. */
-    private void rotateTowardYaw(float targetYaw, float maxStep) {
-        Vector3f rotation = entity.getRotation();
-        float deltaYaw = targetYaw - rotation.y;
-        while (deltaYaw > 180.0f) deltaYaw -= 360.0f;
-        while (deltaYaw < -180.0f) deltaYaw += 360.0f;
-
-        if (Math.abs(deltaYaw) > maxStep) {
-            deltaYaw = Math.signum(deltaYaw) * maxStep;
+    /** Applies what the engine decided, in its order: yaw, jump or stroke, horizontal velocity. */
+    static void applyTo(LivingEntity entity, AgentApply apply) {
+        if (apply.turn()) {
+            Vector3f rotation = entity.getRotation();
+            entity.setRotation(new Vector3f(rotation.x, apply.yaw(), rotation.z));
         }
-        entity.setRotation(new Vector3f(rotation.x, rotation.y + deltaYaw, rotation.z));
+        if (apply.swimUp()) {
+            entity.swimUp();
+        }
+        if (apply.jump()) {
+            entity.jump();
+        }
+        if (apply.setVelocity()) {
+            Vector3f velocity = entity.getVelocity();
+            velocity.x = apply.vx();
+            velocity.z = apply.vz();
+            entity.setVelocity(velocity);
+        }
     }
 
-    /**
-     * Whether a one-block hop would clear the obstacle directly ahead: a solid block at foot level
-     * in the column just past the bounding-box leading edge, with two clear blocks above it.
-     *
-     * <p>Sampled from the mob's <b>feet</b>, not its origin. A mob's origin sits a leg-length above
-     * its feet, so probing there reads a block too high the moment the two fall in different cells
-     * — which is exactly what happens to a mob floating at a water's edge, where the bank it is
-     * pressed against went undetected and it simply never tried to climb.
-     */
-    private boolean shouldJumpObstacle(Vector3f direction) {
-        // In water the mob is airborne by every other measure, but it can still stroke upward —
-        // and the obstacle ahead is usually the bank it is trying to climb out onto.
-        if ((!entity.isOnGround() && !entity.isInWater())
-                || jumpCooldownTimer > 0.0f || entity.getWorld() == null) {
-            return false;
-        }
-        Vector3f pos = entity.getPosition();
-
-        float reach = Math.abs(direction.x) * (entity.getWidth() * 0.5f)
-                + Math.abs(direction.z) * (entity.getLength() * 0.5f)
-                + OBSTACLE_LOOK_AHEAD;
-
-        int blockX = (int) Math.floor(pos.x + direction.x * reach);
-        int blockZ = (int) Math.floor(pos.z + direction.z * reach);
-        float feetY = pos.y - entity.getLegHeight();
-        int blockY = (int) Math.floor(feetY + FOOT_PROBE_LIFT);
-
-        if (entity.isInWater()) {
-            return shouldStrokeOverShore(blockX, blockY, blockZ, feetY);
-        }
-
-        BlockType ahead = entity.getWorld().getBlockAt(blockX, blockY, blockZ);
-        if (ahead == null || !ahead.isSolid()) {
-            return false;
-        }
-        BlockType above1 = entity.getWorld().getBlockAt(blockX, blockY + 1, blockZ);
-        BlockType above2 = entity.getWorld().getBlockAt(blockX, blockY + 2, blockZ);
-        return (above1 == null || !above1.isSolid())
-                && (above2 == null || !above2.isSolid());
-    }
-
-    /**
-     * Whether a swim stroke would put the mob on top of the shore ahead.
-     *
-     * <p>The land rule — one solid block with two clear above — asks the wrong question of a
-     * floating mob. It measures the obstacle from where the mob's feet happen to be dangling, so a
-     * shore standing two cells above sunk feet reads as an unclimbable wall even when its top is
-     * comfortably within a stroke of the water's surface. That is the bug where a mob simply swam
-     * at the bank forever, rising as far as it could and pushing forward, never once trying to
-     * jump.
-     *
-     * <p>So measure the whole shore instead: find the top of the solid stack ahead and ask whether
-     * a stroke reaches it with room for the body above.
-     */
-    private boolean shouldStrokeOverShore(int blockX, int blockY, int blockZ, float feetY) {
-        int top = blockY;
-        boolean foundSolid = false;
-        int limit = blockY + MAX_SHORE_PROBE_CELLS;
-        for (int y = blockY; y <= limit; y++) {
-            BlockType block = entity.getWorld().getBlockAt(blockX, y, blockZ);
-            if (block != null && block.isSolid()) {
-                foundSolid = true;
-                top = y;
-            } else if (foundSolid) {
-                break; // cleared the stack
-            }
-        }
-        if (!foundSolid) {
-            return false;
-        }
-
-        float shoreSurface = top + 1.0f;
-        if (shoreSurface - feetY > entity.getSwimStrokeReach()) {
-            return false; // genuinely too high to climb out here
-        }
-
-        // Room to stand once up there.
-        BlockType above1 = entity.getWorld().getBlockAt(blockX, top + 1, blockZ);
-        BlockType above2 = entity.getWorld().getBlockAt(blockX, top + 2, blockZ);
-        return (above1 == null || !above1.isSolid())
-                && (above2 == null || !above2.isSolid());
+    /** Where the obstacle probe looks: the mob's world's physics, or nowhere without a world. */
+    static PhysicsWorld physicsOf(LivingEntity entity) {
+        World world = entity.getWorld();
+        return world == null ? null : WorldPhysics.of(world).engine();
     }
 }

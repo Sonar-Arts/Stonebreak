@@ -1,7 +1,12 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.openmason.engine.wayfind.SearchLimits;
-import com.openmason.engine.wayfind.voxel.AirNavProfile;
+import com.openmason.engine.nav.AgentView;
+import com.openmason.engine.nav.AirAgent;
+import com.openmason.engine.nav.AirAgentDesc;
+import com.openmason.engine.nav.AirProfile;
+import com.openmason.engine.nav.NavLimits;
+import com.openmason.engine.nav.NavPath;
+import com.openmason.engine.nav.NavWorld;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -15,19 +20,17 @@ import org.joml.Vector3f;
  * migration is hundreds of blocks long and the world is only loaded near players.
  *
  * <ul>
- *   <li><b>It routes to a horizon, not to the destination.</b> Searching the whole migration would
- *       be searching mostly unloaded terrain to answer a question that will have changed by the
- *       time the bird gets there. Instead each search covers {@link #PLAN_RANGE} blocks along the
- *       bearing, and the horizon walks forward with the bird — the route is always about the
- *       terrain it can actually see.</li>
+ *   <li><b>It routes to a horizon, not to the destination.</b> Each search covers
+ *       {@link #PLAN_RANGE} blocks along the bearing, and the horizon walks forward with the bird —
+ *       the route is always about the terrain it can actually see.</li>
  *   <li><b>It does not steer.</b> It publishes a target; how a wing gets there is the flyer's own
  *       business. A goose blends the route's waypoint with its own look-ahead and its stuck
  *       recovery, and none of that belongs in a router.</li>
  * </ul>
  *
- * <p>Like the ground agent it never blocks: while a search is in flight the target is simply the
- * horizon point, so a bird keeps flying the direction it was already going and the route refines it
- * when it lands.
+ * <p>The agent is the engine's ({@link AirAgent}, Open Mason {@code cn_air_agent}, OpenMason #116);
+ * this class holds Stonebreak's tuning and feeds it the flyer's position. While a search is queued
+ * the target is simply the horizon point, so a bird keeps flying the way it was going.
  */
 public final class AirPathAgent {
 
@@ -60,15 +63,26 @@ public final class AirPathAgent {
     private static final float GOAL_RADIUS = CELL_SIZE * 1.5f;
 
     /**
+     * How far an air goal is nudged onto real airspace, in cells. Two cells clear a hillside or a
+     * treetop the destination happened to land inside; further and the search would be answering a
+     * different question than the one it was asked.
+     */
+    private static final int GOAL_SNAP_CELLS = 2;
+
+    /**
      * Expansion budget. Larger than the ground agent's because a 3D graph fans out in three
      * dimensions rather than two, and because going around a mountain genuinely is a long route —
      * but still bounded, and a partial result already points the right way.
      */
-    private static final SearchLimits LIMITS = new SearchLimits(3000, Float.MAX_VALUE, 1.25f);
+    private static final NavLimits LIMITS = new NavLimits(3000, Float.MAX_VALUE, 1.25f);
 
     /** Lowest and highest world Y a route may use. */
     private static final int FLIGHT_FLOOR = 1;
     private static final int FLIGHT_CEILING = WorldConfiguration.WORLD_HEIGHT - 2;
+
+    /** A bird: a mild pull toward cruise, climbing costed above descending, unloaded sky at a premium. */
+    private static final AirProfile PROFILE = new AirProfile(CELL_SIZE, 0.0f, 0.35f, 0.5f, 0.15f, true, 0.75f,
+            FLIGHT_FLOOR, FLIGHT_CEILING);
 
     public enum Status {
         /** No destination asked for. */
@@ -82,29 +96,15 @@ public final class AirPathAgent {
     }
 
     private final Entity entity;
-
-    private final Vector3f destination = new Vector3f();
-    private boolean hasGoal;
-    private float cruiseAltitude;
-
-    private Path path = Path.EMPTY;
-    private int cursor;
-
-    private PathRequest pending;
-    private PathfindingService pendingService;
-
-    private float searchCooldown;
-    private final Vector3f planOrigin = new Vector3f();
-
-    private Status status = Status.IDLE;
-
-    // Scratch, reused every tick.
-    private final Vector3f scratch = new Vector3f();
-    private final Vector3f horizon = new Vector3f();
+    private final AirAgent agent;
+    private final float[] target = new float[3];
 
     public AirPathAgent(Entity entity) {
         this.entity = entity;
-        this.cruiseAltitude = entity.getPosition().y;
+        Vector3f position = entity.getPosition();
+        this.agent = AirAgent.create(new AirAgentDesc(PROFILE, LIMITS, PLAN_RANGE, REPLAN_TRAVEL,
+                REPLAN_INTERVAL_SECONDS, NO_PATH_RETRY_SECONDS, SATURATED_RETRY_SECONDS, WAYPOINT_RADIUS,
+                GOAL_RADIUS, GOAL_SNAP_CELLS), position.x, position.y, position.z);
     }
 
     // ── Commands ─────────────────────────────────────────────────────────────
@@ -114,44 +114,29 @@ public final class AirPathAgent {
      * leaves it only where terrain forces it to, which is what keeps a flock cruising as a flock.
      */
     public void setCruiseAltitude(float altitude) {
-        this.cruiseAltitude = altitude;
+        agent.setCruiseAltitude(altitude);
     }
 
     /** Sets the far destination. Cheap to call every tick; re-planning is throttled internally. */
     public void moveTo(Vector3f goal) {
-        if (!hasGoal) {
-            hasGoal = true;
-            status = Status.SEARCHING;
-            searchCooldown = 0.0f;
-        }
-        destination.set(goal);
+        agent.moveTo(goal.x, goal.y, goal.z);
     }
 
     /** Abandons the destination and the route. */
     public void stop() {
-        hasGoal = false;
-        clearPath();
-        cancelPending();
-        status = Status.IDLE;
+        agent.stop(navWorld());
     }
 
     /** Drops the current route but keeps the destination, forcing a fresh search. */
     public void replan() {
-        clearPath();
-        cancelPending();
-        searchCooldown = 0.0f;
+        agent.replan(navWorld());
     }
 
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     public void tick(float deltaTime) {
-        searchCooldown = Math.max(0.0f, searchCooldown - deltaTime);
-        collectResult();
-        if (!hasGoal) {
-            return;
-        }
-        advanceCursor();
-        requestPathIfNeeded();
+        Vector3f position = entity.getPosition();
+        agent.tick(navWorld(), position.x, position.y, position.z, deltaTime);
     }
 
     /**
@@ -159,38 +144,44 @@ public final class AirPathAgent {
      * horizon along the bearing to the destination, at cruise altitude.
      */
     public Vector3f steerTarget(Vector3f out) {
-        if (cursor < path.size()) {
-            return path.waypoint(cursor, out);
-        }
-        return horizonGoal(out);
+        Vector3f position = entity.getPosition();
+        agent.steerTarget(position.x, position.y, position.z, target);
+        return out.set(target[0], target[1], target[2]);
     }
 
     /** Whether a planned route is being flown right now, as opposed to a bare bearing. */
     public boolean isFollowing() {
-        return status == Status.FOLLOWING && cursor < path.size();
+        AgentView view = agent.view();
+        return view.status() == AgentView.FOLLOWING && view.cursor() < view.pathPoints();
     }
 
     public Status status() {
-        return status;
+        return switch (agent.view().status()) {
+            case AgentView.SEARCHING -> Status.SEARCHING;
+            case AgentView.FOLLOWING -> Status.FOLLOWING;
+            case AgentView.NO_PATH -> Status.NO_PATH;
+            default -> Status.IDLE;
+        };
     }
 
     public boolean hasGoal() {
-        return hasGoal;
+        return agent.view().hasGoal();
     }
 
-    /** The route being flown; never null, possibly {@link Path#EMPTY}. For the debug overlay. */
-    public Path path() {
-        return path;
+    /** The route being flown; never null, possibly {@link NavPath#EMPTY}. For the debug overlay. */
+    public NavPath path() {
+        return agent.path();
     }
 
     /** Index of the waypoint currently being flown toward. */
     public int cursor() {
-        return cursor;
+        return agent.view().cursor();
     }
 
     /** Writes the destination into {@code out}; unchanged when there is none. */
     public Vector3f goal(Vector3f out) {
-        return hasGoal ? out.set(destination) : out;
+        AgentView view = agent.view();
+        return view.hasGoal() ? out.set(view.goalX(), view.goalY(), view.goalZ()) : out;
     }
 
     /** Releases navigation state when the flyer lands or is removed. */
@@ -198,135 +189,9 @@ public final class AirPathAgent {
         stop();
     }
 
-    // ── Internals ────────────────────────────────────────────────────────────
-
-    /**
-     * Where this search aims: the destination itself when it is close enough to plan all the way
-     * to, otherwise a point {@link #PLAN_RANGE} along the bearing at cruise altitude.
-     */
-    private Vector3f horizonGoal(Vector3f out) {
-        Vector3f position = entity.getPosition();
-        float dx = destination.x - position.x;
-        float dz = destination.z - position.z;
-        float distance = (float) Math.sqrt(dx * dx + dz * dz);
-
-        if (distance <= PLAN_RANGE) {
-            return out.set(destination);
-        }
-        if (distance < 1e-4f) {
-            return out.set(position.x, cruiseAltitude, position.z);
-        }
-        return out.set(position.x + dx / distance * PLAN_RANGE,
-                cruiseAltitude,
-                position.z + dz / distance * PLAN_RANGE);
-    }
-
-    /** Adopts a finished search, or drops one that has become irrelevant. */
-    private void collectResult() {
-        if (pending == null) {
-            return;
-        }
-
-        PathfindingService service = service();
-        if (service != pendingService || service == null || service.isClosed()) {
-            // The world was swapped underneath us; whatever comes back describes a world this flyer
-            // no longer lives in.
-            cancelPending();
-            return;
-        }
-        if (!pending.isDone()) {
-            return;
-        }
-
-        Path result = pending.result();
-        pending = null;
-        pendingService = null;
-
-        if (!hasGoal) {
-            return;
-        }
-        if (result == null || result.isEmpty()) {
-            // Nothing found. The bearing is still a perfectly good direction to fly meanwhile.
-            status = Status.NO_PATH;
-            searchCooldown = Math.max(searchCooldown, NO_PATH_RETRY_SECONDS);
-            return;
-        }
-
-        path = result;
-        cursor = 0;
-        planOrigin.set(entity.getPosition());
-        // A route starts at the cell the flyer was in when it asked, and by now the flyer has moved
-        // on a little. Dropping the waypoints already passed stops a bird doubling back on itself
-        // the moment a search lands.
-        advanceCursor();
-        status = cursor < path.size() ? Status.FOLLOWING : Status.NO_PATH;
-    }
-
-    private void requestPathIfNeeded() {
-        if (pending != null || searchCooldown > 0.0f) {
-            return;
-        }
-
-        boolean needsRoute = path.isEmpty()
-                || cursor >= path.size()
-                || entity.getPosition().distance(planOrigin) > REPLAN_TRAVEL
-                || !path.isComplete();
-        if (!needsRoute) {
-            return;
-        }
-
-        PathfindingService service = service();
-        if (service == null) {
-            status = Status.NO_PATH;
-            searchCooldown = NO_PATH_RETRY_SECONDS;
-            return;
-        }
-
-        horizonGoal(horizon);
-        AirNavProfile profile = new AirNavProfile(CELL_SIZE, cruiseAltitude,
-                0.35f, 0.5f, 0.15f, true, 0.75f, FLIGHT_FLOOR, FLIGHT_CEILING);
-
-        PathRequest request = service.submitAir(entity.getPosition(), horizon,
-                GOAL_RADIUS, profile, LIMITS);
-        if (request == null) {
-            searchCooldown = SATURATED_RETRY_SECONDS;
-            return;
-        }
-        pending = request;
-        pendingService = service;
-        searchCooldown = REPLAN_INTERVAL_SECONDS;
-        if (path.isEmpty()) {
-            status = Status.SEARCHING;
-        }
-    }
-
-    private void advanceCursor() {
-        Vector3f position = entity.getPosition();
-        while (cursor < path.size()
-                && position.distance(path.x(cursor), path.y(cursor), path.z(cursor))
-                        < WAYPOINT_RADIUS) {
-            cursor++;
-        }
-        if (cursor >= path.size() && status == Status.FOLLOWING) {
-            status = Status.NO_PATH; // route spent; the bearing carries on until the next one lands
-        }
-    }
-
-    private void clearPath() {
-        path = Path.EMPTY;
-        cursor = 0;
-    }
-
-    private void cancelPending() {
-        if (pending != null) {
-            pending.cancel();
-            pending = null;
-            pendingService = null;
-        }
-    }
-
-    private PathfindingService service() {
+    private NavWorld navWorld() {
         World world = entity.getWorld();
-        return world == null ? null : world.pathfinding();
+        PathfindingService service = world == null ? null : world.pathfinding();
+        return service == null || service.isClosed() ? null : service.nav();
     }
 }

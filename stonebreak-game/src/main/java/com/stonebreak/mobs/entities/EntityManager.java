@@ -164,6 +164,14 @@ public class EntityManager {
             }
         }
 
+        // Path searches the mobs asked for this tick (adopted next tick), on this thread, bounded.
+        if (world != null && !world.isRenderOnly()) {
+            com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding = world.pathfindingIfStarted();
+            if (pathfinding != null && !pathfinding.isClosed()) {
+                pathfinding.step();
+            }
+        }
+
         // Seats: mobs climb into boats, riders are carried to their seats.
         if (world != null && world.isRenderOnly()) {
             com.stonebreak.vehicles.RiderSystem.updateClient(entities,

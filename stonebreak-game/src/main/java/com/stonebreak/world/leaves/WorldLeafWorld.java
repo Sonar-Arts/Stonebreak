@@ -42,6 +42,11 @@ public final class WorldLeafWorld implements LeafWorld {
     }
 
     @Override
+    public com.openmason.engine.physics.PhysicsWorld physics() {
+        return com.stonebreak.world.physics.WorldPhysics.of(world).engine();
+    }
+
+    @Override
     public int foliageScanTop(int x, int z) {
         // The generator knows where the ground is without the chunk being
         // resident, and nothing grows more than a canopy above it: the tallest

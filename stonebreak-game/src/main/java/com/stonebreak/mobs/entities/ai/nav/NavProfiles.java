@@ -1,22 +1,23 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.openmason.engine.wayfind.voxel.NavProfile;
+import com.openmason.engine.nav.GroundProfile;
+import com.stonebreak.mobs.entities.EntityCollision;
 import com.stonebreak.mobs.entities.LivingEntity;
 
 /**
- * Derives a mob's {@link NavProfile} from the physical facts it already carries, so a new mob
+ * Derives a mob's {@link GroundProfile} from the physical facts it already carries, so a new mob
  * navigates correctly the moment it has dimensions and a jump — no per-mob navigation tuning, and
  * no second set of numbers to keep in sync with physics.
  *
- * <p>Every limit here traces to something the collision code actually does:
- * {@link #MAX_STEP_UP} is the auto-step {@code EntityCollision} performs, and the climb ceiling
- * comes from the mob's own jump apex rather than a constant, so a stronger jumper really does plan
- * routes a weaker one will not.
+ * <p>Every limit here traces to something the body actually does: the step is the one
+ * {@link EntityCollision} gives the physics body ({@link EntityCollision#MOB_STEP}, for full and
+ * partial shapes alike — mobs do not mantle), and the climb ceiling comes from the mob's own jump
+ * apex rather than a constant, so a stronger jumper really does plan routes a weaker one will not.
  */
 public final class NavProfiles {
 
-    /** The auto-step entity collision performs without a jump. Mirrors {@code EntityCollision}. */
-    public static final float MAX_STEP_UP = 0.5f;
+    /** The step the body climbs without a jump. */
+    public static final float MAX_STEP_UP = EntityCollision.MOB_STEP;
 
     /**
      * Fraction of the jump apex a route may rely on. A mob leaves the ground moving forward and
@@ -46,7 +47,7 @@ public final class NavProfiles {
     }
 
     /** The navigation profile for one mob, derived from its dimensions, jump and swimming ability. */
-    public static NavProfile forEntity(LivingEntity entity) {
+    public static GroundProfile forEntity(LivingEntity entity) {
         float standingHeight = entity.getLegHeight() + entity.getHeight();
         float footprint = Math.max(entity.getWidth(), entity.getLength());
         int columnRadius = footprint > WIDE_FOOTPRINT ? 1 : 0;
@@ -58,7 +59,7 @@ public final class NavProfiles {
                 entity.getSwimStrokeReach() * USABLE_JUMP_FRACTION);
 
         if (entity.canSwim()) {
-            return new NavProfile(standingHeight, columnRadius,
+            return new GroundProfile(standingHeight, columnRadius,
                     MAX_STEP_UP, maxClimb, waterEscapeClimb, SWIMMER_MAX_FALL,
                     true, 1.0f, 1.2f,
                     0.5f, 2.0f, 0.2f);
@@ -67,7 +68,7 @@ public final class NavProfiles {
         // worse than a preference: a cow that fell in a lake would have no route out at all, and
         // would stand on the bottom until something else moved it. The multipliers are steep
         // enough that any dry route of comparable length wins, so they still walk around ponds.
-        return new NavProfile(standingHeight, columnRadius,
+        return new GroundProfile(standingHeight, columnRadius,
                 MAX_STEP_UP, maxClimb, waterEscapeClimb, WALKER_MAX_FALL,
                 true, 3.0f, 8.0f,
                 0.5f, 2.0f, 0.5f);

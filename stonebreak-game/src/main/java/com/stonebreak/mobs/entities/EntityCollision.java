@@ -23,8 +23,12 @@ import org.joml.Vector3f;
  */
 public class EntityCollision {
 
-    /** Mobs climb anything up to half a block (cows step lower than players). */
-    private static final float MOB_STEP = 0.5f;
+    /**
+     * Mobs climb anything up to half a block (cows step lower than players), partial shapes (snow,
+     * slabs) no higher: they have no mantle either. Route planning reads this ({@code NavProfiles}),
+     * so a route never plans a step the body will not take.
+     */
+    public static final float MOB_STEP = 0.5f;
     private static final float GROUND_FRICTION = 5.0f;
 
     /** Gravity, ground friction and water for every simulated entity. */

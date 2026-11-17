@@ -1,7 +1,8 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
-import com.stonebreak.blocks.BlockType;
+import com.openmason.engine.nav.NavProbes;
 import com.stonebreak.world.World;
+import com.stonebreak.world.physics.WorldPhysics;
 
 /**
  * Small local column queries for behaviours that need to know about the ground or the water right
@@ -11,6 +12,10 @@ import com.stonebreak.world.World;
  * still there, needs an answer about one column this instant. Routing a search for that would be
  * absurd, and letting each behaviour scan columns its own way is how the old AI ended up with three
  * subtly different ground probes.
+ *
+ * <p>Answered from the world's physics cache by the engine ({@link NavProbes}): a cell counts as
+ * ground when it collides with mobs and fills its cell (a snow layer or a stair tread is not a
+ * ground cell here, as a non-solid block was not before).
  */
 public final class GroundProbe {
 
@@ -36,18 +41,8 @@ public final class GroundProbe {
         if (world == null) {
             return Float.NEGATIVE_INFINITY;
         }
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        int from = (int) Math.floor(startY);
-
-        for (int y = from + GROUND_SCAN_UP; y >= from - GROUND_SCAN_DOWN; y--) {
-            BlockType block = world.getBlockAt(blockX, y, blockZ);
-            BlockType above = world.getBlockAt(blockX, y + 1, blockZ);
-            if (block != null && block.isSolid() && (above == null || !above.isSolid())) {
-                return y + 1.0f;
-            }
-        }
-        return Float.NEGATIVE_INFINITY;
+        return NavProbes.groundLevel(WorldPhysics.of(world).engine(), x, z, startY, GROUND_SCAN_UP,
+                GROUND_SCAN_DOWN, WorldPhysics.MOB_MASK);
     }
 
     /**
@@ -58,15 +53,7 @@ public final class GroundProbe {
         if (world == null) {
             return Float.NEGATIVE_INFINITY;
         }
-        int blockX = (int) Math.floor(x);
-        int blockZ = (int) Math.floor(z);
-        int from = (int) Math.floor(y);
-
-        for (int cy = from + WATER_SCAN_UP; cy >= from - WATER_SCAN_DOWN; cy--) {
-            if (world.getBlockAt(blockX, cy, blockZ) == BlockType.WATER) {
-                return cy + 1.0f;
-            }
-        }
-        return Float.NEGATIVE_INFINITY;
+        return NavProbes.fluidTop(WorldPhysics.of(world).engine(), x, y, z, WATER_SCAN_UP, WATER_SCAN_DOWN,
+                WorldPhysics.WATER);
     }
 }
