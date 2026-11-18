@@ -8,19 +8,27 @@ import io.netty.buffer.ByteBuf;
 
 /**
  * Server → client: handshake accepted; carries the assigned player id, world seed, terrain
- * generator, spawn, and the client's join secret for this server ("" for the in-process host).
+ * generator, spawn (int64 cell + float offset per axis), and the client's join secret for this server ("" for the in-process host).
  * The client keeps the secret and presents it in its next {@link HandshakeC2S} (issue #335).
  */
 public record WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType generatorType,
-                         float spawnX, float spawnY, float spawnZ, String clientSecret) implements Packet {
+                         com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                         double spawnX, double spawnY, double spawnZ, String clientSecret) implements Packet {
 
     public WelcomeS2C {
         clientSecret = clientSecret == null ? "" : clientSecret;
+        terrainScale = terrainScale == null ? com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.ONE_TO_FOUR : terrainScale;
+    }
+
+    /** A 1:4 world's welcome. */
+    public WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType generatorType,
+                      double spawnX, double spawnY, double spawnZ, String clientSecret) {
+        this(playerId, worldSeed, generatorType, null, spawnX, spawnY, spawnZ, clientSecret);
     }
 
     /** A welcome without a secret (the in-process host). */
     public WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType generatorType,
-                      float spawnX, float spawnY, float spawnZ) {
+                      double spawnX, double spawnY, double spawnZ) {
         this(playerId, worldSeed, generatorType, spawnX, spawnY, spawnZ, "");
     }
 
@@ -30,18 +38,28 @@ public record WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType gene
             out.writeInt(p.playerId());
             out.writeLong(p.worldSeed());
             out.writeByte(p.generatorType().ordinal());
-            out.writeFloat(p.spawnX());
-            out.writeFloat(p.spawnY());
-            out.writeFloat(p.spawnZ());
+            out.writeByte(p.terrainScale().ordinal());
+            com.stonebreak.network.packet.NetCoords.writePosition(out, p.spawnX(), p.spawnY(), p.spawnZ());
             ByteBufIO.writeString(out, p.clientSecret(), HandshakeC2S.MAX_SECRET_CHARS);
         }
 
         @Override
         public WelcomeS2C decode(ByteBuf in) {
-            return new WelcomeS2C(
-                in.readInt(), in.readLong(),
-                TerrainGeneratorType.values()[in.readUnsignedByte()],
-                in.readFloat(), in.readFloat(), in.readFloat(),
+            int id = in.readInt();
+            long seed = in.readLong();
+            int type = in.readUnsignedByte();
+            if (type >= TerrainGeneratorType.values().length) {
+                throw new IllegalArgumentException("Unknown terrain generator " + type);
+            }
+            int scale = in.readUnsignedByte();
+            var scales = com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.values();
+            if (scale >= scales.length) {
+                throw new IllegalArgumentException("Unknown terrain scale " + scale);
+            }
+            double x = com.stonebreak.network.packet.NetCoords.readPosition(in);
+            double y = com.stonebreak.network.packet.NetCoords.readPosition(in);
+            double z = com.stonebreak.network.packet.NetCoords.readPosition(in);
+            return new WelcomeS2C(id, seed, TerrainGeneratorType.values()[type], scales[scale], x, y, z,
                 ByteBufIO.readString(in, HandshakeC2S.MAX_SECRET_CHARS));
         }
     };

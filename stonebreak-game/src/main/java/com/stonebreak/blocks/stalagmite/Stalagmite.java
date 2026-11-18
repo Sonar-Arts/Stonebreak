@@ -33,7 +33,8 @@ public final class Stalagmite {
     /** Part of a hanging stalagmite whose anchor is above. */
     public static final String LOWER = "StalagmiteLower";
 
-    private static final int H = WorldConfiguration.WORLD_HEIGHT;
+    private static final int H = WorldConfiguration.MAX_Y;
+    private static final int LO = WorldConfiguration.MIN_Y;
 
     private Stalagmite() {}
 
@@ -68,7 +69,7 @@ public final class Stalagmite {
     }
 
     private static boolean isStalagmite(Cells cells, int x, int y, int z) {
-        return y >= 0 && y < H && cells.block(x, y, z) == BlockType.LIMESTONE_STALAGMITE;
+        return y >= LO && y < H && cells.block(x, y, z) == BlockType.LIMESTONE_STALAGMITE;
     }
 
     /** A part cell extending in {@code direction} from its anchor. */
@@ -120,7 +121,7 @@ public final class Stalagmite {
         }
         StalagmiteState state = StalagmiteState.parse(cells.state(x, ay, z));
         int next = ay + state.size() * state.direction();
-        return state.size() < MAX_SIZE && next >= 0 && next < H && cells.block(x, next, z) == BlockType.AIR;
+        return state.size() < MAX_SIZE && next >= LO && next < H && cells.block(x, next, z) == BlockType.AIR;
     }
 
     /**

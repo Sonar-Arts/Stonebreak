@@ -105,6 +105,13 @@ public final class TerrainMapperConfig {
     public static final int TOPO_LAND_CEILING = 240;
 
     /**
+     * Block height that maps to the bottom (indigo) of the topography water ramp; anything deeper clamps to it.
+     * The world reaches down to {@code WorldConfiguration.MIN_Y} (-384) now, but seabeds sit far above that (about
+     * y -100 at the deepest, terrain scale 1:2), so the ramp spends its range on real ocean depths.
+     */
+    public static final int TOPO_SEA_FLOOR = -128;
+
+    /**
      * Blocks of contour interval to allow per block of sample-cell width. A paper map picks a
      * coarser interval as its scale drops for exactly this reason: lines land roughly
      * {@code interval / (slope * blocksPerSample)} samples apart, so holding the interval fixed

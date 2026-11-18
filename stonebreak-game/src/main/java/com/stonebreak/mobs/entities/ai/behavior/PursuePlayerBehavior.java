@@ -2,7 +2,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.EnumSet;
 
@@ -30,7 +31,7 @@ public final class PursuePlayerBehavior implements Behavior {
     private final float investigateSpeedMultiplier;
     private final float pursueSpeedMultiplier;
 
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
 
     public PursuePlayerBehavior(AwarenessController awareness,
                                 float investigateSpeedMultiplier, float pursueSpeedMultiplier) {
@@ -56,7 +57,7 @@ public final class PursuePlayerBehavior implements Behavior {
 
     @Override
     public void tick(AiContext context, float deltaTime) {
-        Vector3f destination = destinationFor(context);
+        Vector3d destination = destinationFor(context);
         if (destination == null) {
             return; // shouldContinue ends this on the next tick
         }
@@ -85,10 +86,10 @@ public final class PursuePlayerBehavior implements Behavior {
      * Where to head: the player while alerted, their last known position while suspicious, and
      * nowhere at all while unaware.
      */
-    private Vector3f destinationFor(AiContext context) {
+    private Vector3d destinationFor(AiContext context) {
         return switch (awareness.getState()) {
             case ALERTED -> {
-                Vector3f player = context.nearestPlayer();
+                Vector3d player = context.nearestPlayer();
                 if (player != null) {
                     yield target.set(player);
                 }

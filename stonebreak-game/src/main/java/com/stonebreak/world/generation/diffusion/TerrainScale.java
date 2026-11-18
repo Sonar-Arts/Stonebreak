@@ -61,7 +61,9 @@ public final class TerrainScale {
      */
     public static String worldConfigJson() {
         Map<String, Number> world = new LinkedHashMap<>();
-        world.put("world_height", WorldConfiguration.WORLD_HEIGHT);
+        // The cube world spans [MIN_Y, MAX_Y): the service clamps heights to [min_y, world_height).
+        world.put("world_height", WorldConfiguration.MAX_Y);
+        world.put("min_y", WorldConfiguration.MIN_Y);
         world.put("sea_level", WorldConfiguration.SEA_LEVEL);
         world.put("horizontal_m", HORIZONTAL_METERS_PER_BLOCK);
         world.put("downscale", DOWNSCALE);

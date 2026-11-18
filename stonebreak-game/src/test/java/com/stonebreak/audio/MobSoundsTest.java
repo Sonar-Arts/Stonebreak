@@ -80,8 +80,8 @@ class MobSoundsTest {
         int steps = 0;
         for (int i = 0; i < 40; i++) {
             mob.setOnGround(i % 2 == 0); // airborne every other update, as a real mob is
-            Vector3f position = mob.getPosition();
-            mob.setPosition(new Vector3f(position.x + 0.25f, position.y, position.z));
+            org.joml.Vector3d position = mob.getPosition();
+            mob.setPosition(new org.joml.Vector3d(position.x + 0.25f, position.y, position.z));
             if (sounds.updateSounds(mob)) {
                 steps++;
             }
@@ -114,7 +114,7 @@ class MobSoundsTest {
         MobSounds sounds = new MobSounds(null, STRIDE, 0.3f);
         sounds.updateSounds(mob); // establish a previous position
 
-        mob.setPosition(new Vector3f(500, 64, 500));
+        mob.setPosition(new org.joml.Vector3d(500, 64, 500));
 
         assertFalse(sounds.updateSounds(mob), "a network correction is not fifty footsteps");
     }
@@ -122,7 +122,7 @@ class MobSoundsTest {
     @Test
     void theFirstUpdateOnlyEstablishesAPosition() {
         StubMob mob = grounded();
-        mob.setPosition(new Vector3f(100, 64, 100));
+        mob.setPosition(new org.joml.Vector3d(100, 64, 100));
 
         assertFalse(new MobSounds(null, STRIDE, 0.3f).updateSounds(mob),
                 "a mob that has just spawned has not walked anywhere yet");
@@ -135,7 +135,7 @@ class MobSoundsTest {
         walk(sounds, mob, 0.4f, 2);
 
         sounds.reset();
-        mob.setPosition(new Vector3f(50, 64, 50));
+        mob.setPosition(new org.joml.Vector3d(50, 64, 50));
 
         assertFalse(sounds.updateSounds(mob), "the jump to the new position must not count as travel");
     }
@@ -171,8 +171,8 @@ class MobSoundsTest {
 
         int steps = 0;
         for (int i = 0; i < updates; i++) {
-            Vector3f position = mob.getPosition();
-            mob.setPosition(new Vector3f(position.x + perUpdate, position.y, position.z));
+            org.joml.Vector3d position = mob.getPosition();
+            mob.setPosition(new org.joml.Vector3d(position.x + perUpdate, position.y, position.z));
             if (sounds.updateSounds(mob)) {
                 steps++;
             }

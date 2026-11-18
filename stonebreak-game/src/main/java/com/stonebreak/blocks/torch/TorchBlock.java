@@ -145,7 +145,7 @@ public final class TorchBlock {
                 findUnsupported(world, x, y, z, treatCellAsNonSupport);
         for (Vector3i t : unsupported) {
             com.stonebreak.util.DropUtil.handleBlockBroken(world,
-                    new org.joml.Vector3f(t.x + 0.5f, t.y + 0.5f, t.z + 0.5f), block());
+                    new org.joml.Vector3d(t.x + 0.5, t.y + 0.5, t.z + 0.5), block());
             world.setBlockAt(t.x, t.y, t.z, BlockType.AIR, false);
             com.stonebreak.world.ServerMutationSinks.BlockSink sink = world.serverSinks().blocks();
             if (sink != null) {

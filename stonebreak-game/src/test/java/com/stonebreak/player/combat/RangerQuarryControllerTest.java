@@ -13,6 +13,8 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +28,7 @@ class RangerQuarryControllerTest {
     /** Minimal living entity — no world or AI needed for QuarryController logic. */
     private static final class StubEntity extends LivingEntity {
         StubEntity() {
-            super(null, new Vector3f(0f, 0f, 0f), EntityType.COW);
+            super(null, new Vector3d(0f, 0f, 0f), EntityType.COW);
         }
 
         @Override

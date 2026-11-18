@@ -4,6 +4,8 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -50,7 +52,7 @@ public class Dinghy extends Entity implements Rideable {
     private final OarStroke stroke = new OarStroke();
     private boolean locallyControlled;
 
-    public Dinghy(World world, Vector3f position, float yawDeg) {
+    public Dinghy(World world, Vector3dc position, float yawDeg) {
         super(world, position);
         this.width = EntityType.DINGHY.getWidth();
         this.length = EntityType.DINGHY.getLength();
@@ -84,7 +86,7 @@ public class Dinghy extends Entity implements Rideable {
     }
 
     /** Server: the rowing player's client reports where the boat is now. */
-    public void applyDriverMove(float x, float y, float z, float yawDeg, OarInput input) {
+    public void applyDriverMove(double x, double y, double z, float yawDeg, OarInput input) {
         position.set(x, y, z);
         rotation.y = yawDeg;
         oars = input;
@@ -124,9 +126,10 @@ public class Dinghy extends Entity implements Rideable {
     }
 
     @Override
-    public Vector3f seatPosition(int seat, Vector3f dest) {
+    public Vector3d seatPosition(int seat, Vector3d dest) {
         float[] s = SEATS[seat];
-        return rotateY(s[0], s[1], s[2], rotation.y, dest).add(position);
+        Vector3f offset = rotateY(s[0], s[1], s[2], rotation.y, new Vector3f());
+        return dest.set(position).add(offset.x, offset.y, offset.z);
     }
 
     /** Both riders face the bow: the oar handles sit just bow-ward of the thwart. */
@@ -186,7 +189,7 @@ public class Dinghy extends Entity implements Rideable {
             Entity rider = seatedEntity(seat);
             if (rider != null) {
                 rider.setVehicle(null, -1);
-                rider.setPosition(position.x, position.y + 0.6f, position.z);
+                rider.setPosition(position.x, position.y + 0.6, position.z);
             }
             seatEntity[seat] = null;
         }
@@ -247,10 +250,10 @@ public class Dinghy extends Entity implements Rideable {
      * Distance along the ray to the hull, or {@link Float#MAX_VALUE} on a miss: a slab test in
      * the boat's own frame, so the long hull is hit where it is drawn whatever its heading.
      */
-    public float rayIntersect(Vector3f origin, Vector3f dir) {
-        // Inverse of Ry(yaw): into model space.
-        Vector3f lo = rotateY(origin.x - position.x, origin.y - position.y, origin.z - position.z,
-                -rotation.y, new Vector3f());
+    public float rayIntersect(Vector3dc origin, Vector3f dir) {
+        // Inverse of Ry(yaw): into model space (the offset from the hull taken in double, then local floats).
+        Vector3f lo = rotateY((float) (origin.x() - position.x), (float) (origin.y() - position.y),
+                (float) (origin.z() - position.z), -rotation.y, new Vector3f());
         Vector3f ld = rotateY(dir.x, dir.y, dir.z, -rotation.y, new Vector3f());
         float[] o = {lo.x, lo.y, lo.z};
         float[] d = {ld.x, ld.y, ld.z};

@@ -82,12 +82,12 @@ class FxRuntimeAllocationTest {
         @Override public long key(int i) { return i == 0 ? AmbientSources.holderKey(1) : AmbientSources.blockKey(i * 3, 65, 0); }
 
         @Override
-        public Vector3f position(int i, Vector3f out) {
+        public org.joml.Vector3d position(int i, org.joml.Vector3d out) {
             if (i == 0) {
                 double a = t * 0.05;
-                return out.set((float) Math.cos(a) * 3f, 65.5f, (float) Math.sin(a) * 3f);
+                return out.set(Math.cos(a) * 3.0, 65.5, Math.sin(a) * 3.0);
             }
-            return out.set(i * 3 + 0.5f, 65.6f, 0.5f);
+            return out.set(i * 3 + 0.5, 65.6, 0.5);
         }
 
         @Override public float pulse(int i) { return ((t + i * 17) % 72) / 72f; }

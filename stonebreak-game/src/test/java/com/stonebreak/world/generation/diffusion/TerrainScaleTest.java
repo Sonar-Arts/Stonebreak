@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 class TerrainScaleTest {
 
     private static final Pattern KEY = Pattern.compile("\"(\\w+)\":");
-    private static final Pattern FIELD = Pattern.compile("(?m)^    (\\w+): (?:int|float)$");
+    private static final Pattern FIELD = Pattern.compile("(?m)^    (\\w+): (?:int|float)(?: = [^\\n]*)?$");
 
     @Test
     void worldConfigKeysMatchThePythonWorldConfig() throws IOException {

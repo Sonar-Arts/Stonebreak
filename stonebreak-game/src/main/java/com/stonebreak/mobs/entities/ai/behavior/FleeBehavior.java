@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.EnumSet;
@@ -34,8 +36,8 @@ public final class FleeBehavior implements Behavior {
     private final float sprintTriggerRange;
     private final float safeRange;
 
-    private final Vector3f threat = new Vector3f();
-    private final Vector3f target = new Vector3f();
+    private final Vector3d threat = new Vector3d();
+    private final Vector3d target = new Vector3d();
     private boolean threatKnown;
     /** The threat came from a hit, which already says who to run from. */
     private boolean hitArmed;
@@ -74,8 +76,8 @@ public final class FleeBehavior implements Behavior {
 
     @Override
     public void onDamaged(AiContext context, float damage) {
-        Vector3f attacker = context.attacker();
-        Vector3f player = attacker != null ? attacker : context.nearestPlayer();
+        Vector3d attacker = context.attacker();
+        Vector3d player = attacker != null ? attacker : context.nearestPlayer();
         if (player != null) {
             // Whoever landed the hit; only when the source did not say, the nearest player.
             threat.set(player);
@@ -132,7 +134,7 @@ public final class FleeBehavior implements Behavior {
     }
 
     private void rememberThreat(AiContext context) {
-        Vector3f player = context.nearestPlayer();
+        Vector3d player = context.nearestPlayer();
         if (player != null) {
             threat.set(player);
             threatKnown = true;
@@ -156,13 +158,13 @@ public final class FleeBehavior implements Behavior {
         if (!threatKnown) {
             return; // hurt by nothing we can locate and nobody nearby — nothing to run from
         }
-        Vector3f position = context.entity().getPosition();
+        Vector3d position = context.entity().getPosition();
         target.set(position).sub(threat);
-        target.y = 0.0f;
-        if (target.lengthSquared() < 0.01f) {
+        target.y = 0.0;
+        if (target.lengthSquared() < 0.01) {
             // Standing on top of the threat: any direction is away from it.
-            float angle = context.random().nextFloat() * (float) (Math.PI * 2.0);
-            target.set((float) Math.cos(angle), 0.0f, (float) Math.sin(angle));
+            double angle = context.random().nextFloat() * (Math.PI * 2.0);
+            target.set(Math.cos(angle), 0.0, Math.sin(angle));
         }
         target.normalize().mul(distance).add(position);
         target.y = position.y;

@@ -3,6 +3,7 @@ package com.stonebreak.network.packet.world;
 import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -19,7 +20,7 @@ import io.netty.buffer.ByteBuf;
  * @param subjectId block id for {@link #BLOCK}, {@code EntityType} ordinal for {@link #ENTITY}
  * @param event     event name ({@code break}/{@code hit}/{@code place}, {@code hurt}/{@code death}, ...)
  */
-public record SoundEventS2C(byte subject, int subjectId, String event, float x, float y, float z)
+public record SoundEventS2C(byte subject, int subjectId, String event, double x, double y, double z)
         implements Packet {
 
     public static final byte BLOCK = 0;
@@ -28,11 +29,11 @@ public record SoundEventS2C(byte subject, int subjectId, String event, float x, 
     /** Longest event name on the wire; the standard ones are a few characters. */
     public static final int MAX_EVENT_CHARS = 32;
 
-    public static SoundEventS2C block(int blockId, String event, float x, float y, float z) {
+    public static SoundEventS2C block(int blockId, String event, double x, double y, double z) {
         return new SoundEventS2C(BLOCK, blockId, event, x, y, z);
     }
 
-    public static SoundEventS2C entity(int entityTypeOrdinal, String event, float x, float y, float z) {
+    public static SoundEventS2C entity(int entityTypeOrdinal, String event, double x, double y, double z) {
         return new SoundEventS2C(ENTITY, entityTypeOrdinal, event, x, y, z);
     }
 
@@ -42,16 +43,14 @@ public record SoundEventS2C(byte subject, int subjectId, String event, float x, 
             out.writeByte(p.subject());
             ByteBufIO.writeVarInt(out, p.subjectId());
             ByteBufIO.writeString(out, p.event(), MAX_EVENT_CHARS);
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
         }
 
         @Override
         public SoundEventS2C decode(ByteBuf in) {
             return new SoundEventS2C(in.readByte(), ByteBufIO.readVarInt(in),
                     ByteBufIO.readString(in, MAX_EVENT_CHARS),
-                    in.readFloat(), in.readFloat(), in.readFloat());
+                    NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in));
         }
     };
 }

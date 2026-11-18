@@ -74,11 +74,11 @@ public class FishingLineRenderer {
         // rather than through the model matrix: the world shader's modelMatrix is
         // a frame-wide identity that later passes (drops, the crack overlay) fold
         // their own transform against, so this path must leave it alone.
-        float ox = RenderOrigin.x();
-        float oz = RenderOrigin.z();
         lineScratch.clear();
-        lineScratch.put(from.x - ox).put(from.y).put(from.z - oz);
-        lineScratch.put(to.x - ox).put(to.y).put(to.z - oz);
+        lineScratch.put(RenderOrigin.relativeX((double) from.x)).put(RenderOrigin.relativeY((double) from.y))
+                .put(RenderOrigin.relativeZ((double) from.z));
+        lineScratch.put(RenderOrigin.relativeX((double) to.x)).put(RenderOrigin.relativeY((double) to.y))
+                .put(RenderOrigin.relativeZ((double) to.z));
         lineScratch.flip();
 
         GL30.glBindVertexArray(lineVao);

@@ -315,7 +315,7 @@ public final class PlayerPrefsValidator {
      *         pre-background budget (a bonus on top would then break the score ceiling)
      */
     public static PlayerData freshCharacter(PlayerData creation, String backgroundId,
-                                            String worldName, Vector3f spawn) {
+                                            String worldName, org.joml.Vector3dc spawn) {
         PlayerData base = creation != null ? creation : PlayerData.builder()
                 .remainingCp(CharacterStats.grantedCp(1))
                 .remainingSp(CharacterStats.grantedSp(1))
@@ -342,7 +342,7 @@ public final class PlayerPrefsValidator {
                 .discoveredWeaknessEntityTypes(Set.of())
                 .stats(new com.stonebreak.player.PlayerStats());
         if (spawn != null) {
-            b.position(new Vector3f(spawn)).rotation(new org.joml.Vector2f(0, 0));
+            b.position(new org.joml.Vector3d(spawn)).rotation(new org.joml.Vector2f(0, 0));
         }
         return b.build();
     }

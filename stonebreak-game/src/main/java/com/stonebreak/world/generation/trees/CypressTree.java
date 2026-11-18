@@ -72,7 +72,7 @@ public final class CypressTree {
      * written.
      */
     public static void place(TreeBlockSink out, int worldX, int worldY, int worldZ) {
-        if (worldY + MAX_HEIGHT >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (worldY + MAX_HEIGHT >= WorldConfiguration.MAX_Y) return;
         TreeShapeBuffer buffer = new TreeShapeBuffer();
         generate(buffer, worldX, worldY, worldZ);
         buffer.flushAnchored(out);

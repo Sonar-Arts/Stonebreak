@@ -230,6 +230,14 @@ public class ActionHandler {
     }
 
     /**
+     * Callback for when the vertical-render-distance slider changes (blocks; snapped to whole cubes). Stored in
+     * settings; the streaming ellipsoid is resized on Apply.
+     */
+    public void onVerticalRenderDistanceChange(Float newValue) {
+        settings.setVerticalRenderDistance(Math.round(newValue));
+    }
+
+    /**
      * Callback for when LOD-distance slider value changes. Stores in settings;
      * world config is pushed on Apply.
      */

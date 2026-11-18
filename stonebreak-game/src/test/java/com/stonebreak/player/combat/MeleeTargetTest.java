@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +28,7 @@ class MeleeTargetTest {
 
     @Test
     void remotePlayersAreNotMeleeTargets() {
-        RemotePlayer other = new RemotePlayer(mock(World.class), new Vector3f(0f, 64f, 0f), 2, "bob");
+        RemotePlayer other = new RemotePlayer(mock(World.class), new Vector3d(0f, 64f, 0f), 2, "bob");
         assertFalse(Player.isCombatTarget(other));
     }
 

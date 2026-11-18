@@ -48,6 +48,12 @@ public final class TerrainMouseHandler {
             }
             return false;
         }
+        if (name.startsWith("scale:")) {
+            var scale = com.stonebreak.config.TerrainScaleOption.parse(name.substring(6));
+            if (scale == null) return false;
+            state.selectScale(scale);
+            return true;
+        }
         if (name.startsWith("mode:")) {
             for (MCategoryButton<VisualizerKind> mode : state.getModeButtons()) {
                 if (mode.tag().name().equals(name.substring(5))) {

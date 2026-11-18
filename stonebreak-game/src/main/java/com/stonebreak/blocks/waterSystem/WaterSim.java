@@ -8,16 +8,18 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.openmason.engine.voxel.world.CubePos;
+import com.openmason.engine.voxel.world.CubeWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.chunk.ChunkWaterLayer;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Vanilla-Minecraft water flow simulation over a {@link FlowWorld}.
  *
- * <p>State lives in the chunk-owned water layer (absence = source); this class
+ * <p>State lives in the world's WATER layer (0 = source); this class
  * is a pure tick engine: a scheduled-update queue plus the vanilla rules —
  * sources spread level 1, flow loses one level per horizontal block (reach 7),
  * water over a flowable cell falls as a full-height column and spreads at full
@@ -57,10 +59,12 @@ public final class WaterSim {
         (a, b) -> a.scheduledTick() != b.scheduledTick()
             ? Long.compare(a.scheduledTick(), b.scheduledTick())
             : Long.compare(a.sequence(), b.sequence()));
-    private final Map<Long, Long> scheduledTicks = new ConcurrentHashMap<>();
-    private final Set<Long> scannedChunks = new HashSet<>();
-    /** Resident chunks waiting for their load scan, oldest first; drained by the logical tick. */
-    private final java.util.LinkedHashMap<Long, Chunk> pendingScans = new java.util.LinkedHashMap<>();
+    private final Map<Pos, Long> scheduledTicks = new ConcurrentHashMap<>();
+    private final Set<CubePos> scannedCubes = new HashSet<>();
+    /** Resident cubes waiting for their load scan, oldest first; drained by the logical tick. */
+    private final java.util.LinkedHashSet<CubePos> pendingScans = new java.util.LinkedHashSet<>();
+    /** Scratch block ids of the cube being scanned (tick thread only). */
+    private final short[] scanIds = new short[CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE];
     /** Wall-clock budget per logical tick for load scans (at least one runs per tick). */
     private static final long SCAN_BUDGET_NANOS = 3_000_000L;
 
@@ -106,8 +110,8 @@ public final class WaterSim {
     // ===== External triggers =====
 
     /** Schedules a position for evaluation after the standard flow delay. */
-    public void schedule(int x, int y, int z) {
-        enqueue(packKey(x, y, z), FLOW_DELAY);
+    public void schedule(long x, long y, long z) {
+        enqueue(new Pos(x, y, z), FLOW_DELAY);
     }
 
     /**
@@ -116,35 +120,38 @@ public final class WaterSim {
      * change schedules adjacent water for recompute — recession when supply
      * or support was cut, renewed spread when an obstruction cleared.
      */
-    public void onBlockChanged(int x, int y, int z, BlockType previous, BlockType next) {
+    public void onBlockChanged(long x, long y, long z, BlockType previous, BlockType next) {
         if (!isWithinWorld(y)) {
             return;
         }
         if (next == BlockType.WATER) {
             schedule(x, y, z);
         }
-        scheduleWaterNeighbors(packKey(x, y, z));
+        scheduleWaterNeighbors(new Pos(x, y, z));
     }
 
     /**
-     * Registers existing water when a chunk becomes resident. Schedules — never
-     * seeds — WATER cells that are exposed (flowable orthogonal neighbor) or
-     * carry a saved flow entry; ocean interiors are sources that never tick.
-     * Border water in already-loaded adjacent chunks is re-scheduled so flow
-     * stalled at the chunk edge resumes.
+     * Registers existing water when a cube becomes resident. Schedules — never
+     * seeds — WATER cells that are exposed (flowable neighbor inside the cube, or
+     * air below) or carry a non-source water value; ocean interiors are sources
+     * that never tick. Water in already-loaded neighbouring cubes that touches
+     * this cube's faces is re-scheduled so flow stalled at the edge resumes.
      *
      * <p>The scan runs on the next logical tick under a time budget: a world
-     * reload installs hundreds of chunks in one server tick, and scanning each
-     * inline pushed that tick past its 50 ms (#345). The water is scheduled a
-     * tick or two later than before, which nothing depends on.
+     * reload installs hundreds of cubes in one server tick, and scanning each
+     * inline pushed that tick past its 50 ms (#345).
      */
-    public void onChunkLoaded(Chunk chunk) {
-        if (chunk == null) {
-            return;
+    public void onCubeInstalled(Cube cube) {
+        if (cube != null) {
+            onCubeInstalled(cube.cx(), cube.cy(), cube.cz());
         }
-        long chunkKey = chunkKey(chunk.getChunkX(), chunk.getChunkZ());
-        if (scannedChunks.add(chunkKey)) {
-            pendingScans.put(chunkKey, chunk);
+    }
+
+    /** {@link #onCubeInstalled(Cube)} by cube coordinates. */
+    public void onCubeInstalled(long cx, long cy, long cz) {
+        CubePos pos = new CubePos(cx, cy, cz);
+        if (scannedCubes.add(pos)) {
+            pendingScans.add(pos);
         }
     }
 
@@ -153,99 +160,99 @@ public final class WaterSim {
             return;
         }
         long deadline = System.nanoTime() + SCAN_BUDGET_NANOS;
-        var it = pendingScans.values().iterator();
+        var it = pendingScans.iterator();
         while (it.hasNext()) {
-            Chunk chunk = it.next();
+            CubePos cube = it.next();
             it.remove();
-            scanLoadedChunk(chunk);
+            scanLoadedCube(cube);
             if (System.nanoTime() >= deadline) {
                 break;
             }
         }
     }
 
-    private void scanLoadedChunk(Chunk chunk) {
-        int baseX = chunk.getChunkX() * WorldConfiguration.CHUNK_SIZE;
-        int baseZ = chunk.getChunkZ() * WorldConfiguration.CHUNK_SIZE;
-        var reader = chunk.getBlockReader();
+    private void scanLoadedCube(CubePos cube) {
+        // Flowing / falling / river cells: the layer scan skips empty sections natively.
+        flow.forEachWaterValue(cube.x(), cube.y(), cube.z(), (x, y, z, value) -> schedule(x, y, z));
 
-        chunk.getWaterLayer().forEach((lx, y, lz, value) -> schedule(baseX + lx, y, baseZ + lz));
-
-        // Sections whose palette holds no water can't contain any: skip them whole — the
-        // per-cell sweep of dry columns was most of this scan's cost (#345).
-        long waterSections = com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage
-            .sectionMask(chunk.getBlockStorageView(), block -> block == BlockType.WATER);
-        if (waterSections == 0L) {
+        short[] ids = scanIds;
+        if (!flow.readCubeIds(cube.x(), cube.y(), cube.z(), ids)) {
             return;
         }
-
-        for (int lx = 0; lx < WorldConfiguration.CHUNK_SIZE; lx++) {
-            for (int lz = 0; lz < WorldConfiguration.CHUNK_SIZE; lz++) {
-                boolean border = lx == 0 || lx == WorldConfiguration.CHUNK_SIZE - 1
-                              || lz == 0 || lz == WorldConfiguration.CHUNK_SIZE - 1;
-                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if ((waterSections & (1L << (y >> 4))) == 0L) {
-                        y |= 15; // dry section — jump to its top
+        final short water = (short) BlockType.WATER.getId();
+        boolean any = false;
+        for (short id : ids) {
+            if (id == water) {
+                any = true;
+                break;
+            }
+        }
+        if (!any) {
+            return;
+        }
+        final short air = (short) BlockType.AIR.getId();
+        final int edge = CubeWorld.CUBE_EDGE;
+        long x0 = cube.minBlockX(), y0 = cube.minBlockY(), z0 = cube.minBlockZ();
+        for (int ly = 0; ly < edge; ly++) {
+            for (int lz = 0; lz < edge; lz++) {
+                for (int lx = 0; lx < edge; lx++) {
+                    if (ids[CubeWorld.cellIndex(lx, ly, lz)] != water) {
                         continue;
                     }
-                    if (reader.get(lx, y, lz) != BlockType.WATER) {
-                        continue;
+                    long x = x0 + lx, y = y0 + ly, z = z0 + lz;
+                    boolean airBelow = ly > 0
+                        ? ids[CubeWorld.cellIndex(lx, ly - 1, lz)] == air
+                        : isWithinWorld(y - 1) && flow.isLoaded(x, y - 1, z) && flow.getBlock(x, y - 1, z) == BlockType.AIR;
+                    boolean exposed = airBelow
+                        || (lx > 0 && ids[CubeWorld.cellIndex(lx - 1, ly, lz)] == air)
+                        || (lx < edge - 1 && ids[CubeWorld.cellIndex(lx + 1, ly, lz)] == air)
+                        || (lz > 0 && ids[CubeWorld.cellIndex(lx, ly, lz - 1)] == air)
+                        || (lz < edge - 1 && ids[CubeWorld.cellIndex(lx, ly, lz + 1)] == air);
+                    if (exposed) {
+                        schedule(x, y, z);
                     }
-                    if (isExposed(reader, lx, y, lz)) {
-                        schedule(baseX + lx, y, baseZ + lz);
-                    }
-                    if (border) {
-                        // Wake water just outside this chunk that stalled waiting for it.
-                        for (int[] dir : HORIZONTALS) {
-                            int nx = lx + dir[0];
-                            int nz = lz + dir[1];
-                            if (nx < 0 || nx >= WorldConfiguration.CHUNK_SIZE
-                                || nz < 0 || nz >= WorldConfiguration.CHUNK_SIZE) {
-                                int wx = baseX + nx;
-                                int wz = baseZ + nz;
-                                if (flow.getBlock(wx, y, wz) == BlockType.WATER) {
-                                    schedule(wx, y, wz);
-                                }
-                            }
-                        }
-                    }
+                    // Wake water just outside this cube that stalled waiting for it.
+                    if (lx == 0) wakeIfWater(x - 1, y, z);
+                    if (lx == edge - 1) wakeIfWater(x + 1, y, z);
+                    if (lz == 0) wakeIfWater(x, y, z - 1);
+                    if (lz == edge - 1) wakeIfWater(x, y, z + 1);
+                    if (ly == 0) wakeIfWater(x, y - 1, z);
+                    if (ly == edge - 1) wakeIfWater(x, y + 1, z);
                 }
             }
         }
     }
 
-    private static boolean isExposed(com.openmason.engine.voxel.cco.operations.CcoBlockReader reader,
-                                     int lx, int y, int lz) {
-        if (y > 0 && reader.isAir(lx, y - 1, lz)) {
-            return true;
+    private void wakeIfWater(long x, long y, long z) {
+        if (isWithinWorld(y) && flow.getBlock(x, y, z) == BlockType.WATER) {
+            schedule(x, y, z);
         }
-        return (lx > 0 && reader.isAir(lx - 1, y, lz))
-            || (lx < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(lx + 1, y, lz))
-            || (lz > 0 && reader.isAir(lx, y, lz - 1))
-            || (lz < WorldConfiguration.CHUNK_SIZE - 1 && reader.isAir(lx, y, lz + 1));
     }
 
-    /** Drops pending work for an unloading chunk. The water layer leaves with the chunk. */
-    public void onChunkUnloaded(Chunk chunk) {
-        if (chunk == null) {
-            return;
+    /** Drops pending work for an unloading cube. The water layer leaves with the cube. */
+    public void onCubeUnloaded(Cube cube) {
+        if (cube != null) {
+            onCubeUnloaded(cube.cx(), cube.cy(), cube.cz());
         }
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
-        scannedChunks.remove(chunkKey(chunkX, chunkZ));
-        pendingScans.remove(chunkKey(chunkX, chunkZ));
+    }
+
+    /** {@link #onCubeUnloaded(Cube)} by cube coordinates. */
+    public void onCubeUnloaded(long cx, long cy, long cz) {
+        CubePos pos = new CubePos(cx, cy, cz);
+        scannedCubes.remove(pos);
+        pendingScans.remove(pos);
 
         synchronized (pendingUpdates) {
             Iterator<ScheduledUpdate> it = pendingUpdates.iterator();
             while (it.hasNext()) {
                 ScheduledUpdate update = it.next();
-                if (update != null && isInChunk(update.posKey(), chunkX, chunkZ)) {
+                if (update != null && update.pos().inCube(cx, cy, cz)) {
                     it.remove();
                 }
             }
         }
-        scheduledTicks.keySet().removeIf(posKey -> isInChunk(posKey, chunkX, chunkZ));
-        flow.onChunkUnloaded(chunkX, chunkZ);
+        scheduledTicks.keySet().removeIf(p -> p.inCube(cx, cy, cz));
+        flow.onCubeUnloaded(cx, cy, cz);
     }
 
     // ===== Queue =====
@@ -261,18 +268,18 @@ public final class WaterSim {
                 }
                 pendingUpdates.poll();
             }
-            Long tracked = scheduledTicks.get(next.posKey());
+            Long tracked = scheduledTicks.get(next.pos());
             if (tracked == null || tracked != next.scheduledTick()) {
                 continue; // superseded by an earlier reschedule
             }
-            scheduledTicks.remove(next.posKey());
-            onScheduledUpdate(next.posKey());
+            scheduledTicks.remove(next.pos());
+            onScheduledUpdate(next.pos());
             processed++;
         }
     }
 
-    private void enqueue(long posKey, int delayTicks) {
-        if (!isWithinWorld(unpackY(posKey))) {
+    private void enqueue(Pos posKey, int delayTicks) {
+        if (!isWithinWorld(posKey.y())) {
             return;
         }
         long scheduledTick = logicalTick + Math.max(0, delayTicks);
@@ -287,16 +294,16 @@ public final class WaterSim {
     }
 
     /** Schedules the six orthogonal neighbors that currently hold water. */
-    private void scheduleWaterNeighbors(long posKey) {
+    private void scheduleWaterNeighbors(Pos posKey) {
         for (int[] dir : HORIZONTALS) {
-            scheduleIfWater(keyOffset(posKey, dir[0], 0, dir[1]));
+            scheduleIfWater(posKey.offset(dir[0], 0, dir[1]));
         }
-        scheduleIfWater(keyOffset(posKey, 0, 1, 0));
-        scheduleIfWater(keyOffset(posKey, 0, -1, 0));
+        scheduleIfWater(posKey.offset(0, 1, 0));
+        scheduleIfWater(posKey.offset(0, -1, 0));
     }
 
-    private void scheduleIfWater(long posKey) {
-        if (isWithinWorld(unpackY(posKey)) && blockAt(posKey) == BlockType.WATER) {
+    private void scheduleIfWater(Pos posKey) {
+        if (isWithinWorld(posKey.y()) && blockAt(posKey) == BlockType.WATER) {
             enqueue(posKey, FLOW_DELAY);
         }
     }
@@ -309,9 +316,9 @@ public final class WaterSim {
      * then spread — down as falling water when the cell below is flowable,
      * otherwise horizontally toward the nearest hole.
      */
-    private void onScheduledUpdate(long posKey) {
+    private void onScheduledUpdate(Pos posKey) {
         if (blockAt(posKey) != BlockType.WATER) {
-            return; // stale — Chunk.setBlock already cleared any layer entry
+            return; // stale — the block write already cleared any layer entry
         }
 
         int state = waterAt(posKey);
@@ -333,7 +340,7 @@ public final class WaterSim {
             }
         }
 
-        long below = keyOffset(posKey, 0, -1, 0);
+        Pos below = posKey.offset(0, -1, 0);
         if (canFlowInto(below)) {
             fill(below, FALLING);
             return; // water pouring down never spreads sideways
@@ -348,7 +355,7 @@ public final class WaterSim {
             if ((dirMask & (1 << i)) == 0) {
                 continue;
             }
-            long neighbor = keyOffset(posKey, HORIZONTALS[i][0], 0, HORIZONTALS[i][1]);
+            Pos neighbor = posKey.offset(HORIZONTALS[i][0], 0, HORIZONTALS[i][1]);
             fill(neighbor, spreadLevel);
         }
     }
@@ -361,11 +368,11 @@ public final class WaterSim {
      * and the infinite-source rule needs solid ground or a source below —
      * together these keep waterfall bases from minting sources.
      */
-    private int computeState(long posKey) {
+    private int computeState(Pos posKey) {
         int sourceNeighbors = 0;
         int minNeighbor = Integer.MAX_VALUE;
         for (int[] dir : HORIZONTALS) {
-            long neighbor = keyOffset(posKey, dir[0], 0, dir[1]);
+            Pos neighbor = posKey.offset(dir[0], 0, dir[1]);
             int neighborState = waterAt(neighbor);
             if (neighborState == EMPTY) {
                 continue;
@@ -376,13 +383,13 @@ public final class WaterSim {
             minNeighbor = Math.min(minNeighbor, effectiveLevel(neighborState));
         }
 
-        long belowKey = keyOffset(posKey, 0, -1, 0);
+        Pos belowKey = posKey.offset(0, -1, 0);
         if (sourceNeighbors >= 2
             && (isSolidAt(belowKey) || waterAt(belowKey) == SOURCE)) {
             return SOURCE;
         }
 
-        if (waterAt(keyOffset(posKey, 0, 1, 0)) != EMPTY) {
+        if (waterAt(posKey.offset(0, 1, 0)) != EMPTY) {
             return FALLING;
         }
 
@@ -397,7 +404,7 @@ public final class WaterSim {
      * what is there. Breaks fragile blocks, writes WATER into the block array
      * when needed, and schedules the cell's own update.
      */
-    private void fill(long posKey, int candidate) {
+    private void fill(Pos posKey, int candidate) {
         if (!canFlowInto(posKey)) {
             return;
         }
@@ -407,7 +414,7 @@ public final class WaterSim {
         }
 
         if (FlowBlockInteraction.isFragile(block)) {
-            flow.dropFragile(unpackX(posKey), unpackY(posKey), unpackZ(posKey), block);
+            flow.dropFragile(posKey.x(), posKey.y(), posKey.z(), block);
         }
         if (block != BlockType.WATER) {
             setBlockAt(posKey, BlockType.WATER);
@@ -425,11 +432,11 @@ public final class WaterSim {
      * {@value #SLOPE_SEARCH_RANGE}) to a hole, or every flowable direction
      * when no hole is within range.
      */
-    private int pickFlowDirections(long posKey) {
+    private int pickFlowDirections(Pos posKey) {
         int bestDistance = NO_HOLE;
         int mask = 0;
         for (int i = 0; i < HORIZONTALS.length; i++) {
-            long neighbor = keyOffset(posKey, HORIZONTALS[i][0], 0, HORIZONTALS[i][1]);
+            Pos neighbor = posKey.offset(HORIZONTALS[i][0], 0, HORIZONTALS[i][1]);
             if (!canFlowInto(neighbor)) {
                 continue;
             }
@@ -445,7 +452,7 @@ public final class WaterSim {
     }
 
     /** Shortest hop count to a hole reachable through flowable cells, or NO_HOLE. */
-    private int slopeDistance(long posKey, int distance, int fromDirection) {
+    private int slopeDistance(Pos posKey, int distance, int fromDirection) {
         if (distance >= SLOPE_SEARCH_RANGE) {
             return NO_HOLE;
         }
@@ -454,7 +461,7 @@ public final class WaterSim {
             if (isOpposite(i, fromDirection)) {
                 continue;
             }
-            long next = keyOffset(posKey, HORIZONTALS[i][0], 0, HORIZONTALS[i][1]);
+            Pos next = posKey.offset(HORIZONTALS[i][0], 0, HORIZONTALS[i][1]);
             if (!canFlowInto(next)) {
                 continue;
             }
@@ -472,16 +479,16 @@ public final class WaterSim {
     }
 
     /** Whether water occupying this cell could fall out of it. */
-    private boolean isHole(long posKey) {
-        return canFlowInto(keyOffset(posKey, 0, -1, 0));
+    private boolean isHole(Pos posKey) {
+        return canFlowInto(posKey.offset(0, -1, 0));
     }
 
     // ===== Cell predicates =====
 
     /** Whether water may flow into the cell: loaded, displaceable, and not a source. */
-    private boolean canFlowInto(long posKey) {
-        int y = unpackY(posKey);
-        if (!isWithinWorld(y) || !flow.isLoaded(unpackX(posKey), y, unpackZ(posKey))) {
+    private boolean canFlowInto(Pos posKey) {
+        long y = posKey.y();
+        if (!isWithinWorld(y) || !flow.isLoaded(posKey.x(), y, posKey.z())) {
             return false;
         }
         BlockType block = blockAt(posKey);
@@ -505,12 +512,12 @@ public final class WaterSim {
      * survives the sim for the same reason — a cell that reads as a source is
      * never rewritten by {@link #onScheduledUpdate}.
      */
-    private int waterAt(long posKey) {
-        if (!isWithinWorld(unpackY(posKey)) || blockAt(posKey) != BlockType.WATER) {
+    private int waterAt(Pos posKey) {
+        if (!isWithinWorld(posKey.y()) || blockAt(posKey) != BlockType.WATER) {
             return EMPTY;
         }
         return ChunkWaterLayer.level(
-            flow.getWater(unpackX(posKey), unpackY(posKey), unpackZ(posKey)));
+            flow.getWater(posKey.x(), posKey.y(), posKey.z()));
     }
 
     /** Horizontal flow strength: sources and falling columns are full strength (0). */
@@ -518,79 +525,52 @@ public final class WaterSim {
         return state == FALLING ? 0 : state;
     }
 
-    private BlockType blockAt(long posKey) {
-        return flow.getBlock(unpackX(posKey), unpackY(posKey), unpackZ(posKey));
+    private BlockType blockAt(Pos posKey) {
+        return flow.getBlock(posKey.x(), posKey.y(), posKey.z());
     }
 
-    private void setBlockAt(long posKey, BlockType type) {
-        flow.setBlock(unpackX(posKey), unpackY(posKey), unpackZ(posKey), type);
+    private void setBlockAt(Pos posKey, BlockType type) {
+        flow.setBlock(posKey.x(), posKey.y(), posKey.z(), type);
     }
 
-    private void setWaterAt(long posKey, int value) {
-        flow.setWater(unpackX(posKey), unpackY(posKey), unpackZ(posKey), value);
+    private void setWaterAt(Pos posKey, int value) {
+        flow.setWater(posKey.x(), posKey.y(), posKey.z(), value);
     }
 
-    private void markChanged(long posKey, int newValue) {
-        flow.markWaterChanged(unpackX(posKey), unpackY(posKey), unpackZ(posKey), newValue);
+    private void markChanged(Pos posKey, int newValue) {
+        flow.markWaterChanged(posKey.x(), posKey.y(), posKey.z(), newValue);
     }
 
-    private boolean isSolidAt(long posKey) {
-        return isWithinWorld(unpackY(posKey))
-            && flow.isSolid(unpackX(posKey), unpackY(posKey), unpackZ(posKey));
+    private boolean isSolidAt(Pos posKey) {
+        return isWithinWorld(posKey.y())
+            && flow.isSolid(posKey.x(), posKey.y(), posKey.z());
     }
 
-    private static boolean isWithinWorld(int y) {
-        return y >= 0 && y < WorldConfiguration.WORLD_HEIGHT;
+    private static boolean isWithinWorld(long y) {
+        return WorldConfiguration.inBounds(y);
     }
 
-    private static boolean isInChunk(long posKey, int chunkX, int chunkZ) {
-        return Math.floorDiv(unpackX(posKey), WorldConfiguration.CHUNK_SIZE) == chunkX
-            && Math.floorDiv(unpackZ(posKey), WorldConfiguration.CHUNK_SIZE) == chunkZ;
+    /** A block position: full 64-bit triple (no packed keys), hashed like the engine's cube keys. */
+    private record Pos(long x, long y, long z) {
+        Pos offset(int dx, int dy, int dz) {
+            return new Pos(x + dx, y + dy, z + dz);
+        }
+
+        boolean inCube(long cx, long cy, long cz) {
+            return (x >> 5) == cx && (y >> 5) == cy && (z >> 5) == cz;
+        }
+
+        @Override
+        public int hashCode() {
+            return (int) CubePos.hash(x, y, z);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof Pos p && p.x == x && p.y == y && p.z == z;
+        }
     }
 
-    private static long chunkKey(int chunkX, int chunkZ) {
-        return (((long) chunkX) << 32) ^ (chunkZ & 0xFFFFFFFFL);
-    }
-
-    // ===== Position key packing =====
-    // Packs (x, y, z) into a primitive long so map keys and queue entries never
-    // allocate. Layout: [x:24][z:24][y:16], all signed; the 16-bit y field lets
-    // one-step out-of-bounds offsets round-trip so isWithinWorld can reject them.
-
-    private static final int X_SHIFT = 40;
-    private static final int Z_SHIFT = 16;
-    private static final long XZ_MASK = 0xFFFFFFL;
-    private static final long Y_MASK = 0xFFFFL;
-    private static final int XZ_SIGN_BIT = 0x00800000;
-    private static final int XZ_SIGN_EXT = 0xFF000000;
-    private static final int Y_SIGN_BIT = 0x00008000;
-    private static final int Y_SIGN_EXT = 0xFFFF0000;
-
-    private static long packKey(int x, int y, int z) {
-        return ((long) (x & 0xFFFFFF) << X_SHIFT)
-             | ((long) (z & 0xFFFFFF) << Z_SHIFT)
-             | (y & Y_MASK);
-    }
-
-    private static int unpackX(long key) {
-        int x = (int) ((key >>> X_SHIFT) & XZ_MASK);
-        return (x & XZ_SIGN_BIT) != 0 ? x | XZ_SIGN_EXT : x;
-    }
-
-    private static int unpackY(long key) {
-        int y = (int) (key & Y_MASK);
-        return (y & Y_SIGN_BIT) != 0 ? y | Y_SIGN_EXT : y;
-    }
-
-    private static int unpackZ(long key) {
-        int z = (int) ((key >>> Z_SHIFT) & XZ_MASK);
-        return (z & XZ_SIGN_BIT) != 0 ? z | XZ_SIGN_EXT : z;
-    }
-
-    private static long keyOffset(long key, int dx, int dy, int dz) {
-        return packKey(unpackX(key) + dx, unpackY(key) + dy, unpackZ(key) + dz);
-    }
-
-    private record ScheduledUpdate(long posKey, long scheduledTick, long sequence) {
+    private record ScheduledUpdate(Pos pos, long scheduledTick, long sequence) {
     }
 }

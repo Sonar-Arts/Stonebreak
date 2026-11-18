@@ -46,8 +46,8 @@ class EntitySpawnerHeightTest {
     void standabilityIsIndependentOfAbsoluteHeight() {
         // The same column shape must read identically wherever the terrain puts it. A reintroduced
         // MIN/MAX_SPAWN_HEIGHT band would make at least one of these disagree.
-        for (int standY : new int[] {1, WorldConfiguration.SEA_LEVEL, SURFACE_Y,
-                WorldConfiguration.WORLD_HEIGHT / 2, WorldConfiguration.WORLD_HEIGHT - 2}) {
+        for (int standY : new int[] {WorldConfiguration.MIN_Y + 1, -100, 1, WorldConfiguration.SEA_LEVEL, SURFACE_Y,
+                WorldConfiguration.MAX_Y / 2, WorldConfiguration.MAX_Y - 2}) {
             assertTrue(EntitySpawner.isStandable(standY, ground(standY, BlockType.GRASS)),
                     "grass surface must be standable at y=" + standY);
         }
@@ -114,10 +114,12 @@ class EntitySpawnerHeightTest {
 
     @Test
     void worldBoundsAreRejected() {
-        assertFalse(EntitySpawner.isStandable(0, ground(0, BlockType.GRASS)));
-        assertFalse(EntitySpawner.isStandable(-1, ground(-1, BlockType.GRASS)));
-        assertFalse(EntitySpawner.isStandable(WorldConfiguration.WORLD_HEIGHT - 1,
-                ground(WorldConfiguration.WORLD_HEIGHT - 1, BlockType.GRASS)));
+        assertFalse(EntitySpawner.isStandable(WorldConfiguration.MIN_Y,
+                ground(WorldConfiguration.MIN_Y, BlockType.GRASS)));
+        assertFalse(EntitySpawner.isStandable(WorldConfiguration.MIN_Y - 1,
+                ground(WorldConfiguration.MIN_Y - 1, BlockType.GRASS)));
+        assertFalse(EntitySpawner.isStandable(WorldConfiguration.MAX_Y - 1,
+                ground(WorldConfiguration.MAX_Y - 1, BlockType.GRASS)));
     }
 
     @Test

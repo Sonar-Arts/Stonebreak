@@ -1,8 +1,5 @@
 package com.stonebreak.world.save;
 
-import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.repository.FileSaveRepository;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -53,10 +50,10 @@ class SaveServiceLifecycleTest {
     }
 
     @Test
-    void saveDirtyChunksWithoutWorldCompletesWithNull() throws Exception {
+    void saveCubesWithoutWorldCompletesWithNull() throws Exception {
         String worldPath = tempDir.resolve("w3").toString();
         try (SaveService svc = new SaveService(worldPath)) {
-            assertNull(svc.saveDirtyChunks().get(10, TimeUnit.SECONDS));
+            assertNull(svc.saveCubes().get(10, TimeUnit.SECONDS));
         }
     }
 
@@ -116,42 +113,6 @@ class SaveServiceLifecycleTest {
             assertNull(result2.getPlayerData());
         } finally {
             repo.close();
-        }
-    }
-
-    @Test
-    void chunkExistsReflectsFilesystem() throws Exception {
-        String worldPath = tempDir.resolve("w5").toString();
-        FileSaveRepository repo = new FileSaveRepository(worldPath);
-
-        ChunkData chunk = ChunkData.builder()
-            .chunkX(3)
-            .chunkZ(4)
-            .blocks(CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR))
-            .lastModified(FIXED_TIME)
-            .build();
-
-        try (SaveService svc = new SaveService(worldPath)) {
-            // Before planting
-            Boolean exists1 = svc.chunkExists(3, 4).get(10, TimeUnit.SECONDS);
-            assertFalse(exists1);
-
-            // Plant chunk via FileSaveRepository
-            repo.saveChunk(chunk);
-
-            Boolean exists2 = svc.chunkExists(3, 4).get(10, TimeUnit.SECONDS);
-            assertTrue(exists2);
-        } finally {
-            repo.close();
-        }
-    }
-
-    @Test
-    void loadChunkForMissingChunkCompletesWithNull() throws Exception {
-        String worldPath = tempDir.resolve("w6").toString();
-        try (SaveService svc = new SaveService(worldPath)) {
-            CompletableFuture<?> future = (CompletableFuture<?>) svc.loadChunk(0, 0);
-            assertNull(future.get(10, TimeUnit.SECONDS));
         }
     }
 

@@ -2,6 +2,8 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.Random;
@@ -48,13 +50,13 @@ public final class FishingManager {
      *
      * @return the spawned catch, or null when nothing was caught.
      */
-    public ItemDrop tryCatch(FishingBobber bobber, Vector3f anglerPos, EntityManager entityManager) {
+    public ItemDrop tryCatch(FishingBobber bobber, Vector3dc anglerPos, EntityManager entityManager) {
         if (bobber == null || anglerPos == null || entityManager == null || !bobber.isFishBiting()) {
             return null;
         }
 
         ItemType caught = rollLoot();
-        Vector3f bobberPos = new Vector3f(bobber.getPosition());
+        Vector3d bobberPos = bobber.getPosition();
         Vector3f catchVelocity = computeCatchVelocity(bobberPos, anglerPos);
 
         ItemDrop drop = ItemDrop.createDropWithVelocity(
@@ -72,8 +74,8 @@ public final class FishingManager {
      * arc. Falls back to a straight-up toss when the two positions are effectively
      * coincident, avoiding a NaN from normalizing a zero vector.
      */
-    private Vector3f computeCatchVelocity(Vector3f bobberPos, Vector3f anglerPos) {
-        Vector3f toAngler = new Vector3f(anglerPos).sub(bobberPos);
+    private Vector3f computeCatchVelocity(Vector3dc bobberPos, Vector3dc anglerPos) {
+        Vector3f toAngler = com.stonebreak.util.Positions.offset(bobberPos, anglerPos);
         if (toAngler.lengthSquared() < COINCIDENT_EPSILON_SQ) {
             return new Vector3f(0, CATCH_ARC_UP, 0);
         }

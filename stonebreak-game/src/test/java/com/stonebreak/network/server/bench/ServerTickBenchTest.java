@@ -2,19 +2,18 @@ package com.stonebreak.network.server.bench;
 
 import com.openmason.engine.net.client.NetworkClient;
 import com.openmason.engine.net.protocol.ProtocolPhase;
-import com.openmason.engine.voxel.net.ChunkBlockPayload;
 import com.openmason.engine.net.protocol.codec.WireCompression;
 import com.openmason.engine.net.server.NetworkServer;
 import com.openmason.engine.net.server.ServerConnection;
 import com.openmason.engine.net.server.ServerLimits;
 import com.openmason.engine.net.transport.NetAddress;
-import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
+import com.openmason.engine.voxel.world.CubeWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.network.StonebreakProtocol;
 import com.stonebreak.network.packet.handshake.HandshakeC2S;
-import com.stonebreak.network.packet.world.ChunkDataS2C;
+import com.stonebreak.network.packet.world.CubeDataS2C;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
 import com.stonebreak.network.server.handlers.ServerEntityHandler;
@@ -47,7 +46,7 @@ import static org.mockito.Mockito.mock;
  * </pre>
  * Real {@link NetworkServer} over loopback TCP, real {@link NetworkClient}s, the real
  * {@link ServerEntityHandler} replicating {@link Cow}s on a seeded random walk, and a chunk
- * stream of {@code bench.chunks} {@link ChunkDataS2C} per client per tick (synthetic layered
+ * stream of {@code bench.chunks} {@link CubeDataS2C} cube records per client per tick (synthetic layered
  * terrain, built once). The tick runs at 20 Hz wall time, so bytes per second are real rates.
  *
  * <p>Tick time is the replication work only (interest pass, entity deltas, chunk sends and
@@ -157,7 +156,7 @@ class ServerTickBenchTest {
         List<Cow> cows = new ArrayList<>();
         float[] heading = new float[mobs];
         for (int i = 0; i < mobs; i++) {
-            Cow cow = new Cow(world, new Vector3f(rnd.nextFloat() * 256f - 64f, 70f, rnd.nextFloat() * 256f - 64f));
+            Cow cow = new Cow(world, new org.joml.Vector3d(rnd.nextFloat() * 256f - 64f, 70f, rnd.nextFloat() * 256f - 64f));
             handler.onEntitySpawned(cow, ctx);
             cows.add(cow);
             heading[i] = rnd.nextFloat() * (float) (Math.PI * 2);
@@ -166,9 +165,14 @@ class ServerTickBenchTest {
         for (int i = 0; i < clients; i++) {
             playerHeading[i] = rnd.nextFloat() * (float) (Math.PI * 2);
         }
-        ChunkBlockPayload[] chunkPool = new ChunkBlockPayload[32];
-        for (int i = 0; i < chunkPool.length; i++) {
-            chunkPool[i] = ChunkBlockPayload.ofSnapshot(syntheticChunk(new Random(1000 + i)));
+        CubeDataS2C.CubeRecord[] chunkPool = new CubeDataS2C.CubeRecord[32];
+        try (CubeWorld scratch = CubeWorld.create(CubeWorld.UNBOUNDED_MIN, CubeWorld.UNBOUNDED_MAX, 0, null)) {
+            com.stonebreak.world.voxel.VoxelLayers.define(scratch);
+            for (int i = 0; i < chunkPool.length; i++) {
+                scratch.writeIds(i, 2, 0, syntheticCube(new Random(1000 + i)));
+                chunkPool[i] = new CubeDataS2C.CubeRecord(i, 2, 0, scratch.encode(i, 2, 0, CubeWorld.PARTS_NETWORK),
+                    new int[0], new String[0]);
+            }
         }
         MobBehaviorState[] animStates = {MobBehaviorState.IDLE, MobBehaviorState.WANDERING, MobBehaviorState.GRAZING};
 
@@ -189,7 +193,7 @@ class ServerTickBenchTest {
                 Cow cow = cows.get(i);
                 if (((i + t) & 1) == 0) {
                     heading[i] += (rnd.nextFloat() - 0.5f) * 0.3f;
-                    Vector3f p = cow.getPosition();
+                    org.joml.Vector3d p = cow.getPosition();
                     cow.setPosition(p.x + (float) Math.cos(heading[i]) * 0.08f, p.y, p.z + (float) Math.sin(heading[i]) * 0.08f);
                     cow.setYaw((float) Math.toDegrees(heading[i]));
                 }
@@ -210,9 +214,12 @@ class ServerTickBenchTest {
             }
             handler.tick(ctx);
             for (ServerPlayer sp : players) {
+                java.util.List<CubeDataS2C.CubeRecord> batch = new ArrayList<>();
                 for (int k = 0; k < chunksPerTick; k++) {
-                    int idx = chunkCursor++;
-                    sp.send(new ChunkDataS2C(idx, t, chunkPool[idx % chunkPool.length], new byte[0]), false);
+                    batch.add(chunkPool[chunkCursor++ % chunkPool.length]);
+                }
+                if (!batch.isEmpty()) {
+                    sp.send(new CubeDataS2C(java.util.List.of(), batch), false);
                 }
             }
             if (batched) {
@@ -248,15 +255,15 @@ class ServerTickBenchTest {
             median, p99, mean, sorted[sorted.length - 1] / 1e6);
         System.out.printf("[bench #346] per client: %.1f KiB/s, %.1f flushes/s%n",
             bytes / seconds / clients / 1024.0, flushCount / seconds / clients);
-        System.out.printf("[bench #346] chunk payload (raw VoxelChunkCodec) avg %d bytes%n",
-            (int) Arrays.stream(chunkPool).mapToInt(p -> p.encoded().length).average().orElse(0));
+        System.out.printf("[bench #346] cube record (raw PARTS_NETWORK) avg %d bytes%n",
+            (int) Arrays.stream(chunkPool).mapToInt(p -> p.bytes().length).average().orElse(0));
         if (compressed) {
             int codec = WireCompression.choose(WireCompression.localDecodeMask(), Integer.MAX_VALUE);
-            System.out.printf("[bench #346] chunk payload (%s) avg %d bytes%n",
+            System.out.printf("[bench #346] cube record (%s) avg %d bytes%n",
                 codec == WireCompression.ZSTD ? "zstd" : "deflate",
                 (int) Arrays.stream(chunkPool).mapToInt(p -> {
-                    byte[] c = p.compressed(codec);
-                    return c != null ? c.length : p.encoded().length;
+                    byte[] c = WireCompression.compress(codec, p.bytes());
+                    return c != null ? c.length : p.bytes().length;
                 }).average().orElse(0));
         }
 
@@ -275,36 +282,32 @@ class ServerTickBenchTest {
         return s;
     }
 
-    /** Layered terrain with ores, caves and a sea: roughly what a plains chunk compresses like. */
-    private static CcoPalettedChunkStorage syntheticChunk(Random rnd) {
-        CcoPalettedChunkStorage s = CcoPalettedChunkStorage.createEmpty(16, 256, 16, BlockType.AIR);
+    /** Layered terrain with ores, caves and a sea: roughly what a surface cube compresses like. */
+    private static short[] syntheticCube(Random rnd) {
+        short[] ids = new short[32 * 32 * 32];
         double phase = rnd.nextDouble() * 10;
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                int h = 62 + (int) Math.round(6 * Math.sin(phase + x * 0.31) + 4 * Math.cos(phase + z * 0.23));
-                for (int y = 0; y <= h; y++) {
+        for (int x = 0; x < 32; x++) {
+            for (int z = 0; z < 32; z++) {
+                int h = 14 + (int) Math.round(6 * Math.sin(phase + x * 0.31) + 4 * Math.cos(phase + z * 0.23));
+                for (int y = 0; y < 32; y++) {
                     BlockType b;
-                    if (y == 0) {
-                        b = BlockType.BEDROCK;
-                    } else if (y < h - 3) {
+                    if (y < h - 3) {
                         int r = rnd.nextInt(1000);
                         b = r < 12 ? BlockType.COAL_ORE : r < 18 ? BlockType.IRON_ORE
-                            : r < 45 && y > 5 ? BlockType.AIR : r < 60 ? BlockType.GRAVEL : BlockType.STONE;
+                            : r < 45 ? BlockType.AIR : r < 60 ? BlockType.GRAVEL : BlockType.STONE;
                     } else if (y < h) {
                         b = BlockType.DIRT;
+                    } else if (y == h) {
+                        b = h < 16 ? BlockType.SAND : BlockType.GRASS;
+                    } else if (y <= 16) {
+                        b = BlockType.WATER;
                     } else {
-                        b = h < 64 ? BlockType.SAND : BlockType.GRASS;
+                        b = y == h + 1 && rnd.nextInt(12) == 0 ? BlockType.ROSE : BlockType.AIR;
                     }
-                    s.set(x, y, z, b);
-                }
-                for (int y = h + 1; y <= 64; y++) {
-                    s.set(x, y, z, BlockType.WATER);
-                }
-                if (h >= 64 && rnd.nextInt(12) == 0) {
-                    s.set(x, h + 1, z, rnd.nextBoolean() ? BlockType.ROSE : BlockType.DANDELION);
+                    ids[CubeWorld.cellIndex(x, y, z)] = (short) b.getId();
                 }
             }
         }
-        return s;
+        return ids;
     }
 }

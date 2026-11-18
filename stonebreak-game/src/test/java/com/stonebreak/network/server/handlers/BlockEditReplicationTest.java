@@ -8,7 +8,7 @@ import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.BlockMetaS2C;
 import com.stonebreak.network.packet.world.BlockStateS2C;
-import com.stonebreak.network.packet.world.ChunkDataS2C;
+import com.stonebreak.network.packet.world.CubeDataS2C;
 import com.stonebreak.network.server.ServerLevel;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -56,24 +56,28 @@ class BlockEditReplicationTest {
     private ServerBlockHandler blockHandler;
     private ServerPlayer player;
 
-    private static String key(int x, int y, int z) {
+    private static String key(long x, long y, long z) {
         return x + "," + y + "," + z;
+    }
+
+    private static String key(org.mockito.invocation.InvocationOnMock inv) {
+        return key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class));
     }
 
     @BeforeEach
     void setUp() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> blocks.getOrDefault(
-                key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), BlockType.AIR));
-        when(world.getBlockStateAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> states.get(
-                key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2))));
-        when(world.getWaterValueAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            String k = key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2));
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> blocks.getOrDefault(
+                key(inv), BlockType.AIR));
+        when(world.getBlockStateAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> states.get(
+                key(inv)));
+        when(world.getWaterValueAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            String k = key(inv);
             return blocks.get(k) == BlockType.WATER ? water.getOrDefault(k, 0) : -1;
         });
-        when(world.setBlockAt(anyInt(), anyInt(), anyInt(), any(BlockType.class), anyBoolean()))
+        when(world.setBlockAt(anyLong(), anyLong(), anyLong(), any(BlockType.class), anyBoolean()))
                 .thenAnswer(inv -> {
-                    String k = key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2));
+                    String k = key(inv);
                     BlockType type = inv.getArgument(3);
                     if (blocks.getOrDefault(k, BlockType.AIR) != type) {
                         states.remove(k); // Chunk.setBlock drops the state on a type change
@@ -101,15 +105,20 @@ class BlockEditReplicationTest {
         player = new ServerPlayer(connection, 7);
         player.updateState(0.5f, 64f, 0.5f, 0f, 0f);
         ctx.addPlayer(player);
-        // Per-block batches only reach players the chunk was streamed to (#363).
-        player.markChunkSent(ServerChunkHandler.packKey(0, 0), 0);
+        // Per-block batches only reach players holding the cube (#363, cube-keyed since #447).
+        holdCube(0, 1, 0);
+        holdCube(0, 2, 0);
+    }
+
+    private void holdCube(long cx, long cy, long cz) {
+        player.cubeView().markSent(new com.openmason.engine.voxel.world.CubePos(cx, cy, cz), 0L, 0, 0);
     }
 
     private void doAnswerSetState(World world) {
         org.mockito.Mockito.doAnswer(inv -> {
-            states.put(key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), inv.getArgument(3));
+            states.put(key(inv), inv.getArgument(3));
             return null;
-        }).when(world).setBlockStateAt(anyInt(), anyInt(), anyInt(), any());
+        }).when(world).setBlockStateAt(anyLong(), anyLong(), anyLong(), any());
     }
 
     private void edit(int x, int y, int z, BlockType to, BlockType from) {
@@ -130,15 +139,14 @@ class BlockEditReplicationTest {
     }
 
     @Test
-    void breakAndPlaceDoNotBumpTheChunkVersion() {
+    void breakAndPlaceGoOutAsDeltasNotCubes() {
         blocks.put(key(2, 63, 3), BlockType.STONE);
 
         edit(2, 63, 3, BlockType.AIR, BlockType.STONE);
         edit(4, 63, 3, BlockType.STONE, BlockType.AIR);
 
-        assertEquals(0, chunkHandler.chunkVersion(0, 0), "a per-block edit must not re-stream the chunk");
         List<Packet> sent = flush();
-        assertTrue(sent.stream().noneMatch(p -> p instanceof ChunkDataS2C));
+        assertTrue(sent.stream().noneMatch(p -> p instanceof CubeDataS2C), "a per-block edit must not re-send the cube");
         assertTrue(sent.stream().anyMatch(p -> p instanceof com.stonebreak.network.packet.world.MultiBlockChangeS2C
                 || p instanceof BlockChangeS2C));
     }
@@ -182,18 +190,18 @@ class BlockEditReplicationTest {
     }
 
     @Test
-    void blockBatchesSkipPlayersThatNeverReceivedTheChunk() {
-        // Chunk (1, 0) was never streamed to the player: the change rides its snapshot instead,
-        // so a client never fails an apply for a chunk it does not hold (#363).
-        player.updateState(15.5f, 64f, 2.5f, 0f, 0f); // on the border, both cells in reach
-        edit(17, 64, 2, BlockType.STONE, BlockType.AIR);
-        edit(14, 64, 2, BlockType.STONE, BlockType.AIR);
-        assertEquals(BlockType.STONE, blocks.get(key(17, 64, 2)), "the edit itself is accepted");
+    void blockBatchesSkipPlayersThatNeverReceivedTheCube() {
+        // Cube (1, 2, 0) was never sent to the player: the change rides its cube record instead,
+        // so a client never fails an apply for a cube it does not hold (#363).
+        player.updateState(31.5f, 64f, 2.5f, 0f, 0f); // on the border, both cells in reach
+        edit(33, 64, 2, BlockType.STONE, BlockType.AIR);
+        edit(30, 64, 2, BlockType.STONE, BlockType.AIR);
+        assertEquals(BlockType.STONE, blocks.get(key(33, 64, 2)), "the edit itself is accepted");
 
         List<Packet> sent = flush();
         assertEquals(1, sent.size());
         BlockChangeS2C change = assertInstanceOf(BlockChangeS2C.class, sent.get(0));
-        assertEquals(14, change.x(), "only the held chunk's change goes out");
+        assertEquals(30, change.x(), "only the held cube's change goes out");
     }
 
     @Test
@@ -204,6 +212,5 @@ class BlockEditReplicationTest {
         assertInstanceOf(BlockChangeS2C.class, sent.get(0));
         BlockStateS2C echo = assertInstanceOf(BlockStateS2C.class, sent.get(1));
         assertEquals(states.get(key(0, 64, 2)), echo.state());
-        assertEquals(0, chunkHandler.chunkVersion(0, 0));
     }
 }

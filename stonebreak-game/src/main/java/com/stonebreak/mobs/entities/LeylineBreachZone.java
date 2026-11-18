@@ -7,6 +7,8 @@ import static com.stonebreak.player.PlayerConstants.LEYLINE_BREACH_PULSE_INTERVA
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -25,7 +27,7 @@ public class LeylineBreachZone extends Entity {
     private final boolean overloaded;
     private float pulseTimer;
 
-    public LeylineBreachZone(World world, Vector3f position, float radius, float pullForce,
+    public LeylineBreachZone(World world, Vector3dc position, float radius, float pullForce,
                              float pulseDamage, float duration, boolean overloaded) {
         super(world, position);
         this.radius = radius;
@@ -68,7 +70,7 @@ public class LeylineBreachZone extends Entity {
             if (entity.getPosition().distance(position) > radius) continue;
 
             // Constant inward force, scaled by dt — a pull, not a root
-            Vector3f toCenter = new Vector3f(position).sub(entity.getPosition());
+            Vector3f toCenter = com.stonebreak.util.Positions.offset(entity.getPosition(), position);
             entity.applyKnockback(toCenter, pullForce * deltaTime, 0f);
 
             if (pulse) {

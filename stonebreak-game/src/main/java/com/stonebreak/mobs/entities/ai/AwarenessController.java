@@ -6,6 +6,7 @@ import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -35,9 +36,9 @@ public class AwarenessController {
 
     private AwarenessState state = AwarenessState.UNAWARE;
     private float meter;
-    private final Vector3f lastKnownPos = new Vector3f();
+    private final Vector3d lastKnownPos = new Vector3d();
     private boolean hasLastKnown;
-    private final Vector3f playerScratch = new Vector3f();
+    private final Vector3d playerScratch = new Vector3d();
 
     /** Line-of-sight marcher over the mob's world; rebuilt only if the mob changes worlds. */
     private RaycastEngine sightRay;
@@ -61,15 +62,15 @@ public class AwarenessController {
     public void update(float deltaTime) {
         if (!self.isAlive()) return;
 
-        Vector3f selfPos = self.getPosition();
-        Vector3f playerPos = players.nearestPlayer(selfPos, playerScratch);
+        Vector3d selfPos = self.getPosition();
+        Vector3d playerPos = players.nearestPlayer(selfPos, playerScratch);
         if (playerPos == null) {
             decay(deltaTime);
             resolveState();
             return;
         }
 
-        float dist = selfPos.distance(playerPos);
+        float dist = (float) selfPos.distance(playerPos);
 
         if (canSee(selfPos, playerPos, dist)) {
             meter += PlayerConstants.AWARENESS_SIGHT_GAIN_PER_SEC * deltaTime;
@@ -86,10 +87,10 @@ public class AwarenessController {
     }
 
     /** True when the player is inside the forward sight cone, in range, with clear line of sight. */
-    private boolean canSee(Vector3f selfPos, Vector3f playerPos, float dist) {
+    private boolean canSee(Vector3d selfPos, Vector3d playerPos, float dist) {
         if (dist > PlayerConstants.ENEMY_SIGHT_RANGE) return false;
 
-        Vector3f toPlayer = new Vector3f(playerPos).sub(selfPos);
+        Vector3f toPlayer = com.stonebreak.util.Positions.offset(selfPos, playerPos);
         toPlayer.y = 0f;
         if (toPlayer.lengthSquared() < 0.0001f) return true; // on top of us
         toPlayer.normalize();
@@ -102,9 +103,9 @@ public class AwarenessController {
         if (forward.dot(toPlayer) < halfAngleCos) return false;
 
         // Line of sight: a solid block between us and the player breaks it.
-        Vector3f eye = new Vector3f(selfPos.x, selfPos.y + self.getType().getHeight() * 0.9f, selfPos.z);
-        Vector3f dir = new Vector3f(playerPos.x, playerPos.y + PlayerConstants.PLAYER_HEIGHT * 0.5f, playerPos.z)
-                .sub(eye);
+        Vector3d eye = new Vector3d(selfPos.x, selfPos.y + self.getType().getHeight() * 0.9f, selfPos.z);
+        Vector3f dir = new Vector3f((float) (playerPos.x - eye.x),
+                (float) (playerPos.y + PlayerConstants.PLAYER_HEIGHT * 0.5f - eye.y), (float) (playerPos.z - eye.z));
         float losDist = dir.length();
         if (losDist < 0.0001f) return true;
         dir.div(losDist);
@@ -129,7 +130,7 @@ public class AwarenessController {
         return sightRay;
     }
 
-    private void rememberPlayer(Vector3f playerPos) {
+    private void rememberPlayer(Vector3d playerPos) {
         lastKnownPos.set(playerPos);
         hasLastKnown = true;
     }
@@ -167,7 +168,7 @@ public class AwarenessController {
      * <em>whether</em> the mob has noticed the player, the behaviour decides what to do about it,
      * and navigation works out how to get there.
      */
-    public Vector3f lastKnownPlayerPosition(Vector3f out) {
+    public Vector3d lastKnownPlayerPosition(Vector3d out) {
         return hasLastKnown ? out.set(lastKnownPos) : null;
     }
 }

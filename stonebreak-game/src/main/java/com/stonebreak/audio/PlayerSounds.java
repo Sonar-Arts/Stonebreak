@@ -2,6 +2,7 @@ package com.stonebreak.audio;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -27,30 +28,35 @@ public class PlayerSounds {
      * Another player's footstep (issue #344): positional 3D at their feet, at the local player's
      * step volume. Played by their shadow on its own foot contacts, so it needs no packet.
      */
-    public static void playStepAt(World world, Vector3f feet) {
+    public static void playStepAt(World world, Vector3dc feet) {
+        playStepAt(world, feet.x(), feet.y(), feet.z());
+    }
+
+    /** {@link #playStepAt(World, Vector3dc)} at a world position. */
+    public static void playStepAt(World world, double x, double y, double z) {
         if (world == null) return;
         com.stonebreak.player.Player listener = com.stonebreak.core.Game.getPlayer();
-        if (listener != null && listener.getPosition().distance(feet) > MAX_AUDIBLE_DISTANCE) return;
+        if (listener != null && listener.getPosition().distance(x, y, z) > MAX_AUDIBLE_DISTANCE) return;
         BlockType groundBlock = world.getBlockAt(
-                (int) Math.floor(feet.x), (int) Math.floor(feet.y - 0.1f), (int) Math.floor(feet.z));
-        BlockSounds.playStepAt(groundBlock, feet, STEP_VOLUME);
-        com.stonebreak.fx.bindings.BlockFx.stepAt(groundBlock, feet.x, feet.y, feet.z);
+                (long) Math.floor(x), (long) Math.floor(y - 0.1), (long) Math.floor(z));
+        BlockSounds.playStepAt(groundBlock, x, y, z, STEP_VOLUME);
+        com.stonebreak.fx.bindings.BlockFx.stepAt(groundBlock, x, y, z);
     }
 
     /**
      * Plays the appropriate walking sound based on the block type under the player.
      */
-    public void playFootstep(Vector3f position) {
+    public void playFootstep(Vector3dc position) {
         // Check what block type the player is standing on
-        int blockX = (int) Math.floor(position.x);
-        int blockY = (int) Math.floor(position.y - 0.1f); // Slightly below feet to get ground block
-        int blockZ = (int) Math.floor(position.z);
+        long blockX = (long) Math.floor(position.x());
+        long blockY = (long) Math.floor(position.y() - 0.1); // Slightly below feet to get ground block
+        long blockZ = (long) Math.floor(position.z());
 
         BlockType groundBlock = world.getBlockAt(blockX, blockY, blockZ);
 
         // The block's SBO declares its own step sound (or none = silent).
         BlockSounds.playStepLocal(groundBlock, STEP_VOLUME);
-        com.stonebreak.fx.bindings.BlockFx.stepAt(groundBlock, position.x, position.y, position.z);
+        com.stonebreak.fx.bindings.BlockFx.stepAt(groundBlock, position.x(), position.y(), position.z());
     }
 
 }

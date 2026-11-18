@@ -4,6 +4,7 @@ import com.openmason.engine.physics.PhysicsBody;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
 import com.stonebreak.world.physics.WorldPhysics;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import static com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT;
@@ -44,19 +45,24 @@ public class CollisionHandler {
      * flag. Contacts of the move are left in {@link #lastContacts()}.
      */
     public void move(float dt) {
-        Vector3f position = state.getPosition();
+        Vector3d position = state.getPosition();
         Vector3f velocity = state.getVelocity();
         if (world == null) {
             position.add(velocity.x * dt, velocity.y * dt, velocity.z * dt);
             return;
         }
-        body.position(position.x, position.y, position.z).velocity(velocity.x, velocity.y, velocity.z);
+        WorldPhysics physics = WorldPhysics.of(world);
+        // Bodies are frame positions (relative to the physics world's origin).
+        long ox = com.stonebreak.mobs.entities.PhysicsFrame.originX(physics.engine());
+        long oy = com.stonebreak.mobs.entities.PhysicsFrame.originY(physics.engine());
+        long oz = com.stonebreak.mobs.entities.PhysicsFrame.originZ(physics.engine());
+        body.position(position.x - ox, position.y - oy, position.z - oz).velocity(velocity.x, velocity.y, velocity.z);
         // AIR_STEP: a jump peaks just under one block (~0.95 at 60 fps), so hopping onto a block
         // relies on mantling — once the feet are within the step limits of a ledge's top (half a
         // block, a full block for snow/treads), the player climbs onto it, as the old resolver did.
         body.flags = PhysicsBody.AIR_STEP | (state.isOnGround() ? PhysicsBody.ON_GROUND : 0);
-        com.stonebreak.world.physics.WorldPhysics.of(world).move(body, dt);
-        position.set(body.x, body.y, body.z);
+        physics.move(body, dt);
+        position.set(body.x + ox, body.y + oy, body.z + oz);
         velocity.set(body.vx, body.vy, body.vz);
         state.setOnGround(body.onGround());
         if (body.hasContact(PhysicsBody.CONTACT_LEFT_GROUND) && velocity.y == 0f) {
@@ -77,9 +83,9 @@ public class CollisionHandler {
         if (world == null) {
             return false;
         }
-        Vector3f p = state.getPosition();
+        Vector3d p = state.getPosition();
         float half = PLAYER_WIDTH / 2;
-        return com.stonebreak.world.physics.WorldPhysics.of(world).overlaps(p.x - half, p.y, p.z - half, p.x + half, p.y + PLAYER_HEIGHT, p.z + half,
+        return WorldPhysics.of(world).overlaps(p.x - half, p.y, p.z - half, p.x + half, p.y + PLAYER_HEIGHT, p.z + half,
                 WorldPhysics.PLAYER_MASK);
     }
 }

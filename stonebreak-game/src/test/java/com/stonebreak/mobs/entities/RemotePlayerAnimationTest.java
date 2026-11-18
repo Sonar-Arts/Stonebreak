@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.network.packet.player.PlayerStateFlags;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -10,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class RemotePlayerAnimationTest {
     @Test
     void remotePunchContinuesAfterReplicatedAttackFlagClears() {
-        var player = new RemotePlayer(null, new Vector3f(), 1, "test");
+        var player = new RemotePlayer(null, new Vector3d(), 1, "test");
         player.setStateFlags((short) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.ATTACKING));
         player.updateClientVisuals(0.01f);
         player.setStateFlags((byte) PlayerStateFlags.ON_GROUND);
@@ -23,7 +25,7 @@ class RemotePlayerAnimationTest {
 
     @Test
     void replicatedSprintFlagSelectsSprintAtHighFrameRatesAndKeepsAttackOverlay() {
-        var player = new RemotePlayer(null, new Vector3f(), 1, "test");
+        var player = new RemotePlayer(null, new Vector3d(), 1, "test");
         player.setStateFlags((short) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.SPRINTING
                 | PlayerStateFlags.ATTACKING));
         player.applyNetworkState(0.025f, 0, 0, 0, 0);
@@ -42,7 +44,7 @@ class RemotePlayerAnimationTest {
 
     @Test
     void jumpOverridesLandSprintAndWaterRetainsSwimmingPlaceholder() {
-        var player = new RemotePlayer(null, new Vector3f(), 1, "test");
+        var player = new RemotePlayer(null, new Vector3d(), 1, "test");
         player.setStateFlags((byte) (PlayerStateFlags.SPRINTING | PlayerStateFlags.AIRBORNE));
         player.applyNetworkState(0.1f, 0, 0, 0, 0);
         player.updateClientVisuals(0.016f);

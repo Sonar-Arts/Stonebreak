@@ -4,11 +4,11 @@ import java.util.Random;
 
 import com.stonebreak.world.generation.terrain.animals.Animal;
 import com.stonebreak.world.operations.WorldConfiguration;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.World;
 
 /**
@@ -26,12 +26,12 @@ public class ChickenAnimal implements Animal {
     }
 
     @Override
-    public void spawn(World world, Chunk chunk, Random random, Object randomLock) {
+    public void spawn(World world, Cube chunk, Random random, Object randomLock) {
         com.stonebreak.mobs.entities.EntityManager entityManager = world.getEntityManager(); // this world's own (#340)
         if (entityManager == null) return;
 
-        int chunkX = chunk.getChunkX();
-        int chunkZ = chunk.getChunkZ();
+        long chunkX = chunk.cx();
+        long chunkZ = chunk.cz();
 
         int chickenCount;
         synchronized (randomLock) {
@@ -47,27 +47,27 @@ public class ChickenAnimal implements Animal {
 
             int localX, localZ;
             synchronized (randomLock) {
-                localX = random.nextInt(WorldConfiguration.CHUNK_SIZE);
-                localZ = random.nextInt(WorldConfiguration.CHUNK_SIZE);
+                localX = random.nextInt(Cube.EDGE);
+                localZ = random.nextInt(Cube.EDGE);
             }
 
-            int worldX = chunkX * WorldConfiguration.CHUNK_SIZE + localX;
-            int worldZ = chunkZ * WorldConfiguration.CHUNK_SIZE + localZ;
+            long worldX = chunkX * Cube.EDGE + localX;
+            long worldZ = chunkZ * Cube.EDGE + localZ;
 
             // Find surface height
-            int surfaceY = 0;
-            for (int y = WorldConfiguration.WORLD_HEIGHT - 1; y >= 0; y--) {
-                if (chunk.getBlock(localX, y, localZ) != BlockType.AIR) {
+            long surfaceY = Long.MIN_VALUE; // none found: rejected by isValidSpawnLocation
+            for (long y = chunk.world().topY(worldX, worldZ) - 1; y >= WorldConfiguration.MIN_Y; y--) {
+                if (Animal.blockAt(chunk, localX, y, localZ) != BlockType.AIR) {
                     surfaceY = y + 1;
                     break;
                 }
             }
 
             if (isValidSpawnLocation(chunk, localX, surfaceY, localZ)) {
-                Vector3f spawnPos = new Vector3f(
-                    worldX + 0.5f,
+                Vector3d spawnPos = new Vector3d(
+                    worldX + 0.5,
                     surfaceY,
-                    worldZ + 0.5f
+                    worldZ + 0.5
                 );
 
                 // Defense-in-depth: reuse the modern spawner's footing/headroom guard
@@ -85,18 +85,9 @@ public class ChickenAnimal implements Animal {
     }
 
     @Override
-    public boolean canSpawnInChunk(Chunk chunk) {
-        // Chickens spawn in chunks with grass blocks (plains biome), like cows.
-        for (int x = 0; x < WorldConfiguration.CHUNK_SIZE; x++) {
-            for (int z = 0; z < WorldConfiguration.CHUNK_SIZE; z++) {
-                for (int y = 0; y < WorldConfiguration.WORLD_HEIGHT; y++) {
-                    if (chunk.getBlock(x, y, z) == BlockType.GRASS) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
+    public boolean canSpawnInChunk(Cube chunk) {
+        // Called by mobs/entities/CubeEntityStore when the cube's column becomes READY (initial animals).
+        return Animal.surfaceHas(chunk, BlockType.GRASS);
     }
 
     @Override
@@ -117,24 +108,24 @@ public class ChickenAnimal implements Animal {
     /**
      * Checks if the given location is valid for chicken spawning.
      */
-    private boolean isValidSpawnLocation(Chunk chunk, int localX, int y, int localZ) {
-        if (localX < 0 || localX >= WorldConfiguration.CHUNK_SIZE
-                || localZ < 0 || localZ >= WorldConfiguration.CHUNK_SIZE) {
+    private boolean isValidSpawnLocation(Cube chunk, int localX, long y, int localZ) {
+        if (localX < 0 || localX >= Cube.EDGE
+                || localZ < 0 || localZ >= Cube.EDGE) {
             return false;
         }
-        if (y < 1 || y >= WorldConfiguration.WORLD_HEIGHT - 1) {
+        if (y <= WorldConfiguration.MIN_Y || y >= WorldConfiguration.MAX_Y - 1) {
             return false;
         }
 
         // Ground must be grass.
-        BlockType groundBlock = chunk.getBlock(localX, y - 1, localZ);
+        BlockType groundBlock = Animal.blockAt(chunk, localX, y - 1, localZ);
         if (groundBlock != BlockType.GRASS) {
             return false;
         }
 
         // Spawn space must be clear.
-        BlockType spawnBlock = chunk.getBlock(localX, y, localZ);
-        BlockType aboveBlock = chunk.getBlock(localX, y + 1, localZ);
+        BlockType spawnBlock = Animal.blockAt(chunk, localX, y, localZ);
+        BlockType aboveBlock = Animal.blockAt(chunk, localX, y + 1, localZ);
 
         return spawnBlock == BlockType.AIR && aboveBlock == BlockType.AIR;
     }

@@ -27,15 +27,15 @@ final class FallbackCubeRenderer {
     }
 
     void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                com.stonebreak.world.World world, Vector3f cameraPos) {
+                com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         float fogDensity = 0.0f;
         Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
         if (world != null && cameraPos != null
-                && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
-                        (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
+                && world.isPositionUnderwater((int) Math.floor(cameraPos.x()),
+                        (int) Math.floor(cameraPos.y()), (int) Math.floor(cameraPos.z()))) {
             // Scaled by depth, so an entity dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
-            fogDensity = UnderwaterFog.density(cameraPos.y);
+            fogDensity = UnderwaterFog.density((float) cameraPos.y());
         } else if (cameraPos != null) {
             // Rain and snow fog, as the terrain behind the entity gets it.
             fogDensity = WeatherFog.density();
@@ -43,7 +43,7 @@ final class FallbackCubeRenderer {
         }
 
         pipeline.begin(fallbackTexture, viewMatrix, projectionMatrix,
-                cameraPos != null ? cameraPos : new Vector3f(0, 0, 0),
+                cameraPos != null ? cameraPos : new org.joml.Vector3d(),
                 fogDensity, fogColor, entity, true);
 
         Matrix4f modelMatrix = RenderOrigin

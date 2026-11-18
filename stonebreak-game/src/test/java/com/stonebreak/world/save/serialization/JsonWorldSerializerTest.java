@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.model.WorldData;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -46,7 +47,7 @@ class JsonWorldSerializerTest {
 
         assertEquals(9876543210L, deserialized.getSeed());
         assertEquals("TestWorld", deserialized.getWorldName());
-        assertEquals(new Vector3f(10f, 80f, -20f), deserialized.getSpawnPosition());
+        assertEquals(new Vector3d(10, 80, -20), deserialized.getSpawnPosition());
         assertTrue(deserialized.hasExplicitSpawn());
         assertEquals(createdTime, deserialized.getCreatedTime());
         assertEquals(lastPlayed, deserialized.getLastPlayed());
@@ -94,7 +95,7 @@ class JsonWorldSerializerTest {
         assertTrue(data.getWeatherZones().isEmpty(), "saves from before weather zones have none");
         assertEquals(1, data.getFormatVersion());
         assertFalse(data.hasExplicitSpawn());
-        assertEquals(new Vector3f(0f, 100f, 0f), data.getSpawnPosition());
+        assertEquals(new Vector3d(0, 100, 0), data.getSpawnPosition());
     }
 
     /* ---------- missingSeedOrWorldNameThrows ---------- */
@@ -205,6 +206,46 @@ class JsonWorldSerializerTest {
         assertEquals(original.getWeatherMode(), jacksonRead.getWeatherMode());
         assertEquals(original.getCreatedTime(), jacksonRead.getCreatedTime());
         assertEquals(original.getLastPlayed(), jacksonRead.getLastPlayed());
+        assertEquals(original.getSpawnPosition(), jacksonRead.getSpawnPosition());
+        assertEquals(original.getMinY(), jacksonRead.getMinY());
+        assertEquals(original.getMaxY(), jacksonRead.getMaxY());
+        assertEquals(original.getCubeEdge(), jacksonRead.getCubeEdge());
+    }
+
+    /* ---------- cubic format (#447): bounds, version, double spawn ---------- */
+
+    @Test
+    void newWorldsAreWrittenInTheCurrentFormatWithBounds() {
+        WorldData data = WorldData.builder().seed(1L).worldName("Cubic").build();
+        assertEquals(com.stonebreak.world.save.WorldFormat.CURRENT_VERSION, data.getFormatVersion());
+        WorldData back = serializer.deserialize(serializer.serialize(data));
+        assertEquals(com.stonebreak.world.save.WorldFormat.CURRENT_VERSION, back.getFormatVersion());
+        assertEquals(com.stonebreak.world.operations.WorldConfiguration.MIN_Y, back.getMinY());
+        assertEquals(com.stonebreak.world.operations.WorldConfiguration.MAX_Y, back.getMaxY());
+        assertEquals(com.stonebreak.world.operations.WorldConfiguration.CUBE_EDGE, back.getCubeEdge());
+        assertTrue(com.stonebreak.world.save.WorldFormat.isCompatible(back));
+    }
+
+    @Test
+    void farSpawnKeepsDoublePrecisionThroughJson() {
+        // Beyond 2^24 a float drops the fraction; beyond 1e7 Java writes doubles in scientific notation.
+        Vector3d far = new Vector3d(123_456_789_012.5, -300.25, -9_876_543_210.75);
+        WorldData data = WorldData.builder().seed(1L).worldName("Far").spawnPosition(far).build();
+        WorldData back = serializer.deserialize(serializer.serialize(data));
+        assertEquals(far, back.getSpawnPosition());
+    }
+
+    @Test
+    void recordsWithoutBoundsReadAsTheColumnWorldAndAreIncompatible() {
+        WorldData data = serializer.deserialize(("{\"seed\": 4, \"worldName\": \"Old\","
+            + " \"creationTime\": \"2024-01-01T12:00:00\", \"lastPlayed\": \"2024-01-01T12:00:00\","
+            + " \"totalPlayTimeMillis\": 1, \"formatVersion\": 1}").getBytes(StandardCharsets.UTF_8));
+        assertEquals(com.stonebreak.world.save.WorldFormat.LEGACY_MIN_Y, data.getMinY());
+        assertEquals(com.stonebreak.world.save.WorldFormat.LEGACY_MAX_Y, data.getMaxY());
+        assertEquals(com.stonebreak.world.save.WorldFormat.LEGACY_EDGE, data.getCubeEdge());
+        var check = com.stonebreak.world.save.WorldFormat.check(data);
+        assertFalse(check.compatible());
+        assertTrue(check.reason().startsWith(com.stonebreak.world.save.WorldFormat.INCOMPATIBLE), check.reason());
     }
 
     /* ---------- withersReturnModifiedCopies ---------- */

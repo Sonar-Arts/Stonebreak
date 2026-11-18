@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ class ProjectileHitTest {
     /** A mob standing in open air at the origin, the only living entity in its world. */
     private static Range range(EntityType type) {
         World world = mock(World.class); // getBlockAt → null: nothing solid
-        StubMob mob = new StubMob(type, new Vector3f(0f, 64f + type.getLegHeight(), 0f), world);
+        StubMob mob = new StubMob(type, new Vector3d(0f, 64f + type.getLegHeight(), 0f), world);
         EntityManager em = mock(EntityManager.class);
         when(em.getLivingEntities()).thenReturn(List.of(mob));
         when(world.getEntityManager()).thenReturn(em);
@@ -48,12 +49,12 @@ class ProjectileHitTest {
 
     private static float bodyHeight(StubMob mob, float fraction) {
         Entity.BoundingBox box = mob.getHitBox();
-        return box.minY + (box.maxY - box.minY) * fraction;
+        return (float) (box.minY + (box.maxY - box.minY) * fraction);
     }
 
     /** Flies a level arrow along +X from {@code startX}, standing in for the external physics step. */
     private static boolean arrowHits(Range r, float startX, float y, float speed) {
-        Arrow arrow = new Arrow(r.world(), new Vector3f(startX, y, 0f), new Vector3f(speed, 0f, 0f));
+        Arrow arrow = new Arrow(r.world(), new Vector3d(startX, y, 0f), new Vector3f(speed, 0f, 0f));
         float before = r.mob().getHealth();
         for (int i = 0; i < 100 && arrow.isAlive() && arrow.position.x < 6f; i++) {
             arrow.update(TICK);
@@ -64,7 +65,7 @@ class ProjectileHitTest {
     }
 
     private static boolean boltHits(Range r, float startX, float y) {
-        FireBolt bolt = new FireBolt(r.world(), new Vector3f(startX, y, 0f), new Vector3f(1f, 0f, 0f));
+        FireBolt bolt = new FireBolt(r.world(), new Vector3d(startX, y, 0f), new Vector3f(1f, 0f, 0f));
         float before = r.mob().getHealth();
         for (int i = 0; i < 40 && !bolt.isImpacted(); i++) {
             bolt.update(TICK);
@@ -116,13 +117,13 @@ class ProjectileHitTest {
         World world = mock(World.class); // getBlockAt → null: nothing solid
         EntityManager em = new EntityManager(world);
         when(world.getEntityManager()).thenReturn(em);
-        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3f(0f, 64f, 0f), world);
+        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3d(0f, 64f, 0f), world);
         em.addEntity(goblin);
         em.update(TICK);
         float before = goblin.getHealth();
 
         // 0.75 blocks per tick from 1 block out: the first step ends inside the 0.83-wide body.
-        em.spawnArrow(new Vector3f(-1f, bodyHeight(goblin, 0.5f), 0f), new Vector3f(15f, 0f, 0f));
+        em.spawnArrow(new Vector3d(-1f, bodyHeight(goblin, 0.5f), 0f), new Vector3f(15f, 0f, 0f));
         for (int i = 0; i < 5; i++) {
             em.update(TICK);
         }
@@ -135,7 +136,7 @@ class ProjectileHitTest {
     void projectilesPassingOverACreatureMissIt() {
         for (EntityType type : EntityType.GLOSSARY_TYPES) {
             Range r = range(type);
-            float overhead = r.mob().getHitBox().maxY + 0.5f;
+            float overhead = (float) (r.mob().getHitBox().maxY + 0.5f);
             assertTrue(!arrowHits(r, -6f, overhead, 45f), type + " hit by an arrow passing overhead");
             assertTrue(!boltHits(r, -4f, overhead), type + " hit by a bolt passing overhead");
         }

@@ -7,7 +7,10 @@ import com.stonebreak.player.Camera;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
 import com.stonebreak.world.physics.WorldPhysics;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.joml.Vector3i;
 import java.util.List;
 
@@ -53,15 +56,15 @@ public class RaycastEngine {
 
     /** First non-air block hit (water is opaque). Used by bucket interactions. */
     public Vector3i raycastIncludingWater() {
-        Vector3f origin = eyeOrigin();
+        Vector3d origin = eyeOrigin();
         Vector3f direction = camera.getFront();
         return cellOf(cast(origin, direction, RAY_CAST_DISTANCE,
                 WorldPhysics.PICK_MASK | WorldPhysics.DOOR_CELL, WorldPhysics.WATER));
     }
 
-    public Vector3f eyeOrigin() {
-        Vector3f p = state.getPosition();
-        return new Vector3f(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+    public Vector3d eyeOrigin() {
+        Vector3d p = state.getPosition();
+        return new Vector3d(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
     }
 
     public Vector3f eyeDirection() {
@@ -72,12 +75,14 @@ public class RaycastEngine {
      * Ray/plane intersection. Returns distance along ray to intersection, or -1 if
      * parallel or behind the origin.
      */
-    public static float rayIntersectsPlane(Vector3f rayOrigin, Vector3f rayDirection,
-                                           Vector3f planePoint, Vector3f planeNormal) {
+    public static float rayIntersectsPlane(Vector3dc rayOrigin, Vector3fc rayDirection,
+                                           Vector3dc planePoint, Vector3fc planeNormal) {
         float denominator = rayDirection.dot(planeNormal);
         if (Math.abs(denominator) < 0.001f) return -1;
-        Vector3f toPlane = new Vector3f(planePoint).sub(rayOrigin);
-        float t = toPlane.dot(planeNormal) / denominator;
+        // Plane point minus ray origin in double, then small enough for float.
+        float t = (float) (((planePoint.x() - rayOrigin.x()) * planeNormal.x()
+                + (planePoint.y() - rayOrigin.y()) * planeNormal.y()
+                + (planePoint.z() - rayOrigin.z()) * planeNormal.z()) / denominator);
         return t > 0.001f ? t : -1;
     }
 
@@ -88,7 +93,7 @@ public class RaycastEngine {
      * Returns the closest living entity along the player's look ray within melee range, or null.
      */
     public LivingEntity raycastEntity(List<LivingEntity> entities) {
-        Vector3f origin = eyeOrigin();
+        Vector3d origin = eyeOrigin();
         Vector3f dir = camera.getFront();
         LivingEntity closest = null;
         float closestT = ENTITY_ATTACK_RANGE;
@@ -108,7 +113,7 @@ public class RaycastEngine {
      * hitscan abilities (e.g. the Ranger's Culling Shot) whose direction is locked independently
      * of the current camera.
      */
-    public LivingEntity raycastEntityAlong(Vector3f origin, Vector3f direction,
+    public LivingEntity raycastEntityAlong(Vector3dc origin, Vector3fc direction,
                                            List<LivingEntity> entities, float maxRange) {
         LivingEntity closest = null;
         float closestT = maxRange;
@@ -129,9 +134,9 @@ public class RaycastEngine {
      * collider; water and open doorways are clear — or {@link Float#MAX_VALUE} if the ray is clear
      * out to {@code maxDistance}.
      */
-    public float distanceToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+    public float distanceToFirstSolid(Vector3dc origin, Vector3fc direction, float maxDistance) {
         RayHit h = cast(origin, direction, maxDistance, WorldPhysics.SIGHT_MASK, 0);
-        return h == null ? Float.MAX_VALUE : h.distance;
+        return h == null ? Float.MAX_VALUE : (float) h.distance;
     }
 
     /**
@@ -140,18 +145,18 @@ public class RaycastEngine {
      * or torch model anywhere — that block's anchor cell (break, toggle and the crack overlay all
      * key on it). Animated cells are never targets themselves: the ray passes an open doorway.
      */
-    private Vector3i marchToFirstSolid(Vector3f origin, Vector3f direction, float maxDistance) {
+    private Vector3i marchToFirstSolid(Vector3dc origin, Vector3fc direction, float maxDistance) {
         return cellOf(cast(origin, direction, maxDistance, WorldPhysics.PICK_MASK, 0));
     }
 
     private final RayHit hit = new RayHit();
 
-    private RayHit cast(Vector3f origin, Vector3f direction, float maxDistance, int mask, int fluidMask) {
+    private RayHit cast(Vector3dc origin, Vector3fc direction, float maxDistance, int mask, int fluidMask) {
         if (world == null) {
             return null;
         }
-        boolean any = com.stonebreak.world.physics.WorldPhysics.of(world).raycast(origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
-                maxDistance, mask, fluidMask, hit);
+        boolean any = WorldPhysics.of(world).raycast(origin.x(), origin.y(), origin.z(),
+                direction.x(), direction.y(), direction.z(), maxDistance, mask, fluidMask, hit);
         return any ? hit : null;
     }
 
@@ -163,6 +168,11 @@ public class RaycastEngine {
             BlockPos anchor = WorldPhysics.BlockPosKey.unpack(h.user);
             return new Vector3i(anchor.x(), anchor.y(), anchor.z());
         }
-        return new Vector3i(h.x, h.y, h.z);
+        // The targeted-cell API is int (block edits, highlight, packets): beyond +-2^31 nothing is
+        // targetable rather than throwing (worldgen is valid to ~+-2^23 anyway, see the cube doc).
+        if (h.x != (int) h.x || h.y != (int) h.y || h.z != (int) h.z) {
+            return null;
+        }
+        return new Vector3i((int) h.x, (int) h.y, (int) h.z);
     }
 }

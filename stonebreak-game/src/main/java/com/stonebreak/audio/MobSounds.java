@@ -6,7 +6,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * Footsteps for mobs: one step per stride of ground actually covered. The timing rule is the
@@ -69,9 +69,10 @@ public class MobSounds {
      * @return whether a footstep fired this update
      */
     public boolean updateSounds(LivingEntity mob) {
-        Vector3f position = mob.getPosition();
+        Vector3d position = mob.getPosition();
         boolean grounded = mob.isNetworkShadow() ? standsOnSolid(mob) : mob.isOnGround();
-        if (!steps.update(position.x, position.z, grounded, mob.getSubmersion() >= SWIMMING_SUBMERSION)) {
+        // Stride distance in mixer space (near the listener: float-exact), not raw world floats.
+        if (!steps.update(AudioSpace.x(position.x), AudioSpace.z(position.z), grounded, mob.getSubmersion() >= SWIMMING_SUBMERSION)) {
             return false;
         }
         playStep(mob);
@@ -88,11 +89,11 @@ public class MobSounds {
         if (world == null) {
             return false;
         }
-        Vector3f position = mob.getPosition();
+        Vector3d position = mob.getPosition();
         BlockType below = world.getBlockAt(
-                (int) Math.floor(position.x),
-                (int) Math.floor(position.y - mob.getLegHeight() - 0.1f),
-                (int) Math.floor(position.z));
+                (long) Math.floor(position.x),
+                (long) Math.floor(position.y - mob.getLegHeight() - 0.1),
+                (long) Math.floor(position.z));
         return below != null && below.isSolid();
     }
 
@@ -100,16 +101,16 @@ public class MobSounds {
         if (world == null || !isAudible(mob)) {
             return;
         }
-        Vector3f position = mob.getPosition();
+        Vector3d position = mob.getPosition();
         // The block underfoot, sampled from the mob's actual feet: its origin sits a leg-length
         // above them, so for a tall mob the two are in different blocks.
-        float feetY = position.y - mob.getLegHeight();
+        double feetY = position.y - mob.getLegHeight();
         BlockType ground = world.getBlockAt(
-                (int) Math.floor(position.x),
-                (int) Math.floor(feetY - 0.1f),
-                (int) Math.floor(position.z));
+                (long) Math.floor(position.x),
+                (long) Math.floor(feetY - 0.1),
+                (long) Math.floor(position.z));
 
-        BlockSounds.playStepAt(ground, new Vector3f(position.x, feetY, position.z), stepVolume);
+        BlockSounds.playStepAt(ground, position.x, feetY, position.z, stepVolume);
         com.stonebreak.fx.bindings.BlockFx.stepAt(ground, position.x, feetY, position.z);
     }
 

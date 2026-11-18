@@ -4,8 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.crafting.SmeltingManager;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
+import com.stonebreak.world.chunk.Cube;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,13 +17,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * World-scoped registry of {@link FurnaceState} objects, one per placed
  * furnace block. Owns the per-tick smelting loop and the chunk-load/unload
- * round-trip through {@link Chunk#getBlockStates()}.
+ * round-trip through the world's block states (cube payload).
  */
 public class FurnaceStateRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(FurnaceStateRegistry.class);
 
-    private static final int CHUNK_SIZE = 16;
 
     // Concurrent: the authoritative sim (tick / chunk load+unload) runs on the server thread
     // while the furnace UI + block place/break run on the main thread.
@@ -113,58 +111,46 @@ public class FurnaceStateRegistry {
         BlockPos pos = new BlockPos(x, y, z);
         FurnaceState state = states.remove(pos);
         if (state == null) return;
-        Vector3f dropPos = new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
+        org.joml.Vector3d dropPos = new org.joml.Vector3d(x + 0.5, y + 0.5, z + 0.5);
         state.dropContentsAt(world, dropPos);
         // Chunk.setBlock(AIR) already clears the per-block state map entry.
     }
 
-    public void onChunkLoaded(Chunk chunk) {
-        int cx = chunk.getX();
-        int cz = chunk.getZ();
-        for (Map.Entry<Integer, String> e : chunk.getBlockStates().entrySet()) {
-            String value = e.getValue();
-            if (value == null || !value.startsWith(FurnaceState.STATE_PREFIX)) continue;
-
-            int key = e.getKey();
-            BlockPos pos = new BlockPos(
-                cx * CHUNK_SIZE + LocalBlockKey.x(key),
-                LocalBlockKey.y(key),
-                cz * CHUNK_SIZE + LocalBlockKey.z(key));
-            // In place when already tracked (a client re-stream of this chunk, #369) so an open
-            // furnace UI stays bound to the same object and re-reads it, like an echo. A
-            // re-stream carries no ack, so its slots are ignored while one of our snapshots is
-            // in flight; the timers always apply.
+    /** Discovers the furnaces of a cube that entered the world (their state strings carry the contents). */
+    public void onCubeInstalled(Cube cube) {
+        cube.forEachState((x, y, z, value) -> {
+            if (value == null || !value.startsWith(FurnaceState.STATE_PREFIX)) return;
+            BlockPos pos = new BlockPos(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z));
+            // In place when already tracked (a client re-stream of this cube, #369) so an open
+            // furnace UI stays bound to the same object and re-reads it, like an echo.
             FurnaceState s = states.compute(pos, (p, existing) -> {
                 if (existing == null) return FurnaceState.fromStateString(p, value);
                 existing.applyStateString(value);
                 return existing;
             });
-            s.markEchoed(value); // clients get this value with the chunk itself
+            s.markEchoed(value); // clients get this value with the cube itself
+        });
+    }
+
+    /** Writes every tracked furnace of the cube back into the world (before its blob is saved). */
+    public void flushToWorld(Cube cube) {
+        World world = cube.world();
+        for (Map.Entry<BlockPos, FurnaceState> entry : states.entrySet()) {
+            BlockPos p = entry.getKey();
+            if (cube.contains(p.x(), p.y(), p.z())) {
+                writeChunkState(world, p, entry.getValue().toStateString());
+            }
         }
     }
 
-    public void onChunkUnloaded(Chunk chunk) {
-        int cx = chunk.getX();
-        int cz = chunk.getZ();
-        int xMin = cx * CHUNK_SIZE;
-        int zMin = cz * CHUNK_SIZE;
-        int xMax = xMin + CHUNK_SIZE;
-        int zMax = zMin + CHUNK_SIZE;
+    /** The cube leaves next tick: flush its furnaces into the world so the blob carries them. */
+    public void onCubeUnloadPending(Cube cube) {
+        flushToWorld(cube);
+    }
 
-        // Flush every in-memory state inside this chunk back into the chunk's
-        // state map, then drop the in-memory entries so the GC can reclaim them.
-        Iterator<Map.Entry<BlockPos, FurnaceState>> it = states.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<BlockPos, FurnaceState> entry = it.next();
-            BlockPos p = entry.getKey();
-            if (p.x() < xMin || p.x() >= xMax || p.z() < zMin || p.z() >= zMax) continue;
-
-            int lx = Math.floorMod(p.x(), CHUNK_SIZE);
-            int lz = Math.floorMod(p.z(), CHUNK_SIZE);
-            String fresh = entry.getValue().toStateString();
-            chunk.setBlockState(lx, p.y(), lz, fresh);
-            it.remove();
-        }
+    /** The cube left: drop its in-memory furnaces. */
+    public void onCubeUnloaded(Cube cube) {
+        states.keySet().removeIf(p -> cube.contains(p.x(), p.y(), p.z()));
     }
 
     /* ── Tick loop ───────────────────────────────────────────── */
@@ -195,19 +181,14 @@ public class FurnaceStateRegistry {
 
     /* ── Helpers ─────────────────────────────────────────────── */
 
-    /** Writes the state into its chunk; true when it changed (false if unchanged or unloaded). */
+    /** Writes the state into the world; true when it changed (false if unchanged or unloaded). */
     private boolean writeChunkState(World world, BlockPos pos, String stateString) {
         if (world == null || stateString == null) return false;
-        int cx = Math.floorDiv(pos.x(), CHUNK_SIZE);
-        int cz = Math.floorDiv(pos.z(), CHUNK_SIZE);
-        Chunk chunk = world.getChunkIfLoaded(cx, cz);
-        if (chunk == null) return false;
-        int lx = Math.floorMod(pos.x(), CHUNK_SIZE);
-        int lz = Math.floorMod(pos.z(), CHUNK_SIZE);
-        String previous = chunk.getBlockStates()
-            .get(LocalBlockKey.pack(lx, pos.y(), lz));
-        chunk.setBlockState(lx, pos.y(), lz, stateString);
-        return !stateString.equals(previous);
+        if (!world.isLoaded(pos.x(), pos.y(), pos.z())) return false;
+        String previous = world.getBlockStateAt(pos.x(), pos.y(), pos.z());
+        if (stateString.equals(previous)) return false;
+        world.setBlockStateAt(pos.x(), pos.y(), pos.z(), stateString);
+        return true;
     }
 
     private void announce(FurnaceState s, String stateString) {

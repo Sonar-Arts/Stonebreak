@@ -103,18 +103,6 @@ public final class NoiseRouter {
         moistureNoise.fill(mRaw, baseX, baseZ, countX, countZ, stride);
     }
 
-    /**
-     * Creates the native carver terrain context: the distilled shape's channels, constants and
-     * height-curve table (SBW ABI 2). Returns 0 when the game's worldgen natives are unavailable.
-     * The caller owns the handle (destroy via {@link TerrainNoise#destroyTerrainOnCollect}).
-     */
-    public static long createCarverTerrainContext(long seed) {
-        DistilledShape.NativeArgs a = new DistilledShape(seed).nativeArgs();
-        return com.stonebreak.world.generation.WorldgenNatives.terrainCreate(seed,
-            a.seeds(), a.octaves(), a.gain(), a.lacunarity(), a.freq(), a.xOff(), a.zOff(),
-            a.constants(), a.curveTable(), a.sizes(), a.detailBlocks());
-    }
-
     /** Raw moisture channel value → [0, 1]. */
     public static float moistureFromRaw(float raw) {
         return raw * 0.5f + 0.5f;

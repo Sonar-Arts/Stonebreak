@@ -5,7 +5,7 @@ import com.openmason.engine.voxel.lighting.IndirectLightVolume;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.door.DoorState;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.voxel.BlockIds;
 import com.stonebreak.world.lighting.BlockOpacity;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
@@ -14,67 +14,56 @@ import org.joml.Vector3f;
 public final class TorchIndirectLighting implements AutoCloseable {
     private static final int SIZE = IndirectLightAtlas.SIZE;
     private static final int HALF = SIZE / 2;
-    private static final int CHUNK = WorldConfiguration.CHUNK_SIZE;
     private final Entry[] entries = new Entry[PointLightGlsl.MAX_LIGHTS];
     private final Vector3f position = new Vector3f();
     private IndirectLightAtlas atlas;
     private World previousWorld;
 
     static final class Entry {
+        private static final int MISSING_ID = 0xFFFF;
         final IndirectLightVolume volume = new IndirectLightVolume(SIZE);
-        final Chunk[] chunks = new Chunk[9];
-        final Object[] metadata = new Object[9];
-        final Object[] meshes = new Object[9];
-        final long[] revisions = new long[9];
-        int originX, originY, originZ, minChunkX, minChunkZ, chunkColumns;
+        final short[] ids = new short[SIZE * SIZE * SIZE];
+        long revision = Long.MIN_VALUE;
+        int originX, originY, originZ;
         int qx = Integer.MIN_VALUE, qy, qz;
 
         boolean update(World world, Vector3f source) {
             // Quarter-block probes keep carried-light updates bounded and avoid jitter.
             int nx = (int) Math.floor(source.x * 4), ny = (int) Math.floor(source.y * 4), nz = (int) Math.floor(source.z * 4);
             boolean sourceChanged = nx != qx || ny != qy || nz != qz;
-            boolean changed = sourceChanged;
+            // The native world revision is monotonic over every block/layer write and cube install/unload
+            // (cv_world_revision), so it subsumes the old per-chunk metadata/mesh/revision identities.
+            long rev = world.voxels().worldRevision();
+            if (!sourceChanged && rev == revision) return false;
+            revision = rev;
+            qx = nx; qy = ny; qz = nz;
             originX = (int) Math.floor(source.x) - HALF;
             originY = (int) Math.floor(source.y) - HALF;
             originZ = (int) Math.floor(source.z) - HALF;
-            minChunkX = Math.floorDiv(originX, CHUNK);
-            minChunkZ = Math.floorDiv(originZ, CHUNK);
-            int maxChunkX = Math.floorDiv(originX + SIZE - 1, CHUNK);
-            int maxChunkZ = Math.floorDiv(originZ + SIZE - 1, CHUNK);
-            chunkColumns = maxChunkX - minChunkX + 1;
-            int at = 0;
-            for (int z = minChunkZ; z <= maxChunkZ; z++) for (int x = minChunkX; x <= maxChunkX; x++) {
-                Chunk chunk = world.getChunkIfLoaded(x, z);
-                Object state = chunk == null ? null : chunk.getCcoMetadata();
-                Object mesh = chunk == null ? null : chunk.getRegionAtlasHandle();
-                long revision = chunk == null || chunk.getCcoDirtyTracker() == null ? -1
-                        : chunk.getCcoDirtyTracker().blockRevision();
-                changed |= chunks[at] != chunk || metadata[at] != state || meshes[at] != mesh || revisions[at] != revision;
-                chunks[at] = chunk; metadata[at] = state; meshes[at] = mesh;
-                revisions[at] = revision;
-                at++;
-            }
-            // The revision catches same-millisecond edits and door toggles even before remeshing.
-            // Metadata/mesh identities additionally catch snapshots and chunk population.
-            if (!changed) return false;
-            qx = nx; qy = ny; qz = nz;
+            world.voxels().readBox(originX, originY, originZ, SIZE, SIZE, SIZE, ids, MISSING_ID);
             boolean volumeChanged = sourceChanged;
             for (int z = 0; z < SIZE; z++) for (int x = 0; x < SIZE; x++) {
                 int wx = originX + x, wz = originZ + z;
-                Chunk chunk = chunks[(Math.floorDiv(wz, CHUNK) - minChunkZ) * chunkColumns
-                        + Math.floorDiv(wx, CHUNK) - minChunkX];
+                // Cells of absent cubes at or above the column TOP are KNOWN AIR (readBox reports every
+                // absent cube as missing): light passes there. One top query per column, only when needed.
+                long columnTop = Long.MIN_VALUE;
                 for (int y = 0; y < SIZE; y++) {
                     int wy = originY + y;
-                    boolean known = chunk != null && wy >= 0 && wy < WorldConfiguration.WORLD_HEIGHT;
+                    int id = Short.toUnsignedInt(ids[(y * SIZE + z) * SIZE + x]);
+                    if (id == MISSING_ID && WorldConfiguration.inBounds(wy)) {
+                        if (columnTop == Long.MIN_VALUE) columnTop = world.topY(wx, wz);
+                        if (wy >= columnTop || world.isKnown(wx, wy, wz)) id = BlockType.AIR.getId();
+                    }
+                    boolean known = id != MISSING_ID && WorldConfiguration.inBounds(wy);
                     if (!known) { volumeChanged |= volume.setCell(x, y, z, true, false); continue; }
-                    int lx = Math.floorMod(wx, CHUNK), lz = Math.floorMod(wz, CHUNK);
-                    BlockType type = chunk.getBlock(lx, wy, lz);
+                    BlockType type = BlockIds.of(id);
                     boolean blocked = BlockOpacity.isOpaque(type);
                     if (type == BlockType.OAK_DOOR) {
-                        blocked = !DoorState.parse(chunk.getBlockState(lx, wy, lz)).isOpen();
-                    } else if (type == BlockType.AIR && wy > 0 && chunk.getBlock(lx, wy - 1, lz) == BlockType.OAK_DOOR) {
+                        blocked = !DoorState.parse(world.getBlockStateAt(wx, wy, wz)).isOpen();
+                    } else if (type == BlockType.AIR && y > 0
+                            && BlockIds.of(Short.toUnsignedInt(ids[((y - 1) * SIZE + z) * SIZE + x])) == BlockType.OAK_DOOR) {
                         // Door models occupy two vertical cells but are anchored in the lower one.
-                        blocked = !DoorState.parse(chunk.getBlockState(lx, wy - 1, lz)).isOpen();
+                        blocked = !DoorState.parse(world.getBlockStateAt(wx, wy - 1, wz)).isOpen();
                     }
                     volumeChanged |= volume.setCell(x, y, z, blocked, blocked);
                 }

@@ -1,37 +1,30 @@
 package com.stonebreak.rendering.gameWorld.shadow;
 
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.rendering.gameWorld.regions.CubeDraw;
+
 import java.util.List;
 
-/** Exact mesh identities, not a lossy hash: edits/uploads/unloads invalidate cached terrain depth. */
+/**
+ * Exact mesh identities, not a lossy hash: edits/uploads/unloads invalidate cached terrain depth. A cube's
+ * {@link CubeDraw} is replaced on every remesh, so comparing the instances in order catches uploads,
+ * unloads and enable changes of the set a torch view draws.
+ */
 final class TorchTerrainSnapshot {
     private Object[] references = new Object[0];
     private boolean valid;
 
-    boolean matches(List<Chunk> chunks) {
-        if (!valid || references.length != chunks.size() * 5) return false;
-        for (int i = 0; i < chunks.size(); i++) {
-            Chunk chunk = chunks.get(i);
-            int at = i * 5;
-            if (references[at] != chunk
-                    || references[at + 1] != chunk.getMmsRenderableHandle()
-                    || references[at + 2] != chunk.getRegionAtlasHandle()
-                    || references[at + 3] != chunk.getStampRenderableHandle()
-                    || references[at + 4] != chunk.getRegionStampHandle()) return false;
+    boolean matches(List<?> cubes) {
+        if (!valid || references.length != cubes.size()) return false;
+        for (int i = 0; i < cubes.size(); i++) {
+            if (references[i] != cubes.get(i)) return false;
         }
         return true;
     }
 
-    void capture(List<Chunk> chunks) {
-        if (references.length != chunks.size() * 5) references = new Object[chunks.size() * 5];
-        for (int i = 0; i < chunks.size(); i++) {
-            Chunk chunk = chunks.get(i);
-            int at = i * 5;
-            references[at] = chunk;
-            references[at + 1] = chunk.getMmsRenderableHandle();
-            references[at + 2] = chunk.getRegionAtlasHandle();
-            references[at + 3] = chunk.getStampRenderableHandle();
-            references[at + 4] = chunk.getRegionStampHandle();
+    void capture(List<?> cubes) {
+        if (references.length != cubes.size()) references = new Object[cubes.size()];
+        for (int i = 0; i < cubes.size(); i++) {
+            references[i] = cubes.get(i);
         }
         valid = true;
     }

@@ -40,7 +40,8 @@ import com.stonebreak.network.packet.player.PlayerStateC2S;
 import com.stonebreak.network.packet.player.PlayerStateS2C;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
-import com.stonebreak.network.packet.world.ChunkDataS2C;
+import com.stonebreak.network.packet.world.BlockStateNamesS2C;
+import com.stonebreak.network.packet.world.CubeDataS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
 import com.stonebreak.player.Player;
@@ -109,25 +110,6 @@ public final class ClientWorldView {
     /** True while waiting for the server's welcome after character creation submit. */
     private volatile boolean characterCreationSubmitted = false;
 
-    // ─── Desync detection ────────────────────────────────────────────────────
-    /** Per-chunk cooldown between resync requests (prevents request storms on a bad chunk). */
-    private static final long RESYNC_COOLDOWN_NS = 5_000_000_000L; // 5 s
-    private final java.util.Map<Long, Long> lastResyncRequestNs = new java.util.HashMap<>();
-    /** Chunk-hash audit cadence: every 200 client ticks (10 s at 20 Hz), ≤16 chunks/round. */
-    private static final int AUDIT_PERIOD_TICKS = 200;
-    private static final int AUDIT_CHUNKS_PER_ROUND = 16;
-    private int auditCounter = 0;
-    private int auditCursor = 0;
-    /** Chunks dropped since the last flush, packed {@code [cx, cz, ...]}; main-thread only (#363). */
-    /**
-     * Chunk drops waiting to be reported. Appended from the main thread (late-install
-     * discards) AND the world-update worker (the client unload sweep runs inside
-     * {@code World.updateClient} on {@code worldUpdateExecutor}), so guarded by its own lock.
-     */
-    private final Object unloadedChunksLock = new Object();
-    private int[] unloadedChunks = new int[64];
-    private int unloadedChunkCount = 0;
-
     // Remote player-prefs sync (validated server-side, issue #334). The inventory is NOT in
     // here any more — the server owns it (InventorySyncS2C flows the other way).
     private static final long PLAYER_PREFS_SEND_PERIOD_NS = 3_000_000_000L; // 3s
@@ -191,7 +173,13 @@ public final class ClientWorldView {
     public void sendViewDistance(int chunks) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
-            conn.send(new com.stonebreak.network.packet.player.ViewDistanceC2S(chunks));
+            int vertical;
+            try {
+                vertical = com.stonebreak.config.Settings.getInstance().getVerticalRenderDistance();
+            } catch (RuntimeException e) {
+                vertical = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_VERTICAL_RENDER_DISTANCE;
+            }
+            conn.send(new com.stonebreak.network.packet.player.ViewDistanceC2S(chunks, vertical));
         }
     }
 
@@ -224,13 +212,10 @@ public final class ClientWorldView {
         networkClient.inboundQueue().drain(this::dispatch, INBOUND_DRAIN_BUDGET_NS);
         applyPendingInventorySync();
 
-        // Install pump runs PER FRAME, not on the 20 Hz client tick: decoded
-        // chunk snapshots drain under a wall-clock budget each frame, so a
-        // streaming burst lands in mass batches (at 20 Hz the same budget
-        // capped installs at a visible trickle). Deferred per-chunk edits
-        // replay here too, immediately after their chunk installs.
+        // Install pump runs PER FRAME, not on the 20 Hz client tick: cube records
+        // drain under a wall-clock budget each frame, so a streaming burst lands in
+        // mass batches (at 20 Hz the same budget capped installs at a visible trickle).
         chunkHandler.tick();
-        flushUnloadedChunks();
 
         // Dead-peer detection (remote only): the server keepalives every ~5 s, so 30 s of
         // total silence means the connection is gone even if the OS hasn't noticed yet.
@@ -265,181 +250,29 @@ public final class ClientWorldView {
         if (last) {
             sendLocalPlayerState();
         }
-        sendChunkAck();
+        // Cube streaming: requests for what the client stream misses, unload notices, flow-control ack, audit.
+        chunkHandler.clientTick(this::sendReliable);
         sendPlayerPrefsIfDue();
-        if (++auditCounter >= AUDIT_PERIOD_TICKS) {
-            auditCounter = 0;
-            sendChunkHashAudit();
-        }
     }
 
-    /** Chunk flow control: what this client processed since the last ack, and its install rate. */
-    private void sendChunkAck() {
+    private boolean sendReliable(com.openmason.engine.net.protocol.Packet packet) {
         ClientConnection conn = connection;
-        if (conn == null || !conn.isActive()) {
-            return;
-        }
-        int processed = chunkHandler.takeProcessedCount();
-        float desired = chunkHandler.desiredChunksPerTick();
-        if (processed == 0 && Math.abs(desired - lastSentChunkRate) < 0.5f) {
-            return;
-        }
-        lastSentChunkRate = desired;
-        conn.send(new com.stonebreak.network.packet.world.ChunkAckC2S(processed, desired), false);
-    }
-
-    private float lastSentChunkRate = Float.NaN;
-
-    /**
-     * Chunk-hash desync audit: hash a small round-robin batch of resident chunks around the
-     * player and ship them; the server re-streams any that mismatch its own state. ~0.1 ms
-     * per chunk, 16 chunks per 10 s — near-zero steady-state cost, and it catches divergence
-     * the block-change feed can't (missed applies, corruption).
-     */
-    private void sendChunkHashAudit() {
-        ClientConnection conn = connection;
-        com.stonebreak.world.World world = Game.getWorld();
-        Player p = Game.getPlayer();
-        if (conn == null || !conn.isActive() || world == null || p == null) {
-            return;
-        }
-        int pcx = (int) Math.floor(p.getPosition().x / 16.0);
-        int pcz = (int) Math.floor(p.getPosition().z / 16.0);
-        int radius = com.stonebreak.config.Settings.getInstance().getRenderDistance();
-
-        // Deterministic ring order; the cursor rotates coverage across rounds.
-        int side = radius * 2 + 1;
-        int total = side * side;
-        int[] entries = new int[AUDIT_CHUNKS_PER_ROUND * 3];
-        int n = 0;
-        for (int step = 0; step < total && n < AUDIT_CHUNKS_PER_ROUND; step++) {
-            int idx = (auditCursor + step) % total;
-            int cx = pcx + (idx % side) - radius;
-            int cz = pcz + (idx / side) - radius;
-            var chunk = world.getChunkIfLoaded(cx, cz);
-            if (chunk == null || chunkHandler.hasPendingInstall(cx, cz)) {
-                continue; // pending install: resident state is legitimately behind the wire
-            }
-            entries[n * 3] = cx;
-            entries[n * 3 + 1] = cz;
-            entries[n * 3 + 2] = com.stonebreak.network.bridge.ChunkHasher.hash(chunk);
-            n++;
-        }
-        auditCursor = (auditCursor + Math.max(1, n)) % total;
-        if (n > 0) {
-            int[] trimmed = java.util.Arrays.copyOf(entries, n * 3);
-            conn.send(new com.stonebreak.network.packet.world.ChunkHashesC2S(trimmed), false);
-        }
+        return conn != null && conn.isActive() && conn.send(packet, false);
     }
 
     /**
-     * Records that this client dropped chunk ({@code cx}, {@code cz}); the next {@link #tick}
-     * tells the server, which forgets it so it re-streams on return (issue #363). Any thread.
-     */
-    public void notifyChunkUnloaded(int cx, int cz) {
-        synchronized (unloadedChunksLock) {
-            if (unloadedChunkCount + 2 > unloadedChunks.length) {
-                unloadedChunks = java.util.Arrays.copyOf(unloadedChunks, unloadedChunks.length * 2);
-            }
-            unloadedChunks[unloadedChunkCount++] = cx;
-            unloadedChunks[unloadedChunkCount++] = cz;
-        }
-    }
-
-    private void flushUnloadedChunks() {
-        int[] drained;
-        synchronized (unloadedChunksLock) {
-            if (unloadedChunkCount == 0) {
-                return;
-            }
-            drained = java.util.Arrays.copyOf(unloadedChunks, unloadedChunkCount);
-            unloadedChunkCount = 0;
-        }
-        ClientConnection conn = connection;
-        if (conn != null && conn.isActive()) {
-            // Where we stand now, so the server judges "still in view" from here (#363 follow-up:
-            // after a teleport its own position sample still names the old area).
-            Player p = Game.getPlayer();
-            int ccx = p == null ? com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER
-                    : (int) Math.floor(p.getPosition().x / 16.0);
-            int ccz = p == null ? com.stonebreak.network.packet.world.ChunkUnloadC2S.UNKNOWN_CENTER
-                    : (int) Math.floor(p.getPosition().z / 16.0);
-            int maxPerPacket = com.stonebreak.network.packet.world.ChunkUnloadC2S.MAX_CHUNKS * 2;
-            for (int from = 0; from < drained.length; from += maxPerPacket) {
-                int to = Math.min(drained.length, from + maxPerPacket);
-                conn.send(new com.stonebreak.network.packet.world.ChunkUnloadC2S(
-                    java.util.Arrays.copyOfRange(drained, from, to), ccx, ccz), false);
-            }
-        }
-    }
-
-    /**
-     * Ask the server for a fresh snapshot of one chunk (decode/apply failure locally).
-     * Per-chunk cooldown so a persistently-bad chunk can't spam the wire.
-     */
-    public void requestChunkResync(int cx, int cz) {
-        ClientConnection conn = connection;
-        if (conn == null || !conn.isActive()) {
-            return;
-        }
-        long key = (((long) cx) << 32) | (cz & 0xFFFFFFFFL);
-        long now = System.nanoTime();
-        Long last = lastResyncRequestNs.get(key);
-        if (last != null && now - last < RESYNC_COOLDOWN_NS) {
-            return;
-        }
-        lastResyncRequestNs.put(key, now);
-        conn.send(new com.stonebreak.network.packet.world.ChunkResyncRequestC2S(cx, cz), false);
-        System.out.println("[CLIENT] Requested chunk resync for (" + cx + "," + cz + ")");
-    }
-
-    /**
-     * User-initiated full resync (pause-menu button): hash EVERY resident chunk in render
-     * distance and ship the batches at once — the server re-streams any that mismatch — plus
-     * one entity-snapshot resync. Routed through the hash-audit path rather than per-chunk
-     * {@code ChunkResyncRequestC2S} because explicit resync requests share the server's
-     * 32-per-10s budget while hash audits are compared server-side for free.
+     * User-initiated full resync (pause-menu button): hash EVERY installed cube and ship the batches — the
+     * server re-sends any that differ (budgeted) — plus one entity-snapshot resync.
      *
-     * @return number of chunks audited, or -1 when there is no live connection
+     * @return number of cubes audited, or -1 when there is no live connection
      */
     public int requestFullResync() {
         ClientConnection conn = connection;
-        com.stonebreak.world.World world = Game.getWorld();
-        Player p = Game.getPlayer();
-        if (conn == null || !conn.isActive() || world == null || p == null) {
+        if (conn == null || !conn.isActive()) {
             return -1;
         }
-        int pcx = (int) Math.floor(p.getPosition().x / 16.0);
-        int pcz = (int) Math.floor(p.getPosition().z / 16.0);
-        int radius = com.stonebreak.config.Settings.getInstance().getRenderDistance();
-        int maxPerPacket = com.stonebreak.network.packet.world.ChunkHashesC2S.MAX_ENTRIES;
-
-        int[] entries = new int[maxPerPacket * 3];
-        int n = 0;
-        int audited = 0;
-        for (int cz = pcz - radius; cz <= pcz + radius; cz++) {
-            for (int cx = pcx - radius; cx <= pcx + radius; cx++) {
-                var chunk = world.getChunkIfLoaded(cx, cz);
-                if (chunk == null || chunkHandler.hasPendingInstall(cx, cz)) {
-                    continue;
-                }
-                entries[n * 3] = cx;
-                entries[n * 3 + 1] = cz;
-                entries[n * 3 + 2] = com.stonebreak.network.bridge.ChunkHasher.hash(chunk);
-                audited++;
-                if (++n == maxPerPacket) {
-                    conn.send(new com.stonebreak.network.packet.world.ChunkHashesC2S(
-                            entries.clone()), false);
-                    n = 0;
-                }
-            }
-        }
-        if (n > 0) {
-            conn.send(new com.stonebreak.network.packet.world.ChunkHashesC2S(
-                    java.util.Arrays.copyOf(entries, n * 3)), false);
-        }
+        int audited = chunkHandler.auditAll(this::sendReliable);
         requestEntityResync();
-        System.out.println("[CLIENT] Manual full resync: audited " + audited + " chunks.");
         return audited;
     }
 
@@ -636,7 +469,7 @@ public final class ClientWorldView {
         if (!Game.isClientWorldReady()) {
             return;
         }
-        Vector3f pos = p.getPosition();
+        org.joml.Vector3d pos = p.getPosition();
         float yaw = p.getCamera() != null ? p.getCamera().getYaw() : 0f;
         float pitch = p.getCamera() != null ? p.getCamera().getPitch() : 0f;
         short flags = 0;
@@ -773,11 +606,11 @@ public final class ClientWorldView {
     }
 
     /** Fishing-rod use (see {@code FishingRodC2S}): the server casts or reels in. Numbered. */
-    public void sendFishingRodUse(org.joml.Vector3f origin, org.joml.Vector3f direction) {
+    public void sendFishingRodUse(org.joml.Vector3dc origin, org.joml.Vector3f direction) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             conn.send(new com.stonebreak.network.packet.player.FishingRodC2S(
-                    origin.x, origin.y, origin.z, direction.x, direction.y, direction.z,
+                    origin.x(), origin.y(), origin.z(), direction.x, direction.y, direction.z,
                     com.stonebreak.network.SlotIntentSeq.nextAnswered()), false);
         }
     }
@@ -896,14 +729,14 @@ public final class ClientWorldView {
     }
 
     /** Projectile / ability-entity launch intent (see {@code ProjectileSpawnC2S}). */
-    public void sendProjectileSpawn(byte kind, Vector3f pos, Vector3f v, float... params) {
+    public void sendProjectileSpawn(byte kind, org.joml.Vector3dc pos, Vector3f v, float... params) {
         ClientConnection conn = connection;
         if (conn != null && conn.isActive()) {
             // Only an arrow costs anything — it already left our mirror.
             int seq = kind == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_ARROW
                     ? com.stonebreak.network.SlotIntentSeq.next() : 0;
             conn.send(new com.stonebreak.network.packet.entity.ProjectileSpawnC2S(
-                kind, pos.x, pos.y, pos.z, v.x, v.y, v.z, params, seq), false);
+                kind, pos.x(), pos.y(), pos.z(), v.x, v.y, v.z, params, seq), false);
         }
     }
 
@@ -1005,7 +838,8 @@ public final class ClientWorldView {
             case WelcomeS2C w -> handleWelcome(w);
             case NeedsCharacterCreationS2C ncc -> handleNeedsCharacterCreation(ncc);
             case KickS2C k -> { kickReason = k.reason(); disconnected = true; }
-            case ChunkDataS2C cd -> chunkHandler.apply(cd);
+            case CubeDataS2C cd -> chunkHandler.apply(cd);
+            case BlockStateNamesS2C names -> chunkHandler.applyNames(names);
             case BlockChangeS2C b -> blockHandler.applyBlockChange(b);
             case MultiBlockChangeS2C m -> blockHandler.applyMultiBlock(m);
             case com.stonebreak.network.packet.world.BlockMetaS2C bm -> blockHandler.applyBlockMeta(bm);
@@ -1115,7 +949,7 @@ public final class ClientWorldView {
         if (secretSink != null && !w.clientSecret().isEmpty() && !w.clientSecret().equals(presentedSecret)) {
             secretSink.accept(w.clientSecret()); // kept for the next join to this server (#335)
         }
-        Vector3f spawn = new Vector3f(w.spawnX(), w.spawnY(), w.spawnZ());
+        org.joml.Vector3d spawn = new org.joml.Vector3d(w.spawnX(), w.spawnY(), w.spawnZ());
         // Clear character creation flow state — we're now in the world.
         needsCharacterCreation = false;
         characterCreationSubmitted = false;
@@ -1124,6 +958,6 @@ public final class ClientWorldView {
         String label = Game.getInstance().getCurrentWorldName() != null
             ? Game.getInstance().getCurrentWorldName()
             : "mp_" + System.currentTimeMillis();
-        Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), spawn);
+        Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), w.terrainScale(), spawn);
     }
 }

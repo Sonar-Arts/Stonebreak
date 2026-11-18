@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.chunk.Chunk;
+import com.openmason.engine.voxel.world.CubePos;
 
 class SaplingGrowthSystemTest {
 
@@ -24,36 +24,43 @@ class SaplingGrowthSystemTest {
     /** In-memory world whose writes re-enter the system, like World.setBlockAt's funnel. */
     private static final class FakeWorld implements SaplingWorld {
         final Map<BlockPos, BlockType> blocks = new HashMap<>();
-        final Map<BlockPos, String> states = new HashMap<>();
+        final Map<CubePos, byte[]> sections = new HashMap<>();
         SaplingGrowthSystem system;
         boolean loaded = true;
 
-        @Override
-        public BlockType getBlock(int x, int y, int z) {
-            return blocks.getOrDefault(new BlockPos(x, y, z), BlockType.AIR);
+        private static BlockPos at(long x, long y, long z) {
+            return new BlockPos(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z));
         }
 
         @Override
-        public void setBlock(int x, int y, int z, BlockType type) {
+        public BlockType getBlock(long x, long y, long z) {
+            return blocks.getOrDefault(at(x, y, z), BlockType.AIR);
+        }
+
+        @Override
+        public void setBlock(long x, long y, long z, BlockType type) {
             BlockType previous = getBlock(x, y, z);
-            blocks.put(new BlockPos(x, y, z), type);
-            states.remove(new BlockPos(x, y, z));
+            blocks.put(at(x, y, z), type);
             system.onBlockChanged(x, y, z, previous, type);
         }
 
         @Override
-        public String getState(int x, int y, int z) {
-            return states.get(new BlockPos(x, y, z));
-        }
-
-        @Override
-        public void setState(int x, int y, int z, String state) {
-            states.put(new BlockPos(x, y, z), state);
-        }
-
-        @Override
-        public boolean isAreaLoaded(int x, int z, int radius) {
+        public boolean isAreaLoaded(long x, long y, long z, int radius, int height) {
             return loaded;
+        }
+
+        @Override
+        public byte[] readSaplings(CubePos cube) {
+            return sections.get(cube);
+        }
+
+        @Override
+        public void writeSaplings(CubePos cube, byte[] section) {
+            if (section == null) {
+                sections.remove(cube);
+            } else {
+                sections.put(cube, section);
+            }
         }
     }
 
@@ -68,7 +75,7 @@ class SaplingGrowthSystemTest {
     @Test
     void placedSaplingGetsAFiveToTenMinuteTimer() {
         FakeWorld world = worldWithSaplingOn(BlockType.SWAMPY_GRASS);
-        int ticks = SaplingGrowthSystem.parseRemaining(world.getState(X, Y, Z));
+        int ticks = world.system.remainingAt(X, Y, Z);
         assertTrue(ticks >= 5 * 60 * 20 && ticks < 10 * 60 * 20, "timer " + ticks);
         assertEquals(1, world.system.getTrackedCount());
     }
@@ -131,25 +138,29 @@ class SaplingGrowthSystemTest {
     @Test
     void progressIsSavedAndResumesAfterReload() {
         FakeWorld world = worldWithSaplingOn(BlockType.GRASS);
-        int start = SaplingGrowthSystem.parseRemaining(world.getState(X, Y, Z));
-        world.system.advanceTicks(100);
-        assertEquals(start - 100, SaplingGrowthSystem.parseRemaining(world.getState(X, Y, Z)));
+        CubePos cube = CubePos.ofBlock(X, Y, Z);
+        int start = world.system.remainingAt(X, Y, Z);
+        // Persisted with the cube every PERSIST_INTERVAL_TICKS.
+        world.system.advanceTicks(SaplingGrowthSystem.PERSIST_INTERVAL_TICKS * 5);
+        assertEquals(start - SaplingGrowthSystem.PERSIST_INTERVAL_TICKS * 5,
+            SaplingGrowthSystem.decodeSection(world.sections.get(cube)).values().iterator().next());
 
-        // Unload writes the latest progress onto the chunk; a fresh system resumes from it.
-        Chunk chunk = new Chunk(0, 0);
-        chunk.setBlock(X, Y, Z, BlockType.CYPRESS_SAPLING);
+        // Unload-pending writes the latest progress into the cube; a fresh system resumes from it.
         world.system.advanceTicks(7);
-        world.system.onChunkUnloaded(chunk);
+        world.system.onCubeUnloadPending(cube);
+        world.system.onCubeUnloaded(cube);
         assertEquals(0, world.system.getTrackedCount());
-        assertEquals(start - 107, SaplingGrowthSystem.parseRemaining(chunk.getBlockState(X, Y, Z)));
+        int saved = start - SaplingGrowthSystem.PERSIST_INTERVAL_TICKS * 5 - 7;
+        assertEquals(saved, SaplingGrowthSystem.decodeSection(world.sections.get(cube)).values().iterator().next());
 
         FakeWorld reloaded = new FakeWorld();
         reloaded.system = new SaplingGrowthSystem(reloaded, new Random(1));
         reloaded.blocks.put(new BlockPos(X, Y - 1, Z), BlockType.GRASS);
         reloaded.blocks.put(new BlockPos(X, Y, Z), BlockType.CYPRESS_SAPLING);
-        reloaded.system.onChunkLoaded(chunk);
+        reloaded.sections.put(cube, world.sections.get(cube));
+        reloaded.system.onCubeLoaded(cube);
         assertEquals(1, reloaded.system.getTrackedCount());
-        reloaded.system.advanceTicks(start - 108);
+        reloaded.system.advanceTicks(saved - 1);
         assertEquals(BlockType.CYPRESS_SAPLING, reloaded.getBlock(X, Y, Z), "one tick early");
         reloaded.system.advanceTicks(1);
         assertEquals(BlockType.CYPRESS_LOG, reloaded.getBlock(X, Y, Z));

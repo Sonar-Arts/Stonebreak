@@ -5,6 +5,7 @@ import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -15,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -43,10 +45,10 @@ class DropUtilTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == BROKEN_X && z == BROKEN_Z) {
                 if (y == BROKEN_Y) {
                     return BlockType.AIR; // The broken log
@@ -70,15 +72,15 @@ class DropUtilTest {
 
         // Player far on the +X side of the broken log.
         DropUtil.handleBlockBroken(world,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f),
-                BlockType.DIRT, null, 0, new Vector3f(30.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f),
+                BlockType.DIRT, null, 0, new Vector3d(30.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
 
         verify(em, atLeastOnce()).addEntity(captor.capture());
         Entity drop = captor.getAllValues().get(0);
 
         // The +X neighbour is the nearest passable cell to the player — NOT the legacy
         // surfacing offset at BROKEN_Y + 1, which is inside the solid trunk column.
-        assertEquals(new Vector3f(BROKEN_X + 1.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), drop.getPosition(),
+        assertEquals(new Vector3d(BROKEN_X + 1.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), drop.getPosition(),
             "drop must spawn in the open cell nearest the breaker");
         assertEquals(BlockType.DIRT, world.getBlockAt(BROKEN_X, BROKEN_Y + 1, BROKEN_Z),
             "precondition: the cell above the log is solid trunk — the legacy offset landed there");
@@ -101,13 +103,13 @@ class DropUtilTest {
         // Player standing right on top of the broken log's neighbour cell: the broken
         // cell itself (open) is nearer than any neighbour.
         DropUtil.handleBlockBroken(world,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f),
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f),
                 BlockType.DIRT, null, 0,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f));
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f));
 
         verify(em, atLeastOnce()).addEntity(captor.capture());
         Entity drop = captor.getAllValues().get(0);
-        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), drop.getPosition(),
+        assertEquals(new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), drop.getPosition(),
             "drop must spawn in the broken cell itself when the breaker is adjacent");
     }
 
@@ -123,11 +125,11 @@ class DropUtilTest {
         // legacy scatter + random pop — the drop must NOT be snapped to a cell centre.
         com.stonebreak.items.ItemStack stack =
                 new com.stonebreak.items.ItemStack(com.stonebreak.items.ItemType.STICK, 1);
-        DropUtil.createItemDrop(world, new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), stack);
+        DropUtil.createItemDrop(world, new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), stack);
 
         verify(em, atLeastOnce()).addEntity(captor.capture());
         Entity drop = captor.getAllValues().get(0);
-        Vector3f position = drop.getPosition();
+        Vector3d position = drop.getPosition();
         // Legacy scatter: within half a block of the caller, one block above it —
         // never exactly at a cell centre on every axis.
         assertTrue(Math.abs(position.x - (BROKEN_X + 0.5f)) < 0.5f

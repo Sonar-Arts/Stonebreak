@@ -81,7 +81,7 @@ class CombatIntentServerTest {
 
     /** A registered server-side mob {@code dx} blocks east of the player. */
     private StubMob mobAt(float dx) {
-        StubMob mob = new StubMob(EntityType.COW, new Vector3f(PLAYER_POS.x + dx, PLAYER_POS.y, PLAYER_POS.z));
+        StubMob mob = new StubMob(EntityType.COW, new org.joml.Vector3d(PLAYER_POS.x + dx, PLAYER_POS.y, PLAYER_POS.z));
         handler.onEntitySpawned(mob, ctx);
         assertTrue(mob.getNetworkId() >= 0);
         return mob;
@@ -122,7 +122,7 @@ class CombatIntentServerTest {
         // player's hit or ability effect may land on it (or on a remote player).
         ServerPlayer sp = player(null);
         com.stonebreak.mobs.entities.IllusionDecoy decoy = new com.stonebreak.mobs.entities.IllusionDecoy(
-                null, new Vector3f(PLAYER_POS.x + 1.5f, PLAYER_POS.y, PLAYER_POS.z), null, 120f);
+                null, new org.joml.Vector3d(PLAYER_POS.x + 1.5f, PLAYER_POS.y, PLAYER_POS.z), null, 120f);
         handler.onEntitySpawned(decoy, ctx);
         assertTrue(decoy.getNetworkId() >= 0);
 
@@ -381,7 +381,7 @@ class CombatIntentServerTest {
         Spawning s = spawning();
         ServerPlayer rogue = player(RogueAbilityController.CLASS_ID, RogueAbilityController.CALTROP_KEY);
         for (int i = 0; i < CombatRules.MAX_LIVE_CALTROPS; i++) {
-            Entity live = s.em().spawnCaltropCluster(new Vector3f(), 75f);
+            Entity live = s.em().spawnCaltropCluster(new org.joml.Vector3d(), 75f);
             live.setOwnerPlayerId(rogue.playerId());
         }
         Mockito.clearInvocations(s.em());

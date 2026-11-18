@@ -2,6 +2,7 @@ package com.stonebreak.world.leaves;
 
 import org.junit.jupiter.api.Test;
 
+import com.openmason.engine.voxel.world.CubePos;
 import com.stonebreak.blocks.BlockType;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Leaf-decay mechanics over {@link FakeLeafWorld}: detached foliage decays fast
  * (but staggered, not instant), foliage still anchored to a log survives, the
  * radius bound is inclusive, hand-placed floating leaves follow the same rule,
- * a re-placed log rescues a scheduled leaf, and unloaded chunks purge pending
+ * a re-placed log rescues a scheduled leaf, and unloaded cubes purge pending
  * work.
  */
 class LeafDecaySystemTest {
@@ -262,10 +263,10 @@ class LeafDecaySystemTest {
         assertTrue(world.isLog(10, 10, 10), "the log itself is untouched");
     }
 
-    // ===== 9. Chunk-load rescan resumes an interrupted collapse =====
+    // ===== 9. Cube-load rescan resumes an interrupted collapse =====
 
     @Test
-    void chunkLoadRescanResumesInterruptedCollapse() {
+    void cubeLoadRescanResumesInterruptedCollapse() {
         FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
@@ -277,12 +278,12 @@ class LeafDecaySystemTest {
         world.setBlock(7, 10, 7, BlockType.LEAVES);
         world.setBlock(7, 11, 7, BlockType.LEAVES);
         world.setBlock(8, 10, 7, BlockType.LEAVES);
-        // A healthy tree in the same chunk must not be disturbed.
+        // A healthy tree in the same cube must not be disturbed.
         world.setBlock(10, 10, 10, BlockType.WOOD);
         world.setBlock(10, 11, 10, BlockType.LEAVES);
         world.setBlock(10, 12, 10, BlockType.LEAVES);
 
-        sim.onChunkLoaded(0, 0); // (7,7) and (10,10) both live in chunk (0,0)
+        sim.onCubeLoaded(new CubePos(0, 0, 0)); // (7,10,7) and (10,10,10) both live in cube (0,0,0)
         sim.advanceTicks(SETTLE_TICKS);
 
         assertFalse(world.isLeaf(7, 10, 7), "orphaned leaves must decay after the rescan");
@@ -294,52 +295,52 @@ class LeafDecaySystemTest {
     }
 
     @Test
-    void chunkLoadRescanTrustsCrossSeamSupport() {
-        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+    void cubeLoadRescanTrustsCrossSeamSupport() {
+        FakeLeafWorld world = new FakeLeafWorld(64, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
-        // Trunk in chunk (1,0); part of its canopy hangs into chunk (0,0). The
-        // rescan of (0,0) sees no in-chunk log for these leaves and schedules
+        // Trunk in cube (1,0,0); part of its canopy hangs into cube (0,0,0). The
+        // rescan of (0,0,0) sees no in-cube log for these leaves and schedules
         // recomputes — whose cross-seam flood must find the trunk and keep them.
-        world.setBlock(16, 10, 10, BlockType.WOOD);
-        world.setBlock(15, 10, 10, BlockType.LEAVES);
-        world.setBlock(14, 10, 10, BlockType.LEAVES);
+        world.setBlock(32, 10, 10, BlockType.WOOD);
+        world.setBlock(31, 10, 10, BlockType.LEAVES);
+        world.setBlock(30, 10, 10, BlockType.LEAVES);
 
-        sim.onChunkLoaded(0, 0);
+        sim.onCubeLoaded(new CubePos(0, 0, 0));
         sim.advanceTicks(SETTLE_TICKS);
 
-        assertTrue(world.isLeaf(15, 10, 10), "seam-supported leaves must survive the rescan");
-        assertTrue(world.isLeaf(14, 10, 10), "seam-supported leaves must survive the rescan");
+        assertTrue(world.isLeaf(31, 10, 10), "seam-supported leaves must survive the rescan");
+        assertTrue(world.isLeaf(30, 10, 10), "seam-supported leaves must survive the rescan");
         assertEquals(0, world.removals.size());
     }
 
     @Test
-    void chunkLoadRescanWaitsForTheNextTick() {
-        // #345: a reload installs thousands of chunks in one server tick; the rescan must not
-        // run inside the install, and a chunk that leaves before its rescan is skipped.
-        FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
+    void cubeLoadRescanWaitsForTheNextTick() {
+        // #345: a reload installs thousands of cubes in one server tick; the rescan must not
+        // run inside the install, and a cube that leaves before its rescan is skipped.
+        FakeLeafWorld world = new FakeLeafWorld(64, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
-        world.setBlock(7, 10, 7, BlockType.LEAVES); // orphaned leaf in chunk (0,0)
-        world.setBlock(23, 10, 7, BlockType.LEAVES); // orphaned leaf in chunk (1,0)
+        world.setBlock(7, 10, 7, BlockType.LEAVES); // orphaned leaf in cube (0,0,0)
+        world.setBlock(39, 10, 7, BlockType.LEAVES); // orphaned leaf in cube (1,0,0)
 
-        sim.onChunkLoaded(0, 0);
-        sim.onChunkLoaded(1, 0);
+        sim.onCubeLoaded(new CubePos(0, 0, 0));
+        sim.onCubeLoaded(new CubePos(1, 0, 0));
         assertEquals(0, sim.getQueuedRecomputeCount(), "the install itself scans nothing");
 
-        sim.onChunkUnloaded(1, 0);
+        sim.onCubeUnloaded(new CubePos(1, 0, 0));
         sim.advanceTicks(1);
-        assertEquals(1, sim.getQueuedRecomputeCount(), "only the still-resident chunk is rescanned");
+        assertEquals(1, sim.getQueuedRecomputeCount(), "only the still-resident cube is rescanned");
     }
 
     @Test
-    void rescanOfLeaflessChunkSchedulesNothing() {
+    void rescanOfLeaflessCubeSchedulesNothing() {
         FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
         world.setBlock(3, 10, 3, BlockType.STONE);
         world.setBlock(4, 10, 3, BlockType.WOOD); // a log alone schedules nothing either
 
-        sim.onChunkLoaded(0, 0);
+        sim.onCubeLoaded(new CubePos(0, 0, 0));
         sim.advanceTicks(1); // the rescan runs on the next logical tick
 
         assertEquals(0, sim.getQueuedRecomputeCount());
@@ -349,7 +350,7 @@ class LeafDecaySystemTest {
     // ===== 10. Partial information never destroys a block =====
 
     @Test
-    void decayRefusesToActBesideUnloadedChunks() {
+    void decayRefusesToActBesideUnloadedCubes() {
         FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
@@ -365,10 +366,10 @@ class LeafDecaySystemTest {
         assertEquals(0, sim.getQueuedDecayCount(), "the refused decay is consumed, not retried");
     }
 
-    // ===== 11. Unloading a chunk purges its pending work =====
+    // ===== 11. Unloading a cube purges its pending work =====
 
     @Test
-    void chunkUnloadPurgesPendingWork() {
+    void cubeUnloadPurgesPendingWork() {
         FakeLeafWorld world = new FakeLeafWorld(32, 32, 32);
         LeafDecaySystem sim = new LeafDecaySystem(world);
 
@@ -376,8 +377,8 @@ class LeafDecaySystemTest {
         sim.advanceTicks(4);
         assertTrue(sim.getQueuedDecayCount() > 0);
 
-        // (20,20,20) lives in chunk (1,1) with the world's 16-wide chunks.
-        sim.onChunkUnloaded(1, 1);
+        // (20,20,20) lives in cube (0,0,0).
+        sim.onCubeUnloaded(new CubePos(0, 0, 0));
 
         assertEquals(0, sim.getQueuedDecayCount());
         assertEquals(0, sim.getQueuedRecomputeCount());

@@ -9,9 +9,7 @@
 # harness.py validates this on every run and aborts on drift.
 
 # ---- engine ----
-cenda	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest,com/stonebreak/world/CendaChunkBenchmarkTest
 networking	stonebreak-game	com/stonebreak/network/**/*Test
-mms	stonebreak-game	com/stonebreak/world/chunk/api/mightyMesh/**/*Test,!com/stonebreak/world/chunk/api/mightyMesh/mmsIntegration/CendaMesherKernelTest
 lighting	stonebreak-game	com/stonebreak/rendering/lighting/**/*Test,com/stonebreak/world/lighting/**/*Test
 cearl	stonebreak-game	com/stonebreak/rendering/vram/**/*Test
 shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
@@ -21,7 +19,7 @@ formats	stonebreak-formats	com/stonebreak/format/**/*Test
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
 fx	stonebreak-game	com/stonebreak/fx/**/*Test
 blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test
-water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test,com/stonebreak/world/chunk/ChunkWaterLayerTest,com/stonebreak/world/chunk/WaterMeshSplitTest,com/stonebreak/world/chunk/WaterSurfaceClosureTest
+water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test
 core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test,com/stonebreak/world/TimeOfDayTest,com/stonebreak/world/DeterministicRandomTest,com/stonebreak/world/SnowLayerManagerTest
 items	stonebreak-game	com/stonebreak/items/**/*Test,com/stonebreak/gameplay/**/*Test
 weather	stonebreak-game	com/stonebreak/world/weather/**/*Test,com/stonebreak/world/MoonCycleTest
@@ -31,12 +29,13 @@ mobs	stonebreak-game	com/stonebreak/mobs/**/*Test,com/stonebreak/rendering/model
 player	stonebreak-game	com/stonebreak/player/**/*Test,com/stonebreak/rpg/**/*Test,com/stonebreak/rendering/player/**/*Test,com/stonebreak/battletest/**/*Test
 battle	stonebreak-game	com/stonebreak/battle/**/*Test
 ui	stonebreak-game	com/stonebreak/ui/**/*Test,com/stonebreak/rendering/UI/**/*Test
-chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test,!com/stonebreak/world/chunk/api/**,!com/stonebreak/world/chunk/ChunkWaterLayerTest,!com/stonebreak/world/chunk/WaterMeshSplitTest,!com/stonebreak/world/chunk/WaterSurfaceClosureTest,com/stonebreak/world/LoadingPerformanceIntegrationTest
+chunks	stonebreak-game	com/stonebreak/world/chunk/**/*Test
 fastlod	stonebreak-game	com/stonebreak/world/fastlod/**/*Test,com/stonebreak/rendering/gameWorld/**/*Test
 leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test,com/stonebreak/world/growth/**/*Test
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test,com/stonebreak/world/spawn/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
 physics	stonebreak-game	com/stonebreak/world/physics/**/*Test
+voxel-world	stonebreak-game	com/stonebreak/world/voxel/**/*Test,com/stonebreak/world/WorldCubeApiTest,com/stonebreak/world/WorldStreamIntegrationTest
 bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 
 # ---- tool ----

@@ -2,6 +2,7 @@ package com.stonebreak.network.packet.vehicle;
 
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -11,16 +12,14 @@ import io.netty.buffer.ByteBuf;
  * (whose own movement it checks) and replicates the rest (the oars through the boat's visual
  * state). Droppable — the next one supersedes it.
  */
-public record VehicleMoveC2S(int networkId, float x, float y, float z, float yaw,
+public record VehicleMoveC2S(int networkId, double x, double y, double z, float yaw,
                              byte oarLeft, byte oarRight) implements Packet {
 
     public static final PacketCodec<VehicleMoveC2S> CODEC = new PacketCodec<>() {
         @Override
         public void encode(ByteBuf out, VehicleMoveC2S p) {
             out.writeInt(p.networkId());
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
             out.writeFloat(p.yaw());
             out.writeByte(p.oarLeft());
             out.writeByte(p.oarRight());
@@ -28,7 +27,7 @@ public record VehicleMoveC2S(int networkId, float x, float y, float z, float yaw
 
         @Override
         public VehicleMoveC2S decode(ByteBuf in) {
-            return new VehicleMoveC2S(in.readInt(), in.readFloat(), in.readFloat(), in.readFloat(),
+            return new VehicleMoveC2S(in.readInt(), NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in),
                     in.readFloat(), in.readByte(), in.readByte());
         }
     };

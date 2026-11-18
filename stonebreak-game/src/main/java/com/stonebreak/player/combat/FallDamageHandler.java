@@ -39,7 +39,7 @@ public class FallDamageHandler {
         }
 
         if (state.isOnGround() && state.wasFalling()) {
-            float fallDistance = state.getPreviousY() - state.getPosition().y;
+            float fallDistance = (float) (state.getPreviousY() - state.getPosition().y);
             if (fallDistance > 4.0f && !state.isPhysicallyInWater()) {
                 float damage = (fallDistance - 4.0f) * (HEALTH_PER_HEART * 0.25f);
                 // In a session the server lands the fall from the reported positions (#343).

@@ -5,6 +5,7 @@ import com.stonebreak.mobs.cow.Cow;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.EntityManager;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -37,8 +38,8 @@ public class EntitySightingTracker {
         if (player == null) return;
 
         Camera camera = player.getCamera();
-        Vector3f feet = player.getPosition();
-        Vector3f cameraPos = new Vector3f(feet.x, feet.y + com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET, feet.z);
+        Vector3d feet = player.getPosition();
+        Vector3d cameraPos = new Vector3d(feet.x, feet.y + com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET, feet.z);
         Vector3f front = camera.getFront();
         float frontLen = front.length();
         if (frontLen < 0.001f) return;
@@ -53,10 +54,10 @@ public class EntitySightingTracker {
                     && type != EntityType.GOBLIN) continue;
 
             // Check distance
-            Vector3f pos = entity.getPosition();
-            float dx = pos.x - cameraPos.x;
-            float dy = pos.y - cameraPos.y;
-            float dz = pos.z - cameraPos.z;
+            Vector3d pos = entity.getPosition();
+            float dx = (float) (pos.x - cameraPos.x);
+            float dy = (float) (pos.y - cameraPos.y);
+            float dz = (float) (pos.z - cameraPos.z);
             if (dx * dx + dy * dy + dz * dz > MAX_DISTANCE_SQUARED) continue;
 
             // Check FOV cone

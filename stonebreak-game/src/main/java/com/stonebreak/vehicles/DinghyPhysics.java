@@ -5,6 +5,7 @@ import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.blocks.waterSystem.WaterSubmersion;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -60,11 +61,11 @@ public final class DinghyPhysics {
         if (world == null || dt <= 0f) {
             return;
         }
-        Vector3f pos = boat.getPosition();
+        Vector3d pos = boat.getPosition();
         Vector3f vel = boat.getVelocity();
 
-        float surface = waterSurfaceY(world, pos.x, pos.y, pos.z);
-        boolean afloat = !Float.isNaN(surface) && surface - WATERLINE > pos.y - 0.5f;
+        double surface = waterSurfaceY(world, pos.x, pos.y, pos.z);
+        boolean afloat = !Double.isNaN(surface) && surface - WATERLINE > pos.y - 0.5;
         boat.setSubmersion(afloat ? 1f : 0f);
         float authority = afloat ? 1f : (boat.isOnGround() ? LAND_FACTOR : 0f);
 
@@ -82,8 +83,8 @@ public final class DinghyPhysics {
         vel.z *= drag;
 
         if (afloat) {
-            float target = surface - WATERLINE;
-            vel.y += ((target - pos.y) * BUOY_SPRING - vel.y * BUOY_DAMPING) * dt;
+            double target = surface - WATERLINE;
+            vel.y += (float) (((target - pos.y) * BUOY_SPRING - vel.y * BUOY_DAMPING) * dt);
             WaterFlowPhysics.applyWaterFlowForce(world, pos, vel, dt, HALF_BEAM * 2f, HULL_HEIGHT);
         } else {
             vel.y += GRAVITY * dt;
@@ -102,18 +103,18 @@ public final class DinghyPhysics {
      * Y of the water surface in the column at (x, z) near a hull at {@code y}, or NaN when there
      * is no water there. A hull dragged fully under rises toward a surface up to two blocks up.
      */
-    static float waterSurfaceY(World world, float x, float y, float z) {
-        float feet = y - 1f;
+    static double waterSurfaceY(World world, double x, double y, double z) {
+        double feet = y - 1.0;
         float span = 3f;
         float fraction = WaterSubmersion.fractionAt(world, x, feet, z, span);
         if (fraction <= 0f) {
-            return Float.NaN;
+            return Double.NaN;
         }
         return feet + fraction * span;
     }
 
-    private static void moveX(World world, Vector3f pos, Vector3f vel, float dt) {
-        float nx = pos.x + vel.x * dt;
+    private static void moveX(World world, Vector3d pos, Vector3f vel, float dt) {
+        double nx = pos.x + vel.x * dt;
         if (blocked(world, nx, pos.y, pos.z)) {
             vel.x = 0f;
         } else {
@@ -121,8 +122,8 @@ public final class DinghyPhysics {
         }
     }
 
-    private static void moveZ(World world, Vector3f pos, Vector3f vel, float dt) {
-        float nz = pos.z + vel.z * dt;
+    private static void moveZ(World world, Vector3d pos, Vector3f vel, float dt) {
+        double nz = pos.z + vel.z * dt;
         if (blocked(world, pos.x, pos.y, nz)) {
             vel.z = 0f;
         } else {
@@ -130,11 +131,11 @@ public final class DinghyPhysics {
         }
     }
 
-    private static void moveY(World world, Dinghy boat, Vector3f pos, Vector3f vel, float dt) {
-        float ny = pos.y + vel.y * dt;
+    private static void moveY(World world, Dinghy boat, Vector3d pos, Vector3f vel, float dt) {
+        double ny = pos.y + vel.y * dt;
         if (vel.y < 0f) {
-            float floor = floorTop(world, pos.x, ny, pos.y, pos.z);
-            if (!Float.isNaN(floor)) {
+            double floor = floorTop(world, pos.x, ny, pos.y, pos.z);
+            if (!Double.isNaN(floor)) {
                 pos.y = floor + EPS;
                 vel.y = 0f;
                 boat.setOnGround(true);
@@ -148,13 +149,13 @@ public final class DinghyPhysics {
     }
 
     /** True when a hull footprint at (x, y, z) overlaps solid collision. */
-    static boolean blocked(World world, float x, float y, float z) {
-        float minX = x - HALF_BEAM, maxX = x + HALF_BEAM;
-        float minZ = z - HALF_BEAM, maxZ = z + HALF_BEAM;
-        float minY = y + EPS, maxY = y + HULL_HEIGHT;
-        for (int bx = (int) Math.floor(minX); bx <= (int) Math.floor(maxX - EPS); bx++) {
-            for (int bz = (int) Math.floor(minZ); bz <= (int) Math.floor(maxZ - EPS); bz++) {
-                for (int by = (int) Math.floor(minY); by <= (int) Math.floor(maxY); by++) {
+    static boolean blocked(World world, double x, double y, double z) {
+        double minX = x - HALF_BEAM, maxX = x + HALF_BEAM;
+        double minZ = z - HALF_BEAM, maxZ = z + HALF_BEAM;
+        double minY = y + EPS, maxY = y + HULL_HEIGHT;
+        for (long bx = (long) Math.floor(minX); bx <= (long) Math.floor(maxX - EPS); bx++) {
+            for (long bz = (long) Math.floor(minZ); bz <= (long) Math.floor(maxZ - EPS); bz++) {
+                for (long by = (long) Math.floor(minY); by <= (long) Math.floor(maxY); by++) {
                     float h = BlockShape.collisionHeight(world, bx, by, bz, minX, minZ, maxX, maxZ);
                     if (h > 0f && minY < by + h && maxY > by) {
                         return true;
@@ -166,16 +167,17 @@ public final class DinghyPhysics {
     }
 
     /** Highest solid top in [newY, oldY] under the footprint, or NaN when the drop is clear. */
-    private static float floorTop(World world, float x, float newY, float oldY, float z) {
-        float minX = x - HALF_BEAM, maxX = x + HALF_BEAM;
-        float minZ = z - HALF_BEAM, maxZ = z + HALF_BEAM;
-        float best = Float.NaN;
+    private static double floorTop(World world, double x, double newY, double oldY, double z) {
+        double minX = x - HALF_BEAM, maxX = x + HALF_BEAM;
+        double minZ = z - HALF_BEAM, maxZ = z + HALF_BEAM;
+        double best = Double.NaN;
         for (int bx = (int) Math.floor(minX); bx <= (int) Math.floor(maxX - EPS); bx++) {
             for (int bz = (int) Math.floor(minZ); bz <= (int) Math.floor(maxZ - EPS); bz++) {
                 for (int by = (int) Math.floor(newY); by <= (int) Math.floor(oldY); by++) {
-                    float h = BlockShape.collisionHeight(world, bx, by, bz, minX, minZ, maxX, maxZ);
-                    float top = by + h;
-                    if (h > 0f && top >= newY && top <= oldY + EPS && (Float.isNaN(best) || top > best)) {
+                    float h = BlockShape.collisionHeight(world, bx, by, bz,
+                        (float) minX, (float) minZ, (float) maxX, (float) maxZ);
+                    double top = by + h;
+                    if (h > 0f && top >= newY && top <= oldY + EPS && (Double.isNaN(best) || top > best)) {
                         best = top;
                     }
                 }

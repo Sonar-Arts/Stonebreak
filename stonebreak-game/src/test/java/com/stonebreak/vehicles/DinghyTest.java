@@ -3,6 +3,7 @@ package com.stonebreak.vehicles;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.rendering.Renderer;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +19,7 @@ class DinghyTest {
     /** A stand-in mob: only seat bookkeeping is under test. */
     private static final class Rider extends Entity {
         Rider() {
-            super(null, new Vector3f());
+            super(null, new Vector3d());
             setNetworkId(77);
         }
         @Override public void update(float deltaTime) { }
@@ -27,7 +28,7 @@ class DinghyTest {
     }
 
     private static Dinghy boat() {
-        return new Dinghy(null, new Vector3f(10f, 64f, 20f), 0f);
+        return new Dinghy(null, new Vector3d(10, 64, 20), 0f);
     }
 
     @Test
@@ -90,8 +91,8 @@ class DinghyTest {
 
     @Test
     void seatsTurnWithTheBoat() {
-        Dinghy d = new Dinghy(null, new Vector3f(), 90f);
-        Vector3f stern = d.seatPosition(Dinghy.PASSENGER_SEAT, new Vector3f());
+        Dinghy d = new Dinghy(null, new Vector3d(), 90f);
+        Vector3d stern = d.seatPosition(Dinghy.PASSENGER_SEAT, new Vector3d());
         // yaw 90 turns model +Z (the stern) to world +X
         assertEquals(0.84f, stern.x, 1e-4f);
         assertEquals(0f, stern.z, 1e-4f);
@@ -99,11 +100,11 @@ class DinghyTest {
 
     @Test
     void theLongHullIsHitAlongItsLength() {
-        Dinghy d = new Dinghy(null, new Vector3f(), 0f);
+        Dinghy d = new Dinghy(null, new Vector3d(), 0f);
         Vector3f down = new Vector3f(0f, -1f, 0f);
-        assertTrue(d.rayIntersect(new Vector3f(0f, 3f, -1.6f), down) < Float.MAX_VALUE, "bow");
-        assertEquals(Float.MAX_VALUE, d.rayIntersect(new Vector3f(1.2f, 3f, 0f), down), "beside the hull");
-        Dinghy turned = new Dinghy(null, new Vector3f(), 90f);
-        assertTrue(turned.rayIntersect(new Vector3f(-1.6f, 3f, 0f), down) < Float.MAX_VALUE, "bow, turned");
+        assertTrue(d.rayIntersect(new Vector3d(0f, 3f, -1.6f), down) < Float.MAX_VALUE, "bow");
+        assertEquals(Float.MAX_VALUE, d.rayIntersect(new Vector3d(1.2f, 3f, 0f), down), "beside the hull");
+        Dinghy turned = new Dinghy(null, new Vector3d(), 90f);
+        assertTrue(turned.rayIntersect(new Vector3d(-1.6f, 3f, 0f), down) < Float.MAX_VALUE, "bow, turned");
     }
 }

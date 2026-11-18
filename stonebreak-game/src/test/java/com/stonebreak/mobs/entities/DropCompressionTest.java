@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -39,7 +40,7 @@ class DropCompressionTest {
     void blockDropAbsorbsNearbySameTypeDrop() {
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         BlockDrop a = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         BlockDrop b = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         b.setStackCount(3);
@@ -57,7 +58,7 @@ class DropCompressionTest {
     void blockDropMergeStaysAtMaxStackSize() {
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         BlockDrop a = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         BlockDrop b = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         a.setStackCount(BlockType.DIRT.getMaxStackSize());
@@ -73,7 +74,7 @@ class DropCompressionTest {
     void blockDropsOfDifferentTypesDoNotMerge() {
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         BlockDrop dirt = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         BlockDrop stone = BlockDrop.createDrop(world, pos, BlockType.STONE);
         when(em.getAllEntities()).thenReturn(List.of(dirt, stone));
@@ -88,7 +89,7 @@ class DropCompressionTest {
     void itemDropAbsorbsOnlyTheSameItem() {
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         ItemDrop a = new ItemDrop(world, pos, ItemType.STICK, 2);
         ItemDrop b = new ItemDrop(world, pos, ItemType.STICK, 5);
         ItemDrop banana = new ItemDrop(world, pos, ItemType.BANANA, 1);
@@ -106,7 +107,7 @@ class DropCompressionTest {
         // Block stacks have no ItemType; the old getItemType() comparison saw null == null.
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         ItemDrop dirt = new ItemDrop(world, pos, new ItemStack(BlockType.DIRT, 1));
         ItemDrop stone = new ItemDrop(world, pos, new ItemStack(BlockType.STONE, 1));
         when(em.getAllEntities()).thenReturn(List.of(dirt, stone));
@@ -121,7 +122,7 @@ class DropCompressionTest {
     void blockDropNeverCompressesANetworkShadow() {
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         BlockDrop authoritative = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         BlockDrop shadow = BlockDrop.createDrop(world, pos, BlockType.DIRT);
         shadow.setNetworkShadow(true);
@@ -138,12 +139,12 @@ class DropCompressionTest {
         // Shadows skip update(), but DropRenderer's bob/spin derive from getAge() —
         // updateClientVisuals (called by EntityManager for shadows) must advance it.
         World world = worldWithManager(mock(EntityManager.class));
-        BlockDrop blockShadow = BlockDrop.createDrop(world, new Vector3f(), BlockType.DIRT);
+        BlockDrop blockShadow = BlockDrop.createDrop(world, new Vector3d(), BlockType.DIRT);
         blockShadow.setNetworkShadow(true);
         blockShadow.updateClientVisuals(TICK);
         assertEquals(TICK, blockShadow.getAge(), 1e-6f);
 
-        ItemDrop itemShadow = new ItemDrop(world, new Vector3f(), ItemType.STICK, 1);
+        ItemDrop itemShadow = new ItemDrop(world, new Vector3d(), ItemType.STICK, 1);
         itemShadow.setNetworkShadow(true);
         itemShadow.updateClientVisuals(TICK);
         assertEquals(TICK, itemShadow.getAge(), 1e-6f);
@@ -153,7 +154,7 @@ class DropCompressionTest {
     void itemDropNeverCompressesANetworkShadow() {
         EntityManager em = mock(EntityManager.class);
         World world = worldWithManager(em);
-        Vector3f pos = new Vector3f(8f, 64f, 8f);
+        Vector3d pos = new Vector3d(8f, 64f, 8f);
         ItemDrop authoritative = new ItemDrop(world, pos, ItemType.STICK, 1);
         ItemDrop shadow = new ItemDrop(world, pos, ItemType.STICK, 1);
         shadow.setNetworkShadow(true);

@@ -223,3 +223,69 @@ def test_to_elevation_disagrees_with_the_pre_phase5_linear_mapping():
     blocks = np.arange(curve.sea_level, curve.sea_level + 100)
     linear = (blocks - curve.sea_level) * 15.0
     assert curve.to_elevation(blocks)[-1] < 0.5 * linear[-1]
+
+
+# ---- min_y (the cubic world spans [-384, 640); heights are absolute block y) -----------------------------------
+
+def test_world_config_min_y_is_optional_and_keeps_old_fingerprints():
+    import hashlib
+    import json
+
+    w = WorldConfig.GAME
+    assert w.min_y == 0
+    old = {k: v for k, v in w.to_dict().items() if k != "min_y"}   # what an older game sends
+    assert WorldConfig.from_dict(old) == w
+    # The default keeps the pre-min_y fingerprint (cache namespaces stay valid).
+    assert w.fingerprint() == hashlib.sha1(json.dumps(old, sort_keys=True).encode()).hexdigest()[:12]
+    cubic = WorldConfig.from_dict({**old, "world_height": 640, "min_y": -384})
+    assert (cubic.min_y, cubic.world_height) == (-384, 640)
+    assert cubic.fingerprint() != WorldConfig.from_dict({**old, "world_height": 640}).fingerprint()
+    assert WorldConfig.from_dict(cubic.to_dict()) == cubic
+    with pytest.raises(ValueError, match="unknown"):
+        WorldConfig.from_dict({**old, "min_yy": -384})
+
+
+def test_world_config_min_y_bounds():
+    old = {k: v for k, v in WorldConfig.GAME.to_dict().items() if k != "min_y"}
+    with pytest.raises(ValueError, match="min_y"):
+        WorldConfig.from_dict({**old, "min_y": 300})          # >= world_height 256
+    with pytest.raises(ValueError, match="sea_level"):
+        WorldConfig.from_dict({**old, "min_y": 100})          # sea level 64 below the floor
+    WorldConfig.from_dict({**old, "min_y": -384, "sea_level": -10})   # a sea below 0 is inside the world now
+
+
+def test_min_y_moves_the_floor_clamp():
+    flat = _curve(sea_level=64, world_height=640)
+    deep = _curve(sea_level=64, world_height=640, min_y=-384)
+    trench = np.array([-3000.0, -10000.0, -60000.0])
+    assert np.all(flat.to_block_height(trench) == 0)
+    out = deep.to_block_height(trench)
+    assert out[0] < 0 and out[1] < out[0]                    # below y 0 now, still monotone
+    assert out[2] == -384                                    # clamped at the floor
+    # Above the old floor nothing changes.
+    elev = np.arange(-200.0, 9000.0, 7.0)
+    keep = flat.to_block_height(elev) > 0
+    assert np.array_equal(flat.to_block_height(elev)[keep], deep.to_block_height(elev)[keep])
+
+
+def test_deep_column_widens_the_table_and_default_table_is_unchanged():
+    from terrain_slm.world import height_curve as H
+
+    # 12 m/block under sea level reaches -384 within the default +-20 km; 48 m/block (the game's ocean) does not:
+    # the table widens instead of refusing.
+    deep = _curve(ocean_meters_per_block=48.0, sea_level=64, world_height=640, min_y=-384)
+    elev, blocks = H._curve_table(deep)
+    assert blocks[0] <= -384 and elev[0] < H._TABLE_MIN_M
+    assert deep.to_block_height_exact(np.array([0.0]))[0] == 64.0
+    # min_y 0: the table is the one the +-20 km grid always gave (bit-identical).
+    c = _curve()
+    e0, b0 = H._curve_table(c)
+    e1, b1 = H._integrate(c, H._TABLE_MIN_M, H._TABLE_MAX_M)
+    assert np.array_equal(e0, e1) and np.array_equal(b0, b1)
+    assert e0[0] == H._TABLE_MIN_M and e0[-1] == H._TABLE_MAX_M
+
+
+def test_world_config_curve_carries_min_y():
+    old = {k: v for k, v in WorldConfig.GAME.to_dict().items() if k != "min_y"}
+    w = WorldConfig.from_dict({**old, "world_height": 640, "min_y": -384})
+    assert HeightCurve.from_world(w).min_y == -384

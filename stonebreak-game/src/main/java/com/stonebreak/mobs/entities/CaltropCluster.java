@@ -6,6 +6,8 @@ import static com.stonebreak.player.PlayerConstants.FLAT_FOOTED_DURATION;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -20,7 +22,7 @@ public class CaltropCluster extends Entity {
 
     private final float duration;
 
-    public CaltropCluster(World world, Vector3f position, float duration) {
+    public CaltropCluster(World world, Vector3dc position, float duration) {
         super(world, position);
         this.duration = duration;
         this.width = 0.4f;

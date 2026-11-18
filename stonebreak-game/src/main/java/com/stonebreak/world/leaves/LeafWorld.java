@@ -1,6 +1,8 @@
 package com.stonebreak.world.leaves;
 
 import com.openmason.engine.physics.PhysicsWorld;
+import com.openmason.engine.voxel.world.CubePos;
+import com.openmason.engine.voxel.world.CubeWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -9,15 +11,48 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * contains only the scheduling and reachability rules; everything it observes or
  * mutates goes through this seam, so the algorithm is unit-testable over a flat
  * array (see FakeLeafWorld in tests) and the production adapter
- * ({@link WorldLeafWorld}) owns all Chunk/CCO/replication plumbing.
+ * ({@link WorldLeafWorld}) owns all cube/replication plumbing.
+ *
+ * <p>Block coordinates are {@code long} (cubic voxel runtime, #447).
  */
 public interface LeafWorld {
 
-    /** Block at world coords; AIR outside the world or in unloaded chunks. */
-    BlockType getBlock(int x, int y, int z);
+    /** Block at world coords; AIR outside the world or in unloaded cells. */
+    BlockType getBlock(long x, long y, long z);
 
-    /** Whether the position is inside the world and its chunk is resident. */
-    boolean isLoaded(int x, int y, int z);
+    /**
+     * Whether the cell's content is known: its cube is resident, or it is known air (above its
+     * column's top) - a cell nothing unseen can hide a log in.
+     */
+    boolean isLoaded(long x, long y, long z);
+
+    /**
+     * Whether every cell of the box {@code [x0, x1] x [y0, y1] x [z0, z1]} (inclusive, already clamped to
+     * {@link #minY()}..{@link #maxY()}-1) is {@link #isLoaded known}. The default probes one cell of each
+     * cube the box touches (its clipped corner); adapters may answer more precisely.
+     */
+    default boolean isRegionLoaded(long x0, long y0, long z0, long x1, long y1, long z1) {
+        for (long cx = x0 >> 5; cx <= x1 >> 5; cx++) {
+            for (long cy = y0 >> 5; cy <= y1 >> 5; cy++) {
+                for (long cz = z0 >> 5; cz <= z1 >> 5; cz++) {
+                    if (!isLoaded(Math.max(x0, cx << 5), Math.max(y0, cy << 5), Math.max(z0, cz << 5))) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Lowest block y the flood and the residency check may touch (inclusive). */
+    default long minY() {
+        return WorldConfiguration.MIN_Y;
+    }
+
+    /** One past the highest block y. */
+    default long maxY() {
+        return WorldConfiguration.MAX_Y;
+    }
 
     /**
      * The physics world whose cells mirror this one, where the reachability flood runs: leaves carry
@@ -34,38 +69,37 @@ public interface LeafWorld {
      * meshing and replication all observe the removal; called on the sim tick
      * thread.
      */
-    void setBlock(int x, int y, int z, BlockType type);
+    void setBlock(long x, long y, long z, BlockType type);
 
     /**
-     * Exclusive upper Y bound worth scanning for foliage in a column, for the
-     * chunk-load rescan. Everything above the tallest tree a column can hold is
-     * open sky, and reading it back block by block costs the loading thread real
-     * time on a tall world — this world is 1024 blocks deep, four times what the
-     * rescan was originally written against.
-     *
-     * <p>Only the top is bounded, never the bottom: the rescan still sweeps from
-     * y=0, so foliage below the surface (a cave, or anything a player built there)
-     * is found exactly as before. The default scans the whole column.
+     * The blocks of one resident cube in {@link CubeWorld#cellIndex} order, for the install rescan, or null
+     * when the cube is not resident or provably holds no leaf and no log (e.g. a uniform air or stone cube).
+     * The default reads the cells one by one.
      */
-    default int foliageScanTop(int x, int z) {
-        return WorldConfiguration.WORLD_HEIGHT;
-    }
-
-    /**
-     * Which 16-block sections of a resident chunk may hold leaves or logs, for the chunk-load
-     * rescan: bit {@code i} covers {@code y} in {@code [16i, 16i+16)}, and a clear bit proves the
-     * section holds neither. {@code -1L} (the default) means unknown — scan every section up to
-     * {@link #foliageScanTop}. When known, the rescan skips {@link #foliageScanTop} entirely.
-     */
-    default long foliageSectionMask(int chunkX, int chunkZ) {
-        return -1L;
+    default BlockType[] cubeBlocks(CubePos pos) {
+        long bx = pos.minBlockX(), by = pos.minBlockY(), bz = pos.minBlockZ();
+        if (!isLoaded(bx, by, bz)) {
+            return null;
+        }
+        BlockType[] out = new BlockType[CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE];
+        boolean any = false;
+        for (int ly = 0; ly < 32; ly++) {
+            for (int lz = 0; lz < 32; lz++) {
+                for (int lx = 0; lx < 32; lx++) {
+                    BlockType b = getBlock(bx + lx, by + ly, bz + lz);
+                    out[CubeWorld.cellIndex(lx, ly, lz)] = b;
+                    any |= b != null && (b.isLeaves() || b.isLog());
+                }
+            }
+        }
+        return any ? out : null;
     }
 
     /** Called once after each logical sim tick — adapters flush batched work here. */
     default void onTickComplete() {
     }
 
-    /** Chunk eviction hook so adapters can drop per-chunk caches. */
-    default void onChunkUnloaded(int chunkX, int chunkZ) {
+    /** Cube eviction hook so adapters can drop per-cube caches. */
+    default void onCubeUnloaded(CubePos pos) {
     }
 }

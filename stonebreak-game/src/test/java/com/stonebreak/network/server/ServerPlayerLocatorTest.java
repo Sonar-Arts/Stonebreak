@@ -36,7 +36,7 @@ class ServerPlayerLocatorTest {
 
     private final List<ServerPlayer> roster = new ArrayList<>();
     private final ServerPlayerLocator locator = new ServerPlayerLocator(roster);
-    private final StubMob goose = new StubMob(EntityType.GOOSE, new Vector3f(0, 64, 0));
+    private final StubMob goose = new StubMob(EntityType.GOOSE, new org.joml.Vector3d(0, 64, 0));
 
     private ServerPlayer joined(int id, float x, float z) {
         ServerPlayer player = new ServerPlayer(null, id);
@@ -83,12 +83,12 @@ class ServerPlayerLocatorTest {
         ServerPlayer dead = joined(4, 1, 0);
         dead.setDead(true);
 
-        assertNull(locator.nearestPlayer(goose.getPosition(), new Vector3f()));
+        assertNull(locator.nearestPlayer(goose.getPosition(), new org.joml.Vector3d()));
 
         joined(5, 9, 0);
-        Vector3f nearest = locator.nearestPlayer(goose.getPosition(), new Vector3f());
+        org.joml.Vector3d nearest = locator.nearestPlayer(goose.getPosition(), new org.joml.Vector3d());
         assertNotNull(nearest);
-        assertEquals(9.0f, nearest.x, 1e-4f, "only the live player counts, though it is furthest");
+        assertEquals(9.0, nearest.x, 1e-4, "only the live player counts, though it is furthest");
     }
 
     /**
@@ -98,16 +98,16 @@ class ServerPlayerLocatorTest {
     @Test
     void mobsSeeWhateverTheirWorldIsGiven() {
         TestWorld world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        StubMob mob = new StubMob(EntityType.COW, new Vector3f(0, 64, 0), world);
+        StubMob mob = new StubMob(EntityType.COW, new org.joml.Vector3d(0, 64, 0), world);
         PlayerLocator viaWorld = PlayerLocator.ofWorld(mob);
 
         assertSame(PlayerLocator.NONE, world.getPlayerLocator(), "render/test worlds see nobody");
         joined(2, 4, 0);
-        assertNull(viaWorld.nearestPlayer(mob.getPosition(), new Vector3f()));
+        assertNull(viaWorld.nearestPlayer(mob.getPosition(), new org.joml.Vector3d()));
 
         world.setPlayerLocator(locator);
-        Vector3f nearest = viaWorld.nearestPlayer(mob.getPosition(), new Vector3f());
+        org.joml.Vector3d nearest = viaWorld.nearestPlayer(mob.getPosition(), new org.joml.Vector3d());
         assertNotNull(nearest, "resolved lazily, so wiring after the mob was built still counts");
-        assertEquals(4.0f, nearest.x, 1e-4f);
+        assertEquals(4.0, nearest.x, 1e-4);
     }
 }

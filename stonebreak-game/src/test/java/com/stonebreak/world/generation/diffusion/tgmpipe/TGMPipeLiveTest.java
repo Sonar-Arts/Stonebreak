@@ -72,7 +72,7 @@ class TGMPipeLiveTest {
             assertEquals(n, ta.width());
             assertEquals(n, ta.height());
             for (short h : ta.blockHeights()) {
-                assertTrue(h >= 0 && h < WorldConfiguration.WORLD_HEIGHT, "height " + h);
+                assertTrue(h >= 0 && h < WorldConfiguration.MAX_Y, "height " + h);
             }
             assertFalse(Arrays.equals(ta.blockHeights(), tb.blockHeights()), "two seeds, two worlds");
         }

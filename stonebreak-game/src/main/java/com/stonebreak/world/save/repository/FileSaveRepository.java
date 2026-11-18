@@ -1,8 +1,7 @@
 package com.stonebreak.world.save.repository;
 
+import com.stonebreak.world.save.WorldFormat;
 import com.stonebreak.world.save.io.AtomicFiles;
-import com.stonebreak.world.save.io.ChunkStorage;
-import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.serialization.JsonPlayerSerializer;
@@ -12,12 +11,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Collection;
 import java.util.Optional;
 
 /**
- * Thin file I/O abstraction used by {@link com.stonebreak.world.save.SaveService}.
- * All methods are synchronous; callers decide threading policy.
+ * Thin file I/O abstraction used by {@link com.stonebreak.world.save.SaveService} for the JSON records of a world
+ * (metadata, creation record, players). Blocks live in the world's native cube store ({@code <world>/cubes},
+ * written by the world's stream - see {@link WorldFormat}). All methods are synchronous; callers decide threading.
  */
 public class FileSaveRepository {
 
@@ -26,7 +25,6 @@ public class FileSaveRepository {
     /** world.json: written once at creation (seed, generator, format) and never rewritten. */
     private final Path creationRecordFile;
     private final Path playerFile;
-    private final ChunkStorage chunkStorage;
     private final JsonWorldSerializer worldSerializer = new JsonWorldSerializer();
     private final JsonPlayerSerializer playerSerializer = new JsonPlayerSerializer();
 
@@ -35,7 +33,6 @@ public class FileSaveRepository {
         this.metadataFile = worldRoot.resolve("metadata.json");
         this.creationRecordFile = worldRoot.resolve("world.json");
         this.playerFile = worldRoot.resolve("player.json");
-        this.chunkStorage = new ChunkStorage(worldRoot.resolve("chunks"));
     }
 
     public void ensureWorldDirectory() throws IOException {
@@ -46,7 +43,7 @@ public class FileSaveRepository {
 
     public void saveWorld(WorldData world) throws IOException {
         ensureWorldDirectory();
-        AtomicFiles.write(metadataFile, worldSerializer.serialize(world));
+        AtomicFiles.writeDurable(metadataFile, worldSerializer.serialize(world));
     }
 
     /**
@@ -87,10 +84,16 @@ public class FileSaveRepository {
         return setAside(metadataFile);
     }
 
+    /** The world's directory. */
+    public Path worldRoot() {
+        return worldRoot;
+    }
+
     /**
-     * Whether this world has anything saved besides its metadata: a chunk, a player record, or
-     * a metadata file set aside earlier. A missing {@code metadata.json} only means "new world"
-     * when this is false — otherwise booting it as new would overwrite the real world.
+     * Whether this world has anything saved besides its metadata: cube store files, column chunk
+     * files of an old world, a player record, or a metadata file set aside earlier. A missing
+     * {@code metadata.json} only means "new world" when this is false — otherwise booting it as
+     * new would overwrite the real world.
      */
     public boolean hasSavedWorldContent() throws IOException {
         if (Files.exists(playerFile) || Files.isDirectory(playersDir())) {
@@ -101,7 +104,10 @@ public class FileSaveRepository {
                 return true;
             }
         }
-        Path chunks = worldRoot.resolve("chunks");
+        if (WorldFormat.hasCubeStoreFiles(worldRoot)) {
+            return true;
+        }
+        Path chunks = worldRoot.resolve(WorldFormat.LEGACY_CHUNKS_DIR);
         if (!Files.isDirectory(chunks)) {
             return false;
         }
@@ -112,7 +118,7 @@ public class FileSaveRepository {
 
     public void savePlayer(PlayerData player) throws IOException {
         ensureWorldDirectory();
-        AtomicFiles.write(playerFile, playerSerializer.serialize(player));
+        AtomicFiles.writeDurable(playerFile, playerSerializer.serialize(player));
     }
 
     public Optional<PlayerData> loadPlayer() throws IOException {
@@ -151,7 +157,7 @@ public class FileSaveRepository {
 
     public void saveNamedPlayerBytes(String username, byte[] json) throws IOException {
         ensureWorldDirectory();
-        AtomicFiles.write(namedPlayerFile(username), json);
+        AtomicFiles.writeDurable(namedPlayerFile(username), json);
     }
 
     public Optional<byte[]> loadNamedPlayerBytes(String username) throws IOException {
@@ -210,31 +216,8 @@ public class FileSaveRepository {
         }
     }
 
-    public void saveChunks(Collection<ChunkData> chunks) throws IOException {
-        ensureWorldDirectory();
-        chunkStorage.saveChunks(chunks);
-    }
-
-    /** Single-chunk save — the parallel save pool fans batches out through this. */
-    public void saveChunk(ChunkData chunk) throws IOException {
-        ensureWorldDirectory();
-        chunkStorage.saveChunk(chunk);
-    }
-
-    public Optional<ChunkData> loadChunk(int chunkX, int chunkZ) throws IOException {
-        return chunkStorage.loadChunk(chunkX, chunkZ);
-    }
-
-    public boolean chunkExists(int chunkX, int chunkZ) {
-        return chunkStorage.chunkExists(chunkX, chunkZ);
-    }
-
     public boolean worldExists() {
         return Files.exists(metadataFile) && Files.isReadable(metadataFile);
-    }
-
-    public void deleteChunk(int chunkX, int chunkZ) throws IOException {
-        chunkStorage.deleteChunk(chunkX, chunkZ);
     }
 
     public void close() {

@@ -45,7 +45,7 @@ public final class ServerMutationSinks {
     @FunctionalInterface
     public interface SoundSink {
         /** {@code event} from {@code type}'s SBE {@code sounds[]}, heard at {@code (x, y, z)}. */
-        void onServerEntitySound(EntityType type, String event, float x, float y, float z);
+        void onServerEntitySound(EntityType type, String event, double x, double y, double z);
     }
 
     private volatile BlockSink blocks;

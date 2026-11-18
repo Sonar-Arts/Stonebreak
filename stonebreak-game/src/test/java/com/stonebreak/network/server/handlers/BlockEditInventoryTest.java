@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
@@ -69,27 +69,27 @@ class BlockEditInventoryTest {
     private ServerPlayer player;
     private SnowLayerManager snow;
 
-    private static String key(int x, int y, int z) {
+    private static String key(long x, long y, long z) {
         return x + "," + y + "," + z;
     }
 
     @BeforeEach
     void setUp() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> blocks.getOrDefault(
-                key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), BlockType.AIR));
-        when(world.getBlockStateAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> states.get(
-                key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2))));
-        when(world.getWaterValueAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            String k = key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2));
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> blocks.getOrDefault(
+                key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class)), BlockType.AIR));
+        when(world.getBlockStateAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> states.get(
+                key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class))));
+        when(world.getWaterValueAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            String k = key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class));
             return blocks.get(k) == BlockType.WATER ? water.getOrDefault(k, 0) : -1;
         });
-        when(world.setBlockAt(anyInt(), anyInt(), anyInt(), any(BlockType.class), anyBoolean()))
+        when(world.setBlockAt(anyLong(), anyLong(), anyLong(), any(BlockType.class), anyBoolean()))
                 .thenAnswer(inv -> {
                     if (!chunksLoaded) {
                         return false;
                     }
-                    String k = key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2));
+                    String k = key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class));
                     BlockType type = inv.getArgument(3);
                     if (blocks.getOrDefault(k, BlockType.AIR) != type) {
                         states.remove(k);
@@ -99,11 +99,14 @@ class BlockEditInventoryTest {
                     return true;
                 });
         org.mockito.Mockito.doAnswer(inv -> {
-            states.put(key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), inv.getArgument(3));
+            states.put(key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class)), inv.getArgument(3));
             return null;
-        }).when(world).setBlockStateAt(anyInt(), anyInt(), anyInt(), any());
+        }).when(world).setBlockStateAt(anyLong(), anyLong(), anyLong(), any());
         when(world.serverSinks()).thenReturn(new ServerMutationSinks());
-        snow = new SnowLayerManager();
+        com.stonebreak.world.World snowWorld =
+                com.stonebreak.world.World.createDetached(new com.stonebreak.world.operations.WorldConfiguration(), 0L);
+        snowWorld.ensureCube(0, 64 >> 5, 0); // snow layers live on the cube's SNOW layer (#447)
+        snow = new SnowLayerManager(snowWorld);
         when(world.getSnowLayerManager()).thenReturn(snow);
 
         level = mock(ServerLevel.class);
@@ -355,7 +358,7 @@ class BlockEditInventoryTest {
 
         edit(0, 64, 2, BlockType.WATER, BlockType.AIR);
         assertEquals(1, buckets(EMPTY), "debited when validated");
-        for (int i = 0; i < 25; i++) {
+        for (int i = 0; i < ServerBlockHandler.RETRY_TTL_TICKS + 5; i++) {
             tick();
         }
 
@@ -398,7 +401,7 @@ class BlockEditInventoryTest {
 
         edit(0, 64, 2, BlockType.STONE, BlockType.AIR);
         fillSlots(0, ServerInventory.TOTAL_SLOTS); // the inventory filled up meanwhile
-        for (int i = 0; i < 25; i++) {
+        for (int i = 0; i < ServerBlockHandler.RETRY_TTL_TICKS + 5; i++) {
             tick();
         }
 

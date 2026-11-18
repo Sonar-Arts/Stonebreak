@@ -4,6 +4,7 @@ import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
 import com.stonebreak.network.packet.SequencedIntent;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -15,15 +16,13 @@ import io.netty.buffer.ByteBuf;
  * never reverts a cast. {@code seq} numbers the request ({@link SequencedIntent}): the client
  * predicts the rod state flip on its mirror.
  */
-public record FishingRodC2S(float x, float y, float z, float dx, float dy, float dz, int seq)
+public record FishingRodC2S(double x, double y, double z, float dx, float dy, float dz, int seq)
         implements Packet, SequencedIntent {
 
     public static final PacketCodec<FishingRodC2S> CODEC = new PacketCodec<>() {
         @Override
         public void encode(ByteBuf out, FishingRodC2S p) {
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
             out.writeFloat(p.dx());
             out.writeFloat(p.dy());
             out.writeFloat(p.dz());
@@ -32,7 +31,7 @@ public record FishingRodC2S(float x, float y, float z, float dx, float dy, float
 
         @Override
         public FishingRodC2S decode(ByteBuf in) {
-            return new FishingRodC2S(in.readFloat(), in.readFloat(), in.readFloat(),
+            return new FishingRodC2S(NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in),
                     in.readFloat(), in.readFloat(), in.readFloat(), ByteBufIO.readVarInt(in));
         }
     };

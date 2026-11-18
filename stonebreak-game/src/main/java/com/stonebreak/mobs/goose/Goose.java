@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.goose;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import com.stonebreak.items.ItemStack;
@@ -51,7 +53,7 @@ public class Goose extends LivingEntity {
     private boolean flightBlockedHoriz;
     private boolean flightBlockedVert;
 
-    public Goose(World world, Vector3f position) {
+    public Goose(World world, Vector3dc position) {
         super(world, position, EntityType.GOOSE);
 
         Steering steering = new Steering(this, ROTATION_SPEED, 0.0f, 0.0f);

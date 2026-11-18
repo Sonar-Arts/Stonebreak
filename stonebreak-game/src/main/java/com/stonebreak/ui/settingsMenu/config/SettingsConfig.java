@@ -74,6 +74,10 @@ public final class SettingsConfig {
     // Mirrors WorldConfiguration bounds so UI and engine agree on valid ranges.
     public static final float MIN_RENDER_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MIN_RENDER_DISTANCE;
     public static final float MAX_RENDER_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE;
+    /** Vertical render distance slider, blocks (stepped by whole cubes). */
+    public static final float MIN_VERTICAL_RENDER_DISTANCE = com.stonebreak.config.Settings.MIN_VERTICAL_RENDER_DISTANCE;
+    public static final float MAX_VERTICAL_RENDER_DISTANCE = com.stonebreak.config.Settings.MAX_VERTICAL_RENDER_DISTANCE;
+    public static final float VERTICAL_RENDER_DISTANCE_STEP = com.stonebreak.config.Settings.VERTICAL_RENDER_DISTANCE_STEP;
     public static final float MIN_LOD_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MIN_LOD_RANGE;
     public static final float MAX_LOD_DISTANCE = com.stonebreak.world.operations.WorldConfiguration.MAX_LOD_RANGE;
 

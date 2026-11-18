@@ -3,7 +3,6 @@ package com.stonebreak.network.server;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.ProtocolPhase;
 import com.openmason.engine.net.server.ServerConnection;
-import com.openmason.engine.util.LongIntHashMap;
 
 /**
  * Server-side state for one connected player. Successor to the old {@code RemoteClient}'s
@@ -28,7 +27,9 @@ public final class ServerPlayer {
     private volatile byte[] characterCreationBlob;
 
     // Last reported transform (cached from PlayerStateC2S) for reach checks + chunk targeting.
-    private float x, y, z, yaw, pitch;
+    // World position (double, #445) + view angles.
+    private double x, y, z;
+    private float yaw, pitch;
     private long lastStateNs = 0L;
     /** Dead between the server's kill and the player's respawn (#343; was client-reported, #357). */
     private boolean dead = false;
@@ -36,27 +37,11 @@ public final class ServerPlayer {
     /** Nanos of this player's last authoritative shear request (containment rate limit). */
     private long lastShearNanos = 0L;
 
-    // Per-player chunk-view tracker (was ChunkSynchronizer.PlayerView). Stores the chunk
-    // VERSION last sent to this player so the server re-streams a chunk when it changes
-    // server-side (player edits, water flow). Absent key = never sent. Primitive-keyed —
-    // the steady-state view scan probes this per ring cell, and a boxed Map<Long, Integer>
-    // allocated a Long per probe.
-    private int lastCx = Integer.MIN_VALUE;
-    private int lastCz = Integer.MIN_VALUE;
-    private final LongIntHashMap sentChunkVersions = new LongIntHashMap();
+    /** Cube-stream state (requests, sent cubes/columns, flow control) - cubic voxel runtime, #447. */
+    private final PlayerCubeView cubeView = new PlayerCubeView();
 
-    /**
-     * True while this player's chunk view may be out of date and the streaming scan in
-     * {@code ServerChunkHandler.tick} must run. Set on join (initial fill), on chunk-boundary
-     * crossing, on view-distance change, and when any chunk version bumps; cleared by the
-     * handler only after a scan confirms every in-view chunk is sent at its current version.
-     * Lets the server skip the O(view²) ring walk entirely for stationary players.
-     */
-    private boolean viewScanPending = true;
+    public PlayerCubeView cubeView() { return cubeView; }
 
-    public boolean viewScanPending() { return viewScanPending; }
-    public void markViewScanPending() { this.viewScanPending = true; }
-    public void clearViewScanPending() { this.viewScanPending = false; }
 
     public ServerPlayer(ServerConnection connection, int playerId) {
         this.connection = connection;
@@ -129,9 +114,9 @@ public final class ServerPlayer {
     public String joinNotice() { return joinNotice; }
     public void setJoinNotice(String notice) { this.joinNotice = notice; }
 
-    public float x() { return x; }
-    public float y() { return y; }
-    public float z() { return z; }
+    public double x() { return x; }
+    public double y() { return y; }
+    public double z() { return z; }
     public float yaw() { return yaw; }
     public float pitch() { return pitch; }
     public long lastStateNs() { return lastStateNs; }
@@ -170,7 +155,7 @@ public final class ServerPlayer {
 
     private volatile boolean observer;
 
-    public void updateState(float x, float y, float z, float yaw, float pitch) {
+    public void updateState(double x, double y, double z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
         this.lastStateNs = System.nanoTime();
     }
@@ -194,7 +179,7 @@ public final class ServerPlayer {
      * the first PlayerStateC2S). A save taken before that first report keeps the stored
      * position instead of writing (0,0,0).
      */
-    public void seedTransform(float x, float y, float z, float yaw, float pitch) {
+    public void seedTransform(double x, double y, double z, float yaw, float pitch) {
         this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
     }
 
@@ -202,19 +187,31 @@ public final class ServerPlayer {
     public void markShearRequest(long nanos) { this.lastShearNanos = nanos; }
 
     /** Render distance reported by this client (ViewDistanceC2S), clamped to the
-     *  allowed range. Drives this player's chunk-streaming view radius. */
+     *  allowed range: this player's stream center horizontal radius (x 16 blocks). */
     private int viewDistanceChunks = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
+    /** Vertical render distance reported by this client (blocks): the stream ellipsoid's half-height. */
+    private int verticalViewBlocks = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_VERTICAL_RENDER_DISTANCE;
+
+    /** Vertical view distance bounds (blocks) the server accepts. */
+    public static final int MIN_VERTICAL_VIEW = 32;
+    public static final int MAX_VERTICAL_VIEW = 512;
 
     public int viewDistanceChunks() { return viewDistanceChunks; }
+    public int verticalViewBlocks() { return verticalViewBlocks; }
 
     public void setViewDistanceChunks(int chunks) {
-        int clamped = Math.max(
+        this.viewDistanceChunks = Math.max(
             com.stonebreak.world.operations.WorldConfiguration.MIN_RENDER_DISTANCE,
             Math.min(com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE, chunks));
-        if (clamped != this.viewDistanceChunks) {
-            this.viewDistanceChunks = clamped;
-            markViewScanPending(); // wider view needs new chunks; narrower needs a forget pass
-        }
+    }
+
+    public void setVerticalViewBlocks(int blocks) {
+        this.verticalViewBlocks = Math.max(MIN_VERTICAL_VIEW, Math.min(MAX_VERTICAL_VIEW, blocks));
+    }
+
+    /** True once this player reported a position (the stream centers on it; cube requests are served). */
+    public boolean hasReportedPosition() {
+        return lastStateNs() != 0L;
     }
 
     // ─── Keepalive / liveness (all touched on the server tick thread) ────────────
@@ -255,31 +252,6 @@ public final class ServerPlayer {
     private long resyncWindowStartNs = 0L;
     private int resyncCount = 0;
 
-    /**
-     * Chunk resync requests refused over budget, retried by the server as permits free up
-     * ({@code ServerChunkHandler.tick}) — the client asks once per cooldown and a refused
-     * request used to be lost for good (#363). Bounded; server tick thread only.
-     */
-    private final java.util.LinkedHashSet<Long> deferredChunkResyncs = new java.util.LinkedHashSet<>();
-    private static final int MAX_DEFERRED_CHUNK_RESYNCS = 256;
-
-    /** Queues a refused chunk resync for {@link #drainDeferredChunkResyncs}; drops it when full. */
-    public void deferChunkResync(long key) {
-        if (deferredChunkResyncs.size() < MAX_DEFERRED_CHUNK_RESYNCS) {
-            deferredChunkResyncs.add(key);
-        }
-    }
-
-    /** Hands deferred resyncs to {@code action} while permits allow, oldest first. */
-    public void drainDeferredChunkResyncs(java.util.function.LongConsumer action) {
-        var it = deferredChunkResyncs.iterator();
-        while (it.hasNext() && allowResync()) {
-            long key = it.next();
-            it.remove();
-            action.accept(key);
-        }
-    }
-
     /** Debits one resync-request permit; false = over budget, drop the request. */
     public boolean allowResync() {
         long now = System.nanoTime();
@@ -296,24 +268,20 @@ public final class ServerPlayer {
     public MovementGuard movement() { return movement; }
 
     /**
-     * Chunk loads/generations this player's view may start. A full view at the largest view
-     * distance (its generation square) fits in one burst, so joining is never held back;
-     * after that new terrain is requested at {@link #CHUNK_REQUESTS_PER_SECOND} — above what
-     * even creative flight crosses into.
+     * Cube requests ({@code CubeRequestC2S}) this player may make. A full view at the largest view distance
+     * (disc of 12 cubes radius x the ellipsoid and band, ~5k cubes) fits in one burst, so joining is never held
+     * back; after that new cubes are asked for at {@link #CUBE_REQUESTS_PER_SECOND} - above what even creative
+     * flight crosses into. Requests start no generation (the stream generates around the player's center);
+     * this only bounds the server's per-player request bookkeeping and scan work.
      */
-    static final int CHUNK_REQUEST_BURST = square(
-            2 * (com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE + 2) + 1);
-    static final double CHUNK_REQUESTS_PER_SECOND = 128.0;
-    private final com.openmason.engine.net.pipeline.TokenBucket chunkRequests =
-            new com.openmason.engine.net.pipeline.TokenBucket(CHUNK_REQUEST_BURST, CHUNK_REQUESTS_PER_SECOND);
+    static final int CUBE_REQUEST_BURST = 8192;
+    static final double CUBE_REQUESTS_PER_SECOND = 1024.0;
+    private final com.openmason.engine.net.pipeline.TokenBucket cubeRequests =
+            new com.openmason.engine.net.pipeline.TokenBucket(CUBE_REQUEST_BURST, CUBE_REQUESTS_PER_SECOND);
 
-    /** Debits one chunk load/generation request; false = over budget, ask again later. */
-    public boolean allowChunkRequest(long nowNanos) {
-        return chunkRequests.tryTake(nowNanos);
-    }
-
-    private static int square(int n) {
-        return n * n;
+    /** Debits one cube request; false = over budget, the client asks again later. */
+    public boolean allowCubeRequest(long nowNanos) {
+        return cubeRequests.tryTake(nowNanos);
     }
 
     /** Chat lines (and chat commands) this player may send: a burst of 8, then one a second. */
@@ -643,72 +611,6 @@ public final class ServerPlayer {
      *  is persisted same-JVM, so it is excluded from the network player-data sync. */
     public boolean isLocal() {
         return connection.channel() instanceof io.netty.channel.local.LocalChannel;
-    }
-
-    // ─── Chunk-view tracker ───────────────────────────────────────────────────
-    public int lastCx() { return lastCx; }
-    public int lastCz() { return lastCz; }
-    public void setLastChunk(int cx, int cz) {
-        if (cx != this.lastCx || cz != this.lastCz) {
-            markViewScanPending(); // crossed a chunk boundary — the view edge moved
-        }
-        this.lastCx = cx;
-        this.lastCz = cz;
-    }
-    // ─── Chunk flow control (after Minecraft's chunk batching) ─────────────────
-    /** Client-reported install rate (chunks per tick); NaN until its first ChunkAckC2S. */
-    private float chunkRate = Float.NaN;
-    /** Chunks this tick may still stream; refilled by the rate each tick, capped at one tick's worth. */
-    private float chunkQuota;
-    /** Snapshots sent but not yet acknowledged as processed by the client. */
-    private int chunksInFlight;
-    /** Ticks since the last ack while snapshots were in flight (a lost-ack watchdog). */
-    private int ticksSinceChunkAck;
-
-    public float chunkRate() { return chunkRate; }
-    public float chunkQuota() { return chunkQuota; }
-    public void setChunkQuota(float quota) { this.chunkQuota = quota; }
-    public int chunksInFlight() { return chunksInFlight; }
-
-    /** One snapshot streamed: spends quota, joins the in-flight window. */
-    public void onChunkStreamed() {
-        chunkQuota -= 1f;
-        chunksInFlight++;
-    }
-
-    /** C2S ChunkAckC2S: {@code processed} snapshots left the client's queue; its new rate. */
-    public void onChunkAck(int processed, float desiredPerTick) {
-        chunksInFlight = Math.max(0, chunksInFlight - processed);
-        chunkRate = desiredPerTick;
-        ticksSinceChunkAck = 0;
-    }
-
-    /**
-     * Advances the lost-ack watchdog; true (and the window reopens) when snapshots have been
-     * in flight for {@code limit} ticks with no ack — streaming must never stall for good on a
-     * count that drifted.
-     */
-    public boolean chunkAckOverdue(int limit) {
-        if (chunksInFlight == 0) {
-            ticksSinceChunkAck = 0;
-            return false;
-        }
-        if (++ticksSinceChunkAck < limit) {
-            return false;
-        }
-        chunksInFlight = 0;
-        ticksSinceChunkAck = 0;
-        return true;
-    }
-
-    /** Version of {@code key} last sent to this player, or -1 if never sent. */
-    public int sentChunkVersion(long key) { return sentChunkVersions.get(key, -1); }
-    public void markChunkSent(long key, int version) { sentChunkVersions.put(key, version); }
-    /** Forget a chunk (e.g. it left the view) so it re-streams if it returns. */
-    public void forgetChunk(long key) { sentChunkVersions.remove(key); }
-    /** Forget every sent chunk whose packed key matches the predicate (left the keep radius). */
-    public void forgetChunksMatching(java.util.function.LongPredicate predicate) {
-        sentChunkVersions.removeIf(predicate);
     }
 
     // ─── Slot-intent acks (issue #353) ─────────────────────────────────────────

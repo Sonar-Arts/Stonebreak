@@ -137,7 +137,7 @@ class FreshPlayerSeedingTest {
 
         // Quit before the first PlayerStateC2S: the persisted record must keep the position.
         PlayerData persisted = ServerPlayerDataFactory.build(sp, "w");
-        assertEquals(new Vector3f(120.5f, 71f, -33f), persisted.getPosition());
+        assertEquals(new org.joml.Vector3d(120.5, 71, -33), persisted.getPosition());
         assertEquals(90f, persisted.getRotation().x, 1e-6);
         assertEquals(0L, sp.lastStateNs(), "seeding is not a client report");
     }
@@ -155,8 +155,8 @@ class FreshPlayerSeedingTest {
 
     @Test
     void theFreshRecordStandsAtTheSpawn() {
-        PlayerData fresh = PlayerPrefsValidator.freshCharacter(null, null, "w", new Vector3f(4, 66, 9));
-        assertEquals(new Vector3f(4, 66, 9), fresh.getPosition());
+        PlayerData fresh = PlayerPrefsValidator.freshCharacter(null, null, "w", new org.joml.Vector3d(4, 66, 9));
+        assertEquals(new org.joml.Vector3d(4, 66, 9), fresh.getPosition());
         ItemStack[] inv = fresh.getInventory();
         assertEquals(36, inv.length);
     }

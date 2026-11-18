@@ -3,7 +3,6 @@ package com.stonebreak.blocks;
 import com.stonebreak.blocks.stairs.StairShape;
 import com.stonebreak.blocks.stairs.StairState;
 import com.stonebreak.world.TestWorld;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,13 +25,10 @@ class BlockShapeTest {
     private static final float EPS = 1e-5f;
 
     private TestWorld world;
-    private Chunk chunk;
 
     @BeforeEach
     void freshWorld() {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        chunk = new Chunk(0, 0);
-        world.setChunk(0, 0, chunk);
     }
 
     @Test
@@ -46,7 +42,7 @@ class BlockShapeTest {
 
     @Test
     void aFullBlockAnswersAFullBlock() {
-        chunk.setBlock(1, Y, 1, BlockType.STONE);
+        world.setBlockRaw(1, Y, 1, BlockType.STONE);
 
         assertEquals(1.0f, BlockShape.collisionHeight(world, 1, Y, 1), EPS);
     }
@@ -58,7 +54,7 @@ class BlockShapeTest {
 
     @Test
     void snowAnswersItsLayerHeightNotAFullBlock() {
-        chunk.setBlock(3, Y, 3, BlockType.SNOW);
+        world.setBlockRaw(3, Y, 3, BlockType.SNOW);
         world.getSnowLayerManager().setSnowLayers(3, Y, 3, 3);
 
         assertEquals(0.375f, BlockShape.collisionHeight(world, 3, Y, 3), EPS,
@@ -67,7 +63,7 @@ class BlockShapeTest {
 
     @Test
     void aFullSnowStackAnswersAFullBlock() {
-        chunk.setBlock(4, Y, 4, BlockType.SNOW);
+        world.setBlockRaw(4, Y, 4, BlockType.SNOW);
         world.getSnowLayerManager().setSnowLayers(4, Y, 4, 8);
 
         assertEquals(1.0f, BlockShape.collisionHeight(world, 4, Y, 4), EPS);
@@ -75,8 +71,8 @@ class BlockShapeTest {
 
     @Test
     void stairsAnswerExactlyWhatTheStairShapeAnswers() {
-        chunk.setBlock(5, Y, 5, BlockType.OAK_STAIRS);
-        chunk.setBlockState(5, Y, 5, StairState.stateStringFor(StairState.Facing.NORTH));
+        world.setBlockRaw(5, Y, 5, BlockType.OAK_STAIRS);
+        world.setBlockStateAt(5, Y, 5, StairState.stateStringFor(StairState.Facing.NORTH));
 
         // The whole cell, and a narrow leading-edge footprint — both must agree with the shape.
         assertEquals(
@@ -89,8 +85,8 @@ class BlockShapeTest {
 
     @Test
     void aStairFootprintRestsOnTheTreadItIsReallyOn() {
-        chunk.setBlock(6, Y, 6, BlockType.OAK_STAIRS);
-        chunk.setBlockState(6, Y, 6, StairState.stateStringFor(StairState.Facing.NORTH));
+        world.setBlockRaw(6, Y, 6, BlockType.OAK_STAIRS);
+        world.setBlockStateAt(6, Y, 6, StairState.stateStringFor(StairState.Facing.NORTH));
 
         float lowEnd = BlockShape.collisionHeight(world, 6, Y, 6, 6.4f, 6.0f, 6.6f, 6.1f);
         float highEnd = BlockShape.collisionHeight(world, 6, Y, 6, 6.4f, 6.9f, 6.6f, 7.0f);

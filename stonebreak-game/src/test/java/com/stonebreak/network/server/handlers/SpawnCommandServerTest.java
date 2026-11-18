@@ -80,10 +80,10 @@ class SpawnCommandServerTest {
 
         new ServerCommandHandler().handleCommand(sp, "/spawn cow", ctx);
 
-        ArgumentCaptor<Vector3f> at = ArgumentCaptor.forClass(Vector3f.class);
+        ArgumentCaptor<org.joml.Vector3dc> at = ArgumentCaptor.forClass(org.joml.Vector3dc.class);
         verify(em).spawnEntity(eq(EntityType.COW), at.capture());
-        assertEquals(3f, at.getValue().x, 1e-4f, "three blocks along the player's facing");
-        assertEquals(0f, at.getValue().z, 1e-4f);
+        assertEquals(3.0, at.getValue().x(), 1e-4, "three blocks along the player's facing");
+        assertEquals(0.0, at.getValue().z(), 1e-4);
         verify(cow).setCommandSpawned(true);
         assertTrue(replied("Spawned 1x"));
     }

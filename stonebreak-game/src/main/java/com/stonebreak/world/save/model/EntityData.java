@@ -2,7 +2,10 @@ package com.stonebreak.world.save.model;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityType;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -13,7 +16,8 @@ import java.util.Map;
  */
 public final class EntityData {
     private final EntityType entityType;
-    private final Vector3f position;
+    /** World position (double, Phase 4); velocity and rotation stay float. */
+    private final Vector3d position;
     private final Vector3f velocity;
     private final Vector3f rotation;
     private final float health;
@@ -24,7 +28,7 @@ public final class EntityData {
 
     private EntityData(Builder builder) {
         this.entityType = builder.entityType;
-        this.position = new Vector3f(builder.position);
+        this.position = new Vector3d(builder.position);
         this.velocity = new Vector3f(builder.velocity);
         this.rotation = new Vector3f(builder.rotation);
         this.health = builder.health;
@@ -36,7 +40,7 @@ public final class EntityData {
 
     // Getters - return defensive copies for mutable objects
     public EntityType getEntityType() { return entityType; }
-    public Vector3f getPosition() { return new Vector3f(position); }
+    public Vector3d getPosition() { return new Vector3d(position); }
     public Vector3f getVelocity() { return new Vector3f(velocity); }
     public Vector3f getRotation() { return new Vector3f(rotation); }
     public float getHealth() { return health; }
@@ -51,7 +55,7 @@ public final class EntityData {
 
     public static final class Builder {
         private EntityType entityType;
-        private Vector3f position = new Vector3f(0, 0, 0);
+        private Vector3d position = new Vector3d(0, 0, 0);
         private Vector3f velocity = new Vector3f(0, 0, 0);
         private Vector3f rotation = new Vector3f(0, 0, 0);
         private float health = 10.0f;
@@ -65,8 +69,14 @@ public final class EntityData {
             return this;
         }
 
-        public Builder position(Vector3f position) {
-            this.position = new Vector3f(position);
+        /** Float convenience (widened exactly); prefer {@link #position(Vector3dc)}. */
+        public Builder position(Vector3fc position) {
+            this.position = new Vector3d(position);
+            return this;
+        }
+
+        public Builder position(Vector3dc position) {
+            this.position = new Vector3d(position);
             return this;
         }
 

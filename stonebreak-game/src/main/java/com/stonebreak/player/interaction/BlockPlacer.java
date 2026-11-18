@@ -10,7 +10,10 @@ import com.stonebreak.player.BlockPlacementValidator;
 import com.stonebreak.player.IBlockPlacementService;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.joml.Vector3i;
 
 /**
@@ -125,7 +128,7 @@ public class BlockPlacer {
                     .placedFromLook(look.x, look.z).toStateString();
         }
         if (selectedBlockType == BlockType.OAK_DOOR) {
-            Vector3f playerPos = state.getPosition();
+            Vector3d playerPos = state.getPosition();
             placementState = com.stonebreak.blocks.door.DoorState
                     .placed(playerPos.x, playerPos.z, placePos.x, placePos.z).toStateString();
         }
@@ -230,7 +233,7 @@ public class BlockPlacer {
     }
 
     private Vector3i findPlacePosition(Vector3i hitBlock) {
-        Vector3f rayOrigin = raycastEngine.eyeOrigin();
+        Vector3d rayOrigin = raycastEngine.eyeOrigin();
         Vector3f rayDirection = raycastEngine.eyeDirection();
 
         float minDist = Float.MAX_VALUE;
@@ -238,7 +241,7 @@ public class BlockPlacer {
 
         // Top
         float d = RaycastEngine.rayIntersectsPlane(rayOrigin, rayDirection,
-                new Vector3f(hitBlock.x + 0.5f, hitBlock.y + 1, hitBlock.z + 0.5f),
+                new Vector3d(hitBlock.x + 0.5f, hitBlock.y + 1, hitBlock.z + 0.5f),
                 new Vector3f(0, 1, 0));
         if (d > 0 && d < minDist && faceHitInBoundsXZ(rayOrigin, rayDirection, d, hitBlock)) {
             placePos = new Vector3i(hitBlock.x, hitBlock.y + 1, hitBlock.z);
@@ -246,7 +249,7 @@ public class BlockPlacer {
         }
         // Bottom
         d = RaycastEngine.rayIntersectsPlane(rayOrigin, rayDirection,
-                new Vector3f(hitBlock.x + 0.5f, hitBlock.y, hitBlock.z + 0.5f),
+                new Vector3d(hitBlock.x + 0.5f, hitBlock.y, hitBlock.z + 0.5f),
                 new Vector3f(0, -1, 0));
         if (d > 0 && d < minDist && faceHitInBoundsXZ(rayOrigin, rayDirection, d, hitBlock)) {
             placePos = new Vector3i(hitBlock.x, hitBlock.y - 1, hitBlock.z);
@@ -254,7 +257,7 @@ public class BlockPlacer {
         }
         // Front (+z)
         d = RaycastEngine.rayIntersectsPlane(rayOrigin, rayDirection,
-                new Vector3f(hitBlock.x + 0.5f, hitBlock.y + 0.5f, hitBlock.z + 1),
+                new Vector3d(hitBlock.x + 0.5f, hitBlock.y + 0.5f, hitBlock.z + 1),
                 new Vector3f(0, 0, 1));
         if (d > 0 && d < minDist && faceHitInBoundsXY(rayOrigin, rayDirection, d, hitBlock)) {
             placePos = new Vector3i(hitBlock.x, hitBlock.y, hitBlock.z + 1);
@@ -262,7 +265,7 @@ public class BlockPlacer {
         }
         // Back (-z)
         d = RaycastEngine.rayIntersectsPlane(rayOrigin, rayDirection,
-                new Vector3f(hitBlock.x + 0.5f, hitBlock.y + 0.5f, hitBlock.z),
+                new Vector3d(hitBlock.x + 0.5f, hitBlock.y + 0.5f, hitBlock.z),
                 new Vector3f(0, 0, -1));
         if (d > 0 && d < minDist && faceHitInBoundsXY(rayOrigin, rayDirection, d, hitBlock)) {
             placePos = new Vector3i(hitBlock.x, hitBlock.y, hitBlock.z - 1);
@@ -270,7 +273,7 @@ public class BlockPlacer {
         }
         // Right (+x)
         d = RaycastEngine.rayIntersectsPlane(rayOrigin, rayDirection,
-                new Vector3f(hitBlock.x + 1, hitBlock.y + 0.5f, hitBlock.z + 0.5f),
+                new Vector3d(hitBlock.x + 1, hitBlock.y + 0.5f, hitBlock.z + 0.5f),
                 new Vector3f(1, 0, 0));
         if (d > 0 && d < minDist && faceHitInBoundsYZ(rayOrigin, rayDirection, d, hitBlock)) {
             placePos = new Vector3i(hitBlock.x + 1, hitBlock.y, hitBlock.z);
@@ -278,7 +281,7 @@ public class BlockPlacer {
         }
         // Left (-x)
         d = RaycastEngine.rayIntersectsPlane(rayOrigin, rayDirection,
-                new Vector3f(hitBlock.x, hitBlock.y + 0.5f, hitBlock.z + 0.5f),
+                new Vector3d(hitBlock.x, hitBlock.y + 0.5f, hitBlock.z + 0.5f),
                 new Vector3f(-1, 0, 0));
         if (d > 0 && d < minDist && faceHitInBoundsYZ(rayOrigin, rayDirection, d, hitBlock)) {
             placePos = new Vector3i(hitBlock.x - 1, hitBlock.y, hitBlock.z);
@@ -292,18 +295,18 @@ public class BlockPlacer {
         return placePos;
     }
 
-    private static boolean faceHitInBoundsXZ(Vector3f o, Vector3f dir, float dist, Vector3i b) {
-        Vector3f h = new Vector3f(dir).mul(dist).add(o);
+    private static boolean faceHitInBoundsXZ(Vector3dc o, Vector3fc dir, float dist, Vector3i b) {
+        Vector3d h = new Vector3d(o).fma(dist, dir);
         return h.x >= b.x && h.x <= b.x + 1.0f && h.z >= b.z && h.z <= b.z + 1.0f;
     }
 
-    private static boolean faceHitInBoundsXY(Vector3f o, Vector3f dir, float dist, Vector3i b) {
-        Vector3f h = new Vector3f(dir).mul(dist).add(o);
+    private static boolean faceHitInBoundsXY(Vector3dc o, Vector3fc dir, float dist, Vector3i b) {
+        Vector3d h = new Vector3d(o).fma(dist, dir);
         return h.x >= b.x && h.x <= b.x + 1.0f && h.y >= b.y && h.y <= b.y + 1.0f;
     }
 
-    private static boolean faceHitInBoundsYZ(Vector3f o, Vector3f dir, float dist, Vector3i b) {
-        Vector3f h = new Vector3f(dir).mul(dist).add(o);
+    private static boolean faceHitInBoundsYZ(Vector3dc o, Vector3fc dir, float dist, Vector3i b) {
+        Vector3d h = new Vector3d(o).fma(dist, dir);
         return h.y >= b.y && h.y <= b.y + 1.0f && h.z >= b.z && h.z <= b.z + 1.0f;
     }
 }

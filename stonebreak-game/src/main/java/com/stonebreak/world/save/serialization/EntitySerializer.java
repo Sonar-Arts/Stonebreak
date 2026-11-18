@@ -162,7 +162,7 @@ public class EntitySerializer {
     private static Entity deserializeBlockDrop(EntityData entityData, World world) {
         try {
             EntityData.BlockDropData blockDropData = EntityData.BlockDropData.fromCustomData(entityData);
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
 
             BlockDrop blockDrop = new BlockDrop(world, position, blockDropData.getBlockType());
             blockDrop.setPosition(position);
@@ -201,7 +201,7 @@ public class EntitySerializer {
     private static Entity deserializeItemDrop(EntityData entityData, World world) {
         try {
             EntityData.ItemDropData itemDropData = EntityData.ItemDropData.fromCustomData(entityData);
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
 
             ItemStack itemStack;
             if (itemDropData.isBlockType()) {
@@ -250,7 +250,7 @@ public class EntitySerializer {
     private static Entity deserializeCow(EntityData entityData, World world) {
         try {
             EntityData.CowData cowData = EntityData.CowData.fromCustomData(entityData);
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
 
             Cow cow = new Cow(world, position, cowData.getTextureVariant());
             cow.setPosition(position);
@@ -291,7 +291,7 @@ public class EntitySerializer {
 
     private static Entity deserializeChicken(EntityData entityData, World world) {
         try {
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
             Chicken chicken = new Chicken(world, position);
             chicken.setPosition(position);
             chicken.setVelocity(entityData.getVelocity());
@@ -319,7 +319,7 @@ public class EntitySerializer {
 
     private static Entity deserializeGoose(EntityData entityData, World world) {
         try {
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
             Goose goose = new Goose(world, position);
             goose.setPosition(position);
             goose.setVelocity(entityData.getVelocity());
@@ -347,7 +347,7 @@ public class EntitySerializer {
 
     private static Entity deserializeSheep(EntityData entityData, World world) {
         try {
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
             Map<String, Object> customData = entityData.getCustomData();
             String textureVariant = (String) customData.getOrDefault("textureVariant", "default");
 
@@ -376,7 +376,7 @@ public class EntitySerializer {
 
     private static Entity deserializeGoblin(EntityData entityData, World world) {
         try {
-            Vector3f position = entityData.getPosition();
+            org.joml.Vector3d position = entityData.getPosition();
             Object loadout = entityData.getCustomData().get(GOBLIN_LOADOUT_KEY);
             Goblin goblin = new Goblin(world, position,
                     GoblinLoadout.decode(loadout instanceof String s ? s : null));

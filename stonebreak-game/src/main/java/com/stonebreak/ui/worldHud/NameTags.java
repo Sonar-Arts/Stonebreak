@@ -5,7 +5,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.List;
 
@@ -42,14 +42,14 @@ public class NameTags {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
-        Vector3f cameraPos = Game.getPlayer() != null ? Game.getPlayer().getPosition() : null;
+        Vector3d cameraPos = Game.getPlayer() != null ? Game.getPlayer().getPosition() : null;
         for (LivingEntity entity : entityManager.getLivingEntities()) {
             if (!(entity instanceof RemotePlayer remote) || !remote.isAlive()) continue;
 
             String name = remote.getUsername();
             if (name == null || name.isEmpty()) continue;
 
-            Vector3f pos = remote.getPosition();
+            Vector3d pos = remote.getPosition();
             if (cameraPos != null && cameraPos.distanceSquared(pos) > MAX_DISTANCE_SQ) continue;
 
             float[] screen = WorldMarker.project(vp, pos.x,

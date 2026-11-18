@@ -19,15 +19,15 @@ public final class BattleTestWorld extends World {
         return arena;
     }
     @Override
-    public BlockType getBlockAt(int x, int y, int z) {
+    public BlockType getBlockAt(long x, long y, long z) {
         return BlockType.AIR;
     }
     @Override
-    public boolean isChunkRenderableAt(int x, int z) {
+    public boolean isAreaReadyAt(long x, long y, long z) {
         return true;
     }
     @Override
-    public boolean setBlockAt(int x, int y, int z, BlockType type, boolean edited, String state) {
+    public boolean setBlockAt(long x, long y, long z, BlockType type, boolean edited, String state) {
         return false;
     }
     @Override

@@ -4,6 +4,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
@@ -51,7 +52,7 @@ final class PlayerUpdatePipeline {
         // position instead of dropping into the void. Flight/spectator move freely (no fall).
         if (!c.flight.isFlying() && !c.spectator.isActive() && !isGroundChunkReady()) {
             state.getVelocity().set(0f, 0f, 0f);
-            Vector3f hp = state.getPosition();
+            Vector3d hp = state.getPosition();
             camera.setPosition(hp.x, hp.y + CAMERA_EYE_OFFSET, hp.z);
             return;
         }
@@ -67,7 +68,7 @@ final class PlayerUpdatePipeline {
             Game.getSoundSystem().setEnvironmentLowPass(0f);
         }
 
-        Vector3f p = state.getPosition();
+        Vector3d p = state.getPosition();
         placeCamera(p, seated ? com.stonebreak.vehicles.PlayerRiding.EYE_DROP : 0f);
 
         c.berserkerAbilities.update(dt, player);
@@ -106,7 +107,8 @@ final class PlayerUpdatePipeline {
             playerSounds.playFootstep(p);
         }
         if (Game.getWorld() != null) {
-            Game.getSoundSystem().setListenerFromCamera(p, camera.getFront(), camera.getUp());
+            // Listener-relative audio (#445): AudioSpace moves the audio origin, hands the mixer small floats.
+            com.stonebreak.audio.AudioSpace.setListener(Game.getSoundSystem(), p, camera.getFront(), camera.getUp());
         }
 
         c.fallDamage.update(c.flight.isFlying() || seated);
@@ -128,13 +130,14 @@ final class PlayerUpdatePipeline {
         c.swimming.applyWaterFlow(c.flight.isFlying());
 
         c.movement.applyGravity();
-        Vector3f posBeforeIntegrate = state.getPosition();
-        float prevX = posBeforeIntegrate.x;
-        float prevZ = posBeforeIntegrate.z;
+        Vector3d posBeforeIntegrate = state.getPosition(); // live: reads the moved position after
+        double prevX = posBeforeIntegrate.x;
+        double prevZ = posBeforeIntegrate.z;
         boolean wasOnGround = state.isOnGround();
         boolean wasSprinting = c.stamina.isSprinting();
         c.movement.integrateAndCollide();
-        recordDistance(dt, posBeforeIntegrate.x - prevX, posBeforeIntegrate.z - prevZ, wasOnGround, wasSprinting);
+        recordDistance(dt, (float) (posBeforeIntegrate.x - prevX), (float) (posBeforeIntegrate.z - prevZ),
+                wasOnGround, wasSprinting);
         if (c.spectator.isActive()) {
             state.setOnGround(false);
         }
@@ -160,12 +163,12 @@ final class PlayerUpdatePipeline {
     }
 
     /** Eye-height camera in first person; terrain-clamped orbit camera in third person. */
-    private void placeCamera(Vector3f feet, float eyeDrop) {
-        Vector3f p = new Vector3f(feet.x, feet.y - eyeDrop, feet.z);
+    private void placeCamera(Vector3d feet, float eyeDrop) {
+        Vector3d p = new Vector3d(feet.x, feet.y - eyeDrop, feet.z);
         if (player.getPerspective() == Player.Perspective.THIRD_PERSON) {
             // Pull camera back behind and slightly above the player, but stop short of
             // any solid terrain in the way so it never clips through walls/cliffs.
-            Vector3f pivot = new Vector3f(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+            Vector3d pivot = new Vector3d(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
             Vector3f offset = new Vector3f(camera.getFront()).mul(-4.0f).add(0f, 0.5f, 0f);
             float desired = offset.length();
             Vector3f dir = offset.normalize(new Vector3f());
@@ -190,9 +193,7 @@ final class PlayerUpdatePipeline {
         if (w == null) {
             return false;
         }
-        Vector3f p = state.getPosition();
-        int cx = Math.floorDiv((int) Math.floor(p.x), 16);
-        int cz = Math.floorDiv((int) Math.floor(p.z), 16);
-        return w.isChunkRenderableAt(cx, cz);
+        Vector3d p = state.getPosition();
+        return w.isAreaReadyAt((long) Math.floor(p.x), (long) Math.floor(p.y), (long) Math.floor(p.z));
     }
 }

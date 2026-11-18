@@ -4,6 +4,7 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.gameWorld.ChunkFrustumCuller;
 import com.stonebreak.rendering.gameWorld.water.WaterRenderer;
 import com.stonebreak.world.fastlod.FastLodManager;
+import com.stonebreak.world.fastlod.OctreeLod;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
@@ -99,7 +100,20 @@ public final class FastLodRenderPass {
                       int playerChunkX, int playerChunkZ, ChunkFrustumCuller culler,
                       NativeChunkTest nativeChunks, FastLodRegionBatcher batcher,
                       List<WaterRenderer.LodWaterNode> lodWaterOut) {
+        return render(shader, manager, playerChunkX, playerChunkZ, culler, nativeChunks, batcher, lodWaterOut, null);
+    }
+
+    /**
+     * As above; with a live {@code octree} the FastLOD ring only draws the octree LOD's FALLBACK footprints
+     * (never-explored land) - the octree nodes and READY detail cover everything else - and the per-column
+     * readiness test is not used.
+     */
+    public int render(ShaderProgram shader, FastLodManager manager,
+                      int playerChunkX, int playerChunkZ, ChunkFrustumCuller culler,
+                      NativeChunkTest nativeChunks, FastLodRegionBatcher batcher,
+                      List<WaterRenderer.LodWaterNode> lodWaterOut, OctreeLod octree) {
         if (manager == null) return 0;
+        if (octree != null && octree.isClosed()) octree = null;
         if (batcher != null && adapterTarget != batcher) {
             adapterTarget = batcher;
             final FastLodRegionBatcher b = batcher;
@@ -143,9 +157,18 @@ public final class FastLodRenderPass {
             int dz = Math.abs(entry.key.chunkZ() - playerChunkZ);
             int dist = Math.max(dx, dz);
 
-            boolean nativeReady = dist <= inner
-                    && nativeChunks.isRenderable(entry.key.chunkX(), entry.key.chunkZ());
-            float fade = updateFade(entry, dist, inner, nativeReady, dt);
+            // Cubic runtime: the detail cubes of a READY column draw wherever the column is (the stream keeps
+            // columns just outside the disc READY until their cubes unload), so readiness alone hands over -
+            // not the distance - or a READY column past the disc edge would draw detail AND LOD.
+            float fade;
+            if (octree != null) {
+                boolean covered = octree.fallbackCovers(entry.key.chunkX(), entry.key.chunkZ());
+                fade = updateFallbackFade(entry, covered,
+                        covered && octree.justUnready(entry.key.chunkX(), entry.key.chunkZ()), dt);
+            } else {
+                boolean nativeReady = nativeChunks.isRenderable(entry.key.chunkX(), entry.key.chunkZ());
+                fade = updateFade(entry, nativeReady ? Math.min(dist, inner) : dist, inner, nativeReady, dt);
+            }
             if (fade <= 0f) continue;
 
             float minX = entry.key.chunkX() * (float) WorldConfiguration.CHUNK_SIZE;
@@ -216,6 +239,34 @@ public final class FastLodRenderPass {
             shader.setUniform("u_lodFade", 1.0f);
         }
         return stamp;
+    }
+
+    /** Seconds a node keeps drawing after its footprint stopped being an octree FALLBACK footprint. */
+    static final float FALLBACK_HOLD_SECONDS = 0.45f;
+
+    /**
+     * Octree handover step (pure, headless-testable): a node in a FALLBACK footprint fades in (or appears solid at
+     * once when {@code snap}: the detail under it just stopped drawing); a node whose footprint left the fallback
+     * set keeps drawing as it was for {@link #FALLBACK_HOLD_SECONDS} - octree nodes fading in or READY detail are
+     * drawn by then - and then stops. Never dissolves out: two screen-door fades at once would leave holes.
+     */
+    static float updateFallbackFade(FastLodManager.Entry entry, boolean covered, boolean snap, float dt) {
+        if (covered) {
+            entry.hold = 0f;
+            entry.nativeCovered = false;
+            entry.fade = snap ? 1f : Math.min(1f, entry.fade + dt * FADE_IN_PER_SEC);
+        } else {
+            if (!entry.nativeCovered) {
+                entry.nativeCovered = true;
+                entry.hold = entry.fade > 0f ? FALLBACK_HOLD_SECONDS : 0f;
+            }
+            if (entry.hold > 0f) {
+                entry.hold -= dt;
+            } else {
+                entry.fade = 0f;
+            }
+        }
+        return entry.fade;
     }
 
     /**

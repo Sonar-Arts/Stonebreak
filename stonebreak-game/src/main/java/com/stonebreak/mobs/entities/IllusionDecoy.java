@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -30,7 +32,7 @@ public class IllusionDecoy extends RemotePlayer {
      */
     public interface MirrorSource {
         /** The owner's current position (read, never kept). */
-        Vector3f position();
+        Vector3d position();
 
         /** Model-space yaw of the owner's body. */
         float bodyYaw();
@@ -52,8 +54,8 @@ public class IllusionDecoy extends RemotePlayer {
 
     /** Null on a client shadow: the server moves it. */
     private final MirrorSource owner;
-    private final Vector3f spawnAnchor;
-    private final Vector3f previousOwnerPos;
+    private final Vector3d spawnAnchor;
+    private final Vector3d previousOwnerPos;
     /** Rotation offset (degrees) of this decoy's mirrored movement around the owner. */
     private final float angle;
     /** Set externally to mirror the owner's attack pose. */
@@ -65,12 +67,12 @@ public class IllusionDecoy extends RemotePlayer {
         return 0f;
     }
 
-    public IllusionDecoy(World world, Vector3f position, MirrorSource owner, float angle) {
+    public IllusionDecoy(World world, Vector3dc position, MirrorSource owner, float angle) {
         super(world, position, DECOY_TINT_ID, "");
         this.owner = owner;
         this.angle = angle;
-        this.spawnAnchor = new Vector3f(position);
-        this.previousOwnerPos = owner != null ? new Vector3f(owner.position()) : new Vector3f(position);
+        this.spawnAnchor = new Vector3d(position);
+        this.previousOwnerPos = owner != null ? new Vector3d(owner.position()) : new Vector3d(position);
         // 1 HP so any contact kills it (overrides REMOTE_PLAYER's 20 HP from the super ctor).
         setMaxHealth(1f);
         setHealth(1f);
@@ -82,10 +84,10 @@ public class IllusionDecoy extends RemotePlayer {
      * while {@link #fakeCasting} is set.
      */
     private void mirrorOwner(float deltaTime) {
-        Vector3f ownerPos = owner.position();
-        float dx = ownerPos.x - previousOwnerPos.x;
-        float dz = ownerPos.z - previousOwnerPos.z;
-        float dy = ownerPos.y - previousOwnerPos.y;
+        Vector3d ownerPos = owner.position();
+        float dx = (float) (ownerPos.x - previousOwnerPos.x);
+        float dz = (float) (ownerPos.z - previousOwnerPos.z);
+        float dy = (float) (ownerPos.y - previousOwnerPos.y);
 
         // Rotate the horizontal delta by the fixed offset (2D rotation on the XZ plane).
         double rad = Math.toRadians(angle);
@@ -107,7 +109,7 @@ public class IllusionDecoy extends RemotePlayer {
         updateMovementAnimation(deltaTime);
     }
 
-    public Vector3f getSpawnAnchor() { return new Vector3f(spawnAnchor); }
+    public Vector3d getSpawnAnchor() { return new Vector3d(spawnAnchor); }
     public float getAngle() { return angle; }
     public void setFakeCasting(boolean fakeCasting) { this.fakeCasting = fakeCasting; }
 

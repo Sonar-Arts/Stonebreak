@@ -244,6 +244,21 @@ public final class TerrainMapperStateManager {
         createButton.setEnabled(type != null);
     }
 
+    /** The terrain scale the new world will use (and the Standard previews show); 1:4 until changed. */
+    public com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset getSelectedScale() {
+        return visualizers.scale();
+    }
+
+    /** Picks the new world's terrain scale; the Standard previews resample at it. */
+    public void selectScale(com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset scale) {
+        visualizers.selectScale(scale);
+    }
+
+    /** Steps to the next terrain scale (the keyboard shortcut, Ctrl+T). */
+    public void cycleScale() {
+        selectScale(com.stonebreak.config.TerrainScaleOption.next(getSelectedScale()));
+    }
+
     /** Stops the Diffusion services if this screen started them — the player is leaving without a world. */
     public void stopGeneratorServices() {
         visualizers.stopServices();
@@ -396,6 +411,7 @@ public final class TerrainMapperStateManager {
         // Forget the generator without stopping its services: reset() also runs on the way into
         // a world just created, which may be about to use them. Back stops them first.
         visualizers.clearGenerator();
+        visualizers.selectScale(com.stonebreak.config.TerrainScaleOption.DEFAULT);
         rebuildModeButtons();
         createButton.setEnabled(false);
         dragging = false;

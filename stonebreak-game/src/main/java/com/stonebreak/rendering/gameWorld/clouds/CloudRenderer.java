@@ -131,7 +131,7 @@ public final class CloudRenderer {
      * off) receivers get unshadowed light and no cloud draws, but the maps stay
      * current for the rain, which falls from the cloud field either way.
      */
-    public void prepareFrame(ClientWeather weather, Vector3f cameraWorldPos, Vector3f sunDirection,
+    public void prepareFrame(ClientWeather weather, org.joml.Vector3dc cameraWorldPos, Vector3f sunDirection,
                              boolean enabled) {
         drawnThisFrame = false;
         mapsReady = weather != null;
@@ -148,17 +148,17 @@ public final class CloudRenderer {
                 (float) (s * DETAIL_RISE_SPEED % CloudNoiseTextures.DETAIL_TILE_BLOCKS));
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.CLOUD_MAP_TEXTURE_UNIT);
-        map.update(weather.field(), CloudField.cellX(cameraWorldPos.x, s), CloudField.cellZ(cameraWorldPos.z, s));
+        map.update(weather.field(), CloudField.cellX(cameraWorldPos.x(), s), CloudField.cellZ(cameraWorldPos.z(), s));
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.WEATHER_MAP_TEXTURE_UNIT);
         weatherMap.update(weather.map());
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + CloudUniforms.TERRAIN_MAP_TEXTURE_UNIT);
-        terrainMap.update(weather.relief(), cameraWorldPos.x, cameraWorldPos.z);
+        terrainMap.update(weather.relief(), cameraWorldPos.x(), cameraWorldPos.z());
         GL13.glActiveTexture(previousUnit);
         // cloud = world - drift = render + origin - drift
         uniforms.prepare(map.texture(), weatherMap.texture(), terrainMap.heightTexture(), terrainMap.flowTexture(),
-                RenderOrigin.x() - CloudField.driftX(s),
-                RenderOrigin.z() - CloudField.driftZ(s),
-                RenderOrigin.x(), RenderOrigin.z(),
+                RenderOrigin.blockX() - CloudField.driftX(s),
+                RenderOrigin.blockZ() - CloudField.driftZ(s),
+                RenderOrigin.blockX(), RenderOrigin.blockZ(),
                 sunDirection, true);
         if (!prepared) uniforms.disable();
     }
@@ -261,9 +261,9 @@ public final class CloudRenderer {
 
         // Pass 2: blend into the reprojected history. Camera-relative, so a
         // render-origin rebase between frames doesn't break the reprojection.
-        double camX = renderCameraPos.x + (double) RenderOrigin.x();
-        double camY = renderCameraPos.y; // the origin rebases X/Z only
-        double camZ = renderCameraPos.z + (double) RenderOrigin.z();
+        double camX = renderCameraPos.x + (double) RenderOrigin.blockX();
+        double camY = renderCameraPos.y + (double) RenderOrigin.blockY();
+        double camZ = renderCameraPos.z + (double) RenderOrigin.blockZ();
         camDelta.set((float) (camX - prevCamX), (float) (camY - prevCamY), (float) (camZ - prevCamZ));
         viewProjRel.set(view).setTranslation(0f, 0f, 0f).mulLocal(projection);
         RenderTarget resolved = history[historyIndex];

@@ -9,7 +9,7 @@ import com.stonebreak.player.combat.QuarryController;
 import com.stonebreak.player.combat.ranger.RangerAbilityController;
 import com.stonebreak.player.combat.ranger.SnareAbility;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.List;
 
@@ -58,7 +58,7 @@ public class QuarryMarkers {
             && snare.getTrapPosition().distance(player.getPosition()) <= RANGER_MARKED_PREY_VISION_RANGE;
         if (showPrey) {
             LivingEntity prey = quarry.getQuarry();
-            Vector3f pos = prey.getPosition();
+            Vector3d pos = prey.getPosition();
             float[] screen = WorldMarker.project(vp, pos.x, pos.y + prey.getType().getHeight() + PREY_HEAD_OFFSET,
                 pos.z, screenW, screenH);
             if (screen != null) {
@@ -71,8 +71,8 @@ public class QuarryMarkers {
             }
         }
         if (showTrap) {
-            Vector3f pos = snare.getTrapPosition();
-            float[] screen = WorldMarker.project(vp, pos.x, pos.y + 0.2f, pos.z, screenW, screenH);
+            Vector3d pos = snare.getTrapPosition();
+            float[] screen = WorldMarker.project(vp, pos.x, pos.y + 0.2, pos.z, screenW, screenH);
             if (screen != null) {
                 int fill = snare.isTrapArmed() ? TRAP_ARMED_FILL : TRAP_ARMING_FILL;
                 float half = snare.isTrapArmed() ? TRAP_HALF_SIZE : TRAP_HALF_SIZE * (0.5f + 0.5f * snare.getArmProgress());

@@ -1,7 +1,7 @@
 package com.stonebreak.network.client;
 
 import com.stonebreak.mobs.entities.Entity;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * Smooths jittery network state updates into per-frame position/yaw values.
@@ -34,21 +34,25 @@ public final class NetworkInterpolator {
     /** With this many waiting, segments play at half length until the buffer drains. */
     private static final int CATCH_UP_BUFFERED = 2;
 
-    private float prevX, prevY, prevZ, prevYawDeg, prevPitchDeg;
-    private float targetX, targetY, targetZ, targetYawDeg, targetPitchDeg;
+    // World positions in double (#445); angles stay float.
+    private double prevX, prevY, prevZ;
+    private double targetX, targetY, targetZ;
+    private float prevYawDeg, prevPitchDeg;
+    private float targetYawDeg, targetPitchDeg;
     private long startNs;
     private long durationNs = DEFAULT_PERIOD_NS;
     private boolean hasSample = false;
 
     /** Ring buffer of waiting snapshots: x, y, z, yaw, pitch per entry. */
-    private final float[] buffered = new float[MAX_BUFFERED * 5];
+    private final double[] buffered = new double[MAX_BUFFERED * 5];
     private int bufferHead;
     private int bufferCount;
     /** The newest snapshot received (buffered or playing) — the server's broadcast base. */
-    private float latestX, latestY, latestZ, latestYawDeg, latestPitchDeg;
+    private double latestX, latestY, latestZ;
+    private float latestYawDeg, latestPitchDeg;
 
     /** Seed both prev and target with the spawn snapshot (and drop anything buffered). */
-    public void seed(float x, float y, float z, float yawDeg, float pitchDeg) {
+    public void seed(double x, double y, double z, float yawDeg, float pitchDeg) {
         prevX = targetX = latestX = x;
         prevY = targetY = latestY = y;
         prevZ = targetZ = latestZ = z;
@@ -65,7 +69,7 @@ public final class NetworkInterpolator {
      * Receive an authoritative state. With no segment playing, it starts one from the entity's
      * currently displayed position; otherwise it waits its turn in the buffer.
      */
-    public void receive(float x, float y, float z, float yawDeg, float pitchDeg, Entity displayed) {
+    public void receive(double x, double y, double z, float yawDeg, float pitchDeg, Entity displayed) {
         if (!hasSample) {
             seed(x, y, z, yawDeg, pitchDeg);
             return;
@@ -73,7 +77,7 @@ public final class NetworkInterpolator {
         latestX = x; latestY = y; latestZ = z; latestYawDeg = yawDeg; latestPitchDeg = pitchDeg;
         long now = System.nanoTime();
         if (bufferCount == 0 && now - startNs >= durationNs) {
-            Vector3f cur = displayed.getPosition();
+            Vector3d cur = displayed.getPosition();
             prevX = cur.x; prevY = cur.y; prevZ = cur.z;
             prevYawDeg = displayed.getYaw();
             prevPitchDeg = targetPitchDeg; // pitch isn't on Entity rotation; carry last target
@@ -97,7 +101,7 @@ public final class NetworkInterpolator {
         bufferCount++;
     }
 
-    public void receive(float x, float y, float z, float yawDeg, Entity displayed) {
+    public void receive(double x, double y, double z, float yawDeg, Entity displayed) {
         receive(x, y, z, yawDeg, latestPitchDeg, displayed);
     }
 
@@ -122,8 +126,8 @@ public final class NetworkInterpolator {
             targetX = buffered[slot];
             targetY = buffered[slot + 1];
             targetZ = buffered[slot + 2];
-            targetYawDeg = buffered[slot + 3];
-            targetPitchDeg = buffered[slot + 4];
+            targetYawDeg = (float) buffered[slot + 3];
+            targetPitchDeg = (float) buffered[slot + 4];
             startNs += durationNs;
             durationNs = bufferCount >= CATCH_UP_BUFFERED ? DEFAULT_PERIOD_NS / 2 : DEFAULT_PERIOD_NS;
         }
@@ -138,9 +142,9 @@ public final class NetworkInterpolator {
             t = 0f;
         }
 
-        float x = prevX + (targetX - prevX) * t;
-        float y = prevY + (targetY - prevY) * t;
-        float z = prevZ + (targetZ - prevZ) * t;
+        double x = prevX + (targetX - prevX) * t;
+        double y = prevY + (targetY - prevY) * t;
+        double z = prevZ + (targetZ - prevZ) * t;
         float yaw = lerpAngle(prevYawDeg, targetYawDeg, t);
 
         entity.setPosition(x, y, z);
@@ -150,9 +154,9 @@ public final class NetworkInterpolator {
     /** Newest received yaw/pitch/position — what the server last broadcast (delta base). */
     public float currentTargetYaw() { return latestYawDeg; }
     public float currentTargetPitch() { return latestPitchDeg; }
-    public float targetX() { return latestX; }
-    public float targetY() { return latestY; }
-    public float targetZ() { return latestZ; }
+    public double targetX() { return latestX; }
+    public double targetY() { return latestY; }
+    public double targetZ() { return latestZ; }
 
     private static float lerpAngle(float fromDeg, float toDeg, float t) {
         float diff = ((toDeg - fromDeg + 540f) % 360f) - 180f;

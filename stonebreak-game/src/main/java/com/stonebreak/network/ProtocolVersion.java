@@ -65,8 +65,20 @@ public final class ProtocolVersion {
      *  player to everyone), PlayerKnockbackS2C, PvpStateS2C and PlayerDamageC2S (PvP hits) added;
      *  the state flags grow to 16 bits (FLYING, DODGING, LIFESTEAL); DeathDropC2S (27) retired —
      *  the server scatters the inventory at the death it decides; PlayerLifeC2S's respawn is a
-     *  request whose spot the server picks. */
-    public static final int CURRENT = 22;
+     *  request whose spot the server picks.
+     *  23 = cubic voxel runtime (#447) + 64-bit positions (#445): terrain streams as cubes. CubeDataS2C (id 1,
+     *  was ChunkDataS2C) carries column records + PARTS_NETWORK cube records + payload states in one compressed
+     *  blob; BlockStateNamesS2C (36) mirrors the server's block-state registry ids; CubeRequestC2S (11, was
+     *  ChunkResyncRequestC2S: the client's stream asks for the cubes it misses, a request for a held cube is a
+     *  resync), CubeHashesC2S (15), CubeUnloadC2S (30) and CubeAckC2S (33, cubes + KiB + rate) replace their
+     *  chunk versions; ViewDistanceC2S adds the vertical render distance. Block coordinates are zigzag varlongs
+     *  (BlockChangeS2C, BlockStateS2C; MultiBlockChangeS2C/BlockMetaS2C section coordinates); world positions
+     *  are an int64 cell varlong + float offset per axis (NetCoords) in WelcomeS2C, EntitySpawnS2C,
+     *  EntityTeleportS2C, ProjectileSpawnC2S, PlayerStateC2S/S2C, PlayerPositionS2C, PlayerJoinS2C,
+     *  PlayerLifeC2S, KillCreditS2C, FishingRodC2S, SoundEventS2C, VehicleActionC2S and VehicleMoveC2S.
+     *  24: WelcomeS2C carries the world's terrain scale (1:4 / 1:2) after the generator type, so the client's
+     *  generator (FastLOD fallback, terrain queries) matches the server's world. */
+    public static final int CURRENT = 24;
 
     private ProtocolVersion() {}
 }

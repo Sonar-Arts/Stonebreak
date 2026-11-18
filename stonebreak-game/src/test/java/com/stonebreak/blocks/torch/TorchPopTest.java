@@ -5,6 +5,8 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.World;
 import org.junit.jupiter.api.Test;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 import org.mockito.MockedStatic;
@@ -21,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -55,7 +58,7 @@ class TorchPopTest {
     private Map<String, BlockType> blocks;
     private Map<String, String> states;
     private List<String> airWrites;
-    private List<Vector3f> dropPositions;
+    private List<Vector3d> dropPositions;
     private List<String> sinkReports;
     private World world;
 
@@ -70,17 +73,17 @@ class TorchPopTest {
         dropPositions = new ArrayList<>();
         sinkReports = new ArrayList<>();
         world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> blocks.get(
-                key(inv.getArgument(0, Integer.class), inv.getArgument(1, Integer.class),
-                        inv.getArgument(2, Integer.class))));
-        when(world.getBlockStateAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> states.get(
-                key(inv.getArgument(0, Integer.class), inv.getArgument(1, Integer.class),
-                        inv.getArgument(2, Integer.class))));
-        when(world.setBlockAt(anyInt(), anyInt(), anyInt(), any(BlockType.class), anyBoolean()))
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> blocks.get(
+                key(inv.getArgument(0, Long.class).intValue(), inv.getArgument(1, Long.class).intValue(),
+                        inv.getArgument(2, Long.class).intValue())));
+        when(world.getBlockStateAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> states.get(
+                key(inv.getArgument(0, Long.class).intValue(), inv.getArgument(1, Long.class).intValue(),
+                        inv.getArgument(2, Long.class).intValue())));
+        when(world.setBlockAt(anyLong(), anyLong(), anyLong(), any(BlockType.class), anyBoolean()))
                 .thenAnswer(inv -> {
-                    int x = inv.getArgument(0, Integer.class);
-                    int y = inv.getArgument(1, Integer.class);
-                    int z = inv.getArgument(2, Integer.class);
+                    int x = inv.getArgument(0, Long.class).intValue();
+                    int y = inv.getArgument(1, Long.class).intValue();
+                    int z = inv.getArgument(2, Long.class).intValue();
                     BlockType type = inv.getArgument(3, BlockType.class);
                     blocks.put(key(x, y, z), type);
                     if (type == BlockType.AIR) {
@@ -107,12 +110,12 @@ class TorchPopTest {
         states.put(key(tx, ty, tz), stateString);
     }
 
-    private List<Vector3f> recordDrops(Runnable scan) {
+    private List<Vector3d> recordDrops(Runnable scan) {
         try (MockedStatic<DropUtil> dropUtil = mockStatic(DropUtil.class)) {
-            dropUtil.when(() -> DropUtil.handleBlockBroken(any(World.class), any(Vector3f.class),
+            dropUtil.when(() -> DropUtil.handleBlockBroken(any(World.class), any(Vector3dc.class),
                             any(BlockType.class)))
                     .thenAnswer(inv -> {
-                        dropPositions.add(inv.getArgument(1, Vector3f.class));
+                        dropPositions.add(new Vector3d(inv.getArgument(1, Vector3dc.class)));
                         return null;
                     });
             scan.run();
@@ -220,14 +223,14 @@ class TorchPopTest {
         placeTorch(5, 6, 5, TorchState.ground().toStateString());
         blocks.put(key(C.x, C.y, C.z), BlockType.AIR); // the support just vanished
 
-        List<Vector3f> drops = recordDrops(() -> {
+        List<Vector3d> drops = recordDrops(() -> {
             List<Vector3i> popped = TorchBlock.popUnsupported(w, C.x, C.y, C.z);
             assertEquals(List.of(new Vector3i(5, 6, 5)), popped);
         });
 
         // One item drop at the torch's cell center.
         assertEquals(1, drops.size());
-        assertEquals(new Vector3f(5.5f, 6.5f, 5.5f), drops.get(0));
+        assertEquals(new Vector3d(5.5, 6.5, 5.5), drops.get(0));
         // The torch block removed through the funnel AIR write...
         assertTrue(airWrites.contains(key(5, 6, 5)));
         assertEquals(BlockType.AIR, blocks.get(key(5, 6, 5)));
@@ -241,7 +244,7 @@ class TorchPopTest {
         // The funnel sweep already removed the torch: nothing left to pop.
         blocks.put(key(C.x, C.y, C.z), BlockType.AIR);
 
-        List<Vector3f> drops = recordDrops(() ->
+        List<Vector3d> drops = recordDrops(() ->
                 assertEquals(List.of(), TorchBlock.popUnsupported(w, C.x, C.y, C.z)));
 
         assertEquals(0, drops.size(), "no second drop");
@@ -255,7 +258,7 @@ class TorchPopTest {
         placeTorch(5, 6, 5, TorchState.ground().toStateString());
         blocks.put(key(C.x, C.y, C.z), BlockType.AIR);
 
-        List<Vector3f> drops = recordDrops(() -> {
+        List<Vector3d> drops = recordDrops(() -> {
             List<Vector3i> popped = TorchBlock.popUnsupported(w, C.x, C.y, C.z);
             assertEquals(List.of(new Vector3i(5, 6, 5)), popped);
         });
@@ -275,7 +278,7 @@ class TorchPopTest {
         placeTorch(5, 5, 6, TorchState.side(TorchState.Facing.NORTH).toStateString());
         blocks.put(key(C.x, C.y, C.z), BlockType.AIR);
 
-        List<Vector3f> drops = recordDrops(() ->
+        List<Vector3d> drops = recordDrops(() ->
                 assertEquals(3, TorchBlock.popUnsupported(w, C.x, C.y, C.z).size()));
 
         assertEquals(3, drops.size(), "one item drop per popped torch");

@@ -50,7 +50,7 @@ public final class ClientEntityHandler {
             return new PendingSpawn(spawn, animState, variant, status);
         }
         /** The entity moved while its spawn waited: spawn it where it is now. */
-        PendingSpawn movedTo(float x, float y, float z, float yaw) {
+        PendingSpawn movedTo(double x, double y, double z, float yaw) {
             EntitySpawnS2C s = spawn;
             return new PendingSpawn(new EntitySpawnS2C(s.networkId(), s.entityTypeOrdinal(),
                     x, y, z, yaw, s.metadata()), animState, variant, status);
@@ -111,7 +111,7 @@ public final class ClientEntityHandler {
             return;
         }
         EntityType type = types[s.entityTypeOrdinal()];
-        Entity entity = createShadow(type, new Vector3f(s.x(), s.y(), s.z()), s.metadata());
+        Entity entity = createShadow(type, new org.joml.Vector3d(s.x(), s.y(), s.z()), s.metadata());
         if (entity == null) {
             // A replicated type without a shadow factory is a wiring bug, not a normal case —
             // this entity would silently never exist on this client.
@@ -187,16 +187,16 @@ public final class ClientEntityHandler {
         NetworkInterpolator interp = e.getInterpolator();
         // Deltas rebase from the last broadcast target (not the displayed position) so they
         // don't smear between clients with mismatched display states.
-        float baseX, baseY, baseZ;
+        double baseX, baseY, baseZ;
         if (interp != null) {
             baseX = interp.targetX(); baseY = interp.targetY(); baseZ = interp.targetZ();
         } else {
-            Vector3f p = e.getPosition();
+            org.joml.Vector3d p = e.getPosition();
             baseX = p.x; baseY = p.y; baseZ = p.z;
         }
-        float nx = baseX + EntityDeltaCodec.decodePosDelta(m.dx());
-        float ny = baseY + EntityDeltaCodec.decodePosDelta(m.dy());
-        float nz = baseZ + EntityDeltaCodec.decodePosDelta(m.dz());
+        double nx = baseX + EntityDeltaCodec.decodePosDelta(m.dx());
+        double ny = baseY + EntityDeltaCodec.decodePosDelta(m.dy());
+        double nz = baseZ + EntityDeltaCodec.decodePosDelta(m.dz());
         float yaw = EntityDeltaCodec.decodeYawDeg(m.yawDeg10());
         applyAbsolute(m.networkId(), nx, ny, nz, yaw);
     }
@@ -209,8 +209,8 @@ public final class ClientEntityHandler {
         }
         NetworkInterpolator interp = e.getInterpolator();
         if (interp != null) {
-            Vector3f cur = e.getPosition();
-            float dx = t.x() - cur.x, dy = t.y() - cur.y, dz = t.z() - cur.z;
+            org.joml.Vector3d cur = e.getPosition();
+            double dx = t.x() - cur.x, dy = t.y() - cur.y, dz = t.z() - cur.z;
             if (dx * dx + dy * dy + dz * dz > TELEPORT_SNAP_DISTANCE * TELEPORT_SNAP_DISTANCE) {
                 interp.seed(t.x(), t.y(), t.z(), t.yaw(), interp.currentTargetPitch());
                 e.setPosition(t.x(), t.y(), t.z());
@@ -297,7 +297,7 @@ public final class ClientEntityHandler {
         return false;
     }
 
-    public void applyAbsolute(int networkId, float x, float y, float z, float yaw) {
+    public void applyAbsolute(int networkId, double x, double y, double z, float yaw) {
         Entity e = byNetworkId.get(networkId);
         if (e == null) {
             return;
@@ -346,7 +346,7 @@ public final class ClientEntityHandler {
 
     // ─── Shadow construction ──────────────────────────────────────────────────
 
-    private static Entity createShadow(EntityType type, Vector3f pos, String metadata) {
+    private static Entity createShadow(EntityType type, org.joml.Vector3dc pos, String metadata) {
         return com.stonebreak.network.EntityReplicationRegistry.createShadow(
             type, Game.getWorld(), pos, metadata);
     }

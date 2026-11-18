@@ -14,7 +14,8 @@ import com.stonebreak.world.fastlod.FastLodLevel;
 import com.stonebreak.world.fastlod.FastLodMesher;
 import com.stonebreak.world.fastlod.FastLodQuality;
 import com.stonebreak.world.fastlod.FastLodSampler;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.NativeTerrain;
+import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -89,13 +90,13 @@ final class FastLodRingLab {
         int quads() { return tops + skirts + foundations + trees; }
     }
 
-    private final TerrainGenerationSystem terrain;
+    private final NativeTerrain terrain;
     private final FastLodSampler sampler;
     private final FastLodMesher mesher;
 
     FastLodRingLab(long seed) {
         MmsVertexFormat.override(MmsVertexFormat.QUAD16);
-        terrain = new TerrainGenerationSystem(seed);
+        terrain = TerrainGeneratorType.STANDARD.create(seed); // native sampler (#447)
         sampler = new FastLodSampler(terrain);
         BlockTextureArray textures = mock(BlockTextureArray.class);
         when(textures.getBlockFaceLayer(any(), anyInt())).thenReturn(1);

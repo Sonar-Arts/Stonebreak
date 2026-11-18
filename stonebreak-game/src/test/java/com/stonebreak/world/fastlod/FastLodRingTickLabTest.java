@@ -3,7 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.TerrainGenerationSystem;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -37,7 +37,7 @@ class FastLodRingTickLabTest {
     }
 
     private static void measure(int inner, int range) {
-        TerrainGenerationSystem terrain = mock(TerrainGenerationSystem.class, org.mockito.Mockito.withSettings().stubOnly());
+        TerrainGenerator terrain = mock(TerrainGenerator.class, org.mockito.Mockito.withSettings().stubOnly());
         org.mockito.stubbing.Answer<Void> flat = inv -> {
             int count = inv.getArgument(2);
             int[] h = inv.getArgument(4);

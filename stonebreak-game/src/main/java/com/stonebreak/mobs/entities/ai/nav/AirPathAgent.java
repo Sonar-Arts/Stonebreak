@@ -10,7 +10,11 @@ import com.openmason.engine.nav.NavWorld;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
-import org.joml.Vector3f;
+import com.openmason.engine.physics.PhysicsWorld;
+import com.stonebreak.mobs.entities.PhysicsFrame;
+import com.stonebreak.world.physics.WorldPhysics;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * One flyer's navigation: tell it where it is going and it plans, re-plans and hands back the point
@@ -76,9 +80,12 @@ public final class AirPathAgent {
      */
     private static final NavLimits LIMITS = new NavLimits(3000, Float.MAX_VALUE, 1.25f);
 
-    /** Lowest and highest world Y a route may use. */
-    private static final int FLIGHT_FLOOR = 1;
-    private static final int FLIGHT_CEILING = WorldConfiguration.WORLD_HEIGHT - 2;
+    /**
+     * Lowest and highest ABSOLUTE world Y a route may use: just above the bedrock floor and just under
+     * the build limit (the world spans [MIN_Y, MAX_Y)).
+     */
+    private static final long FLIGHT_FLOOR = WorldConfiguration.MIN_Y + 1L;
+    private static final long FLIGHT_CEILING = WorldConfiguration.MAX_Y - 2L;
 
     /** A bird: a mild pull toward cruise, climbing costed above descending, unloaded sky at a premium. */
     private static final AirProfile PROFILE = new AirProfile(CELL_SIZE, 0.0f, 0.35f, 0.5f, 0.15f, true, 0.75f,
@@ -97,14 +104,21 @@ public final class AirPathAgent {
 
     private final Entity entity;
     private final AirAgent agent;
-    private final float[] target = new float[3];
+    private final double[] target = new double[3];
+
+    /** The frame origin the agent's positions are relative to (kept equal to the physics world's). */
+    private long originX, originY, originZ;
 
     public AirPathAgent(Entity entity) {
         this.entity = entity;
-        Vector3f position = entity.getPosition();
+        PhysicsWorld physics = physicsOf(entity);
+        this.originX = PhysicsFrame.originX(physics);
+        this.originY = PhysicsFrame.originY(physics);
+        this.originZ = PhysicsFrame.originZ(physics);
         this.agent = AirAgent.create(new AirAgentDesc(PROFILE, LIMITS, PLAN_RANGE, REPLAN_TRAVEL,
                 REPLAN_INTERVAL_SECONDS, NO_PATH_RETRY_SECONDS, SATURATED_RETRY_SECONDS, WAYPOINT_RADIUS,
-                GOAL_RADIUS, GOAL_SNAP_CELLS), position.x, position.y, position.z);
+                GOAL_RADIUS, GOAL_SNAP_CELLS), originX, originY, originZ,
+                entity.getX() - originX, entity.getY() - originY, entity.getZ() - originZ);
     }
 
     // ── Commands ─────────────────────────────────────────────────────────────
@@ -113,13 +127,15 @@ public final class AirPathAgent {
      * The altitude routes should prefer. Everything else being equal a route holds this height and
      * leaves it only where terrain forces it to, which is what keeps a flock cruising as a flock.
      */
-    public void setCruiseAltitude(float altitude) {
-        agent.setCruiseAltitude(altitude);
+    public void setCruiseAltitude(double altitude) {
+        syncFrame();
+        agent.setCruiseAltitude(altitude - originY);
     }
 
     /** Sets the far destination. Cheap to call every tick; re-planning is throttled internally. */
-    public void moveTo(Vector3f goal) {
-        agent.moveTo(goal.x, goal.y, goal.z);
+    public void moveTo(Vector3dc goal) {
+        syncFrame();
+        agent.moveTo(goal.x() - originX, goal.y() - originY, goal.z() - originZ);
     }
 
     /** Abandons the destination and the route. */
@@ -135,18 +151,18 @@ public final class AirPathAgent {
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     public void tick(float deltaTime) {
-        Vector3f position = entity.getPosition();
-        agent.tick(navWorld(), position.x, position.y, position.z, deltaTime);
+        syncFrame();
+        agent.tick(navWorld(), entity.getX() - originX, entity.getY() - originY, entity.getZ() - originZ, deltaTime);
     }
 
     /**
      * The point to fly at: the next waypoint of the route, or — while there is no route — the
      * horizon along the bearing to the destination, at cruise altitude.
      */
-    public Vector3f steerTarget(Vector3f out) {
-        Vector3f position = entity.getPosition();
-        agent.steerTarget(position.x, position.y, position.z, target);
-        return out.set(target[0], target[1], target[2]);
+    public Vector3d steerTarget(Vector3d out) {
+        syncFrame();
+        agent.steerTarget(entity.getX() - originX, entity.getY() - originY, entity.getZ() - originZ, target);
+        return out.set(target[0] + originX, target[1] + originY, target[2] + originZ);
     }
 
     /** Whether a planned route is being flown right now, as opposed to a bare bearing. */
@@ -179,9 +195,9 @@ public final class AirPathAgent {
     }
 
     /** Writes the destination into {@code out}; unchanged when there is none. */
-    public Vector3f goal(Vector3f out) {
+    public Vector3d goal(Vector3d out) {
         AgentView view = agent.view();
-        return view.hasGoal() ? out.set(view.goalX(), view.goalY(), view.goalZ()) : out;
+        return view.hasGoal() ? out.set(view.goalX() + originX, view.goalY() + originY, view.goalZ() + originZ) : out;
     }
 
     /** Releases navigation state when the flyer lands or is removed. */
@@ -189,9 +205,41 @@ public final class AirPathAgent {
         stop();
     }
 
+    /** The frame origin {@link #path()} is relative to. */
+    public long originX() {
+        return originX;
+    }
+
+    public long originY() {
+        return originY;
+    }
+
+    public long originZ() {
+        return originZ;
+    }
+
+    private static PhysicsWorld physicsOf(Entity entity) {
+        World world = entity.getWorld();
+        return world == null ? null : WorldPhysics.of(world).engine();
+    }
+
+    /** Follows the physics world's frame origin. */
+    private void syncFrame() {
+        PhysicsWorld physics = physicsOf(entity);
+        long ox = PhysicsFrame.originX(physics);
+        long oy = PhysicsFrame.originY(physics);
+        long oz = PhysicsFrame.originZ(physics);
+        if (ox != originX || oy != originY || oz != originZ) {
+            agent.setOrigin(ox, oy, oz);
+            originX = ox;
+            originY = oy;
+            originZ = oz;
+        }
+    }
+
     private NavWorld navWorld() {
         World world = entity.getWorld();
         PathfindingService service = world == null ? null : world.pathfinding();
-        return service == null || service.isClosed() ? null : service.nav();
+        return service == null || service.isClosed() ? null : service.navInFrame();
     }
 }

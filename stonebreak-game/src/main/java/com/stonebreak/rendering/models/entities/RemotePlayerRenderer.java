@@ -160,7 +160,7 @@ public final class RemotePlayerRenderer {
         shader.setUniform("projection", projectionMatrix);
 
         // Position is at body bottom, but for REMOTE_PLAYER legHeight=0 so feet = position.y.
-        Vector3f pos = entity.getPosition();
+        org.joml.Vector3d pos = entity.getPosition();
         Matrix4f model = RenderOrigin.modelAt(pos.x, pos.y, pos.z)
                 .rotateY((float) Math.toRadians(entity.getRotation().y));
         shader.setUniform("model", model);

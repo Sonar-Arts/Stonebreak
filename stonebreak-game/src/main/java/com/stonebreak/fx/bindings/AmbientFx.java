@@ -7,7 +7,7 @@ import com.openmason.engine.rendering.particles.FxParameter;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.fx.FxParams;
 import com.stonebreak.fx.FxRuntime;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.List;
 import java.util.function.Function;
@@ -43,7 +43,7 @@ public final class AmbientFx {
     private final float[][] offsets = new float[SLOTS][PER_SOURCE * 3];
     /** Each instance's {@link FxRuntime#PARAM_PULSE} parameter index, or -1 when its FX has none. */
     private final int[][] pulseParams = new int[SLOTS][PER_SOURCE];
-    private final Vector3f scratch = new Vector3f();
+    private final Vector3d scratch = new Vector3d();
     private float density = Float.NaN;
 
     /**
@@ -63,7 +63,7 @@ public final class AmbientFx {
             if (type == null) {
                 continue;
             }
-            Vector3f p = sources.position(i, scratch);
+            Vector3d p = sources.position(i, scratch);
             double dx = p.x - camX, dy = p.y - camY, dz = p.z - camZ;
             if (dx * dx + dy * dy + dz * dz > RANGE * RANGE) {
                 continue;
@@ -136,7 +136,7 @@ public final class AmbientFx {
 
     /** Starts the source's ambient bindings in a free slot; -1 when it has none (or no slot is free). */
     private int start(FxRuntime runtime, long key, BlockType type, FxData data, ToIntFunction<BlockType> tints,
-                      Vector3f p) {
+                      Vector3d p) {
         if (data == null || !AssetFx.binds(data, FxData.EVENT_AMBIENT)) {
             return -1;
         }
@@ -176,7 +176,7 @@ public final class AmbientFx {
         return slot;
     }
 
-    private void move(int slot, Vector3f p) {
+    private void move(int slot, Vector3d p) {
         float[] off = offsets[slot];
         for (int k = 0; k < counts[slot]; k++) {
             FxInstance inst = instances[slot][k];

@@ -63,13 +63,13 @@ class EntityInterestTrackingTest {
     }
 
     private Cow cowAt(float x, float z) {
-        Cow cow = new Cow(mock(World.class), new Vector3f(x, 64f, z));
+        Cow cow = new Cow(mock(World.class), new org.joml.Vector3d(x, 64f, z));
         handler.onEntitySpawned(cow, ctx);
         return cow;
     }
 
     private void walk(Cow cow, float toX, int ticks) {
-        float from = cow.getX();
+        float from = (float) cow.getX();
         for (int i = 1; i <= ticks; i++) {
             cow.setPosition(from + (toX - from) * i / ticks, 64f, cow.getZ());
             handler.tick(ctx);

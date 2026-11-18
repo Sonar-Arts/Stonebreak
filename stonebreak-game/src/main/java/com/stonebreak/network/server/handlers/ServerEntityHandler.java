@@ -209,18 +209,19 @@ public final class ServerEntityHandler {
             broadcastStatusIfChanged(t, ctx);
 
             int id = t.id;
-            float[] last = t.last;
-            float x = e.getX();
-            float y = e.getY();
-            float z = e.getZ();
+            double[] last = t.last;
+            double x = e.getX();
+            double y = e.getY();
+            double z = e.getZ();
             float yaw = e.getYaw();
 
-            float dx = x - last[0];
-            float dy = y - last[1];
-            float dz = z - last[2];
+            // Deltas in double, then float: only small ones become move packets.
+            float dx = (float) (x - last[0]);
+            float dy = (float) (y - last[1]);
+            float dz = (float) (z - last[2]);
             // Angular difference: the codec wraps yaw to (-360, 360), so the sent base can
             // differ from an unwrapped live yaw by whole turns.
-            float dyaw = Math.abs(((yaw - last[3]) % 360f + 540f) % 360f - 180f);
+            float dyaw = Math.abs(((yaw - (float) last[3]) % 360f + 540f) % 360f - 180f);
 
             int sinceResync = t.ticksSinceResync + 1;
             boolean posMoved = Math.abs(dx) >= MIN_BROADCAST_DELTA
@@ -338,7 +339,7 @@ public final class ServerEntityHandler {
         int weaponId = kind == HitKind.MELEE ? sp.inventory().heldItemId() : LivingEntity.NO_WEAPON;
         float healthBefore = le.getHealth();
         sp.recordHit(pkt.targetNetworkId(), now);
-        le.damage(amount, source, type, weaponId, new Vector3f(sp.x(), sp.y(), sp.z()), false);
+        le.damage(amount, source, type, weaponId, new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), false);
         float dealt = healthBefore - Math.max(0f, le.getHealth());
         if (dealt > 0f) {
             sendKillCredit(sp, le, dealt, !le.isAlive(), source, kind);
@@ -382,11 +383,11 @@ public final class ServerEntityHandler {
     }
 
     private static float distanceSq(ServerPlayer sp, Entity e) {
-        Vector3f p = e.getPosition();
-        float dx = p.x - sp.x();
-        float dy = p.y - sp.y();
-        float dz = p.z - sp.z();
-        return dx * dx + dy * dy + dz * dz;
+        org.joml.Vector3d p = e.getPosition();
+        double dx = p.x - sp.x();
+        double dy = p.y - sp.y();
+        double dz = p.z - sp.z();
+        return (float) Math.min(Float.MAX_VALUE, dx * dx + dy * dy + dz * dz);
     }
 
     /**
@@ -454,10 +455,10 @@ public final class ServerEntityHandler {
             sp.send(new EntityVariantS2C(pkt.targetNetworkId(), sheep.getTextureVariant()), false);
             return;
         }
-        Vector3f p = e.getPosition();
-        float dx = p.x - sp.x();
-        float dy = p.y - sp.y();
-        float dz = p.z - sp.z();
+        org.joml.Vector3d p = e.getPosition();
+        float dx = (float) (p.x - sp.x());
+        float dy = (float) (p.y - sp.y());
+        float dz = (float) (p.z - sp.z());
         if (dx * dx + dy * dy + dz * dz > MAX_SHEAR_RANGE_SQ) {
             // Range gate measures against the last reported position — an edge-of-reach
             // shear while moving lands here. Echo the real variant so the client reverts
@@ -512,7 +513,7 @@ public final class ServerEntityHandler {
         if (em == null) {
             return;
         }
-        if (!Float.isFinite(pkt.x()) || !Float.isFinite(pkt.y()) || !Float.isFinite(pkt.z())
+        if (!Double.isFinite(pkt.x()) || !Double.isFinite(pkt.y()) || !Double.isFinite(pkt.z())
             || !Float.isFinite(pkt.vx()) || !Float.isFinite(pkt.vy()) || !Float.isFinite(pkt.vz())) {
             return;
         }
@@ -530,10 +531,10 @@ public final class ServerEntityHandler {
             refuseSpawn(sp, arrow);
             return;
         }
-        float dx = pkt.x() - sp.x();
-        float dy = pkt.y() - sp.y();
-        float dz = pkt.z() - sp.z();
-        float distSq = dx * dx + dy * dy + dz * dz;
+        double dx = pkt.x() - sp.x();
+        double dy = pkt.y() - sp.y();
+        double dz = pkt.z() - sp.z();
+        double distSq = dx * dx + dy * dy + dz * dz;
         boolean zoneKind = pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_LEYLINE_BREACH
             || pkt.kind() == com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP;
         if (distSq > (zoneKind ? MAX_ZONE_SPAWN_DIST_SQ : MAX_PROJECTILE_SPAWN_DIST_SQ)) {
@@ -548,7 +549,7 @@ public final class ServerEntityHandler {
             refuseSpawn(sp, arrow);
             return;
         }
-        Vector3f pos = new Vector3f(pkt.x(), pkt.y(), pkt.z());
+        org.joml.Vector3d pos = new org.joml.Vector3d(pkt.x(), pkt.y(), pkt.z());
         Vector3f v = new Vector3f(pkt.vx(), pkt.vy(), pkt.vz());
         float[] params = pkt.params();
         Entity spawned = switch (pkt.kind()) {
@@ -661,8 +662,8 @@ public final class ServerEntityHandler {
         if (!sp.handshakeDone()) {
             return;
         }
-        int pcx = chunkOf(anchorX(sp, ctx));
-        int pcz = chunkOf(anchorZ(sp, ctx));
+        long pcx = chunkOf(anchorX(sp, ctx));
+        long pcz = chunkOf(anchorZ(sp, ctx));
         int enterRadius = sp.viewDistanceChunks();
         PlayerView view = views.computeIfAbsent(sp.playerId(), ignored -> new PlayerView());
         if (full || view.changedTo(pcx, pcz, enterRadius)) {
@@ -677,11 +678,11 @@ public final class ServerEntityHandler {
         }
     }
 
-    private void judgeInterest(ServerPlayer sp, Tracked t, int pcx, int pcz, int enterRadius) {
+    private void judgeInterest(ServerPlayer sp, Tracked t, long pcx, long pcz, int enterRadius) {
         if (t.removed) {
             return;
         }
-        int distance = Math.max(Math.abs(t.chunkX - pcx), Math.abs(t.chunkZ - pcz));
+        long distance = Math.max(Math.abs(t.chunkX - pcx), Math.abs(t.chunkZ - pcz));
         if (t.hasViewer(sp.playerId())) {
             if (distance > enterRadius + INTEREST_EXIT_MARGIN_CHUNKS) {
                 t.removeViewer(sp.playerId());
@@ -735,20 +736,20 @@ public final class ServerEntityHandler {
 
     /** Interest anchor: the player's last reported position, or the world spawn until the
      *  first PlayerStateC2S lands (a just-joined player is standing at the spawn). */
-    private static float anchorX(ServerPlayer sp, ServerWorldContext ctx) {
+    private static double anchorX(ServerPlayer sp, ServerWorldContext ctx) {
         return sp.lastStateNs() != 0L ? sp.x() : ctx.spawn().x;
     }
 
-    private static float anchorZ(ServerPlayer sp, ServerWorldContext ctx) {
+    private static double anchorZ(ServerPlayer sp, ServerWorldContext ctx) {
         return sp.lastStateNs() != 0L ? sp.z() : ctx.spawn().z;
     }
 
-    private static int chunkOf(float coord) {
-        return Math.floorDiv((int) Math.floor(coord), com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
+    private static long chunkOf(double coord) {
+        return Math.floorDiv((long) Math.floor(coord), (long) com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE);
     }
 
     /** Chebyshev chunk-radius test — the same view shape chunk streaming uses. */
-    static boolean withinChunkRadius(float ex, float ez, float px, float pz, int radiusChunks) {
+    static boolean withinChunkRadius(double ex, double ez, double px, double pz, int radiusChunks) {
         return Math.max(Math.abs(chunkOf(ex) - chunkOf(px)), Math.abs(chunkOf(ez) - chunkOf(pz))) <= radiusChunks;
     }
 
@@ -856,10 +857,10 @@ public final class ServerEntityHandler {
         // Seed the client at the entity's last-broadcast base (not its live position): the
         // move deltas this handler emits are computed against that base, so a late-interest
         // spawn keeps the receiver's delta chain consistent with everyone else's.
-        float[] last = t.last;
+        double[] last = t.last;
         return new EntitySpawnS2C(
             t.id, t.entity.getType().ordinal(),
-            last[0], last[1], last[2], last[3],
+            last[0], last[1], last[2], (float) last[3],
             com.stonebreak.network.EntityReplicationRegistry.metadataFor(t.entity));
     }
 
@@ -872,15 +873,15 @@ public final class ServerEntityHandler {
         final Entity entity;
         final int id;
         /** Last broadcast base: x, y, z, yaw — what every viewer's shadow was told. */
-        final float[] last;
+        final double[] last;
         int ticksSinceResync;
         /** Last SBE animation state / appearance variant / status key broadcast, resent on change. */
         String lastAnim;
         String lastVariant;
         long lastStatus = Long.MIN_VALUE;
         /** Chunk of the broadcast base: interest is judged on it. */
-        int chunkX;
-        int chunkZ;
+        long chunkX;
+        long chunkZ;
         /** Set once untracked: a stale reference (crossed-chunk list) must not spawn it. */
         volatile boolean removed;
         /**
@@ -892,15 +893,15 @@ public final class ServerEntityHandler {
         Tracked(Entity e) {
             this.entity = e;
             this.id = e.getNetworkId();
-            this.last = new float[]{e.getX(), e.getY(), e.getZ(), e.getYaw()};
+            this.last = new double[]{e.getX(), e.getY(), e.getZ(), e.getYaw()};
             this.chunkX = chunkOf(last[0]);
             this.chunkZ = chunkOf(last[2]);
         }
 
         /** Recomputes the base's chunk; true if it changed. */
         boolean rebase() {
-            int cx = chunkOf(last[0]);
-            int cz = chunkOf(last[2]);
+            long cx = chunkOf(last[0]);
+            long cz = chunkOf(last[2]);
             if (cx == chunkX && cz == chunkZ) {
                 return false;
             }
@@ -951,15 +952,15 @@ public final class ServerEntityHandler {
     /** The chunk and view distance a player's interest was last fully judged from. */
     private static final class PlayerView {
         private boolean judged;
-        private int chunkX;
-        private int chunkZ;
+        private long chunkX;
+        private long chunkZ;
         private int viewDistance;
 
-        boolean changedTo(int cx, int cz, int view) {
+        boolean changedTo(long cx, long cz, int view) {
             return !judged || cx != chunkX || cz != chunkZ || view != viewDistance;
         }
 
-        void set(int cx, int cz, int view) {
+        void set(long cx, long cz, int view) {
             judged = true;
             chunkX = cx;
             chunkZ = cz;

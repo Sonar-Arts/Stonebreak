@@ -2,6 +2,8 @@ package com.stonebreak.player;
 
 import com.openmason.engine.rendering.RenderOrigin;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -15,7 +17,7 @@ public class Camera {
     private static final float MAX_PITCH = 89.0f;
     
     // Camera attributes
-    private final Vector3f position;
+    private final Vector3d position;
     private final Vector3f front;
     private Vector3f up;
     private Vector3f right;
@@ -29,7 +31,7 @@ public class Camera {
     // eye/target/roll instead of the player-driven position + Euler angles; the player-driven
     // state is left untouched so clearing the override restores first/third person exactly.
     private boolean cinematicActive;
-    private final Vector3f cinematicEye = new Vector3f();
+    private final Vector3d cinematicEye = new Vector3d();
     private final Vector3f cinematicFront = new Vector3f(0.0f, 0.0f, -1.0f);
     private final Vector3f cinematicUp = new Vector3f(0.0f, 1.0f, 0.0f);
     private final Vector3f cinematicRight = new Vector3f(1.0f, 0.0f, 0.0f);
@@ -38,7 +40,7 @@ public class Camera {
      * Creates a camera with default values.
      */
     public Camera() {
-        this.position = new Vector3f(0.0f, 0.0f, 0.0f);
+        this.position = new Vector3d();
         this.worldUp = new Vector3f(0.0f, 1.0f, 0.0f);
         this.yaw = YAW;
         this.pitch = PITCH;
@@ -51,8 +53,8 @@ public class Camera {
     /**
      * Creates a camera with specified parameters.
      */
-    public Camera(Vector3f position, Vector3f up, float yaw, float pitch) {
-        this.position = position;
+    public Camera(Vector3dc position, Vector3f up, float yaw, float pitch) {
+        this.position = new Vector3d(position);
         this.worldUp = up;
         this.yaw = yaw;
         this.pitch = pitch;
@@ -85,14 +87,9 @@ public class Camera {
      * in world coordinates and the error is provably harmless.
      */
     public Matrix4f getAbsoluteViewMatrix() {
-        if (cinematicActive) {
-            Vector3f cinematicTarget = new Vector3f(cinematicEye).add(cinematicFront);
-            return new Matrix4f().lookAt(cinematicEye, cinematicTarget, cinematicUp);
-        }
-        // Create a temporary "look at" point that is position + front
-        Vector3f target = new Vector3f();
-        position.add(front, target);
-        return new Matrix4f().lookAt(position, target, up);
+        Vector3f eye = new Vector3f().set(getPosition());
+        Vector3f target = new Vector3f(eye).add(getFront());
+        return new Matrix4f().lookAt(eye, target, getUp());
     }
 
     /**
@@ -144,14 +141,14 @@ public class Camera {
     /**
      * Sets the camera position.
      */
-    public void setPosition(float x, float y, float z) {
+    public void setPosition(double x, double y, double z) {
         position.set(x, y, z);
     }
     
     /**
      * Gets the camera position.
      */
-    public Vector3f getPosition() {
+    public Vector3d getPosition() {
         return cinematicActive ? cinematicEye : position;
     }
     
@@ -186,8 +183,9 @@ public class Camera {
      * @param target  world-space look-at point (must differ from {@code eye})
      * @param rollDeg roll about the view axis in degrees (0 = level horizon)
      */
-    public void setCinematicView(Vector3f eye, Vector3f target, float rollDeg) {
-        Vector3f f = new Vector3f(target).sub(eye);
+    public void setCinematicView(Vector3dc eye, Vector3dc target, float rollDeg) {
+        Vector3f f = new Vector3f(
+                (float) (target.x() - eye.x()), (float) (target.y() - eye.y()), (float) (target.z() - eye.z()));
         if (f.lengthSquared() < 1.0e-10f) {
             f.set(cinematicFront); // degenerate request: keep the previous direction
         }

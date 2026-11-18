@@ -20,8 +20,6 @@ import com.stonebreak.player.Player;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Orchestrates the cascaded sun-shadow depth pre-pass.
@@ -67,9 +65,8 @@ public final class ShadowMapRenderer {
     private CascadedShadowMap shadowMap;
     private final CascadeCalculator calculator = new CascadeCalculator();
     private final ShadowCascade[] cascades = new ShadowCascade[ShadowSettings.CASCADE_COUNT];
-    private final List<List<Chunk>> cascadeChunks = new ArrayList<>();
     private final boolean[] updateMask = new boolean[ShadowSettings.CASCADE_COUNT];
-    private final Vector3f[] lastUpdatePos = new Vector3f[ShadowSettings.CASCADE_COUNT];
+    private final org.joml.Vector3d[] lastUpdatePos = new org.joml.Vector3d[ShadowSettings.CASCADE_COUNT];
     private final Vector3f[] lastUpdateFwd = new Vector3f[ShadowSettings.CASCADE_COUNT];
     private final Vector3f cameraForward = new Vector3f();
     private final ShaderProgram depthShader;
@@ -95,8 +92,7 @@ public final class ShadowMapRenderer {
         this.shadowMap = new CascadedShadowMap(settings.resolution(), ShadowSettings.CASCADE_COUNT);
         for (int i = 0; i < cascades.length; i++) {
             cascades[i] = new ShadowCascade();
-            cascadeChunks.add(new ArrayList<>());
-            lastUpdatePos[i] = new Vector3f();
+            lastUpdatePos[i] = new org.joml.Vector3d();
             lastUpdateFwd[i] = new Vector3f(0, 0, -1);
         }
         this.depthShader = ChunkShadowShader.create();
@@ -144,8 +140,7 @@ public final class ShadowMapRenderer {
      *                     faintness is in the receivers' {@code u_keyLight})
      */
     public void renderShadowPass(World world, Player player, Vector3f sunDirection,
-                                 EntityRenderer entityRenderer,
-                                 java.util.List<Chunk> loadedChunks) {
+                                 EntityRenderer entityRenderer) {
         active = false;
         if (world == null || player == null) {
             return;
@@ -170,19 +165,22 @@ public final class ShadowMapRenderer {
         sunDir.set(sunDirection).normalize();
 
         computeUpdateMask(player);
-        // Cascades are fitted and texel-snapped in ABSOLUTE world coordinates on
-        // purpose: the snap grid then stays put as RenderOrigin steps, so the
-        // shadow volume never slides by a fraction of a texel when the player
-        // crosses a grid boundary. Only the matrices handed to draws and
-        // receivers are rebased, immediately below.
-        calculator.update(cascades, player.getAbsoluteViewMatrix(), projectionMatrix, sunDir, settings, updateMask);
+        // Cascades are fitted in RENDER space from the camera-relative view (small
+        // floats at any world coordinate) while the texel snap stays anchored to the
+        // absolute world (the engine computes the origin's light-space residue
+        // exactly at any int64 origin), so the shadow volume moves in whole texels
+        // both as the camera pans and when RenderOrigin steps.
+        calculator.updateRelative(cascades, player.getViewMatrix(), projectionMatrix, sunDir, settings, updateMask);
         // Every cascade, not just the ones refitted this frame — a staggered
         // cascade keeps last frame's fit but still has to draw against this
         // frame's origin.
         for (ShadowCascade cascade : cascades) {
             cascade.rebaseToRenderSpace();
         }
-        collectCasterChunks(loadedChunks);
+        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            // Light passes ignore camera visibility: casters outside the view still shade it.
+            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance().prepareShadowPass();
+        }
 
         // Save state we clobber (the scene FBO may already be bound by post-fx).
         int prevFbo = glGetInteger(GL30.GL_FRAMEBUFFER_BINDING);
@@ -211,41 +209,20 @@ public final class ShadowMapRenderer {
             depthShader.bind();
             depthShader.setUniform("u_lightViewProj", cascades[i].lightViewProjRender);
             if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
-                var regionRenderer =
-                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
-                // GL 4.3+ path: compute-shader cull against this cascade's
-                // light frustum + one indirect multidraw per region.
-                // World-space matrix here, unlike the draw uniform above: the
-                // cull compute shader tests per-mesh AABBs that were uploaded
-                // in world coordinates.
-                if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
-                        && regionRenderer.drawLayerGpuCulled(
-                            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
-                            cascades[i].lightViewProj)) {
-                    regionRenderer.drawLegacyOnly(cascadeChunks.get(i),
-                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
-                } else {
-                    // Region VAOs carry the standard attribute layout, so the
-                    // depth shader draws the same multidraw batches as the main
-                    // passes — one draw per region per cascade instead of one
-                    // per caster chunk.
-                    regionRenderer.drawChunks(cascadeChunks.get(i),
-                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
-                }
-            } else {
-                for (Chunk chunk : cascadeChunks.get(i)) {
-                    chunk.render();
-                }
+                // Cube regions: GPU cull (GL 4.3) or CPU multidraw against this cascade's RENDER-SPACE
+                // light frustum - the region AABBs are region-local plus a camera-relative origin.
+                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
+                    .drawSolid(cascades[i].lightViewProjRender);
             }
             depthShader.unbind();
 
             if (entityRenderer != null) {
                 // Render-space light view (entities draw from render-space model
-                // matrices); the cull sphere stays in world space, where entity
-                // positions are.
-                entityRenderer.renderShadowCasters(player,
+                // matrices); the cull sphere is the cascade's exact (double) world
+                // centre, where entity positions are - no float world rounding.
+                entityRenderer.renderShadowCasters(player, null,
                         cascades[i].lightViewRender, cascades[i].lightProj,
-                        cascades[i].centerWorld, cascades[i].radius);
+                        cascades[i].centerWorldExact, cascades[i].radius);
             }
 
             lastUpdatePos[i].set(player.getPosition());
@@ -295,48 +272,18 @@ public final class ShadowMapRenderer {
      */
     private void computeUpdateMask(Player player) {
         player.getViewMatrix().positiveZ(cameraForward).negate();
-        Vector3f pos = player.getPosition();
+        org.joml.Vector3d pos = player.getPosition();
         for (int i = 0; i < cascades.length; i++) {
             if (needsFullRefresh || frameIndex % CASCADE_UPDATE_INTERVAL[i] == CASCADE_UPDATE_PHASE[i]) {
                 updateMask[i] = true;
                 continue;
             }
-            float moved = lastUpdatePos[i].distance(pos);
+            float moved = (float) lastUpdatePos[i].distance(pos);
             float turned = lastUpdateFwd[i].dot(cameraForward);
             updateMask[i] = moved > Math.max(1.0f, cascades[i].radius * STALE_MOVE_FRACTION)
                     || turned < STALE_TURN_DOT;
         }
         needsFullRefresh = false;
-    }
-
-    /**
-     * Collects loaded chunks that can cast into each cascade being updated this
-     * frame: a cheap XZ test of the chunk footprint against the cascade sphere
-     * swept toward the sun (a tall caster offset sunward still lands shadows in
-     * the volume).
-     */
-    private void collectCasterChunks(java.util.List<Chunk> loadedChunks) {
-        for (List<Chunk> list : cascadeChunks) {
-            list.clear();
-        }
-        if (loadedChunks == null) {
-            return;
-        }
-        // Iterates the frame's shared loaded-chunk list (collected once by
-        // WorldRenderer) instead of doing a second render-distance grid walk.
-        for (int c = 0; c < loadedChunks.size(); c++) {
-            Chunk chunk = loadedChunks.get(c);
-            float minX = chunk.getWorldX(0);
-            float minZ = chunk.getWorldZ(0);
-            float maxX = minX + WorldConfiguration.CHUNK_SIZE;
-            float maxZ = minZ + WorldConfiguration.CHUNK_SIZE;
-            for (int i = 0; i < cascades.length; i++) {
-                if (updateMask[i] && cascades[i].intersectsXZ(minX, minZ, maxX, maxZ,
-                        sunDir.x, sunDir.z, settings.casterBackup())) {
-                    cascadeChunks.get(i).add(chunk);
-                }
-            }
-        }
     }
 
     public void cleanup() {

@@ -103,6 +103,8 @@ public final class InputHandler {
             case PARTICLES -> { if (direction != 0) actionHandler.toggleParticles(); }
             case PARTICLE_DENSITY -> adjustSlider(stateManager.getParticleDensitySlider(), direction * SettingsConfig.PARTICLE_DENSITY_STEP);
             case RENDER_DISTANCE -> adjustSlider(stateManager.getRenderDistanceSlider(), direction);
+            case VERTICAL_RENDER_DISTANCE -> adjustSlider(stateManager.getVerticalRenderDistanceSlider(),
+                direction * SettingsConfig.VERTICAL_RENDER_DISTANCE_STEP);
             case LOD_DISTANCE -> adjustSlider(stateManager.getLodDistanceSlider(), direction);
             case LOD_ENABLED -> { if (direction != 0) actionHandler.toggleLodEnabled(); }
             case LOD_QUALITY -> adjustLodQuality(direction);

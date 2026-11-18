@@ -1,7 +1,7 @@
 package com.stonebreak.fx.bindings;
 
 import com.stonebreak.blocks.BlockType;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * The world places that may run their block's {@code ambient} FX this frame (Stonebreak#437). The game feeds it
@@ -20,7 +20,7 @@ public interface AmbientSources {
     long key(int i);
 
     /** World position the source emits from (a torch's ember, a furnace's mouth), into {@code out}. */
-    Vector3f position(int i, Vector3f out);
+    Vector3d position(int i, Vector3d out);
 
     /**
      * Source {@code i}'s animation pulse this frame, {@code [0, 1]} (a torch's ember swell), or NaN when it has
@@ -35,12 +35,22 @@ public interface AmbientSources {
         @Override public int count() { return 0; }
         @Override public BlockType block(int i) { return null; }
         @Override public long key(int i) { return 0; }
-        @Override public Vector3f position(int i, Vector3f out) { return out; }
+        @Override public Vector3d position(int i, Vector3d out) { return out; }
     };
 
-    /** A placed block's key: x and z in 26 bits each, y in 11 bits, top bit clear. */
-    static long blockKey(int x, int y, int z) {
-        return ((long) (x & 0x3FFFFFF) << 37) | ((long) (z & 0x3FFFFFF) << 11) | (y & 0x7FF);
+    /**
+     * A placed block's key: the full int64 cell hashed (chained splitmix64, no packed coordinates - any
+     * position is valid), top bit clear so it never meets a holder key. Identity only: two cells sharing a
+     * hash would merely swap ambient FX instances.
+     */
+    static long blockKey(long x, long y, long z) {
+        return mix(mix(mix(x) + y) + z) & Long.MAX_VALUE;
+    }
+
+    private static long mix(long v) {
+        v = (v ^ (v >>> 30)) * 0xBF58476D1CE4E5B9L;
+        v = (v ^ (v >>> 27)) * 0x94D049BB133111EBL;
+        return v ^ (v >>> 31);
     }
 
     /** A holder's key (an entity carrying the source): top bit set, so it never meets a block key. */

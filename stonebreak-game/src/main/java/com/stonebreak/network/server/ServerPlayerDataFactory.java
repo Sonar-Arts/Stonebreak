@@ -4,7 +4,6 @@ import com.stonebreak.items.ItemStack;
 import com.stonebreak.vehicles.Dinghy;
 import com.stonebreak.world.save.model.PlayerData;
 import org.joml.Vector2f;
-import org.joml.Vector3f;
 
 import java.time.LocalDateTime;
 
@@ -36,7 +35,7 @@ public final class ServerPlayerDataFactory {
         ItemStack[] slots = inv.persistedSlots();
         Dinghy boat = sp.seatedVehicle();
         return new PlayerData.Builder(baseline)
-                .position(new Vector3f(sp.x(), sp.y(), sp.z()))
+                .position(sp.x(), sp.y(), sp.z())
                 .rotation(new Vector2f(sp.yaw(), sp.pitch()))
                 .health(sp.health())
                 .flightEnabled(sp.flightEnabled())
@@ -49,7 +48,7 @@ public final class ServerPlayerDataFactory {
                 .worldName(worldName)
                 .clientSecret(sp.clientSecret()) // stored with the save, checked on takeover (#335)
                 // Always set from the server's seats: a client's claimed vehicle never reaches disk.
-                .vehiclePosition(boat != null ? boat.getPosition() : null)
+                .vehiclePosition(boat != null ? (org.joml.Vector3dc) boat.getPosition() : (org.joml.Vector3dc) null)
                 .build();
     }
 }

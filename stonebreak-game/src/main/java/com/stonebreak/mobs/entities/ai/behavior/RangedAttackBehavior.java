@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.EnumSet;
@@ -25,7 +27,7 @@ public final class RangedAttackBehavior implements Behavior {
     private final WeaponProfile.Ranged weapon;
     private final ArrowLauncher launcher;
 
-    private final Vector3f eye = new Vector3f();
+    private final Vector3d eye = new Vector3d();
     private final Vector3f aim = new Vector3f();
 
     private Phase phase = Phase.DONE;
@@ -110,23 +112,25 @@ public final class RangedAttackBehavior implements Behavior {
 
     /** Fires at the player's chest, lifted to cancel the drop over the flight, plus some wobble. */
     private void loose(AiContext context) {
-        Vector3f player = context.nearestPlayer();
+        Vector3d player = context.nearestPlayer();
         if (player == null) {
             return;
         }
-        Vector3f origin = eyeOf(context.entity());
-        aim.set(player).add(0, PlayerLocator.CHEST_HEIGHT, 0);
-        float horizontal = (float) Math.hypot(aim.x - origin.x, aim.z - origin.z);
+        Vector3d origin = eyeOf(context.entity());
+        // Aim as an offset from the bow (a small float vector wherever the fight is).
+        aim.set((float) (player.x - origin.x), (float) (player.y + PlayerLocator.CHEST_HEIGHT - origin.y),
+                (float) (player.z - origin.z));
+        float horizontal = (float) Math.hypot(aim.x, aim.z);
         float flightSeconds = horizontal / weapon.arrowSpeed();
         aim.y += 0.5f * ARROW_NET_GRAVITY * flightSeconds * flightSeconds;
-        aim.sub(origin).normalize();
+        aim.normalize();
         aim.add((float) context.random().nextGaussian() * weapon.spread(),
                 (float) context.random().nextGaussian() * weapon.spread(),
                 (float) context.random().nextGaussian() * weapon.spread()).normalize(weapon.arrowSpeed());
-        launcher.launch(context.entity(), new Vector3f(origin), new Vector3f(aim), weapon.damage());
+        launcher.launch(context.entity(), new Vector3d(origin), new Vector3f(aim), weapon.damage());
     }
 
-    private Vector3f eyeOf(LivingEntity entity) {
+    private Vector3d eyeOf(LivingEntity entity) {
         return eye.set(entity.getPosition()).add(0, entity.getHeight() * BOW_HEIGHT_FRACTION, 0);
     }
 }

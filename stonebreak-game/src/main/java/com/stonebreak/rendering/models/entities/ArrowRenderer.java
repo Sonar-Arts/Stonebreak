@@ -44,7 +44,7 @@ final class ArrowRenderer {
      * Rotated to face the arrow's velocity direction (stored in entity.rotation.y).
      */
     void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix) {
-        pipeline.begin(arrowTexture, viewMatrix, projectionMatrix, new Vector3f(0, 0, 0),
+        pipeline.begin(arrowTexture, viewMatrix, projectionMatrix, new org.joml.Vector3d(),
                 0.0f, new Vector3f(0.1f, 0.3f, 0.5f), entity, true);
 
         // Elongated along local Z (direction of travel); yaw from rotation.y

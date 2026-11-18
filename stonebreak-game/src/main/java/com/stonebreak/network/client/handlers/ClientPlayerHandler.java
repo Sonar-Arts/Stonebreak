@@ -223,7 +223,7 @@ public final class ClientPlayerHandler {
         com.stonebreak.player.combat.HitResultFeedback.apply(local,
                 target instanceof com.stonebreak.mobs.entities.LivingEntity le ? le : null,
                 source, com.stonebreak.mobs.entities.HitKind.fromWire(k.hitKind()),
-                k.damageDealt(), new org.joml.Vector3f(k.x(), k.y(), k.z()));
+                k.damageDealt(), new org.joml.Vector3d(k.x(), k.y(), k.z()));
         local.getStats().addDamageDealt(k.damageDealt());
         if (k.killed()) {
             local.getStats().incrementEntitiesKilled();
@@ -262,7 +262,7 @@ public final class ClientPlayerHandler {
 
     // ─── Remote-player lifecycle ────────────────────────────────────────────────
 
-    private void spawnRemote(int playerId, String username, float x, float y, float z) {
+    private void spawnRemote(int playerId, String username, double x, double y, double z) {
         // Never spawn against a not-yet-swapped world (see pendingJoins): the figure would
         // land in the previous session's entity manager and never render.
         if (!Game.isClientWorldReady()) {
@@ -275,8 +275,8 @@ public final class ClientPlayerHandler {
             // rostered at spawn before its player reported state, whose droppable state
             // stream was then discarded under our own join chunk burst. Small offsets are
             // left to the 20 Hz stream; repositioning mid-walk would visibly hitch.
-            Vector3f cur = existing.getPosition();
-            float dx = cur.x - x, dy = cur.y - y, dz = cur.z - z;
+            org.joml.Vector3d cur = existing.getPosition();
+            double dx = cur.x - x, dy = cur.y - y, dz = cur.z - z;
             if (dx * dx + dy * dy + dz * dz > 4.0f) {
                 NetworkInterpolator interp = existing.getInterpolator();
                 float yaw = interp != null ? interp.currentTargetYaw() : existing.getRotation().y;
@@ -285,7 +285,7 @@ public final class ClientPlayerHandler {
             }
             return;
         }
-        RemotePlayer rp = new RemotePlayer(Game.getWorld(), new Vector3f(x, y, z), playerId, username);
+        RemotePlayer rp = new RemotePlayer(Game.getWorld(), new org.joml.Vector3d(x, y, z), playerId, username);
         rp.setNetworkShadow(true);
         NetworkInterpolator interp = new NetworkInterpolator();
         interp.seed(x, y, z, 0f, 0f);
@@ -305,7 +305,7 @@ public final class ClientPlayerHandler {
         }
     }
 
-    private void applyRemoteState(int playerId, float x, float y, float z, float yaw, float pitch, short flags) {
+    private void applyRemoteState(int playerId, double x, double y, double z, float yaw, float pitch, short flags) {
         // Droppable 20 Hz stream: while the world is rebuilding just drop the packet (the
         // next one is 50 ms away). Replay buffered joins first so the on-demand fallback
         // below never beats a real join to the spawn (it would lose the username).

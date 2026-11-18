@@ -73,7 +73,7 @@ class BlockQuantize:
 
     def __call__(self, cols: BlockColumns | None, src: BlockSource, ctx: RiverContext) -> BlockColumns:
         sc = ctx.scale
-        hb = torch.floor(sc.to_blocks(src.ground_m)).clamp(0, sc.world_height - 1).long()
+        hb = torch.floor(sc.to_blocks(src.ground_m)).clamp(sc.min_y, sc.world_height - 1).long()
         lb = torch.floor(sc.to_blocks(torch.where(src.wet, src.top_m, src.ground_m))).long()
         lb = torch.where(src.wet, torch.maximum(lb, hb + 1), torch.full_like(lb, NO_WATER))
         full = lambda v: torch.full_like(hb, v)

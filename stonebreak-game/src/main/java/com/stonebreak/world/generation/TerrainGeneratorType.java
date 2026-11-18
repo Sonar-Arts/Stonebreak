@@ -1,6 +1,5 @@
 package com.stonebreak.world.generation;
 
-import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 
 /**
  * Which terrain generator a world uses. Chosen once, in the terrain mapper, and persisted
@@ -9,24 +8,14 @@ import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
 public enum TerrainGeneratorType {
 
     /** The noise generator: local, instant, the default. */
-    STANDARD("Standard Generation") {
-        @Override
-        public TerrainGenerator create(long seed) {
-            return new TerrainGenerationSystem(seed);
-        }
-    },
+    STANDARD("Standard Generation"),
 
     /**
      * Experimental: terrain from DaedalusTGM-Exp, served by TGMPipe
      * ({@code Models/}). Building one starts TGMPipe if it is not already running. The constant keeps Heracles' name: it is what world.json
      * and the handshake carry.
      */
-    DIFFUSION("DaedalusTGM-Exp") {
-        @Override
-        public TerrainGenerator create(long seed) {
-            return new DiffusionTerrainGenerator(seed);
-        }
-    };
+    DIFFUSION("DaedalusTGM-Exp");
 
     private final String displayName;
 
@@ -38,7 +27,16 @@ public enum TerrainGeneratorType {
         return displayName;
     }
 
-    public abstract TerrainGenerator create(long seed);
+    /** The native terrain of a world of this kind at the default 1:4 scale. */
+    public NativeTerrain create(long seed) {
+        return NativeTerrain.create(seed, this, NativeCubeGenerator.TerrainScalePreset.ONE_TO_FOUR, null);
+    }
+
+    /** The native terrain of a world of this kind. */
+    public NativeTerrain create(long seed, NativeCubeGenerator.TerrainScalePreset scale,
+                                com.stonebreak.world.voxel.BlockStateRegistry states) {
+        return NativeTerrain.create(seed, this, scale, states);
+    }
 
     /** Parses a persisted or networked name; anything unrecognised falls back to {@code fallback}. */
     public static TerrainGeneratorType parse(String name, TerrainGeneratorType fallback) {

@@ -60,8 +60,10 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
     uint w2 = q.z;
     int face = int((w0 >> 26u) & 7u);
     if (face > 5) { face = 0; corner = 0; } // garbage record: collapse to a zero-area point
-    float w = float((w1 >> 25u) & 15u) + 1.0;
-    float h = float(w1 & 15u) + 1.0;
+    // w/h are 5 bits since the cubic runtime (32-wide greedy merges): w at bits 25..29, h's low nibble
+    // at bits 0..3 and its fifth bit at bit 30 (MmsQuadCodec.word1).
+    float w = float((w1 >> 25u) & 31u) + 1.0;
+    float h = float((w1 & 15u) | ((w1 >> 26u) & 16u)) + 1.0;
     int orient = int((w1 >> 4u) & 7u);
     vec3 c = QUAD_CORNER[face * 4 + corner];
     int ua = QUAD_UAXIS[face];
@@ -78,6 +80,7 @@ void pullQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out 
     } else if (face >= 2 && (w3 & 240u) != 0u) {
         off.y *= float((w3 >> 4u) & 15u) / 8.0;
     }
+    // Region-local on all three axes (3D regions of 256^3 blocks; aOrigin = the region's render origin).
     localPos = vec3(float(w0 & 255u), float((w0 >> 8u) & 1023u), float((w0 >> 18u) & 255u)) + off;
     float u0 = float(orient & 1);
     float v0 = float((orient >> 1) & 1);
@@ -143,13 +146,48 @@ void pullLodQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, o
     flags = vec4(0.0, alpha, 0.0, light);
 }
 
+// Octree LOD nodes (MmsLodQuadCodec NODE MODE, cv_lod): aOrigin.w = -(4 + level). Cell coordinates relative to
+// the node origin (aOrigin.xyz, camera-relative), x/z biased by 8 and y by 1024 cells, w/h in whole cells, one
+// cell = 2^level blocks. UVs tile once per block on the world grid (the node origin is block-aligned).
+void pullLodNodeQuad(int level, out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags, out float layer) {
+    int qi = gl_VertexID >> 2;
+    int corner = gl_VertexID & 3;
+    uvec4 q = texelFetch(u_quads, qi);
+    uint w0 = q.x;
+    uint w1 = q.y;
+    float cs = float(1 << level);
+    float x = float(int(w0 & 511u) - 8);
+    float z = float(int((w0 >> 9u) & 511u) - 8);
+    float y = float(int((w0 >> 18u) & 2047u) - 1024);
+    int face = int((w0 >> 29u) & 7u);
+    if (face > 5) { face = 0; corner = 0; } // garbage record: collapse to a zero-area point
+    float w = float(w1 & 63u);
+    float h = float((w1 >> 6u) & 2047u);
+    layer = float((w1 >> 17u) & 4095u);
+    float alpha = float((w1 >> 29u) & 1u);
+    float light = float(w1 >> 31u);
+    vec3 c = QUAD_CORNER[face * 4 + corner];
+    int ua = QUAD_UAXIS[face];
+    int va = QUAD_VAXIS[face];
+    vec3 off = vec3(0.0); // the record holds the plane coordinate: no normal-axis offset
+    off[ua] = c[ua] * w;
+    off[va] = c[va] * h;
+    localPos = (vec3(x, y, z) + off) * cs;
+    uv = vec2(LOD_U_SIGN[face] * localPos[ua], LOD_V_SIGN[face] * localPos[va]);
+    nrm = QUAD_NORMAL[face];
+    flags = vec4(0.0, alpha, 0.0, light);
+}
+
 void main() {
     vec3 localPos;
     vec2 uv;
     vec3 nrm;
     vec4 flags;
     float layer;
-    if (aOrigin.w < -2.5) {
+    if (aOrigin.w < -3.5) {
+        pullLodNodeQuad(int(-aOrigin.w - 4.0 + 0.5), localPos, uv, nrm, flags, layer);
+        localPos += aOrigin.xyz;
+    } else if (aOrigin.w < -2.5) {
         // Unknown pulled tag (e.g. water's -3): never decode it as LOD.
         localPos = aOrigin.xyz;
         uv = vec2(0.0);

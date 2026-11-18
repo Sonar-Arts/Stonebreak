@@ -1,5 +1,6 @@
 package com.stonebreak.world.save.util;
 
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.time.LocalDateTime;
@@ -33,11 +34,16 @@ public class JsonParsingUtil {
     // Per-key pattern caches. Keys are a small, fixed set of literals, so these stay tiny.
     private static final PatternCache STRING = new PatternCache(k -> k + "\\s*:\\s*\"([^\"]+)\"", 0);
     private static final PatternCache INTEGER = new PatternCache(k -> k + "\\s*:\\s*(-?\\d+)", 0);
-    private static final PatternCache FLOAT = new PatternCache(k -> k + "\\s*:\\s*([-\\d.]+)", 0);
     private static final PatternCache BOOLEAN = new PatternCache(k -> k + "\\s*:\\s*(true|false)", 0);
-    private static final PatternCache DECIMAL = new PatternCache(k -> k + "\\s*:\\s*(-?\\d+(?:\\.\\d+)?)", 0);
+    /**
+     * A JSON number: Java writes large doubles/floats in scientific notation ({@code 1.0E10}), which far
+     * positions of the 64-bit world produce (Phase 4), so the exponent is part of every decimal pattern.
+     */
+    private static final String NUMBER = "(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)";
+    private static final PatternCache DECIMAL = new PatternCache(k -> k + "\\s*:\\s*" + NUMBER, 0);
+    private static final PatternCache FLOAT = new PatternCache(k -> k + "\\s*:\\s*" + NUMBER, 0);
     private static final PatternCache VECTOR3 = new PatternCache(k -> {
-        String f = "(-?\\d+(?:\\.\\d+)?)";
+        String f = NUMBER;
         return k + "\\s*:\\s*\\{\\s*\"x\"\\s*:\\s*" + f
                 + "\\s*,\\s*\"y\"\\s*:\\s*" + f
                 + "\\s*,\\s*\"z\"\\s*:\\s*" + f;
@@ -186,6 +192,19 @@ public class JsonParsingUtil {
             return new Vector3f(x, y, z);
         }
         return new Vector3f(0, 100, 0); // Default position
+    }
+
+    /**
+     * Extracts a Vector3d (a world position, Phase 4) from JSON by key; full double precision. Missing:
+     * {@code (0, 100, 0)} like {@link #extractVector3f}.
+     */
+    public static Vector3d extractVector3d(String json, String key) {
+        Matcher m = VECTOR3.get(key).matcher(json);
+        if (m.find()) {
+            return new Vector3d(Double.parseDouble(m.group(1)), Double.parseDouble(m.group(2)),
+                Double.parseDouble(m.group(3)));
+        }
+        return new Vector3d(0, 100, 0);
     }
 
     /**

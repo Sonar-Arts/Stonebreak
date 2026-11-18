@@ -118,6 +118,8 @@ public final class FastLodManager {
     java.util.function.LongSupplier clock = System::nanoTime;
 
     private volatile boolean shutdown = false;
+    /** The rendered world's octree LOD (closed with this manager), or null. */
+    private volatile OctreeLod octree;
     /**
      * Player chunk column from the most recent {@link #updateRing} tick,
      * packed via {@link #packColumn}. Lets the upload path re-validate a
@@ -497,9 +499,33 @@ public final class FastLodManager {
         return config.getRenderDistance();
     }
 
+    /**
+     * Attaches the rendered world's octree LOD ({@link OctreeLod}): it lives exactly as long as this manager and
+     * closes first in {@link #shutdown()} (world switch / cleanup, before the world it reads closes).
+     */
+    public void attachOctree(OctreeLod lod) {
+        OctreeLod old = this.octree;
+        this.octree = lod;
+        if (old != null && old != lod) {
+            old.close();
+        }
+        if (shutdown && lod != null) {
+            lod.close();
+        }
+    }
+
+    /** The attached octree LOD, or null. */
+    public OctreeLod octree() {
+        return octree;
+    }
+
     public void shutdown() {
         if (shutdown) return;
         shutdown = true;
+        OctreeLod o = octree;
+        if (o != null) {
+            o.close();
+        }
         executor.shutdown();
         try {
             if (!executor.awaitTermination(
@@ -668,6 +694,12 @@ public final class FastLodManager {
          * instead of fading in over a hole.
          */
         public volatile boolean nativeCovered;
+        /**
+         * Octree handover (render pass, GL thread): seconds this node keeps drawing after its footprint stopped
+         * being a FALLBACK footprint, so whatever replaced it (octree nodes fading in, READY detail) is drawn
+         * before it goes - never a frame of hole.
+         */
+        public float hold;
         public Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
             this(key, handle, null, null, null, minY, maxY);
         }

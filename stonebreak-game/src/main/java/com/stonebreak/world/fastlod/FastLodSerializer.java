@@ -32,7 +32,7 @@ import java.nio.ByteOrder;
  *   cellsPerAxis u8
  *   stride       u8
  *   heights      i16[stride*stride]       world Y (clamped to short range)
- *   waterLevels  i16[cellsPerAxis²]       world Y, or TerrainTile.NO_WATER (-1)
+ *   waterLevels  i16[cellsPerAxis²]       world Y, or WATER_NONE (Short.MIN_VALUE) = WorldConfiguration.NO_WATER
  *   surface      u16[cellsPerAxis²]       BlockType.getId()
  *   openPresent  u8   0 = opening channel omitted (L0), 1 = the two arrays follow
  *   openFloor?   i16[cellsPerAxis²]       world Y, or OPEN_NONE (Short.MIN_VALUE)
@@ -98,8 +98,11 @@ public final class FastLodSerializer {
      *
      * <p>14: desert gravel is part of the surface ({@code DesertGravel}), sampled like any
      * other; a v13 node shows the desert as unbroken sand where the chunks lay gravel.
+     *
+     * <p>15: the cube world reaches y = -384, so "dry" is no longer -1 (a real water level) but
+     * {@link #WATER_NONE}; a v14 node's -1 would read as water at y = -1.
      */
-    public static final int VERSION = 14;
+    public static final int VERSION = 15;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -107,6 +110,11 @@ public final class FastLodSerializer {
      * needs its own value; no real floor can reach Short.MIN_VALUE.
      */
     private static final short OPEN_NONE = Short.MIN_VALUE;
+    /**
+     * Wire sentinel for a dry cell ({@link com.stonebreak.world.operations.WorldConfiguration#NO_WATER} in
+     * memory, an int that does not fit the i16 field); no real water level reaches Short.MIN_VALUE.
+     */
+    private static final short WATER_NONE = Short.MIN_VALUE;
 
     private FastLodSerializer() {}
 
@@ -144,7 +152,9 @@ public final class FastLodSerializer {
 
         int[] waterLevels = data.rawWaterLevels();
         for (int i = 0; i < cellsLen; i++) {
-            buf.putShort((short) clampShort(waterLevels[i]));
+            int w = waterLevels[i];
+            buf.putShort(w == com.stonebreak.world.operations.WorldConfiguration.NO_WATER
+                    ? WATER_NONE : (short) Math.max(Short.MIN_VALUE + 1, clampShort(w)));
         }
 
         BlockType[] surface = data.rawSurface();
@@ -225,7 +235,8 @@ public final class FastLodSerializer {
 
         int[] waterLevels = new int[cellsLen];
         for (int i = 0; i < cellsLen; i++) {
-            waterLevels[i] = buf.getShort();
+            short w = buf.getShort();
+            waterLevels[i] = w == WATER_NONE ? com.stonebreak.world.operations.WorldConfiguration.NO_WATER : w;
         }
 
         BlockType[] surface = new BlockType[cellsLen];

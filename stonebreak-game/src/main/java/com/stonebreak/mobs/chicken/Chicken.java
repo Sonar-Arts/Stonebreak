@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.chicken;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
@@ -38,7 +40,7 @@ public class Chicken extends LivingEntity {
     /**
      * Creates a new chicken at the specified position.
      */
-    public Chicken(World world, Vector3f position) {
+    public Chicken(World world, Vector3dc position) {
         super(world, position, EntityType.CHICKEN);
 
         // Chicken personality: half idle / half wander, never grazes, the occasional wing flap

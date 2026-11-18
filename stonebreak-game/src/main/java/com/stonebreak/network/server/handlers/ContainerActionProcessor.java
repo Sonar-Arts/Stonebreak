@@ -164,7 +164,7 @@ public final class ContainerActionProcessor {
             default -> null;
         };
         return expected != null && ctx.world() != null
-                && a.y() >= 0 && a.y() < com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT
+                && com.stonebreak.world.operations.WorldConfiguration.inBounds(a.y())
                 && ctx.world().getBlockAt(a.x(), a.y(), a.z()) == expected;
     }
 
@@ -666,13 +666,13 @@ public final class ContainerActionProcessor {
     private FurnaceState furnaceAt(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
         World world = ctx.world();
         FurnaceStateRegistry registry = world == null ? null : world.getFurnaceRegistry();
-        if (registry == null || a.y() < 0 || a.y() >= com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT) {
+        if (registry == null || !com.stonebreak.world.operations.WorldConfiguration.inBounds(a.y())) {
             return null;
         }
         if (sp.lastStateNs() != 0L) {
-            float dx = (a.x() + 0.5f) - sp.x();
-            float dy = (a.y() + 0.5f) - sp.y();
-            float dz = (a.z() + 0.5f) - sp.z();
+            double dx = (a.x() + 0.5) - sp.x();
+            double dy = (a.y() + 0.5) - sp.y();
+            double dz = (a.z() + 0.5) - sp.z();
             if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
                 return null;
             }
@@ -686,13 +686,13 @@ public final class ContainerActionProcessor {
     private WorkbenchState workbenchAt(ServerPlayer sp, ContainerActionC2S a, ServerWorldContext ctx) {
         World world = ctx.world();
         WorkbenchStateRegistry registry = world == null ? null : world.getWorkbenchRegistry();
-        if (registry == null || a.y() < 0 || a.y() >= com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT) {
+        if (registry == null || !com.stonebreak.world.operations.WorldConfiguration.inBounds(a.y())) {
             return null;
         }
         if (sp.lastStateNs() != 0L) {
-            float dx = (a.x() + 0.5f) - sp.x();
-            float dy = (a.y() + 0.5f) - sp.y();
-            float dz = (a.z() + 0.5f) - sp.z();
+            double dx = (a.x() + 0.5) - sp.x();
+            double dy = (a.y() + 0.5) - sp.y();
+            double dz = (a.z() + 0.5) - sp.z();
             if (dx * dx + dy * dy + dz * dz > MAX_REACH_SQ) {
                 return null;
             }

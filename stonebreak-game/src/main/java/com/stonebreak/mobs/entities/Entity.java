@@ -1,6 +1,9 @@
 package com.stonebreak.mobs.entities;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
 
@@ -9,9 +12,10 @@ import com.stonebreak.world.World;
  * Provides fundamental properties and behaviors that all entities share.
  */
 public abstract class Entity {
-    // Transform and physics
-    protected Vector3f position;
-    protected Vector3f velocity; 
+    // Transform and physics. World positions are double (#445: 64-bit worlds); velocity is a
+    // relative quantity and stays float, like the engine's PhysicsBody.
+    protected Vector3d position;
+    protected Vector3f velocity;
     protected Vector3f rotation;
     protected Vector3f scale;
     
@@ -68,9 +72,9 @@ public abstract class Entity {
     /**
      * Creates a new entity at the specified position.
      */
-    public Entity(World world, Vector3f position) {
+    public Entity(World world, Vector3dc position) {
         this.world = world;
-        this.position = new Vector3f(position);
+        this.position = new Vector3d(position);
         this.velocity = new Vector3f(0, 0, 0);
         this.rotation = new Vector3f(0, 0, 0);
         this.scale = new Vector3f(1, 1, 1);
@@ -106,7 +110,7 @@ public abstract class Entity {
      * For other entities, the position represents the bottom center.
      */
     public BoundingBox getBoundingBox() {
-        float bottomY = position.y;
+        double bottomY = position.y;
         
         // For living entities, start collision from bottom of legs
         if (this instanceof LivingEntity livingEntity) {
@@ -176,7 +180,7 @@ public abstract class Entity {
     /**
      * Checks if the entity is at the specified position (within range).
      */
-    public boolean isAt(Vector3f targetPosition, float range) {
+    public boolean isAt(Vector3dc targetPosition, float range) {
         return position.distance(targetPosition) <= range;
     }
     
@@ -184,18 +188,18 @@ public abstract class Entity {
      * Gets the distance to another entity.
      */
     public float distanceTo(Entity other) {
-        return position.distance(other.position);
+        return (float) position.distance(other.position);
     }
     
     /**
      * Gets the distance to a position.
      */
-    public float distanceTo(Vector3f targetPosition) {
-        return position.distance(targetPosition);
+    public float distanceTo(Vector3dc targetPosition) {
+        return (float) position.distance(targetPosition);
     }
     
     // Getters
-    public Vector3f getPosition() { return new Vector3f(position); }
+    public Vector3d getPosition() { return new Vector3d(position); }
     public Vector3f getVelocity() { return new Vector3f(velocity); }
     public Vector3f getRotation() { return new Vector3f(rotation); }
     public Vector3f getScale() { return new Vector3f(scale); }
@@ -229,17 +233,17 @@ public abstract class Entity {
     public boolean isPersistent() { return true; }
 
     // Setters
-    public void setPosition(Vector3f position) { this.position.set(position); }
+    public void setPosition(Vector3dc position) { this.position.set(position); }
     public void setVelocity(Vector3f velocity) { this.velocity.set(velocity); }
     public void setRotation(Vector3f rotation) { this.rotation.set(rotation); }
     /** Allocation-free forms for per-frame writers (the network interpolator). */
-    public void setPosition(float x, float y, float z) { this.position.set(x, y, z); }
+    public void setPosition(double x, double y, double z) { this.position.set(x, y, z); }
     public void setYaw(float yawDeg) { this.rotation.y = yawDeg; }
     public float getYaw() { return rotation.y; }
     /** Allocation-free position reads for per-tick readers (entity replication). */
-    public float getX() { return position.x; }
-    public float getY() { return position.y; }
-    public float getZ() { return position.z; }
+    public double getX() { return position.x; }
+    public double getY() { return position.y; }
+    public double getZ() { return position.z; }
     public void setScale(Vector3f scale) { this.scale.set(scale); }
     public void setHealth(float health) { this.health = Math.min(health, maxHealth); }
     public void setMaxHealth(float maxHealth) { this.maxHealth = maxHealth; }
@@ -330,10 +334,10 @@ public abstract class Entity {
      * Simple bounding box class for collision detection.
      */
     public static class BoundingBox {
-        public final float minX, minY, minZ;
-        public final float maxX, maxY, maxZ;
+        public final double minX, minY, minZ;
+        public final double maxX, maxY, maxZ;
         
-        public BoundingBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        public BoundingBox(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
             this.minX = minX;
             this.minY = minY;
             this.minZ = minZ;
@@ -354,14 +358,20 @@ public abstract class Entity {
         /**
          * Checks if a point is within this bounding box.
          */
-        public boolean contains(Vector3f point) {
-            return point.x >= minX && point.x <= maxX &&
-                   point.y >= minY && point.y <= maxY &&
-                   point.z >= minZ && point.z <= maxZ;
+        public boolean contains(Vector3dc point) {
+            return point.x() >= minX && point.x() <= maxX &&
+                   point.y() >= minY && point.y() <= maxY &&
+                   point.z() >= minZ && point.z() <= maxZ;
+        }
+
+        public boolean contains(Vector3fc point) {
+            return point.x() >= minX && point.x() <= maxX &&
+                   point.y() >= minY && point.y() <= maxY &&
+                   point.z() >= minZ && point.z() <= maxZ;
         }
 
         /** This box grown by {@code margin} on every side. */
-        public BoundingBox expand(float margin) {
+        public BoundingBox expand(double margin) {
             return new BoundingBox(minX - margin, minY - margin, minZ - margin,
                                    maxX + margin, maxY + margin, maxZ + margin);
         }
@@ -372,25 +382,34 @@ public abstract class Entity {
          * {@code t} is in units of {@code dir}, so with {@code dir = to - from} a hit on the
          * segment is {@code t <= 1}.
          */
-        public float rayIntersect(Vector3f origin, Vector3f dir) {
-            float tMin = 0.0f;
-            float tMax = Float.MAX_VALUE;
-            float[] o = {origin.x, origin.y, origin.z};
-            float[] d = {dir.x, dir.y, dir.z};
-            float[] lo = {minX, minY, minZ};
-            float[] hi = {maxX, maxY, maxZ};
+        public float rayIntersect(Vector3dc origin, Vector3fc dir) {
+            return rayIntersect(origin.x(), origin.y(), origin.z(), dir.x(), dir.y(), dir.z());
+        }
+
+        public float rayIntersect(Vector3dc origin, Vector3dc dir) {
+            return rayIntersect(origin.x(), origin.y(), origin.z(), dir.x(), dir.y(), dir.z());
+        }
+
+        /** {@link #rayIntersect(Vector3dc, Vector3dc)} on raw components. */
+        public float rayIntersect(double ox, double oy, double oz, double dx, double dy, double dz) {
+            double tMin = 0.0;
+            double tMax = Double.MAX_VALUE;
+            double[] o = {ox, oy, oz};
+            double[] d = {dx, dy, dz};
+            double[] lo = {minX, minY, minZ};
+            double[] hi = {maxX, maxY, maxZ};
             for (int axis = 0; axis < 3; axis++) {
-                if (Math.abs(d[axis]) < 1e-6f) {
+                if (Math.abs(d[axis]) < 1e-6) {
                     if (o[axis] < lo[axis] || o[axis] > hi[axis]) return Float.MAX_VALUE;
                     continue;
                 }
-                float t1 = (lo[axis] - o[axis]) / d[axis];
-                float t2 = (hi[axis] - o[axis]) / d[axis];
+                double t1 = (lo[axis] - o[axis]) / d[axis];
+                double t2 = (hi[axis] - o[axis]) / d[axis];
                 tMin = Math.max(tMin, Math.min(t1, t2));
                 tMax = Math.min(tMax, Math.max(t1, t2));
                 if (tMin > tMax) return Float.MAX_VALUE;
             }
-            return tMin;
+            return (float) tMin;
         }
     }
 }

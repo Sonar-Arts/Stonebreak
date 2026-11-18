@@ -52,7 +52,7 @@ final class GlowCubeRenderer {
     }
 
     /** Dispatches an entity accepted by {@link #handles} to its glow-cube variant. */
-    void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
+    void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix, org.joml.Vector3dc cameraPos) {
         EntityType entityType = entity.getType();
         if (entityType == EntityType.FIRE_BOLT) {
             renderFireBolt(entity, viewMatrix, projectionMatrix, cameraPos);
@@ -66,7 +66,7 @@ final class GlowCubeRenderer {
     }
 
     private void renderFireBolt(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                Vector3f cameraPos) {
+                                org.joml.Vector3dc cameraPos) {
         // Once the bolt has impacted, the solid core is gone — only the fading
         // trail/impact particles remain (drawn by WorldRenderer).
         if (entity instanceof com.stonebreak.mobs.entities.FireBolt bolt && bolt.isImpacted()) {
@@ -83,9 +83,9 @@ final class GlowCubeRenderer {
      * @param glowScale scale multiplier for the outer glow pass; {@code <= 1} skips it
      */
     private void renderGlowCube(Entity entity, int texture, float glowScale,
-                                Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
+                                Matrix4f viewMatrix, Matrix4f projectionMatrix, org.joml.Vector3dc cameraPos) {
         pipeline.begin(texture, viewMatrix, projectionMatrix,
-                cameraPos != null ? cameraPos : new Vector3f(0, 0, 0),
+                cameraPos != null ? cameraPos : new org.joml.Vector3d(),
                 0.0f, new Vector3f(0.1f, 0.3f, 0.5f),
                 entity, false); // emissive — never world-lit
 

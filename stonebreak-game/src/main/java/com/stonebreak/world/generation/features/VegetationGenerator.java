@@ -1,25 +1,16 @@
 package com.stonebreak.world.generation.features;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.DeterministicRandom;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.generation.ChunkGenerationContext;
-import com.stonebreak.world.generation.TreeGenerator;
-import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Plants trees and flowers on the surface column.
+ * Tree vocabulary shared by FastLOD and the native generator's samplers. Trees and flowers are placed by the
+ * native generator's population ({@code stonebreak-game/native}, #446); the Java vegetation generator is
+ * gone (#447). Kind ordinals match the native {@code sbw_tree} enum.
  */
-public class VegetationGenerator {
-    public static final float TREE_CHANCE = 0.01f;
-    public static final float PINE_TREE_CHANCE = 0.015f;
-    public static final float TAIGA_PINE_CHANCE = 0.03f;
-    public static final float TUNDRA_PINE_CHANCE = 0.003f;
-    public static final float MEADOW_TREE_CHANCE = 0.002f;
-    public static final float CYPRESS_TREE_CHANCE = 0.02f;
-    private static final float FLOWER_CHANCE = 0.08f;
-    private static final float MEADOW_FLOWER_CHANCE = 0.25f;
+public final class VegetationGenerator {
+
+    private VegetationGenerator() {
+    }
 
     /** Tree variety identifier, carries the trunk + leaf block types it renders with. */
     public enum TreeKind {
@@ -35,170 +26,12 @@ public class VegetationGenerator {
         public BlockType leavesBlock() { return leaves; }
     }
 
-    /** Result of {@link #probeTree}; {@code trunkHeight} follows the real generator's logic. */
+    /** A tree the generator plants at a column. */
     public record TreeSample(TreeKind kind, int trunkHeight) {}
 
-    /**
-     * Deterministically decides whether a tree exists at this column without
-     * mutating any chunk. Shared with distant-terrain LOD so both paths agree on
-     * placement. Matches {@link #placeTree} but without feature queue / chunk writes.
-     */
-    public static TreeSample probeTree(int worldX, int worldZ, BiomeType biome,
-                                       BlockType surfaceBlock, DeterministicRandom rng) {
-        float forest = ForestDensityField.forestMultiplier(worldX, worldZ, rng);
-        if (forest <= 0f) return null;
-
-        if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
-                rolls(rng, worldX, worldZ, "tree", TREE_CHANCE * forest)) {
-            float elmProb = ForestDensityField.elmProbability(worldX, worldZ, rng);
-            if (elmProb > 0f && rolls(rng, worldX, worldZ, "tree_type", elmProb)) {
-                int h = 8 + rng.getRandomForPosition(worldX, worldZ, "elm_tree").nextInt(5);
-                return new TreeSample(TreeKind.ELM, h);
-            }
-            return new TreeSample(TreeKind.OAK, 5);
-        }
-        if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
-                rolls(rng, worldX, worldZ, "pine_tree", PINE_TREE_CHANCE * forest)) {
-            return new TreeSample(TreeKind.PINE, 7);
-        }
-        if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
-                rolls(rng, worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE * forest)) {
-            return new TreeSample(TreeKind.PINE, 7);
-        }
-        if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
-                rolls(rng, worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE * forest)) {
-            int h = 8 + rng.getRandomForPosition(worldX, worldZ, "meadow_elm").nextInt(5);
-            return new TreeSample(TreeKind.ELM, h);
-        }
-        if (biome == BiomeType.SWAMP && isCypressGround(surfaceBlock) &&
-                rolls(rng, worldX, worldZ, "cypress_tree", CYPRESS_TREE_CHANCE * forest)) {
-            return new TreeSample(TreeKind.CYPRESS, 16);
-        }
-        return null;
-    }
-
-    /**
-     * Cypress roots on swampy grass or in a pool cell (a trunk log is watertight, so it keeps
-     * the pool sealed). Cypress is swamp-only: this and {@link #placeTree} are its only spawns.
-     */
-    private static boolean isCypressGround(BlockType surfaceBlock) {
-        return surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER;
-    }
-
-    /**
-     * Every surface {@link #probeTree} plants on in some biome, so coarse samplers can skip a
-     * cell without looking its biome up. Kept beside probeTree: a surface missing here is a
-     * tree kind that never shows past the finest LOD band (cypress once was).
-     */
+    /** Surfaces trees grow on (grass, snowy dirt, swampy grass). */
     public static boolean growsTreeOn(BlockType surfaceBlock) {
         return surfaceBlock == BlockType.GRASS || surfaceBlock == BlockType.SNOWY_DIRT
-            || isCypressGround(surfaceBlock);
-    }
-
-    /** Probability roll that accepts values >1 (saturating to always-true). */
-    private static boolean rolls(DeterministicRandom rng, int worldX, int worldZ,
-                                 String feature, float probability) {
-        if (probability <= 0f) return false;
-        if (probability >= 1f) return true;
-        return rng.getFloat(worldX, worldZ, feature) < probability;
-    }
-
-    private final DeterministicRandom rng;
-
-    public VegetationGenerator(DeterministicRandom rng) {
-        this.rng = rng;
-    }
-
-    public void generate(ChunkGenerationContext ctx) {
-        Chunk chunk = ctx.chunk;
-        for (int x = 0; x < ChunkGenerationContext.SIZE; x++) {
-            for (int z = 0; z < ChunkGenerationContext.SIZE; z++) {
-                int surface = ctx.height(x, z);
-                if (surface >= WorldConfiguration.WORLD_HEIGHT || ctx.isSubmerged(x, z)) {
-                    continue;
-                }
-                int worldX = ctx.worldX(x);
-                int worldZ = ctx.worldZ(z);
-                BiomeType biome = ctx.biome(x, z);
-                BlockType surfaceBlock = chunk.getBlock(x, surface - 1, z);
-
-                placeTree(ctx, x, z, worldX, worldZ, surface, biome, surfaceBlock);
-                placeFlower(ctx, x, z, worldX, worldZ, surface, biome, surfaceBlock);
-            }
-        }
-    }
-
-    private void placeTree(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
-                           int surface, BiomeType biome, BlockType surfaceBlock) {
-        float forest = ForestDensityField.forestMultiplier(worldX, worldZ, rng);
-        if (forest <= 0f) return;
-
-        FeatureQueue queue = ctx.world.getFeatureQueue();
-        if (biome == BiomeType.PLAINS && surfaceBlock == BlockType.GRASS &&
-            rolls(worldX, worldZ, "tree", TREE_CHANCE * forest)) {
-            float elmProb = ForestDensityField.elmProbability(worldX, worldZ, rng);
-            if (elmProb > 0f && rolls(worldX, worldZ, "tree_type", elmProb)) {
-                TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z);
-            } else {
-                TreeGenerator.generateTree(ctx.world, queue, ctx.chunk, x, surface, z);
-            }
-        } else if (biome == BiomeType.SNOWY_PLAINS && surfaceBlock == BlockType.SNOWY_DIRT &&
-                   rolls(worldX, worldZ, "pine_tree", PINE_TREE_CHANCE * forest)) {
-            TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
-        } else if (biome == BiomeType.TAIGA && surfaceBlock == BlockType.SNOWY_DIRT &&
-                   rolls(worldX, worldZ, "taiga_pine_tree", TAIGA_PINE_CHANCE * forest)) {
-            TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
-        } else if (biome == BiomeType.TUNDRA && surfaceBlock == BlockType.GRAVEL &&
-                   rolls(worldX, worldZ, "tundra_pine_tree", TUNDRA_PINE_CHANCE * forest)) {
-            TreeGenerator.generatePineTree(ctx.world, queue, ctx.chunk, x, surface, z);
-        } else if (biome == BiomeType.MEADOW && surfaceBlock == BlockType.GRASS &&
-                   rolls(worldX, worldZ, "meadow_tree", MEADOW_TREE_CHANCE * forest)) {
-            TreeGenerator.generateElmTree(ctx.world, queue, ctx.chunk, x, surface, z);
-        } else if (biome == BiomeType.SWAMP && isCypressGround(surfaceBlock) &&
-                   rolls(worldX, worldZ, "cypress_tree", CYPRESS_TREE_CHANCE * forest)) {
-            // In a pool the trunk replaces the water cell and stands on the bed below it;
-            // a 2-deep pool core has water there instead, so no tree.
-            int base = surfaceBlock == BlockType.WATER ? surface - 1 : surface;
-            if (base == surface || ctx.chunk.getBlock(x, base - 1, z).isSolid()) {
-                TreeGenerator.generateCypressTree(ctx.world, queue, ctx.chunk, x, base, z);
-            }
-        }
-    }
-
-    private boolean rolls(int worldX, int worldZ, String feature, float probability) {
-        if (probability <= 0f) return false;
-        if (probability >= 1f) return true;
-        return rng.getFloat(worldX, worldZ, feature) < probability;
-    }
-
-    private void placeFlower(ChunkGenerationContext ctx, int x, int z, int worldX, int worldZ,
-                             int surface, BiomeType biome, BlockType surfaceBlock) {
-        float chance = flowerChance(biome);
-        if (chance <= 0f || surfaceBlock != BlockType.GRASS) {
-            return;
-        }
-        if (ctx.chunk.getBlock(x, surface, z) != BlockType.AIR) {
-            return;
-        }
-        if (!rng.shouldGenerate(worldX, worldZ, "flower", chance)) {
-            return;
-        }
-        BlockType flower;
-        if (rng.getBoolean(worldX, worldZ, "flower_type")) {
-            flower = rng.getBoolean(worldX, worldZ, "flower_subtype")
-                ? BlockType.ROSE
-                : BlockType.WILDGRASS;
-        } else {
-            flower = BlockType.DANDELION;
-        }
-        ctx.chunk.setBlock(x, surface, z, flower);
-    }
-
-    private static float flowerChance(BiomeType biome) {
-        return switch (biome) {
-            case PLAINS -> FLOWER_CHANCE;
-            case MEADOW -> MEADOW_FLOWER_CHANCE;
-            default -> 0f;
-        };
+            || surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER;
     }
 }

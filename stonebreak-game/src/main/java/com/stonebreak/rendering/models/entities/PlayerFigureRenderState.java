@@ -29,7 +29,7 @@ import org.joml.Vector4f;
  * @param tint          colour used when the asset is untextured (colored fallback path)
  */
 public record PlayerFigureRenderState(
-        Vector3f position,
+        org.joml.Vector3dc position,
         float yaw,
         Vector3f scale,
         float headYaw,
@@ -42,7 +42,7 @@ public record PlayerFigureRenderState(
         Vector4f tint) {
 
     /** Overlay-free carrier — the pre-mixing shape (remote players, decoys). */
-    public PlayerFigureRenderState(Vector3f position, float yaw, Vector3f scale,
+    public PlayerFigureRenderState(org.joml.Vector3dc position, float yaw, Vector3f scale,
                                    float headYaw, float headPitch,
                                    String stateName, float animTime, Vector4f tint) {
         this(position, yaw, scale, headYaw, headPitch, stateName, animTime,

@@ -350,9 +350,14 @@ public final class MenuShowcase {
             }
             // The eye IS the player: the server streams, and the world/LOD/sky passes centre, on the
             // player's position. Physics never runs on it (MAIN_MENU skips player.update()).
-            player.setPosition(frame.eye());
+            // Shots are authored as float world positions near the pinned seed's origin; the player/camera are
+            // double. At any altitude the streamer's SURFACE BAND keeps the ground under the camera loading
+            // (the vertical ellipsoid only adds the air/cave cubes around the eye), so a high orbit still
+            // sees terrain and reaches READY.
+            org.joml.Vector3d eye = new org.joml.Vector3d(frame.eye());
+            player.setPosition(eye);
             player.setVelocity(new org.joml.Vector3f());
-            player.getCamera().setCinematicView(frame.eye(), frame.target(), frame.rollDeg());
+            player.getCamera().setCinematicView(eye, new org.joml.Vector3d(frame.target()), frame.rollDeg());
             Renderer renderer = Game.getRenderer();
             if (renderer != null) {
                 renderer.setCinematicFov(frame.fovDeg());

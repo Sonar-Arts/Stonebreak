@@ -57,7 +57,7 @@ public record ModelBounds(float minX, float maxX, float minY, float maxY, float 
      * Turning a box makes it no longer axis-aligned, so this is the tightest axis-aligned box
      * around the turned one: exact at the four cardinal headings, a little loose between them.
      */
-    public Entity.BoundingBox placed(float x, float feetY, float z, float yawDegrees,
+    public Entity.BoundingBox placed(double x, double feetY, double z, float yawDegrees,
                                      float scaleX, float scaleY, float scaleZ) {
         double yaw = Math.toRadians(yawDegrees);
         float cos = (float) Math.cos(yaw);

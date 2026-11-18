@@ -37,7 +37,11 @@ public final class HarnessClient implements AutoCloseable {
     private volatile boolean closing;
 
     private HarnessClient(int port) throws InterruptedException {
-        net.connect(NetAddress.tcp("127.0.0.1", port));
+        this(NetAddress.tcp("127.0.0.1", port));
+    }
+
+    private HarnessClient(NetAddress address) throws InterruptedException {
+        net.connect(address);
         drainer = new Thread(this::drainLoop, "Harness-Client");
         drainer.setDaemon(true);
         drainer.start();
@@ -46,6 +50,18 @@ public final class HarnessClient implements AutoCloseable {
     /** A connected client that has not handshaken. */
     public static HarnessClient connect(ServerHarness server) throws InterruptedException {
         return new HarnessClient(server.port());
+    }
+
+    /**
+     * Joins a {@link ServerHarness#bootWithLocal} server over the in-JVM Local channel as its host, the way
+     * the game's singleplayer client does (handshake, then the host's character right behind it).
+     */
+    public static HarnessClient joinLocal(ServerHarness server, String username) throws InterruptedException {
+        HarnessClient c = new HarnessClient(NetAddress.local(ServerHarness.LOCAL_ID));
+        c.handshake(username, "");
+        c.send(new CharacterCreationC2S(creationJson()));
+        c.await(WelcomeS2C.class, PROMPT).orElseThrow(() -> new AssertionError(username + " was never welcomed"));
+        return c;
     }
 
     /** Connects, handshakes as {@code username} and creates a character if asked; waits for the welcome. */
@@ -92,6 +108,28 @@ public final class HarnessClient implements AutoCloseable {
         WelcomeS2C w = await(WelcomeS2C.class, PROMPT).orElseThrow(() -> new AssertionError("not welcomed"));
         send(new com.stonebreak.network.packet.player.PlayerStateC2S(w.spawnX(), w.spawnY(), w.spawnZ(),
                 0f, 0f, (short) com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND));
+    }
+
+    /**
+     * Asks for the cubes of a (2r+1)^2 x (2v+1) box around the welcome spawn, as a client's REMOTE stream
+     * would ({@code CubeRequestC2S}): the server only sends cubes that are asked for.
+     */
+    public void requestCubesAroundSpawn(int r, int v) throws InterruptedException {
+        WelcomeS2C w = await(WelcomeS2C.class, PROMPT).orElseThrow(() -> new AssertionError("not welcomed"));
+        long cx = (long) Math.floor(w.spawnX()) >> 5;
+        long cy = (long) Math.floor(w.spawnY()) >> 5;
+        long cz = (long) Math.floor(w.spawnZ()) >> 5;
+        java.util.List<Long> xyz = new java.util.ArrayList<>();
+        for (long dy = -v; dy <= v; dy++) {
+            for (long dz = -r; dz <= r; dz++) {
+                for (long dx = -r; dx <= r; dx++) {
+                    xyz.add(cx + dx);
+                    xyz.add(cy + dy);
+                    xyz.add(cz + dz);
+                }
+            }
+        }
+        send(new com.stonebreak.network.packet.world.CubeRequestC2S(xyz.stream().mapToLong(Long::longValue).toArray()));
     }
 
     public boolean send(Packet packet) {

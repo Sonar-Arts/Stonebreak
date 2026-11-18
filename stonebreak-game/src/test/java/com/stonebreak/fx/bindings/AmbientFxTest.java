@@ -4,7 +4,7 @@ import com.openmason.engine.format.fx.FxData;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.fx.FxFixtures;
 import com.stonebreak.fx.FxRuntime;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -158,7 +158,7 @@ class AmbientFxTest {
     static final class FakeSources implements AmbientSources {
         final List<BlockType> blocks = new ArrayList<>();
         final List<Long> keys = new ArrayList<>();
-        final List<Vector3f> positions = new ArrayList<>();
+        final List<Vector3d> positions = new ArrayList<>();
         final List<Float> pulses = new ArrayList<>();
 
         void add(BlockType block, long key, float x, float y, float z) {
@@ -168,7 +168,7 @@ class AmbientFxTest {
         void add(BlockType block, long key, float x, float y, float z, float pulse) {
             blocks.add(block);
             keys.add(key);
-            positions.add(new Vector3f(x, y, z));
+            positions.add(new Vector3d(x, y, z));
             pulses.add(pulse);
         }
 
@@ -182,7 +182,7 @@ class AmbientFxTest {
         @Override public int count() { return blocks.size(); }
         @Override public BlockType block(int i) { return blocks.get(i); }
         @Override public long key(int i) { return keys.get(i); }
-        @Override public Vector3f position(int i, Vector3f out) { return out.set(positions.get(i)); }
+        @Override public Vector3d position(int i, Vector3d out) { return out.set(positions.get(i)); }
         @Override public float pulse(int i) { return pulses.get(i); }
     }
 }

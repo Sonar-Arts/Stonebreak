@@ -63,7 +63,7 @@ class PlayerLifeStateTest {
         assertTrue(sp.isDead());
         assertFalse(sp.isLiveInWorld());
         assertEquals(0f, sp.health());
-        assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f(sp.x(), sp.y(), sp.z()));
+        assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f((float) sp.x(), (float) sp.y(), (float) sp.z()));
     }
 
     @Test
@@ -104,7 +104,7 @@ class PlayerLifeStateTest {
 
         assertTrue(sp.isLiveInWorld());
         assertEquals(20f, sp.health());
-        assertEquals(new Vector3f(0f, 80f, 0f), new Vector3f(sp.x(), sp.y(), sp.z()));
+        assertEquals(new Vector3f(0f, 80f, 0f), new Vector3f((float) sp.x(), (float) sp.y(), (float) sp.z()));
         assertTrue(sent(sp).contains(new PlayerPositionS2C(0f, 80f, 0f)), "the client is put there too");
     }
 
@@ -115,7 +115,7 @@ class PlayerLifeStateTest {
 
         health.handleLife(sp, new PlayerLifeC2S(false, 0f, 80f, 0f), ctx, System.nanoTime());
 
-        assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f(sp.x(), sp.y(), sp.z()), "no free teleport");
+        assertEquals(new Vector3f(5f, 64f, 5f), new Vector3f((float) sp.x(), (float) sp.y(), (float) sp.z()), "no free teleport");
         assertEquals(16f, sp.health(), "and no free heal");
     }
 

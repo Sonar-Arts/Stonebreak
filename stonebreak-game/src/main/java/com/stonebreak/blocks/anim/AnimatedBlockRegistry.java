@@ -3,9 +3,7 @@ package com.stonebreak.blocks.anim;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
-import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.chunk.Cube;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,7 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AnimatedBlockRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(AnimatedBlockRegistry.class);
-    private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     /** BlockTypes whose SBO embeds at least one animation clip. Computed once
      *  from the SBO manifests in {@link BlockRegistry} — no renderer needed. */
@@ -99,37 +96,20 @@ public final class AnimatedBlockRegistry {
     }
 
     /**
-     * Discover animated blocks in a freshly loaded/streamed chunk from its
-     * per-block state map (cheap — the map only holds stateful positions, and
-     * every animated block writes its state at placement).
+     * Discover animated blocks in a cube that entered the world from its block states (every animated
+     * block writes its state at placement).
      */
-    public void onChunkLoaded(Chunk chunk) {
-        int cx = chunk.getX();
-        int cz = chunk.getZ();
-        for (Map.Entry<Integer, String> e : chunk.getBlockStates().entrySet()) {
-            int key = e.getKey();
-            int lx = LocalBlockKey.x(key);
-            int ly = LocalBlockKey.y(key);
-            int lz = LocalBlockKey.z(key);
-            if (isAnimatedType(chunk.getBlock(lx, ly, lz))) {
-                positions.add(new BlockPos(cx * CHUNK_SIZE + lx, ly, cz * CHUNK_SIZE + lz));
+    public void onCubeInstalled(Cube cube) {
+        cube.forEachState((x, y, z, state) -> {
+            if (isAnimatedType(cube.world().getBlockAt(x, y, z))) {
+                positions.add(new BlockPos(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z)));
             }
-        }
+        });
         version++;
     }
 
-    public void onChunkUnloaded(Chunk chunk) {
-        int xMin = chunk.getX() * CHUNK_SIZE;
-        int zMin = chunk.getZ() * CHUNK_SIZE;
-        int xMax = xMin + CHUNK_SIZE;
-        int zMax = zMin + CHUNK_SIZE;
-        Iterator<BlockPos> it = positions.iterator();
-        while (it.hasNext()) {
-            BlockPos p = it.next();
-            if (p.x() >= xMin && p.x() < xMax && p.z() >= zMin && p.z() < zMax) {
-                it.remove();
-            }
-        }
+    public void onCubeUnloaded(Cube cube) {
+        positions.removeIf(p -> cube.contains(p.x(), p.y(), p.z()));
         version++;
     }
 }

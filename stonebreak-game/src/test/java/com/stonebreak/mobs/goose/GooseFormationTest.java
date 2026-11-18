@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.goose;
 
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,12 +25,12 @@ class GooseFormationTest {
     private static final float EPSILON = 1e-3f;
 
     private static Goose goose(float x, float y, float z) {
-        return new Goose(null, new Vector3f(x, y, z));
+        return new Goose(null, new Vector3d(x, y, z));
     }
 
     /** A leader with a follower behind it, flying toward +X by default. */
     private static GooseFlock flockOfTwo(Goose leader, Goose follower) {
-        GooseFlock flock = new GooseFlock(leader, new Vector3f(500, 64, 0), 6.0f);
+        GooseFlock flock = new GooseFlock(leader, new Vector3d(500, 64, 0), 6.0f);
         flock.join(follower);
         return flock;
     }
@@ -39,11 +40,11 @@ class GooseFormationTest {
      * own sampling threshold, so every step becomes a trail point and the arithmetic below is
      * exact rather than dependent on which ticks happened to land far enough apart.
      */
-    private static void flyLeg(GooseFlock flock, Vector3f from, Vector3f to) {
-        float length = new Vector3f(to).sub(from).length();
+    private static void flyLeg(GooseFlock flock, Vector3d from, Vector3d to) {
+        float length = (float) new Vector3d(to).sub(from).length();
         int steps = Math.max(1, Math.round(length));
-        Vector3f step = new Vector3f(to).sub(from).div(steps);
-        Vector3f at = new Vector3f(from);
+        Vector3d step = new Vector3d(to).sub(from).div(steps);
+        Vector3d at = new Vector3d(from);
         for (int i = 0; i <= steps; i++) {
             flock.recordLeaderTrail(at);
             at.add(step);
@@ -58,12 +59,12 @@ class GooseFormationTest {
         GooseFlock flock = flockOfTwo(leader, follower);
 
         // A right-angle turn: east along X to the corner at (20, 64, 0), then north along Z.
-        flyLeg(flock, new Vector3f(0, 64, 0), new Vector3f(20, 64, 0));
-        flyLeg(flock, new Vector3f(20, 64, 0), new Vector3f(20, 64, 2));
+        flyLeg(flock, new Vector3d(0, 64, 0), new Vector3d(20, 64, 0));
+        flyLeg(flock, new Vector3d(20, 64, 0), new Vector3d(20, 64, 2));
 
         // Rank 1 sits 2.2 back. Two of those blocks are on the northbound leg and the remaining
         // 0.2 is round the corner on the eastbound one.
-        Vector3f spine = flock.spineTargetFor(follower);
+        Vector3d spine = flock.spineTargetFor(follower);
 
         assertEquals(19.8f, spine.x, EPSILON, "the rank should be back round the corner, not short of it");
         assertEquals(0.0f, spine.z, EPSILON);
@@ -77,11 +78,11 @@ class GooseFormationTest {
         Goose follower = goose(0, 64, 0);
         GooseFlock flock = flockOfTwo(leader, follower);
 
-        flyLeg(flock, new Vector3f(0, 64, 0), new Vector3f(20, 64, 0));
-        flyLeg(flock, new Vector3f(20, 64, 0), new Vector3f(20, 64, 2));
+        flyLeg(flock, new Vector3d(0, 64, 0), new Vector3d(20, 64, 0));
+        flyLeg(flock, new Vector3d(20, 64, 0), new Vector3d(20, 64, 2));
 
-        Vector3f spine = flock.spineTargetFor(follower);
-        Vector3f slot = flock.slotTargetFor(follower);
+        Vector3d spine = flock.spineTargetFor(follower);
+        Vector3d slot = flock.slotTargetFor(follower);
 
         // At the rank's position the trail still runs east, so its wing spreads along Z — the
         // leader's own northbound heading does not enter into it.
@@ -98,9 +99,9 @@ class GooseFormationTest {
         GooseFlock flock = flockOfTwo(leader, follower);
 
         // The leader climbs ten blocks over the last ten of travel — a ridge crossing.
-        flyLeg(flock, new Vector3f(0, 64, 0), new Vector3f(10, 74, 0));
+        flyLeg(flock, new Vector3d(0, 64, 0), new Vector3d(10, 74, 0));
 
-        Vector3f spine = flock.spineTargetFor(follower);
+        Vector3d spine = flock.spineTargetFor(follower);
 
         assertTrue(spine.y < 74.0f, "a wingman behind a climbing leader is still below it");
         assertTrue(spine.y > 64.0f, "and is still on the climb, not back at the bottom of it");
@@ -117,7 +118,7 @@ class GooseFormationTest {
         flock.join(third);
         flock.join(fourth);
 
-        flyLeg(flock, new Vector3f(0, 64, 0), new Vector3f(40, 64, 0));
+        flyLeg(flock, new Vector3d(0, 64, 0), new Vector3d(40, 64, 0));
 
         // Ranks 1 and 2 share a wing index, so they sit at the same depth on opposite wings;
         // rank 3 opens the next wing and sits a full spacing further back.
@@ -134,7 +135,7 @@ class GooseFormationTest {
         Goose follower = goose(0, 64, 0);
         GooseFlock flock = flockOfTwo(leader, follower);
 
-        Vector3f spine = flock.spineTargetFor(follower);
+        Vector3d spine = flock.spineTargetFor(follower);
 
         assertEquals(-2.2f, spine.x, EPSILON, "one rank behind a leader heading east");
         assertEquals(0.0f, spine.z, EPSILON);
@@ -147,7 +148,7 @@ class GooseFormationTest {
         Goose follower = goose(0, 64, 0);
         GooseFlock flock = flockOfTwo(leader, follower);
 
-        Vector3f stationary = new Vector3f(0, 64, 0);
+        Vector3d stationary = new Vector3d(0, 64, 0);
         for (int i = 0; i < 200; i++) {
             flock.recordLeaderTrail(stationary);
         }
@@ -161,7 +162,7 @@ class GooseFormationTest {
         Goose leader = goose(20, 64, 0);
         Goose follower = goose(0, 64, 0);
         GooseFlock flock = flockOfTwo(leader, follower);
-        flyLeg(flock, new Vector3f(0, 64, 0), new Vector3f(20, 64, 0));
+        flyLeg(flock, new Vector3d(0, 64, 0), new Vector3d(20, 64, 0));
         assertTrue(flock.trailLength() > 1);
 
         flock.leave(leader);
@@ -177,7 +178,7 @@ class GooseFormationTest {
         Goose leader = goose(20, 64, 0);
         Goose follower = goose(0, 64, 0);
         GooseFlock flock = flockOfTwo(leader, follower);
-        flyLeg(flock, new Vector3f(0, 64, 0), new Vector3f(20, 64, 0));
+        flyLeg(flock, new Vector3d(0, 64, 0), new Vector3d(20, 64, 0));
         int before = flock.trailLength();
 
         flock.leave(follower);

@@ -3,6 +3,7 @@ package com.stonebreak.network.packet.entity;
 import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -10,7 +11,7 @@ import io.netty.buffer.ByteBuf;
  * payload (e.g. a cow's texture variant).
  */
 public record EntitySpawnS2C(int networkId, int entityTypeOrdinal,
-                             float x, float y, float z, float yaw,
+                             double x, double y, double z, float yaw,
                              String metadata) implements Packet {
 
     public static final PacketCodec<EntitySpawnS2C> CODEC = new PacketCodec<>() {
@@ -18,9 +19,7 @@ public record EntitySpawnS2C(int networkId, int entityTypeOrdinal,
         public void encode(ByteBuf out, EntitySpawnS2C p) {
             out.writeInt(p.networkId());
             out.writeInt(p.entityTypeOrdinal());
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
             out.writeFloat(p.yaw());
             ByteBufIO.writeString(out, p.metadata(), ByteBufIO.MAX_METADATA_CHARS);
         }
@@ -29,7 +28,7 @@ public record EntitySpawnS2C(int networkId, int entityTypeOrdinal,
         public EntitySpawnS2C decode(ByteBuf in) {
             return new EntitySpawnS2C(
                 in.readInt(), in.readInt(),
-                in.readFloat(), in.readFloat(), in.readFloat(), in.readFloat(),
+                NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in), in.readFloat(),
                 ByteBufIO.readString(in, ByteBufIO.MAX_METADATA_CHARS));
         }
     };

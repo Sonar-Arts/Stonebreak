@@ -165,18 +165,28 @@ public final class WorldLifecycle {
      */
     public World createClientWorldInstance(long seed,
                                            com.stonebreak.world.generation.TerrainGeneratorType generatorType) {
-        return World.createClientView(new WorldConfiguration(), seed, generatorType);
+        return createClientWorldInstance(seed, generatorType, null);
+    }
+
+    /** As above for the server world's terrain scale (null = 1:4): the client's generator serves FastLOD. */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale) {
+        return World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale);
     }
 
     /**
      * Replaces the current world with a new instance, disposes of the old
      * one, creates a fresh player, and re-runs world-dependent bootstrap.
+     *
+     * <p>Called from the {@code ClientWorld-Build} thread while the main thread keeps ticking and drawing
+     * {@code Game.getWorld()}. The new world is published FIRST and the old one is closed on the MAIN thread
+     * (between frames): closing it here used to free its native {@code CubeWorld} under the main thread's
+     * per-tick queries ({@code WeatherAudio} -> {@code World.topY}: "CubeWorld is closed", or a native call
+     * racing the free).
      */
     public void replaceWorldInstance(World newWorld) {
         World oldWorld = Game.getWorld();
-        if (oldWorld != null) {
-            oldWorld.cleanup();
-        }
 
         Player newPlayer = new Player(newWorld);
         System.out.println("[WORLD-ISOLATION] Created fresh player for new world to ensure inventory isolation");
@@ -184,6 +194,16 @@ public final class WorldLifecycle {
         if (newWorld != null) {
             game.initWorldComponents(newWorld, newPlayer);
             System.out.println("[WORLD-ISOLATION] Initialized world components for new world");
+        }
+
+        if (oldWorld != null && oldWorld != newWorld) {
+            game.runOnMainThread(() -> {
+                try {
+                    oldWorld.cleanup();
+                } catch (RuntimeException e) {
+                    System.err.println("[WORLD-ISOLATION] Error cleaning up the replaced world: " + e);
+                }
+            });
         }
 
         System.out.println("[WORLD-ISOLATION] World instance replaced successfully");

@@ -57,14 +57,15 @@ public final class ServerVehicleHandler {
     public void handleMove(ServerPlayer sp, VehicleMoveC2S m) {
         Dinghy boat = boat(m.networkId());
         if (boat == null || boat.driverPlayerId() != sp.playerId()
-                || !Float.isFinite(m.x()) || !Float.isFinite(m.y()) || !Float.isFinite(m.z())
+                || !Double.isFinite(m.x()) || !Double.isFinite(m.y()) || !Double.isFinite(m.z())
                 || !Float.isFinite(m.yaw())) {
             return;
         }
         if (!withinDistance(sp, m.x(), m.y(), m.z(), MAX_ROWER_GAP)) {
             return; // the next sane report carries on from where the server has it
         }
-        boat.applyDriverMove(m.x(), m.y(), m.z(), m.yaw(), OarInput.decode(m.oarLeft(), m.oarRight()));
+        boat.applyDriverMove(m.x(), m.y(), m.z(), m.yaw(),
+                OarInput.decode(m.oarLeft(), m.oarRight()));
     }
 
     /** A leaving (or dead) player gets out of whatever they sit in. */
@@ -77,7 +78,7 @@ public final class ServerVehicleHandler {
 
     private void place(ServerPlayer sp, VehicleActionC2S a, EntityManager em) {
         int dinghyId = ItemType.DINGHY.getId();
-        Vector3f pos = new Vector3f(a.x(), a.y(), a.z());
+        org.joml.Vector3d pos = new org.joml.Vector3d(a.x(), a.y(), a.z());
         if (sp.inventory().heldItemId() == dinghyId && Float.isFinite(a.yaw()) && sp.lastStateNs() != 0L
                 && withinDistance(sp, pos.x, pos.y, pos.z, ServerBlockHandler.MAX_REACH)
                 && em.spawnDinghy(pos, a.yaw()) != null) {
@@ -110,7 +111,7 @@ public final class ServerVehicleHandler {
         }
         if (boat.hit()) {
             boat.dismountAll();
-            Vector3f at = boat.getPosition().add(0f, 0.5f, 0f);
+            org.joml.Vector3d at = boat.getPosition().add(0.0, 0.5, 0.0);
             em.addEntity(ItemDrop.createDrop(em.getWorld(), at, new ItemStack(ItemType.DINGHY, 1)));
             boat.setAlive(false); // the manager removes it next tick, which replicates the despawn
         }
@@ -134,8 +135,8 @@ public final class ServerVehicleHandler {
         return CombatRules.withinMeleeReach(sp.x(), sp.y(), sp.z(), boat.getBoundingBox());
     }
 
-    private static boolean withinDistance(ServerPlayer sp, float x, float y, float z, float max) {
-        float dx = x - sp.x(), dy = y - sp.y(), dz = z - sp.z();
+    private static boolean withinDistance(ServerPlayer sp, double x, double y, double z, float max) {
+        double dx = x - sp.x(), dy = y - sp.y(), dz = z - sp.z();
         return dx * dx + dy * dy + dz * dz <= max * max;
     }
 }

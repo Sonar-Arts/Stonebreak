@@ -4,6 +4,7 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.stairs.StairShape;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -12,6 +13,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -35,8 +37,8 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int y = inv.getArgument(1);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int y = (int) (long) inv.getArgument(1, Long.class);
             return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
         });
         return world;
@@ -54,10 +56,10 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == 8 && z == 8) {
                 if (y == TRUNK_BASE_Y - 1) {
                     return BlockType.AIR; // The broken log
@@ -80,10 +82,10 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == 8 && z == 8 && y >= GROUND_TOP_Y && y <= PILLAR_TOP_Y) {
                 return BlockType.DIRT; // The pillar column
             }
@@ -99,10 +101,10 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == 8 && z == 8 && y == GROUND_TOP_Y) {
                 return cellBlock; // The flower / placed torch
             }
@@ -117,16 +119,16 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == 8 && z == 8 && y == GROUND_TOP_Y) {
                 return BlockType.SNOW;
             }
             return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
         });
-        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(0.125f);
+        when(world.getSnowHeight(anyLong(), anyLong(), anyLong())).thenReturn(0.125f);
         return world;
     }
 
@@ -136,10 +138,10 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == 8 && z == 8 && y == GROUND_TOP_Y) {
                 return BlockType.OAK_STAIRS;
             }
@@ -155,16 +157,16 @@ class DropSettlingTest {
         EntityManager em = mock(EntityManager.class);
         when(em.getAllEntities()).thenReturn(List.of());
         when(world.getEntityManager()).thenReturn(em);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
-            int z = inv.getArgument(2);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            int x = (int) (long) inv.getArgument(0, Long.class);
+            int y = (int) (long) inv.getArgument(1, Long.class);
+            int z = (int) (long) inv.getArgument(2, Long.class);
             if (x == 9 && z == 9 && y == GROUND_TOP_Y) {
                 return BlockType.SNOW; // The multi-layer snow column, on the plane
             }
             return y < GROUND_TOP_Y ? BlockType.DIRT : BlockType.AIR;
         });
-        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(snowHeight);
+        when(world.getSnowHeight(anyLong(), anyLong(), anyLong())).thenReturn(snowHeight);
         return world;
     }
 
@@ -173,11 +175,11 @@ class DropSettlingTest {
      * ticks), then verify it comes to a COMPLETE rest at the server's 20 Hz tick.
      * Returns the rest Y.
      */
-    private static float runToCompleteRest(Entity drop) {
+    private static double runToCompleteRest(Entity drop) {
         for (int i = 0; i < 300; i++) {
             drop.update(SERVER_TICK);
         }
-        float restY = drop.getPosition().y;
+        double restY = drop.getPosition().y;
         for (int i = 0; i < 20; i++) {
             drop.update(SERVER_TICK);
             assertEquals(restY, drop.getPosition().y, 1e-6f,
@@ -192,7 +194,7 @@ class DropSettlingTest {
         for (int i = 0; i < 300; i++) {
             drop.update(SERVER_TICK);
         }
-        float restY = drop.getPosition().y;
+        double restY = drop.getPosition().y;
         for (int i = 0; i < 20; i++) {
             drop.update(SERVER_TICK);
             assertEquals(restY, drop.getPosition().y, 1e-6f,
@@ -205,13 +207,13 @@ class DropSettlingTest {
     @Test
     void blockDropSettlesWithoutOscillating() {
         World world = flatWorld();
-        assertSettles(BlockDrop.createDrop(world, new Vector3f(8.5f, 70f, 8.5f), BlockType.DIRT));
+        assertSettles(BlockDrop.createDrop(world, new Vector3d(8.5f, 70f, 8.5f), BlockType.DIRT));
     }
 
     @Test
     void itemDropSettlesWithoutOscillating() {
         World world = flatWorld();
-        assertSettles(new ItemDrop(world, new Vector3f(8.5f, 70f, 8.5f), ItemType.STICK, 1));
+        assertSettles(new ItemDrop(world, new Vector3d(8.5f, 70f, 8.5f), ItemType.STICK, 1));
     }
 
     /**
@@ -228,8 +230,8 @@ class DropSettlingTest {
         // The drop starts in the BROKEN AIR CELL (TRUNK_BASE_Y - 1, the broken log's cell),
         // directly below the solid trunk column — exactly where a break drop spawns.
         for (Entity drop : List.of(
-                BlockDrop.createDrop(world, new Vector3f(8.5f, TRUNK_BASE_Y - 0.5f, 8.5f), BlockType.DIRT),
-                new ItemDrop(world, new Vector3f(8.5f, TRUNK_BASE_Y - 0.5f, 8.5f), ItemType.STICK, 1))) {
+                BlockDrop.createDrop(world, new Vector3d(8.5f, TRUNK_BASE_Y - 0.5f, 8.5f), BlockType.DIRT),
+                new ItemDrop(world, new Vector3d(8.5f, TRUNK_BASE_Y - 0.5f, 8.5f), ItemType.STICK, 1))) {
             drop.setVelocity(new Vector3f(0f, 3f, 0f)); // Straight up into the trunk column
             for (int i = 0; i < 300; i++) {
                 drop.update(SERVER_TICK);
@@ -253,18 +255,18 @@ class DropSettlingTest {
         World world = pillarWorld();
         // Natural straight drop from above the pillar top (no horizontal drift).
         Entity natural = BlockDrop.createDropWithVelocity(
-                world, new Vector3f(8.5f, 85f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f));
+                world, new Vector3d(8.5f, 85f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f));
         // Deterministic fast throw: pre-move centre is above the pillar's top face but the
         // post-move centre ends up INSIDE the top block's cell in one tick (movement 0.28 >
         // half the 0.25 height) — the first cut of issue #225 saw that as "stuck in a block"
         // and pushed the drop off onto the ground beside the pillar.
         Entity thrown = BlockDrop.createDropWithVelocity(
-                world, new Vector3f(8.5f, 81.05f, 8.5f), BlockType.DIRT, new Vector3f(0f, -5f, 0f));
+                world, new Vector3d(8.5f, 81.05f, 8.5f), BlockType.DIRT, new Vector3f(0f, -5f, 0f));
         for (Entity drop : List.of(natural, thrown)) {
             for (int i = 0; i < 300; i++) {
                 drop.update(SERVER_TICK);
             }
-            float restY = drop.getPosition().y;
+            double restY = drop.getPosition().y;
             for (int i = 0; i < 20; i++) {
                 drop.update(SERVER_TICK);
                 assertEquals(restY, drop.getPosition().y, 1e-6f,
@@ -291,10 +293,10 @@ class DropSettlingTest {
         World world = passableCellWorld(BlockType.ROSE);
         for (Entity drop : List.of(
                 BlockDrop.createDropWithVelocity(
-                        world, new Vector3f(8.5f, 64.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
-                new ItemDrop(world, new Vector3f(8.5f, 64.5f, 8.5f), ItemType.STICK, 1))) {
+                        world, new Vector3d(8.5f, 64.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3d(8.5f, 64.5f, 8.5f), ItemType.STICK, 1))) {
             drop.setVelocity(new Vector3f(0f, 0f, 0f));
-            float restY = runToCompleteRest(drop);
+            double restY = runToCompleteRest(drop);
             assertEquals(GROUND_TOP_Y + drop.getHeight() / 2f, restY, 1e-3f,
                 "drop must rest INSIDE the flower cell on the ground below (restY=" + restY + ")");
         }
@@ -310,10 +312,10 @@ class DropSettlingTest {
         World world = passableCellWorld(BlockType.TORCH_PLACED);
         for (Entity drop : List.of(
                 BlockDrop.createDropWithVelocity(
-                        world, new Vector3f(8.5f, 64.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
-                new ItemDrop(world, new Vector3f(8.5f, 64.5f, 8.5f), ItemType.STICK, 1))) {
+                        world, new Vector3d(8.5f, 64.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3d(8.5f, 64.5f, 8.5f), ItemType.STICK, 1))) {
             drop.setVelocity(new Vector3f(0f, 0f, 0f));
-            float restY = runToCompleteRest(drop);
+            double restY = runToCompleteRest(drop);
             assertEquals(GROUND_TOP_Y + drop.getHeight() / 2f, restY, 1e-3f,
                 "drop must fall through the torch cell and rest on the ground below (restY=" + restY + ")");
         }
@@ -330,10 +332,10 @@ class DropSettlingTest {
         World world = snowWorld();
         for (Entity drop : List.of(
                 BlockDrop.createDropWithVelocity(
-                        world, new Vector3f(8.5f, 65.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
-                new ItemDrop(world, new Vector3f(8.5f, 65.5f, 8.5f), ItemType.STICK, 1))) {
+                        world, new Vector3d(8.5f, 65.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3d(8.5f, 65.5f, 8.5f), ItemType.STICK, 1))) {
             drop.setVelocity(new Vector3f(0f, 0f, 0f));
-            float restY = runToCompleteRest(drop);
+            double restY = runToCompleteRest(drop);
             assertEquals(GROUND_TOP_Y + 0.125f + drop.getHeight() / 2f, restY, 1e-3f,
                 "drop must rest ON the 1-layer snow surface (restY=" + restY + ")");
         }
@@ -350,10 +352,10 @@ class DropSettlingTest {
         World world = stairWorld();
         for (Entity drop : List.of(
                 BlockDrop.createDropWithVelocity(
-                        world, new Vector3f(8.5f, 65.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
-                new ItemDrop(world, new Vector3f(8.5f, 65.5f, 8.5f), ItemType.STICK, 1))) {
+                        world, new Vector3d(8.5f, 65.5f, 8.5f), BlockType.DIRT, new Vector3f(0f, 0f, 0f)),
+                new ItemDrop(world, new Vector3d(8.5f, 65.5f, 8.5f), ItemType.STICK, 1))) {
             drop.setVelocity(new Vector3f(0f, 0f, 0f));
-            float restY = runToCompleteRest(drop);
+            double restY = runToCompleteRest(drop);
             float step = StairShape.stepHeight(world, 8, GROUND_TOP_Y, 8, BlockType.OAK_STAIRS,
                     8.375f, 8.375f, 8.625f, 8.625f);
             assertTrue(step > 0f, "the stair must leave a solid step under the drop's footprint");
@@ -375,7 +377,7 @@ class DropSettlingTest {
     void dropSlidingIntoMultiLayerSnowStepsUpInsteadOfTeleportingBack() {
         for (float snowHeight : new float[]{0.125f, 0.375f, 0.750f}) {
             World world = snowStepWorld(snowHeight);
-            Entity drop = new ItemDrop(world, new Vector3f(8.9f, 64.125f, 9.5f), ItemType.STICK, 1);
+            Entity drop = new ItemDrop(world, new Vector3d(8.9f, 64.125f, 9.5f), ItemType.STICK, 1);
             drop.setVelocity(new Vector3f(3f, 0f, 0f));
             // The drop must actually STEP onto the snow: at some tick its centre is inside
             // the snow cell at exactly the snow-surface rest height. The escape path (the
@@ -390,7 +392,7 @@ class DropSettlingTest {
             }
             assertTrue(steppedOntoSnow, "drop must step onto the snow surface inside the snow cell (y="
                 + drop.getPosition().y + ")");
-            float restY = runToCompleteRest(drop);
+            double restY = runToCompleteRest(drop);
             assertTrue(drop.getPosition().x > 9.0f,
                 "drop must cross into/past the snow cell, not teleport back to x=8.5 (x="
                     + drop.getPosition().x + ")");

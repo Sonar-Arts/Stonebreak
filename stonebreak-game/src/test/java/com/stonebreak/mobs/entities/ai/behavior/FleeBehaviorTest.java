@@ -4,6 +4,8 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -27,22 +29,22 @@ class FleeBehaviorTest {
 
     /** A player wherever the test puts one, or nowhere. */
     private static final class FakePlayers implements PlayerLocator {
-        Vector3f position;
+        Vector3d position;
         boolean sprinting;
 
         @Override
-        public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+        public Vector3d nearestPlayer(Vector3dc from, Vector3d out) {
             return position == null ? null : out.set(position);
         }
 
         @Override
-        public boolean nearestPlayerSprinting(Vector3f from) {
+        public boolean nearestPlayerSprinting(Vector3dc from) {
             return sprinting;
         }
     }
 
     private final FakePlayers players = new FakePlayers();
-    private final StubMob mob = new StubMob(EntityType.COW, new Vector3f(0, 64, 0));
+    private final StubMob mob = new StubMob(EntityType.COW, new Vector3d(0, 64, 0));
     private final AiContext context = new AiContext(mob, null, new Random(1), players);
 
     private FleeBehavior skittish() {
@@ -50,7 +52,7 @@ class FleeBehaviorTest {
     }
 
     private void playerAt(float distance) {
-        players.position = new Vector3f(distance, 64, 0);
+        players.position = new Vector3d(distance, 64, 0);
     }
 
     @Test
@@ -121,15 +123,15 @@ class FleeBehaviorTest {
     void aHitRunsFromTheAttackerNotTheNearestPlayer() {
         AiContext navigating = new AiContext(
                 mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
-        players.position = new Vector3f(3, 64, 0);   // a bystander, east and closest
-        navigating.setAttacker(new Vector3f(-8, 64, 0)); // the archer who hit it, west
+        players.position = new Vector3d(3, 64, 0);   // a bystander, east and closest
+        navigating.setAttacker(new Vector3d(-8, 64, 0)); // the archer who hit it, west
 
         FleeBehavior placid = new FleeBehavior(16.0f, 5.0f, 1.4f);
         placid.onDamaged(navigating, 2.0f);
         assertTrue(placid.canStart(navigating));
         placid.start(navigating);
 
-        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        Vector3d retreat = navigating.nav().goal(new Vector3d());
         assertTrue(retreat.x > mob.getPosition().x,
                 "flees east, away from the attacker, even though that is toward the bystander: " + retreat);
     }
@@ -138,14 +140,14 @@ class FleeBehaviorTest {
     void anUnattributedHitFallsBackToTheNearestPlayer() {
         AiContext navigating = new AiContext(
                 mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
-        players.position = new Vector3f(3, 64, 0);
+        players.position = new Vector3d(3, 64, 0);
         navigating.setAttacker(null); // e.g. a damage-over-time tick: the source does not say
 
         FleeBehavior placid = new FleeBehavior(16.0f, 5.0f, 1.4f);
         placid.onDamaged(navigating, 2.0f);
         placid.start(navigating);
 
-        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        Vector3d retreat = navigating.nav().goal(new Vector3d());
         assertTrue(retreat.x < mob.getPosition().x, "flees west, away from the nearest player: " + retreat);
     }
 

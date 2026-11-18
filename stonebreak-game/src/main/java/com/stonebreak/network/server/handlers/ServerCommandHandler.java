@@ -178,16 +178,16 @@ public final class ServerCommandHandler {
         // Camera convention: front = (cos yaw·cos pitch, sin pitch, sin yaw·cos pitch).
         double yaw = Math.toRadians(sp.yaw());
         double pitch = Math.toRadians(sp.pitch());
-        Vector3f base = new Vector3f(
-                sp.x() + (float) (Math.cos(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE,
-                sp.y() + (float) Math.sin(pitch) * SPAWN_DISTANCE,
-                sp.z() + (float) (Math.sin(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE);
+        org.joml.Vector3d base = new org.joml.Vector3d(
+                sp.x() + Math.cos(yaw) * Math.cos(pitch) * SPAWN_DISTANCE,
+                sp.y() + Math.sin(pitch) * SPAWN_DISTANCE,
+                sp.z() + Math.sin(yaw) * Math.cos(pitch) * SPAWN_DISTANCE);
         int spawned = 0;
         for (int i = 0; i < count; i++) {
             // Jitter x/z slightly so multiple spawns don't stack on a single point.
             float jitterX = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
             float jitterZ = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
-            Entity entity = em.spawnEntity(type, new Vector3f(base).add(jitterX, 0f, jitterZ));
+            Entity entity = em.spawnEntity(type, new org.joml.Vector3d(base).add(jitterX, 0.0, jitterZ));
             if (entity != null) {
                 entity.setCommandSpawned(true);
                 spawned++;

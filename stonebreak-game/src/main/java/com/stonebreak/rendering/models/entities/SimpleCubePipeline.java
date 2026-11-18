@@ -45,7 +45,7 @@ final class SimpleCubePipeline {
      * methods set them).
      */
     void begin(int texture, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-               Vector3f cameraPos, float fogDensity, Vector3f fogColor,
+               org.joml.Vector3dc cameraPos, float fogDensity, Vector3f fogColor,
                Entity entity, boolean lit) {
         shader.bind();
 

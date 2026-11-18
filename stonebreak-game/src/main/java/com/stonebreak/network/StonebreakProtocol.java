@@ -42,10 +42,12 @@ import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.BlockMetaS2C;
 import com.stonebreak.network.packet.world.BlockStateS2C;
 import com.stonebreak.network.packet.world.BlockToggleC2S;
-import com.stonebreak.network.packet.world.ChunkDataS2C;
-import com.stonebreak.network.packet.world.ChunkHashesC2S;
-import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
-import com.stonebreak.network.packet.world.ChunkUnloadC2S;
+import com.stonebreak.network.packet.world.BlockStateNamesS2C;
+import com.stonebreak.network.packet.world.CubeAckC2S;
+import com.stonebreak.network.packet.world.CubeDataS2C;
+import com.stonebreak.network.packet.world.CubeHashesC2S;
+import com.stonebreak.network.packet.world.CubeRequestC2S;
+import com.stonebreak.network.packet.world.CubeUnloadC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.CheatsSetC2S;
@@ -94,11 +96,12 @@ public final class StonebreakProtocol {
         r.register(PLAY, SERVERBOUND, 8, ViewDistanceC2S.class, ViewDistanceC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 9, EntityDamageC2S.class, EntityDamageC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 10, KeepAliveC2S.class, KeepAliveC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 11, ChunkResyncRequestC2S.class, ChunkResyncRequestC2S.CODEC);
+        // 11: was ChunkResyncRequestC2S (v22); cube requests double as resyncs since v23.
+        r.register(PLAY, SERVERBOUND, 11, CubeRequestC2S.class, CubeRequestC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 12, SnowLayerC2S.class, SnowLayerC2S.CODEC);
         // id 13 retired (FurnaceSlotsC2S — replaced by ContainerActionC2S; v8).
         r.register(PLAY, SERVERBOUND, 14, ProjectileSpawnC2S.class, ProjectileSpawnC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 15, ChunkHashesC2S.class, ChunkHashesC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 15, CubeHashesC2S.class, CubeHashesC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 16, DropItemC2S.class, DropItemC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 17, EntityResyncC2S.class, EntityResyncC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 18, TimeSetC2S.class, TimeSetC2S.CODEC);
@@ -113,13 +116,12 @@ public final class StonebreakProtocol {
         // id 27 retired (DeathDropC2S — the server scatters the inventory at the death it decides; v22).
         r.register(PLAY, SERVERBOUND, 28, PlayerLifeC2S.class, PlayerLifeC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 29, ConsumeHeldC2S.class, ConsumeHeldC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 30, ChunkUnloadC2S.class, ChunkUnloadC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 30, CubeUnloadC2S.class, CubeUnloadC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 31, com.stonebreak.network.packet.player.InventoryResyncC2S.class,
                 com.stonebreak.network.packet.player.InventoryResyncC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 32, com.stonebreak.network.packet.world.BlockBreakStartC2S.class,
                 com.stonebreak.network.packet.world.BlockBreakStartC2S.CODEC);
-        r.register(PLAY, SERVERBOUND, 33, com.stonebreak.network.packet.world.ChunkAckC2S.class,
-                com.stonebreak.network.packet.world.ChunkAckC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 33, CubeAckC2S.class, CubeAckC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 34, com.stonebreak.network.packet.entity.EntityKnockbackC2S.class,
                 com.stonebreak.network.packet.entity.EntityKnockbackC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 35, com.stonebreak.network.packet.entity.EntityStatusEffectC2S.class,
@@ -137,7 +139,7 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.player.PlayerDamageC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
-        r.register(PLAY, CLIENTBOUND, 1, ChunkDataS2C.class, ChunkDataS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 1, CubeDataS2C.class, CubeDataS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 2, BlockChangeS2C.class, BlockChangeS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 3, MultiBlockChangeS2C.class, MultiBlockChangeS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 4, PlayerStateS2C.class, PlayerStateS2C.CODEC);
@@ -179,6 +181,7 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.player.PlayerKnockbackS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 35, com.stonebreak.network.packet.world.PvpStateS2C.class,
                 com.stonebreak.network.packet.world.PvpStateS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 36, BlockStateNamesS2C.class, BlockStateNamesS2C.CODEC);
 
         return r;
     }

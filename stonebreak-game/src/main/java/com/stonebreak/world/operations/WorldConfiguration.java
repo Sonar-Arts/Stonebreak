@@ -5,27 +5,44 @@ package com.stonebreak.world.operations;
  * Provides constants and configurable parameters for the chunk-based world system.
  */
 public class WorldConfiguration {
-    // World constants
-    public static final int CHUNK_SIZE = 16;
-    public static final int WORLD_HEIGHT = 256;
+    // World shape (cubic voxel runtime, Stonebreak #447 / OpenMason #89 G5). The world is 1024 blocks
+    // tall, Y in [MIN_Y, MAX_Y), stored as 32^3 cubes in the engine's native CubeWorld. There is no
+    // column height any more: code that used WORLD_HEIGHT asks MIN_Y / MAX_Y (or the world's own
+    // CubeWorld bounds) instead.
+    /** Lowest block y (inclusive): the bedrock floor. */
+    public static final int MIN_Y = -384;
+    /** One past the highest block y. */
+    public static final int MAX_Y = 640;
+    /** Total world height in blocks ({@code MAX_Y - MIN_Y}). */
+    public static final int HEIGHT = MAX_Y - MIN_Y;
     public static final int SEA_LEVEL = 64;
+    /** Cube edge in blocks ({@code CubeWorld.CUBE_EDGE}); cube coordinate = block coordinate {@code >> CUBE_SHIFT}. */
+    public static final int CUBE_EDGE = 32;
+    public static final int CUBE_SHIFT = 5;
+    /** Lowest / one past the highest cube y ({@code MIN_Y >> 5}, {@code MAX_Y >> 5}). */
+    public static final int MIN_CUBE_Y = MIN_Y >> CUBE_SHIFT;
+    public static final int MAX_CUBE_Y = MAX_Y >> CUBE_SHIFT;
 
     /**
-     * The world's dimensions as the engine takes them (#385): installed with
-     * {@code CcoBounds.configure} at startup, which checks them against the engine's
-     * storage and mesh-format limits ({@code VoxelWorldLimits}) and fails loudly.
+     * The column-era 16-block chunk edge. Nothing in the world model uses it any more (cubes are
+     * {@link #CUBE_EDGE}); it survives only for code that still buckets by 16 (FastLOD L0 nodes,
+     * network keys, entity bookkeeping) until the 3B agents move those to cubes.
      */
-    public static com.openmason.engine.voxel.VoxelWorldConfig voxelConfig() {
-        return new com.openmason.engine.voxel.VoxelWorldConfig(CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL);
+    @Deprecated
+    public static final int CHUNK_SIZE = 16;
+
+    /** True when {@code y} is inside the world's vertical bounds. */
+    public static boolean inBounds(long y) {
+        return y >= MIN_Y && y < MAX_Y;
     }
 
     /**
-     * Sentinel water level for a column that holds no standing water. The cave
-     * carvers take a per-column water plane so they can keep off water beds and
-     * banks; on this branch the only standing water is the ocean, so a column is
-     * wet exactly when its surface sits below {@link #SEA_LEVEL}.
+     * Sentinel water level for a column that holds no standing water. {@code Integer.MIN_VALUE}: it can never be
+     * a height (the world reaches y = -384, so the old -1 was a real water level), equal to the native
+     * generator's own sentinel. Stored formats map it to their own value (FastLOD i16: {@code Short.MIN_VALUE});
+     * the DaedalusTGM tile planes keep their -1 ({@code TerrainTile.NO_WATER}, tile domain only).
      */
-    public static final int NO_WATER = -1;
+    public static final int NO_WATER = Integer.MIN_VALUE;
 
     // Rendering settings
     public static final int DEFAULT_RENDER_DISTANCE = 8;
@@ -53,8 +70,12 @@ public class WorldConfiguration {
     // Threading
     public static final int CHUNK_BUILD_EXECUTOR_TIMEOUT_SECONDS = 2;
     
+    /** Default vertical half-height of the streaming ellipsoid ("Vertical Render Distance"), blocks. */
+    public static final int DEFAULT_VERTICAL_RENDER_DISTANCE = 128;
+
     // Render/LOD distances are settings-driven and mutable at runtime; worker count is fixed.
     private volatile int renderDistance;
+    private volatile int verticalRenderDistance = DEFAULT_VERTICAL_RENDER_DISTANCE;
     private final int chunkBuildThreads;
     private volatile int lodRange;
     private volatile boolean lodEnabled;
@@ -78,6 +99,20 @@ public class WorldConfiguration {
 
     public int getRenderDistance() {
         return renderDistance;
+    }
+
+    /** Vertical half-height of the streaming ellipsoid, in blocks. */
+    public int getVerticalRenderDistance() {
+        return verticalRenderDistance;
+    }
+
+    public void setVerticalRenderDistance(int blocks) {
+        this.verticalRenderDistance = Math.max(32, Math.min(HEIGHT, blocks));
+    }
+
+    /** Horizontal streaming radius in blocks (render distance is still counted in 16-block steps). */
+    public int getHorizontalRenderRadiusBlocks() {
+        return renderDistance * 16;
     }
 
     public int getChunkBuildThreads() {

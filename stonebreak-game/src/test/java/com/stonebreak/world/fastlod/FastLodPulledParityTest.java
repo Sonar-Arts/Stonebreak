@@ -310,7 +310,7 @@ class FastLodPulledParityTest {
      */
     @Test
     void terrainHighInTheColumnStillEmitsQuads() {
-        for (int height : new int[]{SEA, 512, 900, WorldConfiguration.WORLD_HEIGHT - 2}) {
+        for (int height : new int[]{SEA, 512, WorldConfiguration.MAX_Y - 2}) {
             for (FastLodLevel level : FastLodLevel.values()) {
                 int stride = level.stride();
                 int[] heights = new int[stride * stride];
@@ -383,25 +383,25 @@ class FastLodPulledParityTest {
         assertTrue(shoal > 0 && deep > 0, "both halves survive the merge: " + shoal + " / " + deep);
     }
 
-    /** A lake perched above y=511 used to throw straight out of WATERQUAD16's word0. */
+    /** A lake perched high in the column (y 600 of [-384, 640)) still fits WATERQUAD16's node-local y. */
     @Test
     void waterSheetHighInTheColumnStillEmitsQuads() {
         FastLodLevel level = FastLodLevel.L4;
         int stride = level.stride();
         int[] heights = new int[stride * stride];
-        java.util.Arrays.fill(heights, 880);
+        java.util.Arrays.fill(heights, 560);
         BlockType[] surface = new BlockType[level.cellCount()];
         java.util.Arrays.fill(surface, BlockType.STONE);
         TreeSample[] trees = level.emitsTrees() ? new TreeSample[level.cellCount()] : null;
         int[] waterLevels = new int[level.cellCount()];
-        java.util.Arrays.fill(waterLevels, 900);
+        java.util.Arrays.fill(waterLevels, 600); // high in the [-384, 640) world
         FastLodChunkData d = new FastLodChunkData(
             FastLodKey.of(level, 3, 4), heights, waterLevels, surface, trees);
 
         MmsVertexFormat.override(MmsVertexFormat.QUAD16);
         FastLodMesher.Result pulled = mesher().build(d);
 
-        assertNotNull(pulled.waterMesh(), "water sheet at y=900 is emitted");
-        assertTrue(pulled.waterMesh().getVertexCount() > 0, "water sheet at y=900 has quads");
+        assertNotNull(pulled.waterMesh(), "water sheet at y=600 is emitted");
+        assertTrue(pulled.waterMesh().getVertexCount() > 0, "water sheet at y=600 has quads");
     }
 }

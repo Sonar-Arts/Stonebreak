@@ -91,7 +91,7 @@ public final class BattleTestSession {
     public void reset() {
         player.setSpectator(false);
         player.setFlying(false);
-        player.resetForScene(world.arena().playerSpawn().position());
+        player.resetForScene(new org.joml.Vector3d(world.arena().playerSpawn().position()));
         player.getVelocity().zero();
         player.setOnGround(false);
         player.getCamera().setYaw(world.arena().playerSpawn().yaw());
@@ -103,7 +103,7 @@ public final class BattleTestSession {
             reset();
         player.update();
         entities.update(dt);
-        Vector3f p = player.getPosition();
+        org.joml.Vector3d p = player.getPosition();
         if (player.isDead() || p.y < -8 || Math.abs(p.x) > 55 || Math.abs(p.z) > 55)
             reset();
     }

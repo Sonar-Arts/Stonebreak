@@ -1,5 +1,9 @@
 package com.stonebreak.world;
 
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.voxel.VoxelLayers;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -11,149 +15,87 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The snow-layer ledger behind accumulation, collision height, saves and replication. The rules
- * worth pinning: untracked snow reads as one layer (a placed snow block), stacking caps at eight,
- * the mutation listener fires only on real changes (it drives replication, so a spurious fire is
- * a spurious packet), per-chunk iteration and unload pruning agree on chunk membership, and the
- * key packing survives negative coordinates.
+ * Snow layer counts on the SNOW layer of the native world (#447). The rules worth pinning: untracked snow
+ * reads as one layer, stacking caps at eight, the mutation listener fires only on real changes (it drives
+ * replication), hydration ({@code putRaw}) is silent, negative coordinates keep their own cells, and a type
+ * change clears the count.
  */
 class SnowLayerManagerTest {
 
-    private final SnowLayerManager snow = new SnowLayerManager();
+    private final World world = World.createDetached(new WorldConfiguration(), 1L);
+    private final SnowLayerManager snow = world.getSnowLayerManager();
+
+    @AfterEach
+    void close() {
+        world.cleanup();
+    }
+
+    private void snowAt(long x, long y, long z) {
+        world.setBlockAt(x, y, z, BlockType.SNOW);
+    }
 
     @Test
     void untrackedSnowReadsAsOneLayer() {
+        snowAt(5, 70, 5);
         assertEquals(1, snow.getSnowLayers(5, 70, 5));
         assertEquals(0.125f, snow.getSnowHeight(5, 70, 5), 1e-6f);
     }
 
     @Test
     void layersStoreAndConvertToHeight() {
+        snowAt(5, 70, 5);
         snow.setSnowLayers(5, 70, 5, 6);
-
         assertEquals(6, snow.getSnowLayers(5, 70, 5));
-        assertEquals(0.75f, snow.getSnowHeight(5, 70, 5), 1e-6f);
+        assertEquals(0.75f, world.getSnowHeight(5, 70, 5), 1e-6f);
+        assertEquals(6, world.voxels().getLayer(VoxelLayers.SNOW, 5, 70, 5));
     }
 
     @Test
     void negativeCoordinatesKeepTheirOwnEntries() {
+        snowAt(-17, 70, -33);
+        snowAt(17, 70, 33);
         snow.setSnowLayers(-17, 70, -33, 4);
-
         assertEquals(4, snow.getSnowLayers(-17, 70, -33));
-        assertEquals(1, snow.getSnowLayers(17, 70, 33),
-                "sign must survive the key packing — these are different columns");
+        assertEquals(1, snow.getSnowLayers(17, 70, 33));
     }
 
     @Test
     void stackingStopsAtEightLayers() {
+        snowAt(2, 70, 2);
         for (int i = 0; i < 7; i++) {
             assertTrue(snow.addSnowLayer(2, 70, 2), "layer " + (i + 2) + " should stack");
         }
-
+        assertFalse(snow.addSnowLayer(2, 70, 2));
         assertEquals(8, snow.getSnowLayers(2, 70, 2));
-        assertFalse(snow.addSnowLayer(2, 70, 2), "a full block of snow takes no more");
+        assertThrows(IllegalArgumentException.class, () -> snow.setSnowLayers(2, 70, 2, 9));
     }
 
     @Test
-    void outOfRangeLayerCountsAreRejected() {
-        assertThrows(IllegalArgumentException.class, () -> snow.setSnowLayers(0, 70, 0, 0));
-        assertThrows(IllegalArgumentException.class, () -> snow.setSnowLayers(0, 70, 0, 9));
+    void listenerFiresOnRealChangesOnly() {
+        snowAt(1, 70, 1);
+        List<Integer> fired = new ArrayList<>();
+        snow.setMutationListener((x, y, z, layers) -> fired.add(layers));
+        snow.setSnowLayers(1, 70, 1, 3);
+        snow.setSnowLayers(1, 70, 1, 3);
+        snow.putRaw(1, 70, 1, 5);
+        snow.removeSnowLayers(1, 70, 1);
+        snow.removeSnowLayers(1, 70, 1);
+        assertEquals(List.of(3, 0), fired);
     }
 
     @Test
-    void removalResetsTheColumnToUntracked() {
-        snow.setSnowLayers(3, 70, 3, 5);
-
-        snow.removeSnowLayers(3, 70, 3);
-
+    void replacingSnowClearsTheCount() {
+        snowAt(3, 70, 3);
+        snow.setSnowLayers(3, 70, 3, 7);
+        world.setBlockAt(3, 70, 3, BlockType.STONE);
+        assertEquals(0, world.voxels().getLayer(VoxelLayers.SNOW, 3, 70, 3));
+        snowAt(3, 70, 3);
         assertEquals(1, snow.getSnowLayers(3, 70, 3));
     }
 
     @Test
-    void theMutationListenerFiresOnlyOnRealChanges() {
-        List<String> events = new ArrayList<>();
-        snow.setMutationListener((x, y, z, layers) -> events.add(x + "," + y + "," + z + ":" + layers));
-
-        snow.setSnowLayers(1, 70, 1, 3);
-        snow.setSnowLayers(1, 70, 1, 3); // same value again — replication must stay quiet
-        snow.setSnowLayers(1, 70, 1, 4);
-        snow.removeSnowLayers(1, 70, 1);
-        snow.removeSnowLayers(1, 70, 1); // already gone
-
-        assertEquals(List.of("1,70,1:3", "1,70,1:4", "1,70,1:0"), events);
-    }
-
-    @Test
-    void putRawHydratesQuietlyAndClampsDefensively() {
-        List<String> events = new ArrayList<>();
-        snow.setMutationListener((x, y, z, layers) -> events.add("fired"));
-
-        snow.putRaw(4, 70, 4, 99);
-        snow.putRaw(6, 70, 6, -5);
-
-        assertEquals(8, snow.getSnowLayers(4, 70, 4));
-        assertEquals(1, snow.getSnowLayers(6, 70, 6));
-        assertTrue(events.isEmpty(), "hydration from disk or wire must not re-replicate");
-    }
-
-    @Test
-    void perChunkIterationVisitsExactlyThatChunk() {
-        snow.setSnowLayers(1, 70, 1, 2);    // chunk (0, 0)
-        snow.setSnowLayers(-1, 70, 1, 3);   // chunk (-1, 0)
-        snow.setSnowLayers(17, 70, 1, 4);   // chunk (1, 0)
-
-        List<String> visited = new ArrayList<>();
-        snow.forEachInChunk(0, 0, (x, y, z, layers) -> visited.add(x + "," + y + "," + z + ":" + layers));
-
-        assertEquals(List.of("1,70,1:2"), visited);
-    }
-
-    @Test
-    void unloadingAChunkDropsOnlyItsEntries() {
-        snow.setSnowLayers(1, 70, 1, 2);    // chunk (0, 0)
-        snow.setSnowLayers(-1, 70, 1, 3);   // chunk (-1, 0)
-
-        snow.onChunkUnloaded(0, 0);
-
-        assertEquals(1, snow.getSnowLayers(1, 70, 1), "the unloaded chunk's entry is gone");
-        assertEquals(3, snow.getSnowLayers(-1, 70, 1), "the neighbour keeps its snow");
-    }
-
-    @Test
-    void writesSurviveAConcurrentChunkEmptying() throws Exception {
-        // #345: snow is grouped per chunk and an emptied chunk's group is dropped. A write racing
-        // that drop must not land in the discarded group (the save, the network meta and the
-        // client install would then never see it).
-        int rounds = 20_000;
-        Thread churn = new Thread(() -> {
-            for (int i = 0; i < rounds; i++) {
-                snow.setSnowLayers(1, 70, 1, 2);
-                snow.removeSnowLayers(1, 70, 1); // empties chunk (0,0) unless the other cell is in
-            }
-        });
-        churn.start();
-        try {
-            for (int i = 0; i < rounds; i++) {
-                int layers = 2 + (i % 7);
-                snow.setSnowLayers(2, 70, 2, layers);
-                assertEquals(layers, snow.getSnowLayers(2, 70, 2));
-                snow.removeSnowLayers(2, 70, 2);
-            }
-        } finally {
-            churn.join();
-        }
-        snow.setSnowLayers(2, 70, 2, 5);
-        List<Integer> seen = new ArrayList<>();
-        snow.forEachInChunk(0, 0, (x, y, z, layers) -> seen.add(layers));
-        assertEquals(List.of(5), seen);
-    }
-
-    @Test
-    void clearEmptiesTheLedger() {
-        snow.setSnowLayers(1, 70, 1, 5);
-
-        snow.clear();
-
-        assertEquals(1, snow.getSnowLayers(1, 70, 1));
+    void outOfBoundsIsIgnored() {
+        snow.setSnowLayers(0, WorldConfiguration.MAX_Y + 5, 0, 3);
+        assertEquals(1, snow.getSnowLayers(0, WorldConfiguration.MAX_Y + 5, 0));
     }
 }

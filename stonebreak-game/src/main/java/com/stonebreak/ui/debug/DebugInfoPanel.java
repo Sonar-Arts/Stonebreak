@@ -6,14 +6,16 @@ import com.stonebreak.player.Player;
 import com.openmason.engine.ui.masonry.MStatPanel;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import org.joml.Vector3f;
+import com.stonebreak.config.TerrainScaleOption;
+import com.stonebreak.world.generation.NativeCubeGenerator;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 import static com.stonebreak.ui.debug.DebugFormat.getCardinalDirection;
 import static com.stonebreak.ui.debug.DebugFormat.truncate;
 
 /**
- * The right-hand "Debug Info" card: player position, chunk coords, facing,
- * terrain heights, targeted block/water, world + network counters,
+ * The right-hand "Debug Info" card: player position, cube coords, facing,
+ * surface/top Y + generator column, targeted block/water, cube-stream + network counters,
  * graphics pipeline stats and GPU identity. Reads its numbers through
  * {@link DebugDiagnostics} and {@link GpuInfoProbe}.
  */
@@ -41,37 +43,46 @@ public final class DebugInfoPanel implements DebugPanel {
             return new MStatPanel("Debug").row("Player or World unavailable", "");
         }
 
-        Vector3f pos = player.getPosition();
-        int x = (int) Math.floor(pos.x);
-        int y = (int) Math.floor(pos.y);
-        int z = (int) Math.floor(pos.z);
-        int chunkX = x >> 4;
-        int chunkZ = z >> 4;
+        var pos = player.getPosition();
+        long x = (long) Math.floor(pos.x);
+        long y = (long) Math.floor(pos.y);
+        long z = (long) Math.floor(pos.z);
+        long cubeX = x >> WorldConfiguration.CUBE_SHIFT;
+        long cubeY = y >> WorldConfiguration.CUBE_SHIFT;
+        long cubeZ = z >> WorldConfiguration.CUBE_SHIFT;
+        int edge = WorldConfiguration.CUBE_EDGE - 1;
 
-        BiomeType biome = world.terrain().getBiomeAt(x, z);
         String facing = getCardinalDirection(player.getCamera().getFront());
         BlockType blockBelow = world.getBlockAt(x, y - 1, z);
         String blockName = blockBelow != null ? blockBelow.name() : "Unknown";
-
-        int baseHeight = world.terrain().getBaseHeightAt(x, z);
-        int shapedHeight = world.terrain().getShapedHeightAt(x, z);
-        int finalHeight = world.terrain().getFinalTerrainHeightAt(x, z);
 
         // Targeted block info
         String targetedLine = diagnostics.getTargetedBlockSummary(player);
 
         MStatPanel panel = new MStatPanel("Debug Info")
-            .row("XYZ", String.format("%d / %d / %d", x, y, z))
-            .row("Chunk", String.format("%d %d in %d %d", x & 15, z & 15, chunkX, chunkZ))
+            .row("XYZ", String.format("%.2f / %.2f / %.2f", (double) pos.x, (double) pos.y, (double) pos.z))
+            .row("Block", String.format("%d / %d / %d", x, y, z))
+            .row("Cube", String.format("%d %d %d in %d %d %d%s", x & edge, y & edge, z & edge, cubeX, cubeY, cubeZ,
+                world.isLoaded(x, y, z) ? "" : (world.isKnown(x, y, z) ? " (known air)" : " (missing)")))
             .row("Facing", facing);
 
         panel.section("Terrain");
+        panel.row("Surface", String.format("sky %d / top %d, column %s", world.surfaceY(x, z), world.topY(x, z),
+            world.isColumnReadyAt(x, z) ? "READY" : "loading"));
         panel.row("Noise Backend", DebugDiagnostics.noiseBackendSummary());
         panel.row("Block Below", blockName);
-        panel.row("Biome", biome.name());
-        panel.row("Height", String.format("%d base / %d shaped (%+d) / %d final (%+d detail)",
-                baseHeight, shapedHeight, shapedHeight - baseHeight,
-                finalHeight, finalHeight - shapedHeight));
+        try {
+            NativeCubeGenerator.ColumnInfo column = world.terrain().queryColumn(x, z);
+            BiomeType[] biomes = BiomeType.values();
+            int b = column.biome();
+            panel.row("Biome", b >= 0 && b < biomes.length ? biomes[b].name() : "#" + b);
+            panel.row("Generator", String.format("h %d / carved %d / water %s, scale %s", column.height(),
+                column.carvedHeight(), column.waterLevel() == NativeCubeGenerator.NO_WATER ? "-"
+                    : String.valueOf(column.waterLevel()),
+                TerrainScaleOption.label(world.getTerrainScale())));
+        } catch (RuntimeException e) {
+            // Generator library missing: the rows are simply absent.
+        }
 
         // Targeted block + water (conditionally shown)
         if (targetedLine != null) {
@@ -86,25 +97,22 @@ public final class DebugInfoPanel implements DebugPanel {
 
         panel.section("World");
         panel.row("FPS", String.format("%.0f (avg)", diagnostics.averageFPS()));
-        panel.row("Chunks", String.format("%d loaded", world.getLoadedChunkCount()));
-        panel.row("Pending Mesh", String.valueOf(world.getPendingMeshBuildCount()));
-        panel.row("Pending GL", String.valueOf(world.getPendingGLUploadCount()));
-        panel.row("Chunk Flow", diagnostics.chunkPipelineSummary());
-        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
-            var regions = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
-            panel.row("Chunk Draws", String.format("%d cmds / %d region draws / %d legacy",
-                regions.publishedCommands(), regions.publishedRegionDraws(),
-                regions.publishedLegacyDraws()));
-            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()) {
-                panel.row("GPU Cull", String.format("%d cmds / %d regions / %d pre-culled",
-                    regions.publishedGpuCommands(), regions.publishedGpuRegionDraws(),
-                    regions.publishedGpuPreCulledRegions()));
-            }
-            var lodBatcher = com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.active();
-            if (lodBatcher != null) {
-                panel.row("LOD Draws", String.format("%d cmds / %d region draws",
-                    lodBatcher.publishedCommands(), lodBatcher.publishedRegionDraws()));
-            }
+        var stream = world.streamStats();
+        panel.row("Cubes", DebugDiagnostics.streamCubesSummary(stream));
+        panel.row("Stream", diagnostics.chunkPipelineSummary());
+        panel.row("Stream Tick", DebugDiagnostics.streamTickSummary(stream));
+        var server = DebugDiagnostics.serverStreamStats();
+        if (server != null) {
+            panel.row("Server Cubes", DebugDiagnostics.streamCubesSummary(server));
+            panel.row("Server Stream", diagnostics.serverPipelineSummary());
+            panel.row("Server Tick", DebugDiagnostics.streamTickSummary(server));
+        }
+        panel.row("View", String.format("%d blocks out, %d up/down",
+            world.getConfig().getHorizontalRenderRadiusBlocks(), world.getConfig().getVerticalRenderDistance()));
+        // Terrain draws: cube meshes, cube/region draws, GPU cull, visibility walk + missing + proxies, Hi-Z,
+        // handover, LOD, uploads (3B-R).
+        for (String[] r : com.stonebreak.rendering.gameWorld.TerrainRenderStats.rows()) {
+            panel.row(r[0], r[1]);
         }
         com.stonebreak.fx.FxRuntime fx = com.stonebreak.fx.Fx.installed();
         if (fx != null) {
@@ -135,26 +143,10 @@ public final class DebugInfoPanel implements DebugPanel {
         }
 
         panel.section("Graphics");
-        try {
-            var meshStats = com.stonebreak.world.chunk.api.mightyMesh.MmsAPI.getInstance().getStatistics();
-            if (meshStats.getMeshesGenerated() > 0) {
-                panel.row("Mesh Gen", String.format("%.0f us avg (%d built)",
-                    meshStats.getAverageGenerationTimeMicros(), meshStats.getMeshesGenerated()));
-            }
-        } catch (Exception ignored) {
-            // MMS not initialized yet — row simply absent.
-        }
-        long greedyIn = com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher.quadsIn();
-        if (greedyIn > 0) {
-            long greedyOut = com.openmason.engine.voxel.mms.mmsGeometry.MmsGreedyMesher.quadsOut();
-            panel.row("Greedy Mesh", String.format("%,d -> %,d quads (-%.0f%%)",
-                greedyIn, greedyOut, 100.0 * (greedyIn - greedyOut) / greedyIn));
-        }
-        if (com.stonebreak.world.generation.TerrainGenStats.chunkCount() > 0) {
-            panel.row("Terrain Gen", String.format("%.0f us avg (%d chunks, %s)",
-                com.stonebreak.world.generation.TerrainGenStats.averageMicros(),
-                com.stonebreak.world.generation.TerrainGenStats.chunkCount(),
-                com.stonebreak.world.generation.TerrainGenStats.modeSummary()));
+        if (stream != null && stream.meshedTotal() > 0) {
+            panel.row("Mesh Builds", String.format("%,d built, %d pending, %,d KiB waiting, %d stale",
+                stream.meshedTotal(), stream.meshesPending(), stream.meshBytesPending() >> 10,
+                stream.staleMeshesTotal()));
         }
         gpu.queryGPUInfo();
         panel.row("GPU", truncate(gpu.gpuRenderer() != null ? gpu.gpuRenderer() : "Unknown", 30));

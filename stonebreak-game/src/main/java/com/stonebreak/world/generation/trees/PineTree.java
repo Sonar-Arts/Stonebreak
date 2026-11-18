@@ -37,7 +37,7 @@ public final class PineTree {
         Variant variant = Variant.values()[rng.nextInt(Variant.values().length)];
         Profile profile = profileFor(variant, rng);
 
-        if (worldY + profile.totalHeight() >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (worldY + profile.totalHeight() >= WorldConfiguration.MAX_Y) return;
 
         placeTrunk(placer, worldX, worldY, worldZ, profile.trunkHeight);
         placeFoliage(placer, rng, variant, profile, worldX, worldY, worldZ);
@@ -66,7 +66,7 @@ public final class PineTree {
         int layerCount = profile.totalHeight() - profile.foliageStart;
         for (int i = 0; i < layerCount; i++) {
             int worldY = wy + profile.foliageStart + i;
-            if (worldY >= WorldConfiguration.WORLD_HEIGHT) break;
+            if (worldY >= WorldConfiguration.MAX_Y) break;
 
             float t = (layerCount <= 1) ? 1f : (float) i / (layerCount - 1);
             int radius = baseRadiusFor(variant, t, i, layerCount);
@@ -127,7 +127,7 @@ public final class PineTree {
     }
 
     private static void placeTip(TreeBlockPlacer placer, int wx, int tipY, int wz) {
-        if (tipY < WorldConfiguration.WORLD_HEIGHT) {
+        if (tipY < WorldConfiguration.MAX_Y) {
             placer.placeBlock(wx, tipY, wz, BlockType.PINE_LEAVES);
         }
     }

@@ -10,7 +10,6 @@ import com.stonebreak.player.locomotion.SpectatorController;
 import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.TestWorld;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -42,16 +41,14 @@ class PlayerJumpOntoBlockTest {
     /** Floor at y = 10; a ledge {@code height} blocks tall from x = 8 on, across every z. */
     private void buildLedge(int height) {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        Chunk chunk = new Chunk(0, 0);
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                chunk.setBlock(x, FLOOR, z, BlockType.STONE);
+                world.setBlockRaw(x, FLOOR, z, BlockType.STONE);
                 for (int y = 1; y <= height && x >= 8; y++) {
-                    chunk.setBlock(x, FLOOR + y, z, BlockType.STONE);
+                    world.setBlockRaw(x, FLOOR + y, z, BlockType.STONE);
                 }
             }
         }
-        world.setChunk(0, 0, chunk);
     }
 
     /** Runs forward (+X) and presses jump once at {@code jumpFrame}. Returns the final state. */

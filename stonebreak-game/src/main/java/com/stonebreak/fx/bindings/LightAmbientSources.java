@@ -2,7 +2,7 @@ package com.stonebreak.fx.bindings;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.lighting.DynamicLights;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * {@link AmbientSources} over this frame's {@link DynamicLights} selection: the nearest emitting torches and lit
@@ -31,7 +31,7 @@ public final class LightAmbientSources implements AmbientSources {
     }
 
     @Override
-    public Vector3f position(int i, Vector3f out) {
+    public Vector3d position(int i, Vector3d out) {
         return DynamicLights.position(i, out);
     }
 

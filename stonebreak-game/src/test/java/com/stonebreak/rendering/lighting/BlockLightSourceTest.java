@@ -86,7 +86,7 @@ class BlockLightSourceTest {
 
     @Test
     void dynamicLightsSelectsALitFurnaceAndDropsItWhenUnlit() {
-        Vector3f camera = new Vector3f(FURNACE.x() + 4, FURNACE.y() + 1, FURNACE.z() + 4);
+        org.joml.Vector3d camera = new org.joml.Vector3d(FURNACE.x() + 4, FURNACE.y() + 1, FURNACE.z() + 4);
         furnaces.getOrCreate(FURNACE);
         DynamicLights.update(world, null, camera, 0f);
         assertEquals(0, DynamicLights.count());
@@ -97,7 +97,7 @@ class BlockLightSourceTest {
         assertEquals(BlockLightSource.FURNACE.emitterPosition(world, FURNACE, new Vector3f()),
                 DynamicLights.position(0, new Vector3f()));
 
-        DynamicLights.update(world, null, new Vector3f(camera).add(100, 0, 0), 0f);
+        DynamicLights.update(world, null, new org.joml.Vector3d(camera).add(100, 0, 0), 0f);
         assertEquals(0, DynamicLights.count(), "out of range");
     }
 

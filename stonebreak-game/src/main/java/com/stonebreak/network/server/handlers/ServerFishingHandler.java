@@ -131,7 +131,7 @@ public final class ServerFishingHandler {
     }
 
     private boolean cast(ServerPlayer sp, FishingRodC2S use, EntityManager em) {
-        if (!Float.isFinite(use.x()) || !Float.isFinite(use.y()) || !Float.isFinite(use.z())
+        if (!Double.isFinite(use.x()) || !Double.isFinite(use.y()) || !Double.isFinite(use.z())
                 || !Float.isFinite(use.dx()) || !Float.isFinite(use.dy()) || !Float.isFinite(use.dz())) {
             return false;
         }
@@ -139,13 +139,13 @@ public final class ServerFishingHandler {
         if (dir.lengthSquared() < 1e-6f) {
             return false;
         }
-        float ox = use.x() - sp.x();
-        float oy = use.y() - sp.y();
-        float oz = use.z() - sp.z();
+        float ox = (float) (use.x() - sp.x());
+        float oy = (float) (use.y() - sp.y());
+        float oz = (float) (use.z() - sp.z());
         if (ox * ox + oy * oy + oz * oz > MAX_CAST_ORIGIN_DIST_SQ) {
             return false;
         }
-        FishingBobber bobber = em.spawnBobber(new Vector3f(use.x(), use.y(), use.z()), dir.normalize());
+        FishingBobber bobber = em.spawnBobber(new org.joml.Vector3d(use.x(), use.y(), use.z()), dir.normalize());
         bobber.setOwnerPlayerId(sp.playerId());
         casts.put(sp.playerId(), new Cast(sp, bobber));
         return true;
@@ -153,7 +153,7 @@ public final class ServerFishingHandler {
 
     private void reelIn(ServerPlayer sp, FishingBobber bobber, EntityManager em) {
         // The catch arcs toward the angler's reported position (the old client aim).
-        catches.tryCatch(bobber, new Vector3f(sp.x(), sp.y(), sp.z()), em);
+        catches.tryCatch(bobber, new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), em);
         bobber.setAlive(false);
         casts.remove(sp.playerId());
     }

@@ -303,16 +303,41 @@ public class Main {
             return; // let the menu settle for a few frames first
         }
         autoWorldDone = true;
-        String name = spec;
-        long seed = 20260820L;
-        int colon = spec.lastIndexOf(':');
-        if (colon > 0) {
-            name = spec.substring(0, colon);
-            try {
-                seed = Long.parseLong(spec.substring(colon + 1));
-            } catch (NumberFormatException e) {
-                System.err.println("[autoworld] bad seed in " + spec + " — using " + seed);
+        AutoWorldSpec world = AutoWorldSpec.parse(spec, System.getProperty("stonebreak.autoscale"));
+        String name = world.name();
+        long seed = world.seed();
+        if (world.badSeed()) {
+            System.err.println("[autoworld] bad seed in " + spec + " — using " + seed);
+        }
+        // -Dstonebreak.vrd=<blocks>: vertical render distance for this session only (never saved).
+        String vrd = System.getProperty("stonebreak.vrd");
+        if (vrd != null && !vrd.isBlank()) {
+            com.stonebreak.config.Settings.getInstance().setVerticalRenderDistance(Integer.parseInt(vrd.trim()));
+            System.out.println("[autoworld] vertical render distance "
+                + com.stonebreak.config.Settings.getInstance().getVerticalRenderDistance() + " blocks");
+        }
+        // A new world is written here with the requested terrain scale (the server only ever creates
+        // default-scale worlds itself); an existing world keeps the scale it was created with.
+        if (!com.stonebreak.core.world.NewWorlds.exists(name)) {
+            if (world.scale() != null) {
+                try {
+                    com.stonebreak.core.world.NewWorlds.write(new com.stonebreak.core.world.NewWorlds.Options(name, seed,
+                        null, world.scale(), null, false));
+                } catch (java.io.IOException e) {
+                    System.err.println("[autoworld] could not write the new world: " + e.getMessage());
+                }
             }
+        } else if (world.scale() != null) {
+            var existing = com.stonebreak.core.world.NewWorlds.read(name);
+            if (existing != null && existing.getTerrainScale() != world.scale()) {
+                System.err.println("[autoworld] '" + name + "' exists at terrain scale "
+                    + com.stonebreak.config.TerrainScaleOption.label(existing.getTerrainScale())
+                    + "; ignoring scale=" + com.stonebreak.config.TerrainScaleOption.label(world.scale())
+                    + " (pick a fresh world name)");
+            }
+        }
+        if (world.scale() != null) {
+            System.out.println("[autoworld] terrain scale " + com.stonebreak.config.TerrainScaleOption.describe(world.scale()));
         }
         // -Dstonebreak.autorender=<chunks>: render distance for this session only (never saved),
         // so join timing can be measured at a fixed view (issue #345).
@@ -394,16 +419,20 @@ public class Main {
             return;
         }
         player.setSpectator(true);
-        float x = Float.parseFloat(p[0]);
-        float z = Float.parseFloat(p[2]);
-        float y = p[1].startsWith("top") ? autoViewTopY(x, z, p[1]) : Float.parseFloat(p[1]);
+        double x = Double.parseDouble(p[0]);
+        double z = Double.parseDouble(p[2]);
+        double y = p[1].startsWith("top") ? autoViewTopY(x, z, p[1]) : Double.parseDouble(p[1]);
+        y = autoViewClimb(y);
+        double[] cruise = autoViewCruise();
+        x += cruise[0];
+        z += cruise[1];
         if (p.length > 5) {
             if (autoViewStartNanos < 0) {
                 autoViewStartNanos = System.nanoTime();
             }
             double period = p.length > 6 ? Double.parseDouble(p[6]) : 3.0;
             double t = (System.nanoTime() - autoViewStartNanos) / 1e9;
-            y += (float) (Float.parseFloat(p[5]) * Math.sin(2.0 * Math.PI * t / period));
+            y += Double.parseDouble(p[5]) * Math.sin(2.0 * Math.PI * t / period);
         }
         player.setPosition(x, y, z);
         player.setVelocity(new org.joml.Vector3f());
@@ -411,20 +440,85 @@ public class Main {
         player.getCamera().setPitch(Float.parseFloat(p[4]));
     }
 
+    private long autoClimbStartNanos = -1;
+    private double autoClimbBaseY = Double.NaN;
+
+    /**
+     * {@code -Dstonebreak.autoview.climb=<toY>:<blocksPerSecond>[:<holdSeconds>]}: holds the autoview height
+     * for {@code holdSeconds} (default 10: the ground streams in), then climbs straight up from it at a fixed
+     * rate to {@code toY} - a continuous vertical flight, no horizontal movement. Inert unless set.
+     */
+    private double autoViewClimb(double y) {
+        String spec = System.getProperty("stonebreak.autoview.climb");
+        if (spec == null || spec.isBlank()) {
+            return y;
+        }
+        String[] c = spec.split(":");
+        double toY = Double.parseDouble(c[0]);
+        double rate = c.length > 1 ? Double.parseDouble(c[1]) : 30.0;
+        double hold = c.length > 2 ? Double.parseDouble(c[2]) : 10.0;
+        if (autoClimbStartNanos < 0) {
+            autoClimbStartNanos = System.nanoTime();
+        }
+        double t = (System.nanoTime() - autoClimbStartNanos) / 1e9 - hold;
+        if (t < 0) {
+            return y;
+        }
+        if (Double.isNaN(autoClimbBaseY)) {
+            autoClimbBaseY = y;
+            System.out.println("[autoview] climb from y " + y + " to " + toY + " at " + rate + " b/s");
+        }
+        double climbed = Math.min(toY, autoClimbBaseY + rate * t);
+        if (climbed >= toY && autoClimbReachedNanos < 0) {
+            autoClimbReachedNanos = System.nanoTime();
+            System.out.println("[autoview] climb reached y " + toY);
+        }
+        return climbed;
+    }
+
+    private long autoClimbReachedNanos = -1;
+
+    /**
+     * {@code -Dstonebreak.autoview.cruise=<blocksPerSecond>:<headingDegrees>[:<delay s>]}: once the climb
+     * ({@code stonebreak.autoview.climb}) reached its height (or from the start without one), flies horizontally
+     * at a fixed rate along the heading (0 = +X, 90 = +Z) after {@code delay} seconds (default 2) - columns leave
+     * and enter the load disc continuously while the camera stays high. Returns the {dx, dz} offset. Inert unless
+     * set.
+     */
+    private double[] autoViewCruise() {
+        String spec = System.getProperty("stonebreak.autoview.cruise");
+        if (spec == null || spec.isBlank()) {
+            return new double[2];
+        }
+        boolean climbing = System.getProperty("stonebreak.autoview.climb") != null;
+        if (climbing && autoClimbReachedNanos < 0) {
+            return new double[2];
+        }
+        if (!climbing && autoClimbReachedNanos < 0) {
+            autoClimbReachedNanos = System.nanoTime();
+        }
+        String[] c = spec.split(":");
+        double rate = Double.parseDouble(c[0]);
+        double heading = Math.toRadians(c.length > 1 ? Double.parseDouble(c[1]) : 0.0);
+        double delay = c.length > 2 ? Double.parseDouble(c[2]) : 2.0;
+        double t = (System.nanoTime() - autoClimbReachedNanos) / 1e9 - delay;
+        if (t <= 0) {
+            return new double[2];
+        }
+        return new double[] {rate * t * Math.cos(heading), rate * t * Math.sin(heading)};
+    }
+
     /**
      * {@code top[+n]}: stand on the highest block of the column (n blocks above it),
      * re-evaluated every frame so the camera rises as the column streams in.
      */
-    private static float autoViewTopY(float x, float z, String spec) {
-        float above = spec.length() > 3 ? Float.parseFloat(spec.substring(4)) : 0f;
+    private static double autoViewTopY(double x, double z, String spec) {
+        double above = spec.length() > 3 ? Double.parseDouble(spec.substring(4)) : 0.0;
         var world = Game.getWorld();
-        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
-        int top = com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 1;
-        while (top > 0 && (world == null
-                || world.getBlockAt(bx, top, bz) == com.stonebreak.blocks.BlockType.AIR)) {
-            top--;
-        }
-        return top + 1 + above;
+        // The surface tracker's TOP (water included); the world floor until the column is known.
+        long top = world != null ? world.topY((long) Math.floor(x), (long) Math.floor(z))
+            : com.stonebreak.world.operations.WorldConfiguration.SEA_LEVEL;
+        return top + above;
     }
 
     // ─── Dev: -Dstonebreak.autotorch=<seconds>[:night][:cluster] ─────────────
@@ -498,7 +592,7 @@ public class Main {
             System.err.println("[autotorch] torch item not registered");
             return;
         }
-        org.joml.Vector3f pos = player.getPosition();
+        org.joml.Vector3d pos = player.getPosition();
         int px = (int) Math.floor(pos.x);
         int py = (int) Math.floor(pos.y);
         int pz = (int) Math.floor(pos.z);
@@ -630,7 +724,7 @@ public class Main {
             return;
         }
         var camera = Game.getPlayer().getCamera();
-        org.joml.Vector3f eye = camera.getPosition();
+        org.joml.Vector3d eye = camera.getPosition();
         org.joml.Vector3f front = new org.joml.Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
         org.joml.Vector3f right = new org.joml.Vector3f(-front.z, 0, front.x);
         com.stonebreak.blocks.BlockType[] blocks = {com.stonebreak.blocks.BlockType.STONE,
@@ -646,8 +740,7 @@ public class Main {
         com.stonebreak.fx.bindings.BlockFx.stepAt(com.stonebreak.blocks.BlockType.DIRT,
                 eye.x + front.x * 3 - right.x * 1.2f, eye.y - 1.6f, eye.z + front.z * 3 - right.z * 1.2f);
         com.stonebreak.fx.bindings.EntityFx.splash(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER,
-                new org.joml.Vector3f(eye.x + front.x * 3 + right.x * 1.5f, eye.y - 1.6f,
-                        eye.z + front.z * 3 + right.z * 1.5f), 9f);
+                eye.x + front.x * 3 + right.x * 1.5f, eye.y - 1.6, eye.z + front.z * 3 + right.z * 1.5f, 9f);
         com.stonebreak.fx.FxRuntime rt = com.stonebreak.fx.Fx.installed();
         if (rt != null) {
             System.out.printf("[autofx] live=%d instances=%d sim=%.3fms enabled=%s%n", rt.liveParticles(),
@@ -666,7 +759,7 @@ public class Main {
      */
     private void autoFxGameplay(long now) {
         var camera = Game.getPlayer().getCamera();
-        org.joml.Vector3f eye = camera.getPosition();
+        org.joml.Vector3d eye = camera.getPosition();
         org.joml.Vector3f front = new org.joml.Vector3f(camera.getFront().x, 0, camera.getFront().z).normalize();
         org.joml.Vector3f right = new org.joml.Vector3f(-front.z, 0, front.x);
         float dt = autoFxLastNanos == 0 ? 0f : Math.min(0.1f, (now - autoFxLastNanos) / 1e9f);
@@ -674,7 +767,7 @@ public class Main {
         if (autoFxTrail == null) {
             autoFxTrail = new com.stonebreak.fx.TrailFx(com.stonebreak.mobs.entities.FireBolt.TRAIL_FX);
         }
-        float cx = eye.x + front.x * 5f, cz = eye.z + front.z * 5f, by = eye.y - 1.4f;
+        double cx = eye.x + front.x * 5f, cz = eye.z + front.z * 5f, by = eye.y - 1.4;
         autoFxTrailAt = Float.isNaN(autoFxTrailAt) ? -4f : autoFxTrailAt + 25f * dt;
         if (autoFxTrailAt > 4f) {
             autoFxTrail.end();
@@ -687,12 +780,12 @@ public class Main {
             return;
         }
         autoFxNextNanos = now + 700_000_000L;
-        float sx = eye.x + front.x * 4f - right.x * 2.5f, sz = eye.z + front.z * 4f - right.z * 2.5f;
+        double sx = eye.x + front.x * 4f - right.x * 2.5f, sz = eye.z + front.z * 4f - right.z * 2.5f;
         com.stonebreak.fx.Fx.fire(com.stonebreak.player.combat.illusionist.MirroredDeceitAbility.SMOKE_FX,
                 sx, autoFxSurface(sx, eye.y, sz), sz);
         for (int i = 0; i < 2; i++) {
-            float rx = eye.x + front.x * (5f + i * 1.5f) + right.x * (1.5f + i * 0.8f);
-            float rz = eye.z + front.z * (5f + i * 1.5f) + right.z * (1.5f + i * 0.8f);
+            double rx = eye.x + front.x * (5f + i * 1.5f) + right.x * (1.5f + i * 0.8f);
+            double rz = eye.z + front.z * (5f + i * 1.5f) + right.z * (1.5f + i * 0.8f);
             com.stonebreak.fx.bindings.EntityFx.ripple(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER,
                     rx, autoFxSurface(rx, eye.y, rz), rz);
         }
@@ -703,15 +796,15 @@ public class Main {
     }
 
     /** The top of the first block (or water surface) below {@code (x, fromY, z)}, scanning 12 blocks down. */
-    private static float autoFxSurface(float x, float fromY, float z) {
+    private static double autoFxSurface(double x, double fromY, double z) {
         var world = Game.getWorld();
-        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
-        for (int y = (int) Math.floor(fromY); world != null && y > fromY - 12; y--) {
+        long bx = (long) Math.floor(x), bz = (long) Math.floor(z);
+        for (long y = (long) Math.floor(fromY); world != null && y > fromY - 12; y--) {
             var block = world.getBlockAt(bx, y, bz);
-            if (block == com.stonebreak.blocks.BlockType.WATER) return y + 0.875f;
-            if (block != null && block != com.stonebreak.blocks.BlockType.AIR && block.isSolid()) return y + 1f;
+            if (block == com.stonebreak.blocks.BlockType.WATER) return y + 0.875;
+            if (block != null && block != com.stonebreak.blocks.BlockType.AIR && block.isSolid()) return y + 1.0;
         }
-        return fromY - 1.62f;
+        return fromY - 1.62;
     }
 
     /** {@link #maybeAutoFx}'s one-time staging: torches on the ground ahead, night, a standing smoke FX. */
@@ -719,7 +812,7 @@ public class Main {
         var world = Game.getWorld();
         var player = Game.getPlayer();
         if (world == null || player == null) return;
-        org.joml.Vector3f pos = player.getPosition();
+        org.joml.Vector3d pos = player.getPosition();
         org.joml.Vector3f front = new org.joml.Vector3f(player.getCamera().getFront().x, 0,
                 player.getCamera().getFront().z).normalize();
         if (opts.contains("torches")) {
@@ -744,7 +837,7 @@ public class Main {
             double sx = pos.x + front.x * 6.5f, sz = pos.z + front.z * 6.5f;
             var smoke = com.stonebreak.fx.Fx.play("stonebreak:furnace_smoke", sx, pos.y + 0.5, sz);
             autoFxLookX = (float) (pos.x + front.x * 4.5f);
-            autoFxLookY = pos.y + 0.3f;
+            autoFxLookY = (float) (pos.y + 0.3);
             autoFxLookZ = (float) (pos.z + front.z * 4.5f);
             System.out.println("[autofx] torches placed=" + placed + " smoke=" + (smoke != null));
         }
@@ -756,13 +849,13 @@ public class Main {
         }
     }
 
-    private void aimCameraAt(float x, float y, float z) {
+    private void aimCameraAt(double x, double y, double z) {
         var player = Game.getPlayer();
         if (player == null) return;
-        org.joml.Vector3f pos = player.getPosition();
-        float dx = x - pos.x;
-        float dz = z - pos.z;
-        float dy = y - (pos.y + 1.6f);
+        org.joml.Vector3d pos = player.getPosition();
+        double dx = x - pos.x;
+        double dz = z - pos.z;
+        double dy = y - (pos.y + 1.6);
         player.getCamera().setYaw((float) Math.toDegrees(Math.atan2(dz, dx)));
         player.getCamera().setPitch((float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz))));
     }
@@ -813,7 +906,7 @@ public class Main {
                 System.err.println("[autoscreen] world/player not ready");
                 return;
             }
-            org.joml.Vector3f pos = player.getPosition();
+            org.joml.Vector3d pos = player.getPosition();
             int x = (int) Math.floor(pos.x) + 2;
             int y = (int) Math.floor(pos.y);
             int z = (int) Math.floor(pos.z);
@@ -923,7 +1016,7 @@ public class Main {
                 + ", recipes=" + recipes.size() + ")");
             return;
         }
-        org.joml.Vector3f pos = player.getPosition();
+        org.joml.Vector3d pos = player.getPosition();
         int px = (int) Math.floor(pos.x);
         int py = (int) Math.floor(pos.y);
         int pz = (int) Math.floor(pos.z);
@@ -1055,10 +1148,10 @@ public class Main {
             return;
         }
         maybeAutoFurnaceFill(player);
-        org.joml.Vector3f pos = player.getPosition();
-        float dx = autoFurnaceX + 0.5f - pos.x;
-        float dz = autoFurnaceZ + 0.5f - pos.z;
-        float dy = autoFurnaceY + 0.5f - (pos.y + 1.6f);
+        org.joml.Vector3d pos = player.getPosition();
+        double dx = autoFurnaceX + 0.5 - pos.x;
+        double dz = autoFurnaceZ + 0.5 - pos.z;
+        double dy = autoFurnaceY + 0.5 - (pos.y + 1.6);
         float yaw = (float) Math.toDegrees(Math.atan2(dz, dx));
         float pitch = (float) Math.toDegrees(Math.atan2(dy, Math.hypot(dx, dz)));
         player.getCamera().setYaw(yaw);
@@ -1264,6 +1357,7 @@ public class Main {
             System.out.println("[autoscreenshot] regions atlas=" + (rr.layerBytes(0) >> 10) + "KiB/"
                 + rr.layerMeshes(0) + " water=" + (rr.layerBytes(1) >> 10) + "KiB/" + rr.layerMeshes(1)
                 + " stamp=" + (rr.layerBytes(2) >> 10) + "KiB/" + rr.layerMeshes(2)
+                + " translucent=" + (rr.layerBytes(3) >> 10) + "KiB/" + rr.layerMeshes(3)
                 + " format=" + com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat.active());
         }
         var lod = com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.active();
@@ -1306,7 +1400,7 @@ public class Main {
     private long autoFlyStartNanos = -1;
     private boolean autoFlyDone;
     private boolean autoFlyFlying;
-    private float autoFlyX, autoFlyY, autoFlyZ;
+    private double autoFlyX, autoFlyY, autoFlyZ;
     private long autoFlyFrame;
     private java.util.concurrent.ExecutorService autoFlyWriter;
 
@@ -1355,10 +1449,10 @@ public class Main {
         }
         if (!autoFlyFlying) {
             autoFlyFlying = true;
-            org.joml.Vector3f p = player.getPosition();
+            org.joml.Vector3d p = player.getPosition();
             autoFlyX = p.x;
-            autoFlyY = Math.min(p.y + 40f,
-                com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 8f);
+            autoFlyY = Math.min(p.y + 40.0,
+                com.stonebreak.world.operations.WorldConfiguration.MAX_Y - 8.0);
             autoFlyZ = p.z;
             new java.io.File(dir).mkdirs();
             autoFlyWriter = java.util.concurrent.Executors.newFixedThreadPool(4, r -> {
@@ -1386,17 +1480,17 @@ public class Main {
             return;
         }
         // Fixed-rate path (not dt-integrated) so runs at different FPS cover the same ground.
-        float x = autoFlyX + (float) (speed * t);
+        double x = autoFlyX + speed * t;
         // Terrain-following: hold ~25 blocks over the highest loaded surface just
         // ahead, climbing fast and sinking slowly, so the camera never ends up
         // inside a mountain (which reads as garbage to the frame analyzer).
-        float ground = Float.NEGATIVE_INFINITY;
+        double ground = Double.NEGATIVE_INFINITY;
         for (int ahead = 0; ahead <= 48; ahead += 8) {
             ground = Math.max(ground, autoFlySurface(x + ahead, autoFlyZ));
         }
-        if (ground > Float.NEGATIVE_INFINITY) {
-            float target = Math.min(ground + 25f,
-                com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 8f);
+        if (ground > Double.NEGATIVE_INFINITY) {
+            double target = Math.min(ground + 25.0,
+                com.stonebreak.world.operations.WorldConfiguration.MAX_Y - 8.0);
             float dt = Math.min(0.1f, Game.getDeltaTime());
             autoFlyY = target > autoFlyY
                 ? Math.min(target, autoFlyY + 60f * dt)
@@ -1486,27 +1580,18 @@ public class Main {
     }
 
     /** Top solid block + 1 at (x, z), or -inf when the column's chunk isn't loaded. */
-    private static float autoFlySurface(float x, float z) {
+    /**
+     * The column's top (first free y above the topmost non-air block, water included) straight from the
+     * world's surface tracker - no block scan - or -inf where nothing is known yet (a REMOTE client world
+     * answers MIN_Y for columns the server has not sent).
+     */
+    private static double autoFlySurface(double x, double z) {
         var world = Game.getWorld();
         if (world == null) {
-            return Float.NEGATIVE_INFINITY;
+            return Double.NEGATIVE_INFINITY;
         }
-        int bx = (int) Math.floor(x);
-        int bz = (int) Math.floor(z);
-        int size = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
-        var chunk = world.getChunkIfLoaded(Math.floorDiv(bx, size), Math.floorDiv(bz, size));
-        if (chunk == null) {
-            return Float.NEGATIVE_INFINITY;
-        }
-        int top = Math.min(chunk.getHighestNonAirY(),
-            com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT - 1);
-        for (int y = top; y >= 0; y--) {
-            var block = world.getBlockAt(bx, y, bz);
-            if (block != null && block.isSolid()) {
-                return y + 1;
-            }
-        }
-        return Float.NEGATIVE_INFINITY;
+        long top = world.topY((long) Math.floor(x), (long) Math.floor(z));
+        return top <= com.stonebreak.world.operations.WorldConfiguration.MIN_Y ? Double.NEGATIVE_INFINITY : top;
     }
 
     private static double parseOr(String[] parts, int i, double fallback) {

@@ -24,8 +24,8 @@ public final class BlockShape {
     }
 
     /** Collision height of a whole cell — the footprint-free form, for full-cell questions. */
-    public static float collisionHeight(World world, int x, int y, int z) {
-        return collisionHeight(world, x, y, z, x, z, x + 1.0f, z + 1.0f);
+    public static float collisionHeight(World world, long x, long y, long z) {
+        return collisionHeight(world, x, y, z, x, z, x + 1.0, z + 1.0);
     }
 
     /**
@@ -38,8 +38,8 @@ public final class BlockShape {
      * cell collides is the caller's policy, because only a caller that also resolves against the
      * posed model AABB can afford to answer "not solid".
      */
-    public static float collisionHeight(World world, int x, int y, int z,
-                                        float minX, float minZ, float maxX, float maxZ) {
+    public static float collisionHeight(World world, long x, long y, long z,
+                                        double minX, double minZ, double maxX, double maxZ) {
         BlockType block = world.getBlockAt(x, y, z);
         if (block == null) {
             return 0f;

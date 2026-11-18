@@ -78,7 +78,7 @@ public class SpawnCommand implements ChatCommand {
 
         Player player = Game.getPlayer();
         Vector3f front = player.getCamera().getFront();
-        Vector3f base = new Vector3f(player.getPosition())
+        org.joml.Vector3d base = new org.joml.Vector3d(player.getPosition())
             .add(front.x * SPAWN_DISTANCE, front.y * SPAWN_DISTANCE, front.z * SPAWN_DISTANCE);
 
         EntityManager entityManager = Game.getEntityManager();
@@ -87,7 +87,7 @@ public class SpawnCommand implements ChatCommand {
             // Jitter x/z slightly so multiple spawns don't stack on a single point.
             float jitterX = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
             float jitterZ = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
-            Vector3f pos = new Vector3f(base).add(jitterX, 0f, jitterZ);
+            org.joml.Vector3d pos = new org.joml.Vector3d(base).add(jitterX, 0, jitterZ);
             Entity entity = entityManager.spawnEntity(type, pos);
             if (entity != null) {
                 entity.setCommandSpawned(true);

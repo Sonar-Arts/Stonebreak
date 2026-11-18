@@ -173,6 +173,10 @@ public final class IntegratedServer {
         // (not in ServerLevel) so the mobs.entities package never imports network classes —
         // the dependency flows network -> mobs, not the reverse.
         level.entitySpawner().setSpawnAnchorSource(this::collectPlayerSpawnAnchors);
+        // Save points refresh cube blobs (entities, furnaces, saplings) on the world's owner thread: the tick.
+        if (level.saveService() != null) {
+            level.saveService().setWorldOwner(this::executeOnTick);
+        }
         // Same direction for mob AI: the world's mobs flee from / pursue the connected roster,
         // remote players included, instead of the client's local player (#340).
         // Hostile mobs land their blows and arrows on the roster through it too (#343).
@@ -207,6 +211,7 @@ public final class IntegratedServer {
 
         networkServer.start(localAddress, tcpAddress);
         chunkHandler.onSessionStart();
+        chunkHandler.bind(level.world()); // cube streaming follows the world's stream events
         playerHandler.onSessionStart();
         entityHandler.onSessionStart(ctx);
         step.reset(System.nanoTime());
@@ -246,7 +251,7 @@ public final class IntegratedServer {
         for (ServerPlayer sp : roster) {
             if (!sp.handshakeDone() || sp.lastStateNs() == 0L) continue;
             out.add(new EntitySpawner.SpawnAnchor(
-                new Vector3f(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld()));
+                new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld()));
         }
         return out;
     }
@@ -391,6 +396,7 @@ public final class IntegratedServer {
         long tickStart = System.nanoTime();
         ServerLevel level = ctx.serverLevel();
         if (level != null) {
+            runTickStep("stream-centers", () -> level.updateStreamCenters(ctx.players()));
             runTickStep("world", () -> level.tick(TICK_PERIOD_NS / 1_000_000_000f));
         }
         runTickStep("blocks", () -> blockHandler.tick(ctx));
@@ -609,14 +615,14 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.world.SnowLayerC2S s -> blockHandler.handleSnowLayer(sp, s, ctx);
             case ContainerActionC2S ca -> playerHandler.handleContainerAction(sp, ca, ctx);
             case com.stonebreak.network.packet.world.BlockToggleC2S bt -> blockHandler.handleBlockToggle(sp, bt, ctx);
-            case com.stonebreak.network.packet.world.ChunkResyncRequestC2S cr ->
-                chunkHandler.handleResyncRequest(sp, cr.chunkX(), cr.chunkZ());
-            case com.stonebreak.network.packet.world.ChunkHashesC2S ch ->
-                chunkHandler.handleChunkHashes(sp, ch.entries(), ctx);
-            case com.stonebreak.network.packet.world.ChunkUnloadC2S cu ->
-                chunkHandler.handleChunksUnloaded(sp, cu.coords(), cu.centerX(), cu.centerZ());
-            case com.stonebreak.network.packet.world.ChunkAckC2S ack ->
-                chunkHandler.handleChunkAck(sp, ack.processed(), ack.desiredChunksPerTick());
+            case com.stonebreak.network.packet.world.CubeRequestC2S cr ->
+                chunkHandler.handleCubeRequests(sp, cr.cubes());
+            case com.stonebreak.network.packet.world.CubeHashesC2S ch ->
+                chunkHandler.handleCubeHashes(sp, ch.cubes(), ch.hashes(), ctx);
+            case com.stonebreak.network.packet.world.CubeUnloadC2S cu ->
+                chunkHandler.handleCubesUnloaded(sp, cu.cubes());
+            case com.stonebreak.network.packet.world.CubeAckC2S ack ->
+                chunkHandler.handleCubeAck(sp, ack.processedCubes(), ack.processedKiB(), ack.desiredCubesPerTick());
             case com.stonebreak.network.packet.entity.EntityResyncC2S ignored2 -> {
                 if (sp.allowResync()) {
                     entityHandler.onPeerResync(sp, ctx); // idempotent client-side (known ids ignored)
@@ -644,7 +650,10 @@ public final class IntegratedServer {
             case com.stonebreak.network.packet.entity.ProjectileSpawnC2S ps2 ->
                 entityHandler.handleProjectileSpawn(sp, ps2, ctx);
             case PlayerPrefsC2S pp -> handlePlayerPrefs(sp, pp);
-            case ViewDistanceC2S vd -> sp.setViewDistanceChunks(vd.chunks());
+            case ViewDistanceC2S vd -> {
+                sp.setViewDistanceChunks(vd.chunks());
+                sp.setVerticalViewBlocks(vd.verticalBlocks());
+            }
             case KeepAliveC2S ka -> sp.answerKeepalive(ka.nonce(), System.nanoTime());
             case DropItemC2S di -> playerHandler.handleDropItem(sp, di, ctx);
             case com.stonebreak.network.packet.player.PlayerLifeC2S pl ->
@@ -927,10 +936,10 @@ public final class IntegratedServer {
 
     /** Send the full welcome snapshot (welcome, time, roster, snapshots, saved data). */
     private void sendWelcomeSnapshot(ServerPlayer sp) {
-        Vector3f spawn = ctx.spawn();
+        org.joml.Vector3d spawn = ctx.spawn();
 
         // 1. Welcome: who you are + the seed + the authoritative spawn.
-        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), spawn.x, spawn.y, spawn.z,
+        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), ctx.terrainScale(), spawn.x, spawn.y, spawn.z,
                 sp.clientSecret()));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
@@ -1085,7 +1094,7 @@ public final class IntegratedServer {
         }
         sp.acceptBaseline(fresh);
         sp.setHealth(fresh.getHealth());
-        Vector3f pos = fresh.getPosition();
+        org.joml.Vector3d pos = fresh.getPosition();
         sp.seedTransform(pos.x, pos.y, pos.z, fresh.getRotation().x, fresh.getRotation().y);
     }
 
@@ -1293,12 +1302,12 @@ public final class IntegratedServer {
         sp.setGameMode(data.getGameMode());
         // The stored transform, so a save before the first PlayerStateC2S keeps it (the
         // persistence blob reads the cached transform, which was (0,0,0) until then).
-        Vector3f pos = data.getPosition();
+        org.joml.Vector3d pos = data.getPosition();
         if (data.getHealth() <= 0f) {
             // Saved dead: back at the world spawn with full health, as the client respawns it
             // on load (StateConverter.applyPlayerData) — never alive at 0 HP at the corpse.
             sp.setHealth(sp.serverStats().computeMaxHealth());
-            Vector3f spawn = ctx.spawn();
+            org.joml.Vector3d spawn = ctx.spawn();
             sp.seedTransform(spawn.x, spawn.y, spawn.z, data.getRotation().x, data.getRotation().y);
         } else {
             sp.setHealth(data.getHealth());

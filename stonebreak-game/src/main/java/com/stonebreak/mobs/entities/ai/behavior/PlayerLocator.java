@@ -3,7 +3,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * Where the nearest player is, as far as a behaviour is concerned.
@@ -21,13 +22,13 @@ public interface PlayerLocator {
      *
      * @return {@code out} when a player was found, {@code null} when there is nobody to find
      */
-    Vector3f nearestPlayer(Vector3f from, Vector3f out);
+    Vector3d nearestPlayer(Vector3dc from, Vector3d out);
 
     /**
      * Whether the player nearest {@code from} is sprinting. Skittish mobs notice a running player
      * from further away than a walking one.
      */
-    default boolean nearestPlayerSprinting(Vector3f from) {
+    default boolean nearestPlayerSprinting(Vector3dc from) {
         return false;
     }
 
@@ -35,7 +36,7 @@ public interface PlayerLocator {
      * Whether nothing solid stands between {@code eye} and the body of the player nearest
      * {@code from}. Open by default, so stubs and tests need not model terrain.
      */
-    default boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
+    default boolean canSeeNearestPlayer(Vector3dc from, Vector3dc eye) {
         return true;
     }
 
@@ -46,7 +47,7 @@ public interface PlayerLocator {
      * @param knockback horizontal push speed in blocks per second; 0 for none
      * @return whether a player was there to take the hit
      */
-    default boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+    default boolean hurtNearestPlayer(Vector3dc from, float amount, float knockback) {
         return false;
     }
 
@@ -58,7 +59,7 @@ public interface PlayerLocator {
      * @param ownerPlayerId the player who shot it, or -1 for a mob's shot
      * @return whether a player took the hit (the projectile is spent)
      */
-    default boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+    default boolean hitPlayerAt(Vector3dc point, float margin, float amount, int ownerPlayerId) {
         return false;
     }
 
@@ -69,7 +70,7 @@ public interface PlayerLocator {
      * state, walking noise and dodge spikes live on the player's own client and are not
      * replicated, so a walking player is heard at zero range and found by sight alone.
      */
-    default float nearestPlayerNoiseRadius(Vector3f from) {
+    default float nearestPlayerNoiseRadius(Vector3dc from) {
         return nearestPlayerSprinting(from) ? PlayerConstants.NOISE_RADIUS_RUN : 0.0f;
     }
 
@@ -88,27 +89,27 @@ public interface PlayerLocator {
     static PlayerLocator ofWorld(Entity entity) {
         return new PlayerLocator() {
             @Override
-            public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+            public Vector3d nearestPlayer(Vector3dc from, Vector3d out) {
                 return players().nearestPlayer(from, out);
             }
 
             @Override
-            public boolean nearestPlayerSprinting(Vector3f from) {
+            public boolean nearestPlayerSprinting(Vector3dc from) {
                 return players().nearestPlayerSprinting(from);
             }
 
             @Override
-            public float nearestPlayerNoiseRadius(Vector3f from) {
+            public float nearestPlayerNoiseRadius(Vector3dc from) {
                 return players().nearestPlayerNoiseRadius(from);
             }
 
             @Override
-            public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+            public boolean hurtNearestPlayer(Vector3dc from, float amount, float knockback) {
                 return players().hurtNearestPlayer(from, amount, knockback);
             }
 
             @Override
-            public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+            public boolean hitPlayerAt(Vector3dc point, float margin, float amount, int ownerPlayerId) {
                 return players().hitPlayerAt(point, margin, amount, ownerPlayerId);
             }
 

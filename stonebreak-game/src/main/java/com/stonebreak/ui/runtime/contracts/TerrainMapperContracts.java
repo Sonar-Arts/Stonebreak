@@ -39,7 +39,9 @@ import java.util.concurrent.CompletableFuture;
  * waits for a generator), {@code warning}, {@code error}, the footer readout ({@code modeLabel}: mode and terrain,
  * {@code hover}).
  *
- * <p>{@code .button {name}} also takes {@code generator:TYPE}.
+ * <p>{@code .button {name}} also takes {@code generator:TYPE} and {@code scale:SCALE} (the new world's terrain scale,
+ * {@code ONE_TO_FOUR} / {@code ONE_TO_TWO}, or {@code 1:4} / {@code 1:2}); {@code scale}, {@code scaleLabel} and
+ * {@code scales} ({@code scale}, {@code label}, {@code selected}) publish it.
  *
  * <p>Actions (window pixels, the screen's own coordinates): {@code .button {name}} (back, character, create,
  * simulate, spawn, center, mode:KIND), {@code .field {field}}, {@code .map-press {x, y}}, {@code .release {x, y}},
@@ -64,7 +66,10 @@ public final class TerrainMapperContracts {
         "spawnSet", DataType.bool(), "spawnLabel", DataType.string(), "createEnabled", DataType.bool(),
         "createDisabled", DataType.bool(),
         "warning", DataType.string(), "error", DataType.string(), "modeLabel", DataType.string(),
-        "hover", DataType.string());
+        "hover", DataType.string(),
+        "scale", DataType.string(), "scaleLabel", DataType.string(),
+        "scales", DataType.list(DataType.object("scale", DataType.string(), "label", DataType.string(),
+            "selected", DataType.bool()), "scale"));
 
     /** A caption's top: its baseline sits 6 px above the control it labels, 18 px into its 18 px box. */
     private static final float CAPTION_ABOVE = 6f + 18f;
@@ -213,6 +218,18 @@ public final class TerrainMapperContracts {
             hover = String.format("(%d, %d) = %s", s.hoverWorldX(), s.hoverWorldZ(), formatted);
         }
         m.put("hover", UiValue.of(hover));
+        // The new world's terrain scale (#447). The shipped document has no control for it yet: the
+        // keyboard steps it (Ctrl+T) and `.button {name: "scale:<SCALE>"}` sets it.
+        var scale = s == null ? com.stonebreak.config.TerrainScaleOption.DEFAULT : s.getSelectedScale();
+        m.put("scale", UiValue.of(scale.name()));
+        m.put("scaleLabel", UiValue.of("Terrain Scale " + com.stonebreak.config.TerrainScaleOption.describe(scale)));
+        List<UiValue> scales = new ArrayList<>();
+        for (var p : com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.values()) {
+            scales.add(new UiValue.Obj(Map.of("scale", UiValue.of(p.name()),
+                "label", UiValue.of(com.stonebreak.config.TerrainScaleOption.label(p)),
+                "selected", UiValue.of(p == scale))));
+        }
+        m.put("scales", new UiValue.Arr(scales));
         return new UiValue.Obj(m);
     }
 

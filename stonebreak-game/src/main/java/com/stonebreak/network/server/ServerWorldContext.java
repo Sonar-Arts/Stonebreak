@@ -56,10 +56,16 @@ public final class ServerWorldContext {
         return level != null ? level.world().getGeneratorType() : TerrainGeneratorType.STANDARD;
     }
 
-    /** Authoritative world spawn (saved player/world spawn), or a sane default. */
-    public Vector3f spawn() {
+    /** The world's terrain scale (1:4 / 1:2), so the client's generator (FastLOD, queries) matches. */
+    public com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale() {
         ServerLevel level = serverLevel;
-        return level != null ? level.spawn() : new Vector3f(0, 80, 0);
+        return level != null ? level.world().getTerrainScale() : com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.ONE_TO_FOUR;
+    }
+
+    /** Authoritative world spawn (saved player/world spawn), or a sane default. */
+    public org.joml.Vector3d spawn() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.spawn() : new org.joml.Vector3d(0, 80, 0);
     }
 
     public ServerLevel serverLevel() { return serverLevel; }

@@ -74,7 +74,7 @@ public final class EntityReplicationRegistry {
      * Client shadow for an inbound spawn, or null when the type has no factory (which the
      * caller reports loudly — a replicating type without a factory is a wiring bug).
      */
-    public static Entity createShadow(EntityType type, World world, Vector3f pos, String metadata) {
+    public static Entity createShadow(EntityType type, World world, org.joml.Vector3dc pos, String metadata) {
         return switch (type) {
             case COW -> new Cow(world, pos, orDefault(metadata, "default"));
             case SHEEP -> new Sheep(world, pos, orDefault(metadata, "default"));

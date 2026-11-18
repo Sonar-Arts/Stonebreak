@@ -87,7 +87,7 @@ public class DropRenderer {
      * so that drops write depth values and can be occluded by water.
      */
     public void renderOpaqueDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix,
-                                  World world, Vector3f cameraPos) {
+                                  World world, org.joml.Vector3dc cameraPos) {
         if (drops == null || drops.isEmpty()) return;
 
         shaderProgram.bind();
@@ -100,13 +100,13 @@ public class DropRenderer {
         float fogDensity = 0.0f;
         Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
         if (world != null && cameraPos != null) {
-            int camX = (int) Math.floor(cameraPos.x);
-            int camY = (int) Math.floor(cameraPos.y);
-            int camZ = (int) Math.floor(cameraPos.z);
+            int camX = (int) Math.floor(cameraPos.x());
+            int camY = (int) Math.floor(cameraPos.y());
+            int camZ = (int) Math.floor(cameraPos.z());
             // Depth-scaled, so a drop dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
             if (world.isPositionUnderwater(camX, camY, camZ)) {
-                fogDensity = UnderwaterFog.density(cameraPos.y);
+                fogDensity = UnderwaterFog.density((float) cameraPos.y());
             }
         }
         // Render space: the fragment stage differences it against fragPos.
@@ -159,7 +159,7 @@ public class DropRenderer {
      * Renders transparent block drops. Call this AFTER the transparent water pass.
      */
     public void renderTransparentDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix,
-                                       World world, Vector3f cameraPos) {
+                                       World world, org.joml.Vector3dc cameraPos) {
         if (drops == null || drops.isEmpty()) return;
 
         shaderProgram.bind();
@@ -172,13 +172,13 @@ public class DropRenderer {
         float fogDensity = 0.0f;
         Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
         if (world != null && cameraPos != null) {
-            int camX = (int) Math.floor(cameraPos.x);
-            int camY = (int) Math.floor(cameraPos.y);
-            int camZ = (int) Math.floor(cameraPos.z);
+            int camX = (int) Math.floor(cameraPos.x());
+            int camY = (int) Math.floor(cameraPos.y());
+            int camZ = (int) Math.floor(cameraPos.z());
             // Depth-scaled, so a drop dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
             if (world.isPositionUnderwater(camX, camY, camZ)) {
-                fogDensity = UnderwaterFog.density(cameraPos.y);
+                fogDensity = UnderwaterFog.density((float) cameraPos.y());
             }
         }
         // Render space: the fragment stage differences it against fragPos.
@@ -245,7 +245,7 @@ public class DropRenderer {
      * @param cameraPos Camera position for fog distance calculation (can be null)
      */
     public void renderDrops(List<Entity> drops, ShaderProgram shaderProgram, Matrix4f projectionMatrix, Matrix4f viewMatrix,
-                           World world, Vector3f cameraPos) {
+                           World world, org.joml.Vector3dc cameraPos) {
         if (drops == null || drops.isEmpty()) {
             return;
         }
@@ -265,15 +265,15 @@ public class DropRenderer {
         Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f); // Blue-cyan water color
 
         if (world != null && cameraPos != null) {
-            int camX = (int) Math.floor(cameraPos.x);
-            int camY = (int) Math.floor(cameraPos.y);
-            int camZ = (int) Math.floor(cameraPos.z);
+            int camX = (int) Math.floor(cameraPos.x());
+            int camY = (int) Math.floor(cameraPos.y());
+            int camZ = (int) Math.floor(cameraPos.z());
             boolean cameraUnderwater = world.isPositionUnderwater(camX, camY, camZ);
 
             // Apply fog if camera is underwater (affects all drops)
             if (cameraUnderwater) {
                 // Depth-scaled, matching the terrain/water fog (UnderwaterFog).
-                fogDensity = UnderwaterFog.density(cameraPos.y);
+                fogDensity = UnderwaterFog.density((float) cameraPos.y());
             }
         }
 
@@ -312,7 +312,7 @@ public class DropRenderer {
     }
     
     /** Scratch for {@link #renderHeldItems}' hand positions. */
-    private final Vector3f handPosition = new Vector3f();
+    private final org.joml.Vector3d handPosition = new org.joml.Vector3d();
 
     /**
      * Render the held item of every visible player-shaped entity at its hand.
@@ -328,7 +328,7 @@ public class DropRenderer {
     public void renderHeldItems(java.util.List<com.stonebreak.mobs.entities.RemotePlayer> players,
                                  ShaderProgram shaderProgram,
                                  Matrix4f projectionMatrix, Matrix4f viewMatrix,
-                                 World world, Vector3f cameraPos) {
+                                 World world, org.joml.Vector3dc cameraPos) {
         if (players == null || players.isEmpty() || displayMeshes == null) return;
 
         shaderProgram.bind();
@@ -360,10 +360,10 @@ public class DropRenderer {
             // Model-space body yaw — must match the figure the item is parented to
             // (the raw rotation.y is camera-space for networked remote players).
             float yawRad = (float) Math.toRadians(rp.getBodyYaw());
-            Vector3f hand = rp.handPosition(handPosition);
-            float handX = hand.x;
-            float handY = hand.y;
-            float handZ = hand.z;
+            org.joml.Vector3d hand = rp.handPosition(handPosition);
+            double handX = hand.x;
+            double handY = hand.y;
+            double handZ = hand.z;
 
             if (held instanceof BlockType blockType && blockType != BlockType.AIR) {
                 DisplayMesh sboMesh = sboHandMeshRegistry != null
@@ -437,7 +437,7 @@ public class DropRenderer {
      */
     private void renderDrop(Entity drop, ShaderProgram shaderProgram, Matrix4f viewMatrix, World world) {
         // Create model matrix for the drop
-        Vector3f dropPos = drop.getPosition();
+        org.joml.Vector3d dropPos = drop.getPosition();
         float dropAge = drop.getAge();
 
         // Apply bobbing animation
@@ -583,7 +583,7 @@ public class DropRenderer {
      * {@link #SOCKET_SPRITE_TRANSFORM}); the socket's own transform does the rest of the fitting.
      */
     public void renderSocketItems(SocketItemQueue queue, ShaderProgram shaderProgram,
-                                  Matrix4f projectionMatrix, Matrix4f viewMatrix, Vector3f cameraPos) {
+                                  Matrix4f projectionMatrix, Matrix4f viewMatrix, org.joml.Vector3dc cameraPos) {
         if (queue.entries().isEmpty()) return;
 
         shaderProgram.bind();

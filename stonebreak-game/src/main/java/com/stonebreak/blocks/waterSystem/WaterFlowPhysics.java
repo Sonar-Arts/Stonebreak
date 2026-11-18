@@ -26,7 +26,7 @@ public final class WaterFlowPhysics {
      * @param z Block Z coordinate
      * @return Flow direction vector (normalized), or zero vector if no flow
      */
-    public static Vector3f calculateFlowDirection(World world, int x, int y, int z) {
+    public static Vector3f calculateFlowDirection(World world, long x, long y, long z) {
         WaterBlock current = world.getWaterStateAt(x, y, z);
         if (current == null) {
             return new Vector3f(0, 0, 0);
@@ -53,8 +53,8 @@ public final class WaterFlowPhysics {
         };
 
         for (int[] dir : directions) {
-            int nx = x + dir[0];
-            int nz = z + dir[1];
+            long nx = x + dir[0];
+            long nz = z + dir[1];
 
             WaterBlock neighbor = world.getWaterStateAt(nx, y, nz);
             int neighborLevel;
@@ -95,7 +95,7 @@ public final class WaterFlowPhysics {
      * This is what the physics cache stores per water cell ({@code WorldPhysics}), so changing it
      * changes every body's drift.
      */
-    public static Vector3f cellForce(World world, int x, int y, int z, Vector3f out) {
+    public static Vector3f cellForce(World world, long x, long y, long z, Vector3f out) {
         out.set(0, 0, 0);
         WaterBlock waterBlock = world.getWaterStateAt(x, y, z);
         if (waterBlock == null) {
@@ -123,13 +123,13 @@ public final class WaterFlowPhysics {
      * @param velocity Entity's current velocity (will be modified)
      * @return the flow vector that was applied (zero vector if no water was sampled)
      */
-    public static Vector3f applyWaterFlowForce(World world, Vector3f position, Vector3f velocity,
+    public static Vector3f applyWaterFlowForce(World world, org.joml.Vector3dc position, Vector3f velocity,
                                           float deltaTime, float width, float height) {
         if (world == null) {
             return new Vector3f();
         }
         com.openmason.engine.physics.FluidSample sample = com.stonebreak.world.physics.WorldPhysics.of(world).measureFluid(
-                position.x, position.y, position.z, height, width * 0.5f, position.y, height);
+                position.x(), position.y(), position.z(), height, width * 0.5f, position.y(), height);
         if (sample.flowSamples == 0) {
             return new Vector3f(0, 0, 0);
         }

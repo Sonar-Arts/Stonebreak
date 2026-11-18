@@ -37,7 +37,7 @@ import java.util.Arrays;
  * terrain — approximately across chunk borders too.
  *
  * <p>Cells on the node's border additionally emit dark "foundation" walls
- * descending to y=0 on the border-facing edge, below the lit skirt (or flush
+ * descending below the lower column on the border-facing edge, below the lit skirt (or flush
  * with the cell top when no skirt is emitted). Neighbouring nodes at other
  * LOD levels sample the terrain at a different stride, so their border
  * geometry never matches exactly — T-junction pinholes and small height
@@ -362,10 +362,26 @@ public final class FastLodMesher {
         return out;
     }
 
+    /** Blocks the node-border foundation walls reach below the lower column of an edge. */
+    static final int FOUNDATION_DEPTH = 32;
+    /**
+     * Y base of the node-local LOD encodings (LODQUAD16 y / WATERQUAD16 y count up from here): the world's
+     * floor, so the 11-bit half-block (LOD) and 10-bit block (water) ranges cover [-384, 640) exactly.
+     * The mesh origin carries it ({@code aOrigin.y}), so the shaders need no change. Until the engine's
+     * node-mode LODQUAD16 (cv_lod) replaces this heightfield, this is the origin-shifted approach.
+     */
+    static final int LOD_Y_BASE = WorldConfiguration.MIN_Y;
+
+    /** Bottom of a foundation wall under an edge whose lower column top is {@code lowerTop}. */
+    static float foundationBottom(int lowerTop) {
+        int bottom = Math.floorDiv(lowerTop - FOUNDATION_DEPTH, 16) * 16;
+        return Math.max(WorldConfiguration.MIN_Y, bottom);
+    }
+
     /**
      * Side geometry for one cell edge: the lit skirt toward a lower neighbour
      * (comparing REAL terrain heights — the seabed is regular terrain now),
-     * plus — on node-border edges — a dark foundation wall descending to y=0.
+     * plus — on node-border edges — a dark foundation wall descending below the lower column.
      *
      * <p>Foundation walls back any remaining border crack (neighbouring nodes
      * at other LOD levels sample at a different stride, so exact matches are
@@ -399,11 +415,14 @@ public final class FastLodMesher {
             }
         }
         if (nodeBorder) {
-            // Continue below the skirt bottom (or flush with the cell top when
-            // no skirt exists) down to y=0.
+            // Continue below the skirt bottom (or flush with the cell top when no skirt exists) down to
+            // the lower of the two columns minus a margin - no fixed floor in a [-384, 640) world -
+            // quantised to 16 blocks so neighbouring foundation walls still merge.
             float foundationTopY = hasSkirt ? nH : terrainH;
-            if (foundationTopY > 0f) {
-                w.skirtQuad(wx, wz, cellSize, dx, dz, foundationTopY, 0f, sideLayer, FOUNDATION_LIGHT);
+            float foundationBottom = foundationBottom(Math.min(terrainH, nH));
+            if (foundationTopY > foundationBottom) {
+                w.skirtQuad(wx, wz, cellSize, dx, dz, foundationTopY, foundationBottom, sideLayer,
+                        FOUNDATION_LIGHT);
             }
         }
     }
@@ -649,7 +668,7 @@ public final class FastLodMesher {
                       int cellsPerAxis, int cellSize, int baseX, int baseZ) {
             super(null, null, null, null, null, null, null, null, null);
             this.quads = new MmsQuadMeshBuilder(estimatedQuads, MmsVertexFormat.LODQUAD16)
-                .setOrigin(originX, 0f, originZ);
+                .setOrigin(originX, LOD_Y_BASE, originZ);
             this.originX = originX;
             this.originZ = originZ;
             this.n = cellsPerAxis;
@@ -682,13 +701,12 @@ public final class FastLodMesher {
                             int nPair01, int nPair23) {
             int rx = Math.round(x - originX);
             int rz = Math.round(z - originZ);
-            int yHalf = Math.round(yMin * 2f);
+            int yHalf = Math.round((yMin - LOD_Y_BASE) * 2f);
             int wHalf = Math.max(1, Math.round(w * 2f));
             int hHalf = Math.max(1, Math.round(h * 2f));
             if (yHalf < 0 || yHalf > 2047 || hHalf > 2047 || wHalf > 63) {
-                // Outside the representable band. LODQUAD16 carries y and h in 11 bits of
-                // half blocks, so this covers WORLD_HEIGHT up to 1024; raise the codec's
-                // budget, not this guard, if the world ever grows past that.
+                // Outside the representable band. LODQUAD16 carries y (from LOD_Y_BASE) and h in
+                // 11 bits of half blocks: exactly the world's [-384, 640).
                 return;
             }
             if (!quads.addWords(
@@ -830,7 +848,7 @@ public final class FastLodMesher {
             int iz = Math.round((wz - baseZ) / cellSize);
             int cell = ix * n + iz;
             int dir = dirIndex(dx, dz);
-            // Foundations are emitted with FOUNDATION_LIGHT (0) and reach y=0; skirt bands are
+            // Foundations are emitted with FOUNDATION_LIGHT (0) and reach below both columns; skirt bands are
             // lit and arrive top down, each taking the next slot so bands merge along a row
             // with the same band of their neighbours.
             int kind = FOUNDATION_SLOT;
@@ -933,7 +951,7 @@ public final class FastLodMesher {
                        int cellsPerAxis, int cellSize, int baseX, int baseZ) {
             super(null, null, null, null, null, null, null, null, null);
             this.quads = new MmsQuadMeshBuilder(estimatedQuads, MmsVertexFormat.WATERQUAD16)
-                .setOrigin(originX, 0f, originZ);
+                .setOrigin(originX, LOD_Y_BASE, originZ);
             this.originX = originX;
             this.originZ = originZ;
             this.n = cellsPerAxis;
@@ -996,12 +1014,14 @@ public final class FastLodMesher {
             int qz = Math.round(wz - originZ);
             // WATERQUAD16 carries y in 10 bits of whole blocks, covering WORLD_HEIGHT 1024;
             // a lake or river perched high in the column must not be silently dropped.
-            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || cellY < 0 || cellY > 1023) {
+            int localCellY = cellY - LOD_Y_BASE; // node-local from the world floor (mesh origin Y)
+            float localY = y - LOD_Y_BASE;
+            if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || localCellY < 0 || localCellY > 1023) {
                 return;
             }
             if (!quads.addWords(
-                    MmsWaterQuadCodec.word0(qx, cellY, qz, 0, false, false, true),
-                    MmsWaterQuadCodec.word1(cellY, y, y, y, y),
+                    MmsWaterQuadCodec.word0(qx, localCellY, qz, 0, false, false, true),
+                    MmsWaterQuadCodec.word1(localCellY, localY, localY, localY, localY),
                     MmsWaterQuadCodec.word2(sheetFlag, sheetFlag, sheetFlag, sheetFlag),
                     MmsWaterQuadCodec.word3(w, h, MmsWaterQuadCodec.NO_FLOW, cellDepth))) {
                 return;

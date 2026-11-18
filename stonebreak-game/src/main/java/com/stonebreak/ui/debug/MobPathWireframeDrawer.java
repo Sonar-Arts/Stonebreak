@@ -148,58 +148,67 @@ public final class MobPathWireframeDrawer {
      * Draws a flying mob's air route the same way, so a leader steering round a peak shows the
      * corridor it chose and the wingmen following it can be read against that line.
      */
-    private void drawAirRoute(DebugRenderer debug, AirPathAgent route, Vector3f mobPosition) {
+    private void drawAirRoute(DebugRenderer debug, AirPathAgent route, org.joml.Vector3dc mobPosition) {
         NavPath path = route.path();
         if (!path.isEmpty()) {
             pathScratch.clear();
-            pathScratch.add(new Vector3f(mobPosition));
+            pathScratch.add(point(mobPosition.x(), mobPosition.y(), mobPosition.z()));
             for (int i = route.cursor(); i < path.size(); i++) {
-                pathScratch.add(new Vector3f(path.x(i), path.y(i), path.z(i)));
+                // Route points are FRAME positions: add the agent's frame origin back in double.
+                pathScratch.add(point(path.x(i) + route.originX(), path.y(i) + route.originY(),
+                        path.z(i) + route.originZ()));
             }
             debug.drawPath(pathScratch, PATH_COLOR);
         }
 
         if (route.hasGoal()) {
-            Vector3f goal = route.goal(new Vector3f());
+            org.joml.Vector3d goal = route.goal(new org.joml.Vector3d());
             pathScratch.clear();
-            pathScratch.add(new Vector3f(goal.x, goal.y - GOAL_MARKER_SIZE, goal.z));
-            pathScratch.add(new Vector3f(goal.x, goal.y + GOAL_MARKER_SIZE, goal.z));
+            pathScratch.add(point(goal.x, goal.y - GOAL_MARKER_SIZE, goal.z));
+            pathScratch.add(point(goal.x, goal.y + GOAL_MARKER_SIZE, goal.z));
             debug.drawPath(pathScratch, GOAL_COLOR);
         }
     }
 
     private void drawPlannedRoute(DebugRenderer debug, LivingEntity mob) {
         PathAgent nav = mob.getAI().nav();
-        Vector3f position = mob.getPosition();
+        org.joml.Vector3d position = mob.getPosition();
         NavPath path = nav.path();
 
         if (!path.isEmpty()) {
             pathScratch.clear();
             // Start at the mob's feet — where its route is measured from — rather than its origin,
             // which sits a leg-length higher and made the first leg dive into the ground.
-            pathScratch.add(new Vector3f(position.x,
+            pathScratch.add(point(position.x,
                     position.y - mob.getLegHeight() + ROUTE_GROUND_LIFT, position.z));
             for (int i = nav.cursor(); i < path.size(); i++) {
-                Vector3f waypoint = new Vector3f(path.x(i), path.y(i), path.z(i));
-                waypoint.y += ROUTE_GROUND_LIFT;
-                pathScratch.add(waypoint);
+                // Route points are FRAME positions: add the agent's frame origin back in double.
+                pathScratch.add(point(path.x(i) + nav.originX(), path.y(i) + nav.originY() + ROUTE_GROUND_LIFT,
+                        path.z(i) + nav.originZ()));
             }
             debug.drawPath(pathScratch, PATH_COLOR);
         }
 
         if (nav.hasGoal()) {
-            Vector3f goal = nav.goal(new Vector3f());
-            float y = goal.y + ROUTE_GROUND_LIFT;
+            org.joml.Vector3d goal = nav.goal(new org.joml.Vector3d());
+            double y = goal.y + ROUTE_GROUND_LIFT;
             pathScratch.clear();
-            pathScratch.add(new Vector3f(goal.x - GOAL_MARKER_SIZE, y, goal.z));
-            pathScratch.add(new Vector3f(goal.x + GOAL_MARKER_SIZE, y, goal.z));
+            pathScratch.add(point(goal.x - GOAL_MARKER_SIZE, y, goal.z));
+            pathScratch.add(point(goal.x + GOAL_MARKER_SIZE, y, goal.z));
             debug.drawPath(pathScratch, GOAL_COLOR);
 
             pathScratch.clear();
-            pathScratch.add(new Vector3f(goal.x, y, goal.z - GOAL_MARKER_SIZE));
-            pathScratch.add(new Vector3f(goal.x, y, goal.z + GOAL_MARKER_SIZE));
+            pathScratch.add(point(goal.x, y, goal.z - GOAL_MARKER_SIZE));
+            pathScratch.add(point(goal.x, y, goal.z + GOAL_MARKER_SIZE));
             debug.drawPath(pathScratch, GOAL_COLOR);
         }
+    }
+
+    /** A world position as a {@link DebugRenderer#drawPath} point: camera-relative render space. */
+    private static Vector3f point(double x, double y, double z) {
+        return new Vector3f(com.openmason.engine.rendering.RenderOrigin.relativeX(x),
+                com.openmason.engine.rendering.RenderOrigin.relativeY(y),
+                com.openmason.engine.rendering.RenderOrigin.relativeZ(z));
     }
 
     /**

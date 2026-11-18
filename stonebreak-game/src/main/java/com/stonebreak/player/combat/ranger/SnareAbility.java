@@ -16,7 +16,7 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.QuarryController;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.joml.Vector3i;
 
 /**
@@ -36,7 +36,7 @@ public class SnareAbility {
 
     private boolean trapActive;
     private float armRemaining;
-    private final Vector3f trapPosition = new Vector3f();
+    private final Vector3d trapPosition = new Vector3d();
 
     public boolean isActive() { return state != State.IDLE; }
     public boolean isOnCooldown() { return state == State.COOLDOWN; }
@@ -44,7 +44,7 @@ public class SnareAbility {
 
     public boolean hasActiveTrap() { return trapActive; }
     public boolean isTrapArmed() { return trapActive && armRemaining <= 0f; }
-    public Vector3f getTrapPosition() { return new Vector3f(trapPosition); }
+    public Vector3d getTrapPosition() { return new Vector3d(trapPosition); }
 
     /** 0..1 arm telegraph progress; 1 once the trap is live. */
     public float getArmProgress() {
@@ -63,7 +63,7 @@ public class SnareAbility {
         Vector3i blockHit = player.getRaycastEngine().raycast(RANGER_SNARE_PLACE_RANGE);
         if (blockHit == null) return false;
 
-        trapPosition.set(blockHit.x + 0.5f, blockHit.y + 1f, blockHit.z + 0.5f);
+        trapPosition.set(blockHit.x + 0.5, blockHit.y + 1.0, blockHit.z + 0.5);
         trapActive = true;
         armRemaining = RANGER_SNARE_ARM_TIME;
         state = State.COOLDOWN;

@@ -235,11 +235,11 @@ public class PlayerArmRenderer {
         try {
             com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
             if (world == null) return 1.0f;
-            org.joml.Vector3f pos = player.getPosition();
+            org.joml.Vector3d pos = player.getPosition();
             com.stonebreak.world.lighting.WorldLightingContext ctx =
                 new com.stonebreak.world.lighting.WorldLightingContext(world);
             return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
-                ctx, pos.x, pos.y + 1.6f, pos.z);
+                ctx, (float) pos.x, (float) pos.y + 1.6f, (float) pos.z);
         } catch (Exception ignored) {
             // Lighting sampler throws when the player's chunk is unloaded (early boot, menu transitions).
             // Return full brightness so the arm is never rendered pitch-black.

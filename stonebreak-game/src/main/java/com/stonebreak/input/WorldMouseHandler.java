@@ -137,7 +137,7 @@ final class WorldMouseHandler {
             return;
         }
         Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-        Vector3f spawnPos = new Vector3f(player.getCamera().getPosition());
+        org.joml.Vector3d spawnPos = new org.joml.Vector3d(player.getCamera().getPosition());
         if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_FIRE_BOLT, spawnPos, dir)) {
             EntityManager em = Game.getEntityManager();
             if (em != null) {
@@ -156,8 +156,7 @@ final class WorldMouseHandler {
      */
     private void useFishingRod(Player player, ItemStack rod) {
         Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-        Vector3f pos = new Vector3f(player.getCamera().getPosition());
-        if (!MultiplayerSession.sendFishingRodUse(pos, dir)) {
+        if (!MultiplayerSession.sendFishingRodUse(player.getCamera().getPosition(), dir)) {
             return;
         }
         boolean cast = ItemType.FISHING_ROD_STATE_CAST.equals(rod.getState());
@@ -207,7 +206,7 @@ final class WorldMouseHandler {
             player.getInventory().removeItem(ItemType.ARROW);
             Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
             Vector3f vel = new Vector3f(dir).mul(arrowSpeed);
-            Vector3f spawnPos = new Vector3f(player.getCamera().getPosition());
+            org.joml.Vector3d spawnPos = new org.joml.Vector3d(player.getCamera().getPosition());
             // Server-authoritative spawn (replicated to all); local fallback
             // only when there is no session at all.
             if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_ARROW, spawnPos, vel)) {

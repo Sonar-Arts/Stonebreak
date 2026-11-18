@@ -1,8 +1,7 @@
 package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import org.junit.jupiter.api.Tag;
@@ -34,7 +33,7 @@ class FastLodSerializerTest {
         }
         int[] waterLevels = new int[level.cellCount()];
         for (int i = 0; i < waterLevels.length; i++) {
-            waterLevels[i] = (i % 3 == 0) ? TerrainTile.NO_WATER : 40 + (i % 50);   // mix of dry and wet
+            waterLevels[i] = (i % 3 == 0) ? com.stonebreak.world.operations.WorldConfiguration.NO_WATER : 40 + (i % 50);   // mix of dry and wet
         }
         BlockType[] surface = new BlockType[level.cellCount()];
         for (int i = 0; i < surface.length; i++) {
@@ -76,6 +75,22 @@ class FastLodSerializerTest {
     }
 
     @Test
+    void dryAndBelowZeroWaterLevelsStayApart() {
+        // y -1 is a real water level in the [-384, 640) world: it must not read back as "dry", and the dry
+        // sentinel must not read back as a height.
+        FastLodChunkData original = makeData(FastLodLevel.L0, true);
+        int[] water = original.rawWaterLevels();
+        water[0] = com.stonebreak.world.operations.WorldConfiguration.NO_WATER;
+        water[1] = -1;
+        water[2] = -383;
+        FastLodChunkData restored = FastLodSerializer.deserialize(original.key(), FastLodSerializer.serialize(original));
+        assertNotNull(restored);
+        assertEquals(com.stonebreak.world.operations.WorldConfiguration.NO_WATER, restored.waterLevelAt(0, 0));
+        assertEquals(-1, restored.rawWaterLevels()[1]);
+        assertEquals(-383, restored.rawWaterLevels()[2]);
+    }
+
+    @Test
     void roundTripCoarseLevelWithoutTrees() {
         FastLodChunkData original = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(original);
@@ -91,7 +106,7 @@ class FastLodSerializerTest {
     /**
      * The cave-mouth channel survives the round trip, sentinel included. The sentinel needs
      * its own wire value: in memory "no opening" is an int
-     * ({@link DiffusionTerrainGenerator#NO_OPENING}) and the field on the wire is i16.
+     * ({@link TerrainGenerator#NO_OPENING}) and the field on the wire is i16.
      */
     @Test
     void roundTripCarriesTheCaveOpeningChannel() {
@@ -102,7 +117,7 @@ class FastLodSerializerTest {
         byte[] cover = new byte[cells];
         for (int i = 0; i < cells; i++) {
             boolean open = (i % 4 == 1);
-            floor[i] = open ? 250 + i : DiffusionTerrainGenerator.NO_OPENING;
+            floor[i] = open ? 250 + i : TerrainGenerator.NO_OPENING;
             cover[i] = (byte) (open ? Math.min(255, 30 + i * 7) : 0);
         }
         FastLodChunkData original = new FastLodChunkData(base.key(), base.rawHeights(),
@@ -116,7 +131,7 @@ class FastLodSerializerTest {
         assertArrayEquals(cover, restored.rawOpeningCoverage());
         for (int i = 0; i < cells; i++) {
             if (i % 4 != 1) {
-                assertEquals(DiffusionTerrainGenerator.NO_OPENING, restored.rawOpeningFloor()[i],
+                assertEquals(TerrainGenerator.NO_OPENING, restored.rawOpeningFloor()[i],
                         "sentinel must survive the i16 narrowing at cell " + i);
             }
         }
@@ -143,15 +158,15 @@ class FastLodSerializerTest {
      * tunnel's air and paves a talus mound across every plunge; v10 shows a dry probe where
      * a coarse cell's footprint holds a river; v11 predates coarse tree spots, uncarved coarse
      * levels and the OCEAN sea floor; v11 and v12 show swamps dry, with no pools and no cypress
-     * past the finest band; v13 shows deserts without their gravel. The version bump forces
-     * the resample.
+     * past the finest band; v13 shows deserts without their gravel; v14 stores "dry" as -1, a
+     * real water level in the [-384, 640) world. The version bump forces the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(14, blob[4], "version byte moved; update this test and the note above");
-        for (byte older = 4; older < 14; older++) {
+        assertEquals(15, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 15; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");

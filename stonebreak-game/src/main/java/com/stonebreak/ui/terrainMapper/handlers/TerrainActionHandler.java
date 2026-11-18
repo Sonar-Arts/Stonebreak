@@ -5,14 +5,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.core.GameState;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.worldSelect.managers.WorldDiscoveryManager;
-import com.stonebreak.world.save.model.WorldData;
-import com.stonebreak.world.save.serialization.JsonWorldSerializer;
-import org.joml.Vector3f;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDateTime;
 import java.util.Random;
 
 /**
@@ -75,34 +69,17 @@ public final class TerrainActionHandler {
             seed = new Random().nextLong();
             System.out.println("[WORLD-CREATE] No seed entered; using random seed: " + seed);
         }
-        WorldData worldData = WorldData.builder()
-                .worldName(name)
-                .seed(seed)
-                .spawnPosition(new Vector3f(
-                        state.hasSpawnPoint() ? (float) state.spawnWorldX() : 0f,
-                        100f,
-                        state.hasSpawnPoint() ? (float) state.spawnWorldZ() : 0f
-                ))
-                .hasExplicitSpawn(state.hasSpawnPoint())
-                .generatorType(generator)
-                .createdTime(LocalDateTime.now())
-                .lastPlayed(LocalDateTime.now())
-                .totalPlayTimeMillis(0L)
-                .build();
-
         if (!discovery.ensureWorldsDirectoryExists()) {
             state.setErrorMessage("Failed to prepare worlds directory.");
             return false;
         }
 
         try {
-            Path worldDir = com.stonebreak.world.save.WorldStorage.worldDir(name);
-            Files.createDirectories(worldDir);
-            Files.createDirectories(worldDir.resolve("chunks"));
-
-            byte[] json = new JsonWorldSerializer().serialize(worldData);
-            com.stonebreak.world.save.io.AtomicFiles.write(worldDir.resolve("world.json"), json);
-            com.stonebreak.world.save.io.AtomicFiles.write(worldDir.resolve("metadata.json"), json);
+            com.stonebreak.core.world.NewWorlds.write(new com.stonebreak.core.world.NewWorlds.Options(name, seed,
+                generator, state.getSelectedScale(),
+                new org.joml.Vector3d(state.hasSpawnPoint() ? state.spawnWorldX() : 0, 100,
+                    state.hasSpawnPoint() ? state.spawnWorldZ() : 0),
+                state.hasSpawnPoint()));
         } catch (IOException e) {
             state.setErrorMessage("Save failed: " + e.getMessage());
             return false;

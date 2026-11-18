@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * Hit detection for projectiles: which living entity the segment a projectile travelled
@@ -20,8 +21,8 @@ public final class ProjectileSweep {
      * The living entity whose hitbox, grown by {@code margin}, the segment
      * {@code from → to} enters first; null when it enters none.
      */
-    public static LivingEntity firstHit(EntityManager em, Vector3f from, Vector3f to, float margin) {
-        Vector3f dir = new Vector3f(to).sub(from);
+    public static LivingEntity firstHit(EntityManager em, Vector3dc from, Vector3dc to, float margin) {
+        Vector3d dir = new Vector3d(to).sub(from);
         LivingEntity closest = null;
         float closestT = Float.MAX_VALUE;
         for (LivingEntity le : em.getLivingEntities()) {

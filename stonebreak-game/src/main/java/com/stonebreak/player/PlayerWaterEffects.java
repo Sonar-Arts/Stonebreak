@@ -19,7 +19,7 @@ final class PlayerWaterEffects {
      *                      ripples are a surface effect and are suppressed while submerged.
      */
     void update(float dt, PhysicsState state, boolean eyesSubmerged) {
-        Vector3f feet = state.getPosition();
+        org.joml.Vector3d feet = state.getPosition();
         if (state.justEnteredWaterThisFrame()) {
             swimFx.enteredWater(EntityType.REMOTE_PLAYER, Game.getWorld(), feet,
                     Math.max(0f, -state.getVelocity().y));

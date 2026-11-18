@@ -1,6 +1,7 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import java.util.List;
@@ -71,6 +72,19 @@ public final class VisualizerRegistry {
         if (type == TerrainGeneratorType.DIFFUSION) {
             diffusion.activate();
         }
+        rebuild(seed);
+    }
+
+    /** The terrain scale the Standard previews show (and the new world will use). */
+    public TerrainScalePreset scale() {
+        return standard.scale();
+    }
+
+    /** Switches the previewed terrain scale; rebuilds the visualizers when it changes. */
+    public void selectScale(TerrainScalePreset scale) {
+        TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        if (s == standard.scale()) return;
+        standard.setScale(s);
         rebuild(seed);
     }
 

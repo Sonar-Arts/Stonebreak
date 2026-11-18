@@ -37,10 +37,12 @@ import com.stonebreak.network.packet.world.BlockMetaS2C;
 import com.stonebreak.network.packet.world.BlockStateS2C;
 import com.stonebreak.network.packet.entity.EntityResyncC2S;
 import com.stonebreak.network.packet.entity.ProjectileSpawnC2S;
-import com.stonebreak.network.packet.world.ChunkDataS2C;
-import com.stonebreak.network.packet.world.ChunkHashesC2S;
-import com.stonebreak.network.packet.world.ChunkResyncRequestC2S;
-import com.stonebreak.network.packet.world.ChunkUnloadC2S;
+import com.stonebreak.network.packet.world.BlockStateNamesS2C;
+import com.stonebreak.network.packet.world.CubeAckC2S;
+import com.stonebreak.network.packet.world.CubeDataS2C;
+import com.stonebreak.network.packet.world.CubeHashesC2S;
+import com.stonebreak.network.packet.world.CubeRequestC2S;
+import com.stonebreak.network.packet.world.CubeUnloadC2S;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.network.packet.world.SnowLayerC2S;
 import com.stonebreak.network.packet.world.TimeSyncS2C;
@@ -64,14 +66,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("regression")
 class PacketRoundTripTest {
-
-    /** The world dimensions the game installs at startup (GameBootstrap): the chunk codec reads them (#385). */
-    @org.junit.jupiter.api.BeforeAll
-    static void installWorldDimensions() {
-        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(
-            com.stonebreak.world.operations.WorldConfiguration.voxelConfig());
-    }
-
 
     private static <T extends Packet> T roundTrip(PacketCodec<T> codec, T value) {
         ByteBuf buf = Unpooled.buffer();
@@ -104,6 +98,10 @@ class PacketRoundTripTest {
         // Compression codecs the client decodes (issue #346); a pre-v20 handshake lists none.
         assertEquals(new HandshakeC2S(20, "Bob", "s", 0b110), roundTrip(HandshakeC2S.CODEC, new HandshakeC2S(20, "Bob", "s", 0b110)));
         assertEquals(0, new HandshakeC2S(20, "Bob", "s").compressionCodecs());
+        var half = com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.ONE_TO_TWO;
+        WelcomeS2C scaled = new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, half, 1, 2, 3, "s");
+        assertEquals(scaled, roundTrip(WelcomeS2C.CODEC, scaled));
+        assertEquals(half, roundTrip(WelcomeS2C.CODEC, scaled).terrainScale());
         assertEquals(new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret"),
                 roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret")));
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));
@@ -192,7 +190,6 @@ class PacketRoundTripTest {
             roundTrip(InventorySyncS2C.CODEC, new InventorySyncS2C("B:1:3|I:20:2|B:0:0", 7_000)));
         assertEquals(new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000),
             roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000)));
-        assertEquals(new ChunkResyncRequestC2S(-3, 12), roundTrip(ChunkResyncRequestC2S.CODEC, new ChunkResyncRequestC2S(-3, 12)));
         assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f)));
         assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
@@ -221,6 +218,81 @@ class PacketRoundTripTest {
         assertEquals(fits, new com.stonebreak.network.packet.player.PlayerPrefsC2S(1, fits).json());
     }
 
+    /**
+     * World positions travel as int64 cell + float offset (#445): far from the origin and below
+     * y = 0 they keep sub-millimetre precision, which a float position lost past ~2^17 blocks.
+     */
+    @Test
+    void positionsKeepPrecisionFarFromTheOriginAndBelowZero() {
+        double x = 3.0e9 + 0.371, y = -300.25, z = -7_500_000_123.875;
+        PlayerStateC2S state = roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(x, y, z, 45f, -5f, (short) 1));
+        assertEquals(x, state.x(), 1e-6);
+        assertEquals(y, state.y(), 1e-6);
+        assertEquals(z, state.z(), 1e-6);
+        assertEquals(45f, state.yaw());
+
+        PlayerStateS2C remote = roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(3, x, y, z, 1f, 2f, (short) 0));
+        assertEquals(x, remote.x(), 1e-6);
+        assertEquals(z, remote.z(), 1e-6);
+
+        EntitySpawnS2C spawn = roundTrip(EntitySpawnS2C.CODEC, new EntitySpawnS2C(9, 1, x, y, z, 90f, ""));
+        assertEquals(x, spawn.x(), 1e-6);
+        assertEquals(y, spawn.y(), 1e-6);
+        EntityTeleportS2C tp = roundTrip(EntityTeleportS2C.CODEC, new EntityTeleportS2C(9, x, y, z, 0f));
+        assertEquals(z, tp.z(), 1e-6);
+        PlayerJoinS2C join = roundTrip(PlayerJoinS2C.CODEC, new PlayerJoinS2C(2, "bob", x, y, z));
+        assertEquals(x, join.x(), 1e-6);
+        var pos = roundTrip(com.stonebreak.network.packet.player.PlayerPositionS2C.CODEC,
+            new com.stonebreak.network.packet.player.PlayerPositionS2C(x, y, z));
+        assertEquals(y, pos.y(), 1e-6);
+        var life = roundTrip(com.stonebreak.network.packet.player.PlayerLifeC2S.CODEC,
+            new com.stonebreak.network.packet.player.PlayerLifeC2S(false, x, y, z));
+        assertEquals(x, life.x(), 1e-6);
+        KillCreditS2C credit = roundTrip(KillCreditS2C.CODEC,
+            new KillCreditS2C(1, 2f, false, 0, 5, (byte) 0, (byte) 0, x, y, z));
+        assertEquals(z, credit.z(), 1e-6);
+        ProjectileSpawnC2S shot = roundTrip(ProjectileSpawnC2S.CODEC, new ProjectileSpawnC2S(
+            ProjectileSpawnC2S.KIND_ARROW, x, y, z, 0f, 30f, 0f, new float[0], 4));
+        assertEquals(x, shot.x(), 1e-6);
+        assertEquals(30f, shot.vy());
+        var rod = roundTrip(com.stonebreak.network.packet.player.FishingRodC2S.CODEC,
+            new com.stonebreak.network.packet.player.FishingRodC2S(x, y, z, 0f, 0f, 1f, 3));
+        assertEquals(y, rod.y(), 1e-6);
+        var place = roundTrip(com.stonebreak.network.packet.vehicle.VehicleActionC2S.CODEC,
+            com.stonebreak.network.packet.vehicle.VehicleActionC2S.place(x, y, z, 10f, 2));
+        assertEquals(z, place.z(), 1e-6);
+        var row = roundTrip(com.stonebreak.network.packet.vehicle.VehicleMoveC2S.CODEC,
+            new com.stonebreak.network.packet.vehicle.VehicleMoveC2S(7, x, y, z, 10f, (byte) 1, (byte) 0));
+        assertEquals(x, row.x(), 1e-6);
+        var sound = roundTrip(com.stonebreak.network.packet.world.SoundEventS2C.CODEC,
+            com.stonebreak.network.packet.world.SoundEventS2C.block(1, "break", x, y, z));
+        assertEquals(z, sound.z(), 1e-6);
+    }
+
+    @Test
+    void positionCellAndOffsetEncodingIsCompactAndRejectsBadOffsets() {
+        ByteBuf buf = Unpooled.buffer();
+        try {
+            com.stonebreak.network.packet.NetCoords.writePosition(buf, 0.5);
+            assertEquals(5, buf.readableBytes(), "a cell near the origin is one varint byte + a float");
+            assertEquals(0.5, com.stonebreak.network.packet.NetCoords.readPosition(buf));
+            // A just-below-integer value whose float offset rounds to 1 moves to the next cell.
+            com.stonebreak.network.packet.NetCoords.writePosition(buf, 4.999999999);
+            assertEquals(5.0, com.stonebreak.network.packet.NetCoords.readPosition(buf), 1e-6);
+            com.stonebreak.network.packet.NetCoords.writeVarLong(buf, 3);
+            buf.writeFloat(1.5f); // offset outside [0, 1)
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> com.stonebreak.network.packet.NetCoords.readPosition(buf));
+            buf.clear();
+            for (long v : new long[]{0, -1, 1, Long.MIN_VALUE, Long.MAX_VALUE, -384, 3_000_000_000L}) {
+                com.stonebreak.network.packet.NetCoords.writeVarLong(buf, v);
+                assertEquals(v, com.stonebreak.network.packet.NetCoords.readVarLong(buf));
+            }
+        } finally {
+            buf.release();
+        }
+    }
+
     @Test
     void projectileSpawnRoundTrips() {
         ProjectileSpawnC2S p = new ProjectileSpawnC2S(
@@ -241,37 +313,54 @@ class PacketRoundTripTest {
     }
 
     @Test
-    void chunkHashesRoundTrip() {
-        int[] entries = {1, -2, 0xDEADBEEF, 3, 4, 0};
-        assertArrayEquals(entries,
-            roundTrip(ChunkHashesC2S.CODEC, new ChunkHashesC2S(entries)).entries());
+    void cubeListsRoundTripWithFullLongCoordinates() {
+        long[] cubes = {1, -2, 3, Long.MIN_VALUE, Long.MAX_VALUE, 0, -12, 19, 1L << 40};
+        assertArrayEquals(cubes, roundTrip(CubeRequestC2S.CODEC, new CubeRequestC2S(cubes)).cubes());
+        assertArrayEquals(cubes, roundTrip(CubeUnloadC2S.CODEC, new CubeUnloadC2S(cubes)).cubes());
+        int[] hashes = {7, 0xDEADBEEF, -1};
+        CubeHashesC2S h = roundTrip(CubeHashesC2S.CODEC, new CubeHashesC2S(cubes, hashes));
+        assertArrayEquals(cubes, h.cubes());
+        assertArrayEquals(hashes, h.hashes());
+        // Small coordinates stay small on the wire (zigzag varlongs: one byte each near the origin).
+        ByteBuf buf = Unpooled.buffer();
+        CubeRequestC2S.CODEC.encode(buf, new CubeRequestC2S(new long[]{1, -1, 0}));
+        assertEquals(4, buf.readableBytes());
+        buf.release();
     }
 
     @Test
-    void chunkUnloadRoundTripsAndRejectsOversizedLists() {
-        int[] coords = {1, -2, Integer.MIN_VALUE, Integer.MAX_VALUE};
-        assertArrayEquals(coords,
-            roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(coords)).coords());
-        int[] tooMany = new int[(ChunkUnloadC2S.MAX_CHUNKS + 1) * 2];
+    void cubeListsRejectOversizedLists() {
+        long[] tooMany = new long[(CubeRequestC2S.MAX_CUBES + 1) * 3];
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-            () -> roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(tooMany)));
-        ChunkUnloadC2S centred = roundTrip(ChunkUnloadC2S.CODEC, new ChunkUnloadC2S(coords, 40, -7));
-        org.junit.jupiter.api.Assertions.assertEquals(40, centred.centerX());
-        org.junit.jupiter.api.Assertions.assertEquals(-7, centred.centerZ());
+            () -> roundTrip(CubeRequestC2S.CODEC, new CubeRequestC2S(tooMany)));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> roundTrip(CubeUnloadC2S.CODEC, new CubeUnloadC2S(tooMany)));
     }
 
     @Test
-    void chunkAckRoundTripsAndRejectsHostileValues() {
-        var ack = roundTrip(com.stonebreak.network.packet.world.ChunkAckC2S.CODEC,
-            new com.stonebreak.network.packet.world.ChunkAckC2S(12, 9.5f));
-        org.junit.jupiter.api.Assertions.assertEquals(12, ack.processed());
-        org.junit.jupiter.api.Assertions.assertEquals(9.5f, ack.desiredChunksPerTick());
+    void cubeAckRoundTripsAndRejectsHostileValues() {
+        CubeAckC2S ack = roundTrip(CubeAckC2S.CODEC, new CubeAckC2S(12, 300, 9.5f));
+        assertEquals(new CubeAckC2S(12, 300, 9.5f), ack);
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-            () -> roundTrip(com.stonebreak.network.packet.world.ChunkAckC2S.CODEC,
-                new com.stonebreak.network.packet.world.ChunkAckC2S(-1, 1f)));
+            () -> roundTrip(CubeAckC2S.CODEC, new CubeAckC2S(-1, 0, 1f)));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-            () -> roundTrip(com.stonebreak.network.packet.world.ChunkAckC2S.CODEC,
-                new com.stonebreak.network.packet.world.ChunkAckC2S(1, Float.NaN)));
+            () -> roundTrip(CubeAckC2S.CODEC, new CubeAckC2S(1, -5, 1f)));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> roundTrip(CubeAckC2S.CODEC, new CubeAckC2S(1, 0, Float.NaN)));
+    }
+
+    @Test
+    void blockStateNamesRoundTripAndRejectBadIds() {
+        BlockStateNamesS2C names = new BlockStateNamesS2C(27, java.util.List.of("facing=north", "lit=true", ""));
+        assertEquals(names, roundTrip(BlockStateNamesS2C.CODEC, names));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> roundTrip(BlockStateNamesS2C.CODEC, new BlockStateNamesS2C(0, java.util.List.of("x"))));
+    }
+
+    @Test
+    void viewDistanceCarriesTheVerticalRadius() {
+        var vd = new com.stonebreak.network.packet.player.ViewDistanceC2S(12, 192);
+        assertEquals(vd, roundTrip(com.stonebreak.network.packet.player.ViewDistanceC2S.CODEC, vd));
     }
 
     @Test
@@ -333,55 +422,66 @@ class PacketRoundTripTest {
         assertArrayEquals(packed, decoded.packed());
     }
 
-    @Test
-    void chunkDataRoundTrips() {
-        byte[] payload = {1, 2, 3, 4, 5, -1, 127, -128};
-        ChunkDataS2C decoded = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(3, -7, payload));
-        assertEquals(3, decoded.chunkX());
-        assertEquals(-7, decoded.chunkZ());
-        assertArrayEquals(payload, decoded.payload());
-        assertArrayEquals(new byte[0], decoded.metaPayload()); // 3-arg convenience = empty meta
+    private static CubeDataS2C sampleBatch() {
+        byte[] terrain = new byte[20_000];
+        for (int i = 0; i < terrain.length; i++) {
+            terrain[i] = (byte) ((i * 7) % 5); // compressible, like real palette words
+        }
+        return new CubeDataS2C(
+            java.util.List.of(new CubeDataS2C.Column(-3, 1L << 33, new byte[]{1, 2, 3, 4})),
+            java.util.List.of(
+                new CubeDataS2C.CubeRecord(-3, -12, 1L << 33, terrain, new int[0], new String[0]),
+                new CubeDataS2C.CubeRecord(-3, 19, 1L << 33, new byte[]{9, 8},
+                    new int[]{0, 32767}, new String[]{"furnace:state=Lit;burn=4", "workbench:grid=B:1:1"})));
+    }
 
-        byte[] meta = {9, 8, 7};
-        ChunkDataS2C withMeta = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(3, -7, payload, meta));
-        assertArrayEquals(meta, withMeta.metaPayload());
+    private static void assertSameBatch(CubeDataS2C expected, CubeDataS2C actual) {
+        assertEquals(expected.columns().size(), actual.columns().size());
+        for (int i = 0; i < expected.columns().size(); i++) {
+            CubeDataS2C.Column e = expected.columns().get(i);
+            CubeDataS2C.Column a = actual.columns().get(i);
+            assertEquals(e.cx(), a.cx());
+            assertEquals(e.cz(), a.cz());
+            assertArrayEquals(e.bytes(), a.bytes());
+        }
+        assertEquals(expected.cubes().size(), actual.cubes().size());
+        for (int i = 0; i < expected.cubes().size(); i++) {
+            CubeDataS2C.CubeRecord e = expected.cubes().get(i);
+            CubeDataS2C.CubeRecord a = actual.cubes().get(i);
+            assertEquals(e.cx(), a.cx());
+            assertEquals(e.cy(), a.cy());
+            assertEquals(e.cz(), a.cz());
+            assertArrayEquals(e.bytes(), a.bytes());
+            assertArrayEquals(e.stateCells(), a.stateCells());
+            assertArrayEquals(e.stateValues(), a.stateValues());
+        }
     }
 
     @Test
-    void chunkDataCompressesForAPeerThatDecodesIt() {
-        // Issue #346: over TCP the block and meta blobs compress with a negotiated codec.
-        var storage = com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
-                16, com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT, 16,
-                com.stonebreak.blocks.BlockType.AIR);
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = 0; y < 60; y++) {
-                    storage.set(x, y, z, (x * 7 + y * 3 + z) % 11 == 0
-                            ? com.stonebreak.blocks.BlockType.COAL_ORE : com.stonebreak.blocks.BlockType.STONE);
-                }
-            }
-        }
-        var blocks = com.openmason.engine.voxel.net.ChunkBlockPayload.ofSnapshot(storage);
-        byte[] meta = new byte[600];
-        java.util.Arrays.fill(meta, (byte) 3);
-        ChunkDataS2C packet = new ChunkDataS2C(4, -2, blocks, meta);
+    void cubeDataRoundTrips() {
+        CubeDataS2C batch = sampleBatch();
+        assertSameBatch(batch, roundTrip(CubeDataS2C.CODEC, batch));
+        CubeDataS2C empty = new CubeDataS2C(java.util.List.of(), java.util.List.of());
+        assertSameBatch(empty, roundTrip(CubeDataS2C.CODEC, empty));
+    }
+
+    @Test
+    void cubeDataCompressesForAPeerThatDecodesIt() {
+        // Issue #346 / #447: over TCP the whole batch is one blob compressed with a negotiated codec.
+        CubeDataS2C batch = sampleBatch();
         int deflateOnly = com.openmason.engine.net.protocol.codec.WireCompression.bit(
                 com.openmason.engine.net.protocol.codec.WireCompression.DEFLATE);
-
         for (int peer : new int[]{0, deflateOnly, com.openmason.engine.net.protocol.codec.WireCompression.localDecodeMask()}) {
             ByteBuf buf = Unpooled.buffer();
             try {
-                ChunkDataS2C.CODEC.encode(buf, packet, peer);
+                CubeDataS2C.CODEC.encode(buf, batch, peer);
                 int wireBytes = buf.readableBytes();
-                ChunkDataS2C decoded = ChunkDataS2C.CODEC.decode(buf);
+                CubeDataS2C decoded = CubeDataS2C.CODEC.decode(buf);
                 assertEquals(0, buf.readableBytes());
-                assertEquals(4, decoded.chunkX());
-                assertEquals(-2, decoded.chunkZ());
-                assertArrayEquals(blocks.encoded(), decoded.payload());
-                assertArrayEquals(meta, decoded.metaPayload());
-                int raw = blocks.encoded().length + meta.length;
-                assertTrue(peer == 0 ? wireBytes > raw : wireBytes < raw / 2,
-                        "codec mask " + peer + ": " + wireBytes + " wire bytes for " + raw);
+                assertSameBatch(batch, decoded);
+                int raw = batch.rawSize();
+                assertTrue(peer == 0 ? wireBytes > 20_000 : wireBytes < raw / 2,
+                        "codec mask " + peer + ": " + wireBytes + " wire bytes for ~" + raw);
             } finally {
                 buf.release();
             }
@@ -389,17 +489,21 @@ class PacketRoundTripTest {
     }
 
     @Test
-    void chunkSnapshotIsEncodedForTheWire() {
-        // #345: the server sends a storage snapshot; a TCP connection writes its encoded bytes.
-        var storage = com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.createEmpty(
-                16, com.stonebreak.world.operations.WorldConfiguration.WORLD_HEIGHT, 16,
-                com.stonebreak.blocks.BlockType.AIR);
-        storage.set(3, 40, 5, com.stonebreak.blocks.BlockType.STONE);
-        var blocks = com.openmason.engine.voxel.net.ChunkBlockPayload.ofSnapshot(storage);
-
-        ChunkDataS2C decoded = roundTrip(ChunkDataS2C.CODEC, new ChunkDataS2C(2, 9, blocks, new byte[0]));
-        assertArrayEquals(blocks.encoded(), decoded.payload());
-        assertEquals(null, decoded.blocks().snapshot(), "a wire carries bytes, not storage");
+    void blockDeltasCarryFullLongCoordinates() {
+        long far = 3_000_000_000L;
+        assertEquals(new BlockChangeS2C(far, -384, -far, (short) 7),
+            roundTrip(BlockChangeS2C.CODEC, new BlockChangeS2C(far, -384, -far, (short) 7)));
+        assertEquals(new BlockStateS2C(-far, 639, far, "lit=true", 3),
+            roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(-far, 639, far, "lit=true", 3)));
+        int[] packed = {(0x123 << 16) | 5};
+        MultiBlockChangeS2C m = roundTrip(MultiBlockChangeS2C.CODEC, new MultiBlockChangeS2C(far >> 4, -24, -(far >> 4), packed));
+        assertEquals(far >> 4, m.sectionX());
+        assertEquals(-24, m.sectionY());
+        assertEquals(-(far >> 4), m.sectionZ());
+        assertArrayEquals(packed, m.packed());
+        BlockMetaS2C meta = roundTrip(BlockMetaS2C.CODEC, new BlockMetaS2C(far >> 4, -24, 0, BlockMetaS2C.KIND_SNOW_LAYERS, packed));
+        assertEquals(far >> 4, meta.sectionX());
+        assertArrayEquals(packed, meta.packed());
     }
 
     @Test

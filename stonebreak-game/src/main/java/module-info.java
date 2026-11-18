@@ -98,16 +98,9 @@ module stonebreak.game {
     exports com.stonebreak.world.chunk to org.junit.platform.commons;
     opens com.stonebreak.world.save to org.junit.platform.commons;
     opens com.stonebreak.world.chunk to org.junit.platform.commons;
-    exports com.stonebreak.world.chunk.utils to org.junit.platform.commons;
-    opens com.stonebreak.world.chunk.utils to org.junit.platform.commons;
+    exports com.stonebreak.world.voxel to org.junit.platform.commons;
+    opens com.stonebreak.world.voxel to org.junit.platform.commons;
     exports com.stonebreak.network to org.junit.platform.commons;
     opens com.stonebreak.network to org.junit.platform.commons;
 
-    // Export and open remaining MMS packages (most moved to the Open Mason engine)
-    exports com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-    exports com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
-    exports com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
-    opens com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-    opens com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
-    opens com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
 }

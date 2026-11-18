@@ -6,7 +6,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterHeightUtil;
 import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import com.stonebreak.world.physics.WorldPhysics;
 import org.junit.jupiter.api.AfterEach;
@@ -35,15 +34,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 class NavCellsTest {
 
     private TestWorld world;
-    private Chunk chunk;
 
     @BeforeEach
     void setUp() {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        chunk = new Chunk(0, 0);
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                chunk.setBlock(x, 10, z, BlockType.STONE);
+                world.setBlockRaw(x, 10, z, BlockType.STONE);
             }
         }
     }
@@ -56,7 +53,7 @@ class NavCellsTest {
     // ---- the rule navigation used before #116 (WorldNavVolume + NavCellCache) --------------------
 
     private static int legacyFlags(World world, int x, int y, int z) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+        if (!WorldConfiguration.inBounds(y)) {
             return NavWorld.CELL_UNKNOWN;
         }
         BlockType block = world.getBlockAt(x, y, z);
@@ -88,9 +85,8 @@ class NavCellsTest {
             int x = 1 + (i % 14);
             int z = 1 + (i / 14) * 2;
             at[i] = new int[] {x, 11, z};
-            chunk.setBlock(x, 11, z, types[i]);
+            world.setBlockRaw(x, 11, z, types[i]);
         }
-        world.setChunk(0, 0, chunk);
         for (int i = 0; i < types.length; i++) {
             if (types[i] == BlockType.SNOW) {
                 world.getSnowLayerManager().setSnowLayers(at[i][0], 11, at[i][2], 3);
@@ -125,17 +121,17 @@ class NavCellsTest {
 
     @Test
     void unloadedAndOutOfColumnCellsAreUnknown() {
-        world.setChunk(0, 0, chunk);
         NavWorld nav = world.pathfinding().nav();
         assertEquals(NavWorld.CELL_SOLID, nav.cell(3, 10, 3));
-        assertEquals(NavWorld.CELL_UNKNOWN, nav.cell(3, -1, 3));
-        assertEquals(NavWorld.CELL_UNKNOWN, nav.cell(3, WorldConfiguration.WORLD_HEIGHT, 3));
-        assertEquals(NavWorld.CELL_UNKNOWN, nav.cell(100, 10, 100), "a chunk that is not loaded");
+        assertEquals(NavWorld.CELL_UNKNOWN, nav.cell(3, WorldConfiguration.MIN_Y - 1, 3));
+        assertEquals(NavWorld.CELL_UNKNOWN, nav.cell(3, WorldConfiguration.MAX_Y, 3));
+        // #447: a detached world's never-written space is KNOWN AIR (its surface sits on the floor), so
+        // a far cell reads as open; unknown cells only exist in streamed worlds (below a column's top).
+        assertEquals(0, nav.cell(100, 10, 100), "known air of a detached world");
     }
 
     @Test
     void editsReachNavigationThroughThePhysicsInvalidation() {
-        world.setChunk(0, 0, chunk);
         NavWorld nav = world.pathfinding().nav();
         assertEquals(0, nav.cell(5, 11, 5));
         world.setBlockAt(5, 11, 5, BlockType.STONE);

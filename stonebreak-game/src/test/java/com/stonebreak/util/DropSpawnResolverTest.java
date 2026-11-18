@@ -2,7 +2,7 @@ package com.stonebreak.util;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -31,8 +32,9 @@ class DropSpawnResolverTest {
 
     private static World worldWith(BlockLayout layout) {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv ->
-                layout.at(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv ->
+                layout.at((int) (long) inv.getArgument(0, Long.class), (int) (long) inv.getArgument(1, Long.class),
+                        (int) (long) inv.getArgument(2, Long.class)));
         return world;
     }
 
@@ -59,18 +61,18 @@ class DropSpawnResolverTest {
                 new Vector3i(BROKEN_X + 1, BROKEN_Y, BROKEN_Z));
         // Player far on the +X side: the +X neighbour (distance 11) beats the broken
         // cell itself (distance 12).
-        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(20f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X + 1.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
+        Vector3d resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(20f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X + 1.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
     }
 
     @Test
     void resolveSpawnKeepsBrokenCellWhenItIsNearest() {
         // All six neighbours solid; the broken cell itself is passable and nearest.
         World world = worldWithPassable(new Vector3i(BROKEN_X, BROKEN_Y, BROKEN_Z));
-        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
+        Vector3d resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
     }
 
     @Test
@@ -78,9 +80,9 @@ class DropSpawnResolverTest {
         World world = worldWith((x, y, z) ->
                 (x == BROKEN_X - 1 && y == BROKEN_Y && z == BROKEN_Z) ? BlockType.WATER : BlockType.DIRT);
         // Player on the -X side: the water neighbour is a valid spit-out cell.
-        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(-5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X - 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
+        Vector3d resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(-5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X - 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
     }
 
     @Test
@@ -97,8 +99,8 @@ class DropSpawnResolverTest {
                 new Vector3i(BROKEN_X, BROKEN_Y, BROKEN_Z),
                 new Vector3i(BROKEN_X + 1, BROKEN_Y, BROKEN_Z),
                 new Vector3i(BROKEN_X - 1, BROKEN_Y, BROKEN_Z));
-        Vector3f resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z, null);
-        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
+        Vector3d resolved = DropSpawnResolver.resolveSpawn(world, BROKEN_X, BROKEN_Y, BROKEN_Z, null);
+        assertEquals(new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), resolved);
     }
 
     @Test
@@ -109,9 +111,9 @@ class DropSpawnResolverTest {
         World world = worldWith((x, y, z) ->
                 (y == BROKEN_Y + 1 || y == BROKEN_Y - 1) && x == BROKEN_X && z == BROKEN_Z
                         ? BlockType.AIR : BlockType.DIRT);
-        Vector3f escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f), escape);
+        Vector3d escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f), escape);
     }
 
     @Test
@@ -129,9 +131,9 @@ class DropSpawnResolverTest {
             }
             return BlockType.DIRT;
         });
-        Vector3f escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f), escape);
+        Vector3d escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X + 0.5f, BROKEN_Y - 0.5f, BROKEN_Z + 0.5f), escape);
     }
 
     @Test
@@ -139,9 +141,9 @@ class DropSpawnResolverTest {
         // Fully enclosed except air above: the surfacing cell is the only option.
         World world = worldWith((x, y, z) ->
                 (y == BROKEN_Y + 1 && x == BROKEN_X && z == BROKEN_Z) ? BlockType.AIR : BlockType.DIRT);
-        Vector3f escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f), escape);
+        Vector3d escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X + 0.5f, BROKEN_Y + 1.5f, BROKEN_Z + 0.5f), escape);
     }
 
     @Test
@@ -149,9 +151,9 @@ class DropSpawnResolverTest {
         // Embedded cell with both X neighbours passable; player on the +X side.
         World world = worldWith((x, y, z) ->
                 (y == BROKEN_Y && (x == BROKEN_X + 1 || x == BROKEN_X - 1)) ? BlockType.AIR : BlockType.DIRT);
-        Vector3f escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
-                new Vector3f(30f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
-        assertEquals(new Vector3f(BROKEN_X + 1.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), escape);
+        Vector3d escape = DropSpawnResolver.resolveEscape(world, BROKEN_X, BROKEN_Y, BROKEN_Z,
+                new Vector3d(30f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f));
+        assertEquals(new Vector3d(BROKEN_X + 1.5f, BROKEN_Y + 0.5f, BROKEN_Z + 0.5f), escape);
     }
 
     @Test
@@ -205,7 +207,7 @@ class DropSpawnResolverTest {
             }
             return BlockType.AIR;
         });
-        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(0.125f);
+        when(world.getSnowHeight(anyLong(), anyLong(), anyLong())).thenReturn(0.125f);
         assertTrue(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y, BROKEN_Z), "a flower is passable");
         assertTrue(DropSpawnResolver.isPassable(world, BROKEN_X, BROKEN_Y + 1, BROKEN_Z),
             "a placed torch is passable");
@@ -221,7 +223,7 @@ class DropSpawnResolverTest {
     void isEmbeddedMatchesCollidablePartialHeightCells() {
         World world = worldWith((x, y, z) ->
                 (y == BROKEN_Y) ? BlockType.SNOW : BlockType.AIR);
-        when(world.getSnowHeight(anyInt(), anyInt(), anyInt())).thenReturn(0.125f);
+        when(world.getSnowHeight(anyLong(), anyLong(), anyLong())).thenReturn(0.125f);
         assertTrue(DropSpawnResolver.isEmbedded(world, BROKEN_X, BROKEN_Y, BROKEN_Z),
             "a snow cell collides at partial height and embeds the drop");
         assertFalse(DropSpawnResolver.isEmbedded(world, BROKEN_X, BROKEN_Y + 1, BROKEN_Z),

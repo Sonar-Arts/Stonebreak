@@ -4,8 +4,7 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
+import com.stonebreak.world.generation.TerrainGenerator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,7 +61,7 @@ class FastLodCaveOpeningTest {
         int[] heights = new int[level.heightCount()];
         Arrays.fill(heights, GROUND);
         int[] water = new int[level.cellCount()];
-        Arrays.fill(water, TerrainTile.NO_WATER);
+        Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.GRASS);
         return new FastLodChunkData(FastLodKey.of(level, 0, 0), heights, water, surface, null,
@@ -71,7 +70,7 @@ class FastLodCaveOpeningTest {
 
     private static int[] noOpenings(FastLodLevel level) {
         int[] f = new int[level.cellCount()];
-        Arrays.fill(f, DiffusionTerrainGenerator.NO_OPENING);
+        Arrays.fill(f, TerrainGenerator.NO_OPENING);
         return f;
     }
 
@@ -173,11 +172,12 @@ class FastLodCaveOpeningTest {
         assertTrue(hasVertexAtY(mesh, GROUND - 24),
                 "the pit bottoms out at MAX_NOTCH_DEPTH, not at the ravine floor");
 
-        // Node-border foundation walls legitimately run to y=0, so the assertion is that
+        // Node-border foundation walls legitimately run below the columns, so the assertion is that
         // nothing sits BETWEEN the clamp and the foundations.
         float[] pos = mesh.getVertexPositions();
+        float foundation = FastLodMesher.foundationBottom(GROUND);
         for (int i = 1; i < pos.length; i += 3) {
-            assertTrue(pos[i] <= 0f + EPS || pos[i] >= GROUND - 24 - EPS,
+            assertTrue(pos[i] <= foundation + EPS || pos[i] >= GROUND - 24 - EPS,
                     "vertex at y=" + pos[i] + " is below the depth clamp");
         }
     }
@@ -191,7 +191,7 @@ class FastLodCaveOpeningTest {
     void theFinestLevelEmitsNoNotches() {
         FastLodChunkData data = flat(FastLodLevel.L0, null, null);
         assertFalse(data.hasOpenings());
-        assertEquals(DiffusionTerrainGenerator.NO_OPENING, data.openingFloorAt(0, 0));
+        assertEquals(TerrainGenerator.NO_OPENING, data.openingFloorAt(0, 0));
         assertEquals(0, data.openingCoverageAt(0, 0));
         assertNotNull(mesher.build(data).mesh());
     }

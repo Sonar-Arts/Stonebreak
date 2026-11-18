@@ -22,6 +22,8 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.magic.AbilitySpell;
 import com.stonebreak.player.combat.magic.MagicSchool;
 import com.stonebreak.player.combat.magic.SpellCast;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
@@ -71,7 +73,7 @@ public class LeylineBreachAbility implements AbilitySpell {
         // Fail without consuming the cooldown when no ground is in range (Snare pattern)
         Vector3i blockHit = player.getRaycastEngine().raycast(LEYLINE_BREACH_MAX_RANGE);
         if (blockHit == null) return false;
-        Vector3f center = new Vector3f(blockHit.x + 0.5f, blockHit.y + 1f, blockHit.z + 0.5f);
+        Vector3d center = new Vector3d(blockHit.x + 0.5, blockHit.y + 1.0, blockHit.z + 0.5);
 
         int intelligence = player.getCharacterStats().getIntelligence();
         float duration = LEYLINE_BREACH_DURATION * (1f + ARCANIST_INT_DURATION_SCALING * intelligence);
@@ -124,7 +126,7 @@ public class LeylineBreachAbility implements AbilitySpell {
      * rather than in the zone: the spawned entity only enters the manager's list on the
      * next update tick.
      */
-    private void rootEnemiesInZone(Vector3f center, float radius) {
+    private void rootEnemiesInZone(Vector3dc center, float radius) {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
         for (LivingEntity entity : Player.combatTargets(entityManager)) {

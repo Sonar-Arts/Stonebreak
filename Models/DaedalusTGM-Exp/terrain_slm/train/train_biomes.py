@@ -35,7 +35,7 @@ def make_sample(reg: DetailRegion, r: int, c: int, scale: BlockScale, lut: torch
     spc = DT.SAMPLES_PER_CELL
     n = CROP // spc
     dem = reg.dem60[r * spc : (r + n) * spc, c * spc : (c + n) * spc]
-    elev = scale.to_metres(torch.floor(scale.to_blocks(dem)).clamp(0, scale.world_height - 1) + 0.5)
+    elev = scale.to_metres(torch.floor(scale.to_blocks(dem)).clamp(scale.min_y, scale.world_height - 1) + 0.5)
     cl = torch.stack([reg.cells.climate[k][r : r + n, c : c + n] for k in range(4)])[None]
     cl = F.interpolate(cl, size=(CROP, CROP), mode="bilinear", align_corners=False)[0]
     if aug is not None:

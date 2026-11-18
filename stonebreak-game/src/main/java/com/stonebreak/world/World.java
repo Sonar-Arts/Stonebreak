@@ -1,41 +1,119 @@
 package com.stonebreak.world;
 
-import java.util.List;
-import java.util.Set;
-import java.util.Collection;
-import java.util.function.Consumer;
-
-import com.stonebreak.world.chunk.utils.ChunkManager;
-import com.stonebreak.world.chunk.utils.ChunkPosition;
-import org.joml.Vector3f;
+import com.openmason.engine.voxel.world.CubePos;
+import com.openmason.engine.voxel.world.CubeStore;
+import com.openmason.engine.voxel.world.CubeStream;
+import com.openmason.engine.voxel.world.CubeWorld;
+import com.openmason.engine.voxel.world.StreamBudget;
+import com.openmason.engine.voxel.world.StreamCenter;
+import com.openmason.engine.voxel.world.StreamEvents;
+import com.openmason.engine.voxel.world.StreamMesh;
+import com.openmason.engine.voxel.world.StreamStats;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterSim;
 import com.stonebreak.blocks.waterSystem.WorldFlowWorld;
 import com.stonebreak.core.Game;
-import com.stonebreak.world.chunk.*;
-import com.stonebreak.world.chunk.api.commonChunkOperations.operations.CcoNeighborCoordinator;
-import com.stonebreak.world.chunk.api.mightyMesh.MmsAPI;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsCore.MmsMeshPipeline;
-import com.stonebreak.world.chunk.utils.ChunkErrorReporter;
-import com.stonebreak.world.chunk.utils.WorldChunkStore;
+import com.stonebreak.world.chunk.ChunkWaterLayer;
+import com.stonebreak.world.chunk.Cube;
+import com.stonebreak.world.fastlod.FastLodManager;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
+import com.stonebreak.world.generation.NativeTerrain;
 import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.TerrainGeneratorType;
-import com.stonebreak.world.generation.biomes.BiomeType;
-import com.stonebreak.world.fastlod.FastLodManager;
 import com.stonebreak.world.leaves.LeafDecaySystem;
 import com.stonebreak.world.leaves.WorldLeafWorld;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.voxel.BlockIds;
+import com.stonebreak.world.voxel.BlockStateRegistry;
+import com.stonebreak.world.voxel.CubeEvents;
+import com.stonebreak.world.voxel.CubeRenderAssets;
+import com.stonebreak.world.voxel.StonebreakBlockTable;
+import com.stonebreak.world.voxel.VoxelLayers;
+import org.joml.Vector3f;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Manages the game world and chunks using a modular architecture.
+ * A Stonebreak world over the Open Mason native cubic voxel runtime (Stonebreak #447, OpenMason #89 G5).
+ *
+ * <p><b>Storage.</b> Blocks and per-cell game layers (water, block-state ids, snow - {@link VoxelLayers}) live
+ * in one native {@link CubeWorld} ({@link #voxels()}): 32^3 cubes, 64-bit block coordinates, Y in
+ * [{@link WorldConfiguration#MIN_Y}, {@link WorldConfiguration#MAX_Y}). What exists is decided by one native
+ * {@link CubeStream} ({@link #stream()}): on the authoritative (server / singleplayer-host) world it generates
+ * with the game's native generator ({@link NativeTerrain}) and loads/saves through a {@link CubeStore} in the
+ * world directory; on a client render world it is REMOTE (cubes arrive from the server through
+ * {@code voxels().decode}). A DETACHED world (tests, tools) has neither stream nor store: cubes are created on
+ * demand by writes, and never-written space is known air (its surface callback answers the floor).
+ *
+ * <p><b>Threads.</b> Block reads are thread-safe. Writes, {@link #tickStream()} and every event callback
+ * belong to the OWNER thread (client: the main/GL thread; server: the tick thread).
+ *
+ * <p><b>Known air.</b> {@link #getBlockAt} answers AIR outside the bounds, in known air (a missing cube above
+ * its column's top) and for unknown (unloaded) cells; {@link #getBlockIdAt}/{@link #isLoaded}/{@link #isKnown}
+ * tell them apart.
+ *
+ * <p>The full Phase 3 API (what every 3B agent codes against) is listed in
+ * {@code Dev Working/docs/Cubic-Voxel-Runtime.md}, section "Phase 3 API".
  */
 public class World {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(World.class);
+
+    /** How a world is built. */
+    public enum Mode {
+        /** Authoritative: native generator stream (+ store when persisted). */
+        SERVER,
+        /** Client render view: REMOTE stream, cubes from the server. */
+        CLIENT,
+        /** No stream, no store: cubes are created by writes (tests, tools, the battle arena). */
+        DETACHED
+    }
+
+    /**
+     * Default per-tick stream budget. Installs are the owner-thread cost of a generating/loading (SERVER) stream:
+     * the native swap is ~8-15 us, the game's INSTALLED handling (blob decode, physics, sims, registries,
+     * listeners) adds to it; {@value #DEFAULT_MAX_INSTALLS} keeps the server tick's stream step around a
+     * millisecond during a cold load (measured: see {@code WorldStreamBudgetTest}). A REMOTE (client) stream's
+     * installs are the network decodes, budgeted per frame by the network layer instead; meshes / mesh bytes bound
+     * the client's per-frame GPU uploads.
+     */
+    public static final int DEFAULT_MAX_INSTALLS = 48;
+    public static final StreamBudget DEFAULT_BUDGET = new StreamBudget(DEFAULT_MAX_INSTALLS, 96, 16L << 20, 64);
+    /** Surface band kept loaded around each column's top (blocks below / above). */
+    public static final int BAND_BELOW = 16;
+    public static final int BAND_ABOVE = 8;
+    /** File of the block-state table next to the cube store. */
+    public static final String BLOCK_STATES_FILE = "block_states.txt";
+
     // Configuration and core systems
     private final WorldConfiguration config;
-    private final TerrainGenerator terrainSystem;
+    private final Mode mode;
+    private final long seed;
     private final TerrainGeneratorType generatorType;
-    private final ChunkManager chunkManager;
+    private final TerrainScalePreset terrainScale;
+    private final BlockStateRegistry blockStates = new BlockStateRegistry();
+    private final CubeWorld voxels;
+    private final CubeStream stream;
+    private final CubeStore store;
+    private final Path storeDir;
+    private volatile NativeTerrain terrain;
+    private final Object terrainLock = new Object();
+    private volatile StreamBudget budget = DEFAULT_BUDGET;
+
+    private final Map<CubePos, Cube> cubes = new ConcurrentHashMap<>();
+    private final Set<CubePos> readyColumns = ConcurrentHashMap.newKeySet();
+
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
     // Per-world crafting-table grids (issue #307), same two-world split as the furnaces.
@@ -44,166 +122,196 @@ public class World {
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
             new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
 
+    private final WaterSim waterSim;
+    private final LeafDecaySystem leafDecay;
+    private final com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth;
+    private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
+    private final FastLodLifecycle fastLod;
+
+    // Event listeners (Phase 3 API).
+    private volatile java.util.function.Consumer<CubePos> localCubeListener;
+    private final List<CubeEvents.InstallListener> installListeners = new CopyOnWriteArrayList<>();
+    private final List<CubeEvents.UnloadPendingHook> unloadPendingHooks = new CopyOnWriteArrayList<>();
+    private final List<CubeEvents.SaveHook> saveHooks = new CopyOnWriteArrayList<>();
+    /** Serializes {@link #commitCubes()} (block-state file + store commit) between save threads. */
+    private final Object commitLock = new Object();
+    /** Block-state table size last written (the table only grows), -1 = never written. */
+    private int savedStateCount = -1;
+    private final List<CubeEvents.UnloadListener> unloadListeners = new CopyOnWriteArrayList<>();
+    private final List<CubeEvents.MeshConsumer> meshConsumers = new CopyOnWriteArrayList<>();
+    private final List<CubeEvents.ChangeListener> changeListeners = new CopyOnWriteArrayList<>();
+    private final List<CubeEvents.ColumnReadinessListener> readinessListeners = new CopyOnWriteArrayList<>();
+
     /**
-     * Mob path searching for this world. Created on first use — a world that never holds a mob
-     * (thumbnail renders, tests) never starts the threads — and closed in {@link #cleanup()}.
+     * Mob path searching for this world. Created on first use and closed in {@link #cleanup()}.
      */
     private volatile com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfinding;
     private final Object pathfindingLock = new Object();
     /** Set once {@link #cleanup()} has run, so a late caller cannot resurrect a torn-down world's service. */
     private volatile boolean cleanedUp;
 
-
     // World spawn position
     private Vector3f spawnPosition = new Vector3f(0, 100, 0);
-    
-    // Modular components
-    private final WorldChunkStore chunkStore;
-    private final CcoNeighborCoordinator neighborCoordinator;
-    private final MmsMeshPipeline meshPipeline;
-    private final ChunkErrorReporter errorReporter;
-    private final WaterSim waterSim;
-    private final LeafDecaySystem leafDecay;
-    private final com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth;
-    private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
-    private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
-    // Extracted collaborators (see their class docs): mesh scheduling, FastLOD lifecycle,
-    // network chunk install and per-tick update sequencing.
-    private final ChunkMeshScheduler meshScheduler;
-    private final FastLodLifecycle fastLod;
-    private final NetworkChunkInstaller networkChunkInstaller;
-    private final WorldUpdateOrchestrator updates;
-
-    // Per-world persistence. Null = this world is not persisted (e.g. a client render
-    // world, whose state is authoritative on the server). Set by SaveService.initialize().
-    // Replaces WorldChunkStore's old dependency on the Game-singleton SaveService.
+    // Per-world persistence (world/player JSON, autosave; 3B-S). Null = not persisted.
     private volatile com.stonebreak.world.save.SaveService saveService;
 
-    // Render-only client view: fully rendered (mesh pipeline present), but generates no terrain
-    // and runs no authoritative sim (water/furnace/features/spawn/time). All block + chunk +
-    // entity state arrives from the server. Set only via createClientView(); the
-    // authoritative/singleplayer world is never render-only. Drives GameLoop's update branch.
-    private volatile boolean renderOnly = false;
-
-    // Torch support sweep re-entry guard (issue #247): popping an unsupported torch removes
-    // it through setBlockAt, which re-enters this funnel for the torch's own cell. The
-    // re-entry sweep always terminates empty (no torch's support is ever a torch — placement
-    // rejects non-solid supports), but the guard skips the redundant scan. World mutations
-    // are confined to the server tick thread / main loop, so plain visibility suffices.
+    // Torch support sweep re-entry guard (issue #247).
     private volatile boolean sweepingTorches = false;
 
-    // Per-world entity spawner used for initial mob spawning during chunk generation. The
-    // headless server world sets this to ITS OWN spawner so generated mobs land in the server's
-    // EntityManager (not the client's, which the Game singleton would resolve to). Null = fall
-    // back to the Game singleton's spawner (the co-located / single-world behavior).
     private volatile com.stonebreak.mobs.entities.EntitySpawner entitySpawner;
-
-    // Per-world entity manager, used when loading saved chunk entities (Chunk.loadFromSnapshot).
-    // The headless server world sets its own so restored mobs go to the server (not the Game
-    // singleton's manager, which during server boot is the previous session's terminated one).
     private volatile com.stonebreak.mobs.entities.EntityManager entityManager;
-
-    // Who this world's mobs can see. The integrated server installs a locator over its connected
-    // roster on the HEADLESS world; render worlds keep NONE (their mobs are shadows whose AI never
-    // ticks), so no mob ever resolves the client's player from the server tick thread.
     private volatile com.stonebreak.mobs.entities.ai.behavior.PlayerLocator playerLocator =
         com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE;
 
-    /**
-     * Authoritative simulation mutations reported for replication. Populated by the integrated
-     * server on the HEADLESS world only; every sink stays null on client render worlds.
-     */
+    /** Authoritative simulation mutations reported for replication (headless server world only). */
     private final ServerMutationSinks serverSinks = new ServerMutationSinks();
 
-    /** The replication sinks for this world. See {@link ServerMutationSinks}. */
+    // Client stream center bookkeeping (only re-plan when the viewer moved a block or the radii changed).
+    private StreamCenter lastClientCenter;
+    private volatile List<StreamCenter> streamCenters = List.of();
+
     public ServerMutationSinks serverSinks() {
         return serverSinks;
     }
 
+    // ===== construction ==========================================================================================
+
+    /** A detached world (no stream): tests and tools. */
     public World() {
         this(new WorldConfiguration());
     }
 
+    /** A detached world (no stream): tests and tools. */
     public World(WorldConfiguration config) {
         this(config, System.currentTimeMillis());
     }
 
+    /** A detached world (no stream): tests and tools. */
     public World(WorldConfiguration config, long seed) {
-        this(config, seed, false);
+        this(config, seed, true);
     }
 
     /**
-     * Create a headless world (no MmsAPI / mesh pipeline / OpenGL) for an authoritative
-     * server. Block data, generation, water, and feature population work; rendering does not.
-     * The server drives chunk loading via {@code getChunkAt} (no {@code chunkManager}).
-     */
-    public static World createHeadless(WorldConfiguration config, long seed,
-                                       TerrainGeneratorType generatorType) {
-        return new World(config, seed, true, generatorType);
-    }
-
-    /**
-     * Create a client render-view world: a fully rendered {@code World} (mesh pipeline, GL,
-     * chunk manager) that generates <b>no</b> terrain and runs <b>no</b> authoritative
-     * simulation. Every chunk arrives from the server via {@link #installNetworkChunk}; blocks,
-     * entities, water, furnaces, and time are all server-authoritative. {@code GameLoop} routes
-     * such a world through {@link #updateClient} instead of {@link #update}, and it carries no
-     * {@code SaveService} (never persists locally). The seed is still used to construct the
-     * terrain system (cheap, deterministic) but it is never invoked because generation is off.
-     */
-    public static World createClientView(WorldConfiguration config, long seed,
-                                         TerrainGeneratorType generatorType) {
-        World w = new World(config, seed, false, generatorType); // full rendering pipeline, no testMode
-        w.renderOnly = true;
-        w.chunkStore.setTerrainGenerationEnabled(false);
-        return w;
-    }
-
-    /**
-     * Protected constructor for testing that bypasses MmsAPI initialization.
-     * WARNING: Only use this for unit tests that don't require rendering!
-     * This constructor is protected to allow test subclasses in test packages.
-     *
-     * @param config World configuration
-     * @param seed World generation seed
-     * @param testMode If true, skips MmsAPI/rendering initialization (for tests only)
+     * Test constructor kept for subclasses (TestWorld, BattleTestWorld): always DETACHED now (the flag
+     * used to choose a GL-backed world).
      */
     protected World(WorldConfiguration config, long seed, boolean testMode) {
         this(config, seed, testMode, TerrainGeneratorType.STANDARD);
     }
 
-    /**
-     * As above, with the terrain generator chosen explicitly. Building a
-     * {@link TerrainGeneratorType#DIFFUSION} generator starts the terrain-diffusion services
-     * and pins them to this seed, so only a world that really generates diffusion terrain
-     * may ask for one.
-     */
-    protected World(WorldConfiguration config, long seed, boolean testMode,
-                    TerrainGeneratorType generatorType) {
-        this.config = config;
+    protected World(WorldConfiguration config, long seed, boolean testMode, TerrainGeneratorType generatorType) {
+        this(Mode.DETACHED, config, seed, generatorType, TerrainScalePreset.ONE_TO_FOUR, null, false);
+    }
 
-        // In production runs, align the world config with the latest persisted
-        // user settings before any subsystem reads from it. Tests construct
-        // their own configs and skip the singleton.
-        if (!testMode) {
+    /**
+     * The authoritative world (server tick thread / singleplayer host) without persistence: generated cubes
+     * that unload are regenerated (the menu showcase, tests).
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType) {
+        return createHeadless(config, seed, generatorType, TerrainScalePreset.ONE_TO_FOUR, null);
+    }
+
+    /**
+     * The authoritative world. {@code worldDir} = the world's save directory (its cube store opens in
+     * {@code <worldDir>/cubes}, holding cube + column records and the block-state table), or null for an
+     * unsaved world.
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, Path worldDir) {
+        return createHeadless(config, seed, generatorType, scale, worldDir, false);
+    }
+
+    /**
+     * {@link #createHeadless(WorldConfiguration, long, TerrainGeneratorType, TerrainScalePreset, Path)} choosing
+     * whether its stream builds GPU meshes. The server / integrated world never does ({@code CubeStream.NO_MESH}:
+     * no mesh jobs, no REMESHED events; COLUMN_READY = band installed and complete); {@code buildMeshes} is for
+     * headless benches that measure meshes of generated terrain (chunk lab).
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, Path worldDir, boolean buildMeshes) {
+        return new World(Mode.SERVER, config, seed, generatorType, scale, worldDir, buildMeshes);
+    }
+
+    /**
+     * A client render-view world: REMOTE stream (cubes arrive from the server, 3B-N), no simulation, no
+     * persistence. Its {@link #terrain()} (native generator, same seed) only serves FastLOD and queries.
+     */
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType) {
+        return createClientView(config, seed, generatorType, TerrainScalePreset.ONE_TO_FOUR);
+    }
+
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                         TerrainScalePreset scale) {
+        return new World(Mode.CLIENT, config, seed, generatorType, scale, null, true);
+    }
+
+    /** A detached world (no stream, no store; cubes created by writes) for tests and tools. */
+    public static World createDetached(WorldConfiguration config, long seed) {
+        return new World(Mode.DETACHED, config, seed, TerrainGeneratorType.STANDARD, TerrainScalePreset.ONE_TO_FOUR, null,
+            false);
+    }
+
+    private World(Mode mode, WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                  TerrainScalePreset scale, Path worldDir, boolean buildMeshes) {
+        this.mode = mode;
+        this.config = config;
+        this.seed = seed;
+        this.generatorType = generatorType == null ? TerrainGeneratorType.STANDARD : generatorType;
+        this.terrainScale = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+
+        if (mode != Mode.DETACHED) {
+            applyUserSettings(config);
+        }
+
+        this.storeDir = worldDir != null ? worldDir.resolve("cubes") : null;
+        if (storeDir != null) {
             try {
-                com.stonebreak.config.Settings s = com.stonebreak.config.Settings.getInstance();
-                config.setRenderDistance(s.getRenderDistance());
-                config.setLodRange(s.getLodDistance());
-                config.setLodEnabled(s.getLodEnabled());
-                config.setLodQuality(com.stonebreak.world.fastlod.FastLodQuality.parse(s.getLodQuality()));
-            } catch (Exception ignored) {
-                // Settings singleton unavailable (e.g. very early bootstrap) — use config defaults.
+                blockStates.load(storeDir.resolve(BLOCK_STATES_FILE));
+            } catch (IOException | RuntimeException e) {
+                LOGGER.error("Block-state table of {} unreadable; starting fresh", storeDir, e);
             }
         }
 
-        this.generatorType = generatorType;
-        this.terrainSystem = generatorType.create(seed);
-        this.snowLayerManager = new SnowLayerManager();
-        // Per-world furnace registry (see getFurnaceRegistry). The smelting manager comes
-        // from the Game singleton when available; in bare unit tests it is null and the
-        // registry's tick loop no-ops.
+        CubeWorld v;
+        CubeStream s = null;
+        CubeStore st = null;
+        NativeTerrain t = null;
+        long minY = WorldConfiguration.MIN_Y;
+        long maxY = WorldConfiguration.MAX_Y;
+        int air = BlockType.AIR.getId();
+        int meshFlags = buildMeshes ? CubeStream.MESH_SMOOTH_LIGHTING | CubeStream.MESH_GREEDY : CubeStream.NO_MESH;
+        switch (mode) {
+            case SERVER -> {
+                t = NativeTerrain.create(seed, this.generatorType, this.terrainScale, blockStates);
+                v = CubeWorld.createForGenerator(minY, maxY, air, t.cvGenerator());
+                StonebreakBlockTable.apply(v);
+                st = storeDir != null ? CubeStore.open(storeDir) : null;
+                s = CubeStream.create(v, st, t.cvGenerator(), config.getChunkBuildThreads(), meshFlags);
+            }
+            case CLIENT -> {
+                v = CubeWorld.create(minY, maxY, air, null);
+                StonebreakBlockTable.apply(v);
+                s = CubeStream.createRemote(v, Math.max(1, config.getChunkBuildThreads()), meshFlags);
+                CubeRenderAssets.attach(v, blockStates);
+            }
+            default -> {
+                // No generator: never-generated space is empty, so its surface and top sit on the floor and
+                // every missing cube above it is KNOWN AIR (a detached world reads as an empty world).
+                v = CubeWorld.create(minY, maxY, air, (cx, cz, sky, top) -> {
+                    java.util.Arrays.fill(sky, minY);
+                    java.util.Arrays.fill(top, minY);
+                    return true;
+                });
+                StonebreakBlockTable.apply(v);
+            }
+        }
+        this.voxels = v;
+        this.stream = s;
+        this.store = st;
+        this.terrain = t;
+
+        this.snowLayerManager = new SnowLayerManager(this);
         com.stonebreak.crafting.SmeltingManager smelting = null;
         try {
             Game g = Game.getInstance();
@@ -214,273 +322,560 @@ public class World {
             // very early bootstrap / tests
         }
         this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(smelting);
-        // Gameplay snow mutations (not putRaw hydration): mark the chunk save-dirty so the
-        // layer counts persist (v3 save format), and forward to the server snow replication
-        // sink when installed (headless server world only).
         this.snowLayerManager.setMutationListener((x, y, z, layers) -> {
             invalidatePhysicsCell(x, y, z);
-            var chunk = getChunkIfLoaded(Math.floorDiv(x, com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE),
-                                         Math.floorDiv(z, com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE));
-            if (chunk != null) {
-                chunk.markDirty();
+            Cube cube = getCubeAt(x, y, z);
+            if (cube != null) {
+                cube.markPayloadDirty();
             }
             ServerMutationSinks.SnowSink sink = serverSinks.snow();
-            if (sink != null) {
-                sink.onServerSnowChange(x, y, z, layers);
+            if (sink != null && fitsInt(x, y, z)) {
+                sink.onServerSnowChange(i(x), i(y), i(z), layers);
             }
         });
 
-        // Initialize modular components
-        this.errorReporter = new ChunkErrorReporter();
-
-        if (testMode) {
-            // Test mode: Skip MmsAPI and rendering-related initialization
-            this.meshPipeline = null;
-            System.out.println("[TEST MODE] Creating World without MmsAPI/rendering systems");
-        } else {
-            // Normal mode: Create MMS mesh pipeline using MmsAPI
-            // MmsAPI is initialized in Game.initCoreComponents() before any World is created
-            if (!MmsAPI.isInitialized()) {
-                throw new IllegalStateException("MmsAPI must be initialized before creating World");
-            }
-            this.meshPipeline = MmsAPI.getInstance().createMeshPipeline(this, config, errorReporter);
-        }
-
-        // Create FeatureQueue for multi-chunk features
-        this.featureQueue = new com.stonebreak.world.generation.features.FeatureQueue();
-
-        // Always create chunk store - tests may need chunk loading functionality
-        // In test mode, meshPipeline is null but WorldChunkStore handles this gracefully
-        this.chunkStore = new WorldChunkStore(terrainSystem, config, meshPipeline, this, featureQueue);
-
-        if (testMode) {
-            // Test mode: Minimal initialization for save/load testing
-            this.neighborCoordinator = null;
-            this.waterSim = new WaterSim(new WorldFlowWorld(this));
-            this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
-            this.saplingGrowth = newSaplingGrowth();
-            this.chunkManager = null;
-            System.out.println("[TEST MODE] World created with seed: " + terrainSystem.getSeed() + " (rendering disabled)");
-        } else {
-            // Normal mode: Full initialization
-            // Create CCO neighbor coordinator with WorldChunkStore as ChunkProvider
-            this.neighborCoordinator = new CcoNeighborCoordinator(new CcoNeighborCoordinator.ChunkProvider() {
-                @Override
-                public Chunk getChunk(int chunkX, int chunkZ) {
-                    return chunkStore.getChunk(chunkX, chunkZ);
-                }
-
-                @Override
-                public void ensureChunkExists(int chunkX, int chunkZ) {
-                    chunkStore.ensureChunkExists(chunkX, chunkZ);
-                }
-            }, config);
-
-            this.waterSim = new WaterSim(new WorldFlowWorld(this));
-            this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
-            this.saplingGrowth = newSaplingGrowth();
-            this.chunkManager = new ChunkManager(this, config.getRenderDistance());
-
-            System.out.println("Creating world with seed: " + terrainSystem.getSeed() + ", using " + config.getChunkBuildThreads() + " mesh builder threads.");
-        }
-
-        this.meshScheduler = new ChunkMeshScheduler(meshPipeline, neighborCoordinator, chunkStore);
+        this.waterSim = new WaterSim(new WorldFlowWorld(this));
+        this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
+        this.saplingGrowth = new com.stonebreak.world.growth.SaplingGrowthSystem(
+            new com.stonebreak.world.growth.WorldSaplingWorld(this), new java.util.Random());
         this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
-        this.fastLod = new FastLodLifecycle(config, terrainSystem);
-        this.networkChunkInstaller = new NetworkChunkInstaller(
-                chunkStore, snowLayerManager, furnaceRegistry, workbenchRegistry, animatedBlockRegistry, meshScheduler);
-        this.updates = new WorldUpdateOrchestrator(
-                this, waterSim, leafDecay, saplingGrowth, cactusContact, furnaceRegistry, chunkStore, chunkManager, meshScheduler, fastLod);
-
-        // Chunk listeners (wired for BOTH the headless server world and rendered worlds).
-        // Water simulation load runs only on authoritative worlds (a render-only client
-        // receives water via streamed chunks/block changes). The furnace registry is now
-        // PER-WORLD, so its chunk hooks run everywhere — on a client they hydrate the
-        // display registry from streamed chunk block-states. Mesh-seam rebuilds run only
-        // where there's a mesh pipeline.
-        this.chunkStore.setChunkListeners(chunk -> {
-            if (!renderOnly) {
-                waterSim.onChunkLoaded(chunk);
-                // Leaf-decay rescan resumes collapses interrupted by eviction or
-                // quit. Only for chunks that already have their features: a
-                // freshly generated chunk has no trees yet at listener time
-                // (they populate later), so scanning it would find nothing.
-                if (chunk.areFeaturesPopulated()) {
-                    leafDecay.onChunkLoaded(chunk.getChunkX(), chunk.getChunkZ());
-                }
-                saplingGrowth.onChunkLoaded(chunk);
-            }
-            if (furnaceRegistry != null) {
-                furnaceRegistry.onChunkLoaded(chunk);
-            }
-            workbenchRegistry.onChunkLoaded(chunk);
-            animatedBlockRegistry.onChunkLoaded(chunk);
-            invalidatePhysicsChunk(chunk.getX(), chunk.getZ());
-            meshScheduler.onChunkLoaded(chunk.getX(), chunk.getZ());
-        }, chunk -> {
-            if (furnaceRegistry != null) {
-                furnaceRegistry.onChunkUnloaded(chunk);
-            }
-            workbenchRegistry.onChunkUnloaded(chunk);
-            animatedBlockRegistry.onChunkUnloaded(chunk);
-            // Water state is chunk-owned (ChunkWaterLayer) and leaves with the chunk;
-            // the sim just drops its pending queue entries. Snow layers remain a
-            // world-global map and must still purge everywhere (render-only clients
-            // included) or they grow unbounded as streamed chunks come and go.
-            waterSim.onChunkUnloaded(chunk);
-            leafDecay.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
-            saplingGrowth.onChunkUnloaded(chunk);
-            snowLayerManager.onChunkUnloaded(chunk.getChunkX(), chunk.getChunkZ());
-            invalidatePhysicsChunk(chunk.getX(), chunk.getZ());
-        });
+        this.fastLod = new FastLodLifecycle(config, this::terrain);
+        LOGGER.info("World created: mode={} seed={} generator={} scale={} store={}", mode, seed,
+            this.generatorType, this.terrainScale, storeDir);
     }
-    
-    
-    
-    public void update(com.stonebreak.rendering.Renderer renderer) {
-        updates.update();
+
+    private static void applyUserSettings(WorldConfiguration config) {
+        try {
+            com.stonebreak.config.Settings s = com.stonebreak.config.Settings.getInstance();
+            config.setRenderDistance(s.getRenderDistance());
+            config.setVerticalRenderDistance(s.getVerticalRenderDistance());
+            config.setLodRange(s.getLodDistance());
+            config.setLodEnabled(s.getLodEnabled());
+            config.setLodQuality(com.stonebreak.world.fastlod.FastLodQuality.parse(s.getLodQuality()));
+        } catch (Exception ignored) {
+            // Settings singleton unavailable (e.g. very early bootstrap) - config defaults.
+        }
+    }
+
+    static int i(long v) {
+        return Math.toIntExact(v);
     }
 
     /**
-     * Authoritative simulation step, independent of rendering. Runs the parts of
-     * {@link #update} that mutate world state — water flow, furnace smelting, deferred
-     * feature population — but none of the mesh/GL work. Used by the headless server world
-     * ({@code ServerLevel.tick}), where {@code meshPipeline == null} and {@link #update}
-     * is a no-op. Safe to call with no render infrastructure.
+     * True when a block position fits the int-coordinate subsystems that are not ported to 64-bit yet
+     * (animated blocks, torch support, replication sinks, MultiplayerSession - 3B/Phase 4). Edits beyond
+     * +-2^31 skip their notifications instead of throwing.
+     */
+    static boolean fitsInt(long x, long y, long z) {
+        return x == (int) x && y == (int) y && z == (int) z;
+    }
+
+    // ===== accessors =============================================================================================
+
+    public Mode mode() {
+        return mode;
+    }
+
+    /** The native voxel world (blocks, layers, blobs, surface tracker, encode/decode). */
+    public CubeWorld voxels() {
+        return voxels;
+    }
+
+    /** The native stream, or null for a detached world. */
+    public CubeStream stream() {
+        return stream;
+    }
+
+    /** The cube store, or null when the world is not persisted. */
+    public CubeStore cubeStore() {
+        return store;
+    }
+
+    /** Directory of the cube store (and the block-state table), or null. */
+    public Path cubeStoreDir() {
+        return storeDir;
+    }
+
+    /** This world's block-state names &lt;-&gt; STATE layer ids. */
+    public BlockStateRegistry blockStates() {
+        return blockStates;
+    }
+
+    public TerrainScalePreset getTerrainScale() {
+        return terrainScale;
+    }
+
+    public void setStreamBudget(StreamBudget budget) {
+        this.budget = budget == null ? DEFAULT_BUDGET : budget;
+    }
+
+    /**
+     * True when this is a client render-view world ({@link #createClientView}): generates no terrain, runs no
+     * authoritative sim.
+     */
+    public boolean isRenderOnly() {
+        return mode == Mode.CLIENT;
+    }
+
+    /** True for the authoritative world (server mode or a detached test world): sims run here. */
+    public boolean isAuthoritative() {
+        return mode != Mode.CLIENT;
+    }
+
+    // ===== Phase 3 events ========================================================================================
+
+    public void addInstallListener(CubeEvents.InstallListener l) { installListeners.add(l); }
+    public void removeInstallListener(CubeEvents.InstallListener l) { installListeners.remove(l); }
+    public void addUnloadPendingHook(CubeEvents.UnloadPendingHook h) { unloadPendingHooks.add(h); }
+    public void removeUnloadPendingHook(CubeEvents.UnloadPendingHook h) { unloadPendingHooks.remove(h); }
+    public void addSaveHook(CubeEvents.SaveHook h) { saveHooks.add(h); }
+    public void removeSaveHook(CubeEvents.SaveHook h) { saveHooks.remove(h); }
+    public void addUnloadListener(CubeEvents.UnloadListener l) { unloadListeners.add(l); }
+    public void removeUnloadListener(CubeEvents.UnloadListener l) { unloadListeners.remove(l); }
+    public void addMeshConsumer(CubeEvents.MeshConsumer c) { meshConsumers.add(c); }
+    public void removeMeshConsumer(CubeEvents.MeshConsumer c) { meshConsumers.remove(c); }
+    public void addChangeListener(CubeEvents.ChangeListener l) { changeListeners.add(l); }
+    public void removeChangeListener(CubeEvents.ChangeListener l) { changeListeners.remove(l); }
+    public void addColumnReadinessListener(CubeEvents.ColumnReadinessListener l) { readinessListeners.add(l); }
+    public void removeColumnReadinessListener(CubeEvents.ColumnReadinessListener l) { readinessListeners.remove(l); }
+
+    // ===== streaming ============================================================================================
+
+    /**
+     * Replaces the stream's viewers (any thread). Server: one per player (3B-N wires ServerLevel); client: the
+     * world sets its own from the local player in {@link #updateMainThread()}.
+     */
+    public void setStreamCenters(List<StreamCenter> centers) {
+        if (stream != null && !cleanedUp) {
+            streamCenters = List.copyOf(centers);
+            stream.setCenters(centers);
+        }
+    }
+
+    /** The stream's current viewers (as last set; empty before the first {@link #setStreamCenters}). */
+    public List<StreamCenter> streamCenters() {
+        return streamCenters;
+    }
+
+    /** A viewer at a block position with this world's radii (render distance, vertical render distance). */
+    public StreamCenter centerAt(long x, long y, long z) {
+        return new StreamCenter(x, y, z, config.getHorizontalRenderRadiusBlocks(),
+            config.getVerticalRenderDistance(), BAND_BELOW, BAND_ABOVE);
+    }
+
+    /**
+     * OWNER THREAD. One stream tick within {@link #setStreamBudget the budget}: installs finished cubes, unloads,
+     * hands out meshes, and dispatches every event (see {@link CubeEvents}). No-op for a detached world.
+     */
+    public void tickStream() {
+        CubeStream s = stream;
+        if (s == null || cleanedUp) {
+            return;
+        }
+        StreamEvents events = s.tick(budget);
+        int n = events.count();
+        for (int k = 0; k < n; k++) {
+            int type = events.type(k);
+            long cx = events.cx(k), cy = events.cy(k), cz = events.cz(k);
+            try {
+                switch (type) {
+                    case CubeStream.EV_INSTALLED -> onInstalled(new CubePos(cx, cy, cz));
+                    case CubeStream.EV_UNLOAD_PENDING -> onUnloadPending(new CubePos(cx, cy, cz));
+                    case CubeStream.EV_UNLOADED -> onUnloaded(new CubePos(cx, cy, cz));
+                    case CubeStream.EV_REMESHED -> onRemeshed(s, events.mesh(k));
+                    case CubeStream.EV_CHANGED -> onChanged(new CubePos(cx, cy, cz));
+                    case CubeStream.EV_COLUMN_READY -> {
+                        readyColumns.add(new CubePos(cx, 0, cz));
+                        for (CubeEvents.ColumnReadinessListener l : readinessListeners) l.onColumnReady(this, cx, cz);
+                    }
+                    case CubeStream.EV_COLUMN_UNREADY -> {
+                        readyColumns.remove(new CubePos(cx, 0, cz));
+                        for (CubeEvents.ColumnReadinessListener l : readinessListeners) l.onColumnUnready(this, cx, cz);
+                    }
+                    default -> { }
+                }
+            } catch (RuntimeException e) {
+                LOGGER.error("Stream event {} at ({}, {}, {}) failed", type, cx, cy, cz, e);
+            }
+        }
+    }
+
+    private void onInstalled(CubePos pos) {
+        Cube cube = cubes.computeIfAbsent(pos, p -> new Cube(this, p));
+        byte[] blob = voxels.getBlob(pos.x(), pos.y(), pos.z());
+        cube.decodeBlob(blob);
+        invalidatePhysicsCube(pos.x(), pos.y(), pos.z());
+        fireInstalled(cube);
+    }
+
+    /** Runs the built-in and registered install listeners for a cube (detached worlds: call after writing). */
+    public void fireInstalled(Cube cube) {
+        if (isAuthoritative()) {
+            waterSim.onCubeInstalled(cube);
+            leafDecay.onCubeInstalled(cube);
+            saplingGrowth.onCubeInstalled(cube);
+        }
+        furnaceRegistry.onCubeInstalled(cube);
+        workbenchRegistry.onCubeInstalled(cube);
+        animatedBlockRegistry.onCubeInstalled(cube);
+        for (CubeEvents.InstallListener l : installListeners) {
+            l.onCubeInstalled(this, cube);
+        }
+    }
+
+    private void onUnloadPending(CubePos pos) {
+        Cube cube = cubes.get(pos);
+        if (cube == null) {
+            return;
+        }
+        furnaceRegistry.onCubeUnloadPending(cube);
+        workbenchRegistry.onCubeUnloadPending(cube);
+        runSaveHooks(cube);
+        for (CubeEvents.UnloadPendingHook h : unloadPendingHooks) {
+            h.onCubeUnloadPending(this, cube);
+        }
+        writeBlob(cube);
+    }
+
+    private void writeBlob(Cube cube) {
+        if (!isAuthoritative() || !cube.isPayloadDirty()) {
+            return;
+        }
+        voxels.setBlob(cube.cx(), cube.cy(), cube.cz(), cube.encodeBlob());
+    }
+
+    private void onUnloaded(CubePos pos) {
+        Cube cube = cubes.remove(pos);
+        invalidatePhysicsCube(pos.x(), pos.y(), pos.z());
+        if (cube == null) {
+            return;
+        }
+        if (isAuthoritative()) {
+            waterSim.onCubeUnloaded(cube);
+            leafDecay.onCubeUnloaded(cube);
+            saplingGrowth.onCubeUnloaded(cube);
+        }
+        furnaceRegistry.onCubeUnloaded(cube);
+        workbenchRegistry.onCubeUnloaded(cube);
+        animatedBlockRegistry.onCubeUnloaded(cube);
+        for (CubeEvents.UnloadListener l : unloadListeners) {
+            l.onCubeUnloaded(this, cube);
+        }
+    }
+
+    /**
+     * CV_EV_CHANGED: the cube's content moved after its INSTALLED event (a population finished writing into it,
+     * edits, a network decode over it) - in meshing and NO_MESH streams alike, at most once per cube per tick.
+     * The physics cache may hold the old cells; then the registered {@link CubeEvents.ChangeListener}s run.
+     */
+    private void onChanged(CubePos pos) {
+        invalidatePhysicsCube(pos.x(), pos.y(), pos.z());
+        if (changeListeners.isEmpty()) {
+            return;
+        }
+        Cube cube = cubes.get(pos);
+        if (cube == null) {
+            return;
+        }
+        for (CubeEvents.ChangeListener l : changeListeners) {
+            l.onCubeChanged(this, cube);
+        }
+    }
+
+    private void onRemeshed(CubeStream s, int slot) {
+        // Display only: content changes (physics invalidation, network re-sends) ride CV_EV_CHANGED.
+        if (meshConsumers.isEmpty() || slot < 0) {
+            return;
+        }
+        StreamMesh mesh = s.mesh(slot);
+        for (CubeEvents.MeshConsumer c : meshConsumers) {
+            c.onCubeMesh(this, mesh);
+        }
+    }
+
+    /**
+     * OWNER THREAD. Saves everything now: {@link #flushCubeBlobs()} then {@link #commitCubes()} (blocking I/O).
+     * No-op without a store. Savers that must not block the owner thread split the two (3B-S SaveService).
+     */
+    public void saveAll() {
+        if (stream == null || store == null || cleanedUp) {
+            return;
+        }
+        flushCubeBlobs();
+        commitCubes();
+    }
+
+    /**
+     * OWNER THREAD (server tick thread / the thread running {@link #tickStream()}). Puts the game state of every
+     * loaded cube into its blob: furnace/workbench registries, then the {@link CubeEvents.SaveHook}s (entities,
+     * saplings), then writes the blob of each cube whose payload changed. Cheap (no I/O). No-op without a store.
+     */
+    public void flushCubeBlobs() {
+        if (stream == null || store == null || cleanedUp) {
+            return;
+        }
+        for (Cube cube : cubes.values()) {
+            furnaceRegistry.flushToWorld(cube);
+            workbenchRegistry.flushToWorld(cube);
+            runSaveHooks(cube);
+            writeBlob(cube);
+        }
+    }
+
+    /**
+     * Any thread (blocking I/O). Makes everything written so far durable: the block-state table first (cube
+     * records reference its ids), then {@code cv_stream_save_all} = every changed cube + column record and
+     * {@code cv_store_flush}. Concurrent calls are serialized. No-op without a store or after {@link #cleanup}.
+     */
+    public void commitCubes() {
+        if (stream == null || store == null) {
+            return;
+        }
+        synchronized (commitLock) {
+            if (cleanedUp) {
+                return;
+            }
+            saveBlockStates();
+            stream.saveAll();
+            // The owner thread may have registered a state id (and written it into a cube the save just
+            // encoded) while the store saved: write the table again when it grew.
+            saveBlockStates();
+        }
+    }
+
+    private void runSaveHooks(Cube cube) {
+        if (!isAuthoritative()) {
+            return;
+        }
+        for (CubeEvents.SaveHook h : saveHooks) {
+            try {
+                h.onCubeSave(this, cube);
+            } catch (RuntimeException e) {
+                LOGGER.error("Save hook failed for cube {}", cube.pos(), e);
+            }
+        }
+    }
+
+    private void saveBlockStates() {
+        if (storeDir == null) {
+            return;
+        }
+        synchronized (commitLock) {
+            int n = blockStates.size();
+            if (n == savedStateCount) {
+                return;
+            }
+            try {
+                StringBuilder text = new StringBuilder();
+                for (String name : blockStates.names()) {
+                    text.append(name).append('\n');
+                }
+                com.stonebreak.world.save.io.AtomicFiles.writeDurable(storeDir.resolve(BLOCK_STATES_FILE),
+                    text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                savedStateCount = n;
+            } catch (IOException e) {
+                LOGGER.error("Could not save the block-state table to {}", storeDir, e);
+            }
+        }
+    }
+
+    /** True when every band cube of column cube (cx, cz) is installed and meshed (CV_EV_COLUMN_READY). */
+    public boolean isColumnReady(long cx, long cz) {
+        if (cleanedUp) {
+            return false;
+        }
+        // A detached world has no stream: every column counts as ready (tests, tools).
+        return mode == Mode.DETACHED || readyColumns.contains(new CubePos(cx, 0, cz));
+    }
+
+    /** The column readiness of the column holding block (x, z). */
+    public boolean isColumnReadyAt(long x, long z) {
+        return isColumnReady(x >> 5, z >> 5);
+    }
+
+    /** Native stream counters (debug overlay); null for a detached world. */
+    public StreamStats streamStats() {
+        return stream != null && !cleanedUp ? stream.stats() : null;
+    }
+
+    // ===== update entry points ==================================================================================
+
+    /** Legacy rendered update: the client tick for render-only worlds, the sim for authoritative ones. */
+    public void update(com.stonebreak.rendering.Renderer renderer) {
+        if (isRenderOnly()) {
+            updateClient(renderer);
+        } else {
+            updateSimulation(Game.getDeltaTime());
+        }
+    }
+
+    /**
+     * Authoritative simulation step (server tick thread): stream tick (installs, unloads, events), then water,
+     * leaf decay, saplings, cactus contact and furnaces.
      */
     public void updateSimulation(float deltaTime) {
-        updates.updateSimulation(deltaTime);
+        tickStream();
+        waterSim.tick(deltaTime);
+        leafDecay.tick(deltaTime);
+        saplingGrowth.tick(deltaTime);
+        cactusContact.tick(deltaTime);
+        furnaceRegistry.tick(this, deltaTime);
     }
 
     /**
-     * Render-only client update, run by {@code GameLoop} on a {@link #createClientView} world.
-     * Mirrors {@link #update} but drops every authoritative-sim step — no water flow, no furnace
-     * smelting, no feature population — because the server owns all of that and pushes results
-     * via streamed chunks and block changes. It keeps only the render-side work: requeue failed
-     * meshes, stream chunks in/out around the local player ({@code chunkManager}), and build the
-     * pending chunk meshes. Terrain generation is disabled on this world, so the chunk manager's
-     * "load" produces empty placeholders that {@link #installNetworkChunk} then fills.
+     * Render-only client update off the main thread: only the FastLOD ring tick now (streaming, meshing and
+     * unloading are native and ticked on the main thread by {@link #updateMainThread()}).
      */
     public void updateClient(com.stonebreak.rendering.Renderer renderer) {
-        updates.updateClient();
+        var lodPlayer = Game.getPlayer();
+        if (lodPlayer != null) {
+            fastLod.updateRing(lodPlayer.getPosition());
+        }
     }
 
     /**
-     * Chebyshev radius (chunks) a client retains around the player before unloading:
-     * the render distance plus a 2-chunk margin. The server streams within the
-     * player's reported view distance and FORGETS a player's chunks beyond this SAME
-     * radius (view + 2, see {@code ServerChunkHandler}) so they re-stream on return —
-     * the two must stay in lockstep or a returning player gets holes. Tracks the
-     * render-distance setting live (config.renderDistance is volatile and updated by
-     * the settings Apply path).
+     * Main (GL) thread, every frame: on a client world, follows the local player with the stream's viewer and
+     * ticks the stream (REMESHED meshes must reach GL on this thread).
+     */
+    public void updateMainThread() {
+        if (!isRenderOnly() || stream == null || cleanedUp) {
+            return;
+        }
+        var player = Game.getPlayer();
+        if (player != null) {
+            org.joml.Vector3dc p = player.getPosition();
+            StreamCenter c = centerAt((long) Math.floor(p.x()), (long) Math.floor(p.y()), (long) Math.floor(p.z()));
+            StreamCenter last = lastClientCenter;
+            if (last == null || !last.equals(c)) {
+                lastClientCenter = c;
+                setStreamCenters(List.of(c));
+            }
+        }
+        tickStream();
+    }
+
+    /** Kept for the game loop; GPU cleanup of cube meshes belongs to the renderer now (3B-R). */
+    public void processGpuCleanupQueue() {
+    }
+
+    /**
+     * Chebyshev radius (16-block chunks) the server streams/forgets around a player (network keep radius,
+     * 3B-N): render distance + 2.
      */
     public int clientKeepRadius() {
         return config.getRenderDistance() + 2;
     }
 
-    public void updateMainThread() {
-        if (meshPipeline == null) return; // Test mode - skip rendering updates
+    // ===== cubes ================================================================================================
 
-        meshScheduler.applyPendingGLUpdates();
-        meshScheduler.processGpuCleanupQueue();
+    /** The loaded cube (cx, cy, cz), or null. */
+    public Cube getCube(long cx, long cy, long cz) {
+        Cube cube = cubes.get(new CubePos(cx, cy, cz));
+        if (cube == null && mode == Mode.DETACHED && !cleanedUp && voxels.hasCube(cx, cy, cz)) {
+            cube = cubes.computeIfAbsent(new CubePos(cx, cy, cz), p -> new Cube(this, p));
+        }
+        return cube;
     }
 
-    public void processGpuCleanupQueue() {
-        meshScheduler.processGpuCleanupQueue();
+    /** The loaded cube holding block (x, y, z), or null. */
+    public Cube getCubeAt(long x, long y, long z) {
+        return getCube(x >> 5, y >> 5, z >> 5);
     }
-    public void ensureChunkIsReadyForRender(int cx, int cz) {
-        meshScheduler.ensureChunkIsReadyForRender(cx, cz, pos -> getChunkAt(pos[0], pos[1]));
+
+    /** True when cube (cx, cy, cz) is loaded. */
+    public boolean hasCube(long cx, long cy, long cz) {
+        return !cleanedUp && voxels.hasCube(cx, cy, cz);
     }
-    
+
+    /** Every loaded cube object (a snapshot view; owner thread for consistency). */
+    public Collection<Cube> getLoadedCubes() {
+        return Collections.unmodifiableCollection(cubes.values());
+    }
+
+    public int getLoadedCubeCount() {
+        return cleanedUp ? 0 : (int) voxels.cubeCount();
+    }
+
+    /** Debug alias of {@link #getLoadedCubeCount()} (overlay rows; counts CUBES now). */
+    public int getLoadedChunkCount() {
+        return getLoadedCubeCount();
+    }
+
     /**
-     * Gets the chunk at the specified position.
-     * If the chunk doesn't exist, it will be generated.
-     *
-     * <p>Reserved for the chunk-loading pipeline (ChunkManager, world
-     * generation, network sync). Runtime queries from water, mob AI, trees,
-     * etc. must use {@link #getChunkIfLoaded} instead — generating a chunk as
-     * a side effect of a block read produces orphaned chunks outside the
-     * render band that the manager then has to unload, causing load/unload
-     * churn.
+     * Ensures cube (cx, cy, cz) exists, creating it filled with air when absent and either the world is
+     * DETACHED (tests, tools, the battle arena) or the whole cube is KNOWN AIR ({@link #isCubeKnownAir}) - the
+     * stream never loads all-air cubes, so building above the terrain needs the cube made first. On a SERVER
+     * world the stream adopts the created cube (INSTALLED next tick, saved like any edit, the raised column top
+     * pulls it into clients' bands); on a CLIENT world it is a local prediction the server's record replaces
+     * ({@link #setLocalCubeListener} asks the server for it). A cube with unknown cells is never created (that
+     * would wipe terrain still loading): null until the stream brings it.
      */
-    public Chunk getChunkAt(int x, int z) {
-        if (chunkStore == null) return null; // Test mode - no chunk store
-
-        return chunkStore.getOrCreateChunk(x, z);
+    public Cube ensureCube(long cx, long cy, long cz) {
+        if (cleanedUp) {
+            return null;
+        }
+        if (!voxels.hasCube(cx, cy, cz)
+                && (cy << 5) + 32 > WorldConfiguration.MIN_Y && (cy << 5) < WorldConfiguration.MAX_Y
+                && (mode == Mode.DETACHED || isCubeKnownAir(cx, cy, cz))) {
+            if (voxels.createCube(cx, cy, cz, BlockType.AIR.getId())) {
+                CubePos pos = new CubePos(cx, cy, cz);
+                Cube cube = cubes.computeIfAbsent(pos, p -> new Cube(this, p));
+                invalidatePhysicsCube(cx, cy, cz);
+                java.util.function.Consumer<CubePos> listener = localCubeListener;
+                if (mode == Mode.CLIENT && listener != null) {
+                    listener.accept(pos);
+                }
+                return cube;
+            }
+        }
+        return getCube(cx, cy, cz);
     }
 
     /**
-     * Gets the chunk at the specified position without ever generating it.
-     * Returns {@code null} when the chunk is not currently resident.
-     *
-     * <p>This is the correct accessor for any runtime query (block reads,
-     * water flow, mob AI) that must not trigger chunk generation.
+     * True when cube (cx, cy, cz) is missing and every cell of it is known air: its column is known and the cube
+     * lies wholly at or above the highest TOP of the column's 32x32 footprint.
      */
-    public Chunk getChunkIfLoaded(int x, int z) {
-        if (chunkStore == null) return null; // Test mode - no chunk store
-
-        return chunkStore.getChunk(x, z);
+    public boolean isCubeKnownAir(long cx, long cy, long cz) {
+        if (cleanedUp || voxels.hasCube(cx, cy, cz)) {
+            return false;
+        }
+        CubeWorld.TopRange r = voxels.topRange(cx, cz);
+        return r.known() && (cy << 5) >= r.topMax();
     }
 
     /**
-     * True while a load or generation of the chunk is in flight: {@link #getChunkAt} was asked
-     * for it and it is not resident yet. Asking again starts nothing new.
+     * CLIENT worlds: told (owner thread) when {@link #ensureCube} created a predicted air cube, so the network
+     * layer can request the server's real record for it (a cube the client holds is never "missing").
      */
-    public boolean isChunkLoadPending(int x, int z) {
-        if (chunkStore == null) return false; // Test mode - no chunk store
+    public void setLocalCubeListener(java.util.function.Consumer<CubePos> listener) {
+        this.localCubeListener = listener;
+    }
 
-        return chunkStore.isLoadPending(x, z);
+    /** True when block (x, y, z)'s cube is loaded (a missing cube is false even in known air). */
+    public boolean isLoaded(long x, long y, long z) {
+        if (cleanedUp || !WorldConfiguration.inBounds(y)) {
+            return false;
+        }
+        return voxels.hasCube(x >> 5, y >> 5, z >> 5);
+    }
+
+    /** True when the cell's content is known: its cube is loaded, it is known air, or it is out of bounds. */
+    public boolean isKnown(long x, long y, long z) {
+        return !cleanedUp && voxels.get(x, y, z) != CubeWorld.MISSING;
     }
 
     /**
-     * Checks if a chunk exists at the specified position.
+     * True when a body at block (x, y, z) can be simulated: its cell and the one under it are known (loaded or
+     * known air). Replaces the column-era {@code isChunkRenderableAt}: the player is held until the ground
+     * under it has streamed in.
      */
-    public boolean hasChunkAt(int x, int z) {
-        if (chunkStore == null) return false; // Test mode - no chunk store
-
-        return chunkStore.hasChunk(x, z);
+    public boolean isAreaReadyAt(long x, long y, long z) {
+        return isKnown(x, y, z) && isKnown(x, y - 1, z);
     }
 
     /**
-     * True when the chunk is resident AND has a GPU mesh (i.e. it has been filled with real
-     * data and rendered). On a client render world this distinguishes a fully streamed chunk
-     * from an empty, not-yet-filled placeholder — used to stop the player falling through
-     * terrain that hasn't arrived yet.
-     */
-    public boolean isChunkRenderableAt(int chunkX, int chunkZ) {
-        Chunk c = getChunkIfLoaded(chunkX, chunkZ);
-        // Either mesh representation counts: legacy per-chunk handle, or a
-        // segment in the shared region arenas (region rendering mode).
-        return c != null
-            && (c.getMmsRenderableHandle() != null || c.getRegionAtlasHandle() != null);
-    }
-
-    /**
-     * True when the opaque terrain pass will actually DRAW this chunk this frame.
-     *
-     * <p>Stricter than {@link #isChunkRenderableAt}, and deliberately so. That one asks
-     * "does a mesh handle exist", which is the right question for gameplay (don't drop the
-     * player through a column that has geometry). The renderer asks more: both
-     * {@code ChunkMeshLifecycle.render} and {@code ChunkRegionRenderer.drawLayer} additionally
-     * require {@code MESH_GPU_UPLOADED && !UNLOADING} plus the mesh-generated flag.
-     *
-     * <p>FastLOD dissolves a node out as soon as it believes the detail chunk covers the
-     * column. Asking the weaker question let it dissolve out over a chunk the opaque pass was
-     * skipping — a chunk mid-unload, or one whose {@code MESH_GPU_UPLOADED} state was dropped
-     * for a rebuild while its old handle was still attached (see {@code Chunk.loadFromSnapshot})
-     * — and the column rendered as a hole for as long as the disagreement lasted.
-     */
-    public boolean isChunkDrawnAt(int chunkX, int chunkZ) {
-        Chunk c = getChunkIfLoaded(chunkX, chunkZ);
-        return c != null
-            && c.getCcoStateManager().isRenderable()
-            && c.isMeshGenerated()
-            && (c.getMmsRenderableHandle() != null || c.getRegionAtlasHandle() != null);
-    }
-
-    /**
-     * The fraction (0..1) of chunks within {@code radius} chunks (a disc) of the given chunk that
-     * {@linkplain #isChunkDrawnAt are drawn}. The main menu showcase fades in on it.
+     * The fraction (0..1) of 16-block columns within {@code radius} (a disc, in 16-block units, the menu
+     * showcase's convention) whose cube column is READY ({@link #isColumnReady}).
      */
     public float areaDrawnFraction(int centerChunkX, int centerChunkZ, int radius) {
         int total = 0;
@@ -491,7 +886,9 @@ public class World {
                     continue;
                 }
                 total++;
-                if (isChunkDrawnAt(centerChunkX + dx, centerChunkZ + dz)) {
+                long x = (long) (centerChunkX + dx) * 16;
+                long z = (long) (centerChunkZ + dz) * 16;
+                if (isColumnReadyAt(x, z)) {
                     drawn++;
                 }
             }
@@ -499,18 +896,23 @@ public class World {
         return total == 0 ? 1f : (float) drawn / total;
     }
 
-    /**
-     * Gets the block type at the specified world position.
-     */
-    // ===== Physics (engine cp_*, OpenMason #117) =====
+    // ===== surface ==============================================================================================
 
-    /** Created on first use by the thread that simulates this world; see {@link #physics()}. */
+    /** First free y above the topmost sky-opaque block at (x, z) (generator answer where never generated). */
+    public long surfaceY(long x, long z) {
+        return cleanedUp ? WorldConfiguration.MIN_Y : voxels.surfaceY(x, z);
+    }
+
+    /** First free y above the topmost non-air block at (x, z), water included. */
+    public long topY(long x, long z) {
+        return cleanedUp ? WorldConfiguration.MIN_Y : voxels.topY(x, z);
+    }
+
+    // ===== physics (engine cp_*) ================================================================================
+
     private volatile com.stonebreak.world.physics.WorldPhysics physics;
 
-    /**
-     * This world's physics: collision, movement, rays and water over a native cell cache. Created
-     * on first use; owned by the thread that simulates the world.
-     */
+    /** This world's physics, created on first use by the thread that simulates this world. */
     public com.stonebreak.world.physics.WorldPhysics physics() {
         com.stonebreak.world.physics.WorldPhysics p = physics;
         if (p == null) {
@@ -518,7 +920,9 @@ public class World {
                 p = physics;
                 if (p == null) {
                     if (cleanedUp) {
-                        throw new IllegalStateException("World is cleaned up");
+                        // Closed: no physics of its own (WorldPhysics.of answers over the closed-world
+                        // accessors - all air - instead of throwing at a straggling caller).
+                        return null;
                     }
                     p = com.stonebreak.world.physics.WorldPhysics.create(this);
                     physics = p;
@@ -528,250 +932,93 @@ public class World {
         return p;
     }
 
-    /** Tells physics a block or block state changed (no-op before physics exists). */
-    public void invalidatePhysicsBlock(int x, int y, int z) {
+    /** A block or block state changed (no-op before physics exists). */
+    public void invalidatePhysicsBlock(long x, long y, long z) {
         com.stonebreak.world.physics.WorldPhysics p = physics;
         if (p != null) p.invalidateBlock(x, y, z);
     }
 
-    /** Tells physics a water level changed. */
-    public void invalidatePhysicsWater(int x, int y, int z) {
+    /** A water level changed. */
+    public void invalidatePhysicsWater(long x, long y, long z) {
         com.stonebreak.world.physics.WorldPhysics p = physics;
         if (p != null) p.invalidateWater(x, y, z);
     }
 
-    /** Tells physics a cell's own shape changed (a snow layer). */
-    public void invalidatePhysicsCell(int x, int y, int z) {
+    /** A cell's own shape changed (a snow layer). */
+    public void invalidatePhysicsCell(long x, long y, long z) {
         com.stonebreak.world.physics.WorldPhysics p = physics;
         if (p != null) p.invalidateCell(x, y, z);
     }
 
-    /** Tells physics a chunk column arrived, left or was replaced. */
-    public void invalidatePhysicsChunk(int chunkX, int chunkZ) {
+    /** A cube arrived (INSTALLED), changed (CV_EV_CHANGED: population, decodes), was created or left. */
+    public void invalidatePhysicsCube(long cx, long cy, long cz) {
         com.stonebreak.world.physics.WorldPhysics p = physics;
-        if (p != null) p.invalidateChunk(chunkX, chunkZ);
+        if (p != null) p.invalidateCube(cx, cy, cz);
     }
 
-    /** Additional static model colliders, queried locally by player physics. Ordinary voxel worlds have none. */
-    public java.util.List<float[]> getStaticCollisionBoxes(org.joml.Vector3f position, float range) {
-        return java.util.List.of();
+    /** Additional static model colliders queried by player physics. Ordinary voxel worlds have none. */
+    public List<float[]> getStaticCollisionBoxes(Vector3f position, float range) {
+        return List.of();
     }
 
-    public BlockType getBlockAt(int x, int y, int z) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+    // ===== blocks ===============================================================================================
+
+    /** The block at (x, y, z): AIR out of bounds, in known air, and for unknown (unloaded) cells. */
+    public BlockType getBlockAt(long x, long y, long z) {
+        if (cleanedUp) {
             return BlockType.AIR;
         }
-
-        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-
-        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
-
-        if (chunk == null) {
-            return BlockType.AIR;
-        }
-
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-
-        return chunk.getBlock(localX, y, localZ);
+        int id = voxels.get(x, y, z);
+        return id <= 0 ? BlockType.AIR : BlockIds.of(id);
     }
 
-    /**
-     * Returns the SBO state name at the given world position, or
-     * {@code null} if the block carries no non-default state (1.3+).
-     */
-    public String getBlockStateAt(int x, int y, int z) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) return null;
-        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
-        if (chunk == null) return null;
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        return chunk.getBlockState(localX, y, localZ);
+    /** The raw block id, AIR's id in known air / out of bounds, {@link CubeWorld#MISSING} when unknown. */
+    public int getBlockIdAt(long x, long y, long z) {
+        return cleanedUp ? CubeWorld.MISSING : voxels.get(x, y, z);
     }
 
-    /**
-     * Sets the SBO state name for a block at the given world position. Pass
-     * {@code null} to clear (1.3+). No-op when the chunk isn't loaded.
-     */
-    public void setBlockStateAt(int x, int y, int z, String state) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) return;
-        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
-        if (chunk == null) return;
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        String previous = chunk.getBlockState(localX, y, localZ);
-        chunk.setBlockState(localX, y, localZ, state);
-        invalidatePhysicsBlock(x, y, z);
-        animatedBlockRegistry.onStateChanged(x, y, z);
-        // The state picks which mesh variant a chunk-baked block draws (a lit
-        // furnace, a stair's facing), and marking the chunk dirty on its own
-        // never schedules anything. Placement writes the state right after the
-        // block, so the rebuild has to be queued again or it can race the build
-        // already in flight and bake the old variant.
-        if (com.stonebreak.blocks.BlockRenderState.affectsMesh(previous, state)) {
-            scheduleChunkRemeshAt(x, y, z);
-        }
-    }
-
-    // ===== Water state (chunk-owned water layer) =====
-
-    /**
-     * The RAW water-layer value at a world position, exactly as the layer
-     * stores it, or -1 when the cell is not loaded water.
-     *
-     * <p>Raw means a worldgen river surface reports {@code RIVER + octant}
-     * (9..16) rather than the source it behaves as. Almost nothing wants that:
-     * {@link #getWaterLevelAt} is the "how much water" question and
-     * {@link #riverFlowOf} the "which way" one, and both are derived from
-     * this. It is public for the one caller that asks both about the same cell
-     * — the mesher — which would otherwise walk the chunk map twice per water
-     * block to get two halves of one value.
-     */
-    public int getWaterValueAt(int x, int y, int z) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
-            return -1;
-        }
-        Chunk chunk = getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                                       Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
-        if (chunk == null) {
-            return -1;
-        }
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        if (chunk.getBlock(localX, y, localZ) != BlockType.WATER) {
-            return -1;
-        }
-        return chunk.getWaterLayer().get(localX, y, localZ);
-    }
-
-    /**
-     * Water flow value at a world position, read from the chunk's water layer:
-     * 0 = source, 1-7 = flowing level, {@link com.stonebreak.world.chunk.ChunkWaterLayer#FALLING}
-     * (8) = falling, -1 = not water or chunk not loaded.
-     *
-     * <p>A worldgen river surface reports SOURCE, which is what it is — the
-     * direction it also carries is a rendering concern and is read through
-     * {@link #riverFlowOf}. Normalising here keeps every "how much water"
-     * caller — submersion depth, surface height, the source test below — on the
-     * 0..8 vocabulary they were written against.
-     */
-    public int getWaterLevelAt(int x, int y, int z) {
-        int value = getWaterValueAt(x, y, z);
-        return value < 0 ? -1 : com.stonebreak.world.chunk.ChunkWaterLayer.level(value);
-    }
-
-    /**
-     * The flow octant of a worldgen river surface — 0..7 of {@code (dx, dz)},
-     * 0 = +X, counter-clockwise in eighths of a turn — for a value read
-     * through {@link #getWaterValueAt}, or -1 where the water does not run
-     * (still water, or not water at all).
-     *
-     * <p>Rendering only. The cell is a source block and behaves as one; this
-     * says which way it is moving, which a source block cannot.
-     */
-    public static int riverFlowOf(int waterValue) {
-        return waterValue >= 0 && com.stonebreak.world.chunk.ChunkWaterLayer.isRiver(waterValue)
-            ? com.stonebreak.world.chunk.ChunkWaterLayer.octant(waterValue)
-            : -1;
-    }
-
-    /** True when the block is WATER and its water-layer entry is absent (level 0). */
-    public boolean isWaterSourceAt(int x, int y, int z) {
-        return getWaterLevelAt(x, y, z) == com.stonebreak.world.chunk.ChunkWaterLayer.SOURCE;
-    }
-
-    /**
-     * Water cell state as a {@link com.stonebreak.blocks.waterSystem.WaterBlock},
-     * or {@code null} when the position is not water. Falling cells report
-     * level 0 (full strength) with the falling flag set.
-     */
-    public com.stonebreak.blocks.waterSystem.WaterBlock getWaterStateAt(int x, int y, int z) {
-        int value = getWaterLevelAt(x, y, z);
-        if (value < 0) {
-            return null;
-        }
-        if (value == com.stonebreak.world.chunk.ChunkWaterLayer.FALLING) {
-            return com.stonebreak.blocks.waterSystem.WaterBlock.falling(0);
-        }
-        return new com.stonebreak.blocks.waterSystem.WaterBlock(value, false);
-    }
-
-    /**
-     * Checks if the specified world position is underwater (contains a water block).
-     * @param x World X coordinate
-     * @param y World Y coordinate
-     * @param z World Z coordinate
-     * @return true if the position contains water, false otherwise
-     */
-    public boolean isPositionUnderwater(int x, int y, int z) {
-        BlockType block = getBlockAt(x, y, z);
-        return block == BlockType.WATER;
-    }
-    
-    /**
-     * Sets the block type at the specified world position.
-     * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
-     */
-    public boolean setBlockAt(int x, int y, int z, BlockType blockType) {
+    public boolean setBlockAt(long x, long y, long z, BlockType blockType) {
         return setBlockAt(x, y, z, blockType, false);
     }
 
-    /**
-     * Sets the block type at the specified world position with priority-based mesh regeneration.
-     * @param isPlayerModification If true, uses high priority for instant visual feedback (1-frame latency)
-     * @return true if the block was successfully set, false otherwise (e.g., out of bounds).
-     */
-    public boolean setBlockAt(int x, int y, int z, BlockType blockType, boolean isPlayerModification) {
+    public boolean setBlockAt(long x, long y, long z, BlockType blockType, boolean isPlayerModification) {
         return setBlockAt(x, y, z, blockType, isPlayerModification, null);
     }
 
     /**
-     * Places a block together with its initial per-position state in one step.
-     * The state is written AFTER the block (Chunk.setBlock drops the cell's
-     * state on a type change) and, for player modifications, rides along in the
-     * outgoing block-change intent so the authoritative server can validate
-     * and echo it ({@code BlockChangeC2S.placementState}).
+     * Writes a block (the one block-change funnel: physics, water/leaf/sapling sims, animated blocks, torch
+     * support, replication of player edits). On a type change the cell's state, water and snow layers are
+     * cleared (a WATER cell keeps its water value, a SNOW cell its count). The placement state is written
+     * after the block and rides along in the player's block-change intent.
      *
-     * @param placementState initial state string, or {@code null} for none
+     * @return false when out of bounds or the cube is not loaded (DETACHED worlds create it)
      */
-    public boolean setBlockAt(int x, int y, int z, BlockType blockType, boolean isPlayerModification,
+    public boolean setBlockAt(long x, long y, long z, BlockType blockType, boolean isPlayerModification,
                               String placementState) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+        if (blockType == null || cleanedUp || !WorldConfiguration.inBounds(y)) {
             return false;
         }
-
-        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-
-        Chunk chunk = getChunkIfLoaded(chunkX, chunkZ);
-        if (chunk == null) {
-            // Caller is editing a chunk that isn't currently in the chunk store
-            // (e.g. async generation in flight, multiplayer client edit in an
-            // area the host hasn't loaded). Drop the edit instead of NPE'ing.
+        // Writes into known air make the cube (server: any authoritative write; client: the local player's
+        // predicted edit). Air into known air changes nothing, so it never creates one.
+        if (mode == Mode.DETACHED
+                || (blockType != BlockType.AIR && (mode == Mode.SERVER || isPlayerModification))) {
+            ensureCube(x >> 5, y >> 5, z >> 5);
+        }
+        int prevId = voxels.set(x, y, z, blockType.getId());
+        if (prevId == CubeWorld.MISSING) {
             return false;
         }
-
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-
-        BlockType previous = chunk.getBlock(localX, y, localZ);
+        BlockType previous = BlockIds.of(prevId);
         if (previous == blockType) {
+            if (placementState != null && !placementState.isEmpty()) {
+                setBlockStateAt(x, y, z, placementState);
+            }
             return true;
         }
-
-        chunk.setBlock(localX, y, localZ, blockType);
+        clearCellLayers(x, y, z, blockType);
         invalidatePhysicsBlock(x, y, z);
 
-        meshScheduler.onBlockChanged(chunk, chunkX, chunkZ, localX, localZ, isPlayerModification);
-
-        // Only authoritative worlds simulate flow; a render-only client applying
-        // streamed changes must not queue sim work (its layer is display-only).
-        if (!renderOnly) {
+        if (isAuthoritative()) {
             waterSim.onBlockChanged(x, y, z, previous, blockType);
             leafDecay.onBlockChanged(x, y, z, previous, blockType);
             saplingGrowth.onBlockChanged(x, y, z, previous, blockType);
@@ -780,257 +1027,381 @@ public class World {
             setBlockStateAt(x, y, z, placementState);
         }
 
-        animatedBlockRegistry.onBlockChanged(x, y, z, previous, blockType);
+        boolean small = fitsInt(x, y, z);
+        if (small) {
+            animatedBlockRegistry.onBlockChanged(i(x), i(y), i(z), previous, blockType);
+        }
 
-        // Torch support sweep (issue #247): torches held up by the block that just
-        // changed — a break, a decay, or any edit leaving a non-solid cell — pop off
-        // with it, whatever removed the support. Authoritative worlds only: client
-        // render views learn of pops through the server's queued block broadcast.
-        // findUnsupported self-gates on solid cells (one read for placements), so the
-        // sweep costs the same neighbour scan breaks already paid in applyAccepted.
-        // Pops remove the torch through THIS funnel (the re-entry guard skips the
-        // redundant sweep for the torch's own cell), and popUnsupported reports the
-        // AIR write through the replication sink so remote clients observe it through
-        // the same per-section batches as sim edits — save-dirty is automatic via
-        // Chunk#setBlock. Host edits round-trip through applyAccepted afterwards; its
-        // pop sweep then finds nothing (idempotent, no second drop).
-        if (!renderOnly && !sweepingTorches) {
+        // Torch support sweep (issue #247), authoritative worlds only.
+        if (small && isAuthoritative() && !sweepingTorches) {
             sweepingTorches = true;
             try {
-                com.stonebreak.blocks.torch.TorchBlock.popUnsupported(this, x, y, z);
+                com.stonebreak.blocks.torch.TorchBlock.popUnsupported(this, i(x), i(y), i(z));
             } finally {
                 sweepingTorches = false;
             }
         }
 
-        // Multiplayer: forward locally-driven block edits (player modifications) to the local
-        // client, which sends them to the authoritative server as intents. Inbound network
-        // changes are applied by the client handlers via setBlockAt(..., false) — the
-        // non-broadcasting path — so they never re-enter this hook and loop back out.
-        if (isPlayerModification) {
-            // Pass `previous` as the edit's precondition: the server refuses a break of a block
-            // it holds as something else (issue #370). Drops come from the server's own cell.
+        if (isPlayerModification && small) {
             com.stonebreak.network.MultiplayerSession.onLocalBlockChange(
-                    x, y, z, blockType, previous, placementState);
+                    i(x), i(y), i(z), blockType, previous, placementState);
         }
-
         return true;
     }
 
-    /** The water flow simulation engine (debug/inspection; state lives in the chunks). */
+    /** Drops the per-cell layers a block type change invalidates (and the payload state). */
+    private void clearCellLayers(long x, long y, long z, BlockType now) {
+        if (voxels.getLayer(VoxelLayers.STATE, x, y, z) > 0) {
+            voxels.setLayer(VoxelLayers.STATE, x, y, z, 0);
+        }
+        Cube cube = cubes.get(CubePos.ofBlock(x, y, z));
+        if (cube != null && cube.payloadState(Cube.cellOf(x, y, z)) != null) {
+            cube.setPayloadState(Cube.cellOf(x, y, z), null);
+        }
+        if (now != BlockType.WATER && voxels.getLayer(VoxelLayers.WATER, x, y, z) > 0) {
+            voxels.setLayer(VoxelLayers.WATER, x, y, z, 0);
+        }
+        if (now != BlockType.SNOW && voxels.getLayer(VoxelLayers.SNOW, x, y, z) > 0) {
+            voxels.setLayer(VoxelLayers.SNOW, x, y, z, 0);
+        }
+    }
+
+    /**
+     * Writes a block WITHOUT the funnel (no sims, no torch sweep, no replication; layers still cleared) - for
+     * bulk placement by game code that runs its own bookkeeping (tree growth, structure stamps). Physics is
+     * still invalidated. False when the cube is not loaded.
+     */
+    public boolean setBlockRaw(long x, long y, long z, BlockType blockType) {
+        if (cleanedUp || !WorldConfiguration.inBounds(y)) {
+            return false;
+        }
+        if (mode == Mode.DETACHED || (mode == Mode.SERVER && blockType != BlockType.AIR)) {
+            ensureCube(x >> 5, y >> 5, z >> 5); // tree growth / stamps above the terrain
+        }
+        int prev = voxels.set(x, y, z, blockType.getId());
+        if (prev == CubeWorld.MISSING) {
+            return false;
+        }
+        if (prev != blockType.getId()) {
+            clearCellLayers(x, y, z, blockType);
+            invalidatePhysicsBlock(x, y, z);
+        }
+        return true;
+    }
+
+    /** True when the block at the position is WATER. */
+    public boolean isPositionUnderwater(long x, long y, long z) {
+        return getBlockAt(x, y, z) == BlockType.WATER;
+    }
+
+    // ===== block states (STATE layer + cube payload) ===========================================================
+
+    /**
+     * The block state string at a position, or null (no state, unloaded). Payload-carrying states (furnace,
+     * crafting table) come back whole from the cube's payload; others from the STATE layer id.
+     */
+    public String getBlockStateAt(long x, long y, long z) {
+        if (cleanedUp || !WorldConfiguration.inBounds(y)) {
+            return null;
+        }
+        Cube cube = cubes.get(CubePos.ofBlock(x, y, z));
+        if (cube != null) {
+            String payload = cube.payloadState(Cube.cellOf(x, y, z));
+            if (payload != null) {
+                return payload;
+            }
+        }
+        int id = voxels.getLayer(VoxelLayers.STATE, x, y, z);
+        return id > 0 ? blockStates.nameOf(id) : null;
+    }
+
+    /**
+     * Sets the block state string (null/blank clears). The STATE layer gets the state's mesh-variant id (a
+     * change remeshes the cube natively); payload beyond the variant key is kept in the cube. No-op when the
+     * cube is not loaded.
+     */
+    public void setBlockStateAt(long x, long y, long z, String state) {
+        if (cleanedUp || !WorldConfiguration.inBounds(y)) {
+            return;
+        }
+        if (mode == Mode.DETACHED) {
+            ensureCube(x >> 5, y >> 5, z >> 5);
+        }
+        if (!voxels.hasCube(x >> 5, y >> 5, z >> 5)) {
+            return;
+        }
+        String raw = state == null || state.isBlank() ? null : state;
+        String variant = com.stonebreak.blocks.BlockRenderState.meshVariantKey(raw);
+        int id = blockStates.idOf(variant);
+        // A payload-only string (crafting grid) has no variant: keep a marker id so the cell is still
+        // found by layer scans; its text lives in the payload.
+        if (id == BlockStateRegistry.NONE && raw != null) {
+            id = blockStates.idOf(PAYLOAD_ONLY);
+        }
+        int previousId = voxels.setLayer(VoxelLayers.STATE, x, y, z, id);
+        Cube cube = getCubeAt(x, y, z);
+        if (cube != null) {
+            cube.setPayloadState(Cube.cellOf(x, y, z), raw != null && !raw.equals(variant) ? raw : null);
+            if (previousId != id) {
+                cube.markPayloadDirty();
+            }
+        }
+        invalidatePhysicsBlock(x, y, z);
+        if (fitsInt(x, y, z)) {
+            animatedBlockRegistry.onStateChanged(i(x), i(y), i(z));
+        }
+    }
+
+    /** STATE layer marker for a state that is all payload (no mesh variant). */
+    public static final String PAYLOAD_ONLY = "#payload";
+
+    // ===== water (WATER layer) ==================================================================================
+
+    /**
+     * The water value at a position in the game vocabulary ({@link ChunkWaterLayer}: 0 source, 1..7 flowing,
+     * 8 falling, RIVER + octant), or -1 when the cell is not loaded water.
+     */
+    public int getWaterValueAt(long x, long y, long z) {
+        if (getBlockIdAt(x, y, z) != BlockType.WATER.getId()) {
+            return -1;
+        }
+        int raw = voxels.getLayer(VoxelLayers.WATER, x, y, z);
+        return raw < 0 ? -1 : VoxelLayers.waterToGame(raw);
+    }
+
+    /**
+     * Writes a water value (game vocabulary; 0 = source) on a WATER cell; false when not loaded. Invalidates
+     * physics (flow forces read the neighbours). The block itself is not changed.
+     */
+    public boolean setWaterValueAt(long x, long y, long z, int value) {
+        if (cleanedUp || !WorldConfiguration.inBounds(y)) {
+            return false;
+        }
+        int prev = voxels.setLayer(VoxelLayers.WATER, x, y, z, VoxelLayers.waterToRaw(value));
+        if (prev == CubeWorld.MISSING) {
+            return false;
+        }
+        invalidatePhysicsWater(x, y, z);
+        return true;
+    }
+
+    /** Water level 0..8 (river = source) or -1 when not loaded water. */
+    public int getWaterLevelAt(long x, long y, long z) {
+        int value = getWaterValueAt(x, y, z);
+        return value < 0 ? -1 : ChunkWaterLayer.level(value);
+    }
+
+    /** Flow octant of a river value from {@link #getWaterValueAt}, or -1. */
+    public static int riverFlowOf(int waterValue) {
+        return waterValue >= 0 && ChunkWaterLayer.isRiver(waterValue) ? ChunkWaterLayer.octant(waterValue) : -1;
+    }
+
+    /** True when the block is WATER and a source. */
+    public boolean isWaterSourceAt(long x, long y, long z) {
+        return getWaterLevelAt(x, y, z) == ChunkWaterLayer.SOURCE;
+    }
+
+    /** Water cell state, or null when the position is not water. */
+    public com.stonebreak.blocks.waterSystem.WaterBlock getWaterStateAt(long x, long y, long z) {
+        int value = getWaterLevelAt(x, y, z);
+        if (value < 0) {
+            return null;
+        }
+        if (value == ChunkWaterLayer.FALLING) {
+            return com.stonebreak.blocks.waterSystem.WaterBlock.falling(0);
+        }
+        return new com.stonebreak.blocks.waterSystem.WaterBlock(value, false);
+    }
+
+    /**
+     * Generated water level at a column (sea, river, lake surface) from the generator, or
+     * {@link WorldConfiguration#NO_WATER}; distinct from the live WATER layer.
+     */
+    public int getGeneratedWaterLevelAt(long x, long z) {
+        if (cleanedUp) {
+            return WorldConfiguration.NO_WATER;
+        }
+        return terrain().getWaterLevelAt(i(x), i(z));
+    }
+
+    // ===== snow (SNOW layer) ====================================================================================
+
+    public SnowLayerManager getSnowLayerManager() {
+        return snowLayerManager;
+    }
+
+    public int getSnowLayers(long x, long y, long z) {
+        return snowLayerManager.getSnowLayers(x, y, z);
+    }
+
+    /** Visual/collision height of the block at a position (snow: its layer height). */
+    public float getSnowHeight(long x, long y, long z) {
+        BlockType block = getBlockAt(x, y, z);
+        if (block == BlockType.SNOW) {
+            return snowLayerManager.getSnowHeight(x, y, z);
+        }
+        return block.getVisualHeight();
+    }
+
+    // ===== remesh compat ========================================================================================
+
+    /** No-op: block and meshed-layer writes mark cubes dirty natively and the stream re-meshes them. */
+    public void triggerChunkRebuild(long worldX, long worldY, long worldZ) {
+    }
+
+    /** No-op: see {@link #triggerChunkRebuild}. */
+    public void scheduleChunkRemeshAt(long x, long y, long z) {
+    }
+
+    /**
+     * OWNER THREAD. Re-applies everything the mesher reads from the game (block table, fluid, face rules and, on a
+     * display world, the unit-cube face textures - e.g. the leaf-transparency setting flips leaves between
+     * cutout and opaque cubes) and re-meshes every installed cube ({@code CubeStream.remeshAll}: nearest first
+     * through the normal budgets; meshes built from the old tables are dropped). The models stay (no setting
+     * changes them).
+     */
+    public void rebuildAllLoadedChunks() {
+        if (cleanedUp) {
+            return;
+        }
+        if (isRenderOnly()) {
+            CubeRenderAssets.reapply(voxels);
+        } else {
+            StonebreakBlockTable.apply(voxels);
+        }
+        CubeStream s = stream;
+        if (s != null && !cleanedUp) {
+            s.remeshAll();
+        }
+    }
+
+    /** Settings-menu signature (the position no longer matters). */
+    public void rebuildAllLoadedChunks(int playerChunkX, int playerChunkZ) {
+        rebuildAllLoadedChunks();
+    }
+
+    // ===== systems ==============================================================================================
+
     public WaterSim getWaterSim() {
         return waterSim;
     }
 
-    private com.stonebreak.world.growth.SaplingGrowthSystem newSaplingGrowth() {
-        return new com.stonebreak.world.growth.SaplingGrowthSystem(
-            new com.stonebreak.world.growth.WorldSaplingWorld(this), new java.util.Random());
-    }
-
-    /** The leaf-decay simulation engine (debug/inspection). */
     public LeafDecaySystem getLeafDecay() {
         return leafDecay;
     }
 
-    /** Per-world save service, or null if this world is not persisted (e.g. a client view). */
+    public com.stonebreak.world.growth.SaplingGrowthSystem getSaplingGrowth() {
+        return saplingGrowth;
+    }
+
     public com.stonebreak.world.save.SaveService getSaveService() {
         return saveService;
     }
 
-    /**
-     * True when this is a client render-view world ({@link #createClientView}): generates no
-     * terrain, runs no authoritative sim. {@code GameLoop} uses this to choose {@link #updateClient}
-     * over {@link #update} and to skip server-owned steps (spawning, time-of-day).
-     */
-    public boolean isRenderOnly() {
-        return renderOnly;
+    public void setSaveService(com.stonebreak.world.save.SaveService saveService) {
+        this.saveService = saveService;
     }
 
-    /**
-     * Bind the spawner that initial chunk-gen mob spawning should use for THIS world. The
-     * headless server world sets its own so spawns land in the server's EntityManager.
-     */
     public void setEntitySpawner(com.stonebreak.mobs.entities.EntitySpawner entitySpawner) {
         this.entitySpawner = entitySpawner;
     }
 
-    /** This world's spawner if bound, else null (caller falls back to the Game singleton). */
     public com.stonebreak.mobs.entities.EntitySpawner getEntitySpawner() {
         return entitySpawner;
     }
 
-    /** Bind the entity manager that saved-chunk entity loading should target for THIS world. */
     public void setEntityManager(com.stonebreak.mobs.entities.EntityManager entityManager) {
         this.entityManager = entityManager;
     }
 
-    /**
-     * This world's entity manager if bound, else null. Never substitute {@code Game.getEntityManager()}
-     * for a null here: that is the client render world's, whatever world is asking (#340).
-     */
+    /** This world's entity manager if bound, else null (never substitute {@code Game.getEntityManager()}). */
     public com.stonebreak.mobs.entities.EntityManager getEntityManager() {
         return entityManager;
     }
 
-    /** Bind the players this world's mobs react to; null restores {@code PlayerLocator.NONE}. */
     public void setPlayerLocator(com.stonebreak.mobs.entities.ai.behavior.PlayerLocator playerLocator) {
         this.playerLocator = playerLocator != null
             ? playerLocator : com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE;
     }
 
-    /** The players this world's mobs react to; never null. */
     public com.stonebreak.mobs.entities.ai.behavior.PlayerLocator getPlayerLocator() {
         return playerLocator;
     }
 
-    /** Bind this world's save service. Called by {@code SaveService.initialize}. */
-    public void setSaveService(com.stonebreak.world.save.SaveService saveService) {
-        this.saveService = saveService;
-    }
-
-    public com.stonebreak.world.generation.features.FeatureQueue getFeatureQueue() {
-        return featureQueue;
-    }
-    
-    
-    
-    /**
-     * The terrain generator backing this world — the source of every generator-derived
-     * sample (biome, climate, the height stages). Queried directly rather than mirrored
-     * here, so adding a terrain channel needs no change to this class.
-     */
     public TerrainGeneratorType getGeneratorType() {
         return generatorType;
     }
 
-    public TerrainGenerator terrain() {
-        return terrainSystem;
-    }
-
     /**
-     * Generated water level at a column (sea, river, or lake surface), or
-     * {@link com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. Distinct
-     * from {@link #getWaterLevelAt(int, int, int)}, which reads a loaded chunk's runtime
-     * water-flow state — this reads the deterministic generator directly, without
-     * requiring the chunk to be loaded.
+     * The world's terrain (native generator + column queries). Server worlds build it eagerly (the stream
+     * needs it); client and detached worlds on first use. Throws when the worldgen lib is unavailable.
      */
-    public int getGeneratedWaterLevelAt(int x, int z) {
-        return terrainSystem.getWaterLevelAt(x, z);
-    }
-
-    public java.util.concurrent.CompletableFuture<Void> awaitPendingChunkLoads() {
-        return chunkStore != null ? chunkStore.awaitPendingLoads() : java.util.concurrent.CompletableFuture.completedFuture(null);
-    }
-
-    /**
-     * Installs chunk loads that have finished (map put, queued features, load listeners). The
-     * tick does this itself; a caller that waited on {@link #awaitPendingChunkLoads} before the
-     * tick runs (the level build) calls it so the chunks are readable.
-     */
-    public void installCompletedChunkLoads() {
-        if (chunkStore != null) {
-            chunkStore.installCompletedLoads();
-        }
-    }
-
-    /**
-     * Gets a cached chunk position for coordinate lookup.
-     */
-    public ChunkPosition getCachedChunkPosition(int x, int z) {
-        return chunkStore.getCachedChunkPosition(x, z);
-    }
-    
-
-    
-
-    /**
-     * Visits every resident chunk around the specified position within render distance.
-     * This method performs side effects:
-     * - Ensures border chunks exist for neighbor meshing
-     *
-     * Use this method when preparing chunks for rendering. Replaces the old
-     * {@code getChunksAroundPlayer}, which materialized a fresh HashMap of every in-range
-     * chunk per render frame.
-     */
-    public void forEachChunkAroundPlayer(int playerChunkX, int playerChunkZ, Consumer<Chunk> action) {
-        chunkStore.forEachChunkInRenderDistance(playerChunkX, playerChunkZ, action);
-
-        // Ensure border chunks exist for meshing purposes (triggers generation cascade).
-        // Skip on a render-only client world: it generates no terrain, so this would only
-        // manufacture empty placeholder chunks that then fail meshing.
-        if (neighborCoordinator != null && !renderOnly) {
-            neighborCoordinator.ensureBorderChunksExist(playerChunkX, playerChunkZ);
-        }
-    }
-
-    /**
-     * Get all dirty chunks that need to be saved.
-     * @return List of chunks that have been modified and need saving
-     */
-    public List<Chunk> getDirtyChunks() {
-        if (chunkStore == null) return new java.util.ArrayList<>(); // Test mode - no chunk store
-
-        return chunkStore.getDirtyChunks();
-    }
-    
-    /**
-     * Unloads a chunk at a specific position, cleaning up its resources.
-     * This is now called by the ChunkLoader.
-     */
-    public void unloadChunk(int chunkX, int chunkZ) {
-        chunkStore.unloadChunk(chunkX, chunkZ);
-    }
-    /**
-     * Cleans up resources when the game exits.
-     */
-    public void cleanup() {
-        // First: drop queued path searches. They read this world's physics cache, so the service
-        // must go before the physics does.
-        cleanedUp = true;
-        synchronized (pathfindingLock) {
-            if (pathfinding != null) {
-                pathfinding.close();
-                pathfinding = null;
+    public NativeTerrain terrain() {
+        NativeTerrain t = terrain;
+        if (t == null) {
+            synchronized (terrainLock) {
+                t = terrain;
+                if (t == null) {
+                    if (cleanedUp) {
+                        throw new IllegalStateException("World is cleaned up");
+                    }
+                    t = NativeTerrain.create(seed, generatorType, terrainScale, blockStates);
+                    terrain = t;
+                }
             }
         }
-
-        synchronized (this) {
-            if (physics != null) {
-                physics.close();
-                physics = null;
-            }
-        }
-
-        if (chunkManager != null) {
-            chunkManager.shutdown();
-        }
-
-        fastLod.shutdownDeferred();
-
-        meshScheduler.shutdown();
-        chunkStore.cleanup();
-        // After the chunk store: nothing may ask for a tile once the tile
-        // chain's background threads are gone.
-        terrainSystem.shutdown();
-        // Deferred AFTER chunkStore.cleanup() so anything it queued is included in the
-        // final main-thread drain (nothing ticks this pipeline's queue once the world is
-        // swapped out).
-        //
-        // NOTE deliberately NO ChunkRegionRenderer.reset() here: the region renderer is
-        // a process-wide singleton, and cleanup() also runs for worlds that never owned
-        // the active regions (superseded ClientWorld-Build instances, the headless
-        // server world) — a wholesale reset from those would delete regions the ACTIVE
-        // world is drawing. The per-chunk cleanup above frees every region segment this
-        // world held, and the next rendered frame's beginFrame() prunes emptied regions.
-        meshScheduler.deferFinalGpuCleanup();
+        return t;
     }
 
-    /**
-     * Constructs the Fast LOD manager the first time the render thread hands
-     * us a texture atlas. Opens a persistent SQLite cache under the active
-     * world's save directory when one is available; otherwise runs without
-     * persistence. Idempotent; safe to call each frame.
-     */
+    /** The terrain if it was built, else null (never builds it). */
+    public NativeTerrain terrainIfStarted() {
+        return terrain;
+    }
+
+    public long getSeed() {
+        return seed;
+    }
+
+    /** The seed is fixed at construction; kept for save compatibility (logs a mismatch). */
+    public void setSeed(long seed) {
+        if (this.seed != seed) {
+            LOGGER.warn("Attempt to set seed {} on a world with seed {} ignored", seed, this.seed);
+        }
+    }
+
+    public Vector3f getSpawnPosition() {
+        return new Vector3f(spawnPosition);
+    }
+
+    public void setSpawnPosition(Vector3f newSpawnPosition) {
+        this.spawnPosition.set(newSpawnPosition);
+    }
+
+    /** The saved spawn ({@code WorldData.getSpawnPosition()}, double since Phase 4); stored as float here. */
+    public void setSpawnPosition(org.joml.Vector3dc newSpawnPosition) {
+        this.spawnPosition.set((float) newSpawnPosition.x(), (float) newSpawnPosition.y(), (float) newSpawnPosition.z());
+    }
+
+    public void setSpawnPosition(float x, float y, float z) {
+        this.spawnPosition.set(x, y, z);
+    }
+
+    public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
+        return furnaceRegistry;
+    }
+
+    public com.stonebreak.blocks.workbench.WorkbenchStateRegistry getWorkbenchRegistry() {
+        return workbenchRegistry;
+    }
+
+    public com.stonebreak.blocks.anim.AnimatedBlockRegistry getAnimatedBlockRegistry() {
+        return animatedBlockRegistry;
+    }
+
+    public WorldConfiguration getConfig() {
+        return config;
+    }
+
     public void ensureFastLodManager(com.stonebreak.rendering.textures.BlockTextureArray textureArray) {
         fastLod.ensure(textureArray);
     }
@@ -1039,110 +1410,18 @@ public class World {
         return fastLod.get();
     }
 
-    public WorldConfiguration getConfig() {
-        return config;
-    }
-
-    /**
-     * Clears world data for switching between worlds without shutting down critical systems.
-     * This preserves thread pools and rendering systems while clearing chunks, caches, and queues.
-     */
-    public void clearWorldData() {
-        // Clear chunks and caches without shutting down thread pools
-        if (chunkStore != null) {
-            chunkStore.cleanup();
-        }
-
-        // Shut down the Fast LOD manager so its world-specific SQLite cache is
-        // closed (see FastLodLifecycle.shutdownInline).
-        fastLod.shutdownInline();
-
-        // Process any pending GPU cleanup without shutting down the pipeline
-        meshScheduler.processGpuCleanupQueue();
-
-        // Reset spawn position to default for world isolation
-        spawnPosition.set(0, 100, 0);
-
-        // Clear any additional world state that may persist between worlds
-        // Note: the TerrainGenerator seed cannot be changed, so fresh World instances
-        // should be used for complete isolation instead
-
-        System.out.println("World data cleared for world switching");
-    }
-
-    /**
-     * Returns the total number of loaded chunks.
-     * This is used for debugging purposes.
-     */
-    public int getLoadedChunkCount() {
-        return chunkStore.getLoadedChunkCount();
-    }
-
-    /**
-     * Returns the number of dirty chunks currently protected from unloading.
-     * This is used for monitoring the dirty chunk protection system.
-     */
-    public int getDirtyChunkCount() {
-        return chunkStore.getDirtyChunks().size();
-    }
-
-    /**
-     * Returns all currently loaded chunks.
-     * This is used for diagnostics and debugging.
-     */
-    public Collection<Chunk> getAllChunks() {
-        return chunkStore.getAllChunks();
-    }
-
-    /**
-     * Returns the positions of every chunk currently resident in the chunk store.
-     * Unlike {@code ChunkManager}'s tracked set, this includes chunks created as a
-     * side effect of generation (trees crossing chunk borders), water flow, and
-     * mob AI via {@link #getChunkAt}. The chunk manager uses this to unload
-     * orphaned chunks that it never explicitly loaded.
-     */
-    public Set<ChunkPosition> getLoadedChunkPositions() {
-        return chunkStore.getAllChunkPositions();
-    }
-
-    /**
-     * Returns the number of chunks pending mesh build.
-     * This is used for debugging purposes.
-     */
+    /** Stream: meshes waiting for the hand-out budget (debug). */
     public int getPendingMeshBuildCount() {
-        return meshScheduler.getPendingMeshBuildCount();
+        StreamStats s = streamStats();
+        return s == null ? 0 : (int) (s.cubesMeshing() + s.meshesPending());
     }
 
-    /**
-     * Returns the number of chunks pending GL upload.
-     * This is used for debugging purposes.
-     */
+    /** Stream: finished loads waiting for the install budget (debug). */
     public int getPendingGLUploadCount() {
-        return meshScheduler.getPendingGLUploadCount();
-    }
-    
-    /**
-     * Gets the snow layer manager for this world
-     */
-    public SnowLayerManager getSnowLayerManager() {
-        return snowLayerManager;
+        StreamStats s = streamStats();
+        return s == null ? 0 : (int) s.installsPending();
     }
 
-    /**
-     * This world's mob path searching, started on first request.
-     *
-     * <p>Per world rather than global on purpose: searches read this world's physics cache, and
-     * {@link #cleanup()} closes the service before the physics goes — so a world swap can never leave
-     * a result planned through a world that no longer exists. Created on first use by the thread that
-     * simulates the world (it is built over {@link #physics()}).
-     *
-     * @return the service, or null once this world has been cleaned up
-     */
-    /**
-     * This world's path searching if something has already started it, else null. Never starts it
-     * (the service lives on the simulation thread's physics): for readers on other threads, such as
-     * the debug overlay, and for the per-tick {@code step}.
-     */
     public com.stonebreak.mobs.entities.ai.nav.PathfindingService pathfindingIfStarted() {
         return pathfinding;
     }
@@ -1159,191 +1438,86 @@ public class World {
             return pathfinding;
         }
     }
-    
-    
-    /**
-     * Gets the snow layer count at a specific position
-     */
-    public int getSnowLayers(int x, int y, int z) {
-        return snowLayerManager.getSnowLayers(x, y, z);
+
+    // ===== lifecycle ============================================================================================
+
+    /** World switch on the main thread: closes the FastLOD cache (its SQLite files would stay locked). */
+    public void clearWorldData() {
+        fastLod.shutdownInline();
+        spawnPosition.set(0, 100, 0);
     }
-    
+
     /**
-     * Gets the visual/collision height of a snow block at a specific position
+     * Releases everything: path searching, physics, the stream (saves and flushes when a store exists),
+     * the store, the world, the generator. Call after every thread using the world stopped.
      */
-    public float getSnowHeight(int x, int y, int z) {
-        BlockType block = getBlockAt(x, y, z);
-        if (block == BlockType.SNOW) {
-            return snowLayerManager.getSnowHeight(x, y, z);
+    public void cleanup() {
+        if (cleanedUp) {
+            return;
         }
-        return block.getVisualHeight();
-    }
-    
-    /**
-     * Triggers a chunk mesh rebuild for the chunk containing the given world coordinates.
-     * Use this when block visual properties change without changing the block type.
-     */
-    public void triggerChunkRebuild(int worldX, int worldY, int worldZ) {
-        meshScheduler.triggerChunkRebuild(worldX, worldZ);
-    }
-
-    /**
-     * Overwrite a chunk's block contents with a payload received over the
-     * network and trigger a mesh rebuild.
-     *
-     * <p>Used by the multiplayer chunk synchronizer to push the host's
-     * authoritative chunk state onto a joining client so any pre-connection
-     * modifications (player builds, etc.) are reflected exactly. Returns
-     * silently if the world hasn't loaded enough infrastructure yet.
-     */
-    public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload) {
-        return installNetworkChunk(chunkX, chunkZ, payload, null);
-    }
-
-    /**
-     * As {@link #installNetworkChunk(int, int, byte[])}, additionally applying the game-side
-     * chunk metadata blob (snow layers, per-block SBO states — {@code GameChunkMetaCodec})
-     * after the block install. Null/empty {@code metaPayload} skips the metadata step.
-     *
-     * @return false when the payload could not be decoded/installed — the caller should
-     *         request a chunk resync, since the server has marked this chunk as sent.
-     */
-    public boolean installNetworkChunk(int chunkX, int chunkZ, byte[] payload, byte[] metaPayload) {
-        boolean installed = networkChunkInstaller.install(chunkX, chunkZ, payload, metaPayload);
-        invalidatePhysicsChunk(chunkX, chunkZ);
-        return installed;
-    }
-
-    /**
-     * Install half of {@link #installNetworkChunk}: swaps pre-decoded storage
-     * into the chunk slot and applies metadata + mesh scheduling. MUST run on
-     * the main game thread. {@code heights} is the worker-precomputed sky
-     * heightmap (see {@code NetworkChunkDecoder.computeSkyHeights}); null falls back to a
-     * main-thread rescan.
-     */
-    public boolean installDecodedNetworkChunk(int chunkX, int chunkZ,
-            com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage decoded,
-            int[] heights, byte[] metaPayload) {
-        boolean installed = networkChunkInstaller.installDecoded(chunkX, chunkZ, decoded, heights, metaPayload);
-        invalidatePhysicsChunk(chunkX, chunkZ);
-        return installed;
-    }
-
-    /**
-     * Triggers a mesh rebuild for all loaded chunks.
-     * Use this when global visual settings change that affect block rendering.
-     * This method requires a player position to determine which chunks are currently loaded.
-     */
-    public void rebuildAllLoadedChunks(int playerChunkX, int playerChunkZ) {
-        if (meshPipeline == null) return; // Test mode - no rendering
-
+        cleanedUp = true;
+        synchronized (pathfindingLock) {
+            if (pathfinding != null) {
+                pathfinding.close();
+                pathfinding = null;
+            }
+        }
+        synchronized (this) {
+            if (physics != null) {
+                physics.close();
+                physics = null;
+            }
+        }
+        fastLod.shutdownDeferred();
         try {
-            // Mark all chunks currently loaded around the player for mesh rebuild
-            int[] marked = {0};
-            forEachChunkAroundPlayer(playerChunkX, playerChunkZ, chunk -> {
-                meshScheduler.scheduleRebuild(chunk);
-                marked[0]++;
-            });
-
-            System.out.println("Marked " + marked[0] + " chunks for mesh rebuild due to settings change");
-        } catch (Exception e) {
-            System.err.println("Error rebuilding all chunks: " + e.getMessage());
+            if (stream != null) {
+                if (store != null) {
+                    // No save hooks here: their owners (entity manager) may already be torn down, and an
+                    // empty snapshot would overwrite the saved entities. SaveService.close() runs them first.
+                    for (Cube cube : new ArrayList<>(cubes.values())) {
+                        furnaceRegistry.flushToWorld(cube);
+                        workbenchRegistry.flushToWorld(cube);
+                        writeBlob(cube);
+                    }
+                }
+                // Table before the records that reference it; stream close = save everything + store flush.
+                synchronized (commitLock) {
+                    saveBlockStates();
+                    stream.close();
+                }
+            } else {
+                saveBlockStates();
+            }
+            if (store != null) {
+                store.close();
+            }
+        } catch (RuntimeException e) {
+            LOGGER.error("World stream/store shutdown failed", e);
+        }
+        if (isRenderOnly()) {
+            CubeRenderAssets.detach(voxels);
+        }
+        cubes.clear();
+        readyColumns.clear();
+        voxels.close();
+        NativeTerrain t = terrain;
+        if (t != null) {
+            t.close();
+            terrain = null;
         }
     }
-    
-    /**
-     * Gets the seed used for world generation
-     */
-    public long getSeed() {
-        return terrainSystem.getSeed();
-    }
-    
-    /**
-     * Sets the seed for world generation (used during world loading)
-     */
-    public void setSeed(long seed) {
-        // Note: This method is primarily for save/load compatibility
-        // The terrain system seed cannot be changed after construction
-        // This will log a warning if attempting to change an existing seed
-        if (terrainSystem.getSeed() != seed) {
-            System.err.println("Warning: Attempting to set seed " + seed + 
-                " but terrain system already has seed " + terrainSystem.getSeed() + 
-                ". Seed cannot be changed after world creation.");
-        }
-    }
-    
-    /**
-     * Gets the world spawn position
-     */
-    public Vector3f getSpawnPosition() {
-        return new Vector3f(spawnPosition);
-    }
-    
-    /**
-     * Sets the world spawn position
-     */
-    public void setSpawnPosition(Vector3f newSpawnPosition) {
-        this.spawnPosition.set(newSpawnPosition);
-    }
-    
-    /**
-     * Sets the world spawn position with coordinates
-     */
-    public void setSpawnPosition(float x, float y, float z) {
-        this.spawnPosition.set(x, y, z);
-    }
-    
-    /**
-     * Sets a chunk at the given position (used for world loading)
-     */
-    public void setChunk(int x, int z, Chunk chunk) {
-        chunkStore.setChunk(x, z, chunk);
-    }
 
-    /** This world's furnace registry (per-world since the two-world furnace split). */
-    private com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistryOrNull() {
-        return furnaceRegistry;
+    public boolean isCleanedUp() {
+        return cleanedUp;
     }
 
     /**
-     * This world's furnace registry. PER-WORLD: the authoritative server world owns the
-     * only registry that actually smelts (ticked in {@link #updateSimulation}); each client
-     * render world holds a display copy hydrated from streamed chunk states and live
-     * {@code BlockStateS2C} echoes. Previously this was a process-global singleton shared
-     * between the host's render world and the server world — a host-only asymmetry that
-     * remote clients could never match.
+     * True once {@link #cleanup()} started: the native world is (being) closed and every query answers its
+     * closed default (AIR / {@link CubeWorld#MISSING} / MIN_Y / not loaded / not ready / no-op writes)
+     * instead of reaching the freed {@link CubeWorld}. A per-tick system holding a world reference across a
+     * world switch must skip a closed one.
      */
-    public com.stonebreak.blocks.furnace.FurnaceStateRegistry getFurnaceRegistry() {
-        return furnaceRegistry;
-    }
-
-    /**
-     * This world's crafting-table grids (issue #307). PER-WORLD like
-     * {@link #getFurnaceRegistry()}: the authoritative server world's registry owns the real
-     * grids; a client render world holds a display copy fed by streamed chunk states and
-     * {@code BlockStateS2C} echoes.
-     */
-    public com.stonebreak.blocks.workbench.WorkbenchStateRegistry getWorkbenchRegistry() {
-        return workbenchRegistry;
-    }
-
-    /** This world's index of animated (dynamically rendered) block positions. */
-    public com.stonebreak.blocks.anim.AnimatedBlockRegistry getAnimatedBlockRegistry() {
-        return animatedBlockRegistry;
-    }
-
-    /**
-     * Forces a re-mesh of the chunk containing the given world position. Used
-     * by per-block-state changes (e.g. a furnace flipping lit↔unlit) where the
-     * block ID didn't change but the rendered model variant did.
-     * No-op when the chunk isn't loaded.
-     */
-    public void scheduleChunkRemeshAt(int x, int y, int z) {
-        if (meshPipeline == null) return;
-        int cx = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int cz = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = getChunkIfLoaded(cx, cz);
-        if (chunk == null) return;
-        meshScheduler.scheduleChunkRemesh(chunk);
+    public boolean isClosed() {
+        return cleanedUp;
     }
 }

@@ -1,7 +1,8 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.EnumSet;
 
@@ -65,7 +66,7 @@ public final class ChasePlayerBehavior implements Behavior {
 
     @Override
     public void tick(AiContext context, float deltaTime) {
-        Vector3f player = context.nearestPlayer();
+        Vector3d player = context.nearestPlayer();
         if (player == null) {
             return; // shouldContinue ends this on the next tick
         }

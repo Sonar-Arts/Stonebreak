@@ -10,6 +10,8 @@ import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -45,7 +47,7 @@ public class RemotePlayer extends LivingEntity {
     private volatile Item heldItem;
 
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
-    private Vector3f prevPosition;
+    private Vector3d prevPosition;
     private final PlayerGaitClock gaitClock = new PlayerGaitClock();
     /** Whether the last {@link #updateMovementAnimation} planted a foot (walk/run only). */
     private boolean footContact;
@@ -101,11 +103,11 @@ public class RemotePlayer extends LivingEntity {
     public short getStateFlags() { return stateFlags; }
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
 
-    public RemotePlayer(World world, Vector3f position, int playerId, String username) {
+    public RemotePlayer(World world, Vector3dc position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
         this.playerId = playerId;
         this.username = username;
-        this.prevPosition = new Vector3f(position);
+        this.prevPosition = new Vector3d(position);
     }
 
     public int getPlayerId() { return playerId; }
@@ -139,7 +141,7 @@ public class RemotePlayer extends LivingEntity {
      * renderer draws at and a held torch lights from. Turned with the model-space body yaw, the
      * frame the figure itself is drawn in.
      */
-    public Vector3f handPosition(Vector3f out) {
+    public Vector3d handPosition(Vector3d out) {
         float yawRad = (float) Math.toRadians(getBodyYaw());
         float cos = (float) Math.cos(yawRad);
         float sin = (float) Math.sin(yawRad);
@@ -176,7 +178,7 @@ public class RemotePlayer extends LivingEntity {
      * target sample (smoothed across the next snapshot interval); otherwise
      * the position is set immediately.
      */
-    public void applyNetworkState(float x, float y, float z, float yaw, float pitch) {
+    public void applyNetworkState(double x, double y, double z, float yaw, float pitch) {
         com.stonebreak.network.client.NetworkInterpolator interp = getInterpolator();
         if (interp != null) {
             interp.receive(x, y, z, yaw, pitch, this);
@@ -201,9 +203,9 @@ public class RemotePlayer extends LivingEntity {
      * can reuse the same state/animation derivation after repositioning.
      */
     protected void updateMovementAnimation(float deltaTime) {
-        float dx = position.x - prevPosition.x;
-        float dy = position.y - prevPosition.y;
-        float dz = position.z - prevPosition.z;
+        float dx = (float) (position.x - prevPosition.x);
+        float dy = (float) (position.y - prevPosition.y);
+        float dz = (float) (position.z - prevPosition.z);
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
         boolean moving = deltaTime > 0f && horizDist / deltaTime > WALK_THRESHOLD;
         prevPosition.set(position);

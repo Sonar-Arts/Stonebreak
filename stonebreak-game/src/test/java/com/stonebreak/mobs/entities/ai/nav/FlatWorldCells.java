@@ -44,14 +44,14 @@ final class FlatWorldCells {
         return physics;
     }
 
-    private boolean fill(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+    private boolean fill(long x0, long y0, long z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
         if (throwOnRead) {
             throw new IllegalStateException("world unavailable (expected by the test)");
         }
         for (int y = 0; y < sy; y++) {
             for (int z = 0; z < sz; z++) {
                 for (int x = 0; x < sx; x++) {
-                    int wx = x0 + x, wy = y0 + y, wz = z0 + z;
+                    int wx = (int) (x0 + x), wy = (int) (y0 + y), wz = (int) (z0 + z);
                     if ((wy >= 0 && wy <= groundTopY) || walls.contains(key(wx, wy, wz))) {
                         shapes[(y * sz + z) * sx + x] = FULL;
                     }

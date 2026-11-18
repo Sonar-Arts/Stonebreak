@@ -300,6 +300,7 @@
       "shadowDistance": 96,
       "smoothLightingEnabled": true,
       "renderDistance": 8,
+      "verticalRenderDistance": 128,
       "lodDistance": 16,
       "lodEnabled": true,
       "lodQuality": "MEDIUM",
@@ -921,7 +922,21 @@
       "warning": "WARNING! DaedalusTGM-Exp is experimental and starts local model services on first use",
       "error": "",
       "modeLabel": "Mode: Height   ·   Terrain: Standard Generation",
-      "hover": "(137, -61) = 33 blocks"
+      "hover": "(137, -61) = 33 blocks",
+      "scale": "ONE_TO_FOUR",
+      "scaleLabel": "Terrain Scale 1:4 (60 m blocks)",
+      "scales": [
+        {
+          "scale": "ONE_TO_FOUR",
+          "label": "1:4",
+          "selected": true
+        },
+        {
+          "scale": "ONE_TO_TWO",
+          "label": "1:2",
+          "selected": false
+        }
+      ]
     },
     "modelSetup": {
       "open": true,

@@ -171,25 +171,9 @@ public final class MultiplayerSession {
         }
     }
 
-    /** Ask the server to re-stream one chunk (client-side decode/apply failure). */
-    public static void requestChunkResync(int cx, int cz) {
-        ClientWorldView c = getClient();
-        if (c != null && !c.isDisconnected()) {
-            c.requestChunkResync(cx, cz);
-        }
-    }
-
-    /** The client dropped chunk ({@code cx}, {@code cz}); tell the server so it re-streams on return (#363). */
-    public static void notifyChunkUnloaded(int cx, int cz) {
-        ClientWorldView c = getClient();
-        if (c != null && !c.isDisconnected()) {
-            c.notifyChunkUnloaded(cx, cz);
-        }
-    }
-
     /**
-     * User-initiated full resync (pause-menu button): audit every resident chunk against the
-     * server plus re-request the entity snapshot. Returns the number of chunks audited, or
+     * User-initiated full resync (pause-menu button): audit every installed cube against the
+     * server plus re-request the entity snapshot. Returns the number of cubes audited, or
      * -1 when there is no live session.
      */
     public static int requestFullResync() {
@@ -289,10 +273,10 @@ public final class MultiplayerSession {
      * a respawn request, or a death only the client saw. The server owns health and decides
      * deaths and respawn spots itself (#343). No-op without a live session.
      */
-    public static void sendPlayerLife(boolean dead, Vector3f pos) {
+    public static void sendPlayerLife(boolean dead, org.joml.Vector3dc pos) {
         ClientWorldView c = getClient();
         if (c != null && !c.isDisconnected()) {
-            c.sendPlayerLife(new com.stonebreak.network.packet.player.PlayerLifeC2S(dead, pos.x, pos.y, pos.z));
+            c.sendPlayerLife(new com.stonebreak.network.packet.player.PlayerLifeC2S(dead, pos.x(), pos.y(), pos.z()));
         }
     }
 
@@ -314,7 +298,7 @@ public final class MultiplayerSession {
      * authoritative entity and replicates it to everyone (originator included). Returns
      * false when there is no live client connection (caller falls back to a local spawn).
      */
-    public static boolean sendProjectileSpawn(byte kind, Vector3f pos, Vector3f v, float... params) {
+    public static boolean sendProjectileSpawn(byte kind, org.joml.Vector3dc pos, Vector3f v, float... params) {
         ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return false;
@@ -328,7 +312,7 @@ public final class MultiplayerSession {
      * it in the server world. Numbered — the caller predicts the rod state flip on its mirror
      * and the server answers with a sync. Returns false when there is no live connection.
      */
-    public static boolean sendFishingRodUse(Vector3f origin, Vector3f direction) {
+    public static boolean sendFishingRodUse(org.joml.Vector3dc origin, Vector3f direction) {
         ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return false;
@@ -342,13 +326,13 @@ public final class MultiplayerSession {
      * predicts the item leaving the hand, and the server answers with a sync either way.
      * Returns false when there is no live connection.
      */
-    public static boolean sendVehiclePlace(Vector3f pos, float yawDeg) {
+    public static boolean sendVehiclePlace(org.joml.Vector3dc pos, float yawDeg) {
         ClientWorldView c = getClient();
         if (c == null || c.isDisconnected()) {
             return false;
         }
         c.sendVehiclePacket(com.stonebreak.network.packet.vehicle.VehicleActionC2S.place(
-                pos.x, pos.y, pos.z, yawDeg, SlotIntentSeq.nextAnswered()), false);
+                pos.x(), pos.y(), pos.z(), yawDeg, SlotIntentSeq.nextAnswered()), false);
         return true;
     }
 
@@ -826,6 +810,8 @@ public final class MultiplayerSession {
         ServerLevel level = s.worldContext().serverLevel();
         s.shutdown();
         if (level != null) {
+            // The rendered world's octree LOD reads this level's cube store (shared handle): close it first.
+            com.stonebreak.world.fastlod.OctreeLod.releaseStore(level.world().cubeStore());
             level.cleanup();
         }
     }
@@ -946,6 +932,11 @@ public final class MultiplayerSession {
      * (a client-world entity must never walk the server roster, #341).
      */
     public static int tryServerPickup(Vector3f pos, float range, NetItemStack stack) {
+        return tryServerPickup(new org.joml.Vector3d(pos.x, pos.y, pos.z), range, stack);
+    }
+
+    /** {@link #tryServerPickup(Vector3f, float, NetItemStack)} at a double world position (#445). */
+    public static int tryServerPickup(org.joml.Vector3dc pos, float range, NetItemStack stack) {
         IntegratedServer s = com.stonebreak.battletest.BattleTestSession.isActive() ? null : server;
         if (s == null || stack == null || stack.isEmpty() || !s.requireTickThread("tryServerPickup")) {
             return 0;
@@ -961,9 +952,9 @@ public final class MultiplayerSession {
         return taken;
     }
 
-    /** {@link #nearestEligiblePickupCandidate(Iterable, Vector3f, float, int, String)} for default-state stacks. */
+    /** {@link #nearestEligiblePickupCandidate(Iterable, org.joml.Vector3dc, float, int, String)} for default-state stacks. */
     static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
-                                                       Vector3f pos, float range, int itemId) {
+                                                       org.joml.Vector3dc pos, float range, int itemId) {
         return nearestEligiblePickupCandidate(players, pos, range, itemId, null);
     }
 
@@ -978,7 +969,7 @@ public final class MultiplayerSession {
      * it (#372).
      */
     static ServerPlayer nearestEligiblePickupCandidate(Iterable<ServerPlayer> players,
-                                                       Vector3f pos, float range, int itemId,
+                                                       org.joml.Vector3dc pos, float range, int itemId,
                                                        String state) {
         float rangeSq = range * range;
         ServerPlayer nearest = null;
@@ -987,9 +978,9 @@ public final class MultiplayerSession {
             if (!sp.isLiveInWorld()) {
                 continue;
             }
-            float dx = pos.x - sp.x();
-            float dy = pos.y - sp.y();
-            float dz = pos.z - sp.z();
+            float dx = (float) (pos.x() - sp.x());
+            float dy = (float) (pos.y() - sp.y());
+            float dz = (float) (pos.z() - sp.z());
             float distSq = dx * dx + dy * dy + dz * dz;
             if (distSq <= rangeSq && distSq < nearestSq && sp.inventory().roomFor(itemId, 1, state) > 0) {
                 nearest = sp;

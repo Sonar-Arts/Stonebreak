@@ -1,11 +1,12 @@
 package com.stonebreak.mobs.entities;
 
-import com.openmason.engine.voxel.lighting.ChunkHeightMap;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
 import com.stonebreak.world.lighting.BlockOpacity;
 import com.stonebreak.world.operations.WorldConfiguration;
-import org.joml.Vector3f;
+import com.openmason.engine.voxel.world.CubePos;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -108,8 +109,8 @@ public class EntitySpawner {
      * spawn/despawn radius for this anchor. {@code spawnsMobs} is false for a dead player: its area
      * still bounds despawning, but no new mobs are placed around the corpse.
      */
-    public record SpawnAnchor(Vector3f position, int viewDistanceChunks, boolean spawnsMobs) {
-        public SpawnAnchor(Vector3f position, int viewDistanceChunks) {
+    public record SpawnAnchor(Vector3dc position, int viewDistanceChunks, boolean spawnsMobs) {
+        public SpawnAnchor(Vector3dc position, int viewDistanceChunks) {
             this(position, viewDistanceChunks, true);
         }
     }
@@ -162,43 +163,46 @@ public class EntitySpawner {
 
     // ─── Cap math ─────────────────────────────────────────────────────────────
 
-    /** The passive-mob cap for a given count of eligible (loaded, feature-populated) chunks. */
+    /**
+     * The passive-mob cap for a given eligible AREA, counted in 16x16-block chunk units (one READY
+     * 32x32 cube column = {@link #CHUNKS_PER_COLUMN} units), so the density keeps its meaning.
+     */
     static int computeCap(int eligibleChunks) {
         return Math.round(DENSITY_PER_CHUNK * eligibleChunks);
     }
 
+    /** 16x16 chunk units of area in one 32x32 cube column. */
+    static final int CHUNKS_PER_COLUMN = (WorldConfiguration.CUBE_EDGE / 16) * (WorldConfiguration.CUBE_EDGE / 16);
+
     /**
-     * Counts the de-duplicated loaded + feature-populated chunks within view distance of any anchor.
-     * Reads only resident chunks ({@link World#getChunkIfLoaded}) — never generates — so it measures
-     * the currently visible area, not the server's monotonically-growing residency set.
+     * The eligible area within view distance of any anchor, in 16x16 chunk units: the de-duplicated
+     * cube columns ({@code 32x32}) overlapping each anchor's view square that are READY
+     * ({@link World#isColumnReady}: band cubes installed, populated and meshed) — never generates, so it
+     * measures the currently visible area, not the server's growing residency set.
      */
     private int countEligibleChunks(List<SpawnAnchor> anchors) {
-        Set<Long> eligible = new HashSet<>();
+        Set<CubePos> eligible = new HashSet<>();
         for (SpawnAnchor anchor : anchors) {
-            int r = anchor.viewDistanceChunks();
-            int pcx = Math.floorDiv((int) Math.floor(anchor.position().x), 16);
-            int pcz = Math.floorDiv((int) Math.floor(anchor.position().z), 16);
-            for (int dx = -r; dx <= r; dx++) {
-                for (int dz = -r; dz <= r; dz++) {
-                    int cx = pcx + dx;
-                    int cz = pcz + dz;
-                    long key = chunkKey(cx, cz);
-                    if (eligible.contains(key)) {
-                        continue;
-                    }
-                    var chunk = world.getChunkIfLoaded(cx, cz);
-                    if (chunk != null && chunk.areFeaturesPopulated()) {
+            long radius = (long) anchor.viewDistanceChunks() * 16L;
+            long px = (long) Math.floor(anchor.position().x());
+            long pz = (long) Math.floor(anchor.position().z());
+            long minCx = Math.floorDiv(px - radius, WorldConfiguration.CUBE_EDGE);
+            long maxCx = Math.floorDiv(px + radius, WorldConfiguration.CUBE_EDGE);
+            long minCz = Math.floorDiv(pz - radius, WorldConfiguration.CUBE_EDGE);
+            long maxCz = Math.floorDiv(pz + radius, WorldConfiguration.CUBE_EDGE);
+            for (long cx = minCx; cx <= maxCx; cx++) {
+                for (long cz = minCz; cz <= maxCz; cz++) {
+                    // A column key: y is irrelevant (cube columns are 2D), the triple is still a full key.
+                    CubePos key = new CubePos(cx, 0, cz);
+                    if (!eligible.contains(key) && world.isColumnReady(cx, cz)) {
                         eligible.add(key);
                     }
                 }
             }
         }
-        return eligible.size();
+        return eligible.size() * CHUNKS_PER_COLUMN;
     }
 
-    private static long chunkKey(int cx, int cz) {
-        return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
-    }
 
     // ─── Continuous spawning (the only spawn path) ────────────────────────────
 
@@ -223,7 +227,7 @@ public class EntitySpawner {
         int maxAttempts = deficit * 4 + 8;
         for (int attempt = 0; attempt < maxAttempts && spawned < deficit; attempt++) {
             SpawnAnchor anchor = anchors.get(random.nextInt(anchors.size()));
-            Vector3f spot = findSpawnNear(anchor.position(), anchor.viewDistanceChunks() * 16);
+            Vector3d spot = findSpawnNear(anchor.position(), anchor.viewDistanceChunks() * 16);
             if (spot == null) {
                 continue;
             }
@@ -232,12 +236,12 @@ public class EntitySpawner {
     }
 
     /** Spawns a small clustered pack of one random passive type around {@code spot}; returns the count placed. */
-    private int spawnPack(Vector3f spot, int remaining) {
+    private int spawnPack(Vector3dc spot, int remaining) {
         EntityType type = PASSIVE_SPAWN_TYPES[random.nextInt(PASSIVE_SPAWN_TYPES.length)];
         int packSize = Math.min(remaining, MIN_PACK + random.nextInt(MAX_PACK - MIN_PACK + 1));
         int placed = 0;
         for (int i = 0; i < packSize; i++) {
-            Vector3f pos = (i == 0) ? spot : jitterStandable(spot);
+            Vector3dc pos = (i == 0) ? spot : jitterStandable(spot);
             if (pos != null && isValidSpawnLocation(pos, type) && spawnPassiveMob(type, pos) != null) {
                 placed++;
             }
@@ -246,9 +250,9 @@ public class EntitySpawner {
     }
 
     /** A standable spot within {@link #PACK_SPREAD} blocks of {@code center}, or null. */
-    Vector3f jitterStandable(Vector3f center) {
-        int x = (int) Math.floor(center.x) + random.nextInt(PACK_SPREAD * 2 + 1) - PACK_SPREAD;
-        int z = (int) Math.floor(center.z) + random.nextInt(PACK_SPREAD * 2 + 1) - PACK_SPREAD;
+    Vector3d jitterStandable(Vector3dc center) {
+        long x = (long) Math.floor(center.x()) + random.nextInt(PACK_SPREAD * 2 + 1) - PACK_SPREAD;
+        long z = (long) Math.floor(center.z()) + random.nextInt(PACK_SPREAD * 2 + 1) - PACK_SPREAD;
         return findStandableColumn(x, z);
     }
 
@@ -279,7 +283,7 @@ public class EntitySpawner {
         if (excess <= 0) {
             return;
         }
-        survivors.sort((a, b) -> Float.compare(
+        survivors.sort((a, b) -> Double.compare(
                 nearestAnchorDistance(b.getPosition(), anchors),
                 nearestAnchorDistance(a.getPosition(), anchors)));
         int culled = 0;
@@ -328,9 +332,9 @@ public class EntitySpawner {
                 || type == EntityType.SHEEP || type == EntityType.GOOSE;
     }
 
-    private static boolean withinAnyViewRadius(Vector3f point, List<SpawnAnchor> anchors, int extraBlocks) {
+    private static boolean withinAnyViewRadius(Vector3dc point, List<SpawnAnchor> anchors, int extraBlocks) {
         for (SpawnAnchor anchor : anchors) {
-            float radius = anchor.viewDistanceChunks() * 16f + extraBlocks;
+            double radius = anchor.viewDistanceChunks() * 16.0 + extraBlocks;
             if (point.distance(anchor.position()) <= radius) {
                 return true;
             }
@@ -338,10 +342,10 @@ public class EntitySpawner {
         return false;
     }
 
-    private static float nearestAnchorDistance(Vector3f point, List<SpawnAnchor> anchors) {
-        float best = Float.POSITIVE_INFINITY;
+    private static double nearestAnchorDistance(Vector3dc point, List<SpawnAnchor> anchors) {
+        double best = Double.POSITIVE_INFINITY;
         for (SpawnAnchor anchor : anchors) {
-            float d = point.distance(anchor.position());
+            double d = point.distance(anchor.position());
             if (d < best) {
                 best = d;
             }
@@ -372,19 +376,19 @@ public class EntitySpawner {
      * {@code maxRadiusBlocks}) and finds a valid standable column there. Returns null if the target
      * chunk isn't resident + feature-populated, or no standable column exists.
      */
-    Vector3f findSpawnNear(Vector3f center, int maxRadiusBlocks) {
+    Vector3d findSpawnNear(Vector3dc center, int maxRadiusBlocks) {
         int outer = Math.max(maxRadiusBlocks, MIN_SPAWN_DISTANCE + 1);
-        float angle = random.nextFloat() * (float) (Math.PI * 2);
-        float distance = MIN_SPAWN_DISTANCE + random.nextFloat() * (outer - MIN_SPAWN_DISTANCE);
-        int x = (int) (center.x + Math.cos(angle) * distance);
-        int z = (int) (center.z + Math.sin(angle) * distance);
+        double angle = random.nextFloat() * (Math.PI * 2);
+        double distance = MIN_SPAWN_DISTANCE + random.nextFloat() * (outer - MIN_SPAWN_DISTANCE);
+        long x = (long) Math.floor(center.x() + Math.cos(angle) * distance);
+        long z = (long) Math.floor(center.z() + Math.sin(angle) * distance);
         return findStandableColumn(x, z);
     }
 
     /**
      * The sky-exposed standable position in the column at {@code (x,z)}, or null.
      *
-     * <p>The stand height comes from the chunk's own {@link ChunkHeightMap}, which stores
+     * <p>The stand height comes from surface tracker (cv_surface_y), which stores
      * {@code topOpaqueY + 1} per column — exactly a mob's feet position on the surface. Reusing it
      * beats re-deriving the height from the terrain generator: it costs no I/O on the server tick
      * (a {@code terrain().getFinalTerrainHeightAt} call can block on a diffusion tile fetch), and it
@@ -395,26 +399,27 @@ public class EntitySpawner {
      * <p>Gated on the chunk being resident + feature-populated so mobs never land on
      * unloaded/half-baked terrain where they'd fall through the world.
      */
-    private Vector3f findStandableColumn(int x, int z) {
-        var chunk = world.getChunkIfLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
-        if (chunk == null || !chunk.areFeaturesPopulated()) {
+    private Vector3d findStandableColumn(long x, long z) {
+        if (!world.isColumnReadyAt(x, z)) {
             return null;
         }
-        ChunkHeightMap heightMap = chunk.getHeightMap();
-        if (!heightMap.isPopulated()) {
+        // The native surface tracker: first free y above the topmost sky-opaque block. Water is not
+        // sky-opaque, so over a lake this is the bed — isStandable then rejects it (water is not
+        // body space), which is what keeps land mobs off the water.
+        long surface = world.surfaceY(x, z);
+        if (surface <= WorldConfiguration.MIN_Y || surface >= WorldConfiguration.MAX_Y) {
             return null;
         }
-        int standY = heightMap.getHeight(Math.floorMod(x, 16), Math.floorMod(z, 16));
-        if (!isStandable(standY, y -> world.getBlockAt(x, y, z))) {
+        if (!isStandable(surface, y -> world.getBlockAt(x, y, z))) {
             return null;
         }
-        return new Vector3f(x + 0.5f, standY, z + 0.5f);
+        return new Vector3d(x + 0.5, surface, z + 0.5);
     }
 
     /** Column block lookup, injected so the standability rule is testable without a live World. */
     @FunctionalInterface
     interface ColumnBlocks {
-        BlockType at(int y);
+        BlockType at(long y);
     }
 
     /**
@@ -422,8 +427,8 @@ public class EntitySpawner {
      * cells of body space at and above it. The single gate shared by the spawn finder and
      * {@link #isValidSpawnLocation}, so a spot can't be found and then rejected.
      */
-    static boolean isStandable(int standY, ColumnBlocks column) {
-        if (standY <= 0 || standY + 1 >= WorldConfiguration.WORLD_HEIGHT) return false;
+    static boolean isStandable(long standY, ColumnBlocks column) {
+        if (standY <= WorldConfiguration.MIN_Y || standY + 1 >= WorldConfiguration.MAX_Y) return false;
         return isGround(column.at(standY - 1))
             && isPassable(column.at(standY))
             && isPassable(column.at(standY + 1));
@@ -449,27 +454,27 @@ public class EntitySpawner {
      * Validates a candidate spawn position for the given type. Public so tools and commands can
      * reuse the same gate.
      */
-    public boolean isValidSpawnLocation(Vector3f position, EntityType type) {
-        int x = (int) Math.floor(position.x);
-        int y = (int) Math.floor(position.y);
-        int z = (int) Math.floor(position.z);
+    public boolean isValidSpawnLocation(Vector3dc position, EntityType type) {
+        long x = (long) Math.floor(position.x());
+        long y = (long) Math.floor(position.y());
+        long z = (long) Math.floor(position.z());
         return switch (type) {
             case COW, CHICKEN, SHEEP, GOOSE, GOBLIN -> isValidGroundSpawn(x, y, z, position);
             default -> false;
         };
     }
 
-    private boolean isValidGroundSpawn(int x, int y, int z, Vector3f position) {
+    private boolean isValidGroundSpawn(long x, long y, long z, Vector3dc position) {
         return isStandable(y, yy -> world.getBlockAt(x, yy, z)) && !isOvercrowded(position);
     }
 
-    private boolean isOvercrowded(Vector3f position) {
+    private boolean isOvercrowded(Vector3dc position) {
         return entityManager.getEntitiesInRange(position, 5.0f).size() >= 3;
     }
 
     // ─── Spawning primitives ──────────────────────────────────────────────────
 
-    private Entity spawnPassiveMob(EntityType type, Vector3f position) {
+    private Entity spawnPassiveMob(EntityType type, Vector3dc position) {
         if (type == EntityType.COW) {
             String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
             return entityManager.spawnCowWithVariant(position, variant);
@@ -480,15 +485,15 @@ public class EntitySpawner {
     // ─── Backwards-compatible public helpers ──────────────────────────────────
 
     /** Spawns a herd near {@code center} for commands/testing — bypasses the spawn cycle. */
-    public void spawnCowHerd(Vector3f center, int count) {
+    public void spawnCowHerd(Vector3dc center, int count) {
         int spawned = 0;
         for (int attempt = 0; attempt < count * 5 && spawned < count; attempt++) {
             float ox = (random.nextFloat() - 0.5f) * 16.0f;
             float oz = (random.nextFloat() - 0.5f) * 16.0f;
-            int x = (int) (center.x + ox);
-            int z = (int) (center.z + oz);
+            long x = (long) Math.floor(center.x() + ox);
+            long z = (long) Math.floor(center.z() + oz);
 
-            Vector3f pos = findStandableColumn(x, z);
+            Vector3d pos = findStandableColumn(x, z);
             if (pos == null || !isValidSpawnLocation(pos, EntityType.COW)) continue;
 
             String variant = COW_TEXTURE_VARIANTS[random.nextInt(COW_TEXTURE_VARIANTS.length)];
@@ -501,7 +506,7 @@ public class EntitySpawner {
     }
 
     /** Test/command hook — unconditional spawn, no validation. */
-    public Entity forceSpawnEntity(EntityType type, Vector3f position) {
+    public Entity forceSpawnEntity(EntityType type, Vector3dc position) {
         Entity entity = entityManager.spawnEntity(type, position);
         if (entity != null) {
             entity.setCommandSpawned(true);

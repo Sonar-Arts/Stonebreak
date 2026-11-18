@@ -8,7 +8,7 @@ import com.stonebreak.player.Camera;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.SPAWN_PROTECTION_DURATION;
@@ -52,7 +52,7 @@ public class DeathHandler {
     }
 
     private void die() {
-        Vector3f position = state.getPosition();
+        Vector3d position = state.getPosition();
         System.out.println("DEBUG: Player died at position: " + position);
         System.out.println("DEBUG: Checking inventory BEFORE dropAllItems():");
         for (int i = 0; i < Inventory.HOTBAR_SIZE; i++) {
@@ -64,7 +64,7 @@ public class DeathHandler {
 
         // In a session the server decided this death and already scattered the inventory (#343);
         // the edge is then a no-op there. It claims a death only the client saw (a dev hook).
-        com.stonebreak.network.MultiplayerSession.sendPlayerLife(true, position);
+        com.stonebreak.network.MultiplayerSession.sendPlayerLife(true, new Vector3d(position));
 
         // #351: return panel-held stacks (cursor, crafting grids, furnace carried stack) to the
         // inventory and close the panels, so the drop below sweeps them up with everything else.
@@ -107,8 +107,8 @@ public class DeathHandler {
         // scatters its replica at the death it decides.
         // The local paths spawn into the passed world's EntityManager, which on a client
         // render world is null — death drops would silently vanish in the two-world model.
-        Vector3f p = state.getPosition();
-        Vector3f dropPosition = new Vector3f(p.x, p.y + 0.5f, p.z);
+        Vector3d p = state.getPosition();
+        Vector3d dropPosition = new Vector3d(p.x, p.y + 0.5, p.z);
         if (stack.isPlaceable()) {
             BlockType blockType = stack.asBlockType();
             if (blockType != null) {
@@ -129,7 +129,7 @@ public class DeathHandler {
 
         // Respawn at the world spawn (the host-selected/random spawn frozen into the world),
         // falling back to the fixed constant only if the world/spawn isn't available.
-        Vector3f worldSpawn = (world != null) ? world.getSpawnPosition() : null;
+        var worldSpawn = (world != null) ? world.getSpawnPosition() : null;
         if (worldSpawn != null) {
             state.getPosition().set(worldSpawn);
         } else {
@@ -142,12 +142,12 @@ public class DeathHandler {
         health.enableSpawnProtection();
         System.out.println("Spawn protection enabled - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");
 
-        Vector3f p = state.getPosition();
+        Vector3d p = state.getPosition();
         camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
 
         // Ask the server to respawn us (#343): it puts the player at the spawn it picks
         // (PlayerPositionS2C) — this local move is only the prediction.
-        com.stonebreak.network.MultiplayerSession.sendPlayerLife(false, p);
+        com.stonebreak.network.MultiplayerSession.sendPlayerLife(false, new Vector3d(p));
 
         System.out.println("DEBUG: Respawn complete");
     }

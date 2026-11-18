@@ -71,22 +71,23 @@ public final class StairShape {
      *
      * @return height above the cell floor in {@code [0,1]}, 0 where the cell is open
      */
-    public static float stepHeight(com.stonebreak.world.World world, int x, int y, int z,
+    public static float stepHeight(com.stonebreak.world.World world, long x, long y, long z,
                                    BlockType type,
-                                   float minWorldX, float minWorldZ,
-                                   float maxWorldX, float maxWorldZ) {
+                                   double minWorldX, double minWorldZ,
+                                   double maxWorldX, double maxWorldZ) {
         // Clip to the cell in world space first: a body's footprint usually
         // spans several cells, and only the part inside this one rests on it.
-        float clippedMinX = Math.max(minWorldX, x);
-        float clippedMaxX = Math.min(maxWorldX, x + 1f);
-        float clippedMinZ = Math.max(minWorldZ, z);
-        float clippedMaxZ = Math.min(maxWorldZ, z + 1f);
+        // In double, then cell-local (small) floats: exact at any distance from the origin.
+        double clippedMinX = Math.max(minWorldX, x);
+        double clippedMaxX = Math.min(maxWorldX, x + 1.0);
+        double clippedMinZ = Math.max(minWorldZ, z);
+        double clippedMaxZ = Math.min(maxWorldZ, z + 1.0);
         if (clippedMinX > clippedMaxX || clippedMinZ > clippedMaxZ) {
             return 0f;
         }
         StairState state = StairState.parse(world.getBlockStateAt(x, y, z));
         return of(type).maxHeightIn(state.facing(),
-                clippedMinX - x, clippedMinZ - z, clippedMaxX - x, clippedMaxZ - z);
+                (float) (clippedMinX - x), (float) (clippedMinZ - z), (float) (clippedMaxX - x), (float) (clippedMaxZ - z));
     }
 
     /**

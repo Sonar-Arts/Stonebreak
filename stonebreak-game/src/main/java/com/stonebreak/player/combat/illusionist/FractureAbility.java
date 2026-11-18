@@ -16,7 +16,7 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.DoubtController;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.List;
 
@@ -42,7 +42,7 @@ public class FractureAbility {
     public boolean tryActivate(Player player, DoubtController doubt) {
         if (cooldownRemaining > 0f) return false;
 
-        Vector3f origin = player.getPosition();
+        Vector3d origin = player.getPosition();
         float rangeSq = ILLUSIONIST_FRACTURE_RANGE * ILLUSIONIST_FRACTURE_RANGE;
 
         List<LivingEntity> doubted = doubt.getAllDoubted();
@@ -107,10 +107,10 @@ public class FractureAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return null;
         LivingEntity nearest = null;
-        float nearestDistSq = Float.MAX_VALUE;
+        double nearestDistSq = Double.MAX_VALUE;
         for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (entity == from || entity instanceof IllusionDecoy || !entity.isAlive()) continue;
-            float distSq = entity.getPosition().distanceSquared(from.getPosition());
+            double distSq = entity.getPosition().distanceSquared(from.getPosition());
             if (distSq < nearestDistSq) {
                 nearestDistSq = distSq;
                 nearest = entity;

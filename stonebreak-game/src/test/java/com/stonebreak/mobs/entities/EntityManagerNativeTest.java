@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,9 @@ class EntityManagerNativeTest {
     @BeforeEach
     void setUp() {
         world = mock(World.class); // getBlockAt -> null: open air
+        // Every cell known (open air everywhere), so entities simulate (EntityManager.canSimulate).
+        when(world.isKnown(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
         em = new EntityManager(world);
         when(world.getEntityManager()).thenReturn(em);
         em.addListener(new EntityManager.Listener() {
@@ -47,7 +51,7 @@ class EntityManagerNativeTest {
     }
 
     private StubMob mob(EntityType type, float x, float z) {
-        return new StubMob(type, new Vector3f(x, 64f, z), world);
+        return new StubMob(type, new Vector3d(x, 64f, z), world);
     }
 
     @Test
@@ -127,7 +131,7 @@ class EntityManagerNativeTest {
 
         List<Entity> all = em.getAllEntities();
         for (int trial = 0; trial < 50; trial++) {
-            Vector3f c = new Vector3f(random.nextFloat() * 80 - 40, 60 + random.nextFloat() * 8, random.nextFloat() * 80 - 40);
+            Vector3d c = new Vector3d(random.nextFloat() * 80 - 40, 60 + random.nextFloat() * 8, random.nextFloat() * 80 - 40);
             float r = random.nextFloat() * 25;
             List<Entity> expected = new ArrayList<>();
             for (Entity e : all) {
@@ -140,7 +144,7 @@ class EntityManagerNativeTest {
             float best = Float.MAX_VALUE;
             for (Entity e : all) {
                 if (e.isAlive() && e.getType() == type) {
-                    float d = e.getPosition().distance(c);
+                    float d = (float) e.getPosition().distance(c);
                     if (d < best) {
                         best = d;
                         nearest = e;
@@ -156,20 +160,39 @@ class EntityManagerNativeTest {
     }
 
     @Test
-    void chunkUnloadRemovesOnlyThatColumnsLocalEntities() {
-        StubMob inside = mob(EntityType.COW, 3.5f, 15.99f);
-        StubMob edge = mob(EntityType.COW, 16f, 4f);   // x == 16 belongs to the next column
+    void cubeUnloadRemovesOnlyThatCubesLocalEntities() {
+        // y 80: cube (0, 2, 0), with room for the fall the open-air mock world lets it start.
+        StubMob inside = new StubMob(EntityType.COW, new Vector3d(3.5f, 80f, 31.99f), world);
+        StubMob edge = mob(EntityType.COW, 32f, 4f);   // x == 32 belongs to the next cube
         StubMob shadow = mob(EntityType.COW, 5f, 5f);
         shadow.setNetworkShadow(true);
-        StubMob player = new StubMob(EntityType.REMOTE_PLAYER, new Vector3f(6f, 64f, 6f), world);
+        StubMob player = new StubMob(EntityType.REMOTE_PLAYER, new Vector3d(6f, 64f, 6f), world);
         for (Entity e : List.of(inside, edge, shadow, player)) em.addEntity(e);
         em.update(0.05f);
         events.clear();
 
-        em.removeEntitiesInChunk(0, 0);
+        em.removeEntitiesInCube(0, 2, 0);
         em.update(0.05f);
         assertEquals(List.of(edge, shadow, player), em.getAllEntities());
         assertEquals(List.of("-COW"), events);
+    }
+
+    @Test
+    void entitiesFreezeWhereTheirSurroundingsAreNotKnown() {
+        when(world.mode()).thenReturn(World.Mode.SERVER); // a streamed world: residency matters
+        StubMob cow = new StubMob(EntityType.COW, new Vector3d(0.5f, 80f, 0.5f), world);
+        em.addEntity(cow);
+        when(world.isKnown(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(false);
+        em.update(0.05f);
+        em.update(0.05f);
+        assertEquals(0f, cow.getAge(), "frozen: no update ran");
+        assertEquals(80.0, cow.getY(), 0.0);
+
+        when(world.isKnown(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong())).thenReturn(true);
+        em.update(0.05f);
+        assertTrue(cow.getAge() > 0f, "known again: it simulates");
     }
 
     @Test
@@ -228,6 +251,6 @@ class EntityManagerNativeTest {
         em.cleanup();
         assertEquals(List.of(alive), em.getAllEntitiesIncludingPending());
         assertTrue(events.isEmpty());
-        assertNull(em.getNearestEntity(new Vector3f(), EntityType.GOOSE));
+        assertNull(em.getNearestEntity(new Vector3d(), EntityType.GOOSE));
     }
 }

@@ -39,7 +39,6 @@ import com.stonebreak.rendering.gameWorld.weather.WeatherEffects;
 import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
 import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.rendering.gameWorld.fastlod.FastLodRenderPass;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.World;
 
 /**
@@ -73,6 +72,9 @@ public class WorldRenderer {
     private final com.stonebreak.rendering.lighting.TorchIndirectLighting torchIndirectLighting =
             new com.stonebreak.rendering.lighting.TorchIndirectLighting();
     private final FastLodRenderPass lodRenderPass;
+    private static final boolean OCTREE_ONLY = Boolean.getBoolean("stonebreak.octreeLod.noFallback");
+    private final com.stonebreak.rendering.gameWorld.fastlod.OctreeLodRenderer octreeLodRenderer =
+            new com.stonebreak.rendering.gameWorld.fastlod.OctreeLodRenderer();
     // Shared region arenas for FastLOD nodes (multidraw batching); created
     // lazily on the GL thread once region rendering is known to be enabled.
     private com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodRegionBatcher;
@@ -84,22 +86,13 @@ public class WorldRenderer {
     /** Near rain and snow as FX particles (the lanes keep the far ring); {@code -Dstonebreak.rain=lanes} = A/B. */
     private final PrecipitationFx precipitationFx;
 
-    // Reusable lists to avoid allocations during rendering
-    private final List<Chunk> reusableSortedChunks = new ArrayList<>();
-    private final List<Chunk> reusableVisibleChunks = new ArrayList<>();
-    private final List<Chunk> reusableLoadedChunks = new ArrayList<>();
-    /** This frame's render-distance square in world XZ: {minX, minZ, maxX, maxZ}. */
-    private final float[] renderSquare = new float[4];
-    private final List<Chunk> reusableTranslucentChunks = new ArrayList<>();
-    private long[] sortKeys = new long[512];
-    // Region-level frustum pre-cull grid: one classifying AABB test per
-    // 8x8-chunk-column region decides whole regions; only INTERSECT regions
-    // fall through to per-chunk tests. Reused across frames.
-    private int[] regionVisibility = new int[0];
-    private int regionGridMinRx, regionGridMinRz, regionGridWidth, regionGridHeight;
+    /** The camera pass's cube set: visibility walk + back-to-front lists (Phase 5). */
+    private final CubeVisibility cubeVisibility = new CubeVisibility();
+    /** Fog-coloured boxes for visible cubes that are not loaded yet. */
+    private final CubeProxyRenderer proxyRenderer = new CubeProxyRenderer();
+    /** Render-space camera clip matrix of this frame. */
+    private final Matrix4f cameraViewProj = new Matrix4f();
     private final List<com.stonebreak.rendering.gameWorld.water.WaterRenderer.LodWaterNode> reusableLodWater = new ArrayList<>();
-    // Cached so the per-frame chunk visit doesn't allocate a capturing lambda each call.
-    private final java.util.function.Consumer<Chunk> loadedCollector = reusableLoadedChunks::add;
     
     /**
      * Creates a WorldRenderer with the required dependencies.
@@ -133,6 +126,7 @@ public class WorldRenderer {
         this.lodRenderPass = new FastLodRenderPass();
         this.fishingLineRenderer = new com.stonebreak.rendering.models.entities.FishingLineRenderer(shaderProgram, projectionMatrix);
         this.waterRenderer = new com.stonebreak.rendering.gameWorld.water.WaterRenderer();
+        this.waterRenderer.setOctreeLod(octreeLodRenderer);
         this.effectsRenderer = new com.stonebreak.rendering.gameWorld.effects.WorldEffectsRenderer(
                 shaderProgram, projectionMatrix, entityRenderer);
         this.particlePass = new com.stonebreak.rendering.gameWorld.particles.ParticlePass(precipitationFog, cloudRenderer);
@@ -279,30 +273,28 @@ public class WorldRenderer {
                     new Vector3f(1f), new Vector3f(), 0f, 0f, 1f);
         }
 
-        // Region-batched chunk rendering: publish last frame's stats and prune
-        // emptied regions before this frame's first draws.
+        // Cube terrain: this world's stream events feed the region renderer (idempotent attach); publish
+        // last frame's stats and prune emptied regions before this frame's first draws. The FastLOD handover
+        // hides detail cubes of non-READY columns whenever the LOD is there to cover them.
+        com.stonebreak.rendering.gameWorld.regions.CubeTerrain.attach(world);
         if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
-            com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance().beginFrame();
+            var regions = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+            regions.beginFrame();
+            regions.setHandover(lodHandoverActive(world));
         }
-
-        // ONE grid walk over the render-distance ring collects every loaded
-        // chunk for the frame; the shadow caster cull and the camera frustum
-        // cull below both iterate this list (previously each did its own
-        // ~2401-cell ConcurrentHashMap walk per frame at 24-chunk distance).
-        collectLoadedChunks(world, player);
 
         // Cascaded sun-shadow depth pre-pass. Runs before anything samples the
         // shadow map this frame; restores the caller's framebuffer and viewport,
         // so it is safe even when the post-fx scene FBO is already bound.
         if (entityRenderer != null) entityRenderer.prepareShadowCasters(world);
         torchIndirectLighting.update(world);
-        shadowMapRenderer.renderShadowPass(world, player, keyDirection, entityRenderer, reusableLoadedChunks);
-        torchShadowRenderer.render(world, player, reusableLoadedChunks, entityRenderer, animatedBlockRenderer, totalTime);
+        shadowMapRenderer.renderShadowPass(world, player, keyDirection, entityRenderer);
+        torchShadowRenderer.render(world, player, entityRenderer, animatedBlockRenderer, totalTime);
         checkGLError("After shadow depth pre-pass");
 
         // Underwater changes what the BACKGROUND is, so it has to be decided
         // before the sky pass rather than with the fog parameters further down.
-        Vector3f cameraPos = player.getCamera().getPosition();
+        org.joml.Vector3d cameraPos = player.getCamera().getPosition();
 
         // The local weather and terrain relief follow the camera; rain and
         // lightning read them even with clouds switched off.
@@ -343,7 +335,14 @@ public class WorldRenderer {
             glClearColor(previousClear[0], previousClear[1], previousClear[2], previousClear[3]);
         } else {
             // Render sky first (before world geometry for proper depth testing)
-            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(), player.getPosition(), skyParams);
+            // The engine sky takes the WORLD camera position and rebases it itself (RenderOrigin.toRender):
+            // handing it the render position subtracted the origin twice, so once the origin was ~1000 blocks
+            // from zero the sky cube (camera + 1000) no longer surrounded the camera and the sky beyond it
+            // stayed the black clear colour - a black sector toward +X/+Z (or -X/-Z) far from spawn.
+            // Float world X/Z keep the cube around the camera out to ~2^33 blocks (float ulp < its 1000-block
+            // half size); beyond that the engine needs a render-space overload (doc: engine note).
+            skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(),
+                    new Vector3f((float) cameraPos.x, (float) cameraPos.y, (float) cameraPos.z), skyParams);
             precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
         }
         checkGLError("After sky rendering");
@@ -376,8 +375,8 @@ public class WorldRenderer {
         // of the haze as the camera climbs.
         boolean fogSpherical = cameraUnderwater;
         if (cameraUnderwater) {
-            fogStart = UnderwaterFog.start(cameraPos.y);
-            fogEnd = UnderwaterFog.end(cameraPos.y);
+            fogStart = UnderwaterFog.start((float) cameraPos.y);
+            fogEnd = UnderwaterFog.end((float) cameraPos.y);
             fogColor = UnderwaterFog.COLOR;
         } else if (settings.getLodEnabled() && settings.getLodDistance() > 0) {
             fogStart = settings.getRenderDistance() * (float) WorldConfiguration.CHUNK_SIZE;
@@ -395,18 +394,16 @@ public class WorldRenderer {
         bindTextureAtlas();
         checkGLError("After texture binding");
         
-        // Visit chunks around the player, culling those outside the view frustum
-        List<Chunk> visibleChunks = cullChunksToFrustum(world, player);
+        // The camera's cube set: visibility-graph walk inside the frustum (+ the missing cubes it reached).
+        cullCubes(world, player);
 
-        // Debug: Log chunk count
-        if (debugVisibleChunksCount < 1) {
-            System.out.println("[WorldRenderer] Got " + visibleChunks.size() + " visible chunks (of "
-                + world.getLoadedChunkCount() + " loaded) after frustum culling");
-            debugVisibleChunksCount++;
-        }
-
-        // Render opaque pass
-        renderOpaquePass(visibleChunks);
+        // Render opaque pass (atlas + stamps of the visible cubes), then the proxies for what is missing.
+        renderOpaquePass();
+        proxyRenderer.render(cubeVisibility,
+                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance(),
+                projectionMatrix, player.getViewMatrix(), fogColor);
+        shaderProgram.bind();
+        publishTerrainStats();
 
         // Render distant-terrain LOD between detail opaque and SBO; shares shader/atlas state.
         // frustumCuller was updated for this frame's camera by cullChunksToFrustum above —
@@ -420,12 +417,16 @@ public class WorldRenderer {
                 && com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
             lodRegionBatcher = new com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher();
         }
-        int lodStamp = lodRenderPass.render(shaderProgram, world.getFastLodManager(),
+        // Octree LOD (cv_lod): ticked here on the owner thread after the stream tick; FastLOD then draws only
+        // the FALLBACK footprints it hands back, the octree nodes draw right after.
+        org.joml.Vector3d lodEye = player.getCamera().getPosition();
+        octreeLodRenderer.update(world, world.getFastLodManager(), lodEye.x, lodEye.y, lodEye.z);
+        // Dev: -Dstonebreak.octreeLod.noFallback=true hides FastLOD (octree nodes + detail only, smoke checks).
+        int lodStamp = OCTREE_ONLY ? 0 : lodRenderPass.render(shaderProgram, world.getFastLodManager(),
                 lodPlayerCx, lodPlayerCz,
-                frustumCuller, world::isChunkDrawnAt, lodRegionBatcher, reusableLodWater);
-
-        // Render SBO blocks (blocks with SBO textures, rendered separately from atlas)
-        renderSBOPass(visibleChunks);
+                frustumCuller, this::lodColumnCovered, lodRegionBatcher, reusableLodWater,
+                octreeLodRenderer.octree());
+        octreeLodRenderer.drawTerrain(shaderProgram, cameraViewProj);
 
         // Render entities after opaque blocks but before transparent water
         // This allows water to blend over entities when viewing through water
@@ -470,10 +471,9 @@ public class WorldRenderer {
         // invisible through glass, and ice showed the bare lakebed). Underwater
         // the ice lies beyond the water surface, so the old order still holds:
         // ice first, then the water blends over it.
-        sortChunksBackToFront(visibleChunks, player);
         boolean translucentAfterWater = !cameraUnderwater;
         if (!translucentAfterWater) {
-            renderTranslucentSolids(visibleChunks, cameraUnderwater);
+            renderTranslucentSolids(cameraUnderwater);
         }
         // The drops and crack overlay below set world-shader uniforms without
         // binding it; the clouds may have left their own program bound.
@@ -508,7 +508,7 @@ public class WorldRenderer {
         if (bench != null) bench.end(PrecipitationBench.Section.FX_BEHIND);
         checkGLError("After particles behind water");
 
-        waterRenderer.render(reusableSortedChunks, projectionMatrix, player.getViewMatrix(),
+        waterRenderer.render(cubeVisibility.waterBackToFront(), projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
@@ -538,7 +538,7 @@ public class WorldRenderer {
         if (translucentAfterWater) {
             shaderProgram.bind();
             shaderProgram.setUniform("u_useTextureArray", true);
-            renderTranslucentSolids(visibleChunks, cameraUnderwater);
+            renderTranslucentSolids(cameraUnderwater);
             restoreGLStateAfterPasses();
         }
 
@@ -670,169 +670,94 @@ public class WorldRenderer {
     }
 
     /**
-     * The frame's single render-distance grid walk: collects every loaded
-     * chunk into a reused list shared by the shadow caster cull and the
-     * camera frustum cull. Allocation-free.
+     * Whether detail cubes of non-READY columns stay hidden this frame: only while the FastLOD ring is on
+     * to draw those columns instead ({@code -Dstonebreak.lodHandover=off} always draws every resident cube).
      */
-    private void collectLoadedChunks(World world, Player player) {
-        int playerChunkX = (int) Math.floor(player.getPosition().x / WorldConfiguration.CHUNK_SIZE);
-        int playerChunkZ = (int) Math.floor(player.getPosition().z / WorldConfiguration.CHUNK_SIZE);
-        reusableLoadedChunks.clear();
-        world.forEachChunkAroundPlayer(playerChunkX, playerChunkZ, loadedCollector);
-        // The same square bounds the GPU-culled camera pass (see renderOpaquePass).
-        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.chunkSquare(
-            playerChunkX, playerChunkZ, world.getConfig().getRenderDistance(), renderSquare);
+    private static boolean lodHandoverActive(World world) {
+        if ("off".equalsIgnoreCase(System.getProperty("stonebreak.lodHandover", "on"))) {
+            return false;
+        }
+        com.stonebreak.config.Settings settings = com.stonebreak.config.Settings.getInstance();
+        return world.isRenderOnly() && settings.getLodEnabled() && settings.getLodDistance() > 0
+                && world.getFastLodManager() != null;
+    }
+
+    /** FastLOD node test: the native detail of this 16-block LOD column is drawn (its cube column READY). */
+    private boolean lodColumnCovered(int chunkX16, int chunkZ16) {
+        if (!com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            return false;
+        }
+        return com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
+                .isColumnReady(chunkX16 >> 1, chunkZ16 >> 1);
     }
 
     /**
-     * Filters this frame's loaded-chunk list down to those intersecting the
-     * camera view frustum. A region-level pre-cull (one classifying AABB test
-     * per 8x8-chunk-column region) skips or wholesale-accepts entire regions,
-     * so per-chunk tests only run where a region straddles the frustum edge.
-     * Returns a reused list; allocation-free.
+     * This frame's camera cube set: the frustum (for the LOD pass and debug) plus the visibility-graph walk
+     * from the camera cube ({@link CubeVisibility}), which also lists the visible missing cubes.
      */
-    private List<Chunk> cullChunksToFrustum(World world, Player player) {
+    private void cullCubes(World world, Player player) {
         frustumCuller.update(projectionMatrix, player.getViewMatrix());
-        reusableVisibleChunks.clear();
-        int count = reusableLoadedChunks.size();
-        if (count == 0) {
-            return reusableVisibleChunks;
+        projectionMatrix.mul(player.getViewMatrix(), cameraViewProj);
+        if (!com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            return;
         }
-        computeRegionVisibility();
-        int shift = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SHIFT;
-        for (int i = 0; i < count; i++) {
-            Chunk chunk = reusableLoadedChunks.get(i);
-            int ix = (chunk.getChunkX() >> shift) - regionGridMinRx;
-            int iz = (chunk.getChunkZ() >> shift) - regionGridMinRz;
-            int vis = regionVisibility[ix * regionGridHeight + iz];
-            if (vis >= 0) {
-                continue; // Whole region outside (vis = index of the culling plane).
-            }
-            if (vis == org.joml.FrustumIntersection.INSIDE || frustumCuller.isChunkVisible(chunk)) {
-                reusableVisibleChunks.add(chunk);
-            }
+        org.joml.Vector3d cam = player.getCamera().getPosition();
+        cubeVisibility.update(world, com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance(),
+                cameraViewProj, cam.x, cam.y, cam.z, world.getConfig().getHorizontalRenderRadiusBlocks());
+    }
+
+    private void publishTerrainStats() {
+        if (!com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
+            return;
         }
-        return reusableVisibleChunks;
+        var regions = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+        TerrainRenderStats.publish(new TerrainRenderStats.Snapshot(regions.residentCubes(),
+                cubeVisibility.visible().size(), cubeVisibility.walkFrame(), cubeVisibility.missingCount(),
+                cubeVisibility.missingTotal(), proxyRenderer.lastDrawn(), cubeVisibility.lastWalkNanos(),
+                regions.hiddenByHandover(), regions.handover(), cubeVisibility.walkActive()));
+    }
+
+    /** The camera pass's visibility state (F3 / tests). */
+    public CubeVisibility cubeVisibility() {
+        return cubeVisibility;
+    }
+
+    /** Proxies drawn last frame (F3). */
+    public int proxiesDrawn() {
+        return proxyRenderer.lastDrawn();
     }
 
     /**
-     * Classifies every region covering this frame's loaded chunks against the
-     * camera frustum (INSIDE / INTERSECT / plane index when fully outside).
-     * Must run after {@code frustumCuller.update}.
+     * Opaque pass: atlas (opaque + cutout QUAD16) and stamp (COMPACT20) geometry of every enabled cube - the
+     * enable bits carry the column handover and this frame's visibility walk; GPU cull on GL 4.3, CPU
+     * multidraw otherwise.
      */
-    private void computeRegionVisibility() {
-        int shift = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SHIFT;
-        int minCx = Integer.MAX_VALUE, maxCx = Integer.MIN_VALUE;
-        int minCz = Integer.MAX_VALUE, maxCz = Integer.MIN_VALUE;
-        for (int i = 0; i < reusableLoadedChunks.size(); i++) {
-            Chunk chunk = reusableLoadedChunks.get(i);
-            int cx = chunk.getChunkX();
-            int cz = chunk.getChunkZ();
-            if (cx < minCx) minCx = cx;
-            if (cx > maxCx) maxCx = cx;
-            if (cz < minCz) minCz = cz;
-            if (cz > maxCz) maxCz = cz;
-        }
-        regionGridMinRx = minCx >> shift;
-        regionGridMinRz = minCz >> shift;
-        regionGridWidth = (maxCx >> shift) - regionGridMinRx + 1;
-        regionGridHeight = (maxCz >> shift) - regionGridMinRz + 1;
-        int cells = regionGridWidth * regionGridHeight;
-        if (regionVisibility.length < cells) {
-            regionVisibility = new int[cells];
-        }
-        float regionBlocks = com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion.REGION_SPAN
-                * (float) WorldConfiguration.CHUNK_SIZE;
-        for (int ix = 0; ix < regionGridWidth; ix++) {
-            float minX = (regionGridMinRx + ix) * regionBlocks;
-            for (int iz = 0; iz < regionGridHeight; iz++) {
-                float minZ = (regionGridMinRz + iz) * regionBlocks;
-                regionVisibility[ix * regionGridHeight + iz] = frustumCuller.intersectAab(
-                        minX, 0f, minZ,
-                        minX + regionBlocks, WorldConfiguration.WORLD_HEIGHT, minZ + regionBlocks);
-            }
-        }
-    }
-
-    /**
-     * Render opaque pass (non-water parts of chunks).
-     */
-    private void renderOpaquePass(List<Chunk> visibleChunks) {
+    private void renderOpaquePass() {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
-
-        // Debug: Log first time
-        if (debugOpaquePassCount < 1) {
-            System.out.println("[WorldRenderer.renderOpaquePass] Rendering " + visibleChunks.size() + " chunks");
-            debugOpaquePassCount++;
-        }
-
-        if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
-            var regionRenderer =
-                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
-            // GL 4.3+ path: compute-shader per-mesh cull + one indirect
-            // multidraw per region — no per-chunk CPU visibility work for the
-            // opaque pass at all. Falls back to the CPU multidraw when the
-            // cull program is unavailable.
-            // projectionViewWorld, not projectionView: the cull compute shader
-            // tests per-mesh AABBs that were uploaded in world coordinates,
-            // while the draw itself runs in render space off the mesh origins.
-            // Bounded to the render-distance square, as the CPU list is: the
-            // client keeps chunks meshed two past it, and FastLOD owns that ring.
-            if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isGpuCullEnabled()
-                    && regionRenderer.drawLayerGpuCulled(
-                        com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS,
-                        frustumCuller.projectionViewWorld(), renderSquare)) {
-                regionRenderer.drawLegacyOnly(visibleChunks,
-                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
-                return;
-            }
-            // One multidraw per visible region instead of a VAO bind + draw
-            // call per chunk (legacy-handle stragglers draw individually).
-            regionRenderer.drawChunks(visibleChunks,
-                com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
+        if (!com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
             return;
         }
-        for (Chunk chunk : visibleChunks) {
-            chunk.render(); // Shader will discard water fragments
-        }
+        var regionRenderer = com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance();
+        regionRenderer.prepareCameraPass(cubeVisibility.walkFrame());
+        // Hi-Z two-phase on the GPU path: the pyramid is built from this terrain depth inside the call, before
+        // proxies, LOD or the first-person arm (depth-range tricks) write depth. -Dopenmason.hiz=off disables.
+        regionRenderer.drawCameraSolid(cameraViewProj);
     }
 
     private static int debugOpaquePassCount = 0;
 
-    /**
-     * Render SBO blocks from all visible chunks.
-     * Each face binds its own SBO texture before drawing.
-     */
-    private void renderSBOPass(List<Chunk> visibleChunks) {
-        int sboCount = 0;
-        for (Chunk chunk : visibleChunks) {
-            java.util.List<com.openmason.engine.voxel.stamp.StampRenderData> sboList = chunk.getSBORenderDataList();
-            if (sboList != null && !sboList.isEmpty()) {
-                sboCount++;
-                for (com.openmason.engine.voxel.stamp.StampRenderData sboData : sboList) {
-                    sboData.render();
-                }
-            }
-        }
-        if (debugSBOPassCount < 3 && sboCount > 0) {
-            System.out.println("[WorldRenderer] SBO pass: " + sboCount + " chunks with SBO meshes");
-            debugSBOPassCount++;
-        }
-    }
-
-    private static int debugSBOPassCount = 0;
 
     /**
      * Translucent solids (ice, glass), composited behind the cloud in front of
      * them: blended over the clouds they would paint over that cloud.
      */
-    private void renderTranslucentSolids(List<Chunk> visibleChunks, boolean cameraUnderwater) {
+    private void renderTranslucentSolids(boolean cameraUnderwater) {
         shaderProgram.bind();
         CloudsInFront.Bindings previousCloudTexture = CloudsInFront.enable(
                 shaderProgram, cameraUnderwater ? null : cloudRenderer);
-        renderTransparentPass(visibleChunks);
+        renderTransparentPass();
         shaderProgram.bind();
         CloudsInFront.disable(shaderProgram, previousCloudTexture);
     }
@@ -841,70 +766,21 @@ public class WorldRenderer {
      * Render transparent pass (translucent solids) over the chunks
      * {@link #sortChunksBackToFront} ordered this frame.
      */
-    private void renderTransparentPass(List<Chunk> visibleChunks) {
+    private void renderTransparentPass() {
         shaderProgram.bind(); // re-bind in case entity rendering left a different shader active
         shaderProgram.setUniform("u_renderPass", 1); // 1 for transparent pass
-        glEnable(GL_BLEND); // Enable blending
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Standard alpha blending
-
-        // Translucent solids (e.g. ice) only. Depth-write ON so they occlude
-        // any farther translucent surface. Water no longer lives in the atlas
-        // mesh — it has its own per-chunk mesh drawn by the dedicated
-        // WaterRenderer right after this pass, which also made the old
-        // two-sub-layer scheme (u_translucentLayer 0/1) unnecessary.
-        //
-        // Only chunks whose atlas mesh actually CONTAINS translucent geometry
-        // draw here — previously every visible chunk's whole mesh re-drew for
-        // its shader-discarded fragments, doubling world geometry per frame.
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Translucent solids (ice, glass) only, depth-write ON so they occlude any farther translucent
+        // surface. Only cubes whose mesh holds translucent quads, farthest first (region granularity).
         glDepthMask(true);
-        reusableTranslucentChunks.clear();
-        for (int i = 0; i < reusableSortedChunks.size(); i++) {
-            Chunk chunk = reusableSortedChunks.get(i);
-            if (chunk.atlasHasTranslucent()) {
-                reusableTranslucentChunks.add(chunk);
-            }
-        }
         if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
             com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
-                .drawChunks(reusableTranslucentChunks,
-                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_ATLAS);
-            return;
-        }
-        for (Chunk chunk : reusableTranslucentChunks) {
-            chunk.render();
+                .drawCubes(cubeVisibility.translucentBackToFront(),
+                    com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_TRANSLUCENT);
         }
     }
 
-    /**
-     * Sort chunks from back to front for proper transparent rendering.
-     * Distance keys are computed once per chunk and sorted as packed longs
-     * (IEEE bits of a non-negative float are order-preserving), replacing the
-     * comparator that re-derived both chunk centers on every comparison.
-     */
-    private void sortChunksBackToFront(List<Chunk> visibleChunks, Player player) {
-        reusableSortedChunks.clear();
-        int count = visibleChunks.size();
-        if (count == 0) {
-            return;
-        }
-        if (sortKeys.length < count) {
-            sortKeys = new long[Math.max(count, sortKeys.length * 2)];
-        }
-        Vector3f playerPos = player.getPosition();
-        for (int i = 0; i < count; i++) {
-            Chunk chunk = visibleChunks.get(i);
-            float dx = playerPos.x - chunk.getWorldX(WorldConfiguration.CHUNK_SIZE / 2);
-            float dz = playerPos.z - chunk.getWorldZ(WorldConfiguration.CHUNK_SIZE / 2);
-            float distSq = dx * dx + dz * dz;
-            sortKeys[i] = ((long) Float.floatToIntBits(distSq) << 32) | (i & 0xFFFFFFFFL);
-        }
-        java.util.Arrays.sort(sortKeys, 0, count);
-        // Descending distance = farthest first.
-        for (int i = count - 1; i >= 0; i--) {
-            reusableSortedChunks.add(visibleChunks.get((int) sortKeys[i]));
-        }
-    }
-    
     /**
      * Restore OpenGL state after rendering passes.
      */
@@ -943,7 +819,7 @@ public class WorldRenderer {
             // Render the full body model instead of the first-person arm.
             if (entityRenderer != null) {
                 World world = Game.getWorld();
-                Vector3f cameraPos = player.getCamera().getPosition();
+                org.joml.Vector3d cameraPos = player.getCamera().getPosition();
                 entityRenderer.renderLocalPlayer(player, player.getViewMatrix(), projectionMatrix, world, cameraPos);
             }
         } else if (!armHiddenWithHud(currentState)) {
@@ -995,7 +871,7 @@ public class WorldRenderer {
         collectDrops(drops, remotePlayers);
 
         World world = Game.getWorld();
-        Vector3f cameraPos = player.getCamera().getPosition();
+        org.joml.Vector3d cameraPos = player.getCamera().getPosition();
 
         if (!drops.isEmpty()) {
             dropRenderer.renderOpaqueDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
@@ -1020,7 +896,7 @@ public class WorldRenderer {
         collectDrops(drops, new java.util.ArrayList<>());
 
         World world = Game.getWorld();
-        Vector3f cameraPos = player.getCamera().getPosition();
+        org.joml.Vector3d cameraPos = player.getCamera().getPosition();
 
         if (!drops.isEmpty()) {
             dropRenderer.renderTransparentDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
@@ -1047,7 +923,7 @@ public class WorldRenderer {
         if (entityManager != null && entityRenderer != null) {
             World world = Game.getWorld();
             // Get camera position (at eye level, not feet)
-            Vector3f cameraPos = player.getCamera().getPosition();
+            org.joml.Vector3d cameraPos = player.getCamera().getPosition();
 
             // Get all entities and render them using the sub-renderer with underwater fog support
             for (com.stonebreak.mobs.entities.Entity entity : entityManager.getAllEntities()) {
@@ -1075,7 +951,6 @@ public class WorldRenderer {
     }
     
     private static int debugRenderWorldCount = 0;
-    private static int debugVisibleChunksCount = 0;
 
     /**
      * Checks for OpenGL errors and logs them with context information.
@@ -1130,8 +1005,10 @@ public class WorldRenderer {
             waterRenderer.cleanup();
         }
         particlePass.close();
+        proxyRenderer.cleanup();
         if (lodRegionBatcher != null) {
             lodRegionBatcher.cleanup();
         }
+        octreeLodRenderer.cleanup();
     }
 }

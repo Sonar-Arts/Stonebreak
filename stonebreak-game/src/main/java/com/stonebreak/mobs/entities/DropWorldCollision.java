@@ -5,6 +5,8 @@ import com.stonebreak.world.physics.WorldPhysics;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.util.DropSpawnResolver;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -51,7 +53,7 @@ public final class DropWorldCollision {
 
     /** One pass's resolution: the outcome, the rest centre Y (GROUNDED only), the escape
      *  cell centre (ESCAPED only) and the in-water state at the drop's final position. */
-    public record Result(Outcome outcome, float restCentreY, Vector3f escapeCentre, boolean inWater) {
+    public record Result(Outcome outcome, double restCentreY, Vector3d escapeCentre, boolean inWater) {
     }
 
     /**
@@ -61,13 +63,13 @@ public final class DropWorldCollision {
      * XZ footprint (which decides the stair step it rests on) and a {@code dropHeight}
      * half-height ground probe.
      */
-    public static Result resolveGround(World world, Vector3f position, Vector3f oldPosition,
+    public static Result resolveGround(World world, Vector3dc position, Vector3dc oldPosition,
                                        float dropWidth, float dropLength, float dropHeight) {
         if (world == null) {
-            return new Result(Outcome.AIRBORNE, position.y, null, false);
+            return new Result(Outcome.AIRBORNE, position.y(), null, false);
         }
-        int blockX = (int) Math.floor(position.x);
-        int blockZ = (int) Math.floor(position.z);
+        long blockX = (long) Math.floor(position.x());
+        long blockZ = (long) Math.floor(position.z());
 
         // Embedded check FIRST (issue #225): when the drop's own cell is collidable (e.g.
         // the drop rose into a tree trunk or was pushed sideways into a log), the ground
@@ -84,16 +86,16 @@ public final class DropWorldCollision {
         // other landing instead of being pushed off sideways; entering through a side or
         // the bottom face escapes out the nearest open side — the escape also zeroes
         // horizontal speed (keeping it made the drop bounce off the wall and back).
-        int cellY = (int) Math.floor(position.y);
+        long cellY = (long) Math.floor(position.y());
         if (DropSpawnResolver.isEmbedded(world, blockX, cellY, blockZ)) {
             float surface = surfaceHeight(world, blockX, cellY, blockZ,
-                    position.x, position.z, dropWidth, dropLength);
-            if (surface > 0f && (oldPosition.y >= cellY + surface || surface < 1.0f)) {
-                return grounded(world, position, cellY + surface + dropHeight / 2f);
+                    position.x(), position.z(), dropWidth, dropLength);
+            if (surface > 0f && (oldPosition.y() >= cellY + surface || surface < 1.0f)) {
+                return grounded(world, position, cellY + surface + dropHeight / 2.0);
             }
-            Vector3f escape = DropSpawnResolver.resolveEscape(world, blockX, cellY, blockZ, oldPosition);
+            Vector3d escape = DropSpawnResolver.resolveEscape(world, blockX, cellY, blockZ, oldPosition);
             if (escape != null) {
-                return new Result(Outcome.ESCAPED, position.y, escape,
+                return new Result(Outcome.ESCAPED, position.y(), escape,
                         inWaterAt(world, escape.x, escape.y, escape.z));
             }
             return airborne(world, position);
@@ -106,27 +108,27 @@ public final class DropWorldCollision {
         // The supporting cell is the one whose collision surface equals the rest height:
         // for a full block that is the cell below, for a snow layer or a stair the cell
         // the drop's bottom rests in.
-        int probeY = (int) Math.floor(position.y - dropHeight / 2 - GROUND_PROBE_BIAS);
+        long probeY = (long) Math.floor(position.y() - dropHeight / 2 - GROUND_PROBE_BIAS);
         float surface = surfaceHeight(world, blockX, probeY, blockZ,
-                position.x, position.z, dropWidth, dropLength);
+                position.x(), position.z(), dropWidth, dropLength);
         if (surface > 0f) {
-            return grounded(world, position, probeY + surface + dropHeight / 2f);
+            return grounded(world, position, probeY + surface + dropHeight / 2.0);
         }
         return airborne(world, position);
     }
 
-    private static Result grounded(World world, Vector3f position, float restCentreY) {
+    private static Result grounded(World world, Vector3dc position, double restCentreY) {
         // The in-water state at the rest position: a drop resting on a floor under shallow
         // water has its centre in the WATER cell — the flag gates gravity in the drop's own
         // physics and gates WaterFlowPhysics on block drops, so it must reflect the snapped
         // position, not the pre-snap one.
         return new Result(Outcome.GROUNDED, restCentreY, null,
-                inWaterAt(world, position.x, restCentreY, position.z));
+                inWaterAt(world, position.x(), restCentreY, position.z()));
     }
 
-    private static Result airborne(World world, Vector3f position) {
-        return new Result(Outcome.AIRBORNE, position.y, null,
-                inWaterAt(world, position.x, position.y, position.z));
+    private static Result airborne(World world, Vector3dc position) {
+        return new Result(Outcome.AIRBORNE, position.y(), null,
+                inWaterAt(world, position.x(), position.y(), position.z()));
     }
 
     /**
@@ -136,12 +138,12 @@ public final class DropWorldCollision {
      * ground), snow its layer height, stairs the tallest step the footprint overlaps,
      * else a full block or nothing.
      */
-    private static float surfaceHeight(World world, int x, int y, int z,
-                                       float dropCentreX, float dropCentreZ,
+    private static float surfaceHeight(World world, long x, long y, long z,
+                                       double dropCentreX, double dropCentreZ,
                                        float dropWidth, float dropLength) {
         float halfW = dropWidth / 2f;
         float halfL = dropLength / 2f;
-        return com.stonebreak.world.physics.WorldPhysics.of(world).cellTop(x, y, z,
+        return WorldPhysics.of(world).cellTop(x, y, z,
                 dropCentreX - halfW, dropCentreZ - halfL,
                 dropCentreX + halfW, dropCentreZ + halfL, WorldPhysics.DROP_MASK);
     }
@@ -149,10 +151,10 @@ public final class DropWorldCollision {
     /** In-water check at explicit final coordinates (drops skip the external
      *  {@link EntityCollision} physics pass, so this must be self-managed — it gates
      *  gravity in the drop's own physics and WaterFlowPhysics on block drops). */
-    private static boolean inWaterAt(World world, float x, float y, float z) {
+    private static boolean inWaterAt(World world, double x, double y, double z) {
         return world.getBlockAt(
-                (int) Math.floor(x),
-                (int) Math.floor(y),
-                (int) Math.floor(z)) == BlockType.WATER;
+                (long) Math.floor(x),
+                (long) Math.floor(y),
+                (long) Math.floor(z)) == BlockType.WATER;
     }
 }

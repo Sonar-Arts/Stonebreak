@@ -83,6 +83,16 @@ public class Settings {
     // Performance + advanced settings — defaults sourced from WorldConfiguration to avoid drift.
     private int renderDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_RENDER_DISTANCE;
     private int lodDistance = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_RANGE;
+    /**
+     * "Vertical Render Distance": half-height in blocks of the streaming ellipsoid around the player (cubic
+     * world, Y -384..640). The surface band always loads regardless; this is how far above/below the eye
+     * caves and sky load. Stepped by whole cubes (32).
+     */
+    public static final int MIN_VERTICAL_RENDER_DISTANCE = 64;
+    public static final int MAX_VERTICAL_RENDER_DISTANCE = 384;
+    public static final int VERTICAL_RENDER_DISTANCE_STEP = 32;
+    private int verticalRenderDistance =
+        com.stonebreak.world.operations.WorldConfiguration.DEFAULT_VERTICAL_RENDER_DISTANCE;
     private boolean lodEnabled = com.stonebreak.world.operations.WorldConfiguration.DEFAULT_LOD_ENABLED;
     /** FastLOD fidelity preset name ({@link com.stonebreak.world.fastlod.FastLodQuality}). */
     private String lodQuality = com.stonebreak.world.fastlod.FastLodQuality.DEFAULT.name();
@@ -194,6 +204,7 @@ public class Settings {
             boolField("smoothLightingEnabled", Settings::getSmoothLightingEnabled, Settings::setSmoothLightingEnabled),
             intField("renderDistance", Settings::getRenderDistance, Settings::setRenderDistance),
             intField("lodDistance", Settings::getLodDistance, Settings::setLodDistance),
+            intField("verticalRenderDistance", Settings::getVerticalRenderDistance, Settings::setVerticalRenderDistance),
             boolField("lodEnabled", Settings::getLodEnabled, Settings::setLodEnabled),
             stringField("lodQuality", Settings::getLodQuality, Settings::setLodQuality),
             boolField("vsyncEnabled", Settings::isVsyncEnabled, Settings::setVsyncEnabled),
@@ -376,6 +387,8 @@ public class Settings {
     // Performance / advanced getters
     public int getRenderDistance() { return renderDistance; }
     public int getLodDistance() { return lodDistance; }
+    /** Vertical render distance in blocks ({@link #MIN_VERTICAL_RENDER_DISTANCE}..{@link #MAX_VERTICAL_RENDER_DISTANCE}). */
+    public int getVerticalRenderDistance() { return verticalRenderDistance; }
     public boolean getLodEnabled() { return lodEnabled; }
     public String getLodQuality() { return lodQuality; }
     public boolean isVsyncEnabled() { return vsyncEnabled; }
@@ -528,6 +541,17 @@ public class Settings {
     public void setRenderDistance(int value) {
         this.renderDistance = Math.max(com.stonebreak.world.operations.WorldConfiguration.MIN_RENDER_DISTANCE,
                 Math.min(com.stonebreak.world.operations.WorldConfiguration.MAX_RENDER_DISTANCE, value));
+    }
+
+    /** Clamped to {@link #MIN_VERTICAL_RENDER_DISTANCE}..{@link #MAX_VERTICAL_RENDER_DISTANCE}, snapped to whole cubes. */
+    public void setVerticalRenderDistance(int blocks) {
+        this.verticalRenderDistance = clampVerticalRenderDistance(blocks);
+    }
+
+    public static int clampVerticalRenderDistance(int blocks) {
+        int clamped = Math.max(MIN_VERTICAL_RENDER_DISTANCE, Math.min(MAX_VERTICAL_RENDER_DISTANCE, blocks));
+        int step = VERTICAL_RENDER_DISTANCE_STEP;
+        return Math.max(MIN_VERTICAL_RENDER_DISTANCE, Math.round(clamped / (float) step) * step);
     }
 
     public void setLodDistance(int value) {

@@ -38,17 +38,17 @@ public final class CactusContactRules {
      * Bounded by construction: the cell range is the body's footprint plus one.
      */
     public static boolean touchesCactus(World world,
-                                        float minX, float minY, float minZ,
-                                        float maxX, float maxY, float maxZ) {
-        int ix0 = (int) Math.floor(minX - TOUCH_MARGIN);
-        int ix1 = (int) Math.ceil(maxX + TOUCH_MARGIN);
-        int iy0 = (int) Math.floor(minY - TOUCH_MARGIN);
-        int iy1 = (int) Math.ceil(maxY + TOUCH_MARGIN);
-        int iz0 = (int) Math.floor(minZ - TOUCH_MARGIN);
-        int iz1 = (int) Math.ceil(maxZ + TOUCH_MARGIN);
-        for (int x = ix0; x < ix1; x++) {
-            for (int y = iy0; y < iy1; y++) {
-                for (int z = iz0; z < iz1; z++) {
+                                        double minX, double minY, double minZ,
+                                        double maxX, double maxY, double maxZ) {
+        long ix0 = (long) Math.floor(minX - TOUCH_MARGIN);
+        long ix1 = (long) Math.ceil(maxX + TOUCH_MARGIN);
+        long iy0 = (long) Math.floor(minY - TOUCH_MARGIN);
+        long iy1 = (long) Math.ceil(maxY + TOUCH_MARGIN);
+        long iz0 = (long) Math.floor(minZ - TOUCH_MARGIN);
+        long iz1 = (long) Math.ceil(maxZ + TOUCH_MARGIN);
+        for (long x = ix0; x < ix1; x++) {
+            for (long y = iy0; y < iy1; y++) {
+                for (long z = iz0; z < iz1; z++) {
                     if (world.getBlockAt(x, y, z) == BlockType.CACTUS) {
                         return true;
                     }

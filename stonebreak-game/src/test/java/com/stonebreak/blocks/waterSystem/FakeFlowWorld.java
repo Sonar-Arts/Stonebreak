@@ -8,8 +8,8 @@ import com.stonebreak.blocks.BlockType;
 /**
  * In-memory {@link FlowWorld} for exercising {@link WaterSim} without a World:
  * a bounded region of blocks + water values. Positions outside the region are
- * unloaded (isLoaded false, AIR), mirroring the game's unloaded-chunk contract.
- * {@link #setBlock} mirrors the Chunk.setBlock invariant: a non-WATER write
+ * unloaded (isLoaded false, AIR), mirroring the game's unloaded-cube contract.
+ * {@link #setBlock} mirrors the World block-write invariant: a non-WATER write
  * clears the cell's water value.
  */
 final class FakeFlowWorld implements FlowWorld {
@@ -37,56 +37,56 @@ final class FakeFlowWorld implements FlowWorld {
         }
     }
 
-    private boolean inRegion(int x, int y, int z) {
+    private boolean inRegion(long x, long y, long z) {
         return x >= 0 && x < sizeX && y >= 0 && y < sizeY && z >= 0 && z < sizeZ;
     }
 
     @Override
-    public BlockType getBlock(int x, int y, int z) {
-        return inRegion(x, y, z) ? blocks[x][y][z] : BlockType.AIR;
+    public BlockType getBlock(long x, long y, long z) {
+        return inRegion(x, y, z) ? blocks[(int) x][(int) y][(int) z] : BlockType.AIR;
     }
 
     @Override
-    public boolean isLoaded(int x, int y, int z) {
+    public boolean isLoaded(long x, long y, long z) {
         return inRegion(x, y, z);
     }
 
     @Override
-    public void setBlock(int x, int y, int z, BlockType type) {
+    public void setBlock(long x, long y, long z, BlockType type) {
         if (!inRegion(x, y, z)) {
             return;
         }
-        blocks[x][y][z] = type;
+        blocks[(int) x][(int) y][(int) z] = type;
         if (type != BlockType.WATER) {
-            water[x][y][z] = 0;
+            water[(int) x][(int) y][(int) z] = 0;
         }
     }
 
     @Override
-    public int getWater(int x, int y, int z) {
-        return inRegion(x, y, z) ? water[x][y][z] : 0;
+    public int getWater(long x, long y, long z) {
+        return inRegion(x, y, z) ? water[(int) x][(int) y][(int) z] : 0;
     }
 
     @Override
-    public void setWater(int x, int y, int z, int value) {
+    public void setWater(long x, long y, long z, int value) {
         if (inRegion(x, y, z)) {
-            water[x][y][z] = value;
+            water[(int) x][(int) y][(int) z] = value;
         }
     }
 
     @Override
-    public boolean isSolid(int x, int y, int z) {
+    public boolean isSolid(long x, long y, long z) {
         BlockType block = getBlock(x, y, z);
         return block != null && block.isSolid();
     }
 
     @Override
-    public void dropFragile(int x, int y, int z, BlockType type) {
-        fragileDrops.add(new int[]{x, y, z});
+    public void dropFragile(long x, long y, long z, BlockType type) {
+        fragileDrops.add(new int[]{(int) x, (int) y, (int) z});
     }
 
     @Override
-    public void markWaterChanged(int x, int y, int z, int newValue) {
+    public void markWaterChanged(long x, long y, long z, int newValue) {
     }
 
     // ===== Test helpers =====

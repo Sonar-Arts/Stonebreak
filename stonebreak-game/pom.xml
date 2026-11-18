@@ -187,7 +187,7 @@
                          JUnit (unnamed module) instantiates it for tests in OTHER packages; surefire only
                          opens it when a tgmpipe test class happens to be selected, so a filtered run of
                          e.g. ChunkCodecZstdTest errored instead of skipping. -->
-                    <argLine>-Dnet.bytebuddy.experimental=true --add-reads stonebreak.game=io.netty.codec,io.netty.common --add-opens stonebreak.game/com.stonebreak.world.generation.diffusion.tgmpipe=ALL-UNNAMED</argLine>
+                    <argLine>-Dnet.bytebuddy.experimental=true --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel,stonebreak.game --add-reads stonebreak.game=io.netty.codec,io.netty.common --add-opens stonebreak.game/com.stonebreak.world.generation.diffusion.tgmpipe=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
             <!-- Stonebreak's own native library (#386: the worldgen kernels moved out of the engine's
@@ -265,7 +265,7 @@
                     <mainClass>com.stonebreak.core.Main</mainClass>
                     <options>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
-                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        <option>--enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel</option>
                         <!-- Alternative: specific modules if needed -->
                         <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl,org.lwjgl.glfw,org.lwjgl.stb,org.lwjgl.nanovg,org.lwjgl.openal</option> -->
                         

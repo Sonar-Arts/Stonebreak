@@ -6,6 +6,7 @@ import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.BlockMetaS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
 import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * Client-side: applies authoritative block changes to the local world via the
@@ -16,10 +17,9 @@ import com.stonebreak.world.World;
 public final class ClientBlockHandler {
 
     /**
-     * Ordering barrier: chunk snapshots install asynchronously, so any packet
-     * mutating a chunk that has an install pending must wait for it — applying
-     * immediately would fail (chunk not resident → spurious resync) or be
-     * overwritten by the older snapshot (→ audit-mismatch re-stream storms).
+     * Ordering barrier: cube records install under a per-frame budget, so any packet mutating a cube whose
+     * record is still queued must wait for it - applying first would fail or be overwritten by the older
+     * record.
      */
     private final ClientChunkHandler chunkHandler;
 
@@ -28,63 +28,37 @@ public final class ClientBlockHandler {
     }
 
     public void applyBlockChange(BlockChangeS2C s) {
-        if (chunkHandler.runAfterPendingInstall(
-                Math.floorDiv(s.x(), 16), Math.floorDiv(s.z(), 16), () -> applyBlockChange(s))) {
+        if (chunkHandler.runAfterPendingInstall(s.x(), s.y(), s.z(), () -> applyBlockChange(s))) {
             return;
         }
         World world = Game.getWorld();
-        if (world == null) {
+        if (world == null || !WorldConfiguration.inBounds(s.y())) {
             return;
         }
-        if (!world.setBlockAt(s.x(), s.y(), s.z(), resolve(s.blockTypeId()), false)) {
-            onApplyFailed(world, s.x(), s.z());
-        }
+        // A cube this client does not hold is simply not changed: its stream requests it when it wants it,
+        // and the server sends current content then.
+        world.setBlockAt(s.x(), s.y(), s.z(), resolve(s.blockTypeId()), false);
     }
 
     public void applyMultiBlock(MultiBlockChangeS2C m) {
-        if (chunkHandler.runAfterPendingInstall(
-                m.sectionX(), m.sectionZ(), () -> applyMultiBlock(m))) {
+        long baseX = m.sectionX() << 4;
+        long baseY = m.sectionY() << 4;
+        long baseZ = m.sectionZ() << 4;
+        if (chunkHandler.runAfterPendingInstall(baseX, baseY, baseZ, () -> applyMultiBlock(m))) {
             return;
         }
         World world = Game.getWorld();
         if (world == null) {
             return;
         }
-        int baseX = m.sectionX() * 16;
-        int baseY = m.sectionY() * 16;
-        int baseZ = m.sectionZ() * 16;
-        boolean failed = false;
         for (int v : m.packed()) {
             int localPos = (v >>> 16) & 0xFFFF;
-            int lx = (localPos >> 8) & 0xF;
-            int ly = (localPos >> 4) & 0xF;
-            int lz = localPos & 0xF;
-            short blockId = (short) (v & 0xFFFF);
-            if (!world.setBlockAt(baseX + lx, baseY + ly, baseZ + lz, resolve(blockId), false)) {
-                failed = true;
+            long y = baseY + ((localPos >> 4) & 0xF);
+            if (!WorldConfiguration.inBounds(y)) {
+                continue;
             }
-        }
-        if (failed) {
-            onApplyFailed(world, baseX, baseZ);
-        }
-    }
-
-    /**
-     * An authoritative block apply failed — meaningful desync only when the chunk should be
-     * resident (within the keep radius). Beyond it, we simply dropped the chunk already and
-     * a fresh snapshot arrives when it re-enters view; requesting there would churn.
-     */
-    private static void onApplyFailed(World world, int x, int z) {
-        var player = Game.getPlayer();
-        if (player == null) {
-            return;
-        }
-        int cx = Math.floorDiv(x, 16);
-        int cz = Math.floorDiv(z, 16);
-        int pcx = (int) Math.floor(player.getPosition().x / 16.0);
-        int pcz = (int) Math.floor(player.getPosition().z / 16.0);
-        if (Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz)) <= world.clientKeepRadius()) {
-            com.stonebreak.network.MultiplayerSession.requestChunkResync(cx, cz);
+            short blockId = (short) (v & 0xFFFF);
+            world.setBlockAt(baseX + ((localPos >> 8) & 0xF), y, baseZ + (localPos & 0xF), resolve(blockId), false);
         }
     }
 
@@ -95,9 +69,9 @@ public final class ClientBlockHandler {
      * writes the chunk's water layer directly (the render world runs no sim).
      */
     public void applyBlockMeta(BlockMetaS2C m) {
-        if (chunkHandler.runAfterPendingInstall(
-                m.sectionX(), m.sectionZ(), () -> applyBlockMeta(m))) {
-            return; // snapshot install also (re)hydrates snow/water — order matters
+        if (chunkHandler.runAfterPendingInstall(m.sectionX() << 4, m.sectionY() << 4, m.sectionZ() << 4,
+                () -> applyBlockMeta(m))) {
+            return; // the cube record carries the snow/water layers too - order matters
         }
         World world = Game.getWorld();
         if (world == null) {
@@ -114,63 +88,44 @@ public final class ClientBlockHandler {
         if (world.getSnowLayerManager() == null) {
             return;
         }
-        int baseX = m.sectionX() * 16;
-        int baseY = m.sectionY() * 16;
-        int baseZ = m.sectionZ() * 16;
+        long baseX = m.sectionX() << 4;
+        long baseY = m.sectionY() << 4;
+        long baseZ = m.sectionZ() << 4;
         for (int v : m.packed()) {
             int localPos = (v >>> 16) & 0xFFFF;
-            int x = baseX + ((localPos >> 8) & 0xF);
-            int y = baseY + ((localPos >> 4) & 0xF);
-            int z = baseZ + (localPos & 0xF);
+            long x = baseX + ((localPos >> 8) & 0xF);
+            long y = baseY + ((localPos >> 4) & 0xF);
+            long z = baseZ + (localPos & 0xF);
+            if (!WorldConfiguration.inBounds(y)) {
+                continue;
+            }
             int layers = v & 0xFFFF;
+            // SNOW layer of the cube (native remesh); putRaw never re-fires the client's mutation listener.
             if (layers == 0) {
                 world.getSnowLayerManager().removeSnowLayers(x, y, z);
             } else {
                 world.getSnowLayerManager().putRaw(x, y, z, layers);
             }
-            world.triggerChunkRebuild(x, y, z);
         }
     }
 
     /**
-     * Water flow levels (1..7 flowing, 8 falling, 0 = entry removed / became source),
-     * written straight into the owning chunk's water layer. Dropped silently when the
-     * chunk isn't resident — a fresh snapshot (chunk meta v2 carries the water section)
-     * arrives when it enters view. Border cells also remesh the adjacent chunk, since
-     * water corner heights are sewn across chunk seams.
+     * Water values (game vocabulary: 0 source, 1..7 flowing, 8 falling, 9..16 river) written into the cube's
+     * WATER layer (native remesh). Dropped silently when the cube is not loaded: the cube record carries the
+     * layer when the client gets it.
      */
     private static void applyWaterMeta(World world, BlockMetaS2C m) {
-        // A 16³ section lies within one chunk column.
-        var chunk = world.getChunkIfLoaded(m.sectionX(), m.sectionZ());
-        if (chunk == null) {
-            return;
-        }
-        int baseX = m.sectionX() * 16;
-        int baseY = m.sectionY() * 16;
-        int baseZ = m.sectionZ() * 16;
+        long baseX = m.sectionX() << 4;
+        long baseY = m.sectionY() << 4;
+        long baseZ = m.sectionZ() << 4;
         for (int v : m.packed()) {
             int localPos = (v >>> 16) & 0xFFFF;
-            int lx = (localPos >> 8) & 0xF;
-            int ly = (localPos >> 4) & 0xF;
-            int lz = localPos & 0xF;
+            long y = baseY + ((localPos >> 4) & 0xF);
             int value = v & 0xFFFF;
-            if (value > com.stonebreak.world.chunk.ChunkWaterLayer.MAX_VALUE) {
-                continue; // out-of-range — never write garbage into the layer
+            if (value > com.stonebreak.world.chunk.ChunkWaterLayer.MAX_VALUE || !WorldConfiguration.inBounds(y)) {
+                continue; // out-of-range - never write garbage into the layer
             }
-            int y = baseY + ly;
-            chunk.getWaterLayer().set(lx, y, lz, value);
-            world.invalidatePhysicsWater(baseX + lx, y, baseZ + lz);
-            world.triggerChunkRebuild(baseX + lx, y, baseZ + lz);
-            if (lx == 0) {
-                world.triggerChunkRebuild(baseX - 1, y, baseZ + lz);
-            } else if (lx == 15) {
-                world.triggerChunkRebuild(baseX + 16, y, baseZ + lz);
-            }
-            if (lz == 0) {
-                world.triggerChunkRebuild(baseX + lx, y, baseZ - 1);
-            } else if (lz == 15) {
-                world.triggerChunkRebuild(baseX + lx, y, baseZ + 16);
-            }
+            world.setWaterValueAt(baseX + ((localPos >> 8) & 0xF), y, baseZ + (localPos & 0xF), value);
         }
     }
 
@@ -181,43 +136,34 @@ public final class ClientBlockHandler {
      * registries in place so an open furnace or crafting-table UI tracks live.
      */
     public void applyBlockState(com.stonebreak.network.packet.world.BlockStateS2C s) {
-        if (chunkHandler.runAfterPendingInstall(
-                Math.floorDiv(s.x(), 16), Math.floorDiv(s.z(), 16), () -> applyBlockState(s))) {
-            return; // snapshot install replaces the chunk's state map — order matters
+        if (chunkHandler.runAfterPendingInstall(s.x(), s.y(), s.z(), () -> applyBlockState(s))) {
+            return; // the cube record replaces the cube's states - order matters
         }
         World world = Game.getWorld();
         if (world == null) {
             return;
         }
-        var chunk = world.getChunkIfLoaded(Math.floorDiv(s.x(), 16), Math.floorDiv(s.z(), 16));
-        if (chunk != null) {
-            String prev = chunk.getBlockStates().get(
-                com.stonebreak.world.chunk.utils.LocalBlockKey.pack(
-                    Math.floorMod(s.x(), 16), s.y(), Math.floorMod(s.z(), 16)));
-            chunk.setBlockState(Math.floorMod(s.x(), 16), s.y(), Math.floorMod(s.z(), 16), s.state());
-            world.invalidatePhysicsBlock(s.x(), s.y(), s.z());
-            world.getAnimatedBlockRegistry().onStateChanged(s.x(), s.y(), s.z());
-            // Remesh only when the drawn variant actually changes — a furnace's
-            // contents/progress arrive every cook tick, a stair's facing lands
-            // once at placement.
-            if (com.stonebreak.blocks.BlockRenderState.affectsMesh(prev, s.state())) {
-                world.scheduleChunkRemeshAt(s.x(), s.y(), s.z());
-            }
-        }
-        // A state for a chunk this client doesn't hold has nothing to update; creating a
-        // registry entry for it would only leak (no chunk unload ever clears it).
-        if (chunk == null) {
+        // A state for a cube this client doesn't hold has nothing to update; creating a
+        // registry entry for it would only leak (no cube unload ever clears it).
+        if (!world.isLoaded(s.x(), s.y(), s.z())) {
             return;
+        }
+        // World.setBlockStateAt: STATE layer variant id (native remesh on change), payload in the cube,
+        // physics + animated-block bookkeeping. The variant's id is the server's: the registry names
+        // (BlockStateNamesS2C) are mirrored before any echo that can carry a new one.
+        world.setBlockStateAt(s.x(), s.y(), s.z(), s.state());
+        if (s.x() != (int) s.x() || s.y() != (int) s.y() || s.z() != (int) s.z()) {
+            return; // the furnace/workbench registries are int-keyed (BlockPos)
         }
         if (world.getFurnaceRegistry() != null
                 && s.state() != null
                 && s.state().startsWith(com.stonebreak.blocks.furnace.FurnaceState.STATE_PREFIX)) {
             world.getFurnaceRegistry().applyAuthoritativeState(
-                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state(), s.ack());
+                new com.openmason.engine.util.BlockPos((int) s.x(), (int) s.y(), (int) s.z()), s.state(), s.ack());
         }
         if (com.stonebreak.blocks.workbench.WorkbenchState.isWorkbenchState(s.state())) {
             world.getWorkbenchRegistry().applyAuthoritativeState(
-                new com.openmason.engine.util.BlockPos(s.x(), s.y(), s.z()), s.state(), s.ack());
+                new com.openmason.engine.util.BlockPos((int) s.x(), (int) s.y(), (int) s.z()), s.state(), s.ack());
         }
     }
 

@@ -102,17 +102,19 @@ final class DebugKeyHandler {
         }
 
         // Spawn 5 blocks in front of the player, snapped to ground level.
-        Vector3f playerPos = player.getPosition();
+        org.joml.Vector3d playerPos = player.getPosition();
         Vector3f playerDir = player.getCamera().getFront();
-        Vector3f spawnPos = new Vector3f(
-            playerPos.x + playerDir.x * 5.0f,
+        org.joml.Vector3d spawnPos = new org.joml.Vector3d(
+            playerPos.x + playerDir.x * 5.0,
             playerPos.y,
-            playerPos.z + playerDir.z * 5.0f
+            playerPos.z + playerDir.z * 5.0
         );
 
-        int groundY = (int) playerPos.y;
-        for (int y = (int) playerPos.y + 10; y >= (int) playerPos.y - 10; y--) {
-            BlockType block = Game.getWorld().getBlockAt((int) spawnPos.x, y, (int) spawnPos.z);
+        long feetY = (long) Math.floor(playerPos.y);
+        long groundY = feetY;
+        long sx = (long) Math.floor(spawnPos.x), sz = (long) Math.floor(spawnPos.z);
+        for (long y = feetY + 10; y >= feetY - 10; y--) {
+            BlockType block = Game.getWorld().getBlockAt(sx, y, sz);
             if (block != null && block != BlockType.AIR) {
                 groundY = y + 1;
                 break;
@@ -191,16 +193,16 @@ final class DebugKeyHandler {
             return;
         }
 
-        Vector3f pos = player.getPosition();
-        int worldX = (int) Math.floor(pos.x);
-        int worldY = (int) Math.floor(pos.y);
-        int worldZ = (int) Math.floor(pos.z);
-        int chunkX = Math.floorDiv(worldX, 16);
-        int chunkZ = Math.floorDiv(worldZ, 16);
+        org.joml.Vector3d pos = player.getPosition();
+        long worldX = (long) Math.floor(pos.x);
+        long worldY = (long) Math.floor(pos.y);
+        long worldZ = (long) Math.floor(pos.z);
+        long chunkX = worldX >> 5;
+        long chunkZ = worldZ >> 5;
 
         System.out.println("\n[F8-DIAGNOSTIC] Running save system diagnostic at player position...");
         System.out.println("[F8-DIAGNOSTIC] Player world pos: (" + worldX + ", " + worldY + ", " + worldZ + ")");
-        System.out.println("[F8-DIAGNOSTIC] Chunk coords: (" + chunkX + ", " + chunkZ + ")");
+        System.out.println("[F8-DIAGNOSTIC] Cube column: (" + chunkX + ", " + chunkZ + "), cube y " + (worldY >> 5));
 
         if (chatSystem != null) {
             chatSystem.addMessage("Running save diagnostic...", CHAT_YELLOW);
@@ -217,7 +219,7 @@ final class DebugKeyHandler {
             }
         }
 
-        SaveSystemDiagnostics.diagnoseChunkLoading(worldName, chunkX, chunkZ);
+        SaveSystemDiagnostics.diagnoseCubeColumn(worldName, worldX, worldZ);
 
         if (chatSystem != null) {
             chatSystem.addMessage("Diagnostic complete - check console", CHAT_GREEN);

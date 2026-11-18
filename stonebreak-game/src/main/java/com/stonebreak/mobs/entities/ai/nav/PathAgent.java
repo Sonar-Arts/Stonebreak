@@ -11,7 +11,10 @@ import com.openmason.engine.nav.NavPath;
 import com.openmason.engine.nav.NavWorld;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import com.openmason.engine.physics.PhysicsWorld;
+import com.stonebreak.mobs.entities.PhysicsFrame;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * One mob's navigation: ask it to go somewhere and it plans, re-plans, walks and gives up on its
@@ -95,6 +98,9 @@ public final class PathAgent {
     private final AgentBody body = new AgentBody();
     private final AgentApply apply = new AgentApply();
 
+    /** The frame origin the agent's positions are relative to (kept equal to the physics world's). */
+    private long originX, originY, originZ;
+
     public PathAgent(LivingEntity entity, Steering steering) {
         this(entity, steering, NavProfiles.forEntity(entity));
     }
@@ -103,11 +109,15 @@ public final class PathAgent {
         this.entity = entity;
         this.steering = steering;
         this.profile = profile;
-        Vector3f position = entity.getPosition();
+        PhysicsWorld physics = Steering.physicsOf(entity);
+        this.originX = PhysicsFrame.originX(physics);
+        this.originY = PhysicsFrame.originY(physics);
+        this.originZ = PhysicsFrame.originZ(physics);
         this.agent = GroundAgent.create(new GroundAgentDesc(profile, LIMITS, SNAP_DOWN, SNAP_UP,
                 REPATH_INTERVAL_SECONDS, NO_PATH_RETRY_SECONDS, SATURATED_RETRY_SECONDS, GOAL_DRIFT_BLOCKS,
                 WAYPOINT_RADIUS, WAYPOINT_VERTICAL_SLACK, STUCK_SPEED_BLOCKS_PER_SECOND, STUCK_SECONDS,
-                JUMP_RISE_MARGIN, JUMP_APPROACH_BLOCKS), position.x, position.y, position.z);
+                JUMP_RISE_MARGIN, JUMP_APPROACH_BLOCKS), originX, originY, originZ,
+                entity.getX() - originX, entity.getY() - originY, entity.getZ() - originZ);
     }
 
     public Steering steering() {
@@ -127,8 +137,9 @@ public final class PathAgent {
      * @param goalRadius      how close counts as arrival; at least 1 for a moving target
      * @param speedMultiplier scales the mob's base move speed while walking this route
      */
-    public void moveTo(Vector3f goal, float goalRadius, float speedMultiplier) {
-        agent.moveTo(goal.x, goal.y, goal.z, goalRadius, speedMultiplier);
+    public void moveTo(Vector3dc goal, float goalRadius, float speedMultiplier) {
+        syncFrame(Steering.physicsOf(entity));
+        agent.moveTo(goal.x() - originX, goal.y() - originY, goal.z() - originZ, goalRadius, speedMultiplier);
     }
 
     /** Abandons the destination and the route, and stops the mob where it stands. */
@@ -145,7 +156,9 @@ public final class PathAgent {
     // ── Tick ─────────────────────────────────────────────────────────────────
 
     public void tick(float deltaTime) {
-        agent.tick(steering.engine(), navWorld(), Steering.physicsOf(entity), Steering.bodyOf(entity, body),
+        PhysicsWorld physics = Steering.physicsOf(entity);
+        syncFrame(physics);
+        agent.tick(steering.engine(), navWorld(), physics, Steering.bodyOf(entity, physics, body),
                 deltaTime, apply);
         Steering.applyTo(entity, apply);
     }
@@ -177,13 +190,21 @@ public final class PathAgent {
     /** Distance from the mob to its destination, or {@link Float#MAX_VALUE} when it has none. */
     public float distanceToGoal() {
         AgentView view = agent.view();
-        return view.hasGoal() ? entity.getPosition().distance(view.goalX(), view.goalY(), view.goalZ())
-                : Float.MAX_VALUE;
+        if (!view.hasGoal()) {
+            return Float.MAX_VALUE;
+        }
+        double dx = entity.getX() - (view.goalX() + originX);
+        double dy = entity.getY() - (view.goalY() + originY);
+        double dz = entity.getZ() - (view.goalZ() + originZ);
+        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     // ── Debug ────────────────────────────────────────────────────────────────
 
-    /** The route being followed; never null, possibly {@link NavPath#EMPTY}. For the debug overlay. */
+    /**
+     * The route being followed; never null, possibly {@link NavPath#EMPTY}. For the debug overlay.
+     * Its points are FRAME positions: add {@link #originX()}/{@link #originY()}/{@link #originZ()}.
+     */
     public NavPath path() {
         return agent.path();
     }
@@ -193,10 +214,23 @@ public final class PathAgent {
         return agent.view().cursor();
     }
 
-    /** Writes the destination into {@code out}; unchanged when there is none. */
-    public Vector3f goal(Vector3f out) {
+    /** The frame origin {@link #path()} is relative to. */
+    public long originX() {
+        return originX;
+    }
+
+    public long originY() {
+        return originY;
+    }
+
+    public long originZ() {
+        return originZ;
+    }
+
+    /** Writes the destination (absolute world position) into {@code out}; unchanged when there is none. */
+    public Vector3d goal(Vector3d out) {
         AgentView view = agent.view();
-        return view.hasGoal() ? out.set(view.goalX(), view.goalY(), view.goalZ()) : out;
+        return view.hasGoal() ? out.set(view.goalX() + originX, view.goalY() + originY, view.goalZ() + originZ) : out;
     }
 
     /** Releases navigation state when the entity is removed. */
@@ -206,10 +240,23 @@ public final class PathAgent {
 
     // ── Internals ────────────────────────────────────────────────────────────
 
+    /** Follows the physics world's frame origin (the nav world follows it too, see PathfindingService). */
+    private void syncFrame(PhysicsWorld physics) {
+        long ox = PhysicsFrame.originX(physics);
+        long oy = PhysicsFrame.originY(physics);
+        long oz = PhysicsFrame.originZ(physics);
+        if (ox != originX || oy != originY || oz != originZ) {
+            agent.setOrigin(ox, oy, oz);
+            originX = ox;
+            originY = oy;
+            originZ = oz;
+        }
+    }
+
     /** The service of the world the mob is in now, or null (no world, or it was cleaned up). */
     private NavWorld navWorld() {
         World world = entity.getWorld();
         PathfindingService service = world == null ? null : world.pathfinding();
-        return service == null || service.isClosed() ? null : service.nav();
+        return service == null || service.isClosed() ? null : service.navInFrame();
     }
 }

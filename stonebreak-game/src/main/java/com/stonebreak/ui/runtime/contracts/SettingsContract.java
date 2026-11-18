@@ -136,6 +136,10 @@ public final class SettingsContract {
             (s, v) -> s.setRenderDistance(i(v)),
             range(WorldConfiguration.MIN_RENDER_DISTANCE, WorldConfiguration.MAX_RENDER_DISTANCE, "render distance"),
             Live.ON_APPLY);
+        add("verticalRenderDistance", DataType.integer(), s -> UiValue.of(s.getVerticalRenderDistance()),
+            (s, v) -> s.setVerticalRenderDistance(i(v)),
+            range(Settings.MIN_VERTICAL_RENDER_DISTANCE, Settings.MAX_VERTICAL_RENDER_DISTANCE,
+                "vertical render distance"), Live.ON_APPLY);
         add("lodDistance", DataType.integer(), s -> UiValue.of(s.getLodDistance()), (s, v) -> s.setLodDistance(i(v)),
             range(WorldConfiguration.MIN_LOD_RANGE, WorldConfiguration.MAX_LOD_RANGE, "LOD distance"), Live.ON_APPLY);
         add("lodEnabled", DataType.bool(), s -> UiValue.of(s.getLodEnabled()), (s, v) -> s.setLodEnabled(b(v)),

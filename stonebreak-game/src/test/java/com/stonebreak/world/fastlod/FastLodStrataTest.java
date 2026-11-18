@@ -4,7 +4,6 @@ import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,7 +83,7 @@ class FastLodStrataTest {
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.GRASS);
         int[] water = new int[level.cellCount()];
-        Arrays.fill(water, TerrainTile.NO_WATER);
+        Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
 
         MmsMeshData slope = mesher.build(new FastLodChunkData(FastLodKey.of(level, 0, 0), heights, water,
             surface, null)).mesh();
@@ -129,7 +128,7 @@ class FastLodStrataTest {
             for (int z = 0; z < level.cellsPerAxis(); z++) surface[x * level.cellsPerAxis() + z] = BlockType.STONE;
         }
         int[] water = new int[level.cellCount()];
-        Arrays.fill(water, TerrainTile.NO_WATER);
+        Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
         MmsMeshData mesh = mesher.build(new FastLodChunkData(FastLodKey.of(level, 0, 0), heights, water,
             surface, null)).mesh();
 
@@ -147,7 +146,7 @@ class FastLodStrataTest {
         int[] floor = {GROUND - 12};
         byte[] cover = {(byte) 128};
         FastLodChunkData data = new FastLodChunkData(FastLodKey.of(level, 0, 0), heights,
-            new int[]{TerrainTile.NO_WATER}, new BlockType[]{BlockType.GRASS}, null, floor, cover);
+            new int[]{com.stonebreak.world.operations.WorldConfiguration.NO_WATER}, new BlockType[]{BlockType.GRASS}, null, floor, cover);
         MmsMeshData mesh = mesher.build(data).mesh();
 
         int[] notch = FastLodMesher.notchSquare(16, 128);

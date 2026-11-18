@@ -100,11 +100,11 @@ class BattleTestArenaTest {
             var raycast = new com.stonebreak.player.interaction.RaycastEngine(
                 new PhysicsState(), new com.stonebreak.player.Camera(), world);
             float hit = raycast.distanceToFirstSolid(
-                new org.joml.Vector3f(5, .8f, 5), new org.joml.Vector3f(1, 0, 0), 10);
+                new org.joml.Vector3d(5, .8f, 5), new org.joml.Vector3f(1, 0, 0), 10);
             assertEquals(2.4f, hit, .1f);
             assertEquals(Float.MAX_VALUE,
                 raycast.distanceToFirstSolid(
-                    new org.joml.Vector3f(0, 1, 8), new org.joml.Vector3f(0, 0, -1), 16));
+                    new org.joml.Vector3d(0, 1, 8), new org.joml.Vector3f(0, 0, -1), 16));
         } finally {
             world.cleanup();
         }

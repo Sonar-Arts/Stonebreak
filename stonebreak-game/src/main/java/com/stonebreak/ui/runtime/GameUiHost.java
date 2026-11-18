@@ -252,7 +252,7 @@ public final class GameUiHost {
             return "no save-changes dialog is showing";
         }
 
-        /** @return chunks audited, or -1 when not connected */
+        /** @return cubes audited, or -1 when not connected */
         int resync();
 
         /** Every field of {@link SettingsContract}. */

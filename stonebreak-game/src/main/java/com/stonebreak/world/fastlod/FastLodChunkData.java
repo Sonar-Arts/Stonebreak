@@ -12,7 +12,7 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  *   <li>{@code heights[stride²]} — terrain height per cell, one-cell margin on
  *   each side so the mesher can emit skirts without reading neighbours.</li>
  *   <li>{@code waterLevels[cellsPerAxis²]} — per-cell water level, or {@link
- *   com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}; a cell is
+ *   com.stonebreak.world.operations.WorldConfiguration#NO_WATER}; a cell is
  *   submerged exactly when this exceeds its height, the same test native
  *   generation places water by. No margin: skirts only compare terrain
  *   heights, never water.</li>
@@ -128,7 +128,7 @@ public final class FastLodChunkData {
 
     /**
      * Water level at an interior cell, or {@link
-     * com.stonebreak.world.generation.diffusion.TerrainTile#NO_WATER}. No
+     * com.stonebreak.world.operations.WorldConfiguration#NO_WATER}. No
      * margin — unlike {@link #heightAt}, only {@code (ix, iz)} within
      * {@code [0, cellsPerAxis)} are valid.
      */

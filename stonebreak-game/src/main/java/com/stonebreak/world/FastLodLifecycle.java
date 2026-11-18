@@ -18,14 +18,14 @@ import com.stonebreak.world.operations.WorldConfiguration;
  */
 final class FastLodLifecycle {
     private final WorldConfiguration config;
-    private final TerrainGenerator terrainSystem;
+    private final java.util.function.Supplier<? extends TerrainGenerator> terrainSource;
 
     // Lazily constructed once the render-thread hands us a texture atlas.
     private volatile FastLodManager fastLodManager;
 
-    FastLodLifecycle(WorldConfiguration config, TerrainGenerator terrainSystem) {
+    FastLodLifecycle(WorldConfiguration config, java.util.function.Supplier<? extends TerrainGenerator> terrainSource) {
         this.config = config;
-        this.terrainSystem = terrainSystem;
+        this.terrainSource = terrainSource;
     }
 
     FastLodManager get() {
@@ -39,9 +39,10 @@ final class FastLodLifecycle {
      * persistence. Idempotent; safe to call each frame.
      */
     void ensure(com.stonebreak.rendering.textures.BlockTextureArray textureArray) {
-        if (fastLodManager != null || textureArray == null || terrainSystem == null) return;
+        if (fastLodManager != null || textureArray == null || terrainSource == null) return;
         synchronized (this) {
             if (fastLodManager != null) return;
+            TerrainGenerator terrainSystem = terrainSource.get();
             FastLodStore store = openStoreIfPossible(terrainSystem.lodCacheTag());
             fastLodManager = new FastLodManager(config, terrainSystem, textureArray, store);
         }
@@ -93,11 +94,11 @@ final class FastLodLifecycle {
      * the same logic-thread executor that ticks full-world updateRing — threading contract
      * unchanged.
      */
-    void updateRing(Vector3f lodPos) {
+    void updateRing(org.joml.Vector3dc lodPos) {
         if (fastLodManager != null) {
             fastLodManager.updateRing(
-                    (int) Math.floor(lodPos.x / WorldConfiguration.CHUNK_SIZE),
-                    (int) Math.floor(lodPos.z / WorldConfiguration.CHUNK_SIZE));
+                    (int) Math.floor(lodPos.x() / WorldConfiguration.CHUNK_SIZE),
+                    (int) Math.floor(lodPos.z() / WorldConfiguration.CHUNK_SIZE));
         }
     }
 

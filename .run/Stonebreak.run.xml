@@ -6,7 +6,7 @@
          while compiling FrameRenderer (hs_err_pid12921 / hs_err_pid162649).
          Keep other escape analysis and C2 optimizations enabled. Remove these
          two workaround flags after verifying a JDK containing the upstream fix. -->
-    <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
+    <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">
       <!-- Cenda (libcenda_kernels) comes packaged in the Open Mason engine-core jar since #388, so there is

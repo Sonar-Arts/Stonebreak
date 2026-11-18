@@ -3,7 +3,8 @@ package com.stonebreak.network.server;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.network.packet.player.PlayerHealthS2C;
 import com.stonebreak.network.server.handlers.ServerHealthHandler;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.Collection;
 
@@ -47,19 +48,19 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
-    public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+    public Vector3d nearestPlayer(Vector3dc from, Vector3d out) {
         ServerPlayer nearest = nearest(from);
         return nearest == null ? null : out.set(nearest.x(), nearest.y(), nearest.z());
     }
 
     @Override
-    public boolean nearestPlayerSprinting(Vector3f from) {
+    public boolean nearestPlayerSprinting(Vector3dc from) {
         ServerPlayer nearest = nearest(from);
         return nearest != null && nearest.isSprinting();
     }
 
     @Override
-    public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+    public boolean hurtNearestPlayer(Vector3dc from, float amount, float knockback) {
         ServerPlayer target = nearest(from);
         if (health == null || target == null
                 || distanceSq(target, from) > MAX_MELEE_DISTANCE * MAX_MELEE_DISTANCE) {
@@ -72,7 +73,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
-    public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+    public boolean hitPlayerAt(Vector3dc point, float margin, float amount, int ownerPlayerId) {
         if (health == null) {
             return false;
         }
@@ -90,24 +91,24 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return false;
     }
 
-    private static float distanceSq(ServerPlayer player, Vector3f from) {
-        float dx = player.x() - from.x;
-        float dy = player.y() - from.y;
-        float dz = player.z() - from.z;
+    private static double distanceSq(ServerPlayer player, Vector3dc from) {
+        double dx = player.x() - from.x();
+        double dy = player.y() - from.y();
+        double dz = player.z() - from.z();
         return dx * dx + dy * dy + dz * dz;
     }
 
-    private ServerPlayer nearest(Vector3f from) {
+    private ServerPlayer nearest(Vector3dc from) {
         ServerPlayer best = null;
-        float bestDistanceSq = Float.MAX_VALUE;
+        double bestDistanceSq = Double.MAX_VALUE;
         for (ServerPlayer player : roster) {
             if (!player.isMobTargetable()) {
                 continue;
             }
-            float dx = player.x() - from.x;
-            float dy = player.y() - from.y;
-            float dz = player.z() - from.z;
-            float distanceSq = dx * dx + dy * dy + dz * dz;
+            double dx = player.x() - from.x();
+            double dy = player.y() - from.y();
+            double dz = player.z() - from.z();
+            double distanceSq = dx * dx + dy * dy + dz * dz;
             if (distanceSq < bestDistanceSq) {
                 bestDistanceSq = distanceSq;
                 best = player;

@@ -1,21 +1,27 @@
 package com.stonebreak.rendering.gameWorld.regions;
 
-import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
-import com.openmason.engine.vram.VramPlans;
 import com.openmason.engine.voxel.mms.mmsCore.MmsVertexFormat;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsChunkRegion;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsGpuCuller;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsMultiDrawBatch;
+import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionKey;
 import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.operations.WorldConfiguration;
+import com.openmason.engine.voxel.world.StreamMesh;
+import com.openmason.engine.voxel.world.VisibleCubeBuffers;
+import com.openmason.engine.vram.VramPlans;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.lang.foreign.MemorySegment;
+import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -23,53 +29,65 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Region-batched chunk rendering: chunk meshes upload into shared per-region
- * GPU arenas (8x8 chunk columns each, atlas and water layers separate), and
- * every render pass draws ONE {@code glMultiDrawElementsBaseVertex} per
- * visible region instead of a VAO bind + draw call per chunk. At 24-chunk
- * render distance this collapses ~1000+ draws per pass into a few dozen.
+ * The cube terrain renderer's GPU side (cubic runtime, Stonebreak #447): every cube mesh the native
+ * streamer hands out ({@code cv_gpu_mesh} via {@link StreamMesh}) uploads straight from native memory into
+ * 3D region arenas ({@link MmsRegionKey}, 8x8x8 cubes = 256^3 blocks, region-local positions on all three
+ * axes), and every pass draws ONE multidraw (CPU) or one compute cull + indirect multidraw (GPU, GL 4.3)
+ * per region.
  *
- * <p>Frustum culling stays chunk-granular: passes hand in their (possibly
- * sorted) chunk lists and this class buckets them into regions preserving
- * list order, so back-to-front ordering holds at region-then-chunk
- * granularity. For water that is exact enough (its depth prepass makes
- * inter-mesh order irrelevant); for the ice pass, translucent surfaces that
- * overlap ACROSS a region seam can composite slightly out of order — a known,
- * accepted approximation (Sodium orders translucents the same way). Chunks
- * whose meshes could not join a region (non-packed, or u32-index because the
- * mesh exceeded 65536 vertices) keep legacy per-chunk handles and are drawn
- * after the region batches. The u32 escape hatch is not merely theoretical on
- * this branch: at {@code WORLD_HEIGHT} 1024 a heavily cave-carved column can
- * clear that vertex count, so expect a nonzero "legacy" figure in the F3
- * chunk-draw row rather than treating it as a bug.
+ * <h2>Layers</h2>
+ * <ul>
+ *   <li>{@link #LAYER_ATLAS}: QUAD16 opaque + cutout quads (one region map, two handles per cube);</li>
+ *   <li>{@link #LAYER_STAMP}: COMPACT20 stamp/model/snow geometry with u32 indices (drawn with the atlas);</li>
+ *   <li>{@link #LAYER_TRANSLUCENT}: QUAD16 translucent quads (ice, glass), drawn sorted after the water;</li>
+ *   <li>{@link #LAYER_WATER}: WATERQUAD16 fluid faces (the water renderer's shader).</li>
+ * </ul>
  *
- * <p>Enabled by default on a GL 3.2+ context; force the legacy per-chunk path
- * with {@code -Dstonebreak.regions=off}. On GL 4.3+ the order-independent
- * passes (opaque, shadow cascades) additionally upgrade to GPU-driven culling:
- * a compute shader frustum-tests every live mesh per region and the region
- * draws with one {@code glMultiDrawElementsIndirect} — see
- * {@link #drawLayerGpuCulled} ({@code -Dstonebreak.gpucull=off} opts out).
- * Order-dependent passes (ice, water) stay on the CPU-listed multidraw so
- * back-to-front ordering holds. All methods are GL-thread confined.
+ * <h2>Draw decisions = enable bits</h2>
+ * A cube draws when its column is READY ({@code CV_EV_COLUMN_READY}) or the FastLOD handover is off, and -
+ * in the camera pass - when this frame's visibility walk ({@code cv_visible_cubes}) reached it. The decision
+ * is written into every handle's enable bit before each pass ({@link #prepareShadowPass} /
+ * {@link #prepareCameraPass}); the GPU cull kernel (MeshMeta flag bit 0) and the CPU twin
+ * ({@link MmsChunkRegion#appendVisible} / {@link MmsMultiDrawBatch#add(MmsRegionMeshHandle)}) honour it
+ * identically, so the GL 3.2 / 4.1 path and the GL 4.3 path draw the same set.
+ *
+ * <p>All methods are GL-thread confined. The class name survives from the column era (callers, F3 rows).
  */
 public final class ChunkRegionRenderer {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ChunkRegionRenderer.class);
+
+    /** QUAD16 opaque + cutout. */
     public static final int LAYER_ATLAS = 0;
+    /** WATERQUAD16 fluid faces. */
     public static final int LAYER_WATER = 1;
-    /**
-     * Non-quad atlas geometry under a pulled vertex format (SBO stamps,
-     * crosses). Drawn as part of the atlas pass — callers never name this
-     * layer when drawing, only when uploading.
-     */
+    /** COMPACT20 stamps (drawn as part of the atlas pass). */
     public static final int LAYER_STAMP = 2;
+    /** QUAD16 translucent solids (ice, glass). */
+    public static final int LAYER_TRANSLUCENT = 3;
+    private static final int LAYER_COUNT = 4;
+
+    /** Extra Y room on water bounds for the vertex-shader waves (clamped to +-0.18 there). */
+    private static final float WATER_WAVE_MARGIN = 0.25f;
+    /** How far a host model may reach past its cube (CV_MODEL_CORNER_MAX - 1 = 4 cells, + 1 slack). */
+    private static final float MODEL_REACH = 5f;
+
+    /**
+     * Hi-Z occlusion in the camera pass: ON by default ({@code -Dstonebreak.hiz=off} disables it here,
+     * {@code -Dopenmason.hiz=off} is the engine kill switch). The engine builds pyramid level 0 on the GPU from the
+     * depth texture (no glReadPixels since 2026-11-18: capture ~0.03 ms CPU, was ~4 ms).
+     */
+    static final boolean HIZ_ENABLED = MmsGpuCuller.HIZ_DEFAULT
+        && !"off".equalsIgnoreCase(System.getProperty("stonebreak.hiz", "on"));
 
     private static volatile ChunkRegionRenderer instance;
     private static volatile Boolean enabled;
     private static volatile Boolean gpuCullEnabled;
 
     /**
-     * Whether region rendering is active. First call must happen on the GL
-     * thread with a current context (checks GL 3.2 capability).
+     * Whether cube rendering can run at all (GL 3.2: buffer textures, gl_VertexID, base-vertex multidraw).
+     * First call must happen on the GL thread with a current context. {@code -Dstonebreak.regions=off} turns
+     * terrain off (there is no other path any more).
      */
     public static boolean isEnabled() {
         Boolean value = enabled;
@@ -79,19 +97,16 @@ public final class ChunkRegionRenderer {
                 if (value == null) {
                     String prop = System.getProperty("stonebreak.regions", "on");
                     boolean off = "off".equalsIgnoreCase(prop) || "false".equalsIgnoreCase(prop);
-                    boolean capable = false;
-                    if (!off) {
-                        try {
-                            capable = GL.getCapabilities().OpenGL32;
-                        } catch (IllegalStateException e) {
-                            // No context on this thread — treat as undecided.
-                            return false;
-                        }
+                    boolean capable;
+                    try {
+                        capable = GL.getCapabilities().OpenGL32;
+                    } catch (IllegalStateException e) {
+                        return false; // No context on this thread — undecided.
                     }
                     value = !off && capable;
                     enabled = value;
-                    System.out.println("[ChunkRegionRenderer] Region rendering "
-                        + (value ? "ENABLED (multidraw batching)" : "disabled (legacy per-chunk draws)"));
+                    LOGGER.info("[ChunkRegionRenderer] cube region rendering {}",
+                        value ? "ENABLED (3D regions, multidraw)" : "disabled (terrain will not draw)");
                 }
             }
         }
@@ -99,10 +114,8 @@ public final class ChunkRegionRenderer {
     }
 
     /**
-     * Whether the GPU-driven cull + multi-draw-indirect path is active for
-     * order-independent passes (opaque, shadow cascades). Requires region
-     * rendering plus a GL 4.3 context; force off with
-     * {@code -Dstonebreak.gpucull=off}. First call needs a current context.
+     * Whether the GPU-driven cull + multi-draw-indirect path draws the order-independent passes (atlas +
+     * stamps of the camera pass, shadow cascades). GL 4.3; {@code -Dstonebreak.gpucull=off} opts out.
      */
     public static boolean isGpuCullEnabled() {
         Boolean value = gpuCullEnabled;
@@ -112,20 +125,17 @@ public final class ChunkRegionRenderer {
                 if (value == null) {
                     String prop = System.getProperty("stonebreak.gpucull", "on");
                     boolean off = "off".equalsIgnoreCase(prop) || "false".equalsIgnoreCase(prop);
-                    boolean capable = false;
-                    if (!off) {
-                        try {
-                            capable = GL.getCapabilities().OpenGL43;
-                        } catch (IllegalStateException e) {
-                            // No context on this thread — treat as undecided.
-                            return false;
-                        }
+                    boolean capable;
+                    try {
+                        capable = GL.getCapabilities().OpenGL43;
+                    } catch (IllegalStateException e) {
+                        return false;
                     }
                     value = !off && capable && isEnabled();
                     gpuCullEnabled = value;
-                    System.out.println("[ChunkRegionRenderer] GPU-driven culling "
-                        + (value ? "ENABLED (compute cull + MDI)"
-                                 : "disabled (" + (off ? "property" : "needs regions + GL 4.3") + ")"));
+                    LOGGER.info("[ChunkRegionRenderer] GPU-driven culling {}", value
+                        ? "ENABLED (compute cull + MDI)"
+                        : "disabled (" + (off ? "property" : "needs GL 4.3") + ") - CPU multidraw");
                 }
             }
         }
@@ -146,73 +156,610 @@ public final class ChunkRegionRenderer {
         return local;
     }
 
-    private final Map<Long, MmsChunkRegion> atlasRegions = new HashMap<>();
-    private final Map<Long, MmsChunkRegion> waterRegions = new HashMap<>();
-    private final Map<Long, MmsChunkRegion> stampRegions = new HashMap<>();
+    /** The instance if one was ever created (debug overlay / screenshot hooks), else null. */
+    public static ChunkRegionRenderer peek() {
+        return instance;
+    }
+
+    @SuppressWarnings("unchecked")
+    private final Map<MmsRegionKey, MmsChunkRegion>[] regions = new Map[LAYER_COUNT];
+    private final CubeKeyMap<CubeDraw> cubes = new CubeKeyMap<>(4096);
+    private final List<CubeDraw> cubeList = new ArrayList<>();
+    /** Resident cube meshes per cube layer cy (index cy - MIN_CUBE_Y): the vertical span the walk must reach. */
+    private final int[] residentPerCubeY = new int[
+        (int) (com.stonebreak.world.operations.WorldConfiguration.MAX_CUBE_Y
+            - com.stonebreak.world.operations.WorldConfiguration.MIN_CUBE_Y)];
+    /** Column cubes (cx, 0, cz) that are READY. */
+    private final CubeKeyMap<Boolean> readyColumns = new CubeKeyMap<>(1024);
     private final MmsMultiDrawBatch batch = new MmsMultiDrawBatch(256);
     private final List<MmsChunkRegion> touchedRegions = new ArrayList<>();
-    private final List<Chunk> legacyFallback = new ArrayList<>();
     private int cycleCounter;
+    /** Whether a cube of a non-READY column stays hidden (the far LOD covers it). */
+    private boolean handover;
+    private int hiddenByHandover;
 
-    // GPU-cull pass state (lazily created; null after an init failure, which
-    // permanently reverts those passes to the CPU multidraw path).
     private MmsGpuCuller gpuCuller;
     private boolean gpuCullerInitFailed;
-    private final float[] gpuPlanes = new float[24];
-    private final Vector4f gpuPlaneTmp = new Vector4f();
-    private final FrustumIntersection gpuPreCull = new FrustumIntersection();
-    private final List<MmsChunkRegion> gpuVisibleRegions = new ArrayList<>();
-    private final List<Map.Entry<Long, MmsChunkRegion>> gpuCullCandidates = new ArrayList<>();
+    private final float[] planes = new float[24];
+    private final Vector4f planeTmp = new Vector4f();
+    private final FrustumIntersection preCull = new FrustumIntersection();
+    private final List<MmsChunkRegion> visibleRegions = new ArrayList<>();
+    private final Vector3f regionOrigin = new Vector3f();
+    /** Per-region cull answers of the current GPU pass (grown, never shrunk). */
+    private int[] regionCullCounts = new int[64];
+    private final int[] viewport = new int[4];
+    private int lastHiZEarly, lastHiZLate;
+    private volatile int publishedHiZEarly, publishedHiZLate;
+    private volatile MmsGpuCuller.HiZStats publishedHiZ = MmsGpuCuller.HiZStats.NONE;
+    private volatile boolean hizSkippedMultisample;
 
-    // Frame stats for the debug overlay (written on the GL thread,
-    // read by the overlay on the same thread).
-    private int frameRegionDraws;
-    private int frameCommands;
-    private int frameLegacyDraws;
-    private int frameGpuRegionDraws;
-    private int frameGpuCommands;
-    private int frameGpuPreCulledRegions;
-    private int publishedRegionDraws;
-    private int publishedCommands;
-    private int publishedLegacyDraws;
-    private int publishedGpuRegionDraws;
-    private int publishedGpuCommands;
-    private int publishedGpuPreCulledRegions;
+    // Frame stats (GL thread; published at beginFrame).
+    private int frameRegionDraws, frameCommands, frameGpuRegionDraws, frameGpuCommands, framePreCulled;
+    private int publishedRegionDraws, publishedCommands, publishedGpuRegionDraws, publishedGpuCommands,
+        publishedPreCulled;
+    private long uploadsTotal, dropsTotal, uploadFailures;
 
     private ChunkRegionRenderer() {
+        for (int i = 0; i < LAYER_COUNT; i++) {
+            regions[i] = new HashMap<>();
+        }
+    }
+
+    // ─── Mesh intake (MeshConsumer, owner = GL thread) ───────────────────────────────────────────────
+
+    /**
+     * Uploads a cube mesh, replacing (and freeing) the cube's previous one; an empty mesh only drops it.
+     * The native memory is copied into the arenas before this returns.
+     *
+     * @param columnReadyHint the world's own view of the cube's column readiness (a detached world counts
+     *                        every column READY without sending events)
+     * @return the new draw record, or null when the mesh was empty
+     */
+    public CubeDraw accept(StreamMesh mesh, boolean columnReadyHint) {
+        long cx = mesh.cx(), cy = mesh.cy(), cz = mesh.cz();
+        drop(cx, cy, cz);
+        if (mesh.isEmpty()) {
+            return null;
+        }
+        MmsRegionKey key = MmsRegionKey.ofCube(cx, cy, cz);
+        float[] box = localBox(mesh, cx, cy, cz);
+        int quads = 0;
+        for (int l = 0; l < 3; l++) quads += mesh.quadCount(l);
+        quads += mesh.waterCount();
+        CubeDraw draw = new CubeDraw(cx, cy, cz, mesh.revision(),
+            box[0], box[1], box[2], box[3], box[4], box[5], quads, mesh.byteSize());
+        try {
+            int n = mesh.quadCount(StreamMesh.OPAQUE);
+            if (n > 0) draw.opaque = region(LAYER_ATLAS, key).uploadQuads(mesh.quads(StreamMesh.OPAQUE), n,
+                box[0], box[1], box[2], box[3], box[4], box[5]);
+            n = mesh.quadCount(StreamMesh.CUTOUT);
+            if (n > 0) draw.cutout = region(LAYER_ATLAS, key).uploadQuads(mesh.quads(StreamMesh.CUTOUT), n,
+                box[0], box[1], box[2], box[3], box[4], box[5]);
+            n = mesh.quadCount(StreamMesh.TRANSLUCENT);
+            if (n > 0) draw.translucent = region(LAYER_TRANSLUCENT, key).uploadQuads(
+                mesh.quads(StreamMesh.TRANSLUCENT), n, box[0], box[1], box[2], box[3], box[4], box[5]);
+            int sv = mesh.stampVertexCount(), si = mesh.stampIndexCount();
+            if (sv > 0 && si > 0) {
+                MemorySegment vertices = mesh.stampVertices();
+                MemorySegment indices = mesh.stampIndices();
+                draw.stamp = region(LAYER_STAMP, key).uploadLocal(vertices, sv, indices, si,
+                    box[0], box[1], box[2], box[3], box[4], box[5]);
+            }
+            n = mesh.waterCount();
+            if (n > 0) draw.water = region(LAYER_WATER, key).uploadQuads(mesh.water(), n,
+                box[0], box[1] - WATER_WAVE_MARGIN, box[2], box[3], box[4] + WATER_WAVE_MARGIN, box[5]);
+        } catch (RuntimeException e) {
+            uploadFailures++;
+            LOGGER.error("Cube mesh upload failed at ({}, {}, {})", cx, cy, cz, e);
+            draw.close();
+            return null;
+        }
+        draw.columnReady = columnReadyHint || readyColumns.get(cx, 0, cz) != null;
+        draw.listIndex = cubeList.size();
+        cubeList.add(draw);
+        cubes.put(cx, cy, cz, draw);
+        countResident(cy, 1);
+        uploadsTotal++;
+        return draw;
+    }
+
+    /** The cube's region-local bounds: the mesh's own box, or the whole cube when it reports none. */
+    static float[] localBox(StreamMesh mesh, long cx, long cy, long cz) {
+        float[] b = {mesh.aabbMin(0), mesh.aabbMin(1), mesh.aabbMin(2),
+            mesh.aabbMax(0), mesh.aabbMax(1), mesh.aabbMax(2)};
+        if (!(b[3] >= b[0] && b[4] >= b[1] && b[5] >= b[2]) || (b[3] == b[0] && b[4] == b[1] && b[5] == b[2])) {
+            float x = MmsRegionKey.cubeLocalOffset(cx);
+            float y = MmsRegionKey.cubeLocalOffset(cy);
+            float z = MmsRegionKey.cubeLocalOffset(cz);
+            b = new float[] {x, y, z, x + 32f, y + 32f, z + 32f};
+        }
+        return b;
+    }
+
+    private MmsChunkRegion region(int layer, MmsRegionKey key) {
+        return regions[layer].computeIfAbsent(key, k -> switch (layer) {
+            case LAYER_WATER -> new MmsChunkRegion(k, MmsVertexFormat.WATERQUAD16,
+                VramPlans.arena(VramPlans.POOL_CHUNK_WATER));
+            case LAYER_STAMP -> new MmsChunkRegion(k, MmsVertexFormat.COMPACT20,
+                VramPlans.arena(VramPlans.POOL_CHUNK_STAMP), Integer.BYTES);
+            default -> new MmsChunkRegion(k, MmsVertexFormat.QUAD16,
+                VramPlans.arena(VramPlans.POOL_CHUNK_MESH));
+        });
+    }
+
+    /** Frees a cube's mesh (unload, empty remesh). */
+    public void drop(long cx, long cy, long cz) {
+        CubeDraw old = cubes.remove(cx, cy, cz);
+        if (old == null) {
+            return;
+        }
+        int at = old.listIndex;
+        CubeDraw last = cubeList.removeLast();
+        if (last != old) {
+            cubeList.set(at, last);
+            last.listIndex = at;
+        }
+        old.listIndex = -1;
+        countResident(cy, -1);
+        old.close();
+        dropsTotal++;
+    }
+
+    public CubeDraw get(long cx, long cy, long cz) {
+        return cubes.get(cx, cy, cz);
+    }
+
+    private void countResident(long cy, int delta) {
+        long i = cy - com.stonebreak.world.operations.WorldConfiguration.MIN_CUBE_Y;
+        if (i >= 0 && i < residentPerCubeY.length) {
+            residentPerCubeY[(int) i] += delta;
+        }
     }
 
     /**
-     * Frame boundary: publishes last frame's stats and prunes regions whose
-     * last mesh was freed (their GL buffers are deleted).
+     * Largest vertical distance (in cubes) from cube layer {@code cy} to a resident cube mesh, 0 when none is
+     * resident. The surface band keeps terrain loaded at ANY height difference, so a camera far above (or
+     * below) the terrain needs a visibility walk that reaches this far down (up).
      */
+    public long residentVerticalReach(long cy) {
+        long min = Long.MAX_VALUE, max = Long.MIN_VALUE;
+        for (int i = 0; i < residentPerCubeY.length; i++) {
+            if (residentPerCubeY[i] > 0) {
+                long y = com.stonebreak.world.operations.WorldConfiguration.MIN_CUBE_Y + i;
+                min = Math.min(min, y);
+                max = Math.max(max, y);
+            }
+        }
+        if (min > max) {
+            return 0;
+        }
+        return Math.max(Math.max(cy - min, max - cy), 0);
+    }
+
+    /** Every resident cube mesh (dense, unordered; do not mutate). */
+    public List<CubeDraw> cubes() {
+        return cubeList;
+    }
+
+    /** CV_EV_COLUMN_READY / UNREADY of column cube (cx, cz). */
+    public void setColumnReady(long cx, long cz, boolean ready) {
+        if (ready) {
+            readyColumns.put(cx, 0, cz, Boolean.TRUE);
+        } else {
+            readyColumns.remove(cx, 0, cz);
+        }
+        // Column cubes span the whole world height (cy -12..19): a 32-entry probe beats an index.
+        for (long cy = com.stonebreak.world.operations.WorldConfiguration.MIN_CUBE_Y;
+             cy < com.stonebreak.world.operations.WorldConfiguration.MAX_CUBE_Y; cy++) {
+            CubeDraw d = cubes.get(cx, cy, cz);
+            if (d != null) {
+                d.columnReady = ready;
+            }
+        }
+    }
+
+    public boolean isColumnReady(long cx, long cz) {
+        return readyColumns.get(cx, 0, cz) != null;
+    }
+
+    /** Whether non-READY columns hide their detail cubes (the far LOD covers them). */
+    public void setHandover(boolean handover) {
+        this.handover = handover;
+    }
+
+    public boolean handover() {
+        return handover;
+    }
+
+    /** Whether the cube may draw at all this frame (ignoring camera visibility). */
+    public boolean isDrawable(CubeDraw d) {
+        return drawable(d);
+    }
+
+    boolean drawable(CubeDraw d) {
+        return d.columnReady || !handover;
+    }
+
+    // ─── Per-frame state ─────────────────────────────────────────────────────────────────────────────
+
+    /** Frame boundary: publishes last frame's stats, deletes emptied regions, trims one arena per layer. */
     public void beginFrame() {
         publishedRegionDraws = frameRegionDraws;
         publishedCommands = frameCommands;
-        publishedLegacyDraws = frameLegacyDraws;
         publishedGpuRegionDraws = frameGpuRegionDraws;
         publishedGpuCommands = frameGpuCommands;
-        publishedGpuPreCulledRegions = frameGpuPreCulledRegions;
-        frameRegionDraws = 0;
-        frameCommands = 0;
-        frameLegacyDraws = 0;
-        frameGpuRegionDraws = 0;
-        frameGpuCommands = 0;
-        frameGpuPreCulledRegions = 0;
-        pruneEmpty(atlasRegions);
-        pruneEmpty(waterRegions);
-        pruneEmpty(stampRegions);
-        // Plan-driven arena trim: give back the high-water capacity of
-        // underused regions, at most one GPU-side repack per map per frame.
-        trimOne(atlasRegions);
-        trimOne(waterRegions);
-        trimOne(stampRegions);
+        publishedPreCulled = framePreCulled;
+        // Hi-Z counters: harvested here on the GL thread (fence polls, no stall) so F3 reads plain fields.
+        publishedHiZ = gpuCuller != null ? gpuCuller.hizStats() : MmsGpuCuller.HiZStats.NONE;
+        publishedHiZEarly = lastHiZEarly;
+        publishedHiZLate = lastHiZLate;
+        frameRegionDraws = frameCommands = frameGpuRegionDraws = frameGpuCommands = framePreCulled = 0;
+        for (Map<MmsRegionKey, MmsChunkRegion> map : regions) {
+            pruneEmpty(map);
+        }
+        for (Map<MmsRegionKey, MmsChunkRegion> map : regions) {
+            for (MmsChunkRegion region : map.values()) {
+                if (region.maybeTrim()) {
+                    break;
+                }
+            }
+        }
     }
 
-    private static void trimOne(Map<Long, MmsChunkRegion> regions) {
-        for (MmsChunkRegion region : regions.values()) {
-            if (region.maybeTrim()) {
-                return;
+    /** Enable bits for a light pass (sun cascades, torch views): every drawable cube, no camera visibility. */
+    public void prepareShadowPass() {
+        for (int i = 0; i < cubeList.size(); i++) {
+            CubeDraw d = cubeList.get(i);
+            d.setEnabled(drawable(d));
+        }
+    }
+
+    /**
+     * Enable bits for the camera pass: drawable AND reached by visibility walk {@code frame} (or every
+     * drawable cube when {@code frame < 0}: no walk this frame).
+     */
+    public void prepareCameraPass(int frame) {
+        int hidden = 0;
+        for (int i = 0; i < cubeList.size(); i++) {
+            CubeDraw d = cubeList.get(i);
+            boolean drawable = drawable(d);
+            if (!drawable) hidden++;
+            d.setEnabled(drawable && (frame < 0 || d.visibleFrame == frame));
+        }
+        hiddenByHandover = hidden;
+    }
+
+    /** Resident cubes the last camera pass hid because their column is not READY. */
+    public int hiddenByHandover() {
+        return hiddenByHandover;
+    }
+
+    /**
+     * Marks the cubes of a {@code cv_visible_cubes} result visible in walk {@code frame} and appends the
+     * drawable ones to {@code out} (walk order: near to far). Returns how many were resident.
+     */
+    public int markVisible(long[] triples, int frame, List<CubeDraw> out) {
+        int resident = 0;
+        for (int i = 0; i + 2 < triples.length; i += 3) {
+            CubeDraw d = cubes.get(triples[i], triples[i + 1], triples[i + 2]);
+            if (d == null) {
+                continue;
+            }
+            resident++;
+            d.visibleFrame = frame;
+            if (out != null && drawable(d)) {
+                out.add(d);
+            }
+        }
+        return resident;
+    }
+
+    /**
+     * {@link #markVisible(long[], int, List)} straight from a walk's reusable native buffers (no copy, no
+     * allocation): the {@link VisibleCubeBuffers#visibleCount()} triples of the last walk into {@code buffers}.
+     */
+    public int markVisible(VisibleCubeBuffers buffers, int frame, List<CubeDraw> out) {
+        LongBuffer xyz = buffers.visibleBuffer();
+        int n = buffers.visibleCount();
+        int resident = 0;
+        for (int i = 0, at = 0; i < n; i++, at += 3) {
+            CubeDraw d = cubes.get(xyz.get(at), xyz.get(at + 1), xyz.get(at + 2));
+            if (d == null) {
+                continue;
+            }
+            resident++;
+            d.visibleFrame = frame;
+            if (out != null && drawable(d)) {
+                out.add(d);
+            }
+        }
+        return resident;
+    }
+
+    // ─── Draws ───────────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Draws the atlas + stamp layers of every enabled cube inside {@code viewProjRender} (a RENDER-SPACE
+     * clip matrix: camera or light): GPU compute cull + one indirect multidraw per region on GL 4.3, else
+     * one CPU-culled multidraw per region. Region boxes are pre-culled on the CPU first. The caller owns
+     * shader and state; the enable bits must have been prepared for this pass.
+     */
+    public void drawSolid(Matrix4f viewProjRender) {
+        if (!collectSolidRegions(viewProjRender)) {
+            return;
+        }
+        if (isGpuCullEnabled() && ensureGpuCuller()) {
+            gpuCuller.beginPass(planes);
+            frameGpuCommands += gpuCullAndDraw();
+            frameGpuRegionDraws += visibleRegions.size();
+            return;
+        }
+        drawSolidCpu();
+    }
+
+    /**
+     * The CAMERA opaque pass: {@link #drawSolid} with Hi-Z occlusion on the GPU path (GL 4.3, engine
+     * {@link MmsGpuCuller} two-phase pass). Phase 1 draws what the previous camera pass found visible, the
+     * depth it produced becomes this frame's Hi-Z pyramid (read from the bound draw framebuffer inside the
+     * current viewport), phase 2 re-tests every enabled in-frustum mesh against it and draws the newly
+     * visible ones. The previous frame only decides what draws EARLY, never what is culled, so camera moves
+     * cannot open holes. Call it with the opaque state set and nothing but terrain in the depth buffer that
+     * is nearer than the sky (sky/clouds draw without depth writes); light passes keep {@link #drawSolid}.
+     * The CPU path (GL 3.2 / 4.1) is plain {@link #drawSolid}. Hi-Z is on by default ({@link #HIZ_ENABLED}:
+     * {@code -Dstonebreak.hiz=off} disables it); {@code -Dopenmason.hiz=off} is the engine kill switch. Disabled, phase 1 is a
+     * plain frustum pass and phase 2 is skipped.
+     */
+    public void drawCameraSolid(Matrix4f viewProjRender) {
+        lastHiZEarly = 0;
+        lastHiZLate = 0;
+        if (!collectSolidRegions(viewProjRender)) {
+            return;
+        }
+        if (!isGpuCullEnabled() || !ensureGpuCuller()) {
+            drawSolidCpu();
+            return;
+        }
+        gpuCuller.beginEarlyPass(planes);
+        int early = gpuCullAndDraw();
+        frameGpuCommands += early;
+        frameGpuRegionDraws += visibleRegions.size();
+        lastHiZEarly = early;
+        if (!gpuCuller.isHiZEnabled()) {
+            return; // phase 1 was a plain frustum pass and drew everything
+        }
+        captureHiZ(viewProjRender);
+        gpuCuller.beginLatePass();
+        int late = gpuCullAndDraw();
+        lastHiZLate = late;
+    }
+
+    /** Region pre-cull for a solid pass; false when no region survives. */
+    private boolean collectSolidRegions(Matrix4f viewProjRender) {
+        extractPlanes(viewProjRender);
+        preCull.set(viewProjRender);
+        visibleRegions.clear();
+        collectRegions(regions[LAYER_ATLAS]);
+        collectRegions(regions[LAYER_STAMP]);
+        return !visibleRegions.isEmpty();
+    }
+
+    /**
+     * cull/endCull/draw/endDraw over {@link #visibleRegions} for the pass the culler was begun with. A region
+     * whose cull answers 0 is not drawn: in a Hi-Z late pass that means "phase 1 already drew it", and the
+     * region's indirect buffer still holds the early commands.
+     */
+    private int gpuCullAndDraw() {
+        int n = visibleRegions.size();
+        if (regionCullCounts.length < n) {
+            regionCullCounts = new int[Math.max(n, regionCullCounts.length * 2)];
+        }
+        int commands = 0;
+        for (int i = 0; i < n; i++) {
+            int c = gpuCuller.cull(visibleRegions.get(i));
+            regionCullCounts[i] = c;
+            commands += c;
+        }
+        gpuCuller.endCull();
+        for (int i = 0; i < n; i++) {
+            if (regionCullCounts[i] > 0) {
+                gpuCuller.draw(visibleRegions.get(i));
+            }
+        }
+        gpuCuller.endDraw();
+        return commands;
+    }
+
+    /**
+     * Builds the Hi-Z pyramid from the bound draw framebuffer's depth inside the current viewport. A
+     * multisampled target cannot be read as depth: the pyramid is then skipped and phase 2 treats nothing as
+     * occluded (correct, just no occlusion savings).
+     */
+    private void captureHiZ(Matrix4f viewProjRender) {
+        int framebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        if (GL11.glGetInteger(GL13.GL_SAMPLE_BUFFERS) != 0) {
+            hizSkippedMultisample = true;
+            return;
+        }
+        hizSkippedMultisample = false;
+        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
+        gpuCuller.buildHiZ(framebuffer, viewport[0], viewport[1], viewport[2], viewport[3], viewProjRender);
+    }
+
+    private void drawSolidCpu() {
+        for (int i = 0; i < visibleRegions.size(); i++) {
+            MmsChunkRegion region = visibleRegions.get(i);
+            batch.reset();
+            int added = region.appendVisible(batch, planes);
+            if (added == 0) {
+                continue;
+            }
+            region.bind();
+            batch.draw(region.indexType());
+            frameRegionDraws++;
+            frameCommands += added;
+        }
+        GL30.glBindVertexArray(0);
+    }
+
+    // ─── Hi-Z telemetry (F3) ─────────────────────────────────────────────────────────────────────────
+
+    /** Whether the camera pass runs Hi-Z occlusion (GL 4.3 GPU cull path, not {@code -Dopenmason.hiz=off}). */
+    public boolean isHiZEnabled() {
+        return gpuCuller != null && isGpuCullEnabled() && gpuCuller.isHiZEnabled();
+    }
+
+    /**
+     * The GPU Hi-Z counters as of the last {@link #beginFrame} (read back asynchronously, so a few frames
+     * old), or {@link MmsGpuCuller.HiZStats#NONE}. Plain field read: any thread.
+     */
+    public MmsGpuCuller.HiZStats hizStats() {
+        return publishedHiZ;
+    }
+
+    /** Commands the last finished frame's camera pass dispatched in phase 1 / phase 2 (CPU side). */
+    public int publishedHiZEarlyCommands() {
+        return publishedHiZEarly;
+    }
+
+    public int publishedHiZLateCommands() {
+        return publishedHiZLate;
+    }
+
+    /** True when the last pyramid capture was skipped because the target is multisampled. */
+    public boolean hizSkippedMultisample() {
+        return hizSkippedMultisample;
+    }
+
+    private void collectRegions(Map<MmsRegionKey, MmsChunkRegion> map) {
+        // Model geometry may reach MODEL_REACH blocks past its cube (voxel_world.h: oversize models), so a
+        // region's meshes can poke out of its 256^3 box by that much.
+        float lo = -MODEL_REACH, hi = MmsRegionKey.REGION_BLOCKS + MODEL_REACH;
+        for (MmsChunkRegion region : map.values()) {
+            if (region.isDeleted() || region.isEmpty()) {
+                continue;
+            }
+            region.renderOrigin(regionOrigin);
+            if (preCull.testAab(regionOrigin.x + lo, regionOrigin.y + lo, regionOrigin.z + lo,
+                    regionOrigin.x + hi, regionOrigin.y + hi, regionOrigin.z + hi)) {
+                visibleRegions.add(region);
+            } else {
+                framePreCulled++;
+            }
+        }
+    }
+
+    private boolean ensureGpuCuller() {
+        if (gpuCullerInitFailed) {
+            return false;
+        }
+        if (gpuCuller == null) {
+            try {
+                gpuCuller = new MmsGpuCuller();
+                gpuCuller.setHiZEnabled(HIZ_ENABLED);
+            } catch (RuntimeException e) {
+                gpuCullerInitFailed = true;
+                LOGGER.error("[ChunkRegionRenderer] GPU cull init failed, CPU multidraw from now on", e);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void extractPlanes(Matrix4f viewProj) {
+        for (int p = 0; p < 6; p++) {
+            viewProj.frustumPlane(p, planeTmp);
+            planes[p * 4] = planeTmp.x;
+            planes[p * 4 + 1] = planeTmp.y;
+            planes[p * 4 + 2] = planeTmp.z;
+            planes[p * 4 + 3] = planeTmp.w;
+        }
+    }
+
+    /**
+     * Draws one layer of the given cubes in list order at region granularity (bucket order = first
+     * appearance; inside a region, list order): the translucent and water passes hand in back-to-front
+     * lists. {@link #LAYER_ATLAS} draws atlas AND stamps (torch views). Honours the enable bits. The caller
+     * owns shader/state.
+     */
+    public void drawCubes(List<CubeDraw> ordered, int layer) {
+        if (ordered.isEmpty()) {
+            return;
+        }
+        int stamp = ++cycleCounter;
+        touchedRegions.clear();
+        for (int i = 0; i < ordered.size(); i++) {
+            CubeDraw d = ordered.get(i);
+            switch (layer) {
+                case LAYER_ATLAS -> {
+                    bucket(d.opaque, stamp);
+                    bucket(d.cutout, stamp);
+                    bucket(d.stamp, stamp);
+                }
+                case LAYER_TRANSLUCENT -> bucket(d.translucent, stamp);
+                case LAYER_WATER -> bucket(d.water, stamp);
+                case LAYER_STAMP -> bucket(d.stamp, stamp);
+                default -> { }
+            }
+        }
+        for (int r = 0; r < touchedRegions.size(); r++) {
+            MmsChunkRegion region = touchedRegions.get(r);
+            if (region.isDeleted()) {
+                continue;
+            }
+            List<MmsRegionMeshHandle> members = region.cycleMembers(stamp);
+            batch.reset();
+            int added = 0;
+            for (int m = 0; m < members.size(); m++) {
+                added += batch.add(members.get(m));
+            }
+            if (added == 0) {
+                continue;
+            }
+            region.bind();
+            batch.draw(region.indexType());
+            frameRegionDraws++;
+            frameCommands += added;
+        }
+        GL30.glBindVertexArray(0);
+    }
+
+    private void bucket(MmsRegionMeshHandle h, int stamp) {
+        if (h == null || h.isClosed() || !h.isEnabled()) {
+            return;
+        }
+        MmsChunkRegion region = h.region();
+        if (!region.touchedInCycle(stamp)) {
+            touchedRegions.add(region);
+        }
+        region.cycleMembers(stamp).add(h);
+    }
+
+    // ─── Lifecycle + telemetry ───────────────────────────────────────────────────────────────────────
+
+    /** Frees every mesh and region (world change / renderer shutdown). GL thread. */
+    public void reset() {
+        for (int i = 0; i < cubeList.size(); i++) {
+            cubeList.get(i).listIndex = -1;
+        }
+        cubeList.clear();
+        cubes.clear();
+        java.util.Arrays.fill(residentPerCubeY, 0);
+        readyColumns.clear();
+        for (Map<MmsRegionKey, MmsChunkRegion> map : regions) {
+            for (MmsChunkRegion region : map.values()) {
+                region.delete();
+            }
+            map.clear();
+        }
+    }
+
+    private static void pruneEmpty(Map<MmsRegionKey, MmsChunkRegion> map) {
+        Iterator<MmsChunkRegion> it = map.values().iterator();
+        while (it.hasNext()) {
+            MmsChunkRegion region = it.next();
+            if (region.isEmpty()) {
+                region.delete();
+                it.remove();
             }
         }
     }
@@ -225,8 +772,9 @@ public final class ChunkRegionRenderer {
         return publishedCommands;
     }
 
+    /** Column-era name kept for the F3 row: cube meshes have no per-chunk legacy draws (always 0). */
     public int publishedLegacyDraws() {
-        return publishedLegacyDraws;
+        return 0;
     }
 
     public int publishedGpuRegionDraws() {
@@ -238,391 +786,46 @@ public final class ChunkRegionRenderer {
     }
 
     public int publishedGpuPreCulledRegions() {
-        return publishedGpuPreCulledRegions;
+        return publishedPreCulled;
     }
 
-    /**
-     * Uploads a chunk mesh into its region's arenas. Returns null when the
-     * mesh cannot join a region (not packed / u32 indices) — the caller then
-     * falls back to a legacy per-chunk handle.
-     */
-    public MmsRegionMeshHandle upload(int layer, int chunkX, int chunkZ, MmsMeshData mesh) {
-        if (mesh == null || mesh.isEmpty() || !mesh.isPacked() || !mesh.hasShortIndices()) {
-            return null;
-        }
-        long key = regionKey(chunkX >> MmsChunkRegion.REGION_SHIFT,
-            chunkZ >> MmsChunkRegion.REGION_SHIFT);
-        Map<Long, MmsChunkRegion> regions = regionsFor(layer);
-        // Atlas regions use the active format (possibly pulled); water and stamp
-        // geometry is per-vertex and lives in stamp-format regions.
-        MmsChunkRegion region = regions.computeIfAbsent(key, k -> layer == LAYER_ATLAS
-            ? new MmsChunkRegion()
-            : new MmsChunkRegion(layer == LAYER_WATER
-                    ? MmsVertexFormat.active().waterFormat() : MmsVertexFormat.active().stampFormat(),
-                VramPlans.arena(layer == LAYER_WATER
-                    ? VramPlans.POOL_CHUNK_WATER : VramPlans.POOL_CHUNK_STAMP)));
-        // World-space chunk box for the GPU cull (full height, matching the
-        // CPU chunk frustum test's quality).
-        float minX = chunkX * (float) WorldConfiguration.CHUNK_SIZE;
-        float minZ = chunkZ * (float) WorldConfiguration.CHUNK_SIZE;
-        return region.upload(mesh,
-            minX, 0f, minZ,
-            minX + WorldConfiguration.CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT,
-            minZ + WorldConfiguration.CHUNK_SIZE);
+    /** Resident cube meshes. */
+    public int residentCubes() {
+        return cubeList.size();
     }
 
-    /**
-     * Draws the given chunks' geometry for one layer as region multidraws,
-     * preserving the list's order at region granularity (bucket order = first
-     * appearance). Chunks carrying only a legacy handle draw individually
-     * afterwards. The caller owns all shader/state setup.
-     */
-    public void drawChunks(List<Chunk> chunks, int layer) {
-        drawLayer(chunks, layer);
-        if (layer == LAYER_ATLAS && !stampRegions.isEmpty()) {
-            drawLayer(chunks, LAYER_STAMP);
-        }
+    /** Live regions of one layer. */
+    public int regionCount(int layer) {
+        return regions[layer].size();
     }
 
-    private static MmsRegionMeshHandle regionHandle(Chunk chunk, int layer) {
-        return switch (layer) {
-            case LAYER_WATER -> chunk.getRegionWaterHandle();
-            case LAYER_STAMP -> chunk.getRegionStampHandle();
-            default -> chunk.getRegionAtlasHandle();
-        };
+    public long uploadsTotal() {
+        return uploadsTotal;
     }
 
-    /**
-     * Whether a chunk with this legacy-handle layout carries a legacy handle the
-     * given layer's fallback pass must reach. Pure over the three presence flags
-     * (package-private for tests — {@code MmsRenderableHandle} is final and
-     * GL-thread-only, so the routing is pinned over flags, not instances).
-     *
-     * <ul>
-     *   <li><b>WATER</b> — the water legacy handle draws via {@code chunk.renderWater()}.</li>
-     *   <li><b>ATLAS</b> — the atlas legacy handle draws via {@code chunk.render()},
-     *   which also draws the legacy stamp handle alongside it — so an atlas-drawn
-     *   chunk must not ALSO join the stamp fallback, or both handles draw twice.</li>
-     *   <li><b>STAMP</b> — a legacy stamp handle whose chunk has no legacy atlas
-     *   handle (region-resident atlas, or an empty atlas): the stamp fallback is
-     *   the only place it is otherwise reached, because {@code chunk.render()}
-     *   draws no atlas geometry when the atlas mesh is region-resident — no
-     *   double-draw. u32 stamp meshes refuse region residency at upload (see
-     *   {@link #upload}), so this is the path every &gt;65,536-vertex stamp mesh
-     *   renders through.</li>
-     * </ul>
-     */
-    static boolean needsLegacyDraw(boolean hasWaterLegacy, boolean hasAtlasLegacy,
-                                   boolean hasStampLegacy, int layer) {
-        return switch (layer) {
-            case LAYER_WATER -> hasWaterLegacy;
-            case LAYER_ATLAS -> hasAtlasLegacy;
-            case LAYER_STAMP -> hasStampLegacy && !hasAtlasLegacy;
-            default -> false;
-        };
+    public long dropsTotal() {
+        return dropsTotal;
     }
 
-    /**
-     * Whether {@code chunk} carries a legacy STAMP handle that no region path
-     * draws: u32 stamp meshes refuse region residency at upload, and the stamp
-     * pass only covers region-resident stamps — so an atlas-resident chunk
-     * carrying one must draw it in the legacy fallback or its stamp geometry
-     * never renders (the shipped draw hole that made &gt;65,536-vertex stamp
-     * meshes — e.g. ~40 cacti — vanish while their block data and lighting
-     * heightmap stayed intact). The guard also excludes a chunk that carries a
-     * legacy atlas handle (an atlas-DRAWN chunk already drew its stamp
-     * alongside the atlas — the fallback would double-draw it); atlas-resident
-     * chunks never carry a legacy atlas handle (an atlas upload sets exactly
-     * one representation), so the guard is dead-code-safe for the u32-stamp
-     * layout. Pure over the chunk's handle layout; package-private for tests.
-     */
-    static boolean drawsOrphanedLegacyStamp(Chunk chunk, int layer) {
-        return layer == LAYER_ATLAS
-            && chunk.getStampRenderableHandle() != null
-            && chunk.getRegionStampHandle() == null
-            && chunk.getMmsRenderableHandle() == null;
+    public long uploadFailures() {
+        return uploadFailures;
     }
 
-    private Map<Long, MmsChunkRegion> regionsFor(int layer) {
-        return switch (layer) {
-            case LAYER_WATER -> waterRegions;
-            case LAYER_STAMP -> stampRegions;
-            default -> atlasRegions;
-        };
-    }
-
-    private void drawLayer(List<Chunk> chunks, int layer) {
-        int stamp = ++cycleCounter;
-        touchedRegions.clear();
-        legacyFallback.clear();
-
-        for (int i = 0; i < chunks.size(); i++) {
-            Chunk chunk = chunks.get(i);
-            if (!chunk.getCcoStateManager().isRenderable()) {
-                continue;
-            }
-            MmsRegionMeshHandle handle = regionHandle(chunk, layer);
-            if (handle != null && (handle.isClosed() || handle.region().isDeleted())) {
-                // Defensive: a handle whose region was torn down (or that was
-                // closed without the chunk field being cleared yet) must never
-                // reach bind() — skip it rather than crash the render loop.
-                handle = null;
-            }
-            if (handle == null) {
-                // Legacy-handle routing (see {@link #needsLegacyDraw}): water via
-                // chunk.renderWater(); the atlas legacy handle via chunk.render()
-                // (which also draws the legacy stamp handle alongside it — so an
-                // atlas-drawn chunk must not also join the stamp fallback, or both
-                // draw twice); an orphaned legacy STAMP handle via chunk.render()
-                // here — the stamp fallback is the only place it is otherwise
-                // reached, because chunk.render() draws no atlas geometry when the
-                // atlas mesh is region-resident (no double-draw). u32 stamp meshes
-                // refuse region residency at upload (see {@link #upload}), so this
-                // is the path every >65,536-vertex stamp mesh renders through.
-                if (needsLegacyDraw(chunk.getWaterRenderableHandle() != null,
-                        chunk.getMmsRenderableHandle() != null,
-                        chunk.getStampRenderableHandle() != null, layer)) {
-                    legacyFallback.add(chunk);
-                }
-                continue;
-            }
-            MmsChunkRegion region = handle.region();
-            if (!region.touchedInCycle(stamp)) {
-                touchedRegions.add(region);
-            }
-            region.cycleMembers(stamp).add(handle);
-        }
-
-        for (int r = 0; r < touchedRegions.size(); r++) {
-            MmsChunkRegion region = touchedRegions.get(r);
-            List<MmsRegionMeshHandle> members = region.cycleMembers(stamp);
-            batch.reset();
-            for (int m = 0; m < members.size(); m++) {
-                MmsRegionMeshHandle h = members.get(m);
-                batch.add(h.getIndexCount(), h.indexOffsetBytes(), h.baseVertex());
-            }
-            region.bind();
-            batch.draw(GL11.GL_UNSIGNED_SHORT);
-            frameRegionDraws++;
-            frameCommands += members.size();
-        }
-        if (!touchedRegions.isEmpty()) {
-            GL30.glBindVertexArray(0);
-        }
-
-        for (int i = 0; i < legacyFallback.size(); i++) {
-            Chunk chunk = legacyFallback.get(i);
-            if (layer == LAYER_WATER) {
-                chunk.renderWater();
-            } else {
-                chunk.render();
-            }
-            frameLegacyDraws++;
-        }
-    }
-
-    /**
-     * GPU-driven draw for one layer of an order-independent pass (opaque,
-     * shadow cascade): regions surviving a CPU region-AABB pre-cull each get a
-     * compute-shader per-mesh frustum cull writing indirect commands, then ONE
-     * {@code glMultiDrawElementsIndirect} per region — no per-chunk CPU
-     * visibility work at all. Draws EVERY live mesh passing the frustum
-     * (including chunks a CPU list would have excluded, e.g. just outside the
-     * render-distance walk — visually benign for opaque/shadow geometry).
-     *
-     * <p>Frustum planes are extracted from {@code viewProj} (camera or cascade
-     * light matrix). Returns false when the cull program is unavailable (init
-     * failure) — the caller must then fall back to {@link #drawChunks}. The
-     * caller owns all shader/state setup; chunks stuck on legacy handles still
-     * need {@link #drawLegacyOnly} afterwards.
-     */
-    public boolean drawLayerGpuCulled(int layer, Matrix4f viewProj) {
-        return drawLayerGpuCulled(layer, viewProj, null);
-    }
-
-    /**
-     * {@link #drawLayerGpuCulled(int, Matrix4f)} limited to the vertical box
-     * {@code keepXZ = {minX, minZ, maxX, maxZ}} (null = unlimited). The camera pass passes
-     * its render-distance square: the client keeps chunks meshed out to
-     * {@code World.clientKeepRadius()}, two chunks past it, and drawing those here put them
-     * under the FastLOD nodes that own that ring at the same depth — z-fighting wherever the
-     * two disagree on a texture (gravel and clay patches the LOD knows nothing of).
-     */
-    public boolean drawLayerGpuCulled(int layer, Matrix4f viewProj, float[] keepXZ) {
-        if (gpuCullerInitFailed) {
-            return false;
-        }
-        if (gpuCuller == null) {
-            try {
-                gpuCuller = new MmsGpuCuller();
-            } catch (RuntimeException e) {
-                gpuCullerInitFailed = true;
-                System.err.println("[ChunkRegionRenderer] GPU cull init failed, "
-                    + "falling back to CPU multidraw: " + e.getMessage());
-                return false;
-            }
-        }
-
-        Map<Long, MmsChunkRegion> regions = regionsFor(layer);
-        if (regions.isEmpty() && (layer != LAYER_ATLAS || stampRegions.isEmpty())) {
-            return true;
-        }
-
-        // Region-level pre-cull: one CPU AABB test per 8x8-column region
-        // decides whether it dispatches at all.
-        gpuPreCull.set(viewProj);
-        float regionBlocks = MmsChunkRegion.REGION_SPAN * (float) WorldConfiguration.CHUNK_SIZE;
-        gpuVisibleRegions.clear();
-        gpuCullCandidates.clear();
-        gpuCullCandidates.addAll(regions.entrySet());
-        if (layer == LAYER_ATLAS) {
-            gpuCullCandidates.addAll(stampRegions.entrySet()); // stamps ride the atlas pass
-        }
-        for (Map.Entry<Long, MmsChunkRegion> entry : gpuCullCandidates) {
-            MmsChunkRegion region = entry.getValue();
-            if (region.isDeleted() || region.isEmpty()) {
-                continue;
-            }
-            long key = entry.getKey();
-            float minX = (int) (key >> 32) * regionBlocks;
-            float minZ = (int) key * regionBlocks;
-            if (gpuPreCull.testAab(minX, 0f, minZ,
-                    minX + regionBlocks, WorldConfiguration.WORLD_HEIGHT, minZ + regionBlocks)) {
-                gpuVisibleRegions.add(region);
-            } else {
-                frameGpuPreCulledRegions++;
-            }
-        }
-        if (gpuVisibleRegions.isEmpty()) {
-            return true;
-        }
-
-        for (int p = 0; p < 6; p++) {
-            viewProj.frustumPlane(p, gpuPlaneTmp);
-            gpuPlanes[p * 4] = gpuPlaneTmp.x;
-            gpuPlanes[p * 4 + 1] = gpuPlaneTmp.y;
-            gpuPlanes[p * 4 + 2] = gpuPlaneTmp.z;
-            gpuPlanes[p * 4 + 3] = gpuPlaneTmp.w;
-        }
-
-        gpuCuller.beginPass(gpuPlanes, keepXZ);
-        int commands = 0;
-        for (int i = 0; i < gpuVisibleRegions.size(); i++) {
-            commands += gpuCuller.cull(gpuVisibleRegions.get(i));
-        }
-        gpuCuller.endCull();
-        for (int i = 0; i < gpuVisibleRegions.size(); i++) {
-            gpuCuller.draw(gpuVisibleRegions.get(i));
-        }
-        gpuCuller.endDraw();
-
-        frameGpuRegionDraws += gpuVisibleRegions.size();
-        frameGpuCommands += commands;
-        return true;
-    }
-
-    /**
-     * The keep box of the chunks a Chebyshev walk of {@code radius} around
-     * {@code (centerChunkX, centerChunkZ)} visits, for {@link #drawLayerGpuCulled}: half a
-     * block inside the square, so a chunk whose AABB only touches the square from outside
-     * fails the box test while every chunk inside keeps 15.5 blocks of margin.
-     */
-    public static float[] chunkSquare(int centerChunkX, int centerChunkZ, int radius, float[] out) {
-        float size = WorldConfiguration.CHUNK_SIZE;
-        out[0] = (centerChunkX - radius) * size + 0.5f;
-        out[1] = (centerChunkZ - radius) * size + 0.5f;
-        out[2] = (centerChunkX + radius + 1) * size - 0.5f;
-        out[3] = (centerChunkZ + radius + 1) * size - 0.5f;
-        return out;
-    }
-
-    /**
-     * Draws only the chunks that could NOT join a region (legacy per-chunk
-     * handles — non-packed/u32 meshes, practically never). Companion to
-     * {@link #drawLayerGpuCulled}, which covers everything region-resident.
-     */
-    public void drawLegacyOnly(List<Chunk> chunks, int layer) {
-        for (int i = 0; i < chunks.size(); i++) {
-            Chunk chunk = chunks.get(i);
-            if (!chunk.getCcoStateManager().isRenderable()) {
-                continue;
-            }
-            MmsRegionMeshHandle handle = regionHandle(chunk, layer);
-            if (handle != null && !handle.isClosed() && !handle.region().isDeleted()) {
-                // Drawn by the region path on this layer — but a legacy STAMP
-                // handle is never drawn by the region paths (see
-                // {@link #drawsOrphanedLegacyStamp}); an atlas-resident chunk
-                // carrying one must draw it here or its stamp geometry never
-                // renders. chunk.render() draws no atlas geometry when the atlas
-                // mesh is region-resident (no double-draw), and an atlas-drawn
-                // chunk already drew its stamp alongside the atlas in
-                // {@link #drawChunks}' atlas fallback.
-                if (drawsOrphanedLegacyStamp(chunk, layer)) {
-                    chunk.render();
-                    frameLegacyDraws++;
-                }
-                continue;
-            }
-            if (layer == LAYER_WATER) {
-                if (chunk.getWaterRenderableHandle() != null) {
-                    chunk.renderWater();
-                    frameLegacyDraws++;
-                }
-            } else if (chunk.getMmsRenderableHandle() != null
-                    || chunk.getStampRenderableHandle() != null) {
-                chunk.render();
-                frameLegacyDraws++;
-            }
-        }
-    }
-
-    /** Deletes every region (world unload / renderer shutdown). GL thread. */
     /** Tracked GPU bytes of all live regions in one layer (debug/telemetry). */
     public long layerBytes(int layer) {
         long total = 0;
-        for (MmsChunkRegion r : regionsFor(layer).values()) {
+        for (MmsChunkRegion r : regions[layer].values()) {
             total += r.capacityBytes();
         }
         return total;
     }
 
-    /** Live mesh count in one layer (debug/telemetry). */
+    /** Live draw commands in one layer (debug/telemetry). */
     public int layerMeshes(int layer) {
         int n = 0;
-        for (MmsChunkRegion r : regionsFor(layer).values()) {
+        for (MmsChunkRegion r : regions[layer].values()) {
             n += r.gpuCommandCount();
         }
         return n;
-    }
-
-    public void reset() {
-        deleteAll(atlasRegions);
-        deleteAll(waterRegions);
-        deleteAll(stampRegions);
-    }
-
-    private static void deleteAll(Map<Long, MmsChunkRegion> regions) {
-        for (MmsChunkRegion region : regions.values()) {
-            region.delete();
-        }
-        regions.clear();
-    }
-
-    private static void pruneEmpty(Map<Long, MmsChunkRegion> regions) {
-        if (regions.isEmpty()) {
-            return;
-        }
-        Iterator<MmsChunkRegion> it = regions.values().iterator();
-        while (it.hasNext()) {
-            MmsChunkRegion region = it.next();
-            if (region.isEmpty()) {
-                region.delete();
-                it.remove();
-            }
-        }
-    }
-
-    private static long regionKey(int rx, int rz) {
-        return ((long) rx << 32) | (rz & 0xFFFFFFFFL);
     }
 }

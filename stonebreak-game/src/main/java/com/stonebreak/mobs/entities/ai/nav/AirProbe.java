@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
 import com.openmason.engine.nav.NavProbes;
+import com.openmason.engine.physics.PhysicsWorld;
+import com.stonebreak.mobs.entities.PhysicsFrame;
 import com.stonebreak.world.World;
 import com.stonebreak.world.physics.WorldPhysics;
 
@@ -33,22 +35,26 @@ public final class AirProbe {
      * Whether the axis-aligned box of half-extent {@code radius} around a point contains no solid
      * block — the question "could a bird sit here".
      */
-    public static boolean isClear(World world, float x, float y, float z, float radius) {
+    public static boolean isClear(World world, double x, double y, double z, float radius) {
         if (world == null) {
             return true;
         }
-        return NavProbes.isClear(WorldPhysics.of(world).engine(), x, y, z, radius, WorldPhysics.MOB_MASK);
+        PhysicsWorld p = WorldPhysics.of(world).engine();
+        return NavProbes.isClear(p, x - PhysicsFrame.originX(p), y - PhysicsFrame.originY(p),
+                z - PhysicsFrame.originZ(p), radius, WorldPhysics.MOB_MASK);
     }
 
     /**
      * Top face of the highest solid block within scan range of {@code fromY} in one column, or
      * {@link Float#NEGATIVE_INFINITY} when the corridor there is clear.
      */
-    public static float columnPeak(World world, float x, float z, float fromY) {
+    public static double columnPeak(World world, double x, double z, double fromY) {
         if (world == null) {
-            return Float.NEGATIVE_INFINITY;
+            return Double.NEGATIVE_INFINITY;
         }
-        return NavProbes.columnPeak(WorldPhysics.of(world).engine(), x, z, fromY, PEAK_SCAN_RANGE,
-                WorldPhysics.MOB_MASK);
+        PhysicsWorld p = WorldPhysics.of(world).engine();
+        long ox = PhysicsFrame.originX(p), oy = PhysicsFrame.originY(p), oz = PhysicsFrame.originZ(p);
+        return NavProbes.columnPeak(p, x - ox, z - oz, fromY - oy, PEAK_SCAN_RANGE,
+                WorldPhysics.MOB_MASK) + oy;
     }
 }

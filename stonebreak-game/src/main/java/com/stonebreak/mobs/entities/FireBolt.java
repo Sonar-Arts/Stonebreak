@@ -4,6 +4,8 @@ import com.stonebreak.rendering.Renderer;
 import com.stonebreak.fx.Fx;
 import com.stonebreak.fx.TrailFx;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -36,9 +38,9 @@ public class FireBolt extends Entity {
     /** Drawn copies only (see {@link #drawsParticles}): the server world's bolt is never rendered. */
     private final TrailFx trail = new TrailFx(TRAIL_FX);
     /** Shadow only: last interpolated position, to aim the trail behind its motion. */
-    private final Vector3f lastShadowPos = new Vector3f(Float.NaN, 0f, 0f);
+    private final Vector3d lastShadowPos = new Vector3d(Double.NaN, 0, 0);
 
-    public FireBolt(World world, Vector3f position, Vector3f direction) {
+    public FireBolt(World world, Vector3dc position, Vector3f direction) {
         super(world, position);
         this.direction = new Vector3f(direction).normalize();
         this.width  = 0.3f;
@@ -77,20 +79,20 @@ public class FireBolt extends Entity {
         // door and model in its path, and the centre line against water — no frame rate lets a fast
         // bolt tunnel through a thin block or skip past a mob.
         float travel = BOLT_SPEED * deltaTime;
-        Vector3f end = new Vector3f(direction).mul(travel).add(position);
+        Vector3d end = new Vector3d(position).fma(travel, direction);
         float reach = 1.0f; // fraction of the move before the first block or water
         if (world != null && travel > 0.0f) {
             com.stonebreak.world.physics.WorldPhysics physics = com.stonebreak.world.physics.WorldPhysics.of(world);
             if (physics.sweep(position.x, position.y, position.z, end.x, end.y, end.z,
                     HIT_MARGIN, HIT_MARGIN, HIT_MARGIN, com.stonebreak.world.physics.WorldPhysics.PROJECTILE_MASK, rayHit)) {
-                reach = rayHit.distance;
+                reach = (float) rayHit.distance;
             }
             if (physics.raycast(position.x, position.y, position.z, direction.x, direction.y, direction.z, travel,
                     0, com.stonebreak.world.physics.WorldPhysics.WATER, rayHit)) {
-                reach = Math.min(reach, rayHit.distance / travel);
+                reach = Math.min(reach, (float) (rayHit.distance / travel));
             }
         }
-        Vector3f stop = new Vector3f(direction).mul(travel * reach).add(position);
+        Vector3d stop = new Vector3d(position).fma(travel * reach, direction);
 
         // Entity collision — the first living entity on the stretch it actually flew.
         EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
@@ -123,10 +125,10 @@ public class FireBolt extends Entity {
      */
     @Override
     public void updateClientVisuals(float deltaTime) {
-        if (!impacted && !Float.isNaN(lastShadowPos.x)) {
-            float bx = lastShadowPos.x - position.x;
-            float by = lastShadowPos.y - position.y;
-            float bz = lastShadowPos.z - position.z;
+        if (!impacted && !Double.isNaN(lastShadowPos.x)) {
+            float bx = (float) (lastShadowPos.x - position.x);
+            float by = (float) (lastShadowPos.y - position.y);
+            float bz = (float) (lastShadowPos.z - position.z);
             float len = (float) Math.sqrt(bx * bx + by * by + bz * bz);
             if (len > 1e-3f) {
                 trail.follow(position.x, position.y, position.z, bx / len, by / len, bz / len);

@@ -48,9 +48,9 @@ def containment(builder, bi0: int, bj0: int, n: int) -> dict:
     column's top one -- must meet, sideways, solid ground, the sea or another wet column; and a wet
     neighbour may sit at most one block lower (a taller drop exposes water to air)."""
     height, _, level, wet, (floor, roof, _) = builder._blocks(bi0, bj0, bi0 + n, bj0 + n, D)
-    top = builder.world.world_height - 1
-    h = height.clamp(0, top).cpu().numpy(); wet = wet.cpu().numpy()
-    lv = np.where(wet, level.clamp(0, top).cpu().numpy(), -1)
+    top, bottom = builder.world.world_height - 1, builder.world.min_y
+    h = height.clamp(bottom, top).cpu().numpy(); wet = wet.cpu().numpy()
+    lv = np.where(wet, level.clamp(bottom, top).cpu().numpy(), -1)
     floor, roof = floor.cpu().numpy(), roof.cpu().numpy()
     sea = h < builder.world.sea_level
     tunnel = roof > floor

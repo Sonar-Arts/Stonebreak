@@ -8,6 +8,9 @@ import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.Behavior;
 import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
 import com.stonebreak.mobs.entities.ai.nav.GroundProbe;
+import com.stonebreak.world.operations.WorldConfiguration;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -112,13 +115,13 @@ public final class FlightBehavior implements Behavior {
     /** Seconds spent climbing out, against {@link #TAKEOFF_TIMEOUT}. */
     private float takeoffTimer;
     /** Y the straight-up part of the launch is climbing to. */
-    private float liftTargetY;
+    private double liftTargetY;
     /** Whether the launch is still in its vertical-only stage. */
     private boolean liftingOff;
 
-    private final Vector3f destination = new Vector3f();
+    private final Vector3d destination = new Vector3d();
     /** Scratch for the route's current waypoint; reused every tick. */
-    private final Vector3f routeTarget = new Vector3f();
+    private final Vector3d routeTarget = new Vector3d();
     private float migrateCooldown;
     private float joinScanTimer;
     private float settleCooldown;
@@ -285,14 +288,14 @@ public final class FlightBehavior implements Behavior {
 
     private void tickTakeoff(float deltaTime) {
         takeoffTimer += deltaTime;
-        Vector3f position = goose.getPosition();
+        Vector3d position = goose.getPosition();
         Vector3f velocity = goose.getVelocity();
         velocity.y = FlightSteering.CLIMB_SPEED;
 
         // The route is advanced every tick of the climb, so it is current the moment the goose
         // starts translating — and so a takeoff into a hillside is planned around rather than flown
         // into. Nothing here disables collision: the goose is a solid body from the first frame.
-        Vector3f target = flight.routeTarget(destination, deltaTime, routeTarget);
+        Vector3d target = flight.routeTarget(destination, deltaTime, routeTarget);
 
         boolean wasLifting = liftingOff;
         if (liftingOff && (position.y >= liftTargetY || goose.wasFlightBlockedVertically())) {
@@ -305,7 +308,7 @@ public final class FlightBehavior implements Behavior {
             velocity.x = 0.0f;
             velocity.z = 0.0f;
         } else {
-            Vector3f toTarget = new Vector3f(target).sub(position);
+            Vector3f toTarget = com.stonebreak.util.Positions.offset(position, target);
             toTarget.y = 0.0f;
             if (toTarget.lengthSquared() > 0.01f) {
                 toTarget.normalize();
@@ -349,7 +352,7 @@ public final class FlightBehavior implements Behavior {
             // Lay down the trail first: the wingmen behind hold slots on the line actually flown,
             // and this tick's position is the newest part of it.
             flock.recordLeaderTrail(goose.getPosition());
-            Vector3f target = flock.getDestination();
+            Vector3d target = flock.getDestination();
             flight.steerAlongRoute(target, flock.getCruiseSpeed(), deltaTime);
             if (horizontalDistance(goose.getPosition(), target) < DEST_ARRIVE_XZ) {
                 beginFlockLanding();
@@ -363,7 +366,7 @@ public final class FlightBehavior implements Behavior {
         // The slot is resolved against the terrain before it is flown at: in open sky it is the
         // formation's V, and in a pass it collapses toward the leader's own trail, which is the one
         // line through the gap that is known to be clear.
-        Vector3f slot = flight.resolveFormationSlot(
+        Vector3dc slot = flight.resolveFormationSlot(
                 flock.slotTargetFor(goose), flock.spineTargetFor(goose));
         float distance = goose.distanceTo(slot);
         float cruise = flock.getCruiseSpeed();
@@ -387,11 +390,11 @@ public final class FlightBehavior implements Behavior {
     }
 
     private void tickLanding(float deltaTime) {
-        Vector3f position = goose.getPosition();
+        Vector3d position = goose.getPosition();
         Vector3f velocity = goose.getVelocity();
 
-        float groundY = GroundProbe.groundLevel(goose.getWorld(), position.x, position.z, position.y);
-        float waterY = GroundProbe.waterSurface(goose.getWorld(), position.x, position.y, position.z);
+        double groundY = GroundProbe.groundLevel(goose.getWorld(), position.x, position.z, position.y);
+        double waterY = GroundProbe.waterSurface(goose.getWorld(), position.x, position.y, position.z);
 
         velocity.y = -FlightSteering.DESCEND_SPEED;
         velocity.x *= 0.92f; // bleed off horizontal speed as it settles
@@ -406,9 +409,9 @@ public final class FlightBehavior implements Behavior {
         // within a physics step of the surface — for the cases the column scan catches and the
         // collision shape might not, such as partial-height blocks.
         float groundClearance = FlightSteering.DESCEND_SPEED * deltaTime + TOUCHDOWN_EPSILON;
-        boolean overGround = groundY != Float.NEGATIVE_INFINITY
+        boolean overGround = groundY != Double.NEGATIVE_INFINITY
                 && (position.y - groundY) <= groundClearance;
-        boolean overWaterSurface = waterY != Float.NEGATIVE_INFINITY
+        boolean overWaterSurface = waterY != Double.NEGATIVE_INFINITY
                 && (position.y - waterY) <= WATER_LANDING_CLEAR;
 
         if (landedOnBlock || overGround || overWaterSurface) {
@@ -421,16 +424,17 @@ public final class FlightBehavior implements Behavior {
     // ── Flock ────────────────────────────────────────────────────────────────
 
     private void leadMigration(AiContext context) {
-        Vector3f position = goose.getPosition();
+        Vector3d position = goose.getPosition();
         float angle = context.random().nextFloat() * (float) (Math.PI * 2.0);
         float distance = context.randomBetween(MIGRATE_MIN_DISTANCE, MIGRATE_MAX_DISTANCE);
 
-        float cruiseAltitude = position.y + CRUISE_ALT_ABOVE_GROUND;
+        // Never above the build limit: the air route's ceiling is just under MAX_Y.
+        double cruiseAltitude = Math.min(position.y + CRUISE_ALT_ABOVE_GROUND, WorldConfiguration.MAX_Y - 4.0);
         flight.setCruiseAltitude(cruiseAltitude);
         destination.set(
-                position.x + (float) Math.cos(angle) * distance,
+                position.x + Math.cos(angle) * distance,
                 cruiseAltitude,
-                position.z + (float) Math.sin(angle) * distance);
+                position.z + Math.sin(angle) * distance);
 
         flock = new GooseFlock(goose, destination, FlightSteering.CRUISE_FLY_SPEED);
     }
@@ -496,7 +500,7 @@ public final class FlightBehavior implements Behavior {
         if (entities == null) {
             return null;
         }
-        Vector3f position = goose.getPosition();
+        Vector3d position = goose.getPosition();
         GooseFlock best = null;
         float bestDistance = Float.MAX_VALUE;
 
@@ -524,9 +528,8 @@ public final class FlightBehavior implements Behavior {
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private boolean overWater() {
-        Vector3f position = goose.getPosition();
-        return GroundProbe.waterSurface(goose.getWorld(), position.x, position.y, position.z)
-                != Float.NEGATIVE_INFINITY;
+        return GroundProbe.waterSurface(goose.getWorld(), goose.getX(), goose.getY(), goose.getZ())
+                != Double.NEGATIVE_INFINITY;
     }
 
     private EntityManager entityManager() {
@@ -537,9 +540,9 @@ public final class FlightBehavior implements Behavior {
         return context.randomBetween(MIGRATE_MIN_COOLDOWN, MIGRATE_MAX_COOLDOWN);
     }
 
-    private static float horizontalDistance(Vector3f a, Vector3f b) {
-        float dx = a.x - b.x;
-        float dz = a.z - b.z;
+    private static float horizontalDistance(Vector3dc a, Vector3dc b) {
+        double dx = a.x() - b.x();
+        double dz = a.z() - b.z();
         return (float) Math.sqrt(dx * dx + dz * dz);
     }
 }

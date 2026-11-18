@@ -46,12 +46,12 @@ final class SbeMobRenderer {
 
     /** Lit, textured draw of the mob followed by its socket attachments. */
     void render(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                com.stonebreak.world.World world, Vector3f cameraPos) {
+                com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         EntityType entityType = mob.getType();
         com.openmason.engine.entity.model.EntityAsset asset = assetFor(entityType);
         String stateName = stateName(entityType, mob);
         float clipTime = clipTime(mob);
-        Vector3f anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
+        org.joml.Vector3d anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
         sbeEntityRenderer.render(
                 asset,
                 mob.getTextureVariant(),

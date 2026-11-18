@@ -207,8 +207,8 @@ public class Renderer {
                         // that facing's state string, so the mesher's existing
                         // "block state selects a mesh variant" path draws them
                         // turned with no per-instance work.
-                        registerStairRotations(sboRendererAPI.getStampCache(), sboBlockMap.keySet());
-                        registerStalagmiteVariants(sboRendererAPI.getStampCache());
+                        com.stonebreak.rendering.sbo.StampVariants.registerAll(
+                                sboRendererAPI.getStampCache(), sboBlockMap.keySet());
 
                         // Create deferred emitter with face culling (world set later in applySBODispatcher)
                         sboCullingService = new MmsFaceCullingService();
@@ -280,89 +280,6 @@ public class Renderer {
         } catch (Exception e) {
             logger.error("[Renderer] SBO initialization failed (non-fatal)", e);
         }
-    }
-
-    /**
-     * Registers a pre-rotated stamp for each stair facing. Rotating once at
-     * startup (four cheap array copies per stair type) keeps the per-chunk mesh
-     * path exactly as it was — look the stamp up by state name and copy it.
-     *
-     * <p>The key is the state string {@code StairState} writes at placement,
-     * run through the same {@code BlockRenderState.meshVariantKey} projection
-     * the mesher applies when it reads the state back. Deriving both ends from
-     * one rule is what stops a stair from silently meshing un-rotated.
-     */
-    private static void registerStairRotations(
-            com.openmason.engine.voxel.stamp.render.StampCache cache,
-            java.util.Collection<com.stonebreak.blocks.BlockType> types) {
-        for (com.stonebreak.blocks.BlockType type : types) {
-            if (!type.isStairs()) {
-                continue;
-            }
-            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp base = cache.get(type);
-            if (base == null) {
-                continue;
-            }
-            for (com.stonebreak.blocks.stairs.StairState.Facing facing
-                    : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
-                String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
-                        com.stonebreak.blocks.stairs.StairState.stateStringFor(facing));
-                cache.put(type, key,
-                        com.openmason.engine.voxel.stamp.StampRotator.rotateY(base, facing.quarterTurns()));
-            }
-            logger.debug("[Renderer] Registered {} stair orientations for {}",
-                    com.stonebreak.blocks.stairs.StairState.Facing.values().length, type.name());
-        }
-    }
-
-    /**
-     * Stalagmite variants, registered the way stairs register their facings: each size's SBO
-     * model, mirrored for hanging and turned for every stair facing, under its
-     * {@code StalagmiteState} string — so orientation needs no SBO states. Part cells (above an
-     * upright anchor, below a hanging one) draw nothing: the anchor's model already reaches
-     * through them. Their empty stamp keeps the cache from falling back to the default model
-     * there and, having no flush geometry, never hides a neighbour's face.
-     */
-    private static void registerStalagmiteVariants(
-            com.openmason.engine.voxel.stamp.render.StampCache cache) {
-        com.stonebreak.blocks.BlockType type = com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE;
-        if (type == null || !cache.has(type)) {
-            return;
-        }
-        int registered = 0;
-        for (int size = 1; size <= com.stonebreak.blocks.stalagmite.Stalagmite.MAX_SIZE; size++) {
-            String sboState = new com.stonebreak.blocks.stalagmite.StalagmiteState(size, false, null).sboStateName();
-            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp upright = cache.get(type, sboState);
-            if (upright == null) {
-                continue;
-            }
-            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp hanging =
-                    com.openmason.engine.voxel.stamp.StampRotator.flipY(upright);
-            for (boolean hang : new boolean[]{false, true}) {
-                for (com.stonebreak.blocks.stairs.StairState.Facing facing
-                        : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
-                    String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
-                            new com.stonebreak.blocks.stalagmite.StalagmiteState(size, hang, facing).toStateString());
-                    cache.put(type, key, com.openmason.engine.voxel.stamp.StampRotator
-                            .rotateY(hang ? hanging : upright, facing.quarterTurns()));
-                    registered++;
-                }
-            }
-        }
-
-        int faceCount = com.openmason.engine.voxel.stamp.render.StampFaceConventions.FACE_COUNT;
-        com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp[] faces =
-                new com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp[faceCount];
-        com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp empty =
-                new com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp(
-                        new float[0], new float[0], new float[0], new float[0], 0);
-        java.util.Arrays.fill(faces, empty);
-        com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp nothing =
-                new com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp(
-                        faces, faces.clone(), new boolean[faceCount]);
-        cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.UPPER, nothing);
-        cache.put(type, com.stonebreak.blocks.stalagmite.Stalagmite.LOWER, nothing);
-        logger.debug("[Renderer] Registered {} stalagmite variants", registered);
     }
 
     /**
@@ -508,6 +425,9 @@ public class Renderer {
      * Renders the world using the specialized WorldRenderer sub-renderer.
      * UI elements have been stripped from this method and should be rendered separately.
      */
+    /** Whether the render origin follows the camera vertically too (see renderWorld). */
+    private static final boolean REBASE_Y = "on".equalsIgnoreCase(System.getProperty("stonebreak.originY", "off"));
+
     public void renderWorld(World world, Player player, float totalTime) {
         // Rebase the frame onto a coordinate origin near the camera BEFORE any
         // pass builds a matrix or uniform: every view/model/light matrix and
@@ -515,8 +435,13 @@ public class Renderer {
         // what keeps float32 shader math precise arbitrarily far from spawn.
         // Must be the first statement in the frame — a pass that read a matrix
         // built against last frame's origin would draw a grid cell out of place.
-        org.joml.Vector3f renderCameraPos = player.getCamera().getPosition();
-        com.openmason.engine.rendering.RenderOrigin.update(renderCameraPos.x, renderCameraPos.z);
+        // Exact double camera position, 64-block grid. Every terrain/entity/light path is written against
+        // all three axes (RenderOrigin.relative/toRender with Y); Y is still pinned to 0 by default
+        // because the atmosphere stack (clouds, precipitation, precipitation fog, lightning heights) works
+        // in absolute altitude - Stonebreak's world is bounded to [-384, 640), where float Y is exact to
+        // 6e-5 blocks. -Dstonebreak.originY=on rebases Y too (see Cubic-Voxel-Runtime.md, 3B-R).
+        org.joml.Vector3dc eye = player.getCamera().getPosition();
+        com.openmason.engine.rendering.RenderOrigin.update(eye.x(), REBASE_Y ? eye.y() : 0.0, eye.z());
 
         // Far plane tracks the LOD outer ring: at max settings the ring reaches
         // (24 + 48) * 16 = 1152 blocks — past the 1000-block default — and its

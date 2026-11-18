@@ -10,14 +10,20 @@ import com.stonebreak.ui.terrainMapper.visualization.impl.TemperatureVisualizer;
 import com.stonebreak.world.generation.biomes.BiomeManager;
 import com.stonebreak.world.generation.heightmap.HeightMapGenerator;
 import com.stonebreak.world.generation.noise.NoiseRouter;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Standard Generation's modes, read straight off a seeded {@link NoiseRouter}. Local and
- * instant, so nothing is cached and there are no services to start.
+ * Standard Generation's modes at the selected terrain scale. Height is the native generator's own column
+ * height ({@link NativeStandardColumns}: exactly what a world created with this seed and scale gets); the
+ * climate and shape fields (continentalness, erosion, peaks/valleys, temperature, moisture, biome) are read
+ * off a seeded Java {@link NoiseRouter} - the same fields the native generator ports - at the native shape
+ * space position, so they line up with the heights at 1:4 and 1:2 alike. Local and fast, so nothing is
+ * cached; the native generator is the only resource, closed with the visualizers. Without the worldgen
+ * library the Height mode falls back to the Java height map (1:4 reference curve).
  */
 final class StandardPreview implements GeneratorPreview {
 
@@ -26,6 +32,17 @@ final class StandardPreview implements GeneratorPreview {
             VisualizerKind.PEAKS_VALLEYS, VisualizerKind.TEMPERATURE, VisualizerKind.MOISTURE,
             VisualizerKind.BIOME);
 
+    private volatile TerrainScalePreset scale = TerrainScalePreset.ONE_TO_FOUR;
+
+    /** The preset the next {@link #build} previews. */
+    void setScale(TerrainScalePreset scale) {
+        this.scale = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+    }
+
+    TerrainScalePreset scale() {
+        return scale;
+    }
+
     @Override
     public List<VisualizerKind> modes() {
         return MODES;
@@ -33,18 +50,25 @@ final class StandardPreview implements GeneratorPreview {
 
     @Override
     public Built build(long seed, PreviewSampleStore store) {
+        TerrainScalePreset preset = scale;
+        double s = NativeStandardColumns.shapeScale(preset);
         NoiseRouter router = new NoiseRouter(seed);
         HeightMapGenerator heightMap = new HeightMapGenerator(router);
         BiomeManager biomes = new BiomeManager(router, heightMap);
+        NativeStandardColumns columns = NativeStandardColumns.open(seed, preset);
+
+        HeightVisualizer.Heights heights = columns != null ? columns::height
+            : (x, z) -> heightMap.generateHeight((int) Math.floor(x * s), (int) Math.floor(z * s));
 
         Map<VisualizerKind, NoiseVisualizer> visualizers = new EnumMap<>(VisualizerKind.class);
-        visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heightMap));
-        visualizers.put(VisualizerKind.CONTINENTALNESS, new ContinentalnessVisualizer(router));
-        visualizers.put(VisualizerKind.EROSION, new ErosionVisualizer(router));
-        visualizers.put(VisualizerKind.PEAKS_VALLEYS, new PeaksValleysVisualizer(router));
-        visualizers.put(VisualizerKind.TEMPERATURE, new TemperatureVisualizer(router, heightMap));
-        visualizers.put(VisualizerKind.MOISTURE, new MoistureVisualizer(router));
-        visualizers.put(VisualizerKind.BIOME, new BiomeVisualizer(biomes));
-        return new Built(visualizers, null, null);
+        visualizers.put(VisualizerKind.HEIGHT, new HeightVisualizer(heights));
+        visualizers.put(VisualizerKind.CONTINENTALNESS, ShapeScaledVisualizer.of(new ContinentalnessVisualizer(router), s));
+        visualizers.put(VisualizerKind.EROSION, ShapeScaledVisualizer.of(new ErosionVisualizer(router), s));
+        visualizers.put(VisualizerKind.PEAKS_VALLEYS, ShapeScaledVisualizer.of(new PeaksValleysVisualizer(router), s));
+        visualizers.put(VisualizerKind.TEMPERATURE,
+            ShapeScaledVisualizer.of(new TemperatureVisualizer(router, heightMap), s));
+        visualizers.put(VisualizerKind.MOISTURE, ShapeScaledVisualizer.of(new MoistureVisualizer(router), s));
+        visualizers.put(VisualizerKind.BIOME, ShapeScaledVisualizer.of(new BiomeVisualizer(biomes), s));
+        return new Built(visualizers, null, columns);
     }
 }

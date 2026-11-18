@@ -4,6 +4,8 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -33,7 +35,7 @@ public class ItemDrop extends Entity {
     /**
      * Creates a new item drop at the specified position.
      */
-    public ItemDrop(World world, Vector3f position, ItemStack itemStack) {
+    public ItemDrop(World world, Vector3dc position, ItemStack itemStack) {
         super(world, position);
         this.itemStack = itemStack;
         this.despawnTimer = DESPAWN_TIME;
@@ -60,7 +62,7 @@ public class ItemDrop extends Entity {
     /**
      * Creates a new item drop for a single item type.
      */
-    public ItemDrop(World world, Vector3f position, ItemType itemType, int count) {
+    public ItemDrop(World world, Vector3dc position, ItemType itemType, int count) {
         this(world, position, new ItemStack(itemType, count));
     }
     
@@ -89,7 +91,7 @@ public class ItemDrop extends Entity {
         mergeNearbyDrops();
         
         // Prevent drops from falling into the void
-        if (position.y < -10) {
+        if (position.y < com.stonebreak.world.operations.WorldConfiguration.MIN_Y - 16) {
             alive = false;
         }
     }
@@ -119,9 +121,8 @@ public class ItemDrop extends Entity {
         velocity.mul(DROP_AIR_RESISTANCE);
         
         // Update position based on velocity
-        Vector3f movement = new Vector3f(velocity).mul(deltaTime);
-        Vector3f oldPosition = new Vector3f(position);
-        position.add(movement);
+        Vector3d oldPosition = new Vector3d(position);
+        position.fma(deltaTime, velocity);
         
         // Simple collision detection with world
         checkWorldCollision(oldPosition);
@@ -143,7 +144,7 @@ public class ItemDrop extends Entity {
      * fall through flowers, wildgrass, torches and water and rest correctly on
      * snow layers and stairs.
      */
-    private void checkWorldCollision(Vector3f oldPosition) {
+    private void checkWorldCollision(Vector3d oldPosition) {
         DropWorldCollision.Result result = DropWorldCollision.resolveGround(
                 world, position, oldPosition, width, length, height);
         inWater = result.inWater();
@@ -252,7 +253,7 @@ public class ItemDrop extends Entity {
     /**
      * Checks if this drop can be picked up by a player at the given position.
      */
-    public boolean canPickup(Vector3f playerPosition) {
+    public boolean canPickup(Vector3dc playerPosition) {
         return position.distance(playerPosition) <= PICKUP_RANGE;
     }
     
@@ -376,14 +377,14 @@ public class ItemDrop extends Entity {
     /**
      * Factory method to create an item drop.
      */
-    public static ItemDrop createDrop(World world, Vector3f position, ItemStack itemStack) {
+    public static ItemDrop createDrop(World world, Vector3dc position, ItemStack itemStack) {
         return new ItemDrop(world, position, itemStack);
     }
     
     /**
      * Factory method to create an item drop with custom initial velocity.
      */
-    public static ItemDrop createDropWithVelocity(World world, Vector3f position, ItemStack itemStack, Vector3f initialVelocity) {
+    public static ItemDrop createDropWithVelocity(World world, Vector3dc position, ItemStack itemStack, Vector3f initialVelocity) {
         ItemDrop drop = new ItemDrop(world, position, itemStack);
         drop.velocity.set(initialVelocity);
         return drop;
@@ -397,7 +398,7 @@ public class ItemDrop extends Entity {
     /**
      * Factory method to create a simple item drop from item type and count.
      */
-    public static ItemDrop createDrop(World world, Vector3f position, ItemType itemType, int count) {
+    public static ItemDrop createDrop(World world, Vector3dc position, ItemType itemType, int count) {
         return new ItemDrop(world, position, itemType, count);
     }
 }

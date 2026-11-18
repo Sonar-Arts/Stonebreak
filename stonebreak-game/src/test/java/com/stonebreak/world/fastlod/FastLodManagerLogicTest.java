@@ -3,7 +3,7 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.diffusion.DiffusionTerrainGenerator;
+import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,12 +43,13 @@ class FastLodManagerLogicTest {
 
     private static final int INNER = 1;
     private static final int RANGE = 5;
-    private static final int RING_NODES = 168;  // 13x13 minus the player column
+    // 13x13; the player's own column too since the cubic runtime's whole-disc coverage.
+    private static final int RING_NODES = FastLodBandPolicy.wholeDisc() ? 169 : 168;
     /** The ring's one L0→L1 band edge (LOW: L1 from 96 blocks = 6 chunks). */
     private static final int EDGE = 6;
 
     private WorldConfiguration config;
-    private DiffusionTerrainGenerator terrain;
+    private TerrainGenerator terrain;
     private ManualExecutor executor;
     private FastLodManager manager;
 
@@ -61,15 +62,13 @@ class FastLodManagerLogicTest {
         // 32 build threads → in-flight cap 256 ≥ RING_NODES, so one tick fills the ring.
         config = new WorldConfiguration(INNER, 32, RANGE, true);
         config.setLodQuality(FastLodQuality.LOW);
-        terrain = mock(DiffusionTerrainGenerator.class);
+        terrain = mock(TerrainGenerator.class);
         when(terrain.getFinalTerrainHeightAt(anyInt(), anyInt())).thenAnswer(inv -> {
             if (terrainFails.get()) throw new RuntimeException("simulated terrain failure");
             // Above SEA_LEVEL (320), so nodes are dry land: one terrain handle
             // each, no extra water-sheet mesh to skew the handle counts.
             return 336;
         });
-        when(terrain.getSurfaceBlockAt(anyInt(), anyInt())).thenReturn(BlockType.GRASS);
-        when(terrain.getTreeAt(anyInt(), anyInt())).thenReturn(null);
         // The sampler feeds off the batched probe; mirror it onto the per-point
         // stubs above so height-call counting (cooperative-cancellation test)
         // and the simulated terrain failure keep working.
@@ -86,7 +85,7 @@ class FastLodManagerLogicTest {
                     int wx = x0 + ix * stride, wz = z0 + iz * stride;
                     outHeights[idx] = terrain.getFinalTerrainHeightAt(wx, wz);
                     if (outSurface != null) {
-                        outSurface[idx] = terrain.getSurfaceBlockAt(wx, wz);
+                        outSurface[idx] = BlockType.GRASS;
                     }
                 }
             }
@@ -218,9 +217,9 @@ class FastLodManagerLogicTest {
         assertEquals(RING_NODES, createdHandles.size());
 
         // Every entry carries the mesh bounds for frustum culling: tops at the
-        // flat terrain height, minY at 0 from the node-border foundation walls.
+        // flat terrain height, minY from the node-border foundation walls below the column.
         for (FastLodManager.Entry e : manager.visibleHandles()) {
-            assertEquals(0f, e.minY, 1e-4f);
+            assertEquals(FastLodMesher.foundationBottom(336), e.minY, 1e-4f);
             assertEquals(336f, e.maxY, 1e-4f);
         }
 
@@ -276,6 +275,16 @@ class FastLodManagerLogicTest {
      */
     @Test
     void nodeCoveringAHoleSurvivesEvictionUntilTheDetailChunkDraws() {
+        // Edge-ring mode: with whole-disc coverage (cubic runtime) an inner column stays wanted.
+        FastLodBandPolicy.setWholeDisc(false);
+        try {
+            coveringNodeSurvives();
+        } finally {
+            FastLodBandPolicy.setWholeDisc(true);
+        }
+    }
+
+    private void coveringNodeSurvives() {
         tick(0, 0);
         // Column (1,0): d=1 from origin → in the ring. d=0 from (1,0) → wanted == null.
         FastLodKey key = FastLodKey.of(FastLodLevel.L0, 1, 0);
@@ -299,6 +308,26 @@ class FastLodManagerLogicTest {
     /** A node that has never drawn anything (fresh upload, fade 0) is still evicted at once. */
     @Test
     void neverRenderedNodeIsEvictedImmediately() {
+        FastLodBandPolicy.setWholeDisc(false);
+        try {
+            neverRenderedEvicted();
+        } finally {
+            FastLodBandPolicy.setWholeDisc(true);
+        }
+    }
+
+    /** Whole-disc coverage keeps the inner column's node: it is the column's cover until READY. */
+    @Test
+    void wholeDiscKeepsInnerColumnsWanted() {
+        tick(0, 0);
+        FastLodKey key = FastLodKey.of(FastLodLevel.L0, 1, 0);
+        assertNotNull(entryFor(key));
+        tick(1, 0);
+        assertNotNull(entryFor(key), "d=0 is still inside the disc: the node stays");
+        assertNotNull(entryFor(FastLodKey.of(FastLodLevel.L0, 0, 0)), "the player's own column has a node");
+    }
+
+    private void neverRenderedEvicted() {
         tick(0, 0);
         FastLodKey key = FastLodKey.of(FastLodLevel.L0, 1, 0);
         assertNotNull(entryFor(key));
@@ -343,7 +372,7 @@ class FastLodManagerLogicTest {
         assertEquals(RING_NODES, manager.visibleHandles().size());
         for (FastLodManager.Entry e : manager.visibleHandles()) {
             int d = Math.max(Math.abs(e.key.chunkX() - 100), Math.abs(e.key.chunkZ() - 100));
-            assertTrue(d >= 1 && d <= INNER + RANGE, "resident node outside the current ring");
+            assertTrue(d >= (FastLodBandPolicy.wholeDisc() ? 0 : 1) && d <= INNER + RANGE, "resident node outside the current ring");
         }
 
         // Cooperative cancellation: the 168 stale jobs must exit before touching

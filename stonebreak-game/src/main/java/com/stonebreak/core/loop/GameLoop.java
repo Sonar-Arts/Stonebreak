@@ -77,7 +77,7 @@ public final class GameLoop {
         boolean hearWeather = musicScene() == com.stonebreak.audio.MusicManager.Scene.NONE;
         com.stonebreak.player.Player listener = Game.getPlayer();
         weatherAudio.update(hearWeather ? Game.getWeather() : null, Game.getWorld(),
-                listener != null ? listener.getCamera().getPosition() : new org.joml.Vector3f(), deltaTime);
+                listener != null ? listener.getCamera().getPosition() : new org.joml.Vector3d(), deltaTime);
         // Native mixer housekeeping: releases the memory of sounds freed since the last frame.
         com.openmason.engine.audio.SoundSystem sounds = Game.getSoundSystem();
         if (sounds != null) {

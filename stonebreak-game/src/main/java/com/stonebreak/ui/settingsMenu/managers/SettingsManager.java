@@ -104,8 +104,11 @@ public class SettingsManager {
         if (client != null) {
             client.sendViewDistance(settings.getRenderDistance());
         }
+        // Singleplayer / host: the integrated server streams the player's cubes, sized by ITS world config.
+        com.stonebreak.config.ViewDistanceSettings.applyVerticalRenderDistance(world);
 
         System.out.println("Applied render distance: " + settings.getRenderDistance()
+                + ", vertical: " + settings.getVerticalRenderDistance() + " blocks"
                 + ", LOD distance: " + settings.getLodDistance()
                 + ", LOD enabled: " + settings.getLodEnabled());
     }

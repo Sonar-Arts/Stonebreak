@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.Random;
@@ -29,7 +31,7 @@ public class FishingBobber extends Entity {
     private static final Random RNG = new Random();
 
     private boolean settled       = false;
-    private float   floatY        = -1f;
+    private double  floatY        = Double.NaN; // NaN = not floating (the world goes below y 0)
     private boolean inWaterSettled = false;
 
     private float   biteDelay      = 0f;
@@ -37,7 +39,7 @@ public class FishingBobber extends Entity {
     private boolean fishBiting     = false;
     private float   biteWindowTimer = 0f;
 
-    public FishingBobber(World world, Vector3f position, Vector3f direction) {
+    public FishingBobber(World world, Vector3dc position, Vector3f direction) {
         super(world, position);
         this.width  = 0.2f;
         this.height = 0.2f;
@@ -60,9 +62,9 @@ public class FishingBobber extends Entity {
             settled = true;
             velocity.set(0, 0, 0);
             if (inWater) {
-                int bx = (int) Math.floor(position.x);
-                int bz = (int) Math.floor(position.z);
-                int by = (int) Math.floor(position.y + height / 2.0f);
+                long bx = (long) Math.floor(position.x);
+                long bz = (long) Math.floor(position.z);
+                long by = (long) Math.floor(position.y + height / 2.0f);
                 while (world.getBlockAt(bx, by + 1, bz) == BlockType.WATER) by++;
                 floatY = by + 1.0f;
                 position.y = floatY;
@@ -73,7 +75,7 @@ public class FishingBobber extends Entity {
 
         if (settled) {
             velocity.set(0, 0, 0);
-            if (floatY >= 0f) {
+            if (!Double.isNaN(floatY)) {
                 position.y = floatY;
             }
         }

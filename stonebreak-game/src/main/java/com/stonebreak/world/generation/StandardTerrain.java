@@ -1,8 +1,5 @@
 package com.stonebreak.world.generation;
 
-import com.openmason.engine.voxel.cco.data.palette.CcoPaletteSection;
-import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
@@ -23,27 +20,7 @@ public final class StandardTerrain {
     /** Whole 16-block storage sections below the frame. */
     public static final int SECTION_OFFSET = Y_OFFSET / 16;
 
-    private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
-
     private StandardTerrain() {}
-
-    /**
-     * Empty world-height chunk storage with the column under the frame already solid: stone,
-     * on a bedrock floor at world y 0. Standard blocks are then written {@link #Y_OFFSET} up.
-     */
-    public static CcoPalettedChunkStorage newLiftedStorage() {
-        CcoPalettedChunkStorage storage = CcoPalettedChunkStorage.createEmpty(
-            CHUNK_SIZE, WorldConfiguration.WORLD_HEIGHT, CHUNK_SIZE, BlockType.AIR);
-        for (int section = 0; section < SECTION_OFFSET; section++) {
-            storage.replaceSection(section, new CcoPaletteSection(CHUNK_SIZE * CHUNK_SIZE, BlockType.STONE));
-        }
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            for (int z = 0; z < CHUNK_SIZE; z++) {
-                storage.set(x, 0, z, BlockType.BEDROCK);
-            }
-        }
-        return storage;
-    }
 
     /** A Standard-frame height (or water level) in world Y; {@code NO_WATER} passes through. */
     public static int lift(int standardY) {

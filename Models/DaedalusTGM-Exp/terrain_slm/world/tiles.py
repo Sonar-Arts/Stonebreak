@@ -77,10 +77,10 @@ class TileBuilder:
         """The water rule: the sea fills every column below sea level; a river column holds water up
         to its level where that stands above its ground, or anywhere inside its tunnel (an
         undercut bank keeps its full height above the water)."""
-        top = self.world.world_height - 1
+        top, bottom = self.world.world_height - 1, self.world.min_y
         sea = self.world.sea_level
-        height = height.clamp(0, top)
-        level = level.clamp(0, top)
+        height = height.clamp(bottom, top)
+        level = level.clamp(bottom, top)
         floor, roof, flow = river
         water = torch.where(height < sea, torch.full_like(height, sea), torch.full_like(height, -1))
         river_wet = wet & ((level > height) | (floor >= 0))
@@ -114,7 +114,7 @@ class TileBuilder:
             # raised banks are a landform the real DEMs never show, and drew thin biome ribbons along rivers.
             sc = gen.scale
             pre = F.avg_pool2d(field.ground[None, None], d)[0, 0]
-            pre = sc.to_metres(torch.floor(sc.to_blocks(pre)).clamp(0, sc.world_height - 1) + 0.5)
+            pre = sc.to_metres(torch.floor(sc.to_blocks(pre)).clamp(sc.min_y, sc.world_height - 1) + 0.5)
             biome = crop(BN.classify(gen.biomenet, pre, climate, i1 - mb, j1 - mb))
             # The rule over tile + margin (per column but for its 3x3 slope, so the frame's own edge is far outside
             # the tile).
@@ -174,7 +174,7 @@ class TileBuilder:
         peak, idx = F.max_pool2d(c["logacc"][None, None], k, return_indices=True)
         wet = (peak[0, 0] >= gen.cfg.river_log_threshold) & (elev > 0.5)
         sc = gen.scale
-        hb = torch.floor(sc.to_blocks(elev)).clamp(0, sc.world_height - 1).long()
+        hb = torch.floor(sc.to_blocks(elev)).clamp(sc.min_y, sc.world_height - 1).long()
         none = torch.full(elev.shape, NO_TUNNEL, dtype=torch.long, device=elev.device)
         flow = torch.full_like(none, NO_FLOW)
         if c["d8"] is not None:

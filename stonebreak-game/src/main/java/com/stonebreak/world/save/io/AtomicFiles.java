@@ -21,6 +21,20 @@ public final class AtomicFiles {
     }
 
     public static void write(Path target, byte[] payload) throws IOException {
+        write(target, payload, false);
+    }
+
+    /**
+     * {@link #write} that is also crash-durable: the temp file's data is fsynced before the rename and the
+     * directory after it (where the platform allows), so a power cut leaves the old or the new file, never an
+     * empty one. Used for the files the cube store depends on ({@code block_states.txt}) and the world/player
+     * records written at every save point.
+     */
+    public static void writeDurable(Path target, byte[] payload) throws IOException {
+        write(target, payload, true);
+    }
+
+    private static void write(Path target, byte[] payload, boolean durable) throws IOException {
         // Unique temp name per write — a fixed sibling name races when two threads write the
         // same target concurrently (the loser's move throws NoSuchFileException after the winner
         // consumed the shared temp file).
@@ -31,25 +45,54 @@ public final class AtomicFiles {
         if (parent != null && !Files.exists(parent)) {
             Files.createDirectories(parent);
         }
-        Files.write(temp, payload);
-        try {
-            for (int attempt = 1; ; attempt++) {
-                try {
-                    replace(temp, target);
-                    return;
-                } catch (AccessDeniedException e) {
-                    // Windows refuses to rename over a file that another thread is reading or
-                    // renaming over at that moment (a load of the same file, a concurrent write
-                    // of it). Both are brief, so wait them out — then fail loudly.
-                    if (attempt >= REPLACE_ATTEMPTS) {
-                        throw e;
-                    }
-                    sleepBeforeRetry(attempt);
+        if (durable) {
+            try (java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(temp,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                    java.nio.file.StandardOpenOption.WRITE)) {
+                java.nio.ByteBuffer buf = java.nio.ByteBuffer.wrap(payload);
+                while (buf.hasRemaining()) {
+                    ch.write(buf);
                 }
+                ch.force(true);
             }
+        } else {
+            Files.write(temp, payload);
+        }
+        try {
+            replaceWithRetry(temp, target);
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(temp);
             throw e;
+        }
+        if (durable && parent != null) {
+            syncDirectory(parent);
+        }
+    }
+
+    /** fsync of a directory (makes a rename durable); not supported on Windows, where it is skipped. */
+    private static void syncDirectory(Path dir) {
+        try (java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(dir,
+                java.nio.file.StandardOpenOption.READ)) {
+            ch.force(true);
+        } catch (IOException | UnsupportedOperationException e) {
+            // Windows cannot open a directory as a channel; NTFS journals the rename itself.
+        }
+    }
+
+    private static void replaceWithRetry(Path temp, Path target) throws IOException {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                replace(temp, target);
+                return;
+            } catch (AccessDeniedException e) {
+                // Windows refuses to rename over a file that another thread is reading or
+                // renaming over at that moment (a load of the same file, a concurrent write
+                // of it). Both are brief, so wait them out — then fail loudly.
+                if (attempt >= REPLACE_ATTEMPTS) {
+                    throw e;
+                }
+                sleepBeforeRetry(attempt);
+            }
         }
     }
 

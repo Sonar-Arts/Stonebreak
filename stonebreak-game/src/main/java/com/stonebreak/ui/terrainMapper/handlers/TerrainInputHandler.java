@@ -6,6 +6,7 @@ import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_BACKSPACE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_T;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_TAB;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_V;
 import static org.lwjgl.glfw.GLFW.GLFW_MOD_CONTROL;
@@ -42,6 +43,8 @@ public final class TerrainInputHandler {
             case GLFW_KEY_ESCAPE    -> actions.goBack();
             // GLFW emits no character event for control combos, so paste lands here.
             case GLFW_KEY_V         -> { if (ctrl) state.appendToActiveField(MClipboard.read()); }
+            // Terrain scale (1:4 / 1:2) for the new world until the document has its own control.
+            case GLFW_KEY_T         -> { if (ctrl) state.cycleScale(); }
             default                 -> { /* ignore */ }
         }
     }

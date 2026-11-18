@@ -16,7 +16,6 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -56,24 +55,24 @@ class BreakTimingTest {
     private MockedStatic<DropUtil> drops;
     private long now = 10 * SECOND;
 
-    private static String key(int x, int y, int z) {
+    private static String key(long x, long y, long z) {
         return x + "," + y + "," + z;
     }
 
     @BeforeEach
     void setUp() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> blocks.getOrDefault(
-                key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), BlockType.AIR));
-        when(world.getChunkIfLoaded(anyInt(), anyInt())).thenAnswer(inv -> mock(Chunk.class));
-        when(world.getWaterValueAt(anyInt(), anyInt(), anyInt())).thenReturn(-1);
-        when(world.setBlockAt(anyInt(), anyInt(), anyInt(), any(BlockType.class), anyBoolean()))
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> blocks.getOrDefault(
+                key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class)), BlockType.AIR));
+        when(world.isLoaded(anyLong(), anyLong(), anyLong())).thenReturn(true);
+        when(world.getWaterValueAt(anyLong(), anyLong(), anyLong())).thenReturn(-1);
+        when(world.setBlockAt(anyLong(), anyLong(), anyLong(), any(BlockType.class), anyBoolean()))
                 .thenAnswer(inv -> {
-                    blocks.put(key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), inv.getArgument(3));
+                    blocks.put(key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class)), inv.getArgument(3));
                     return true;
                 });
         when(world.serverSinks()).thenReturn(new ServerMutationSinks());
-        when(world.getSnowLayerManager()).thenReturn(new SnowLayerManager());
+        when(world.getSnowLayerManager()).thenReturn(new SnowLayerManager(com.stonebreak.world.World.createDetached(new com.stonebreak.world.operations.WorldConfiguration(), 0L)));
 
         level = mock(ServerLevel.class);
         when(level.world()).thenReturn(world);

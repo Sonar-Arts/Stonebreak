@@ -23,6 +23,8 @@ final class EntityShadowCasterRenderer {
     private final Matrix4f lightViewProjection = new Matrix4f();
     private final FrustumIntersection lightFrustum = new FrustumIntersection();
     private final Vector3f unitScale = new Vector3f(1f);
+    private final Vector3f centerScratch = new Vector3f();
+    private final Vector3f playerScratch = new Vector3f();
     private record Caster(Entity entity, Vector3f position, float height, float bound) {}
     private final java.util.List<Caster> casters = new java.util.ArrayList<>();
 
@@ -43,7 +45,8 @@ final class EntityShadowCasterRenderer {
                     && entity.getType() != EntityType.DINGHY) continue;
             float height = entity.getHeight();
             float bound = Math.max(height, Math.max(entity.getWidth(), entity.getLength())) + 1f;
-            casters.add(new Caster(entity, entity.getPosition(), height, bound));
+            // Render space (exact double difference): the light views are render-space too.
+            casters.add(new Caster(entity, RenderOrigin.toRender(entity.getPosition(), new Vector3f()), height, bound));
         }
     }
 
@@ -62,10 +65,12 @@ final class EntityShadowCasterRenderer {
      */
     void render(com.stonebreak.player.Player player, Entity excluded,
                 Matrix4f lightView, Matrix4f lightProj,
-                Vector3f cascadeCenter, float cascadeRadius) {
+                org.joml.Vector3dc cascadeCenterWorld, float cascadeRadius) {
         float cullRadius = cascadeRadius + 8.0f;
         float cullRadiusSq = cullRadius * cullRadius;
-        lightFrustum.set(RenderOrigin.acceptWorldSpace(lightProj.mul(lightView, lightViewProjection)));
+        // Everything in render space: the light view, the caster snapshots and the cull centre.
+        Vector3f cascadeCenter = RenderOrigin.toRender(cascadeCenterWorld, centerScratch);
+        lightFrustum.set(lightProj.mul(lightView, lightViewProjection));
         for (Caster caster : casters) {
             if (caster.entity == excluded) continue;
             Vector3f pos = caster.position;
@@ -80,8 +85,9 @@ final class EntityShadowCasterRenderer {
 
         // The local player always casts — including first person, where the body
         // model isn't drawn to screen but its shadow still should be.
-        if (player != null && lightFrustum.testSphere(player.getPosition().x,
-                player.getPosition().y + 1f, player.getPosition().z, 2f)) {
+        Vector3f playerRender = player != null ? RenderOrigin.toRender(player.getPosition(), playerScratch) : null;
+        if (player != null && lightFrustum.testSphere(playerRender.x,
+                playerRender.y + 1f, playerRender.z, 2f)) {
             com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
             if (asset != null) {
                 sbeEntityRenderer.renderColored(asset,

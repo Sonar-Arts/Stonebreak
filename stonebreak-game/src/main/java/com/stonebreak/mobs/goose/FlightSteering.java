@@ -3,6 +3,8 @@ package com.stonebreak.mobs.goose;
 import com.stonebreak.mobs.entities.ai.nav.AirPathAgent;
 import com.stonebreak.mobs.entities.ai.nav.AirProbe;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -72,23 +74,23 @@ final class FlightSteering {
     private final Steering steering;
     private final AirPathAgent route;
 
-    private float cruiseAltitude;
-    private float steerAltitude;
+    private double cruiseAltitude;
+    private double steerAltitude;
     /**
-     * Altitude the scanned terrain demands regardless of cruise, or {@link Float#NEGATIVE_INFINITY}
+     * Altitude the scanned terrain demands regardless of cruise, or {@link Double.NEGATIVE_INFINITY}
      * when the corridor ahead is clear. Kept separate from {@link #steerAltitude} so that a route
      * deliberately dipping through a pass is never yanked back up to cruise, while still being
      * floored by the ridge the route's coarse cells could not see.
      */
-    private float terrainFloor = Float.NEGATIVE_INFINITY;
+    private double terrainFloor = Double.NEGATIVE_INFINITY;
     private float terrainScanTimer;
     private float lateralBiasTimer;
     private int lateralBiasSign;
     private float stuckTimer;
 
     private final Vector3f heading = new Vector3f();
-    private final Vector3f waypoint = new Vector3f();
-    private final Vector3f slotScratch = new Vector3f();
+    private final Vector3d waypoint = new Vector3d();
+    private final Vector3d slotScratch = new Vector3d();
 
     FlightSteering(Goose goose, Steering steering) {
         this.goose = goose;
@@ -96,13 +98,13 @@ final class FlightSteering {
         this.route = new AirPathAgent(goose);
     }
 
-    void setCruiseAltitude(float altitude) {
+    void setCruiseAltitude(double altitude) {
         this.cruiseAltitude = altitude;
         this.steerAltitude = altitude;
         route.setCruiseAltitude(altitude);
     }
 
-    float cruiseAltitude() {
+    double cruiseAltitude() {
         return cruiseAltitude;
     }
 
@@ -117,7 +119,7 @@ final class FlightSteering {
         lateralBiasTimer = 0.0f;
         lateralBiasSign = 0;
         stuckTimer = 0.0f;
-        terrainFloor = Float.NEGATIVE_INFINITY;
+        terrainFloor = Double.NEGATIVE_INFINITY;
         route.stop();
     }
 
@@ -148,11 +150,11 @@ final class FlightSteering {
      * Steers toward a 3D point at the given horizontal speed, matching its altitude with a clamped
      * vertical rate.
      */
-    void steerTo(Vector3f target, float speed, float deltaTime) {
-        Vector3f position = goose.getPosition();
+    void steerTo(Vector3dc target, float speed, float deltaTime) {
+        Vector3d position = goose.getPosition();
         Vector3f velocity = goose.getVelocity();
 
-        heading.set(target.x - position.x, 0.0f, target.z - position.z);
+        heading.set((float) (target.x() - position.x), 0.0f, (float) (target.z() - position.z));
         if (heading.lengthSquared() > 0.01f) {
             heading.normalize();
             steering.faceDirection(heading, FLIGHT_TURN_SPEED, deltaTime);
@@ -163,7 +165,7 @@ final class FlightSteering {
             velocity.z = 0.0f;
         }
 
-        float dy = target.y - position.y;
+        float dy = (float) (target.y() - position.y);
         velocity.y = Math.max(-DESCEND_SPEED, Math.min(CLIMB_SPEED, dy * 2.0f));
         goose.setVelocity(velocity);
     }
@@ -188,16 +190,16 @@ final class FlightSteering {
      * whole point of doing it here: a goose that has to go round a ridge should already be pointing
      * at the way round it, not at the ridge.
      */
-    float faceFlightDirection(Vector3f destination, float deltaTime) {
+    float faceFlightDirection(Vector3dc destination, float deltaTime) {
         routeTarget(destination, deltaTime, waypoint);
 
-        Vector3f position = goose.getPosition();
-        heading.set(waypoint.x - position.x, 0.0f, waypoint.z - position.z);
+        Vector3d position = goose.getPosition();
+        heading.set((float) (waypoint.x - position.x), 0.0f, (float) (waypoint.z - position.z));
         if (heading.lengthSquared() < MIN_HEADING_SQUARED) {
             // The first waypoint is straight overhead — normal, since the route starts by climbing
             // out of the ground the goose is standing on. Fall back to the far destination, which
             // is the direction the flight is ultimately going.
-            heading.set(destination.x - position.x, 0.0f, destination.z - position.z);
+            heading.set((float) (destination.x() - position.x), 0.0f, (float) (destination.z() - position.z));
         }
         if (heading.lengthSquared() < MIN_HEADING_SQUARED) {
             return 0.0f; // nowhere to point; nothing to wait for
@@ -208,12 +210,12 @@ final class FlightSteering {
         return steering.yawErrorTo(heading);
     }
 
-    Vector3f routeTarget(Vector3f destination, float deltaTime, Vector3f out) {
+    Vector3d routeTarget(Vector3dc destination, float deltaTime, Vector3d out) {
         // Plan at the altitude the goose actually needs, not the one it set out at. Cruise is fixed
         // at takeoff and stays an absolute Y for the whole flight, so over rising ground it can sit
         // below the terrain — and a route planned at a buried altitude spends its search snapping
         // the goal out of a hillside instead of finding the way past it.
-        route.setCruiseAltitude(terrainFloor == Float.NEGATIVE_INFINITY
+        route.setCruiseAltitude(terrainFloor == Double.NEGATIVE_INFINITY
                 ? cruiseAltitude
                 : Math.max(cruiseAltitude, terrainFloor));
         route.moveTo(destination);
@@ -228,7 +230,7 @@ final class FlightSteering {
      * <p>Only a flock leader or a lone flyer does this; followers hold slots on the leader's trail,
      * so the whole formation inherits the route without every goose paying for a search.
      */
-    void steerAlongRoute(Vector3f destination, float speed, float deltaTime) {
+    void steerAlongRoute(Vector3dc destination, float speed, float deltaTime) {
         routeTarget(destination, deltaTime, waypoint);
 
         terrainScanTimer -= deltaTime;
@@ -242,16 +244,16 @@ final class FlightSteering {
             scanAhead(waypoint, speed, routing);
         }
 
-        Vector3f position = goose.getPosition();
+        Vector3d position = goose.getPosition();
         if (routing) {
             // The route owns the line; the scan only ever raises the floor under it.
-            if (terrainFloor != Float.NEGATIVE_INFINITY) {
+            if (terrainFloor != Double.NEGATIVE_INFINITY) {
                 waypoint.y = Math.max(waypoint.y, terrainFloor);
             }
         } else {
             waypoint.y = steerAltitude;
             if (lateralBiasTimer > 0.0f) {
-                heading.set(waypoint.x - position.x, 0.0f, waypoint.z - position.z);
+                heading.set((float) (waypoint.x - position.x), 0.0f, (float) (waypoint.z - position.z));
                 if (heading.lengthSquared() > 0.01f) {
                     heading.normalize();
                     rotateY(heading, GO_AROUND_DEG * lateralBiasSign);
@@ -277,7 +279,7 @@ final class FlightSteering {
      * @param spine the point on the leader's trail the slot is offset from
      * @return a point to fly at; never the inside of a hillside if any of the candidates is clear
      */
-    Vector3f resolveFormationSlot(Vector3f slot, Vector3f spine) {
+    Vector3dc resolveFormationSlot(Vector3dc slot, Vector3dc spine) {
         if (isSlotClear(slot)) {
             return slot;
         }
@@ -289,7 +291,7 @@ final class FlightSteering {
             }
         }
         for (float lift : SLOT_LIFTS) {
-            slotScratch.set(spine.x, spine.y + lift, spine.z);
+            slotScratch.set(spine.x(), spine.y() + lift, spine.z());
             if (isSlotClear(slotScratch)) {
                 return slotScratch;
             }
@@ -318,7 +320,7 @@ final class FlightSteering {
             route.replan();
         }
         stuckTimer += deltaTime;
-        Vector3f position = goose.getPosition();
+        Vector3d position = goose.getPosition();
         Vector3f velocity = goose.getVelocity();
 
         velocity.y = Math.max(velocity.y, CLIMB_SPEED);
@@ -349,42 +351,42 @@ final class FlightSteering {
      * demands and — when there is no route to trust — arming a side-step around anything that
      * cannot be out-climbed before the goose reaches it.
      */
-    private void scanAhead(Vector3f target, float speed, boolean routing) {
-        Vector3f position = goose.getPosition();
-        heading.set(target.x - position.x, 0.0f, target.z - position.z);
+    private void scanAhead(Vector3dc target, float speed, boolean routing) {
+        Vector3d position = goose.getPosition();
+        heading.set((float) (target.x() - position.x), 0.0f, (float) (target.z() - position.z));
         if (heading.lengthSquared() < 0.01f) {
-            terrainFloor = Float.NEGATIVE_INFINITY;
+            terrainFloor = Double.NEGATIVE_INFINITY;
             steerAltitude = cruiseAltitude;
             return;
         }
         heading.normalize();
 
-        float floor = Float.NEGATIVE_INFINITY;
-        float nearestPeak = Float.NEGATIVE_INFINITY;
+        double floor = Double.NEGATIVE_INFINITY;
+        double nearestPeak = Double.NEGATIVE_INFINITY;
         float nearestDistance = 0.0f;
         for (int i = 1; i <= LOOKAHEAD_SAMPLES; i++) {
             float distance = LOOKAHEAD_DISTANCE * i / LOOKAHEAD_SAMPLES;
-            float peak = AirProbe.columnPeak(goose.getWorld(),
+            double peak = AirProbe.columnPeak(goose.getWorld(),
                     position.x + heading.x * distance,
                     position.z + heading.z * distance,
                     position.y);
-            if (peak != Float.NEGATIVE_INFINITY) {
+            if (peak != Double.NEGATIVE_INFINITY) {
                 floor = Math.max(floor, peak + PATH_CLEARANCE);
-                if (nearestPeak == Float.NEGATIVE_INFINITY) {
+                if (nearestPeak == Double.NEGATIVE_INFINITY) {
                     nearestPeak = peak;
                     nearestDistance = distance;
                 }
             }
         }
         terrainFloor = floor;
-        steerAltitude = floor == Float.NEGATIVE_INFINITY ? cruiseAltitude
+        steerAltitude = floor == Double.NEGATIVE_INFINITY ? cruiseAltitude
                 : Math.max(cruiseAltitude, floor);
 
         // A route already knows how to get round this; a second opinion swerving at the same time
         // would just fight it.
-        if (!routing && nearestPeak != Float.NEGATIVE_INFINITY) {
+        if (!routing && nearestPeak != Double.NEGATIVE_INFINITY) {
             // Climb capacity over the remaining gap ≈ distance × (climb rate / forward speed).
-            float climbNeeded = (nearestPeak + PATH_CLEARANCE) - position.y;
+            double climbNeeded = (nearestPeak + PATH_CLEARANCE) - position.y;
             float climbBudget = nearestDistance * (CLIMB_SPEED / Math.max(0.1f, speed));
             if (climbNeeded > climbBudget) {
                 armGoAround(position, heading);
@@ -393,24 +395,24 @@ final class FlightSteering {
     }
 
     /** Probes one column to each side and arms a side-step toward the clearer one. */
-    private void armGoAround(Vector3f position, Vector3f forward) {
+    private void armGoAround(Vector3dc position, Vector3f forward) {
         Vector3f left = rotateY(new Vector3f(forward), GO_AROUND_DEG);
-        float leftPeak = AirProbe.columnPeak(goose.getWorld(),
-                position.x + left.x * LOOKAHEAD_DISTANCE,
-                position.z + left.z * LOOKAHEAD_DISTANCE, position.y);
+        double leftPeak = AirProbe.columnPeak(goose.getWorld(),
+                position.x() + left.x * LOOKAHEAD_DISTANCE,
+                position.z() + left.z * LOOKAHEAD_DISTANCE, position.y());
 
         Vector3f right = rotateY(new Vector3f(forward), -GO_AROUND_DEG);
-        float rightPeak = AirProbe.columnPeak(goose.getWorld(),
-                position.x + right.x * LOOKAHEAD_DISTANCE,
-                position.z + right.z * LOOKAHEAD_DISTANCE, position.y);
+        double rightPeak = AirProbe.columnPeak(goose.getWorld(),
+                position.x() + right.x * LOOKAHEAD_DISTANCE,
+                position.z() + right.z * LOOKAHEAD_DISTANCE, position.y());
 
         // The lower peak is the better side (NEGATIVE_INFINITY means clear); ties favour left.
         lateralBiasSign = leftPeak <= rightPeak ? 1 : -1;
         lateralBiasTimer = GO_AROUND_DURATION;
     }
 
-    private boolean isSlotClear(Vector3f slot) {
-        return AirProbe.isClear(goose.getWorld(), slot.x, slot.y, slot.z, SLOT_CLEARANCE);
+    private boolean isSlotClear(Vector3dc slot) {
+        return AirProbe.isClear(goose.getWorld(), slot.x(), slot.y(), slot.z(), SLOT_CLEARANCE);
     }
 
     /** Rotates a horizontal direction about Y, in place. */

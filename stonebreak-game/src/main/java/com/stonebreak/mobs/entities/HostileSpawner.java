@@ -2,7 +2,8 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.world.TimeOfDay;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.List;
 import java.util.Random;
@@ -76,13 +77,13 @@ final class HostileSpawner {
             return;
         }
         EntitySpawner.SpawnAnchor anchor = anchors.get(random.nextInt(anchors.size()));
-        Vector3f spot = sites.findSpawnNear(anchor.position(), MAX_DISTANCE);
+        Vector3d spot = sites.findSpawnNear(anchor.position(), MAX_DISTANCE);
         if (spot == null) {
             return; // try again next interval
         }
         int band = Math.min(room, MIN_BAND + random.nextInt(MAX_BAND - MIN_BAND + 1));
         for (int i = 0; i < band; i++) {
-            Vector3f pos = i == 0 ? spot : sites.jitterStandable(spot);
+            Vector3d pos = i == 0 ? spot : sites.jitterStandable(spot);
             if (pos != null && sites.isValidSpawnLocation(pos, EntityType.GOBLIN)) {
                 entityManager.spawnEntity(EntityType.GOBLIN, pos);
             }
@@ -112,7 +113,7 @@ final class HostileSpawner {
         return count;
     }
 
-    private static boolean withinDistance(Vector3f point, List<EntitySpawner.SpawnAnchor> anchors, float distance) {
+    private static boolean withinDistance(Vector3dc point, List<EntitySpawner.SpawnAnchor> anchors, float distance) {
         for (EntitySpawner.SpawnAnchor anchor : anchors) {
             if (point.distance(anchor.position()) <= distance) {
                 return true;

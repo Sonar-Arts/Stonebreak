@@ -57,9 +57,10 @@ class ServerLevelSpawnTest {
 
             ServerLevel level = ServerLevel.createAndLoad(name, 1L);
             try {
-                assertEquals(saved, level.loadedPlayerData().getPosition(), "the player still arrives where they saved");
+                assertEquals(new org.joml.Vector3d(saved), level.loadedPlayerData().getPosition(),
+                    "the player still arrives where they saved");
                 Vector3f spawn = level.world().getSpawnPosition();
-                assertEquals(spawn, level.spawn(), "one spawn for the handshake and for respawns");
+                assertEquals(new org.joml.Vector3d(spawn), level.spawn(), "one spawn for the handshake and for respawns");
                 assertEquals(worldSpawn.x, spawn.x, "the world's own spawn column (snapped to its surface)");
                 assertEquals(worldSpawn.z, spawn.z, "a block-centred spawn stays in its own column");
             } finally {

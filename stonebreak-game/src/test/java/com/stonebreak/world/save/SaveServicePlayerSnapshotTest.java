@@ -44,7 +44,6 @@ class SaveServicePlayerSnapshotTest {
     void autosaveSnapshotsOnOwnerThreadAsCopies() throws Exception {
         String worldPath = tempDir.resolve("snapshot-copies").toString();
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         // Stands in for Game.runOnMainThread: tasks wait until the "main thread" (this test) drains them.
         BlockingQueue<Runnable> mainThreadTasks = new LinkedBlockingQueue<>();
 
@@ -96,7 +95,6 @@ class SaveServicePlayerSnapshotTest {
     void closeOnOwnerThreadCancelsPendingSnapshot() throws Exception {
         String worldPath = tempDir.resolve("snapshot-close").toString();
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         BlockingQueue<Runnable> neverDrained = new LinkedBlockingQueue<>();
 
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {

@@ -3,7 +3,7 @@ package com.stonebreak.core.world;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,7 +84,13 @@ public final class ClientWorldBuilder {
         return !pending && Game.getWorld() != null && Game.getEntityManager() != null;
     }
 
-    public void start(String worldName, long seed, TerrainGeneratorType generatorType, Vector3f spawn) {
+    public void start(String worldName, long seed, TerrainGeneratorType generatorType, Vector3dc spawn) {
+        start(worldName, seed, generatorType, null, spawn);
+    }
+
+    /** As above; {@code terrainScale} = the server world's (the client's generator must match it). */
+    public void start(String worldName, long seed, TerrainGeneratorType generatorType,
+                      com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale, Vector3dc spawn) {
         // The client never persists — drop any save service so the chunk store stays read-only.
         SaveService previous = game.getSaveService();
         if (previous != null) {
@@ -111,7 +117,7 @@ public final class ClientWorldBuilder {
         int buildGeneration = generation.incrementAndGet();
         pending = true;
         showcaseInstalled = false;
-        new Thread(() -> build(buildGeneration, seed, generatorType, spawn), "ClientWorld-Build").start();
+        new Thread(() -> build(buildGeneration, seed, generatorType, terrainScale, spawn), "ClientWorld-Build").start();
     }
 
     /** True while {@code buildGeneration} is still the latest build AND the session is alive. */
@@ -119,14 +125,17 @@ public final class ClientWorldBuilder {
         return buildGeneration == generation.get() && MultiplayerSession.hasSession();
     }
 
-    private void build(int buildGeneration, long seed, TerrainGeneratorType generatorType, Vector3f spawn) {
+    private void build(int buildGeneration, long seed, TerrainGeneratorType generatorType,
+                       com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale, Vector3dc spawn) {
         try {
             LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.STREAM));
-            World renderWorld = worldLifecycle.createClientWorldInstance(seed, generatorType);
+            World renderWorld = worldLifecycle.createClientWorldInstance(seed, generatorType, terrainScale);
             if (!installWorld(buildGeneration, renderWorld)) {
                 return;
             }
 
+            // The vertical render distance sizes both streams (World only copies the horizontal settings).
+            com.stonebreak.config.ViewDistanceSettings.applyVerticalRenderDistance(renderWorld);
             renderWorld.setSpawnPosition(spawn);
             Player player = Game.getPlayer();
             if (player != null) {
@@ -216,14 +225,17 @@ public final class ClientWorldBuilder {
      * The client tick that installs chunks runs during LOADING because the game loop pumps the
      * network before routing state updates.
      */
-    private void waitForSpawnChunk(int buildGeneration, World renderWorld, Vector3f spawn)
+    private void waitForSpawnChunk(int buildGeneration, World renderWorld, Vector3dc spawn)
             throws InterruptedException {
-        int spawnChunkX = (int) Math.floor(spawn.x / 16.0);
-        int spawnChunkZ = (int) Math.floor(spawn.z / 16.0);
+        long spawnX = (long) Math.floor(spawn.x());
+        long spawnY = (long) Math.floor(spawn.y());
+        long spawnZ = (long) Math.floor(spawn.z());
         long deadline = System.currentTimeMillis() + SPAWN_WAIT_MILLIS;
 
         while (System.currentTimeMillis() < deadline && stillCurrent(buildGeneration)) {
-            boolean chunkArrived = renderWorld.getChunkIfLoaded(spawnChunkX, spawnChunkZ) != null;
+            // The cube under the spawn (or the column's readiness) has streamed in from the server.
+            boolean chunkArrived = renderWorld.isLoaded(spawnX, spawnY - 1, spawnZ)
+                || renderWorld.isColumnReadyAt(spawnX, spawnZ);
             boolean playerReady = MultiplayerSession.isLocalPlayerDataReady();
             if (chunkArrived && playerReady) {
                 break;

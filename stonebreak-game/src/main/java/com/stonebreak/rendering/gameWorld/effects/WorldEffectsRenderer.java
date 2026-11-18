@@ -60,7 +60,7 @@ public final class WorldEffectsRenderer {
             return;
         }
         World world = Game.getWorld();
-        Vector3f cameraPos = player.getCamera().getPosition();
+        org.joml.Vector3d cameraPos = player.getCamera().getPosition();
         for (Entity entity : entities.getAllEntities()) {
             if (entity.isAlive() && entity.getType() == EntityType.FIRE_BOLT) {
                 entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
@@ -98,7 +98,8 @@ public final class WorldEffectsRenderer {
         glDepthMask(false);
 
         for (LivingEntity entity : revealedScratch) {
-            Vector3f position = entity.getPosition();
+            // Render space in double: the box's centre relative to the origin, then the float extents.
+            Vector3f position = RenderOrigin.toRender(entity.getPosition(), new Vector3f());
             EntityType type = entity.getType();
             float halfWidth = type.getWidth() * 0.5f;
             float halfLength = type.getLength() * 0.5f;
@@ -113,14 +114,8 @@ public final class WorldEffectsRenderer {
         revealedScratch.clear();
     }
 
-    /** The 12 edges of an axis-aligned box in immediate mode; the caller sets shader and colour. */
+    /** The 12 edges of an axis-aligned RENDER-SPACE box in immediate mode; the caller sets shader and colour. */
     private static void drawWireBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
-        // World-space box in, render-space vertices out: crossing into render space here rather than
-        // through a model matrix keeps a non-identity modelMatrix from leaking into later passes.
-        float ox = RenderOrigin.x();
-        float oz = RenderOrigin.z();
-        minX -= ox; maxX -= ox;
-        minZ -= oz; maxZ -= oz;
         glBegin(GL_LINES);
         // Bottom rectangle
         glVertex3f(minX, minY, minZ); glVertex3f(maxX, minY, minZ);

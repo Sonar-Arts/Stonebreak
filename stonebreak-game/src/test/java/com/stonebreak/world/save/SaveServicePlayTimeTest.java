@@ -53,7 +53,6 @@ class SaveServicePlayTimeTest {
         String worldPath = tempDir.resolve("failed-autosave").toString();
         AtomicLong clock = new AtomicLong(0L);
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
 
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             Game game = mock(Game.class);
@@ -98,7 +97,6 @@ class SaveServicePlayTimeTest {
         ExecutorService delegate = Executors.newFixedThreadPool(4);
         ExecutorService savePool = parkingFirstTask(release, armed, delegate);
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
 
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             Game game = mock(Game.class);

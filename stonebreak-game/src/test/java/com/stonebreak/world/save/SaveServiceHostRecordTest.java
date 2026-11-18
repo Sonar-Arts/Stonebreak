@@ -37,7 +37,6 @@ class SaveServiceHostRecordTest {
     void playerJsonComesFromTheBoundRecord() throws Exception {
         String worldPath = tempDir.resolve("host-record").toString();
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         try (SaveService svc = new SaveService(worldPath)) {
             svc.initialize(WorldData.builder().seed(7L).worldName("host-record").build(), null, world);
             svc.bindPlayerSource(name -> {
@@ -61,7 +60,6 @@ class SaveServiceHostRecordTest {
     void autosaveWithoutABoundPlayerStillSavesTheWorld() throws Exception {
         String worldPath = tempDir.resolve("no-player").toString();
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         try (SaveService svc = new SaveService(worldPath)) {
             svc.initialize(WorldData.builder().seed(8L).worldName("no-player").build(), null, world);
             svc.updateWorldData(d -> d.withCheatsEnabled(true));

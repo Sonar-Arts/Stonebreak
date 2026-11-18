@@ -173,7 +173,7 @@ public final class ServerPlayerHandler {
         float yawRad = (float) Math.toRadians(sp.yaw());
         float fx = (float) Math.cos(yawRad);
         float fz = (float) Math.sin(yawRad);
-        Vector3f pos = new Vector3f(sp.x() + fx * 1.5f, sp.y() + 1.0f, sp.z() + fz * 1.5f);
+        org.joml.Vector3d pos = new org.joml.Vector3d(sp.x() + fx * 1.5, sp.y() + 1.0, sp.z() + fz * 1.5);
         Vector3f vel = new Vector3f(fx * 2.0f, 1.0f, fz * 2.0f);
 
         BlockType bt = BlockType.getById(itemId);
@@ -345,7 +345,7 @@ public final class ServerPlayerHandler {
      * remote-player figure. Joins are idempotent client-side.
      */
     public void onPeerResync(ServerPlayer sp, ServerWorldContext ctx) {
-        Vector3f spawn = ctx.spawn();
+        org.joml.Vector3d spawn = ctx.spawn();
         for (ServerPlayer other : ctx.players()) {
             if (other.playerId() == sp.playerId() || !other.handshakeDone()) {
                 continue;
@@ -372,7 +372,7 @@ public final class ServerPlayerHandler {
         // view of chunks there. Legitimate teleports are exempt: respawn (the server puts the
         // player at the spawn itself, ServerHealthHandler), world load (the first report),
         // /teleport (cheats only).
-        if (!movementAllowed(sp, ps.x(), ps.z(), ctx, receivedNs)) {
+        if (!movementAllowed(sp, ps.x(), ps.y(), ps.z(), ctx, receivedNs)) {
             correct(sp, receivedNs);
             return false;
         }
@@ -382,12 +382,12 @@ public final class ServerPlayerHandler {
     }
 
     /**
-     * Whether a reported horizontal move to {@code (x, z)} is accepted (issue #336). The host
+     * Whether a reported move to {@code (x, y, z)} is accepted (issue #336). The host
      * and cheat-enabled worlds are exempt; a player's first report must be near the position
      * the server seeded it at (its saved one, or the spawn); after that the move spends the
      * player's {@link com.stonebreak.network.server.MovementGuard} budget.
      */
-    static boolean movementAllowed(ServerPlayer sp, float x, float z, ServerWorldContext ctx,
+    static boolean movementAllowed(ServerPlayer sp, double x, double y, double z, ServerWorldContext ctx,
                                    long nowNs) {
         if (sp.isLocal() || ctx.cheatsEnabled()) {
             return true;
@@ -396,7 +396,7 @@ public final class ServerPlayerHandler {
             return com.stonebreak.network.server.MovementGuard.horizontalDistance(sp.x(), sp.z(), x, z)
                     <= com.stonebreak.network.server.MovementGuard.FIRST_REPORT_SLACK;
         }
-        return sp.movement().allowMove(sp.x(), sp.z(), x, z, nowNs);
+        return sp.movement().allowMove(sp.x(), sp.y(), sp.z(), x, y, z, nowNs);
     }
 
     /** A respawn must land at the world spawn (where the client's respawn puts it). */
@@ -407,8 +407,17 @@ public final class ServerPlayerHandler {
         }
     }
 
-    private static boolean isValidPosition(float x, float y, float z) {
-        return Float.isFinite(x) && Float.isFinite(y) && Float.isFinite(z)
-            && y >= -64f && y <= WorldConfiguration.WORLD_HEIGHT + 64f;
+    /**
+     * How far above the world's top a reported position may be (spectator / creative flight). It was 256: a
+     * player flown above y 896 had EVERY state report dropped, so the server kept its stream center (and the
+     * reach of its cube requests, {@code ServerChunkHandler.inRange}) where it last was below that while the
+     * client flew on - nothing new was generated or served for it.
+     */
+    static final double MAX_FLIGHT_ABOVE_TOP = 8192.0;
+
+    /** Finite, and inside the world's Y range with room for a fall below the floor / flight above the top. */
+    static boolean isValidPosition(double x, double y, double z) {
+        return Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z)
+            && y >= WorldConfiguration.MIN_Y - 64.0 && y <= WorldConfiguration.MAX_Y + MAX_FLIGHT_ABOVE_TOP;
     }
 }

@@ -1,6 +1,6 @@
 package com.stonebreak.player;
 
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
 
@@ -18,7 +18,7 @@ public interface IBlockPlacementService {
      * @param blockType The type of block to place
      * @return ValidationResult containing whether placement is valid and any adjustments needed
      */
-    BlockPlacementValidator.PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType);
+    BlockPlacementValidator.PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3dc playerPos, BlockType blockType);
 
     /**
      * Validates whether a block can be placed at the given position.
@@ -29,7 +29,7 @@ public interface IBlockPlacementService {
      * @param playerOnGround Whether the player is currently on the ground
      * @return ValidationResult containing whether placement is valid and any adjustments needed
      */
-    BlockPlacementValidator.PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType, boolean playerOnGround);
+    BlockPlacementValidator.PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3dc playerPos, BlockType blockType, boolean playerOnGround);
 
     /**
      * Checks if a block position would intersect with the player at the given position.
@@ -38,7 +38,7 @@ public interface IBlockPlacementService {
      * @param playerPos The player position
      * @return true if intersection would occur
      */
-    boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos);
+    boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3dc playerPos);
 
     /**
      * Checks if placing a specific block type would intersect with the player.
@@ -48,7 +48,7 @@ public interface IBlockPlacementService {
      * @param blockType The type of block to place
      * @return true if intersection would occur
      */
-    boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos, BlockType blockType);
+    boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3dc playerPos, BlockType blockType);
 
     /**
      * Checks if placing a specific block type would intersect with the player.
@@ -59,7 +59,7 @@ public interface IBlockPlacementService {
      * @param playerOnGround Whether the player is currently on the ground
      * @return true if intersection would occur
      */
-    boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos, BlockType blockType, boolean playerOnGround);
+    boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3dc playerPos, BlockType blockType, boolean playerOnGround);
 
     /**
      * Checks if a block position has proper support for placement.

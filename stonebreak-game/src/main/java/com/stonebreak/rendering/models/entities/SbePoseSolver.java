@@ -48,6 +48,16 @@ public final class SbePoseSolver {
         return ModelPoseSolver.baseMatrix(position, yawDegrees, scale);
     }
 
+    /**
+     * {@link #baseMatrix(Vector3f, float, Vector3f)} for a double WORLD position: the translation is made
+     * camera-relative in double ({@code RenderOrigin.modelAt}), so models stay precise at any distance.
+     */
+    public static Matrix4f baseMatrix(org.joml.Vector3dc position, float yawDegrees, Vector3f scale) {
+        return com.openmason.engine.rendering.RenderOrigin.modelAt(position.x(), position.y(), position.z())
+                .rotateY((float) Math.toRadians(yawDegrees))
+                .scale(scale);
+    }
+
     /** The asset's clips for {@code anim}: base state + live overlays (unknown names drop out). */
     public static ClipLayers clipLayers(EntityAsset asset, AnimState anim) {
         if (asset == null || anim == null) return ClipLayers.REST;

@@ -7,6 +7,7 @@ import com.stonebreak.core.Game;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
@@ -144,23 +145,22 @@ public class SwimmingController {
      * pond agree on where its surface is.
      */
     private float computeSubmersionFraction() {
-        Vector3f p = state.getPosition();
+        Vector3d p = state.getPosition();
         return WaterSubmersion.fractionAt(world, p.x, p.y, p.z, PLAYER_HEIGHT);
     }
 
     /** Eye-level water check — used by rendering overlays and public API. */
     public boolean isInWater() {
-        Vector3f p = state.getPosition();
-        int eyeX = (int) Math.floor(p.x);
-        int eyeY = (int) Math.floor(p.y + CAMERA_EYE_OFFSET);
-        int eyeZ = (int) Math.floor(p.z);
+        Vector3d p = state.getPosition();
+        long eyeX = (long) Math.floor(p.x);
+        long eyeY = (long) Math.floor(p.y + CAMERA_EYE_OFFSET);
+        long eyeZ = (long) Math.floor(p.z);
         return world.getBlockAt(eyeX, eyeY, eyeZ) == BlockType.WATER;
     }
 
     public boolean isPartiallyInWater() {
-        Vector3f p = state.getPosition();
-        float checkYBottom = p.y + 0.05f;
-        float checkYTop = p.y + PLAYER_HEIGHT - 0.05f;
+        Vector3d p = state.getPosition();
+        double checkYTop = p.y + PLAYER_HEIGHT - 0.05;
         float halfWidth = PLAYER_WIDTH / 2.0f;
         float edgeInset = 0.1f;
 
@@ -172,18 +172,20 @@ public class SwimmingController {
                 new Vector3f(halfWidth - edgeInset, 0, 0),
         };
 
-        for (float y = checkYBottom; y <= checkYTop; y += 0.2f) {
-            int by = (int) Math.floor(y);
-            if (by < 0 || by >= WorldConfiguration.WORLD_HEIGHT) continue;
+        // Sample heights as offsets from the feet (a float step added to a large double y would
+        // stall far from the origin); cells outside the world's [MIN_Y, MAX_Y) are never water.
+        for (float dy = 0.05f; p.y + dy <= checkYTop; dy += 0.2f) {
+            long by = (long) Math.floor(p.y + dy);
+            if (!WorldConfiguration.inBounds(by)) continue;
             for (Vector3f off : offsets) {
-                int bx = (int) Math.floor(p.x + off.x);
-                int bz = (int) Math.floor(p.z + off.z);
+                long bx = (long) Math.floor(p.x + off.x);
+                long bz = (long) Math.floor(p.z + off.z);
                 if (world.getBlockAt(bx, by, bz) == BlockType.WATER) return true;
             }
         }
-        int feetX = (int) Math.floor(p.x);
-        int feetY = (int) Math.floor(p.y + 0.1f);
-        int feetZ = (int) Math.floor(p.z);
+        long feetX = (long) Math.floor(p.x);
+        long feetY = (long) Math.floor(p.y + 0.1f);
+        long feetZ = (long) Math.floor(p.z);
         return world.getBlockAt(feetX, feetY, feetZ) == BlockType.WATER;
     }
 

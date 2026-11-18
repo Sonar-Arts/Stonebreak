@@ -81,13 +81,13 @@ public final class CombatRules {
     }
 
     /** True when the target's box is within melee reach of the player's eye at {@code (px,py,pz)} (feet). */
-    public static boolean withinMeleeReach(float px, float py, float pz, Entity.BoundingBox box) {
-        float ex = px;
-        float ey = py + CAMERA_EYE_OFFSET;
-        float ez = pz;
-        float dx = Math.max(0f, Math.max(box.minX - ex, ex - box.maxX));
-        float dy = Math.max(0f, Math.max(box.minY - ey, ey - box.maxY));
-        float dz = Math.max(0f, Math.max(box.minZ - ez, ez - box.maxZ));
+    public static boolean withinMeleeReach(double px, double py, double pz, Entity.BoundingBox box) {
+        double ex = px;
+        double ey = py + CAMERA_EYE_OFFSET;
+        double ez = pz;
+        double dx = Math.max(0.0, Math.max(box.minX - ex, ex - box.maxX));
+        double dy = Math.max(0.0, Math.max(box.minY - ey, ey - box.maxY));
+        double dz = Math.max(0.0, Math.max(box.minZ - ez, ez - box.maxZ));
         return dx * dx + dy * dy + dz * dz <= MELEE_MAX_REACH * MELEE_MAX_REACH;
     }
 

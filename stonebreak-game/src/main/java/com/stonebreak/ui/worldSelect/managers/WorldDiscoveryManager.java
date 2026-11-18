@@ -1,7 +1,5 @@
 package com.stonebreak.ui.worldSelect.managers;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.stonebreak.world.save.WorldStorage;
 import com.stonebreak.world.save.model.WorldData;
 
@@ -20,7 +18,6 @@ public class WorldDiscoveryManager {
 
     private static final String WORLD_DATA_FILENAME = "world.json";
 
-    private final ObjectMapper objectMapper;
     private final WorldStatsService statsService = new WorldStatsService();
 
     // Cache for world data to avoid repeated file reads
@@ -29,8 +26,6 @@ public class WorldDiscoveryManager {
     private static final long CACHE_VALIDITY_MS = 5000; // 5 seconds
 
     public WorldDiscoveryManager() {
-        this.objectMapper = new ObjectMapper();
-        this.objectMapper.registerModule(new JavaTimeModule());
     }
 
     // ===== WORLD DISCOVERY =====
@@ -97,25 +92,32 @@ public class WorldDiscoveryManager {
     }
 
     /**
-     * Checks if a directory is a valid world directory by looking for expected files.
+     * A world directory holds its creation record ({@code world.json}) or its metadata. Worlds of every save
+     * format are listed - an old one is shown as an incompatible version ({@link #incompatibilityOf}), never
+     * hidden (hiding it would let "Create" reuse its name over the real files).
      */
     private boolean isValidWorldDirectory(Path worldPath) {
         try {
-            // Check for world data file (required)
-            Path worldDataPath = worldPath.resolve(WORLD_DATA_FILENAME);
-            if (!Files.exists(worldDataPath)) {
-                return false;
-            }
-
-            // Check for chunks directory (JSON format) or regions directory (Binary format)
-            Path chunksPath = worldPath.resolve("chunks");
-            Path regionsPath = worldPath.resolve("regions");
-
-            return Files.exists(chunksPath) || Files.exists(regionsPath);
-
+            return Files.exists(worldPath.resolve(WORLD_DATA_FILENAME))
+                || Files.exists(worldPath.resolve("metadata.json"));
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Null when this build can open the world; else the reason (starting with
+     * {@link com.stonebreak.world.save.WorldFormat#INCOMPATIBLE}) - its save format or bounds differ
+     * (pre-alpha: no migration). Worlds whose record cannot be read report null here: opening them reports
+     * the real error.
+     */
+    public String incompatibilityOf(String worldName) {
+        WorldData data = getWorldData(worldName);
+        if (data == null) {
+            return null;
+        }
+        var check = com.stonebreak.world.save.WorldFormat.check(data, WorldStorage.worldDir(worldName));
+        return check.compatible() ? null : check.reason();
     }
 
     // ===== METADATA MANAGEMENT =====
@@ -160,13 +162,17 @@ public class WorldDiscoveryManager {
      */
     private WorldData loadWorldData(String worldName) {
         try {
-            Path worldDataPath = WorldStorage.worldDir(worldName).resolve(WORLD_DATA_FILENAME);
-
+            Path dir = WorldStorage.worldDir(worldName);
+            Path worldDataPath = dir.resolve(WORLD_DATA_FILENAME);
+            if (!Files.exists(worldDataPath)) {
+                worldDataPath = dir.resolve("metadata.json"); // a world whose creation record is lost
+            }
             if (!Files.exists(worldDataPath)) {
                 return null;
             }
 
-            return objectMapper.readValue(worldDataPath.toFile(), WorldData.class);
+            return new com.stonebreak.world.save.serialization.JsonWorldSerializer()
+                .deserialize(Files.readAllBytes(worldDataPath));
 
         } catch (IOException e) {
             System.err.println("Error loading world data for world '" + worldName + "': " + e.getMessage());

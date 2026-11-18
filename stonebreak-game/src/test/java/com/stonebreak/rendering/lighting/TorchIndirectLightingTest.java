@@ -1,48 +1,36 @@
 package com.stonebreak.rendering.lighting;
 
-import com.openmason.engine.voxel.cco.data.CcoChunkMetadata;
-import com.openmason.engine.voxel.cco.data.CcoDirtyTracker;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
+/** Indirect bounce volumes over a detached cube world (native Cenda voxel world required). */
 class TorchIndirectLightingTest {
-    @Test void cachesStationaryLightButDetectsOpacityEditsAndChunkUnload() {
-        World world = mock(World.class);
-        Chunk chunk = mock(Chunk.class);
-        CcoDirtyTracker dirty = new CcoDirtyTracker();
-        when(world.getChunkIfLoaded(anyInt(), anyInt())).thenReturn(chunk);
-        when(chunk.getCcoMetadata()).thenReturn(CcoChunkMetadata.forNewChunk(0, 0));
-        when(chunk.getCcoDirtyTracker()).thenReturn(dirty);
-        when(chunk.getBlock(anyInt(), anyInt(), anyInt())).thenReturn(BlockType.AIR);
-        TorchIndirectLighting.Entry cache = new TorchIndirectLighting.Entry();
-        Vector3f position = new Vector3f(-.2f, 64.6f, -16.2f);
-        assertTrue(cache.update(world, position));
-        clearInvocations(chunk);
-        assertFalse(cache.update(world, position));
-        verify(chunk, never()).getBlock(anyInt(), anyInt(), anyInt());
-        dirty.markBlockChanged();
-        assertFalse(cache.update(world, position), "opacity-neutral edits do not rebuild radiance");
-        when(chunk.getBlock(anyInt(), eq(62), anyInt())).thenReturn(BlockType.DIRT);
-        dirty.markBlockChanged();
-        assertTrue(cache.update(world, position));
-        assertTrue(java.util.stream.IntStream.range(0, cache.volume.data().length)
-                .anyMatch(i -> cache.volume.data()[i] > 0), "new floor reflects light");
-        dirty.clearAll();
-        assertFalse(cache.update(world, position), "clearing save/remesh flags is not a lighting change");
-        when(chunk.getBlock(anyInt(), eq(62), anyInt())).thenReturn(BlockType.AIR);
-        dirty.markBlockChanged();
-        assertTrue(cache.update(world, position), "another edit is visible even with identical metadata");
-        for (float value : cache.volume.data()) assertEquals(0, value, "removed reflector leaves no stale light");
-        assertFalse(cache.update(world, new Vector3f(position).add(.01f, 0, 0)), "sub-probe motion reuses indirect fill");
-        assertTrue(cache.update(world, new Vector3f(position).add(.3f, 0, 0)), "moving held light updates");
-        when(world.getChunkIfLoaded(anyInt(), anyInt())).thenReturn(null);
-        assertTrue(cache.update(world, position));
-        for (float value : cache.volume.data()) assertEquals(0, value);
-        verify(world, never()).getChunkAt(anyInt(), anyInt());
+    @Test void cachesStationaryLightButDetectsOpacityEdits() {
+        World world = World.createDetached(new WorldConfiguration(), 1L);
+        try {
+            TorchIndirectLighting.Entry cache = new TorchIndirectLighting.Entry();
+            Vector3f position = new Vector3f(-.2f, 64.6f, -16.2f);
+            assertTrue(cache.update(world, position));
+            assertFalse(cache.update(world, position), "nothing changed");
+            for (int x = -3; x <= 3; x++) for (int z = -20; z <= -14; z++) world.setBlockAt(x, 62, z, BlockType.DIRT);
+            assertTrue(cache.update(world, position));
+            assertTrue(java.util.stream.IntStream.range(0, cache.volume.data().length)
+                    .anyMatch(i -> cache.volume.data()[i] > 0), "new floor reflects light");
+            // A flower on the floor: its cube exists and the cells above it stay known air (above the column
+            // top), so nothing about occupancy or reflectance changes.
+            world.setBlockAt(0, 63, -17, BlockType.ROSE);
+            assertFalse(cache.update(world, position), "opacity-neutral edits do not rebuild radiance");
+            for (int x = -3; x <= 3; x++) for (int z = -20; z <= -14; z++) world.setBlockAt(x, 62, z, BlockType.AIR);
+            assertTrue(cache.update(world, position), "removing the reflector is visible");
+            for (float value : cache.volume.data()) assertEquals(0, value, "removed reflector leaves no stale light");
+            assertFalse(cache.update(world, new Vector3f(position).add(.01f, 0, 0)), "sub-probe motion reuses indirect fill");
+            assertTrue(cache.update(world, new Vector3f(position).add(.3f, 0, 0)), "moving held light updates");
+        } finally {
+            world.cleanup();
+        }
     }
 }

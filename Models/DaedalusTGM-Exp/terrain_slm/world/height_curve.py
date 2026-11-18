@@ -30,8 +30,9 @@ import numpy as np
 
 
 # The integration grid. Wide enough that both endpoints already fall outside
-# the block column (asserted in _curve_table), so np.interp's edge clamping can
-# never invent an in-range block height for an out-of-range elevation.
+# the block column (asserted in _curve_table, which widens it for deep columns),
+# so np.interp's edge clamping can never invent an in-range block height for an
+# out-of-range elevation.
 _TABLE_MIN_M = -20000.0
 _TABLE_MAX_M = 20000.0
 _TABLE_STEP_M = 1.0
@@ -70,6 +71,8 @@ class HeightCurve:
     highland_blend_m: float
     sea_level: int
     world_height: int
+    #: Bottom of the block column (inclusive); heights clamp to [min_y, world_height - 1].
+    min_y: int = 0
 
     def __post_init__(self) -> None:
         rates = (
@@ -117,6 +120,7 @@ class HeightCurve:
             highland_blend_m=w.highland_blend_m,
             sea_level=w.sea_level,
             world_height=w.world_height,
+            min_y=getattr(w, "min_y", 0),
         )
 
     def rate(self, elev_m: np.ndarray) -> np.ndarray:
@@ -145,7 +149,7 @@ class HeightCurve:
 
     def to_block_height(self, elev_m: np.ndarray) -> np.ndarray:
         blocks = np.floor(self.to_block_height_exact(elev_m))
-        return np.clip(blocks, 0, self.world_height - 1).astype(np.int16)
+        return np.clip(blocks, self.min_y, self.world_height - 1).astype(np.int16)
 
     def to_elevation(self, block_height: np.ndarray) -> np.ndarray:
         """Inverse: block height back to elevation in metres.
@@ -153,28 +157,42 @@ class HeightCurve:
         The table is strictly increasing, so this is well defined, but it is only
         a left inverse of `to_block_height` -- that one floors and clamps, so what
         comes back is the *bottom* of the block's elevation band, and a column
-        clamped at 0 or `world_height - 1` is unrecoverable. For reading a tile
+        clamped at `min_y` or `world_height - 1` is unrecoverable. For reading a tile
         cache back as a DEM or building test fixtures, not for round-tripping.
         """
         elev_grid, block_grid = _curve_table(self)
         return np.interp(np.asarray(block_height, dtype=np.float64), block_grid, elev_grid)
 
 
-@lru_cache(maxsize=8)
-def _curve_table(curve: HeightCurve) -> tuple[np.ndarray, np.ndarray]:
-    """Integrate 1/m(e) onto a fixed grid. Memoized per distinct knob set."""
-    elev = np.arange(_TABLE_MIN_M, _TABLE_MAX_M + _TABLE_STEP_M, _TABLE_STEP_M)
+def _integrate(curve: HeightCurve, lo_m: float, hi_m: float) -> tuple[np.ndarray, np.ndarray]:
+    elev = np.arange(lo_m, hi_m + _TABLE_STEP_M, _TABLE_STEP_M)
     inv_rate = 1.0 / curve.rate(elev)
     # Cumulative trapezoid, then anchored so elevation 0 lands exactly on sea level.
     blocks = np.concatenate(
         [[0.0], np.cumsum(0.5 * (inv_rate[1:] + inv_rate[:-1]) * _TABLE_STEP_M)]
     )
-    blocks = blocks - np.interp(0.0, elev, blocks) + curve.sea_level
+    return elev, blocks - np.interp(0.0, elev, blocks) + curve.sea_level
 
-    if blocks[0] > 0.0 or blocks[-1] < curve.world_height - 1:
+
+@lru_cache(maxsize=8)
+def _curve_table(curve: HeightCurve) -> tuple[np.ndarray, np.ndarray]:
+    """Integrate 1/m(e) onto a fixed grid. Memoized per distinct knob set.
+
+    The grid is +-20 km (bit-identical tables for every column that fits in it); a deeper or taller column
+    (the cubic world's min_y -384) widens the side that falls short, doubling up to +-320 km."""
+    lo_m, hi_m = _TABLE_MIN_M, _TABLE_MAX_M
+    elev, blocks = _integrate(curve, lo_m, hi_m)
+    while (blocks[0] > curve.min_y or blocks[-1] < curve.world_height - 1) and hi_m - lo_m < 640000.0:
+        if blocks[0] > curve.min_y:
+            lo_m *= 2.0
+        if blocks[-1] < curve.world_height - 1:
+            hi_m *= 2.0
+        elev, blocks = _integrate(curve, lo_m, hi_m)
+
+    if blocks[0] > curve.min_y or blocks[-1] < curve.world_height - 1:
         raise ValueError(
-            f"curve does not span the block column within +-{_TABLE_MAX_M:.0f} m "
-            f"(spans y {blocks[0]:.1f}..{blocks[-1]:.1f}, need 0..{curve.world_height - 1}); "
+            f"curve does not span the block column within {lo_m:.0f}..{hi_m:.0f} m "
+            f"(spans y {blocks[0]:.1f}..{blocks[-1]:.1f}, need {curve.min_y}..{curve.world_height - 1}); "
             "np.interp would clamp an out-of-range elevation to an in-range block height"
         )
     return elev, blocks

@@ -51,7 +51,7 @@ class BattleTestRenderTest {
         glViewport(0, 0, w, h);
         glClearColor(1, 0, 1, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        renderer.render(mesh, projection, new Matrix4f().lookAt(eye, target, new Vector3f(0, 1, 0)), eye, 25);
+        renderer.render(mesh, projection, new Matrix4f().lookAt(eye, target, new Vector3f(0, 1, 0)), new org.joml.Vector3d(eye), 25);
         var pixels = memAlloc(w * h * 4);
         try {
             glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels);

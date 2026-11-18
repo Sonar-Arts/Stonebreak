@@ -33,10 +33,10 @@ final class EntityAttachmentRenderer {
     void render(Object entityKey,
                 com.openmason.engine.entity.model.EntityAsset hostAsset,
                 String variantName, com.stonebreak.mobs.sbe.AnimState anim,
-                Vector3f position, float yawDegrees, Vector3f scale,
+                org.joml.Vector3dc position, float yawDegrees, Vector3f scale,
                 float headYawDeg, float headPitchDeg,
                 Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                com.stonebreak.world.World world, Vector3f cameraPos) {
+                com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         java.util.List<com.stonebreak.mobs.sbe.EntityAttachments.Attached> attached =
                 com.stonebreak.mobs.sbe.EntityAttachments.get(entityKey);
         if (attached.isEmpty() || hostAsset == null) return;
@@ -59,7 +59,7 @@ final class EntityAttachmentRenderer {
 
     private void renderModel(AttachmentVisual.Model model, Matrix4f socket,
                              Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                             com.stonebreak.world.World world, Vector3f cameraPos) {
+                             com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         if (SbeRenderSupport.isTextured(model.asset())) {
             sbeEntityRenderer.render(model.asset(), model.variant(), null, socket,
                     viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);

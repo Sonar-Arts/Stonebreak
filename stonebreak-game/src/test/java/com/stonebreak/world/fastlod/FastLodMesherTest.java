@@ -3,7 +3,6 @@ package com.stonebreak.world.fastlod;
 import com.openmason.engine.voxel.mms.mmsCore.MmsMeshData;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.textures.BlockTextureArray;
-import com.stonebreak.world.generation.diffusion.TerrainTile;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeKind;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -30,7 +29,7 @@ import static org.mockito.Mockito.when;
  * culling — wrong bounds cull visible terrain or draw hidden nodes).
  *
  * <p>Geometry counting notes: every cell edge on the node border emits a dark
- * foundation wall down to y=0 (crack backing + underground sightline seal), so
+ * foundation wall below the lower column (crack backing + underground sightline seal), so
  * an L4 node (one cell) always carries 4 foundation quads and an L{n} node
  * carries 4 × cellsPerAxis. Foundation verts are the ones with light == 0.
  */
@@ -61,7 +60,7 @@ class FastLodMesherTest {
 
     /** L4 data: one dry cell, margin-extended 3x3 heights, single surface block. */
     private static FastLodChunkData l4Data(int[] heights3x3, BlockType surface) {
-        return l4Data(heights3x3, surface, TerrainTile.NO_WATER);
+        return l4Data(heights3x3, surface, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
     }
 
     /** As above, with an explicit water level for the one interior cell. */
@@ -105,7 +104,7 @@ class FastLodMesherTest {
         for (float w : mesh.getWaterHeightFlags()) assertEquals(0f, w, EPS);
         for (float a : mesh.getAlphaTestFlags()) assertEquals(0f, a, EPS);
         for (float t : mesh.getTranslucentFlags()) assertEquals(0f, t, EPS);
-        assertEquals(0f, result.minY(), EPS, "foundations reach y=0");
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL + 6), result.minY(), EPS, "foundations reach below the column");
         assertEquals((SEA_LEVEL + 6f), result.maxY(), EPS);
     }
 
@@ -135,7 +134,7 @@ class FastLodMesherTest {
         }
         assertEquals((SEA_LEVEL + 16f), skirtTop, EPS);
         assertEquals((SEA_LEVEL + 6f), skirtBottom, EPS);
-        assertEquals(0f, result.minY(), EPS);
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL + 6), result.minY(), EPS);
         assertEquals((SEA_LEVEL + 16f), result.maxY(), EPS);
     }
 
@@ -165,7 +164,7 @@ class FastLodMesherTest {
                     "sheet must match the native water surface (block base + 0.875)");
         }
         // Combined bounds: sheet above the seabed, foundations down to 0.
-        assertEquals(0f, result.minY(), EPS);
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL - 14), result.minY(), EPS);
         assertEquals(SEA_SURFACE_Y, result.maxY(), EPS);
     }
 
@@ -226,7 +225,7 @@ class FastLodMesherTest {
             skirtBottom = Math.min(skirtBottom, pos[v * 3 + 1]);
         }
         assertEquals((SEA_LEVEL - 14f), skirtBottom, EPS);
-        assertEquals(0f, result.minY(), EPS);
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL - 14), result.minY(), EPS);
     }
 
     @Test
@@ -236,7 +235,7 @@ class FastLodMesherTest {
         // interior cell edges emit nothing.
         FastLodLevel level = FastLodLevel.L2;
         int[] heights = filled(level.heightCount(), (SEA_LEVEL + 6));
-        int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
+        int[] waterLevels = filled(level.cellCount(), com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.STONE);
         FastLodChunkData data = new FastLodChunkData(
@@ -254,11 +253,11 @@ class FastLodMesherTest {
         for (int v = 0; v < mesh.getVertexCount(); v++) {
             if (Math.abs(light[v]) > EPS) continue;
             float x = pos[v * 3], y = pos[v * 3 + 1], z = pos[v * 3 + 2];
-            assertTrue(y == 0f || y == (SEA_LEVEL + 6f), "foundation verts at top or y=0, got " + y);
+            assertTrue(y == FastLodMesher.foundationBottom(SEA_LEVEL + 6) || y == (SEA_LEVEL + 6f), "foundation verts at top or bottom, got " + y);
             boolean onBoundary = x == 0f || x == 16f || z == 0f || z == 16f;
             assertTrue(onBoundary, "foundation off the node boundary at " + x + "," + z);
         }
-        assertEquals(0f, result.minY(), EPS);
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL + 6), result.minY(), EPS);
     }
 
     @Test
@@ -274,7 +273,7 @@ class FastLodMesherTest {
                 heights[hx * level.stride() + hz] = (SEA_LEVEL + 16) + 4 * (hx - 1);
             }
         }
-        int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
+        int[] waterLevels = filled(level.cellCount(), com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.STONE);
         FastLodChunkData data = new FastLodChunkData(
@@ -305,7 +304,7 @@ class FastLodMesherTest {
     void treeSilhouetteEmittedAndBoundsIncludeCanopy() {
         FastLodLevel level = FastLodLevel.L0;
         int[] heights = filled(level.heightCount(), (SEA_LEVEL + 6));
-        int[] waterLevels = filled(level.cellCount(), TerrainTile.NO_WATER);
+        int[] waterLevels = filled(level.cellCount(), com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
         BlockType[] surface = new BlockType[level.cellCount()];
         Arrays.fill(surface, BlockType.GRASS);
         TreeSample[] trees = new TreeSample[level.cellCount()];
@@ -319,7 +318,7 @@ class FastLodMesherTest {
         assertEquals((256 + 9 + 64) * 4, result.mesh().getVertexCount());
         // Canopy top: trunkTop(SEA_LEVEL+10) + 1 + CANOPY_HALF_HEIGHT(1.5).
         assertEquals((SEA_LEVEL + 12.5f), result.maxY(), EPS);
-        assertEquals(0f, result.minY(), EPS);
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL + 6), result.minY(), EPS);
     }
 
     /**
@@ -360,8 +359,8 @@ class FastLodMesherTest {
         heights[(0 + 1) * 4 + (0 + 1)] = (SEA_LEVEL + 56);
         heights[(1 + 1) * 4 + (1 + 1)] = (SEA_LEVEL - 34);
         int[] waterLevels = new int[]{
-                TerrainTile.NO_WATER, TerrainTile.NO_WATER,
-                TerrainTile.NO_WATER, SEA_LEVEL};
+                com.stonebreak.world.operations.WorldConfiguration.NO_WATER, com.stonebreak.world.operations.WorldConfiguration.NO_WATER,
+                com.stonebreak.world.operations.WorldConfiguration.NO_WATER, SEA_LEVEL};
         BlockType[] surface = new BlockType[]{
                 BlockType.STONE, BlockType.STONE,
                 BlockType.STONE, BlockType.SAND};
@@ -370,7 +369,7 @@ class FastLodMesherTest {
 
         FastLodMesher.Result result = mesher.build(data);
         assertEquals((SEA_LEVEL + 56f), result.maxY(), EPS);
-        assertEquals(0f, result.minY(), EPS);
+        assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL - 34), result.minY(), EPS);
         assertNotNull(result.waterMesh(), "one submerged cell → sheet quad");
         assertEquals(4, result.waterMesh().getVertexCount());
         assertTrue(result.mesh().getVertexCount() > 0);
@@ -391,7 +390,7 @@ class FastLodMesherTest {
             int[] heights = filled(level.heightCount(), 80);
             BlockType[] surface = new BlockType[level.cellCount()];
             Arrays.fill(surface, BlockType.GRASS);
-            int[] dry = filled(level.cellCount(), TerrainTile.NO_WATER);
+            int[] dry = filled(level.cellCount(), com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
             FastLodKey key = FastLodKey.of(level, 0, 0, true, true);
             MmsMeshData bare = mesher.build(new FastLodChunkData(key, heights, dry, surface, null, null, null,
                 new int[0])).mesh();

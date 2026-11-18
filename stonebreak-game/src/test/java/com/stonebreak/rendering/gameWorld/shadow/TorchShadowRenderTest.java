@@ -65,11 +65,11 @@ class TorchShadowRenderTest {
                     + "\nout vec4 color; void main(){color=vec4(pointLightContribution(vec3(1),vec3(0,1,0),1.0),1);}");
             receiver.link();
             for (int frame = 0; frame < 2; frame++) {
-                com.stonebreak.rendering.lighting.DynamicLights.update(world, null, new Vector3f(), frame);
+                com.stonebreak.rendering.lighting.DynamicLights.update(world, null, new org.joml.Vector3d(), frame);
                 glViewport(2, 3, 17, 19);
                 glEnable(GL_BLEND);
                 glDisable(GL_DEPTH_TEST);
-                renderer.render(world, null, java.util.List.of(), entities, animated, frame);
+                renderer.render(world, null, entities, animated, frame);
                 int[] viewport = new int[4];
                 glGetIntegerv(GL_VIEWPORT, viewport);
                 assertArrayEquals(new int[]{2, 3, 17, 19}, viewport);
@@ -84,11 +84,11 @@ class TorchShadowRenderTest {
             }
             // The stationary light/terrain is cached on frame two, but moving actors still
             // render into every face on BOTH frames, independently of daylight.
-            verify(entities, times(12)).renderShadowCasters(isNull(), any(), any(), any(), eq(9.5f));
+            verify(entities, times(12)).renderShadowCasters(isNull(), any(), any(), any(), any(), eq(9.5f));
             verify(animated, times(12)).renderShadowCasters(eq(world), any(), any(), any(), eq(9.5f), anyFloat());
             settings.setShadowsEnabled(false);
-            com.stonebreak.rendering.lighting.DynamicLights.update(world, null, new Vector3f(), 2);
-            renderer.render(world, null, java.util.List.of(), entities, animated, 2);
+            com.stonebreak.rendering.lighting.DynamicLights.update(world, null, new org.joml.Vector3d(), 2);
+            renderer.render(world, null, entities, animated, 2);
             receiver.bind();
             com.stonebreak.rendering.lighting.DynamicLights.applyTo(receiver);
             assertEquals(0, glGetUniformi(receiver.getProgramId(), glGetUniformLocation(receiver.getProgramId(), "u_pointShadowsEnabled")));
@@ -134,7 +134,10 @@ class TorchShadowRenderTest {
                     uniform vec3 samplePosition;
                     out vec4 color;
                     void main() {
-                        float visibility = pointShadowVisibility(samplePosition, vec3(0), vec3(0), 9.5, 0);
+                        // A receiver facing the light (the production convention): with a zero normal the
+                        // shader has no receiver plane and answers "lit" (its tangency guard).
+                        vec3 normal = normalize(-samplePosition);
+                        float visibility = pointShadowVisibility(samplePosition, normal, vec3(0), 9.5, 0);
                         color = vec4(vec3(visibility), 1);
                     }
                     """);

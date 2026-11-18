@@ -5,7 +5,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.List;
 
@@ -52,7 +52,7 @@ public class AwarenessMarkers {
                 default -> { continue; }
             }
 
-            Vector3f pos = entity.getPosition();
+            Vector3d pos = entity.getPosition();
             float[] screen = WorldMarker.project(vp, pos.x,
                     pos.y + entity.getType().getHeight() + HEAD_OFFSET, pos.z, screenW, screenH);
             if (screen == null) continue;

@@ -45,7 +45,7 @@ class DeathScatterTest {
         EntityManager em = Mockito.spy(new EntityManager(world));
         when(ctx.world()).thenReturn(world);
         when(ctx.entityManager()).thenReturn(em);
-        when(ctx.spawn()).thenReturn(new Vector3f(0f, 80f, 0f));
+        when(ctx.spawn()).thenReturn(new org.joml.Vector3d(0, 80, 0));
         return new Fakes(ctx, world, em);
     }
 

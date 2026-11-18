@@ -4,6 +4,7 @@ import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
 import com.stonebreak.network.packet.SequencedIntent;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -25,7 +26,7 @@ import io.netty.buffer.ByteBuf;
  * <p>{@code seq} numbers an arrow ({@link SequencedIntent}): the client took the arrow out of
  * its mirror when it fired. Other kinds cost nothing and send 0.
  */
-public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
+public record ProjectileSpawnC2S(byte kind, double x, double y, double z,
                                  float vx, float vy, float vz, float[] params, int seq)
         implements Packet, SequencedIntent {
 
@@ -39,7 +40,7 @@ public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
     public static final int MAX_PARAMS = 8;
 
     /** An unnumbered launch. */
-    public ProjectileSpawnC2S(byte kind, float x, float y, float z,
+    public ProjectileSpawnC2S(byte kind, double x, double y, double z,
                               float vx, float vy, float vz, float[] params) {
         this(kind, x, y, z, vx, vy, vz, params, 0);
     }
@@ -48,9 +49,7 @@ public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
         @Override
         public void encode(ByteBuf out, ProjectileSpawnC2S p) {
             out.writeByte(p.kind());
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
             out.writeFloat(p.vx());
             out.writeFloat(p.vy());
             out.writeFloat(p.vz());
@@ -65,9 +64,9 @@ public record ProjectileSpawnC2S(byte kind, float x, float y, float z,
         @Override
         public ProjectileSpawnC2S decode(ByteBuf in) {
             byte kind = in.readByte();
-            float x = in.readFloat();
-            float y = in.readFloat();
-            float z = in.readFloat();
+            double x = NetCoords.readPosition(in);
+            double y = NetCoords.readPosition(in);
+            double z = NetCoords.readPosition(in);
             float vx = in.readFloat();
             float vy = in.readFloat();
             float vz = in.readFloat();

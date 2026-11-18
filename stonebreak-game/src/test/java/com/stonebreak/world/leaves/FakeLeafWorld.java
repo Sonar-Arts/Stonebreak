@@ -8,7 +8,7 @@ import com.stonebreak.blocks.BlockType;
 /**
  * In-memory {@link LeafWorld} for exercising {@link LeafDecaySystem} without a
  * World: a bounded region of blocks. Positions outside the region are unloaded
- * ({@code isLoaded} false, AIR) mirroring the game's unloaded-chunk contract.
+ * ({@code isLoaded} false, AIR) mirroring the game's unknown-cell contract.
  */
 final class FakeLeafWorld implements LeafWorld {
 
@@ -40,18 +40,28 @@ final class FakeLeafWorld implements LeafWorld {
         }
     }
 
-    private boolean inRegion(int x, int y, int z) {
+    private boolean inRegion(long x, long y, long z) {
         return x >= 0 && x < sizeX && y >= 0 && y < sizeY && z >= 0 && z < sizeZ;
     }
 
     @Override
-    public BlockType getBlock(int x, int y, int z) {
-        return inRegion(x, y, z) ? blocks[x][y][z] : BlockType.AIR;
+    public BlockType getBlock(long x, long y, long z) {
+        return inRegion(x, y, z) ? blocks[(int) x][(int) y][(int) z] : BlockType.AIR;
     }
 
     @Override
-    public boolean isLoaded(int x, int y, int z) {
+    public boolean isLoaded(long x, long y, long z) {
         return inRegion(x, y, z);
+    }
+
+    @Override
+    public long minY() {
+        return 0;
+    }
+
+    @Override
+    public long maxY() {
+        return sizeY;
     }
 
     /**
@@ -71,7 +81,7 @@ final class FakeLeafWorld implements LeafWorld {
         return physics;
     }
 
-    private boolean fill(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+    private boolean fill(long x0, long y0, long z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
         for (int y = 0; y < sy; y++) {
             for (int z = 0; z < sz; z++) {
                 for (int x = 0; x < sx; x++) {
@@ -88,17 +98,17 @@ final class FakeLeafWorld implements LeafWorld {
     }
 
     @Override
-    public void setBlock(int x, int y, int z, BlockType type) {
+    public void setBlock(long x, long y, long z, BlockType type) {
         if (!inRegion(x, y, z)) {
             return;
         }
-        BlockType previous = blocks[x][y][z];
-        blocks[x][y][z] = type;
+        BlockType previous = blocks[(int) x][(int) y][(int) z];
+        blocks[(int) x][(int) y][(int) z] = type;
         if (physics != null) {
             physics.invalidateCell(x, y, z); // as World.setBlockAt keeps the real cache honest
         }
         if (previous != null && previous.isLeaves() && type == BlockType.AIR) {
-            removals.add(new int[]{x, y, z});
+            removals.add(new int[]{(int) x, (int) y, (int) z});
         }
     }
 

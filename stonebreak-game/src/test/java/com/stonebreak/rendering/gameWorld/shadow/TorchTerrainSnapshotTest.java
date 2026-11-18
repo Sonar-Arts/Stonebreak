@@ -1,49 +1,35 @@
 package com.stonebreak.rendering.gameWorld.shadow;
 
-import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
-import com.openmason.engine.voxel.mms.mmsRegion.MmsRegionMeshHandle;
-import com.stonebreak.world.chunk.Chunk;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
+/** The snapshot compares mesh identities (a cube's CubeDraw is a new instance on every remesh). */
 class TorchTerrainSnapshotTest {
     @Test
-    void blockEditsInvalidateBothLegacyAndRegionMeshesIncludingStamps() {
-        Chunk chunk = mock(Chunk.class);
-        List<Chunk> chunks = List.of(chunk);
+    void meshReplacementsInvalidateTheCachedDepth() {
+        Object mesh = new Object();
         TorchTerrainSnapshot snapshot = new TorchTerrainSnapshot();
-        assertFalse(snapshot.matches(chunks));
-        snapshot.capture(chunks);
-        assertTrue(snapshot.matches(chunks));
+        assertFalse(snapshot.matches(List.of(mesh)));
+        snapshot.capture(List.of(mesh));
+        assertTrue(snapshot.matches(List.of(mesh)));
 
-        when(chunk.getMmsRenderableHandle()).thenReturn(mock(MmsRenderableHandle.class));
-        assertFalse(snapshot.matches(chunks));
-        snapshot.capture(chunks);
-        assertTrue(snapshot.matches(chunks));
-        when(chunk.getRegionAtlasHandle()).thenReturn(mock(MmsRegionMeshHandle.class));
-        assertFalse(snapshot.matches(chunks));
-        snapshot.capture(chunks);
-        when(chunk.getStampRenderableHandle()).thenReturn(mock(MmsRenderableHandle.class));
-        assertFalse(snapshot.matches(chunks));
-        snapshot.capture(chunks);
-        when(chunk.getRegionStampHandle()).thenReturn(mock(MmsRegionMeshHandle.class));
-        assertFalse(snapshot.matches(chunks));
-        snapshot.capture(chunks);
-        when(chunk.getStampRenderableHandle()).thenReturn(null);
-        assertFalse(snapshot.matches(chunks), "removing geometry also clears its cached shadow");
+        Object remeshed = new Object();
+        assertFalse(snapshot.matches(List.of(remeshed)), "a new mesh invalidates the cached shadow");
+        snapshot.capture(List.of(remeshed));
+        assertTrue(snapshot.matches(List.of(remeshed)));
+        assertFalse(snapshot.matches(List.of()), "removing geometry also clears its cached shadow");
     }
 
     @Test
     void streamingAndWorldChangesInvalidateTheCache() {
         TorchTerrainSnapshot snapshot = new TorchTerrainSnapshot();
-        Chunk chunk = mock(Chunk.class);
-        snapshot.capture(List.of(chunk));
-        assertFalse(snapshot.matches(List.of()));
-        assertFalse(snapshot.matches(List.of(mock(Chunk.class))));
+        Object a = new Object(), b = new Object();
+        snapshot.capture(List.of(a, b));
+        assertFalse(snapshot.matches(List.of(b, a)), "order is part of the identity");
+        assertFalse(snapshot.matches(List.of(a)));
         snapshot.clear();
-        assertFalse(snapshot.matches(List.of(chunk)));
+        assertFalse(snapshot.matches(List.of(a, b)));
         snapshot.capture(List.of());
         assertTrue(snapshot.matches(List.of()));
     }
