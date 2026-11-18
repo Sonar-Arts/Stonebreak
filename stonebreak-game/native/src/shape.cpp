@@ -37,8 +37,6 @@ const Fitted P;
 constexpr double FBM_STD2 = 0.405, FBM_STD3 = 0.3555, FBM_STD4 = 0.3337;
 constexpr int LATTICE = 16;
 enum Ch { CONT = 0, WARP_X, WARP_Z, RANGE, SPUR, ALONG, HILLS, HILLY, VALLEY, TEXTURE, DETAIL, CHANNELS };
-constexpr int SEED_OFFSET[CHANNELS] = {2, 21, 22, 8, 23, 24, 25, 26, 27, 28, 3};
-constexpr int OCTAVES[CHANNELS] = {4, 2, 2, 2, 2, 2, 4, 3, 4, 4, 3};
 
 double bell(double u) { const double t = std::max(1.0 - u / 3.0, 0.0); return t * t * t; }
 double smoothstep(double x) { const double t = std::max(0.0, std::min(1.0, x)); return t * t * (3.0 - 2.0 * t); }
