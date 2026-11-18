@@ -10,8 +10,8 @@ import java.util.List;
  * Plans a way in to a cave that has none: a staircase rising one block per step from the site,
  * straight out in one of the four directions, until it comes up under open sky. Each step clears
  * three cells — feet, head, and the headroom to step up into the next. Directions that would dig
- * into water, bedrock, unloaded ground or anything built ({@link NaturalGround}) are refused; the
- * shortest of the rest wins.
+ * into water, rock (goblins dig only soil), unloaded ground or anything built ({@link NaturalGround})
+ * are refused; the shortest of the rest wins.
  */
 public final class EntrancePlanner {
 
@@ -43,8 +43,9 @@ public final class EntrancePlanner {
             int z = site.z + dz * k;
             for (int h = 0; h < 3; h++) {
                 BlockType b = terrain.block(x, y + h, z);
-                if (b == null || b == BlockType.WATER || b == BlockType.BEDROCK || !NaturalGround.isNatural(b)) {
-                    return null; // never into water or bedrock, nor through anything someone built
+                if (b == null || b == BlockType.WATER || !NaturalGround.isNatural(b)
+                        || (b.isSolid() && !NaturalGround.isDiggable(b))) {
+                    return null; // never into water or rock, nor through anything someone built
                 }
                 if (b.isSolid()) {
                     fromSite.add(new Vector3i(x, y + h, z));

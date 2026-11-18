@@ -30,8 +30,8 @@ import java.util.Set;
  * {@link Task#HUNT hunting}: one quarry at a time, shared by every member, until there is a meal
  * for each of them — a sheep feeds two, a cow three — then it rests before hunting again.
  *
- * <p>A pack with no camp looks for one — a dark cave near the surface ({@link CampSiteFinder}) —
- * and its leader makes camp there. A camp's pack eats from, and hunts to fill, the camp's stash;
+ * <p>A pack with no camp looks for one — a cave or overhang it can walk into, or failing that a
+ * den it digs in soil ({@link CampSiteFinder}) — and its leader makes camp there. A camp's pack eats from, and hunts to fill, the camp's stash;
  * it prefers to hunt at night, and goes out by day only when the stores are nearly bare.
  *
  * <p>Server-side only: client shadows never build or tick a pack.

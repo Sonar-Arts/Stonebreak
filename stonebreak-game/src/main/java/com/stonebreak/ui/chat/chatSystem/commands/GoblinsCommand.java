@@ -8,7 +8,8 @@ import com.stonebreak.ui.chat.chatSystem.commands.util.ChatColors;
  * quarry and how long until they may hunt again. A debugging aid, executed ON THE SERVER where
  * the packs live; needs cheats.
  *
- * Usage: /goblins
+ * Usage: /goblins — or /goblins grow &lt;n&gt; to give the nearest camp n more goblins, to watch it
+ * grow and build its walls.
  */
 public class GoblinsCommand implements ChatCommand {
 

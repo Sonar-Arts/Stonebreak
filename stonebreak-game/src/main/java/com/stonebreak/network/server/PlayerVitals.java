@@ -46,6 +46,8 @@ public final class PlayerVitals {
     private float fallApexY;
 
     private float cactusTimer;
+    /** Seconds until a spiked wall may prick this player again. */
+    private float spikeCooldown;
 
     /** Seconds of burning left, and its damage per second (a Vestige's fire, say). */
     private float burnSeconds;
@@ -232,6 +234,19 @@ public final class PlayerVitals {
             damage += damagePerPulse;
         }
         return damage;
+    }
+
+    /**
+     * Advances spiked-wall contact by {@code dt} seconds: whether the player, {@code touching} a
+     * wall's points, is pricked now — at most once per {@code cooldown}.
+     */
+    public boolean onSpikeContact(boolean touching, float dt, long nowNs, float cooldown) {
+        spikeCooldown = Math.max(0f, spikeCooldown - dt);
+        if (!touching || spikeCooldown > 0f || isProtected(nowNs)) {
+            return false;
+        }
+        spikeCooldown = cooldown;
+        return true;
     }
 
     /** Burn pulses land this far apart, like cactus pulses. */

@@ -79,6 +79,7 @@ public class World {
     private final com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth;
     private final com.stonebreak.world.growth.BlueberryBushGrowthSystem blueberryBushGrowth;
     private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
+    private final com.stonebreak.blocks.palisade.SpikeContactSystem spikeContact;
     private final com.stonebreak.world.generation.features.FeatureQueue featureQueue;
 
     // Extracted collaborators (see their class docs): mesh scheduling, FastLOD lifecycle,
@@ -317,6 +318,7 @@ public class World {
 
         this.meshScheduler = new ChunkMeshScheduler(meshPipeline, neighborCoordinator, chunkStore);
         this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
+        this.spikeContact = new com.stonebreak.blocks.palisade.SpikeContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, terrainSystem);
         this.networkChunkInstaller = new NetworkChunkInstaller(
                 chunkStore, snowLayerManager, furnaceRegistry, java.util.List.of(workbenchRegistry, chestRegistry, meatRackRegistry), animatedBlockRegistry, meshScheduler);
@@ -1442,6 +1444,11 @@ public class World {
      */
     public com.stonebreak.blocks.campfire.CampfireRegistry getCampfireRegistry() {
         return campfireRegistry;
+    }
+
+    /** Spiked wall contact damage for this world's mobs (authoritative worlds tick it). */
+    public com.stonebreak.blocks.palisade.SpikeContactSystem spikeContact() {
+        return spikeContact;
     }
 
     /** This world's goblin camps (server-side); never null. */

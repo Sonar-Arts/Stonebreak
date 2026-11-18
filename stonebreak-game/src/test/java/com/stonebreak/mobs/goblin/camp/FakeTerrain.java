@@ -6,8 +6,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A little hand-built world for the camp rules: flat ground of stone with a top at
- * {@link #GROUND_TOP}, air above, and whatever the test digs or builds in between.
+ * A little hand-built world for the camp rules: flat ground with a top at {@link #GROUND_TOP} —
+ * stone, or soil goblins can dig ({@link #soil()}) — air above, and whatever the test digs or
+ * builds in between.
  */
 final class FakeTerrain implements CampTerrain {
 
@@ -15,6 +16,32 @@ final class FakeTerrain implements CampTerrain {
     static final int SIZE = 80; // loaded from -SIZE to SIZE in x and z
 
     private final Map<Long, BlockType> edits = new HashMap<>();
+    private final BlockType ground;
+
+    /** Stone ground: nothing a goblin may dig. */
+    FakeTerrain() {
+        this(BlockType.STONE);
+    }
+
+    private FakeTerrain(BlockType ground) {
+        this.ground = ground;
+    }
+
+    /** Dirt ground: all of it a goblin may dig. */
+    static FakeTerrain soil() {
+        return new FakeTerrain(BlockType.DIRT);
+    }
+
+    /** Fills a box with {@code b} (inclusive bounds). */
+    void fill(int x0, int y0, int z0, int x1, int y1, int z1, BlockType b) {
+        for (int x = x0; x <= x1; x++) {
+            for (int y = y0; y <= y1; y++) {
+                for (int z = z0; z <= z1; z++) {
+                    set(x, y, z, b);
+                }
+            }
+        }
+    }
 
     private static long key(int x, int y, int z) {
         return ((long) (x + 1024) << 40) | ((long) (y + 1024) << 20) | (z + 1024);
@@ -26,13 +53,7 @@ final class FakeTerrain implements CampTerrain {
 
     /** Hollows out a box of air (inclusive bounds). */
     void carve(int x0, int y0, int z0, int x1, int y1, int z1) {
-        for (int x = x0; x <= x1; x++) {
-            for (int y = y0; y <= y1; y++) {
-                for (int z = z0; z <= z1; z++) {
-                    set(x, y, z, BlockType.AIR);
-                }
-            }
-        }
+        fill(x0, y0, z0, x1, y1, z1, BlockType.AIR);
     }
 
     @Override
@@ -47,7 +68,7 @@ final class FakeTerrain implements CampTerrain {
         if (y <= 0) {
             return BlockType.BEDROCK;
         }
-        return y <= GROUND_TOP ? BlockType.STONE : BlockType.AIR;
+        return y <= GROUND_TOP ? ground : BlockType.AIR;
     }
 
     @Override

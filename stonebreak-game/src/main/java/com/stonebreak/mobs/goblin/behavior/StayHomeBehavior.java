@@ -21,6 +21,7 @@ public final class StayHomeBehavior implements Behavior {
 
     private final Goblin goblin;
     private final Vector3f fire = new Vector3f();
+    private final WayHome wayHome = new WayHome();
 
     public StayHomeBehavior(Goblin goblin) {
         this.goblin = goblin;
@@ -47,10 +48,15 @@ public final class StayHomeBehavior implements Behavior {
     }
 
     @Override
+    public void start(AiContext context) {
+        wayHome.reset();
+    }
+
+    @Override
     public void tick(AiContext context, float deltaTime) {
         GoblinCamp camp = goblin.pack().camp();
-        if (camp != null) {
-            context.nav().moveTo(camp.fireCenter(fire), BACK_HOME * 0.75f, SPEED);
+        if (camp != null && !wayHome.check(goblin, context, camp.fireCenter(fire), deltaTime)) {
+            context.nav().moveTo(fire, BACK_HOME * 0.75f, SPEED);
         }
     }
 

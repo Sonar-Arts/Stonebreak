@@ -14,7 +14,9 @@ import java.util.EnumSet;
 
 /**
  * Picks up meat lying about — the pack's kills, or anything a careless player dropped — into the
- * goblin's pockets, which spill again when it dies.
+ * goblin's pockets, which spill again when it dies. A drop it gets no closer to — down a ledge, across
+ * water — is let go after {@link #STALL_SECONDS} and left alone for {@link #IGNORE_SECONDS}, or the
+ * goblin would stand staring at it forever instead of going home.
  */
 public final class CollectMeatBehavior implements Behavior {
 
@@ -24,12 +26,21 @@ public final class CollectMeatBehavior implements Behavior {
     static final float SCAN_SECONDS = 1.0f;
     static final float PICKUP_RANGE = 1.2f;
     private static final float SPEED = 1.1f;
+    /** Seconds without getting a block closer before a drop counts as out of reach. */
+    static final float STALL_SECONDS = 8.0f;
+    /** ...and how long an out-of-reach drop is then ignored. */
+    static final float IGNORE_SECONDS = 60.0f;
 
     private final Goblin goblin;
     private final NearbyEntities nearby;
 
     private ItemDrop target;
     private float scanTimer;
+    private float best;
+    private float stall;
+    private float clock;
+    /** Drops it could not reach, and when it may try them again. */
+    private final java.util.Map<ItemDrop, Float> unreachable = new java.util.HashMap<>();
 
     public CollectMeatBehavior(Goblin goblin, NearbyEntities nearby) {
         this.goblin = goblin;
@@ -49,11 +60,19 @@ public final class CollectMeatBehavior implements Behavior {
     @Override
     public boolean canStart(AiContext context) {
         scanTimer -= context.deltaTime();
+        clock += context.deltaTime();
         if (scanTimer <= 0.0f) {
             scanTimer = SCAN_SECONDS;
+            unreachable.values().removeIf(until -> until < clock);
             target = findMeat();
         }
         return isWanted(target);
+    }
+
+    @Override
+    public void start(AiContext context) {
+        best = Float.MAX_VALUE;
+        stall = 0.0f;
     }
 
     @Override
@@ -63,7 +82,16 @@ public final class CollectMeatBehavior implements Behavior {
 
     @Override
     public void tick(AiContext context, float deltaTime) {
-        if (context.distanceTo(target.getPosition()) > PICKUP_RANGE) {
+        float distance = context.distanceTo(target.getPosition());
+        if (distance > PICKUP_RANGE) {
+            if (distance < best - 1.0f) {
+                best = distance;
+                stall = 0.0f;
+            } else if ((stall += deltaTime) > STALL_SECONDS) {
+                unreachable.put(target, clock + IGNORE_SECONDS); // out of reach: leave it
+                target = null;
+                return;
+            }
             context.nav().moveTo(target.getPosition(), PICKUP_RANGE * 0.5f, SPEED);
             return;
         }
@@ -103,7 +131,7 @@ public final class CollectMeatBehavior implements Behavior {
         ItemDrop best = null;
         float bestDistance = Float.MAX_VALUE;
         for (Entity e : nearby.within(goblin.getPosition(), SCAN_RADIUS)) {
-            if (e instanceof ItemDrop drop && isWanted(drop)) {
+            if (e instanceof ItemDrop drop && isWanted(drop) && !unreachable.containsKey(drop)) {
                 float d = drop.getPosition().distanceSquared(goblin.getPosition());
                 if (d < bestDistance) {
                     bestDistance = d;

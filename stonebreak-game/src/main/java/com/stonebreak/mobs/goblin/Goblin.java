@@ -29,6 +29,7 @@ import com.stonebreak.mobs.goblin.behavior.FightRivalsBehavior;
 import com.stonebreak.mobs.goblin.behavior.HuntPreyBehavior;
 import com.stonebreak.mobs.goblin.behavior.RaidBehavior;
 import com.stonebreak.mobs.goblin.behavior.RivalTarget;
+import com.stonebreak.mobs.goblin.behavior.LoiterBehavior;
 import com.stonebreak.mobs.goblin.behavior.MakeCampBehavior;
 import com.stonebreak.mobs.goblin.behavior.StayHomeBehavior;
 import com.stonebreak.mobs.goblin.behavior.TendCampBehavior;
@@ -116,6 +117,7 @@ public class Goblin extends LivingEntity {
                 new MakeCampBehavior(this),
                 new StayHomeBehavior(this),
                 new FollowLeaderBehavior(this),
+                new LoiterBehavior(this),
                 StandStillBehavior.idle(0.5f, 2.0f, 6.0f),
                 new WanderBehavior(0.5f, 3.0f, 8.0f, 0.8f));
         this.interactionRange = 2.5f;

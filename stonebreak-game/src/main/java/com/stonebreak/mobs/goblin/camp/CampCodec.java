@@ -10,7 +10,8 @@ import java.util.Base64;
 
 /**
  * A camp as text, to keep in its fire's state string: its roster (each goblin's loadout), where its
- * chest is, and whatever it holds outside that chest. Base64url, so nothing inside can clash with the state string's {@code ;} and {@code =}.
+ * chest is, how long it still waits to rebuild after a breakage, and whatever it holds outside that
+ * chest. Base64url, so nothing inside can clash with the state string's {@code ;} and {@code =}.
  * The hunt and hunger bookkeeping is not kept — a thawed camp starts with a clean stomach.
  */
 public final class CampCodec {
@@ -31,6 +32,9 @@ public final class CampCodec {
         if (camp.chest() != null) {
             sb.append("c ").append(camp.chest().x()).append(' ').append(camp.chest().y()).append(' ')
                     .append(camp.chest().z()).append('\n');
+        }
+        if (camp.repairWait() > 0.0f) {
+            sb.append("r ").append(Math.round(camp.repairWait())).append('\n');
         }
         for (ItemStack s : camp.pouch().slots()) { // a chest saves its own slots
             if (s != null && !s.isEmpty()) {
@@ -58,6 +62,12 @@ public final class CampCodec {
                     camp.setChest(new BlockPos(Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2])));
                 } catch (RuntimeException ignored) {
                     // no chest: the camp builds a new one
+                }
+            } else if (line.startsWith("r ")) {
+                try {
+                    camp.setRepairWait(Float.parseFloat(line.substring(2).trim()));
+                } catch (NumberFormatException ignored) {
+                    // no wait: the camp may build straight away
                 }
             } else if (line.startsWith("s ")) {
                 String[] parts = line.substring(2).split(" ");

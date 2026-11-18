@@ -39,6 +39,14 @@ public final class CampRegistry implements CampAnchor {
     static final int THAW_PER_TICK = 4;
     /** Seconds between pieces of building — a camp goes up a little at a time. */
     static final float BUILD_INTERVAL = 5.0f;
+    /** An enemy — a player, or a goblin not of the camp — this near the fire stops all building. */
+    static final float ENEMY_RADIUS = 16.0f;
+    /** How far round the fire a camp's goblins amble at rest, in columns. */
+    static final int HOME_GROUND_RADIUS = 6;
+    /** ...and how far above or below the fire: never down a drop they could not climb back up. */
+    static final int HOME_GROUND_RISE = 1;
+    /** Most cells of home ground kept per camp. */
+    static final int HOME_GROUND_CELLS = 400;
     /** Seconds between each camp's look round for a rival to raid. */
     static final float RAID_PLAN_INTERVAL = 30.0f;
 
@@ -118,6 +126,7 @@ public final class CampRegistry implements CampAnchor {
             }
             if (buildNow) {
                 build(camp);
+                surveyHomeGround(camp);
             }
             thaw(camp);
             keepChest(camp, dt);
@@ -140,6 +149,26 @@ public final class CampRegistry implements CampAnchor {
                 world.getCampfireRegistry().setCampData(world, fire, null);
             }
         }
+    }
+
+    /**
+     * A camp goblin stranded away from home (WayHome) leaves the world and goes back on its camp's
+     * roster, carrying its meat into the stash; the camp brings it back out at the fire.
+     *
+     * @return whether it was brought home (false: it has no camp)
+     */
+    public boolean bringHome(Goblin goblin) {
+        GoblinCamp camp = goblin.pack().camp();
+        if (camp == null || !camps.containsValue(camp)) {
+            return false;
+        }
+        goblin.pack().leave(goblin); // first, so its removal is not taken for a second recall
+        camp.recall(goblin);
+        EntityManager entities = world.getEntityManager();
+        if (entities != null) {
+            entities.removeEntity(goblin);
+        }
+        return true;
     }
 
     /* ── CampAnchor: the fire's lifecycle ─────────────────────── */
@@ -344,11 +373,13 @@ public final class CampRegistry implements CampAnchor {
         }
     }
 
-    /** Puts up the next piece the camp is big enough for (CampBuilder), if any. */
+    /**
+     * Puts up the next piece the camp is big enough for (CampBuilder), if any — unless one of its
+     * pieces was broken lately (GoblinCamp#REPAIR_SECONDS) or an enemy is about.
+     */
     private void build(GoblinCamp camp) {
         BlockPos fire = camp.fire();
-        if (world.getChunkIfLoaded(Math.floorDiv(fire.x(), WorldConfiguration.CHUNK_SIZE),
-                Math.floorDiv(fire.z(), WorldConfiguration.CHUNK_SIZE)) == null) {
+        if (!loaded(fire)) {
             return;
         }
         BlockPos chest = camp.chest();
@@ -356,14 +387,70 @@ public final class CampRegistry implements CampAnchor {
         if (members.isEmpty()) {
             return; // nobody to build it (and nobody whose walk out must stay clear)
         }
+        CampTerrain terrain = CampTerrain.of(world);
+        camp.checkPieces(at -> terrain.block(at.x(), at.y(), at.z()));
         CampWalker walker = CampWalker.of(world,
                 com.stonebreak.mobs.entities.ai.nav.NavProfiles.forEntity(members.get(0)));
-        CampBuilder.Placement next = CampBuilder.next(CampTerrain.of(world), walker, fire, camp.population(),
+        CampBuilder.Survey survey = CampBuilder.survey(terrain, walker, fire, camp.population(),
                 c -> (c.x == fire.x() && c.y == fire.y() && c.z == fire.z())
                         || (chest != null && c.x == chest.x() && c.y == chest.y() && c.z == chest.z()));
-        if (next != null) {
-            SimBlockEdits.set(world, next.cell().x, next.cell().y, next.cell().z, next.block(), next.state());
+        for (Vector3i c : survey.standing()) {
+            camp.pieceStanding(new BlockPos(c.x, c.y, c.z), terrain.block(c.x, c.y, c.z));
         }
+        if (!camp.readyToBuild(BUILD_INTERVAL, enemyNear(camp))) {
+            return;
+        }
+        CampBuilder.Placement next = survey.next();
+        if (next != null && SimBlockEdits.set(world, next.cell().x, next.cell().y, next.cell().z, next.block(), next.state())) {
+            camp.pieceStanding(new BlockPos(next.cell().x, next.cell().y, next.cell().z), next.block());
+        }
+    }
+
+    /**
+     * Where the camp's goblins amble at rest: floor their own routes reach from the fire, within
+     * {@link #HOME_GROUND_RADIUS} of it and level with it. A goblin wandering anywhere it liked
+     * would drop down ledge after ledge into the caves below and never find its way back up.
+     */
+    private void surveyHomeGround(GoblinCamp camp) {
+        BlockPos fire = camp.fire();
+        java.util.List<Goblin> members = camp.members();
+        if (members.isEmpty() || !loaded(fire)) {
+            return;
+        }
+        CampTerrain terrain = CampTerrain.of(world);
+        CampWalker walker = CampWalker.of(world,
+                com.stonebreak.mobs.entities.ai.nav.NavProfiles.forEntity(members.get(0)));
+        Vector3i start = CampBuilder.standingBeside(terrain, new Vector3i(fire.x(), fire.y(), fire.z()));
+        com.openmason.engine.nav.NavWorld.Reach reach = walker.reach(start, HOME_GROUND_RADIUS, HOME_GROUND_CELLS);
+        java.util.List<Vector3i> cells = new ArrayList<>();
+        for (int i = 0; i < reach.count(); i++) {
+            if (Math.abs(reach.y(i) - fire.y()) <= HOME_GROUND_RISE
+                    && !(reach.x(i) == fire.x() && reach.z(i) == fire.z())) {
+                cells.add(new Vector3i(reach.x(i), reach.y(i), reach.z(i)));
+            }
+        }
+        camp.setHomeGround(cells);
+    }
+
+    /** Whether a player, or a goblin from outside the camp, is within {@link #ENEMY_RADIUS} of its fire. */
+    private boolean enemyNear(GoblinCamp camp) {
+        Vector3f at = camp.fireCenter(new Vector3f());
+        Vector3f player = world.getPlayerLocator().nearestPlayer(at, new Vector3f());
+        if (player != null && player.distance(at) <= ENEMY_RADIUS) {
+            return true;
+        }
+        for (com.stonebreak.mobs.entities.Entity e
+                : com.stonebreak.mobs.goblin.pack.NearbyEntities.of(world).within(at, ENEMY_RADIUS)) {
+            if (e instanceof Goblin g && g.isAlive() && g.pack().camp() != camp) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean loaded(BlockPos at) {
+        return world.getChunkIfLoaded(Math.floorDiv(at.x(), WorldConfiguration.CHUNK_SIZE),
+                Math.floorDiv(at.z(), WorldConfiguration.CHUNK_SIZE)) != null;
     }
 
     /** An open, floored cell beside the fire for the chest — not where the goblins come back in. */

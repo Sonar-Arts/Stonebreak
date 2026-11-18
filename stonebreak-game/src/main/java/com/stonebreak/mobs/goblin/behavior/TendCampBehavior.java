@@ -31,6 +31,7 @@ public final class TendCampBehavior implements Behavior {
 
     private final Goblin goblin;
     private final Vector3f fire = new Vector3f();
+    private final WayHome wayHome = new WayHome();
     private boolean done;
 
     public TendCampBehavior(Goblin goblin) {
@@ -85,6 +86,7 @@ public final class TendCampBehavior implements Behavior {
     @Override
     public void start(AiContext context) {
         done = false;
+        wayHome.reset();
     }
 
     @Override
@@ -97,6 +99,10 @@ public final class TendCampBehavior implements Behavior {
         }
         camp.fireCenter(fire);
         if (context.distanceTo(fire) > FIRE_REACH) {
+            if (wayHome.check(goblin, context, fire, deltaTime)) {
+                done = true; // stranded: brought home, its meat into the stash
+                return;
+            }
             context.nav().moveTo(fire, FIRE_REACH * 0.75f, SPEED);
             return;
         }

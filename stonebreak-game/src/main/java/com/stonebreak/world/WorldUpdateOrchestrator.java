@@ -77,6 +77,7 @@ final class WorldUpdateOrchestrator {
         // Cactus contact damage (mobs) — authoritative worlds only; a render-only
         // client never ticks it (mob shadows aren't damaged locally).
         if (cactusContact != null) cactusContact.tick(Game.getDeltaTime());
+        if (world.spikeContact() != null) world.spikeContact().tick(Game.getDeltaTime());
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistry;
         if (fr != null) fr.tick(world, Game.getDeltaTime());
         meshScheduler.requeueFailedChunks();
@@ -102,6 +103,7 @@ final class WorldUpdateOrchestrator {
         saplingGrowth.tick(deltaTime);
         blueberryBushGrowth.tick(deltaTime);
         if (cactusContact != null) cactusContact.tick(deltaTime);
+        if (world.spikeContact() != null) world.spikeContact().tick(deltaTime);
         com.stonebreak.blocks.furnace.FurnaceStateRegistry fr = furnaceRegistry;
         if (fr != null) fr.tick(world, deltaTime);
         if (world.getCampfireRegistry() != null) world.getCampfireRegistry().tick(world, deltaTime);

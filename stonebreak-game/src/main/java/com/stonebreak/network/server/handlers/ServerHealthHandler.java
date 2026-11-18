@@ -2,6 +2,7 @@ package com.stonebreak.network.server.handlers;
 
 import com.stonebreak.audio.EntitySounds;
 import com.stonebreak.blocks.cactus.CactusContactRules;
+import com.stonebreak.blocks.palisade.SpikeContactRules;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.HitKind;
@@ -101,6 +102,15 @@ public final class ServerHealthHandler {
                         CactusContactRules.PULSE_INTERVAL, CactusContactRules.DAMAGE_PER_PULSE);
                 if (cactus > 0f) {
                     hurt(sp, cactus, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
+                }
+                float[] spikes = SpikeContactRules.pointsTouching(world,
+                        sp.x() - half, sp.y(), sp.z() - half,
+                        sp.x() + half, sp.y() + PLAYER_HEIGHT, sp.z() + half);
+                if (vitals.onSpikeContact(spikes != null && !flying, dt, nowNs, SpikeContactRules.COOLDOWN_SECONDS)) {
+                    hurt(sp, SpikeContactRules.DAMAGE, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
+                    // Thrown back the way the points lean: pushed away from a point behind the player.
+                    knockback(sp, new Vector3f(sp.x() - spikes[0], sp.y(), sp.z() - spikes[1]),
+                            SpikeContactRules.KNOCKBACK);
                 }
             }
         }

@@ -32,6 +32,12 @@ public final class GoblinCamp {
     public static final float HOME_RADIUS = 10.0f;
     /** After its chest is broken, a camp waits this long before building another. */
     public static final float CHEST_REBUILD_SECONDS = 300.0f;
+    /**
+     * After one of its pieces is broken — a stake, a bedroll, the rack — a camp builds nothing for
+     * this long, so breaking the wall really opens a way in. The clock stands still while an
+     * enemy is about.
+     */
+    public static final float REPAIR_SECONDS = 180.0f;
 
     private final BlockPos fire;
     /** Where the stash is kept until the camp has a chest (and what a chestless camp saves). */
@@ -49,6 +55,12 @@ public final class GoblinCamp {
     /** The pack out hunting for the camp, or null. Only one goes at a time. */
     private GoblinPack huntingParty;
     private float growthTimer = CampGrowth.INTERVAL_SECONDS;
+    /** The pieces the camp has standing, and what each is: one gone missing was broken. */
+    private final java.util.Map<BlockPos, com.stonebreak.blocks.BlockType> pieces = new java.util.HashMap<>();
+    /** Seconds still to wait before building again after a piece was broken. */
+    private float repairWait;
+    /** Where the camp's goblins mill about at rest: floor round the fire they walk to and back from. */
+    private List<org.joml.Vector3i> homeGround = List.of();
     private float raidCooldown = RaidPlanner.COOLDOWN_SECONDS;
 
     public GoblinCamp(BlockPos fire) {
@@ -57,6 +69,76 @@ public final class GoblinCamp {
 
     public BlockPos fire() {
         return fire;
+    }
+
+    /** A piece of the camp stands at {@code at}: watched from now on, so its breaking is noticed. */
+    public void pieceStanding(BlockPos at, com.stonebreak.blocks.BlockType block) {
+        pieces.put(at, block);
+    }
+
+    /**
+     * Checks every piece the camp knows of against the world ({@code blockAt}, {@code null} for an
+     * unloaded cell, which is left alone). One that is gone was broken: it is forgotten, and the
+     * camp waits {@link #REPAIR_SECONDS} before building again.
+     *
+     * @return whether anything was found broken
+     */
+    public boolean checkPieces(java.util.function.Function<BlockPos, com.stonebreak.blocks.BlockType> blockAt) {
+        boolean broken = false;
+        for (var it = pieces.entrySet().iterator(); it.hasNext(); ) {
+            var e = it.next();
+            com.stonebreak.blocks.BlockType now = blockAt.apply(e.getKey());
+            if (now != null && now != e.getValue()) {
+                it.remove();
+                broken = true;
+            }
+        }
+        if (broken) {
+            repairWait = REPAIR_SECONDS;
+        }
+        return broken;
+    }
+
+    /**
+     * Counts down the wait after a breakage by {@code dt} — but not while {@code enemyNear}.
+     *
+     * @return whether the camp may build now
+     */
+    public boolean readyToBuild(float dt, boolean enemyNear) {
+        if (enemyNear) {
+            return false;
+        }
+        repairWait = Math.max(0.0f, repairWait - dt);
+        return repairWait <= 0.0f;
+    }
+
+    /** Floor round the fire a goblin at rest may amble to (empty until surveyed). */
+    public List<org.joml.Vector3i> homeGround() {
+        return homeGround;
+    }
+
+    public void setHomeGround(List<org.joml.Vector3i> cells) {
+        homeGround = List.copyOf(cells);
+    }
+
+    /** How many of the camp's standing pieces are {@code block}s. */
+    public int pieceCount(com.stonebreak.blocks.BlockType block) {
+        int n = 0;
+        for (com.stonebreak.blocks.BlockType b : pieces.values()) {
+            if (b == block) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** Seconds left before the camp builds again after a breakage (saved with the camp). */
+    public float repairWait() {
+        return repairWait;
+    }
+
+    public void setRepairWait(float seconds) {
+        repairWait = Math.max(0.0f, seconds);
     }
 
     /** Where to stand to tend the fire. */

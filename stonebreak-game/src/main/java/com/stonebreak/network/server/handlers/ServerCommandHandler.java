@@ -48,7 +48,7 @@ public final class ServerCommandHandler {
         switch (parts[0].toLowerCase()) {
             case "obtain" -> handleObtain(sp, parts, ctx);
             case "spawn" -> handleSpawn(sp, parts, ctx);
-            case "goblins" -> handleGoblins(sp, ctx);
+            case "goblins" -> handleGoblins(sp, parts, ctx);
             case "pvp" -> handlePvp(sp, parts, ctx);
             case "invincible" -> handleInvincible(sp, parts, ctx);
             default -> {
@@ -250,11 +250,21 @@ public final class ServerCommandHandler {
     /** How far /goblins looks for packs. */
     private static final float GOBLINS_RADIUS = 64.0f;
 
-    /** /goblins — the goblin packs near the sender, for watching hunts (cheats only). */
-    private void handleGoblins(ServerPlayer sp, ServerWorldContext ctx) {
+    /** Most goblins one /goblins grow adds: up to the camp cap from an empty camp. */
+    private static final int MAX_GROW = com.stonebreak.mobs.goblin.camp.CampGrowth.MAX_POPULATION;
+
+    /**
+     * /goblins — the goblin packs near the sender, for watching hunts (cheats only).
+     * /goblins grow &lt;n&gt; — n more goblins for the nearest camp (up to its cap), to watch it build.
+     */
+    private void handleGoblins(ServerPlayer sp, String[] parts, ServerWorldContext ctx) {
         ServerLevel level = ctx.serverLevel();
         if (level == null || !level.cheatsEnabled()) {
             reply(sp, "Cheats are not enabled on this world.");
+            return;
+        }
+        if (parts.length >= 2 && parts[1].equalsIgnoreCase("grow")) {
+            growNearestCamp(sp, parts, ctx);
             return;
         }
         EntityManager em = ctx.entityManager();
@@ -280,9 +290,13 @@ public final class ServerCommandHandler {
             var quarry = pack.quarry();
             var camp = pack.camp();
             String home = camp != null
-                    ? String.format("camp at %d %d %d (%d goblins, stash %d, carried %d, on fire %d)",
+                    ? String.format("camp at %d %d %d (%d goblins, stash %d, carried %d, on fire %d, "
+                                    + "built %d stakes / %d bedrolls%s)",
                             camp.fire().x(), camp.fire().y(), camp.fire().z(), camp.population(),
-                            camp.stash().food(), pack.carried().food(), onFire(ctx, camp.fire()))
+                            camp.stash().food(), pack.carried().food(), onFire(ctx, camp.fire()),
+                            camp.pieceCount(com.stonebreak.blocks.BlockType.PALISADE),
+                            camp.pieceCount(com.stonebreak.blocks.BlockType.BEDROLL),
+                            camp.repairWait() > 0 ? String.format(", repairs in %.0fs", camp.repairWait()) : "")
                     : pack.plan() != null
                             ? String.format("making camp at %d %d %d%s", pack.plan().site().x, pack.plan().site().y,
                                     pack.plan().site().z, pack.plan().needsDigging() ? " (digging)" : "")
@@ -304,6 +318,43 @@ public final class ServerCommandHandler {
                     quarry != null ? quarry.getType().getDisplayName() : "none",
                     pack.ledger().cooldown(), home));
         }
+    }
+
+    /** /goblins grow &lt;n&gt;: the nearest camp gains n goblins, brought in at its fire. */
+    private void growNearestCamp(ServerPlayer sp, String[] parts, ServerWorldContext ctx) {
+        int n;
+        try {
+            n = parts.length >= 3 ? Integer.parseInt(parts[2]) : 1;
+        } catch (NumberFormatException e) {
+            reply(sp, "Usage: /goblins grow <count>");
+            return;
+        }
+        if (n <= 0 || n > MAX_GROW || ctx.world() == null) {
+            reply(sp, "Count must be 1 to " + MAX_GROW + ".");
+            return;
+        }
+        com.stonebreak.mobs.goblin.camp.GoblinCamp nearest = null;
+        float best = GOBLINS_RADIUS * GOBLINS_RADIUS;
+        for (var camp : ctx.world().goblinCamps().camps()) {
+            float dx = camp.fire().x() + 0.5f - sp.x();
+            float dz = camp.fire().z() + 0.5f - sp.z();
+            if (dx * dx + dz * dz < best) {
+                best = dx * dx + dz * dz;
+                nearest = camp;
+            }
+        }
+        if (nearest == null) {
+            replyAndLog(sp, "No goblin camp within " + (int) GOBLINS_RADIUS + " blocks.");
+            return;
+        }
+        int added = 0;
+        java.util.Random random = new java.util.Random();
+        while (added < n && nearest.population() < com.stonebreak.mobs.goblin.camp.CampGrowth.MAX_POPULATION) {
+            nearest.addWaiting(com.stonebreak.mobs.goblin.GoblinLoadout.roll(random));
+            added++;
+        }
+        replyAndLog(sp, String.format("Camp at %d %d %d grows by %d to %d goblins.", nearest.fire().x(),
+                nearest.fire().y(), nearest.fire().z(), added, nearest.population()));
     }
 
     /** A /goblins line also goes to the server log, where a scripted run can read it. */

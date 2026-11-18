@@ -17,8 +17,9 @@ import org.joml.Vector3i;
 import java.util.EnumSet;
 
 /**
- * The leader of a campless pack leads it to the site its search chose, digs the way in if the cave
- * is sealed, and lights the camp's fire there. Its pack-mates follow it (FollowLeaderBehavior).
+ * The leader of a campless pack leads it to the site its search chose, digs out whatever soil the
+ * plan needs — a stair into a sealed cave, or a den in a hillside; never rock — and lights the
+ * camp's fire there. Its pack-mates follow it (FollowLeaderBehavior).
  * If it cannot get where it needs to go, the plan is dropped and the pack roams until it finds
  * another.
  */

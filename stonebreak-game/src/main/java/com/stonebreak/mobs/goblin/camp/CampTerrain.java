@@ -40,6 +40,25 @@ public interface CampTerrain {
         return top >= 0 && top > y + 1;
     }
 
+    /**
+     * Roofed by the ground: the first solid block over the head of someone standing at the cell is
+     * rock, soil or sand ({@link NaturalGround#isGroundRoof}) — a cave's ceiling or an overhang, of
+     * any thickness. A tree's canopy, or a builder's planks, is no roof for a camp.
+     */
+    default boolean roofed(int x, int y, int z) {
+        int top = columnTop(x, z);
+        for (int above = y + 2; above <= top; above++) {
+            BlockType b = block(x, above, z);
+            if (b == null) {
+                return false;
+            }
+            if (b.isSolid()) {
+                return NaturalGround.isGroundRoof(b);
+            }
+        }
+        return false;
+    }
+
     static CampTerrain of(World world) {
         WorldLightingContext light = new WorldLightingContext(world);
         return new CampTerrain() {
