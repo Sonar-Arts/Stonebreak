@@ -16,6 +16,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.fastlod.FastLodManager;
+import com.stonebreak.world.generation.ClimateLayout;
+import com.stonebreak.world.generation.HeightCurveVersion;
 import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.NativeTerrain;
 import com.stonebreak.world.generation.TerrainGenerator;
@@ -102,6 +104,10 @@ public class World {
     private final long seed;
     private final TerrainGeneratorType generatorType;
     private final TerrainScalePreset terrainScale;
+    private final ClimateLayout climateLayout;
+    private final HeightCurveVersion heightCurve;
+    /** World features (boulders, ...) of a DIFFUSION world: part of its identity, like the height curve. */
+    private final com.stonebreak.world.generation.WorldFeatureVersion worldFeatures;
     private final BlockStateRegistry blockStates = new BlockStateRegistry();
     private final CubeWorld voxels;
     private final CubeStream stream;
@@ -201,7 +207,8 @@ public class World {
     }
 
     protected World(WorldConfiguration config, long seed, boolean testMode, TerrainGeneratorType generatorType) {
-        this(Mode.DETACHED, config, seed, generatorType, TerrainScalePreset.ONE_TO_FOUR, null, false);
+        this(Mode.DETACHED, config, seed, generatorType, TerrainScalePreset.ONE_TO_FOUR, ClimateLayout.DEFAULT, null,
+            null, null, false);
     }
 
     /**
@@ -230,7 +237,51 @@ public class World {
      */
     public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                                        TerrainScalePreset scale, Path worldDir, boolean buildMeshes) {
-        return new World(Mode.SERVER, config, seed, generatorType, scale, worldDir, buildMeshes);
+        return createHeadless(config, seed, generatorType, scale, ClimateLayout.DEFAULT, worldDir, buildMeshes);
+    }
+
+    /**
+     * The authoritative world with the climate {@code layout} (part of the world's identity, like the seed; only
+     * DIFFUSION worlds use it). See
+     * {@link #createHeadless(WorldConfiguration, long, TerrainGeneratorType, TerrainScalePreset, Path)}.
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, ClimateLayout layout, Path worldDir) {
+        return createHeadless(config, seed, generatorType, scale, layout, worldDir, false);
+    }
+
+    /**
+     * {@link #createHeadless(WorldConfiguration, long, TerrainGeneratorType, TerrainScalePreset, ClimateLayout, Path)}
+     * choosing whether its stream builds GPU meshes.
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, ClimateLayout layout, Path worldDir,
+                                       boolean buildMeshes) {
+        return createHeadless(config, seed, generatorType, scale, layout, null, worldDir, buildMeshes);
+    }
+
+    /**
+     * The authoritative world created with the height curve {@code curve} (part of the world's identity, like the
+     * seed; null = {@link HeightCurveVersion#CURRENT}, a saved world passes its own; only DIFFUSION worlds use it).
+     * See {@link #createHeadless(WorldConfiguration, long, TerrainGeneratorType, TerrainScalePreset, ClimateLayout,
+     * Path, boolean)}.
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                                       Path worldDir, boolean buildMeshes) {
+        return createHeadless(config, seed, generatorType, scale, layout, curve, null, worldDir, buildMeshes);
+    }
+
+    /**
+     * The authoritative world created with the feature set {@code features} (boulders, ...; part of the world's
+     * identity: null = {@link WorldFeatureVersion#CURRENT}, a saved world passes its own; only DIFFUSION worlds use it).
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                                       com.stonebreak.world.generation.WorldFeatureVersion features,
+                                       Path worldDir, boolean buildMeshes) {
+        return new World(Mode.SERVER, config, seed, generatorType, scale, layout, curve, features, worldDir,
+            buildMeshes);
     }
 
     /**
@@ -243,22 +294,38 @@ public class World {
 
     public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                                          TerrainScalePreset scale) {
-        return new World(Mode.CLIENT, config, seed, generatorType, scale, null, true);
+        return createClientView(config, seed, generatorType, scale, ClimateLayout.DEFAULT);
+    }
+
+    /** A client render-view world of a server world at {@code scale} with the climate {@code layout}. */
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                         TerrainScalePreset scale, ClimateLayout layout) {
+        return createClientView(config, seed, generatorType, scale, layout, null);
+    }
+
+    /** A client render-view world of a server world created with the height curve {@code curve} (null = current). */
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                         TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
+        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, null, null, true);
     }
 
     /** A detached world (no stream, no store; cubes created by writes) for tests and tools. */
     public static World createDetached(WorldConfiguration config, long seed) {
-        return new World(Mode.DETACHED, config, seed, TerrainGeneratorType.STANDARD, TerrainScalePreset.ONE_TO_FOUR, null,
-            false);
+        return new World(Mode.DETACHED, config, seed, TerrainGeneratorType.STANDARD, TerrainScalePreset.ONE_TO_FOUR,
+            ClimateLayout.DEFAULT, null, null, null, false);
     }
 
     private World(Mode mode, WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
-                  TerrainScalePreset scale, Path worldDir, boolean buildMeshes) {
+                  TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                  com.stonebreak.world.generation.WorldFeatureVersion features, Path worldDir, boolean buildMeshes) {
         this.mode = mode;
         this.config = config;
         this.seed = seed;
         this.generatorType = generatorType == null ? TerrainGeneratorType.STANDARD : generatorType;
         this.terrainScale = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        this.climateLayout = ClimateLayout.orDefault(layout);
+        this.heightCurve = HeightCurveVersion.orCurrent(curve);
+        this.worldFeatures = com.stonebreak.world.generation.WorldFeatureVersion.orCurrent(features);
 
         if (mode != Mode.DETACHED) {
             applyUserSettings(config);
@@ -283,7 +350,8 @@ public class World {
         int meshFlags = buildMeshes ? CubeStream.MESH_SMOOTH_LIGHTING | CubeStream.MESH_GREEDY : CubeStream.NO_MESH;
         switch (mode) {
             case SERVER -> {
-                t = NativeTerrain.create(seed, this.generatorType, this.terrainScale, blockStates);
+                t = NativeTerrain.create(seed, this.generatorType, this.terrainScale, this.climateLayout,
+                    this.heightCurve, this.worldFeatures, blockStates);
                 v = CubeWorld.createForGenerator(minY, maxY, air, t.cvGenerator());
                 StonebreakBlockTable.apply(v);
                 st = storeDir != null ? CubeStore.open(storeDir) : null;
@@ -340,8 +408,8 @@ public class World {
             new com.stonebreak.world.growth.WorldSaplingWorld(this), new java.util.Random());
         this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, this::terrain);
-        LOGGER.info("World created: mode={} seed={} generator={} scale={} store={}", mode, seed,
-            this.generatorType, this.terrainScale, storeDir);
+        LOGGER.info("World created: mode={} seed={} generator={} scale={} climate={} store={}", mode, seed,
+            this.generatorType, this.terrainScale, this.climateLayout, storeDir);
     }
 
     private static void applyUserSettings(WorldConfiguration config) {
@@ -403,6 +471,27 @@ public class World {
 
     public TerrainScalePreset getTerrainScale() {
         return terrainScale;
+    }
+
+    /**
+     * The world's climate layout: fixed at creation, part of its identity like the seed (DIFFUSION worlds build
+     * their terrain from it; Standard worlds carry it and ignore it).
+     */
+    public ClimateLayout getClimateLayout() {
+        return climateLayout;
+    }
+
+    /**
+     * The world's height-curve version: fixed at creation, part of its identity (DIFFUSION worlds build their terrain
+     * with it - saved worlds keep theirs, so new cubes never meet old ones at a seam; Standard worlds ignore it).
+     */
+    public HeightCurveVersion getHeightCurve() {
+        return heightCurve;
+    }
+
+    /** The world's feature set (boulders, ...): fixed at creation, part of its identity (DIFFUSION worlds only). */
+    public com.stonebreak.world.generation.WorldFeatureVersion getWorldFeatures() {
+        return worldFeatures;
     }
 
     public void setStreamBudget(StreamBudget budget) {
@@ -1343,10 +1432,17 @@ public class World {
                 t = terrain;
                 if (t == null) {
                     if (cleanedUp) {
-                        throw new IllegalStateException("World is cleaned up");
+                        throw new com.stonebreak.world.generation.TerrainClosedException("World is cleaned up");
                     }
-                    t = NativeTerrain.create(seed, generatorType, terrainScale, blockStates);
+                    t = NativeTerrain.create(seed, generatorType, terrainScale, climateLayout, heightCurve,
+                        worldFeatures, blockStates);
                     terrain = t;
+                }
+                if (cleanedUp) {
+                    // cleanup() ran while this was being built (it takes the lock to hand the terrain over, so
+                    // either it closed this one or it finished before the build): never hand out a dead world's
+                    // terrain
+                    throw new com.stonebreak.world.generation.TerrainClosedException("World is cleaned up");
                 }
             }
         }
@@ -1500,10 +1596,17 @@ public class World {
         cubes.clear();
         readyColumns.clear();
         voxels.close();
-        NativeTerrain t = terrain;
+        // Last: the native generator. Its own gate refuses new queries and waits for the ones in flight (FastLOD
+        // workers abandoned by an executor that did not stop in time, the weather relief thread, debug and spawn
+        // queries) before freeing it, so no thread can run on a destroyed generator. Taken under the build lock so a
+        // terrain() racing this cleanup is either closed here or refuses (cleanedUp is already set).
+        NativeTerrain t;
+        synchronized (terrainLock) {
+            t = terrain;
+            terrain = null;
+        }
         if (t != null) {
             t.close();
-            terrain = null;
         }
     }
 

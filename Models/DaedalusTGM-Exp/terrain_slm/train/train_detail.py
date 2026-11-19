@@ -216,7 +216,8 @@ def evaluate(model, data: DetailData, batch: int, steps: int = 16):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", type=Path, default=Path("/mnt/extrastorage/terrain-slm-data"))
+    ap.add_argument("--data-dir", type=Path, required=True,
+                    help="no default (2026-11-19): the old default held EXP-1 regions with WorldClim climate (non-commercial); EXP-2 data is <root>/v2-gedtm30")
     ap.add_argument("--out", type=Path, default=Path("checkpoints/detail_r0"))
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--channels", type=int, nargs="+", default=list(DT.DetailConfig.channels))

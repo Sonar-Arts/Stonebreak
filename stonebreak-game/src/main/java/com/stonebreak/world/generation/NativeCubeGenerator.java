@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.function.ToIntFunction;
 
 /**
- * Thin FFM binding to the native cube generator ({@code libstonebreak_worldgen}, SBW ABI 4 (#446; 4 = profile carve codes)): the
+ * Thin FFM binding to the native cube generator ({@code libstonebreak_worldgen}, SBW ABI 5 (#446; 4 = profile carve codes; 5 = surface channels)): the
  * whole Stonebreak world generator behind Open Mason's {@code cv_generator}. Layouts and semantics per
  * {@code stonebreak-game/native/include/stonebreak/worldgen.h}.
  *
@@ -32,16 +32,46 @@ import java.util.function.ToIntFunction;
  */
 public final class NativeCubeGenerator implements AutoCloseable {
 
-    /** SBW ABI this binding speaks. */
-    public static final int EXPECTED_ABI = 4;
+    /** SBW ABI this binding speaks (5: the column profile's surface channels). */
+    public static final int EXPECTED_ABI = 5;
     /** Water level of a dry column. */
     public static final int NO_WATER = Integer.MIN_VALUE;
     public static final int FLAG_PEAK_DAMP = 0x1, FLAG_DEEP_LAYERS = 0x2, FLAG_FEATURES = 0x4;
     /** PROFILE kind: ravines and sinkholes follow the profiles' carve codes (SBW ABI 4), not the hash. */
     public static final int FLAG_PROFILE_CARVE = 0x8;
+    /**
+     * PROFILE kind: the ocean floor's surface block follows depth, slope and shelter (sand shallows, gravel on swept or
+     * steep floors, clay in deep or sheltered water, rock on cliffed coasts) instead of ~97 % sand (2026-11-19; set for
+     * height-curve v2 DaedalusTGM-Exp worlds, so saved v1 worlds keep their sea bed).
+     */
+    public static final int FLAG_SEA_FLOOR = 0x10;
+    /**
+     * PROFILE kind: population places boulders - pebbles to glacial erratics, boulder fields, scree aprons - with shapes
+     * from the procedural source and the rock bank {@link Config#rockBank} (2026-11-19; set per world by
+     * {@link WorldFeatureVersion}, so saved worlds never grow boulders beside terrain generated without them).
+     */
+    public static final int FLAG_BOULDERS = 0x20;
+    /**
+     * PROFILE kind: dry land's surface block follows the terrain model's surface-detail channels (rock exposure, scree,
+     * roughness; 1 m lidar-trained, agent L 2026-11-19): bare rock, talus gravel / cobble, broken ground. A no-op where
+     * a tile carries no such channel (models without {@code surface.pt}); set per world by {@link WorldFeatureVersion}
+     * (V2+), so saved worlds never change surface materials at their explored edge.
+     */
+    public static final int FLAG_LAND_SURFACE = 0x40;
+    /**
+     * PROFILE kind: trees (density, size, clearings) and ground vegetation (bushes, grass, flowers, bare and wet-meadow
+     * patches) follow the terrain model's vegetation channels (SBW ABI 5 surface slots 0..7; agent V 2026-11-19). A
+     * no-op where a tile carries no such channel (models without {@code veg.pt}); set per world by
+     * {@link WorldFeatureVersion} (V3+), so saved worlds never change vegetation at their explored edge.
+     */
+    public static final int FLAG_VEGETATION = 0x80;
     public static final int SAMPLE_CARVED = 1;
     private static final int CONFIG_SIZE = 368;
-    private static final int PROFILE_SIZE = 20480;
+    private static final int PROFILE_SIZE = 36864;
+    /** Offset of {@code sbw_column_profile.surface[16][1024]} (SBW ABI 5). */
+    private static final int PROFILE_SURFACE_OFFSET = 20480;
+    /** Surface channel slots per column profile ({@code SBW_SURFACE_SLOTS}). */
+    public static final int SURFACE_SLOTS = 16;
     private static final int COLUMN_INFO_SIZE = 40;
 
     /** Generator kinds (worldgen.h SBW_KIND_*). */
@@ -52,38 +82,140 @@ public final class NativeCubeGenerator implements AutoCloseable {
         AIR, WATER, STONE, BEDROCK, MAGMA, DIRT, GRASS, SAND, RED_SAND, SANDSTONE, RED_SANDSTONE,
         GRAVEL, CLAY, SNOWY_DIRT, SWAMPY_GRASS, ICE, SNOW, COAL_ORE, IRON_ORE, CRYSTAL, LIMESTONE,
         LIMESTONE_STALAGMITE, WOOD, LEAVES, ELM_WOOD_LOG, ELM_LEAVES, PINE, PINE_LEAVES, CYPRESS_LOG,
-        CYPRESS_LEAVES, ROSE, WILDGRASS, DANDELION, CACTUS, RED_SAND_COBBLESTONE
+        CYPRESS_LEAVES, ROSE, WILDGRASS, DANDELION, CACTUS, RED_SAND_COBBLESTONE,
+        /* 2026-11-19, boulders */
+        COBBLESTONE, SAND_COBBLESTONE
     }
 
     /**
      * Terrain scale of a world: metres per block horizontally and the height curve's metres per block.
      * The distilled shape was fitted at 1:4; 1:2 is that shape at twice the size (a refit is optional).
+     *
+     * <p>Two views of the height curve: {@link #curveRates()} / {@link #curveKnots()} are the v1 curve the native
+     * Standard generator uses (never changes: Standard worlds keep their terrain), and {@link #heightCurve} is the
+     * full curve of a DaedalusTGM-Exp world of a given {@link HeightCurveVersion}, as TGMPipe reads it. A preset gives
+     * its v1 rates (+ optional own knots) and its v2 sea ({@link SeaBandsV2}); a new preset adds a constant here and the
+     * mirror in {@code world_config.CURVE_V2}.
      */
     public enum TerrainScalePreset {
-        /** 60 m blocks (today's world). */
-        ONE_TO_FOUR(60.0, new double[]{48.0, 16.0, 24.0, 38.0}),
-        /** 30 m blocks (the terrain model's native pixels); rates halved, same exaggeration. */
-        ONE_TO_TWO(30.0, new double[]{24.0, 8.0, 12.0, 19.0});
+        /**
+         * 60 m blocks (today's world). v2 sea (round 2, sweep vs 16 real coasts): shallows 4 m per block to ~-24 m,
+         * shelf 6 to ~-300 m, deep ocean 32 (v1: 48): coastal seas 5 / 12 / 20 / 38 blocks deep at 0-0.5 / 0.5-2 / 2-5 /
+         * 5-15 km, 6.7 % of the coastal sea under 3 blocks, 38 % block-flat (v1: 62 %); trench -9.7 km at y -275.
+         */
+        ONE_TO_FOUR(60.0, new double[]{48.0, 16.0, 24.0, 38.0}, SeaBandsV2.scaled(1.0, 32.0)),
+        /**
+         * 30 m blocks (the terrain model's native pixels); rates halved, same exaggeration. v2 sea: half of 1:4's
+         * shallows and shelf rates; deep ocean 32 so the deepest trench (-9.7 km) lands at y -312 (24 would put it on
+         * the -384 floor; 40 left the far sea block-flat).
+         */
+        ONE_TO_TWO(30.0, new double[]{24.0, 8.0, 12.0, 19.0}, SeaBandsV2.scaled(0.5, 32.0)),
+        /**
+         * 15 m blocks (EXPERIMENTAL, 2026-11-19): DaedalusTGM-Exp draws them with its SR-15 node (30 m pixels -&gt; 15 m).
+         * Height curve = the user's CAP decision (2026-11-18), not less exaggeration: 1:4's exaggeration (a quarter of
+         * its rates: lowland 4, midland ramp to ~6) holds up to ~2 km; above it the rate climbs smoothly (highland
+         * blend +-1 km around 2.6 km) to 32 m per block, so the model's soft-capped summits (&lt; 5150 m) end at
+         * y ~631 under the build limit (3 km: y ~563, 4 km: y ~595). v2 sea: a quarter of 1:4's shallows and shelf
+         * rates (1 / 1.5 m per block), deep ocean 48, so the deepest trench (-9.7 km) lands at y -277 (Challenger
+         * -10.9 km at -302). Standard worlds use the v1 rates (ocean 12) with the same knots.
+         */
+        ONE_TO_ONE(15.0, new double[]{12.0, 4.0, 6.85, 32.0}, SeaBandsV2.scaled(0.25, 48.0),
+                new double[]{600.0, 2600.0, 60.0, 150.0, 1000.0});
 
         private static final double[] KNOTS = {600.0, 2000.0, 60.0, 150.0, 300.0};
         private final double horizontalMetresPerBlock;
         private final double[] curveRates;
+        private final SeaBandsV2 seaV2;
+        /** The preset's own knots, or null for the shared {@link #KNOTS}. */
+        private final double[] knots;
 
-        TerrainScalePreset(double horizontalMetresPerBlock, double[] curveRates) {
+        TerrainScalePreset(double horizontalMetresPerBlock, double[] curveRates, SeaBandsV2 seaV2) {
+            this(horizontalMetresPerBlock, curveRates, seaV2, null);
+        }
+
+        TerrainScalePreset(double horizontalMetresPerBlock, double[] curveRates, SeaBandsV2 seaV2, double[] knots) {
             this.horizontalMetresPerBlock = horizontalMetresPerBlock;
             this.curveRates = curveRates;
+            this.seaV2 = seaV2;
+            this.knots = knots;
         }
 
         public double horizontalMetresPerBlock() {
             return horizontalMetresPerBlock;
         }
 
+        /** v1 rates (ocean, lowland, midland, highland): the Standard generator's curve. */
         public double[] curveRates() {
             return curveRates.clone();
         }
 
+        /** v1 knots (lowland top, highland base, shore / midland / highland blend half-widths). */
         public double[] curveKnots() {
-            return KNOTS.clone();
+            return knots != null ? knots.clone() : KNOTS.clone();
+        }
+
+        /** This preset's v2 sea bands. */
+        public SeaBandsV2 seaV2() {
+            return seaV2;
+        }
+
+        /** The height curve of a DaedalusTGM-Exp world at this scale created with {@code version} (null = current). */
+        public HeightCurveSpec heightCurve(HeightCurveVersion version) {
+            HeightCurveVersion v = HeightCurveVersion.orCurrent(version);
+            SeaBandsV2 sea = seaV2;
+            if (v == HeightCurveVersion.V1) {
+                return new HeightCurveSpec(v, curveRates.clone(), curveKnots(), 0.0, sea.shelfBaseM(),
+                        sea.shelfBlendM(), 0.0, sea.shallowBaseM(), sea.shallowBlendM());
+            }
+            double[] rates = curveRates.clone();
+            rates[0] = sea.deepMetresPerBlock();
+            double[] k = curveKnots();
+            k[2] = sea.shoreBlendM();
+            return new HeightCurveSpec(v, rates, k, sea.shelfMetresPerBlock(), sea.shelfBaseM(), sea.shelfBlendM(),
+                    sea.shallowMetresPerBlock(), sea.shallowBaseM(), sea.shallowBlendM());
+        }
+    }
+
+    /**
+     * The sea bands of a height-curve v2 world: from the waterline down, shallows (finest), shelf, then the deep ocean,
+     * blended with the same finite-support smoothstep as every band; the shore blend (land side) is narrowed to
+     * {@code shoreBlendM} so the shallows hold their rate up to the waterline. Rates in metres per block, depths in
+     * metres (negative = below sea level).
+     */
+    public record SeaBandsV2(double shallowMetresPerBlock, double shallowBaseM, double shallowBlendM,
+                             double shelfMetresPerBlock, double shelfBaseM, double shelfBlendM,
+                             double deepMetresPerBlock, double shoreBlendM) {
+        /** 1:4's sea bands with the shallows and shelf rates times {@code rateScale} (1:2 = 0.5, 1:1 = 0.25) and its own
+         *  deep-ocean rate (chosen per preset for trench headroom above the column floor). */
+        public static SeaBandsV2 scaled(double rateScale, double deepMetresPerBlock) {
+            return new SeaBandsV2(4.0 * rateScale, -24.0, 12.0, 6.0 * rateScale, -300.0, 150.0, deepMetresPerBlock,
+                    10.0);
+        }
+    }
+
+    /**
+     * One height curve (metres -&gt; blocks) as TGMPipe's {@code height_curve.HeightCurve} reads it: the v1 rates and
+     * knots plus the v2 sea bands ({@code shelfMetresPerBlock} / {@code shallowMetresPerBlock} 0 = none: the v1 curve).
+     *
+     * @param rates metres per block: ocean, lowland, midland, highland
+     * @param knots metres: lowland top, highland base, shore / midland / highland blend half-widths
+     */
+    public record HeightCurveSpec(HeightCurveVersion version, double[] rates, double[] knots,
+                                  double shelfMetresPerBlock, double shelfBaseM, double shelfBlendM,
+                                  double shallowMetresPerBlock, double shallowBaseM, double shallowBlendM) {
+        public HeightCurveSpec {
+            rates = rates.clone();
+            knots = knots.clone();
+        }
+
+        @Override
+        public double[] rates() {
+            return rates.clone();
+        }
+
+        @Override
+        public double[] knots() {
+            return knots.clone();
         }
     }
 
@@ -97,6 +229,16 @@ public final class NativeCubeGenerator implements AutoCloseable {
     public interface ColumnProfiles {
         boolean fill(long cx, long cz, int[] height, int[] water, int[] riverFloor, int[] riverRoof,
                      byte[] biome, byte[] riverFlow, short[] carve);
+
+        /**
+         * As {@link #fill(long, long, int[], int[], int[], int[], byte[], byte[], short[])} plus the surface channels
+         * (SBW ABI 5): {@code surface[slot * 1024 + lz * 32 + lx]}, pre-filled with 255 (no data) - a source that
+         * leaves a slot alone changes nothing. Slots = {@code SurfaceChannel.slot()} / {@code SBW_SURF_*}.
+         */
+        default boolean fill(long cx, long cz, int[] height, int[] water, int[] riverFloor, int[] riverRoof,
+                             byte[] biome, byte[] riverFlow, short[] carve, byte[] surface) {
+            return fill(cx, cz, height, water, riverFloor, riverRoof, biome, riverFlow, carve);
+        }
     }
 
     /** Generator configuration (worldgen.h sbw_gen_config). Defaults = sbw_config_defaults. */
@@ -123,6 +265,11 @@ public final class NativeCubeGenerator implements AutoCloseable {
         /** {upright part, hanging part}. */
         public short[] stalagmitePartStates = new short[2];
         public int cacheColumns;
+        /**
+         * {@link #FLAG_BOULDERS}: id of the SBRB rock shape bank the world's boulders read (game resource
+         * {@code worldgen/rocks/rock_bank_v<id>.sbrb}, registered on first use); 0 = procedural shapes only.
+         */
+        public int rockBank;
         /** Required for {@link Kind#PROFILE}. */
         public ColumnProfiles profiles;
     }
@@ -149,7 +296,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
     private static final String UNAVAILABLE_REASON;
     private static final Path LIBRARY_PATH;
     private static MethodHandle CONFIG_DEFAULTS, CREATE, DESTROY, LAST_ERROR, GENERATE_CUBE, SAMPLE_COLUMNS,
-        SAMPLE_OPENINGS, PROBE_TREES, QUERY_COLUMN, COLUMN_CARVE, COLUMN_SURFACE;
+        SAMPLE_OPENINGS, SAMPLE_OPENINGS_WATER, PROBE_TREES, QUERY_COLUMN, COLUMN_CARVE, COLUMN_SURFACE,
+        REGISTER_ROCK_BANK;
 
     static {
         boolean ok = false;
@@ -199,6 +347,14 @@ public final class NativeCubeGenerator implements AutoCloseable {
         COLUMN_SURFACE = down(l, "sbw_column_surface", FunctionDescriptor.of(I, A, J, J, A, A));
         SAMPLE_COLUMNS = down(l, "sbw_sample_columns", FunctionDescriptor.of(I, A, J, J, I, I, I, A, A, A, A));
         SAMPLE_OPENINGS = down(l, "sbw_sample_cell_openings", FunctionDescriptor.of(I, A, J, J, I, I, A, A, A));
+        // Added within ABI 4 (2026-11-19): optional, so an older library still loads (its mouths read dry).
+        SAMPLE_OPENINGS_WATER = l.find("sbw_sample_cell_openings_water")
+            .map(s -> LINKER.downcallHandle(s, FunctionDescriptor.of(I, A, J, J, I, I, A, A, A, A)))
+            .orElse(null);
+        // Added within ABI 4/5 (2026-11-19, boulders): optional, so an older library still loads (no rock banks).
+        REGISTER_ROCK_BANK = l.find("sbw_register_rock_bank")
+            .map(s -> LINKER.downcallHandle(s, FunctionDescriptor.of(I, I, A, J)))
+            .orElse(null);
         PROBE_TREES = down(l, "sbw_probe_cell_trees", FunctionDescriptor.of(I, A, J, J, I, I, A, A, A, A, I));
         QUERY_COLUMN = down(l, "sbw_query_column", FunctionDescriptor.of(I, A, J, J, A));
         COLUMN_CARVE = down(l, "sbw_column_carve", FunctionDescriptor.of(I, A, J, J, A, A));
@@ -216,6 +372,46 @@ public final class NativeCubeGenerator implements AutoCloseable {
 
     public static Path libraryPath() {
         return LIBRARY_PATH;
+    }
+
+    private static final java.util.Set<Integer> REGISTERED_BANKS = new java.util.HashSet<>();
+
+    /**
+     * Registers the rock shape bank {@code id} (resource {@code /worldgen/rocks/rock_bank_v<id>.sbrb}) with the native
+     * library once per process.
+     *
+     * @throws IllegalStateException when the resource is missing or the library refuses it (a world must never fall
+     *                               back to other shapes: its boulders are part of its identity)
+     */
+    public static synchronized void ensureRockBank(int id) {
+        if (id == 0 || REGISTERED_BANKS.contains(id)) {
+            return;
+        }
+        if (REGISTER_ROCK_BANK == null) {
+            throw new IllegalStateException("libstonebreak_worldgen has no sbw_register_rock_bank (rebuild the natives)");
+        }
+        String resource = "/worldgen/rocks/rock_bank_v" + id + ".sbrb";
+        byte[] data;
+        try (java.io.InputStream in = NativeCubeGenerator.class.getResourceAsStream(resource)) {
+            if (in == null) {
+                throw new IllegalStateException("rock bank resource missing: " + resource);
+            }
+            data = in.readAllBytes();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("rock bank unreadable: " + resource, e);
+        }
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment seg = a.allocateFrom(ValueLayout.JAVA_BYTE, data);
+            int r = (int) REGISTER_ROCK_BANK.invokeExact(id, seg, (long) data.length);
+            if (r != 0) {
+                throw new IllegalStateException("rock bank " + resource + " refused: " + lastError());
+            }
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+        REGISTERED_BANKS.add(id);
     }
 
     /** {@link Config#blockIds} from the game's runtime block registry (SBO numeric ids). */
@@ -280,6 +476,10 @@ public final class NativeCubeGenerator implements AutoCloseable {
         copyShorts(cfg, 184, config.stalagmiteStates, 24);
         copyShorts(cfg, 232, config.stalagmitePartStates, 2);
         copyShorts(cfg, 240, config.blockIds, Math.min(config.blockIds.length, 64));
+        if ((config.flags & FLAG_BOULDERS) != 0 && config.rockBank != 0) {
+            ensureRockBank(config.rockBank);
+            cfg.set(ValueLayout.JAVA_SHORT, 236, (short) config.rockBank);
+        }
         MemorySegment created;
         try {
             created = (MemorySegment) CREATE.invokeExact(cfg);
@@ -319,11 +519,16 @@ public final class NativeCubeGenerator implements AutoCloseable {
     /** The upcall: never lets an exception unwind into native code. */
     @SuppressWarnings("unused")
     private int fillProfile(MemorySegment user, long cx, long cz, MemorySegment out) {
+        if (isClosing()) {
+            return 0;   // closing: fail fast so the calls in flight (and the prefetch helpers) wind down
+        }
         try {
             int[] height = new int[1024], water = new int[1024], floor = new int[1024], roof = new int[1024];
             byte[] biome = new byte[1024], flow = new byte[1024];
             short[] carve = new short[1024];
-            if (!profiles.fill(cx, cz, height, water, floor, roof, biome, flow, carve)) {
+            byte[] surface = new byte[SURFACE_SLOTS * 1024];
+            java.util.Arrays.fill(surface, (byte) 0xFF);
+            if (!profiles.fill(cx, cz, height, water, floor, roof, biome, flow, carve, surface)) {
                 return 0;
             }
             MemorySegment p = out.reinterpret(PROFILE_SIZE);
@@ -334,6 +539,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
             MemorySegment.copy(biome, 0, p, ValueLayout.JAVA_BYTE, 16384, 1024);
             MemorySegment.copy(flow, 0, p, ValueLayout.JAVA_BYTE, 17408, 1024);
             MemorySegment.copy(carve, 0, p, ValueLayout.JAVA_SHORT, 18432, 1024);
+            MemorySegment.copy(surface, 0, p, ValueLayout.JAVA_BYTE, PROFILE_SURFACE_OFFSET, SURFACE_SLOTS * 1024);
             return 1;
         } catch (Throwable t) {
             return 0;
@@ -361,7 +567,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
      * tests; the engine calls the table directly.
      */
     public int generateCube(long cx, long cy, long cz, short[] ids, short[][] layers) {
-        ensureOpen();
+        enter();
         try (Arena a = Arena.ofConfined()) {
             MemorySegment idSeg = a.allocate(ValueLayout.JAVA_SHORT, 32768);
             MemorySegment layerTable = MemorySegment.NULL;
@@ -387,12 +593,14 @@ public final class NativeCubeGenerator implements AutoCloseable {
             return r;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
     /** Never-generated surface of column cube (cx, cz): sky[1024], top[1024]; false when unknown. */
     public boolean columnSurface(long cx, long cz, long[] sky, long[] top) {
-        ensureOpen();
+        enter();
         try (Arena a = Arena.ofConfined()) {
             MemorySegment s = a.allocate(ValueLayout.JAVA_LONG, 1024), t = a.allocate(ValueLayout.JAVA_LONG, 1024);
             int r = (int) COLUMN_SURFACE.invokeExact(generator, cx, cz, s, t);
@@ -402,6 +610,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
             return true;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
@@ -412,7 +622,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
      */
     public void sampleColumns(long x0, long z0, int count, int stride, boolean carved, int[] outHeights,
                               int[] outWater, short[] outSurface, int[] outTrees) {
-        ensureOpen();
+        enter();
         int n = count * count;
         try (Arena a = Arena.ofConfined()) {
             MemorySegment h = a.allocate(ValueLayout.JAVA_INT, n);
@@ -430,13 +640,46 @@ public final class NativeCubeGenerator implements AutoCloseable {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
+        }
+    }
+
+    /**
+     * As below, plus the water standing in each mouth ({@code outWater}, native {@link #NO_WATER} when dry): sea
+     * level over a flooded sea shelf. A library without {@code sbw_sample_cell_openings_water} reports them dry.
+     */
+    public void sampleCellOpenings(long x0, long z0, int cells, int cellSize, int[] cellHeights, int[] outFloor,
+                                   byte[] outCoverage, int[] outWater) {
+        if (outWater == null || SAMPLE_OPENINGS_WATER == null) {
+            sampleCellOpenings(x0, z0, cells, cellSize, cellHeights, outFloor, outCoverage);
+            if (outWater != null) java.util.Arrays.fill(outWater, NO_WATER);
+            return;
+        }
+        enter();
+        int n = cells * cells;
+        try (Arena a = Arena.ofConfined()) {
+            MemorySegment h = a.allocateFrom(ValueLayout.JAVA_INT, cellHeights);
+            MemorySegment f = a.allocate(ValueLayout.JAVA_INT, n), c = a.allocate(ValueLayout.JAVA_BYTE, n);
+            MemorySegment w = a.allocate(ValueLayout.JAVA_INT, n);
+            int r = (int) SAMPLE_OPENINGS_WATER.invokeExact(generator, x0, z0, cells, cellSize, h, f, c, w);
+            check(r, "sbw_sample_cell_openings_water");
+            MemorySegment.copy(f, ValueLayout.JAVA_INT, 0, outFloor, 0, n);
+            MemorySegment.copy(c, ValueLayout.JAVA_BYTE, 0, outCoverage, 0, n);
+            MemorySegment.copy(w, ValueLayout.JAVA_INT, 0, outWater, 0, n);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
     /** TerrainGenerator.sampleCellOpenings: floors (Integer.MIN_VALUE = none) and coverage 0..255. */
     public void sampleCellOpenings(long x0, long z0, int cells, int cellSize, int[] cellHeights, int[] outFloor,
                                    byte[] outCoverage) {
-        ensureOpen();
+        enter();
         int n = cells * cells;
         try (Arena a = Arena.ofConfined()) {
             MemorySegment h = a.allocateFrom(ValueLayout.JAVA_INT, cellHeights);
@@ -449,6 +692,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
@@ -458,7 +703,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
      */
     public int[] probeCellTrees(long x0, long z0, int cells, int cellSize, int[] cellHeights, int[] cellWater,
                                 short[] cellSurface) {
-        ensureOpen();
+        enter();
         try (Arena a = Arena.ofConfined()) {
             MemorySegment h = a.allocateFrom(ValueLayout.JAVA_INT, cellHeights);
             MemorySegment w = a.allocateFrom(ValueLayout.JAVA_INT, cellWater);
@@ -478,11 +723,13 @@ public final class NativeCubeGenerator implements AutoCloseable {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
     public ColumnInfo queryColumn(long x, long z) {
-        ensureOpen();
+        enter();
         try (Arena a = Arena.ofConfined()) {
             MemorySegment o = a.allocate(COLUMN_INFO_SIZE, 8);
             int r = (int) QUERY_COLUMN.invokeExact(generator, x, z, o);
@@ -495,12 +742,14 @@ public final class NativeCubeGenerator implements AutoCloseable {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
     /** Carved surface of a column cube: heights[1024] and carved flags[1024] ([lz * 32 + lx]). */
     public void columnCarve(long cx, long cz, int[] outCarvedHeight, byte[] outCarved) {
-        ensureOpen();
+        enter();
         try (Arena a = Arena.ofConfined()) {
             MemorySegment h = a.allocate(ValueLayout.JAVA_INT, 1024), c = a.allocate(ValueLayout.JAVA_BYTE, 1024);
             int r = (int) COLUMN_CARVE.invokeExact(generator, cx, cz, h, c);
@@ -511,34 +760,134 @@ public final class NativeCubeGenerator implements AutoCloseable {
             throw e;
         } catch (Throwable t) {
             throw new IllegalStateException(t);
+        } finally {
+            exit();
         }
     }
 
-    private static void check(int r, String what) {
+    /** A negative native result as an exception: {@link TerrainClosedException} once the generator is closing. */
+    private void check(int r, String what) {
         if (r < 0) {
-            throw new IllegalStateException(what + " failed: " + lastError());
+            String error = lastError();
+            if (isClosing()) {
+                throw new TerrainClosedException(what + " refused: generator closing (" + error + ")");
+            }
+            throw new IllegalStateException(what + " failed: " + error);
         }
     }
 
     private void ensureOpen() {
-        if (closed) {
-            throw new IllegalStateException("generator closed");
+        if (closed || isClosing()) {
+            throw new TerrainClosedException("generator closed");
         }
     }
 
-    /** Destroys the native generator, then frees the upcall stub. No generator call may be running. */
+    /* ---------------------------------------------------------------------------- lifetime gate */
+    // Every Java call into the native generator holds the gate (enter/exit); close() refuses new calls, waits for the
+    // ones in flight and only then destroys the generator. FastLOD workers, the weather relief thread, debug and spawn
+    // queries all run on their own threads and outlive their owners' shutdown calls by design (an executor that does
+    // not stop in time is abandoned, the relief thread is never joined): without the gate a call in flight at quit ran
+    // on a freed generator (SIGSEGV in Generator::base / buildCarve, 2026-11-19).
+
+    /** Sign bit of {@link #calls}: the generator is closing (new calls are refused). */
+    private static final int CLOSING = Integer.MIN_VALUE;
+    /** How long close() waits for calls in flight before giving up on freeing the generator (it is leaked then). */
+    private static final long CLOSE_DRAIN_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(
+        Long.getLong("stonebreak.worldgen.closeDrainSeconds", 30L));
+    /** Calls in flight (low 31 bits) | {@link #CLOSING}. */
+    private final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Admits one call, or throws {@link TerrainClosedException} once {@link #close} began. Pair with exit(). */
+    private void enter() {
+        for (;;) {
+            int s = calls.get();
+            if (s < 0) {
+                throw new TerrainClosedException("generator closed");
+            }
+            if (calls.compareAndSet(s, s + 1)) {
+                return;
+            }
+        }
+    }
+
+    private void exit() {
+        if (calls.decrementAndGet() == CLOSING) {
+            synchronized (calls) {
+                calls.notifyAll();
+            }
+        }
+    }
+
+    /** True once {@link #beginClose} or {@link #close} ran: every new call is refused. */
+    public boolean isClosing() {
+        return calls.get() < 0;
+    }
+
+    /** Calls in flight right now (tests, diagnostics). */
+    int callsInFlight() {
+        return calls.get() & ~CLOSING;
+    }
+
+    /**
+     * Starts closing without waiting: new calls are refused with {@link TerrainClosedException} and the profile
+     * upcall fails fast, so calls in flight wind down. The owner then closes the profile source (which unblocks
+     * upcalls waiting on it) and calls {@link #close()}. Idempotent.
+     */
+    public void beginClose() {
+        calls.getAndUpdate(s -> s | CLOSING);
+    }
+
+    /**
+     * Destroys the native generator, then frees the upcall stub - after refusing new calls and waiting for the
+     * calls in flight to return. A call that does not return within {@code stonebreak.worldgen.closeDrainSeconds}
+     * (default 30) leaves the generator and its upcall stub allocated (leaked, never freed under a running call).
+     * The engine streamer that uses {@link #generator()} must be closed before.
+     */
     @Override
     public synchronized void close() {
         if (closed) {
             return;
         }
         closed = true;
+        beginClose();
+        if (!awaitDrained()) {
+            org.slf4j.LoggerFactory.getLogger(NativeCubeGenerator.class).error(
+                "Native generator still has {} call(s) in flight after {} s; leaking it instead of freeing it under "
+                    + "them", callsInFlight(), java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(CLOSE_DRAIN_NANOS));
+            return;
+        }
         try {
             DESTROY.invokeExact(generator);
         } catch (Throwable t) {
             throw new IllegalStateException(t);
         } finally {
             arena.close();
+        }
+    }
+
+    /** Waits until no call is in flight; false on timeout. Interrupts are kept for the caller, not obeyed. */
+    private boolean awaitDrained() {
+        long deadline = System.nanoTime() + CLOSE_DRAIN_NANOS;
+        boolean interrupted = false;
+        try {
+            synchronized (calls) {
+                while (calls.get() != CLOSING) {
+                    long left = deadline - System.nanoTime();
+                    if (left <= 0) {
+                        return false;
+                    }
+                    try {
+                        calls.wait(Math.max(1L, Math.min(250L, left / 1_000_000L)));
+                    } catch (InterruptedException e) {
+                        interrupted = true;
+                    }
+                }
+                return true;
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 }

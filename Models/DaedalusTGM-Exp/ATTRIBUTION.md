@@ -4,11 +4,49 @@ The DaedalusTGM-Exp-2 terrain model that ships with Stonebreak was trained on th
 only the trained model weights. None of these datasets is redistributed with it. Each licensor's required notice
 is given verbatim. The citations follow each provider's own "how to cite" text.
 
-Licence audit and reasoning: `Dev Working/docs/DaedalusTGM-Exp-2-Data-Licences.md` (local, 2026-11-18).
+- **Dataset licences** (read from each primary source, 2026-11-18): `Dev Working/docs/DaedalusTGM-Exp-2-Data-Licences.md` (local).
+- **Checkpoint audit** (every shipped weight traced to its training data and its whole init chain, 2026-11-19):
+  `Dev Working/docs/exp2-work/H-ship-readiness.md` (local); the machine-readable record is
+  `scripts/release_provenance.json`, which `scripts/make_release.py` checks before it builds a release and copies
+  into the release's `release.json`.
 
-> **Release gate:** the CHELSA-TraCE21k entry may stay only after its licence has been confirmed in writing (see
-> the audit). If the paleo data is dropped and the climate node retrained, delete that entry and its upstream
-> line. No WorldClim-derived weights may ship.
+**Release covered:** `checkpoints/exp2-r1` (built from `checkpoints/exp2/world_exp2b`; content id `ceafecb2d1cf`).
+A later release must be re-checked: `scripts/make_release.py <src> <out> --check-only`.
+
+> **Rule:** only public-domain, CC0, CC BY or open-with-attribution data. No WorldClim (non-commercial), FABDEM
+> (non-commercial), Copernicus EEA-10 (restricted), and no CHELSA-TraCE21k until WSL confirms its licence in writing.
+> A model initialised or distilled from a model trained on any of these counts as trained on it.
+
+---
+
+## What each shipped checkpoint was trained on (exp2-r1)
+
+"data v2" = `/mnt/extrastorage/terrain-slm-data/v2-gedtm30` (49 regions): land GEDTM30 (GLO-30 only where GEDTM30
+has no value: water surfaces), sea floor GEBCO 2024, Hawaii and Puerto Rico sea floors refined with NOAA CUDEM;
+climate per cell from CHELSA v2.1 + ERA5 (WeatherBench 2); drainage weighted by that precipitation. No WorldClim:
+`terrain_slm/data/build.py` (EXP-1's builder, the only WorldClim reader) is not part of the v2 pipeline.
+
+| File | Training run | Initialised from | Data | Sources |
+|---|---|---|---|---|
+| planner.pt | exp2/planner_v4b | planner_v4a <- planner_v3 (from scratch) | data v2 | GEDTM30, GLO-30, GEBCO, CUDEM, CHELSA v2.1, ERA5 |
+| relief.pt | exp2/relief_v2c | relief_v2b <- relief_v2 (from scratch) | data v2 | same |
+| detail.pt | exp2/d2_full_v2_mf_experts | merge of d2_full_v2_mf + d2_full_v2_experts, both from d2_full_v2 (from scratch) | data v2 | same |
+| refiner.pt | exp2/refiner_v2 | from scratch | data v2 | same |
+| hydro.pt | exp2/hydro_v2 | from scratch | data v2 | same |
+| bank.pt | exp2/bank_v2 | from scratch | data v2 (DEM + water mask only) | same |
+| biome.pt | exp2/biome_v2 | from scratch | data v2 (labels: the rule classifier on v2 climate) | same |
+| sr30.pt | exp2/sr30_r0 | from scratch | data v2 30 m DEMs | same |
+| climate.pt | exp2/climate_r1 | from scratch | GEBCO 0.25° geography, ERA5 wind; targets CHELSA v2.1 + ERA5 soil/snow | GEBCO, CHELSA v2.1, ERA5 |
+
+- **Not used by exp2-r1:** CHELSA-TraCE21k (climate_r1 was saved at 16:01 on 2026-11-18, before the first TraCE file
+  was downloaded at 16:19, and was trained without `--paleo`), WorldClim, FABDEM, EEA-10, and every EXP-1 (v2/v3/v4)
+  checkpoint (no EXP-2 run starts from one).
+- **Cleared candidate, not in exp2-r1:** `exp2/sr15_r0` (SR-15 for the 1:1 preset): USGS 3DEP only. Add the 3DEP
+  line to the credits when it ships. `exp2/qad_d2_mf_experts` (FP8 student, not shipped) is also clean (data v2,
+  teacher = detail.pt).
+- **Tainted, never ship:** the small A/B proxies `exp2/ab_v4_small`, `ab_d2_small`, `mf_d2_small`, `qad_d2_small`
+  (trained with the trainers' default `--data-dir`, which is EXP-1 data with WorldClim climate), `exp2/climate_r2..r4`
+  (paleo experiments, counted as TraCE-trained), and all of `checkpoints/v2`, `v3`, `v4` and the other EXP-1 runs.
 
 ---
 
@@ -23,16 +61,20 @@ Licence audit and reasoning: `Dev Working/docs/DaedalusTGM-Exp-2-Data-Licences.m
 - **GEBCO**: GEBCO Compilation Group (2024) GEBCO 2024 Grid (doi:10.5285/1c44ce99-0a0d-5f4f-e063-7086abc0ea0f).
 - **NOAA NCEI CUDEM**: Continuously Updated Digital Elevation Model, 1/9 arc-second topo-bathymetry (Hawaii, Puerto
   Rico), CIRES / NOAA National Centers for Environmental Information.
-- **USGS 3DEP**: Map services and data available from U.S. Geological Survey, National Geospatial Program.
 - **ERA5**: Generated using or contains modified Copernicus Climate Change Service information 2026, licensed under
   CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). ERA5 accessed via WeatherBench 2 (Google Research).
 - **CHELSA v2.1**: Climatologies at high resolution for the earth's land surface areas (Karger et al.), and
   CHELSA-BIOCLIM+ (Brun et al.), WSL.
-- **CHELSA-TraCE21k**: downscaled transient climate since the Last Glacial Maximum (Karger et al.), WSL, licensed
-  under [LICENCE AS CONFIRMED BY WSL], based on the NCAR TraCE-21ka simulation.
+- *(only once the vegetation node ships)* **ETH Global Canopy Height 2020** (Lang et al. 2023, ETH Zurich), CC BY 4.0;
+  **ESA WorldCover**: (c) ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed
+  by ESA WorldCover consortium.
+- *(only once the SR-15 / 1:1 node ships)* **USGS 3DEP**: Map services and data available from U.S. Geological
+  Survey, National Geospatial Program.
+- *(rock shape bank, courtesy credit - CC0 needs none)* **Poly Haven**: boulder shapes learned from Poly Haven 3D rock
+  scans (polyhaven.com, CC0).
 
 Stonebreak and DaedalusTGM-Exp-2 are not endorsed by Airbus, DLR, ESA, the European Union, ECMWF, the European
-Commission, GEBCO, the IHO, the IOC, NOAA, the USGS, WSL, OpenGeoHub or any other data provider.
+Commission, GEBCO, the IHO, the IOC, NOAA, the USGS, WSL, OpenGeoHub, ETH Zurich or any other data provider.
 
 ---
 
@@ -64,6 +106,9 @@ credits:
   delegation do not incur any liability for any use of the Copernicus WorldDEM-30"
 - **Data citation:** European Space Agency (2022). Copernicus DEM [Data set]. https://doi.org/10.5270/ESA-c5d3d65.
   Copernicus Digital Elevation Model (DEM) was accessed on 26-Sep-2026 from https://registry.opendata.aws/copernicus-dem.
+- **Used as:** directly, the land value where GEDTM30 has none (water surfaces; `data/build_v2.py`), and indirectly
+  as the main input of GEDTM30 (below). Its obligations bind sub-licensees (Art. 6(e)), so the notice and the
+  legal-notice sentence must also reach anyone the game is redistributed to.
 
 ### GEDTM30: Global Ensemble Digital Terrain Model 30 m
 
@@ -96,13 +141,46 @@ credits:
   Bathymetric-Topographic Tiles. Hawaii and Puerto Rico tiles (2021v1). NOAA National Centers for Environmental
   Information. https://doi.org/10.25921/ds9v-ky35. Accessed 18-Nov-2026.
 
-### USGS 3DEP 1/3 arc-second DEM
+### USGS 3DEP 1/3 arc-second DEM (SR-15 candidate only; not in exp2-r1)
 
 - **Terms:** public domain. Acknowledgement requested.
   https://www.usgs.gov/information-policies-and-instructions/copyrights-and-credits
 - **Acknowledgement:** Map services and data available from U.S. Geological Survey, National Geospatial Program.
 - **Citation:** U.S. Geological Survey (2025). 1/3rd arc-second Digital Elevation Models (DEMs) - USGS National Map
   3DEP Downloadable Data Collection. U.S. Geological Survey. Accessed 18-Nov-2026.
+
+### National lidar DTMs (SR-15 v2 + surface-detail node candidates only; not in exp2-r1)
+
+Used by `sr15_v2` (15 m truth) and `surface_r0` (sub-block surface labels), agent L 2026-11-19. Each licence was
+checked on the provider's own page / metadata on 2026-11-19; per-file URLs are in
+`terrain-slm-data/raw/<source>/PROVENANCE.jsonl`. Required credits once either checkpoint ships:
+- **USGS 3DEP 1 m DEM (lidar)** - public domain; credit as the 1/3 arc-second entry above.
+- **Kartverket (Norway)**, Nasjonal hoydemodell DTM - CC BY 4.0. Credit: "(c) Kartverket" (CC BY 4.0,
+  https://www.kartverket.no/en/api-and-data/terms-of-use).
+- **swisstopo swissALTI3D** - swisstopo free geodata (OGD), commercial use allowed, source mandatory. Credit:
+  "(c) swisstopo" (https://www.swisstopo.admin.ch/en/terms-of-use-free-geodata-and-geoservices).
+- **AHN (Actueel Hoogtebestand Nederland)** - CC0 1.0. Credit (courtesy, not required): "AHN".
+- **Toitu Te Whenua Land Information New Zealand**, New Zealand LiDAR 1m DEM - CC BY 4.0. Credit: "Sourced from
+  Toitu Te Whenua Land Information New Zealand, licensed for reuse under CC BY 4.0."
+- **IGN (France)**, RGE ALTI and LiDAR HD MNT - Licence Ouverte / Open Licence v2.0 (Etalab). Credit:
+  "IGN - RGE ALTI, LiDAR HD (Licence Ouverte 2.0)".
+- The surface node's climate inputs at the lidar windows come from CHELSA v2.1 (below).
+
+### ETH Global Canopy Height 2020 + ESA WorldCover 2021 (vegetation node candidate only; not in exp2-r1)
+
+Used by `veg_r*` (the vegetation node, `veg.pt`; agent V 2026-11-19) as training targets, binned to the data-v2 60 m
+grid by `terrain_slm/data/vegetation.py` (raw tiles + sha256: `terrain-slm-data/raw/vegetation_manifest.json`).
+Both licences were checked on the providers' pages on 2026-11-19. Required credits once `veg.pt` ships:
+- **ETH Global Canopy Height 2020** - CC BY 4.0 ("provided free of charge, without restriction of use"; cite the
+  datasets and the article), https://langnico.github.io/globalcanopyheight/ . Citation: Lang, N., Jetz, W.,
+  Schindler, K., & Wegner, J. D. (2023). A high-resolution canopy height model of the Earth. Nature Ecology &
+  Evolution, 1-12. Data: doi:10.3929/ethz-b-000609802.
+- **ESA WorldCover 10 m 2021 v200** - CC BY 4.0, https://esa-worldcover.org/en/data-access . Credit:
+  "(c) ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover
+  consortium". Citation: Zanaga, D., Van De Kerchove, R., Daems, D., De Keersmaecker, W., Brockmann, C., Kirches, G.,
+  Wevers, J., Cartus, O., Santoro, M., Fritz, S., Lesiv, M., Herold, M., Tsendbazar, N.E., Xu, P., Ramoino, F.,
+  Arino, O., 2022. ESA WorldCover 10 m 2021 v200. https://doi.org/10.5281/zenodo.7254221
+- Not used: Meta/WRI 1 m canopy height (not needed at 60 m), NASA GEDI footprints (the ETH product is GEDI-trained).
 
 ### ERA5 (Copernicus Climate Change Service), via WeatherBench 2
 
@@ -151,7 +229,28 @@ credits:
     at kilometer resolution for the past and future. Earth System Science Data 14, 5573-5603.
     https://doi.org/10.5194/essd-14-5573-2022
 
-### CHELSA-TraCE21k v1.0 (keep only after licence confirmation)
+---
+
+### Poly Haven 3D rock scans (RockVAE -> boulder shape bank `rock_bank_v1.sbrb`; agent N, 2026-11-19)
+
+- **Licence:** CC0 1.0 (https://polyhaven.com/license: "All assets (HDRIs, textures and 3D models)" are "licensed as
+  CC0"; "You do not need to give credit"). Checked 2026-11-19. No attribution required; a courtesy credit is above.
+- **Data:** the 37 models of the Poly Haven category "rocks" (geometry only), 30 of them used (individual rocks /
+  boulders + rocks cut out of coast and field scans); per-asset authors, URLs and md5 in
+  `/mnt/extrastorage/terrain-slm-data/raw/rocks/sources.json` and the bank manifest
+  `stonebreak-game/src/main/resources/worldgen/rocks/rock_bank_v1.json`.
+- **Changes:** voxelised, normalised and augmented; a 3D VAE + latent flow trained on them generates new shapes
+  (nearest-neighbour IoU to every scan < 0.8), baked to block-sized voxel shapes. No scan is shipped.
+
+---
+
+## Not used by the shipped model (kept for reference)
+
+### CHELSA-TraCE21k v1.0 (paleo experiments only: climate_r2..r4; not in exp2-r1)
+
+Not in the credits: no shipped checkpoint was trained on it. Credit it (with the licence WSL confirms) only if a
+paleo-trained climate node ever ships; until WSL confirms the licence in writing it must not.
+
 
 - **Licence:** [LICENCE AS CONFIRMED BY WSL: CC0 1.0 / CC BY 2.0 / CC BY-SA 4.0; see the audit]
 - **Data:** Karger, D. N., Nobis, M. P., Normand, S., Graham, C. H., Zimmermann, N. E. (2020). CHELSA-TraCE21k:

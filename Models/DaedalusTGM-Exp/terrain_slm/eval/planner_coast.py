@@ -23,11 +23,15 @@ ROOT = Path(__file__).resolve().parents[2] / "checkpoints" / "exp2"
 N = 256
 
 
+MODEL: Path | None = None                       # --model: the EXP-2 folder the planners are swapped into
+
+
 def generator(planner: Path, seed: int, device: str):
     from terrain_slm.world.generator2 import WorldGenerator2
 
     tmp = Path(tempfile.mkdtemp(prefix="planner_coast_"))
-    for f in (ROOT / "world_exp2").iterdir():
+    from terrain_slm.eval import DEFAULT_EXP2_MODEL
+    for f in Path(MODEL or DEFAULT_EXP2_MODEL).iterdir():
         if f.name != "planner.pt":
             (tmp / f.name).symlink_to(f.resolve())
     (tmp / "planner.pt").symlink_to(planner.resolve())
@@ -55,8 +59,13 @@ def main() -> None:
     ap.add_argument("--areas", type=int, default=6)
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--json", type=Path, default=None)
+    ap.add_argument("--model", type=Path, default=None, help="EXP-2 folder the planners swap into (default: eval.DEFAULT_EXP2_MODEL)")
     ap.add_argument("--islands", action="store_true", help="open-ocean islands: areas whose probe is 0.5-8%% land")
     args = ap.parse_args()
+    global MODEL
+    if args.model is not None:
+        from terrain_slm.eval import model_path
+        MODEL = model_path(args.model)
     models = [(lab, Path(p)) for lab, p in (m.split("=", 1) for m in args.models)]
     res = {lab: {"trend_land": 0, "land": 0, "inter": 0, "union": 0, "creep_n": 0, "creep_land": 0} for lab, _ in models}
     for seed in args.seeds:

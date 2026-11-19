@@ -116,6 +116,29 @@ class TGMPipeLiveTest {
     }
 
     @Test
+    @Order(1)
+    void oneToOneTilesBuildFromTheSameService() throws Exception {
+        // 1:1 (15 m blocks): the handshake's fractional downscale (0.5) reaches the service, which draws two blocks
+        // per model pixel (SR-15 when the model folder has sr15.pt, else its bilinear stand-in).
+        long seed = freshSeed();
+        try (var one = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_WORLD, TerrainScalePreset.ONE_TO_ONE)) {
+            TerrainTile t = one.getTileAsync(0, 0).get(4, TimeUnit.MINUTES);
+            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, t.width());
+            assertNotEquals(null, service.cacheNamespace(TerrainScalePreset.ONE_TO_ONE));
+            assertNotEquals(service.cacheNamespace(TerrainScalePreset.ONE_TO_TWO),
+                    service.cacheNamespace(TerrainScalePreset.ONE_TO_ONE), "each scale caches apart");
+            int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+            for (int x = 0; x < t.width(); x++) {
+                for (int z = 0; z < t.width(); z++) {
+                    lo = Math.min(lo, t.heightAt(x, z));
+                    hi = Math.max(hi, t.heightAt(x, z));
+                }
+            }
+            assertTrue(lo >= WorldConfiguration.MIN_Y && hi < WorldConfiguration.MAX_Y && hi > lo, lo + ".." + hi);
+        }
+    }
+
+    @Test
     @Order(2)
     void aClosedCacheWithdrawsItsTiles() {
         var cache = new DiffusionTileCache(freshSeed(), 1, TGMPipe.PRIORITY_PREVIEW);

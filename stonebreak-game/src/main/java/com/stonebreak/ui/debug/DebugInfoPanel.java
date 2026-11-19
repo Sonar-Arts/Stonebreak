@@ -79,7 +79,9 @@ public final class DebugInfoPanel implements DebugPanel {
             panel.row("Generator", String.format("h %d / carved %d / water %s, scale %s", column.height(),
                 column.carvedHeight(), column.waterLevel() == NativeCubeGenerator.NO_WATER ? "-"
                     : String.valueOf(column.waterLevel()),
-                TerrainScaleOption.label(world.getTerrainScale())));
+                TerrainScaleOption.label(world.getTerrainScale()))
+                + (world.getGeneratorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION
+                    ? ", climate " + world.getClimateLayout().value() : ""));
         } catch (RuntimeException e) {
             // Generator library missing: the rows are simply absent.
         }

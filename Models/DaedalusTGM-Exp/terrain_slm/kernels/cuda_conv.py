@@ -20,6 +20,7 @@ from terrain_slm.kernels import native
 
 BK = 32
 F_FILM, F_RES, F_RAW, F_SILU, F_EULER = 1, 2, 4, 8, 16
+F_RSCALE, F_GATE, F_CLIP = 32, 64, 128   # EXP-2 Detail2 epilogue extras (cuda_detail2.py); v4 never sets them
 
 
 class ConvArgs(ctypes.Structure):
@@ -29,6 +30,8 @@ class ConvArgs(ctypes.Structure):
         *[(n, ctypes.c_int32) for n in ("M", "Hg", "Wg", "H1", "W1", "C1", "H2", "W2", "C2", "CO", "NP",
                                          "Ho", "Wo", "stem_c", "flags")],
         ("dt", ctypes.c_float),
+        ("gate", ctypes.c_uint64),
+        ("rs", ctypes.c_float),
     ]
 
 
@@ -187,14 +190,22 @@ def ptr(t: torch.Tensor | None) -> int:
     return 0 if t is None else t.data_ptr()
 
 
+def _extra_flags(res_scale, gate, clip) -> int:
+    return ((F_RSCALE if res_scale is not None else 0) | (F_GATE if gate is not None else 0)
+            | (F_CLIP if clip else 0))
+
+
 def make_conv(x1: torch.Tensor, w: torch.Tensor, bias: torch.Tensor, cfg: tuple, *, mode: int = 0, ks: int = 3,
               stride: int = 1, x2: torch.Tensor | None = None, film: torch.Tensor | None = None,
               res: torch.Tensor | None = None, out_raw: torch.Tensor | None = None,
               out_silu: torch.Tensor | None = None, co: int | None = None,
-              euler: tuple | None = None) -> Launch:
+              euler: tuple | None = None, res_scale: float | None = None, gate: torch.Tensor | None = None,
+              clip: bool = False) -> Launch:
     """Prepare one launch. x1 (B, H1, W1, C1) NHWC fp16; w packed (rows, NP) fp16; outputs NHWC fp16
     (B, Ho, Wo, CO). MODE 1: x1 is the low-res input, output (B, 2H1, 2W1, CO), x2 = skip (or None).
-    `euler` = (xs fp32 (B*Ho*Wo,), stem_in NHWC fp16, dt) for the output conv (CO = 1)."""
+    `euler` = (xs fp32 (B*Ho*Wo,), stem_in NHWC fp16, dt) for the output conv (CO = 1).
+    EXP-2 extras: `gate` (fp32, one per output pixel) multiplies the conv's value before the residual,
+    `res_scale` weights the residual, `clip` clamps the result to [-256, 256]."""
     b, h1, w1, c1 = x1.shape
     assert x1.dtype == torch.float16 and x1.is_contiguous() and c1 % BK == 0, (x1.dtype, x1.shape)
     np_ = w.shape[1]
@@ -213,7 +224,7 @@ def make_conv(x1: torch.Tensor, w: torch.Tensor, bias: torch.Tensor, cfg: tuple,
     co = co if co is not None else (out_raw if out_raw is not None else out_silu).shape[3]
     flags = ((F_FILM if film is not None else 0) | (F_RES if res is not None else 0)
              | (F_RAW if out_raw is not None else 0) | (F_SILU if out_silu is not None else 0)
-             | (F_EULER if euler is not None else 0))
+             | (F_EULER if euler is not None else 0)) | _extra_flags(res_scale, gate, clip)
     xs, stem_in, dt = euler if euler is not None else (None, None, 0.0)
     m = b * hg * wg
     taps0 = 4 if mode == 1 else ks * ks
@@ -224,11 +235,12 @@ def make_conv(x1: torch.Tensor, w: torch.Tensor, bias: torch.Tensor, cfg: tuple,
         x1=ptr(x1), x2=ptr(x2), w=ptr(w), bias=ptr(bias), film=ptr(film), res=ptr(res), out_raw=ptr(out_raw),
         out_silu=ptr(out_silu), xs=ptr(xs), stem_in=ptr(stem_in), w_phase=rows * np_,
         M=m, Hg=hg, Wg=wg, H1=h1, W1=w1, C1=c1, H2=h2, W2=w2, C2=c2, CO=co, NP=np_, Ho=ho, Wo=wo,
-        stem_c=stem_in.shape[-1] if stem_in is not None else 1, flags=flags, dt=float(dt))
+        stem_c=stem_in.shape[-1] if stem_in is not None else 1, flags=flags, dt=float(dt),
+        gate=ptr(gate), rs=float(res_scale or 0.0))
     grid = (((m + bm - 1) // bm) * (np_ // bn), 1, nz)
     lc = Launch(kernel_name(cfg, mode, ks if mode == 0 else 3, stride if mode == 0 else 1), grid,
                 cfg[2] * cfg[3] * 32, smem_bytes(cfg), args)
-    lc._keep = (x1, x2, w, bias, film, res, out_raw, out_silu, xs, stem_in)   # pointers stay valid
+    lc._keep = (x1, x2, w, bias, film, res, out_raw, out_silu, xs, stem_in, gate)   # pointers stay valid
     return lc
 
 
@@ -244,7 +256,8 @@ def bind(launches: list[Launch], device) -> None:
 # ----------------------------------------------------------------------------- halo-tiled 3x3 (csrc/hconv.cu)
 class HConvArgs(ctypes.Structure):
     _fields_ = [(n, ctypes.c_uint64) for n in ("x", "w", "bias", "film", "res", "out_raw", "out_silu", "xs", "stem_in")] + [
-        (n, ctypes.c_int32) for n in ("B", "H", "W", "C", "CO", "NP", "flags", "stem_c")] + [("dt", ctypes.c_float)]
+        (n, ctypes.c_int32) for n in ("B", "H", "W", "C", "CO", "NP", "flags", "stem_c")] + [("dt", ctypes.c_float)] + [
+        ("gate", ctypes.c_uint64), ("rs", ctypes.c_float)]
 
 
 def pack_hconv(weight: torch.Tensor, np_: int) -> torch.Tensor:
@@ -287,7 +300,8 @@ def hconv_name(cfg: tuple) -> str:
 
 
 def make_hconv(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor, cfg: tuple, *, film=None, res=None,
-               out_raw=None, out_silu=None, euler: tuple | None = None) -> Launch:
+               out_raw=None, out_silu=None, euler: tuple | None = None, res_scale: float | None = None,
+               gate: torch.Tensor | None = None, clip: bool = False) -> Launch:
     """Prepare one halo-tiled 3x3 stride-1 convolution: x (B, H, W, C) NHWC fp16, w from `pack_hconv`.
     `euler` = (xs fp32 (B*H*W,), stem_in NHWC fp16, dt) for the output conv (CO = 1)."""
     b, h, wd, c = x.shape
@@ -298,13 +312,33 @@ def make_hconv(x: torch.Tensor, w: torch.Tensor, bias: torch.Tensor, cfg: tuple,
     co = 1 if euler is not None else (out_raw if out_raw is not None else out_silu).shape[3]
     flags = ((F_FILM if film is not None else 0) | (F_RES if res is not None else 0)
              | (F_RAW if out_raw is not None else 0) | (F_SILU if out_silu is not None else 0)
-             | (F_EULER if euler is not None else 0))
+             | (F_EULER if euler is not None else 0)) | _extra_flags(res_scale, gate, clip)
     xs, stem_in, dt = euler if euler is not None else (None, None, 0.0)
     args = HConvArgs(x=ptr(x), w=ptr(w), bias=ptr(bias), film=ptr(film), res=ptr(res), out_raw=ptr(out_raw),
                      out_silu=ptr(out_silu), xs=ptr(xs), stem_in=ptr(stem_in), B=b, H=h, W=wd, C=c, CO=co, NP=np_,
-                     flags=flags, stem_c=stem_in.shape[-1] if stem_in is not None else 1, dt=float(dt))
+                     flags=flags, stem_c=stem_in.shape[-1] if stem_in is not None else 1, dt=float(dt),
+                     gate=ptr(gate), rs=float(res_scale or 0.0))
     blocks = b * -(-h // th) * -(-wd // tw) * (np_ // bn)
     lc = Launch(hconv_name(cfg), (blocks, 1, 1), cfg[3] * cfg[4] * 32, hconv_smem(cfg), args)
-    lc._keep = (x, w, bias, film, res, out_raw, out_silu, xs, stem_in)
+    lc._keep = (x, w, bias, film, res, out_raw, out_silu, xs, stem_in, gate)
     lc.source = "hconv"
+    return lc
+
+
+# ----------------------------------------------------------------------------- pixel norm (csrc/pixnorm.cu)
+class PixNormArgs(ctypes.Structure):
+    _fields_ = [("raw", ctypes.c_uint64), ("out_silu", ctypes.c_uint64), ("P", ctypes.c_int32), ("C", ctypes.c_int32),
+                ("inv_sqrt_c", ctypes.c_float)]
+
+
+def make_pixnorm(raw: torch.Tensor, out_silu: torch.Tensor) -> Launch:
+    """Per-pixel channel normalisation (models/mp.py pixel_norm) of the NHWC fp16 `raw`, in place, and its SiLU."""
+    b, h, w, c = raw.shape
+    assert raw.dtype == torch.float16 and raw.is_contiguous() and c % 8 == 0 and out_silu.shape == raw.shape
+    cpl = -(-c // 256)
+    p = b * h * w
+    args = PixNormArgs(raw=ptr(raw), out_silu=ptr(out_silu), P=p, C=c, inv_sqrt_c=float((1.0 / c) ** 0.5))
+    lc = Launch(f"pixnorm_kernel<{cpl}>", (-(-p // 8), 1, 1), 256, 0, args)
+    lc._keep = (raw, out_silu)
+    lc.source = "pixnorm"
     return lc

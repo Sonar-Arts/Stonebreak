@@ -1189,6 +1189,69 @@ void testSeaFlood() {
     }
 }
 
+/* FastLOD cave mouths on a cliffed coast (sbw_sample_cell_openings_water): a coarse cell whose mouth floor is a
+ * flooded shelf reports sea level as its water, so the LOD draws sea water in the notch instead of a dry pit under
+ * the sea; dry mouths (behind a berm) report none; floors and coverage equal sbw_sample_cell_openings'. */
+void testSeaMouths() {
+    constexpr int32_t SEA = 64;
+    for (double hm : {60.0, 30.0}) {
+        StyleWorld cliff{STYLE_CLIFF, SBW_CARVE_SEA_STACKS}, berm{STYLE_BERM, SBW_CARVE_SEA_STACKS};
+        Gen gS(styleConfig(cliff, hm)), gB(styleConfig(berm, hm));
+        CubeReader S(gS);
+        int wet[2] = {0, 0}, dryUnderSea = 0, wetWithoutWater = 0, wetAboveSea = 0, legacyBad = 0, mouths = 0;
+        for (int which = 0; which < 2; which++) {
+            const Gen& g = which == 0 ? gS : gB;
+            for (int cellSize : {2, 4, 8}) {
+                const int cells = 64 / cellSize;
+                const int64_t x0 = 0, z0 = 32;
+                std::vector<int32_t> shown(static_cast<size_t>(cells * cells)), floor(shown.size()), floor2(shown.size()),
+                    water(shown.size());
+                std::vector<uint8_t> cov(shown.size()), cov2(shown.size());
+                /* the cell heights the Java sampler shows: each cell's representative (centre) column, carved */
+                CHECK_EQ(sbw_sample_columns(g.t, x0 + cellSize / 2, z0 + cellSize / 2, cells, cellSize, SBW_SAMPLE_CARVED,
+                                            shown.data(), nullptr, nullptr, nullptr), 0);
+                CHECK_EQ(sbw_sample_cell_openings_water(g.t, x0, z0, cells, cellSize, shown.data(), floor.data(),
+                                                        cov.data(), water.data()), 0);
+                CHECK_EQ(sbw_sample_cell_openings(g.t, x0, z0, cells, cellSize, shown.data(), floor2.data(), cov2.data()), 0);
+                legacyBad += floor != floor2 || cov != cov2;
+                for (int ix = 0; ix < cells; ix++) {
+                    for (int iz = 0; iz < cells; iz++) {
+                        const size_t c = static_cast<size_t>(ix * cells + iz);
+                        if (floor[c] == INT32_MIN) {
+                            CHECK_EQ(water[c], SBW_NO_WATER);
+                            continue;
+                        }
+                        mouths++;
+                        if (water[c] != SBW_NO_WATER) {
+                            wet[which]++;
+                            wetAboveSea += floor[c] >= SEA || water[c] != SEA;
+                        }
+                        if (which != 0) continue;
+                        /* the world itself: sea water in the footprint at sea level - 1 */
+                        bool seaWater = false;
+                        for (int dx = 0; dx < cellSize; dx++) {
+                            for (int dz = 0; dz < cellSize; dz++) {
+                                seaWater = seaWater || S.at(x0 + ix * cellSize + dx, SEA - 1, z0 + iz * cellSize + dz) == SBW_WATER;
+                            }
+                        }
+                        dryUnderSea += floor[c] < SEA && seaWater && water[c] == SBW_NO_WATER;
+                        wetWithoutWater += water[c] != SBW_NO_WATER && !seaWater;
+                    }
+                }
+            }
+        }
+        std::printf("  sea mouths 1:%d: mouths %d, wet %d (berm %d), dry mouths under sea water %d, wet without water %d,"
+                    " wet off sea level %d, legacy mismatches %d\n", hm == 60.0 ? 4 : 2, mouths, wet[0], wet[1], dryUnderSea,
+                    wetWithoutWater, wetAboveSea, legacyBad);
+        CHECK(wet[0] > 0);
+        CHECK_EQ(wet[1], 0);
+        CHECK_EQ(dryUnderSea, 0);
+        CHECK_EQ(wetWithoutWater, 0);
+        CHECK_EQ(wetAboveSea, 0);
+        CHECK_EQ(legacyBad, 0);
+    }
+}
+
 void testTowers() {
     int components[2] = {0, 0};
     int scale = 0;
@@ -1605,7 +1668,7 @@ int main(int argc, char** argv) {
         {"profile", testProfileKind},
         {"profilecarve", testProfileCarve},
         {"seastacks", testSeaStacks},
-        {"seaflood", testSeaFlood},
+        {"seaflood", testSeaFlood}, {"seamouths", testSeaMouths},
         {"towers", testTowers},
         {"pointtile", testPointEqualsTile},
         {"scale", testScalePresets},

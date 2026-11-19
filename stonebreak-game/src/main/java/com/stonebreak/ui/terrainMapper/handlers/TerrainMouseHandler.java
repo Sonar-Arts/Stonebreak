@@ -34,7 +34,9 @@ public final class TerrainMouseHandler {
 
     /**
      * A press on a named control: {@code back}, {@code character}, {@code create}, {@code simulate},
-     * {@code spawn}, {@code center}, {@code generator:<TerrainGeneratorType>} or
+     * {@code spawn}, {@code center}, {@code generator:<TerrainGeneratorType>}, {@code scale:<preset>},
+     * {@code climate:<ClimateLayout>}, {@code scale:next} / {@code climate:next} (the world-options row: the next
+     * preset / layout, once a generator is picked; the climate only for DaedalusTGM-Exp) or
      * {@code mode:<VisualizerKind>}. A disabled button takes the press and does nothing.
      * @return false for an unknown name
      */
@@ -48,10 +50,29 @@ public final class TerrainMouseHandler {
             }
             return false;
         }
+        // The world-options row cycles: the scale for any generator, the climate layout only for
+        // DaedalusTGM-Exp (its button is disabled for Standard: the press is taken and does nothing).
+        if (name.equals("scale:next")) {
+            if (state.getSelectedGenerator() != null) state.cycleScale();
+            return true;
+        }
+        if (name.equals("climate:next")) {
+            if (state.getSelectedGenerator() == TerrainGeneratorType.DIFFUSION) {
+                state.selectClimateLayout(
+                    com.stonebreak.world.generation.ClimateLayout.next(state.getSelectedClimateLayout()));
+            }
+            return true;
+        }
         if (name.startsWith("scale:")) {
             var scale = com.stonebreak.config.TerrainScaleOption.parse(name.substring(6));
             if (scale == null) return false;
             state.selectScale(scale);
+            return true;
+        }
+        if (name.startsWith("climate:")) {
+            var layout = com.stonebreak.world.generation.ClimateLayout.parse(name.substring(8));
+            if (layout == null) return false;
+            state.selectClimateLayout(layout);
             return true;
         }
         if (name.startsWith("mode:")) {

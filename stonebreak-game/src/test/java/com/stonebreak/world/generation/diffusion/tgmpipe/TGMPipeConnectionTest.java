@@ -71,7 +71,7 @@ class TGMPipeConnectionTest {
     }
 
     private void sendTile(int id, boolean cached, int i1, int j1, short base) throws IOException {
-        ByteBuffer body = ByteBuffer.allocate(17 + TGMPipeProtocol.PLANES * N * N * 2).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer body = ByteBuffer.allocate(17 + TGMPipeProtocol.PLANES * N * N * 2 + 1).order(ByteOrder.LITTLE_ENDIAN);
         body.putInt(id).put((byte) (cached ? 1 : 0)).putShort((short) N).putShort((short) N).putInt(i1).putInt(j1);
         for (int plane = 0; plane < TGMPipeProtocol.PLANES; plane++) {
             for (int k = 0; k < N * N; k++) {
@@ -79,6 +79,7 @@ class TGMPipeConnectionTest {
                 body.putShort(plane == 3 || plane == 4 ? -1 : (short) (base + plane * 100 + k));
             }
         }
+        body.put((byte) 0);   // v3 surface block: no channels
         send(TGMPipeProtocol.TILE_DATA, body.array());
     }
 

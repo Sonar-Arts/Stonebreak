@@ -77,6 +77,11 @@ public final class ClientWorldView {
     private final ClientChatHandler chatHandler = new ClientChatHandler();
 
     private int localPlayerId = -1;
+    /** The server this view joined (its address, "" in-process): part of a remote client's LOD store key. */
+    private volatile String serverKey = "";
+    /** The server world's terrain model (WelcomeS2C, protocol 28), LEGACY before the welcome. */
+    private volatile com.stonebreak.world.generation.TerrainModelRef serverTerrainModel =
+        com.stonebreak.world.generation.TerrainModelRef.LEGACY;
     private int lastBroadcastHotbarSlot = -1;
     private int lastBroadcastHeldItemId = -1;
 
@@ -139,6 +144,7 @@ public final class ClientWorldView {
     public void connect(NetAddress address, String username, String secret,
                         java.util.function.Consumer<String> secretSink) throws InterruptedException {
         this.remote = address.type() == com.openmason.engine.net.transport.TransportType.TCP;
+        this.serverKey = remote ? String.valueOf(address) : "";
         this.presentedSecret = secret == null ? "" : secret;
         this.secretSink = secretSink;
         connection = networkClient.connect(address);
@@ -944,8 +950,19 @@ public final class ClientWorldView {
         }
     }
 
+    /** The server this view joined ("" in-process), for keys of what a remote client caches per server. */
+    public String serverKey() {
+        return serverKey;
+    }
+
+    /** The server world's terrain model (protocol 28). */
+    public com.stonebreak.world.generation.TerrainModelRef serverTerrainModel() {
+        return serverTerrainModel;
+    }
+
     private void handleWelcome(WelcomeS2C w) {
         localPlayerId = w.playerId();
+        serverTerrainModel = w.terrainModel();
         if (secretSink != null && !w.clientSecret().isEmpty() && !w.clientSecret().equals(presentedSecret)) {
             secretSink.accept(w.clientSecret()); // kept for the next join to this server (#335)
         }
@@ -955,9 +972,30 @@ public final class ClientWorldView {
         characterCreationSubmitted = false;
         // Build the client RENDER world: no terrain generation, no save service — chunks stream
         // in from the server. The local player is positioned at the authoritative spawn.
+        // A DaedalusTGM-Exp world: this process's TGMPipe (a remote client's FastLOD fallback and terrain queries) runs
+        // the model the server's world was made with (protocol 28, review-python HIGH-1). In-process (singleplayer /
+        // host) the server already chose it: the same choice again, nothing restarts and nothing is said twice.
+        if (w.generatorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION) {
+            var choice = com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.getInstance()
+                .useWorldModel(w.terrainModel());
+            if (!choice.matches() && !com.stonebreak.network.MultiplayerSession.hasIntegratedServer()) {
+                // The server generates the real terrain; only this client's distant previews (FastLOD) differ.
+                String shown = "This server's world uses terrain model " + w.terrainModel().displayName()
+                    + ", which is not installed here: distant terrain previews will not match the real terrain until "
+                    + "it streams in.";
+                Game game = Game.getInstance();
+                game.runOnMainThread(() -> {
+                    var chat = game.getChatSystem();
+                    if (chat != null) {
+                        chat.addMessage(shown, new float[]{1.0f, 0.35f, 0.35f, 1.0f});
+                    }
+                });
+            }
+        }
         String label = Game.getInstance().getCurrentWorldName() != null
             ? Game.getInstance().getCurrentWorldName()
             : "mp_" + System.currentTimeMillis();
-        Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), w.terrainScale(), spawn);
+        Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), w.terrainScale(),
+            w.climateLayout(), w.heightCurve(), spawn);
     }
 }

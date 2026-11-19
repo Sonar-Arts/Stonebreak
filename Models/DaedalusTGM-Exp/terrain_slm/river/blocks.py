@@ -21,10 +21,12 @@ import math
 from dataclasses import dataclass
 
 import torch
+
+from terrain_slm.world.devcopy import const   # host -> device without a device sync
 import torch.nn.functional as F
 
 from terrain_slm.data import descriptors as D
-from terrain_slm.river.field import NO_FLOW, NO_TUNNEL, NO_WATER, BlockColumns, Drainage, RiverContext, RiverField
+from terrain_slm.river.field import NO_FLOW, NO_TUNNEL, NO_WATER, BlockColumns, Drainage, Lazy, RiverContext, RiverField
 from terrain_slm.synth import noise as S
 
 CP = D.CELL_PX
@@ -36,13 +38,13 @@ UNDERCUT_STREAM = 7717
 
 @dataclass
 class BlockSource:
-    """The river field pooled to block columns (d x d native pixels each)."""
+    """The river field pooled to block columns (d x d native pixels each; d = 1/k when k x k blocks share a pixel)."""
     ground_m: torch.Tensor      # wet: channel floor; dry: mean ground
     top_m: torch.Tensor         # lowest wet water top, +inf where dry
     wet: torch.Tensor
     half_blocks: torch.Tensor   # channel half width, blocks (0 where dry)
     origin: tuple[int, int]     # absolute block coordinates of [0, 0]
-    d: int
+    d: int | float
     drainage: Drainage | None
     flow_log: torch.Tensor | None = None  # smoothed log flow (grows downstream), block mean
 
@@ -66,6 +68,23 @@ def pool_to_blocks(f: RiverField, d: int, block_origin: tuple[int, int], drainag
         else torch.zeros_like(ground)
     flow_log = pool(f.flow) if f.flow is not None else None
     return BlockSource(ground, top, wet, half / d, block_origin, d, drainage, flow_log)
+
+
+def unpool_to_blocks(f: RiverField, k: int, block_origin: tuple[int, int], drainage: Drainage | None,
+                     ground_fine: torch.Tensor) -> BlockSource:
+    """Blocks FINER than the field's pixels (1:1: k = 2 blocks per 30 m pixel per axis): every river field is repeated
+    over its pixel's k x k blocks; dry ground comes from `ground_fine` (the 15 m terrain, (H*k, W*k) metres, carrying
+    the field's carving), wet columns keep the pixel's channel floor. Same wet rule as pool_to_blocks."""
+    up = lambda x: x.repeat_interleave(k, 0).repeat_interleave(k, 1)
+    wet_n = f.wet if f.wet is not None else torch.zeros_like(f.ground, dtype=torch.bool)
+    wet = up(wet_n)
+    top = up(torch.where(wet_n, f.top, torch.full_like(f.ground, float("inf"))))
+    ground = torch.where(wet, up(f.carved), ground_fine)
+    wet = wet & torch.isfinite(top) & (top > 0.0)
+    half = up(f.half_px * (f.channel if f.channel is not None else 0)) * k if f.half_px is not None \
+        else torch.zeros_like(ground)
+    flow_log = up(f.flow) if f.flow is not None else None
+    return BlockSource(ground, top, wet, half, block_origin, 1.0 / k, drainage, flow_log)
 
 
 class BlockQuantize:
@@ -100,7 +119,7 @@ class BlockContainment:
         held = _neigh_max(torch.where(cols.wet, cols.water, torch.full_like(cols.water, -1)))
         not_sea = cols.height >= ctx.scale.sea_level
         need = (~cols.wet) & (held >= 0) & not_sea & (cols.height < held)
-        ctx.stats["block_raised"] = int(need.sum())
+        ctx.stats["block_raised"] = Lazy(need.sum())
         cols.height = torch.where(need, held.long(), cols.height)
         return cols
 
@@ -111,7 +130,7 @@ def _hash_noise(bi: torch.Tensor, bj: torch.Tensor, period: float, seed: int, st
     x0, y0 = torch.floor(x), torch.floor(y)
     fx, fy = x - x0, y - y0
     ux, uy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
-    base = S._hash32(torch.tensor((seed * 0x9E3779B1 + stream * 0x632BE5AB) & S._MASK32, device=bi.device))
+    base = S.hash32_int((seed * 0x9E3779B1 + stream * 0x632BE5AB) & S._MASK32)   # host int: no device sync
 
     def corner(dx, dy):
         return S._hash32(S._hash32((x0.long() + dx) ^ base) ^ (y0.long() + dy)).float() / 2147483648.0 - 1.0
@@ -136,7 +155,7 @@ class Undercuts:
               & (cols.height >= roof + c.undercut_cover) & patch)
         cols.floor = torch.where(ok, floor, cols.floor)
         cols.roof = torch.where(ok, roof, cols.roof)
-        ctx.stats["undercut_columns"] = int(ok.sum())
+        ctx.stats["undercut_columns"] = Lazy(ok.sum())
         return cols
 
 
@@ -155,7 +174,7 @@ class Overhangs:
         cols.floor = torch.where(ok, cols.height - 1, cols.floor)
         cols.roof = torch.where(ok, nb_roof, cols.roof)
         cols.height = torch.where(ok, nb_top, cols.height)
-        ctx.stats["overhang_columns"] = int(ok.sum())
+        ctx.stats["overhang_columns"] = Lazy(ok.sum())
         return cols
 
 
@@ -197,7 +216,7 @@ class FlattenAcross:
                     break
                 lv = best
         lowered = wet & (lv < cols.water)
-        ctx.stats["flattened_columns"] = int(lowered.sum())
+        ctx.stats["flattened_columns"] = Lazy(lowered.sum())
         cols.water = torch.where(wet, lv, cols.water)
         cols.height = torch.where(wet, torch.minimum(cols.height, cols.water - 1), cols.height)
         return cols
@@ -242,7 +261,7 @@ class MonotoneBlocks:
                 break
             lv = nxt
         lowered = cols.wet & (lv < start)
-        ctx.stats["monotone_block_columns"] = int(lowered.sum())
+        ctx.stats["monotone_block_columns"] = Lazy(lowered.sum())
         cols.water = torch.where(cols.wet, lv, cols.water)
         cols.height = torch.where(cols.wet, torch.minimum(cols.height, cols.water - 1), cols.height)
         return cols
@@ -275,13 +294,18 @@ class FlowOctants:
             h, w = cols.flow.shape
             bi = torch.arange(src.origin[0], src.origin[0] + h, device=cols.flow.device)
             bj = torch.arange(src.origin[1], src.origin[1] + w, device=cols.flow.device)
-            ci = (bi * src.d) // CP - dr.origin[0]
-            cj = (bj * src.d) // CP - dr.origin[1]
+            if src.d >= 1:
+                ci = (bi * src.d) // CP - dr.origin[0]
+                cj = (bj * src.d) // CP - dr.origin[1]
+            else:                                    # 1:1: k blocks per pixel (integer maths: coordinates are large)
+                k = round(1 / src.d)
+                ci = torch.div(bi, k * CP, rounding_mode="floor") - dr.origin[0]
+                cj = torch.div(bj, k * CP, rounding_mode="floor") - dr.origin[1]
             ci = ci.clamp(0, dr.d8.shape[0] - 1)
             cj = cj.clamp(0, dr.d8.shape[1] - 1)
             cls = dr.d8[ci][:, cj]
-            table = torch.tensor([round(math.atan2(dc, drw) / (math.pi / 4)) % 8 for drw, dc in D8_OFFSETS] + [NO_FLOW],
-                                 device=cols.flow.device)
+            table = const([round(math.atan2(dc, drw) / (math.pi / 4)) % 8 for drw, dc in D8_OFFSETS] + [NO_FLOW],
+                          cols.flow.device, torch.int64)
             oct_d8 = table[cls.clamp(0, 8)]
         if src.flow_log is not None:
             # Flat reaches (common where the downstream-monotone level runs level through a bump):

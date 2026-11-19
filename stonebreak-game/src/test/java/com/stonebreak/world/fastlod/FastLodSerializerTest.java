@@ -91,6 +91,38 @@ class FastLodSerializerTest {
     }
 
     @Test
+    void roundTripCaveMouthWater() {
+        FastLodChunkData base = makeData(FastLodLevel.L2, false);
+        int n = FastLodLevel.L2.cellCount();
+        int[] floor = new int[n];
+        java.util.Arrays.fill(floor, com.stonebreak.world.generation.TerrainGenerator.NO_OPENING);
+        byte[] cover = new byte[n];
+        int[] water = new int[n];
+        java.util.Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
+        floor[2] = 61;
+        cover[2] = (byte) 140;
+        water[2] = 64;
+        floor[5] = 40;
+        cover[5] = (byte) 9;
+        FastLodChunkData original = new FastLodChunkData(base.key(), base.rawHeights(), base.rawWaterLevels(),
+            base.rawSurface(), null, floor, cover, water, null);
+        FastLodChunkData restored = FastLodSerializer.deserialize(original.key(), FastLodSerializer.serialize(original));
+        assertNotNull(restored);
+        assertArrayEquals(floor, restored.rawOpeningFloor());
+        assertArrayEquals(cover, restored.rawOpeningCoverage());
+        assertArrayEquals(water, restored.rawOpeningWater());
+        assertEquals(64, restored.openingWaterAt(0, 2));
+
+        // mouths without water keep the v5 layout (no water array)
+        FastLodChunkData dry = new FastLodChunkData(base.key(), base.rawHeights(), base.rawWaterLevels(),
+            base.rawSurface(), null, floor, cover);
+        FastLodChunkData dryBack = FastLodSerializer.deserialize(dry.key(), FastLodSerializer.serialize(dry));
+        assertNotNull(dryBack);
+        assertEquals(null, dryBack.rawOpeningWater());
+        assertEquals(com.stonebreak.world.operations.WorldConfiguration.NO_WATER, dryBack.openingWaterAt(0, 2));
+    }
+
+    @Test
     void roundTripCoarseLevelWithoutTrees() {
         FastLodChunkData original = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(original);
@@ -159,14 +191,15 @@ class FastLodSerializerTest {
      * a coarse cell's footprint holds a river; v11 predates coarse tree spots, uncarved coarse
      * levels and the OCEAN sea floor; v11 and v12 show swamps dry, with no pools and no cypress
      * past the finest band; v13 shows deserts without their gravel; v14 stores "dry" as -1, a
-     * real water level in the [-384, 640) world. The version bump forces the resample.
+     * real water level in the [-384, 640) world; v15 draws a cliffed coast's flooded cave mouths as dry pits under
+     * the sea (no mouth water). The version bump forces the resample.
      */
     @Test
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(15, blob[4], "version byte moved; update this test and the note above");
-        for (byte older = 4; older < 15; older++) {
+        assertEquals(16, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 16; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");

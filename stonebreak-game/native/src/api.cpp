@@ -1,10 +1,14 @@
 /* SBW ABI 3 exports: config, the cv_generator table and the FastLOD samplers (worldgen.h). */
 #include "decide.hpp"
+#include "rocks.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <condition_variable>
 #include <exception>
+#include <mutex>
 #include <thread>
+#include <unordered_map>
 
 namespace sbw {
 const char* lastError();
@@ -16,9 +20,64 @@ using namespace sbw;
 
 namespace {
 
-Generator* genOf(const cv_generator* g) {
-    return g == nullptr ? nullptr : static_cast<Generator*>(g->user);
+/* LIVE GENERATORS (2026-11-19, the quit crash): every handle this library made and has not destroyed, with the sbw_*
+ * calls in flight on it. A stale handle (destroyed, or never made here) is refused with an error instead of being
+ * dereferenced - the lookup is by the handle's address, its memory is never read first - and sbw_cv_generator_destroy
+ * marks the handle dying (new calls refused), waits for the calls in flight, and only then frees the generator. The
+ * cv_generator table entries the engine streamer calls are not counted (hot path): the streamer must be closed before
+ * the generator is destroyed. A handle whose address a later generator reuses resolves to that generator (no
+ * generation counter in the ABI); callers must still drop their handles on destroy. */
+struct LiveGenerator {
+    Generator* gen = nullptr;
+    int calls = 0;
+    bool dying = false;
+};
+
+/* Leaked on purpose: no static destructor may run while a detached thread is still inside a call at exit. */
+std::mutex& liveMutex() {
+    static auto* m = new std::mutex();
+    return *m;
 }
+std::condition_variable& liveDrained() {
+    static auto* cv = new std::condition_variable();
+    return *cv;
+}
+std::unordered_map<const cv_generator*, LiveGenerator>& liveGenerators() {
+    static auto* live = new std::unordered_map<const cv_generator*, LiveGenerator>();
+    return *live;
+}
+
+/* One sbw_* call's hold on a live generator; get() == nullptr (and the thread's error set) when the handle is stale. */
+class Lease {
+public:
+    explicit Lease(const cv_generator* handle) {
+        if (handle != nullptr) {
+            std::lock_guard<std::mutex> lock(liveMutex());
+            auto& live = liveGenerators();
+            auto it = live.find(handle);
+            if (it != live.end() && !it->second.dying) {
+                it->second.calls++;
+                handle_ = handle;
+                gen_ = it->second.gen;
+            }
+        }
+        if (gen_ == nullptr) setError("generator destroyed (or not a generator handle)");
+    }
+    ~Lease() {
+        if (gen_ == nullptr) return;
+        std::lock_guard<std::mutex> lock(liveMutex());
+        auto& live = liveGenerators();
+        auto it = live.find(handle_);
+        if (it != live.end() && --it->second.calls == 0 && it->second.dying) liveDrained().notify_all();
+    }
+    Lease(const Lease&) = delete;
+    Lease& operator=(const Lease&) = delete;
+    Generator* get() const { return gen_; }
+
+private:
+    const cv_generator* handle_ = nullptr;
+    Generator* gen_ = nullptr;
+};
 
 template <typename F>
 int32_t guarded(F&& f) {
@@ -181,13 +240,27 @@ const cv_generator* sbw_cv_generator_create(const sbw_gen_config* in) {
         std::memcpy(c.stalagmiteState, in->stalagmite_states, sizeof(c.stalagmiteState));
         std::memcpy(c.stalagmitePart, in->stalagmite_part_states, sizeof(c.stalagmitePart));
         std::memcpy(c.id, in->block_ids, sizeof(c.id));
+        c.rockBank = in->rock_bank;
+        std::shared_ptr<const RockBank> rocks;
+        if ((c.flags & SBW_FLAG_BOULDERS) != 0 && c.rockBank != 0) {
+            rocks = findRockBank(c.rockBank);
+            if (!rocks) {
+                setError("rock bank " + std::to_string(c.rockBank) + " is not registered (sbw_register_rock_bank)");
+                return nullptr;
+            }
+        }
         auto* g = new Generator(c);
+        g->rocks = std::move(rocks);
         g->table.abi = CV_ABI_VERSION;
         g->table.populate_reach = 1;
         g->table.user = g;
         g->table.column_surface = thunkColumnSurface;
         g->table.generate_cube = thunkGenerate;
         g->table.populate = thunkPopulate;
+        {
+            std::lock_guard<std::mutex> lock(liveMutex());
+            liveGenerators()[&g->table] = LiveGenerator{g, 0, false};
+        }
         return &g->table;
     } catch (const std::exception& e) {
         setError(e.what());
@@ -195,31 +268,66 @@ const cv_generator* sbw_cv_generator_create(const sbw_gen_config* in) {
     }
 }
 
+int32_t sbw_register_rock_bank(uint32_t bankId, const uint8_t* data, int64_t length) {
+    if (data == nullptr || length <= 0 || bankId == 0) {
+        setError("rock bank: no data or id 0");
+        return -1;
+    }
+    try {
+        std::string error;
+        if (!registerRockBank(bankId, data, static_cast<size_t>(length), error)) {
+            setError(error);
+            return -1;
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        setError(e.what());
+        return -1;
+    }
+}
+
 void sbw_cv_generator_destroy(const cv_generator* g) {
-    delete genOf(g);
+    if (g == nullptr) return;
+    Generator* gen = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(liveMutex());
+        auto& live = liveGenerators();
+        auto it = live.find(g);
+        if (it == live.end() || it->second.dying) return;   /* stale, foreign, or another destroy is under way */
+        it->second.dying = true;                             /* refuse new calls ... */
+        liveDrained().wait(lock, [&] { return live.find(g)->second.calls == 0; });   /* ... let these finish */
+        it = live.find(g);
+        gen = it->second.gen;
+        live.erase(it);
+    }
+    delete gen;
 }
 
 int32_t sbw_generate_cube(const cv_generator* g, int64_t cx, int64_t cy, int64_t cz, uint16_t* ids,
                           uint16_t* const* layers) {
-    if (genOf(g) == nullptr) return -1;
-    return thunkGenerate(g->user, cx, cy, cz, ids, layers);
+    Lease lease(g);
+    if (lease.get() == nullptr) return -1;
+    return thunkGenerate(lease.get(), cx, cy, cz, ids, layers);
 }
 
 int32_t sbw_populate(const cv_generator* g, const cv_gen_api* api, cv_world* world, int64_t cx, int64_t cy,
                      int64_t cz) {
-    if (genOf(g) == nullptr) return -1;
-    return thunkPopulate(g->user, api, world, cx, cy, cz);
+    Lease lease(g);
+    if (lease.get() == nullptr) return -1;
+    return thunkPopulate(lease.get(), api, world, cx, cy, cz);
 }
 
 int32_t sbw_column_surface(const cv_generator* g, int64_t cx, int64_t cz, int64_t* sky, int64_t* top) {
-    if (genOf(g) == nullptr) return -1;
-    return thunkColumnSurface(g->user, cx, cz, sky, top);
+    Lease lease(g);
+    if (lease.get() == nullptr) return -1;
+    return thunkColumnSurface(lease.get(), cx, cz, sky, top);
 }
 
 int32_t sbw_sample_columns(const cv_generator* gp, int64_t x0, int64_t z0, int32_t count, int32_t stride,
                            uint32_t flags, int32_t* outHeights, int32_t* outWater, uint16_t* outSurface,
                            int32_t* outTrees) {
-    Generator* g = genOf(gp);
+    Lease lease(gp);
+    Generator* g = lease.get();
     if (g == nullptr || outHeights == nullptr || count <= 0 || stride <= 0) return -1;
     return guarded([&] {
         const bool carved = (flags & SBW_SAMPLE_CARVED) != 0;
@@ -277,7 +385,14 @@ int32_t sbw_sample_columns(const cv_generator* gp, int64_t x0, int64_t z0, int32
 
 int32_t sbw_sample_cell_openings(const cv_generator* gp, int64_t x0, int64_t z0, int32_t cells, int32_t cellSize,
                                  const int32_t* cellHeights, int32_t* outFloor, uint8_t* outCoverage) {
-    Generator* g = genOf(gp);
+    return sbw_sample_cell_openings_water(gp, x0, z0, cells, cellSize, cellHeights, outFloor, outCoverage, nullptr);
+}
+
+int32_t sbw_sample_cell_openings_water(const cv_generator* gp, int64_t x0, int64_t z0, int32_t cells,
+                                       int32_t cellSize, const int32_t* cellHeights, int32_t* outFloor,
+                                       uint8_t* outCoverage, int32_t* outWater) {
+    Lease lease(gp);
+    Generator* g = lease.get();
     if (g == nullptr || cells <= 0 || cellSize <= 0 || cellHeights == nullptr || outFloor == nullptr
             || outCoverage == nullptr) {
         return -1;
@@ -289,6 +404,7 @@ int32_t sbw_sample_cell_openings(const cv_generator* gp, int64_t x0, int64_t z0,
                 const int32_t shown = cellHeights[cell];
                 int32_t floor = INT32_MAX;
                 int carvedCount = 0;
+                bool seaCut = false;   /* a sea-flooded cut in the footprint: the mouth holds sea water */
                 for (int dx = 0; dx < cellSize; dx++) {
                     for (int dz = 0; dz < cellSize; dz++) {
                         const int64_t wx = x0 + static_cast<int64_t>(ix) * cellSize + dx;
@@ -299,15 +415,20 @@ int32_t sbw_sample_cell_openings(const cv_generator* gp, int64_t x0, int64_t z0,
                         if (cs->carved[col] == 0) continue;
                         carvedCount++;
                         floor = std::min(floor, cs->carvedH[col]);
+                        seaCut = seaCut || cs->sea[col] != 0;
                     }
                 }
                 if (carvedCount == 0 || floor >= shown) {
                     outFloor[cell] = INT32_MIN;
                     outCoverage[cell] = 0;
+                    if (outWater != nullptr) outWater[cell] = NO_WATER;
                 } else {
                     outFloor[cell] = floor;
                     const int total = cellSize * cellSize;
                     outCoverage[cell] = static_cast<uint8_t>(std::min(255, std::max(1, carvedCount * 255 / total)));
+                    /* flooded and dry cuts never meet below sea level (carveSeaStacks), so a mouth with a sea cut
+                     * in it and its floor under the sea is a flooded shelf: sea water up to sea level */
+                    if (outWater != nullptr) outWater[cell] = seaCut && floor < g->cfg.sea ? g->cfg.sea : NO_WATER;
                 }
             }
         }
@@ -318,7 +439,8 @@ int32_t sbw_sample_cell_openings(const cv_generator* gp, int64_t x0, int64_t z0,
 int32_t sbw_probe_cell_trees(const cv_generator* gp, int64_t x0, int64_t z0, int32_t cells, int32_t cellSize,
                              const int32_t* cellHeights, const int32_t* cellWater, const uint16_t* cellSurface,
                              int32_t* outSpots, int32_t outCap) {
-    Generator* g = genOf(gp);
+    Lease lease(gp);
+    Generator* g = lease.get();
     if (g == nullptr || cells <= 0 || cellSize <= 0 || cellHeights == nullptr || cellWater == nullptr
             || cellSurface == nullptr) {
         return -1;
@@ -364,7 +486,8 @@ int32_t sbw_probe_cell_trees(const cv_generator* gp, int64_t x0, int64_t z0, int
 }
 
 int32_t sbw_query_column(const cv_generator* gp, int64_t x, int64_t z, sbw_column_info* out) {
-    Generator* g = genOf(gp);
+    Lease lease(gp);
+    Generator* g = lease.get();
     if (g == nullptr || out == nullptr) return -1;
     return guarded([&] {
         auto b = g->base(x >> 5, z >> 5);
@@ -395,7 +518,8 @@ int32_t sbw_query_column(const cv_generator* gp, int64_t x, int64_t z, sbw_colum
 }
 
 int32_t sbw_column_carve(const cv_generator* gp, int64_t cx, int64_t cz, int32_t* outH, uint8_t* outCarved) {
-    Generator* g = genOf(gp);
+    Lease lease(gp);
+    Generator* g = lease.get();
     if (g == nullptr) return -1;
     return guarded([&] {
         auto cs = g->carved(cx, cz);

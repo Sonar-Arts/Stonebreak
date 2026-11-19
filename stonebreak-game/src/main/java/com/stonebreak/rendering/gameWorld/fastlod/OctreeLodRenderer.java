@@ -202,13 +202,44 @@ public final class OctreeLodRenderer {
                     dir = Paths.get(cache, "lod");
                 }
             } else {
+                // A DaedalusTGM-Exp world's climate layout (belts keeps the pre-layout folder name) and height curve (v1
+                // keeps the old name) are its own terrain; Standard worlds ignore both, so their name never carries them.
+                boolean daedalus = world.getGeneratorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION;
+                var climate = world.getClimateLayout();
+                String layoutSuffix = !daedalus || climate == com.stonebreak.world.generation.ClimateLayout.DEFAULT
+                    ? "" : "-" + climate.name();
+                if (daedalus && world.getHeightCurve() != com.stonebreak.world.generation.HeightCurveVersion.V1) {
+                    layoutSuffix += "-c" + world.getHeightCurve().number();
+                }
+                // Two servers with the same seed are not the same world, nor are two terrain models (review-java
+                // LOW 3): the store is keyed by the server's address and, for Daedalus worlds, the model too.
+                var view = com.stonebreak.network.MultiplayerSession.getClient();
+                if (view != null) {
+                    String model = daedalus ? view.serverTerrainModel().path() + "|" + view.serverTerrainModel().contentId()
+                        : "";
+                    if (!view.serverKey().isEmpty() || !model.isEmpty()) {
+                        layoutSuffix += "-" + shortHash(view.serverKey() + "#" + model);
+                    }
+                }
                 dir = com.stonebreak.world.save.WorldStorage.menuShowcaseDir().getParent().resolve("remote-lod")
-                    .resolve(world.getSeed() + "-" + world.getGeneratorType() + "-" + world.getTerrainScale());
+                    .resolve(world.getSeed() + "-" + world.getGeneratorType() + "-" + world.getTerrainScale()
+                        + layoutSuffix);
             }
         } catch (RuntimeException e) {
             LOGGER.warn("Octree LOD: no store/dir ({}); memory only", e.toString());
         }
         return OctreeLod.create(world, store, dir);
+    }
+
+    /** 12 hex digits of SHA-256: a folder-name-safe key part. */
+    private static String shortHash(String text) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(d, 0, 6);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(text.hashCode());
+        }
     }
 
     private void onShow(int level, long x, long y, long z, LodMesh mesh, boolean snap) {

@@ -24,6 +24,8 @@ struct HConvArgs {
     u16* stem_in;
     int B, H, W, C, CO, NP, flags, stem_c;
     float dt;
+    const float* gate;   // F_GATE: (B * Ho * Wo,) fp32, one weight per output pixel
+    float rs;            // F_RSCALE: residual weight
 };
 
 // 32 B rows (two 16 B chunks): 8 consecutive rows, whatever the start, hit 8 distinct bank groups.

@@ -41,7 +41,17 @@ import java.util.concurrent.CompletableFuture;
  *
  * <p>{@code .button {name}} also takes {@code generator:TYPE} and {@code scale:SCALE} (the new world's terrain scale,
  * {@code ONE_TO_FOUR} / {@code ONE_TO_TWO}, or {@code 1:4} / {@code 1:2}); {@code scale}, {@code scaleLabel} and
- * {@code scales} ({@code scale}, {@code label}, {@code selected}) publish it.
+ * {@code scales} ({@code scale}, {@code label}, {@code selected}) publish it. Likewise {@code climate:LAYOUT} picks
+ * the new world's EXP-2 climate layout ({@code BELTS} / {@code ZONES} / {@code LATITUDE}, or {@code belts} ...;
+ * fixed once the world exists, used by DaedalusTGM-Exp worlds only), published as {@code climate},
+ * {@code climateLabel} and {@code climates} ({@code climate}, {@code label}, {@code selected}).
+ *
+ * <p>The document's world-options row (under the spawn section, or over the map's top-left corner in a window too
+ * short for that; shown once a generator is picked: {@code hasOptions}, {@code optionsCaption}, {@code optionsX},
+ * {@code optionsY}, {@code climateX}) cycles them: {@code .button {name: "scale:next"}} /
+ * {@code "climate:next"}; {@code scaleButton} / {@code climateButton} are the buttons' labels, {@code scaleTip} /
+ * {@code climateTip} their hover tips, {@code climateEnabled} / {@code climateDisabled}: the climate layout only
+ * applies to DaedalusTGM-Exp worlds (Standard shows the button disabled).
  *
  * <p>Actions (window pixels, the screen's own coordinates): {@code .button {name}} (back, character, create,
  * simulate, spawn, center, mode:KIND), {@code .field {field}}, {@code .map-press {x, y}}, {@code .release {x, y}},
@@ -69,7 +79,15 @@ public final class TerrainMapperContracts {
         "hover", DataType.string(),
         "scale", DataType.string(), "scaleLabel", DataType.string(),
         "scales", DataType.list(DataType.object("scale", DataType.string(), "label", DataType.string(),
-            "selected", DataType.bool()), "scale"));
+            "selected", DataType.bool()), "scale"),
+        "climate", DataType.string(), "climateLabel", DataType.string(),
+        "climates", DataType.list(DataType.object("climate", DataType.string(), "label", DataType.string(),
+            "selected", DataType.bool()), "climate"),
+        "hasOptions", DataType.bool(), "optionsCaption", DataType.number(), "optionsX", DataType.number(),
+        "optionsY", DataType.number(), "climateX", DataType.number(),
+        "scaleButton", DataType.string(), "scaleTip", DataType.string(),
+        "climateButton", DataType.string(), "climateTip", DataType.string(),
+        "climateEnabled", DataType.bool(), "climateDisabled", DataType.bool());
 
     /** A caption's top: its baseline sits 6 px above the control it labels, 18 px into its 18 px box. */
     private static final float CAPTION_ABOVE = 6f + 18f;
@@ -134,7 +152,8 @@ public final class TerrainMapperContracts {
     /** UI thread, once per frame: the caret blinks and the readout follows the pointer. */
     public void poll() {
         TerrainMapperScreen t = services.terrainMapper();
-        UiValue s = state(t == null ? null : t.getStateManager());
+        int[] size = services.screenSize();
+        UiValue s = state(t == null ? null : t.getStateManager(), size == null ? 0 : size[1]);
         if (!s.equals(last)) {
             last = s;
             state.set(s);
@@ -142,6 +161,11 @@ public final class TerrainMapperContracts {
     }
 
     static UiValue state(TerrainMapperStateManager s) {
+        return state(s, 0);
+    }
+
+    /** @param windowHeight the window's height in device px (0: unknown, taken as tall enough) */
+    static UiValue state(TerrainMapperStateManager s, int windowHeight) {
         Map<String, UiValue> m = new LinkedHashMap<>();
         String name = s == null ? "" : s.getWorldName();
         String seed = s == null ? "" : s.getSeedText();
@@ -230,7 +254,46 @@ public final class TerrainMapperContracts {
                 "selected", UiValue.of(p == scale))));
         }
         m.put("scales", new UiValue.Arr(scales));
+        // The new world's climate layout (EXP-2): `.button {name: "climate:<LAYOUT>"}` sets it.
+        var climate = s == null ? com.stonebreak.world.generation.ClimateLayout.DEFAULT : s.getSelectedClimateLayout();
+        m.put("climate", UiValue.of(climate.name()));
+        m.put("climateLabel", UiValue.of("Climate " + climate.label()));
+        List<UiValue> climates = new ArrayList<>();
+        for (var layout : com.stonebreak.world.generation.ClimateLayout.values()) {
+            climates.add(new UiValue.Obj(Map.of("climate", UiValue.of(layout.name()),
+                "label", UiValue.of(layout.label()),
+                "selected", UiValue.of(layout == climate))));
+        }
+        m.put("climates", new UiValue.Arr(climates));
+        // The world-options row (scale + climate buttons), under the spawn section once a generator is picked.
+        m.put("hasOptions", UiValue.of(generator != null));
+        // under the spawn section, or over the map's corner when the window is too short for that
+        TerrainMapperLayout options = windowHeight <= 0 ? l : new TerrainMapperLayout(1920, windowHeight, modeCount);
+        m.put("optionsCaption", UiValue.of(options.scaleButton().y() - CAPTION_ABOVE));
+        m.put("optionsX", UiValue.of(options.scaleButton().x()));
+        m.put("optionsY", UiValue.of(options.scaleButton().y()));
+        m.put("climateX", UiValue.of(options.climateButton().x()));
+        m.put("scaleButton", UiValue.of("Scale " + com.stonebreak.config.TerrainScaleOption.label(scale)));
+        m.put("scaleTip", UiValue.of("World scale " + com.stonebreak.config.TerrainScaleOption.describe(scale)
+            + ". Click to change; fixed once the world exists."));
+        boolean climateApplies = generator == TerrainGeneratorType.DIFFUSION;
+        m.put("climateButton", UiValue.of("Climate " + climate.label()));
+        m.put("climateTip", UiValue.of(climateApplies
+            ? "Climate layout " + climate.label() + ": " + climateBlurb(climate)
+                + ". Click to change; fixed once the world exists."
+            : "Climate layouts are a DaedalusTGM-Exp option."));
+        m.put("climateEnabled", UiValue.of(climateApplies));
+        m.put("climateDisabled", UiValue.of(!climateApplies));
         return new UiValue.Obj(m);
+    }
+
+    /** One line on what a climate layout does, for the world-options tip. */
+    private static String climateBlurb(com.stonebreak.world.generation.ClimateLayout layout) {
+        return switch (layout) {
+            case BELTS -> "banded climate belts";
+            case ZONES -> "a patchwork of climate zones";
+            case LATITUDE -> "colder towards the poles";
+        };
     }
 
     @FunctionalInterface

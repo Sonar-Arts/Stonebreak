@@ -255,6 +255,15 @@ public final class FastLodMesher {
 
                 if (notch != null) {
                     emitCaveNotch(w, wx, wz, notch, terrainH, floor, surface);
+                    // A flooded mouth (a cliffed coast's cove, moat or wave notch cut below the sea): the sea
+                    // stands in it up to its level, so the notch shows water, not a dry pit under the sea. A
+                    // submerged cell's own sheet already covers its notch.
+                    int mouthWater = data.openingWaterAt(ix, iz);
+                    int notchFloor = notchFloorY(terrainH, floor);
+                    if (!submerged && mouthWater != WorldConfiguration.NO_WATER && mouthWater > notchFloor) {
+                        ww.notchSheet(wx + notch[0], mouthWater + WATER_SURFACE_OFFSET, wz + notch[0], notch[1],
+                                Math.min(mouthWater - notchFloor, MAX_WATER_DEPTH), WATER_SURFACE_FRACTION);
+                    }
                 }
 
                 // The sampler only gives a submerged cell a tree where one stands in the
@@ -536,9 +545,14 @@ public final class FastLodMesher {
      * neighbour cells and the water sheet are untouched; the node's Y bounds pick the notch
      * up on their own because the writer tracks them per quad.
      */
+    /** The notch floor actually drawn: the mouth's floor, at most {@link #MAX_NOTCH_DEPTH} under the top. */
+    static int notchFloorY(int terrainH, int floorY) {
+        return terrainH - Math.min(terrainH - floorY, MAX_NOTCH_DEPTH);
+    }
+
     private void emitCaveNotch(QuadWriter w, float wx, float wz, int[] notch,
                                int terrainH, int floorY, BlockType surface) {
-        int y0 = terrainH - Math.min(terrainH - floorY, MAX_NOTCH_DEPTH);
+        int y0 = notchFloorY(terrainH, floorY);
         float x0 = wx + notch[0], x1 = x0 + notch[1];
         float z0 = wz + notch[0], z1 = z0 + notch[1];
 
@@ -963,7 +977,17 @@ public final class FastLodMesher {
         }
 
         boolean hasPending() {
-            return pending > 0;
+            return pending > 0 || notchSheets > 0;
+        }
+
+        /** Water sheets emitted straight away (flooded cave mouths: one record each, never merged). */
+        private int notchSheets;
+
+        @Override
+        void notchSheet(float wx, float y, float wz, int size, int layer, float xFlag) {
+            if (emit(wx, wz, size, size, Math.max(layer, 0), y, xFlag)) {
+                notchSheets++;
+            }
         }
 
         MmsMeshData build() {
@@ -1001,14 +1025,13 @@ public final class FastLodMesher {
                         }
                     }
                     emit(baseX + ix * cellSize, baseZ + iz * cellSize, dx * cellSize, dz * cellSize,
-                            cellDepth);
+                            cellDepth, sheetY, sheetFlag);
                 }
             }
             return quads.build();
         }
 
-        private void emit(float wx, float wz, int w, int h, int cellDepth) {
-            float y = sheetY;
+        private boolean emit(float wx, float wz, int w, int h, int cellDepth, float y, float flag) {
             int cellY = (int) Math.floor(y) + 1; // sheet sits 0.125 below the cell's top: cell = SEA_LEVEL
             int qx = Math.round(wx - originX);
             int qz = Math.round(wz - originZ);
@@ -1017,19 +1040,20 @@ public final class FastLodMesher {
             int localCellY = cellY - LOD_Y_BASE; // node-local from the world floor (mesh origin Y)
             float localY = y - LOD_Y_BASE;
             if (qx < 0 || qx > 255 || qz < 0 || qz > 255 || localCellY < 0 || localCellY > 1023) {
-                return;
+                return false;
             }
             if (!quads.addWords(
                     MmsWaterQuadCodec.word0(qx, localCellY, qz, 0, false, false, true),
                     MmsWaterQuadCodec.word1(localCellY, localY, localY, localY, localY),
-                    MmsWaterQuadCodec.word2(sheetFlag, sheetFlag, sheetFlag, sheetFlag),
+                    MmsWaterQuadCodec.word2(flag, flag, flag, flag),
                     MmsWaterQuadCodec.word3(w, h, MmsWaterQuadCodec.NO_FLOW, cellDepth))) {
-                return;
+                return false;
             }
             idxCount += 6;
             vertCount += 4;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
+            return true;
         }
 
         @Override
@@ -1074,6 +1098,14 @@ public final class FastLodMesher {
          * flags.w = 0: still water, since water.vert reads that slot as the
          * river flow code).
          */
+        /**
+         * A water sheet over a flooded cave mouth: a {@code size}-block square at {@code (wx, wz)} (block aligned,
+         * inside one cell). Flags as {@link #topQuadFlat}.
+         */
+        void notchSheet(float wx, float y, float wz, int size, int layer, float xFlag) {
+            topQuadFlat(wx, y, wz, size, layer, xFlag);
+        }
+
         void topQuadFlat(float wx, float y, float wz, int cellSize, int layer, float xFlag) {
             float x1 = wx + cellSize;
             float z1 = wz + cellSize;

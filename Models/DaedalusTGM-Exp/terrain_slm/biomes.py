@@ -15,6 +15,8 @@ from typing import Optional
 
 import numpy as np
 import torch
+
+from terrain_slm.world.devcopy import const, to_device   # host -> device without a device sync
 from pyfastnoiselite.pyfastnoiselite import FastNoiseLite, NoiseType, FractalType
 
 
@@ -232,26 +234,22 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
 
     # === ADD NOISE TO CLIMATE VARIABLES ===
     if h > 0 and w > 0:
-        x = np.arange(j0, j0 + w, dtype=np.float32)
-        y = np.arange(i0, i0 + h, dtype=np.float32)
-        xx, yy = np.meshgrid(x, y)
-        coords = np.array([xx.ravel(), yy.ravel()], dtype=np.float32)
-        
+        # (`_noise`: the same coordinates, memoised -- swamp_candidates reads the same fields for the same columns)
         # Temperature noise
-        temp_noise_coarse = _TEMP_NOISE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        temp_noise_fine = _TEMP_NOISE_FINE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
+        temp_noise_coarse = _noise(_TEMP_NOISE, i0, j0, h, w)
+        temp_noise_fine = _noise(_TEMP_NOISE_FINE, i0, j0, h, w)
         temp_noise = 0.4 * temp_noise_coarse + 0.2 * temp_noise_fine
-        temp = temp + torch.from_numpy(temp_noise).to(device=device, dtype=temp.dtype)
+        temp = temp + to_device(temp_noise, device, temp.dtype)
         
         # Precipitation noise (multiplicative for realistic relative variation ~±20%)
-        precip_noise = _PRECIP_NOISE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        precip_noise_factor = torch.from_numpy(1.0 + 0.2 * precip_noise).to(device=device, dtype=precip.dtype)
+        precip_noise = _noise(_PRECIP_NOISE, i0, j0, h, w)
+        precip_noise_factor = to_device(1.0 + 0.2 * precip_noise, device, precip.dtype)
         precip = precip * precip_noise_factor
         
         # Snow noise (separate from temp noise for edge variation)
-        snow_noise_coarse = _SNOW_NOISE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        snow_noise_fine = _SNOW_NOISE_FINE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        snow_noise = torch.from_numpy(3.0 * snow_noise_coarse + 2.0 * snow_noise_fine).to(device=device, dtype=temp.dtype)
+        snow_noise_coarse = _noise(_SNOW_NOISE, i0, j0, h, w)
+        snow_noise_fine = _noise(_SNOW_NOISE_FINE, i0, j0, h, w)
+        snow_noise = to_device(3.0 * snow_noise_coarse + 2.0 * snow_noise_fine, device, temp.dtype)
 
     # === DERIVED CLIMATE VARIABLES ===
     cv = _compute_climate_vars(temp, t_season, precip, p_cv)
@@ -268,8 +266,8 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     elev_m = elev_padded
     
     # Sobel kernels (normalized by 8 to get proper gradient estimate)
-    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=elev.dtype, device=device).view(1, 1, 3, 3) / 8.0
-    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=elev.dtype, device=device).view(1, 1, 3, 3) / 8.0
+    sobel_x = const([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device, elev.dtype).view(1, 1, 3, 3) / 8.0
+    sobel_y = const([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device, elev.dtype).view(1, 1, 3, 3) / 8.0
     
     # Apply Sobel to get gradient in meters per pixel
     dx = torch.nn.functional.conv2d(elev_m.unsqueeze(0).unsqueeze(0), sobel_x, padding=0).squeeze()
@@ -566,10 +564,33 @@ _SWAMP_NOISE.fractal_lacunarity = 2.0
 _SWAMP_NOISE.fractal_gain = 0.5
 
 
+_NOISE_MEMO: "OrderedDict" = None
+_NOISE_MEMO_CAP = 24          # a tile's rule classifier + swamp candidates read 6 fields over the same columns
+
+
 def _noise(n: FastNoiseLite, i0: int, j0: int, h: int, w: int, step: int = 1) -> np.ndarray:
-    """One noise field at h x w columns from (i0, j0), `step` apart, with the classifier's coordinate convention."""
+    """One noise field at h x w columns from (i0, j0), `step` apart, with the classifier's coordinate convention.
+    Memoised (2026-11-19: ~4 ms per field and tile, computed twice per tile); callers never write into the result."""
+    global _NOISE_MEMO
+    import threading
+    from collections import OrderedDict
+    if _NOISE_MEMO is None:
+        _NOISE_MEMO = OrderedDict()
+        _noise.lock = threading.Lock()
+    key = (id(n), i0, j0, h, w, step)
+    with _noise.lock:
+        hit = _NOISE_MEMO.get(key)
+        if hit is not None:
+            _NOISE_MEMO.move_to_end(key)
+            return hit
     xx, yy = np.meshgrid(np.arange(w, dtype=np.float32) * step + j0, np.arange(h, dtype=np.float32) * step + i0)
-    return n.gen_from_coords(np.array([xx.ravel(), yy.ravel()], dtype=np.float32)).astype(np.float32).reshape(h, w)
+    out = n.gen_from_coords(np.array([xx.ravel(), yy.ravel()], dtype=np.float32)).astype(np.float32).reshape(h, w)
+    out.setflags(write=False)
+    with _noise.lock:
+        _NOISE_MEMO[key] = out
+        while len(_NOISE_MEMO) > _NOISE_MEMO_CAP:
+            _NOISE_MEMO.popitem(last=False)
+    return out
 
 
 def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.Tensor,
@@ -582,7 +603,7 @@ def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.
     The host biome is checked separately (apply_swamps)."""
     h, w = elev.shape
     dev, dt = elev.device, climate.dtype
-    t = lambda n: torch.from_numpy(_noise(n, i0, j0, h, w, step)).to(device=dev, dtype=dt)
+    t = lambda n: to_device(_noise(n, i0, j0, h, w, step), dev, dt)
     # The classifier's own noisy climate, so this agrees with its snow line and forest classes.
     temp = climate[0] + 0.4 * t(_TEMP_NOISE) + 0.2 * t(_TEMP_NOISE_FINE)
     precip = torch.clamp(climate[2], min=0.0) * (1.0 + 0.2 * t(_PRECIP_NOISE))
@@ -628,5 +649,5 @@ def majority(ids: torch.Tensor, size: int) -> torch.Tensor:
 def apply_swamps(biome: torch.Tensor, candidates: torch.Tensor) -> torch.Tensor:
     """Swamp where a candidate column's classified biome is a host (forest, sparse forest, jungle):
     never on snow, taiga, desert, peaks or sea."""
-    host = torch.isin(biome, torch.tensor(SWAMP_HOST_IDS, device=biome.device, dtype=biome.dtype))
+    host = torch.isin(biome, const(SWAMP_HOST_IDS, biome.device, biome.dtype))
     return torch.where(candidates & host, torch.full_like(biome, SWAMP_ID), biome)

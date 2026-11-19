@@ -76,7 +76,7 @@ public final class TerrainActionHandler {
 
         try {
             com.stonebreak.core.world.NewWorlds.write(new com.stonebreak.core.world.NewWorlds.Options(name, seed,
-                generator, state.getSelectedScale(),
+                generator, state.getSelectedScale(), state.getSelectedClimateLayout(),
                 new org.joml.Vector3d(state.hasSpawnPoint() ? state.spawnWorldX() : 0, 100,
                     state.hasSpawnPoint() ? state.spawnWorldZ() : 0),
                 state.hasSpawnPoint()));

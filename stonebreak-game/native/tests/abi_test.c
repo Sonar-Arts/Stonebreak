@@ -12,7 +12,8 @@ int main(void) {
     CHECK(sbw_abi_version() == SBW_ABI_VERSION);
     CHECK(sbw_config_size() == (int32_t) sizeof(sbw_gen_config));
     CHECK(sizeof(sbw_gen_config) == 368);
-    CHECK(sizeof(sbw_column_profile) == 20480);                 /* ABI 4: + uint16 carve[1024] */
+    CHECK(sizeof(sbw_column_profile) == 36864);                 /* ABI 5: + uint8 surface[16][1024] */
+    CHECK(offsetof(sbw_column_profile, surface) == 20480);      /* Java writes it there */
     CHECK(offsetof(sbw_column_profile, carve) == 18432);        /* Java writes it there */
     /* carve styles are stored in the profile code (and the terrain model emits them): never renumber */
     CHECK(SBW_CARVE_KARST == 4 && SBW_CARVE_NONE == 5 && SBW_CARVE_SEA_STACKS == 6 && SBW_CARVE_TOWERS == 7);

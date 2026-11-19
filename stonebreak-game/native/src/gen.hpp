@@ -67,6 +67,7 @@ struct Config {
     uint16_t stalagmiteState[24]{};
     uint16_t stalagmitePart[2]{};
     uint16_t id[SBW_BLOCK_CAP]{};
+    uint16_t rockBank = 0;          /* SBW_FLAG_BOULDERS: registered SBRB bank id, 0 = procedural only */
 
     /* derived */
     int32_t floorY() const { return static_cast<int32_t>(minY); }
@@ -160,8 +161,19 @@ struct BaseTile {
     int32_t riverFloor[COLS]{}, riverRoof[COLS]{};
     int8_t riverFlow[COLS]{};
     uint16_t carve[COLS]{};   /* profile kind: carve-node codes (sbw_column_profile.carve), 0 otherwise */
+    /* profile kind (SBW ABI 5): surface channels by SBW_SURF_* slot; SBW_SURF_NO_DATA (255) everywhere else */
+    uint8_t surf[SBW_SURFACE_SLOTS][COLS];
+    BaseTile() { std::fill(&surf[0][0], &surf[0][0] + sizeof(surf), static_cast<uint8_t>(SBW_SURF_NO_DATA)); }
     int32_t minH = 0, maxH = 0;
     int32_t maxTop = 0;       /* max over columns of max(h, water) */
+};
+
+/* L0 apron (SBW_FLAG_SEA_FLOOR): a column cube's raw heights + water exactly as its BaseTile holds them, from the
+ * profile upcall; a neighbour's sea-floor pass reads it when this cube's base tile is not built yet (no 32-block
+ * seams: slope and shelter look across the tile edge; review-native F3, FX1 2026-11-19). */
+struct HeightWater {
+    int32_t h[COLS]{};
+    int32_t water[COLS]{};
 };
 
 /* L1: the top-layer carve of a column cube. */
@@ -388,7 +400,7 @@ struct FeatureCell {
 
 /* One surface feature (tree, cactus, flower, snow, surface swap, clay patch). */
 struct Feature {
-    enum Kind : uint8_t { TREE, PLANT, SWAP, CLAY } kind = TREE;
+    enum Kind : uint8_t { TREE, PLANT, SWAP, CLAY, BOULDER } kind = TREE;  /* BOULDER: boulders.cpp */
     int64_t ax = 0, ay = 0, az = 0;  /* anchor (column, surface y) */
     uint64_t priority = 0;
     std::vector<FeatureCell> cells;  /* trees: unique cells, last write won */
@@ -432,6 +444,7 @@ struct FeatureSet {
 /* ------------------------------------------------------------------------------ generator */
 struct CarveCtx;
 class Generator;
+class RockBank; /* rocks.hpp */
 
 /* Helper threads that build the column surfaces around a missed column_surface call (worldgen.h
  * SBW_PREFETCH_OFF). Started on the first request, joined on destruction. */
@@ -520,6 +533,10 @@ public:
 
     /* features anchored in columns [x0, x1) x [z0, z1), computed */
     void collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, std::vector<Feature>& out);
+    /* SBW_FLAG_BOULDERS: the boulders anchored in columns [x0, x1) x [z0, z1) (boulders.cpp) */
+    void collectBoulders(int64_t x0, int64_t z0, int64_t x1, int64_t z1, std::vector<Feature>& out);
+    /* the world's rock shape bank (null = procedural shapes only) */
+    std::shared_ptr<const RockBank> rocks;
     /* the same set from the per-column-cube feature tiles (a column's features are computed once and
      * shared by every column_surface and populate call that reads them; resolution is independent of
      * the enumeration order) */
@@ -527,6 +544,10 @@ public:
     void gatherFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, FeatureSet& out);
     /* tree probe of one column (FastLOD + population share it); returns kind or -1 */
     int treeAt(int64_t x, int64_t z, uint16_t surfaceBlock, int biome, int& trunk);
+    /* the pre-ABI-5 rule (biome base rate x forest lattice); treeAt uses it where a column carries no vegetation */
+    int treeAtRule(int64_t x, int64_t z, uint16_t surfaceBlock, int biome, int& trunk);
+    /* vegetation channels (SBW ABI 5): veg = surface slots 0..7 of the column; size = tree size class 0..2 */
+    int treeAtVeg(int64_t x, int64_t z, uint16_t surfaceBlock, int biome, const uint8_t* veg, int& trunk, int& size);
 
     /* density solidity (Density3D.isSolid); dens(k) yields channel k (0 cheese, 1/2 spaghetti,
      * 3 crag) at the cell, sampled lazily */
@@ -557,6 +578,13 @@ public:
     uint16_t subsurfaceId(int biome) const;
     uint16_t surfaceBaseId(int biome) const;
     uint16_t surfaceAt(int biome, int64_t x, int64_t z, int32_t waterDepth) const;
+    /* SBW_FLAG_SEA_FLOOR: re-pick the ocean columns' surface of a profile base tile (depth, slope, shelter, cliffs).
+     * Slope and shelter read the neighbour cubes' heights / water across the tile edge (built base tiles, else
+     * apronCache); false (error set) when a neighbour's profile upcall fails. */
+    bool seaFloor(BaseTile& t);
+    /* SBW_FLAG_LAND_SURFACE: re-pick dry land columns' surface from the surface-detail node's channels (rock exposure,
+     * scree, roughness; agent L). Columns without channel data keep their surface. */
+    void landSurface(BaseTile& t) const;
     bool isBedrock(int64_t x, int64_t y, int64_t z) const;
     bool magmaAt(int64_t x, int64_t y, int64_t z) const;
 
@@ -578,6 +606,7 @@ public:
     TileCache<RawCube> rawCache;      /* cubes: (cx, cy, cz) */
     TileCache<OreSource> oreCache;    /* 16-block source chunks */
     TileCache<LimeColumns> limeCache;
+    TileCache<HeightWater> apronCache;   /* sea-floor aprons of cubes whose base tile is not built (seaFloor) */
     /* last data member: its helper threads stop before anything they use is destroyed */
     std::unique_ptr<SurfacePrefetcher> prefetch;
 
@@ -596,6 +625,7 @@ public:
 
     /* builders (column.cpp) */
     std::shared_ptr<BaseTile> buildBase(int64_t cx, int64_t cz);
+    std::shared_ptr<HeightWater> buildApron(int64_t cx, int64_t cz);
     std::shared_ptr<CarveTile> buildCarve(int64_t cx, int64_t cz);
     std::shared_ptr<CarvedTile> buildCarved(int64_t cx, int64_t cz);
     std::shared_ptr<PoolTile> buildPools(int64_t cx, int64_t cz);

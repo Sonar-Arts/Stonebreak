@@ -58,7 +58,8 @@ A stamp in `.venv/.stonebreak-setup` records what was set up, so later launches 
 show nothing. The player can continue to the menu while it runs. Log: `Models/logs/setup.log`.
 `-Dstonebreak.modelSetup.force=true` redoes every step; `-Dstonebreak.modelSetup=off` disables it.
 
-Then `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the model in `checkpoints/v4` and hands
+Then `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the model in `checkpoints/exp2-r3` (the EXP-2
+release; `checkpoints/v4` when a checkout lacks it, or with `-Dstonebreak.tgmpipe.model=checkpoints/v4`) and hands
 it the world's scale (`TerrainScale`) in the handshake. The service's log is `Models/logs/tgmpipe.log`.
 
 The service speaks only the terrain protocol on stdio (`terrain_slm/tgmpipe/protocol.py`), so it is not
@@ -98,15 +99,20 @@ Run one training job per GPU. Two jobs on one card run about 15× slower.
 
 Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt`, `bank.pt`,
 `descgit.pt`, and in v4 `detail.pt` + `biome.pt`); without one, that stage falls back to the previous behaviour.
-v4 (`checkpoints/v4`, the default since 2026-09-28) needs no `descgit.pt`; see `docs/Architecture.md` §1a/§1b.
+v4 (`checkpoints/v4`, the default 2026-09-28 to 2026-11-19) needs no `descgit.pt`; see `docs/Architecture.md` §1a/§1b.
+EXP-2 folders (with `climate.pt`) load through `world/generator2.py`; the default is `checkpoints/exp2-r3`.
 
 ### Shipping a model
 
-1. Copy each run's `best.pt` into a **new** checkpoint directory as `planner.pt`, `refiner.pt`
-   and `relief.pt`. `relief.pt` is optional: without it, the generator runs the old pipeline
-   with no relief sampler.
+1. Assemble a model folder of symlinks to the runs' checkpoints (`planner.pt`, `relief.pt`, `detail.pt`, ...;
+   e.g. `checkpoints/exp2/world_exp2b`), and record every run in `scripts/release_provenance.json` (data,
+   init chain, evidence). Then build the release, a **new** directory of real, inference-only files:
+   `.venv/bin/python scripts/make_release.py checkpoints/exp2/world_exp2b checkpoints/exp2-r2 --device cuda:1`.
+   It refuses a run trained (or initialised from one trained) on WorldClim / FABDEM / EEA-10 / unconfirmed
+   CHELSA-TraCE21k data, writes `release.json` (sha256, sizes, sources, licences, `content_id`), copies
+   `ATTRIBUTION.md`, and proves tiles from the release are bit-identical to the source folder (1:4 and 1:2).
 2. Point the game at the new directory: `TGMPipe.DEFAULT_MODEL`, or
-   `-Dstonebreak.tgmpipe.model=`.
+   `-Dstonebreak.tgmpipe.model=`. Update `ATTRIBUTION.md` if the sources changed.
 3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v3...` lines. v3 was about 9 MB in
    plain git; v4 is ~131 MB with a 99 MB `detail.pt` (bf16) — GitHub's hard limit is 100 MiB per file, so
    consider Git LFS. Store big models' weights as bf16 (lossless for the bf16-autocast samplers).
@@ -130,10 +136,10 @@ own. Old namespaces age out under the one byte budget (`--disk-cache`, 8 GB).
 ```
 terrain_slm/        package: data/ synth/ models/ river/ train/ world/ tgmpipe/ eval/ · paths.py · device.py · biomes.py
 tests/              pytest suite
-scripts/            download_region.py
+scripts/            download_*.py · make_release.py + release_provenance.json
 configs/
 docs/               Architecture.md · Terrain-SLM-Plan.md · system-overview.{png,py} · diagnostics/
-checkpoints/        v3/ = the shipping model (tracked, ~18 MB; v2/ also tracked); training runs and poc/ are ignored
+checkpoints/        exp2-r3/ = the shipping EXP-2 release (ignored for now: 590 MB + native/ export 144 MB; exp2-r1 kept for worlds created on it); v4/ v3/ v2/ = EXP-1 (tracked, WorldClim-trained); training runs are ignored
 reports/            evaluation output (ignored)
 data/               training data: a folder, or a symlink to a data disk (ignored)
 ```

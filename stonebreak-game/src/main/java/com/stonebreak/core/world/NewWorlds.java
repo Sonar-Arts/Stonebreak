@@ -1,6 +1,7 @@
 package com.stonebreak.core.world;
 
 import com.stonebreak.config.TerrainScaleOption;
+import com.stonebreak.world.generation.ClimateLayout;
 import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.WorldStorage;
@@ -16,7 +17,7 @@ import java.time.LocalDateTime;
 
 /**
  * Writes a new world's {@code world.json} (+ {@code metadata.json}) before the integrated server loads it - the
- * one place the per-world creation choices (generator, terrain scale, spawn) are fixed: world creation in the
+ * one place the per-world creation choices (generator, terrain scale, climate layout, spawn) are fixed: world creation in the
  * terrain mapper and the {@code stonebreak.autoworld} dev hook both go through here.
  */
 public final class NewWorlds {
@@ -24,13 +25,23 @@ public final class NewWorlds {
     private NewWorlds() {
     }
 
-    /** Creation options of a new world. */
+    /**
+     * Creation options of a new world. {@code climateLayout} (null = {@link ClimateLayout#DEFAULT}) is only used by
+     * DIFFUSION worlds; Standard worlds save it and ignore it.
+     */
     public record Options(String name, long seed, TerrainGeneratorType generator, TerrainScalePreset scale,
-                          Vector3d spawn, boolean explicitSpawn) {
+                          ClimateLayout climateLayout, Vector3d spawn, boolean explicitSpawn) {
         public Options {
             generator = generator == null ? TerrainGeneratorType.STANDARD : generator;
             scale = scale == null ? TerrainScaleOption.DEFAULT : scale;
+            climateLayout = ClimateLayout.orDefault(climateLayout);
             spawn = spawn == null ? new Vector3d(0, 100, 0) : spawn;
+        }
+
+        /** Options of a world with the default climate layout. */
+        public Options(String name, long seed, TerrainGeneratorType generator, TerrainScalePreset scale,
+                       Vector3d spawn, boolean explicitSpawn) {
+            this(name, seed, generator, scale, ClimateLayout.DEFAULT, spawn, explicitSpawn);
         }
     }
 
@@ -58,6 +69,14 @@ public final class NewWorlds {
                 .hasExplicitSpawn(o.explicitSpawn())
                 .generatorType(o.generator())
                 .terrainScale(o.scale())
+                .climateLayout(o.climateLayout())
+                // New worlds get the current height curve; -Dstonebreak.autocurve=<1|2> (dev: before/after captures)
+                // creates one with another version.
+                .heightCurve(com.stonebreak.world.generation.HeightCurveVersion.parse(
+                    System.getProperty("stonebreak.autocurve"), com.stonebreak.world.generation.HeightCurveVersion.CURRENT))
+                // The terrain model the terrain mapper previewed with (TGMPipe.useDefaultModel): kept for the world's
+                // lifetime, so a later default never changes its unexplored terrain (review-python HIGH-1).
+                .terrainModel(com.stonebreak.world.generation.diffusion.tgmpipe.TerrainModels.current())
                 .createdTime(LocalDateTime.now())
                 .lastPlayed(LocalDateTime.now())
                 .totalPlayTimeMillis(0L)

@@ -77,8 +77,17 @@ public final class ProtocolVersion {
      *  EntityTeleportS2C, ProjectileSpawnC2S, PlayerStateC2S/S2C, PlayerPositionS2C, PlayerJoinS2C,
      *  PlayerLifeC2S, KillCreditS2C, FishingRodC2S, SoundEventS2C, VehicleActionC2S and VehicleMoveC2S.
      *  24: WelcomeS2C carries the world's terrain scale (1:4 / 1:2) after the generator type, so the client's
-     *  generator (FastLOD fallback, terrain queries) matches the server's world. */
-    public static final int CURRENT = 24;
+     *  generator (FastLOD fallback, terrain queries) matches the server's world.
+     *  25: WelcomeS2C carries the world's EXP-2 climate layout (ClimateLayout ordinal, one byte) after the terrain
+     *  scale, so a DaedalusTGM-Exp client asks TGMPipe for the same layout's tiles as the server.
+     *  26: WelcomeS2C carries the world's height-curve version (HeightCurveVersion number, one byte) after the
+     *  climate layout: a DaedalusTGM-Exp world keeps the curve it was created with (2026-11-19 shelf band).
+     *  27: the terrain scale in WelcomeS2C may be 1:1 (TerrainScalePreset.ONE_TO_ONE, ordinal 2: 15 m blocks), which
+     *  an older client cannot decode - the version check refuses it cleanly instead.
+     *  28: WelcomeS2C carries the world's terrain model (TerrainModelRef: folder path + release content id, two
+     *  strings) after the height curve, so a DaedalusTGM-Exp client's TGMPipe runs the model the server's world was
+     *  made with (review-python HIGH-1, FX1 2026-11-19). */
+    public static final int CURRENT = 28;
 
     private ProtocolVersion() {}
 }

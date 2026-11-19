@@ -38,6 +38,12 @@ public enum TerrainGeneratorType {
         return NativeTerrain.create(seed, this, scale, states);
     }
 
+    /** The native terrain of a world of this kind with the climate {@code layout} (DIFFUSION worlds only). */
+    public NativeTerrain create(long seed, NativeCubeGenerator.TerrainScalePreset scale, ClimateLayout layout,
+                                com.stonebreak.world.voxel.BlockStateRegistry states) {
+        return NativeTerrain.create(seed, this, scale, layout, states);
+    }
+
     /** Parses a persisted or networked name; anything unrecognised falls back to {@code fallback}. */
     public static TerrainGeneratorType parse(String name, TerrainGeneratorType fallback) {
         if (name != null) {

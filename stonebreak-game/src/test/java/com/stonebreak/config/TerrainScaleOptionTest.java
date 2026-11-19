@@ -17,6 +17,9 @@ class TerrainScaleOptionTest {
         assertEquals("1:4", TerrainScaleOption.label(TerrainScalePreset.ONE_TO_FOUR));
         assertEquals("1:2", TerrainScaleOption.label(TerrainScalePreset.ONE_TO_TWO));
         assertEquals(TerrainScalePreset.ONE_TO_TWO, TerrainScaleOption.parse(" 2 "));
+        assertEquals("1:1", TerrainScaleOption.label(TerrainScalePreset.ONE_TO_ONE));
+        assertEquals(TerrainScalePreset.ONE_TO_ONE, TerrainScaleOption.parse("1"));
+        assertEquals("1:1 (15 m blocks, experimental)", TerrainScaleOption.describe(TerrainScalePreset.ONE_TO_ONE));
     }
 
     @Test
@@ -30,6 +33,7 @@ class TerrainScaleOptionTest {
     void defaultIsOneToFourAndNextCycles() {
         assertEquals(TerrainScalePreset.ONE_TO_FOUR, TerrainScaleOption.DEFAULT);
         assertEquals(TerrainScalePreset.ONE_TO_TWO, TerrainScaleOption.next(TerrainScalePreset.ONE_TO_FOUR));
-        assertEquals(TerrainScalePreset.ONE_TO_FOUR, TerrainScaleOption.next(TerrainScalePreset.ONE_TO_TWO));
+        assertEquals(TerrainScalePreset.ONE_TO_ONE, TerrainScaleOption.next(TerrainScalePreset.ONE_TO_TWO));
+        assertEquals(TerrainScalePreset.ONE_TO_FOUR, TerrainScaleOption.next(TerrainScalePreset.ONE_TO_ONE));
     }
 }

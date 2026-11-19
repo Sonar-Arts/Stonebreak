@@ -93,6 +93,23 @@ public final class VisualizerRegistry {
         rebuild(seed);
     }
 
+    /** The climate layout the Daedalus previews show (the new world will use it); Standard ignores it. */
+    public com.stonebreak.world.generation.ClimateLayout climateLayout() {
+        return diffusion.climateLayout();
+    }
+
+    /** Switches the previewed climate layout; the Daedalus previews rebuild when it changes. */
+    public void selectClimateLayout(com.stonebreak.world.generation.ClimateLayout layout) {
+        var l = com.stonebreak.world.generation.ClimateLayout.orDefault(layout);
+        if (l == diffusion.climateLayout()) return;
+        diffusion.setClimateLayout(l);
+        // Daedalus samples are stored by seed and level only: another layout's terrain must not be shown.
+        previewStore.clear();
+        if (generatorType == TerrainGeneratorType.DIFFUSION) {
+            rebuild(seed);
+        }
+    }
+
     /**
      * Forgets the selection without touching the services — for leaving the screen into the
      * world just created, which may be about to use them.

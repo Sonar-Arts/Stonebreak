@@ -217,6 +217,18 @@
                                     </includes>
                                 </resource>
                                 <resource>
+                                    <!-- libstonebreak_terrain: the DaedalusTGM tile pipeline in-process (native engine
+                                         phase 3, tgmpipe/NativeTerrain); built only when the Cenda SDK carries
+                                         cenda/infer.h -->
+                                    <directory>${project.basedir}/native/build/release/src/terrain</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>libstonebreak_terrain.so</include>
+                                        <include>libstonebreak_terrain.dylib</include>
+                                        <include>stonebreak_terrain.dll</include>
+                                    </includes>
+                                </resource>
+                                <resource>
                                     <!-- multi-config generators (Visual Studio, Xcode) -->
                                     <directory>${project.basedir}/native/build/release/Release</directory>
                                     <filtering>false</filtering>

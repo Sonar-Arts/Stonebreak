@@ -91,6 +91,17 @@ public final class ClientWorldBuilder {
     /** As above; {@code terrainScale} = the server world's (the client's generator must match it). */
     public void start(String worldName, long seed, TerrainGeneratorType generatorType,
                       com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale, Vector3dc spawn) {
+        start(worldName, seed, generatorType, terrainScale, null, null, spawn);
+    }
+
+    /**
+     * As above; {@code climateLayout} and {@code heightCurve} = the server world's (null = belts / the current curve;
+     * the client's generator must match them).
+     */
+    public void start(String worldName, long seed, TerrainGeneratorType generatorType,
+                      com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                      com.stonebreak.world.generation.ClimateLayout climateLayout,
+                      com.stonebreak.world.generation.HeightCurveVersion heightCurve, Vector3dc spawn) {
         // The client never persists — drop any save service so the chunk store stays read-only.
         SaveService previous = game.getSaveService();
         if (previous != null) {
@@ -117,7 +128,8 @@ public final class ClientWorldBuilder {
         int buildGeneration = generation.incrementAndGet();
         pending = true;
         showcaseInstalled = false;
-        new Thread(() -> build(buildGeneration, seed, generatorType, terrainScale, spawn), "ClientWorld-Build").start();
+        new Thread(() -> build(buildGeneration, seed, generatorType, terrainScale, climateLayout, heightCurve, spawn),
+            "ClientWorld-Build").start();
     }
 
     /** True while {@code buildGeneration} is still the latest build AND the session is alive. */
@@ -126,10 +138,13 @@ public final class ClientWorldBuilder {
     }
 
     private void build(int buildGeneration, long seed, TerrainGeneratorType generatorType,
-                       com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale, Vector3dc spawn) {
+                       com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                       com.stonebreak.world.generation.ClimateLayout climateLayout,
+                       com.stonebreak.world.generation.HeightCurveVersion heightCurve, Vector3dc spawn) {
         try {
             LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.STREAM));
-            World renderWorld = worldLifecycle.createClientWorldInstance(seed, generatorType, terrainScale);
+            World renderWorld = worldLifecycle.createClientWorldInstance(seed, generatorType, terrainScale,
+                climateLayout, heightCurve);
             if (!installWorld(buildGeneration, renderWorld)) {
                 return;
             }

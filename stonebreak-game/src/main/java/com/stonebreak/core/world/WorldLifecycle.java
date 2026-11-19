@@ -172,7 +172,20 @@ public final class WorldLifecycle {
     public World createClientWorldInstance(long seed,
                                            com.stonebreak.world.generation.TerrainGeneratorType generatorType,
                                            com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale) {
-        return World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale);
+        return createClientWorldInstance(seed, generatorType, terrainScale, null, null);
+    }
+
+    /**
+     * As above with the server world's climate layout and height curve (null = belts / the current curve):
+     * DIFFUSION worlds build their terrain from them.
+     */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                           com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                           com.stonebreak.world.generation.HeightCurveVersion heightCurve) {
+        return World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale, climateLayout,
+            heightCurve);
     }
 
     /**

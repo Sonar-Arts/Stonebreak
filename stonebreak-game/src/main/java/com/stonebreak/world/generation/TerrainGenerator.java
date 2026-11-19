@@ -59,6 +59,19 @@ public interface TerrainGenerator {
                             int[] cellHeights, int[] outFloor, byte[] outCoverage);
 
     /**
+     * {@link #sampleCellOpenings(int, int, int, int, int[], int[], byte[])} plus the water standing in each
+     * mouth ({@code outWater}: the first non-water Y, or {@code WorldConfiguration.NO_WATER}) - sea level
+     * over a cliffed coast's flooded shelves. The default reports every mouth dry.
+     */
+    default void sampleCellOpenings(int worldX0, int worldZ0, int cellsPerAxis, int cellSize,
+                                    int[] cellHeights, int[] outFloor, byte[] outCoverage, int[] outWater) {
+        sampleCellOpenings(worldX0, worldZ0, cellsPerAxis, cellSize, cellHeights, outFloor, outCoverage);
+        if (outWater != null) {
+            java.util.Arrays.fill(outWater, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
+        }
+    }
+
+    /**
      * Batched column probe for FastLOD over a {@code count x count} grid at
      * {@code (worldX0 + ix*stride, worldZ0 + iz*stride)}, indexed {@code [ix*count + iz]}.
      * Heights are the carved surface. Every output but {@code outHeights} is nullable.

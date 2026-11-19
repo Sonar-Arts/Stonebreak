@@ -34,9 +34,11 @@ import java.nio.ByteOrder;
  *   heights      i16[stride*stride]       world Y (clamped to short range)
  *   waterLevels  i16[cellsPerAxis²]       world Y, or WATER_NONE (Short.MIN_VALUE) = WorldConfiguration.NO_WATER
  *   surface      u16[cellsPerAxis²]       BlockType.getId()
- *   openPresent  u8   0 = opening channel omitted (L0), 1 = the two arrays follow
+ *   openPresent  u8   0 = opening channel omitted (L0), 1 = the two arrays follow,
+ *                     2 (v16) = the two arrays and the mouths' water follow
  *   openFloor?   i16[cellsPerAxis²]       world Y, or OPEN_NONE (Short.MIN_VALUE)
  *   openCover?   u8[cellsPerAxis²]        carved share of the cell, 0..255
+ *   openWater?   i16[cellsPerAxis²]       (openPresent 2) water in the mouth, or WATER_NONE
  *   treePresent  u8   0 = trees omitted, 1 = trees follow
  *   trees?       u8[cellsPerAxis²] kind   0 = none, else TreeKind.ordinal()+1
  *   trunkH?      u8[cellsPerAxis²]        0 if no tree
@@ -101,8 +103,11 @@ public final class FastLodSerializer {
      *
      * <p>15: the cube world reaches y = -384, so "dry" is no longer -1 (a real water level) but
      * {@link #WATER_NONE}; a v14 node's -1 would read as water at y = -1.
+     *
+     * <p>16: cave mouths carry the water standing in them (a cliffed coast's flooded shelves): a v15
+     * node draws every sea-flooded cove, moat and notch as a dry pit under the sea.
      */
-    public static final int VERSION = 15;
+    public static final int VERSION = 16;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel
@@ -126,7 +131,9 @@ public final class FastLodSerializer {
         boolean hasTrees = trees != null;
         int[] openFloor = data.rawOpeningFloor();
         byte[] openCover = data.rawOpeningCoverage();
+        int[] openWater = data.rawOpeningWater();
         boolean hasOpenings = openFloor != null;
+        boolean hasOpenWater = hasOpenings && openWater != null;
 
         int size = 4 + 1 + 1 + 1 + 1
                  + heightsLen * 2
@@ -134,6 +141,7 @@ public final class FastLodSerializer {
                  + cellsLen   * 2
                  + 1
                  + (hasOpenings ? cellsLen * 3 : 0)
+                 + (hasOpenWater ? cellsLen * 2 : 0)
                  + 1
                  + (hasTrees ? cellsLen * 2 : 0)
                  + 2 + (data.treeSpots() == null ? 0 : data.treeSpots().length * 2);
@@ -165,13 +173,20 @@ public final class FastLodSerializer {
         }
 
         if (hasOpenings) {
-            buf.put((byte) 1);
+            buf.put((byte) (hasOpenWater ? 2 : 1));
             for (int i = 0; i < cellsLen; i++) {
                 int v = openFloor[i];
                 buf.putShort((short) (v == TerrainGenerator.NO_OPENING
                         ? OPEN_NONE : clampShort(v)));
             }
             buf.put(openCover, 0, cellsLen);
+            if (hasOpenWater) {
+                for (int i = 0; i < cellsLen; i++) {
+                    int w = openWater[i];
+                    buf.putShort(w == com.stonebreak.world.operations.WorldConfiguration.NO_WATER
+                            ? WATER_NONE : (short) Math.max(Short.MIN_VALUE + 1, clampShort(w)));
+                }
+            }
         } else {
             buf.put((byte) 0);
         }
@@ -249,7 +264,9 @@ public final class FastLodSerializer {
         int hasOpenings = buf.get() & 0xFF;
         int[] openFloor = null;
         byte[] openCover = null;
-        if (hasOpenings == 1) {
+        int[] openWater = null;
+        if (hasOpenings > 2) return null;
+        if (hasOpenings >= 1) {
             if (buf.remaining() < cellsLen * 3) return null;
             openFloor = new int[cellsLen];
             for (int i = 0; i < cellsLen; i++) {
@@ -259,6 +276,14 @@ public final class FastLodSerializer {
             }
             openCover = new byte[cellsLen];
             buf.get(openCover);
+            if (hasOpenings == 2) {
+                if (buf.remaining() < cellsLen * 2) return null;
+                openWater = new int[cellsLen];
+                for (int i = 0; i < cellsLen; i++) {
+                    short w = buf.getShort();
+                    openWater[i] = w == WATER_NONE ? com.stonebreak.world.operations.WorldConfiguration.NO_WATER : w;
+                }
+            }
         }
 
         if (buf.remaining() < 1) return null;
@@ -300,7 +325,7 @@ public final class FastLodSerializer {
         if (level.cellSize() == 1 && openFloor != null) return null;
 
         return new FastLodChunkData(expected, heights, waterLevels, surface, trees,
-                openFloor, openCover, spots);
+                openFloor, openCover, openWater, spots);
     }
 
     private static int clampShort(int v) {

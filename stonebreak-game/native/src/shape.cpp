@@ -281,6 +281,173 @@ uint16_t Generator::surfaceAt(int biome, int64_t x, int64_t z, int32_t waterDept
     return own;
 }
 
+/* ------------------------------------------------------------------------ sea floor */
+namespace {
+/* Smooth patch noise in [0, 1): bilinear value noise on a `cell`-block lattice (pointwise in world coordinates, so a
+ * column gets the same value whichever tile builds it). */
+double patchNoise(int64_t seed, uint64_t salt, int64_t x, int64_t z, int cell) {
+    const int64_t gx = x >= 0 ? x / cell : -((-x + cell - 1) / cell);
+    const int64_t gz = z >= 0 ? z / cell : -((-z + cell - 1) / cell);
+    const double fx = static_cast<double>(x - gx * cell) / cell, fz = static_cast<double>(z - gz * cell) / cell;
+    auto v = [&](int64_t a, int64_t b) {
+        return static_cast<double>(colHash(seed, salt, a, b) >> 11) / 9007199254740992.0;
+    };
+    const double sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+    const double top = v(gx, gz) + (v(gx + 1, gz) - v(gx, gz)) * sx;
+    const double bot = v(gx, gz + 1) + (v(gx + 1, gz + 1) - v(gx, gz + 1)) * sx;
+    return top + (bot - top) * sz;
+}
+} // namespace
+
+bool Generator::seaFloor(BaseTile& t) {
+    const int64_t X0 = t.cx * CE, Z0 = t.cz * CE;
+    /* Heights / water of the 3x3 cubes around this one (review-native F3: slope and shelter used to stop at the tile
+     * edge, so the rock / sand choice shifted on every 32-block border). Neighbours come from their built base tiles
+     * (the same values) or, not built yet, from the apron cache (one profile upcall); fetched only when a sea column
+     * within 6 blocks of that side needs them. */
+    const int32_t* nh[9] = {};
+    const int32_t* nw[9] = {};
+    std::shared_ptr<const BaseTile> nbase[9];
+    std::shared_ptr<const HeightWater> napron[9];
+    nh[4] = t.h;
+    nw[4] = t.water;
+    bool failed = false;
+    auto planes = [&](int k) {
+        if (nh[k] != nullptr || failed) return nh[k] != nullptr;
+        const int64_t ncx = t.cx + (k % 3) - 1, ncz = t.cz + (k / 3) - 1;
+        if (auto b = baseCache.peek3(ncx, ncz, 0)) {
+            nbase[k] = b;
+            nh[k] = b->h;
+            nw[k] = b->water;
+            return true;
+        }
+        auto a = apronCache.get(ncx, ncz, [this](int64_t p, int64_t q) { return buildApron(p, q); });
+        if (!a) {
+            failed = true;
+            return false;
+        }
+        napron[k] = a;
+        nh[k] = a->h;
+        nw[k] = a->water;
+        return true;
+    };
+    /* (ax, az) local to this cube, -CE < ax, az < 2 CE: the neighbour's plane index k and its column */
+    auto at = [&](int ax, int az, int& k, int& col) {
+        const int tx = ax < 0 ? 0 : (ax >= CE ? 2 : 1), tz = az < 0 ? 0 : (az >= CE ? 2 : 1);
+        k = tz * 3 + tx;
+        col = (az - (tz - 1) * CE) * CE + (ax - (tx - 1) * CE);
+        return planes(k);
+    };
+    for (int c = 0; c < COLS; c++) {
+        /* seas: ocean ids and frozen seas (ICE_FIELDS under sea-level water); lakes keep their lake bed */
+        const bool sea = t.biome[c] == SBW_OCEAN || (t.biome[c] == SBW_ICE_FIELDS && t.water[c] == cfg.sea);
+        if (!sea || t.water[c] == NO_WATER || t.water[c] <= t.h[c] || t.riverFlow[c] >= 0) continue;
+        const int lx = c & 31, lz = c >> 5;
+        const int64_t x = X0 + lx, z = Z0 + lz;
+        const int32_t depth = t.water[c] - t.h[c];
+        /* slope: steepest step to a face neighbour (across the tile edge too) */
+        int32_t slope = 0;
+        const int nb[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (const auto& d : nb) {
+            int k, col;
+            if (!at(lx + d[0], lz + d[1], k, col)) return false;
+            slope = std::max(slope, std::abs(nh[k][col] - t.h[c]));
+        }
+        /* shelter: share of dry ground (water-free columns) within 6 blocks */
+        int land = 0, seen = 0;
+        for (int dz = -6; dz <= 6; dz += 2) {
+            for (int dx = -6; dx <= 6; dx += 2) {
+                int k, col;
+                if (!at(lx + dx, lz + dz, k, col)) return false;
+                seen++;
+                if (nw[k][col] == NO_WATER || nw[k][col] <= nh[k][col]) land++;
+            }
+        }
+        const double shelter = seen > 0 ? static_cast<double>(land) / seen : 0.0;
+        const bool cliff = ((t.carve[c] >> 4) & 7) == SBW_CARVE_SEA_STACKS;
+        /* patches ~8-24 blocks across, edges dithered per column */
+        const double r = static_cast<double>(colHash(cfg.seed, UINT64_C(0x5EAF100D), x, z) % 1000) / 1000.0;
+        const double p = 0.75 * patchNoise(cfg.seed, UINT64_C(0x5EAF1001), x, z, 12)
+                         + 0.25 * patchNoise(cfg.seed, UINT64_C(0x5EAF1002), x, z, 5) + 0.06 * (r - 0.5);
+        uint16_t id;
+        if (slope >= 3 || (cliff && depth <= 10)) {
+            id = (slope >= 4 || p > 0.35) ? cfg.id[SBW_STONE] : cfg.id[SBW_GRAVEL];       /* rock walls, cliffed coasts */
+        } else if (slope == 2) {
+            id = p < 0.55 ? cfg.id[SBW_GRAVEL] : (p < 0.8 ? cfg.id[SBW_STONE] : cfg.id[SBW_SAND]);   /* swept slopes */
+        } else if (depth <= 2) {
+            id = p < 0.12 ? cfg.id[SBW_GRAVEL] : cfg.id[SBW_SAND];                          /* beach shallows */
+        } else if (shelter > 0.45 && depth >= 3) {
+            id = p < 0.6 ? cfg.id[SBW_CLAY] : (p < 0.85 ? cfg.id[SBW_SAND] : cfg.id[SBW_DIRT]);  /* bays, lagoons */
+        } else if (depth <= 10) {
+            id = p < 0.2 ? cfg.id[SBW_GRAVEL] : (p > 0.86 ? cfg.id[SBW_CLAY] : cfg.id[SBW_SAND]);   /* shelf */
+        } else if (depth <= 24) {
+            id = p < 0.3 ? cfg.id[SBW_GRAVEL] : (p < 0.62 ? cfg.id[SBW_SAND] : cfg.id[SBW_CLAY]);  /* outer shelf */
+        } else {
+            id = p < 0.18 ? cfg.id[SBW_GRAVEL] : (p < 0.3 ? cfg.id[SBW_SAND] : cfg.id[SBW_CLAY]);  /* deep: mud */
+        }
+        t.surface[c] = id;
+    }
+    return true;
+}
+
+/* ------------------------------------------------------------------------ land surface (agent L) */
+namespace {
+/* Rank in [0, 1) of 0.75 patch noise + 0.25 per-column hash: the blend's quantiles (16 steps, measured over 2M samples
+ * of the bilinear smoothstep lattice) map it to ~uniform, so the threshold `u < share` covers ~`share` of the columns
+ * while the patches (one `cell`-block lattice) stay coherent. */
+double landRank(int64_t seed, uint64_t salt, int64_t x, int64_t z, int cell) {
+    static constexpr double Q[17] = {0.0, 0.2268, 0.2874, 0.3323, 0.3705, 0.4051, 0.4375, 0.4690, 0.4998,
+                                     0.5306, 0.5619, 0.5944, 0.6293, 0.6677, 0.7126, 0.7733, 1.0};
+    const double h = static_cast<double>(colHash(seed, salt ^ UINT64_C(0x1A9D), x, z) >> 11) / 9007199254740992.0;
+    const double s = 0.75 * patchNoise(seed, salt, x, z, cell) + 0.25 * h;
+    int k = 0;
+    while (k < 15 && s >= Q[k + 1]) k++;
+    return std::clamp((k + (s - Q[k]) / (Q[k + 1] - Q[k])) / 16.0, 0.0, 0.999999);
+}
+} // namespace
+
+void Generator::landSurface(BaseTile& t) const {
+    const int64_t X0 = t.cx * CE, Z0 = t.cz * CE;
+    for (int c = 0; c < COLS; c++) {
+        const uint8_t bRock = t.surf[SBW_SURF_ROCK_EXPOSURE][c], bScree = t.surf[SBW_SURF_SCREE][c];
+        if (bRock == SBW_SURF_NO_DATA || bScree == SBW_SURF_NO_DATA) continue;      /* no node data: unchanged */
+        const int biome = t.biome[c];
+        if (biome == SBW_OCEAN || biome == SBW_BEACH || biome == SBW_ICE_FIELDS || biome == SBW_SWAMP) continue;
+        if ((t.water[c] != NO_WATER && t.water[c] > t.h[c]) || t.riverFlow[c] >= 0) continue;   /* wet columns */
+        const int64_t x = X0 + (c & 31), z = Z0 + (c >> 5);
+        /* Shares of the block's ground (1 m lidar labels): rock walls / outcrop faces, talus. Pointwise in (seed,
+         * x, z) and the column's own channel bytes (the node computed them with a halo), so no tile-edge seams. */
+        const double rock = bRock / 254.0, scree = bScree / 254.0;
+        const uint8_t bRough = t.surf[SBW_SURF_ROUGHNESS][c];
+        const double rough = bRough == SBW_SURF_NO_DATA ? 0.0 : bRough * 0.01;
+        const double u = landRank(cfg.seed, UINT64_C(0x1A2D5EED), x, z, 7);
+        const bool red = biome == SBW_RED_SAND_DESERT || biome == SBW_BADLANDS;
+        const bool sandy = biome == SBW_DESERT;
+        const bool karst = ((t.carve[c] >> 4) & 7) == SBW_CARVE_KARST || ((t.carve[c] >> 4) & 7) == SBW_CARVE_TOWERS;
+        uint16_t id = 0;
+        if (u < rock) {                                                          /* bare rock */
+            id = red ? cfg.id[SBW_RED_SANDSTONE] : sandy ? cfg.id[SBW_SANDSTONE]
+                 : (karst && cfg.id[SBW_LIMESTONE] != 0) ? cfg.id[SBW_LIMESTONE] : cfg.id[SBW_STONE];
+        } else if (u < rock + scree) {                                           /* talus / block field */
+            const double v = static_cast<double>(colHash(cfg.seed, UINT64_C(0x5C2EE001), x, z) % 1000) / 1000.0;
+            const bool blocky = v < 0.15 + 0.5 * std::clamp((rough - 0.15) / 0.5, 0.0, 1.0);
+            if (red) {
+                id = blocky && cfg.id[SBW_RED_SAND_COBBLESTONE] != 0 ? cfg.id[SBW_RED_SAND_COBBLESTONE] : cfg.id[SBW_RED_SAND];
+            } else if (sandy) {
+                id = blocky && cfg.id[SBW_SAND_COBBLESTONE] != 0 ? cfg.id[SBW_SAND_COBBLESTONE] : cfg.id[SBW_GRAVEL];
+            } else {
+                id = blocky && cfg.id[SBW_COBBLESTONE] != 0 ? cfg.id[SBW_COBBLESTONE] : cfg.id[SBW_GRAVEL];
+            }
+        } else if (rough > 0.3 && (biome == SBW_PLAINS || biome == SBW_MEADOW || biome == SBW_TAIGA
+                                   || biome == SBW_TUNDRA || biome == SBW_SNOWY_PLAINS)) {
+            /* rough, broken ground between the rock and the talus: patches of bare soil / stones */
+            const double w = static_cast<double>(colHash(cfg.seed, UINT64_C(0x50D1D1A7), x, z) % 1000) / 1000.0;
+            if (w < 0.35 * std::clamp((rough - 0.3) / 0.6, 0.0, 1.0)) id = w < 0.1 ? cfg.id[SBW_GRAVEL] : cfg.id[SBW_DIRT];
+        }
+        if (id != 0) t.surface[c] = id;
+    }
+}
+
 /* ------------------------------------------------------------------------ standard tile */
 namespace {
 

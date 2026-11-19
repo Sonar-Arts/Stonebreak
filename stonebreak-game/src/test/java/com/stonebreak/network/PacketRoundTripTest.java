@@ -102,6 +102,36 @@ class PacketRoundTripTest {
         WelcomeS2C scaled = new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, half, 1, 2, 3, "s");
         assertEquals(scaled, roundTrip(WelcomeS2C.CODEC, scaled));
         assertEquals(half, roundTrip(WelcomeS2C.CODEC, scaled).terrainScale());
+        // Protocol 27: 1:1 (15 m blocks) is a terrain scale on the wire too.
+        var one = com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.ONE_TO_ONE;
+        WelcomeS2C fine = new WelcomeS2C(7, 1L, TerrainGeneratorType.DIFFUSION, one, 1, 2, 3, "s");
+        assertEquals(one, roundTrip(WelcomeS2C.CODEC, fine).terrainScale());
+        assertEquals(com.stonebreak.world.generation.ClimateLayout.BELTS, scaled.climateLayout());
+        WelcomeS2C zoned = new WelcomeS2C(7, 1L, TerrainGeneratorType.DIFFUSION, half,
+                com.stonebreak.world.generation.ClimateLayout.LATITUDE, 1, 2, 3, "s");
+        assertEquals(zoned, roundTrip(WelcomeS2C.CODEC, zoned));
+        assertEquals(com.stonebreak.world.generation.ClimateLayout.LATITUDE,
+                roundTrip(WelcomeS2C.CODEC, zoned).climateLayout());
+        // Protocol 26: the world's height-curve version (a saved v1 world keeps v1 on its clients).
+        assertEquals(com.stonebreak.world.generation.HeightCurveVersion.CURRENT, zoned.heightCurve());
+        for (var curve : com.stonebreak.world.generation.HeightCurveVersion.values()) {
+            WelcomeS2C curved = new WelcomeS2C(7, 1L, TerrainGeneratorType.DIFFUSION, half,
+                    com.stonebreak.world.generation.ClimateLayout.ZONES, curve, 1, 2, 3, "s");
+            assertEquals(curved, roundTrip(WelcomeS2C.CODEC, curved));
+            assertEquals(curve, roundTrip(WelcomeS2C.CODEC, curved).heightCurve());
+        }
+        // Protocol 28: the world's terrain model (a saved v4 world's clients run v4 too); none given = v4 (LEGACY).
+        assertEquals(com.stonebreak.world.generation.TerrainModelRef.LEGACY, zoned.terrainModel());
+        for (var model : new com.stonebreak.world.generation.TerrainModelRef[]{
+                com.stonebreak.world.generation.TerrainModelRef.LEGACY,
+                new com.stonebreak.world.generation.TerrainModelRef("checkpoints/exp2-r1", "ceafecb2d1cfd794eabaf176"),
+                new com.stonebreak.world.generation.TerrainModelRef("/abs/dev folder/world_exp2b", "")}) {
+            WelcomeS2C modelled = new WelcomeS2C(7, 1L, TerrainGeneratorType.DIFFUSION, half,
+                    com.stonebreak.world.generation.ClimateLayout.BELTS,
+                    com.stonebreak.world.generation.HeightCurveVersion.V2, model, 1, 2, 3, "s");
+            assertEquals(modelled, roundTrip(WelcomeS2C.CODEC, modelled));
+            assertEquals(model, roundTrip(WelcomeS2C.CODEC, modelled).terrainModel());
+        }
         assertEquals(new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret"),
                 roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret")));
         assertEquals(new KickS2C("bye"), roundTrip(KickS2C.CODEC, new KickS2C("bye")));

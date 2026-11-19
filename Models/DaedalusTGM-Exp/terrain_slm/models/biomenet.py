@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 import torch
+
+from terrain_slm.world.devcopy import const, to_device   # host -> device without a device sync
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -110,7 +112,7 @@ def build_input(elev_m: torch.Tensor, climate: torch.Tensor, i0: int, j0: int, e
     gx = 0.5 * (p[1:-1, 2:] - p[1:-1, :-2])
     gy = 0.5 * (p[2:, 1:-1] - p[:-2, 1:-1])
     slope = torch.sqrt(gx * gx + gy * gy) / PIXEL_M
-    noise = torch.from_numpy(classifier_noise(i0, j0, h, w)).to(elev_m.device)
+    noise = to_device(classifier_noise(i0, j0, h, w), elev_m.device)
     t, ts, pr, cv = climate[0], climate[1], climate[2].clamp_min(0.0), climate[3]
     return torch.stack([
         elev_m.clamp_min(0.0) / 1000.0, slope.clamp(0, 3), t / 10.0, ts / 500.0,
@@ -125,7 +127,7 @@ def classify(model: BiomeNet, elev_m: torch.Tensor, climate: torch.Tensor, i0: i
     if model.cfg.extras and climate.shape[0] < 7:
         raise ValueError("this biome sidecar reads the 7-channel EXP-2 climate (aridity, soil, snow)")
     logits = model(build_input(elev_m, climate, i0, j0, extras=model.cfg.extras).float())
-    ids = torch.tensor(CLASS_IDS, device=elev_m.device, dtype=torch.int16)
+    ids = const(CLASS_IDS, elev_m.device, torch.int16)
     return ids[logits[0].argmax(0)]
 
 

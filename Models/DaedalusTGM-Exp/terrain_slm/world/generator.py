@@ -19,12 +19,15 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
 from terrain_slm import MODEL_NAME
 from terrain_slm import kernels as K
 from terrain_slm.data import descriptors as D
+from terrain_slm.kernels import cuda_blend as KB
+from terrain_slm.world.devcopy import to_device
 from terrain_slm.models import planner as P
 from terrain_slm.models import refiner as R
 from terrain_slm.models import descgit as DG
@@ -101,6 +104,18 @@ HOME_RADIUS_CELLS = 150.0  # ~36 km
 
 
 # ----------------------------------------------------------------------------- controls
+def _hash32_int(x: int) -> int:
+    """synth.noise._hash32 (lowbias32) on a Python int, bit-identical: the per-stream base hash without creating a
+    device tensor (2026-11-19: that host -> device copy synced the GPU ~150 times per EXP-2 controls call)."""
+    m = 0xFFFFFFFF
+    x &= m
+    x ^= x >> 16
+    x = (x * 0x7FEB352D) & m
+    x ^= x >> 15
+    x = (x * 0x846CA68B) & m
+    return x ^ (x >> 16)
+
+
 def _value_noise(ci: torch.Tensor, cj: torch.Tensor, period: float, seed: int, stream: int) -> torch.Tensor:
     """Smooth lattice value noise in [-1, 1] at float cell coords, quintic interpolation."""
     x, y = ci / period, cj / period
@@ -108,7 +123,7 @@ def _value_noise(ci: torch.Tensor, cj: torch.Tensor, period: float, seed: int, s
     fx, fy = x - x0, y - y0
     ux = fx * fx * fx * (fx * (fx * 6 - 15) + 10)
     uy = fy * fy * fy * (fy * (fy * 6 - 15) + 10)
-    base = S._hash32(torch.tensor((seed * 0x9E3779B1 + stream * 0x632BE5AB) & S._MASK32, device=ci.device))
+    base = _hash32_int((seed * 0x9E3779B1 + stream * 0x632BE5AB) & S._MASK32)   # host int: no device sync
 
     def corner(dx, dy):
         h = S._hash32(S._hash32((x0.long() + dx) ^ base) ^ (y0.long() + dy))
@@ -194,10 +209,86 @@ _RED_MEMO: "OrderedDict[tuple, bool]" = OrderedDict()   # (seed, node i, node j)
 _RED_MEMO_CAP = 2_000_000
 
 
+#: Dense basin walk (FX2, 2026-11-19, after reviewer R4's prototype): lattice nodes of context around the nodes asked for.
+#: A walk that leaves the patch is redone by the step loop; a patch above RED_DESERT_PATCH_MAX nodes uses the loop.
+RED_DESERT_PATCH_MARGIN = 128
+RED_DESERT_PATCH_MAX = 400_000
+_RED_OFFSETS = [(0, 0)] + [(a, b) for a in (-1, 0, 1) for b in (-1, 0, 1) if (a, b) != (0, 0)]  # offset 0 first: ties stay
+
+
+def _red_desert_walk(pi: torch.Tensor, pj: torch.Tensor, seed: int) -> None:
+    """Walks nodes (pi, pj) downhill in `_dryness` in place, one step per iteration for the unfinished ones (the
+    original walk: ~300 small kernels and a sync per step)."""
+    L = RED_DESERT_LATTICE
+    offs = torch.tensor(_RED_OFFSETS, device=pi.device)
+    active = torch.ones(pi.numel(), dtype=torch.bool, device=pi.device)
+    for _ in range(RED_DESERT_MAX_STEPS):
+        a = torch.nonzero(active).flatten()
+        if a.numel() == 0:
+            break
+        qi = pi[a][None] + offs[:, 0:1]
+        qj = pj[a][None] + offs[:, 1:2]
+        v = _dryness((qi * L).float(), (qj * L).float(), seed)
+        k = torch.argmin(v, dim=0)                   # offset 0 listed first: ties stay put
+        moved = k != 0
+        pi[a] = qi.gather(0, k[None])[0]
+        pj[a] = qj.gather(0, k[None])[0]
+        active[a[~moved]] = False
+
+
+def _red_desert_walk_dense(pi: torch.Tensor, pj: torch.Tensor, seed: int) -> bool:
+    """`_red_desert_walk` without the launch storm, bit-identical: evaluates `_dryness` ONCE over the dense node patch
+    around the nodes (+ RED_DESERT_PATCH_MARGIN), with the walk's own (9 offsets, n) op layout, takes every patch node's
+    downhill step (argmin, offset 0 first) on the device, copies the steps to the host in one transfer and follows
+    them there (53k -> 1.8k kernels, 147 -> 16 syncs per tile-sized box; R4). Walks that leave the patch are redone
+    with the step loop. False (nothing changed) when the patch would be too large."""
+    L = RED_DESERT_LATTICE
+    dev = pi.device
+    hi, hj = pi.cpu().numpy(), pj.cpu().numpy()
+    i0, j0 = int(hi.min()) - RED_DESERT_PATCH_MARGIN, int(hj.min()) - RED_DESERT_PATCH_MARGIN
+    hn, wn = int(hi.max()) + RED_DESERT_PATCH_MARGIN + 1 - i0, int(hj.max()) + RED_DESERT_PATCH_MARGIN + 1 - j0
+    if hn * wn > RED_DESERT_PATCH_MAX:
+        return False
+    gi = (torch.arange(hn, device=dev, dtype=pi.dtype) + i0).view(-1, 1).expand(hn, wn).reshape(-1)
+    gj = (torch.arange(wn, device=dev, dtype=pj.dtype) + j0).view(1, -1).expand(hn, wn).reshape(-1)
+    offs = torch.tensor(_RED_OFFSETS, device=dev)
+    qi = gi[None] + offs[:, 0:1]
+    qj = gj[None] + offs[:, 1:2]
+    k = torch.argmin(_dryness((qi * L).float(), (qj * L).float(), seed), dim=0).cpu().numpy()   # the one sync
+    del qi, qj
+    on = np.asarray(_RED_OFFSETS, dtype=np.int64)
+    flat = np.arange(hn * wn, dtype=np.int64)
+    ni2, nj2 = flat // wn + on[k, 0], flat % wn + on[k, 1]
+    nxt = np.where((ni2 >= 0) & (ni2 < hn) & (nj2 >= 0) & (nj2 < wn), ni2 * wn + nj2, -1)   # -1: leaves the patch
+    nxt[k == 0] = flat[k == 0]                                                               # a minimum: stays
+    cur = (hi.astype(np.int64) - i0) * wn + (hj.astype(np.int64) - j0)
+    done = np.zeros(cur.shape, dtype=bool)
+    escaped = np.zeros(cur.shape, dtype=bool)
+    for _ in range(RED_DESERT_MAX_STEPS):            # the same step budget as the loop
+        n2 = nxt[cur]
+        escaped |= (n2 < 0) & ~done
+        done |= escaped
+        n2 = np.where(n2 < 0, cur, n2)
+        done |= n2 == cur
+        cur = np.where(done, cur, n2)
+        if done.all():
+            break
+    ends_i = torch.from_numpy(cur // wn + i0).to(device=dev, dtype=pi.dtype)
+    ends_j = torch.from_numpy(cur % wn + j0).to(device=dev, dtype=pj.dtype)
+    if escaped.any():                                # rare: redo those walks from their start with the loop
+        e = torch.from_numpy(np.nonzero(escaped)[0]).to(dev)
+        ei, ej = pi[e].clone(), pj[e].clone()
+        _red_desert_walk(ei, ej, seed)
+        ends_i[e], ends_j[e] = ei, ej
+    pi.copy_(ends_i)
+    pj.copy_(ends_j)
+    return True
+
+
 def _red_desert_nodes(ni: torch.Tensor, nj: torch.Tensor, seed: int) -> torch.Tensor:
     """Bool per lattice node (ni, nj): does the dryness basin it drains to come out red? Walks each node
-    downhill in `_dryness` to its minimum; only unfinished nodes step, and every node's answer is memoised
-    per seed (neighbouring tiles share walks)."""
+    downhill in `_dryness` to its minimum (`_red_desert_walk_dense` on CUDA, the step loop elsewhere: same nodes), and
+    every node's answer is memoised per seed (neighbouring tiles share walks)."""
     L = RED_DESERT_LATTICE
     dev = ni.device
     nodes, inv = torch.unique(torch.stack([ni.flatten(), nj.flatten()]), dim=1, return_inverse=True)
@@ -208,20 +299,8 @@ def _red_desert_nodes(ni: torch.Tensor, nj: torch.Tensor, seed: int) -> torch.Te
     if todo:
         idx = torch.tensor(todo, device=dev)
         pi, pj = nodes[0, idx].clone(), nodes[1, idx].clone()
-        offs = torch.tensor([(0, 0)] + [(a, b) for a in (-1, 0, 1) for b in (-1, 0, 1) if (a, b) != (0, 0)], device=dev)
-        active = torch.ones(len(todo), dtype=torch.bool, device=dev)
-        for _ in range(RED_DESERT_MAX_STEPS):
-            a = torch.nonzero(active).flatten()
-            if a.numel() == 0:
-                break
-            qi = pi[a][None] + offs[:, 0:1]
-            qj = pj[a][None] + offs[:, 1:2]
-            v = _dryness((qi * L).float(), (qj * L).float(), seed)
-            k = torch.argmin(v, dim=0)                   # offset 0 listed first: ties stay put
-            moved = k != 0
-            pi[a] = qi.gather(0, k[None])[0]
-            pj[a] = qj.gather(0, k[None])[0]
-            active[a[~moved]] = False
+        if dev.type != "cuda" or not _red_desert_walk_dense(pi, pj, seed):
+            _red_desert_walk(pi, pj, seed)
         # Each minimum reads a very smooth seeded field rather than an independent hash: the few basins one
         # large desert can span lie close together and agree, while separate deserts decide independently.
         v = _value_noise((pi * L).float(), (pj * L).float(), RED_DESERT_PERIOD_CELLS, seed, RED_DESERT_STREAM)
@@ -413,6 +492,12 @@ def accumulate_drainage(recv, invalid, weights, inflow_logacc: torch.Tensor | No
     drainage target. A ring cell that drains inward also carries `inflow_logacc` (the hydro
     sidecar's estimate of the upslope area it has beyond the window) as extra weight. Returns
     (3, H, W) [log1p(acc), river, D8 class]."""
+    return _drainage_fields(*_accumulate_core(recv, invalid, weights, inflow_logacc), device)
+
+
+def _accumulate_core(recv, invalid, weights, inflow_logacc: torch.Tensor | None):
+    """The host half of accumulate_drainage: (acc (H, W) float64, d8 class (H, W) int64). No generator state, so the
+    service runs it for several windows at once on worker threads (the C++ releases the GIL)."""
     import numpy as np
     from terrain_slm.data.build import D8_OFFSETS
     from terrain_slm.data.hydrology.flow import flow_accumulation
@@ -439,10 +524,15 @@ def accumulate_drainage(recv, invalid, weights, inflow_logacc: torch.Tensor | No
         for k, (a, b) in enumerate(D8_OFFSETS):
             d8[np.flatnonzero(live)[(dr == a) & (dc == b)]] = k
         d8 = d8.reshape(h, w)
-    acc_t = torch.from_numpy(acc).float().to(device)
+    return acc, d8
+
+
+def _drainage_fields(acc, d8, device) -> torch.Tensor:
+    """The device half of accumulate_drainage."""
+    acc_t = to_device(torch.from_numpy(acc).float(), device)
     acc_t = F.max_pool2d(acc_t[None, None], 3, stride=1, padding=1)[0, 0]
     river = (acc_t >= P.RIVER_MIN_UPSLOPE_CELLS).float()
-    return torch.stack([torch.log1p(acc_t), river, torch.from_numpy(d8).float().to(device)])
+    return torch.stack([torch.log1p(acc_t), river, to_device(torch.from_numpy(d8).float(), device)])
 
 
 def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc: torch.Tensor | None,
@@ -451,6 +541,72 @@ def routed_drainage(height: torch.Tensor, precip_mm: torch.Tensor, inflow_logacc
     accumulate_drainage): (3, H, W) [log1p(acc), river, D8 class]."""
     recv, invalid, weights = route_window(height, precip_mm, flat_noise)
     return accumulate_drainage(recv, invalid, weights, inflow_logacc, height.device)
+
+
+PARALLEL_HOST_WORK = True   # 2026-11-19: route / accumulation C++ of a cold tile's windows on worker threads (same numbers)
+_HOST_POOL = None
+
+
+def _to_host(t: torch.Tensor) -> torch.Tensor:
+    """A non-blocking copy of `t` into page-locked host memory (valid once the stream reached it: `_host_copies`)."""
+    if not t.is_cuda:
+        return t
+    out = torch.empty(t.shape, dtype=t.dtype, pin_memory=True)
+    return out.copy_(t, non_blocking=True)
+
+
+def _host_copies(tensors, device):
+    """(non-blocking pinned host copies of `tensors`, an event recorded after them or None on the CPU): a worker
+    thread `_wait`s for the event, the GPU thread goes on."""
+    out = tuple(_to_host(t) for t in tensors)
+    if torch.device(device).type != "cuda":
+        return out, None
+    ev = torch.cuda.Event()
+    ev.record(torch.cuda.current_stream(torch.device(device)))
+    return out, ev
+
+
+def _wait(event) -> None:
+    if event is not None:
+        event.synchronize()
+
+
+def _host_pool():
+    """Worker threads for host-side window work (C++ through ctypes releases the GIL)."""
+    global _HOST_POOL
+    if _HOST_POOL is None:
+        import os
+        from concurrent.futures import ThreadPoolExecutor
+        _HOST_POOL = ThreadPoolExecutor(max(2, min(8, (os.cpu_count() or 4) // 2)), thread_name_prefix="tgm-host")
+    return _HOST_POOL
+
+
+def _stitch_routes(wi: int, wj: int, fetch):
+    """generator._stitched_route with the owner route windows from `fetch(oi, oj)` (numpy only: thread-safe when
+    `fetch` is)."""
+    import numpy as np
+    n, core, ap = RELIEF_EXT, RELIEF_CORE, RELIEF_APRON
+    ci0, cj0 = wi * core - ap, wj * core - ap
+    recv = np.full(n * n, -1, dtype=np.int64)
+    invalid = np.zeros((n, n), dtype=bool)
+    weights = np.zeros((n, n), dtype=np.float64)
+    owner = np.zeros((n, n), dtype=np.int64)
+    for oi in range(math.floor(ci0 / core), math.floor((ci0 + n - 1) / core) + 1):
+        for oj in range(math.floor(cj0 / core), math.floor((cj0 + n - 1) / core) + 1):
+            r0, r1 = max(ci0, oi * core), min(ci0 + n, (oi + 1) * core)
+            s0, s1 = max(cj0, oj * core), min(cj0 + n, (oj + 1) * core)
+            o_recv, o_inv, o_w = fetch(oi, oj)
+            oa, ob = oi * core - ap, oj * core - ap          # owner window's extent origin
+            rr = o_recv.reshape(n, n)[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+            ta, tb = rr // n + oa - ci0, rr % n + ob - cj0     # receiver in this window's extent
+            inside = (rr >= 0) & (ta >= 0) & (ta < n) & (tb >= 0) & (tb < n)
+            flat = np.where(inside, ta * n + tb, -1)
+            recv.reshape(n, n)[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = flat
+            invalid[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_inv[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+            weights[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_w[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
+            owner[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = (oi * 1_000_003 + oj)
+    break_seam_cycles(recv, owner.ravel())
+    return recv, invalid, weights
 
 
 def break_seam_cycles(recv, owner):
@@ -533,12 +689,168 @@ def _move(obj, device):
     return obj
 
 
+ASYNC_SPILL = True   # 2026-11-19: GPU <-> host LRU moves through page-locked slots, without a device sync each
+
+
+def _default_pinned_mb() -> int:
+    """The page-locked spill budget per GPU when TGM_PINNED_MB is not set: 1/64 of physical RAM, 128..1024 MiB
+    (16 GB -> 256 MiB, E's recommendation for a player machine; 32 GB -> 512; >= 64 GB -> 1024). review-python
+    MEDIUM-2 (2026-11-19, FX1): the old fixed 1 GiB per GPU was unswappable RAM next to the game on a 16 GB machine.
+    The budget never changes a number (a spill is a bit-identical copy either way), only how often spills sync."""
+    try:
+        ram = __import__("os").sysconf("SC_PAGE_SIZE") * __import__("os").sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError, AttributeError):   # no sysconf (Windows): the 16 GB answer
+        return 256
+    return int(min(1024, max(128, ram // 64 // 2**20)))
+
+
+PINNED_BUDGET_BYTES = int(float(__import__("os").getenv("TGM_PINNED_MB") or _default_pinned_mb()) * 2**20)
+                                            # per GPU; past it, sync spills (the game passes -Dstonebreak.tgmpipe.pinnedMb)
+
+
+class _PinnedSlots:
+    """Page-locked host slots for spilled LRU tensors, `SLAB` per allocation, one pool per byte size.
+
+    A spill is a non-blocking device -> slot copy and a reload a non-blocking slot -> device copy, both queued on the
+    generator's stream: no host wait (a cold tile spilled and reloaded ~12,000 planner windows, each a device sync
+    through pageable memory). Only the GPU ever reads or writes a slot, and in stream order, so a slot handed back is
+    safe to reuse at once. Slabs are kept for the generator's lifetime: at most the LRUs' host capacity."""
+
+    SLAB = 32
+
+    def __init__(self):
+        self._free: dict[int, list] = {}
+        self.bytes = 0
+
+    def take(self, nbytes: int) -> torch.Tensor | None:
+        """A free slot, or None when a new slab would pass PINNED_BUDGET_BYTES (the caller spills the old way)."""
+        free = self._free.setdefault(nbytes, [])
+        if not free:
+            if self.bytes + self.SLAB * nbytes > PINNED_BUDGET_BYTES:
+                return None
+            slab = torch.empty(self.SLAB * nbytes, dtype=torch.uint8, pin_memory=True)
+            self.bytes += slab.numel()
+            free.extend(slab[i * nbytes : (i + 1) * nbytes] for i in range(self.SLAB))
+        return free.pop()
+
+    def give(self, slot: torch.Tensor) -> None:
+        self._free[slot.numel()].append(slot)
+
+    def trim(self) -> int:
+        """Drops every slab none of whose slots is taken (the service's idle release); returns the bytes dropped.
+        Their page-locked memory goes back to torch's host allocator, which `release_pinned` then empties. Slots
+        still holding spilled LRU entries (and their slabs) stay."""
+        dropped = 0
+        for nbytes, free in self._free.items():
+            by_slab: dict[int, list] = {}
+            for s in free:
+                by_slab.setdefault(s.untyped_storage().data_ptr(), []).append(s)
+            keep = []
+            for slots in by_slab.values():
+                if len(slots) == self.SLAB:
+                    dropped += self.SLAB * nbytes
+                else:
+                    keep.extend(slots)
+            free[:] = keep
+        self.bytes -= dropped
+        return dropped
+
+
+_PINNED: dict = {}
+
+
+def release_pinned() -> int:
+    """Idle release of page-locked host memory: every fully free spill slab, then torch's cached pinned blocks (the
+    `_to_host` / devcopy staging buffers). Waits for the GPUs first so no queued copy still reads a slab. Call only
+    from the generator's GPU thread while it is idle (the service's `_release_gpu_memory`). Returns the slab bytes
+    dropped."""
+    if not torch.cuda.is_available():
+        return 0
+    for dev in list(_PINNED):
+        torch.cuda.synchronize(dev)
+    dropped = sum(pool.trim() for pool in list(_PINNED.values()))
+    empty = getattr(torch._C, "_host_emptyCache", None)
+    if empty is not None:
+        empty()
+    return dropped
+
+
+def _pinned(dev: torch.device) -> _PinnedSlots:
+    """One pool per GPU: a slot's copies are ordered on that GPU's stream only."""
+    pool = _PINNED.get(dev)
+    if pool is None:
+        pool = _PINNED[dev] = _PinnedSlots()
+    return pool
+
+
+class _Spilled:
+    """A CUDA tensor's bytes in a pinned slot (dtype + shape to rebuild it)."""
+    __slots__ = ("slot", "dtype", "shape", "dev")
+
+    def __init__(self, t: torch.Tensor):
+        self.dtype, self.shape, self.dev = t.dtype, t.shape, t.device
+        nbytes = t.numel() * t.element_size()
+        self.slot = _pinned(self.dev).take(nbytes)
+        if nbytes and self.slot is not None:
+            self.slot.view(t.dtype).view(t.shape).copy_(t, non_blocking=True)
+
+    def back(self, device) -> torch.Tensor:
+        out = torch.empty(self.shape, dtype=self.dtype, device=device)
+        if out.numel():
+            out.copy_(self.slot.view(self.dtype).view(self.shape), non_blocking=True)
+        self.release()
+        return out
+
+    def release(self) -> None:
+        if self.slot is not None:
+            _pinned(self.dev).give(self.slot)
+            self.slot = None
+
+
+def _spill(obj):
+    """`_move(obj, "cpu")` for CUDA tensors, asynchronously (ASYNC_SPILL) while the pinned budget lasts."""
+    if isinstance(obj, torch.Tensor):
+        if not obj.is_cuda:
+            return obj
+        sp = _Spilled(obj)
+        return sp if sp.slot is not None else obj.to("cpu")
+    if isinstance(obj, dict):
+        return {k: _spill(v) for k, v in obj.items()}
+    if isinstance(obj, (tuple, list)):
+        return type(obj)(_spill(v) for v in obj)
+    return obj
+
+
+def _unspill(obj, device):
+    if isinstance(obj, _Spilled):
+        return obj.back(device)
+    if isinstance(obj, torch.Tensor):
+        return obj.to(device)                    # spilled the old way (pinned budget spent)
+    if isinstance(obj, dict):
+        return {k: _unspill(v, device) for k, v in obj.items()}
+    if isinstance(obj, (tuple, list)):
+        return type(obj)(_unspill(v, device) for v in obj)
+    return obj
+
+
+def _drop(obj) -> None:
+    if isinstance(obj, _Spilled):
+        obj.release()
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _drop(v)
+    elif isinstance(obj, (tuple, list)):
+        for v in obj:
+            _drop(v)
+
+
 class _LRU(OrderedDict):
     """Two-tier LRU: the `gpu_cap` most recent entries stay where they were made (the GPU); older ones
     spill to host RAM (`host_cap` more) and move back on their next use, so the cache keeps its total
     capacity (`cap`, which callers size batches by) without holding it all in VRAM. Values are
     bit-identical either way (VRAM audit 2026-11-18: these caches held ~1 GB of a 3.9 GB service,
-    and the detail-window cache could grow to ~1.8 GB in a long session)."""
+    and the detail-window cache could grow to ~1.8 GB in a long session). CUDA entries spill into pinned
+    slots without a device sync (ASYNC_SPILL, 2026-11-19)."""
 
     def __init__(self, gpu_cap, host_cap=0):
         super().__init__()
@@ -555,6 +867,8 @@ class _LRU(OrderedDict):
 
     def clear(self):
         OrderedDict.clear(self)
+        for v in self.host.values():
+            _drop(v)
         self.host.clear()
         self._home.clear()
 
@@ -563,7 +877,8 @@ class _LRU(OrderedDict):
             self.move_to_end(key)
             return self[key]
         if key in self.host:
-            val = _move(self.host.pop(key), self._home[key])
+            v = self.host.pop(key)
+            val = _unspill(v, self._home[key]) if ASYNC_SPILL else _move(v, self._home[key])
         else:
             val = fn()
             self._home[key] = _device_of(val)
@@ -573,9 +888,10 @@ class _LRU(OrderedDict):
             if self.host_cap <= 0:
                 self._home.pop(old, None)
                 continue
-            self.host[old] = _move(v, "cpu")
+            self.host[old] = _spill(v) if ASYNC_SPILL else _move(v, "cpu")
             if len(self.host) > self.host_cap:
-                gone, _ = self.host.popitem(last=False)
+                gone, g = self.host.popitem(last=False)
+                _drop(g)
                 self._home.pop(gone, None)
         return val
 
@@ -597,6 +913,8 @@ class WorldGenerator:
     def __init__(self, model_dir: Path, seed: int, device: str, cfg: GenConfig = GenConfig(),
                  cache_regions: int = 512):
         self.seed, self.device, self.cfg = seed, device, cfg
+        self.relief_gain = 1.0   # sampled relief x this (EXP-2 knob; v4 stays 1.0, bit-exact)
+        self.relief_preblur = RL.TREND_PREBLUR_SIGMA   # cells; trend blur before the relief node (v4: 4)
         pk = torch.load(model_dir / "planner.pt", map_location=device, weights_only=False)
         self.planner = P.Planner(P.PlannerConfig(**pk["config"])).to(device).eval()
         self.planner.load_state_dict(pk["model"])
@@ -618,6 +936,8 @@ class WorldGenerator:
             self.relief = RL.Relief(RL.ReliefConfig(**lc)).to(device).eval()
             self.relief.load_state_dict(lk["model"])
             rel_step = lk.get("step", 0)
+            if self.relief.mean_flow:     # a MeanFlow student's step count can equal its teacher's: keep caches apart
+                rel_step = f"{rel_step}mf"
         # Optional hydrology sidecar (drainage from the final coarse height) and bank model
         # (the learned bank stage of the river pipeline).
         self.hydro, hyd_step = self._optional(model_dir / "hydro.pt", lambda c: HY.Hydro(HY.HydroConfig(**c)))
@@ -630,6 +950,13 @@ class WorldGenerator:
             self.detail = self.detail.to(memory_format=torch.channels_last)
         self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
                          f":h{hyd_step}:b{bank_step}:g{dg_step}:d{det_step}")
+        from terrain_slm.river import banks as _banks
+        if self.banks is not None and _banks.BANK_FP32:   # exact-fp32 bank convolutions (river/banks.py, 2026-11-19)
+            self.model_id += ":bf32"
+        release = model_dir / "release.json"   # scripts/make_release.py: content hash, so two releases written to
+        if release.exists():                   # the same folder name never share TGMPipe tile caches
+            import json
+            self.model_id += ":R" + json.loads(release.read_text())["content_id"][:12]
         self._samplers = {}
         self._fused = set()   # ids of the UNets sampled by the native samplers (kernels/cuda_unet.py, cpu_sampler.py)
         self._sampler_cls = None
@@ -665,6 +992,7 @@ class WorldGenerator:
         self.scale = BlockScale.game_default(device)
         # Same total capacity as before (callers batch by `cap`); only the GPU share is bounded.
         self._hydro_windows = _LRU(16, 48)       # ~2.3 MiB each
+        self._drainage_in = _LRU(8, 56)          # ~0.8 MiB each: planner height of a drainage window
         self._route_windows = _LRU(128)          # host arrays already
         self._relief_windows = _LRU(32, 32)      # ~0.8 MiB each
         self._windows = _LRU(768, 3328)          # planner windows, ~176 KiB each
@@ -693,6 +1021,8 @@ class WorldGenerator:
             if isinstance(model, D2.Detail2):   # EXP-2 backbone (torch path until its native plan exists)
                 return D2.sample(model, cond.contiguous(memory_format=torch.channels_last), noise, steps=steps,
                                  t_start=t_start, mean_flow=getattr(model, "mean_flow", False), gates=gates)
+            if isinstance(model, RL.Relief) and model.mean_flow:   # MeanFlow relief student: (t, r) steps
+                return RL.sample(model, cond, noise, steps=steps)
             return R.sample(model, cond, noise, steps=steps)
         key = (id(model), tuple(cond.shape), steps, t_start)
         fs = self._samplers.get(key)
@@ -735,6 +1065,21 @@ class WorldGenerator:
         """Native pixels finer than the detail samples (the SR node at 1:2), or None for the default path. EXP-2
         overrides it."""
         return None
+
+    def native_fine(self, k1: int, l1: int, k2: int, l2: int) -> torch.Tensor:
+        """Elevation (m) at HALF pixels (15 m, the 1:1 world's blocks) [k1, k2) x [l1, l2): the native 30 m terrain
+        interpolated between pixel centres (bilinear, one pixel of margin; request-independent like `native`), then
+        made exactly mean-preserving (every 2x2 block averages to its 30 m pixel). The stand-in for SR-15, which
+        EXP-2 overrides it with."""
+        i1, j1 = k1 // 2 - 1, l1 // 2 - 1
+        i2, j2 = -(-k2 // 2) + 1, -(-l2 // 2) + 1
+        with self.lock:
+            px = self.native(i1, j1, i2, j2)
+        up = F.interpolate(px[None, None], scale_factor=2, mode="bilinear", align_corners=False)[0, 0]
+        err = F.avg_pool2d(up[None, None], 2)[0, 0] - px
+        up = up - err.repeat_interleave(2, 0).repeat_interleave(2, 1)
+        oi, oj = k1 - 2 * i1, l1 - 2 * j1
+        return up[oi : oi + (k2 - k1), oj : oj + (l2 - l1)]
 
     def warm_up(self, report=lambda what: None) -> None:
         """Compile the native kernels and build the samplers (capturing their CUDA graphs on a GPU) now
@@ -783,9 +1128,9 @@ class WorldGenerator:
     def _blend(self, ci0: int, cj0: int, hc: int, wc: int, fetch, channels: int) -> torch.Tensor:
         """Cross-fade canonical RELIEF_EXT-cell windows (core RELIEF_CORE, apron RELIEF_APRON):
         `fetch(wi, wj)` -> (channels, EXT, EXT). Returns (channels, hc, wc)."""
-        out = torch.zeros(channels, hc, wc, device=self.device)
         ext = RELIEF_EXT
         w2 = self._fade(ext, RELIEF_APRON, self.device)
+        items = []                                     # one cross-fade launch (kernels/cuda_blend.py: bit-identical)
         for wi in range(math.floor((ci0 - ext + RELIEF_APRON) / RELIEF_CORE),
                         math.floor((ci0 + hc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1):
             for wj in range(math.floor((cj0 - ext + RELIEF_APRON) / RELIEF_CORE),
@@ -795,10 +1140,8 @@ class WorldGenerator:
                 s0, s1 = max(cj0, b0), min(cj0 + wc, b0 + ext)
                 if r0 >= r1 or s0 >= s1:
                     continue
-                win = fetch(wi, wj)
-                out[:, r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] += (
-                    win[:, r0 - a0 : r1 - a0, s0 - b0 : s1 - b0] * w2[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0])
-        return out
+                items.append((fetch(wi, wj), a0 - ci0, b0 - cj0))
+        return KB.overlap_add((channels, hc, wc), items, w2, self.device)
 
     def _owned(self, ci0: int, cj0: int, hc: int, wc: int, fetch) -> torch.Tensor:
         """Categorical window output, taken from the window whose CORE owns each cell (classes
@@ -820,10 +1163,10 @@ class WorldGenerator:
         (wi*RELIEF_CORE, wj*RELIEF_CORE): (RELIEF_EXT, RELIEF_EXT) metres, apron included."""
         def run():
             ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
-            n, m = RELIEF_EXT, math.ceil(3 * RL.TREND_PREBLUR_SIGMA)
+            n, m = RELIEF_EXT, math.ceil(3 * self.relief_preblur)
             c = self.controls(ci0 - m, cj0 - m, n + 2 * m, n + 2 * m)
             crop = lambda x: x[..., m : m + n, m : m + n]
-            smooth = crop(D.blur(c["trend"][None, None], RL.TREND_PREBLUR_SIGMA))
+            smooth = crop(D.blur(c["trend"][None, None], self.relief_preblur))
             wild = (crop(c["wild"])[None, None] - P.WILD_NORM[0]) / P.WILD_NORM[1]
             climate = {k: crop(c[k])[None, None] for k in P.CLIMATE_NAMES}
             one = torch.ones(1, 1, 1, 1, device=self.device)
@@ -836,11 +1179,15 @@ class WorldGenerator:
             # Oceans keep the trend (the training regions have little deep sea); inland,
             # sampled valleys may not open basins below sea level.
             gate = _smoothstep((smooth + 100.0) / 300.0)
-            out = smooth + gate * RL.RELIEF_SCALE_M * x
+            out = smooth + gate * RL.RELIEF_SCALE_M * self._relief_gain_at(c, crop) * x
             floor = torch.minimum(smooth, torch.full_like(smooth, RELIEF_FLOOR_M))
             out = torch.where(smooth > 0, torch.maximum(out, floor), out)
             return out[0, 0]
         return self._relief_windows.get_or((self.seed, wi, wj), run)
+
+    def _relief_gain_at(self, c: dict, crop):
+        """Sampled-relief multiplier for a relief window (scalar; EXP-2 makes it a field)."""
+        return self.relief_gain
 
     def trend(self, ci0: int, cj0: int, hc: int, wc: int) -> torch.Tensor:
         """The planner's trend for cells [ci0, ci0+hc) x [cj0, cj0+wc): the procedural trend
@@ -888,28 +1235,32 @@ class WorldGenerator:
         xa, ca = self._planner_input(i0, j0, hn, wn)
         for start in range(0, len(keys), PLANNER_BATCH):
             chunk = keys[start : start + PLANNER_BATCH]
+            n = len(chunk)
+            offs = [(wi * STRIDE - i0, wj * STRIDE - j0) for wi, wj in chunk]
+            # Whole-chunk tensor ops (2026-11-19: were ~30 launches per window): elementwise and batch-invariant, so
+            # every window's numbers are what the per-window loop made (tests/test_planner_batch.py).
             xs = torch.zeros(PLANNER_BATCH, P.N_IN, WIN, WIN, device=self.device)
-            for b, (wi, wj) in enumerate(chunk):
-                a, c0 = wi * STRIDE - i0, wj * STRIDE - j0
-                xs[b] = xa[0, :, a : a + WIN, c0 : c0 + WIN]
+            xs[:n] = torch.stack([xa[0, :, a : a + WIN, c0 : c0 + WIN] for a, c0 in offs])
             with torch.no_grad():
                 out = self.planner(xs).float()
             # A light blur hides the 4-cell patch grid of the ViT head; window edges (where the
             # blur sees reflected context) carry ~0 weight in the sin^2 blend.
-            out = D.blur(out, PATCH_BLUR_CELLS)
-            for b, (wi, wj) in enumerate(chunk):
-                o = out[b]
-                a, c0 = wi * STRIDE - i0, wj * STRIDE - j0
-                trend = ca["trend"][a : a + WIN, c0 : c0 + WIN]
-                height = o[P.OUT_HEIGHT] * P.HEIGHT_SCALE_M
-                desc = o[P.OUT_DESC] * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
-                river = torch.sigmoid(o[P.OUT_RIVER])
-                logacc = o[P.OUT_LOGACC] * P.LOGACC_SCALE
-                # Ocean: trust the trend below sea level (the slice has little deep sea).
-                sea = ((-trend) / 150.0).clamp(0, 1)
-                height = (1 - sea) * height + sea * torch.minimum(height, trend)
-                val = torch.cat([height[None], desc, river[None], logacc[None]], dim=0)
-                self._windows.get_or((self.seed, wi, wj), lambda v=val: v)
+            out = D.blur(out, PATCH_BLUR_CELLS)[:n]
+            trend = torch.stack([ca["trend"][a : a + WIN, c0 : c0 + WIN] for a, c0 in offs])
+            height = out[:, P.OUT_HEIGHT] * P.HEIGHT_SCALE_M
+            desc = out[:, P.OUT_DESC] * self.desc_std.view(-1, 1, 1) + self.desc_mean.view(-1, 1, 1)
+            river = torch.sigmoid(out[:, P.OUT_RIVER])
+            logacc = out[:, P.OUT_LOGACC] * P.LOGACC_SCALE
+            height = self._sea_merge(height, trend)
+            val = torch.cat([height[:, None], desc, river[:, None], logacc[:, None]], dim=1)
+            for v, (wi, wj) in zip(val.unbind(0), chunk):
+                # own storage per window: a view would pin the whole chunk in VRAM while any one window lives
+                self._windows.get_or((self.seed, wi, wj), lambda v=v: v.clone())
+
+    def _sea_merge(self, height: torch.Tensor, trend: torch.Tensor) -> torch.Tensor:
+        """Planner height below sea level. v4: trust the trend (its training slice had little deep sea)."""
+        sea = ((-trend) / 150.0).clamp(0, 1)
+        return (1 - sea) * height + sea * torch.minimum(height, trend)
 
     def _window(self, wi: int, wj: int) -> torch.Tensor:
         """Planner output for the canonical window whose top-left cell is (wi*STRIDE, wj*STRIDE):
@@ -927,10 +1278,10 @@ class WorldGenerator:
         for r in range(0, len(wis), band):
             self._run_planner_windows([(wi, wj) for wi in wis[r : r + band] for wj in wjs
                                        if (self.seed, wi, wj) not in self._windows])
-        out = torch.zeros(11, hc, wc, device=self.device)
         u = torch.arange(WIN, device=self.device, dtype=torch.float32)
         w1 = torch.sin(math.pi * (u + 0.5) / WIN) ** 2  # sums to 1 at stride WIN/2
         w2 = w1[:, None] * w1[None, :]
+        items = []                                     # one cross-fade launch (kernels/cuda_blend.py: bit-identical)
         for wi in range(math.floor((ci0 - WIN) / STRIDE) + 1, math.floor((ci0 + hc - 1) / STRIDE) + 1):
             for wj in range(math.floor((cj0 - WIN) / STRIDE) + 1, math.floor((cj0 + wc - 1) / STRIDE) + 1):
                 a0, b0 = wi * STRIDE, wj * STRIDE
@@ -938,10 +1289,8 @@ class WorldGenerator:
                 s0, s1 = max(cj0, b0), min(cj0 + wc, b0 + WIN)
                 if r0 >= r1 or s0 >= s1:
                     continue
-                win = self._window(wi, wj)
-                out[:, r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] += (
-                    win[:, r0 - a0 : r1 - a0, s0 - b0 : s1 - b0] * w2[r0 - a0 : r1 - a0, s0 - b0 : s1 - b0])
-        return out
+                items.append((self._window(wi, wj), a0 - ci0, b0 - cj0))
+        return KB.overlap_add((11, hc, wc), items, w2, self.device)
 
     # ---------------------------------------------------------------- descriptors (cells)
     @staticmethod
@@ -1002,30 +1351,95 @@ class WorldGenerator:
         window, or None without one."""
         if self.hydro is None:
             return None
-        ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
-        n = RELIEF_EXT
-        height = self._planner_cells(ci0, cj0, n, n)[0]
-        c = self.controls(ci0, cj0, n, n)
+        height, c = self._drainage_inputs(wi, wj)
         x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
             out = self.hydro(x)[0].float()
         return torch.stack([out[HY.OUT_LOGACC] * P.LOGACC_SCALE, torch.sigmoid(out[HY.OUT_RIVER]),
                             out[HY.OUT_D8].argmax(0).float()])
 
+    def _drainage_inputs(self, wi: int, wj: int) -> tuple[torch.Tensor, dict]:
+        """(planner height, controls) over one canonical drainage window, as both the router and the hydro sidecar
+        read them. The height is cached once for both (2026-11-19: each was its own 448-cell planner blend of ~250
+        windows); the controls are cheap and recomputed."""
+        ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
+        n = RELIEF_EXT
+        height = self._drainage_in.get_or((self.seed, wi, wj),
+                                          lambda: self._planner_cells(ci0, cj0, n, n)[0].clone())   # own storage
+        return height, self.controls(ci0, cj0, n, n)
+
+    def _route_inputs(self, wi: int, wj: int):
+        """route_window's arguments for one canonical window: (height + jitter, precip, flat noise)."""
+        ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
+        n = RELIEF_EXT
+        height, c = self._drainage_inputs(wi, wj)
+        # Route over the height plus a few metres of smooth, coordinate-hashed noise: on near-flat
+        # plains a steepest-descent path otherwise runs dead straight along the cell grid.
+        jit = D.blur(S.white_noise(ci0, cj0, n, n, self.seed, ROUTE_NOISE_STREAM, self.device)[None, None],
+                     ROUTE_NOISE_SIGMA)[0, 0]
+        jit = jit * (ROUTE_NOISE_M * 2.0 * ROUTE_NOISE_SIGMA * math.sqrt(math.pi))  # std of blurred white noise = 1/(2 sigma sqrt(pi))
+        return height + jit * (height > 0), c["precip"], jit / ROUTE_NOISE_M
+
     def _route_window(self, wi: int, wj: int):
         """route_window over one canonical window's planner height (numpy recv, invalid, weights)."""
         def run():
-            ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
-            n = RELIEF_EXT
-            height = self._planner_cells(ci0, cj0, n, n)[0]
-            c = self.controls(ci0, cj0, n, n)
-            # Route over the height plus a few metres of smooth, coordinate-hashed noise: on near-flat
-            # plains a steepest-descent path otherwise runs dead straight along the cell grid.
-            jit = D.blur(S.white_noise(ci0, cj0, n, n, self.seed, ROUTE_NOISE_STREAM, self.device)[None, None],
-                         ROUTE_NOISE_SIGMA)[0, 0]
-            jit = jit * (ROUTE_NOISE_M * 2.0 * ROUTE_NOISE_SIGMA * math.sqrt(math.pi))  # std of blurred white noise = 1/(2 sigma sqrt(pi))
-            return route_window(height + jit * (height > 0), c["precip"], flat_noise=jit / ROUTE_NOISE_M)
+            height, precip, flat = self._route_inputs(wi, wj)
+            return route_window(height, precip, flat_noise=flat)
         return self._route_windows.get_or((self.seed, wi, wj), run)
+
+    def _prefetch_drainage(self, keys) -> None:
+        """Compute the hydro windows `keys` (and the route windows they stitch) that are not cached yet, with their
+        host-side work -- the C++ fill / D8 / accumulation, ~25-40 ms per window -- on worker threads in parallel
+        (2026-11-19: a cold tile routes up to 36 windows one after another). Device work stays on this thread, in a
+        different order than one-by-one, which changes nothing: every window is a pure function of its inputs."""
+        if not self.cfg.routed_drainage or not PARALLEL_HOST_WORK:
+            return
+        todo = [k for k in dict.fromkeys(keys) if (self.seed, *k) not in self._hydro_windows]
+        todo = todo[: max(1, self._hydro_windows.cap // 2)]
+        if not todo:
+            return
+        core, ap, n = RELIEF_CORE, RELIEF_APRON, RELIEF_EXT
+        owners = []
+        for wi, wj in todo:
+            ci0, cj0 = wi * core - ap, wj * core - ap
+            owners += [(oi, oj) for oi in range(math.floor(ci0 / core), math.floor((ci0 + n - 1) / core) + 1)
+                       for oj in range(math.floor(cj0 / core), math.floor((cj0 + n - 1) / core) + 1)]
+        routes = [k for k in dict.fromkeys(owners) if (self.seed, *k) not in self._route_windows]
+        routes = routes[: max(1, self._route_windows.cap // 2)]
+        if len(routes) > 1:
+            # Each window's fill / D8 starts on a worker as soon as its inputs reached host memory (an event per
+            # window), while this thread already computes the next window's inputs on the GPU.
+            futs = []
+            for k in routes:
+                args, ready = _host_copies(self._route_inputs(*k), self.device)
+                futs.append(_host_pool().submit(lambda a=args, e=ready: (_wait(e), route_window(a[0], a[1], flat_noise=a[2]))[1]))
+            for k, f in zip(routes, futs):
+                r = f.result()
+                self._route_windows.get_or((self.seed, *k), lambda r=r: r)
+        if len(todo) < 2:
+            return
+
+        def host(wi, wj, got, inflow, ready):
+            _wait(ready)
+            recv, invalid, weights = _stitch_routes(wi, wj, lambda oi, oj: got[oi, oj])
+            return _accumulate_core(recv, invalid, weights, inflow)
+        jobs = []
+        for wi, wj in todo:
+            pred = self._hydro_pred(wi, wj)
+            got = {}
+            fetch = lambda oi, oj, got=got: got.setdefault((oi, oj), self._route_window(oi, oj))
+            ci0, cj0 = wi * core - ap, wj * core - ap
+            for oi in range(math.floor(ci0 / core), math.floor((ci0 + n - 1) / core) + 1):   # _stitched_route's order
+                for oj in range(math.floor(cj0 / core), math.floor((cj0 + n - 1) / core) + 1):
+                    fetch(oi, oj)
+            if pred is None:
+                inflow, ready = None, None
+            else:
+                (inflow,), ready = _host_copies((pred[0],), self.device)
+            jobs.append((wi, wj, _host_pool().submit(host, wi, wj, got, inflow, ready)))
+        for wi, wj, f in jobs:
+            acc, d8 = f.result()
+            self._hydro_windows.get_or((self.seed, wi, wj), lambda a=acc, d=d8: _drainage_fields(a, d, self.device))
 
     def _stitched_route(self, wi: int, wj: int):
         """The receiver graph over window (wi, wj)'s extent with every cell routed by the window whose
@@ -1035,29 +1449,7 @@ class WorldGenerator:
         networks: across the fade bands (3/4 of every axis) each path faded below the threshold in
         turn, and rivers stopped and started. On one shared graph a river's path is continuous
         across every seam; windows then differ only in how much of its upstream area they see."""
-        import numpy as np
-        n, core, ap = RELIEF_EXT, RELIEF_CORE, RELIEF_APRON
-        ci0, cj0 = wi * core - ap, wj * core - ap
-        recv = np.full(n * n, -1, dtype=np.int64)
-        invalid = np.zeros((n, n), dtype=bool)
-        weights = np.zeros((n, n), dtype=np.float64)
-        owner = np.zeros((n, n), dtype=np.int64)
-        for oi in range(math.floor(ci0 / core), math.floor((ci0 + n - 1) / core) + 1):
-            for oj in range(math.floor(cj0 / core), math.floor((cj0 + n - 1) / core) + 1):
-                r0, r1 = max(ci0, oi * core), min(ci0 + n, (oi + 1) * core)
-                s0, s1 = max(cj0, oj * core), min(cj0 + n, (oj + 1) * core)
-                o_recv, o_inv, o_w = self._route_window(oi, oj)
-                oa, ob = oi * core - ap, oj * core - ap          # owner window's extent origin
-                rr = o_recv.reshape(n, n)[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
-                ta, tb = rr // n + oa - ci0, rr % n + ob - cj0     # receiver in this window's extent
-                inside = (rr >= 0) & (ta >= 0) & (ta < n) & (tb >= 0) & (tb < n)
-                flat = np.where(inside, ta * n + tb, -1)
-                recv.reshape(n, n)[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = flat
-                invalid[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_inv[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
-                weights[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = o_w[r0 - oa : r1 - oa, s0 - ob : s1 - ob]
-                owner[r0 - ci0 : r1 - ci0, s0 - cj0 : s1 - cj0] = (oi * 1_000_003 + oj)
-        break_seam_cycles(recv, owner.ravel())
-        return recv, invalid, weights
+        return _stitch_routes(wi, wj, self._route_window)
 
     def _hydro_window(self, wi: int, wj: int) -> torch.Tensor:
         """Drainage for one canonical window on the planner's final coarse height:
@@ -1075,6 +1467,10 @@ class WorldGenerator:
         """Per-cell drainage (logacc, river, d8): routed and/or the hydro sidecar's, else {}."""
         if self.hydro is None and not self.cfg.routed_drainage:
             return {}
+        self._prefetch_drainage([(wi, wj) for wi in range(math.floor((ci0 - RELIEF_EXT + RELIEF_APRON) / RELIEF_CORE),
+                                                          math.floor((ci0 + hc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1)
+                                 for wj in range(math.floor((cj0 - RELIEF_EXT + RELIEF_APRON) / RELIEF_CORE),
+                                                 math.floor((cj0 + wc - 1 + RELIEF_APRON) / RELIEF_CORE) + 1)])
         fields = self._blend(ci0, cj0, hc, wc, lambda wi, wj: self._hydro_window(wi, wj)[:2], 2)
         d8 = self._owned(ci0, cj0, hc, wc, lambda wi, wj: self._hydro_window(wi, wj)[2].long())
         return {"logacc": fields[0], "river": fields[1], "d8": d8}
@@ -1182,7 +1578,7 @@ class WorldGenerator:
                     x = self._sample(self.detail, cond, noise, self.cfg.detail_steps, DETAIL_T_START,
                                      gates=self.detail_gates(ci0, cj0, nc, ms))
                 res = DT.decode(x.clamp(-DETAIL_X_LIMIT, DETAIL_X_LIMIT))
-                ok = bool(torch.isfinite(x).all()) and float(x.abs().max()) < DETAIL_X_LIMIT
+                ok = bool(torch.isfinite(x).all() & (x.abs().max() < DETAIL_X_LIMIT))   # one device sync, same test
                 if ok:
                     break
                 self.detail_failures += 1
@@ -1198,8 +1594,8 @@ class WorldGenerator:
     def _detail_samples(self, s1: int, t1: int, s2: int, t2: int) -> torch.Tensor:
         """Heights (m) for 60 m samples [s1, s2) x [t1, t2), cross-faded across detail windows."""
         h, w = s2 - s1, t2 - t1
-        out = torch.zeros(h, w, device=self.device)
         w2 = self._fade(DETAIL_EXT, DETAIL_APRON, self.device)
+        items = []                                     # one cross-fade launch (kernels/cuda_blend.py: bit-identical)
         for wi in range(math.floor((s1 - DETAIL_EXT + DETAIL_APRON) / DETAIL_CORE),
                         math.floor((s2 - 1 + DETAIL_APRON) / DETAIL_CORE) + 1):
             for wj in range(math.floor((t1 - DETAIL_EXT + DETAIL_APRON) / DETAIL_CORE),
@@ -1209,10 +1605,8 @@ class WorldGenerator:
                 q0, q1 = max(t1, b0), min(t2, b0 + DETAIL_EXT)
                 if r0 >= r1 or q0 >= q1:
                     continue
-                win = self._detail_window(wi, wj)
-                out[r0 - s1 : r1 - s1, q0 - t1 : q1 - t1] += (
-                    win[r0 - a0 : r1 - a0, q0 - b0 : q1 - b0] * w2[r0 - a0 : r1 - a0, q0 - b0 : q1 - b0])
-        return out
+                items.append((self._detail_window(wi, wj), a0 - s1, b0 - t1))
+        return KB.overlap_add((1, h, w), items, w2, self.device)[0]
 
     def _native_detail(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor:
         """Native pixels from the detail sampler: each 60 m sample covers 2x2 native pixels

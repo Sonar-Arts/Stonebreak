@@ -62,6 +62,25 @@ public final class ServerWorldContext {
         return level != null ? level.world().getTerrainScale() : com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.ONE_TO_FOUR;
     }
 
+    /** The world's climate layout, so a DaedalusTGM-Exp world's client generator (FastLOD, queries) matches. */
+    public com.stonebreak.world.generation.ClimateLayout climateLayout() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.world().getClimateLayout() : com.stonebreak.world.generation.ClimateLayout.DEFAULT;
+    }
+
+    /** The world's height-curve version, so a DaedalusTGM-Exp world's client generator (FastLOD, queries) matches. */
+    public com.stonebreak.world.generation.HeightCurveVersion heightCurve() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.world().getHeightCurve() : com.stonebreak.world.generation.HeightCurveVersion.CURRENT;
+    }
+
+    /** The world's terrain model, so a DaedalusTGM-Exp client's TGMPipe (FastLOD fallback, queries) runs the same one. */
+    public com.stonebreak.world.generation.TerrainModelRef terrainModel() {
+        ServerLevel level = serverLevel;
+        return level != null && level.worldData() != null ? level.worldData().getTerrainModel()
+            : com.stonebreak.world.generation.TerrainModelRef.LEGACY;
+    }
+
     /** Authoritative world spawn (saved player/world spawn), or a sane default. */
     public org.joml.Vector3d spawn() {
         ServerLevel level = serverLevel;

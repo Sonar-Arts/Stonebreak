@@ -3,10 +3,12 @@
 canonical detail windows and seeds, with the candidate's detail.pt swapped into a model directory.
 
     python -m terrain_slm.eval.detail_scan CANDIDATE.pt [--base checkpoints/v4] [--seeds 8] [--grid 6]
-                                           [--blur 1.5] [--torch] [--device cuda:0]
+                                           [--blur 1.5] [--torch] [--native-detail] [--device cuda:0]
 
 --blur sets the base blur of the FIRST attempt (1.5 = shipped; 0 = the unblurred planner cells that blew v4 up).
 --torch forces the torch samplers for every model (fair A/B between architectures with and without native plans).
+--native-detail (with --exp2) runs a Detail2 on its native sampler (kernels/cuda_detail2.py) whatever
+generator2.NATIVE_DETAIL says.
 Reports per seed and in total: first-attempt failures (non-finite or |x| >= limit), windows that needed the
 smooth-base fallback, the largest |x|, and the mean per-window sample std (amplitude).
 """
@@ -38,6 +40,7 @@ def main(argv=None) -> int:
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--json", type=Path, default=None)
     ap.add_argument("--exp2", action="store_true", help="scan through WorldGenerator2 (EXP-2 controls + nodes)")
+    ap.add_argument("--native-detail", action="store_true", help="force the native Detail2 sampler (with --exp2)")
     args = ap.parse_args(argv)
     torch.cuda.set_device(torch.device(args.device))
 
@@ -56,8 +59,12 @@ def main(argv=None) -> int:
     if args.steps is not None:
         cfg = replace(cfg, detail_steps=args.steps)
     if args.exp2:
-        from terrain_slm.world.generator2 import WorldGenerator2
-        gen = WorldGenerator2(tmp, 0, args.device, cfg)
+        from terrain_slm.world import generator2 as G2
+        if args.native_detail:
+            G2.NATIVE_DETAIL = True
+        gen = G2.WorldGenerator2(tmp, 0, args.device, cfg)
+        if args.native_detail and gen._detail2_native is None:
+            raise SystemExit("--native-detail: the native Detail2 sampler is not available for this checkpoint/device")
     else:
         gen = G.WorldGenerator(tmp, 0, args.device, cfg)
     gen.warm_up()
@@ -99,6 +106,8 @@ def main(argv=None) -> int:
     del total["std"]
     total.update({"candidate": str(args.candidate), "blur": args.blur, "torch": args.torch,
                   "model_id": gen.model_id, "minutes": round((time.time() - t0) / 60, 1)})
+    if hasattr(gen, "detail_native_windows"):
+        total.update({"native_windows": gen.detail_native_windows, "torch_fallback_windows": gen.detail_torch_windows})
     print("TOTAL", json.dumps(total), flush=True)
     if args.json:
         args.json.write_text(json.dumps({"total": total, "seeds": per_seed}, indent=1))

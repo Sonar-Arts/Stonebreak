@@ -318,23 +318,82 @@ public class Main {
         }
         // A new world is written here with the requested terrain scale (the server only ever creates
         // default-scale worlds itself); an existing world keeps the scale it was created with.
+        // -Dstonebreak.autogen=<standard|diffusion>: the generator of a world the hook creates (default Standard).
+        com.stonebreak.world.generation.TerrainGeneratorType gen = null;
+        String autogen = System.getProperty("stonebreak.autogen");
+        if (autogen != null && !autogen.isBlank()) {
+            try {
+                gen = com.stonebreak.world.generation.TerrainGeneratorType.valueOf(autogen.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                System.err.println("[autoworld] unknown generator " + autogen + " (standard | diffusion)");
+            }
+        }
+        // -Dstonebreak.autoclimate=<belts|zones|latitude>: the EXP-2 climate layout of a world the hook creates
+        // (default belts; part of the world's identity, so an existing world keeps its own).
+        com.stonebreak.world.generation.ClimateLayout climate = null;
+        String autoclimate = System.getProperty("stonebreak.autoclimate");
+        if (autoclimate != null && !autoclimate.isBlank()) {
+            climate = com.stonebreak.world.generation.ClimateLayout.parse(autoclimate);
+            if (climate == null) {
+                System.err.println("[autoworld] unknown climate layout " + autoclimate + " (belts | zones | latitude)");
+            }
+        }
+        // -Dstonebreak.autocurve=<1|2> (NewWorlds): the height curve of a DaedalusTGM-Exp world the hook creates; it
+        // means nothing for Standard worlds (review-java LOW 4: alone it used to be ignored silently).
+        String autocurve = System.getProperty("stonebreak.autocurve");
+        boolean curveSet = autocurve != null && !autocurve.isBlank();
+        if (curveSet && gen != com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION
+                && !com.stonebreak.core.world.NewWorlds.exists(name)) {
+            System.err.println("[autoworld] autocurve=" + autocurve + " only applies to DaedalusTGM-Exp worlds; add "
+                + "-Dstonebreak.autogen=diffusion (this world is created " + (gen != null ? gen : "STANDARD") + ")");
+        }
         if (!com.stonebreak.core.world.NewWorlds.exists(name)) {
-            if (world.scale() != null) {
+            if (world.scale() != null || gen != null || climate != null || curveSet) {
                 try {
                     com.stonebreak.core.world.NewWorlds.write(new com.stonebreak.core.world.NewWorlds.Options(name, seed,
-                        null, world.scale(), null, false));
+                        gen, world.scale(), climate, null, false));
                 } catch (java.io.IOException e) {
                     System.err.println("[autoworld] could not write the new world: " + e.getMessage());
                 }
             }
-        } else if (world.scale() != null) {
+        } else if (world.scale() != null || climate != null || gen != null || curveSet) {
             var existing = com.stonebreak.core.world.NewWorlds.read(name);
-            if (existing != null && existing.getTerrainScale() != world.scale()) {
+            if (existing != null && gen != null && existing.getGeneratorType() != gen) {
+                System.err.println("[autoworld] '" + name + "' exists with generator " + existing.getGeneratorType()
+                    + "; ignoring autogen=" + gen + " (pick a fresh world name)");
+            }
+            var curve = curveSet ? com.stonebreak.world.generation.HeightCurveVersion.parse(autocurve, null) : null;
+            if (existing != null && curve != null && existing.getHeightCurve() != curve) {
+                System.err.println("[autoworld] '" + name + "' exists with height curve v"
+                    + existing.getHeightCurve().number() + "; ignoring autocurve=" + autocurve + " (pick a fresh world name)");
+            }
+            if (existing != null && world.scale() != null && existing.getTerrainScale() != world.scale()) {
                 System.err.println("[autoworld] '" + name + "' exists at terrain scale "
                     + com.stonebreak.config.TerrainScaleOption.label(existing.getTerrainScale())
                     + "; ignoring scale=" + com.stonebreak.config.TerrainScaleOption.label(world.scale())
                     + " (pick a fresh world name)");
             }
+            if (existing != null && climate != null && existing.getClimateLayout() != climate) {
+                System.err.println("[autoworld] '" + name + "' exists with climate layout "
+                    + existing.getClimateLayout().label() + "; ignoring autoclimate=" + climate.label()
+                    + " (pick a fresh world name)");
+            }
+        }
+        // -Dstonebreak.tgmpipe.model names the model of NEW worlds: a saved Daedalus world keeps the one it was made with
+        // (review-python HIGH-1) unless -Dstonebreak.tgmpipe.forceModel=true.
+        String flagModel = System.getProperty("stonebreak.tgmpipe.model");
+        if (flagModel != null && !flagModel.isBlank() && !Boolean.getBoolean("stonebreak.tgmpipe.forceModel")) {
+            var existing = com.stonebreak.core.world.NewWorlds.read(name);
+            if (existing != null && existing.getGeneratorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION
+                    && !com.stonebreak.world.generation.diffusion.tgmpipe.TerrainModels.refOf(flagModel)
+                        .equals(existing.getTerrainModel())) {
+                System.err.println("[autoworld] '" + name + "' was made with terrain model "
+                    + existing.getTerrainModel().path() + " and keeps it; -Dstonebreak.tgmpipe.model=" + flagModel
+                    + " applies to new worlds (pick a fresh world name, or add -Dstonebreak.tgmpipe.forceModel=true)");
+            }
+        }
+        if (climate != null) {
+            System.out.println("[autoworld] climate layout " + climate.label());
         }
         if (world.scale() != null) {
             System.out.println("[autoworld] terrain scale " + com.stonebreak.config.TerrainScaleOption.describe(world.scale()));
@@ -1295,7 +1354,7 @@ public class Main {
             + (spec.trim().endsWith(":online") ? " (online layout)" : ""));
     }
 
-    // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit] ──────────
+    // ─── Dev: -Dstonebreak.autoscreenshot=<seconds>:<file.png>[:quit|:rejoin[N]] ─
 
     private long autoShotDeadlineNanos = -1;
     private boolean autoShotDone;
@@ -1368,6 +1427,10 @@ public class Main {
                 + lod.layerQuads(1) + " quads");
         }
         String file = parts.length > 1 ? parts[1] : "autoscreenshot.png";
+        if (autoShotRejoins > 0) {
+            file = file.endsWith(".png") ? file.substring(0, file.length() - 4) + "_rejoin" + autoShotRejoins + ".png"
+                : file + "_rejoin" + autoShotRejoins;
+        }
         int w = window.width();
         int h = window.height();
         java.nio.ByteBuffer pixels = org.lwjgl.BufferUtils.createByteBuffer(w * h * 4);
@@ -1392,8 +1455,32 @@ public class Main {
         }
         if (parts.length > 2 && "quit".equalsIgnoreCase(parts[2])) {
             stopLoop();
+        } else if (parts.length > 2 && parts[2].toLowerCase(java.util.Locale.ROOT).startsWith("rejoin")) {
+            // <s>:<png>:rejoin[N] (agent Q, 2026-11-19): save and quit to the menu, load the same world again through
+            // autoworld and shoot again (<png> with _rejoin<k> before .png), N times (default 1), then quit - world
+            // teardown (FastLOD, terrain, integrated server) plus a reload in one session.
+            int rounds = 1;
+            try {
+                rounds = Math.max(1, Integer.parseInt(parts[2].substring("rejoin".length())));
+            } catch (NumberFormatException ignored) {
+                // "rejoin" alone: once
+            }
+            if (autoShotRejoins < rounds) {
+                autoShotRejoins++;
+                System.out.println("[autoscreenshot] leaving to the menu, rejoin " + autoShotRejoins + "/" + rounds);
+                Game.getInstance().leaveWorldToMenu();
+                autoShotDone = false;
+                autoShotDeadlineNanos = -1;
+                autoWorldDone = false;
+                autoWorldMenuFrames = 0;
+            } else {
+                stopLoop();
+            }
         }
     }
+
+    /** Rejoins done by {@code -Dstonebreak.autoscreenshot=<s>:<png>:rejoin[N]}. */
+    private int autoShotRejoins;
 
     // ─── Dev: -Dstonebreak.autofly=<delay>:<speed>:<seconds>:<dir>[:<everyN>] ──
 

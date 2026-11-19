@@ -939,8 +939,8 @@ public final class IntegratedServer {
         org.joml.Vector3d spawn = ctx.spawn();
 
         // 1. Welcome: who you are + the seed + the authoritative spawn.
-        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), ctx.terrainScale(), spawn.x, spawn.y, spawn.z,
-                sp.clientSecret()));
+        sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), ctx.terrainScale(), ctx.climateLayout(),
+                ctx.heightCurve(), ctx.terrainModel(), spawn.x, spawn.y, spawn.z, sp.clientSecret()));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);

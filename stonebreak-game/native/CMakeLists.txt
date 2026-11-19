@@ -84,10 +84,12 @@ endif()
 
 set(STONEBREAK_WORLDGEN_SOURCES
         src/api.cpp
+        src/boulders.cpp
         src/carvers.cpp
         src/column.cpp
         src/cube.cpp
         src/features.cpp
+        src/rocks.cpp
         src/shape.cpp)
 
 # One object library feeds the shared library and the tests (which call internals directly).
@@ -131,4 +133,21 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)
+endif()
+
+# DaedalusTGM terrain pipeline (the native inference engine, phases 2-3; Dev Working/docs/DaedalusTGM-Exp-2-Native-
+# Engine.md): libstonebreak_terrain, C ABI sbtg_* (include/stonebreak/terrain.h), on Open Mason's engine runtime (ci_*,
+# cenda/infer.h, opened at run time). The header comes from the Cenda SDK the game builds against (unpacked into
+# target/openmason-cenda-sdk) -- never from a sibling OpenMason working tree unless STONEBREAK_CENDA_INFER_INCLUDE names
+# one explicitly (dev loop). An SDK without infer.h (older engine) skips the library. Its warnings are never errors, and
+# build-worldgen.sh builds the worldgen lib first, so the terrain lib can never break the launch build.
+option(STONEBREAK_BUILD_TERRAIN "Build libstonebreak_terrain (DaedalusTGM pipeline on the engine runtime)" ON)
+if(STONEBREAK_BUILD_TERRAIN)
+    set(STONEBREAK_CENDA_INFER_INCLUDE "${STONEBREAK_ENGINE_CENDA_DIR}/native/kernels/include"
+            CACHE PATH "Directory holding cenda/infer.h (default: the Cenda SDK)")
+    if(EXISTS "${STONEBREAK_CENDA_INFER_INCLUDE}/cenda/infer.h")
+        add_subdirectory(src/terrain)
+    else()
+        message(STATUS "libstonebreak_terrain skipped: no cenda/infer.h under ${STONEBREAK_CENDA_INFER_INCLUDE}")
+    endif()
 endif()

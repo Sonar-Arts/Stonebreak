@@ -2,6 +2,8 @@ package com.stonebreak.world.fastlod;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.generation.TerrainGenerator;
+import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
+import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
 import com.stonebreak.world.operations.WorldConfiguration;
 
@@ -21,6 +23,16 @@ public final class FastLodSampler {
 
     public FastLodSampler(TerrainGenerator terrain) {
         this.terrain = terrain;
+    }
+
+    /**
+     * {@link #sample(FastLodKey)} for a node {@code distanceBlocks} (Chebyshev) from the player. A DaedalusTGM-Exp
+     * world asks for the tiles this misses at {@link TGMPipe#lodPriority} - nearest first, after the chunks being
+     * generated (a chunk that needs the same tile moves it up). The native generator's profile upcalls run on this
+     * thread, so the priority reaches every tile request; terrains without tiles ignore it.
+     */
+    public FastLodChunkData sample(FastLodKey key, long distanceBlocks) {
+        return DiffusionTileCache.deferred(TGMPipe.lodPriority(distanceBlocks), () -> sample(key));
     }
 
     public FastLodChunkData sample(FastLodKey key) {
@@ -72,17 +84,21 @@ public final class FastLodSampler {
         // every column's carve profile, the very cost those levels avoid.
         int[] openingFloor = null;
         byte[] openingCoverage = null;
+        int[] openingWater = null;
         if (cellSize > 1 && key.carved()) {
             openingFloor = new int[level.cellCount()];
             openingCoverage = new byte[level.cellCount()];
+            openingWater = new int[level.cellCount()];
             int[] cellHeights = new int[level.cellCount()];
             for (int ix = 0; ix < cellsPerAxis; ix++) {
                 for (int iz = 0; iz < cellsPerAxis; iz++) {
                     cellHeights[ix * cellsPerAxis + iz] = heights[(ix + 1) * stride + (iz + 1)];
                 }
             }
+            // ... and the water standing in each mouth: a cliffed coast's flooded shelves show the sea.
             terrain.sampleCellOpenings(baseX, baseZ, cellsPerAxis, cellSize,
-                    cellHeights, openingFloor, openingCoverage);
+                    cellHeights, openingFloor, openingCoverage, openingWater);
+            if (!anyWater(openingWater)) openingWater = null;
         }
 
         // Trees past the finest band: every tree in the footprint, standing on its cell.
@@ -99,7 +115,14 @@ public final class FastLodSampler {
         }
 
         return new FastLodChunkData(key, heights, waterLevels, surface, trees,
-                openingFloor, openingCoverage, treeSpots);
+                openingFloor, openingCoverage, openingWater, treeSpots);
+    }
+
+    private static boolean anyWater(int[] levels) {
+        for (int w : levels) {
+            if (w != WorldConfiguration.NO_WATER) return true;
+        }
+        return false;
     }
 
     /**

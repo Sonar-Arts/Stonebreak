@@ -947,7 +947,20 @@ public class Game {
                                  com.stonebreak.world.generation.TerrainGeneratorType generatorType,
                                  com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
                                  org.joml.Vector3dc spawn) {
-        clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, spawn);
+        startClientWorld(worldName, seed, generatorType, terrainScale, null, null, spawn);
+    }
+
+    /**
+     * As above for a world of the given terrain scale, climate layout and height curve (null = 1:4 / belts / the
+     * current curve): a DaedalusTGM-Exp client builds its FastLOD and queries from the server world's own tiles.
+     */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                 com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                 org.joml.Vector3dc spawn) {
+        clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, spawn);
     }
 
     /** {@link #startClientWorld(String, long, com.stonebreak.world.generation.TerrainGeneratorType, org.joml.Vector3dc)}

@@ -53,6 +53,14 @@ public class BiomeManager {
     }
 
     /**
+     * The biome of one column of {@code tile} with ground height {@code height}, by the same rule as
+     * {@link #populateChunkBiomes} (the coarse-LOD profiles read tiles in sample units through it).
+     */
+    public static BiomeType biomeAt(TerrainTile tile, int x, int z, int height) {
+        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), height, nearbySeaLevel(tile, x, z));
+    }
+
+    /**
      * Highest water level among the OCEAN columns of {@code (worldX, worldZ)} and its 8
      * neighbours, or {@link TerrainTile#NO_WATER} if none of them is ocean. Lakes and
      * rivers do not count: only the true ocean makes beaches (sand rings around every

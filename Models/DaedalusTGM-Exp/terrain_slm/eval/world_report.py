@@ -134,12 +134,29 @@ def main():
         leak = containment(TileBuilder(gen, WorldConfig.GAME), -args.blocks // 2, -args.blocks // 2, args.blocks)
         row = {"model": gen.model_id, "seed": seed, "river_threshold": gen.cfg.river_log_threshold, "containment": leak,
                "lowland": lowland_stats(c["height"], c["wet"], sea_y), "rivers": river_stats(c, sea_y),
-               "pipeline_stats": {k: v for k, v in stats.items() if isinstance(v, (int, float))}}
+               "pipeline_stats": pipeline_stats(stats)}
         rows.append(row)
         print(json.dumps(row), flush=True)
         _sheet(c, args.out / f"world_seed{seed}.png", f"seed {seed} · {gen.model_id}")
         np.savez_compressed(args.out / f"world_seed{seed}.npz", **c)
     (args.out / "world_report.json").write_text(json.dumps(rows, indent=2))
+
+
+def pipeline_stats(stats: dict) -> dict:
+    """The numeric ctx.stats, with the river / block stages' device-resident `Lazy` numbers read out (review-python
+    LOW-1: an isinstance(int, float) filter dropped every one of them, so pipeline_stats came out empty)."""
+    from terrain_slm.river.field import Lazy
+    out = {}
+    for k, v in stats.items():
+        if isinstance(v, Lazy):
+            v = v.value()
+        if not isinstance(v, (int, float)):
+            if hasattr(v, "item") and getattr(v, "ndim", 1) == 0:   # 0-d numpy / torch scalars
+                v = v.item()
+            else:
+                continue
+        out[k] = v
+    return out
 
 
 def _sheet(c: dict, path: Path, title: str):

@@ -5,6 +5,7 @@ import com.stonebreak.ui.UiWallClock;
 import com.stonebreak.ui.chat.ChatDocumentGateTest;
 import com.stonebreak.ui.fidelity.DocumentStage;
 import com.stonebreak.ui.runtime.GameUiDocuments;
+import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager;
 import com.stonebreak.ui.terrainMapper.managers.TerrainMapperStateManager.ActiveField;
 import com.stonebreak.ui.terrainMapper.visualization.VisualizerKind;
@@ -112,6 +113,95 @@ class TerrainMapperDocumentInteractionTest {
 
             click(stage, s, "create");
             assertNotNull(s.getErrorMessage(), "Create validates the (empty) name");
+        } finally {
+            screen.dispose();
+        }
+    }
+
+    /**
+     * The EXP-2 world-options row: hidden until a generator is picked; the scale button cycles the new world's
+     * terrain scale; the climate button is disabled for Standard (the press does nothing) and cycles the climate
+     * layout for DaedalusTGM-Exp (picking it starts no services: they start when a preview samples); hovering an
+     * option shows its tip.
+     */
+    @Test
+    void theWorldOptionsRowCyclesScaleAndClimate() throws Exception {
+        TerrainMapperScreen screen = new TerrainMapperScreen();
+        TerrainMapperStateManager s = screen.getStateManager();
+        TerrainMapperFixtures.prepare(s, "default");
+        try (DocumentStage stage = DocumentTerrainMapperCapture.stage(shipped, screen, 1920, 1080, 1f, 0.1)) {
+            assertTrue(stage.q("#scale-opt").isCollapsed(), "no world options before a generator is picked");
+            assertTrue(stage.q("#climate-opt").isCollapsed());
+            assertTrue(s.getSelectedGenerator() == null);
+            assertTrue(screen.mouse().pressButton("scale:next"));
+            assertEquals(com.stonebreak.config.TerrainScaleOption.DEFAULT, s.getSelectedScale(),
+                "the hidden row does nothing");
+
+            click(stage, s, "gen0");
+            stage.host.terrainMapper().poll();
+            stage.settle();
+            assertFalse(stage.q("#scale-opt").isCollapsed(), "picking a generator shows the row");
+            assertFalse(stage.q("#climate-opt").isCollapsed());
+            assertTrue(stage.q("#climate-opt").hasClass("off"), "the climate layout is DaedalusTGM-Exp's");
+            click(stage, s, "scale");
+            assertEquals(com.stonebreak.config.TerrainScaleOption.next(com.stonebreak.config.TerrainScaleOption.DEFAULT),
+                s.getSelectedScale(), "the scale button steps the scale");
+            click(stage, s, "climate");
+            assertEquals(com.stonebreak.world.generation.ClimateLayout.BELTS, s.getSelectedClimateLayout(),
+                "the disabled climate button takes the press and does nothing");
+
+            click(stage, s, "gen1");
+            stage.host.terrainMapper().poll();
+            stage.settle();
+            assertEquals(TerrainGeneratorType.DIFFUSION, s.getSelectedGenerator());
+            assertFalse(stage.q("#climate-opt").hasClass("off"));
+            click(stage, s, "climate");
+            assertEquals(com.stonebreak.world.generation.ClimateLayout.ZONES, s.getSelectedClimateLayout());
+            click(stage, s, "climate");
+            assertEquals(com.stonebreak.world.generation.ClimateLayout.LATITUDE, s.getSelectedClimateLayout());
+            click(stage, s, "climate");
+            assertEquals(com.stonebreak.world.generation.ClimateLayout.BELTS, s.getSelectedClimateLayout(),
+                "it wraps");
+
+            float[] c = centre(s, "climate");
+            stage.view.input().pointerMove(c[0], c[1]);
+            stage.host.terrainMapper().poll();
+            stage.settle();
+            assertFalse(stage.q("#opt-tip").isCollapsed(), "hovering an option shows its tip");
+            assertFalse(stage.q("#climate-tip-text").isCollapsed());
+            assertTrue(stage.q("#scale-tip-text").isCollapsed());
+            float[] m = centre(s, "map");
+            stage.view.input().pointerMove(m[0], m[1]);
+            stage.settle();
+            assertTrue(stage.q("#opt-tip").isCollapsed(), "and leaving it hides the tip");
+        } finally {
+            screen.dispose();
+        }
+    }
+
+    /**
+     * A 720 px window has no room for the world-options row under Standard's spawn section: it floats over the
+     * map's top-left corner, where it still takes the pointer (a press on it neither pans nor sets the spawn).
+     */
+    @Test
+    void aShortWindowFloatsTheWorldOptionsOverTheMap() throws Exception {
+        TerrainMapperScreen screen = new TerrainMapperScreen();
+        TerrainMapperStateManager s = screen.getStateManager();
+        TerrainMapperFixtures.prepare(s, "standard");
+        try (DocumentStage stage = DocumentTerrainMapperCapture.stage(shipped, screen, 1280, 720, 0.75f, 0.1)) {
+            float[] oracle = TerrainMapperFixtures.rects(1280, 720, s).get("scale");
+            assertEquals(TerrainMapperConfig.SIDEBAR_WIDTH + TerrainMapperConfig.PANEL_MARGIN, oracle[0], 1e-4,
+                "the row floats over the map");
+            var el = stage.q("#scale-opt").rect();
+            assertEquals(oracle[0], el.x(), 1e-3);
+            assertEquals(oracle[1], el.y(), 1e-3);
+            float x = oracle[0] + oracle[2] / 2f;
+            float y = oracle[1] + oracle[3] / 2f;
+            press(stage, x, y);
+            up(stage, x, y);
+            assertEquals(com.stonebreak.config.TerrainScaleOption.next(com.stonebreak.config.TerrainScaleOption.DEFAULT),
+                s.getSelectedScale(), "the floating scale button takes the press");
+            assertFalse(s.hasSpawnPoint(), "not the map under it");
         } finally {
             screen.dispose();
         }

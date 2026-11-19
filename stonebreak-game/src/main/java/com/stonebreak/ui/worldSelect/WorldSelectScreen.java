@@ -20,6 +20,11 @@ public class WorldSelectScreen {
     private final WorldDiscoveryManager discoveryManager;
     private final WorldBackupService backupService;
     private final WorldActionHandler actionHandler;
+    /**
+     * Hears the selected world while the list shows, null when the player leaves it (FX2: the game prestarts the
+     * terrain model for a Daedalus world, see {@code GameScreens}). No-op until wired, so tests never start it.
+     */
+    private java.util.function.Consumer<com.stonebreak.world.save.model.WorldData> selectionWatcher = w -> { };
 
     // ===== CONSTRUCTOR =====
 
@@ -62,6 +67,21 @@ public class WorldSelectScreen {
      */
     public void refreshWorlds() {
         actionHandler.refreshWorlds();
+        selectionChanged();
+    }
+
+    /** Wires the selection watcher (see the field). */
+    public void setSelectionWatcher(java.util.function.Consumer<com.stonebreak.world.save.model.WorldData> watcher) {
+        this.selectionWatcher = watcher != null ? watcher : w -> { };
+    }
+
+    private void selectionChanged() {
+        String world = stateManager.getSelectedWorld();
+        try {
+            selectionWatcher.accept(world != null ? discoveryManager.getWorldData(world) : null);
+        } catch (RuntimeException e) {
+            System.err.println("[WorldSelect] selection watcher failed: " + e);
+        }
     }
 
     /**
@@ -92,6 +112,7 @@ public class WorldSelectScreen {
             return false;
         }
         stateManager.setSelectedIndex(index);
+        selectionChanged();
         return true;
     }
 
@@ -129,6 +150,7 @@ public class WorldSelectScreen {
         if (stateManager.isAnyDialogOpen()) return;
         if (delta < 0) stateManager.moveSelectionUp();
         else if (delta > 0) stateManager.moveSelectionDown();
+        selectionChanged();
     }
 
     /** Enter/Space: plays the selection, or goes to world creation when there are no worlds. */
@@ -176,6 +198,7 @@ public class WorldSelectScreen {
 
     public void back() {
         actionHandler.returnToMainMenu();
+        selectionWatcher.accept(null);
     }
 
     /** The info card's Open Folder. */

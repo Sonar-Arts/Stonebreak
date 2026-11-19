@@ -1,5 +1,7 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.ClimateLayout;
+import com.stonebreak.world.generation.HeightCurveVersion;
 import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 
@@ -57,9 +59,22 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
         this(seed, 1, TGMPipe.PRIORITY_WORLD);
     }
 
-    /** Full-detail tiles for the chunks of a world at {@code scale}. */
+    /** Full-detail tiles for the chunks of a belts world at {@code scale}. */
     public DiffusionTileCache(long seed, TerrainScalePreset scale) {
-        this(seed, 1, TGMPipe.PRIORITY_WORLD, scale);
+        this(seed, scale, ClimateLayout.DEFAULT);
+    }
+
+    /** Full-detail tiles for the chunks of a world at {@code scale} with the climate {@code layout}. */
+    public DiffusionTileCache(long seed, TerrainScalePreset scale, ClimateLayout layout) {
+        this(seed, scale, layout, null);
+    }
+
+    /**
+     * Full-detail tiles for the chunks of a world at {@code scale} with the climate {@code layout}, created with the
+     * height curve {@code curve} (null = {@link HeightCurveVersion#CURRENT}; a saved world passes its own).
+     */
+    public DiffusionTileCache(long seed, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
+        this(seed, 1, TGMPipe.PRIORITY_WORLD, scale, layout, curve);
     }
 
     /**
@@ -72,8 +87,29 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
 
     /** {@link #DiffusionTileCache(long, int, int)} built at {@code scale}: its blocks, height curve and cache. */
     public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale) {
-        this((s, x, z, l, p) -> TGMPipe.getInstance().requestTile(s, x, z, l, p, scale), seed, lod, priority,
-                TerrainScale.TILE_SIZE_BLOCKS, Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
+        this(seed, lod, priority, scale, ClimateLayout.DEFAULT);
+    }
+
+    /**
+     * {@link #DiffusionTileCache(long, int, int, TerrainScalePreset)} for a world with the climate {@code layout}
+     * (its own handshake world, so its tiles never mix with another layout's).
+     */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale, ClimateLayout layout) {
+        this(seed, lod, priority, scale, layout, null);
+    }
+
+    /** {@link #DiffusionTileCache(long, int, int, TerrainScalePreset, ClimateLayout)} with the height curve {@code curve}. */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale, ClimateLayout layout,
+                              HeightCurveVersion curve) {
+        this(seed, lod, priority, scale, layout, curve, Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
+    }
+
+    /** {@link #DiffusionTileCache(long, int, int, TerrainScalePreset, ClimateLayout, HeightCurveVersion)} keeping at
+     *  most {@code maxCachedTiles} resolved tiles (the coarse-LOD caches keep fewer: their tiles cover lod^2 more). */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale, ClimateLayout layout,
+                              HeightCurveVersion curve, int maxCachedTiles) {
+        this((s, x, z, l, p) -> TGMPipe.getInstance().requestTile(s, x, z, l, p, scale, layout, curve), seed, lod,
+                priority, TerrainScale.TILE_SIZE_BLOCKS, maxCachedTiles);
     }
 
     DiffusionTileCache(TileFetcher fetcher, long seed, int lod, int priority, int tileSize, int maxCachedTiles) {

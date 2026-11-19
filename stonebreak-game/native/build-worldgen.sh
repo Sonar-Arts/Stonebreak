@@ -63,10 +63,16 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
 fi
 
 # Incremental: a no-op in well under a second when nothing changed.
-if ! "$CMAKE" --build --preset "$PRESET" --parallel >/dev/null; then
+# The worldgen lib first and on its own: optional targets (libstonebreak_terrain) must never take it down.
+if ! "$CMAKE" --build --preset "$PRESET" --parallel --target stonebreak_worldgen >/dev/null; then
   warn "worldgen natives failed to build — chunks generate on the Java path."
   warn "re-run '$0 $PRESET' without redirection, or 'cmake --build --preset $PRESET', to see the errors."
   exit 0
+fi
+
+# Then everything else (tests, the DaedalusTGM terrain pipeline when the Cenda SDK carries cenda/infer.h): best effort.
+if ! "$CMAKE" --build --preset "$PRESET" --parallel >/dev/null 2>&1; then
+  warn "optional native targets (terrain pipeline / tests) failed to build; the worldgen lib is fine."
 fi
 
 if [[ ! -f "$LIB" ]]; then

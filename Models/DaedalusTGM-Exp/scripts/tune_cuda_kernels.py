@@ -119,6 +119,7 @@ def main():
     ap.add_argument("model", nargs="?", default="checkpoints/v4")
     ap.add_argument("--device", default="cuda:1")
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--only-missing", action="store_true", help="tune only layer shapes without a config for this GPU")
     a = ap.parse_args()
     # Hundreds of candidate variants: compile them into a throwaway cache, not the game's Models/kernel_cache.
     scratch = None
@@ -142,19 +143,54 @@ def run(a) -> None:
                                   (mdir / "relief.pt", RL.Relief, RL.ReliefConfig, 448)):
         if not path.exists():
             continue
+        if path.name == "detail.pt" and json.loads(json.dumps(torch.load(path, map_location="cpu", weights_only=False)
+                                                               ["config"])).get("arch") == "detail2":
+            continue                                  # EXP-2 detail: below
         model = load(path, cls, cfg_cls, dev)
         s = NativeSampler(model, n, n, 1)
         for key, m, co, mode, kdim in s.layer_keys:
             layers.setdefault((key, mode), [m, co, 0])[2] += 1
         del s
+    # EXP-2 (2026-11-19): Detail2 with every expert (kernels/cuda_detail2.py) and the SR nodes (kernels/cuda_sr.py).
+    exp2_hconv = set()
+    if (mdir / "climate.pt").exists():
+        from terrain_slm.kernels.cuda_detail2 import NativeDetail2Sampler, _uses_hconv
+        from terrain_slm.kernels.cuda_sr import native_sr_sampler
+        from terrain_slm.models import sr as SRM
+        from terrain_slm.world.generator import _detail_model
+        from terrain_slm.world.generator2 import SR_APRON, SR_CORE
+        samplers = []
+        if (mdir / "detail.pt").exists():
+            k = torch.load(mdir / "detail.pt", map_location=dev, weights_only=False)
+            m = _detail_model(dict(k["config"])).to(dev).eval()
+            m.load_state_dict(k["model"])
+            samplers.append(NativeDetail2Sampler(m, 512, 512, 1))
+        for name in ("sr30.pt", "sr15.pt"):
+            if (mdir / name).exists():
+                k = torch.load(mdir / name, map_location=dev, weights_only=False)
+                c = dict(k["config"])
+                c["channels"] = tuple(c["channels"])
+                m = SRM.SR(SRM.SRConfig(**c)).to(dev).eval()
+                m.load_state_dict(k["model"])
+                ext = SR_CORE + 2 * SR_APRON
+                samplers.append(native_sr_sampler(m, ext, ext, 1))
+        for s in samplers:
+            for key, m, co, mode, kdim in s.layer_keys:
+                key = tuple(key)
+                layers.setdefault((key, mode), [m, co, 0])[2] += 1
+                if _uses_hconv(*key[:5]):
+                    exp2_hconv.add(key)
+        del samplers
     name = torch.cuda.get_device_name(dev)
     table = json.loads(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
     tuned = table.setdefault(name, {})
     total_old = total_new = 0.0
     for (key, mode), (m, co, count) in sorted(layers.items(), key=lambda kv: -kv[1][0] * kv[1][1]):
+        if a.only_missing and json.dumps(list(key)) in tuned:
+            continue
         if key[0] == "out":
             default, cands = (8, 32, 16, 8, 1, 2), list(hconv_candidates(1, key[5], a.quick))
-        elif uses_hconv(key):
+        elif uses_hconv(key) or key in exp2_hconv:
             default, cands = C.default_hconv_config(co, key[5]), list(hconv_candidates(co, key[5], a.quick))
         else:
             default, cands = C.default_config(m, co, mode, 0), list(candidates(co, m, a.quick))

@@ -29,6 +29,11 @@ import com.stonebreak.world.generation.features.VegetationGenerator.TreeSample;
  *   openingCoverage} is the carved share of the footprint, 0..255, which sizes the notch.
  *   Both are null at {@link FastLodLevel#L0}, where a cell is one column and its carve is
  *   already in {@code heights}.</li>
+ *   <li>{@code openingWater[cellsPerAxis²]} — the water standing in each cell's mouth (world Y
+ *   of the first non-water block, like {@code waterLevels}) or {@link
+ *   com.stonebreak.world.operations.WorldConfiguration#NO_WATER}: sea level over a flooded sea
+ *   shelf (a cliffed coast's coves, moats and notches cut below the sea), so the notch shows
+ *   the sea instead of a dry pit under it. Null = no mouth holds water.</li>
  *   <li>{@code treeSpots} — every tree in a COARSE node's footprint (levels above L0 whose
  *   key asks for trees), packed by {@link #packTreeSpot}: the trees the real generator
  *   plants, at their own columns, standing on their cell's surface. L0 keeps the
@@ -44,6 +49,7 @@ public final class FastLodChunkData {
     private final TreeSample[] trees;
     private final int[] openingFloor;
     private final byte[] openingCoverage;
+    private final int[] openingWater;
     private final int[] treeSpots;
 
     public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
@@ -60,6 +66,13 @@ public final class FastLodChunkData {
     public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
                             BlockType[] surface, TreeSample[] trees,
                             int[] openingFloor, byte[] openingCoverage, int[] treeSpots) {
+        this(key, heights, waterLevels, surface, trees, openingFloor, openingCoverage, null, treeSpots);
+    }
+
+    /** As above, with the water standing in each cave mouth ({@code openingWater}, nullable). */
+    public FastLodChunkData(FastLodKey key, int[] heights, int[] waterLevels,
+                            BlockType[] surface, TreeSample[] trees,
+                            int[] openingFloor, byte[] openingCoverage, int[] openingWater, int[] treeSpots) {
         if (key == null) throw new IllegalArgumentException("key");
         FastLodLevel level = key.level();
         if (heights.length != level.heightCount()) {
@@ -89,6 +102,9 @@ public final class FastLodChunkData {
             throw new IllegalArgumentException("openingCoverage length " + openingCoverage.length
                     + " != expected " + level.cellCount() + " for " + level);
         }
+        if (openingWater != null && (openingFloor == null || openingWater.length != level.cellCount())) {
+            throw new IllegalArgumentException("openingWater needs the opening floors and one entry per cell");
+        }
         this.key = key;
         this.heights = heights;
         this.waterLevels = waterLevels;
@@ -96,6 +112,7 @@ public final class FastLodChunkData {
         this.trees = trees;
         this.openingFloor = openingFloor;
         this.openingCoverage = openingCoverage;
+        this.openingWater = openingWater;
         this.treeSpots = treeSpots;
     }
 
@@ -163,6 +180,15 @@ public final class FastLodChunkData {
         return openingCoverage[ix * key.level().cellsPerAxis() + iz] & 0xFF;
     }
 
+    /**
+     * Water standing in this cell's cave mouth (the first non-water Y: sea level over a flooded
+     * shelf), or {@link com.stonebreak.world.operations.WorldConfiguration#NO_WATER}.
+     */
+    public int openingWaterAt(int ix, int iz) {
+        if (openingWater == null) return com.stonebreak.world.operations.WorldConfiguration.NO_WATER;
+        return openingWater[ix * key.level().cellsPerAxis() + iz];
+    }
+
     /** True when any cell carries a cave mouth — lets the mesher skip the notch budget. */
     public boolean hasOpenings() {
         if (openingFloor == null) return false;
@@ -179,4 +205,5 @@ public final class FastLodChunkData {
     public TreeSample[] rawTrees()     { return trees; }
     public int[] rawOpeningFloor()     { return openingFloor; }
     public byte[] rawOpeningCoverage() { return openingCoverage; }
+    public int[] rawOpeningWater()     { return openingWater; }
 }

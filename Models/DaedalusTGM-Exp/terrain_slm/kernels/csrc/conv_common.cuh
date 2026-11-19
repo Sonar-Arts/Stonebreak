@@ -11,6 +11,10 @@ typedef unsigned long long u64;
 #define F_RAW 4
 #define F_SILU 8
 #define F_EULER 16
+// EXP-2 Detail2 epilogue extras (kernels/cuda_detail2.py); v4 never sets them, so its numbers are unchanged.
+#define F_RSCALE 32   // residual scaled: v = rs * res + v (mp_sum with the other weight folded into the conv)
+#define F_GATE 64     // v *= gate[pixel] before the residual (a gated expert adapter)
+#define F_CLIP 128    // clip to [-256, 256] after the residual (EDM2's fp16 guard); NaN passes through
 
 __device__ __forceinline__ u32 smem_u32(const void* p) {
     u32 a;
@@ -62,13 +66,30 @@ __device__ __forceinline__ float silu(float v) { return __fdividef(v, 1.0f + __e
 // channel 0; `v` already carries bias and FiLM.
 template <typename Args>
 __device__ __forceinline__ void store8r(const Args& a, long long off, float* v, uint4 rr) {
+    if (a.flags & F_GATE) {
+        const float g = a.gate[off / a.CO];
+#pragma unroll
+        for (int e = 0; e < 8; ++e) v[e] *= g;
+    }
     if (a.flags & F_RES) {
         u32 rw[4] = {rr.x, rr.y, rr.z, rr.w};
+        if (a.flags & F_RSCALE) {
 #pragma unroll
-        for (int e = 0; e < 4; ++e) {
-            v[2 * e] += from_h((u16)(rw[e] & 0xFFFF));
-            v[2 * e + 1] += from_h((u16)(rw[e] >> 16));
+            for (int e = 0; e < 4; ++e) {
+                v[2 * e] = fmaf(a.rs, from_h((u16)(rw[e] & 0xFFFF)), v[2 * e]);
+                v[2 * e + 1] = fmaf(a.rs, from_h((u16)(rw[e] >> 16)), v[2 * e + 1]);
+            }
+        } else {
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                v[2 * e] += from_h((u16)(rw[e] & 0xFFFF));
+                v[2 * e + 1] += from_h((u16)(rw[e] >> 16));
+            }
         }
+    }
+    if (a.flags & F_CLIP) {
+#pragma unroll
+        for (int e = 0; e < 8; ++e) v[e] = v[e] > 256.0f ? 256.0f : (v[e] < -256.0f ? -256.0f : v[e]);
     }
     if (a.flags & F_RAW)
         *reinterpret_cast<uint4*>(a.out_raw + off) =

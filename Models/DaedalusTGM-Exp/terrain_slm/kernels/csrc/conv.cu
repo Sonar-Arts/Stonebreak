@@ -41,6 +41,8 @@ struct ConvArgs {
     int stem_c;
     int flags;
     float dt;
+    const float* gate;   // F_GATE: (B * Ho * Wo,) fp32, one weight per output pixel
+    float rs;            // F_RSCALE: residual weight
 };
 
 #define BK 32

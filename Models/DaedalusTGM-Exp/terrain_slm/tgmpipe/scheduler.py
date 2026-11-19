@@ -84,6 +84,11 @@ class Scheduler:
                 self._request_key.pop(req_id, None)
             return set(job.waiters)
 
+    @property
+    def closed(self) -> bool:
+        with self._cond:
+            return self._closed
+
     def depth(self) -> int:
         with self._cond:
             return sum(1 for j in self._jobs.values() if not j.started)

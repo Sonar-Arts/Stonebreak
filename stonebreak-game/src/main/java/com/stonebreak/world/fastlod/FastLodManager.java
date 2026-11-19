@@ -571,7 +571,11 @@ public final class FastLodManager {
                 if (shutdown || !inFlight.contains(key)) return;
             }
             if (data == null) {
-                data = sampler.sample(key);
+                // Tiles a model-backed terrain misses are asked for by distance from the player (FX2): nearest first.
+                long col = lastPlayerColumn;
+                long distanceBlocks = (long) chebyshev(key.chunkX(), key.chunkZ(), (int) (col >> 32), (int) col)
+                        * WorldConfiguration.CHUNK_SIZE;
+                data = sampler.sample(key, distanceBlocks);
                 if (store != null) {
                     store.saveAsync(data);
                 }
@@ -606,6 +610,9 @@ public final class FastLodManager {
                 long wait = Math.min(MAX_RETRY_BACKOFF_NANOS, RETRY_BACKOFF_NANOS << Math.min(failures - 1, 5));
                 return new Backoff(now + wait, failures);
             });
+            if (com.stonebreak.world.generation.TerrainClosedException.isCause(e)) {
+                return; // the terrain is shutting down (generator closing, tile service stopped on quit): expected
+            }
             logFailure(key, e, now);
         }
     }

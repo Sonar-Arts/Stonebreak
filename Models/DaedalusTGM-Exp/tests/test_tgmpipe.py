@@ -123,6 +123,37 @@ def test_namespace_moves_with_generator_source(tmp_path):
     assert namespace("w", "m", "s1") != namespace("w", "m", "s2")
 
 
+def test_namespace_moves_with_native_kernel_sources_and_configs(tmp_path, monkeypatch):
+    """review-python MEDIUM-1: a kernels/csrc .cu/.cuh edit or a tuned-config change moves numbers without touching
+    the :kc1/:kd1/:ks1 markers, so it must start a new namespace; export/ counts only when the engine runs."""
+    monkeypatch.delenv("TGM_ENGINE", raising=False)
+    monkeypatch.delenv("TGM_NATIVE_PIPELINE", raising=False)
+    pkg = tmp_path / "pkg"
+    (pkg / "kernels" / "csrc").mkdir(parents=True)
+    (pkg / "export").mkdir()
+    (pkg / "kernels" / "csrc" / "conv.cu").write_text("a")
+    (pkg / "kernels" / "csrc" / "conv_common.cuh").write_text("a")
+    (pkg / "kernels" / "cuda_configs.json").write_text("{}")
+    (pkg / "export" / "cenda_backend.py").write_text("a")
+    (pkg / "kernels" / "__pycache__").mkdir()
+    (pkg / "kernels" / "__pycache__" / "x.py").write_text("cache")
+    fp = source_fingerprint(pkg)
+    for rel in ("kernels/csrc/conv.cu", "kernels/csrc/conv_common.cuh", "kernels/cuda_configs.json"):
+        (pkg / rel).write_text("b")
+        assert source_fingerprint(pkg) != fp, rel
+        fp = source_fingerprint(pkg)
+    (pkg / "kernels" / "cuda_configs_fp8.json").write_text("{}")
+    assert source_fingerprint(pkg) != fp, "a new tuned-config file counts"
+    fp = source_fingerprint(pkg)
+    (pkg / "kernels" / "__pycache__" / "x.py").write_text("other")
+    (pkg / "export" / "cenda_backend.py").write_text("b")
+    assert source_fingerprint(pkg) == fp, "caches never count; export/ only on the engine path"
+    monkeypatch.setenv("TGM_ENGINE", "cenda")
+    on = source_fingerprint(pkg)
+    (pkg / "export" / "cenda_backend.py").write_text("c")
+    assert source_fingerprint(pkg) != on, "with TGM_ENGINE=cenda the engine backend's code counts"
+
+
 # ----------------------------------------------------------------------------- service loop
 class FakeBuilder:
     def __init__(self):

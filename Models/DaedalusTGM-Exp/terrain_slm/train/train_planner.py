@@ -73,6 +73,10 @@ def main() -> None:
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--heads", type=int, default=4)
     ap.add_argument("--eval-every", type=int, default=1000)
+    ap.add_argument("--trend-blur", type=float, nargs=2, default=[1.5, 5.0], help="trend degradation blur range, cells")
+    ap.add_argument("--jitter-max", type=float, default=80.0, help="trend jitter amplitude max, metres")
+    ap.add_argument("--jitter-sigma", type=float, default=6.0, help="trend jitter smoothness, cells")
+    ap.add_argument("--init", type=Path, default=None, help="start from this planner checkpoint (same config)")
     ap.add_argument("--loss-w", default="", help="override loss weights, e.g. river=0,logacc=0 (ablations)")
     args = ap.parse_args()
     for kv in filter(None, args.loss_w.split(",")):
@@ -84,9 +88,13 @@ def main() -> None:
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
 
-    data = PlannerData(args.data or built_regions(), args.device, crop=64)
+    data = PlannerData(args.data or built_regions(), args.device, crop=64, trend_blur=args.trend_blur,
+                       jitter_max_m=args.jitter_max, jitter_sigma=args.jitter_sigma)
     cfg = P.PlannerConfig(dim=args.dim, depth=args.depth, heads=args.heads)
     model = P.Planner(cfg).to(args.device)
+    if args.init is not None:
+        model.load_state_dict(torch.load(args.init, map_location=args.device, weights_only=False)["model"])
+        print(f"init from {args.init}", flush=True)
     print(f"planner {P.count_params(model):,} params; regions {[r.name for r in data.regions]}; "
           f"{data.train_count:,} train corners, {len(data.val_corners)} val crops", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01, betas=(0.9, 0.99))

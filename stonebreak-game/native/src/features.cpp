@@ -92,9 +92,17 @@ JavaRandom treeRandom(int64_t x, int64_t y, int64_t z, uint64_t tag) {
 }
 
 /* ------------------------------------------------------------------------- RegularTree */
-void regularTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz) {
+/* size hints (vegetation channels, SBW ABI 5): -1 = the variant the hash picked (every pre-ABI-5 tree), 0 small,
+ * 1 medium, 2 large; the hash's variant still breaks ties so equal hints keep their variety */
+int sizedVariant(int variant, int size, const int (&table)[3][2]) {
+    if (size < 0 || size > 2) return variant;
+    return table[size][variant & 1];
+}
+
+void regularTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz, int size = -1) {
     JavaRandom rng = treeRandom(wx, wy, wz, UINT64_C(0xA5A5A5A5C3C3C3C3));
-    const int variant = rng.nextInt(4); /* ROUND, TALL, COMPACT, BIG_BRANCHED */
+    static const int SIZED[3][2] = {{2, 2}, {0, 1}, {3, 1}};
+    const int variant = sizedVariant(rng.nextInt(4), size, SIZED); /* ROUND, TALL, COMPACT, BIG_BRANCHED */
     int trunk, bottom, top;
     bool canLean;
     switch (variant) {
@@ -175,9 +183,10 @@ void regularTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_
 }
 
 /* ---------------------------------------------------------------------------- PineTree */
-void pineTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz) {
+void pineTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz, int size = -1) {
     JavaRandom rng = treeRandom(wx, wy, wz, UINT64_C(0xC0FFEEC0FFEEC0FF));
-    const int variant = rng.nextInt(4); /* CLASSIC, SLENDER, BUSHY, WISPY */
+    static const int SIZED[3][2] = {{2, 2}, {0, 3}, {1, 1}};
+    const int variant = sizedVariant(rng.nextInt(4), size, SIZED); /* CLASSIC, SLENDER, BUSHY, WISPY */
     int trunk, foliageStart;
     switch (variant) {
         case 1: trunk = 9 + rng.nextInt(3); foliageStart = 4; break;
@@ -230,9 +239,10 @@ void pineTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t w
 }
 
 /* ----------------------------------------------------------------------------- ElmTree */
-void elmTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz) {
+void elmTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz, int size = -1) {
     JavaRandom rng = treeRandom(wx, wy, wz, UINT64_C(0x5EED1E1F5EED1E1F));
-    const int variant = rng.nextInt(4); /* CLASSIC, ASYMMETRIC, CROWN, WINDSWEPT */
+    static const int SIZED[3][2] = {{0, 1}, {0, 3}, {2, 2}};
+    const int variant = sizedVariant(rng.nextInt(4), size, SIZED); /* CLASSIC, ASYMMETRIC, CROWN, WINDSWEPT */
     int trunk, lowerR, upperR, lean;
     switch (variant) {
         case 0: trunk = 7 + rng.nextInt(4); lowerR = 4; upperR = 3; lean = -1; break;
@@ -399,13 +409,13 @@ void cypressDisc(const Config& cfg, TreeBuf& out, JavaRandom& rng, int64_t cx, i
     }
 }
 
-void cypressTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz) {
+void cypressTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz, int size = -1) {
     constexpr int MAX_HEIGHT = 28, MAX_PAD_RADIUS = 4, TIER_SPACING = 3;
     constexpr double CANOPY_SHARE = 0.65;
     if (wy + MAX_HEIGHT >= cfg.maxY) return;
     JavaRandom rng = treeRandom(wx, wy, wz, UINT64_C(0xC1A55C1A55C1A55C));
     const int r100 = rng.nextInt(100);
-    const int v = r100 < 35 ? 0 : r100 < 80 ? 1 : 2; /* SMALL, MEDIUM, LARGE */
+    const int v = size == 0 ? 0 : size == 2 ? 2 : r100 < 35 ? 0 : r100 < 80 ? 1 : 2; /* SMALL, MEDIUM, LARGE */
     static const int MIN_TRUNK[3] = {10, 14, 19}, TRUNK_RANGE[3] = {4, 5, 6}, MIN_TIERS[3] = {2, 3, 4},
                      TIER_RANGE[3] = {2, 2, 2}, FLARE[3] = {1, 2, 3}, MAX_BRANCH[3] = {2, 3, 3};
     const int trunk = MIN_TRUNK[v] + rng.nextInt(TRUNK_RANGE[v]);
@@ -464,6 +474,7 @@ struct ColumnFacts {
     bool uncarved = false;
     uint16_t topBlock = 0;  /* the block at h - 1 after pools (meaningful when uncarved) */
     int pool = 0;
+    uint8_t veg[8] = {255, 255, 255, 255, 255, 255, 255, 255}; /* surface slots 0..7 (vegetation), 255 = none */
 };
 
 class FactSource {
@@ -489,6 +500,8 @@ public:
         f.water = e->base->water[col];
         f.biome = e->base->biome[col];
         f.uncarved = e->carved->carvedH[col] == f.h;
+        if ((g_.cfg.flags & SBW_FLAG_VEGETATION) != 0)   /* else 255: the biome rules, as before the channels */
+            for (int k = 0; k < 8; k++) f.veg[k] = e->base->surf[k][col];
         f.topBlock = f.uncarved ? e->carved->top[col] : g_.cfg.id[SBW_AIR];
         if (f.biome == SBW_SWAMP) {
             if (!e->poolsLoaded) {
@@ -534,6 +547,57 @@ float elmProbability(const DeterministicRandom& r, int64_t x, int64_t z) {
     return (d - 0.55f) / (1.0f - 0.55f) * 0.85f;
 }
 
+/* ------------------------------------------------------------------ vegetation channels (SBW ABI 5) */
+/* The vegetation node's surface channels of one column (Python world/vegetation_node.py; trained on ETH canopy
+ * height + ESA WorldCover). present = the column carries them (DaedalusTGM-Exp worlds with veg.pt); otherwise
+ * every rule below is skipped and the column keeps the pre-ABI-5 vegetation exactly (Standard worlds, golden). */
+struct Veg {
+    bool present = false;
+    float cover = 0, height = 0, clearing = 0, grass = 0, shrub = 0, moss = 0, bare = 0, wetland = 0;
+};
+Veg vegOf(const uint8_t* v) {
+    Veg g;
+    if (v == nullptr || v[SBW_SURF_CANOPY_COVER] == SBW_SURF_NO_DATA) return g;
+    auto frac = [&](int s) { return v[s] == SBW_SURF_NO_DATA ? 0.0f : static_cast<float>(v[s]) / 254.0f; };
+    g.present = true;
+    g.cover = frac(SBW_SURF_CANOPY_COVER);
+    g.height = v[SBW_SURF_CANOPY_HEIGHT] == SBW_SURF_NO_DATA ? 0.0f : v[SBW_SURF_CANOPY_HEIGHT] * 0.25f;
+    g.clearing = frac(SBW_SURF_CLEARING);
+    g.grass = frac(SBW_SURF_GROUND_GRASS);
+    g.shrub = frac(SBW_SURF_GROUND_SHRUB);
+    g.moss = frac(SBW_SURF_GROUND_MOSS);
+    g.bare = frac(SBW_SURF_GROUND_BARE);
+    g.wetland = frac(SBW_SURF_GROUND_WETLAND);
+    return g;
+}
+/* forestLattice's values (bilinear + smoothstep over uniform nodes) mapped to ~uniform [0, 1]: the quantiles at k/16 */
+float latticeUniform(float n) {
+    static const float Q[17] = {0.0f, 0.1654f, 0.2348f, 0.2893f, 0.3368f, 0.3803f, 0.4214f, 0.4610f, 0.4999f, 0.5389f,
+                                0.5785f, 0.6196f, 0.6631f, 0.7109f, 0.7654f, 0.8348f, 1.0f};
+    if (n <= 0.0f) return 0.0f;
+    if (n >= 1.0f) return 1.0f;
+    int i = 0;
+    while (i < 15 && n > Q[i + 1]) i++;
+    return (static_cast<float>(i) + (n - Q[i]) / std::max(1e-6f, Q[i + 1] - Q[i])) / 16.0f;
+}
+/* Peak tree chance per column in closed forest (canopy cover 1): a tree every ~11 columns, crowns touching. */
+constexpr float VEG_TREE_MAX = 0.09f;
+/* Clearings: lattice noise of this spacing (blocks); the share under the column's clearing value is open ground. */
+constexpr int VEG_CLEARING_SPACING = 14;
+/* Effective canopy density of a column: clearing patches take `clearing` of the area, the forest between them
+ * holds the rest of the cover; a fine lattice adds stand-scale patchiness. */
+float vegDensity(const DeterministicRandom& r, int64_t x, int64_t z, const Veg& v) {
+    static const int32_t H_CLEAR = javaStringHash("veg_clearing"), H_PATCH = javaStringHash("veg_patch");
+    const float k = std::min(0.85f, v.clearing);
+    const float n = latticeUniform(forestLattice(r, x, z, VEG_CLEARING_SPACING, H_CLEAR));
+    if (n < k) return v.cover * 0.06f;                       /* in a clearing: the odd lone tree */
+    const float inside = std::min(1.0f, v.cover / std::max(0.15f, 1.0f - k));
+    const float patch = 0.75f + 0.5f * forestLattice(r, x, z, 6, H_PATCH);
+    return std::min(1.0f, inside * patch);
+}
+/* real canopy height (m) -> tree size class: short scrub / savanna trees, mid forest, tall forest */
+int vegSize(const Veg& v) { return v.height < 9.0f ? 0 : v.height < 21.0f ? 1 : 2; }
+
 /* resolution of a feature set into final cells */
 struct Resolved {
     struct Cell {
@@ -550,6 +614,60 @@ uint64_t cellKey(int64_t x, int64_t y, int64_t z) { return TreeBuf::key(x, y, z)
 
 /* ------------------------------------------------------------------------- tree probe */
 int Generator::treeAt(int64_t x, int64_t z, uint16_t surface, int biome, int& trunk) {
+    if (cfg.kind == SBW_KIND_PROFILE && (cfg.flags & SBW_FLAG_VEGETATION) != 0) {   /* vegetation channels (ABI 5) */
+        auto b = base(x >> 5, z >> 5);
+        if (b) {
+            const int col = colIdx(static_cast<int>(x & 31), static_cast<int>(z & 31));
+            if (b->surf[SBW_SURF_CANOPY_COVER][col] != SBW_SURF_NO_DATA) {
+                uint8_t v[8];
+                for (int k = 0; k < 8; k++) v[k] = b->surf[k][col];
+                int size = -1;
+                return treeAtVeg(x, z, surface, biome, v, trunk, size);
+            }
+        }
+    }
+    return treeAtRule(x, z, surface, biome, trunk);
+}
+
+int Generator::treeAtVeg(int64_t x, int64_t z, uint16_t surface, int biome, const uint8_t* vb, int& trunk, int& size) {
+    static const int32_t H_VTREE = javaStringHash("veg_tree"), H_TYPE = javaStringHash("tree_type"),
+                         H_ELM = javaStringHash("elm_tree");
+    const Veg v = vegOf(vb);
+    const bool grass = surface == cfg.id[SBW_GRASS], snowy = surface == cfg.id[SBW_SNOWY_DIRT];
+    const bool swampy = surface == cfg.id[SBW_SWAMPY_GRASS] || surface == cfg.id[SBW_WATER];
+    int kind = -1;
+    switch (biome) {
+        case SBW_PLAINS: case SBW_MEADOW: if (grass) kind = SBW_TREE_OAK; break;
+        case SBW_SNOWY_PLAINS: case SBW_TAIGA: case SBW_TUNDRA: case SBW_STONY_PEAKS:
+            if (snowy || grass) kind = SBW_TREE_PINE;
+            break;
+        case SBW_SWAMP: kind = swampy ? SBW_TREE_CYPRESS : grass ? SBW_TREE_OAK : -1; break;
+        default: break;   /* deserts, beaches, ice, badlands, ocean: no trees (their ground is sand / ice / rock) */
+    }
+    if (kind < 0 || v.cover <= 0.0f) return -1;
+    const float dens = vegDensity(drand, x, z, v);
+    const float p = VEG_TREE_MAX * std::pow(dens, 1.25f) * (kind == SBW_TREE_CYPRESS ? 0.5f : 1.0f);
+    if (!rolls(drand, x, z, H_VTREE, p)) return -1;
+    size = vegSize(v);
+    if (kind == SBW_TREE_OAK) {
+        /* elm pockets as before, and tall broadleaf canopy (> 24 m) leans elm (the big crowns) */
+        const float elm = std::min(0.9f, elmProbability(drand, x, z) + (v.height > 24.0f ? 0.35f : 0.0f));
+        if (size > 0 && elm > 0.0f && rolls(drand, x, z, H_TYPE, elm)) {
+            trunk = 8 + drand.at(x, z, H_ELM).nextInt(5);
+            return SBW_TREE_ELM;
+        }
+        trunk = size == 0 ? 4 : size == 1 ? 5 : 7;
+        return SBW_TREE_OAK;
+    }
+    if (kind == SBW_TREE_PINE) {
+        trunk = size == 0 ? 6 : size == 1 ? 7 : 10;
+        return SBW_TREE_PINE;
+    }
+    trunk = size == 0 ? 11 : size == 1 ? 16 : 21;
+    return SBW_TREE_CYPRESS;
+}
+
+int Generator::treeAtRule(int64_t x, int64_t z, uint16_t surface, int biome, int& trunk) {
     static const int32_t H_TREE = javaStringHash("tree"), H_TYPE = javaStringHash("tree_type"),
                          H_ELM = javaStringHash("elm_tree"), H_PINE = javaStringHash("pine_tree"),
                          H_TAIGA = javaStringHash("taiga_pine_tree"), H_MEADOW = javaStringHash("meadow_tree"),
@@ -590,6 +708,7 @@ std::shared_ptr<const FeatureTile> Generator::features(int64_t cx, int64_t cz) {
     return featureCache.get(cx, cz, [this](int64_t a, int64_t b) {
         auto t = std::make_shared<FeatureTile>();
         collectFeatures(a * CE, b * CE, a * CE + CE, b * CE + CE, t->fs);
+        collectBoulders(a * CE, b * CE, a * CE + CE, b * CE + CE, t->fs); /* SBW_FLAG_BOULDERS, boulders.cpp */
         t->fs.shrink_to_fit();
         return t;
     });
@@ -631,8 +750,10 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
             const uint16_t surface = f.topBlock;
             /* trees */
             if (f.uncarved) {
-                int trunk = 0;
-                const int kind = treeAt(x, z, surface, f.biome, trunk);
+                int trunk = 0, size = -1;
+                const int kind = f.veg[SBW_SURF_CANOPY_COVER] != SBW_SURF_NO_DATA
+                                     ? treeAtVeg(x, z, surface, f.biome, f.veg, trunk, size)
+                                     : treeAtRule(x, z, surface, f.biome, trunk);
                 if (kind >= 0) {
                     int64_t base = h;
                     bool ok = true;
@@ -644,10 +765,10 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
                         TreeBuf buf;
                         int maxH = kind == SBW_TREE_OAK ? 13 : kind == SBW_TREE_PINE ? 14 : kind == SBW_TREE_ELM ? 18 : 28;
                         if (base + maxH < cfg.maxY) {
-                            if (kind == SBW_TREE_OAK) regularTree(cfg, buf, x, base, z);
-                            else if (kind == SBW_TREE_ELM) elmTree(cfg, buf, x, base, z);
-                            else if (kind == SBW_TREE_PINE) pineTree(cfg, buf, x, base, z);
-                            else cypressTree(cfg, buf, x, base, z);
+                            if (kind == SBW_TREE_OAK) regularTree(cfg, buf, x, base, z, size);
+                            else if (kind == SBW_TREE_ELM) elmTree(cfg, buf, x, base, z, size);
+                            else if (kind == SBW_TREE_PINE) pineTree(cfg, buf, x, base, z, size);
+                            else cypressTree(cfg, buf, x, base, z, size);
                         }
                         if (!buf.cells.empty()) {
                             Feature ft;
@@ -664,8 +785,62 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
             Feature ft;
             ft.ax = x; ft.ay = h; ft.az = z;
             ft.priority = featurePriority(cfg.seed, x, h, z);
+            /* ground vegetation from the vegetation channels (ABI 5): replaces the biome flower rule there */
+            const Veg gv = vegOf(f.veg);
+            if (gv.present && f.uncarved) {
+                static const int32_t H_VBARE = javaStringHash("veg_bare"), H_VWET = javaStringHash("veg_wetland"),
+                                     H_VBUSH = javaStringHash("veg_bush"), H_VBUSH_SHAPE = javaStringHash("veg_bush_shape"),
+                                     H_VPLANT = javaStringHash("veg_plant"), H_VFLOWER = javaStringHash("veg_flower");
+                const bool grassTop = surface == cfg.id[SBW_GRASS], snowyTop = surface == cfg.id[SBW_SNOWY_DIRT];
+                bool swapped = false;
+                if (grassTop) {   /* bare earth and wet meadow patches (lattice patches, share ~ the channel) */
+                    if (latticeUniform(forestLattice(drand, x, z, 7, H_VBARE)) < gv.bare * 0.85f) {
+                        ft.kind = Feature::SWAP;
+                        ft.cells = {{x, h - 1, z, cfg.id[SBW_DIRT], 0}};
+                        out.push_back(ft);
+                        swapped = true;
+                    } else if (latticeUniform(forestLattice(drand, x, z, 9, H_VWET)) < gv.wetland * 0.8f) {
+                        ft.kind = Feature::SWAP;
+                        ft.cells = {{x, h - 1, z, cfg.id[SBW_SWAMPY_GRASS], 0}};
+                        out.push_back(ft);
+                        swapped = true;
+                    }
+                }
+                /* bushes: shrubland, plus a thin understorey under canopy (a stub log and a leaf cap: leaves stay
+                 * within reach of their log) */
+                const float bush = 0.035f * gv.shrub + 0.003f * gv.cover;
+                if ((grassTop || snowyTop) && h + 2 < cfg.maxY && rolls(drand, x, z, H_VBUSH, bush)) {
+                    const uint16_t wood = cfg.id[snowyTop ? SBW_PINE : SBW_WOOD];
+                    const uint16_t leaf = cfg.id[snowyTop ? SBW_PINE_LEAVES : SBW_LEAVES];
+                    Feature b;
+                    b.kind = Feature::TREE;
+                    b.ax = x; b.ay = h; b.az = z;
+                    b.priority = ft.priority;
+                    b.cells = {{x, h, z, wood, 0}, {x, h + 1, z, leaf, 0}};
+                    const int bushShape = drand.getInt(x, z, H_VBUSH_SHAPE, 4);
+                    static const int DX[4] = {1, -1, 0, 0}, DZ[4] = {0, 0, 1, -1};
+                    for (int d = 0; d < 4; d++) {
+                        if (bushShape == 0 && d >= 2) continue;   /* a narrow one now and then */
+                        b.cells.push_back({x + DX[d], h, z + DZ[d], leaf, 0});
+                    }
+                    if (bushShape == 3) b.cells.push_back({x + 1, h + 1, z, leaf, 0});
+                    out.push_back(std::move(b));
+                } else if (grassTop && !swapped) {
+                    /* grass tufts and flowers by the grass share, fewer in deep shade */
+                    const float wild = 0.22f * gv.grass * (1.0f - 0.6f * gv.cover) + 0.02f * (1.0f - gv.bare);
+                    const float flower = 0.05f * gv.grass * (1.0f - gv.cover);
+                    const float roll = drand.getFloat(x, z, H_VPLANT);
+                    if (roll < flower + wild) {
+                        uint16_t id = cfg.id[SBW_WILDGRASS];
+                        if (roll < flower) id = drand.getBoolean(x, z, H_VFLOWER) ? cfg.id[SBW_DANDELION] : cfg.id[SBW_ROSE];
+                        ft.kind = Feature::PLANT;
+                        ft.cells = {{x, h, z, id, 0}};
+                        out.push_back(ft);
+                    }
+                }
+            }
             /* flowers */
-            const float fchance = f.biome == SBW_PLAINS ? 0.08f : f.biome == SBW_MEADOW ? 0.25f : 0.0f;
+            const float fchance = gv.present ? 0.0f : f.biome == SBW_PLAINS ? 0.08f : f.biome == SBW_MEADOW ? 0.25f : 0.0f;
             if (fchance > 0.0f && surface == cfg.id[SBW_GRASS] && drand.shouldGenerate(x, z, H_FLOWER, fchance)) {
                 uint16_t flower;
                 if (drand.getBoolean(x, z, H_FLOWER_TYPE)) {
@@ -809,16 +984,35 @@ void resolve(const Config& cfg, const std::vector<const Feature*>& fs, Resolved&
             for (const FeatureCell& c : f.cells) clay.insert(cellKey(c.x, c.y, c.z));
         }
     }
-    r.cells.clear();
-    for (auto& [k, b] : tree) r.cells[k] = {b.id, 0, b.owner};
+    /* boulders (SBW_FLAG_BOULDERS) yield to trees and beat every other feature; among boulders a rock cell beats a
+     * snow cap, then priority */
+    struct RockBest { uint64_t rank; int32_t owner; uint16_t id; uint16_t snow; };
+    std::unordered_map<uint64_t, RockBest> rock;
     for (size_t i = 0; i < fs.size(); i++) {
         const Feature& f = *fs[i];
-        if (f.kind == Feature::TREE) continue;
+        if (f.kind != Feature::BOULDER) continue;
+        const auto fi = static_cast<int32_t>(i);
+        for (const FeatureCell& c : f.cells) {
+            const uint64_t k = cellKey(c.x, c.y, c.z);
+            if (tree.count(k) != 0) continue;
+            const uint64_t rank = c.snow == 0 ? 1 : 0;
+            auto it = rock.find(k);
+            if (it == rock.end() || rank > it->second.rank || (rank == it->second.rank && beats(fi, it->second.owner))) {
+                rock[k] = {rank, fi, c.id, c.snow};
+            }
+        }
+    }
+    r.cells.clear();
+    for (auto& [k, b] : tree) r.cells[k] = {b.id, 0, b.owner};
+    for (auto& [k, b] : rock) r.cells[k] = {b.id, b.snow, b.owner};
+    for (size_t i = 0; i < fs.size(); i++) {
+        const Feature& f = *fs[i];
+        if (f.kind == Feature::TREE || f.kind == Feature::BOULDER) continue;
         const auto fi = static_cast<int32_t>(i);
         const bool isCactus = f.kind == Feature::PLANT && !f.cells.empty() && f.cells[0].id == cfg.id[SBW_CACTUS];
         for (const FeatureCell& c : f.cells) {
             const uint64_t k = cellKey(c.x, c.y, c.z);
-            if (tree.count(k) != 0) {
+            if (tree.count(k) != 0 || rock.count(k) != 0) {
                 if (isCactus) break;
                 continue;
             }
@@ -843,7 +1037,9 @@ int32_t Generator::populate(const cv_gen_api* api, cv_world* world, int64_t cx, 
         for (int dz = 0; dz < 2 && !any; dz++) {
             auto b = base(cx + dx, cz + dz);
             if (!b) return -1;
-            any = b->maxH >= oy0 && b->minH < oy1;
+            /* boulder anchors sit at their lowest cell + 2: within [minH - 22, maxH + 8] (boulders.cpp) */
+            any = (cfg.flags & SBW_FLAG_BOULDERS) != 0 && cfg.kind == SBW_KIND_PROFILE ? b->maxH + 8 >= oy0 && b->minH - 22 < oy1
+                                                       : b->maxH >= oy0 && b->minH < oy1;
         }
     }
     if (!any) return 0;

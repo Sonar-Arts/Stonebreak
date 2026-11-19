@@ -6,7 +6,7 @@ import java.util.Locale;
 
 /**
  * How the game names a world's terrain scale ({@link TerrainScalePreset}, chosen at world creation, saved in the
- * world's {@code WorldData}): the label the UI shows ({@code 1:4}, {@code 1:2}) and the spellings dev hooks and
+ * world's {@code WorldData}): the label the UI shows ({@code 1:4}, {@code 1:2}, {@code 1:1}) and the spellings dev hooks and
  * commands accept.
  */
 public final class TerrainScaleOption {
@@ -17,23 +17,26 @@ public final class TerrainScaleOption {
     /** The preset new worlds get unless the player picks another (1:4 until 1:2 has been looked at). */
     public static final TerrainScalePreset DEFAULT = TerrainScalePreset.ONE_TO_FOUR;
 
-    /** {@code "1:4"} / {@code "1:2"}. */
+    /** {@code "1:4"} / {@code "1:2"} / {@code "1:1"}. */
     public static String label(TerrainScalePreset scale) {
         TerrainScalePreset s = scale == null ? DEFAULT : scale;
         return switch (s) {
             case ONE_TO_FOUR -> "1:4";
             case ONE_TO_TWO -> "1:2";
+            case ONE_TO_ONE -> "1:1";
         };
     }
 
     /** A longer description for menus and logs. */
     public static String describe(TerrainScalePreset scale) {
         TerrainScalePreset s = scale == null ? DEFAULT : scale;
-        return label(s) + " (" + Math.round(s.horizontalMetresPerBlock()) + " m blocks)";
+        return label(s) + " (" + Math.round(s.horizontalMetresPerBlock()) + " m blocks"
+            + (s == TerrainScalePreset.ONE_TO_ONE ? ", experimental" : "") + ")";
     }
 
     /**
-     * {@code 1:4}, {@code 1:2}, {@code 4}, {@code 2}, or a preset name ({@code ONE_TO_TWO}); null for anything else
+     * {@code 1:4}, {@code 1:2}, {@code 1:1}, {@code 4}, {@code 2}, {@code 1}, or a preset name ({@code ONE_TO_TWO});
+     * null for anything else
      * (including null/blank).
      */
     public static TerrainScalePreset parse(String text) {

@@ -6,9 +6,12 @@
          while compiling FrameRenderer (hs_err_pid12921 / hs_err_pid162649).
          Keep other escape analysis and C2 optimizations enabled. Remove these
          two workaround flags after verifying a JDK containing the upstream fix.
-         stonebreak.tgmpipe.model: Daedalus worlds use DaedalusTGM-Exp-2 (Models/DaedalusTGM-Exp/checkpoints/exp2/
-         world_exp2, symlinks to local checkpoints); drop the flag to fall back to v4 (TGMPipe.DEFAULT_MODEL). -->
-    <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED -Dstonebreak.tgmpipe.model=checkpoints/exp2/world_exp2" />
+         Daedalus worlds use TGMPipe.DEFAULT_MODEL = Models/DaedalusTGM-Exp/checkpoints/exp2-r3, the DaedalusTGM-Exp-2
+         release (real files built from checkpoints/exp2/world_exp2f by scripts/make_release.py; gitignored for now,
+         a checkout without it falls back to v4 with a warning). To try a candidate or v4, add e.g.
+         -Dstonebreak.tgmpipe.model=checkpoints/exp2/world_exp2b (live symlinks into training dirs) or
+         -Dstonebreak.tgmpipe.model=checkpoints/v4 (WorldClim-trained, never ship). -->
+    <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">
       <!-- Cenda (libcenda_kernels) comes packaged in the Open Mason engine-core jar since #388, so there is

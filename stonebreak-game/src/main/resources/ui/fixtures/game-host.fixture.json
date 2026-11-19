@@ -935,8 +935,43 @@
           "scale": "ONE_TO_TWO",
           "label": "1:2",
           "selected": false
+        },
+        {
+          "scale": "ONE_TO_ONE",
+          "label": "1:1",
+          "selected": false
         }
-      ]
+      ],
+      "climate": "BELTS",
+      "climateLabel": "Climate Belts",
+      "climates": [
+        {
+          "climate": "BELTS",
+          "label": "Belts",
+          "selected": true
+        },
+        {
+          "climate": "ZONES",
+          "label": "Zones",
+          "selected": false
+        },
+        {
+          "climate": "LATITUDE",
+          "label": "Latitude",
+          "selected": false
+        }
+      ],
+      "hasOptions": true,
+      "optionsCaption": 614,
+      "optionsX": 20,
+      "optionsY": 638,
+      "climateX": 163,
+      "scaleButton": "Scale 1:4",
+      "scaleTip": "World scale 1:4 (60 m blocks). Click to change; fixed once the world exists.",
+      "climateButton": "Climate Belts",
+      "climateTip": "Climate layouts are a DaedalusTGM-Exp option.",
+      "climateEnabled": false,
+      "climateDisabled": true
     },
     "modelSetup": {
       "open": true,

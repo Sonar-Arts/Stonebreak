@@ -118,6 +118,7 @@ public final class DocumentTerrainMapperCapture implements MigrationGate.Rendere
         }
         return switch (name) {
             case "name", "seed" -> stage.q("#" + name + "-field");
+            case "scale", "climate" -> stage.q("#" + name + "-opt");
             case "spawn", "center" -> {
                 UiElement on = stage.q("#" + name + "-on");
                 yield on != null && !on.isCollapsed() ? on : stage.q("#" + name + "-off");
@@ -139,7 +140,7 @@ public final class DocumentTerrainMapperCapture implements MigrationGate.Rendere
         for (int i = 0; i < modes.size(); i++) {
             put(out, "mode" + i, modes.get(i));
         }
-        for (String n : List.of("spawn", "center", "back", "character", "create", "simulate")) {
+        for (String n : List.of("spawn", "center", "scale", "climate", "back", "character", "create", "simulate")) {
             put(out, n, element(stage, n));
         }
         return out;

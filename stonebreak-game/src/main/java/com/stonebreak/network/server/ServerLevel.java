@@ -97,7 +97,9 @@ public final class ServerLevel {
                 .worldName(com.stonebreak.network.MultiplayerSession.SHOWCASE_WORLD_NAME)
                 .spawnPosition(new Vector3f(anchor)).hasExplicitSpawn(true).build();
         World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType(),
-                worldData.getTerrainScale(), null); // ephemeral: no cube store
+                worldData.getTerrainScale(), worldData.getClimateLayout(), worldData.getHeightCurve(),
+                worldData.getWorldFeatures(),
+                null, false); // ephemeral: no cube store
         world.setSpawnPosition(new Vector3f(anchor));
         EntityManager entityManager = new EntityManager(world);
         EntitySpawner entitySpawner = new EntitySpawner(world, entityManager);
@@ -159,8 +161,18 @@ public final class ServerLevel {
             String loadProfile = worldData.getGeneratorType() + "." + (returning ? "returning" : "new");
             LoadingScreen.report(t -> t.setProfile(loadProfile));
 
+            // A DaedalusTGM-Exp world runs the terrain model it was made with (review-python HIGH-1): chosen before the
+            // world's generator first asks TGMPipe for tiles. Not installed = the default model + a chat warning.
+            String modelNotice = null;
+            if (worldData.getGeneratorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION) {
+                modelNotice = com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.getInstance()
+                    .useWorldModel(worldData.getTerrainModel()).notice();
+            }
+
             world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType(),
-                    worldData.getTerrainScale(), java.nio.file.Path.of(worldPath));
+                    worldData.getTerrainScale(), worldData.getClimateLayout(), worldData.getHeightCurve(),
+                worldData.getWorldFeatures(),
+                    java.nio.file.Path.of(worldPath), false);
             if (worldData.getSpawnPosition() != null) {
                 world.setSpawnPosition(worldData.getSpawnPosition());
             }
@@ -224,7 +236,7 @@ public final class ServerLevel {
             }
 
             ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-                save, worldData, spawn, playerData, existing ? combinedNotice(lr) : null);
+                save, worldData, spawn, playerData, withNotice(existing ? combinedNotice(lr) : null, modelNotice));
             level.lodCachePath = worldPath;
             save.setWorldTimeSource(level.timeOfDay);
             save.setWeatherSource(level.weather);
@@ -267,6 +279,14 @@ public final class ServerLevel {
             return player;
         }
         return player == null ? world : world + " " + player;
+    }
+
+    /** {@code notice} followed by {@code extra} (either may be null). */
+    private static String withNotice(String notice, String extra) {
+        if (extra == null) {
+            return notice;
+        }
+        return notice == null ? extra : notice + " " + extra;
     }
 
     /** Boot checkpoint: waits that already completed never see an interrupt, so look for one. */

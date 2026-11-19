@@ -1,5 +1,7 @@
 package com.stonebreak.world.generation.diffusion.tgmpipe;
 
+import com.stonebreak.world.generation.diffusion.SurfaceChannel;
+import com.stonebreak.world.generation.diffusion.SurfaceChannels;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
 
 import java.io.EOFException;
@@ -18,8 +20,11 @@ import java.nio.charset.StandardCharsets;
  */
 public final class TGMPipeProtocol {
 
-    /** 2: the HELLO lists one world config per terrain scale and every TILE names its world. */
-    public static final int VERSION = 2;
+    /**
+     * 2: the HELLO lists one world config per terrain scale and every TILE names its world.
+     * 3: TILE_DATA carries the named per-block surface channels after the int16 planes ({@link SurfaceChannel}).
+     */
+    public static final int VERSION = 3;
     /** int16 planes per tile: block height, biome, water level, tunnel floor, tunnel roof, flow, carve code. */
     public static final int PLANES = 7;
 
@@ -85,7 +90,7 @@ public final class TGMPipeProtocol {
         return frame(HELLO, 2 + text.length).putShort((short) VERSION).put(text).array();
     }
 
-    /** {@code world}: index into the HELLO's world list (the {@code TerrainScalePreset} ordinal). */
+    /** {@code world}: index into the HELLO's world list ({@code TerrainScale.worldIndex(layout, scale)}). */
     public static byte[] tile(int id, long seed, int tileX, int tileZ, int lod, int priority, int world) {
         return frame(TILE, 4 + 8 + 4 + 4 + 1 + 1 + 1)
                 .putInt(id).putLong(seed).putInt(tileX).putInt(tileZ)
@@ -132,22 +137,67 @@ public final class TGMPipeProtocol {
         int i1 = buf.getInt();
         int j1 = buf.getInt();
         int cells = rows * cols;
-        if (buf.remaining() != cells * 2 * PLANES) {
+        if (buf.remaining() < cells * 2 * PLANES + 1) {
             throw new IllegalStateException("tile body holds " + buf.remaining() + " bytes, expected "
-                    + PLANES + " planes of " + rows + "x" + cols);
+                    + PLANES + " planes of " + rows + "x" + cols + " and a surface block");
         }
         short[][] planes = new short[PLANES][cells];
         var shorts = buf.slice().order(ByteOrder.LITTLE_ENDIAN).asShortBuffer();
         for (short[] plane : planes) {
             shorts.get(plane);
         }
+        buf.position(buf.position() + cells * 2 * PLANES);
+        SurfaceChannels surface = decodeSurface(buf, cells);
         boolean anyTunnel = !allEqual(planes[3], TerrainTile.NO_TUNNEL);
         return new TerrainTile(tileX, tileZ, i1, j1, i1 + rows, j1 + cols, cols, rows,
                 planes[0], planes[1], planes[2],
                 anyTunnel ? planes[3] : null,
                 anyTunnel ? planes[4] : null,
                 allEqual(planes[5], TerrainTile.NO_FLOW) ? null : planes[5],
-                allEqual(planes[6], (short) 0) ? null : planes[6]);
+                allEqual(planes[6], (short) 0) ? null : planes[6],
+                surface);
+    }
+
+    /**
+     * The v3 surface block: {@code u8 count}, per channel {@code u8 name_len, ASCII name, f32 scale, f32 offset}, then
+     * {@code count} uint8 planes of the tile's cells. Channels are matched by name; unknown names are skipped; a plane
+     * holding only {@link SurfaceChannel#NO_DATA} is dropped (null), like the other all-sentinel planes.
+     */
+    static SurfaceChannels decodeSurface(ByteBuffer buf, int cells) {
+        int count = Byte.toUnsignedInt(buf.get());
+        SurfaceChannel[] channels = new SurfaceChannel[count];
+        for (int k = 0; k < count; k++) {
+            byte[] name = new byte[Byte.toUnsignedInt(buf.get())];
+            buf.get(name);
+            buf.getFloat();   // scale  (the contract fixes it per channel; carried for tools)
+            buf.getFloat();   // offset
+            channels[k] = SurfaceChannel.byWireName(new String(name, StandardCharsets.US_ASCII));
+        }
+        if (buf.remaining() != count * cells) {
+            throw new IllegalStateException("tile surface block holds " + buf.remaining() + " bytes, expected "
+                    + count + " channels of " + cells);
+        }
+        if (count == 0) {
+            return SurfaceChannels.NONE;
+        }
+        byte[][] bySlot = new byte[SurfaceChannel.SLOTS][];
+        for (SurfaceChannel c : channels) {
+            byte[] plane = new byte[cells];
+            buf.get(plane);
+            if (c != null && !allNoData(plane)) {
+                bySlot[c.slot()] = plane;
+            }
+        }
+        return new SurfaceChannels(bySlot);
+    }
+
+    private static boolean allNoData(byte[] plane) {
+        for (byte b : plane) {
+            if (b != (byte) SurfaceChannel.NO_DATA) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static boolean fromDiskCache(Frame frame) {

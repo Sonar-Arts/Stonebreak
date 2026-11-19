@@ -94,7 +94,7 @@ extern "C" {
 
 /* 1 (#386): split out of the engine's CK ABI 12; 2: distilled Standard shape (column ABI);
  * 3 (#446): cube generator behind cv_generator, column ABI removed. */
-#define SBW_ABI_VERSION 4
+#define SBW_ABI_VERSION 5   /* 5 (2026-11-19): sbw_column_profile.surface (surface channels) */
 
 /* Water level "no standing water" (water levels are world y and may be negative). */
 #define SBW_NO_WATER INT32_MIN
@@ -107,8 +107,24 @@ extern "C" {
 #define SBW_FLAG_PEAK_DAMP   0x1u /* Density3D overhang band tapers with altitude (Standard) */
 #define SBW_FLAG_DEEP_LAYERS 0x2u /* deep cave layers below the top carvers */
 #define SBW_FLAG_FEATURES    0x4u /* populate places surface features (else populate is a no-op) */
+#define SBW_FLAG_SEA_FLOOR   0x10u /* profile kind: the ocean floor's surface block follows depth, slope and shelter
+                                       (sand shallows, gravel on swept / steep floors, clay in deep or sheltered water,
+                                       rock on cliffed coasts) instead of ~97 % sand; off by default (2026-11-19) */
 #define SBW_FLAG_PROFILE_CARVE 0x8u /* profile kind: ravines and sinkholes follow the profile's carve codes
                                       (sbw_column_profile.carve) instead of the hash; off by default */
+#define SBW_FLAG_BOULDERS    0x20u /* profile kind: population places boulders - pebbles to glacial erratics, boulder fields,
+                                       scree aprons (src/boulders.cpp); shapes procedural + the rock bank named by
+                                       sbw_gen_config.rock_bank. Off by default; per world (a saved world keeps its set,
+                                       2026-11-19) */
+
+#define SBW_FLAG_VEGETATION  0x80u /* profile kind: trees (density, size, clearings) and ground vegetation (bushes, grass,
+                                       flowers, bare / wet-meadow patches) follow the vegetation channels (SBW_SURF_CANOPY_*
+                                       / CLEARING / GROUND_*; agent V). Columns without channel data (255) keep the biome
+                                       rules, so it is a no-op for tiles without the node; off by default (2026-11-19) */
+#define SBW_FLAG_LAND_SURFACE 0x40u /* profile kind: dry land's surface block follows the surface-detail node's channels
+                                       (SBW_SURF_ROCK_EXPOSURE / SCREE / ROUGHNESS, 1 m lidar-trained; agent L): bare rock,
+                                       talus gravel / cobble, broken ground. Columns without channel data (255) keep their
+                                       surface, so it is a no-op for tiles without the node; off by default (2026-11-19) */
 
 #define SBW_DEEP_LAYERS 4         /* layers 100, 200, 300, 400 blocks under the top carvers */
 
@@ -121,6 +137,8 @@ enum sbw_block {
     SBW_WOOD, SBW_LEAVES, SBW_ELM_WOOD_LOG, SBW_ELM_LEAVES, SBW_PINE, SBW_PINE_LEAVES,
     SBW_CYPRESS_LOG, SBW_CYPRESS_LEAVES, SBW_ROSE, SBW_WILDGRASS, SBW_DANDELION, SBW_CACTUS,
     SBW_RED_SAND_COBBLESTONE,
+    /* 2026-11-19 (boulders; id 0 = not supplied -> stone / the sandstone body) */
+    SBW_COBBLESTONE, SBW_SAND_COBBLESTONE,
     SBW_BLOCK_COUNT
 };
 #define SBW_BLOCK_CAP 64
@@ -142,7 +160,8 @@ enum sbw_tree { SBW_TREE_OAK = 0, SBW_TREE_ELM, SBW_TREE_PINE, SBW_TREE_CYPRESS 
  * 0..7 of the column's water, -1 none; biome = BiomeType ordinal. carve = the terrain model's carve-node code
  * (SBW ABI 4; used with SBW_FLAG_PROFILE_CARVE): bits 0-3 ravine density 0..15 (0 = none), 4-6 style
  * (SBW_CARVE_*), 7-10 strike: the incision's axis theta in 16 steps over [0, pi), measured from +z toward +x
- * (a ravine's yaw from +x toward +z is pi/2 - theta), 11-15 depth class 0..31 (32 m per step). 20480 bytes. */
+ * (a ravine's yaw from +x toward +z is pi/2 - theta), 11-15 depth class 0..31 (32 m per step). surface = the
+ * surface channels (ABI 5, below). 36864 bytes. */
 enum sbw_carve_style { SBW_CARVE_RAVINE = 0, SBW_CARVE_SLOT, SBW_CARVE_GORGE, SBW_CARVE_RIFT, SBW_CARVE_KARST,
                        SBW_CARVE_NONE,
                        /* a cliffed coast (land within ~300 m of a steep shore): the cliff retreats into a wave-cut
@@ -161,7 +180,32 @@ typedef struct sbw_column_profile {
     uint8_t biome[1024];
     int8_t river_flow[1024];
     uint16_t carve[1024];
-} sbw_column_profile;
+    uint8_t surface[16][1024];   /* SBW ABI 5: surface channels by SBW_SURF_* slot, see below */
+} sbw_column_profile;            /* 36864 bytes */
+
+/* SURFACE CHANNELS (SBW ABI 5, 2026-11-19; contract: Models/DaedalusTGM-Exp/terrain_slm/world/surface_channels.py,
+ * Java diffusion/SurfaceChannel): per-column bytes from the terrain model's nodes, physical = offset + byte * scale
+ * with the scale/offset fixed per channel below; SBW_SURF_NO_DATA (255) = no data (sea / lakes / rivers, models or
+ * tiles without the producing node, Standard worlds): every consumer must then do exactly what it did before the
+ * channel existed. The generator sets every slot to 255 before calling column_fn, so a column_fn that never writes a
+ * slot changes nothing. Slots are fixed forever once shipped; 12..15 are free. */
+#define SBW_SURFACE_SLOTS 16
+#define SBW_SURF_NO_DATA 255
+enum sbw_surface_slot {
+    SBW_SURF_CANOPY_COVER = 0,   /* share of ground under tree canopy >= 5 m, byte / 254 */
+    SBW_SURF_CANOPY_HEIGHT = 1,  /* mean canopy tree height, byte * 0.25 m */
+    SBW_SURF_CLEARING = 2,       /* share of the ~300 m neighbourhood in open clearings, byte / 254 */
+    SBW_SURF_GROUND_GRASS = 3,   /* ground cover shares (of the ground), byte / 254 */
+    SBW_SURF_GROUND_SHRUB = 4,
+    SBW_SURF_GROUND_MOSS = 5,
+    SBW_SURF_GROUND_BARE = 6,
+    SBW_SURF_GROUND_WETLAND = 7,
+    SBW_SURF_ROCK_EXPOSURE = 8,  /* land surface materials / boulders (agent L), byte / 254 */
+    SBW_SURF_SCREE = 9,
+    SBW_SURF_BOULDER_DENSITY = 10,
+    SBW_SURF_BOULDER_SIZE = 11,  /* byte * 0.05 m */
+    SBW_SURF_ROUGHNESS = 12      /* RMS of the sub-10 m relief inside the block, byte * 0.01 m (agent L) */
+};
 
 /* Upcall: fill *out for column cube (cx, cz). May run on any generator thread, concurrently, and
  * may block; must not call back into this generator. Return 1 = filled, anything else = failure
@@ -195,7 +239,9 @@ typedef struct sbw_gen_config {
     uint16_t water_river_values[8];  /* 168: 0 = plain source value */
     uint16_t stalagmite_states[24];  /* 184 */
     uint16_t stalagmite_part_states[2]; /* 232 */
-    uint16_t reserved1[2];           /* 236 */
+    uint16_t rock_bank;              /* 236: SBW_FLAG_BOULDERS: id of a registered SBRB rock shape bank
+                                        (sbw_register_rock_bank), 0 = procedural shapes only (was reserved, 0) */
+    uint16_t reserved1;              /* 238 */
     uint16_t block_ids[SBW_BLOCK_CAP]; /* 240: indexed by sbw_block */
 } sbw_gen_config;                    /* 368 */
 
@@ -239,6 +285,10 @@ SBW_API const char* sbw_last_error(void);
 SBW_API void sbw_config_defaults(sbw_gen_config* config);
 /* NULL + sbw_last_error on bad config. The returned table is owned by the library. */
 SBW_API const cv_generator* sbw_cv_generator_create(const sbw_gen_config* config);
+/* Refuses new sbw_* calls on the handle, waits for the sbw_* calls in flight on it, then frees it. A destroyed (or
+ * foreign) handle passed to any sbw_* entry point returns -1 with "generator destroyed" in sbw_last_error instead of
+ * touching freed memory; a second destroy is a no-op. The table's own function pointers (the engine streamer's path)
+ * are not tracked: stop every streamer using the generator first. (2026-11-19; no ABI change.) */
 SBW_API void sbw_cv_generator_destroy(const cv_generator* generator);
 
 /* Direct entry points (same functions the table holds). */
@@ -263,6 +313,13 @@ SBW_API int32_t sbw_sample_cell_openings(const cv_generator* g, int64_t x0, int6
                                          int32_t cells, int32_t cell_size,
                                          const int32_t* cell_heights, int32_t* out_floor,
                                          uint8_t* out_coverage);
+/* As sbw_sample_cell_openings, plus out_water (may be NULL): the water level standing in each cell's mouth -
+ * sea level when the footprint holds a sea-flooded cut (SBW_CARVE_SEA_STACKS: a flooded shelf, cove or moat) and
+ * the floor lies under the sea, else NO_WATER. Added within ABI 4 (callers look it up optionally). */
+SBW_API int32_t sbw_sample_cell_openings_water(const cv_generator* g, int64_t x0, int64_t z0,
+                                               int32_t cells, int32_t cell_size,
+                                               const int32_t* cell_heights, int32_t* out_floor,
+                                               uint8_t* out_coverage, int32_t* out_water);
 /* Every tree planted inside a coarse node: spots packed (lx & 0xFF) | (lz & 0xFF) << 8 |
  * kind << 16 | trunk << 18 (lx, lz relative to x0, z0). Returns the count, or -(needed) - 16 when
  * out_cap is too small (CV_NEED convention). */
@@ -273,6 +330,11 @@ SBW_API int32_t sbw_probe_cell_trees(const cv_generator* g, int64_t x0, int64_t 
 SBW_API int32_t sbw_query_column(const cv_generator* g, int64_t x, int64_t z, sbw_column_info* out);
 /* Carved surface of a column cube: out_carved_height[1024] and out_carved[1024] (1 = cut down from
  * the raw height), [lz * 32 + lx]. Either may be NULL. */
+/* Registers an SBRB rock shape bank (format: src/rocks.hpp) under `bank_id` for this process; generators
+ * created afterwards with sbw_gen_config.rock_bank = bank_id read it (the bank is copied; the caller keeps
+ * `data`). Registering the same bank again is a no-op; a different bank under a taken id fails. Returns 0, or -1
+ * with sbw_last_error. Added within ABI 4 (callers look it up optionally). */
+SBW_API int32_t sbw_register_rock_bank(uint32_t bank_id, const uint8_t* data, int64_t length);
 SBW_API int32_t sbw_column_carve(const cv_generator* g, int64_t cx, int64_t cz,
                                  int32_t* out_carved_height, uint8_t* out_carved);
 

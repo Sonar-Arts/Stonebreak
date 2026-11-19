@@ -30,6 +30,8 @@ public final class TerrainMapperLayout {
     private final Rect modeListStart;
     private final Rect spawnButton;
     private final Rect centerOnSpawnButton;
+    private final Rect scaleButton;
+    private final Rect climateButton;
 
     /** @param modeCount mode buttons the selected generator shows (0 before one is picked) */
     public TerrainMapperLayout(int windowWidth, int windowHeight, int modeCount) {
@@ -73,7 +75,25 @@ public final class TerrainMapperLayout {
         this.centerOnSpawnButton = new Rect(pad,
                 spawnSectionY + TerrainMapperConfig.MODE_BUTTON_HEIGHT + TerrainMapperConfig.MODE_BUTTON_SPACING,
                 innerWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+
+        // World options (EXP-2): the new world's terrain scale and climate layout, one row of two
+        // mode-grid columns under the spawn section, so nothing above it moves. A window too short for
+        // it (Standard's four mode rows at 720 px) floats the row over the map's top-left corner instead.
+        float optionsY = centerOnSpawnButton.bottom() + TerrainMapperConfig.SIDEBAR_SECTION_GAP + 16f;
+        float optionsX = pad;
+        if (optionsY + TerrainMapperConfig.MODE_BUTTON_HEIGHT + OPTIONS_SHADOW > sidebar.bottom()) {
+            optionsX = map.x() + TerrainMapperConfig.PANEL_MARGIN;
+            optionsY = map.y() + TerrainMapperConfig.PANEL_MARGIN + 24f;
+        }
+        float columnWidth = (innerWidth - TerrainMapperConfig.MODE_BUTTON_SPACING)
+                / TerrainMapperConfig.MODE_BUTTON_COLUMNS;
+        this.scaleButton = new Rect(optionsX, optionsY, columnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
+        this.climateButton = new Rect(optionsX + columnWidth + TerrainMapperConfig.MODE_BUTTON_SPACING, optionsY,
+                columnWidth, TerrainMapperConfig.MODE_BUTTON_HEIGHT);
     }
+
+    /** The button surface's drop shadow below its rect: the row must fit with it. */
+    private static final float OPTIONS_SHADOW = 4f;
 
     public Rect sidebar() { return sidebar; }
     public Rect map() { return map; }
@@ -113,4 +133,10 @@ public final class TerrainMapperLayout {
 
     public Rect spawnButton() { return spawnButton; }
     public Rect centerOnSpawnButton() { return centerOnSpawnButton; }
+
+    /** The world-options row's left button: the new world's terrain scale (click cycles it). */
+    public Rect scaleButton() { return scaleButton; }
+
+    /** The world-options row's right button: the new world's climate layout (DaedalusTGM-Exp only). */
+    public Rect climateButton() { return climateButton; }
 }

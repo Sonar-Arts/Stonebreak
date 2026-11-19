@@ -1,0 +1,57 @@
+{
+  "_doc": [
+    "Training provenance of the game assets baked from the rock shape model (sibling of release_provenance.json, which",
+    "covers the terrain checkpoints; make_release.py does not read this file). Agent N, 2026-11-19, report:",
+    "Dev Working/docs/exp2-work/N-neural-rocks.md. Same rule as release_provenance.json: an asset may ship only if",
+    "every source in its lineage has allowed=true."
+  ],
+  "sources": {
+    "polyhaven_rocks": {
+      "name": "Poly Haven 3D models, category 'rocks' (37 assets, glTF geometry only)",
+      "licence": "CC0 1.0",
+      "licence_url": "https://polyhaven.com/license",
+      "verified": "2026-11-19: 'All assets (HDRIs, textures and 3D models)' are 'licensed as CC0'; 'You do not need to give credit'. Public API terms (github.com/Poly-Haven/Public-API): 'Free to use for any purpose, personal or commercial'.",
+      "allowed": true,
+      "attribution": "not required; courtesy credit in ATTRIBUTION.md (Credits + 'Poly Haven 3D rock scans')",
+      "raw": "/mnt/extrastorage/terrain-slm-data/raw/rocks (322 MB; per-asset provenance.json with authors, URLs, md5; sources.json sha256 0c58843a707584d60b655d169034c8d5fcf153c9f7a5ef98a3f4d710d5e65133)"
+    },
+    "ambientcg": {
+      "name": "ambientCG",
+      "licence": "CC0 1.0 (https://docs.ambientcg.com/license/)",
+      "allowed": true,
+      "used": false,
+      "why": "checked 2026-11-19: the API lists no 3D models any more (every 'rock' asset is a 2D PBR material)"
+    }
+  },
+  "datasets": {
+    "rocks-v1": {
+      "path": "/mnt/extrastorage/terrain-slm-data/rocks/rocks_v1.npz (+ .json)",
+      "sha256": "8b880704893e1448e4c0114cf41fedbd54fbdaf9abbb8bbdc60883cc1840f5e7",
+      "sources": ["polyhaven_rocks"],
+      "how": "python -m terrain_slm.rocks.dataset --device cuda:0: 40 closed rocks (winding-number voxelisation of 21 rock / rock-set assets) + 336 outcrops cut out of 9 coast / field scans (height field above a grey-opening ground, touching rocks split); dedupe + quality gate; 376 shapes, 64^3 occupancy + 32^3 TSDF."
+    },
+    "rocks-v1-aug": {
+      "path": "/mnt/extrastorage/terrain-slm-data/rocks/rocks_v1_aug.npz (+ .json)",
+      "sha256": "606344ffb30099ef6b5e012783376f82b74b88bc55a92315400dfb5fc8eb6f93",
+      "sources": ["polyhaven_rocks"],
+      "how": "python -m terrain_slm.rocks.augment --variants 40 --workers 8 (seed 0): 15,040 variants of rocks-v1."
+    }
+  },
+  "runs": {
+    "rocks/rockvae_v1": {
+      "data": ["rocks-v1-aug"],
+      "init": [],
+      "checkpoint_sha256": "e04ef01f91425d285f9620fed6e945126d1ca35f5cc46b392550992f11ac4b3b",
+      "evidence": "python -m terrain_slm.rocks.train --out checkpoints/rocks/rockvae_v1 --steps 20000 --device cuda:0 (train.log line 1 = data sha256) then python -m terrain_slm.rocks.prior --vae checkpoints/rocks/rockvae_v1/last.pt --steps 30000 (latent flow stored in the same file, prior.log)"
+    }
+  },
+  "assets": {
+    "stonebreak-game/src/main/resources/worldgen/rocks/rock_bank_v1.sbrb": {
+      "run": "rocks/rockvae_v1",
+      "sha256": "6c2817b86c7f532a2f2650cccb6edd5e56ff91c64c5b390151336c6a330f486f",
+      "bytes": 271598,
+      "manifest": "stonebreak-game/src/main/resources/worldgen/rocks/rock_bank_v1.json",
+      "how": "python -m terrain_slm.rocks.bake --ckpt checkpoints/rocks/rockvae_v1/last.pt --out <that path> --bank-id 1 (seed 20261119; two bakes byte-identical)"
+    }
+  }
+}

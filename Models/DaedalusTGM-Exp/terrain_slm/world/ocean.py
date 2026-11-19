@@ -65,16 +65,26 @@ def sea_cells(height_m: torch.Tensor, land: torch.Tensor) -> torch.Tensor:
     return _dilate(grow(sub & (land < SEA_LAND), sub, SEA_GROW_CELLS), SEA_COAST_CELLS)
 
 
+def land_cells(gen, ci0: int, cj0: int, hc: int, wc: int, device) -> torch.Tensor:
+    """The continent land weight the sea is seeded from: the generator's own (`continent_land_cells`: EXP-2's basins,
+    for height-curve v2 worlds) or v4's continent field."""
+    fn = getattr(gen, "continent_land_cells", None)
+    if fn is not None:
+        return fn(ci0, cj0, hc, wc, device)
+    from terrain_slm.world.generator import continent_land
+    return continent_land(ci0, cj0, hc, wc, gen.seed, device)
+
+
 def sea_mask_for_samples(gen, s1: int, t1: int, h: int, w: int, d: int) -> torch.Tensor:
     """(h, w) bool cell sea mask at samples [s1, s1+h) x [t1, t1+w) of d native pixels each: a
     sample is sea if any cell it covers is."""
-    from terrain_slm.world.generator import CP, continent_land
+    from terrain_slm.world.generator import CP
     m = SEA_CELL_MARGIN
     ci0, cj0 = (s1 * d) // CP - m, (t1 * d) // CP - m
     ci1, cj1 = ((s1 + h) * d - 1) // CP + 1 + m, ((t1 + w) * d - 1) // CP + 1 + m
     with gen.lock:
         cells = gen._planner_cells(ci0, cj0, ci1 - ci0, cj1 - cj0)[0]
-    sea = sea_cells(cells, continent_land(ci0, cj0, ci1 - ci0, cj1 - cj0, gen.seed, cells.device))
+    sea = sea_cells(cells, land_cells(gen, ci0, cj0, ci1 - ci0, cj1 - cj0, cells.device))
     dev = sea.device
     # Cells a sample covers: [first, last] per axis (one cell for d <= CP).
     si = torch.arange(s1, s1 + h, device=dev)

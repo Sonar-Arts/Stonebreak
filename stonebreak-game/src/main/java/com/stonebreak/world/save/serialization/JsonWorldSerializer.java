@@ -1,5 +1,7 @@
 package com.stonebreak.world.save.serialization;
 
+import com.stonebreak.world.generation.HeightCurveVersion;
+import com.stonebreak.world.generation.WorldFeatureVersion;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
@@ -42,6 +44,11 @@ public class JsonWorldSerializer {
         json.append("  \"formatVersion\": ").append(world.getFormatVersion()).append(",\n");
         json.append("  \"generatorType\": \"").append(world.getGeneratorType().name()).append("\",\n");
         json.append("  \"terrainScale\": \"").append(world.getTerrainScale().name()).append("\",\n");
+        json.append("  \"climateLayout\": \"").append(world.getClimateLayout().name()).append("\",\n");
+        json.append("  \"heightCurve\": ").append(world.getHeightCurve().number()).append(",\n");
+        json.append("  \"worldFeatures\": ").append(world.getWorldFeatures().number()).append(",\n");
+        json.append("  \"terrainModel\": \"").append(JsonParsingUtil.escapeJson(world.getTerrainModel().path())).append("\",\n");
+        json.append("  \"terrainModelId\": \"").append(JsonParsingUtil.escapeJson(world.getTerrainModel().contentId())).append("\",\n");
         json.append("  \"minY\": ").append(world.getMinY()).append(",\n");
         json.append("  \"maxY\": ").append(world.getMaxY()).append(",\n");
         json.append("  \"cubeEdge\": ").append(world.getCubeEdge()).append("\n");
@@ -74,6 +81,19 @@ public class JsonWorldSerializer {
                 .generatorType(TerrainGeneratorType.parse(
                     JsonParsingUtil.extractStringOptional(json, "generatorType"), WorldData.LEGACY_GENERATOR))
                 .terrainScale(WorldData.parseTerrainScale(JsonParsingUtil.extractStringOptional(json, "terrainScale")))
+                .climateLayout(WorldData.parseClimateLayout(JsonParsingUtil.extractStringOptional(json, "climateLayout")))
+                // Missing = a world saved before curve versions: it keeps the curve it was generated with.
+                .heightCurve(HeightCurveVersion.parse(
+                    Long.toString(JsonParsingUtil.extractLong(json, "heightCurve", HeightCurveVersion.LEGACY.number())),
+                    HeightCurveVersion.LEGACY))
+                // Missing = a world saved before world feature versions: no boulders next to its old terrain.
+                .worldFeatures(WorldFeatureVersion.of(
+                    JsonParsingUtil.extractLong(json, "worldFeatures", WorldFeatureVersion.LEGACY.number()),
+                    WorldFeatureVersion.LEGACY))
+                // Missing = a world saved before terrain models were recorded: made by v4 (TerrainModelRef.LEGACY).
+                .terrainModel(com.stonebreak.world.generation.TerrainModelRef.parse(
+                    JsonParsingUtil.extractStringOptional(json, "terrainModel"),
+                    JsonParsingUtil.extractStringOptional(json, "terrainModelId")))
                 // Missing bounds = the old 0..256 column world (WorldFormat then reports it incompatible).
                 .bounds(JsonParsingUtil.extractLong(json, "minY", WorldFormat.LEGACY_MIN_Y),
                     JsonParsingUtil.extractLong(json, "maxY", WorldFormat.LEGACY_MAX_Y),

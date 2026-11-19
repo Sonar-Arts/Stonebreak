@@ -80,7 +80,10 @@ class NativeSampler:
         blocks = [b for lvl in model.enc for b in lvl] + list(model.mid) + [b for lvl in model.dec for b in lvl]
         film = {}
         with torch.no_grad():
-            e = model.temb(timestep_embedding(ts[:steps].float(), model.cfg.temb).float())   # (steps, te)
+            if getattr(model, "mean_flow", False) and hasattr(model, "embed"):   # MeanFlow relief student: e(t, r),
+                e = model.embed(ts[:steps].float(), ts[1:steps + 1].float()).float()   # r = the step's end (relief.py)
+            else:
+                e = model.temb(timestep_embedding(ts[:steps].float(), model.cfg.temb).float())   # (steps, te)
             for b in blocks:
                 c = b.conv1.out_channels
                 tab = b.film(e).float()                       # (steps, 2c): scale, shift

@@ -17,12 +17,23 @@ import org.junit.jupiter.api.Test;
 @Tag("regression")
 class ModelSetupDocumentGateTest {
 
+    private static final String MODEL_PROPERTY = "stonebreak.tgmpipe.model";
+
     @Test
     void theShippedModelSetupDocumentPassesTheMigrationGate() throws Exception {
         ChatDocumentGateTest.requireLua();
-        MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
-            .run("model-setup", DocumentModelSetupCapture.cases(), FrozenCaptures.forTests("model-setup").replay(),
-                new DocumentModelSetupCapture());
-        GateAssert.passed(r);
+        // Pinned fixture input: the subtitle names the model folder (TGMPipe.generatorLabel). The frozen captures were
+        // taken with v4; switching the default model (2026-11-19, exp2-r1) is not a rendering change.
+        String prev = System.getProperty(MODEL_PROPERTY);
+        System.setProperty(MODEL_PROPERTY, "checkpoints/v4");
+        try {
+            MigrationGate.Report r = new MigrationGate(GeometryRule.FLOAT_EXACT, c -> PixelTolerance.EXACT)
+                .run("model-setup", DocumentModelSetupCapture.cases(), FrozenCaptures.forTests("model-setup").replay(),
+                    new DocumentModelSetupCapture());
+            GateAssert.passed(r);
+        } finally {
+            if (prev == null) System.clearProperty(MODEL_PROPERTY);
+            else System.setProperty(MODEL_PROPERTY, prev);
+        }
     }
 }

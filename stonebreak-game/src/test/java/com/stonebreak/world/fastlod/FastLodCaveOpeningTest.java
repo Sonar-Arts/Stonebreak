@@ -211,4 +211,89 @@ class FastLodCaveOpeningTest {
         assertEquals(baseline, quadCount(mesher.build(flat(level, floor, cover)).mesh()),
                 "nothing to recess");
     }
+    /** {@link #flat} with the water standing in each mouth. */
+    private static FastLodChunkData flatWithMouthWater(FastLodLevel level, int[] openFloor, byte[] openCover,
+                                                       int[] openWater) {
+        FastLodChunkData d = flat(level, openFloor, openCover);
+        return new FastLodChunkData(d.key(), d.rawHeights(), d.rawWaterLevels(), d.rawSurface(), null,
+                openFloor, openCover, openWater, null);
+    }
+
+    /**
+     * A flooded mouth (a cliffed coast's cove or wave notch cut below the sea: SEA_STACKS) shows the sea standing in
+     * it, a sheet over the notch at the water's surface; a dry mouth beside it has no water at all, and the
+     * terrain mesh is the same as without the water (the sheet rides in the water mesh only).
+     */
+    @Test
+    void aFloodedMouthHoldsAWaterSheetOverTheNotch() {
+        FastLodLevel level = FastLodLevel.L2;
+        int[] floor = noOpenings(level);
+        byte[] cover = new byte[level.cellCount()];
+        floor[0] = GROUND - 10;
+        cover[0] = (byte) 128;
+        int[] water = new int[level.cellCount()];
+        Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
+
+        FastLodMesher.Result dry = mesher.build(flatWithMouthWater(level, floor, cover, water));
+        assertEquals(null, dry.waterMesh(), "a dry mouth holds no water");
+
+        water[0] = GROUND - 4;
+        FastLodMesher.Result wet = mesher.build(flatWithMouthWater(level, floor, cover, water));
+        assertNotNull(wet.waterMesh(), "a flooded mouth holds a water sheet");
+        assertEquals(1, quadCount(wet.waterMesh()), "one sheet over the one notch");
+        assertTrue(hasVertexAtY(wet.waterMesh(), GROUND - 4 - 0.125f), "at the water's surface");
+        assertEquals(quadCount(dry.mesh()), quadCount(wet.mesh()), "the terrain is untouched");
+
+        // the sheet covers exactly the notch's floor square
+        float[] sheet = wet.waterMesh().getVertexPositions();
+        float[] terrain = wet.mesh().getVertexPositions();
+        float nMinX = Float.POSITIVE_INFINITY, nMaxX = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < terrain.length; i += 3) {
+            if (Math.abs(terrain[i + 1] - (GROUND - 10)) < EPS) {
+                nMinX = Math.min(nMinX, terrain[i]);
+                nMaxX = Math.max(nMaxX, terrain[i]);
+            }
+        }
+        float sMinX = Float.POSITIVE_INFINITY, sMaxX = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < sheet.length; i += 3) {
+            sMinX = Math.min(sMinX, sheet[i]);
+            sMaxX = Math.max(sMaxX, sheet[i]);
+        }
+        assertEquals(nMinX, sMinX, EPS);
+        assertEquals(nMaxX, sMaxX, EPS);
+    }
+
+    /** Water under the drawn notch floor (a deep mouth clamped to MAX_NOTCH_DEPTH) is not drawn under it. */
+    @Test
+    void waterBelowTheDrawnNotchFloorIsNotDrawn() {
+        FastLodLevel level = FastLodLevel.L2;
+        int[] floor = noOpenings(level);
+        byte[] cover = new byte[level.cellCount()];
+        floor[0] = GROUND - 200;               // drawn at GROUND - 24
+        cover[0] = (byte) 128;
+        int[] water = new int[level.cellCount()];
+        Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
+        water[0] = GROUND - 30;
+        assertEquals(null, mesher.build(flatWithMouthWater(level, floor, cover, water)).waterMesh());
+    }
+
+    /** The pulled (QUAD16 + WATERQUAD16) path draws the same sheet: one record over the notch. */
+    @Test
+    void thePulledPathDrawsTheFloodedMouthToo() {
+        MmsVertexFormat.override(MmsVertexFormat.QUAD16);
+        FastLodLevel level = FastLodLevel.L2;
+        int[] floor = noOpenings(level);
+        byte[] cover = new byte[level.cellCount()];
+        floor[3] = GROUND - 6;
+        cover[3] = (byte) 200;
+        int[] water = new int[level.cellCount()];
+        Arrays.fill(water, com.stonebreak.world.operations.WorldConfiguration.NO_WATER);
+        FastLodMesher.Result dry = mesher.build(flatWithMouthWater(level, floor, cover, water));
+        assertEquals(null, dry.waterMesh());
+        water[3] = GROUND - 2;
+        FastLodMesher.Result wet = mesher.build(flatWithMouthWater(level, floor, cover, water));
+        assertNotNull(wet.waterMesh());
+        assertEquals(6, wet.waterMesh().getIndexCount(), "one WATERQUAD16 record");
+        assertEquals(GROUND, wet.maxY(), 1e-3f, "a sheet below the rim never raises the node's bounds");
+    }
 }

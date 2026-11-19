@@ -48,9 +48,9 @@ import java.util.stream.Stream;
  * </ol>
  *
  * <p>It runs on its own thread from the moment the game starts (under the intro). A stamp in the
- * environment records what was set up (hashes of {@code uv.lock} + {@code pyproject.toml} and of the
- * kernel sources), so an unchanged install costs a few file reads and shows nothing; an update redoes
- * only what changed. Everything the steps print goes to {@code Models/logs/setup.log}.
+ * environment records what was set up (hashes of {@code uv.lock} + {@code pyproject.toml}, and of the
+ * kernel sources + the model's release manifest), so an unchanged install costs a few file reads and shows
+ * nothing; an update redoes only what changed. Everything the steps print goes to {@code Models/logs/setup.log}.
  *
  * <p>{@code -Dstonebreak.modelSetup=off} disables it (the service is then launched as before);
  * {@code -Dstonebreak.modelSetup.force=true} ignores the stamp and runs every step.
@@ -409,7 +409,7 @@ public final class ModelSetup {
         int[] compiled = {0};
         String[] error = {null};
         List<String> cmd = List.of(p.python.toString(), "-m", "terrain_slm.tgmpipe.warmup",
-                System.getProperty("stonebreak.tgmpipe.model", TGMPipe.DEFAULT_MODEL),
+                TerrainModels.defaultModelPath(),   // the default (new worlds); a saved world's other model warms on first use
                 "--device", System.getProperty("stonebreak.tgmpipe.device", "auto"));
         int exit = runProcess(cmd, p.slmDir, Map.of("TGM_KERNEL_CACHE", p.kernelCache.toString()), log, line -> {
             if (!line.startsWith("{")) {
@@ -534,20 +534,38 @@ public final class ModelSetup {
                 : String.format("%.0f MB", bytes / (1024.0 * 1024));
     }
 
-    /** Kernel sources (Python, CUDA, C++), the tuned launch configs and the warm-up: any change means
-     *  the warm-up must compile again. */
+    /** Native kernel sources by file name: Python, CUDA, C/C++ (headers too), tuned launch configs, CMake. */
+    private static final Pattern KERNEL_SOURCE =
+            Pattern.compile(".*\\.(py|cu|cuh|c|cc|cpp|cxx|h|hh|hpp|inl|json|cmake)$|CMakeLists\\.txt");
+
     private static String kernelHash(Paths p) {
-        Path dir = p.slmDir.resolve("terrain_slm/kernels");
+        return kernelHash(p.slmDir, TerrainModels.defaultModelPath());
+    }
+
+    /**
+     * What the warm-up compiles and checks: every kernel source under {@code terrain_slm/kernels} (the tree is
+     * walked, so a new csrc file, header or config is picked up without touching this list; {@code __pycache__}
+     * is skipped), the warm-up itself, and the model: its folder name and, for a release folder
+     * ({@code scripts/make_release.py}), its {@code release.json}, so a release rebuilt at the same path warms up
+     * again. Any change means the warm-up must run again.
+     */
+    static String kernelHash(Path slmDir, String model) {
+        Path dir = slmDir.resolve("terrain_slm/kernels");
         List<Path> files = new ArrayList<>();
         if (Files.isDirectory(dir)) {
             try (Stream<Path> s = Files.walk(dir)) {
-                s.filter(f -> f.toString().matches(".*\\.(py|cu|cuh|cpp|h|json)$")).sorted().forEach(files::add);
+                s.filter(Files::isRegularFile)
+                        .filter(f -> !dir.relativize(f).toString().contains("__pycache__"))
+                        .filter(f -> KERNEL_SOURCE.matcher(f.getFileName().toString()).matches())
+                        .sorted().forEach(files::add);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
         }
-        files.add(p.slmDir.resolve("terrain_slm/tgmpipe/warmup.py"));
-        return hashFiles(files) + ":" + System.getProperty("stonebreak.tgmpipe.model", TGMPipe.DEFAULT_MODEL);
+        files.add(slmDir.resolve("terrain_slm/tgmpipe/warmup.py"));
+        Path modelDir = Path.of(model).isAbsolute() ? Path.of(model) : slmDir.resolve(model);
+        files.add(modelDir.resolve("release.json"));   // absent for symlink folders and v4: the name alone counts
+        return hashFiles(files) + ":" + model;
     }
 
     static String hashFiles(List<Path> files) {

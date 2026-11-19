@@ -90,7 +90,8 @@ Generator::Generator(const Config& c)
       featureCache(static_cast<size_t>(std::max(64, c.cacheColumns / 8))),
       rawCache(static_cast<size_t>(std::max(64, c.cacheColumns / 8))),
       oreCache(static_cast<size_t>(std::max(256, c.cacheColumns / 4))),
-      limeCache(static_cast<size_t>(std::max(64, c.cacheColumns / 4))) {
+      limeCache(static_cast<size_t>(std::max(64, c.cacheColumns / 4))),
+      apronCache(static_cast<size_t>(std::max(64, c.cacheColumns / 8))) {
     serial = nextSerial.fetch_add(1);
     layerSeed[0] = cfg.seed;
     layerDrop[0] = 0;
@@ -340,6 +341,7 @@ std::shared_ptr<BaseTile> Generator::buildBase(int64_t cx, int64_t cz) {
     }
     auto prof = std::make_unique<sbw_column_profile>();
     std::memset(prof.get(), 0, sizeof(sbw_column_profile));
+    std::memset(prof->surface, SBW_SURF_NO_DATA, sizeof(prof->surface));   /* ABI 5: unwritten slots = no data */
     if (cfg.columnFn == nullptr || cfg.columnFn(cfg.columnUser, cx, cz, prof.get()) != 1) {
         setError("column profile upcall failed");
         return nullptr;
@@ -362,6 +364,7 @@ std::shared_ptr<BaseTile> Generator::buildBase(int64_t cx, int64_t cz) {
         t->riverRoof[c] = prof->river_roof[c];
         t->riverFlow[c] = prof->river_flow[c];
         t->carve[c] = prof->carve[c];
+        for (int k = 0; k < SBW_SURFACE_SLOTS; k++) t->surf[k][c] = prof->surface[k][c];
         const int32_t depth = (water == NO_WATER) ? 0 : water - h;
         t->surface[c] = surfaceAt(biome, cx * CE + (c & 31), cz * CE + (c >> 5), depth);
         t->minH = std::min(t->minH, h);
@@ -369,6 +372,28 @@ std::shared_ptr<BaseTile> Generator::buildBase(int64_t cx, int64_t cz) {
         int32_t top = std::max(h, water == NO_WATER ? h : water);
         if (t->riverRoof[c] > t->riverFloor[c]) top = std::max(top, t->riverRoof[c] + 1);
         t->maxTop = std::max(t->maxTop, top);
+    }
+    if ((cfg.flags & SBW_FLAG_SEA_FLOOR) != 0 && !seaFloor(*t)) return nullptr;
+    if ((cfg.flags & SBW_FLAG_LAND_SURFACE) != 0) landSurface(*t);
+    return t;
+}
+
+/* L0 apron: the heights + water buildBase would give the cube (same upcall, same clamps), without the rest. */
+std::shared_ptr<HeightWater> Generator::buildApron(int64_t cx, int64_t cz) {
+    auto prof = std::make_unique<sbw_column_profile>();
+    std::memset(prof.get(), 0, sizeof(sbw_column_profile));
+    std::memset(prof->surface, SBW_SURF_NO_DATA, sizeof(prof->surface));
+    if (cfg.columnFn == nullptr || cfg.columnFn(cfg.columnUser, cx, cz, prof.get()) != 1) {
+        setError("column profile upcall failed");
+        return nullptr;
+    }
+    auto t = std::make_shared<HeightWater>();
+    const int32_t lo = static_cast<int32_t>(cfg.minY) + 1, hi = static_cast<int32_t>(cfg.maxY) - 1;
+    for (int c = 0; c < COLS; c++) {
+        t->h[c] = std::max(lo, std::min(hi, prof->height[c]));
+        int32_t water = prof->water[c];
+        if (water != NO_WATER) water = std::min(water, static_cast<int32_t>(cfg.maxY));
+        t->water[c] = water;
     }
     return t;
 }

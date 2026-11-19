@@ -33,6 +33,7 @@ from terrain_slm.tgmpipe.scheduler import Scheduler, TileKey
 log = logging.getLogger("tgmpipe")
 
 
+IDLE_RELEASE_S = 1.0       # GPU thread idle this long -> torch's cached blocks go back to the driver
 CPU_MAX_VRAM = 4 * 2**30   # "auto" runs on the CPU when the chosen GPU has this much memory or less
 # The CPU kernels (kernels/cpu_sampler.py, kernels/controls_cpu.py) are EXPERIMENTAL and not yet optimized:
 # a tile takes minutes. The game treats a machine that would land on them as below Daedalus's system
@@ -127,17 +128,32 @@ class Service:
         device = str(self.info.get("device", "cpu"))
         try:
             vram = gpu_memory.snapshot(device)
+            if "cuda" in device:
+                from terrain_slm.world import generator as G
+                vram["pinned_host_bytes"] = sum(p.bytes for p in G._PINNED.values())   # spilled LRU entries (host RAM)
         except Exception as e:  # noqa: BLE001 - diagnostics only; the status itself must still answer
             vram = {"device": device, "error": f"{type(e).__name__}: {e}"}
+        from terrain_slm.tgmpipe import stageprof
+        extra = {"stages": stageprof.snapshot(), "tile_stages": stageprof.tiles()} if stageprof.ENABLED else {}
         self.out.send(W.status_reply(token, {**self.info, "queue": self.scheduler.depth(),
-                                             "cache": self.cache.stats(), "vram": vram, **self.stats}))
+                                             "cache": self.cache.stats(), "vram": vram, **self.stats, **extra}))
 
     # ------------------------------------------------------------------ GPU
     def _gpu_loop(self) -> None:
+        released = True
         while True:
-            job = self.scheduler.take()
+            # Idle for IDLE_RELEASE_S: hand the tiles' temporaries back to the driver. Torch keeps a tile's peak
+            # cached otherwise (~0.6 GB, VRAM audit 2026-11-18). Not at every empty queue (2026-11-19): while the game
+            # streams, the queue drains between nearly every pair of requests, and each release made the next tile
+            # cudaMalloc its ~1 GB again (a device sync per block).
+            job = self.scheduler.take(timeout=None if released else IDLE_RELEASE_S)
             if job is None:
-                return
+                if self.scheduler.closed:
+                    return
+                _release_gpu_memory()
+                released = True
+                continue
+            released = False
             key = job.key
             t0 = time.monotonic()
             try:
@@ -159,11 +175,6 @@ class Service:
                 continue
             for req_id in self.scheduler.finish(job):
                 self._back.submit(self._send_tile, req_id, key, planes, False)
-            if self.scheduler.depth() == 0:
-                # Idle: hand the tile's temporaries back to the driver. Torch keeps a tile's peak cached
-                # otherwise (~1.2 GB after a cold first tile, VRAM audit 2026-11-18); releasing after
-                # every tile measured no slower, but only idle moments need it.
-                _release_gpu_memory()
 
     def _send_tile(self, req_id: int, key: TileKey, planes, cached: bool) -> None:
         i1, j1, _, _ = self.builders[key.world].bounds(key.tile_x, key.tile_z)
@@ -176,8 +187,32 @@ def _release_gpu_memory() -> None:
         import torch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            # Page-locked host RAM too (review-python MEDIUM-2): free spill slabs + torch's cached pinned blocks.
+            from terrain_slm.world import generator as G
+            dropped = G.release_pinned()
+            if dropped:
+                log.info("idle release: %.0f MiB of page-locked spill slabs freed", dropped / 2**20)
     except Exception:  # noqa: BLE001
         pass
+
+
+#: A/B generator knobs (environment) the native release export does not carry: they keep the Python generator.
+_AB_KNOBS = ("TERRAIN_SLM_RELIEF_GAIN", "TERRAIN_SLM_RELIEF_PREBLUR", "TERRAIN_SLM_HILL_TRANSFER",
+             "TERRAIN_SLM_LOWLAND_BOOST")
+
+
+class _NativeInfo:
+    """What main() reads from a generator, for the native pipeline (its model_id carries the ":nt1" marker)."""
+
+    def __init__(self, terrain):
+        from types import SimpleNamespace
+        self.terrain = terrain
+        self.model_id = terrain.model_id
+        self.cfg = SimpleNamespace(river_log_threshold=None)
+        self.river = SimpleNamespace(describe=lambda: "native (libstonebreak_terrain)")
+
+    def warm_up(self, report=lambda what: None) -> None:
+        pass   # NativeTerrain warmed every network when it opened
 
 
 def _claim_stdio():
@@ -239,16 +274,35 @@ def main(argv=None) -> None:
         # EXP-2 model folders carry the climate node: they run through WorldGenerator2 (controls2, climate, SR-30,
         # lowland boost); v4 folders keep the original generator.
         exp2 = (model_dir / "climate.pt").exists()
-        if exp2:
+        # Native tiles (agent D, native engine phase 2 complete): the whole TileBuilder in libstonebreak_terrain, from
+        # the model's release export (export/native_terrain.py; TGM_NATIVE_TILES=1 | auto | 0). Not with A/B knobs or a
+        # river threshold override: the export holds the default generator's numbers.
+        native_t = None
+        if exp2 and args.river_threshold is None and not any(os.getenv(k) for k in _AB_KNOBS):
+            from terrain_slm.export import native_terrain as NT
+            native_t = NT.open_for_service(model_dir, device, args.climate_layout, log)
+        if native_t is not None:
+            gen = _NativeInfo(native_t)
+        elif exp2:
             from terrain_slm.world.generator2 import WorldGenerator2 as Gen
         else:
             Gen = WorldGenerator
-        gen = Gen(model_dir, 0, device,
-                  GenConfig(t_start=args.t_start, steps=args.steps, amp_scale=args.amp_scale,
-                            river_log_threshold=args.river_threshold),
-                  cache_regions=regions)
-        if exp2:
+        if native_t is None:
+            gen = Gen(model_dir, 0, device,
+                      GenConfig(t_start=args.t_start, steps=args.steps, amp_scale=args.amp_scale,
+                                river_log_threshold=args.river_threshold),
+                      cache_regions=regions)
+        if exp2 and native_t is None:
             gen.use_climate_layout(args.climate_layout)
+            gen.default_climate_layout = args.climate_layout   # worlds without their own layout get this one
+            if os.getenv("TERRAIN_SLM_RELIEF_GAIN"):          # A/B knobs (in-game comparisons)
+                gen.use_relief_gain(float(os.environ["TERRAIN_SLM_RELIEF_GAIN"]))
+            if os.getenv("TERRAIN_SLM_RELIEF_PREBLUR"):
+                gen.use_relief_preblur(float(os.environ["TERRAIN_SLM_RELIEF_PREBLUR"]))
+            if os.getenv("TERRAIN_SLM_HILL_TRANSFER"):
+                gen.use_hill_transfer(float(os.environ["TERRAIN_SLM_HILL_TRANSFER"]))
+            if os.getenv("TERRAIN_SLM_LOWLAND_BOOST"):
+                gen.use_lowland_boost(float(os.environ["TERRAIN_SLM_LOWLAND_BOOST"]))
         log.info("model %s on %s loaded in %.1f s; rivers: %s", gen.model_id, device,
                  time.monotonic() - t0, gen.river.describe())
         t0 = time.monotonic()
@@ -267,7 +321,13 @@ def main(argv=None) -> None:
         worlds = [WorldConfig.from_dict(w) for w in payload["worlds"]]
         if not worlds:
             raise W.ProtocolError("HELLO names no worlds")
-        builders = [TileBuilder(gen, w) for w in worlds]
+        if native_t is not None:
+            builders = [NT.NativeBuilder(native_t, i, w) for i, w in enumerate(worlds)]
+        else:
+            builders = [TileBuilder(gen, w) for w in worlds]
+        from terrain_slm.tgmpipe import stageprof
+        if stageprof.ENABLED and native_t is None:                              # benchmarks only (eval/pipe_bench.py --stages)
+            stageprof.install(gen, builders)
         source = source_fingerprint(Path(__file__).resolve().parents[1])
         cache = TileCache(Path(args.disk_cache_dir),
                           [namespace(w.fingerprint(), gen.model_id, source) for w in worlds],

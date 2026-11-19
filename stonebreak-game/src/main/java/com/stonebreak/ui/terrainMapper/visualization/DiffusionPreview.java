@@ -45,6 +45,18 @@ final class DiffusionPreview implements GeneratorPreview {
         return scale;
     }
 
+    /** The climate layout previewed (and the new world's): its own TGMPipe world, so its own tiles. */
+    private volatile com.stonebreak.world.generation.ClimateLayout climateLayout =
+            com.stonebreak.world.generation.ClimateLayout.DEFAULT;
+
+    void setClimateLayout(com.stonebreak.world.generation.ClimateLayout layout) {
+        this.climateLayout = com.stonebreak.world.generation.ClimateLayout.orDefault(layout);
+    }
+
+    com.stonebreak.world.generation.ClimateLayout climateLayout() {
+        return climateLayout;
+    }
+
     @Override
     public List<VisualizerKind> modes() {
         return MODES;
@@ -54,7 +66,8 @@ final class DiffusionPreview implements GeneratorPreview {
     public Built build(long seed, PreviewSampleStore store) {
         // Same tile source the world generator uses.
         TerrainScalePreset preset = scale;
-        DiffusionTileCache tiles = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_PREVIEW, preset);
+        com.stonebreak.world.generation.ClimateLayout layout = climateLayout;
+        DiffusionTileCache tiles = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_PREVIEW, preset, layout);
         HeightMapGenerator heightMap = new HeightMapGenerator(tiles);
         BiomeManager biomes = new BiomeManager(tiles);
 
@@ -78,7 +91,7 @@ final class DiffusionPreview implements GeneratorPreview {
         };
 
         DiffusionTileCache overview = new DiffusionTileCache(seed, TerrainMapperConfig.OVERVIEW_LOD,
-                TGMPipe.PRIORITY_PREVIEW, preset);
+                TGMPipe.PRIORITY_PREVIEW, preset, layout);
         AutoCloseable resources = () -> {
             tiles.close();
             overview.close();
@@ -121,6 +134,8 @@ final class DiffusionPreview implements GeneratorPreview {
     public void startServices(long seed) {
         synchronized (serviceLock) {
             if (active) {
+                // Previews become new worlds, which get the default model: leave a saved world's model if one ran.
+                TGMPipe.getInstance().useDefaultModel();
                 TGMPipe.getInstance().ensureRunning();
             }
         }
