@@ -74,8 +74,11 @@ class Output:
 
 
 class Service:
-    def __init__(self, builder, cache, out: Output, info: dict):
-        self.builder, self.cache, self.out, self.info = builder, cache, out, info
+    def __init__(self, builders, cache, out: Output, info: dict):
+        """`builders`: one TileBuilder per HELLO world (or a single builder = one world)."""
+        self.builders = list(builders) if isinstance(builders, (list, tuple)) else [builders]
+        self.builder = self.builders[0]
+        self.cache, self.out, self.info = cache, out, info
         self.scheduler = Scheduler()
         self._front = ThreadPoolExecutor(1, thread_name_prefix="front")
         self._back = ThreadPoolExecutor(1, thread_name_prefix="back")
@@ -103,8 +106,11 @@ class Service:
         self._back.shutdown(wait=False, cancel_futures=True)
 
     # ------------------------------------------------------------------ front
-    def _request(self, req_id, seed, tile_x, tile_z, lod, priority) -> None:
-        key = TileKey(seed, tile_x, tile_z, lod)
+    def _request(self, req_id, seed, tile_x, tile_z, lod, priority, world=0) -> None:
+        if not 0 <= world < len(self.builders):
+            self.out.send(W.tile_error(req_id, f"unknown world {world} (HELLO sent {len(self.builders)})"))
+            return
+        key = TileKey(seed, tile_x, tile_z, lod, world)
         try:
             planes = self.cache.get(key)
         except Exception as e:  # noqa: BLE001 - a bad cache file must not cost the tile
@@ -137,7 +143,7 @@ class Service:
             try:
                 planes = self.cache.get(key)  # a request that missed may have raced a finishing job
                 if planes is None:
-                    planes = self.builder.build(key.seed, key.tile_x, key.tile_z, key.lod)
+                    planes = self.builders[key.world].build(key.seed, key.tile_x, key.tile_z, key.lod)
                     self._back.submit(self.cache.put, key, planes)
                     ms = (time.monotonic() - t0) * 1000
                     self.stats["generated"] += 1
@@ -153,9 +159,14 @@ class Service:
                 continue
             for req_id in self.scheduler.finish(job):
                 self._back.submit(self._send_tile, req_id, key, planes, False)
+            if self.scheduler.depth() == 0:
+                # Idle: hand the tile's temporaries back to the driver. Torch keeps a tile's peak cached
+                # otherwise (~1.2 GB after a cold first tile, VRAM audit 2026-11-18); releasing after
+                # every tile measured no slower, but only idle moments need it.
+                _release_gpu_memory()
 
     def _send_tile(self, req_id: int, key: TileKey, planes, cached: bool) -> None:
-        i1, j1, _, _ = self.builder.bounds(key.tile_x, key.tile_z)
+        i1, j1, _, _ = self.builders[key.world].bounds(key.tile_x, key.tile_z)
         self.out.send(W.tile_data(req_id, cached, i1, j1, planes))
         self.stats["served"] += 1
 
@@ -197,7 +208,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.tgmpipe")
     ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--cache-size", default="4G", help="in-memory generation cache (GPU)")
+    ap.add_argument("--cache-size", default="4G", help="v3 refiner-path region cache (first 128 regions on the GPU, the rest in host RAM, at most 1024); v4 caches are sized in generator.py")
     ap.add_argument("--disk-cache", default="8G", help="finished-tile cache on disk, all versions")
     ap.add_argument("--disk-cache-dir", default=str(TILE_CACHE_DIR))
     ap.add_argument("--t-start", type=float, default=float(os.getenv("TERRAIN_SLM_T_START", "0.6")))
@@ -207,6 +218,8 @@ def main(argv=None) -> None:
     ap.add_argument("--river-threshold", type=float, default=float(env_rt) if env_rt else None,
                     help="river density knob: log1p(upslope cells) where a river starts (lower = more "
                          "rivers); default: calibrated for the model")
+    ap.add_argument("--climate-layout", default=os.getenv("TERRAIN_SLM_CLIMATE_LAYOUT", "belts"),
+                    help="EXP-2 models only: belts | zones | latitude")
     args = ap.parse_args(argv)
 
     try:
@@ -223,10 +236,19 @@ def main(argv=None) -> None:
             model_dir = MODEL_DIR / model_dir
         regions = max(64, min(8192, _bytes(args.cache_size) // (384 * 384 * 4)))  # 384^2 fp32 regions
         t0 = time.monotonic()
-        gen = WorldGenerator(model_dir, 0, device,
-                             GenConfig(t_start=args.t_start, steps=args.steps, amp_scale=args.amp_scale,
-                                       river_log_threshold=args.river_threshold),
-                             cache_regions=regions)
+        # EXP-2 model folders carry the climate node: they run through WorldGenerator2 (controls2, climate, SR-30,
+        # lowland boost); v4 folders keep the original generator.
+        exp2 = (model_dir / "climate.pt").exists()
+        if exp2:
+            from terrain_slm.world.generator2 import WorldGenerator2 as Gen
+        else:
+            Gen = WorldGenerator
+        gen = Gen(model_dir, 0, device,
+                  GenConfig(t_start=args.t_start, steps=args.steps, amp_scale=args.amp_scale,
+                            river_log_threshold=args.river_threshold),
+                  cache_regions=regions)
+        if exp2:
+            gen.use_climate_layout(args.climate_layout)
         log.info("model %s on %s loaded in %.1f s; rivers: %s", gen.model_id, device,
                  time.monotonic() - t0, gen.river.describe())
         t0 = time.monotonic()
@@ -242,10 +264,13 @@ def main(argv=None) -> None:
         version, payload = W.parse_hello(body)
         if version != W.VERSION:
             raise W.ProtocolError(f"game speaks terrain protocol v{version}, this service v{W.VERSION}")
-        world = WorldConfig.from_dict(payload["world"])
-        builder = TileBuilder(gen, world)
+        worlds = [WorldConfig.from_dict(w) for w in payload["worlds"]]
+        if not worlds:
+            raise W.ProtocolError("HELLO names no worlds")
+        builders = [TileBuilder(gen, w) for w in worlds]
         source = source_fingerprint(Path(__file__).resolve().parents[1])
-        cache = TileCache(Path(args.disk_cache_dir), namespace(world.fingerprint(), gen.model_id, source),
+        cache = TileCache(Path(args.disk_cache_dir),
+                          [namespace(w.fingerprint(), gen.model_id, source) for w in worlds],
                           _bytes(args.disk_cache))
     except Exception as e:  # noqa: BLE001 - reported to the game, which shows it; then exit
         log.exception("TGMPipe failed to start")
@@ -253,11 +278,12 @@ def main(argv=None) -> None:
         sys.exit(2)
 
     info = {"name": MODEL_NAME, "model_id": gen.model_id, "device": device, "protocol": W.VERSION,
-            "cache_namespace": cache.dir.name, "river_threshold": gen.cfg.river_log_threshold}
-    service = Service(builder, cache, out, info)
+            "cache_namespace": cache.dir.name, "cache_namespaces": [d.name for d in cache.dirs],
+            "river_threshold": gen.cfg.river_log_threshold}
+    service = Service(builders, cache, out, info)
     service.start()
     out.send(W.ready(info))
-    log.info("ready: world %s, cache %s", world.fingerprint(), cache.dir)
+    log.info("ready: worlds %s, caches %s", [w.fingerprint() for w in worlds], [d.name for d in cache.dirs])
 
     code = 0
     try:

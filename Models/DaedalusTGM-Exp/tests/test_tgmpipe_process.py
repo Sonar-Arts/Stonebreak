@@ -22,7 +22,7 @@ def test_service_speaks_only_frames_and_exits_with_the_game(tmp_path):
                             cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=open(tmp_path / "service.log", "wb"))
     try:
-        proc.stdin.write(W.hello(W.VERSION, {"world": WorldConfig.GAME.to_dict()}))
+        proc.stdin.write(W.hello(W.VERSION, {"worlds": [WorldConfig.GAME.to_dict()]}))
         # Far-zoom overview tile: the cheapest real tile (cells only).
         proc.stdin.write(W.tile(1, 1234, 0, 0, 8, 0))
         proc.stdin.flush()
@@ -51,7 +51,7 @@ def test_service_speaks_only_frames_and_exits_with_the_game(tmp_path):
 
 def test_a_bad_handshake_is_reported_not_hung(tmp_path):
     proc = subprocess.run([sys.executable, "-m", "terrain_slm.tgmpipe", "--disk-cache-dir", str(tmp_path)],
-                          cwd=ROOT, input=W.hello(W.VERSION, {"world": {"sea_level": 64}}),
+                          cwd=ROOT, input=W.hello(W.VERSION, {"worlds": [{"sea_level": 64}]}),
                           capture_output=True, timeout=300)
     kind, body = W.read_frame(__import__("io").BytesIO(proc.stdout))
     assert proc.returncode == 2 and kind == W.FATAL and b"world config mismatch" in body

@@ -37,6 +37,12 @@ RELIEF_FINE_SIGMA = 2.0         # cells: the blur the planner's trend input is t
 RELIEF_SMOOTH_SIGMA = (8.0, 20.0)  # cells: range of "painted" smoothness seen in training
 TREND_PREBLUR_SIGMA = 4.0       # cells: procedural trends are blurred this much before use
 SLOPE_SCALE_M = 100.0           # metres per cell -> ~unit
+#: Amplitude law (EXP-2, 2026-11-18), fitted on data v2 (404k validation points, R^2 0.64): the local log-rms of the
+#: relief target (Gaussian sigma 6 cells, RELIEF_SCALE_M units) = AMP_SLOPE * normalised wildness + AMP_ICPT. A model
+#: with ReliefConfig.amp_norm predicts x1 / relief_amp(cond), so this slope holds by construction: the v2 run without
+#: it followed only 88% of it (Karakoram 0.58 / Alps 0.62 amplitude ratio, Rhenish hills 1.37).
+AMP_SLOPE, AMP_ICPT = 1.009, -1.858
+AMP_LOG_RANGE = (-5.0, 1.5)
 
 
 @dataclass
@@ -44,6 +50,7 @@ class ReliefConfig:
     channels: tuple = (16, 24, 32, 48)
     blocks: int = 2
     temb: int = 64
+    amp_norm: bool = False          # predict relief / relief_amp(cond) (see AMP_SLOPE); False = v4 checkpoints
 
     def to_dict(self):
         d = asdict(self)
@@ -93,6 +100,13 @@ class Relief(nn.Module):
             for b in self.dec[i]:
                 h = b(h, e)
         return self.out(F.silu(h))
+
+
+def relief_amp(cond: torch.Tensor) -> torch.Tensor:
+    """(B,1,H,W) relief amplitude the conditioning's wildness implies (RELIEF_SCALE_M units); no wildness -> the
+    amplitude at average wildness."""
+    w, has = cond[:, C_WILD : C_WILD + 1], cond[:, C_HAS_WILD : C_HAS_WILD + 1]
+    return torch.exp((has * AMP_SLOPE * w + AMP_ICPT).clamp(*AMP_LOG_RANGE))
 
 
 def cell_slope(trend_m: torch.Tensor) -> torch.Tensor:

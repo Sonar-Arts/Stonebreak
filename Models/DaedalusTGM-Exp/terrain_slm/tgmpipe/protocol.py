@@ -5,16 +5,21 @@ Mirror of stonebreak-game's `TGMPipeProtocol` -- change both together and bump V
 Frame: u32 length (of everything after it), u8 type, body. Little-endian throughout.
 
 Game -> service
-  HELLO      u16 version, UTF-8 JSON {"world": WorldConfig}
-  TILE       u32 id, i64 seed, i32 tile_x, i32 tile_z, u8 lod, u8 priority (lower = sooner)
+  HELLO      u16 version, UTF-8 JSON {"worlds": [WorldConfig, ...]} -- one per terrain scale the game offers
+             (v2: a world is no longer pinned per process; the generator's caches are in metres, so every
+             scale shares them and only the block stages differ)
+  TILE       u32 id, i64 seed, i32 tile_x, i32 tile_z, u8 lod, u8 priority (lower = sooner),
+             u8 world (index into HELLO's "worlds")
   CANCEL     u32 id -- the game no longer wants that request's answer
   STATUS     u32 token
 
 Service -> game
-  READY        UTF-8 JSON {"name", "model_id", "device", "cache", ...}, once, after HELLO
+  READY        UTF-8 JSON {"name", "model_id", "device", "cache_namespaces": [one per world], ...}, once,
+               after HELLO ("cache_namespace" = world 0's, for older readers)
   TILE_DATA    u32 id, u8 flags (bit 0 = from the disk cache), u16 rows, u16 cols, i32 i1, i32 j1,
                then PLANES int16 planes of rows x cols, row-major (row = x - i1, col = z - j1):
-               block height, biome id, water level, river tunnel floor, roof, flow octant
+               block height, biome id, water level, river tunnel floor, roof, flow octant, carve code
+               (world/carve_node.py; 16 bits carried as int16)
   TILE_ERROR   u32 id, UTF-8 message
   STATUS_REPLY u32 token, UTF-8 JSON (model, queue, cache, timings; "vram" = tgmpipe/gpu_memory.py, the F3 screen)
   FATAL        UTF-8 message; the service exits after sending it
@@ -27,8 +32,8 @@ import json
 import struct
 from typing import BinaryIO
 
-VERSION = 1
-PLANES = 6
+VERSION = 2
+PLANES = 7
 
 HELLO, TILE, CANCEL, STATUS = 0x01, 0x02, 0x03, 0x04
 READY, TILE_DATA, TILE_ERROR, STATUS_REPLY, FATAL = 0x81, 0x82, 0x83, 0x84, 0x8F
@@ -37,7 +42,7 @@ FLAG_CACHED = 0x01
 MAX_FRAME = 64 << 20
 
 _LEN = struct.Struct("<I")
-_TILE = struct.Struct("<IqiiBB")
+_TILE = struct.Struct("<IqiiBBB")
 _TILE_HEAD = struct.Struct("<IBHHii")
 _U32 = struct.Struct("<I")
 _U16 = struct.Struct("<H")
@@ -82,8 +87,8 @@ def parse_hello(body: bytes) -> tuple[int, dict]:
     return version, json.loads(body[_U16.size:].decode())
 
 
-def parse_tile(body: bytes) -> tuple[int, int, int, int, int, int]:
-    """(id, seed, tile_x, tile_z, lod, priority)"""
+def parse_tile(body: bytes) -> tuple[int, int, int, int, int, int, int]:
+    """(id, seed, tile_x, tile_z, lod, priority, world)"""
     return _TILE.unpack(body)
 
 
@@ -95,8 +100,8 @@ def hello(version: int, payload: dict) -> bytes:
     return frame(HELLO, _U16.pack(version), json.dumps(payload).encode())
 
 
-def tile(req_id: int, seed: int, tile_x: int, tile_z: int, lod: int, priority: int) -> bytes:
-    return frame(TILE, _TILE.pack(req_id, seed, tile_x, tile_z, lod, priority))
+def tile(req_id: int, seed: int, tile_x: int, tile_z: int, lod: int, priority: int, world: int = 0) -> bytes:
+    return frame(TILE, _TILE.pack(req_id, seed, tile_x, tile_z, lod, priority, world))
 
 
 def cancel(req_id: int) -> bytes:

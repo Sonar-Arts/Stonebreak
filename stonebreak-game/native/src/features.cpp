@@ -916,6 +916,7 @@ std::shared_ptr<SurfaceTile> Generator::buildSurface(int64_t cx, int64_t cz) {
             const int64_t x = X0 + lx, z = Z0 + lz;
             int64_t top = cs.carvedH[col];
             if (b.water[col] != NO_WATER && b.water[col] > b.h[col]) top = std::max<int64_t>(top, b.water[col]);
+            if (cs.sea[col] != 0) top = std::max<int64_t>(top, cfg.sea); /* a sea-flooded cut */
             if (featTop[static_cast<size_t>(col)] != INT64_MIN) top = std::max(top, featTop[static_cast<size_t>(col)] + 1);
             if (top <= cfg.minY) top = cfg.minY;
             t->top[col] = top;

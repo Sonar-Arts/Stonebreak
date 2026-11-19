@@ -1,6 +1,6 @@
 /* Carvers over a 32 x 32 column footprint: PerlinWormCarver, CavernCarver, MegaCavernCarver,
- * RavineCarver, SinkholeCarver, WaterGuard, CaveWaterTable. Ported from the Java (and the previous
- * native ports in terrain_ctx.hpp / generator.cpp) with the 256-block frame replaced by the world
+ * RavineCarver, SinkholeCarver, WaterGuard, CaveWaterTable (+ the profile carve styles' sea stacks and tower
+ * karst, native only). Ported from the Java (and the previous native ports in terrain_ctx.hpp / generator.cpp) with the 256-block frame replaced by the world
  * bounds: no [1, WORLD_HEIGHT) clips, no 8-bit Y masks, a floor above the bedrock band.
  *
  * Every carver is a deterministic field: the walk of a worm depends only on (seed, source chunk),
@@ -35,6 +35,11 @@ struct CarveCtx {
     const int32_t* th = nullptr;    /* footprint heights [colIdx] */
     const int32_t* guard = nullptr; /* WaterGuard plane, nullptr = open */
     MaskSet* out = nullptr;
+    /* SEA_STACKS outputs (nullptr = not wanted; both preset to FLOOD_NONE): the footprint's CarveTile.flood and
+     * CarveTile.seal - the lowest shelf of a sea-flooded cut in the column or a face neighbour. The caller lowers the
+     * WaterGuard plane to the seal (as beside standing water) before the other carvers run. */
+    int32_t* flood = nullptr;
+    int32_t* seal = nullptr;
 
     CarveCtx(Generator& gen, const LayerSeeds& s) : g(gen), seeds(s) {}
 
@@ -71,6 +76,12 @@ void carveWorms(CarveCtx& ctx);
 void carveCaverns(CarveCtx& ctx, bool mega);
 void carveRavines(CarveCtx& ctx);
 void carveSinkholes(CarveCtx& ctx);
+/* Profile kind with SBW_FLAG_PROFILE_CARVE, top layer only (no-ops otherwise): carve styles SEA_STACKS (cliffed coasts:
+ * wave-cut platform at the water surface - a shallow shelf under the sea where the cut connects to the open sea, which
+ * floods it (ctx.flood / ctx.seal) - stacks, notches, sea caves, arches) and TOWERS (tower karst: corridors and
+ * pits between vertical-walled towers). Pointwise fields - see carvers.cpp. */
+void carveSeaStacks(CarveCtx& ctx);
+void carveTowers(CarveCtx& ctx);
 
 /* ---- cached walks ------------------------------------------------------------------------------------
  * A worm system (PerlinWormCarver.spawnWorms of one 16-block source chunk) and a ravine walk depend only on
@@ -85,7 +96,12 @@ struct SourceWindow {
 SourceWindow wormWindow(int64_t X0, int64_t Z0);
 SourceWindow ravineWindow(int64_t X0, int64_t Z0);
 bool wormSourceAt(int64_t seed, int64_t sx, int64_t sz);   /* PerlinWormCarver.hasWorm */
-bool ravineSourceAt(int64_t seed, int64_t sx, int64_t sz); /* RavineCarver.hasRavine */
+/* RavineCarver.hasRavine, or - profile kind with SBW_FLAG_PROFILE_CARVE - the same hash thinned by the carve-node
+ * density at the source chunk's centre (terrain-aware: ravines where the terrain is incised; none on plains, karst,
+ * sea stacks or towers). */
+bool ravineSourceAt(Generator& g, int64_t seed, int64_t sx, int64_t sz);
+/* The carve-node code of column (x, z) (0 unless profile kind with SBW_FLAG_PROFILE_CARVE). */
+uint16_t carveCodeAt(Generator& g, int64_t x, int64_t z);
 /* Walk one source (ctx: seeds, dry, drop; footprint fields unused). */
 std::shared_ptr<WormWalk> walkWormSystem(CarveCtx& ctx, int64_t sx, int64_t sz);
 std::shared_ptr<RavineWalk> walkRavine(CarveCtx& ctx, int64_t sx, int64_t sz);

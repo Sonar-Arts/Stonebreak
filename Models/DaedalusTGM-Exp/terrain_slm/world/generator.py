@@ -29,6 +29,7 @@ from terrain_slm.models import planner as P
 from terrain_slm.models import refiner as R
 from terrain_slm.models import descgit as DG
 from terrain_slm.models import detail as DT
+from terrain_slm.models import detail2 as D2
 from terrain_slm.models import biomenet as BN
 from terrain_slm.models import hydro as HY
 from terrain_slm.models import relief as RL
@@ -341,6 +342,12 @@ def procedural_controls_torch(ci0: int, cj0: int, hc: int, wc: int, seed: int, d
     change both together, and kernels/cuda_controls.py's `_check_constants`)."""
     ci = torch.arange(ci0, ci0 + hc, device=device, dtype=torch.float32).view(-1, 1).expand(hc, wc)
     cj = torch.arange(cj0, cj0 + wc, device=device, dtype=torch.float32).view(1, -1).expand(hc, wc)
+    return procedural_controls_at(ci, cj, seed)
+
+
+def procedural_controls_at(ci: torch.Tensor, cj: torch.Tensor, seed: int) -> dict:
+    """`procedural_controls` at arbitrary float cell coordinates (any shape): the same pointwise math, for sparse
+    samples (the EXP-2 climate node reads the controls on a ~28 km grid over continent-sized windows)."""
     continent, land = _continent(ci, cj, seed)
     wi = ci + RANGE_WARP_CELLS * _fbm(ci, cj, 400.0, seed, 4, octaves=2)
     wj = cj + RANGE_WARP_CELLS * _fbm(ci, cj, 400.0, seed, 5, octaves=2)
@@ -499,20 +506,91 @@ class GenConfig:
     fused_kernels: bool = True
 
 
+def _detail_model(c: dict):
+    """The detail sampler a checkpoint config describes: v4's Detail, or EXP-2's Detail2 (config "arch")."""
+    if c.get("arch") == "detail2":
+        cfg = dict(c)
+        cfg["channels"] = tuple(cfg["channels"])
+        mean_flow = bool(cfg.pop("mean_flow", False))     # a MeanFlow student samples in 1-2 average-velocity steps
+        experts = cfg.pop("experts", [])                   # style experts (plan §3a) live in the same state dict
+        m = D2.Detail2(D2.Detail2Config(**cfg))
+        for style in experts:
+            m.adapters[style] = D2.Expert(m.cfg)
+        m.mean_flow = mean_flow
+        return m
+    return DT.Detail(DT.DetailConfig(**{k: v for k, v in c.items() if k != "arch"}))
+
+
+def _move(obj, device):
+    """`obj` with every tensor in it (nested dict / tuple / list) moved to `device`; anything else as is.
+    A copy between devices never changes a value, so a spilled entry comes back bit-identical."""
+    if isinstance(obj, torch.Tensor):
+        return obj.to(device)
+    if isinstance(obj, dict):
+        return {k: _move(v, device) for k, v in obj.items()}
+    if isinstance(obj, (tuple, list)):
+        return type(obj)(_move(v, device) for v in obj)
+    return obj
+
+
 class _LRU(OrderedDict):
-    def __init__(self, cap):
+    """Two-tier LRU: the `gpu_cap` most recent entries stay where they were made (the GPU); older ones
+    spill to host RAM (`host_cap` more) and move back on their next use, so the cache keeps its total
+    capacity (`cap`, which callers size batches by) without holding it all in VRAM. Values are
+    bit-identical either way (VRAM audit 2026-11-18: these caches held ~1 GB of a 3.9 GB service,
+    and the detail-window cache could grow to ~1.8 GB in a long session)."""
+
+    def __init__(self, gpu_cap, host_cap=0):
         super().__init__()
-        self.cap = cap
+        self.gpu_cap, self.host_cap = gpu_cap, host_cap
+        self.cap = gpu_cap + host_cap
+        self.host: OrderedDict = OrderedDict()
+        self._home: dict = {}   # key -> device the value was made on
+
+    def __contains__(self, key):
+        return OrderedDict.__contains__(self, key) or key in self.host
+
+    def __len__(self):
+        return OrderedDict.__len__(self) + len(self.host)
+
+    def clear(self):
+        OrderedDict.clear(self)
+        self.host.clear()
+        self._home.clear()
 
     def get_or(self, key, fn):
-        if key in self:
+        if OrderedDict.__contains__(self, key):
             self.move_to_end(key)
             return self[key]
-        val = fn()
+        if key in self.host:
+            val = _move(self.host.pop(key), self._home[key])
+        else:
+            val = fn()
+            self._home[key] = _device_of(val)
         self[key] = val
-        if len(self) > self.cap:
-            self.popitem(last=False)
+        while OrderedDict.__len__(self) > self.gpu_cap:
+            old, v = self.popitem(last=False)
+            if self.host_cap <= 0:
+                self._home.pop(old, None)
+                continue
+            self.host[old] = _move(v, "cpu")
+            if len(self.host) > self.host_cap:
+                gone, _ = self.host.popitem(last=False)
+                self._home.pop(gone, None)
         return val
+
+
+def _device_of(obj):
+    if isinstance(obj, torch.Tensor):
+        return obj.device
+    if isinstance(obj, dict):
+        obj = list(obj.values())
+    if isinstance(obj, (tuple, list)):
+        for v in obj:
+            d = _device_of(v)
+            if d is not None:
+                return d
+    return None
 
 
 class WorldGenerator:
@@ -547,7 +625,7 @@ class WorldGenerator:
         self.descgit, dg_step = self._optional(model_dir / "descgit.pt", lambda c: DG.DescGit(DG.DescGitConfig(**c)))
         # Optional detail sampler (v4): replaces synth + refiner (and so the descriptor sampler)
         # for heights, drawing block-resolution terrain straight from the coarse cells + drainage.
-        self.detail, det_step = self._optional(model_dir / "detail.pt", lambda c: DT.Detail(DT.DetailConfig(**c)))
+        self.detail, det_step = self._optional(model_dir / "detail.pt", _detail_model)
         if self.detail is not None:
             self.detail = self.detail.to(memory_format=torch.channels_last)
         self.model_id = (f"{MODEL_NAME}/{model_dir.name}:p{pk.get('step', 0)}:r{rk.get('step', 0)}:l{rel_step}"
@@ -571,7 +649,9 @@ class WorldGenerator:
         self.biomenet, bio_step = self._optional(model_dir / "biome.pt", lambda c: BN.BiomeNet(BN.BiomeNetConfig(**c)))
         if bio_step != "none":
             self.model_id += f":B{bio_step}"
-        self._detail_windows = _LRU(max(64, cache_regions // 4))
+        # (GPU, host) entries. A detail window is 1 MiB (streaming touches ~9-16 at a time); it used to be
+        # cache_regions // 4 entries, all on the GPU.
+        self._detail_windows = _LRU(48, 464)
         self.detail_failures = 0
         self._dg_windows = _LRU(8192)
         if cfg.river_log_threshold is None:
@@ -583,11 +663,12 @@ class WorldGenerator:
         self.river = RP.default_pipeline(self.banks)
         self.river_cfg = RiverConfig(log_threshold=self.cfg.river_log_threshold)
         self.scale = BlockScale.game_default(device)
-        self._hydro_windows = _LRU(64)
-        self._route_windows = _LRU(128)
-        self._relief_windows = _LRU(64)
-        self._windows = _LRU(4096)
-        self._regions = _LRU(cache_regions)
+        # Same total capacity as before (callers batch by `cap`); only the GPU share is bounded.
+        self._hydro_windows = _LRU(16, 48)       # ~2.3 MiB each
+        self._route_windows = _LRU(128)          # host arrays already
+        self._relief_windows = _LRU(32, 32)      # ~0.8 MiB each
+        self._windows = _LRU(768, 3328)          # planner windows, ~176 KiB each
+        self._regions = _LRU(min(cache_regions, 128), min(896, max(0, cache_regions - 128)))   # v3 path only
         self.lock = threading.RLock()
 
     def _optional(self, path: Path, build):
@@ -601,19 +682,59 @@ class WorldGenerator:
         m.load_state_dict(k["model"])
         return m, k.get("step", 0)
 
-    def _sample(self, model, cond: torch.Tensor, noise: torch.Tensor, steps: int, t_start: float = 0.0) -> torch.Tensor:
+    def _sample(self, model, cond: torch.Tensor, noise: torch.Tensor, steps: int, t_start: float = 0.0,
+                gates: torch.Tensor | None = None) -> torch.Tensor:
         """Euler-sample `model` (the detail or relief UNet) from `noise` under `cond`: the native sampler when
         kernels are on (CUDA graph on a GPU, C++ on the CPU; one per model and window shape, built on first
         use), else the torch sampler. All return the encoded sample (1, 1, H, W) fp32."""
         if id(model) not in self._fused:
             if isinstance(model, DT.Detail):
                 return DT.sample(model, cond.contiguous(memory_format=torch.channels_last), noise, steps=steps, t_start=t_start)
+            if isinstance(model, D2.Detail2):   # EXP-2 backbone (torch path until its native plan exists)
+                return D2.sample(model, cond.contiguous(memory_format=torch.channels_last), noise, steps=steps,
+                                 t_start=t_start, mean_flow=getattr(model, "mean_flow", False), gates=gates)
             return R.sample(model, cond, noise, steps=steps)
         key = (id(model), tuple(cond.shape), steps, t_start)
         fs = self._samplers.get(key)
         if fs is None:
-            fs = self._samplers[key] = self._sampler_cls(model, cond.shape[-2], cond.shape[-1], steps, t_start)
+            # After warm-up the torch copy waits in host RAM (_offload_fused); a new window shape
+            # borrows the GPU for it just while its sampler packs the weights.
+            borrowed = torch.device(self.device).type == "cuda" and next(model.parameters()).device.type == "cpu"
+            if borrowed:
+                model.to(self.device)
+            try:
+                fs = self._samplers[key] = self._sampler_cls(model, cond.shape[-2], cond.shape[-1], steps, t_start)
+            finally:
+                if borrowed:
+                    model.to("cpu")
         return fs(cond, noise)
+
+    def _offload_fused(self) -> None:
+        """The native samplers own packed fp16 copies of their UNets' weights, so the fp32 torch modules
+        only matter if another window shape ever needs a sampler built: keep them in host RAM (~200 MiB of
+        VRAM for v4), then hand the warm-up's temporaries back to the driver."""
+        if torch.device(self.device).type != "cuda":
+            return
+        for m in (self.detail, self.relief):
+            if m is not None and id(m) in self._fused:
+                m.to("cpu")
+        torch.cuda.empty_cache()
+
+    def controls(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
+        """The world controls for cells [ci0, ci0+hc) x [cj0, cj0+wc) at the current seed: v4's procedural controls.
+        Every generator stage reads them through this one hook, so an EXP-2 generator can swap in controls2 + the
+        climate node without touching v4 (whose tiles stay bit-identical)."""
+        return procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
+
+    def detail_gates(self, ci0: int, cj0: int, nc: int, margin_samples: int) -> torch.Tensor | None:
+        """Style-expert gates (1, len(detail2.STYLES), EXT, EXT) for the detail window whose cells start at (ci0, cj0)
+        (nc cells, margin_samples cropped each side), or None: v4 has no experts. EXP-2 overrides it."""
+        return None
+
+    def fine_detail(self, i1: int, j1: int, i2: int, j2: int) -> torch.Tensor | None:
+        """Native pixels finer than the detail samples (the SR node at 1:2), or None for the default path. EXP-2
+        overrides it."""
+        return None
 
     def warm_up(self, report=lambda what: None) -> None:
         """Compile the native kernels and build the samplers (capturing their CUDA graphs on a GPU) now
@@ -624,7 +745,7 @@ class WorldGenerator:
             return
         with self.lock, torch.no_grad():
             report("terrain controls")
-            procedural_controls(0, 0, 8, 8, self.seed, self.device)
+            self.controls(0, 0, 8, 8)
             for name, model, n, n_cond, steps, t_start in (
                     ("relief sampler", self.relief, RELIEF_EXT, RL.N_COND, self.cfg.relief_steps, 0.0),
                     ("detail sampler", self.detail, DETAIL_EXT, DT.N_COND, self.cfg.detail_steps, DETAIL_T_START)):
@@ -635,6 +756,7 @@ class WorldGenerator:
                 self._sample(model, zeros(n_cond), zeros(1), steps, t_start)
             if torch.device(self.device).type == "cuda":
                 torch.cuda.synchronize(self.device)
+            self._offload_fused()
 
     def set_block_scale(self, scale: BlockScale) -> None:
         """The game's metres<->blocks mapping (the service passes the one from its handshake)."""
@@ -699,7 +821,7 @@ class WorldGenerator:
         def run():
             ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
             n, m = RELIEF_EXT, math.ceil(3 * RL.TREND_PREBLUR_SIGMA)
-            c = procedural_controls(ci0 - m, cj0 - m, n + 2 * m, n + 2 * m, self.seed, self.device)
+            c = self.controls(ci0 - m, cj0 - m, n + 2 * m, n + 2 * m)
             crop = lambda x: x[..., m : m + n, m : m + n]
             smooth = crop(D.blur(c["trend"][None, None], RL.TREND_PREBLUR_SIGMA))
             wild = (crop(c["wild"])[None, None] - P.WILD_NORM[0]) / P.WILD_NORM[1]
@@ -709,6 +831,8 @@ class WorldGenerator:
             noise = S.white_noise(ci0, cj0, n, n, self.seed, RELIEF_NOISE_STREAM, self.device)[None, None]
             with torch.no_grad():
                 x = self._sample(self.relief, cond, noise, self.cfg.relief_steps)
+                if self.relief.cfg.amp_norm:
+                    x = x * RL.relief_amp(cond)
             # Oceans keep the trend (the training regions have little deep sea); inland,
             # sampled valleys may not open basins below sea level.
             gate = _smoothstep((smooth + 100.0) / 300.0)
@@ -722,7 +846,7 @@ class WorldGenerator:
         """The planner's trend for cells [ci0, ci0+hc) x [cj0, cj0+wc): the procedural trend
         plus sampled valley-scale relief (plain procedural trend without a relief model)."""
         if self.relief is None:
-            return procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)["trend"]
+            return self.controls(ci0, cj0, hc, wc)["trend"]
         return self._blend(ci0, cj0, hc, wc, lambda wi, wj: self._relief_window(wi, wj)[None], 1)[0]
 
     # ---------------------------------------------------------------- planner (cells)
@@ -731,7 +855,7 @@ class WorldGenerator:
         Every field is pointwise or blended from canonical windows, so any sub-window of a larger
         call is identical to calling it on that sub-window alone."""
         m = n if m is None else m
-        c = procedural_controls(ci0, cj0, n, m, self.seed, self.device)
+        c = self.controls(ci0, cj0, n, m)
         c["trend"] = self.trend(ci0, cj0, n, m)
         x = torch.zeros(1, P.N_IN, n, m, device=self.device)
         x[0, P.IN_TREND] = c["trend"] / P.HEIGHT_SCALE_M
@@ -881,7 +1005,7 @@ class WorldGenerator:
         ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
         n = RELIEF_EXT
         height = self._planner_cells(ci0, cj0, n, n)[0]
-        c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
+        c = self.controls(ci0, cj0, n, n)
         x = HY.build_input(height[None, None], {k: c[k][None, None] for k in P.CLIMATE_NAMES})
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
             out = self.hydro(x)[0].float()
@@ -894,7 +1018,7 @@ class WorldGenerator:
             ci0, cj0 = wi * RELIEF_CORE - RELIEF_APRON, wj * RELIEF_CORE - RELIEF_APRON
             n = RELIEF_EXT
             height = self._planner_cells(ci0, cj0, n, n)[0]
-            c = procedural_controls(ci0, cj0, n, n, self.seed, self.device)
+            c = self.controls(ci0, cj0, n, n)
             # Route over the height plus a few metres of smooth, coordinate-hashed noise: on near-flat
             # plains a steepest-descent path otherwise runs dead straight along the cell grid.
             jit = D.blur(S.white_noise(ci0, cj0, n, n, self.seed, ROUTE_NOISE_STREAM, self.device)[None, None],
@@ -959,7 +1083,7 @@ class WorldGenerator:
         """Blended planner fields + controls for cells [ci0, ci0+hc) x [cj0, cj0+wc); drainage
         (logacc, river, d8) from the hydro sidecar when one is loaded."""
         out = self._planner_cells(ci0, cj0, hc, wc)
-        ctrl = procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
+        ctrl = self.controls(ci0, cj0, hc, wc)
         ctrl["trend_raw"] = ctrl["trend"]
         ctrl["trend"] = self.trend(ci0, cj0, hc, wc)
         res = {"height": out[0], "desc": out[1:9], "river": out[9], "logacc": out[10], "d8": None, **ctrl}
@@ -978,7 +1102,7 @@ class WorldGenerator:
             dr = self.drainage(ci0, cj0, hc, wc)
             if not dr:
                 dr = {"logacc": self._planner_cells(ci0, cj0, hc, wc)[10], "d8": None}
-            c = procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
+            c = self.controls(ci0, cj0, hc, wc)
             m = int(math.ceil(3 * LAPSE_REGIONAL_SIGMA_CELLS)) + 1   # regional lapse, as full tiles use
             reg = D.blur(soft_cap_peaks(self._planner_cells(ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m)[0])[None, None],
                          LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, m:-m, m:-m]
@@ -1030,7 +1154,7 @@ class WorldGenerator:
             # validation did (train_detail: blur 0.5-2 cells; val 1.0). Unblurred planner output keeps a faint
             # 4-cell (16-sample) patch texture that the sampler never saw and that its stride-16 level resonates with.
             raw_height = self._planner_cells(ci0, cj0, nc, nc)[0][None, None]
-            ctrl = procedural_controls(ci0, cj0, nc, nc, self.seed, self.device)
+            ctrl = self.controls(ci0, cj0, nc, nc)
             dr = self.drainage(ci0, cj0, nc, nc)
             if dr:
                 logacc = dr["logacc"][None, None] / P.LOGACC_SCALE
@@ -1055,7 +1179,8 @@ class WorldGenerator:
                                      up(climate), up(logacc), up(river), flag(0.0), flag(1.0), flag(float(use_climate)),
                                      flag(has_flow))
                 with torch.no_grad():
-                    x = self._sample(self.detail, cond, noise, self.cfg.detail_steps, DETAIL_T_START)
+                    x = self._sample(self.detail, cond, noise, self.cfg.detail_steps, DETAIL_T_START,
+                                     gates=self.detail_gates(ci0, cj0, nc, ms))
                 res = DT.decode(x.clamp(-DETAIL_X_LIMIT, DETAIL_X_LIMIT))
                 ok = bool(torch.isfinite(x).all()) and float(x.abs().max()) < DETAIL_X_LIMIT
                 if ok:
@@ -1093,10 +1218,23 @@ class WorldGenerator:
         """Native pixels from the detail sampler: each 60 m sample covers 2x2 native pixels
         (nearest), so the tile builder's 2x2 block mean returns the model's samples exactly."""
         ds = DT.DS
-        s1, t1 = i1 // ds, j1 // ds
-        s2, t2 = -(-i2 // ds), -(-j2 // ds)
-        samp = self._detail_samples(s1, t1, s2, t2)
-        px = samp.repeat_interleave(ds, 0).repeat_interleave(ds, 1)
+        fine = self.fine_detail(i1, j1, i2, j2)
+        if fine is not None:
+            return fine
+        if self.scale.px_per_block < ds:
+            # Blocks finer than the 60 m samples (1:2, 30 m blocks): nearest would stair-step every hill in
+            # 2x2 pairs, so interpolate between sample centres (bilinear, one sample of margin each side so
+            # the edge pixels see real neighbours; values depend only on canonical samples, so tiles stay
+            # request-independent). Interim until EXP-2's SR-30 node adds the missing 30 m detail.
+            s1, t1 = i1 // ds - 1, j1 // ds - 1
+            s2, t2 = -(-i2 // ds) + 1, -(-j2 // ds) + 1
+            samp = self._detail_samples(s1, t1, s2, t2)
+            px = F.interpolate(samp[None, None], scale_factor=ds, mode="bilinear", align_corners=False)[0, 0]
+        else:
+            s1, t1 = i1 // ds, j1 // ds
+            s2, t2 = -(-i2 // ds), -(-j2 // ds)
+            samp = self._detail_samples(s1, t1, s2, t2)
+            px = samp.repeat_interleave(ds, 0).repeat_interleave(ds, 1)
         oi, oj = i1 - s1 * ds, j1 - t1 * ds
         return px[oi : oi + (i2 - i1), oj : oj + (j2 - j1)]
 
@@ -1161,7 +1299,7 @@ class WorldGenerator:
         with self.lock:
             cells = soft_cap_peaks(self._planner_cells(ci0 - m - mr, cj0 - m - mr, hc + 2 * (m + mr),
                                                        wc + 2 * (m + mr))[0])
-            ctrl = procedural_controls(ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m, self.seed, self.device)
+            ctrl = self.controls(ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m)
         reg = D.blur(cells[None, None], LAPSE_REGIONAL_SIGMA_CELLS)[0, 0, mr:-mr, mr:-mr]
         height = cells[mr:-mr, mr:-mr]
         climate = torch.stack([ctrl["t0"] - LAPSE_C_PER_M * reg.clamp_min(0.0),
@@ -1200,7 +1338,7 @@ class WorldGenerator:
         ci0, cj0 = i1 // CP - 1, j1 // CP - 1
         hc, wc = (i2 - 1) // CP + 2 - ci0, (j2 - 1) // CP + 2 - cj0
         with self.lock:
-            ctrl = procedural_controls(ci0, cj0, hc, wc, self.seed, self.device)
+            ctrl = self.controls(ci0, cj0, hc, wc)
         stack = torch.stack([ctrl["t0"], ctrl["tseason"], ctrl["precip"], ctrl["pcv"]])[None]
         up = F.interpolate(stack, size=(hc * CP, wc * CP), mode="bilinear", align_corners=False)[0]
         oi, oj = i1 - ci0 * CP, j1 - cj0 * CP

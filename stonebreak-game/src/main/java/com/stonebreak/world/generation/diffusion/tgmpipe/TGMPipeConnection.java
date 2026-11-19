@@ -27,11 +27,11 @@ final class TGMPipeConnection implements AutoCloseable {
     private static final Logger LOG = Logger.getLogger(TGMPipeConnection.class.getName());
 
     /** A tile someone is waiting on; survives a service restart (it is re-sent on the new connection). */
-    record TileRequest(long seed, int tileX, int tileZ, int lod, int priority,
+    record TileRequest(long seed, int tileX, int tileZ, int lod, int priority, int world,
                        CompletableFuture<TerrainTile> future) {
         @Override
         public String toString() {
-            return "tile (" + tileX + "," + tileZ + ") lod " + lod + " seed " + seed;
+            return "tile (" + tileX + "," + tileZ + ") lod " + lod + " seed " + seed + " world " + world;
         }
     }
 
@@ -63,9 +63,9 @@ final class TGMPipeConnection implements AutoCloseable {
     }
 
     /** Starts reading and sends the handshake; {@link #ready()} completes with the READY json. */
-    void open(String worldConfigJson) {
+    void open(String handshakeJson) {
         reader.start();
-        write(TGMPipeProtocol.hello(worldConfigJson));
+        write(TGMPipeProtocol.hello(handshakeJson));
     }
 
     CompletableFuture<String> ready() {
@@ -86,7 +86,7 @@ final class TGMPipeConnection implements AutoCloseable {
             throw new TGMPipeException("TGMPipe connection is closed");
         }
         write(TGMPipeProtocol.tile(id, request.seed(), request.tileX(), request.tileZ(),
-                request.lod(), request.priority()));
+                request.lod(), request.priority(), request.world()));
         // Registered after the TILE is written, so a CANCEL can never overtake it.
         request.future().whenComplete((tile, err) -> {
             // Only a request completed from OUTSIDE is still pending here: the reader removes

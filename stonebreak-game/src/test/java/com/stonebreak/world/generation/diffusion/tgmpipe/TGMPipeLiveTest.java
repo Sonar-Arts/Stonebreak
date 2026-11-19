@@ -1,5 +1,7 @@
 package com.stonebreak.world.generation.diffusion.tgmpipe;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
 import com.stonebreak.world.generation.diffusion.TGMPipeException;
 import com.stonebreak.world.generation.diffusion.TerrainScale;
@@ -87,6 +89,30 @@ class TGMPipeLiveTest {
         // FastLOD's node store is keyed on it: without it every world's LOD cache is thrown away.
         String namespace = TGMPipe.getInstance().cacheNamespace();
         assertTrue(namespace != null && namespace.matches("[0-9a-f]{16}"), "cache namespace: " + namespace);
+    }
+
+    @Test
+    @Order(1)
+    void oneServiceBuildsBothScalesIntoSeparateCaches() throws Exception {
+        long seed = freshSeed();
+        try (var quarter = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_WORLD, TerrainScalePreset.ONE_TO_FOUR);
+             var half = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_WORLD, TerrainScalePreset.ONE_TO_TWO)) {
+            TerrainTile q = quarter.getTileAsync(0, 0).get(4, TimeUnit.MINUTES);
+            TerrainTile h = half.getTileAsync(0, 0).get(4, TimeUnit.MINUTES);
+            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, q.width());
+            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, h.width());
+            assertNotEquals(null, service.cacheNamespace(TerrainScalePreset.ONE_TO_TWO));
+            assertNotEquals(service.cacheNamespace(TerrainScalePreset.ONE_TO_FOUR),
+                    service.cacheNamespace(TerrainScalePreset.ONE_TO_TWO), "each scale caches apart");
+            // The 1:2 tile is the 1:4 tile's top-left quarter at twice the resolution: different blocks.
+            boolean differs = false;
+            for (int x = 0; x < 64 && !differs; x++) {
+                for (int z = 0; z < 64 && !differs; z++) {
+                    differs = q.heightAt(x, z) != h.heightAt(x, z);
+                }
+            }
+            assertTrue(differs, "a 1:2 tile must not be the 1:4 tile");
+        }
     }
 
     @Test

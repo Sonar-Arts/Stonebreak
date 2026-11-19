@@ -236,7 +236,7 @@ void Generator::helpWalks(int layer, int64_t X0, int64_t Z0) {
     std::shared_ptr<const RavineWalk> rw;
     for (int64_t sx = r.c0; sx <= r.c1; sx++) {
         for (int64_t sz = r.d0; sz <= r.d1; sz++) {
-            if (ravineSourceAt(seed, sx, sz) && !ravineCache.contains(sx, sz)) ravineCache.tryGet(sx, sz, rbuild, rw);
+            if (ravineSourceAt(*this, seed, sx, sz) && !ravineCache.contains(sx, sz)) ravineCache.tryGet(sx, sz, rbuild, rw);
         }
     }
 }
@@ -281,7 +281,7 @@ void Generator::carveTopRavines(CarveCtx& ctx) {
     std::vector<std::pair<int64_t, int64_t>> deferred;
     for (int64_t sx = w.c0; sx <= w.c1; sx++) {
         for (int64_t sz = w.d0; sz <= w.d1; sz++) {
-            if (!ravineSourceAt(seed, sx, sz)) continue;
+            if (!ravineSourceAt(*this, seed, sx, sz)) continue;
             std::shared_ptr<const RavineWalk> walk;
             if (!ravineCache.tryGet(sx, sz, build, walk)) {
                 deferred.emplace_back(sx, sz);
@@ -361,6 +361,7 @@ std::shared_ptr<BaseTile> Generator::buildBase(int64_t cx, int64_t cz) {
         t->riverFloor[c] = prof->river_floor[c];
         t->riverRoof[c] = prof->river_roof[c];
         t->riverFlow[c] = prof->river_flow[c];
+        t->carve[c] = prof->carve[c];
         const int32_t depth = (water == NO_WATER) ? 0 : water - h;
         t->surface[c] = surfaceAt(biome, cx * CE + (c & 31), cz * CE + (c >> 5), depth);
         t->minH = std::min(t->minH, h);
@@ -389,6 +390,12 @@ std::shared_ptr<CarveTile> Generator::buildCarve(int64_t cx, int64_t cz) {
     ctx.th = b.h;
     ctx.guard = t->guard;
     ctx.out = &t->cave;
+    /* sea stacks first: their flooded cuts lower the water guard every later carver keeps clear of (the carved cells
+     * are a union - only the guard depends on the order, and only where a cut floods) */
+    ctx.flood = t->flood;
+    ctx.seal = t->seal;
+    carveSeaStacks(ctx);
+    for (int c = 0; c < COLS; c++) t->guard[c] = std::min(t->guard[c], t->seal[c]);
     carveLayerWorms(ctx, 0);
     ctx.out = &cavA;
     carveCaverns(ctx, false);
@@ -401,6 +408,7 @@ std::shared_ptr<CarveTile> Generator::buildCarve(int64_t cx, int64_t cz) {
     ctx.out = &t->cave;
     carveTopRavines(ctx);
     carveSinkholes(ctx);
+    carveTowers(ctx);
 
     /* CaveWaterTable per column */
     float wob[COLS];
@@ -427,7 +435,7 @@ std::shared_ptr<CarveTile> Generator::buildCarve(int64_t cx, int64_t cz) {
             if (y >= b.h[c]) return false;
             if (t->cave.test(lx, y, lz)) return false;
             PointDensity d{*this, X0 + lx, y, Z0 + lz, {}};
-            return densitySolid(d, y, b.h[c], b.biome[c], b.refH[c], t->table[c], t->guard[c]);
+            return densitySolid(d, y, b.h[c], b.biome[c], b.refH[c], t->table[c], t->guard[c], t->seal[c]);
         };
         for (int lz = 0; lz < CE; lz++) {
             for (int lx = 0; lx < CE; lx++) {
@@ -562,7 +570,9 @@ std::shared_ptr<DeepTile> Generator::buildDeepLayer(int i, int64_t cx, int64_t c
 /* ------------------------------------------------------------------------ test hook */
 void Generator::carveFootprint(int64_t x0, int64_t z0, const int32_t* heights, const int32_t* water,
                                int64_t seedLayer, bool withSurfaceCarvers, MaskSet& cave, MaskSet& formA,
-                               MaskSet& formB) {
+                               MaskSet& formB, int32_t* flood, int32_t* seal) {
+    if (flood != nullptr) std::fill_n(flood, COLS, FLOOD_NONE);
+    if (seal != nullptr) std::fill_n(seal, COLS, FLOOD_NONE);
     int32_t guard[COLS];
     waterGuardPlane(*this, x0, z0, heights, water, guard);
     MaskSet cavA, cavB;
@@ -572,6 +582,17 @@ void Generator::carveFootprint(int64_t x0, int64_t z0, const int32_t* heights, c
     ctx.th = heights;
     ctx.guard = guard;
     ctx.out = &cave;
+    if (withSurfaceCarvers) {   /* as buildCarve: sea stacks (and their guard) before every other carver */
+        int32_t floodLocal[COLS], sealLocal[COLS];
+        std::fill_n(floodLocal, COLS, FLOOD_NONE);
+        std::fill_n(sealLocal, COLS, FLOOD_NONE);
+        ctx.flood = flood != nullptr ? flood : floodLocal;
+        ctx.seal = seal != nullptr ? seal : sealLocal;
+        carveSeaStacks(ctx);
+        for (int c = 0; c < COLS; c++) guard[c] = std::min(guard[c], ctx.seal[c]);
+        ctx.flood = nullptr;
+        ctx.seal = nullptr;
+    }
     carveWorms(ctx);
     ctx.out = &cavA;
     carveCaverns(ctx, false);
@@ -585,6 +606,7 @@ void Generator::carveFootprint(int64_t x0, int64_t z0, const int32_t* heights, c
         ctx.out = &cave;
         carveRavines(ctx);
         carveSinkholes(ctx);
+        carveTowers(ctx);
     }
 }
 

@@ -43,8 +43,8 @@ def test_tile_matches_bigger_request(api):
 
 def test_tile_planes_follow_the_water_rule(api):
     planes = api.build(7, 0, 0, 1)
-    assert planes.shape == (6, api.world.tile_size, api.world.tile_size) and planes.dtype == np.int16
-    h, _, water, floor, roof, flow = planes
+    assert planes.shape == (7, api.world.tile_size, api.world.tile_size) and planes.dtype == np.int16
+    h, _, water, floor, roof, flow, _carve = planes
     sea = api.world.sea_level
     assert (water[h < sea] >= sea).all(), "a column below sea level holds no sea"
     wet = water >= 0

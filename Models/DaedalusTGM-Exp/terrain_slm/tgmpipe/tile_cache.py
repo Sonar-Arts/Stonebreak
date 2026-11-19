@@ -43,10 +43,14 @@ def namespace(world_fingerprint: str, model_id: str, source: str) -> str:
 
 
 class TileCache:
-    def __init__(self, root: Path, namespace: str, max_bytes: int):
+    def __init__(self, root: Path, namespace: str | list[str], max_bytes: int):
+        """`namespace`: one, or one per world (TileKey.world indexes the list)."""
         self.root = Path(root)
-        self.dir = self.root / namespace
-        self.dir.mkdir(parents=True, exist_ok=True)
+        names = [namespace] if isinstance(namespace, str) else list(namespace)
+        self.dirs = [self.root / n for n in names]
+        self.dir = self.dirs[0]
+        for d in self.dirs:
+            d.mkdir(parents=True, exist_ok=True)
         self._max_bytes = max_bytes
         self._lock = threading.Lock()
         # Size index over the whole root, built once; kept current by put() and eviction.
@@ -60,7 +64,7 @@ class TileCache:
         self._bytes = sum(size for _, size in self._files.values())
 
     def _path(self, key: TileKey) -> Path:
-        return self.dir / f"s{key.seed}_x{key.tile_x}_z{key.tile_z}_l{key.lod}.tile"
+        return self.dirs[key.world] / f"s{key.seed}_x{key.tile_x}_z{key.tile_z}_l{key.lod}.tile"
 
     def get(self, key: TileKey) -> np.ndarray | None:
         """(PLANES, rows, cols) int16, or None."""
@@ -104,10 +108,11 @@ class TileCache:
             del self._files[path]
             self._bytes -= size
         for d in self.root.iterdir():
-            if d.is_dir() and d != self.dir and not any(d.iterdir()):
+            if d.is_dir() and d not in self.dirs and not any(d.iterdir()):
                 d.rmdir()
 
     def stats(self) -> dict:
         with self._lock:
-            return {"namespace": self.dir.name, "files": len(self._files), "bytes": self._bytes,
+            return {"namespace": self.dir.name, "namespaces": [d.name for d in self.dirs],
+                    "files": len(self._files), "bytes": self._bytes,
                     "max_bytes": self._max_bytes}

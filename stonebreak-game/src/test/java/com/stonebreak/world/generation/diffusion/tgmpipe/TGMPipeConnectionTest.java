@@ -47,7 +47,7 @@ class TGMPipeConnectionTest {
         PipedInputStream gameIn = new PipedInputStream(toGame, 1 << 20);
         PipedOutputStream gameOut = new PipedOutputStream(fromGame);
         connection = new TGMPipeConnection(gameIn, gameOut, (c, reason, unfinished) -> closures.add(unfinished));
-        connection.open("{\"world\":{}}");
+        connection.open("{\"worlds\":[{}]}");
         return connection;
     }
 
@@ -88,7 +88,7 @@ class TGMPipeConnectionTest {
     }
 
     private static TGMPipeConnection.TileRequest request(long seed, int x, int z) {
-        return new TGMPipeConnection.TileRequest(seed, x, z, 1, 0, new CompletableFuture<>());
+        return new TGMPipeConnection.TileRequest(seed, x, z, 1, 0, 0, new CompletableFuture<>());
     }
 
     @Test
@@ -99,6 +99,19 @@ class TGMPipeConnectionTest {
         assertEquals(TGMPipeProtocol.VERSION, hello.body().getShort(0));
         send(TGMPipeProtocol.READY, "{\"name\":\"fake\"}".getBytes(StandardCharsets.UTF_8));
         assertEquals("{\"name\":\"fake\"}", connection.ready().get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void aTileNamesItsWorldAndReadyListsANamespacePerWorld() throws Exception {
+        open();
+        nextFromGame(); // HELLO
+        connection.send(new TGMPipeConnection.TileRequest(4L, 0, 0, 1, 2, 1, new CompletableFuture<>()));
+        ByteBuffer body = nextFromGame().body();
+        assertEquals(2, body.get(21));   // priority
+        assertEquals(1, body.get(22));   // world: the 1:2 preset's ordinal
+        assertEquals(java.util.List.of("ns4", "ns2"),
+                TGMPipe.cacheNamespacesOf("{\"cache_namespace\":\"ns4\",\"cache_namespaces\":[\"ns4\",\"ns2\"]}"));
+        assertEquals(java.util.List.of(), TGMPipe.cacheNamespacesOf("{\"cache_namespace\":\"old\"}"));
     }
 
     @Test
@@ -196,7 +209,7 @@ class TGMPipeConnectionTest {
 
     @Test
     void encodersWriteTheDocumentedLayout() throws IOException {
-        byte[] tile = TGMPipeProtocol.tile(3, -2L, -7, 8, 8, 1);
+        byte[] tile = TGMPipeProtocol.tile(3, -2L, -7, 8, 8, 1, 1);
         ByteBuffer buf = ByteBuffer.wrap(tile).order(ByteOrder.LITTLE_ENDIAN);
         assertEquals(tile.length - 4, buf.getInt());
         assertEquals(TGMPipeProtocol.TILE, buf.get());
@@ -206,6 +219,7 @@ class TGMPipeConnectionTest {
         assertEquals(8, buf.getInt());
         assertEquals(8, buf.get());
         assertEquals(1, buf.get());
+        assertEquals(1, buf.get());   // world (v2)
         assertEquals(0, buf.remaining());
 
         TGMPipeProtocol.Frame read = TGMPipeProtocol.read(new ByteArrayInputStream(TGMPipeProtocol.cancel(77)));

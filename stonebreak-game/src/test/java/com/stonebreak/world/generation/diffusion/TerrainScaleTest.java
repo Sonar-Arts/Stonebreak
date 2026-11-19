@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -12,10 +13,11 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The handshake's world config must name exactly the fields of TGMPipe's
+ * The handshake's world configs (one per terrain scale, protocol v2) must name exactly the fields of TGMPipe's
  * {@code WorldConfig} — the service refuses a missing or unknown key, so drift would only
  * surface as a failed world load.
  */
@@ -36,19 +38,36 @@ class TerrainScaleTest {
         Matcher f = FIELD.matcher(Files.readString(python));
         while (f.find()) fields.add(f.group(1));
 
-        Set<String> sent = new LinkedHashSet<>();
-        Matcher k = KEY.matcher(TerrainScale.worldConfigJson());
-        while (k.find()) sent.add(k.group(1));
-        sent.remove("world");
-
-        assertEquals(fields, sent);
+        for (TerrainScalePreset preset : TerrainScalePreset.values()) {
+            Set<String> sent = new LinkedHashSet<>();
+            Matcher k = KEY.matcher(TerrainScale.worldConfigJson(preset));
+            while (k.find()) sent.add(k.group(1));
+            assertEquals(fields, sent, preset.name());
+        }
     }
 
     @Test
-    void worldConfigCarriesTheGameScale() {
-        String json = TerrainScale.worldConfigJson();
-        assertEquals(true, json.startsWith("{\"world\":{\"world_height\":"));
-        assertEquals(true, json.contains("\"downscale\":" + TerrainScale.DOWNSCALE + ","));
-        assertEquals(true, json.contains("\"tile_size\":" + TerrainScale.TILE_SIZE_BLOCKS + ","));
+    void handshakeListsOneWorldPerScaleInOrdinalOrder() {
+        String json = TerrainScale.handshakeJson();
+        StringBuilder expected = new StringBuilder("{\"worlds\":[");
+        for (TerrainScalePreset p : TerrainScalePreset.values()) {
+            expected.append(TerrainScale.worldConfigJson(p)).append(',');
+        }
+        expected.setLength(expected.length() - 1);
+        assertEquals(expected.append("]}").toString(), json);
+    }
+
+    @Test
+    void eachWorldCarriesItsScale() {
+        String quarter = TerrainScale.worldConfigJson(TerrainScalePreset.ONE_TO_FOUR);
+        assertTrue(quarter.startsWith("{\"world_height\":"));
+        assertTrue(quarter.contains("\"horizontal_m\":60.0,") && quarter.contains("\"downscale\":2,"));
+        assertTrue(quarter.contains("\"lowland_m_per_block\":16.0,"));
+        assertTrue(quarter.contains("\"tile_size\":" + TerrainScale.TILE_SIZE_BLOCKS + ","));
+        String half = TerrainScale.worldConfigJson(TerrainScalePreset.ONE_TO_TWO);
+        assertTrue(half.contains("\"horizontal_m\":30.0,") && half.contains("\"downscale\":1,"));
+        assertTrue(half.contains("\"lowland_m_per_block\":8.0,") && half.contains("\"highland_m_per_block\":19.0,"));
+        assertEquals(2, TerrainScale.downscale(TerrainScalePreset.ONE_TO_FOUR));
+        assertEquals(1, TerrainScale.downscale(TerrainScalePreset.ONE_TO_TWO));
     }
 }

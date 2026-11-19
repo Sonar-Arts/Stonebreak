@@ -37,6 +37,8 @@ constexpr int COLS = CE * CE;     /* columns per column cube */
 constexpr int CELLS = CE * CE * CE;
 constexpr int CHUNK = 16;         /* the old chunk grid: spawn hashes of every carver/feature use it */
 constexpr int32_t NO_WATER = SBW_NO_WATER;
+/* CarveTile.flood of a column that holds no carved sea water */
+constexpr int32_t FLOOD_NONE = INT32_MAX;
 
 inline int colIdx(int lx, int lz) { return lz * CE + lx; }
 inline int cellIdx(int lx, int ly, int lz) { return (ly << 10) | (lz << 5) | lx; }
@@ -157,16 +159,27 @@ struct BaseTile {
     bool rivers = false;
     int32_t riverFloor[COLS]{}, riverRoof[COLS]{};
     int8_t riverFlow[COLS]{};
+    uint16_t carve[COLS]{};   /* profile kind: carve-node codes (sbw_column_profile.carve), 0 otherwise */
     int32_t minH = 0, maxH = 0;
     int32_t maxTop = 0;       /* max over columns of max(h, water) */
 };
 
 /* L1: the top-layer carve of a column cube. */
 struct CarveTile {
-    MaskSet cave;             /* worms, caverns, megacaverns, ravines, sinkholes */
+    MaskSet cave;             /* worms, caverns, megacaverns, ravines, sinkholes, sea stacks, towers */
     MaskSet formation;        /* pruned stalagmite/stalactite pillars (STONE) */
     int32_t guard[COLS]{};    /* WaterGuard plane (INT32_MAX = open) */
     int32_t table[COLS]{};    /* CaveWaterTable per column */
+    /* sea-flooded carve (SEA_STACKS cuts connected to the open sea): carved cells with flood <= y < cfg.sea are
+     * WATER, not AIR. FLOOD_NONE = none (every other carver, every legacy world). */
+    int32_t flood[COLS];
+    /* Density3D seal beside a sea-flooded cut (the shelf of the column or of a face neighbour, FLOOD_NONE = none):
+     * cells with seal - 1 <= y < cfg.sea are never density caves, so the flooded water stays contained */
+    int32_t seal[COLS];
+    CarveTile() {
+        std::fill_n(flood, COLS, FLOOD_NONE);
+        std::fill_n(seal, COLS, FLOOD_NONE);
+    }
 };
 
 /* L1 surface: the carved surface of a column cube (small; FastLOD keeps many). */
@@ -174,6 +187,7 @@ struct CarvedTile {
     int32_t carvedH[COLS]{};  /* one past the highest solid block (river voids and water excluded) */
     uint8_t carved[COLS]{};   /* carvedH < raw height */
     uint16_t top[COLS]{};     /* the generated block at carvedH - 1 (before pools) */
+    uint8_t sea[COLS]{};      /* 1: an open sea-flooded carve - sea water from carvedH up to cfg.sea (CarveTile.flood) */
 };
 
 /* L1b: swamp pools of a column cube (need the neighbours' carved surfaces). */
@@ -517,7 +531,8 @@ public:
     /* density solidity (Density3D.isSolid); dens(k) yields channel k (0 cheese, 1/2 spaghetti,
      * 3 crag) at the cell, sampled lazily */
     template <typename D>
-    bool densitySolid(D&& dens, int64_t y, int32_t h, int biome, int32_t refH, int32_t wtable, int32_t guard) const;
+    bool densitySolid(D&& dens, int64_t y, int32_t h, int biome, int32_t refH, int32_t wtable, int32_t guard,
+                      int32_t seal = FLOOD_NONE) const;
     /* the terrain block decision shared by cube fills and point queries */
     template <typename D>
     uint16_t decideBlock(const BaseTile& b, const CarveTile& c, int col, int lx, int lz, int64_t x, int64_t y,
@@ -527,7 +542,7 @@ public:
      * per-slice mask cursors and evaluate densitySolid over batches) */
     template <typename F, typename V, typename S>
     uint16_t decideBlockM(const BaseTile& b, F&& inFormation, V&& inCave, S&& solid, int col, int64_t x, int64_t y,
-                          int64_t z) const;
+                          int64_t z, int32_t flood = FLOOD_NONE) const;
     double cheeseThreshold(double depth) const;
     /* cheeseThreshold(depth) for an integer depth: tabulated (same values) for 0..CHEESE_TABLE-1 */
     static constexpr int CHEESE_TABLE = 256;
@@ -590,7 +605,7 @@ public:
     /* test hook: the top-layer carve mask of an arbitrary 32 x 32 footprint (carvers.cpp) */
     void carveFootprint(int64_t x0, int64_t z0, const int32_t* heights, const int32_t* water,
                         int64_t seedLayer, bool withSurfaceCarvers, MaskSet& cave, MaskSet& formA,
-                        MaskSet& formB);
+                        MaskSet& formB, int32_t* flood = nullptr, int32_t* seal = nullptr);
 };
 
 /* The tiles of one column cube for point queries, fetched once and lazily (carve, deep layers and pools

@@ -136,8 +136,8 @@ public:
                                && !t.formation.test(lx, y, lz) && !t.cave.test(lx, y, lz);
         if (!candidate) {
             uint16_t id = g_.decideBlockM(bt, [&] { return t.formation.test(lx, y, lz); }, [&] { return t.cave.test(lx, y, lz); },
-                                          [&] { return g_.densitySolid(NoDensity{}, y, h, bt.biome[col], bt.refH[col], ct.table[col], ct.guard[col]); },
-                                          col, x, y, z);
+                                          [&] { return g_.densitySolid(NoDensity{}, y, h, bt.biome[col], bt.refH[col], ct.table[col], ct.guard[col], ct.seal[col]); },
+                                          col, x, y, z, ct.flood[col]);
             if (id == stone_ && withDeep_ && deepCarved(t, lx, y, lz, h)) id = air_;
             out_[oi] = id;
             return;
@@ -199,7 +199,7 @@ public:
                     return std::numeric_limits<float>::quiet_NaN();
                 };
                 const bool solid = g_.densitySolid(dens, b.y[ku], bt.h[col], bt.biome[col], bt.refH[col], t.carve->table[col],
-                                                   t.carve->guard[col]);
+                                                   t.carve->guard[col], t.carve->seal[col]);
                 if (missing >= 0) {
                     b.need[missing].push_back(k);
                     b.next.push_back(k);
@@ -327,6 +327,7 @@ void carvedDescent(Generator& g, const std::shared_ptr<const BaseTile>& base, co
         out.carvedH[col] = static_cast<int32_t>(y[col] + 1);
         out.carved[col] = out.carvedH[col] < b.h[col] ? 1 : 0;
         out.top[col] = bl;
+        out.sea[col] = carve->flood[col] != FLOOD_NONE && out.carvedH[col] < g.cfg.sea ? 1 : 0;
     }
 }
 

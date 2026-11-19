@@ -29,7 +29,7 @@ def _planes(seed: int, tile_x: int, tile_z: int) -> np.ndarray:
 def test_frames_round_trip():
     buf = io.BytesIO(W.tile(7, -3, -1, 2, 8, 1) + W.cancel(7) + W.hello(W.VERSION, {"world": {"a": 1}}))
     kind, body = W.read_frame(buf)
-    assert kind == W.TILE and W.parse_tile(body) == (7, -3, -1, 2, 8, 1)
+    assert kind == W.TILE and W.parse_tile(body) == (7, -3, -1, 2, 8, 1, 0)
     kind, body = W.read_frame(buf)
     assert kind == W.CANCEL and W.parse_u32(body) == 7
     kind, body = W.read_frame(buf)
@@ -169,8 +169,8 @@ def svc(tmp_path):
     service.close()
 
 
-def _ask(service, req_id, seed, x, z, lod=1, priority=0):
-    service.dispatch(W.TILE, W.tile(req_id, seed, x, z, lod, priority)[5:])
+def _ask(service, req_id, seed, x, z, lod=1, priority=0, world=0):
+    service.dispatch(W.TILE, W.tile(req_id, seed, x, z, lod, priority, world)[5:])
 
 
 def test_service_answers_from_the_gpu_then_from_disk(svc):
@@ -278,3 +278,34 @@ def test_explicit_devices_ignore_the_vram_rule(monkeypatch):
 def test_auto_without_cuda_stays_cuda_and_fails_later(monkeypatch):
     _fake_gpus(monkeypatch)
     assert pick_device("auto") == "cuda"
+
+
+# ----------------------------------------------------------------------------- protocol v2: worlds
+def test_tile_frame_names_its_world():
+    kind, body = W.read_frame(io.BytesIO(W.tile(3, 5, 1, -2, 1, 0, world=1)))
+    assert kind == W.TILE and W.parse_tile(body) == (3, 5, 1, -2, 1, 0, 1)
+
+
+def test_tiles_route_to_their_world_and_cache_apart(tmp_path):
+    pipe = Pipe()
+    a, b = FakeBuilder(), FakeBuilder()
+    cache = TileCache(tmp_path, ["ns_a", "ns_b"], 1 << 30)
+    service = Service([a, b], cache, pipe.out, {"name": "fake"})
+    service.start()
+    try:
+        _ask(service, 1, 42, 0, 0, world=1)
+        assert pipe.next()[0] == W.TILE_DATA
+        assert b.built == [(42, 0, 0, 1)] and a.built == []
+        deadline = time.monotonic() + 5
+        while cache.get(TileKey(42, 0, 0, 1, 1)) is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert cache.get(TileKey(42, 0, 0, 1, 1)) is not None
+        assert cache.get(TileKey(42, 0, 0, 1, 0)) is None          # the other world's namespace
+        assert (tmp_path / "ns_b").is_dir() and any((tmp_path / "ns_b").iterdir())
+        _ask(service, 2, 42, 0, 0, world=0)                         # same tile, other scale: built again
+        assert pipe.next()[0] == W.TILE_DATA and a.built == [(42, 0, 0, 1)]
+        _ask(service, 3, 42, 0, 0, world=2)
+        kind, body = pipe.next()
+        assert kind == W.TILE_ERROR and W.parse_u32(body[:4]) == 3 and b"unknown world" in body
+    finally:
+        service.close()

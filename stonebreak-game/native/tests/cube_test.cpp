@@ -5,6 +5,7 @@
  *   worldgen_cube_test <name>...  only those tests
  *   worldgen_cube_test --probe    print a cross-section, height histograms and timings (no asserts)
  */
+#include "carvers.hpp"
 #include "decide.hpp"
 #include "gen.hpp"
 #include "stonebreak/worldgen.h"
@@ -786,6 +787,492 @@ void testProfileKind() {
     CHECK(genCube(g2, 0, 2, 0) == d);
 }
 
+/* SBW_FLAG_PROFILE_CARVE: ravine sources follow the profile's carve codes (density 15 west of x = 0, none east);
+ * without the flag the legacy hash gate is untouched. */
+int32_t carveProfile(void* user, int64_t cx, int64_t cz, sbw_column_profile* out) {
+    synthProfile(user, cx, cz, out);
+    for (int lz = 0; lz < CE; lz++) {
+        for (int lx = 0; lx < CE; lx++) {
+            const int64_t x = cx * CE + lx;
+            /* density 15, style ravine (0), strike 4 (pi/4), depth class 10 */
+            out->carve[lz * CE + lx] = static_cast<uint16_t>(x < 0 ? (15 | (0 << 4) | (4 << 7) | (10 << 11)) : 0);
+        }
+    }
+    return 1;
+}
+
+void testProfileCarve() {
+    std::atomic<int> calls{0};
+    sbw_gen_config cfg = makeConfig(9);
+    cfg.kind = SBW_KIND_PROFILE;
+    cfg.column_fn = carveProfile;
+    cfg.column_user = &calls;
+    const int64_t seed = 9;
+    auto count = [&](sbw_gen_config c, int64_t x0, int64_t x1) {
+        Gen g(c);
+        int n = 0, tot = 0;
+        for (int64_t sx = x0; sx < x1; sx++) {
+            for (int64_t sz = -40; sz < 40; sz++) {
+                n += sbw::ravineSourceAt(g.g(), seed, sx, sz);
+                tot++;
+            }
+        }
+        return std::pair<int, int>(n, tot);
+    };
+    sbw_gen_config on = cfg;
+    on.flags |= SBW_FLAG_PROFILE_CARVE;
+    auto [west, wt] = count(on, -80, -1);      /* chunks entirely west of x = 0 */
+    auto [east, et] = count(on, 1, 80);
+    auto [legacy, lt] = count(cfg, -80, -1);
+    const double westRate = static_cast<double>(west) / wt;
+    std::printf("  profile carve: west %d/%d (%.3f, expect ~0.125), east %d/%d, legacy %d/%d (expect ~1/450)\n",
+                west, wt, westRate, east, et, legacy, lt);
+    CHECK(westRate > 0.09 && westRate < 0.16);
+    CHECK_EQ(east, 0);
+    CHECK(legacy < wt / 100);
+    /* a carved profile world still generates, deterministically */
+    Gen g1(on), g2(on);
+    CubeData a = genCube(g1, -2, 2, 0), b = genCube(g2, -2, 2, 0);
+    CHECK_EQ(a.ret, 1);
+    CHECK(a == b);
+}
+
+/* Carve-style worlds (profile kind + SBW_FLAG_PROFILE_CARVE): a straight coast along x = 0 (sea at 64 west of it,
+ * land carrying `style` east of it; sea columns carry the style at density 0, as the carve node emits them) or a
+ * flat tower plateau. Land codes: density 15, strike 8, depth class 15. Style NONE (5) is the reference world: it
+ * spawns no ravines, like SEA_STACKS / TOWERS, so a cell carved in one world and not the other is the style's own. */
+enum StyleWorldKind { STYLE_CLIFF = 0, STYLE_BEACH, STYLE_PLATEAU, STYLE_BERM };
+struct StyleWorld {
+    int kind = STYLE_CLIFF;
+    int style = SBW_CARVE_NONE;
+};
+
+int32_t styleProfile(void* user, int64_t cx, int64_t /*cz*/, sbw_column_profile* out) {
+    const auto* w = static_cast<const StyleWorld*>(user);
+    for (int lz = 0; lz < CE; lz++) {
+        for (int lx = 0; lx < CE; lx++) {
+            const int c = lz * CE + lx;
+            const int64_t x = cx * CE + lx;
+            const bool sea = w->kind != STYLE_PLATEAU && x < 0;
+            int h;
+            if (w->kind == STYLE_PLATEAU) h = 120;
+            else if (sea) h = 52;
+            else if (w->kind == STYLE_CLIFF) h = 84 + 2 * static_cast<int>(std::min<int64_t>(x, 20));  /* 20-block cliff */
+            else if (w->kind == STYLE_BERM) h = x < 3 ? 66 : 84 + 2 * static_cast<int>(std::min<int64_t>(x, 20)); /* berm, cliff */
+            else h = 65 + static_cast<int>(x / 10);                                                   /* gentle beach */
+            out->height[c] = h;
+            out->water[c] = sea ? 64 : SBW_NO_WATER;
+            out->biome[c] = static_cast<uint8_t>(sea ? SBW_OCEAN : SBW_MEADOW);
+            out->river_floor[c] = 0;
+            out->river_roof[c] = 0;
+            out->river_flow[c] = -1;
+            out->carve[c] = static_cast<uint16_t>((sea ? 0 : 15) | (w->style << 4) | (8 << 7) | (15 << 11));
+        }
+    }
+    return 1;
+}
+
+sbw_gen_config styleConfig(StyleWorld& w, double hm) {
+    sbw_gen_config c = makeConfig(4242, hm);
+    c.kind = SBW_KIND_PROFILE;
+    c.flags |= SBW_FLAG_PROFILE_CARVE;
+    c.column_fn = styleProfile;
+    c.column_user = &w;
+    return c;
+}
+
+/* the style's own cells in a footprint pair offset by half a cube: identical on the shared columns */
+void styleSeams(Generator& gen, int64_t X0, int64_t Z0, int& compared, int& mismatches) {
+    int32_t hA[COLS], wA[COLS], hB[COLS], wB[COLS];
+    for (int lz = 0; lz < CE; lz++) {
+        for (int lx = 0; lx < CE; lx++) {
+            hA[colIdx(lx, lz)] = gen.heightAt(X0 + lx, Z0 + lz);
+            wA[colIdx(lx, lz)] = gen.waterAt(X0 + lx, Z0 + lz);
+            hB[colIdx(lx, lz)] = gen.heightAt(X0 + 16 + lx, Z0 + 16 + lz);
+            wB[colIdx(lx, lz)] = gen.waterAt(X0 + 16 + lx, Z0 + 16 + lz);
+        }
+    }
+    MaskSet caveA, fA1, fA2, caveB, fB1, fB2;
+    int32_t floodA[COLS], floodB[COLS], sealA[COLS], sealB[COLS];
+    gen.carveFootprint(X0, Z0, hA, wA, gen.cfg.seed, true, caveA, fA1, fA2, floodA, sealA);
+    gen.carveFootprint(X0 + 16, Z0 + 16, hB, wB, gen.cfg.seed, true, caveB, fB1, fB2, floodB, sealB);
+    for (int lz = 16; lz < CE; lz++) {
+        for (int lx = 16; lx < CE; lx++) {
+            mismatches += floodA[colIdx(lx, lz)] != floodB[colIdx(lx - 16, lz - 16)];   /* flooded shelves too */
+            mismatches += sealA[colIdx(lx, lz)] != sealB[colIdx(lx - 16, lz - 16)];
+            for (int64_t y = 56; y < 140; y++) {
+                const bool a = caveA.test(lx, y, lz), b = caveB.test(lx - 16, y, lz - 16);
+                mismatches += a != b;
+                compared += a;
+            }
+        }
+    }
+}
+
+void testSeaStacks() {
+    for (double hm : {60.0, 30.0}) {
+        StyleWorld cliff{STYLE_CLIFF, SBW_CARVE_SEA_STACKS}, cliffRef{STYLE_CLIFF, SBW_CARVE_NONE};
+        StyleWorld beach{STYLE_BEACH, SBW_CARVE_SEA_STACKS}, beachRef{STYLE_BEACH, SBW_CARVE_NONE};
+        Gen gS(styleConfig(cliff, hm)), gN(styleConfig(cliffRef, hm));
+        Gen gB(styleConfig(beach, hm)), gBN(styleConfig(beachRef, hm));
+        int underWater = 0, nearWater = 0, platform = 0, standing = 0, isolated = 0, overhang = 0;
+        const int rows = 8 * CE;
+        for (int64_t cz = 0; cz < 8; cz++) {
+            std::vector<int32_t> hS(64), hN(64);
+            for (int lz = 0; lz < CE; lz++) {
+                for (int64_t cx = 0; cx < 2; cx++) {   /* land x in [0, 64) */
+                    auto tS = gS.g().carve(cx, cz), tN = gN.g().carve(cx, cz);
+                    auto sS = gS.g().carved(cx, cz), sN = gN.g().carved(cx, cz);
+                    for (int lx = 0; lx < CE; lx++) {
+                        const int col = colIdx(lx, lz);
+                        const int32_t raw = gS.g().heightAt(cx * CE + lx, cz * CE + lz);
+                        bool cutHere = false, keptAbove = false;
+                        for (int64_t y = 40; y < raw; y++) {
+                            const bool own = tS->cave.test(lx, y, lz) && !tN->cave.test(lx, y, lz);
+                            underWater += own && y < 64;
+                            nearWater += own && y >= 64 && y < 67;
+                            if (own && y < 70) cutHere = true;
+                            if (cutHere && !own && !tS->cave.test(lx, y, lz) && y >= 67) keptAbove = true;
+                        }
+                        overhang += cutHere && keptAbove;
+                        hS[static_cast<size_t>(cx * CE + lx)] = sS->carvedH[col];
+                        hN[static_cast<size_t>(cx * CE + lx)] = sN->carvedH[col];
+                    }
+                }
+                /* along the row: platform columns (cut down to the water surface), standing ones (top untouched)
+                 * near the coast, and detached stacks: standing rock with platform on its inland side */
+                for (int x = 0; x < 64; x++) platform += hS[static_cast<size_t>(x)] <= 65 && hN[static_cast<size_t>(x)] > 70;
+                for (int x = 0; x + 1 < 64; x++) {
+                    const bool stand = hS[static_cast<size_t>(x)] == hN[static_cast<size_t>(x)];
+                    const bool platBehind = hS[static_cast<size_t>(x + 1)] <= 65 && hN[static_cast<size_t>(x + 1)] > 70;
+                    if (stand && platBehind) {
+                        isolated++;
+                        break;
+                    }
+                }
+                for (int x = 0; x < 12; x++) standing += hS[static_cast<size_t>(x)] == hN[static_cast<size_t>(x)];
+            }
+        }
+        std::printf("  sea stacks 1:%d: own cells under water %d, at the waterline %d, platform columns %d, standing"
+                    " near the coast %d, rows with a detached stack %d/%d, notched columns %d\n",
+                    hm == 60.0 ? 4 : 2, underWater, nearWater, platform, standing, isolated, rows, overhang);
+        CHECK(underWater > 0);   /* the flooded shelf (testSeaFlood checks it cell by cell) */
+        CHECK(nearWater > rows * 3);
+        CHECK(platform > rows);
+        CHECK(standing > rows);
+        CHECK(isolated > rows / 20);
+        CHECK(overhang > rows / 4);
+        /* deterministic: a fresh generator, same cubes (both sides of the coast, the waterline cube) */
+        Gen gS2(styleConfig(cliff, hm));
+        for (int64_t cx : {-1, 0, 1}) {
+            for (int64_t cy : {1, 2}) CHECK(genCube(gS, cx, cy, 3) == genCube(gS2, cx, cy, 3));
+        }
+        /* seams: offset footprints across the coast agree */
+        int compared = 0, mismatches = 0;
+        styleSeams(gS.g(), -16, 40, compared, mismatches);
+        styleSeams(gS.g(), -4, 200, compared, mismatches);
+        CHECK(compared > 200);
+        CHECK_EQ(mismatches, 0);
+        /* a flat beach is never cut: identical to the reference world, cell for cell */
+        int beachDiff = 0;
+        for (int64_t cz = 0; cz < 4; cz++) {
+            for (int64_t cx = -1; cx < 2; cx++) {
+                beachDiff += !(genCube(gB, cx, 2, cz) == genCube(gBN, cx, 2, cz));
+                auto a = gB.g().carved(cx, cz), b = gBN.g().carved(cx, cz);
+                beachDiff += std::memcmp(a->carvedH, b->carvedH, sizeof(a->carvedH)) != 0;
+            }
+        }
+        CHECK_EQ(beachDiff, 0);
+    }
+}
+
+/* Cubes of one generator, read cell by cell. */
+struct CubeReader {
+    const Gen& g;
+    std::map<Key, CubeData> m;
+    explicit CubeReader(const Gen& gen) : g(gen) {}
+    const CubeData& cube(int64_t x, int64_t y, int64_t z) {
+        const Key k{x >> 5, y >> 5, z >> 5};
+        auto it = m.find(k);
+        if (it == m.end()) it = m.emplace(k, genCube(g, k.x, k.y, k.z)).first;
+        return it->second;
+    }
+    uint16_t at(int64_t x, int64_t y, int64_t z) { return cube(x, y, z).ids[static_cast<size_t>(FakeWorld::idx(x, y, z))]; }
+    uint16_t water(int64_t x, int64_t y, int64_t z) {
+        return cube(x, y, z).layers[WATER_LAYER][static_cast<size_t>(FakeWorld::idx(x, y, z))];
+    }
+};
+
+/* SEA_STACKS flooding: cuts connected to the open sea are a rock shelf 1..3 blocks under sea level holding sea water up
+ * to it; never a dry hole under the sea, never water that does not reach the sea; a cut behind a beach berm stays a dry
+ * platform at sea level. */
+void testSeaFlood() {
+    constexpr int64_t SEA = 64;
+    const uint16_t WATER = SBW_WATER, AIR = SBW_AIR;
+    for (double hm : {60.0, 30.0}) {
+        const int scale = hm == 60.0 ? 4 : 2;
+        StyleWorld cliff{STYLE_CLIFF, SBW_CARVE_SEA_STACKS}, cliffRef{STYLE_CLIFF, SBW_CARVE_NONE};
+        StyleWorld berm{STYLE_BERM, SBW_CARVE_SEA_STACKS}, bermRef{STYLE_BERM, SBW_CARVE_NONE};
+        Gen gS(styleConfig(cliff, hm)), gN(styleConfig(cliffRef, hm)), gB(styleConfig(berm, hm)), gBN(styleConfig(bermRef, hm));
+        CubeReader S(gS), N(gN), B(gB), BN(gBN);
+        constexpr int64_t X0 = -16, X1 = 64, Z1 = 4 * CE;
+        constexpr int NX = static_cast<int>(X1 - X0);
+        int flooded = 0, seaSide = 0, cutSeaSide = 0, shelfBad = 0, floorBad = 0, overflow = 0, layerBad = 0;
+        int dryHoles = 0, ownWater = 0, leaks = 0, pointBad = 0;
+        std::vector<uint8_t> wet(static_cast<size_t>(NX * Z1));
+        for (int64_t z = 0; z < Z1; z++) {
+            for (int64_t x = X0; x < X1; x++) {
+                wet[static_cast<size_t>(z * NX + (x - X0))] = S.at(x, SEA - 1, z) == WATER;
+                if (x < 0) continue;
+                for (int64_t y = SEA - 8; y < SEA; y++) {
+                    const uint16_t a = S.at(x, y, z), b = N.at(x, y, z);
+                    dryHoles += a == AIR && b != AIR;
+                    ownWater += a == WATER && b != WATER;
+                    /* air beside or under the flooded water (a leak the water would run into) */
+                    if (a == AIR && (S.at(x, y + 1, z) == WATER || S.at(x + 1, y, z) == WATER || S.at(x - 1, y, z) == WATER
+                                     || S.at(x, y, z + 1) == WATER || S.at(x, y, z - 1) == WATER)) {
+                        leaks++;
+                    }
+                }
+                if (x == 0) cutSeaSide += S.at(x, SEA, z) == AIR && N.at(x, SEA, z) != AIR;
+                if (S.at(x, SEA - 1, z) != WATER) continue;
+                flooded++;
+                seaSide += x == 0;
+                int64_t y = SEA - 1;
+                while (S.at(x, y, z) == WATER) {
+                    layerBad += S.water(x, y, z) != 16;   /* every flooded cell a water source, like the open sea */
+                    pointBad += gS.g().terrainBlockAt(x, y, z, false) != WATER;
+                    y--;
+                }
+                const int64_t shelf = y + 1;
+                shelfBad += SEA - shelf < 1 || SEA - shelf > 3;
+                floorBad += S.at(x, shelf - 1, z) == AIR && N.at(x, shelf - 1, z) != AIR;
+                overflow += S.at(x, SEA, z) == WATER;
+            }
+        }
+        /* every flooded column reaches the open sea through flooded water (away from the sampled area's z edges) */
+        std::vector<uint8_t> reached(wet.size());
+        std::vector<size_t> stack;
+        for (int64_t z = 0; z < Z1; z++) {
+            const size_t i = static_cast<size_t>(z * NX);
+            if (wet[i]) {
+                reached[i] = 1;
+                stack.push_back(i);
+            }
+        }
+        while (!stack.empty()) {
+            const size_t i = stack.back();
+            stack.pop_back();
+            const int ix = static_cast<int>(i % NX), iz = static_cast<int>(i / NX);
+            for (const auto& [dx, dz] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                const int nx = ix + dx, nz = iz + dz;
+                if (nx < 0 || nz < 0 || nx >= NX || nz >= Z1) continue;
+                const size_t j = static_cast<size_t>(nz * NX + nx);
+                if (!wet[j] || reached[j]) continue;
+                reached[j] = 1;
+                stack.push_back(j);
+            }
+        }
+        int stranded = 0;
+        for (int64_t z = 40; z < Z1 - 40; z++) {
+            for (int64_t x = 0; x < X1; x++) {
+                const size_t i = static_cast<size_t>(z * NX + (x - X0));
+                stranded += wet[i] && !reached[i];
+            }
+        }
+        /* stacks stand in the sea: a run of standing columns (top untouched) with sea water on both sides along a row */
+        int seaStacks = 0;
+        for (int64_t z = 0; z < Z1; z++) {
+            const auto cS = gS.g().carved(0, z >> 5), cN = gN.g().carved(0, z >> 5);
+            const auto cS1 = gS.g().carved(1, z >> 5), cN1 = gN.g().carved(1, z >> 5);
+            auto standing = [&](int64_t x) {
+                const int col = colIdx(static_cast<int>(x & 31), static_cast<int>(z & 31));
+                return x < 32 ? cS->carvedH[col] == cN->carvedH[col] : cS1->carvedH[col] == cN1->carvedH[col];
+            };
+            for (int64_t x = 1; x + 1 < X1; x++) {
+                if (S.at(x - 1, SEA - 1, z) != WATER || !standing(x)) continue;
+                int64_t e = x;
+                while (e + 1 < X1 && standing(e + 1)) e++;
+                if (e + 1 < X1 && S.at(e + 1, SEA - 1, z) == WATER) {
+                    seaStacks++;
+                    break;
+                }
+            }
+        }
+        /* a cut behind a beach berm does not reach the sea: dry, at sea level, never a hole under it */
+        int bermCut = 0, bermWater = 0, bermHoles = 0;
+        for (int64_t z = 0; z < Z1; z++) {
+            for (int64_t x = 0; x < X1; x++) {
+                for (int64_t y = SEA - 8; y < SEA + 8; y++) {
+                    const uint16_t a = B.at(x, y, z), b = BN.at(x, y, z);
+                    bermCut += y >= SEA && a == AIR && b != AIR;
+                    bermWater += a == WATER && b != WATER;
+                    bermHoles += y < SEA && a == AIR && b != AIR;
+                }
+            }
+        }
+        const int rows = static_cast<int>(Z1);
+        std::printf("  sea flood 1:%d: flooded columns %d (beside the sea %d of %d cut), own water cells %d, shelf out of"
+                    " 1..3 %d, holed floors %d, overflow %d, layer/point mismatches %d/%d, dry holes %d, leaks %d, stranded"
+                    " %d, rows with a stack in the sea %d/%d; berm: cut cells %d, water %d, holes %d\n",
+                    scale, flooded, seaSide, cutSeaSide, ownWater, shelfBad, floorBad, overflow, layerBad, pointBad,
+                    dryHoles, leaks, stranded, seaStacks, rows, bermCut, bermWater, bermHoles);
+        CHECK(flooded > rows);
+        CHECK(seaSide > 0);
+        CHECK(seaSide * 10 >= cutSeaSide * 9);   /* (almost) every cut column on the shore is flooded */
+        CHECK(ownWater > rows);
+        CHECK_EQ(shelfBad, 0);
+        CHECK_EQ(floorBad, 0);
+        CHECK_EQ(overflow, 0);
+        CHECK_EQ(layerBad, 0);
+        CHECK_EQ(pointBad, 0);
+        CHECK_EQ(dryHoles, 0);
+        CHECK_EQ(stranded, 0);
+        CHECK(seaStacks > rows / 20);
+        CHECK(bermCut > 0);
+        CHECK_EQ(bermWater, 0);
+        CHECK_EQ(bermHoles, 0);
+        CHECK_EQ(leaks, 0);
+        /* the column cube tiles equal the uncached footprint carve (cells, flood, seal); a fresh generator agrees */
+        int tileDiff = 0;
+        for (int64_t cz = 0; cz < 2; cz++) {
+            for (int64_t cx = -1; cx < 2; cx++) {
+                Generator& gen = gS.g();
+                auto t = gen.carve(cx, cz);
+                auto b = gen.base(cx, cz);
+                MaskSet cave, fA, fB;
+                int32_t flood[COLS], seal[COLS];
+                gen.carveFootprint(cx * CE, cz * CE, b->h, b->water, gen.cfg.seed, true, cave, fA, fB, flood, seal);
+                tileDiff += std::memcmp(flood, t->flood, sizeof(flood)) != 0;
+                tileDiff += std::memcmp(seal, t->seal, sizeof(seal)) != 0;
+                for (int lz = 0; lz < CE; lz++) {
+                    for (int lx = 0; lx < CE; lx++) {
+                        for (int64_t y = SEA - 8; y < SEA + 40; y++) tileDiff += cave.test(lx, y, lz) != t->cave.test(lx, y, lz);
+                    }
+                }
+            }
+        }
+        CHECK_EQ(tileDiff, 0);
+        /* seams: footprints offset by (16, 16) and (5, 11) agree on the shared columns, flooded ones included */
+        int seamFlooded = 0, seamBad = 0;
+        for (const auto& [X0f, Z0f, ox, oz] : {std::array<int64_t, 4>{-16, 40, 16, 16}, std::array<int64_t, 4>{-20, 90, 5, 11}}) {
+            Generator& gen = gS.g();
+            int32_t hA[COLS], wA[COLS], hB[COLS], wB[COLS], flA[COLS], flB[COLS], slA[COLS], slB[COLS];
+            for (int lz = 0; lz < CE; lz++) {
+                for (int lx = 0; lx < CE; lx++) {
+                    hA[colIdx(lx, lz)] = gen.heightAt(X0f + lx, Z0f + lz);
+                    wA[colIdx(lx, lz)] = gen.waterAt(X0f + lx, Z0f + lz);
+                    hB[colIdx(lx, lz)] = gen.heightAt(X0f + ox + lx, Z0f + oz + lz);
+                    wB[colIdx(lx, lz)] = gen.waterAt(X0f + ox + lx, Z0f + oz + lz);
+                }
+            }
+            MaskSet cA, a1, a2, cB, b1, b2;
+            gen.carveFootprint(X0f, Z0f, hA, wA, gen.cfg.seed, true, cA, a1, a2, flA, slA);
+            gen.carveFootprint(X0f + ox, Z0f + oz, hB, wB, gen.cfg.seed, true, cB, b1, b2, flB, slB);
+            for (int lz = static_cast<int>(oz); lz < CE; lz++) {
+                for (int lx = static_cast<int>(ox); lx < CE; lx++) {
+                    const int ia = colIdx(lx, lz), ib = colIdx(lx - static_cast<int>(ox), lz - static_cast<int>(oz));
+                    seamFlooded += flA[ia] != FLOOD_NONE;
+                    seamBad += flA[ia] != flB[ib] || slA[ia] != slB[ib];
+                    for (int64_t y = SEA - 8; y < SEA + 40; y++) {
+                        seamBad += cA.test(lx, y, lz) != cB.test(lx - static_cast<int>(ox), y, lz - static_cast<int>(oz));
+                    }
+                }
+            }
+        }
+        CHECK(seamFlooded > 10);
+        CHECK_EQ(seamBad, 0);
+        Gen gS2(styleConfig(cliff, hm));
+        for (int64_t cz = 0; cz < 4; cz++) {
+            for (int64_t cx = -1; cx < 2; cx++) CHECK(genCube(gS, cx, 1, cz) == genCube(gS2, cx, 1, cz));
+        }
+    }
+}
+
+void testTowers() {
+    int components[2] = {0, 0};
+    int scale = 0;
+    for (double hm : {60.0, 30.0}) {
+        StyleWorld towers{STYLE_PLATEAU, SBW_CARVE_TOWERS}, ref{STYLE_PLATEAU, SBW_CARVE_NONE};
+        Gen gT(styleConfig(towers, hm)), gN(styleConfig(ref, hm));
+        constexpr int N = 4 * CE;   /* 128 x 128 columns */
+        std::vector<int32_t> drop(static_cast<size_t>(N * N));
+        double sumT = 0, sumT2 = 0, sumN = 0, sumN2 = 0;
+        int tower = 0, corridor = 0, mid = 0, undercut = 0;
+        for (int64_t cz = 0; cz < 4; cz++) {
+            for (int64_t cx = 0; cx < 4; cx++) {
+                auto sT = gT.g().carved(cx, cz), sN = gN.g().carved(cx, cz);
+                auto tT = gT.g().carve(cx, cz), tN = gN.g().carve(cx, cz);
+                for (int lz = 0; lz < CE; lz++) {
+                    for (int lx = 0; lx < CE; lx++) {
+                        const int col = colIdx(lx, lz);
+                        const int32_t t = sT->carvedH[col], n = sN->carvedH[col], d = n - t;
+                        drop[static_cast<size_t>((cz * CE + lz) * N + cx * CE + lx)] = d;
+                        sumT += t;
+                        sumT2 += static_cast<double>(t) * t;
+                        sumN += n;
+                        sumN2 += static_cast<double>(n) * n;
+                        tower += d <= 2;
+                        corridor += d >= 10;
+                        mid += d > 2 && d < 10;
+                        if (d == 0) {   /* intact top: any own cell below it is a foot notch */
+                            for (int64_t y = 80; y < 117; y++) {
+                                if (tT->cave.test(lx, y, lz) && !tN->cave.test(lx, y, lz)) {
+                                    undercut++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        const double cnt = static_cast<double>(N) * N;
+        const double varT = sumT2 / cnt - (sumT / cnt) * (sumT / cnt), varN = sumN2 / cnt - (sumN / cnt) * (sumN / cnt);
+        /* towers = 4-connected patches of standing columns */
+        std::vector<int> label(static_cast<size_t>(N * N), -1);
+        int comps = 0;
+        for (int i = 0; i < N * N; i++) {
+            if (drop[static_cast<size_t>(i)] > 2 || label[static_cast<size_t>(i)] >= 0) continue;
+            std::vector<int> stack{i};
+            label[static_cast<size_t>(i)] = comps;
+            while (!stack.empty()) {
+                const int k = stack.back();
+                stack.pop_back();
+                const int kx = k % N, kz = k / N;
+                for (const auto& [dx, dz] : {std::pair{1, 0}, std::pair{-1, 0}, std::pair{0, 1}, std::pair{0, -1}}) {
+                    const int nx = kx + dx, nz = kz + dz;
+                    if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
+                    const int j = nz * N + nx;
+                    if (drop[static_cast<size_t>(j)] > 2 || label[static_cast<size_t>(j)] >= 0) continue;
+                    label[static_cast<size_t>(j)] = comps;
+                    stack.push_back(j);
+                }
+            }
+            comps++;
+        }
+        components[scale++] = comps;
+        std::printf("  towers 1:%d: height variance %.1f (reference %.1f), towers %d, corridors %d, slopes %d of %d"
+                    " columns, %d towers, %d undercut columns\n",
+                    hm == 60.0 ? 4 : 2, varT, varN, tower, corridor, mid, N * N, comps, undercut);
+        CHECK(varT > varN + 25.0);
+        CHECK(tower > N * N / 6 && tower < N * N * 3 / 4);
+        CHECK(corridor > N * N / 5);
+        CHECK(mid < N * N / 20);           /* near-vertical walls: almost nothing in between */
+        CHECK(comps > 8);
+        CHECK(undercut > 0);
+        Gen gT2(styleConfig(towers, hm));
+        for (int64_t cy : {2, 3}) CHECK(genCube(gT, 1, cy, 2) == genCube(gT2, 1, cy, 2));
+        int compared = 0, mismatches = 0;
+        styleSeams(gT.g(), 0, 0, compared, mismatches);
+        styleSeams(gT.g(), 40, -72, compared, mismatches);
+        CHECK(compared > 1000);
+        CHECK_EQ(mismatches, 0);
+    }
+    /* towers scale with the world: 1:2 (30 m blocks) towers are twice as wide, so ~4x fewer per area */
+    CHECK(components[0] > 2 * components[1]);
+}
+
 void testPointEqualsTile() {
     int checked = 0, bad = 0;
     for (double hm : {60.0, 30.0}) {
@@ -1116,6 +1603,10 @@ int main(int argc, char** argv) {
         {"uniform", testUniformFastPath},
         {"surface", testColumnSurface},
         {"profile", testProfileKind},
+        {"profilecarve", testProfileCarve},
+        {"seastacks", testSeaStacks},
+        {"seaflood", testSeaFlood},
+        {"towers", testTowers},
         {"pointtile", testPointEqualsTile},
         {"scale", testScalePresets},
         {"throughput", testThroughput},

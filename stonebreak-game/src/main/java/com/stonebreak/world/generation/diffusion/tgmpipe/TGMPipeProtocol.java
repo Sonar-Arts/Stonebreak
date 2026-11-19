@@ -18,9 +18,10 @@ import java.nio.charset.StandardCharsets;
  */
 public final class TGMPipeProtocol {
 
-    public static final int VERSION = 1;
-    /** int16 planes per tile: block height, biome, water level, tunnel floor, tunnel roof, flow. */
-    public static final int PLANES = 6;
+    /** 2: the HELLO lists one world config per terrain scale and every TILE names its world. */
+    public static final int VERSION = 2;
+    /** int16 planes per tile: block height, biome, water level, tunnel floor, tunnel roof, flow, carve code. */
+    public static final int PLANES = 7;
 
     // Game -> service
     public static final int HELLO = 0x01;
@@ -84,10 +85,11 @@ public final class TGMPipeProtocol {
         return frame(HELLO, 2 + text.length).putShort((short) VERSION).put(text).array();
     }
 
-    public static byte[] tile(int id, long seed, int tileX, int tileZ, int lod, int priority) {
-        return frame(TILE, 4 + 8 + 4 + 4 + 1 + 1)
+    /** {@code world}: index into the HELLO's world list (the {@code TerrainScalePreset} ordinal). */
+    public static byte[] tile(int id, long seed, int tileX, int tileZ, int lod, int priority, int world) {
+        return frame(TILE, 4 + 8 + 4 + 4 + 1 + 1 + 1)
                 .putInt(id).putLong(seed).putInt(tileX).putInt(tileZ)
-                .put((byte) lod).put((byte) priority).array();
+                .put((byte) lod).put((byte) priority).put((byte) world).array();
     }
 
     public static byte[] cancel(int id) {
@@ -144,7 +146,8 @@ public final class TGMPipeProtocol {
                 planes[0], planes[1], planes[2],
                 anyTunnel ? planes[3] : null,
                 anyTunnel ? planes[4] : null,
-                allEqual(planes[5], TerrainTile.NO_FLOW) ? null : planes[5]);
+                allEqual(planes[5], TerrainTile.NO_FLOW) ? null : planes[5],
+                allEqual(planes[6], (short) 0) ? null : planes[6]);
     }
 
     public static boolean fromDiskCache(Frame frame) {

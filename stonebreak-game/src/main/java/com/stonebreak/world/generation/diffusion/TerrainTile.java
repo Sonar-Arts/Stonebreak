@@ -30,8 +30,18 @@ public record TerrainTile(
         short[] waterLevels,
         short[] riverFloors,
         short[] riverRoofs,
-        short[] riverFlows
+        short[] riverFlows,
+        short[] carves
 ) {
+
+    /** A tile without carve codes (the plane every tile had before TGMPipe v2's carve node). */
+    public TerrainTile(int tileX, int tileZ, int worldI1, int worldJ1, int worldI2, int worldJ2,
+                       int width, int height,
+                       short[] blockHeights, short[] biomeIds, short[] waterLevels,
+                       short[] riverFloors, short[] riverRoofs, short[] riverFlows) {
+        this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
+                blockHeights, biomeIds, waterLevels, riverFloors, riverRoofs, riverFlows, null);
+    }
 
     /**
      * A tile with no river tunnels in it. Every source of tiles other than the
@@ -43,7 +53,7 @@ public record TerrainTile(
                        int width, int height,
                        short[] blockHeights, short[] biomeIds, short[] waterLevels) {
         this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
-                blockHeights, biomeIds, waterLevels, null, null, null);
+                blockHeights, biomeIds, waterLevels, null, null, null, null);
     }
 
     /**
@@ -126,6 +136,15 @@ public record TerrainTile(
      */
     public short riverFlowAt(int worldX, int worldZ) {
         return riverFlows == null ? NO_FLOW : riverFlows[indexOf(worldX, worldZ)];
+    }
+
+    /**
+     * The terrain model's carve-node code for a column (TGMPipe v2 plane 6; Python {@code world/carve_node.py},
+     * native {@code sbw_column_profile.carve}): bits 0-3 ravine density, 4-6 style, 7-10 strike, 11-15 depth class.
+     * 0 (no terrain-aware carving) when the tile has none.
+     */
+    public short carveAt(int worldX, int worldZ) {
+        return carves == null ? 0 : carves[indexOf(worldX, worldZ)];
     }
 
     private int indexOf(int worldX, int worldZ) {

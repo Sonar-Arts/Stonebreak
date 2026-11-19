@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.function.ToIntFunction;
 
 /**
- * Thin FFM binding to the native cube generator ({@code libstonebreak_worldgen}, SBW ABI 3, #446): the
+ * Thin FFM binding to the native cube generator ({@code libstonebreak_worldgen}, SBW ABI 4 (#446; 4 = profile carve codes)): the
  * whole Stonebreak world generator behind Open Mason's {@code cv_generator}. Layouts and semantics per
  * {@code stonebreak-game/native/include/stonebreak/worldgen.h}.
  *
@@ -33,13 +33,15 @@ import java.util.function.ToIntFunction;
 public final class NativeCubeGenerator implements AutoCloseable {
 
     /** SBW ABI this binding speaks. */
-    public static final int EXPECTED_ABI = 3;
+    public static final int EXPECTED_ABI = 4;
     /** Water level of a dry column. */
     public static final int NO_WATER = Integer.MIN_VALUE;
     public static final int FLAG_PEAK_DAMP = 0x1, FLAG_DEEP_LAYERS = 0x2, FLAG_FEATURES = 0x4;
+    /** PROFILE kind: ravines and sinkholes follow the profiles' carve codes (SBW ABI 4), not the hash. */
+    public static final int FLAG_PROFILE_CARVE = 0x8;
     public static final int SAMPLE_CARVED = 1;
     private static final int CONFIG_SIZE = 368;
-    private static final int PROFILE_SIZE = 18432;
+    private static final int PROFILE_SIZE = 20480;
     private static final int COLUMN_INFO_SIZE = 40;
 
     /** Generator kinds (worldgen.h SBW_KIND_*). */
@@ -94,7 +96,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
     @FunctionalInterface
     public interface ColumnProfiles {
         boolean fill(long cx, long cz, int[] height, int[] water, int[] riverFloor, int[] riverRoof,
-                     byte[] biome, byte[] riverFlow);
+                     byte[] biome, byte[] riverFlow, short[] carve);
     }
 
     /** Generator configuration (worldgen.h sbw_gen_config). Defaults = sbw_config_defaults. */
@@ -320,7 +322,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
         try {
             int[] height = new int[1024], water = new int[1024], floor = new int[1024], roof = new int[1024];
             byte[] biome = new byte[1024], flow = new byte[1024];
-            if (!profiles.fill(cx, cz, height, water, floor, roof, biome, flow)) {
+            short[] carve = new short[1024];
+            if (!profiles.fill(cx, cz, height, water, floor, roof, biome, flow, carve)) {
                 return 0;
             }
             MemorySegment p = out.reinterpret(PROFILE_SIZE);
@@ -330,6 +333,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
             MemorySegment.copy(roof, 0, p, ValueLayout.JAVA_INT, 12288, 1024);
             MemorySegment.copy(biome, 0, p, ValueLayout.JAVA_BYTE, 16384, 1024);
             MemorySegment.copy(flow, 0, p, ValueLayout.JAVA_BYTE, 17408, 1024);
+            MemorySegment.copy(carve, 0, p, ValueLayout.JAVA_SHORT, 18432, 1024);
             return 1;
         } catch (Throwable t) {
             return 0;

@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 
 import java.util.Iterator;
@@ -51,9 +52,14 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
     private final Object lruLock = new Object();
     private volatile boolean closed;
 
-    /** Full-detail tiles for the world's chunks. */
+    /** Full-detail tiles for the world's chunks (1:4). */
     public DiffusionTileCache(long seed) {
         this(seed, 1, TGMPipe.PRIORITY_WORLD);
+    }
+
+    /** Full-detail tiles for the chunks of a world at {@code scale}. */
+    public DiffusionTileCache(long seed, TerrainScalePreset scale) {
+        this(seed, 1, TGMPipe.PRIORITY_WORLD, scale);
     }
 
     /**
@@ -61,8 +67,13 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
      *            returned is in SAMPLE units (world blocks / lod): the terrain mapper zoomed out.
      */
     public DiffusionTileCache(long seed, int lod, int priority) {
-        this(TGMPipe.getInstance()::requestTile, seed, lod, priority, TerrainScale.TILE_SIZE_BLOCKS,
-                Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
+        this(seed, lod, priority, TerrainScalePreset.ONE_TO_FOUR);
+    }
+
+    /** {@link #DiffusionTileCache(long, int, int)} built at {@code scale}: its blocks, height curve and cache. */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale) {
+        this((s, x, z, l, p) -> TGMPipe.getInstance().requestTile(s, x, z, l, p, scale), seed, lod, priority,
+                TerrainScale.TILE_SIZE_BLOCKS, Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
     }
 
     DiffusionTileCache(TileFetcher fetcher, long seed, int lod, int priority, int tileSize, int maxCachedTiles) {

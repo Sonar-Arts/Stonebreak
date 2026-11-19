@@ -11,6 +11,8 @@ native 30 m pixels per axis. Six int16 planes, row = x, column = z:
   3 tunnel floor   river tunnel floor (stone) under an overhang, -1 = none
   4 tunnel roof    river tunnel roof (stone), -1 = none
   5 flow octant    river flow direction 0..7 (0 = +x, toward +z), -1 = none
+  6 carve          carve-node code (world/carve_node.py: ravine density / style / strike / depth, 16 bits as int16);
+                   0 = no terrain-aware carving (overview tiles, models without a detail sampler)
 
 Blocks are decided here, once, by the river pipeline's block stages against the game's own height
 curve (quantise, contain, undercuts, overhangs, flow), so nothing spills after quantisation.
@@ -39,7 +41,7 @@ from terrain_slm.river.field import NO_FLOW, NO_TUNNEL
 from terrain_slm.river.scale import NATIVE_M, BlockScale
 from terrain_slm.world.world_config import WorldConfig
 
-PLANES = 6
+PLANES = 7
 #: Majority window (samples) that cleans specks and pinholes out of the swamp overlay (radius 5, far inside BLOCK_MARGIN).
 SWAMP_SMOOTH = 11
 #: At a whole cell (8 native px) or coarser per sample, tiles come from the cells alone.
@@ -52,7 +54,8 @@ _D8_OCTANT = [round(math.atan2(dc, dr) / (math.pi / 4)) % 8
 class TileBuilder:
     def __init__(self, gen, world: WorldConfig):
         self.gen, self.world = gen, world
-        gen.set_block_scale(BlockScale.from_world(world, gen.device))
+        self.scale = BlockScale.from_world(world, gen.device)
+        gen.set_block_scale(self.scale)
 
     def bounds(self, tile_x: int, tile_z: int) -> tuple[int, int, int, int]:
         """Sample coordinates (i1, j1, i2, j2) of a tile: the only shape ever built for it."""
@@ -66,14 +69,18 @@ class TileBuilder:
         i1, j1, i2, j2 = self.bounds(tile_x, tile_z)
         d = self.world.downscale * lod
         with self.gen.lock:
+            # One generator serves every world config (terrain scale) the game sent: its caches are in
+            # metres; the block scale is per build, set under the lock the whole build holds.
+            self.gen.set_block_scale(self.scale)
             self.gen.use_seed(seed)
             overview = d >= OVERVIEW_MIN_PX and d % OVERVIEW_MIN_PX == 0
             height, biome, level, wet, river = (self._overview if overview else self._blocks)(i1, j1, i2, j2, d)
-            planes = self._planes(height, biome, level, wet, river)
+            carve = None if overview else self._carve(i1, j1, i2, j2, d)
+            planes = self._planes(height, biome, level, wet, river, carve)
         return planes
 
     # ------------------------------------------------------------------ block assembly
-    def _planes(self, height, biome, level, wet, river) -> np.ndarray:
+    def _planes(self, height, biome, level, wet, river, carve=None) -> np.ndarray:
         """The water rule: the sea fills every column below sea level; a river column holds water up
         to its level where that stands above its ground, or anywhere inside its tunnel (an
         undercut bank keeps its full height above the water)."""
@@ -85,7 +92,10 @@ class TileBuilder:
         water = torch.where(height < sea, torch.full_like(height, sea), torch.full_like(height, -1))
         river_wet = wet & ((level > height) | (floor >= 0))
         water = torch.where(river_wet, torch.maximum(water, level), water)
-        stack = torch.stack([height, biome.to(height.dtype), water, floor, roof, flow])
+        carve = torch.zeros_like(height) if carve is None else carve.to(height.dtype)
+        # The carve code is 16 bits: carried as int16 (bit pattern), like every plane.
+        carve = torch.where(carve >= 32768, carve - 65536, carve)
+        stack = torch.stack([height, biome.to(height.dtype), water, floor, roof, flow, carve])
         return stack.to(torch.int16).cpu().numpy()
 
     def _blocks(self, i1: int, j1: int, i2: int, j2: int, d: int):
@@ -107,7 +117,7 @@ class TileBuilder:
         climate = F.avg_pool2d(gen.climate_native(n1, m1, n2, m2, lapse_elev)[None], d)[0]
         crop = lambda x: x[..., mb:-mb, mb:-mb]
         pad1 = lambda x: x[..., mb - 1 : -(mb - 1), mb - 1 : -(mb - 1)]
-        if gen.biomenet is not None and d == 2:
+        if gen.biomenet is not None and d in (1, 2):
             # Biome sidecar over the tile + its margin (receptive-field radius 23 < BLOCK_MARGIN), noise
             # coordinates aligned with the rule classifier's (block units), then cropped to the tile. It reads
             # the ground BEFORE the river pipeline (quantised like its training data): carved channels and
@@ -115,7 +125,14 @@ class TileBuilder:
             sc = gen.scale
             pre = F.avg_pool2d(field.ground[None, None], d)[0, 0]
             pre = sc.to_metres(torch.floor(sc.to_blocks(pre)).clamp(sc.min_y, sc.world_height - 1) + 0.5)
-            biome = crop(BN.classify(gen.biomenet, pre, climate, i1 - mb, j1 - mb))
+            if d == 2:
+                biome = crop(BN.classify(gen.biomenet, pre, climate, i1 - mb, j1 - mb))
+            else:
+                # 1:2 (30 m blocks): the sidecar was trained on 60 m blocks, so it reads 2x2-pooled blocks
+                # (tile + margin start on even samples) in 60 m sample coordinates, and each class covers 2x2.
+                half = lambda x: F.avg_pool2d(x[None] if x.dim() == 3 else x[None, None], 2)[0]
+                b60 = BN.classify(gen.biomenet, half(pre)[0], half(climate), (i1 - mb) // 2, (j1 - mb) // 2)
+                biome = crop(b60.repeat_interleave(2, 0).repeat_interleave(2, 1))
             # The rule over tile + margin (per column but for its 3x3 slope, so the frame's own edge is far outside
             # the tile).
             rule_m = B._classify_biome(elev, climate, i1 - mb, j1 - mb, pixel_size_m=NATIVE_M * d,
@@ -141,6 +158,43 @@ class TileBuilder:
         biome = self._red_deserts(biome, i1, j1, d)
         river = tuple(crop(p).long() for p in (cols.floor, cols.roof, cols.flow))
         return crop(cols.height).long(), biome, crop(cols.water).long(), crop(cols.wet), river
+
+    def _carve(self, i1: int, j1: int, i2: int, j2: int, d: int) -> torch.Tensor | None:
+        """Carve-node codes per block (world/carve_node.py), from the generator's canonical 60 m detail samples with a
+        margin -- request-independent, and the same in metres at every terrain scale. Aridity is estimated from the
+        controls' climate until the climate node supplies it."""
+        from terrain_slm.models import detail as DT
+        from terrain_slm.world import carve_node as CN
+
+        gen = self.gen
+        if gen.detail is None:
+            return None
+        ds, spc, m = DT.DS, DT.SAMPLES_PER_CELL, CN.MARGIN_SAMPLES
+        s1, t1 = (i1 * d) // ds - m, (j1 * d) // ds - m
+        s2, t2 = -(-(i2 * d) // ds) + m, -(-(j2 * d) // ds) + m
+        h60 = gen._detail_samples(s1, t1, s2, t2)
+        ci0, cj0 = s1 // spc, t1 // spc
+        hc, wc = -(-s2 // spc) - ci0, -(-t2 // spc) - cj0
+        ctrl = gen.controls(ci0, cj0, hc, wc)
+        dr = gen.drainage(ci0, cj0, hc, wc)
+        oi, oj = s1 - ci0 * spc, t1 - cj0 * spc
+        up = lambda x: x.repeat_interleave(spc, 0).repeat_interleave(spc, 1)[oi : oi + (s2 - s1), oj : oj + (t2 - t1)]
+        if "aridity" in ctrl:   # EXP-2 climate node: real P / PET
+            aridity = up(ctrl["aridity"])
+        else:
+            aridity = up(ctrl["precip"]) / (300.0 + 45.0 * up(ctrl["t0"]).clamp_min(0.0))   # ~P / PET
+        river = up(dr["river"]) if dr else torch.zeros_like(h60)
+        gates = None
+        if "gates" in ctrl:     # EXP-2 controls: the style gates by name + the karst provinces (v4 has none: unchanged)
+            from terrain_slm.models import detail2 as D2
+
+            gates = {name: up(ctrl["gates"][k]) for k, name in enumerate(D2.STYLES)}
+            if "karst" in ctrl:
+                gates["karst"] = up(ctrl["karst"])
+        codes = CN.carve_codes(h60, aridity, river, gates, margin=m)         # samples [s1 + m, s2 - m)
+        rows = (torch.arange(i1, i2, device=h60.device) * d) // ds - (s1 + m)
+        cols = (torch.arange(j1, j2, device=h60.device) * d) // ds - (t1 + m)
+        return codes[rows][:, cols].long()
 
     def _red_deserts(self, biome: torch.Tensor, i1: int, j1: int, d: int) -> torch.Tensor:
         """Whole deserts turn red or stay sand, one decision per desert (generator.red_desert_cells).

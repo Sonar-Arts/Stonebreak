@@ -248,6 +248,7 @@ int32_t sbw_sample_columns(const cv_generator* gp, int64_t x0, int64_t z0, int32
                     if (!cs) throw std::runtime_error("carve unavailable");
                     height = cs->carvedH[col];
                     surface = cs->top[col];
+                    if (cs->sea[col] != 0 && water == NO_WATER) water = g->cfg.sea; /* a sea-flooded cut */
                 }
                 const bool needPool = outWater != nullptr || outSurface != nullptr || outTrees != nullptr;
                 const int pool = needPool ? poolDepthProbe(*g, biome, surface, raw, height, water, wx, wz, carved) : 0;
@@ -374,6 +375,7 @@ int32_t sbw_query_column(const cv_generator* gp, int64_t x, int64_t z, sbw_colum
         out->height = b->h[col];
         out->carved_height = cs->carvedH[col];
         out->water_level = b->water[col];
+        if (cs->sea[col] != 0 && out->water_level == NO_WATER) out->water_level = g->cfg.sea; /* a sea-flooded cut */
         out->biome = b->biome[col];
         out->surface_block = cs->top[col];
         out->pool_depth = poolDepthProbe(*g, b->biome[col], cs->top[col], b->h[col], cs->carvedH[col], b->water[col], x, z, true);

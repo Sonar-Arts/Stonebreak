@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.diffusion.tgmpipe;
 
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.TerrainScale;
 import com.stonebreak.world.generation.diffusion.TGMPipeException;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
@@ -12,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -90,8 +92,8 @@ public final class TGMPipe {
     private TGMPipeConnection connection;
     /** True between {@link #ensureRunning} and {@link #shutdown}: a death in between is a crash. */
     private boolean wanted;
-    /** The running service's tile-cache namespace, from its handshake; see {@link #cacheNamespace}. */
-    private volatile String cacheNamespace;
+    /** The running service's tile-cache namespaces, one per {@link TerrainScalePreset} (ordinal), from its handshake. */
+    private volatile List<String> cacheNamespaces = List.of();
 
     private TGMPipe() {
         this.workingDir = slmDir();
@@ -220,7 +222,15 @@ public final class TGMPipe {
      * when the service is stopped, cannot be (re)started, or fails the tile.
      */
     public CompletableFuture<TerrainTile> requestTile(long seed, int tileX, int tileZ, int lod, int priority) {
-        var request = new TGMPipeConnection.TileRequest(seed, tileX, tileZ, lod, priority, new CompletableFuture<>());
+        return requestTile(seed, tileX, tileZ, lod, priority, TerrainScalePreset.ONE_TO_FOUR);
+    }
+
+    /** {@link #requestTile(long, int, int, int, int)} for a world at {@code scale} (blocks, curve, cache namespace). */
+    public CompletableFuture<TerrainTile> requestTile(long seed, int tileX, int tileZ, int lod, int priority,
+                                                     TerrainScalePreset scale) {
+        TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        var request = new TGMPipeConnection.TileRequest(seed, tileX, tileZ, lod, priority, s.ordinal(),
+                new CompletableFuture<>());
         submit(request);
         return request.future();
     }
@@ -232,16 +242,29 @@ public final class TGMPipe {
      * model or edited pipeline is never shown from a stale cache.
      */
     public String cacheNamespace() {
-        return cacheNamespace;
+        return cacheNamespace(TerrainScalePreset.ONE_TO_FOUR);
     }
 
-    static String cacheNamespaceOf(String readyJson) {
+    /** {@link #cacheNamespace()} of the tiles built at {@code scale}: each scale is cached apart. */
+    public String cacheNamespace(TerrainScalePreset scale) {
+        List<String> all = cacheNamespaces;
+        int i = (scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale).ordinal();
+        return i < all.size() ? all.get(i) : null;
+    }
+
+    /** The READY json's {@code cache_namespaces} (one per world of the handshake, in order); empty if unreadable. */
+    static List<String> cacheNamespacesOf(String readyJson) {
         try {
-            JsonNode ns = new ObjectMapper().readTree(readyJson).get("cache_namespace");
-            return ns != null && ns.isTextual() ? ns.asText() : null;
+            JsonNode ns = new ObjectMapper().readTree(readyJson).get("cache_namespaces");
+            if (ns == null || !ns.isArray()) {
+                return List.of();
+            }
+            List<String> out = new ArrayList<>();
+            ns.forEach(n -> out.add(n.asText()));
+            return List.copyOf(out);
         } catch (IOException e) {
             LOG.log(Level.WARNING, "unreadable TGMPipe handshake: " + readyJson, e);
-            return null;
+            return List.of();
         }
     }
 
@@ -311,10 +334,10 @@ public final class TGMPipe {
             throw new TGMPipeException("failed to launch " + command + " in " + workingDir, e);
         }
         TGMPipeConnection c = new TGMPipeConnection(p.getInputStream(), p.getOutputStream(), this::closed);
-        c.open(TerrainScale.worldConfigJson());
+        c.open(TerrainScale.handshakeJson());
         try {
             String info = c.ready().get(startupTimeoutMs, TimeUnit.MILLISECONDS);
-            cacheNamespace = cacheNamespaceOf(info);
+            cacheNamespaces = cacheNamespacesOf(info);
             LOG.info(() -> "TGMPipe ready, serving " + MODEL_NAME + " (pid " + p.pid() + "): " + info);
         } catch (TimeoutException e) {
             c.close();

@@ -94,7 +94,7 @@ extern "C" {
 
 /* 1 (#386): split out of the engine's CK ABI 12; 2: distilled Standard shape (column ABI);
  * 3 (#446): cube generator behind cv_generator, column ABI removed. */
-#define SBW_ABI_VERSION 3
+#define SBW_ABI_VERSION 4
 
 /* Water level "no standing water" (water levels are world y and may be negative). */
 #define SBW_NO_WATER INT32_MIN
@@ -107,6 +107,8 @@ extern "C" {
 #define SBW_FLAG_PEAK_DAMP   0x1u /* Density3D overhang band tapers with altitude (Standard) */
 #define SBW_FLAG_DEEP_LAYERS 0x2u /* deep cave layers below the top carvers */
 #define SBW_FLAG_FEATURES    0x4u /* populate places surface features (else populate is a no-op) */
+#define SBW_FLAG_PROFILE_CARVE 0x8u /* profile kind: ravines and sinkholes follow the profile's carve codes
+                                      (sbw_column_profile.carve) instead of the hash; off by default */
 
 #define SBW_DEEP_LAYERS 4         /* layers 100, 200, 300, 400 blocks under the top carvers */
 
@@ -134,10 +136,23 @@ enum sbw_biome {
 enum sbw_tree { SBW_TREE_OAK = 0, SBW_TREE_ELM, SBW_TREE_PINE, SBW_TREE_CYPRESS };
 
 /* Column profile for SBW_KIND_PROFILE, filled by column_fn for column cube (cx, cz); arrays are
- * [lz * 32 + lx]. 18432 bytes, no padding. height = first y above the ground; water = first y that
+ * [lz * 32 + lx]. No padding. height = first y above the ground; water = first y that
  * is not water (SBW_NO_WATER when dry); river_floor/river_roof = a river void under standing ground
  * (floor and roof are stone, water below `water`), roof <= floor for none; river_flow = flow octant
- * 0..7 of the column's water, -1 none; biome = BiomeType ordinal. */
+ * 0..7 of the column's water, -1 none; biome = BiomeType ordinal. carve = the terrain model's carve-node code
+ * (SBW ABI 4; used with SBW_FLAG_PROFILE_CARVE): bits 0-3 ravine density 0..15 (0 = none), 4-6 style
+ * (SBW_CARVE_*), 7-10 strike: the incision's axis theta in 16 steps over [0, pi), measured from +z toward +x
+ * (a ravine's yaw from +x toward +z is pi/2 - theta), 11-15 depth class 0..31 (32 m per step). 20480 bytes. */
+enum sbw_carve_style { SBW_CARVE_RAVINE = 0, SBW_CARVE_SLOT, SBW_CARVE_GORGE, SBW_CARVE_RIFT, SBW_CARVE_KARST,
+                       SBW_CARVE_NONE,
+                       /* a cliffed coast (land within ~300 m of a steep shore): the cliff retreats into a wave-cut
+                        * platform with stacks left standing, a wave notch along its foot, sea caves and arches; where
+                        * the cut connects to the open sea it is a rock shelf 1-3 blocks under sea level, flooded with
+                        * sea water (notches, caves and arches too), else a dry platform at sea level; density = cliff
+                        * exposure (0 = none). No ravines. */
+                       SBW_CARVE_SEA_STACKS = 6,
+                       /* humid tower karst: vertical-walled corridors and pits between rock towers. No ravines. */
+                       SBW_CARVE_TOWERS = 7 };
 typedef struct sbw_column_profile {
     int32_t height[1024];
     int32_t water[1024];
@@ -145,6 +160,7 @@ typedef struct sbw_column_profile {
     int32_t river_roof[1024];
     uint8_t biome[1024];
     int8_t river_flow[1024];
+    uint16_t carve[1024];
 } sbw_column_profile;
 
 /* Upcall: fill *out for column cube (cx, cz). May run on any generator thread, concurrently, and
@@ -196,7 +212,7 @@ typedef struct sbw_gen_config {
 typedef struct sbw_column_info {
     int32_t height;          /* raw height (first y above ground) */
     int32_t carved_height;   /* one past the highest solid block after carving */
-    int32_t water_level;     /* SBW_NO_WATER when dry; a swamp pool reports its water */
+    int32_t water_level;     /* SBW_NO_WATER when dry; a swamp pool reports its water, a sea-flooded cut sea level */
     int32_t biome;
     int32_t surface_block;   /* block the column exposes at carved_height - 1 (game id) */
     int32_t pool_depth;      /* swamp pool: 0, 1 or 2 */
@@ -236,7 +252,8 @@ SBW_API int32_t sbw_column_surface(const cv_generator* g, int64_t cx, int64_t cz
 /* ---- FastLOD sampling (mirrors TerrainGenerator.sampleColumns / sampleRawColumns /
  * sampleCellOpenings / probeCellTrees). Grids are count x count at (x0 + ix*stride, z0 + iz*stride),
  * indexed [ix * count + iz] like the Java. Outputs other than heights may be NULL. Return 0 or a
- * negative error. */
+ * negative error. With SBW_SAMPLE_CARVED a sea-flooded cut (SBW_CARVE_SEA_STACKS) reports water = sea level over
+ * its shelf. */
 SBW_API int32_t sbw_sample_columns(const cv_generator* g, int64_t x0, int64_t z0, int32_t count,
                                    int32_t stride, uint32_t flags, int32_t* out_heights,
                                    int32_t* out_water, uint16_t* out_surface, int32_t* out_trees);

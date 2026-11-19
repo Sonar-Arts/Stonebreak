@@ -75,7 +75,7 @@ public final class VisualizerRegistry {
         rebuild(seed);
     }
 
-    /** The terrain scale the Standard previews show (and the new world will use). */
+    /** The terrain scale the previews show (Standard and Daedalus; the new world will use it). */
     public TerrainScalePreset scale() {
         return standard.scale();
     }
@@ -83,8 +83,13 @@ public final class VisualizerRegistry {
     /** Switches the previewed terrain scale; rebuilds the visualizers when it changes. */
     public void selectScale(TerrainScalePreset scale) {
         TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
-        if (s == standard.scale()) return;
+        if (s == standard.scale() && s == diffusion.scale()) return;
         standard.setScale(s);
+        if (s != diffusion.scale()) {
+            diffusion.setScale(s);
+            // Daedalus samples are stored by seed and level only: another scale's blocks must not be shown.
+            previewStore.clear();
+        }
         rebuild(seed);
     }
 

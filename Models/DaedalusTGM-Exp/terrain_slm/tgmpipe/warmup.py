@@ -61,6 +61,8 @@ def main(argv=None) -> int:
         if not (model_dir / "planner.pt").exists():
             _emit(error=f"model checkpoints not found in {model_dir}")
             return 1
+        if (model_dir / "climate.pt").exists():          # EXP-2 folder: same generator as the service picks
+            from terrain_slm.world.generator2 import WorldGenerator2 as WorldGenerator
         gen = WorldGenerator(model_dir, 0, device)
         gen.warm_up(lambda what: _emit(stage="compile", detail=what))
         _emit(done=True, gpu=gpu, device=device, model=gen.model_id, seconds=round(time.monotonic() - t0, 1))

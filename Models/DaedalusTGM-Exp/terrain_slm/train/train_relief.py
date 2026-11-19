@@ -88,11 +88,13 @@ def evaluate(model, data, batch, steps=16):
     model.eval()
     g = torch.Generator(device=data.device).manual_seed(123)
     tot, n, s_std, r_std = 0.0, 0, 0.0, 0.0
+    amp_norm = getattr(model.cfg, "amp_norm", False)
     for cond, x1 in data.val_batches(batch):
-        tot += fm_loss(model, cond, x1, g).item() * x1.shape[0]
+        amp = RL.relief_amp(cond) if amp_norm else 1.0
+        tot += fm_loss(model, cond, x1 / amp, g).item() * x1.shape[0]
         n += x1.shape[0]
         noise = torch.randn(x1.shape, device=x1.device, generator=g)
-        x = R.sample(model, cond, noise, steps=steps)
+        x = R.sample(model, cond, noise, steps=steps) * amp
         s_std += x.std().item() * x1.shape[0]
         r_std += x1.std().item() * x1.shape[0]
     model.train()
@@ -109,13 +111,23 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--eval-every", type=int, default=2000)
     ap.add_argument("--channels", type=int, nargs="+", default=None, help="UNet widths (default ReliefConfig)")
+    ap.add_argument("--amp-norm", action="store_true", help="amplitude-normalised target (relief.AMP_SLOPE)")
+    ap.add_argument("--init", type=Path, default=None, help="continue from a checkpoint's (EMA) weights, fresh optimiser")
     args = ap.parse_args()
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
 
     data = ReliefData(args.data or built_regions(), args.device)
     cfg = RL.ReliefConfig(channels=tuple(args.channels)) if args.channels else RL.ReliefConfig()
+    cfg.amp_norm = args.amp_norm
+    if args.init:
+        ick = torch.load(args.init, map_location=args.device, weights_only=False)
+        ic = dict(ick["config"]); ic["channels"] = tuple(ic["channels"])
+        cfg = RL.ReliefConfig(**ic)
     model = RL.Relief(cfg).to(args.device)
+    if args.init:
+        model.load_state_dict(ick["model"])
+        print(f"init from {args.init} (step {ick.get('step')})", flush=True)
     ema = copy.deepcopy(model).eval()
     print(f"relief {sum(p.numel() for p in model.parameters()):,} params, "
           f"{data.cells.train_count:,} train corners, {len(data.val_corners)} val crops", flush=True)
@@ -127,6 +139,8 @@ def main():
     best, t0 = float("inf"), time.time()
     for step in range(1, args.steps + 1):
         cond, x1 = data.train_batch(args.batch)
+        if cfg.amp_norm:
+            x1 = x1 / RL.relief_amp(cond)
         loss = fm_loss(model, cond, x1)
         opt.zero_grad(set_to_none=True)
         loss.backward()

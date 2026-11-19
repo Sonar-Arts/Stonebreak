@@ -65,8 +65,9 @@ inline float spaghettiFade(int64_t depth) {
 
 template <typename D>
 bool Generator::densitySolid(D&& dens, int64_t y, int32_t h, int biome, int32_t refH, int32_t wtable,
-                             int32_t guard) const {
+                             int32_t guard, int32_t seal) const {
     if (y < caveFloor() || y >= h) return true;
+    if (y >= static_cast<int64_t>(seal) - D_WATER_CLEARANCE && y < cfg.sea) return true; /* beside a flooded cut */
     const int64_t depth = static_cast<int64_t>(h) - y;
     if (depth <= D_OVERHANG_DEPTH) {
         float intensity = overhangIntensity(biome);
@@ -94,13 +95,13 @@ template <typename D>
 uint16_t Generator::decideBlock(const BaseTile& b, const CarveTile& c, int col, int lx, int lz, int64_t x,
                                 int64_t y, int64_t z, D&& dens) const {
     return decideBlockM(b, [&] { return c.formation.test(lx, y, lz); }, [&] { return c.cave.test(lx, y, lz); },
-                        [&] { return densitySolid(dens, y, b.h[col], b.biome[col], b.refH[col], c.table[col], c.guard[col]); },
-                        col, x, y, z);
+                        [&] { return densitySolid(dens, y, b.h[col], b.biome[col], b.refH[col], c.table[col], c.guard[col], c.seal[col]); },
+                        col, x, y, z, c.flood[col]);
 }
 
 template <typename F, typename V, typename S>
 uint16_t Generator::decideBlockM(const BaseTile& b, F&& inFormation, V&& inCave, S&& solid, int col, int64_t x,
-                                 int64_t y, int64_t z) const {
+                                 int64_t y, int64_t z, int32_t flood) const {
     if (y < cfg.minY || y >= cfg.maxY) return cfg.id[SBW_AIR];
     if (isBedrock(x, y, z)) return cfg.id[SBW_BEDROCK];
     const int32_t h = b.h[col];
@@ -114,7 +115,7 @@ uint16_t Generator::decideBlockM(const BaseTile& b, F&& inFormation, V&& inCave,
     }
     if (y < h) {
         if (inFormation()) return cfg.id[SBW_STONE];
-        if (inCave()) return cfg.id[SBW_AIR];
+        if (inCave()) return (y >= flood && y < cfg.sea) ? cfg.id[SBW_WATER] : cfg.id[SBW_AIR]; /* sea-flooded cut */
         const int biome = b.biome[col];
         if (!solid()) return cfg.id[SBW_AIR];
         if (y < static_cast<int64_t>(h) - 4) {

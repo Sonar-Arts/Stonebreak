@@ -108,6 +108,23 @@ _ELEV_NOISE_FINE.fractal_lacunarity = 2.0
 _ELEV_NOISE_FINE.fractal_gain = 0.6  # slightly more high-freq contribution
 
 
+# EXP-2 climate extras (2026-11-18): a climate stack may carry 7 channels -- t0, tseason, precip, pcv, then ARIDITY
+# (P / Penman PET, the UNEP index the tree-moisture thresholds were defined on), top-layer SOIL water (m3/m3) and mean
+# SNOW water equivalent (m) -- from data v2 (CHELSA + ERA5) or the climate node. With 4 channels (v4) every rule below
+# is unchanged, so v4 tiles stay bit-identical.
+SNOW_COVER_M_WE = 0.40        # snow index (CHELSA swe / 1000: the 12 monthly values summed) for a PERSISTENT winter
+                              # snowpack: inland Norway, high Alps / Himalaya yes; Great Plains (0.03), Baltic (0.09) no
+SNOW_COVER_MAX_TEMP_C = 4.0   # ...and only where the column itself is cold (its lapsed mean temperature): mild coasts
+                              # under a snowy grid cell stay green
+SOIL_SWAMP_M3 = (0.30, 0.45)  # soil water where swamps start / are most likely (peat and marsh soils sit above 0.4)
+SOIL_SWAMP_MIN_M3 = 0.25      # drier soils host no swamp at all
+SWAMP_BOG_MIN_TEMP_C = 4.0    # very wet soils allow cool bogs (boreal peatland) below SWAMP_MIN_TEMP_C
+
+
+def has_extras(climate: Optional[torch.Tensor]) -> bool:
+    return climate is not None and climate.shape[0] >= 7
+
+
 def _compute_climate_vars(temp: torch.Tensor, t_season: torch.Tensor, 
                           precip: torch.Tensor, p_cv: torch.Tensor) -> dict:
     """
@@ -239,6 +256,10 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     # === DERIVED CLIMATE VARIABLES ===
     cv = _compute_climate_vars(temp, t_season, precip, p_cv)
     tree_moisture = cv['tree_moisture']
+    ext = has_extras(climate)
+    if ext:   # real aridity (with the classifier's own precipitation noise) instead of the temperature-only PET estimate
+        p_noise = precip / torch.clamp(climate[2], min=1e-6)
+        tree_moisture = climate[4].clamp_min(0.0) * p_noise * (1.0 - 0.35 * (p_cv / 100.0).clamp(max=1.0))
     coldest_month = cv['coldest_month']
     tropical = cv['tropical']
     growing_season = cv['growing_season']
@@ -336,6 +357,9 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     cold_enough = snow_temp < 0.0
     wet_enough = precip > 150.0
     would_have_snow = cold_enough & wet_enough
+    if ext:   # ...or real seasonal snow cover (maritime snow above 0 C means, heavy-snow ranges); the lapse rule keeps peaks
+        would_have_snow = would_have_snow | ((climate[6].clamp_min(0.0) * (1.0 + 0.06 * snow_noise) > SNOW_COVER_M_WE)
+                                             & (snow_temp < SNOW_COVER_MAX_TEMP_C))
     has_snow = would_have_snow & ~is_steep
 
     # === ELEVATION BANDS ===
@@ -566,10 +590,21 @@ def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.
     cv = _compute_climate_vars(temp, climate[1], precip, climate[3])
     moisture = cv['tree_moisture'] * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0)
 
+    if has_extras(climate):   # real aridity, as in _classify_biome
+        p_noise = precip / torch.clamp(climate[2], min=1e-6)
+        moisture = (climate[4].clamp_min(0.0) * p_noise * (1.0 - 0.35 * (climate[3] / 100.0).clamp(max=1.0))
+                    * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0))
     wet = ((moisture - SWAMP_MIN_MOISTURE) / (SWAMP_FULL_MOISTURE - SWAMP_MIN_MOISTURE)).clamp(0.0, 1.0)
     threshold = SWAMP_PATCH_DRY + (SWAMP_PATCH_WET - SWAMP_PATCH_DRY) * wet
+    min_temp = torch.full_like(temp, SWAMP_MIN_TEMP_C)
+    soil_ok = torch.ones_like(temp, dtype=torch.bool)
+    if has_extras(climate):   # wet soils: more swamp, and cool bogs; dry soils: none
+        soil_w = ((climate[5] - SOIL_SWAMP_M3[0]) / (SOIL_SWAMP_M3[1] - SOIL_SWAMP_M3[0])).clamp(0.0, 1.0)
+        threshold = threshold - 0.25 * soil_w
+        min_temp = SWAMP_MIN_TEMP_C + (SWAMP_BOG_MIN_TEMP_C - SWAMP_MIN_TEMP_C) * (soil_w > 0.5).to(temp.dtype)
+        soil_ok = climate[5] >= SOIL_SWAMP_MIN_M3
     patch = t(_SWAMP_NOISE) > threshold
-    return (patch & (moisture >= SWAMP_MIN_MOISTURE) & (temp >= SWAMP_MIN_TEMP_C)
+    return (patch & soil_ok & (moisture >= SWAMP_MIN_MOISTURE) & (temp >= min_temp)
             & (snow_temp >= SWAMP_SNOW_MARGIN_C) & ~cv['hard_frost']
             & (elev >= 0.0) & (elev < SWAMP_MAX_ELEV_M) & (regional < SWAMP_MAX_REGIONAL_M))
 

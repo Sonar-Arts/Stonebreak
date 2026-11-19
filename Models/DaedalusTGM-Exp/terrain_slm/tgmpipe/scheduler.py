@@ -20,6 +20,7 @@ class TileKey(NamedTuple):
     tile_x: int
     tile_z: int
     lod: int
+    world: int = 0   # index of the HELLO world config (terrain scale) the tile is built for
 
 
 @dataclass

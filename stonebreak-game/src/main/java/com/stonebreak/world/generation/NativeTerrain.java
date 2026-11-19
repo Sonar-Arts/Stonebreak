@@ -59,9 +59,11 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         NativeCubeGenerator.Config config = config(seed, s, states);
         DiffusionProfiles profiles = null;
         if (t == TerrainGeneratorType.DIFFUSION) {
-            profiles = new DiffusionProfiles(seed);
+            profiles = new DiffusionProfiles(seed, s);
             config.kind = NativeCubeGenerator.Kind.PROFILE;
             config.profiles = profiles;
+            // Terrain-aware ravines and sinkholes from the model's carve node (TGMPipe v2 plane 6).
+            config.flags |= NativeCubeGenerator.FLAG_PROFILE_CARVE;
         }
         try {
             return new NativeTerrain(seed, t, s, NativeCubeGenerator.create(config), profiles);
@@ -123,7 +125,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
     public String lodCacheTag() {
         String base = "native-" + type.name().toLowerCase() + "-" + scale.name().toLowerCase();
         if (type == TerrainGeneratorType.DIFFUSION) {
-            String ns = TGMPipe.getInstance().cacheNamespace();
+            String ns = TGMPipe.getInstance().cacheNamespace(scale);
             return base + ":" + TGMPipe.MODEL_NAME + ":" + (ns != null ? ns : "offline");
         }
         return base;
@@ -267,16 +269,16 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         private final com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator heights;
         private final com.stonebreak.world.generation.diffusion.biomes.BiomeManager biomes;
 
-        DiffusionProfiles(long seed) {
+        DiffusionProfiles(long seed, TerrainScalePreset scale) {
             TGMPipe.getInstance().ensureRunning(fraction -> { });
-            this.tiles = new DiffusionTileCache(seed);
+            this.tiles = new DiffusionTileCache(seed, scale);
             this.heights = new com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator(tiles);
             this.biomes = new com.stonebreak.world.generation.diffusion.biomes.BiomeManager(tiles);
         }
 
         @Override
         public boolean fill(long cx, long cz, int[] height, int[] water, int[] riverFloor, int[] riverRoof,
-                            byte[] biome, byte[] riverFlow) {
+                            byte[] biome, byte[] riverFlow, short[] carve) {
             int[] h = new int[CS * CS], w = new int[CS * CS], f = new int[CS * CS], r = new int[CS * CS],
                 flow = new int[CS * CS];
             BiomeType[] b = new BiomeType[CS * CS];
@@ -286,6 +288,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
                     int chunkZ = Math.toIntExact(cz * 2 + sz);
                     heights.populateChunkHeights(chunkX, chunkZ, h, w, f, r, flow);
                     biomes.populateChunkBiomes(chunkX, chunkZ, h, b);
+                    TerrainTile tile = tiles.getTile(chunkX * CS, chunkZ * CS);   // a chunk never straddles tiles
                     for (int x = 0; x < CS; x++) {
                         for (int z = 0; z < CS; z++) {
                             int src = x * CS + z;
@@ -296,6 +299,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
                             riverRoof[dst] = r[src];
                             biome[dst] = (byte) (b[src] != null ? b[src].ordinal() : 0);
                             riverFlow[dst] = (byte) (flow[src] < 0 || flow[src] > 7 ? -1 : flow[src]);
+                            carve[dst] = tile.carveAt(chunkX * CS + x, chunkZ * CS + z);
                         }
                     }
                 }

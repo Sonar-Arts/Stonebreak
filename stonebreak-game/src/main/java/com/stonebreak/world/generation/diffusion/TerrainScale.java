@@ -1,5 +1,6 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.LinkedHashMap;
@@ -18,7 +19,8 @@ import java.util.Map;
  * soft-caps summits below ~5150 m so nothing is sheared flat at the build limit.
  *
  * <p>The terrain model works in metres on its own 30 m grid; TGMPipe turns them
- * into blocks with exactly these numbers, handed over in its handshake ({@link #worldConfigJson}).
+ * into blocks with exactly these numbers, handed over in its handshake ({@link #handshakeJson}, one config per
+ * {@link TerrainScalePreset}). The constants here are the 1:4 preset's.
  */
 public final class TerrainScale {
 
@@ -55,31 +57,55 @@ public final class TerrainScale {
     }
 
     /**
-     * The world config TGMPipe is handed in its handshake, as JSON — keys match
-     * {@code terrain_slm.world.world_config.WorldConfig} exactly (the service rejects a missing or
-     * unknown one), so the service never decides the world's scale on its own.
+     * One world config as TGMPipe reads it, for {@code scale}: keys match
+     * {@code terrain_slm.world.world_config.WorldConfig} exactly (the service rejects a missing or unknown one), so
+     * the service never decides a world's scale on its own. Metres per block and the height curve come from the
+     * preset (1:4 = 60 m blocks, 1:2 = 30 m blocks with half the curve rates); tile size and knots are shared.
      */
-    public static String worldConfigJson() {
+    public static String worldConfigJson(TerrainScalePreset scale) {
+        TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        double[] rates = s.curveRates();
+        double[] knots = s.curveKnots();
         Map<String, Number> world = new LinkedHashMap<>();
         // The cube world spans [MIN_Y, MAX_Y): the service clamps heights to [min_y, world_height).
         world.put("world_height", WorldConfiguration.MAX_Y);
         world.put("min_y", WorldConfiguration.MIN_Y);
         world.put("sea_level", WorldConfiguration.SEA_LEVEL);
-        world.put("horizontal_m", HORIZONTAL_METERS_PER_BLOCK);
-        world.put("downscale", DOWNSCALE);
+        world.put("horizontal_m", s.horizontalMetresPerBlock());
+        world.put("downscale", downscale(s));
         world.put("tile_size", TILE_SIZE_BLOCKS);
-        world.put("ocean_m_per_block", CURVE_RATES[0]);
-        world.put("lowland_m_per_block", CURVE_RATES[1]);
-        world.put("midland_m_per_block", CURVE_RATES[2]);
-        world.put("highland_m_per_block", CURVE_RATES[3]);
-        world.put("lowland_top_m", CURVE_KNOTS[0]);
-        world.put("highland_base_m", CURVE_KNOTS[1]);
-        world.put("shore_blend_m", CURVE_KNOTS[2]);
-        world.put("midland_blend_m", CURVE_KNOTS[3]);
-        world.put("highland_blend_m", CURVE_KNOTS[4]);
-        StringBuilder json = new StringBuilder("{\"world\":{");
+        world.put("ocean_m_per_block", rates[0]);
+        world.put("lowland_m_per_block", rates[1]);
+        world.put("midland_m_per_block", rates[2]);
+        world.put("highland_m_per_block", rates[3]);
+        world.put("lowland_top_m", knots[0]);
+        world.put("highland_base_m", knots[1]);
+        world.put("shore_blend_m", knots[2]);
+        world.put("midland_blend_m", knots[3]);
+        world.put("highland_blend_m", knots[4]);
+        StringBuilder json = new StringBuilder("{");
         world.forEach((key, value) -> json.append('"').append(key).append("\":").append(value).append(','));
         json.setLength(json.length() - 1);
-        return json.append("}}").toString();
+        return json.append('}').toString();
+    }
+
+    /** Model pixels per block along each axis at {@code scale} (2 at 1:4, 1 at 1:2). */
+    public static int downscale(TerrainScalePreset scale) {
+        return (int) Math.round(scale.horizontalMetresPerBlock() / MODEL_METERS_PER_PIXEL);
+    }
+
+    /**
+     * TGMPipe's handshake (protocol v2): one world config per terrain scale the game offers, in
+     * {@link TerrainScalePreset} ordinal order. A tile request names its world by that ordinal, so one service
+     * serves 1:4 and 1:2 worlds (and the terrain mapper at either scale) side by side: the model's caches are in
+     * metres, only the block stages differ.
+     */
+    public static String handshakeJson() {
+        StringBuilder json = new StringBuilder("{\"worlds\":[");
+        for (TerrainScalePreset p : TerrainScalePreset.values()) {
+            json.append(worldConfigJson(p)).append(',');
+        }
+        json.setLength(json.length() - 1);
+        return json.append("]}").toString();
     }
 }

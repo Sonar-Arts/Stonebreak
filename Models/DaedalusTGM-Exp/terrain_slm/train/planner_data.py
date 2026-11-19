@@ -62,6 +62,7 @@ class _Region:
         self.coarse = t(c["coarse"])
         self.desc = t(c["desc"])
         self.climate = torch.stack([t(c[k]) for k in P.CLIMATE_NAMES])
+        self._root, self._device, self._extra = root, device, None
         # Real D8 accumulation lives on 1-cell-wide lines the planner cannot localise
         # exactly; an L1 regression then predicts a low, blurred ridge that never reaches
         # the river threshold. Train on the 3x3-dilated field instead (true magnitude,
@@ -88,6 +89,19 @@ class _Region:
                             for dr in range(0, h - s + 1, s) for dc in range(0, w - s + 1, s)]
         self.train_mask = ~val.to(device)
 
+
+
+    @property
+    def climate_extra(self) -> torch.Tensor | None:
+        """(3, H, W) aridity, soil water, snow water equivalent (data v2 cells.npz), loaded on first use; None when the
+        region predates them (data v1). Lazy so the planner / relief / hydro trainers never pay for it."""
+        if self._extra is None:
+            c = np.load(self._root / "cells.npz")
+            if not all(k in c.files for k in ("aridity", "soil", "snow")):
+                return None
+            self._extra = torch.stack([torch.from_numpy(np.ascontiguousarray(c[k])).float().to(self._device)
+                                       for k in ("aridity", "soil", "snow")])
+        return self._extra
 
 class PlannerData:
     """Training crops drawn from one or more regions (data/<region>/). Regions are sampled

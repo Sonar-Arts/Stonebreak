@@ -30,35 +30,43 @@ EDGE = 16
 
 
 def make_sample(reg: DetailRegion, r: int, c: int, scale: BlockScale, lut: torch.Tensor, i0: int, j0: int,
-                aug: np.random.Generator | None = None):
+                aug: np.random.Generator | None = None, extras: bool = False):
     """Crop at cell (r, c): (inputs (N_IN, CROP, CROP), rule labels, cleaned labels) as class indices."""
     spc = DT.SAMPLES_PER_CELL
     n = CROP // spc
     dem = reg.dem60[r * spc : (r + n) * spc, c * spc : (c + n) * spc]
     elev = scale.to_metres(torch.floor(scale.to_blocks(dem)).clamp(scale.min_y, scale.world_height - 1) + 0.5)
-    cl = torch.stack([reg.cells.climate[k][r : r + n, c : c + n] for k in range(4)])[None]
+    cl = torch.stack([reg.cells.climate[k][r : r + n, c : c + n] for k in range(4)])
+    if extras:   # EXP-2: aridity, soil, snow (data v2) -> the 7-channel climate
+        cl = torch.cat([cl, reg.cells.climate_extra[:, r : r + n, c : c + n]])
+    cl = cl[None]
     cl = F.interpolate(cl, size=(CROP, CROP), mode="bilinear", align_corners=False)[0]
     if aug is not None:
         # Climate augmentation: in game, archetype climate lands on any terrain, so pair real landforms
         # with shifted climates (warm lowlands -> swamp, cold uplands -> snow, ...); the rule labels follow.
-        cl[0] = cl[0] + float(aug.uniform(-8.0, 8.0))
+        dt, fp = float(aug.uniform(-8.0, 8.0)), float(np.exp(aug.uniform(-1.2, 1.2)))
+        cl[0] = cl[0] + dt
         cl[1] = cl[1] * float(aug.uniform(0.6, 1.5))
-        cl[2] = cl[2] * float(np.exp(aug.uniform(-1.2, 1.2)))
+        cl[2] = cl[2] * fp
         cl[3] = cl[3] * float(aug.uniform(0.7, 1.4))
+        if extras:   # keep the extras consistent with the shifted climate: aridity ~ P, wetter soil, less snow when warmer
+            cl[4] = cl[4] * fp
+            cl[5] = (cl[5] * fp ** 0.3).clamp(0.0, 0.6)
+            cl[6] = cl[6] * fp * float(np.exp(-0.3 * dt))
     cl[0] = cl[0] - LAPSE_C_PER_M * elev.clamp_min(0.0)
     ep = F.pad(elev[None, None], (1, 1, 1, 1), mode="replicate")[0, 0]
     rule = B._classify_biome(elev, cl, i0, j0, elev_padded=ep, pixel_size_m=BN.PIXEL_M)
     rule_c = lut[rule.long()]
     clean = BN.majority(BN.majority(rule_c, 9), 5)
-    return BN.build_input(elev, cl, i0, j0)[0].half(), rule_c.byte(), clean.byte()
+    return BN.build_input(elev, cl, i0, j0, extras=extras)[0].half(), rule_c.byte(), clean.byte()
 
 
-def build(regions, corners, scale, lut, seed, p_aug=0.0):
+def build(regions, corners, scale, lut, seed, p_aug=0.0, extras=False):
     g = np.random.default_rng(seed)
     xs, rules, cleans = [], [], []
     for ri, r, c in corners:
         i0, j0 = int(g.integers(-200000, 200000)), int(g.integers(-200000, 200000))
-        x, rl, cl = make_sample(regions[ri], r, c, scale, lut, i0, j0, g if g.random() < p_aug else None)
+        x, rl, cl = make_sample(regions[ri], r, c, scale, lut, i0, j0, g if g.random() < p_aug else None, extras)
         xs.append(x); rules.append(rl); cleans.append(cl)
     return torch.stack(xs), torch.stack(rules), torch.stack(cleans)
 
@@ -88,6 +96,7 @@ def main():
     ap.add_argument("--channels", type=int, nargs=3, default=None)
     ap.add_argument("--p-aug", type=float, default=0.5, help="share of crops with shifted climate")
     ap.add_argument("--norm", action="store_true", help="per-pixel channel norm in every block")
+    ap.add_argument("--extras", action="store_true", help="EXP-2: 7-channel climate (aridity, soil, snow; data v2)")
     args = ap.parse_args()
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -114,19 +123,20 @@ def main():
                 for dc in range(0, w - n + 1, n * 2):
                     val_c.append((reg.cells.index, r + dr, c + dc))
     val_c = val_c[:: max(1, len(val_c) // 240)]
-    xt, rt, yt = build(regions, train_c[: args.train_crops], scale, lut, 1, args.p_aug)
-    xv, rv, yv = build(regions, val_c + val_c, scale, lut, 2, 0.5)   # val: each crop as-is and climate-shifted
+    xt, rt, yt = build(regions, train_c[: args.train_crops], scale, lut, 1, args.p_aug, args.extras)
+    xv, rv, yv = build(regions, val_c + val_c, scale, lut, 2, 0.5, args.extras)   # val: each crop as-is and climate-shifted
     del regions
     torch.cuda.empty_cache()
     print(f"dataset: {len(xt)} train / {len(xv)} val crops of {CROP}^2 in {time.time() - t0:.0f}s", flush=True)
     print("target fragmentation: rule", fragmentation(rv), "cleaned", fragmentation(yv), flush=True)
 
-    cfg = BN.BiomeNetConfig(channels=tuple(args.channels) if args.channels else BN.BiomeNetConfig.channels, norm=args.norm)
+    cfg = BN.BiomeNetConfig(channels=tuple(args.channels) if args.channels else BN.BiomeNetConfig.channels, norm=args.norm, extras=args.extras)
     model = BN.BiomeNet(cfg).to(dev)
     print(f"biomenet {sum(p.numel() for p in model.parameters()):,} params, {BN.N_CLASSES} classes", flush=True)
     freq = torch.bincount(yt.long().flatten(), minlength=BN.N_CLASSES + 1).float()[: BN.N_CLASSES]
     cw = (freq.sum() / freq.clamp_min(1.0) / BN.N_CLASSES).sqrt().clamp(0.3, 5.0).to(dev)
-    share = lambda y: {BN.CLASS_IDS[k]: round(float(v), 4) for k, v in enumerate(torch.bincount(y.long().flatten(), minlength=BN.N_CLASSES).float() / y.numel()) if v > 0}
+    # ignore (sea) labels are counted in the denominator but not listed (data v2 has real oceans)
+    share = lambda y: {BN.CLASS_IDS[k]: round(float(v), 4) for k, v in enumerate(torch.bincount(y.long().flatten(), minlength=BN.N_CLASSES + 1).float() / y.numel()) if v > 0 and k < BN.N_CLASSES}
     print('class shares (train cleaned):', share(yt), flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 300) * 0.5 * (1 + math.cos(math.pi * min(1.0, s / args.steps))))

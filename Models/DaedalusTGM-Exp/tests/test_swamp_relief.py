@@ -28,6 +28,7 @@ def _stub_gen(monkeypatch, swamp):
     gen._planner_cells = lambda ci0, cj0, hc, wc: _slope(ci0, cj0, hc, wc)[None].expand(11, hc, wc)
     gen.swamp_relief_cells = types.MethodType(G.WorldGenerator.swamp_relief_cells, gen)
     gen._flatten_swamps = types.MethodType(G.WorldGenerator._flatten_swamps, gen)
+    gen.controls = types.MethodType(G.WorldGenerator.controls, gen)
 
     def candidates(elev, regional, climate, i0, j0, step=1):
         h, w = elev.shape
