@@ -64,6 +64,9 @@ endif()
 add_library(stonebreak_terrain SHARED terrain.cpp ${_sbtg_srcs} ${_sbtg_incs})
 if(WIN32)
     set_target_properties(stonebreak_terrain PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    # <windows.h> (ci.hpp, terrain.cpp) would otherwise define min/max macros (std::min(...) stops parsing) and
+    # MSVC's <cmath> only offers M_PI under _USE_MATH_DEFINES.
+    target_compile_definitions(stonebreak_terrain PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _USE_MATH_DEFINES)
 endif()
 target_include_directories(stonebreak_terrain PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../include ${CMAKE_CURRENT_SOURCE_DIR} ${STONEBREAK_CENDA_INFER_INCLUDE} ${_sbtg_gen})

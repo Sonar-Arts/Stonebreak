@@ -9,8 +9,15 @@
 #include <type_traits>
 
 #if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
+#undef near   // <minwindef.h> legacy pointer qualifiers; `near` is a field name in the stages
+#undef far
 #else
 #include <dlfcn.h>
 #endif

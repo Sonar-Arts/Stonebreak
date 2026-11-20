@@ -145,8 +145,8 @@ int main() {
             (void)lakeOcean;
             std::printf("  seed %lld 1:%g: %ld/%ld columns differ from shape 1, land %ld, lake columns %ld, "
                         "rock exposure flat %.1f (%.0f) / steep %.1f (%.0f)\n", static_cast<long long>(seed), hm / 15.0,
-                        differ, cols, land, lakes, nFlat ? rockFlat / nFlat : 0.0, nFlat,
-                        nSteep ? rockSteep / nSteep : 0.0, nSteep);
+                        differ, cols, land, lakes, nFlat > 0.0 ? rockFlat / nFlat : 0.0, nFlat,
+                        nSteep > 0.0 ? rockSteep / nSteep : 0.0, nSteep);
             CHECK(differ > cols / 4);
             CHECK(wetWithVeg == 0);
             CHECK(land == 0 || dryWithVeg > 0);
