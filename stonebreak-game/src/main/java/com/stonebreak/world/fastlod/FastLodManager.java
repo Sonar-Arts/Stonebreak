@@ -723,6 +723,9 @@ public final class FastLodManager {
          * instead of fading in over a hole.
          */
         public volatile boolean nativeCovered;
+        /** Render pass (GL thread): cached octree FALLBACK coverage of this column, valid for {@link #coverStamp}. */
+        public boolean fallbackCovered;
+        public long coverStamp = -1;
         /**
          * Octree handover (render pass, GL thread): seconds this node keeps drawing after its footprint stopped
          * being a FALLBACK footprint, so whatever replaced it (octree nodes fading in, READY detail) is drawn

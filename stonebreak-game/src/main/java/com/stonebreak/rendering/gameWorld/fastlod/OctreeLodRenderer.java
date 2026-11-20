@@ -96,6 +96,20 @@ public final class OctreeLodRenderer {
 
     private final Map<Key, Node> nodes = new HashMap<>();
     private final List<Node> drawList = new ArrayList<>();
+    /**
+     * Nearest node first (2026-11-20): the nodes came in map order, so far terrain was often shaded before the near
+     * terrain hiding it; front to back lets depth testing reject it first (FastLOD's regions: about half the GPU
+     * time). {@code -Dstonebreak.sortFrontToBack=off} keeps map order.
+     */
+    static final boolean FRONT_TO_BACK =
+        !"off".equalsIgnoreCase(System.getProperty("stonebreak.sortFrontToBack", "on"));
+    private long[] sortScratch = new long[256];
+
+    /** Whether the terrain passes draw nearest first ({@code -Dstonebreak.sortFrontToBack}). */
+    public static boolean frontToBack() {
+        return FRONT_TO_BACK;
+    }
+    private final List<Node> sortedScratch = new ArrayList<>();
     private final FrustumIntersection frustum = new FrustumIntersection();
     private int vao;
     private OctreeLod bound;
@@ -365,6 +379,9 @@ public final class OctreeLodRenderer {
         if (drawList.isEmpty()) {
             return;
         }
+        if (FRONT_TO_BACK) {
+            sortFrontToBack();
+        }
         bindVao();
         GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
         GL11.glPolygonOffset(FastLodRenderPass.LOD_DEPTH_SLOPE, FastLodRenderPass.LOD_DEPTH_UNITS);
@@ -387,6 +404,33 @@ public final class OctreeLodRenderer {
         GL11.glPolygonOffset(0f, 0f);
         GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
         unbindVao();
+    }
+
+    /** Sorts {@link #drawList} by distance from the camera (render space origin) to each node's box centre. */
+    private void sortFrontToBack() {
+        int n = drawList.size();
+        if (n < 2) {
+            return;
+        }
+        if (sortScratch.length < n) {
+            sortScratch = new long[Math.max(n, sortScratch.length * 2)];
+        }
+        for (int i = 0; i < n; i++) {
+            Node node = drawList.get(i);
+            float cs = node.cellSize;
+            float cx = RenderOrigin.relativeX(node.originX) + (node.minX + node.maxX) * 0.5f * cs;
+            float cy = RenderOrigin.relativeY(node.originY) + (node.minY + node.maxY) * 0.5f * cs;
+            float cz = RenderOrigin.relativeZ(node.originZ) + (node.minZ + node.maxZ) * 0.5f * cs;
+            float d = cx * cx + cy * cy + cz * cz;   // >= 0: its float bits order like the value
+            sortScratch[i] = ((long) Float.floatToRawIntBits(d) << 32) | i;
+        }
+        java.util.Arrays.sort(sortScratch, 0, n);
+        sortedScratch.clear();
+        for (int i = 0; i < n; i++) {
+            sortedScratch.add(drawList.get((int) sortScratch[i]));
+        }
+        drawList.clear();
+        drawList.addAll(sortedScratch);
     }
 
     /**

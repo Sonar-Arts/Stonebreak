@@ -286,10 +286,12 @@ public class WorldRenderer {
         // Cascaded sun-shadow depth pre-pass. Runs before anything samples the
         // shadow map this frame; restores the caller's framebuffer and viewport,
         // so it is safe even when the post-fx scene FBO is already bound.
+        if (bench != null) bench.begin(PrecipitationBench.Section.SHADOWS);
         if (entityRenderer != null) entityRenderer.prepareShadowCasters(world);
         torchIndirectLighting.update(world);
         shadowMapRenderer.renderShadowPass(world, player, keyDirection, entityRenderer);
         torchShadowRenderer.render(world, player, entityRenderer, animatedBlockRenderer, totalTime);
+        if (bench != null) bench.end(PrecipitationBench.Section.SHADOWS);
         checkGLError("After shadow depth pre-pass");
 
         // Underwater changes what the BACKGROUND is, so it has to be decided
@@ -298,6 +300,7 @@ public class WorldRenderer {
 
         // The local weather and terrain relief follow the camera; rain and
         // lightning read them even with clouds switched off.
+        if (bench != null) bench.begin(PrecipitationBench.Section.CLOUD_PREP);
         ClientWeather weather = Game.getWeather();
         if (weather != null) {
             weather.focus(cameraPos.x, cameraPos.z, world.terrain());
@@ -305,6 +308,7 @@ public class WorldRenderer {
         // Clouds resolve before any receiver of cloud shadows is set up.
         cloudRenderer.prepareFrame(weather, cameraPos, keyDirection,
                 com.stonebreak.config.Settings.getInstance().getCloudsEnabled());
+        if (bench != null) bench.end(PrecipitationBench.Section.CLOUD_PREP);
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
         // Rain and snow fog for every pass this frame; underwater the murk replaces it.
@@ -341,9 +345,11 @@ public class WorldRenderer {
             // stayed the black clear colour - a black sector toward +X/+Z (or -X/-Z) far from spawn.
             // Float world X/Z keep the cube around the camera out to ~2^33 blocks (float ulp < its 1000-block
             // half size); beyond that the engine needs a render-space overload (doc: engine note).
+            if (bench != null) bench.begin(PrecipitationBench.Section.SKY);
             skyRenderer.renderSky(projectionMatrix, player.getViewMatrix(),
                     new Vector3f((float) cameraPos.x, (float) cameraPos.y, (float) cameraPos.z), skyParams);
             precipitationFog.renderSky(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
+            if (bench != null) bench.end(PrecipitationBench.Section.SKY);
         }
         checkGLError("After sky rendering");
 
@@ -398,7 +404,9 @@ public class WorldRenderer {
         cullCubes(world, player);
 
         // Render opaque pass (atlas + stamps of the visible cubes), then the proxies for what is missing.
+        if (bench != null) bench.begin(PrecipitationBench.Section.OPAQUE);
         renderOpaquePass();
+        if (bench != null) bench.end(PrecipitationBench.Section.OPAQUE);
         proxyRenderer.render(cubeVisibility,
                 com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance(),
                 projectionMatrix, player.getViewMatrix(), fogColor);
@@ -420,16 +428,23 @@ public class WorldRenderer {
         // Octree LOD (cv_lod): ticked here on the owner thread after the stream tick; FastLOD then draws only
         // the FALLBACK footprints it hands back, the octree nodes draw right after.
         org.joml.Vector3d lodEye = player.getCamera().getPosition();
+        if (bench != null) bench.begin(PrecipitationBench.Section.LOD_TICK);
         octreeLodRenderer.update(world, world.getFastLodManager(), lodEye.x, lodEye.y, lodEye.z);
+        if (bench != null) bench.end(PrecipitationBench.Section.LOD_TICK);
         // Dev: -Dstonebreak.octreeLod.noFallback=true hides FastLOD (octree nodes + detail only, smoke checks).
+        if (bench != null) bench.begin(PrecipitationBench.Section.FASTLOD);
         int lodStamp = OCTREE_ONLY ? 0 : lodRenderPass.render(shaderProgram, world.getFastLodManager(),
                 lodPlayerCx, lodPlayerCz,
                 frustumCuller, this::lodColumnCovered, lodRegionBatcher, reusableLodWater,
                 octreeLodRenderer.octree());
+        if (bench != null) bench.end(PrecipitationBench.Section.FASTLOD);
+        if (bench != null) bench.begin(PrecipitationBench.Section.OCTREE);
         octreeLodRenderer.drawTerrain(shaderProgram, cameraViewProj);
+        if (bench != null) bench.end(PrecipitationBench.Section.OCTREE);
 
         // Render entities after opaque blocks but before transparent water
         // This allows water to blend over entities when viewing through water
+        if (bench != null) bench.begin(PrecipitationBench.Section.ENTITIES);
         renderEntities(player);
 
         // Animated blocks (doors etc.) draw entity-style right after the mobs:
@@ -442,6 +457,7 @@ public class WorldRenderer {
         // Render opaque drops BEFORE the transparent pass so they write depth
         // Water can then occlude them properly (water renders with glDepthMask(false))
         renderOpaqueDrops(player);
+        if (bench != null) bench.end(PrecipitationBench.Section.ENTITIES);
 
         // Volumetric clouds — drawn after the opaque world but BEFORE anything
         // translucent: the raymarch stops at the scene depth, and glass/ice
@@ -456,11 +472,13 @@ public class WorldRenderer {
         if (!cameraUnderwater) {
             // Bolts write depth before the clouds march, so cloud in front of a
             // bolt hides it and cloud behind it doesn't paint over it.
+            if (bench != null) bench.begin(PrecipitationBench.Section.CLOUDS);
             lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
                     sky, skyColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
                     lightningRenderer.flashes(), precipitationFog, weatherReach);
+            if (bench != null) bench.end(PrecipitationBench.Section.CLOUDS);
             checkGLError("After cloud rendering");
         }
 
@@ -508,11 +526,13 @@ public class WorldRenderer {
         if (bench != null) bench.end(PrecipitationBench.Section.FX_BEHIND);
         checkGLError("After particles behind water");
 
+        if (bench != null) bench.begin(PrecipitationBench.Section.WATER);
         waterRenderer.render(cubeVisibility.waterBackToFront(), projectionMatrix, player.getViewMatrix(),
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
                 cloudRenderer, precipitationFog);
+        if (bench != null) bench.end(PrecipitationBench.Section.WATER);
         checkGLError("After water pass");
 
         if (bench != null) bench.begin(PrecipitationBench.Section.FX_FRONT);

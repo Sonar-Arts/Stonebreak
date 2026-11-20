@@ -50,7 +50,8 @@ public class WorldConfiguration {
     // LOD (distant terrain) settings
     public static final int DEFAULT_LOD_RANGE = 24;
     public static final int MIN_LOD_RANGE = 0;
-    public static final int MAX_LOD_RANGE = 64;
+    /** Slider ceiling (chunks). Dev: {@code -Dstonebreak.lod.maxRange} lifts it for measurements (never saved past 64 by the UI). */
+    public static final int MAX_LOD_RANGE = Integer.getInteger("stonebreak.lod.maxRange", 64);
     public static final boolean DEFAULT_LOD_ENABLED = true;
 
     // Render-distance bounds for settings UI / runtime tuning.

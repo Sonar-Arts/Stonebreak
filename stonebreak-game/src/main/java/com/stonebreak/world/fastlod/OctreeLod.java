@@ -313,6 +313,11 @@ public final class OctreeLod implements AutoCloseable {
      * OWNER THREAD. Whether FastLOD should draw the 16-block column (chunkX16, chunkZ16): it lies in a FALLBACK
      * footprint.
      */
+    /** OWNER THREAD. Stamp of the FALLBACK footprint set ({@link FootprintSet#stamp}). */
+    public long fallbackStamp() {
+        return fallback.stamp();
+    }
+
     public boolean fallbackCovers(int chunkX16, int chunkZ16) {
         return fallback.covers((long) chunkX16 << 4, (long) chunkZ16 << 4);
     }

@@ -125,11 +125,14 @@ public final class FastLodRegionBatcher {
         // grow-and-compact repeatedly. Water sheets are tiny (≤1 quad per
         // cell). Sizes/growth come from the active CEARL plan (builtin
         // defaults match the pre-CEARL constants exactly).
-        MmsChunkRegion region = regions.computeIfAbsent(key,
-            k -> new MmsChunkRegion(layer == LAYER_WATER
+        MmsChunkRegion region = regions.computeIfAbsent(key, k -> {
+            MmsChunkRegion created = new MmsChunkRegion(layer == LAYER_WATER
                     ? MmsVertexFormat.active().waterFormat()   // sea sheets: pulled water quads when pulling
                     : MmsVertexFormat.active().lodFormat(),    // terrain: pulled LOD quads when pulling
-                VramPlans.arena(layer == LAYER_WATER ? VramPlans.POOL_LOD_WATER : VramPlans.POOL_LOD_TERRAIN)));
+                VramPlans.arena(layer == LAYER_WATER ? VramPlans.POOL_LOD_WATER : VramPlans.POOL_LOD_TERRAIN));
+            keyOf.put(created, k);
+            return created;
+        });
         return region.upload(mesh, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
@@ -145,6 +148,9 @@ public final class FastLodRegionBatcher {
         frameCommands = 0;
         pruneEmpty(terrainRegions);
         pruneEmpty(waterRegions);
+        if (!keyOf.isEmpty()) {
+            keyOf.keySet().removeIf(MmsChunkRegion::isDeleted);
+        }
         // Plan-driven arena trim: LOD arenas otherwise ratchet to the densest
         // terrain the ring ever crossed. One GPU-side repack per map per frame.
         trimOne(terrainRegions);
@@ -181,6 +187,26 @@ public final class FastLodRegionBatcher {
         drawTouched(touchedTerrain, stamp);
     }
 
+    /** Dev A/B: {@code -Dstonebreak.fastlod.sortRegions=off} keeps the regions in touch order (pre-2026-11-20). */
+    private static final boolean SORT_REGIONS = OctreeLodRenderer.frontToBack()
+            && !"off".equalsIgnoreCase(System.getProperty("stonebreak.fastlod.sortRegions", "on"));
+    private float[] sortKeys = new float[64];
+    /** Each LOD region's packed (rx, rz) ({@link #regionKey}): LOD regions carry no block origin of their own. */
+    private final java.util.IdentityHashMap<MmsChunkRegion, Long> keyOf = new java.util.IdentityHashMap<>();
+
+    /**
+     * Draws this cycle's terrain buckets nearest region first (2026-11-20): touch order is the node map's hash order,
+     * so distant terrain often shaded before the near hills that hide it. Front to back lets the depth test reject
+     * it before shading (the world shader can discard, so only the test that runs before shading - the GPU's coarse
+     * Z rejection - helps, and only for what is already drawn). {@code eyeX/eyeZ} = the camera's world block x/z.
+     */
+    public void drawTerrain(int stamp, double eyeX, double eyeZ) {
+        if (SORT_REGIONS && touchedTerrain.size() > 1) {
+            sortFrontToBack(touchedTerrain, eyeX, eyeZ);
+        }
+        drawTouched(touchedTerrain, stamp);
+    }
+
     /**
      * Draws this cycle's water-sheet buckets. Called twice per frame by the
      * water pass (depth prepass + color) with the same stamp — buckets persist
@@ -188,6 +214,36 @@ public final class FastLodRegionBatcher {
      */
     public void drawWater(int stamp) {
         drawTouched(touchedWater, stamp);
+    }
+
+    private void sortFrontToBack(List<MmsChunkRegion> regions, double eyeX, double eyeZ) {
+        int n = regions.size();
+        if (sortKeys.length < n) {
+            sortKeys = new float[Math.max(n, sortKeys.length * 2)];
+        }
+        int side = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE << LOD_REGION_SHIFT;
+        for (int i = 0; i < n; i++) {
+            Long k = keyOf.get(regions.get(i));
+            if (k == null) {
+                sortKeys[i] = Float.MAX_VALUE;   // unknown: last (never expected)
+                continue;
+            }
+            double dx = ((int) (k >> 32) + 0.5) * side - eyeX, dz = ((int) (long) k + 0.5) * side - eyeZ;
+            sortKeys[i] = (float) (dx * dx + dz * dz);
+        }
+        // Insertion sort: a few dozen to a few hundred regions, nearly sorted frame to frame, no allocation.
+        for (int i = 1; i < n; i++) {
+            float k = sortKeys[i];
+            MmsChunkRegion r = regions.get(i);
+            int j = i - 1;
+            while (j >= 0 && sortKeys[j] > k) {
+                sortKeys[j + 1] = sortKeys[j];
+                regions.set(j + 1, regions.get(j));
+                j--;
+            }
+            sortKeys[j + 1] = k;
+            regions.set(j + 1, r);
+        }
     }
 
     private void drawTouched(List<MmsChunkRegion> touched, int stamp) {
@@ -222,6 +278,7 @@ public final class FastLodRegionBatcher {
     public void cleanup() {
         deleteAll(terrainRegions);
         deleteAll(waterRegions);
+        keyOf.clear();
         batch.close();
         if (active == this) {
             active = null;

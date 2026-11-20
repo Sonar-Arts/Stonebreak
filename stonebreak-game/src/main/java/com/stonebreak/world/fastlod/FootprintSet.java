@@ -18,6 +18,18 @@ public final class FootprintSet {
     /** Bit k set while at least one level-k footprint is in the set. */
     private int levelMask;
     private final int[] perLevel = new int[32];
+    /** Every mutation of any set draws a fresh stamp: a cached {@link #covers} answer is valid while it matches. */
+    private static final java.util.concurrent.atomic.AtomicLong STAMPS = new java.util.concurrent.atomic.AtomicLong();
+    private long stamp = STAMPS.incrementAndGet();
+
+    /**
+     * Changes whenever the set's content may have changed (and differs between sets): callers that answer
+     * {@link #covers} for many columns every frame cache the answer per column and re-ask only on a new stamp
+     * (2026-11-20: FastLOD's per-node coverage probes were a third of its render CPU at a 128-chunk ring).
+     */
+    public long stamp() {
+        return stamp;
+    }
 
     public FootprintSet() {
         alloc(256);
@@ -65,6 +77,7 @@ public final class FootprintSet {
         xs[i] = x;
         zs[i] = z;
         size++;
+        stamp = STAMPS.incrementAndGet();
         if (perLevel[level]++ == 0) {
             levelMask |= 1 << level;
         }
@@ -79,6 +92,7 @@ public final class FootprintSet {
         }
         used[i] = false;
         size--;
+        stamp = STAMPS.incrementAndGet();
         if (--perLevel[level] == 0) {
             levelMask &= ~(1 << level);
         }
@@ -131,6 +145,7 @@ public final class FootprintSet {
         java.util.Arrays.fill(perLevel, 0);
         size = 0;
         levelMask = 0;
+        stamp = STAMPS.incrementAndGet();
     }
 
     private void grow() {
