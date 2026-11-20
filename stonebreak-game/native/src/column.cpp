@@ -8,6 +8,9 @@
 namespace sbw {
 
 void buildStandardBase(Generator& g, BaseTile& t); /* shape.cpp */
+void initStandardShape(Generator& g);              /* shape.cpp: the shape constants + noise nodes of the world */
+void standardChannels(Generator& g, BaseTile& t);  /* shape.cpp: Standard shape 2 distilled surface channels */
+constexpr double STANDARD2_MIN_M = -11000.0;
 void carvedDescent(Generator& g, const std::shared_ptr<const BaseTile>& base, const std::shared_ptr<const CarveTile>& carve,
                    int64_t cx, int64_t cz, CarvedTile& out); /* cube.cpp */
 
@@ -105,20 +108,27 @@ Generator::Generator(const Config& c)
         wc = std::make_unique<TileCache<WormWalk>>(static_cast<size_t>(std::max(256, c.cacheColumns / 4)));
     }
     shapeScale = cfg.hmPerBlock / 60.0; /* 1:4 (60 m) = 1; 1:2 (30 m) = 0.5: the same shape twice as wide in blocks */
-    curve.build(cfg.rates, cfg.knots, static_cast<double>(cfg.sea));
-    const double refRates[4] = {48.0, 16.0, 24.0, 38.0};
-    const double refKnots[5] = {600.0, 2000.0, 60.0, 150.0, 300.0};
-    refCurve.build(refRates, refKnots, static_cast<double>(cfg.sea));
-
-    static const int SEED_OFFSET[11] = {2, 21, 22, 8, 23, 24, 25, 26, 27, 28, 3};
-    static const int OCTAVES[11] = {4, 2, 2, 2, 2, 2, 4, 3, 4, 4, 3};
-    static const double PERIOD[11] = {6894.989622808905, 1821.7527333238593, 1821.7527333238593,
-                                      3944.511100992684, 577.2424211879252, 4344.064076674278,
-                                      142.39095239499332, 1827.960213884483, 451.3265503952944,
-                                      18.47190652270889, 45.0};
-    for (int i = 0; i < 11; i++) {
-        shape[i].init(cfg.seed + SEED_OFFSET[i], OCTAVES[i], 0.5f, 2.0f, static_cast<float>(1.0 / PERIOD[i]));
+    if (cfg.kind == SBW_KIND_STANDARD && cfg.standardShape >= SBW_STANDARD_SHAPE_V2) {
+        /* Standard shape 2: the height-curve v2 sea bands at this scale (TerrainScalePreset.SeaBandsV2.scaled: shallows
+         * 4 / shelf 6 m per block at 1:4, times m_per_block / 60; the deep rate and the narrow shore blend come in
+         * rates[0] / knots[2]), the table from -11 km (trenches); the reference curve is 1:4's v2 curve. */
+        HeightCurve::SeaBands sea;
+        sea.shallowRate = 4.0 * shapeScale;
+        sea.shelfRate = 6.0 * shapeScale;
+        curve.build(cfg.rates, cfg.knots, static_cast<double>(cfg.sea), sea, STANDARD2_MIN_M);
+        HeightCurve::SeaBands refSea;
+        refSea.shallowRate = 4.0;
+        refSea.shelfRate = 6.0;
+        const double refRates[4] = {32.0, 16.0, 24.0, 38.0};
+        const double refKnots[5] = {600.0, 2000.0, 10.0, 150.0, 300.0};
+        refCurve.build(refRates, refKnots, static_cast<double>(cfg.sea), refSea, STANDARD2_MIN_M);
+    } else {
+        curve.build(cfg.rates, cfg.knots, static_cast<double>(cfg.sea));
+        const double refRates[4] = {48.0, 16.0, 24.0, 38.0};
+        const double refKnots[5] = {600.0, 2000.0, 60.0, 150.0, 300.0};
+        refCurve.build(refRates, refKnots, static_cast<double>(cfg.sea));
     }
+    initStandardShape(*this);
     moisture.init(cfg.seed, 6, 0.45f, 2.1f, 1.0f / 1500.0f);
     temperature.init(cfg.seed + 1, 6, 0.40f, 2.0f, 1.0f / 2000.0f);
     wobble.init(cfg.seed + 8191, 2, 0.5f, 2.0f, 1.0f / 220.0f);
@@ -337,6 +347,12 @@ std::shared_ptr<BaseTile> Generator::buildBase(int64_t cx, int64_t cz) {
     t->cz = cz;
     if (cfg.kind == SBW_KIND_STANDARD) {
         buildStandardBase(*this, *t);
+        if (cfg.standardShape >= SBW_STANDARD_SHAPE_V2) {
+            /* shape 2: distilled surface channels, then the same surface passes as a DaedalusTGM-Exp world */
+            standardChannels(*this, *t);
+            if ((cfg.flags & SBW_FLAG_SEA_FLOOR) != 0 && !seaFloor(*t)) return nullptr;
+            if ((cfg.flags & SBW_FLAG_LAND_SURFACE) != 0) landSurface(*t);
+        }
         return t;
     }
     auto prof = std::make_unique<sbw_column_profile>();
@@ -380,6 +396,16 @@ std::shared_ptr<BaseTile> Generator::buildBase(int64_t cx, int64_t cz) {
 
 /* L0 apron: the heights + water buildBase would give the cube (same upcall, same clamps), without the rest. */
 std::shared_ptr<HeightWater> Generator::buildApron(int64_t cx, int64_t cz) {
+    if (cfg.kind == SBW_KIND_STANDARD) {   /* Standard shape 2 sea floor: the neighbour's heights + water, no passes */
+        auto b = std::make_unique<BaseTile>();
+        b->cx = cx;
+        b->cz = cz;
+        buildStandardBase(*this, *b);
+        auto t = std::make_shared<HeightWater>();
+        std::memcpy(t->h, b->h, sizeof(t->h));
+        std::memcpy(t->water, b->water, sizeof(t->water));
+        return t;
+    }
     auto prof = std::make_unique<sbw_column_profile>();
     std::memset(prof.get(), 0, sizeof(sbw_column_profile));
     std::memset(prof->surface, SBW_SURF_NO_DATA, sizeof(prof->surface));

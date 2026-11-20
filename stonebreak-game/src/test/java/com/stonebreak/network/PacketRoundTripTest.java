@@ -120,7 +120,8 @@ class PacketRoundTripTest {
             assertEquals(curved, roundTrip(WelcomeS2C.CODEC, curved));
             assertEquals(curve, roundTrip(WelcomeS2C.CODEC, curved).heightCurve());
         }
-        // Protocol 28: the world's terrain model (a saved v4 world's clients run v4 too); none given = v4 (LEGACY).
+        // Protocol 28: the world's terrain model (the server's record travels as is; a saved pre-model world = LEGACY, v4,
+        // which every side resolves to the default since v4 was retired); none given = LEGACY.
         assertEquals(com.stonebreak.world.generation.TerrainModelRef.LEGACY, zoned.terrainModel());
         for (var model : new com.stonebreak.world.generation.TerrainModelRef[]{
                 com.stonebreak.world.generation.TerrainModelRef.LEGACY,
@@ -131,6 +132,14 @@ class PacketRoundTripTest {
                     com.stonebreak.world.generation.HeightCurveVersion.V2, model, 1, 2, 3, "s");
             assertEquals(modelled, roundTrip(WelcomeS2C.CODEC, modelled));
             assertEquals(model, roundTrip(WelcomeS2C.CODEC, modelled).terrainModel());
+        }
+        // protocol 29: the world's Standard shape (a Standard client's FastLOD builds the server world's shape)
+        for (var shape : com.stonebreak.world.generation.StandardShapeVersion.values()) {
+            WelcomeS2C shaped = new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, half,
+                    com.stonebreak.world.generation.ClimateLayout.BELTS,
+                    com.stonebreak.world.generation.HeightCurveVersion.V2,
+                    com.stonebreak.world.generation.TerrainModelRef.LEGACY, shape, 1, 2, 3, "s");
+            assertEquals(shape, roundTrip(WelcomeS2C.CODEC, shaped).standardShape());
         }
         assertEquals(new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret"),
                 roundTrip(WelcomeS2C.CODEC, new WelcomeS2C(7, 1L, TerrainGeneratorType.STANDARD, 1f, 2f, 3f, "Zx9-_secret")));

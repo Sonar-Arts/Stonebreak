@@ -74,6 +74,13 @@ public final class ServerWorldContext {
         return level != null ? level.world().getHeightCurve() : com.stonebreak.world.generation.HeightCurveVersion.CURRENT;
     }
 
+    /** The world's Standard shape, so a Standard world's client generator (FastLOD, queries) matches. */
+    public com.stonebreak.world.generation.StandardShapeVersion standardShape() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.world().getStandardShape()
+                             : com.stonebreak.world.generation.StandardShapeVersion.CURRENT;
+    }
+
     /** The world's terrain model, so a DaedalusTGM-Exp client's TGMPipe (FastLOD fallback, queries) runs the same one. */
     public com.stonebreak.world.generation.TerrainModelRef terrainModel() {
         ServerLevel level = serverLevel;

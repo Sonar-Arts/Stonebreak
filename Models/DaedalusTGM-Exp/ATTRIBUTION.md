@@ -46,7 +46,15 @@ climate per cell from CHELSA v2.1 + ERA5 (WeatherBench 2); drainage weighted by 
   teacher = detail.pt).
 - **Tainted, never ship:** the small A/B proxies `exp2/ab_v4_small`, `ab_d2_small`, `mf_d2_small`, `qad_d2_small`
   (trained with the trainers' default `--data-dir`, which is EXP-1 data with WorldClim climate), `exp2/climate_r2..r4`
-  (paleo experiments, counted as TraCE-trained), and all of `checkpoints/v2`, `v3`, `v4` and the other EXP-1 runs.
+  (paleo experiments, counted as TraCE-trained), and every EXP-1 checkpoint.
+- **EXP-1 removed (2026-11-19):** the WorldClim-trained EXP-1 checkpoints that used to be committed (`checkpoints/v2`,
+  `v3`, `v4` and the training runs `bank_b0`, `descgit_d0`, `hydro_h0`, `planner_r0*`, `planner_r1*`, `poc`,
+  `poc_prev`, `r0m`, `refiner_r0*`, `relief_r0`: 48 `.pt` files) are no longer in the checkout and the game has no
+  fallback to them. They remain in the git history of earlier commits until the history is rewritten (a separate
+  decision). Only those runs' training logs (`log.jsonl`, `train.out`, no weights) are still tracked. Other EXP-1 run
+  folders on the training machine are local-only (gitignored) and never ship.
+- **Distribution:** the release's weights (`checkpoints/<release>/*.pt`) are stored with Git LFS; `release.json` and
+  this file are normal files in the same folder.
 
 ---
 
@@ -243,6 +251,18 @@ Both licences were checked on the providers' pages on 2026-11-19. Required credi
   (nearest-neighbour IoU to every scan < 0.8), baked to block-sized voxel shapes. No scan is shipped.
 
 ---
+
+## Standard (noise) generator: distilled constants (agent SD, 2026-11-19)
+
+Stonebreak's Standard generator (FastNoise2, no network) ships constants measured on this model's tiles, not weights:
+**Standard shape 2** (new Standard worlds since 2026-11-19; `DistilledShape.FITTED_V2`, native `shape.cpp` P2 /
+BIOMES_V2 / `standard_channels.inc`) was fitted by `terrain_slm/eval/distill_{sample,fit,biomes,channels}.py` against
+432 tiles of the **`checkpoints/exp2-r3`** release (24 seeds; `/mnt/extrastorage/terrain-slm-data/distill/exp2-r3`). Its
+lineage is therefore exactly exp2-r3's (data v2 + the vegetation / surface-detail sources above for the channel tables);
+**no WorldClim**. The earlier **Standard shape 1** constants (`DistilledShape.FITTED`, 2026-11-01) were fitted against
+DaedalusTGM-Exp **v4**, whose climate inputs were WorldClim-derived: they are kept ONLY so Standard worlds saved before
+2026-11-19 (world.json without `standardShape`) generate seamlessly; no new world uses them. Report:
+`Dev Working/docs/exp2-work/SD-standard-distill.md` (local).
 
 ## Not used by the shipped model (kept for reference)
 

@@ -60,6 +60,17 @@ public final class NewWorlds {
         }
     }
 
+    private static long parseIntOr(String text, long fallback) {
+        if (text == null || text.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(text.trim());
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+
     /** Builds the world's data and writes it; returns the data. */
     public static WorldData write(Options o) throws IOException {
         WorldData worldData = WorldData.builder()
@@ -74,6 +85,11 @@ public final class NewWorlds {
                 // creates one with another version.
                 .heightCurve(com.stonebreak.world.generation.HeightCurveVersion.parse(
                     System.getProperty("stonebreak.autocurve"), com.stonebreak.world.generation.HeightCurveVersion.CURRENT))
+                // New Standard worlds get the current Standard shape; -Dstonebreak.autostandard=<1|2> (dev: before/after
+                // captures of the 2026-11-19 EXP-2 distillation) creates one with another shape.
+                .standardShape(com.stonebreak.world.generation.StandardShapeVersion.of(
+                    parseIntOr(System.getProperty("stonebreak.autostandard"), -1),
+                    com.stonebreak.world.generation.StandardShapeVersion.CURRENT))
                 // The terrain model the terrain mapper previewed with (TGMPipe.useDefaultModel): kept for the world's
                 // lifetime, so a later default never changes its unexplored terrain (review-python HIGH-1).
                 .terrainModel(com.stonebreak.world.generation.diffusion.tgmpipe.TerrainModels.current())

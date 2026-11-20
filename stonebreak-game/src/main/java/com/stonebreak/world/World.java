@@ -108,6 +108,8 @@ public class World {
     private final HeightCurveVersion heightCurve;
     /** World features (boulders, ...) of a DIFFUSION world: part of its identity, like the height curve. */
     private final com.stonebreak.world.generation.WorldFeatureVersion worldFeatures;
+    /** The Standard shape of a STANDARD world (saved in world.json; DIFFUSION worlds ignore it). */
+    private final com.stonebreak.world.generation.StandardShapeVersion standardShape;
     private final BlockStateRegistry blockStates = new BlockStateRegistry();
     private final CubeWorld voxels;
     private final CubeStream stream;
@@ -208,7 +210,7 @@ public class World {
 
     protected World(WorldConfiguration config, long seed, boolean testMode, TerrainGeneratorType generatorType) {
         this(Mode.DETACHED, config, seed, generatorType, TerrainScalePreset.ONE_TO_FOUR, ClimateLayout.DEFAULT, null,
-            null, null, false);
+            null, null, null, false);
     }
 
     /**
@@ -280,7 +282,20 @@ public class World {
                                        TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
                                        com.stonebreak.world.generation.WorldFeatureVersion features,
                                        Path worldDir, boolean buildMeshes) {
-        return new World(Mode.SERVER, config, seed, generatorType, scale, layout, curve, features, worldDir,
+        return createHeadless(config, seed, generatorType, scale, layout, curve, features, null, worldDir,
+            buildMeshes);
+    }
+
+    /**
+     * The authoritative world created with the Standard shape {@code standard} (part of a STANDARD world's identity:
+     * null = {@link com.stonebreak.world.generation.StandardShapeVersion#CURRENT}, a saved world passes its own).
+     */
+    public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                       TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                                       com.stonebreak.world.generation.WorldFeatureVersion features,
+                                       com.stonebreak.world.generation.StandardShapeVersion standard,
+                                       Path worldDir, boolean buildMeshes) {
+        return new World(Mode.SERVER, config, seed, generatorType, scale, layout, curve, features, standard, worldDir,
             buildMeshes);
     }
 
@@ -306,18 +321,26 @@ public class World {
     /** A client render-view world of a server world created with the height curve {@code curve} (null = current). */
     public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                                          TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
-        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, null, null, true);
+        return createClientView(config, seed, generatorType, scale, layout, curve, null);
+    }
+
+    /** A client render-view world of a server world created with the Standard shape {@code standard} (null = current). */
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                         TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                                         com.stonebreak.world.generation.StandardShapeVersion standard) {
+        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, null, standard, null, true);
     }
 
     /** A detached world (no stream, no store; cubes created by writes) for tests and tools. */
     public static World createDetached(WorldConfiguration config, long seed) {
         return new World(Mode.DETACHED, config, seed, TerrainGeneratorType.STANDARD, TerrainScalePreset.ONE_TO_FOUR,
-            ClimateLayout.DEFAULT, null, null, null, false);
+            ClimateLayout.DEFAULT, null, null, null, null, false);
     }
 
     private World(Mode mode, WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                   TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
-                  com.stonebreak.world.generation.WorldFeatureVersion features, Path worldDir, boolean buildMeshes) {
+                  com.stonebreak.world.generation.WorldFeatureVersion features,
+                  com.stonebreak.world.generation.StandardShapeVersion standard, Path worldDir, boolean buildMeshes) {
         this.mode = mode;
         this.config = config;
         this.seed = seed;
@@ -326,6 +349,7 @@ public class World {
         this.climateLayout = ClimateLayout.orDefault(layout);
         this.heightCurve = HeightCurveVersion.orCurrent(curve);
         this.worldFeatures = com.stonebreak.world.generation.WorldFeatureVersion.orCurrent(features);
+        this.standardShape = com.stonebreak.world.generation.StandardShapeVersion.orCurrent(standard);
 
         if (mode != Mode.DETACHED) {
             applyUserSettings(config);
@@ -351,7 +375,7 @@ public class World {
         switch (mode) {
             case SERVER -> {
                 t = NativeTerrain.create(seed, this.generatorType, this.terrainScale, this.climateLayout,
-                    this.heightCurve, this.worldFeatures, blockStates);
+                    this.heightCurve, this.worldFeatures, this.standardShape, blockStates);
                 v = CubeWorld.createForGenerator(minY, maxY, air, t.cvGenerator());
                 StonebreakBlockTable.apply(v);
                 st = storeDir != null ? CubeStore.open(storeDir) : null;
@@ -492,6 +516,11 @@ public class World {
     /** The world's feature set (boulders, ...): fixed at creation, part of its identity (DIFFUSION worlds only). */
     public com.stonebreak.world.generation.WorldFeatureVersion getWorldFeatures() {
         return worldFeatures;
+    }
+
+    /** The world's Standard shape (STANDARD worlds' terrain; DIFFUSION worlds carry it and ignore it). */
+    public com.stonebreak.world.generation.StandardShapeVersion getStandardShape() {
+        return standardShape;
     }
 
     public void setStreamBudget(StreamBudget budget) {
@@ -1435,7 +1464,7 @@ public class World {
                         throw new com.stonebreak.world.generation.TerrainClosedException("World is cleaned up");
                     }
                     t = NativeTerrain.create(seed, generatorType, terrainScale, climateLayout, heightCurve,
-                        worldFeatures, blockStates);
+                        worldFeatures, standardShape, blockStates);
                     terrain = t;
                 }
                 if (cleanedUp) {

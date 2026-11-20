@@ -25,12 +25,69 @@ public final class HeightCurveTable {
 
     private static final double[] TABLE = build();
 
+    /**
+     * Standard shape 2 (2026-11-19): 1:4's height-curve v2 - the v2 sea bands (shallows 4 / shelf 6 / deep 32 m per
+     * block, shore blend 10 m) - integrated from {@link #MIN_M_V2} (the trenches). Mirrors the native
+     * {@code HeightCurve::build(rates, knots, sea, SeaBands, firstM)} line for line.
+     */
+    public static final double MIN_M_V2 = -11000.0;
+    private static final double[] TABLE_V2 = buildV2();
+
     private HeightCurveTable() {
     }
 
     /** Unquantised block height at {@code elevationM} (floor it for the column height). */
     public static double blocks(double elevationM) {
         return interpolate(TABLE, elevationM);
+    }
+
+    /** {@link #blocks(double)} on Standard shape 2's curve. */
+    public static double blocksV2(double elevationM) {
+        return interpolate(TABLE_V2, MIN_M_V2, elevationM);
+    }
+
+    static double interpolate(double[] table, double minM, double elevationM) {
+        double t = (elevationM - minM) / STEP_M;
+        if (t <= 0.0) {
+            return table[0];
+        }
+        int last = table.length - 1;
+        if (t >= last) {
+            return table[last];
+        }
+        int i = (int) Math.floor(t);
+        double f = t - i;
+        return table[i] + f * (table[i + 1] - table[i]);
+    }
+
+    private static double[] buildV2() {
+        double ocean = 32.0, lowland = 16.0, midland = 24.0, highland = 38.0;
+        double lowlandTop = 600.0, highlandBase = 2000.0, shoreBlend = 10.0, midlandBlend = 150.0, highlandBlend = 300.0;
+        double shallowRate = 4.0, shallowBase = -24.0, shallowBlend = 12.0;
+        double shelfRate = 6.0, shelfBase = -300.0, shelfBlend = 150.0;
+        int n = (int) Math.round((MAX_M - MIN_M_V2) / STEP_M) + 1;
+        double[] inv = new double[n];
+        for (int k = 0; k < n; k++) {
+            double e = MIN_M_V2 + k * STEP_M;
+            double ramp = lowland + (midland - lowland) * (e - lowlandTop) / (highlandBase - lowlandTop);
+            ramp = Math.max(Math.min(lowland, midland), Math.min(Math.max(lowland, midland), ramp));
+            double o = blend(ocean, shelfRate, e, shelfBase, shelfBlend);
+            o = blend(o, shallowRate, e, shallowBase, shallowBlend);
+            double m = blend(o, lowland, e, 0.0, shoreBlend);
+            m = blend(m, ramp, e, lowlandTop, midlandBlend);
+            m = blend(m, highland, e, highlandBase, highlandBlend);
+            inv[k] = 1.0 / m;
+        }
+        double[] blocks = new double[n];
+        for (int k = 1; k < n; k++) {
+            blocks[k] = blocks[k - 1] + 0.5 * (inv[k] + inv[k - 1]) * STEP_M;
+        }
+        int zero = (int) Math.round(-MIN_M_V2 / STEP_M);
+        double shift = StandardTerrain.SEA_LEVEL - blocks[zero];
+        for (int k = 0; k < n; k++) {
+            blocks[k] += shift;
+        }
+        return blocks;
     }
 
     /**

@@ -996,6 +996,6 @@ public final class ClientWorldView {
             ? Game.getInstance().getCurrentWorldName()
             : "mp_" + System.currentTimeMillis();
         Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), w.terrainScale(),
-            w.climateLayout(), w.heightCurve(), spawn);
+            w.climateLayout(), w.heightCurve(), w.standardShape(), spawn);
     }
 }

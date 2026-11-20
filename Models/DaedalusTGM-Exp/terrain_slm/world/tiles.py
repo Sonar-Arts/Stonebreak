@@ -52,6 +52,13 @@ OVERVIEW_MIN_PX = CELL_PX
 FINE_K = 2
 #: 1:1: metres of change by the river stages (carving, banks, swamp flattening) over which the 15 m relief fades out.
 FINE_KEEP_M = 3.0
+#: BV (beaches, 2026-11-20), height-curve v2 worlds: the biome sidecar paints its coastal DESERT (sand) on the first
+#: 1-3 samples beside ANY sub-sea water it sees -- lakes too: it reads the pre-river ground, where a lake is a sub-sea
+#: basin like the sea -- so temperate lakes got sand rings (seed 3, 1:4: 52 % desert on lake shores, 0 % four
+#: samples out). Within LAKE_SHORE_DESERT_M of inland water (sub-sea columns off the true ocean, lifted to
+#: ocean.LAKE_CLASSIFY_ELEV_M: lakes, sub-sea river reaches), sidecar desert that the climate rule does not also call
+#: desert takes the cleaned rule biome (as the sidecar's swamp does). The sea keeps its coastal sand. 0 = off.
+LAKE_SHORE_DESERT_M = 180.0
 # D8 class (drow, dcol) -> flow octant (0 = +x, toward +z); class 8 = terminal. Must match data/build.py.
 _D8_OCTANT = [round(math.atan2(dc, dr) / (math.pi / 4)) % 8
               for dr, dc in ((-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1))] + [-1]
@@ -264,6 +271,12 @@ class TileBuilder:
             clean = crop(B.majority(B.majority(rule_m, 9), 5))
             clean = torch.where(torch.isin(clean, ocean_ids), rule, clean)
             biome = torch.where(ocean, rule, torch.where(biome == B.SWAMP_ID, clean, biome))
+            if LAKE_SHORE_DESERT_M > 0 and getattr(self.gen, "sea_shelf", False):   # v2 worlds: no sand rings on lakes
+                inland = (elev >= 0.0) & (elev <= O.LAKE_CLASSIFY_ELEV_M)            # lifted sub-sea columns
+                r = max(1, math.ceil(LAKE_SHORE_DESERT_M / px_m))
+                near = crop(F.max_pool2d(inland.float()[None, None], 2 * r + 1, 1, r)[0, 0] > 0.5)
+                desert = B._BIOME_ID["desert"]
+                biome = torch.where(near & (biome == desert) & (rule != desert), clean, biome)
         else:
             biome = B._classify_biome(crop(elev), crop(climate), i1, j1, elev_padded=pad1(elev), pixel_size_m=px_m)
         # Swamp candidates are per column, so smoothing them over tile + margin is request-independent.

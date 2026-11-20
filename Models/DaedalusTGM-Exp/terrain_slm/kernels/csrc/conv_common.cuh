@@ -15,6 +15,8 @@ typedef unsigned long long u64;
 #define F_RSCALE 32   // residual scaled: v = rs * res + v (mp_sum with the other weight folded into the conv)
 #define F_GATE 64     // v *= gate[pixel] before the residual (a gated expert adapter)
 #define F_CLIP 128    // clip to [-256, 256] after the residual (EDM2's fp16 guard); NaN passes through
+#define F_SILU8 256   // the SiLU as e4m3 codes for an FP8 consumer (kernels/cuda_detail2_fp8.py): e4m3(fp16(silu) * qs),
+                      // exactly what the separate quant8 pass made of the fp16 SiLU (K4, 2026-11-19)
 
 __device__ __forceinline__ u32 smem_u32(const void* p) {
     u32 a;
@@ -60,6 +62,13 @@ __device__ __forceinline__ float from_h(u16 h) {
 }
 __device__ __forceinline__ float silu(float v) { return __fdividef(v, 1.0f + __expf(-v)); }
 
+// two floats -> two e4m3 bytes (lo in the low byte), round to nearest even, saturating
+__device__ __forceinline__ u16 pack_e4m3x2(float lo, float hi) {
+    u16 r;
+    asm("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(r) : "f"(hi), "f"(lo));
+    return r;
+}
+
 
 // Finish 8 consecutive channels of one output pixel: + residual `rr` (8 fp16, loaded by the caller --
 // ahead of time, see hconv.cu), store raw and/or SiLU (16 B each). `off` is the element offset of
@@ -94,10 +103,19 @@ __device__ __forceinline__ void store8r(const Args& a, long long off, float* v, 
     if (a.flags & F_RAW)
         *reinterpret_cast<uint4*>(a.out_raw + off) =
             make_uint4(pack_h2(v[0], v[1]), pack_h2(v[2], v[3]), pack_h2(v[4], v[5]), pack_h2(v[6], v[7]));
-    if (a.flags & F_SILU)
-        *reinterpret_cast<uint4*>(a.out_silu + off) =
-            make_uint4(pack_h2(silu(v[0]), silu(v[1])), pack_h2(silu(v[2]), silu(v[3])),
-                       pack_h2(silu(v[4]), silu(v[5])), pack_h2(silu(v[6]), silu(v[7])));
+    if (a.flags & (F_SILU | F_SILU8)) {
+        const uint4 s = make_uint4(pack_h2(silu(v[0]), silu(v[1])), pack_h2(silu(v[2]), silu(v[3])),
+                                   pack_h2(silu(v[4]), silu(v[5])), pack_h2(silu(v[6]), silu(v[7])));
+        if (a.flags & F_SILU) *reinterpret_cast<uint4*>(a.out_silu + off) = s;
+        if (a.flags & F_SILU8) {
+            const u32 w[4] = {s.x, s.y, s.z, s.w};
+            u32 q[4];
+#pragma unroll
+            for (int e = 0; e < 4; ++e)
+                q[e] = pack_e4m3x2(from_h((u16)(w[e] & 0xFFFF)) * a.qs, from_h((u16)(w[e] >> 16)) * a.qs);
+            *reinterpret_cast<uint2*>(a.out_silu8 + off) = make_uint2(q[0] | (q[1] << 16), q[2] | (q[3] << 16));
+        }
+    }
 }
 
 template <typename Args>

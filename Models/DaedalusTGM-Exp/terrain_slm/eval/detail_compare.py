@@ -1,7 +1,8 @@
 """Side-by-side hillshades of detail checkpoints on held-out crops: real terrain | each model, same conditioning and
-the same noise, from the usual lightly blurred coarse base and from raw (unblurred) coarse cells, v4's in-game trigger.
+the same noise, from the usual lightly blurred coarse base and from raw (unblurred) coarse cells (the in-game trigger of
+EXP-1's v4 detail blow-ups).
 
-    python -m terrain_slm.eval.detail_compare v4=checkpoints/v4/detail.pt exp2=checkpoints/exp2/d2_full_v2/ema_0.10.pt \\
+    python -m terrain_slm.eval.detail_compare r3=checkpoints/exp2-r3/detail.pt d2=checkpoints/exp2/d2_full_v2/ema_0.10.pt \\
         --regions alps norway himalaya_nepal --out /tmp/compare.png
 
 Crops come from each region's validation tiles (never trained on); per region the `--per-region` crops with the most

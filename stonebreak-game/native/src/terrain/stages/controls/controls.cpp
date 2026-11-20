@@ -33,8 +33,10 @@ struct ContLandArgs {
     const float* trend;      // v2: the layout trend (cells), else unused
     float* out;
     float* c2out;            // v2 == 2 (controls2.continent2): the continent field, out = its land weight
+    const float* link;       // v2 (BV sea link): super-cell grid, 1 = linked to the open ocean; nullptr = no gate
     int ci0, cj0, hc, wc, v2;
     float sea_trend;
+    int link_a0, link_b0, link_nb, link_k;
 };
 extern "C" __global__ void controls_continent_land(const __grid_constant__ ContLandArgs a) {
     const int n = a.hc * a.wc;
@@ -53,7 +55,60 @@ extern "C" __global__ void controls_continent_land(const __grid_constant__ ContL
         a.out[idx] = land;
         return;
     }
-    a.out[idx] = a.trend[idx] < a.sea_trend ? 0.0f : land;
+    bool drowned = a.trend[idx] < a.sea_trend;
+    if (a.link != nullptr) {   // generator2.sea_link_cells: the cell's super cell (floor division) must be linked
+        const int ci_i = a.ci0 + idx / a.wc, cj_i = a.cj0 + idx % a.wc, k = a.link_k;
+        const int sa = (ci_i >= 0 ? ci_i / k : -((-ci_i + k - 1) / k)) - a.link_a0;
+        const int sb = (cj_i >= 0 ? cj_i / k : -((-cj_i + k - 1) / k)) - a.link_b0;
+        drowned = drowned && a.link[sa * a.link_nb + sb] > 0.5f;
+    }
+    a.out[idx] = drowned ? 0.0f : land;
+}
+// BV sea link (generator2.sea_link_cells): super-cell centres, the open-ocean / passable flags there, growth steps.
+struct SeaLinkArgs {
+    Controls2Args p;
+    float* si;
+    float* sj;
+    const float* trend;      // the layout trend at (si, sj) (_controls_at), nullptr in the coordinate pass
+    float* through;
+    float* conn;
+    int a0, b0, na, nb, k, pass;
+    float link_trend, sea_land;
+};
+extern "C" __global__ void controls_sea_link(const __grid_constant__ SeaLinkArgs a) {
+    const int n = a.na * a.nb;
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= n) return;
+    if (a.pass == 0) {       // torch: arange(a0, a1, f32) * K + (K - 1) / 2, rounded op by op
+        const float half = 0.5f * (float)(a.k - 1);
+        a.si[idx] = __fadd_rn(__fmul_rn((float)(a.a0 + idx / a.nb), (float)a.k), half);
+        a.sj[idx] = __fadd_rn(__fmul_rn((float)(a.b0 + idx % a.nb), (float)a.k), half);
+        return;
+    }
+    float land_v4;
+    const float c2 = continent2(a.p, a.si[idx], a.sj[idx], &land_v4);
+    const bool open = ss(M(A(c2, a.p.k[K_C035]), a.p.k[K_INV_LAND])) < a.sea_land;
+    a.through[idx] = (a.trend[idx] < a.link_trend || open) ? 1.0f : 0.0f;
+    a.conn[idx] = open ? 1.0f : 0.0f;
+}
+struct SeaGrowArgs {
+    const float* src;
+    const float* through;    // nullptr = plain 3x3 dilation
+    float* dst;
+    int H, W;
+};
+extern "C" __global__ void controls_sea_grow(const __grid_constant__ SeaGrowArgs a) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= a.H * a.W) return;
+    const int y = idx / a.W, x = idx % a.W;
+    float m = 0.0f;
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            const int yy = y + dy, xx = x + dx;
+            if (yy >= 0 && yy < a.H && xx >= 0 && xx < a.W && a.src[yy * a.W + xx] > 0.5f) m = 1.0f;
+        }
+    }
+    a.dst[idx] = a.through != nullptr ? m * a.through[idx] : m;
 }
 )CU";
 const std::string kC2xSrc = std::string(kC2Src) + kContLandSrc;
@@ -85,8 +140,26 @@ struct ContLandArgs {
     const float* trend;
     float* out;
     float* c2out;
+    const float* link;
     int32_t ci0, cj0, hc, wc, v2;
     float sea_trend;
+    int32_t link_a0, link_b0, link_nb, link_k;
+};
+struct SeaLinkArgs {
+    Controls2Args p;
+    float* si;
+    float* sj;
+    const float* trend;
+    float* through;
+    float* conn;
+    int32_t a0, b0, na, nb, k, pass;
+    float link_trend, sea_land;
+};
+struct SeaGrowArgs {
+    const float* src;
+    const float* through;
+    float* dst;
+    int32_t H, W;
 };
 struct PcArgs {          // csrc/controls.cu ControlsArgs (kernels/cuda_controls.py)
     float* out;
@@ -182,6 +255,11 @@ Cfg build_cfg(Gen& g) {
     c.c035 = F("C2_C035");
     c.inv_land = F("C2_INV_LAND");
     c.sea_seed_trend = F("SEA_SEED_TREND_M");
+    c.sea_link = static_cast<int>(k.num_or("SEA_LINK", 0.0));
+    c.sea_link_cells = static_cast<int>(k.num_or("SEA_LINK_CELLS", 4.0));
+    c.sea_link_steps = static_cast<int>(k.num_or("SEA_LINK_STEPS", 64.0));
+    c.sea_link_trend = c.sea_link ? F("SEA_LINK_TREND_M") : 0.0f;
+    c.sea_link_sea_land = c.sea_link ? F("SEA_LINK_SEA_LAND") : 0.5f;
     c.has_climate = I("HAS_CLIMATE");
     c.canonical = I("CANONICAL_CLIMATE");
     c.grid_cells = D("CLIMATE_GRID_CELLS");
@@ -431,6 +509,54 @@ Fields controls_m(Gen& g, const Args& a) {
 SBTG_METHOD("controls", controls_m);
 
 // ------------------------------------------------------------------------------------------------ continent_land_cells
+// generator2.sea_link_cells before its gather: the (na, nb) super grid (1 = linked to the open ocean, one super cell of
+// slack applied) covering cells [ci0, ci0+hc) x [cj0, cj0+wc) with SEA_LINK_STEPS + 2 super cells of context.
+Tensor sea_link_grid(Gen& g, const Cfg& c, int64_t ci0, int64_t cj0, int64_t hc, int64_t wc, int64_t& a0,
+                     int64_t& b0, int64_t& nb) {
+    const int64_t K = c.sea_link_cells, S = c.sea_link_steps, m = S + 2;
+    auto fdiv = [](int64_t x, int64_t k) { return x >= 0 ? x / k : -((-x + k - 1) / k); };
+    a0 = fdiv(ci0, K) - m;
+    b0 = fdiv(cj0, K) - m;
+    const int64_t na = fdiv(ci0 + hc - 1, K) + 1 + m - a0;
+    nb = fdiv(cj0 + wc - 1, K) + 1 + m - b0;
+    const int64_t n = na * nb;
+    Tensor si = g.gpu.empty(DType::F32, {na, nb}), sj = g.gpu.empty(DType::F32, {na, nb});
+    Tensor through = g.gpu.empty(DType::F32, {na, nb}), conn = g.gpu.empty(DType::F32, {na, nb});
+    Tensor nxt = g.gpu.empty(DType::F32, {na, nb});
+    SeaLinkArgs p;
+    std::memset(&p, 0, sizeof p);
+    p.p = c2_template(g, c);
+    p.si = si.f32();
+    p.sj = sj.f32();
+    p.through = through.f32();
+    p.conn = conn.f32();
+    p.a0 = static_cast<int32_t>(a0);
+    p.b0 = static_cast<int32_t>(b0);
+    p.na = static_cast<int32_t>(na);
+    p.nb = static_cast<int32_t>(nb);
+    p.k = static_cast<int32_t>(K);
+    p.link_trend = c.sea_link_trend;
+    p.sea_land = c.sea_link_sea_land;
+    p.pass = 0;
+    g.gpu.launch(g.gpu.kernel("controls_c2x", "controls_sea_link"), n, p, 128);
+    Tensor trend = g.call("_controls_at", {{}, {}, {si, sj}})["trend"];
+    p.trend = trend.f32();
+    p.pass = 1;
+    g.gpu.launch(g.gpu.kernel("controls_c2x", "controls_sea_link"), n, p, 128);
+    SeaGrowArgs gr{conn.f32(), through.f32(), nxt.f32(), static_cast<int32_t>(na), static_cast<int32_t>(nb)};
+    for (int64_t s = 0; s < S; ++s) {
+        gr.src = conn.f32();
+        gr.dst = nxt.f32();
+        g.gpu.launch(g.gpu.kernel("controls_c2x", "controls_sea_grow"), n, gr, 128);
+        std::swap(conn, nxt);
+    }
+    gr.src = conn.f32();
+    gr.through = nullptr;        // the slack: one plain dilation
+    gr.dst = nxt.f32();
+    g.gpu.launch(g.gpu.kernel("controls_c2x", "controls_sea_grow"), n, gr, 128);
+    return nxt;
+}
+
 Fields continent_land_cells(Gen& g, const Args& a) {
     need(a, 4, 0, 0, "continent_land_cells");
     const int64_t ci0 = a.i[0], cj0 = a.i[1], hc = a.i[2], wc = a.i[3];
@@ -441,11 +567,20 @@ Fields continent_land_cells(Gen& g, const Args& a) {
     if (v2) trend = g.call("_layout", a)["trend"];
     Tensor out = g.gpu.empty(DType::F32, {hc, wc});
     const int64_t n = hc * wc;
+    Tensor link;                 // BV: generator2.sea_link_cells' super grid (v2 worlds, SEA_LINK)
+    int64_t la0 = 0, lb0 = 0, lnb = 0;
+    const bool use_link = v2 && c->sea_link && n > 0;
+    if (use_link) link = sea_link_grid(g, *c, ci0, cj0, hc, wc, la0, lb0, lnb);
     if (n > 0) {
         ContLandArgs p;
         std::memset(&p, 0, sizeof p);
         p.p = c2_template(g, *c);
         p.trend = v2 ? trend.f32() : nullptr;
+        p.link = use_link ? link.f32() : nullptr;
+        p.link_a0 = static_cast<int32_t>(la0);
+        p.link_b0 = static_cast<int32_t>(lb0);
+        p.link_nb = static_cast<int32_t>(lnb);
+        p.link_k = c->sea_link_cells;
         p.out = out.f32();
         p.ci0 = static_cast<int32_t>(ci0);
         p.cj0 = static_cast<int32_t>(cj0);

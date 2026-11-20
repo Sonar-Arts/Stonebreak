@@ -59,8 +59,14 @@ show nothing. The player can continue to the menu while it runs. Log: `Models/lo
 `-Dstonebreak.modelSetup.force=true` redoes every step; `-Dstonebreak.modelSetup=off` disables it.
 
 Then `TGMPipe` launches `python -m terrain_slm.tgmpipe` with the model in `checkpoints/exp2-r3` (the EXP-2
-release; `checkpoints/v4` when a checkout lacks it, or with `-Dstonebreak.tgmpipe.model=checkpoints/v4`) and hands
-it the world's scale (`TerrainScale`) in the handshake. The service's log is `Models/logs/tgmpipe.log`.
+release; another folder for new worlds with `-Dstonebreak.tgmpipe.model=<dir>`) and hands it the world's scale
+(`TerrainScale`) in the handshake. The service's log is `Models/logs/tgmpipe.log`.
+
+**The release weights are Git LFS files.** After cloning, run `git lfs install` and `git lfs pull` once (git-lfs
+3.x). A checkout without them has ~130-byte pointer files instead of `*.pt` weights: the game, the warm-up and the
+service refuse such a folder with a message naming the files and the fix (`terrain_slm/model_files.py`,
+`TerrainModels.installProblem`), and there is no fallback model (EXP-1's v4 was removed on 2026-11-19; worlds saved
+with it, or without a recorded model, run the default model with a warning).
 
 The service speaks only the terrain protocol on stdio (`terrain_slm/tgmpipe/protocol.py`), so it is not
 run by hand. To see it work, run its tests: `tests/test_tgmpipe_process.py` drives the real service
@@ -97,10 +103,11 @@ Run one training job per GPU. Two jobs on one card run about 15× slower.
 .venv/bin/python -m terrain_slm.train.train_descgit --out checkpoints/descgit_d0   # ~20 min
 ```
 
-Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt`, `bank.pt`,
-`descgit.pt`, and in v4 `detail.pt` + `biome.pt`); without one, that stage falls back to the previous behaviour.
-v4 (`checkpoints/v4`, the default 2026-09-28 to 2026-11-19) needs no `descgit.pt`; see `docs/Architecture.md` §1a/§1b.
-EXP-2 folders (with `climate.pt`) load through `world/generator2.py`; the default is `checkpoints/exp2-r3`.
+Optional models load when their file is in the model dir (`relief.pt`, `hydro.pt`, `bank.pt`, `descgit.pt`,
+`detail.pt`, `biome.pt`, and EXP-2's `sr30.pt`, `sr15.pt`, `veg.pt`, `surface.pt`, `detail_fp8.pt`); without one,
+that stage falls back to the previous behaviour. The service, the warm-up and `make_release.py` run EXP-2 folders
+only (with `climate.pt`, through `world/generator2.py`); the default is `checkpoints/exp2-r3`. The EXP-1 models
+(v2 / v3 / v4, WorldClim-trained) were removed on 2026-11-19 (still in git history).
 
 ### Shipping a model
 
@@ -113,9 +120,11 @@ EXP-2 folders (with `climate.pt`) load through `world/generator2.py`; the defaul
    `ATTRIBUTION.md`, and proves tiles from the release are bit-identical to the source folder (1:4 and 1:2).
 2. Point the game at the new directory: `TGMPipe.DEFAULT_MODEL`, or
    `-Dstonebreak.tgmpipe.model=`. Update `ATTRIBUTION.md` if the sources changed.
-3. Un-ignore the new directory in `.gitignore`: copy the two `!/checkpoints/v3...` lines. v3 was about 9 MB in
-   plain git; v4 is ~131 MB with a 99 MB `detail.pt` (bf16) — GitHub's hard limit is 100 MiB per file, so
-   consider Git LFS. Store big models' weights as bf16 (lossless for the bf16-autocast samplers).
+3. Track it: copy the five `checkpoints/exp2-r3` lines in `.gitignore` for the new directory (weights,
+   `release.json` and `ATTRIBUTION.md` tracked; its `native/` export ignored) and add its LFS line to the root
+   `.gitattributes` (`git lfs track "Models/DaedalusTGM-Exp/checkpoints/<name>/*.pt"`). The weights must go through
+   Git LFS: exp2-r3 is ~590 MB with a 256 MB `detail.pt`, above GitHub's 100 MiB per-file limit. Every clone that
+   pulls them costs that much LFS bandwidth.
 4. Re-scan a new detail checkpoint for in-game stability before shipping it (`[detail] WARNING` lines; see
    Architecture §1a) — validation alone does not catch it.
 
@@ -127,8 +136,8 @@ own. Old namespaces age out under the one byte budget (`--disk-cache`, 8 GB).
 ### Evaluating
 
 ```bash
-.venv/bin/python -m terrain_slm.eval.mountains --seed 2 --out reports/v3   # block stats vs real Alps + hillshade
-.venv/bin/python -m terrain_slm.eval.sheet --model checkpoints/v3          # held-out eval sheet
+.venv/bin/python -m terrain_slm.eval.mountains --seed 2 --out reports/exp2-r3   # block stats vs real Alps + hillshade
+.venv/bin/python -m terrain_slm.eval.sheet --model checkpoints/exp2-r3          # held-out eval sheet
 ```
 
 ## Layout
@@ -139,7 +148,7 @@ tests/              pytest suite
 scripts/            download_*.py · make_release.py + release_provenance.json
 configs/
 docs/               Architecture.md · Terrain-SLM-Plan.md · system-overview.{png,py} · diagnostics/
-checkpoints/        exp2-r3/ = the shipping EXP-2 release (ignored for now: 590 MB + native/ export 144 MB; exp2-r1 kept for worlds created on it); v4/ v3/ v2/ = EXP-1 (tracked, WorldClim-trained); training runs are ignored
+checkpoints/        exp2-r3/ = the shipping EXP-2 release (tracked: *.pt via Git LFS, ~590 MB; its native/ export, 144 MB, is regenerated and ignored); exp2-r1/ exp2-r2/ exp2/ and training runs are ignored; EXP-1 (v2/v3/v4) removed 2026-11-19
 reports/            evaluation output (ignored)
 data/               training data: a folder, or a symlink to a data disk (ignored)
 ```

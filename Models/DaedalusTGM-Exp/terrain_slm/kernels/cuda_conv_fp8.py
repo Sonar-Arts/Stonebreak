@@ -239,3 +239,99 @@ def make_quant8(x: torch.Tensor, y: torch.Tensor, qs: float = 1.0) -> Launch:
     lc._keep = (x, y)
     lc.source = SRC
     return lc
+
+
+# ----------------------------------------------------------------------------- halo-tiled FP8 up-merge (uconv8_kernel)
+def uconv8_smem(cfg: tuple) -> int:
+    th, tw, bn, wm, wn, st = cfg
+    ar = max((th + 1) * (tw + 1), th * tw)
+    return max(st * (ar * 32 + 4 * bn * 32), wm * wn * 16 * (bn // wn + 4) * 4)
+
+
+def uconv8_valid(cfg: tuple) -> bool:
+    th, tw, bn, wm, wn, st = cfg
+    bm, nt = th * tw, wm * wn * 32
+    if tw % 8 or bm % wm or bn % wn or (bm // wm) % 16 or (bn // wn) % 16 or nt > 512 or st < 2:
+        return False
+    if (bm // wm // 16) * (bn // wn // 8) * 4 > 128:
+        return False
+    return uconv8_smem(cfg) <= 99 * 1024
+
+
+def default_uconv8_config(c: int, lo: int, lo_w: int | None = None) -> tuple | None:
+    """An untuned GPU's config, or None when the low-resolution grid (lo x lo_w) does not tile by 8 (the sampler then
+    keeps the generation-1 MODE 1 kernel for that layer -- a fixed rule per shape)."""
+    lo_w = lo if lo_w is None else lo_w
+    if lo % 8 or lo_w % 8:
+        return None
+    bn = 96 if c % 96 == 0 else 64 if c % 64 == 0 else 32 if c % 32 == 0 else 16
+    wn = 1 if bn == 16 else 2
+    tw = 32 if lo_w % 32 == 0 else 16 if lo_w % 16 == 0 else 8
+    return (8, tw, bn, tw // 4, wn, 2)
+
+
+def make_uconv8(x1: torch.Tensor, w: torch.Tensor, sc: torch.Tensor, cfg: tuple, *, x2: torch.Tensor, out_raw=None,
+                out_silu=None, out_silu8=None, out_raw8=None, qs: float = 1.0, qs_raw: float = 1.0) -> Launch:
+    """Halo-tiled FP8 up-merge (kernel type "uconv8"): make_conv8(mode=1)'s contract with a chunk-major K order."""
+    b, h1, w1, c1 = x1.shape
+    th, tw, bn = cfg[:3]
+    assert x1.dtype == torch.uint8 and x1.is_contiguous() and c1 % 32 == 0 and h1 % th == 0 and w1 % tw == 0
+    assert x2.dtype == torch.uint8 and x2.is_contiguous() and x2.shape[1:3] == (2 * h1, 2 * w1) and x2.shape[3] % 32 == 0
+    np_ = w.shape[0] // 4
+    kb = w.shape[1]
+    c2 = x2.shape[3]
+    assert np_ % bn == 0 and kb == 4 * c1 + c2, (w.shape, c1, c2)
+    co = _co(None, out_raw, out_silu, out_silu8, out_raw8)
+    e, keep = _epi(co, sc, None, None, out_raw, out_silu, out_silu8, out_raw8, None, None, None, False, qs, qs_raw)
+    m = b * h1 * w1
+    args = Conv8Args(x1=ptr(x1), x2=ptr(x2), w=ptr(w), e=e, w_phase=np_ * kb, M=m, Hg=h1, Wg=w1, H1=h1, W1=w1, C1=c1,
+                     H2=2 * h1, W2=2 * w1, C2=c2, NP=np_, K=kb, Ho=2 * h1, Wo=2 * w1)
+    tiles = np_ // bn
+    lc = Launch("uconv8_kernel<{},{},{},{},{},{}>".format(*cfg), ((m // (th * tw)) * tiles, 1, 4), cfg[3] * cfg[4] * 32,
+                uconv8_smem(cfg), args)
+    lc.scale = {"field": "M", "rule": "ceil", "tile": th * tw, "tiles": tiles}
+    lc._keep = (x1, x2, w) + keep
+    lc.source = SRC
+    return lc
+
+
+# ----------------------------------------------------------------------------- halo-tiled stride-2 FP8 (dconv8_kernel)
+def dconv8_smem(cfg: tuple) -> int:
+    th, tw, bn, wm, wn, st = cfg
+    hn = (2 * th + 1) * (2 * tw + 1)
+    return max(st * (hn * 32 + bn * 304), wm * wn * 16 * (bn // wn + 4) * 4)
+
+
+def dconv8_valid(cfg: tuple) -> bool:
+    th, tw, bn, wm, wn, st = cfg
+    bm, nt = th * tw, wm * wn * 32
+    if tw % 8 or bm % wm or bn % wn or (bm // wm) % 16 or (bn // wn) % 16 or nt > 512 or st < 2:
+        return False
+    if (bm // wm // 16) * (bn // wn // 8) * 4 > 128:
+        return False
+    return dconv8_smem(cfg) <= 99 * 1024
+
+
+def default_dconv8_config(co: int, ho: int) -> tuple:
+    bn = 96 if co % 96 == 0 else 64 if co % 64 == 0 else 32
+    return (8, 16, bn, 4, 2, 2) if ho % 16 == 0 else (8, 8, bn, 4, 2, 2)
+
+
+def make_dconv8(x: torch.Tensor, w: torch.Tensor, sc: torch.Tensor, cfg: tuple, *, out_raw=None, out_silu=None,
+                out_silu8=None, out_raw8=None, qs: float = 1.0, qs_raw: float = 1.0) -> Launch:
+    """Halo-tiled stride-2 3x3 FP8 conv (kernel type "dconv8"): x (B, H, W, C) e4m3 -> (B, H/2, W/2, CO); (w, sc) from
+    `pack_hconv8`."""
+    b, h, wd, c = x.shape
+    assert x.dtype == torch.uint8 and x.is_contiguous() and c % 32 == 0 and h % 2 == 0 and wd % 2 == 0
+    np_ = w.shape[1]
+    th, tw, bn = cfg[:3]
+    assert w.shape == (c // 32, np_, 9, 32) and np_ % bn == 0, (w.shape, cfg)
+    co = _co(None, out_raw, out_silu, out_silu8, out_raw8)
+    e, keep = _epi(co, sc, None, None, out_raw, out_silu, out_silu8, out_raw8, None, None, None, False, qs, qs_raw)
+    args = HConv8Args(x=ptr(x), w=ptr(w), e=e, B=b, H=h, W=wd, C=c, NP=np_)
+    blocks = b * -(-(h // 2) // th) * -(-(wd // 2) // tw) * (np_ // bn)
+    lc = Launch("dconv8_kernel<{},{},{},{},{},{}>".format(*cfg), (blocks, 1, 1), cfg[3] * cfg[4] * 32, dconv8_smem(cfg),
+                args)
+    lc._keep = (x, w) + keep
+    lc.source = SRC
+    return lc

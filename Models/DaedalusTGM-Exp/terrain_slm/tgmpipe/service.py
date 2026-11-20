@@ -34,6 +34,7 @@ log = logging.getLogger("tgmpipe")
 
 
 IDLE_RELEASE_S = 1.0       # GPU thread idle this long -> torch's cached blocks go back to the driver
+EXPRESS_MAX_PRIORITY = 0   # the express lane's tiles: TGMPipe.PRIORITY_WORLD (Java)
 CPU_MAX_VRAM = 4 * 2**30   # "auto" runs on the CPU when the chosen GPU has this much memory or less
 # The CPU kernels (kernels/cpu_sampler.py, kernels/controls_cpu.py) are EXPERIMENTAL and not yet optimized:
 # a tile takes minutes. The game treats a machine that would land on them as below Daedalus's system
@@ -83,11 +84,17 @@ class Service:
         self.scheduler = Scheduler()
         self._front = ThreadPoolExecutor(1, thread_name_prefix="front")
         self._back = ThreadPoolExecutor(1, thread_name_prefix="back")
-        self._gpu = threading.Thread(target=self._gpu_loop, name="gpu", daemon=True)
-        self.stats = {"served": 0, "cache_hits": 0, "generated": 0, "failed": 0, "gen_ms": 0.0}
+        # Native tiles with lanes (agent PX): one GPU thread per lane, all taking the most urgent job from the one
+        # scheduler; the lanes share their models and window caches natively and build concurrently (tiles identical).
+        lanes = max(1, int(getattr(getattr(self.builder, "terrain", None), "lanes", 1)))
+        self._gpus = [threading.Thread(target=self._gpu_loop, args=(lane,), name=f"gpu{lane}" if lane else "gpu",
+                                       daemon=True) for lane in range(lanes)]
+        self._stats_lock = threading.Lock()
+        self.stats = {"served": 0, "cache_hits": 0, "generated": 0, "failed": 0, "gen_ms": 0.0, "lanes": lanes}
 
     def start(self) -> None:
-        self._gpu.start()
+        for t in self._gpus:
+            t.start()
 
     def dispatch(self, kind: int, body: bytes) -> None:
         """Reader thread: route one frame. Order is kept (one front thread), so a CANCEL always
@@ -139,14 +146,18 @@ class Service:
                                              "cache": self.cache.stats(), "vram": vram, **self.stats, **extra}))
 
     # ------------------------------------------------------------------ GPU
-    def _gpu_loop(self) -> None:
+    def _gpu_loop(self, lane: int = 0) -> None:
+        # Express lane (lanes > 1, TGM_NATIVE_EXPRESS != 0): lane 0 builds only priority-0 tiles (the game's world /
+        # cube tiles), so they never wait behind far-LOD / relief tiles; the other lanes take everything.
+        express = lane == 0 and len(self._gpus) > 1 and os.getenv("TGM_NATIVE_EXPRESS", "1").strip() not in ("0", "off")
+        max_priority = EXPRESS_MAX_PRIORITY if express else None
         released = True
         while True:
             # Idle for IDLE_RELEASE_S: hand the tiles' temporaries back to the driver. Torch keeps a tile's peak
             # cached otherwise (~0.6 GB, VRAM audit 2026-11-18). Not at every empty queue (2026-11-19): while the game
             # streams, the queue drains between nearly every pair of requests, and each release made the next tile
             # cudaMalloc its ~1 GB again (a device sync per block).
-            job = self.scheduler.take(timeout=None if released else IDLE_RELEASE_S)
+            job = self.scheduler.take(timeout=None if released else IDLE_RELEASE_S, max_priority=max_priority)
             if job is None:
                 if self.scheduler.closed:
                     return
@@ -159,15 +170,20 @@ class Service:
             try:
                 planes = self.cache.get(key)  # a request that missed may have raced a finishing job
                 if planes is None:
-                    planes = self.builders[key.world].build(key.seed, key.tile_x, key.tile_z, key.lod)
+                    b = self.builders[key.world]
+                    planes = (b.build(key.seed, key.tile_x, key.tile_z, key.lod, lane=lane) if lane else
+                              b.build(key.seed, key.tile_x, key.tile_z, key.lod))
                     self._back.submit(self.cache.put, key, planes)
                     ms = (time.monotonic() - t0) * 1000
-                    self.stats["generated"] += 1
-                    self.stats["gen_ms"] += ms
-                    log.info("tile %s built in %.0f ms (queue %d)", key, ms, self.scheduler.depth())
+                    with self._stats_lock:
+                        self.stats["generated"] += 1
+                        self.stats["gen_ms"] += ms
+                    log.info("tile %s built in %.0f ms (queue %d%s)", key, ms, self.scheduler.depth(),
+                             f", lane {lane}" if len(self._gpus) > 1 else "")
             except Exception as e:  # noqa: BLE001 - answered to every waiter, then the next job
                 log.exception("tile %s failed", key)
-                self.stats["failed"] += 1
+                with self._stats_lock:
+                    self.stats["failed"] += 1
                 _release_gpu_memory()
                 message = f"{type(e).__name__}: {e}"
                 for req_id in self.scheduler.finish(job):
@@ -198,7 +214,7 @@ def _release_gpu_memory() -> None:
 
 #: A/B generator knobs (environment) the native release export does not carry: they keep the Python generator.
 _AB_KNOBS = ("TERRAIN_SLM_RELIEF_GAIN", "TERRAIN_SLM_RELIEF_PREBLUR", "TERRAIN_SLM_HILL_TRANSFER",
-             "TERRAIN_SLM_LOWLAND_BOOST")
+             "TERRAIN_SLM_LOWLAND_BOOST", "TERRAIN_SLM_SEA_LINK")
 
 
 class _NativeInfo:
@@ -241,9 +257,10 @@ def main(argv=None) -> None:
     from terrain_slm.paths import MODEL_DIR, TILE_CACHE_DIR
 
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.tgmpipe")
-    ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
+    from terrain_slm.model_files import DEFAULT_MODEL
+    ap.add_argument("model_path", nargs="?", default=DEFAULT_MODEL)
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--cache-size", default="4G", help="v3 refiner-path region cache (first 128 regions on the GPU, the rest in host RAM, at most 1024); v4 caches are sized in generator.py")
+    ap.add_argument("--cache-size", default="4G", help="refiner-path region cache (first 128 regions on the GPU, the rest in host RAM, at most 1024); the other caches are sized in generator.py")
     ap.add_argument("--disk-cache", default="8G", help="finished-tile cache on disk, all versions")
     ap.add_argument("--disk-cache-dir", default=str(TILE_CACHE_DIR))
     ap.add_argument("--t-start", type=float, default=float(os.getenv("TERRAIN_SLM_T_START", "0.6")))
@@ -254,14 +271,15 @@ def main(argv=None) -> None:
                     help="river density knob: log1p(upslope cells) where a river starts (lower = more "
                          "rivers); default: calibrated for the model")
     ap.add_argument("--climate-layout", default=os.getenv("TERRAIN_SLM_CLIMATE_LAYOUT", "belts"),
-                    help="EXP-2 models only: belts | zones | latitude")
+                    help="belts | zones | latitude")
     args = ap.parse_args(argv)
 
     try:
         import torch
 
         from terrain_slm.tgmpipe.tile_cache import TileCache, namespace, source_fingerprint
-        from terrain_slm.world.generator import GenConfig, WorldGenerator
+        from terrain_slm.model_files import require_exp2_model
+        from terrain_slm.world.generator import GenConfig
         from terrain_slm.world.tiles import TileBuilder
         from terrain_slm.world.world_config import WorldConfig
 
@@ -271,28 +289,26 @@ def main(argv=None) -> None:
             model_dir = MODEL_DIR / model_dir
         regions = max(64, min(8192, _bytes(args.cache_size) // (384 * 384 * 4)))  # 384^2 fp32 regions
         t0 = time.monotonic()
-        # EXP-2 model folders carry the climate node: they run through WorldGenerator2 (controls2, climate, SR-30,
-        # lowland boost); v4 folders keep the original generator.
-        exp2 = (model_dir / "climate.pt").exists()
+        # Only EXP-2 model folders (they carry the climate node) are served, through WorldGenerator2 (controls2,
+        # climate, SR-30, lowland boost). EXP-1 (v2 / v3 / v4) was removed 2026-11-19. A missing release or Git LFS
+        # pointer files instead of weights end the start here with a message naming the fix (git lfs pull).
+        require_exp2_model(model_dir)
         # Native tiles (agent D, native engine phase 2 complete): the whole TileBuilder in libstonebreak_terrain, from
         # the model's release export (export/native_terrain.py; TGM_NATIVE_TILES=1 | auto | 0). Not with A/B knobs or a
         # river threshold override: the export holds the default generator's numbers.
         native_t = None
-        if exp2 and args.river_threshold is None and not any(os.getenv(k) for k in _AB_KNOBS):
+        if args.river_threshold is None and not any(os.getenv(k) for k in _AB_KNOBS):
             from terrain_slm.export import native_terrain as NT
             native_t = NT.open_for_service(model_dir, device, args.climate_layout, log)
         if native_t is not None:
             gen = _NativeInfo(native_t)
-        elif exp2:
-            from terrain_slm.world.generator2 import WorldGenerator2 as Gen
         else:
-            Gen = WorldGenerator
-        if native_t is None:
+            from terrain_slm.world.generator2 import WorldGenerator2 as Gen
             gen = Gen(model_dir, 0, device,
                       GenConfig(t_start=args.t_start, steps=args.steps, amp_scale=args.amp_scale,
                                 river_log_threshold=args.river_threshold),
                       cache_regions=regions)
-        if exp2 and native_t is None:
+        if native_t is None:
             gen.use_climate_layout(args.climate_layout)
             gen.default_climate_layout = args.climate_layout   # worlds without their own layout get this one
             if os.getenv("TERRAIN_SLM_RELIEF_GAIN"):          # A/B knobs (in-game comparisons)

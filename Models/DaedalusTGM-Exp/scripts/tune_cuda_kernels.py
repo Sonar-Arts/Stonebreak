@@ -116,7 +116,8 @@ def time_launch(lc, reps=30) -> float:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("model", nargs="?", default="checkpoints/v4")
+    from terrain_slm.model_files import DEFAULT_MODEL
+    ap.add_argument("model", nargs="?", default=DEFAULT_MODEL)
     ap.add_argument("--device", default="cuda:1")
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--only-missing", action="store_true", help="tune only layer shapes without a config for this GPU")
@@ -138,6 +139,8 @@ def run(a) -> None:
     torch.cuda.set_device(dev)
     root = Path(__file__).resolve().parents[1]
     mdir = root / a.model
+    from terrain_slm.model_files import check_weights
+    check_weights(mdir)                               # Git LFS pointers: say so instead of a torch unpickling error
     layers = {}
     for path, cls, cfg_cls, n in ((mdir / "detail.pt", DT.Detail, DT.DetailConfig, 512),
                                   (mdir / "relief.pt", RL.Relief, RL.ReliefConfig, 448)):

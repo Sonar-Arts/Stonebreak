@@ -20,8 +20,12 @@ std::shared_ptr<Block> Pool::take(size_t bytes, bool host) {
         auto it = fl.lower_bound(n);
         // Reuse a cached block of this class (or up to 2x larger for big ones: less fragmentation churn).
         if (it != fl.end() && it->first <= (n <= (1u << 20) ? n : 2 * n)) {
-            p = it->second;
+            p = it->second.p;
             const size_t got = it->first;
+            for (void* ev : it->second.evs) {   // another lane's stream may still read it: order after that
+                ci_.stream_wait(rt_, stream, ev);
+                ci_.event_destroy(rt_, ev);
+            }
             fl.erase(it);
             cached_ -= got;
             live_ += got;
@@ -51,17 +55,41 @@ std::shared_ptr<Block> Pool::take(size_t bytes, bool host) {
 }
 
 void Pool::give(Block* b) {
+    Free f{b->ptr, {}};
+    const uint32_t mask = b->foreign.exchange(0);
+    if (mask != 0 && lanes != nullptr) {
+        for (size_t l = 0; l < lanes->streams.size() && l < 32; ++l) {
+            if ((mask >> l & 1u) == 0 || static_cast<int>(l) == lane) continue;
+            void* ev = ci_.event_create(rt_);
+            if (ev != nullptr && ci_.event_record(rt_, ev, lanes->streams[l]) == 0) {
+                f.evs.push_back(ev);
+            } else {   // no event: wait for that lane's stream here (rare; correctness first)
+                if (ev != nullptr) ci_.event_destroy(rt_, ev);
+                ci_.stream_sync(rt_, lanes->streams[l]);
+            }
+        }
+    }
     std::lock_guard<std::mutex> lock(mu_);
-    (b->host ? free_host_ : free_dev_).emplace(b->bytes, b->ptr);
+    (b->host ? free_host_ : free_dev_).emplace(b->bytes, std::move(f));
     cached_ += b->bytes;
     live_ -= b->bytes;
     b->ptr = nullptr;
 }
 
+void Pool::drop(Free& f, bool host) {
+    for (void* ev : f.evs) {
+        ci_.event_sync(rt_, ev);
+        ci_.event_destroy(rt_, ev);
+    }
+    f.evs.clear();
+    if (host) ci_.host_free(rt_, f.p);
+    else ci_.free_(rt_, f.p);
+}
+
 void Pool::trim() {
     std::lock_guard<std::mutex> lock(mu_);
-    for (auto& [n, p] : free_dev_) ci_.free_(rt_, p);
-    for (auto& [n, p] : free_host_) ci_.host_free(rt_, p);
+    for (auto& [n, f] : free_dev_) drop(f, false);
+    for (auto& [n, f] : free_host_) drop(f, true);
     free_dev_.clear();
     free_host_.clear();
     cached_ = 0;
@@ -74,14 +102,13 @@ void Pool::trim_to(size_t keep) {
     while (cached_ > keep && (!free_dev_.empty() || !free_host_.empty())) {
         auto& fl = !free_dev_.empty() ? free_dev_ : free_host_;
         auto it = std::prev(fl.end());   // largest
-        if (&fl == &free_dev_) ci_.free_(rt_, it->second);
-        else ci_.host_free(rt_, it->second);
+        drop(it->second, &fl == &free_host_);
         cached_ -= it->first;
         fl.erase(it);
     }
 }
 
-Gpu::Gpu(const Ci& c, ci_runtime* r, void* s) : ci(c), rt(r), stream(s), pool(c, r) {}
+Gpu::Gpu(const Ci& c, ci_runtime* r, void* s) : ci(c), rt(r), stream(s), pool(c, r) { pool.stream = s; }
 
 Gpu::~Gpu() = default;
 

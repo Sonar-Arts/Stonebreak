@@ -23,7 +23,11 @@ package com.stonebreak.world.generation;
  */
 public record TerrainModelRef(String path, String contentId) {
 
-    /** The model of worlds saved without one (every Daedalus world before 2026-11-19): DaedalusTGM-Exp v4. */
+    /**
+     * The model of worlds saved without one (every Daedalus world before 2026-11-19): DaedalusTGM-Exp v4 (EXP-1). v4 was
+     * removed from the game on 2026-11-19, so such a world runs the default model with a notice
+     * ({@code TerrainModels#resolve}); the value stays the world's honest record of what made its explored area.
+     */
     public static final TerrainModelRef LEGACY = new TerrainModelRef("checkpoints/v4", "");
 
     /** Longest path / content id accepted from a save or the network (a path, a sha256 hex). */
@@ -55,7 +59,7 @@ public record TerrainModelRef(String path, String contentId) {
         return !contentId.isEmpty();
     }
 
-    /** The folder's last name ({@code exp2-r1}, {@code v4}, {@code world_exp2b}): what the player is told. */
+    /** The folder's last name ({@code exp2-r3}, {@code world_exp2f}): what the player is told. */
     public String displayName() {
         String p = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
         int slash = p.lastIndexOf('/');

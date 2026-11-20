@@ -404,6 +404,11 @@ public final class ModelSetup {
             throw new StepFailure(StepId.VERIFY, "Python environment missing: " + p.python);
         }
         set(StepId.VERIFY, Status.RUNNING, "", -1);
+        // Never hand the warm-up a missing release or Git LFS pointer files (a clone without 'git lfs pull').
+        String problem = TerrainModels.installProblem(TerrainModels.defaultModelPath());
+        if (problem != null) {
+            throw new StepFailure(StepId.VERIFY, problem);
+        }
         ObjectMapper json = new ObjectMapper();
         String[] gpuName = {""};
         int[] compiled = {0};
@@ -564,7 +569,7 @@ public final class ModelSetup {
         }
         files.add(slmDir.resolve("terrain_slm/tgmpipe/warmup.py"));
         Path modelDir = Path.of(model).isAbsolute() ? Path.of(model) : slmDir.resolve(model);
-        files.add(modelDir.resolve("release.json"));   // absent for symlink folders and v4: the name alone counts
+        files.add(modelDir.resolve("release.json"));   // absent for dev (symlink) folders: the name alone counts
         return hashFiles(files) + ":" + model;
     }
 

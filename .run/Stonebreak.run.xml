@@ -7,10 +7,11 @@
          Keep other escape analysis and C2 optimizations enabled. Remove these
          two workaround flags after verifying a JDK containing the upstream fix.
          Daedalus worlds use TGMPipe.DEFAULT_MODEL = Models/DaedalusTGM-Exp/checkpoints/exp2-r3, the DaedalusTGM-Exp-2
-         release (real files built from checkpoints/exp2/world_exp2f by scripts/make_release.py; gitignored for now,
-         a checkout without it falls back to v4 with a warning). To try a candidate or v4, add e.g.
-         -Dstonebreak.tgmpipe.model=checkpoints/exp2/world_exp2b (live symlinks into training dirs) or
-         -Dstonebreak.tgmpipe.model=checkpoints/v4 (WorldClim-trained, never ship). -->
+         release (real files built from checkpoints/exp2/world_exp2f by scripts/make_release.py; the weights are
+         Git LFS files: run `git lfs install && git lfs pull` once, a checkout without them refuses to start the
+         model with that message; there is no fallback model since v4 was removed 2026-11-19). To try a candidate
+         for new worlds, add e.g. -Dstonebreak.tgmpipe.model=checkpoints/exp2/world_exp2f (live symlinks into
+         training dirs). -->
     <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">

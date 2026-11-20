@@ -32,6 +32,9 @@ struct Cfg {
     int k_cos_th, k_sin_th, k_cos_flow, k_sin_flow, hot_stream, salt_th, salt_flow;
     int n_fields, n_gates;
     float c035, inv_land, sea_seed_trend;
+    // BV sea link (generator2.SEA_LINK*): 0 = off (exports without it)
+    int sea_link, sea_link_cells, sea_link_steps;
+    float sea_link_trend, sea_link_sea_land;
     // climate node
     int has_climate, canonical;
     double grid_cells;

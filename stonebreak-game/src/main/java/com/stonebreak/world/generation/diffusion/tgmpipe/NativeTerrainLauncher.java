@@ -71,13 +71,7 @@ final class NativeTerrainLauncher {
         if (why != null) {
             throw new TGMPipeException("native terrain unavailable: " + why);
         }
-        // Only EXP-2 models are ported (their folders carry the climate node); a world made with v4 (FX1: saves
-        // without a model id) keeps the TGMPipe service.
-        Path model = Path.of(TGMPipe.modelPath());
-        Path modelDir = model.isAbsolute() ? model : TGMPipe.slmDir().resolve(model);
-        if (!Files.isRegularFile(modelDir.resolve("climate.pt")) && !Files.isRegularFile(nativeDir().resolve("manifest.json"))) {
-            throw new TGMPipeException("model " + model + " is not an EXP-2 model: the native pipeline does not serve it");
-        }
+        TerrainModels.requireInstalled(TGMPipe.modelPath());   // missing release / Git LFS pointers: a clear error
         Path cenda = cendaLibrary();
         Path dir = nativeDir();
         refreshExport(dir, logFile);
@@ -100,6 +94,7 @@ final class NativeTerrainLauncher {
             throw new TGMPipeException("native terrain failed to open: " + e.getMessage(), e);
         }
         try {
+            terrain.setLanes(NativeTerrainService.configuredLanes());   // before the warm-up (models: a context per lane)
             terrain.warmup();
             List<String> worlds = worlds();
             Path cacheRoot = TGMPipe.modelsDir().resolve("tile_cache");

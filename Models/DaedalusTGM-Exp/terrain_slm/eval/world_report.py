@@ -1,6 +1,6 @@
 """World report: the three things players see first, measured in game blocks.
 
-    python -m terrain_slm.eval.world_report --model checkpoints/v4 --seeds 0 1 2 --out reports/v4
+    python -m terrain_slm.eval.world_report --model checkpoints/exp2-r3 --seeds 0 1 2 --out reports/exp2-r3
 
 For each seed, builds a BLOCKS x BLOCKS square of block columns through the full pipeline
 (river_field -> block stages, exactly what TGMPipe sends) centred on spawn, and reports:
@@ -26,7 +26,6 @@ import torch.nn.functional as F
 
 from terrain_slm.device import default_device
 from terrain_slm.river import pipeline as RP
-from terrain_slm.world import generator as G
 
 BLOCKS = 768
 LOWLAND_Y = 100      # ~600 m under the game curve
@@ -126,7 +125,8 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     rows = []
     for seed in args.seeds:
-        gen = G.WorldGenerator(args.model, seed, args.device)
+        from terrain_slm.world.generator2 import WorldGenerator2
+        gen = WorldGenerator2(args.model, seed, args.device)   # the service's generator (EXP-2 only)
         sea_y = int(gen.scale.sea_level)
         c, stats = columns(gen, -args.blocks // 2, -args.blocks // 2, args.blocks)
         from terrain_slm.world.tiles import TileBuilder

@@ -15,12 +15,23 @@
 
 namespace sbtg {
 
+// The streams of a terrain pipeline's lanes (index = lane id), for cross-lane fences: a block that another lane used
+// is reused only after that lane's stream has passed the point where the block was given back.
+struct LaneStreams {
+    std::vector<void*> streams;
+};
+
 // Stream-ordered caching allocator over ci_malloc / ci_host_alloc. Every block is used on the pool's one stream, so a
 // freed block can be handed out again at once (the stream orders the old reads before the new writes), exactly like
 // torch's allocator on a single stream. Sizes are rounded to 512 B (small) / 2 MiB (large) classes.
+// Lanes (agent PX): a block another lane's stream touched (Block::foreign) carries events recorded on those streams
+// when it is given back; take() makes this pool's stream wait for them (no host sync) before handing it out again.
 class Pool {
 public:
     Pool(const Ci& ci, ci_runtime* rt) : ci_(ci), rt_(rt) {}
+    int lane = 0;                          // this pool's lane
+    void* stream = nullptr;                // this pool's stream (the owning Gpu's)
+    const LaneStreams* lanes = nullptr;    // null: a single-lane pipeline (no fences)
     ~Pool();
     Pool(const Pool&) = delete;
     Pool& operator=(const Pool&) = delete;
@@ -37,10 +48,15 @@ private:
         if (n <= (1u << 20)) return (n + 511) / 512 * 512;
         return (n + (2u << 20) - 1) / (2u << 20) * (2u << 20);
     }
+    struct Free {
+        void* p;
+        std::vector<void*> evs;   // other lanes' events this block's reuse waits for
+    };
+    void drop(Free& f, bool host);   // frees one cached block (its fences waited first)
     const Ci& ci_;
     ci_runtime* rt_;
     std::mutex mu_;
-    std::multimap<size_t, void*> free_dev_, free_host_;
+    std::multimap<size_t, Free> free_dev_, free_host_;
     size_t cached_ = 0, live_ = 0;
 };
 

@@ -214,6 +214,21 @@ Tensor classify(Gen& g, const Tensor& elev, const Tensor& climate, const Tensor&
         } a{side->data<int16_t>(), rule_m.data<int16_t>(), clean.data<int16_t>(), biome.data<int16_t>(), H, W, mb,
             h, w, biome_k(g)};
         g.gpu.launch(kern(g, "tiles_sidecar_mix"), static_cast<long long>(h) * w, a);
+        // BV: v2 worlds, no sidecar sand ring on lake shores (tiles.LAKE_SHORE_DESERT_M; absent = off)
+        const double lsd = g.manifest["constants"].num_or("T.LAKE_SHORE_DESERT_M", 0.0);
+        if (lsd > 0.0 && g.st.sea_shelf) {
+            struct LakeShoreArgs {
+                const float* elev;
+                const int16_t* rule;
+                const int16_t* clean;
+                int16_t* biome;
+                int H, W, mb, h, w, r;
+                float lake_elev;
+                BiomeK k;
+            } ls{elev.f32(), rule_m.data<int16_t>(), clean.data<int16_t>(), biome.data<int16_t>(), H, W, mb, h, w,
+                 std::max(1, static_cast<int>(std::ceil(lsd / px_m))), g.cf("O.LAKE_CLASSIFY_ELEV_M"), biome_k(g)};
+            g.gpu.launch(kern(g, "tiles_lake_shore_desert"), static_cast<long long>(h) * w, ls);
+        }
     } else {
         const Frame inner{H, W, mb, mb};
         biome = classify_biome(g, elev, climate, inner, elev, inner, h, w, i1, j1, px_m);

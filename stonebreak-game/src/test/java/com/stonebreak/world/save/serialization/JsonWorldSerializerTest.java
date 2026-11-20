@@ -199,6 +199,37 @@ class JsonWorldSerializerTest {
         assertEquals(V0, serializer.deserialize(serializer.serialize(old)).getWorldFeatures());
     }
 
+    /* ---------- standardShape (agent SD, 2026-11-19) ---------- */
+
+    @Test
+    void standardShapeRoundTripNewWorldsGetShapeTwoOldSavesKeepShapeOne() {
+        var SV = com.stonebreak.world.generation.StandardShapeVersion.class;
+        WorldData fresh = WorldData.builder().seed(7L).worldName("Fresh").build();
+        assertEquals(com.stonebreak.world.generation.StandardShapeVersion.CURRENT, fresh.getStandardShape());
+        assertTrue(new String(serializer.serialize(fresh), StandardCharsets.UTF_8).contains(
+            "\"standardShape\": " + com.stonebreak.world.generation.StandardShapeVersion.CURRENT.number()));
+        for (var v : SV.getEnumConstants()) {
+            WorldData w = new WorldData.Builder(fresh).standardShape(v).build();
+            assertEquals(v, serializer.deserialize(serializer.serialize(w)).getStandardShape());
+        }
+        // A Standard world saved before the field (even one carrying today's heightCurve / worldFeatures, which Standard
+        // worlds always ignored) keeps the 2026-11-01 shape: no seam at its explored edge.
+        String legacy = "{\n"
+            + "  \"seed\": 42,\n"
+            + "  \"worldName\": \"LegacyStandard\",\n"
+            + "  \"generatorType\": \"STANDARD\",\n"
+            + "  \"heightCurve\": 2,\n"
+            + "  \"worldFeatures\": 3,\n"
+            + "  \"creationTime\": \"2024-01-01T12:00:00\",\n"
+            + "  \"lastPlayed\": \"2024-06-15T18:30:00\",\n"
+            + "  \"totalPlayTimeMillis\": 100\n"
+            + "}";
+        WorldData old = serializer.deserialize(legacy.getBytes(StandardCharsets.UTF_8));
+        assertEquals(com.stonebreak.world.generation.StandardShapeVersion.V1, old.getStandardShape());
+        assertEquals(com.stonebreak.world.generation.StandardShapeVersion.V1,
+            serializer.deserialize(serializer.serialize(old)).getStandardShape());
+    }
+
     /* ---------- terrainModel (review-python HIGH-1, 2026-11-19) ---------- */
 
     @Test

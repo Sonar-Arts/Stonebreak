@@ -18,7 +18,8 @@ as the native fp16 gate), through the same simulation.
     python -m terrain_slm.train.train_qad --teacher checkpoints/exp2/d2_full_v2_mf_experts/ema_0.10.pt \
         --out checkpoints/exp2/qad_fp8_v2 --data-dir /mnt/extrastorage/terrain-slm-data/v2-gedtm30 --device cuda:1
 
-`--legacy` keeps the first version (torch conv2d patch under bf16 autocast, quant/fp8.py) for v4 detail models.
+(The first, `--legacy` version for v4's detail models was removed with v4 on 2026-11-19; quant/fp8.py and
+eval/quant_ptq.py --legacy keep its conv2d-patch measurement.)
 """
 from __future__ import annotations
 
@@ -32,7 +33,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from terrain_slm.eval.detail_ab import load, sample
+from terrain_slm.eval.detail_ab import load
 from terrain_slm.models import detail as DT
 from terrain_slm.models import detail2 as D2
 from terrain_slm.models.mp import force_weight_norm_
@@ -135,7 +136,6 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--teacher", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--legacy", action="store_true", help="first version (quant/fp8.py patch under bf16 autocast)")
     ap.add_argument("--data-dir", type=Path, required=True,
                     help="DetailData root: /mnt/extrastorage/terrain-slm-data/v2-gedtm30 (the bare root holds the EXP-1 "
                          "WorldClim regions: non-commercial, never train on it). Required even with --no-data.")
@@ -154,14 +154,7 @@ def main() -> None:
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--windows", type=Path, default=None, help="generator training windows cache (.pt)")
     ap.add_argument("--init", type=Path, default=None, help="start the student from this checkpoint")
-    # legacy flags
-    ap.add_argument("--data-weight", type=float, default=0.1)
-    ap.add_argument("--eval-steps", type=int, default=16)
-    ap.add_argument("--mean-flow", action="store_true")
-    ap.add_argument("--mf-steps", type=int, default=2)
     args = ap.parse_args()
-    if args.legacy:
-        return legacy_main(args)
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
     dev = args.device
@@ -281,110 +274,6 @@ def main() -> None:
                         "quant": quant_meta}, args.out / "last.pt")
             print("  best", json.dumps(best), flush=True)
     print(f"done in {(time.time() - t_start) / 60:.1f} min; best {best}", flush=True)
-
-
-# ----------------------------------------------------------------------------- legacy (v1, kept for v4 models)
-def legacy_main(args) -> None:
-    from terrain_slm.models import detail as DT_
-    from terrain_slm.quant.fp8 import fp8_convs
-    from terrain_slm.train.train_detail import DetailData
-    from terrain_slm.train.train_detail2 import sample_t
-    skip = (1 + DT_.N_COND, 1 + DT_.N_COND + 1)
-
-    @torch.no_grad()
-    def fp8_error(student, teacher, data, steps, batches=4):
-        student.eval()
-        rms, worst = [], 0.0
-        for k, (cond, x1, base, dem) in enumerate(data.val_batches(32)):
-            if k >= batches:
-                break
-            g = torch.Generator(device=x1.device).manual_seed(k)
-            noise = torch.randn(x1.shape, generator=g, device=x1.device)
-            ref = DT_.decode(sample(teacher, cond, noise, steps))
-            with fp8_convs(act="fixed", skip_in_channels=skip):
-                q = DT_.decode(sample(student, cond, noise, steps))
-            d = (q - ref).flatten(1)
-            rms += d.pow(2).mean(1).sqrt().tolist()
-            worst = max(worst, float(d.abs().max()))
-        student.train()
-        return {"fp8_rms_m_median": round(float(np.median(rms)), 2), "fp8_rms_m_p90": round(float(np.percentile(rms, 90)), 2),
-                "fp8_worst_px_m": round(worst, 1)}
-
-    torch.manual_seed(0)
-    args.out.mkdir(parents=True, exist_ok=True)
-    dev = args.device
-    data = DetailData(args.data_dir, dev)
-    teacher, ck = load(args.teacher, dev)
-    if "norms" in ck:
-        data.desc_mean = torch.tensor(ck["norms"]["desc_mean"], device=dev)
-        data.desc_std = torch.tensor(ck["norms"]["desc_std"], device=dev)
-    teacher.eval().requires_grad_(False)
-    student = copy.deepcopy(teacher).train().requires_grad_(True)
-    mp = hasattr(student, "fourier_t")
-    experts = list(getattr(student, "adapters", {}).keys()) if hasattr(student, "adapters") else []
-    opt = torch.optim.Adam(student.parameters(), lr=args.lr, betas=(0.9, 0.99))
-    log = open(args.out / "log.jsonl", "a")
-    ev = {"step": 0, **fp8_error(student, teacher, data, args.eval_steps)}
-    print("  eval", json.dumps(ev), flush=True)
-    log.write(json.dumps(ev) + "\n"); log.flush()
-    t0 = time.time()
-    for step in range(1, args.steps + 1):
-        cond, x1, *_ = data.train_batch(args.batch)
-        noise = torch.randn_like(x1)
-        b = x1.shape[0]
-        if args.mean_flow:
-            gates = None
-            if experts and float(torch.rand(1)) < 0.3:
-                gates = torch.zeros(b, len(D2.STYLES), *x1.shape[-2:], device=dev)
-                gates[:, D2.STYLES.index(experts[int(torch.randint(0, len(experts), (1,)))])] = 1.0
-            h = 1.0 / args.mf_steps
-            if float(torch.rand(1)) < 0.7:
-                k = int(torch.randint(0, args.mf_steps, (1,)))
-                x = noise
-                with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                    for i in range(k):
-                        ti = torch.full((b,), i * h, device=dev)
-                        x = x + h * teacher(x, ti, cond, ti + h, gates=gates).float()
-                t = torch.full((b,), k * h, device=dev)
-                r = t + h
-                xt = x
-            else:
-                t = torch.rand(b, device=dev) * 0.95
-                r = t + (1 - t) * torch.rand(b, device=dev)
-                xt = (1 - t)[:, None, None, None] * noise + t[:, None, None, None] * x1
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                v_t = teacher(xt, t, cond, r, gates=gates).float()
-            if mp:
-                force_weight_norm_(student)
-            with fp8_convs(act="fixed", skip_in_channels=skip), torch.autocast("cuda", dtype=torch.bfloat16):
-                v_s = student(xt, t, cond, r, gates=gates).float()
-            loss = (v_s - v_t).pow(2).mean()
-        else:
-            t = sample_t(b, dev)
-            xt = (1 - t)[:, None, None, None] * noise + t[:, None, None, None] * x1
-            with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
-                v_t = teacher(xt, t, cond).float()
-            if mp:
-                force_weight_norm_(student)
-            with fp8_convs(act="fixed", skip_in_channels=skip), torch.autocast("cuda", dtype=torch.bfloat16):
-                v_s = student(xt, t, cond).float()
-            loss = (v_s - v_t).pow(2).mean() + args.data_weight * (v_s - (x1 - noise)).pow(2).mean()
-        for g in opt.param_groups:
-            g["lr"] = args.lr * min(1.0, step / 100) * 0.5 * (1 + math.cos(math.pi * step / args.steps))
-        opt.zero_grad(set_to_none=True)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(student.parameters(), 1.0)
-        opt.step()
-        if step % 100 == 0:
-            print(f"step {step:5d} loss {loss.item():.5f} ({(time.time() - t0) / step * 1000:.0f} ms/step)", flush=True)
-        if step % args.eval_every == 0 or step == args.steps:
-            ev = {"step": step, **fp8_error(student, teacher, data, args.eval_steps)}
-            print("  eval", json.dumps(ev), flush=True)
-            log.write(json.dumps(ev) + "\n"); log.flush()
-            torch.save({"model": student.state_dict(), "config": ck["config"], "norms": ck.get("norms"), "step": step,
-                        "quant": {"format": "fp8_e4m3", "weights": "per_out_channel", "acts": "fixed_scale_1",
-                                  "full_precision_in_channels": list(skip)}, "eval": ev}, args.out / "student.pt")
-    print(f"done in {(time.time() - t0) / 60:.1f} min", flush=True)
 
 
 if __name__ == "__main__":

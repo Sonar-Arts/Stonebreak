@@ -222,7 +222,10 @@ Fields climate_window_run(Gen& g, int64_t wi, int64_t wj) {
 Fields climate_window(Gen& g, const Args& a) {
     need(a, 2, 0, 0, "_climate_window");
     const int64_t wi = a.i[0], wj = a.i[1];
-    return g.cache("_climate_windows", 128).get_or({g.st.seed, wi, wj}, [&] { return climate_window_run(g, wi, wj); });
+    return g.cache("_climate_windows", 128).get_or({g.st.seed, wi, wj}, [&] {
+        ++g.counters["climate_windows"];
+        return climate_window_run(g, wi, wj);
+    });
 }
 SBTG_METHOD("_climate_window", climate_window);
 

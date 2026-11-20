@@ -134,4 +134,35 @@ class NativeTerrainPiecesTest {
             }
         }
     }
+
+    @Test
+    void laneCountComesFromThePropertyWithinBounds() {
+        String old = System.clearProperty("stonebreak.terrain.lanes");
+        try {
+            System.setProperty("stonebreak.terrain.lanes", "1");
+            assertEquals(1, NativeTerrainService.configuredLanes());     // the sequential pipeline (A/B, fallback)
+            System.setProperty("stonebreak.terrain.lanes", "3");
+            assertEquals(3, NativeTerrainService.configuredLanes());
+            System.setProperty("stonebreak.terrain.lanes", "0");
+            assertEquals(1, NativeTerrainService.configuredLanes());
+            System.setProperty("stonebreak.terrain.lanes", "99");
+            assertEquals(8, NativeTerrainService.configuredLanes());
+        } finally {
+            if (old != null) {
+                System.setProperty("stonebreak.terrain.lanes", old);
+            } else {
+                System.clearProperty("stonebreak.terrain.lanes");
+            }
+        }
+    }
+
+    @Test
+    void autoLanesFollowTheGpuMemory() {
+        assertEquals(1, NativeTerrainService.lanesFor(-1));          // no nvidia-smi
+        assertEquals(1, NativeTerrainService.lanesFor(8192));
+        assertEquals(1, NativeTerrainService.lanesFor(NativeTerrainService.AUTO_LANES_MIN_VRAM_MIB - 1));
+        assertEquals(NativeTerrainService.DEFAULT_LANES,
+                NativeTerrainService.lanesFor(NativeTerrainService.AUTO_LANES_MIN_VRAM_MIB));
+        assertEquals(NativeTerrainService.DEFAULT_LANES, NativeTerrainService.lanesFor(98304));
+    }
 }

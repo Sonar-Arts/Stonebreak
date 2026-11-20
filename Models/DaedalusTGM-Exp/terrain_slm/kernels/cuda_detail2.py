@@ -39,6 +39,13 @@ from terrain_slm.models.mp import SILU_GAIN
 
 RANK_PAD = 32   # adapter ranks padded to the implicit-GEMM kernel's BK (zero rows / columns change nothing)
 
+# Kernel generation (part of the numbers; K4 2026-11-19). 2: the up-merge runs the halo-tiled "uconv" kernel (chunk-major
+# K order) instead of conv_kernel MODE 1 (tap-major): a different fp32 summation order, so the generator's model_id
+# carries MARK (tile caches never mix generations). TGM_DETAIL_KGEN=1 restores generation 1 (A/B, parity with old tiles).
+import os as _os
+KGEN = 1 if _os.getenv("TGM_DETAIL_KGEN", "2").strip() == "1" else 2
+MARK = "" if KGEN == 1 else "kg2"
+
 
 def _uses_hconv(kind: str, cin: int, cout: int, ks: int, stride: int) -> bool:
     """Kernel rule (part of the numbers): block and adapter 3x3 stride-1 convs -> the halo kernel, the rest ->
@@ -169,11 +176,17 @@ class NativeDetail2Sampler:
                 comp = torch.einsum("oc,cikl->oikl", wa, ew(up) * sg)            # (C, Clow, 3, 3), fp64
                 ph = C._phase_weights(comp)
                 clow = up.weight.shape[1]
-                lo = res[i + 1][0]
-                key = ("upmerge", clow, c, 2, 1, lo)
-                cfg = self._configs.get(key) or _config(key, lo * lo, c, 1, 4 * clow + c, dev)
+                lo, lo_w = res[i + 1]
+                if KGEN >= 2 and C.default_uconv_config(c, lo, lo_w) is not None:
+                    key = ("uconv", clow, c, 2, 1, lo)
+                    cfg = self._configs.get(key) or C.TUNED.get(torch.cuda.get_device_name(dev), {}).get(key)
+                    cfg = tuple(cfg) if cfg is not None and len(cfg) == 6 and C.uconv_valid(tuple(cfg)) and lo % cfg[0] == 0 \
+                        and lo_w % cfg[1] == 0 else C.default_uconv_config(c, lo, lo_w)
+                else:
+                    key = ("upmerge", clow, c, 2, 1, lo)
+                    cfg = self._configs.get(key) or _config(key, lo * lo, c, 1, 4 * clow + c, dev)
                 self.layer_keys.append((key, lo * lo, c, 1, 4 * clow + c))
-                np_ = C.round_up(c, cfg[1])
+                np_ = C.round_up(c, cfg[2] if len(cfg) == 6 else cfg[1])
                 wq = C._finish(torch.cat([torch.cat([ph[p].reshape(4 * clow, c), wb.t()]) for p in range(4)]).float(), np_)
                 self._upmerge[i] = (wq, torch.zeros(np_, device=dev), cfg)
             out_key = ("out", chans[0], 1, 3, 1, h)
@@ -240,8 +253,10 @@ class NativeDetail2Sampler:
         def adapters_at(site) -> list:
             return [s for s in self._sites.get(site, []) if s in active]
 
-        def block(b, x, tmp, encoder: bool, site, silu_out: bool):
-            """x = (raw, silu) of the level. silu_out: something downstream reads silu(h) of this block's output."""
+        def block(b, x, tmp, encoder: bool, site, silu_out: bool, raw_out: bool = True):
+            """x = (raw, silu) of the level. silu_out: something downstream reads silu(h) of this block's output.
+            raw_out False: nothing reads this block's raw output (the last block before an up-merge / the output conv,
+            no adapter packed at the site), so conv1 skips that store (K4: same numbers, one tensor less of traffic)."""
             ads = adapters_at(site)
             if encoder:
                 plan.append(lambda s, x=x: C.make_pixnorm(x[0], x[1]))
@@ -249,8 +264,9 @@ class NativeDetail2Sampler:
             tab = self._film[id(b)]
             plan.append(lambda s, c0=c0, x=x, tmp=tmp, tab=tab: c0(x[1], film=tab[s], out_silu=tmp))
             last_silu = x[1] if (silu_out and not ads) else None
-            plan.append(lambda s, c1=c1, x=x, tmp=tmp, o=last_silu: c1(
-                tmp, res=x[0], res_scale=self._rs_x, clip=self.clip, out_raw=x[0], out_silu=o))
+            r_out = x[0] if (raw_out or ads) else None
+            plan.append(lambda s, c1=c1, x=x, tmp=tmp, o=last_silu, r_out=r_out: c1(
+                tmp, res=x[0], res_scale=self._rs_x, clip=self.clip, out_raw=r_out, out_silu=o))
             for k, style in enumerate(ads):
                 dn, md, up, rp = self._adapters[style, site]
                 a1, a2 = self._ad_bufs[site[1], rp]
@@ -267,14 +283,22 @@ class NativeDetail2Sampler:
             plan.append(lambda s, i=i: L["down", i](enc[i][1], out_raw=enc[i + 1][0],
                                                     out_silu=enc[i + 1][1] if i + 1 == n_lvl else None))
         for bi, b in enumerate(mmid):
-            block(b, enc[n_lvl], tmp_enc[n_lvl], False, ("mid", n_lvl, bi), silu_out=True)
+            site = ("mid", n_lvl, bi)
+            block(b, enc[n_lvl], tmp_enc[n_lvl], False, site, silu_out=True,
+                  raw_out=bi < len(mmid) - 1 or bool(self._sites.get(site)))
         for i in reversed(range(n_lvl)):
             src = enc[n_lvl][1] if i == n_lvl - 1 else dec[i + 1][1]
             wq, bq, cfg = self._upmerge[i]
-            plan.append(lambda s, src=src, i=i, wq=wq, bq=bq, cfg=cfg: C.make_conv(
-                src, wq, bq, cfg, mode=1, x2=enc[i][0], out_raw=dec[i][0], out_silu=dec[i][1]))
+            if len(cfg) == 6:   # generation 2: the halo-tiled up-merge
+                plan.append(lambda s, src=src, i=i, wq=wq, bq=bq, cfg=cfg: C.make_uconv(
+                    src, wq, bq, cfg, x2=enc[i][0], out_raw=dec[i][0], out_silu=dec[i][1]))
+            else:
+                plan.append(lambda s, src=src, i=i, wq=wq, bq=bq, cfg=cfg: C.make_conv(
+                    src, wq, bq, cfg, mode=1, x2=enc[i][0], out_raw=dec[i][0], out_silu=dec[i][1]))
             for bi, b in enumerate(mdec[i]):
-                block(b, dec[i], tmp_dec[i], False, ("dec", i, bi), silu_out=True)
+                site = ("dec", i, bi)
+                block(b, dec[i], tmp_dec[i], False, site, silu_out=True,
+                      raw_out=bi < len(mdec[i]) - 1 or bool(self._sites.get(site)))
         plan.append(lambda s: C.make_hconv(dec[0][1], self.out_w, self.out_b, self.out_cfg,
                                            euler=(self.xs, self.stem_in, self.dts[s])))
         steps = [[op(s) for op in plan] for s in range(self.steps)]

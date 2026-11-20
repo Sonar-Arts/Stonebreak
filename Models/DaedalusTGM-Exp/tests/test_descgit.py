@@ -7,9 +7,26 @@ import torch
 
 from terrain_slm.models import descgit as G
 
-MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v3"
+from terrain_slm.model_files import DEFAULT_MODEL, lfs_pointers
+
+RELEASE = Path(__file__).resolve().parents[1] / DEFAULT_MODEL
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
-needs_model = pytest.mark.skipif(not (MODEL / "descgit.pt").exists(), reason="no packaged v3 model")
+# No shipped model carries a descriptor sampler any more (EXP-1's v3 had the only one; removed 2026-11-19): the window
+# logic is tested on the release's networks plus a randomly initialised DescGit (its tiling does not depend on weights).
+needs_model = pytest.mark.skipif(not (RELEASE / "planner.pt").exists() or bool(lfs_pointers(RELEASE)),
+                                 reason="no release weights (git lfs pull)")
+
+
+@pytest.fixture(scope="module")
+def MODEL(tmp_path_factory):
+    import dataclasses
+    d = tmp_path_factory.mktemp("descgit_model")
+    for f in RELEASE.glob("*.pt"):
+        (d / f.name).symlink_to(f.resolve())
+    torch.manual_seed(0)
+    m = G.DescGit()
+    torch.save({"model": m.state_dict(), "config": dataclasses.asdict(m.cfg), "step": 1}, d / "descgit.pt")
+    return d
 
 
 def test_codebook_round_trip_is_close_on_its_own_centroids():
@@ -37,7 +54,7 @@ def test_sampling_is_deterministic_and_keeps_known_tokens():
 
 
 @needs_model
-def test_sampled_descriptors_are_request_independent_across_window_cores():
+def test_sampled_descriptors_are_request_independent_across_window_cores(MODEL):
     from terrain_slm.world.generator import WorldGenerator
     gen = WorldGenerator(MODEL, seed=11, device=DEV)
     big = gen.sampled_desc(20, -50, 80, 90)
@@ -46,7 +63,7 @@ def test_sampled_descriptors_are_request_independent_across_window_cores():
 
 
 @needs_model
-def test_later_phase_windows_honour_earlier_neighbours():
+def test_later_phase_windows_honour_earlier_neighbours(MODEL):
     from terrain_slm.world.generator import DG_CORE, WorldGenerator
     gen = WorldGenerator(MODEL, seed=11, device=DEV)
     # Window (1, 1) is phase 3: it must not change its phase-0 neighbour (0, 0)'s core.

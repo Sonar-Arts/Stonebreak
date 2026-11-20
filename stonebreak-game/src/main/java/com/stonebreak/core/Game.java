@@ -960,7 +960,19 @@ public class Game {
                                  com.stonebreak.world.generation.ClimateLayout climateLayout,
                                  com.stonebreak.world.generation.HeightCurveVersion heightCurve,
                                  org.joml.Vector3dc spawn) {
-        clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, spawn);
+        startClientWorld(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, null, spawn);
+    }
+
+    /** As above with the server world's Standard shape (null = the current one). */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                 com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                 com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                                 org.joml.Vector3dc spawn) {
+        clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve,
+            standardShape, spawn);
     }
 
     /** {@link #startClientWorld(String, long, com.stonebreak.world.generation.TerrainGeneratorType, org.joml.Vector3dc)}

@@ -94,6 +94,13 @@ def contribute(gen, m: dict) -> None:
     c["C2_INV_LAND"] = KC2._inv(0.2)                               # G._continent: (continent + 0.35) / 0.2
     c["C2_C035"] = f32(0.35)
     c["SEA_SEED_TREND_M"] = f32(G2.SEA_SEED_TREND_M)
+    # BV sea link (generator2.sea_link_cells): closed basins do not seed the sea
+    c["SEA_LINK"] = int(bool(G2.SEA_LINK))
+    c["SEA_LINK_CELLS"] = int(G2.SEA_LINK_CELLS)
+    c["SEA_LINK_STEPS"] = int(G2.SEA_LINK_STEPS)
+    c["SEA_LINK_TREND_M"] = f32(G2.SEA_LINK_TREND_M)
+    from terrain_slm.world import ocean as _O
+    c["SEA_LINK_SEA_LAND"] = f32(_O.SEA_LAND)
 
     # ---------------------------------------------------------------- climate node windows (generator2)
     has_climate = getattr(gen, "climate_net", None) is not None

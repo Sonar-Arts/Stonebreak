@@ -397,7 +397,7 @@ bool place(Generator& g, ColumnView& view, const RockShape& shape, int orientati
 } // namespace
 
 void Generator::collectBoulders(int64_t x0, int64_t z0, int64_t x1, int64_t z1, std::vector<Feature>& out) {
-    if ((cfg.flags & SBW_FLAG_BOULDERS) == 0 || cfg.kind != SBW_KIND_PROFILE) return;
+    if ((cfg.flags & SBW_FLAG_BOULDERS) == 0 || !cfg.channelWorld()) return;
     static const int32_t H_ANCHOR = javaStringHash("boulder"), H_ERRATIC = javaStringHash("boulder_erratic"),
                          H_SCREE = javaStringHash("boulder_scree");
     ColumnView view(*this);

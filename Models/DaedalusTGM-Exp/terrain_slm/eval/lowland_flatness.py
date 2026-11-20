@@ -2,7 +2,7 @@
 real terrain and for generated tiles, at the game's 1:4 world.
 
     python -m terrain_slm.eval.lowland_flatness --real          # Earth lowlands (data v2), block heights via the 1:4 curve
-    python -m terrain_slm.eval.lowland_flatness --gen v4 exp2 exp2-noboost [--seeds 12345 777] [--tiles 6]
+    python -m terrain_slm.eval.lowland_flatness --gen exp2 exp2-noboost exp2@0.5 [--seeds 12345 777] [--tiles 6]
 
 Lowland = land columns 1..LOWLAND_BLOCKS above sea level, not water. Relief = max - min block height within a
 RELIEF_BLOCKS-wide window (~500 m at 60 m blocks). Classes: flat <= 1 block, gentle 2-3 (meadows), rolling 4-8,
@@ -81,16 +81,14 @@ def real(data: Path, regions: list[str]) -> dict:
 
 
 def generated(which: str, seeds: list[int], tiles: int, device: str) -> dict:
-    from terrain_slm.world.generator import WorldGenerator
     from terrain_slm.world.generator2 import WorldGenerator2
     from terrain_slm.world.tiles import TileBuilder
 
-    root = Path(__file__).resolve().parents[2] / "checkpoints"
+    if not (which in ("exp2", "exp2-noboost") or which.startswith("exp2@")):
+        raise SystemExit(f"--gen {which}: expected exp2 | exp2-noboost | exp2@<boost> (v4 was removed 2026-11-19)")
     acc = []
     for seed in seeds:
-        if which == "v4":
-            gen = WorldGenerator(root / "v4", seed, device)
-        else:
+        if True:
             from terrain_slm.eval import DEFAULT_EXP2_MODEL
             d = MODEL or DEFAULT_EXP2_MODEL
             if PLANNER is not None:                              # --planner: swap the EXP-2 planner

@@ -6,19 +6,26 @@ import numpy as np
 import pytest
 import torch
 
-MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v3"
+from terrain_slm.model_files import DEFAULT_MODEL, lfs_pointers
+
+MODEL = Path(__file__).resolve().parents[1] / DEFAULT_MODEL     # the release (EXP-1's v3 was removed 2026-11-19)
+# Seed 1: rivers (0.9 % of the 30 km square at 1:4) AND some sea around spawn on the release; v3's seed 7 spawn is a
+# coast with almost no rivers on EXP-2 (0.03 %), so the river checks below would test nothing there.
+SEED = 1
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
-pytestmark = pytest.mark.skipif(not (MODEL / "planner.pt").exists(), reason="no packaged model")
+pytestmark = pytest.mark.skipif(not (MODEL / "planner.pt").exists() or bool(lfs_pointers(MODEL)),
+                                reason="no release weights (git lfs pull)")
 
 @pytest.fixture(scope="module")
 def api():
-    from terrain_slm.world.generator import WorldGenerator
+    from terrain_slm.world.generator2 import WorldGenerator2
     from terrain_slm.world.tiles import TileBuilder
     from terrain_slm.world.world_config import WorldConfig
 
-    gen = WorldGenerator(MODEL, seed=7, device=DEV)
+    gen = WorldGenerator2(MODEL, seed=SEED, device=DEV)   # the service's generator
+    gen.use_climate_layout("belts")
     builder = TileBuilder(gen, WorldConfig.GAME)
-    gen.use_seed(7)
+    gen.use_seed(SEED)
     return builder
 
 
@@ -42,7 +49,7 @@ def test_tile_matches_bigger_request(api):
 
 
 def test_tile_planes_follow_the_water_rule(api):
-    planes = api.build(7, 0, 0, 1)
+    planes = api.build(SEED, 0, 0, 1)   # build() sets the seed: keep the module's
     assert planes.shape == (7, api.world.tile_size, api.world.tile_size) and planes.dtype == np.int16
     h, _, water, floor, roof, flow, _carve = planes
     sea = api.world.sea_level

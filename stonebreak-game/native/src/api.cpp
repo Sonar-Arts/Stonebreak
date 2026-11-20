@@ -13,6 +13,9 @@
 namespace sbw {
 const char* lastError();
 void standardColumnPoint(Generator& g, int64_t x, int64_t z, int32_t& h, int32_t& water, int& biome, uint16_t& surface);
+void standardColumnPoint(Generator& g, int64_t x, int64_t z, int32_t& h, int32_t& water, int& biome, uint16_t& surface,
+                         int32_t* refH, bool surfacePass);
+void standardVegChannels(const Generator& g, int64_t x, int64_t z, int biome, int32_t refH, uint8_t out[8]);
 float forestLattice(const DeterministicRandom& r, int64_t x, int64_t z, int spacing, int32_t feature);
 } // namespace sbw
 
@@ -147,6 +150,8 @@ int32_t sbw_abi_version(void) { return SBW_ABI_VERSION; }
 
 int32_t sbw_config_size(void) { return static_cast<int32_t>(sizeof(sbw_gen_config)); }
 
+int32_t sbw_standard_shape_max(void) { return SBW_STANDARD_SHAPE_V2; }
+
 const char* sbw_last_error(void) { return sbw::lastError(); }
 
 void sbw_config_defaults(sbw_gen_config* c) {
@@ -202,6 +207,10 @@ const cv_generator* sbw_cv_generator_create(const sbw_gen_config* in) {
                 return nullptr;
             }
         }
+        if (in->standard_shape > SBW_STANDARD_SHAPE_V2) {
+            setError("unknown standard_shape " + std::to_string(in->standard_shape));
+            return nullptr;
+        }
         for (int layer : {in->water_layer, in->state_layer, in->snow_layer}) {
             if (layer < -1 || layer >= CV_MAX_LAYERS) {
                 setError("layer index out of range");
@@ -241,6 +250,7 @@ const cv_generator* sbw_cv_generator_create(const sbw_gen_config* in) {
         std::memcpy(c.stalagmitePart, in->stalagmite_part_states, sizeof(c.stalagmitePart));
         std::memcpy(c.id, in->block_ids, sizeof(c.id));
         c.rockBank = in->rock_bank;
+        c.standardShape = in->standard_shape == 0 ? SBW_STANDARD_SHAPE_V1 : static_cast<int>(in->standard_shape);
         std::shared_ptr<const RockBank> rocks;
         if ((c.flags & SBW_FLAG_BOULDERS) != 0 && c.rockBank != 0) {
             rocks = findRockBank(c.rockBank);
@@ -339,9 +349,12 @@ int32_t sbw_sample_columns(const cv_generator* gp, int64_t x0, int64_t z0, int32
                 int32_t raw, water;
                 int biome;
                 uint16_t surface;
+                bool point = false;
+                int32_t refH = 0;
                 if (!carved && stride > 1 && g->cfg.kind == SBW_KIND_STANDARD) {
                     /* strided raw samples: no tile per sample */
-                    standardColumnPoint(*g, wx, wz, raw, water, biome, surface);
+                    standardColumnPoint(*g, wx, wz, raw, water, biome, surface, &refH, true);
+                    point = true;
                 } else {
                     auto b = g->base(wx >> 5, wz >> 5);
                     if (!b) throw std::runtime_error("column profile unavailable");
@@ -365,7 +378,19 @@ int32_t sbw_sample_columns(const cv_generator* gp, int64_t x0, int64_t z0, int32
                     const bool submerged = water != NO_WATER && water > raw;
                     int kind = -1;
                     if (!submerged && height == raw && pool != 2) {
-                        kind = g->treeAt(wx, wz, pool > 0 ? g->cfg.id[SBW_WATER] : surface, biome, trunk);
+                        const uint16_t ground = pool > 0 ? g->cfg.id[SBW_WATER] : surface;
+                        if (point && g->cfg.standardShape >= SBW_STANDARD_SHAPE_V2
+                                && (g->cfg.flags & SBW_FLAG_VEGETATION) != 0) {
+                            /* Standard shape 2: the column's distilled vegetation channels, pointwise (no tile) */
+                            uint8_t veg[8];
+                            if (biome == SBW_OCEAN || biome == SBW_BEACH) veg[0] = SBW_SURF_NO_DATA;
+                            else standardVegChannels(*g, wx, wz, biome, refH, veg);
+                            int size = -1;
+                            kind = veg[0] != SBW_SURF_NO_DATA ? g->treeAtVeg(wx, wz, ground, biome, veg, trunk, size)
+                                                              : g->treeAtRule(wx, wz, ground, biome, trunk);
+                        } else {
+                            kind = g->treeAt(wx, wz, ground, biome, trunk);
+                        }
                     }
                     outTrees[idx] = kind < 0 ? 0 : ((kind + 1) | (trunk << 8));
                 }

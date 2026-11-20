@@ -3,6 +3,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
@@ -42,6 +43,9 @@ struct Block {
     void* ptr = nullptr;
     size_t bytes = 0;
     bool host = false;
+    // Lanes (sbtg_terrain lanes, agent PX) other than the pool's own whose streams may have work queued on this
+    // memory (set when a shared cache hands the block to another lane); the pool fences its reuse behind them.
+    std::atomic<uint32_t> foreign{0};
     Block() = default;
     Block(const Block&) = delete;
     Block& operator=(const Block&) = delete;

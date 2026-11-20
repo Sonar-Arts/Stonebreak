@@ -1,14 +1,17 @@
 package com.stonebreak.world.generation.diffusion.tgmpipe;
 
 import com.stonebreak.world.generation.TerrainModelRef;
+import com.stonebreak.world.generation.diffusion.TGMPipeException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -31,7 +34,6 @@ import java.util.logging.Logger;
 public final class TerrainModels {
 
     private static final Logger LOG = Logger.getLogger(TerrainModels.class.getName());
-    private static volatile boolean fallbackLogged;
 
     private TerrainModels() {
     }
@@ -61,26 +63,15 @@ public final class TerrainModels {
 
     /**
      * The model NEW worlds get, relative to {@link TGMPipe#SLM_DIR} (or absolute): {@code -Dstonebreak.tgmpipe.model}
-     * when set, else {@link TGMPipe#DEFAULT_MODEL}, else (that folder missing) {@link TGMPipe#LEGACY_MODEL} with a
-     * warning.
+     * when set, else {@link TGMPipe#DEFAULT_MODEL}. There is no fallback model (EXP-1's v4 was retired 2026-11-19): a
+     * checkout without the release folder fails at start with {@link #installProblem}'s message.
      */
     public static String defaultModelPath() {
         String set = System.getProperty("stonebreak.tgmpipe.model");
         if (set != null && !set.isBlank()) {
             return set;
         }
-        Path slm = slmDir();
-        Path dir = slm.resolve(TGMPipe.DEFAULT_MODEL);
-        boolean legacyThere = isModelDir(slm.resolve(TGMPipe.LEGACY_MODEL));
-        if (isModelDir(dir) || !legacyThere) {
-            return TGMPipe.DEFAULT_MODEL;   // neither there: the service's error names the release that is missing
-        }
-        if (!fallbackLogged) {
-            fallbackLogged = true;
-            LOG.warning(TGMPipe.MODEL_NAME + " release " + dir + " is missing (build it with Models/" + TGMPipe.MODEL_NAME
-                    + "/scripts/make_release.py); falling back to " + TGMPipe.LEGACY_MODEL + ", which must not ship");
-        }
-        return TGMPipe.LEGACY_MODEL;
+        return TGMPipe.DEFAULT_MODEL;
     }
 
     /** The identity new worlds record: {@link #defaultModelPath()} + its {@code release.json} content id, if any. */
@@ -106,9 +97,90 @@ public final class TerrainModels {
         return p.isAbsolute() ? p : slmDir().resolve(p);
     }
 
-    /** A folder the generators can load (planner.pt is in every model, v4 and EXP-2 alike). */
+    /** A model folder (planner.pt is in every model; its weights may still be Git LFS pointers, see {@link #installProblem}). */
     static boolean isModelDir(Path dir) {
         return Files.isRegularFile(dir.resolve("planner.pt"));
+    }
+
+    /**
+     * Models that were removed from the checkout (2026-11-19: EXP-1, trained on WorldClim, must never ship). A world
+     * naming one ({@link TerrainModelRef#LEGACY}: every world saved without a model) runs the default model with a
+     * notice, even where an old copy of the folder is still on disk.
+     */
+    static final List<String> RETIRED_MODELS = List.of("checkpoints/v2", "checkpoints/v3", "checkpoints/v4");
+
+    static boolean isRetired(String path) {
+        String p = path.replace('\\', '/');
+        while (p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return RETIRED_MODELS.contains(p);
+    }
+
+    /** First bytes of every Git LFS pointer file (https://github.com/git-lfs/git-lfs/blob/main/docs/spec.md). */
+    private static final byte[] LFS_POINTER = "version https://git-lfs.github.com/spec/".getBytes(StandardCharsets.US_ASCII);
+    /** LFS pointers are ~130 bytes; the spec caps them below 1024. */
+    private static final long LFS_POINTER_MAX_BYTES = 1024;
+
+    /** True when {@code file} is a Git LFS pointer (a checkout that has not run {@code git lfs pull}), not the real file. */
+    static boolean isLfsPointer(Path file) {
+        try {
+            if (!Files.isRegularFile(file) || Files.size(file) >= LFS_POINTER_MAX_BYTES) {
+                return false;
+            }
+            byte[] head = new byte[LFS_POINTER.length];
+            try (var in = Files.newInputStream(file)) {
+                if (in.readNBytes(head, 0, head.length) != head.length) {
+                    return false;
+                }
+            }
+            return Arrays.equals(head, LFS_POINTER);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Why the model folder {@code path} cannot be loaded, or null when it can: folder or {@code planner.pt} missing, or
+     * weight files that are still Git LFS pointers. The message names the folder and how to fetch it ({@code git lfs
+     * pull}): the release weights are stored with Git LFS, so a clone without git-lfs has tiny text files instead.
+     */
+    public static String installProblem(String path) {
+        Path dir = dirOf(path);
+        String how = "The DaedalusTGM-Exp model weights are stored with Git LFS: install git-lfs, then run "
+                + "'git lfs install' and 'git lfs pull' in the Stonebreak checkout";
+        if (isRetired(path)) {
+            return "terrain model " + path + " was retired (EXP-1 models were removed on 2026-11-19); the default is "
+                    + TGMPipe.DEFAULT_MODEL;
+        }
+        if (!isModelDir(dir)) {
+            return "terrain model " + path + " is not installed (" + dir.resolve("planner.pt") + " is missing). " + how
+                    + (path.equals(TGMPipe.DEFAULT_MODEL) ? "." : ", or pick an installed model with -Dstonebreak.tgmpipe.model.");
+        }
+        List<String> pointers = new ArrayList<>();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.pt")) {
+            for (Path f : files) {
+                if (isLfsPointer(f)) {
+                    pointers.add(f.getFileName().toString());
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            return "terrain model " + path + " is unreadable (" + dir + "): " + e.getMessage();
+        }
+        if (!pointers.isEmpty()) {
+            pointers.sort(null);
+            return "terrain model " + path + " has Git LFS pointer files instead of weights (" + String.join(", ", pointers)
+                    + " in " + dir + "). " + how + ".";
+        }
+        return null;
+    }
+
+    /** {@link #installProblem} as a {@link TGMPipeException}: called before either terrain backend starts. */
+    static void requireInstalled(String path) {
+        String problem = installProblem(path);
+        if (problem != null) {
+            throw new TGMPipeException(problem);
+        }
     }
 
     /** {@code release.json}'s {@code content_id}, or "" (no manifest / unreadable: a dev folder). */
@@ -140,6 +212,8 @@ public final class TerrainModels {
      * <ol>
      *   <li>{@code -Dstonebreak.tgmpipe.forceModel=true}: {@code stonebreak.tgmpipe.model} (dev), noticed when it is not
      *       the world's;</li>
+     *   <li>a retired model ({@link #RETIRED_MODELS}: EXP-1's v2 / v3 / v4, and so every world saved without a model):
+     *       the default, with a notice;</li>
      *   <li>the world's folder, when it is a model and (for a release) still holds that release;</li>
      *   <li>for a release: any folder under {@code checkpoints/} (two levels) holding the same {@code content_id}
      *       (renamed / moved releases);</li>
@@ -153,6 +227,10 @@ public final class TerrainModels {
         if (Boolean.getBoolean("stonebreak.tgmpipe.forceModel") && forced != null && !forced.isBlank()) {
             boolean same = sameModel(ref, forced);
             return new Choice(forced, same, same ? null : notice(ref, forced, "forced by -Dstonebreak.tgmpipe.forceModel"));
+        }
+        if (isRetired(ref.path())) {
+            String fallback = defaultModelPath();
+            return new Choice(fallback, false, notice(ref, fallback, "retired"));
         }
         Path dir = dirOf(ref.path());
         if (isModelDir(dir) && (!ref.isRelease() || ref.contentId().equals(contentIdOf(dir)))) {
@@ -180,9 +258,11 @@ public final class TerrainModels {
     }
 
     private static String notice(TerrainModelRef ref, String running, String why) {
+        String fix = isRetired(ref.path()) ? "That model was removed from the game (EXP-1, 2026-11-19)."
+                : "Install " + ref.path() + " to keep this world seamless.";
         return "This world was made with terrain model " + ref.displayName() + " (" + why + "): unexplored terrain "
                 + "will come from " + refOf(running).displayName() + " instead and will not line up with the explored "
-                + "area. Install " + ref.path() + " to keep this world seamless.";
+                + "area. " + fix;
     }
 
     /** A folder under {@code checkpoints/} (one or two levels down) whose release.json has {@code contentId}. */

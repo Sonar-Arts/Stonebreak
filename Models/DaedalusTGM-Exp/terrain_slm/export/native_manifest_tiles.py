@@ -163,6 +163,7 @@ def contribute(gen, m: dict) -> None:
     for name in ("PLANES", "SWAMP_SMOOTH", "OVERVIEW_MIN_PX", "FINE_K"):
         c[f"T.{name}"] = int(getattr(T, name))
     c["T.FINE_KEEP_M"] = float(T.FINE_KEEP_M)
+    c["T.LAKE_SHORE_DESERT_M"] = float(T.LAKE_SHORE_DESERT_M)       # BV: no sidecar sand ring on lake shores (v2)
     # FX4 block look (world/tiles.py end of file): doubles, rounded like torch rounds them
     for name in ("ALPINE_LAPSE_GAIN", "ALPINE_BASE_M", "TREELINE_GS_DAYS", "TREELINE_NOISE_C", "ALPINE_MIN_M",
                  "ALPINE_MIN_NOISE_M"):

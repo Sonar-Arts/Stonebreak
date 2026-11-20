@@ -1,9 +1,10 @@
-"""EXP-2 generator (plan §3, §5b, §2): v4's WorldGenerator with the EXP-2 nodes plugged into its hooks.
+"""EXP-2 generator (plan §3, §5b, §2): the base WorldGenerator (EXP-1's v4 pipeline; v4 itself was removed 2026-11-19)
+with the EXP-2 nodes plugged into its hooks. The only generator the service, the warm-up and make_release run.
 
     gen = WorldGenerator2(model_dir, seed, device)          # same API as WorldGenerator
 
-Uses what the model directory holds and falls back to v4 behaviour for what it does not, so it runs at every stage
-of EXP-2's training:
+Uses what the model directory holds and falls back to the base pipeline for what it does not, so it runs at every
+stage of EXP-2's training:
   controls      always `world/controls2.py` (islands, volcanoes, ocean floors, belts, wind, style gates)
   climate.pt    the climate node (models/climatenet.py) replaces v4's archetype climate (t0 / tseason / precip / pcv)
                 and adds aridity / soil / snow; it also fills the aeolian gate
@@ -63,6 +64,20 @@ SEA_SHELF_DEPTH_M = 1500.0
 SEA_SHELF_KEEP = 1.0
 #: v2 worlds: cells whose layout trend is below this seed the true sea (world/ocean.py), besides EXP-2's ocean basins.
 SEA_SEED_TREND_M = -60.0
+# BV (beaches, 2026-11-20): ... but only where the LAYOUT links them to the open ocean (continent2 land < SEA_LAND):
+# the coast provinces' island noise and the basin field also drown CLOSED basins inside the continents (pits 1-4 km,
+# inland basins 5-35 km with rivers running in), which the trend gate alone made "sea": ocean ids, a sea floor and a
+# beach ring round every inland lake (seeds 12345 / 777 / 2 / 5: every "sea" within 70 km of spawn was one). Linked =
+# reachable from the open ocean through layout cells with trend < SEA_LINK_TREND_M in SEA_LINK_STEPS steps on a
+# canonical grid of SEA_LINK_CELLS-cell super cells (sampled at their centres; 256 x 4 cells = 245 km: 64 left straight
+# lake fronts across real bays whose open ocean lay 61-123 km away; 128+ converged on every probe), plus one super
+# cell of slack. Pointwise layout only (no planner), canonical grid => request-independent. Off: env
+# TERRAIN_SLM_SEA_LINK=0 (A/B); model_id marker :sl<version>.
+SEA_LINK = __import__("os").environ.get("TERRAIN_SLM_SEA_LINK", "1") != "0"
+SEA_LINK_CELLS = 4
+SEA_LINK_STEPS = 256
+SEA_LINK_TREND_M = 60.0
+SEA_LINK_VERSION = 1
 SEA_SHELF_KEEP_M = 30.0
 HILL_TRANSFER = 1.0                         # 2026-11-19: planner smooths hills (43% -> 56% hill country restored)
 GRAPHED_CONTROLS = 0                        # OFF (2026-11-19): capture breaks under the multi-threaded TGMPipe service
@@ -195,6 +210,12 @@ def _shelf_profile_remap(h: torch.Tensor, dist_m: torch.Tensor, lake: torch.Tens
     return torch.where(h < 0, -sea_d, h)
 
 
+def _lake_shore_marker() -> str:
+    """model_id marker of tiles.LAKE_SHORE_DESERT_M (v2 worlds' tiles: no sidecar sand ring on lake shores)."""
+    from terrain_slm.world import tiles as T
+    return f":ld{T.LAKE_SHORE_DESERT_M:g}" if T.LAKE_SHORE_DESERT_M > 0 else ""
+
+
 def _distance_cells(land: torch.Tensor, cap: int) -> torch.Tensor:
     """(H, W) Euclidean distance (cells, centre to centre) to the nearest `land` cell, capped at `cap`: an exact
     separable min-plus transform over a (2 cap + 1)^2 box (rows, then columns; row chunks bound the memory). Exact
@@ -311,6 +332,10 @@ class WorldGenerator2(G.WorldGenerator):
             if KS.supported(self.sr15):
                 self._sr15_native = True
                 self.model_id += ":ks15"
+        if self._detail2_native is not None or self._sr_native is not None:
+            from terrain_slm.kernels.cuda_detail2 import MARK as _KMARK
+            if _KMARK:   # K4 kernel generation (kernels/cuda_detail2.KGEN): its own fp32 summation order -> own caches
+                self.model_id += ":" + _KMARK
         # A MeanFlow detail student is trained, scanned and shipped at 2 steps; the GenConfig default (16) is the FM
         # teacher's. An explicit non-default detail_steps is kept.
         if getattr(self.detail, "mean_flow", False) and self.cfg.detail_steps == G.GenConfig.detail_steps:
@@ -491,6 +516,8 @@ class WorldGenerator2(G.WorldGenerator):
                          # radius) and the distance-aware shelf + lake-bed cap (SEA_PROFILE_* / LAKE_*)
                          + (f":k2{C2.KARST_BIAS_V2:g}h{C2.KARST_HOME_CELLS[0]:g}" if C2.KARST_V2 else "")
                          + (f":sp{SEA_PROFILE_VERSION}" if SEA_PROFILE else "")
+                         + (f":sl{SEA_LINK_VERSION}" if SEA_LINK else "")      # BV: linked sea seeds (v2 worlds)
+                         + _lake_shore_marker()                                    # BV: no sidecar sand on lake shores
                          + (f":bl{self.block_look}h{self.look_hill_gain:g}" if getattr(self, "block_look", 0) else ""))   # FX4
 
     def use_relief_gain(self, gain: float) -> None:
@@ -631,7 +658,34 @@ class WorldGenerator2(G.WorldGenerator):
         # "trend", so the value is identical (tests/test_sea_shelf.py) without the climate work per sea-mask request.
         with self.lock:
             trend = self._layout(ci0, cj0, hc, wc)["trend"].to(device)
-        return torch.where(trend < SEA_SEED_TREND_M, torch.zeros_like(land), land)
+        drowned = trend < SEA_SEED_TREND_M
+        if SEA_LINK:                                   # BV: closed basins are lakes, not sea seeds
+            drowned = drowned & self.sea_link_cells(ci0, cj0, hc, wc, device)
+        return torch.where(drowned, torch.zeros_like(land), land)
+
+    def sea_link_cells(self, ci0: int, cj0: int, hc: int, wc: int, device) -> torch.Tensor:
+        """(hc, wc) bool: cells whose super cell (SEA_LINK_CELLS) the layout links to the open ocean (see SEA_LINK).
+        Exact for any window: the super grid is canonical and carries SEA_LINK_STEPS + 2 super cells of context."""
+        K, S = SEA_LINK_CELLS, SEA_LINK_STEPS
+        m = S + 2
+        a0, b0 = ci0 // K - m, cj0 // K - m
+        a1, b1 = (ci0 + hc - 1) // K + 1 + m, (cj0 + wc - 1) // K + 1 + m
+        na, nb = a1 - a0, b1 - b0
+        si = (torch.arange(a0, a1, device=device, dtype=torch.float32) * K + (K - 1) / 2).view(-1, 1).expand(na, nb)
+        sj = (torch.arange(b0, b1, device=device, dtype=torch.float32) * K + (K - 1) / 2).view(1, -1).expand(na, nb)
+        si, sj = si.contiguous(), sj.contiguous()
+        with self.lock:
+            trend = self._controls_at(si, sj)["trend"].to(device)
+        from terrain_slm.world import ocean as O
+        open_sea = C2.continent2(si, sj, seed=self.seed)[1] < O.SEA_LAND
+        through = ((trend < SEA_LINK_TREND_M) | open_sea).float()[None, None]
+        conn = open_sea.float()[None, None]
+        for _ in range(S):
+            conn = F.max_pool2d(conn, 3, 1, 1) * through
+        conn = F.max_pool2d(conn, 3, 1, 1)[0, 0] > 0.5                  # one super cell of slack
+        ii = torch.div(torch.arange(ci0, ci0 + hc, device=device), K, rounding_mode="floor") - a0
+        jj = torch.div(torch.arange(cj0, cj0 + wc, device=device), K, rounding_mode="floor") - b0
+        return conn[ii][:, jj]
 
     def overview_cells(self, ci0: int, cj0: int, hc: int, wc: int) -> dict:
         c = super().overview_cells(ci0, cj0, hc, wc)

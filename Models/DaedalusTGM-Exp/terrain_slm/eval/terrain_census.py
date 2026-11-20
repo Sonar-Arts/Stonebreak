@@ -1,9 +1,9 @@
 """Terrain census (2026-11-19): how much of a world is mountains, hills and plains, and how big the mountains get --
-for v4 vs EXP-2, at the 240 m cell scale, over large areas of many seeds. Separates the layout (controls trend) from
+for EXP-2 models and part swaps, at the 240 m cell scale, over large areas of many seeds. Separates the layout (controls trend) from
 what the relief node and the planner build on it.
   sources: layout = controls trend (procedural), relief = trend after the relief node, planner = in-game cell heights
 
-    python -m terrain_slm.eval.terrain_census --gen v4 exp2 [--seeds 0 1 2 ...] [--areas 4] [--size 768] \\
+    python -m terrain_slm.eval.terrain_census --gen exp2 [exp2:relief=<pt>] [--seeds 0 1 2 ...] [--areas 4] [--size 768] \\
         [--device cuda:0] [--json out.json]
 
 Per generator and source (trend = layout, planner = in-game cell heights), over land cells:
@@ -35,12 +35,12 @@ MODEL: Path | None = None                       # --model (EXP-2 folder); None =
 
 
 def make(which: str, seed: int, device: str, swaps: dict[str, Path] | None = None):
-    """v4, or EXP-2 (--model, default the release candidate) with optional part swaps {"relief": path, ...}."""
-    from terrain_slm.world.generator import WorldGenerator
+    """EXP-2 (--model, default the release candidate) with optional part swaps {"relief": path, ...}. (v4 was removed
+    2026-11-19.)"""
     from terrain_slm.world.generator2 import WorldGenerator2
 
-    if which == "v4":
-        return WorldGenerator(ROOT / "v4", seed, device)
+    if not which.startswith("exp2"):
+        raise SystemExit(f"--gen {which}: expected exp2 or exp2:<part>=<pt>,... (v4 was removed 2026-11-19)")
     from terrain_slm.eval import DEFAULT_EXP2_MODEL
     d = MODEL or DEFAULT_EXP2_MODEL
     if swaps:
@@ -91,8 +91,8 @@ def new_acc():
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--gen", nargs="+", default=["v4", "exp2"],
-                    help="v4 | exp2 | exp2:relief=<pt>,planner=<pt> (swap EXP-2 parts)")
+    ap.add_argument("--gen", nargs="+", default=["exp2"],
+                    help="exp2 | exp2:relief=<pt>,planner=<pt> (swap EXP-2 parts)")
     ap.add_argument("--seeds", type=int, nargs="+", default=list(range(8)))
     ap.add_argument("--areas", type=int, default=3)
     ap.add_argument("--size", type=int, default=768)

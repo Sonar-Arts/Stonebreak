@@ -76,26 +76,29 @@ def test_sampler_is_deterministic_across_thread_counts():
     assert all(torch.equal(outs[0], o) for o in outs[1:])
 
 
-def test_sampler_on_the_shipped_detail_model():
-    """The real v4 detail weights (folded merges, 96-512 channels, Winograd + direct levels) on a small window."""
-    from terrain_slm.models import detail as DT
+def test_sampler_on_the_shipped_relief_model():
+    """The real release relief weights (EXP-2 MeanFlow student, 32-128 channels, (t, r) embedding) on a small window.
+    (Was v4's detail model, removed 2026-11-19; the randomised detail UNets above keep that architecture covered.)"""
+    from terrain_slm.model_files import DEFAULT_MODEL, is_lfs_pointer
+    from terrain_slm.models import relief as RL
     from terrain_slm.paths import MODEL_DIR
-    path = MODEL_DIR / "checkpoints" / "v4" / "detail.pt"
-    if not path.exists():
-        pytest.skip("no v4 checkpoint")
+    path = MODEL_DIR / DEFAULT_MODEL / "relief.pt"
+    if not path.exists() or is_lfs_pointer(path):
+        pytest.skip(f"no {DEFAULT_MODEL} weights (git lfs pull)")
     k = torch.load(path, map_location="cpu", weights_only=False)
     c = dict(k["config"])
     c["channels"] = tuple(c["channels"])
-    model = DT.Detail(DT.DetailConfig(**c)).eval()
+    model = RL.Relief(RL.ReliefConfig(**c)).eval()
     model.load_state_dict(k["model"])
     model.float()
+    assert model.mean_flow and CS.CpuSampler.supported(model)
     g = torch.Generator().manual_seed(3)
     n = 64
-    cond = torch.randn(1, DT.N_COND, n, n, generator=g) * 0.5
+    cond = torch.randn(1, RL.N_COND, n, n, generator=g) * 0.5
     noise = torch.randn(1, 1, n, n, generator=g)
-    ref = _reference(model, cond, noise, 2, 0.0)
+    with torch.no_grad():
+        ref = RL.sample(model, cond, noise, steps=2)
     got = CS.CpuSampler(model, n, n, 2)(cond, noise)
-    # Random conditioning is far out of distribution (the sample runs away), so compare relative to its scale.
     err = float((got - ref).abs().max()) / float(ref.abs().max())
     assert err < 1e-4, f"relative error {err:.3g}"
 

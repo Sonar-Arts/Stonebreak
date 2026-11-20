@@ -1,4 +1,5 @@
-"""Renders system-overview.png (DaedalusTGM-Exp v4). Run from docs/: ../.venv/bin/python system-overview.py"""
+"""Renders system-overview.png (DaedalusTGM-Exp v4, historical: EXP-1 / v4 was removed 2026-11-19). Run from docs/:
+../.venv/bin/python system-overview.py"""
 from pathlib import Path
 
 import matplotlib

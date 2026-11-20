@@ -96,6 +96,15 @@ extern "C" {
  * 3 (#446): cube generator behind cv_generator, column ABI removed. */
 #define SBW_ABI_VERSION 5   /* 5 (2026-11-19): sbw_column_profile.surface (surface channels) */
 
+/* Standard shape versions (sbw_gen_config.standard_shape), fixed per world like the seed (a saved world keeps its own):
+ *  1 = the 2026-11-01 DaedalusTGM-Exp v4 distillation (height curve v1, no surface features);
+ *  2 = the 2026-11-19 DaedalusTGM-Exp-2 distillation: refitted shape + landform provinces, dendritic tributaries and
+ *      the open ocean's shelf / abyss; the height-curve v2 sea bands (shallows / shelf / deep); inland sub-sea pits
+ *      are lakes (land biome, lake bed); distilled surface channels (vegetation, rock exposure, scree, roughness) so
+ *      SBW_FLAG_SEA_FLOOR / LAND_SURFACE / BOULDERS / VEGETATION work on Standard worlds. */
+#define SBW_STANDARD_SHAPE_V1 1
+#define SBW_STANDARD_SHAPE_V2 2
+
 /* Water level "no standing water" (water levels are world y and may be negative). */
 #define SBW_NO_WATER INT32_MIN
 
@@ -241,7 +250,9 @@ typedef struct sbw_gen_config {
     uint16_t stalagmite_part_states[2]; /* 232 */
     uint16_t rock_bank;              /* 236: SBW_FLAG_BOULDERS: id of a registered SBRB rock shape bank
                                         (sbw_register_rock_bank), 0 = procedural shapes only (was reserved, 0) */
-    uint16_t reserved1;              /* 238 */
+    uint16_t standard_shape;         /* 238: SBW_KIND_STANDARD: the world's Standard shape version (SBW_STANDARD_SHAPE_*;
+                                        0 = 1, the 2026-11-01 v4 distillation; was reserved, 0). Added within ABI 5
+                                        (2026-11-19): callers check sbw_standard_shape_max() first */
     uint16_t block_ids[SBW_BLOCK_CAP]; /* 240: indexed by sbw_block */
 } sbw_gen_config;                    /* 368 */
 
@@ -277,6 +288,9 @@ typedef struct cv_world cv_world;
 
 SBW_API int32_t sbw_abi_version(void);
 SBW_API int32_t sbw_config_size(void);
+/* Highest sbw_gen_config.standard_shape this library generates (SBW_STANDARD_SHAPE_V2). Added within ABI 5
+ * (2026-11-19): optional, a library without it knows only shape 1 (and ignores the field). */
+SBW_API int32_t sbw_standard_shape_max(void);
 /* Thread-local message for the last failure on this thread. */
 SBW_API const char* sbw_last_error(void);
 /* Defaults: Standard kind, seed 0, Y [-384, 640), sea 64, flags all, 1:4 scale (60 m, rates

@@ -614,7 +614,7 @@ uint64_t cellKey(int64_t x, int64_t y, int64_t z) { return TreeBuf::key(x, y, z)
 
 /* ------------------------------------------------------------------------- tree probe */
 int Generator::treeAt(int64_t x, int64_t z, uint16_t surface, int biome, int& trunk) {
-    if (cfg.kind == SBW_KIND_PROFILE && (cfg.flags & SBW_FLAG_VEGETATION) != 0) {   /* vegetation channels (ABI 5) */
+    if (cfg.channelWorld() && (cfg.flags & SBW_FLAG_VEGETATION) != 0) {   /* vegetation channels (ABI 5; Standard 2) */
         auto b = base(x >> 5, z >> 5);
         if (b) {
             const int col = colIdx(static_cast<int>(x & 31), static_cast<int>(z & 31));
@@ -1038,7 +1038,7 @@ int32_t Generator::populate(const cv_gen_api* api, cv_world* world, int64_t cx, 
             auto b = base(cx + dx, cz + dz);
             if (!b) return -1;
             /* boulder anchors sit at their lowest cell + 2: within [minH - 22, maxH + 8] (boulders.cpp) */
-            any = (cfg.flags & SBW_FLAG_BOULDERS) != 0 && cfg.kind == SBW_KIND_PROFILE ? b->maxH + 8 >= oy0 && b->minH - 22 < oy1
+            any = (cfg.flags & SBW_FLAG_BOULDERS) != 0 && cfg.channelWorld() ? b->maxH + 8 >= oy0 && b->minH - 22 < oy1
                                                        : b->maxH >= oy0 && b->minH < oy1;
         }
     }

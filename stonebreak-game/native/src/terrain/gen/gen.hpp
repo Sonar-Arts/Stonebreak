@@ -18,6 +18,7 @@
 #include "core/json.hpp"
 #include "core/ops.hpp"
 
+#include <condition_variable>
 #include <functional>
 #include <list>
 #include <map>
@@ -57,41 +58,101 @@ struct GenState {
 // Keyed LRU of method results (Python's _LRU: values are pure functions of the key, so capacity only changes speed and
 // memory). Two tiers like Python's: the `gpu_cap` most recent entries on the device, the rest (up to `cap` in total)
 // spilled to pinned host memory and copied back on a hit. Keys: the seed and the method's integer arguments.
-class Cache {
-public:
-    Cache(Gpu* gpu, size_t cap, size_t gpu_cap) : gpu_(gpu), cap_(cap), gpu_cap_(std::min(cap, gpu_cap)) {}
-    using Key = std::vector<int64_t>;
-    bool contains(const Key& k) const { return map_.count(k) != 0; }
-    Fields get_or(const Key& k, const std::function<Fields()>& fn);
-    void put(const Key& k, Fields v);
-    void clear() {
-        map_.clear();
-        gpu_order_.clear();
-        host_order_.clear();
+//
+// Lanes (agent PX, 2026-11-19): a CacheCore can be shared by the lanes of one terrain pipeline (several generators,
+// each on its own stream, building tiles concurrently). Then it is thread-safe and deduplicates work in flight: a key
+// being computed by one lane is "pending" and other lanes wait for it instead of computing it again; values cross
+// streams through an event recorded after their production (consumers' streams wait on it, the host never does) and
+// the producing pool fences the memory's reuse behind the consumers (Pool / Block::foreign). Values never depend on
+// which lane computed them, so tiles stay bit-identical to the sequential pipeline.
+struct CiEvent {
+    const Ci* ci = nullptr;
+    ci_runtime* rt = nullptr;
+    void* ev = nullptr;
+    CiEvent() = default;
+    CiEvent(const CiEvent&) = delete;
+    CiEvent& operator=(const CiEvent&) = delete;
+    ~CiEvent() {
+        if (ev != nullptr) ci->event_destroy(rt, ev);
     }
-    size_t size() const { return map_.size(); }
-    size_t cap() const { return cap_; }
-    size_t gpu_cap() const { return gpu_cap_; }
+};
+
+class CacheCore {
+public:
+    using Key = std::vector<int64_t>;
+    CacheCore(size_t cap, size_t gpu_cap, bool shared) : cap_(cap), gpu_cap_(std::min(cap, gpu_cap)), shared_(shared) {}
 
 private:
-    // Python's _LRU: two ordered tiers (GPU, host), most recent at the front of each.
+    friend class Cache;
     struct Entry {
         Fields v;
         std::list<Key>::iterator it;
         bool gpu = true;
+        bool ready = false;
+        int owner = -1;                 // pending: the lane computing it
+        int lane = 0;                   // ready: the lane whose stream produced v
+        std::shared_ptr<CiEvent> ev;    // ready (shared cores): recorded after v was produced
     };
-    void settle();
-    Fields to(const Fields& f, bool host);
-    Gpu* gpu_;
+    std::mutex mu_;
+    std::condition_variable cv_;
     size_t cap_, gpu_cap_;
+    bool shared_;
     std::list<Key> gpu_order_, host_order_;
     std::map<Key, Entry> map_;
+};
+
+// A lane's handle on a CacheCore (its own, or one shared by the pipeline's lanes).
+class Cache {
+public:
+    using Key = CacheCore::Key;
+    Cache(std::shared_ptr<CacheCore> core, Gpu* gpu, int lane) : core_(std::move(core)), gpu_(gpu), lane_(lane) {}
+    Cache(Gpu* gpu, size_t cap, size_t gpu_cap) : Cache(std::make_shared<CacheCore>(cap, gpu_cap, false), gpu, 0) {}
+    bool contains(const Key& k) const;           // ready, or pending in some lane
+    Fields get_or(const Key& k, const std::function<Fields()>& fn);
+    void put(const Key& k, Fields v);
+    // Batch producers: claim(k) = this lane will compute k (it was absent; others now wait for it); release(k) drops
+    // a claim that will not be filled (failure).
+    bool claim(const Key& k);
+    void release(const Key& k);
+    void clear();
+    size_t size() const;
+    size_t cap() const { return core_->cap_; }
+    size_t gpu_cap() const { return core_->gpu_cap_; }
+    bool shared() const { return core_->shared_; }
+
+private:
+    void settle(std::unique_lock<std::mutex>& l);
+    void adopt(CacheCore::Entry& e);             // e.v usable on this lane's stream (shared cores)
+    std::shared_ptr<CiEvent> record() const;     // event after the work queued on this lane's stream so far
+    Fields to(const Fields& f, bool host);
+    void mark(const Fields& f) const;            // this lane's stream will touch these blocks
+    std::shared_ptr<CacheCore> core_;
+    Gpu* gpu_;
+    int lane_;
+};
+
+// What the lanes of one terrain pipeline share: their streams (Pool fences), the window caches (per climate layout)
+// and the engine models (loaded once with one execution context per lane).
+struct Shared {
+    explicit Shared(int n) : lanes(n) {}
+    ~Shared();
+    int lanes;
+    LaneStreams streams;
+    std::mutex mu;
+    std::map<std::string, std::shared_ptr<CacheCore>> cores;      // "<name>|<climate layout>"
+    std::map<std::string, ci_model*> models;
+    const Ci* ci = nullptr;
+    static bool shares(const std::string& name);                    // the window caches
 };
 
 class Gen {
 public:
     Gen(Gpu& gpu, Json manifest);
     ~Gen();
+
+    // Lanes (agent PX): this generator's lane and the pipeline's shared state (null: a single generator).
+    int lane = 0;
+    std::shared_ptr<Shared> shared;
 
     Gpu& gpu;
     Json manifest;          // export/native_manifest.py: constants, blur taps, models, kernel sources
@@ -126,12 +187,17 @@ public:
 
     // ---- stats
     std::map<std::string, long long> native_calls, python_calls;
+    std::map<std::string, long long> counters;           // work counters (planner windows computed, ...)
+    // SBTG_PROFILE=1: inclusive wall seconds per method (=2: the stream is synchronised around every call, so the
+    // time includes the method's GPU work; slows tiles - diagnostics only).
+    std::map<std::string, double> prof_s;
+    int profile = 0;
 
 private:
     std::set<std::string> routed_, excluded_;   // excluded_: kept on Python while route_all_ is set
     bool route_all_ = false;
     std::map<std::string, Tensor> taps_;
-    std::map<std::string, std::unique_ptr<Cache>> caches_;
+    std::map<std::string, std::unique_ptr<Cache>> caches_;   // lane-local, plus handles on shared cores ("name|layout")
     int depth_ = 0;
     std::map<std::string, std::pair<ci_model*, bool>> models_;   // (model, owned)
 };

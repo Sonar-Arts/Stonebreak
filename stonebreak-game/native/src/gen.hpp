@@ -68,8 +68,12 @@ struct Config {
     uint16_t stalagmitePart[2]{};
     uint16_t id[SBW_BLOCK_CAP]{};
     uint16_t rockBank = 0;          /* SBW_FLAG_BOULDERS: registered SBRB bank id, 0 = procedural only */
+    int standardShape = 1;          /* SBW_KIND_STANDARD: SBW_STANDARD_SHAPE_* */
 
     /* derived */
+    /* Worlds whose base tiles carry surface channels: the profile kind (the tiles' channels) and Standard shape 2+
+     * (channels distilled from DaedalusTGM-Exp-2, shape.cpp standardChannels). Gates the channel features. */
+    bool channelWorld() const { return kind == SBW_KIND_PROFILE || standardShape >= 2; }
     int32_t floorY() const { return static_cast<int32_t>(minY); }
     int32_t topY() const { return static_cast<int32_t>(maxY); }
     /* Lowest y any carver may open: above the hashed bedrock band. */
@@ -84,8 +88,16 @@ struct HeightCurve {
     static constexpr double MIN_M = -4000.0;
     static constexpr double MAX_M = 7000.0;
     static constexpr double STEP_M = 1.0;
+    /* Height-curve v2 sea bands (Standard shape 2): from the waterline down shallows, shelf, then the deep rate
+     * (rates[0]), blended like every band (height_curve.py HeightCurve.rate). shelfRate 0 = none (v1). */
+    struct SeaBands {
+        double shallowRate = 0.0, shallowBase = -24.0, shallowBlend = 12.0;
+        double shelfRate = 0.0, shelfBase = -300.0, shelfBlend = 150.0;
+    };
+    double minM = MIN_M;   /* first table elevation (shape 2: -11 km, the trenches) */
     std::vector<double> table;
     void build(const double rates[4], const double knots[5], double seaLevel);
+    void build(const double rates[4], const double knots[5], double seaLevel, const SeaBands& sea, double firstM);
     [[nodiscard]] double blocks(double e) const;
 };
 
@@ -482,6 +494,8 @@ public:
     /* noise */
     HeightCurve curve, refCurve;
     Node2 shape[11];
+    Node2 shape2[5];         /* Standard shape 2: PROV, ROLL, MESA, STYLE, TRIB (shape.cpp) */
+    const struct ShapeParams* shapeP = nullptr;   /* the world's Standard shape constants (shape.cpp) */
     Node2 moisture, temperature, wobble;
     Node3 heading, radius;
     Node3 cheese, spag1, spag2, crag;
@@ -585,6 +599,9 @@ public:
     /* SBW_FLAG_LAND_SURFACE: re-pick dry land columns' surface from the surface-detail node's channels (rock exposure,
      * scree, roughness; agent L). Columns without channel data keep their surface. */
     void landSurface(BaseTile& t) const;
+    /* landSurface's rule for one dry column (0 = keep the surface); Standard shape 2 point samples use it too */
+    uint16_t landSurfaceAt(int64_t x, int64_t z, int biome, uint8_t bRock, uint8_t bScree, uint8_t bRough,
+                           uint16_t carve) const;
     bool isBedrock(int64_t x, int64_t y, int64_t z) const;
     bool magmaAt(int64_t x, int64_t y, int64_t z) const;
 

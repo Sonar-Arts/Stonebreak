@@ -18,9 +18,9 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.PriorityQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
@@ -29,9 +29,11 @@ import java.util.logging.Logger;
 /**
  * The DaedalusTGM tile pipeline in-process (native engine phase 3): what the Python TGMPipe child does, on
  * {@link NativeTerrain} instead. Same contract as {@code terrain_slm/tgmpipe/service.py}: requests are served from the
- * on-disk tile cache when present (an IO thread), otherwise queued by priority (lower first, then FIFO) for ONE GPU
- * worker thread; equal requests share one build; a request whose future is completed from outside (cancelled) is
- * withdrawn before its build starts. Tiles are cached per world in their own namespaces (the native pipeline's
+ * on-disk tile cache when present (an IO thread), otherwise queued by priority (lower first, then FIFO) for one GPU
+ * worker thread per native lane ({@link NativeTerrain#setLanes}: concurrent tile builders sharing the models and window
+ * caches - the GPU works on one tile while another lane waits on the host; tiles are identical whatever lane builds
+ * them); equal requests share one build; a request whose future is completed from outside (cancelled) is withdrawn
+ * before its build starts. Tiles are cached per world in their own namespaces (the native pipeline's
  * model_id carries the ":nt1" marker, so its tiles never mix with the Python service's).
  */
 final class NativeTerrainService implements AutoCloseable {
@@ -44,7 +46,7 @@ final class NativeTerrainService implements AutoCloseable {
 
     private static final class Job implements Comparable<Job> {
         final Key key;
-        final int priority;
+        int priority;           // the most urgent priority any of its requests asked for (guarded by jobs)
         final long order;
         final List<TGMPipeConnection.TileRequest> waiters = new ArrayList<>();
         boolean started;
@@ -68,11 +70,13 @@ final class NativeTerrainService implements AutoCloseable {
     private final List<Integer> tileSize;
     private final List<String> namespaces;
     private final String modelId;
-    private final PriorityBlockingQueue<Job> queue = new PriorityBlockingQueue<>();
+    /** Waiting jobs, most urgent first; guarded by {@code jobs} (its monitor also wakes the GPU workers). */
+    private final PriorityQueue<Job> queue = new PriorityQueue<>();
     private final Map<Key, Job> jobs = new HashMap<>();
     private final AtomicLong order = new AtomicLong();
     private final ExecutorService io = Executors.newSingleThreadExecutor(r -> daemon(r, "terrain-native-io"));
-    private final Thread gpu;
+    private final List<Thread> gpus;
+    private final boolean express = expressLane();
     private volatile boolean closed;
     private final AtomicLong served = new AtomicLong(), cacheHits = new AtomicLong(), generated = new AtomicLong(),
             failed = new AtomicLong(), genMs = new AtomicLong();
@@ -110,8 +114,36 @@ final class NativeTerrainService implements AutoCloseable {
         }
         this.namespaces = List.copyOf(ns);
         this.cache = new TileDiskCache(cacheRoot, namespaces, cacheBytes);
-        this.gpu = daemon(this::gpuLoop, "terrain-native-gpu");
-        this.gpu.start();
+        List<Thread> threads = new ArrayList<>();
+        for (int lane = 0; lane < Math.max(1, terrain.lanes()); lane++) {
+            final int l = lane;
+            threads.add(daemon(() -> gpuLoop(l), lane == 0 ? "terrain-native-gpu" : "terrain-native-gpu" + lane));
+        }
+        this.gpus = List.copyOf(threads);
+        this.gpus.forEach(Thread::start);
+    }
+
+    /** Lanes on a GPU with at least {@link #AUTO_LANES_MIN_VRAM_MIB} MiB: a second lane costs ~2.5 GB of VRAM. */
+    static final int DEFAULT_LANES = 2;
+    static final long AUTO_LANES_MIN_VRAM_MIB = 16384;
+
+    /** {@code auto} (default): {@link #DEFAULT_LANES} on a big GPU, else 1 (unknown VRAM = 1). */
+    static int lanesFor(long vramMiB) {
+        return vramMiB >= AUTO_LANES_MIN_VRAM_MIB ? DEFAULT_LANES : 1;
+    }
+
+    /** {@code -Dstonebreak.terrain.lanes}: a count (1 = the sequential pipeline, A/B and fallback) or "auto". */
+    static int configuredLanes() {
+        String v = System.getProperty("stonebreak.terrain.lanes", "auto").trim();
+        if (!v.equalsIgnoreCase("auto")) {
+            try {
+                return Math.max(1, Math.min(8, Integer.parseInt(v)));
+            } catch (NumberFormatException e) {
+                // fall through to auto
+            }
+        }
+        DaedalusRequirements.SystemSpecs specs = DaedalusRequirements.check().specs();
+        return lanesFor(specs == null ? -1 : specs.vramMiB());
     }
 
     /** Cache namespace of one world: everything that decides its tiles (world config, model, native export). */
@@ -181,21 +213,42 @@ final class NativeTerrainService implements AutoCloseable {
                 queue.add(job);
             } else {
                 job.waiters.add(r);
+                if (!job.started && r.priority() < job.priority && queue.remove(job)) {   // as the service: most urgent wins
+                    job.priority = r.priority();
+                    queue.add(job);
+                }
             }
+            jobs.notifyAll();
         }
         lastActivityNanos = System.nanoTime();
     }
 
-    private void gpuLoop() {
+    /**
+     * Lane 0 is the express lane when there are several ({@code -Dstonebreak.terrain.expressLane}, default on): it builds
+     * only tiles at {@link TGMPipe#PRIORITY_WORLD} (what cubes / the player wait for), so such a tile never queues
+     * behind far-LOD / relief tiles that the other lanes grind through; with one lane every tile goes to it.
+     */
+    static boolean expressLane() {
+        return !"off".equalsIgnoreCase(System.getProperty("stonebreak.terrain.expressLane", "on").trim());
+    }
+
+    private boolean takes(int lane, Job head) {
+        return head != null && (lane != 0 || gpus.size() < 2 || !express || head.priority <= TGMPipe.PRIORITY_WORLD);
+    }
+
+    private void gpuLoop(int lane) {
         while (!closed) {
             Job job;
-            try {
-                job = queue.poll(1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                return;
-            }
-            if (job == null) {
-                continue;
+            synchronized (jobs) {
+                if (!takes(lane, queue.peek())) {
+                    try {
+                        jobs.wait(1000);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    continue;
+                }
+                job = queue.poll();
             }
             List<TGMPipeConnection.TileRequest> waiters;
             synchronized (jobs) {
@@ -209,7 +262,7 @@ final class NativeTerrainService implements AutoCloseable {
             Key k = job.key;
             long t0 = System.nanoTime();
             try {
-                NativeTerrain.Tile t = terrain.tile(k.world, k.seed, k.tileX, k.tileZ, k.lod);
+                NativeTerrain.Tile t = terrain.tile(lane, k.world, k.seed, k.tileX, k.tileZ, k.lod);
                 long ms = (System.nanoTime() - t0) / 1_000_000;
                 generated.incrementAndGet();
                 genMs.addAndGet(ms);
@@ -224,7 +277,7 @@ final class NativeTerrainService implements AutoCloseable {
                 }
                 TileDiskCache.Entry e = new TileDiskCache.Entry(t.rows(), t.cols(), t.planes(), t.surface());
                 io.execute(() -> cache.put(k.world, k.seed, k.tileX, k.tileZ, k.lod, e, Map.of()));
-                LOG.fine(() -> "native tile " + k + " built in " + ms + " ms");
+                LOG.fine(() -> "native tile " + k + " built in " + ms + " ms (lane " + lane + ")");
             } catch (RuntimeException e) {
                 failed.incrementAndGet();
                 LOG.log(Level.WARNING, "native tile " + k + " failed", e);
@@ -291,7 +344,9 @@ final class NativeTerrainService implements AutoCloseable {
         synchronized (jobs) {
             depth = jobs.size();
         }
-        return "{\"backend\":\"native\",\"model_id\":" + quote(modelId) + ",\"queue\":" + depth
+        return "{\"backend\":\"native\",\"model_id\":" + quote(modelId) + ",\"lanes\":" + gpus.size()
+                + ",\"express_lane\":" + (express && gpus.size() > 1)
+                + ",\"queue\":" + depth
                 + ",\"served\":" + served.get() + ",\"cache_hits\":" + cacheHits.get()
                 + ",\"generated\":" + generated.get() + ",\"failed\":" + failed.get() + ",\"gen_ms\":" + genMs.get()
                 + ",\"cache\":" + cache.statsJson() + ",\"native\":" + terrain.stats()
@@ -320,11 +375,18 @@ final class NativeTerrainService implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
-        gpu.interrupt();
-        try {
-            gpu.join(30_000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        synchronized (jobs) {
+            jobs.notifyAll();
+        }
+        gpus.forEach(Thread::interrupt);
+        long deadline = System.nanoTime() + 30_000_000_000L;
+        for (Thread g : gpus) {
+            try {
+                g.join(Math.max(1, (deadline - System.nanoTime()) / 1_000_000));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
         io.shutdown();
         try {
@@ -335,7 +397,7 @@ final class NativeTerrainService implements AutoCloseable {
         for (TGMPipeConnection.TileRequest r : unfinished()) {
             r.future().completeExceptionally(new TGMPipeException("native terrain pipeline stopped"));
         }
-        if (!gpu.isAlive()) {
+        if (gpus.stream().noneMatch(Thread::isAlive)) {
             terrain.close();
         }
     }

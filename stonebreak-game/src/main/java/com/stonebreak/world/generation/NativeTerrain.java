@@ -36,6 +36,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
     private final TerrainScalePreset scale;
     private final ClimateLayout climateLayout;
     private final HeightCurveVersion heightCurve;
+    /** The Standard shape of a STANDARD world (DIFFUSION worlds carry it and ignore it). */
+    private StandardShapeVersion standardShape = StandardShapeVersion.CURRENT;
     private final NativeCubeGenerator generator;
     private final DiffusionProfiles profiles;
     /** The config {@link #generator} was built from: the coarse generators copy it (DIFFUSION only). */
@@ -134,7 +136,19 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
     public static NativeTerrain create(long seed, TerrainGeneratorType type, TerrainScalePreset scale,
                                        ClimateLayout layout, HeightCurveVersion curve, WorldFeatureVersion features,
                                        BlockStateRegistry states) {
+        return create(seed, type, scale, layout, curve, features, null, states);
+    }
+
+    /**
+     * {@link #create(long, TerrainGeneratorType, TerrainScalePreset, ClimateLayout, HeightCurveVersion,
+     * WorldFeatureVersion, BlockStateRegistry)} for a world created with the Standard shape {@code standard} (null =
+     * {@link StandardShapeVersion#CURRENT}; a saved world passes its own). Only STANDARD worlds use it.
+     */
+    public static NativeTerrain create(long seed, TerrainGeneratorType type, TerrainScalePreset scale,
+                                       ClimateLayout layout, HeightCurveVersion curve, WorldFeatureVersion features,
+                                       StandardShapeVersion standard, BlockStateRegistry states) {
         WorldFeatureVersion f = WorldFeatureVersion.orCurrent(features);
+        StandardShapeVersion sv = StandardShapeVersion.orCurrent(standard);
         TerrainGeneratorType t = type == null ? TerrainGeneratorType.STANDARD : type;
         TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
         ClimateLayout l = ClimateLayout.orDefault(layout);
@@ -167,12 +181,46 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             if (f.vegetation() && !"off".equalsIgnoreCase(System.getProperty("stonebreak.vegetation"))) {
                 config.flags |= NativeCubeGenerator.FLAG_VEGETATION;
             }
+        } else {
+            applyStandardShape(config, s, sv);
         }
         try {
-            return new NativeTerrain(seed, t, s, l, c, NativeCubeGenerator.create(config), profiles, config);
+            NativeTerrain terrain = new NativeTerrain(seed, t, s, l, c, NativeCubeGenerator.create(config), profiles,
+                config);
+            terrain.standardShape = sv;
+            return terrain;
         } catch (RuntimeException e) {
             if (profiles != null) profiles.close();
             throw e;
+        }
+    }
+
+    /**
+     * The Standard shape {@code shape} on a Standard {@code config}: shape 2 (2026-11-19, distilled from
+     * DaedalusTGM-Exp-2) = the scale's v2 height curve and the channel-driven surface features (the native generator
+     * distils the channels itself), with the same dev A/B switches as DaedalusTGM worlds (never saved):
+     * {@code -Dstonebreak.boulders=off}, {@code .landSurface=off}, {@code .vegetation=off}. Shared with tests.
+     */
+    public static void applyStandardShape(NativeCubeGenerator.Config config, TerrainScalePreset scale,
+                                          StandardShapeVersion shape) {
+        StandardShapeVersion sv = StandardShapeVersion.orCurrent(shape);
+        config.standardShape = sv.number();
+        if (!sv.surfaceFeatures()) {
+            return;
+        }
+        NativeCubeGenerator.HeightCurveSpec curve = scale.heightCurve(sv.heightCurve());
+        config.curveRates = curve.rates();
+        config.curveKnots = curve.knots();
+        config.flags |= NativeCubeGenerator.FLAG_SEA_FLOOR;
+        if (!"off".equalsIgnoreCase(System.getProperty("stonebreak.boulders"))) {
+            config.flags |= NativeCubeGenerator.FLAG_BOULDERS;
+            config.rockBank = sv.rockBank();
+        }
+        if (!"off".equalsIgnoreCase(System.getProperty("stonebreak.landSurface"))) {
+            config.flags |= NativeCubeGenerator.FLAG_LAND_SURFACE;
+        }
+        if (!"off".equalsIgnoreCase(System.getProperty("stonebreak.vegetation"))) {
+            config.flags |= NativeCubeGenerator.FLAG_VEGETATION;
         }
     }
 
@@ -224,6 +272,11 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         return climateLayout;
     }
 
+    /** The world's Standard shape (used by STANDARD worlds only). */
+    public StandardShapeVersion standardShape() {
+        return standardShape;
+    }
+
     /** The world's height-curve version (used by DIFFUSION worlds only). */
     public HeightCurveVersion heightCurve() {
         return heightCurve;
@@ -249,7 +302,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             String ns = TGMPipe.getInstance().cacheNamespace(scale, climateLayout, heightCurve);
             return base + ":" + TGMPipe.MODEL_NAME + ":" + (ns != null ? ns : "offline");
         }
-        return base;
+        // Standard shape 1 keeps its tag (its caches stay valid); later shapes are named
+        return standardShape == StandardShapeVersion.V1 ? base : base + "-s" + standardShape.number();
     }
 
     @Override
@@ -354,6 +408,9 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         c.stalagmitePartStates = from.stalagmitePartStates.clone();
         c.cacheColumns = from.cacheColumns;
         c.rockBank = from.rockBank;
+        c.standardShape = from.standardShape;
+        c.curveRates = from.curveRates != null ? from.curveRates.clone() : null;
+        c.curveKnots = from.curveKnots != null ? from.curveKnots.clone() : null;
         c.profiles = from.profiles;
         return c;
     }
@@ -567,7 +624,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             TGMPipe.getInstance().ensureRunning(fraction -> { });
             this.tiles = new DiffusionTileCache(seed, scale, layout, curve);
             this.heights = new com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator(tiles);
-            this.biomes = new com.stonebreak.world.generation.diffusion.biomes.BiomeManager(tiles);
+            this.biomes = new com.stonebreak.world.generation.diffusion.biomes.BiomeManager(tiles,
+                    com.stonebreak.world.generation.diffusion.biomes.BeachRule.of(scale, curve));
         }
 
         @Override
@@ -651,21 +709,29 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         /** Tiles in SAMPLE units (block / lod). */
         private final com.stonebreak.world.generation.diffusion.TerrainTileSource tiles;
         private final AutoCloseable closer;
+        /** The world's beach height band (BeachRule.of); the coarse reach is one sample. */
+        private final com.stonebreak.world.generation.diffusion.biomes.BeachRule beach;
 
         CoarseProfiles(long seed, int lod, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
             this(lod, new DiffusionTileCache(seed, lod, TGMPipe.PRIORITY_LOD, scale, layout, curve,
-                    COARSE_CACHED_TILES));
+                    COARSE_CACHED_TILES), com.stonebreak.world.generation.diffusion.biomes.BeachRule.of(scale, curve));
         }
 
-        /** Test seam: lod-{@code lod} tiles from {@code tiles} (sample units). */
+        /** Test seam: lod-{@code lod} tiles from {@code tiles} (sample units), the legacy beach rule. */
         <S extends com.stonebreak.world.generation.diffusion.TerrainTileSource & AutoCloseable> CoarseProfiles(
                 int lod, S tiles) {
+            this(lod, tiles, com.stonebreak.world.generation.diffusion.biomes.BeachRule.LEGACY);
+        }
+
+        <S extends com.stonebreak.world.generation.diffusion.TerrainTileSource & AutoCloseable> CoarseProfiles(
+                int lod, S tiles, com.stonebreak.world.generation.diffusion.biomes.BeachRule beach) {
             if (lod < 2 || 32 % lod != 0) {
                 throw new IllegalArgumentException("coarse lod must be 2..32 and divide 32, got " + lod);
             }
             this.lod = lod;
             this.tiles = tiles;
             this.closer = tiles;
+            this.beach = beach;
         }
 
         @Override
@@ -693,7 +759,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
                     int fl = tile.riverFloorAt(si, sj), rf = tile.riverRoofAt(si, sj);
                     short f = tile.riverFlowAt(si, sj);
                     byte flow = (byte) (f < 0 || f > 7 ? -1 : f);
-                    BiomeType bt = com.stonebreak.world.generation.diffusion.biomes.BiomeManager.biomeAt(tile, si, sj, h);
+                    BiomeType bt = com.stonebreak.world.generation.diffusion.biomes.BiomeManager.biomeAt(tile, si, sj, h, beach);
                     byte bo = (byte) (bt != null ? bt.ordinal() : 0);
                     short cv = tile.carveAt(si, sj);
                     int src = (si - tile.worldI1()) * tile.width() + (sj - tile.worldJ1());

@@ -194,7 +194,9 @@ class CendaBackend:
         nets = [n.strip() for n in os.getenv("TGM_ENGINE_NETS", "").split(",") if n.strip()]
         if nets:                                     # e.g. "detail,relief,sr30": only these on the engine
             self.specs = {k: v for k, v in self.specs.items() if k in nets}
+        from terrain_slm.export import cenda_export as _X
         key = {"v": EXPORT_VERSION, "model_id": gen.model_id, "specs": self.specs, "src": _sources_key(),
+               "biome_conv": _X.BIOME_CONV,   # the sidecars' conv kernel (same numbers; A/B exports stay apart)
                "files": [_file_key(p) for p in getattr(gen, "_cenda_files", [])] +
                         ([_file_key(md / f) for f in ("detail_fp8.pt", "sr15.pt")] if md is not None else []),
                "detail_fp8": self.detail_fp8,

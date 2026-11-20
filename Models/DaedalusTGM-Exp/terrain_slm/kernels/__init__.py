@@ -11,6 +11,9 @@
   cuda_detail2_fp8.py  Detail2 at mixed FP8 / fp16 (a QAD student, train/train_qad.py); generator2.DETAIL_FP8
                     (ON since 2026-11-20, sm_89+), model_id marker :kd8; tune_fp8.py writes cuda_configs_fp8.json
   cuda_sr.py        SR-30 / SR-15 (models/sr.py) on the Detail2 sampler through a Detail2-shaped view; marker :ks1
+  tune_detail2.py   launch-config tuner for both Detail2 samplers (real epilogues per layer kind, burst timing);
+                    cuda_detail2.KGEN = kernel generation (2: halo-tiled up-merge uconv/uconv8 + FP8 down dconv8,
+                    model_id marker :kg2; TGM_DETAIL_KGEN=1 = the generation-1 kernels)
   cuda_blend.py     the generator's window cross-fades as one launch (csrc/blend.cu), bit-identical to the torch loop
   cuda_river.py     the river pipeline's fixed-point loops one launch per step (csrc/river.cu), bit-identical
   hydro.py          drainage routing (priority-flood fill, D8, accumulation, seam cycles) in C++,

@@ -23,7 +23,7 @@ from terrain_slm.data import descriptors as D
 from terrain_slm.models import planner as P
 from terrain_slm.models import refiner as R
 from terrain_slm.synth import noise as S
-from terrain_slm.world.generator import GenConfig, WorldGenerator
+from terrain_slm.world.generator import GenConfig
 from terrain_slm.device import default_device
 
 CP = D.CELL_PX
@@ -72,7 +72,7 @@ def slope_hist(z: np.ndarray) -> np.ndarray:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", type=Path, default=Path("data"), help="directory holding the region builds")
-    ap.add_argument("--model", type=Path, default=Path("checkpoints/v3"))
+    ap.add_argument("--model", type=Path, default=Path("checkpoints/exp2-r3"))   # EXP-1 (v2/v3/v4) removed 2026-11-19
     ap.add_argument("--device", default=default_device())
     ap.add_argument("--t-start", type=float, default=0.5)
     ap.add_argument("--out", type=Path, default=Path("reports"))
@@ -80,7 +80,8 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     dev = args.device
 
-    gen = WorldGenerator(args.model, seed=42, device=dev, cfg=GenConfig(t_start=args.t_start))
+    from terrain_slm.world.generator2 import WorldGenerator2
+    gen = WorldGenerator2(args.model, seed=42, device=dev, cfg=GenConfig(t_start=args.t_start))
     from terrain_slm.train.planner_data import built_regions
     m = S.MARGIN_CELLS
     n = 64  # cells -> 512 px panels

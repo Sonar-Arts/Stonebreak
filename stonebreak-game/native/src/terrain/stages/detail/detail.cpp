@@ -355,7 +355,7 @@ Tensor detail_window_raw(Gen& g, int64_t wi, int64_t wj) {
     const int64_t nc = E / spc + 2 * mc;
     const int64_t ci0 = floordiv(si0, spc) - mc, cj0 = floordiv(sj0, spc) - mc;
     const int64_t ms = mc * spc, F = nc * spc;
-    Tensor raw = one(callm(g, "_planner_cells", {ci0, cj0, nc, nc}), "_planner_cells")[0];
+    Tensor raw = planner_height(g, ci0, cj0, nc, nc);
     Fields ctrl = callm(g, "controls", {ci0, cj0, nc, nc});
     Fields dr = callm(g, "drainage", {ci0, cj0, nc, nc});
     const bool flow = dr.has("logacc");
@@ -457,6 +457,7 @@ Fields detail_window(Gen& g, const Args& a) {
     need(a, 2, 0, 0, "_detail_window");
     const int64_t wi = a.i[0], wj = a.i[1];
     Tensor win = g.cache("detail._detail_windows", 512).get_or({g.st.seed, wi, wj}, [&]() {
+        ++g.counters["detail_windows"];
         return Fields::of(detail_window_raw(g, wi, wj));
     }).one();
     if (look_build(g)) {             // FX4 hill band (generator2._hill_band), before the lowland boost

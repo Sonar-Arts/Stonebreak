@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from terrain_slm.kernels import cuda_conv as C
 from terrain_slm.kernels import cuda_conv_fp8 as C8
-from terrain_slm.kernels.cuda_detail2 import RANK_PAD, _Conv, _config, _uses_hconv
+from terrain_slm.kernels.cuda_detail2 import KGEN, MARK, RANK_PAD, _Conv, _config, _uses_hconv
 from terrain_slm.kernels.cuda_unet import EULER_NP, STEM_PAD
 from terrain_slm.models import detail2 as D2
 from terrain_slm.models.mp import SILU_GAIN
@@ -72,11 +72,17 @@ class _Conv8:
         self.ks, self.stride = k, stride
         ho = (hh + stride - 1) // stride
         self.h = kind in ("c1", "c2", "ad_mid", "out") and k == 3 and stride == 1
-        key = (kind + "8", ci, co, k, stride, ho)
+        self.d = KGEN >= 2 and kind == "down" and k == 3 and stride == 2   # generation 2: halo-tiled stride-2 (dconv8)
+        key = (("dconv" if self.d else kind) + "8", ci, co, k, stride, ho)
         tuned = sampler._tuned.get(key)
-        if tuned is not None and len(tuned) != (6 if self.h else 5):
+        if tuned is not None and len(tuned) != (6 if (self.h or self.d) else 5):
             tuned = None
-        if self.h:
+        if self.d:
+            cfg = tuple(tuned) if tuned is not None and len(tuned) == 6 and C8.dconv8_valid(tuple(tuned)) \
+                else C8.default_dconv8_config(co, ho)
+            np_ = C.round_up(co, cfg[2])
+            self.w, sc = C8.pack_hconv8(w, np_)
+        elif self.h:
             cfg = tuned or C8.default_hconv8_config(co, ho)
             if co == 1 and tuned is None:
                 cfg = (8, 32, 32, 8, 1, 2)
@@ -91,6 +97,8 @@ class _Conv8:
         sampler.layer_keys.append((key, self.cfg))
 
     def __call__(self, x, **kw):
+        if self.d:
+            return C8.make_dconv8(x, self.w, self.sc, self.cfg, **kw)
         if self.h:
             return C8.make_hconv8(x, self.w, self.sc, self.cfg, **kw)
         return C8.make_conv8(x, self.w, self.sc, self.cfg, ks=self.ks, stride=self.stride, **kw)
@@ -206,21 +214,36 @@ class NativeDetail2SamplerFP8:
             for i in range(n_lvl):
                 ph, wb = sim.upmerge_phases(i)
                 c, clow = chans[i], chans[i + 1]
-                lo = res[i + 1][0]
+                lo, lo_w = res[i + 1]
                 if fmt(f"up{i}") == FP8:
-                    cfg = tuple(self._tuned.get(("upmerge8", clow, c, 2, 1, lo)) or C8.default_conv8_config(lo * lo, c, 1))
-                    np_ = C.round_up(c, cfg[1])
+                    if KGEN >= 2 and C8.default_uconv8_config(c, lo, lo_w) is not None:
+                        ukey = ("uconv8", clow, c, 2, 1, lo)
+                        cfg = self._tuned.get(ukey)
+                        cfg = tuple(cfg) if cfg is not None and len(cfg) == 6 and C8.uconv8_valid(tuple(cfg)) and lo % cfg[0] == 0 \
+                            and lo_w % cfg[1] == 0 else C8.default_uconv8_config(c, lo, lo_w)
+                        np_ = C.round_up(c, cfg[2])
+                    else:
+                        ukey = ("upmerge8", clow, c, 2, 1, lo)
+                        cfg = tuple(self._tuned.get(ukey) or C8.default_conv8_config(lo * lo, c, 1))
+                        np_ = C.round_up(c, cfg[1])
                     parts = [C8.e4m3_rows(torch.cat([ph[p].permute(0, 2, 3, 1).reshape(c, 4 * clow), wb], 1), np_)
                              for p in range(4)]
                     wq = torch.cat([p[0] for p in parts]).contiguous()
                     sc = (torch.cat([p[1] for p in parts]) * self.act_scale).contiguous()
                     self._up[i] = (FP8, wq, sc, cfg)
-                    self.layer_keys.append((("upmerge8", clow, c, 2, 1, lo), cfg))
+                    self.layer_keys.append((ukey, cfg))
                 else:
-                    key = ("upmerge", clow, c, 2, 1, lo)
-                    cfg = self._configs.get(key) or _config(key, lo * lo, c, 1, 4 * clow + c, dev)
+                    if KGEN >= 2 and C.default_uconv_config(c, lo, lo_w) is not None:
+                        key = ("uconv", clow, c, 2, 1, lo)
+                        cfg = self._configs.get(key) or C.TUNED.get(torch.cuda.get_device_name(dev), {}).get(key)
+                        cfg = tuple(cfg) if cfg is not None and len(cfg) == 6 and C.uconv_valid(tuple(cfg)) and lo % cfg[0] == 0 \
+                            and lo_w % cfg[1] == 0 else C.default_uconv_config(c, lo, lo_w)
+                        np_ = C.round_up(c, cfg[2])
+                    else:
+                        key = ("upmerge", clow, c, 2, 1, lo)
+                        cfg = self._configs.get(key) or _config(key, lo * lo, c, 1, 4 * clow + c, dev)
+                        np_ = C.round_up(c, cfg[1])
                     self.layer_keys.append((key, lo * lo, c, 1, 4 * clow + c))
-                    np_ = C.round_up(c, cfg[1])
                     phd = ph.double().permute(0, 3, 4, 2, 1).reshape(4, 4, clow, c)       # (phase, tap, ci, co)
                     wq = C._finish(torch.cat([torch.cat([phd[p].reshape(4 * clow, c), wb.double().t()])
                                               for p in range(4)]).float(), np_)
@@ -272,9 +295,10 @@ class NativeDetail2SamplerFP8:
             else:
                 if silu is not None:
                     cons, buf = silu
-                    kw["out_silu"] = buf.get("fp16")
-                    if fmt(cons) == FP8:
-                        post.append((buf.get("fp16"), buf, cons))
+                    if fmt(cons) == FP8:      # the fp16 kernel writes the e4m3 codes itself (F_SILU8)
+                        kw["out_silu8"], kw["qs"] = buf.get(FP8), qs
+                    else:
+                        kw["out_silu"] = buf.get("fp16")
                 if raw8 is not None:
                     post.append((kw["out_raw"], raw8, None))
                 kw16 = {k: v for k, v in kw.items()}
@@ -311,6 +335,7 @@ class NativeDetail2SamplerFP8:
                 nxt[site] = after + ".c0" if after.startswith(f"dec{lvl}.") else (f"up{lvl - 1}" if lvl > 0 else "out")
 
         def block(b, lvl, site, enc, ads, raw, tmp):
+            ads_all = ads
             ads = adapters_at(ads)
             S = self.S[lvl]
             if enc:
@@ -323,6 +348,11 @@ class NativeDetail2SamplerFP8:
             last_skip = site.startswith("enc") and nxt[site] is not None and fmt(f"up{lvl}") == FP8
             first_ad = f"ad.{ads[0][0]}.{site}.down" if ads else None
             out = dict(res=raw, res_scale=self._rs_x, clip=True, out_raw=raw)
+            # the last block before an up-merge / the output conv: nothing reads its raw output unless an adapter is
+            # packed at the site (K4: the store is skipped; same numbers)
+            if not ads_all and (site.startswith("mid") or site.startswith("dec")) and \
+                    not str(nxt[site] or "").startswith(site.split(".")[0] + "."):
+                out["out_raw"] = None
             if not ads and nxt[site] is not None:
                 out["silu"] = (nxt[site], S)
             if (ads and fmt(first_ad) == FP8) or (not ads and last_skip):
@@ -368,16 +398,21 @@ class NativeDetail2SamplerFP8:
             if f_up == FP8:
                 o = {"out_silu8": self.S[i].get(FP8), "qs": qs} if fmt(first) == FP8 else {"out_silu": self.S[i].get("fp16")}
                 x1 = read(f"up{i}", src)
-                plan.append(lambda s, x1=x1, wq=wq, sc=sc, cfg=cfg, i=i, o=o: C8.make_conv8(
-                    x1, wq, sc, cfg, mode=1, x2=self._R8[i].get(FP8), out_raw=self.B[i], **o))
+                if len(cfg) == 6:
+                    plan.append(lambda s, x1=x1, wq=wq, sc=sc, cfg=cfg, i=i, o=o: C8.make_uconv8(
+                        x1, wq, sc, cfg, x2=self._R8[i].get(FP8), out_raw=self.B[i], **o))
+                else:
+                    plan.append(lambda s, x1=x1, wq=wq, sc=sc, cfg=cfg, i=i, o=o: C8.make_conv8(
+                        x1, wq, sc, cfg, mode=1, x2=self._R8[i].get(FP8), out_raw=self.B[i], **o))
             else:
                 x1 = src.get("fp16")
-                plan.append(lambda s, x1=x1, wq=wq, b=sc, cfg=cfg, i=i: C.make_conv(
-                    x1, wq, b, cfg, mode=1, x2=self.A[i], out_raw=self.B[i], out_silu=self.S[i].get("fp16")))
-                if fmt(first) == FP8:
-                    tgt = self._Q8[i].get(FP8)
-                    plan.append(lambda s, i=i, tgt=tgt: C8.make_quant8(self.S[i].get("fp16"), tgt, qs))
-                    self.S[i].redirect = tgt
+                o = {"out_silu8": self.S[i].get(FP8), "qs": qs} if fmt(first) == FP8 else {"out_silu": self.S[i].get("fp16")}
+                if len(cfg) == 6:
+                    plan.append(lambda s, x1=x1, wq=wq, b=sc, cfg=cfg, i=i, o=o: C.make_uconv(
+                        x1, wq, b, cfg, x2=self.A[i], out_raw=self.B[i], **o))
+                else:
+                    plan.append(lambda s, x1=x1, wq=wq, b=sc, cfg=cfg, i=i, o=o: C.make_conv(
+                        x1, wq, b, cfg, mode=1, x2=self.A[i], out_raw=self.B[i], **o))
             while k < len(sites) and sites[k][2].startswith(f"dec{i}."):
                 b, lvl, site, enc, ads = sites[k]
                 block(b, lvl, site, enc, ads, self.B[i], self.T_dec[i])

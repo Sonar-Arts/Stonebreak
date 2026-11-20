@@ -31,7 +31,8 @@ def _emit(**fields) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.tgmpipe.warmup")
-    ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
+    from terrain_slm.model_files import DEFAULT_MODEL
+    ap.add_argument("model_path", nargs="?", default=DEFAULT_MODEL)
     ap.add_argument("--device", default="auto")
     args = ap.parse_args(argv)
     t0 = time.monotonic()
@@ -41,7 +42,8 @@ def main(argv=None) -> int:
 
         from terrain_slm.paths import MODEL_DIR
         from terrain_slm.tgmpipe.service import CPU_MAX_VRAM, pick_device
-        from terrain_slm.world.generator import WorldGenerator
+        from terrain_slm.model_files import ModelFilesError, require_exp2_model
+        from terrain_slm.world.generator2 import WorldGenerator2
 
         if args.device == "cpu":
             device, gpu = "cpu", "CPU"
@@ -58,12 +60,12 @@ def main(argv=None) -> int:
         model_dir = Path(args.model_path)
         if not model_dir.is_absolute():
             model_dir = MODEL_DIR / model_dir
-        if not (model_dir / "planner.pt").exists():
-            _emit(error=f"model checkpoints not found in {model_dir}")
+        try:   # missing / retired / not EXP-2 / Git LFS pointers: the game shows this message
+            require_exp2_model(model_dir)
+        except ModelFilesError as e:
+            _emit(error=str(e))
             return 1
-        if (model_dir / "climate.pt").exists():          # EXP-2 folder: same generator as the service picks
-            from terrain_slm.world.generator2 import WorldGenerator2 as WorldGenerator
-        gen = WorldGenerator(model_dir, 0, device)
+        gen = WorldGenerator2(model_dir, 0, device)      # the generator the service runs
         gen.warm_up(lambda what: _emit(stage="compile", detail=what))
         _emit(done=True, gpu=gpu, device=device, model=gen.model_id, seconds=round(time.monotonic() - t0, 1))
         return 0

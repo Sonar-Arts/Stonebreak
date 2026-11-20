@@ -143,8 +143,11 @@ def test_v2_worlds_seed_the_sea_from_the_exp2_layout_v1_keeps_v4():
         gen.use_sea_shelf(True)
         v2 = gen.continent_land_cells(ci0, cj0, n, n, dev)
         trend = gen.controls(ci0, cj0, n, n)["trend"]
+        link = gen.sea_link_cells(ci0, cj0, n, n, dev) if G2.SEA_LINK else torch.ones_like(trend, dtype=torch.bool)
     gen.use_sea_shelf(False)
-    assert torch.all(v2[trend < G2.SEA_SEED_TREND_M] == 0)
+    # BV: layout-drowned cells seed the sea where the layout links them to the open ocean (this drowned coast is)
+    assert float(link[trend < G2.SEA_SEED_TREND_M].float().mean()) > 0.9
+    assert torch.all(v2[(trend < G2.SEA_SEED_TREND_M) & link] == 0)
     assert float((v2 < 0.5).float().mean()) > float((v1 < 0.5).float().mean())   # more sea seeds than v4 saw
 
 
@@ -168,7 +171,10 @@ def test_sea_seed_layout_trend_equals_the_full_controls_trend():
                 assert torch.equal(gen._layout(ci0, cj0, h, w)["trend"], full["trend"]), (layout, ci0, cj0)
         gen.use_sea_shelf(True)
         a = gen.continent_land_cells(-40, -3640, 64, 64, dev)
-        b = torch.where(gen.controls(-40, -3640, 64, 64)["trend"].to(dev) < G2.SEA_SEED_TREND_M, 0.0,
+        drowned = gen.controls(-40, -3640, 64, 64)["trend"].to(dev) < G2.SEA_SEED_TREND_M
+        if G2.SEA_LINK:                                    # BV: only drowned cells the layout links to the open ocean
+            drowned = drowned & gen.sea_link_cells(-40, -3640, 64, 64, dev)
+        b = torch.where(drowned, 0.0,
                         __import__("terrain_slm.world.controls2", fromlist=["x"]).continent2(
                             torch.arange(-40, 24, device=dev, dtype=torch.float32).view(-1, 1).expand(64, 64),
                             torch.arange(-3640, -3576, device=dev, dtype=torch.float32).view(1, -1).expand(64, 64),

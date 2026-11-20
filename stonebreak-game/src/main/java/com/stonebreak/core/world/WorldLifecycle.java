@@ -184,8 +184,18 @@ public final class WorldLifecycle {
                                            com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
                                            com.stonebreak.world.generation.ClimateLayout climateLayout,
                                            com.stonebreak.world.generation.HeightCurveVersion heightCurve) {
+        return createClientWorldInstance(seed, generatorType, terrainScale, climateLayout, heightCurve, null);
+    }
+
+    /** As above with the server world's Standard shape (null = the current one). */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                           com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                           com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                           com.stonebreak.world.generation.StandardShapeVersion standardShape) {
         return World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale, climateLayout,
-            heightCurve);
+            heightCurve, standardShape);
     }
 
     /**

@@ -52,7 +52,8 @@ final class StandardPreview implements GeneratorPreview {
     public Built build(long seed, PreviewSampleStore store) {
         TerrainScalePreset preset = scale;
         double s = NativeStandardColumns.shapeScale(preset);
-        NoiseRouter router = new NoiseRouter(seed);
+        // a new world's preview: the current Standard shape (its native heights below are the same shape)
+        NoiseRouter router = new NoiseRouter(seed, com.stonebreak.world.generation.StandardShapeVersion.CURRENT);
         HeightMapGenerator heightMap = new HeightMapGenerator(router);
         BiomeManager biomes = new BiomeManager(router, heightMap);
         NativeStandardColumns columns = NativeStandardColumns.open(seed, preset);

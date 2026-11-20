@@ -99,6 +99,8 @@ public final class ServerLevel {
         World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType(),
                 worldData.getTerrainScale(), worldData.getClimateLayout(), worldData.getHeightCurve(),
                 worldData.getWorldFeatures(),
+                // the menu's flyover (resources/menu/showcase.json) was scouted on Standard shape 1 terrain: keep it
+                com.stonebreak.world.generation.StandardShapeVersion.V1,
                 null, false); // ephemeral: no cube store
         world.setSpawnPosition(new Vector3f(anchor));
         EntityManager entityManager = new EntityManager(world);
@@ -171,7 +173,7 @@ public final class ServerLevel {
 
             world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType(),
                     worldData.getTerrainScale(), worldData.getClimateLayout(), worldData.getHeightCurve(),
-                worldData.getWorldFeatures(),
+                worldData.getWorldFeatures(), worldData.getStandardShape(),
                     java.nio.file.Path.of(worldPath), false);
             if (worldData.getSpawnPosition() != null) {
                 world.setSpawnPosition(worldData.getSpawnPosition());

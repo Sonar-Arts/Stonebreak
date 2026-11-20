@@ -86,8 +86,11 @@ public final class ProtocolVersion {
      *  an older client cannot decode - the version check refuses it cleanly instead.
      *  28: WelcomeS2C carries the world's terrain model (TerrainModelRef: folder path + release content id, two
      *  strings) after the height curve, so a DaedalusTGM-Exp client's TGMPipe runs the model the server's world was
-     *  made with (review-python HIGH-1, FX1 2026-11-19). */
-    public static final int CURRENT = 28;
+     *  made with (review-python HIGH-1, FX1 2026-11-19).
+     *  29: WelcomeS2C carries the world's Standard shape (StandardShapeVersion number, one byte) after the terrain
+     *  model, so a Standard client's generator (FastLOD, queries) builds the shape the server's world was made with
+     *  (2026-11-19: shape 2, distilled from DaedalusTGM-Exp-2). */
+    public static final int CURRENT = 29;
 
     private ProtocolVersion() {}
 }

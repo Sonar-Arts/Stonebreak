@@ -51,7 +51,7 @@ class Scheduler:
                 heapq.heappush(self._heap, (priority, next(self._seq), key))
             job.waiters.add(req_id)
             self._request_key[req_id] = key
-            self._cond.notify()
+            self._cond.notify_all()   # several GPU threads (lanes); an express lane may pass on this job
 
     def cancel(self, req_id: int) -> None:
         with self._cond:
@@ -63,16 +63,22 @@ class Scheduler:
             if not job.waiters and not job.started:
                 del self._jobs[key]
 
-    def take(self, timeout: float | None = None) -> Job | None:
-        """The most urgent waiting job, marked started; None on timeout or after close()."""
+    def take(self, timeout: float | None = None, max_priority: int | None = None) -> Job | None:
+        """The most urgent waiting job, marked started; None on timeout or after close(). `max_priority`: take it only
+        if it is at least that urgent (an express lane: it waits instead of starting a less urgent job)."""
         with self._cond:
             while True:
                 while self._heap:
-                    priority, _, key = heapq.heappop(self._heap)
+                    priority, _, key = self._heap[0]
                     job = self._jobs.get(key)
-                    if job is not None and not job.started and job.priority == priority:
-                        job.started = True
-                        return job
+                    if job is None or job.started or job.priority != priority:
+                        heapq.heappop(self._heap)          # stale entry
+                        continue
+                    if max_priority is not None and priority > max_priority:
+                        break
+                    heapq.heappop(self._heap)
+                    job.started = True
+                    return job
                 if self._closed or not self._cond.wait(timeout):
                     return None
 

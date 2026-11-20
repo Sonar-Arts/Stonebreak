@@ -3,7 +3,6 @@
 # Linux, and macOS. (Set after a Windows->Linux migration introduced a
 # whole-tree CRLF diff.)
 * text=auto eol=lf
-
 # Explicit text types (belt-and-suspenders; covered by text=auto above).
 *.java   text eol=lf
 *.xml    text eol=lf
@@ -17,7 +16,6 @@
 *.glsl   text eol=lf
 *.properties text eol=lf
 *.gitignore  text eol=lf
-
 # Binary assets — never touch line endings or attempt diffs/merges.
 *.png    binary
 *.gif    binary
@@ -27,7 +25,6 @@
 *.ogg    binary
 *.ttf    binary
 *.otf    binary
-
 # Custom binary formats (Stonebreak / Open Mason).
 *.sbo    binary
 *.sbt    binary
@@ -39,3 +36,9 @@
 *.pt     binary
 *.omui   binary
 *.sbui   binary
+
+# Git LFS: the shipped DaedalusTGM-Exp-2 release weights (~590 MB; detail.pt alone 256 MB, above GitHub's
+# 100 MiB per-file limit). release.json / ATTRIBUTION.md in that folder stay normal files. A clone without
+# git-lfs gets pointer files; the game and the service refuse them with a 'git lfs pull' message.
+# A new release folder = one more line like this (git lfs track "Models/DaedalusTGM-Exp/checkpoints/<name>/*.pt").
+Models/DaedalusTGM-Exp/checkpoints/exp2-r3/*.pt filter=lfs diff=lfs merge=lfs -text

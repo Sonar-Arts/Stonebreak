@@ -7,7 +7,9 @@ import torch
 from terrain_slm.models import relief as RL
 from terrain_slm.world import generator as G
 
-MODEL = Path(__file__).resolve().parents[1] / "checkpoints/v3"
+from terrain_slm.model_files import DEFAULT_MODEL, lfs_pointers
+
+MODEL = Path(__file__).resolve().parents[1] / DEFAULT_MODEL     # the release (EXP-1's v3 was removed 2026-11-19)
 DEV = "cuda:1" if torch.cuda.device_count() > 1 else ("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -44,9 +46,12 @@ def test_relief_unet_accepts_any_multiple_of_its_stride():
         assert m(x, torch.zeros(1), cond).shape == x.shape
 
 
-@pytest.mark.skipif(not (MODEL / "relief.pt").exists(), reason="no packaged v2 model")
+@pytest.mark.skipif(not (MODEL / "relief.pt").exists() or bool(lfs_pointers(MODEL)),
+                    reason="no release weights (git lfs pull)")
 def test_relief_trend_is_request_independent_across_window_seams():
-    gen = G.WorldGenerator(MODEL, seed=3, device=DEV)
+    from terrain_slm.world.generator2 import WorldGenerator2
+    gen = WorldGenerator2(MODEL, seed=3, device=DEV)
+    gen.use_climate_layout("belts")
     # Straddles the window-core boundary at cell 256 on both axes.
     big = gen.trend(200, 200, 112, 112)
     small = gen.trend(240, 250, 40, 30)

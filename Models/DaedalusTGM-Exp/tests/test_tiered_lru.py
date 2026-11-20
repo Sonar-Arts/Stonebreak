@@ -92,7 +92,10 @@ def test_idle_release_frees_only_fully_free_slabs():
     assert pool.bytes == before + 2 * pool.SLAB * nbytes
     dropped = G.release_pinned()
     assert dropped >= pool.SLAB * nbytes             # (other pools' free slabs may go too)
-    assert pool.bytes == before + 2 * pool.SLAB * nbytes - dropped
+    # This pool lost at least our free slab and at most everything released (free slabs that earlier tests' generators
+    # left in this or another device's pool go too: release_pinned is global, so `dropped` is not this pool's alone).
+    own = before + 2 * pool.SLAB * nbytes - pool.bytes
+    assert pool.SLAB * nbytes <= own <= dropped
     assert len(pool._free[nbytes]) == pool.SLAB - 1  # the held slab's other slots stay available
     assert torch.equal(held.back(dev), t)
     G.release_pinned()

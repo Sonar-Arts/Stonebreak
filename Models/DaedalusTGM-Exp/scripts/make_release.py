@@ -242,29 +242,26 @@ def dump_tiles(model_dir: Path, out: Path, device: str, tiles: int, seeds: list[
     import torch
 
     from terrain_slm.eval.vram_audit import spiral
-    from terrain_slm.world.generator import GenConfig, WorldGenerator
+    from terrain_slm.model_files import require_exp2_model
+    from terrain_slm.world.generator import GenConfig
+    from terrain_slm.world.generator2 import WorldGenerator2
     from terrain_slm.world.tiles import TileBuilder
 
     if device.startswith("cuda"):
         torch.cuda.set_device(torch.device(device))
-    exp2 = (model_dir / "climate.pt").exists()
-    if exp2:
-        from terrain_slm.world.generator2 import WorldGenerator2 as Gen
-    else:
-        Gen = WorldGenerator
+    require_exp2_model(model_dir)       # EXP-2 only (EXP-1 removed 2026-11-19); no Git LFS pointers
     # tgmpipe/service.py defaults
-    gen = Gen(model_dir, 0, device, GenConfig(t_start=0.6, steps=8, amp_scale=1.0, river_log_threshold=None))
-    if exp2:
-        gen.use_climate_layout("belts")
+    gen = WorldGenerator2(model_dir, 0, device, GenConfig(t_start=0.6, steps=8, amp_scale=1.0, river_log_threshold=None))
+    gen.use_climate_layout("belts")
     gen.warm_up()
     res = {"_model_id": np.array(gen.model_id), "_generator": np.array(type(gen).__name__),
            "_detail_fp8": np.array(":kd8-" in gen.model_id)}
-    if exp2 and (model_dir / "detail_fp8.pt").exists():
+    if (model_dir / "detail_fp8.pt").exists():
         from terrain_slm.world import generator2 as G2
         if G2.DETAIL_FP8 and ":kd8-" not in gen.model_id:
             raise SystemExit(f"verify: {model_dir} carries detail_fp8.pt but the FP8 detail sampler did not engage on "
                              f"{device} (needs sm_89+ and the native kernels); verify on an FP8-capable GPU")
-    for wname, world in _worlds(model_dir, exp2).items():
+    for wname, world in _worlds(model_dir, True).items():
         builder = TileBuilder(gen, world)
         n = _tiles_for(wname, tiles)
         for seed in seeds:
@@ -334,6 +331,11 @@ def main(argv=None) -> int:
     files = sorted(p for p in src.iterdir() if p.suffix == ".pt")
     if not files:
         raise SystemExit(f"{src}: no .pt files")
+    from terrain_slm.model_files import ModelFilesError, check_weights
+    try:
+        check_weights(src)                           # Git LFS pointers instead of weights: never torch.load one
+    except ModelFilesError as e:
+        raise SystemExit(str(e))
     others = sorted(p.name for p in src.iterdir() if p.suffix != ".pt")
     if others:
         print(f"note: not copied (not .pt): {', '.join(others)}")

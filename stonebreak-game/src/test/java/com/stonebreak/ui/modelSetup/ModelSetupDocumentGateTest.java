@@ -23,7 +23,8 @@ class ModelSetupDocumentGateTest {
     void theShippedModelSetupDocumentPassesTheMigrationGate() throws Exception {
         ChatDocumentGateTest.requireLua();
         // Pinned fixture input: the subtitle names the model folder (TGMPipe.generatorLabel). The frozen captures were
-        // taken with v4; switching the default model (2026-11-19, exp2-r1) is not a rendering change.
+        // taken with v4; switching the default model (2026-11-19, exp2-r1) is not a rendering change. Only the label
+        // string is pinned: nothing reads the folder (v4 itself was removed 2026-11-19).
         String prev = System.getProperty(MODEL_PROPERTY);
         System.setProperty(MODEL_PROPERTY, "checkpoints/v4");
         try {

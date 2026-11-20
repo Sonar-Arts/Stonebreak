@@ -25,7 +25,7 @@ Fields regional_elevation(Gen& g, const Args& a) {
     const int64_t m = static_cast<int64_t>(std::ceil(3.0 * sigma)) + 1;
     const int64_t ci0 = floordiv(i1, CP) - m, cj0 = floordiv(j1, CP) - m;
     const int64_t hc = floordiv(i2 - 1, CP) + 1 + m - ci0, wc = floordiv(j2 - 1, CP) + 1 + m - cj0;
-    Tensor cells = g.call("_planner_cells", {{ci0, cj0, hc, wc}, {}, {}}).one()[0];
+    Tensor cells = planner_height(g, ci0, cj0, hc, wc);
     Tensor reg = ops::blur(g.gpu, soft_cap_peaks(g, cells), g.taps(sigma));
     Tensor up = ops::bilinear(g.gpu, reg, static_cast<int>(hc * CP), static_cast<int>(wc * CP));
     return Fields::of(ops::crop(g.gpu, up, static_cast<int>(i1 - ci0 * CP), static_cast<int>(j1 - cj0 * CP),
@@ -34,6 +34,11 @@ Fields regional_elevation(Gen& g, const Args& a) {
 SBTG_METHOD("regional_elevation", regional_elevation);
 
 } // namespace
+
+Tensor planner_height(Gen& g, int64_t ci0, int64_t cj0, int64_t hc, int64_t wc) {
+    if (g.native("_planner_height")) return g.call("_planner_height", {{ci0, cj0, hc, wc}, {}, {}}).one();
+    return g.call("_planner_cells", {{ci0, cj0, hc, wc}, {}, {}}).one()[0];
+}
 
 Tensor soft_cap_peaks(Gen& g, const Tensor& e) {
     e.check(DType::F32);

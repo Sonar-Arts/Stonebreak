@@ -17,7 +17,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <set>
 #include <tuple>
 
@@ -446,6 +448,7 @@ Fields relief_window(Gen& g, const Args& a) {
     need(a, 2, 0, 0, "_relief_window");
     const int64_t wi = a.i[0], wj = a.i[1];
     return g.cache("cells._relief_windows", static_cast<size_t>(ki(g, "CELLS_RELIEF_CAP"))).get_or(key3(g, wi, wj), [&] {
+        ++g.counters["relief_windows"];
         if (kb(g, "CELLS_RELIEF_AMP_NORM"))
             throw std::logic_error("_relief_window: relief amp_norm is not ported (ReliefConfig.amp_norm)");
         if (kd(g, "CELLS_HILL_RELIEF") > 0.0)
@@ -522,8 +525,21 @@ SBTG_METHOD("_planner_input", planner_input);
 
 Cache& windows(Gen& g) { return g.cache("cells._windows", static_cast<size_t>(ki(g, "CELLS_WINDOWS_CAP"))); }
 
-// generator._run_planner_windows: the canonical planner windows `keys` (not cached yet), PLANNER_BATCH at a time.
-void run_planner_windows(Gen& g, const std::vector<Key2>& keys) {
+// The height-only planner window tier (see planner_height in stages/common/util.hpp): channel 0 of each window, 16 KB
+// instead of 180 KB, all on the device. Capacity: $SBTG_PLANNER_H_CAP, else the manifest's CELLS_WINDOWS_H_CAP, else
+// 32768 windows (512 MiB); 0 = off (every consumer reads _planner_cells, as before).
+size_t height_cap(Gen& g) {
+    if (const char* e = std::getenv("SBTG_PLANNER_H_CAP")) return static_cast<size_t>(std::max(0L, std::atol(e)));
+    const Json& c = g.manifest["constants"];
+    return c.has("CELLS_WINDOWS_H_CAP") ? static_cast<size_t>(c["CELLS_WINDOWS_H_CAP"].i64()) : 32768;
+}
+Cache& hwindows(Gen& g) { return g.cache("cells._windows_h", height_cap(g)); }
+
+// generator._run_planner_windows' batch: the canonical planner windows `keys` (claimed by this lane, compact), the
+// network at batch <= PLANNER_BATCH. Each window's numbers are independent of its batch (no cross-window op; the
+// engine plan is per-window indexed: bitwise for every batch size), so the batch size / composition is free.
+// height_only: the results go to the height tier (channel 0) instead of the 11-channel window cache - same numbers.
+void run_claimed_windows(Gen& g, const std::vector<Key2>& keys, bool height_only) {
     if (keys.empty()) return;
     const int64_t S = ki(g, "STRIDE"), W = ki(g, "WIN"), B = ki(g, "PLANNER_BATCH");
     if (B > kMaxW) throw std::logic_error("PLANNER_BATCH > 32");
@@ -537,9 +553,13 @@ void run_planner_windows(Gen& g, const std::vector<Key2>& keys) {
     i0 *= S;
     j0 *= S;
     const int64_t hn = i1 * S + W - i0, wn = j1 * S + W - j0;
-    if (hn * wn > 16 * static_cast<int64_t>(keys.size()) * W * W) {    // scattered: the bounding box would be wasteful
-        for (auto& k : keys) run_planner_windows(g, {k});
-        return;
+    g.counters["planner_windows"] += static_cast<long long>(keys.size());
+    if (g.profile > 0) {   // diagnostics: windows computed more than once (evicted, then needed again)
+        static std::mutex mu;
+        static std::set<Cache::Key> seen;
+        std::lock_guard<std::mutex> l(mu);
+        for (auto& k : keys)
+            if (!seen.insert(key3(g, k.first, k.second)).second) ++g.counters["planner_windows_again"];
     }
     Fields pin = call(g, "_planner_input", {i0, j0, hn, wn});
     const Tensor& xa = pin["0"];
@@ -559,7 +579,7 @@ void run_planner_windows(Gen& g, const std::vector<Key2>& keys) {
     const Tensor& k_patch = g.taps(kd(g, "CELLS_PATCH_BLUR_CELLS"));
     Tensor xs = g.gpu.empty(DType::F32, {B, n_in, W, W});
     Tensor o = g.gpu.empty(DType::F32, {B, n_out, W, W});
-    Cache& cache = windows(g);
+    Cache& cache = height_only ? hwindows(g) : windows(g);
     const long long ww = W * W;
     for (size_t start = 0; start < keys.size(); start += static_cast<size_t>(B)) {
         const size_t n = std::min(static_cast<size_t>(B), keys.size() - start);
@@ -570,9 +590,10 @@ void run_planner_windows(Gen& g, const std::vector<Key2>& keys) {
             ga.offs[2 * q] = static_cast<int>(keys[start + q].first * S - i0);
             ga.offs[2 * q + 1] = static_cast<int>(keys[start + q].second * S - j0);
         }
-        if (static_cast<int64_t>(n) < B) g.gpu.memset0(xs);         // torch.zeros(PLANNER_BATCH, ...) padding
         g.gpu.launch(g.gpu.kernel("sbtg_cells", "sbtg_gather"), ww * n_in * ni, ga);
-        run_model(g, "planner", static_cast<int>(B), xs.ptr, nullptr, o.ptr);
+        // Python pads to PLANNER_BATCH with zeros; the network runs at batch n here (same numbers per window, a
+        // partial batch no longer costs a full one).
+        run_model(g, "planner", ni, xs.ptr, nullptr, o.ptr);
         // D.blur(out, PATCH_BLUR_CELLS)[:n] -> height / desc / river / logacc -> generator2._sea_merge
         Tensor ob = ops::blur(g.gpu, planes(o, 0, static_cast<int64_t>(n)).view({static_cast<int64_t>(n) * n_out, W, W}),
                               k_patch);
@@ -615,8 +636,53 @@ void run_planner_windows(Gen& g, const std::vector<Key2>& keys) {
         g.gpu.launch(g.gpu.kernel("sbtg_cells", "sbtg_sea"), ww * ni, sa);
         for (size_t q = 0; q < n; ++q) {
             Tensor v = outs[q];
-            cache.get_or(key3(g, keys[start + q].first, keys[start + q].second), [&] { return Fields::of(v); });
+            cache.put(key3(g, keys[start + q].first, keys[start + q].second),
+                      Fields::of(height_only ? g.gpu.clone(v[0]) : v));
         }
+    }
+}
+
+// Splits `keys` into spatially compact groups (the planner input is computed over a group's bounding box; a sparse
+// set - e.g. the ring of windows around a cached area - would waste most of it) without dropping to batch 1:
+// sorted, then halved along the longer bounding-box axis until each group is compact.
+void run_grouped(Gen& g, std::vector<Key2> keys, bool height_only) {
+    if (keys.empty()) return;
+    const int64_t S = ki(g, "STRIDE"), W = ki(g, "WIN");
+    int64_t i0 = keys[0].first, j0 = keys[0].second, i1 = i0, j1 = j0;
+    for (auto& k : keys) {
+        i0 = std::min(i0, k.first);
+        j0 = std::min(j0, k.second);
+        i1 = std::max(i1, k.first);
+        j1 = std::max(j1, k.second);
+    }
+    const int64_t hn = (i1 - i0) * S + W, wn = (j1 - j0) * S + W;
+    if (keys.size() == 1 || hn * wn <= 16 * static_cast<int64_t>(keys.size()) * W * W) {
+        run_claimed_windows(g, keys, height_only);
+        return;
+    }
+    const bool rows = (i1 - i0) >= (j1 - j0);
+    std::sort(keys.begin(), keys.end(), [rows](const Key2& a, const Key2& b) {
+        return rows ? std::tie(a.first, a.second) < std::tie(b.first, b.second)
+                    : std::tie(a.second, a.first) < std::tie(b.second, b.first);
+    });
+    const size_t h = keys.size() / 2;
+    run_grouped(g, std::vector<Key2>(keys.begin(), keys.begin() + static_cast<std::ptrdiff_t>(h)), height_only);
+    run_grouped(g, std::vector<Key2>(keys.begin() + static_cast<std::ptrdiff_t>(h), keys.end()), height_only);
+}
+
+// generator._run_planner_windows: the canonical planner windows `keys` not cached yet. With lanes, a window another
+// lane is computing is left to it (claims; the consumer waits for it in the cache).
+void run_planner_windows(Gen& g, const std::vector<Key2>& keys, bool height_only = false) {
+    Cache& cache = height_only ? hwindows(g) : windows(g);
+    std::vector<Key2> mine;
+    mine.reserve(keys.size());
+    for (auto& k : keys)
+        if (cache.claim(key3(g, k.first, k.second))) mine.push_back(k);
+    try {
+        run_grouped(g, mine, height_only);
+    } catch (...) {
+        for (auto& k : mine) cache.release(key3(g, k.first, k.second));
+        throw;
     }
 }
 
@@ -663,6 +729,47 @@ Fields planner_cells(Gen& g, const Args& a) {
 }
 SBTG_METHOD("_planner_cells", planner_cells);
 
+// Channel 0 of _planner_cells from the height tier (native-only method; planner_height() falls back to _planner_cells
+// when it is not routed). Same window list, same summation order (overlap_add is per channel), so bit for bit
+// _planner_cells(...)[0].
+Fields planner_height_m(Gen& g, const Args& a) {
+    need(a, 4, 0, 0, "_planner_height");
+    const int64_t ci0 = a.i[0], cj0 = a.i[1], hc = a.i[2], wc = a.i[3];
+    if (height_cap(g) == 0 || !g.native("_planner_cells") || !g.native("_window"))
+        return Fields::of(call(g, "_planner_cells", {ci0, cj0, hc, wc}).one()[0]);
+    const int64_t S = ki(g, "STRIDE"), W = ki(g, "WIN");
+    std::vector<int64_t> wis, wjs;
+    for (int64_t wi = floordiv(ci0 - W, S) + 1; wi <= floordiv(ci0 + hc - 1, S); ++wi) wis.push_back(wi);
+    for (int64_t wj = floordiv(cj0 - W, S) + 1; wj <= floordiv(cj0 + wc - 1, S); ++wj) wjs.push_back(wj);
+    Cache& hcache = hwindows(g);
+    Cache& full = windows(g);
+    const size_t band = std::max<size_t>(1, (hcache.cap() / 2) / std::max<size_t>(1, wjs.size()));
+    for (size_t r = 0; r < wis.size(); r += band) {
+        std::vector<Key2> keys;
+        for (size_t q = r; q < std::min(wis.size(), r + band); ++q)
+            for (int64_t wj : wjs) {
+                const Cache::Key k = key3(g, wis[q], wj);
+                if (!hcache.contains(k) && !full.contains(k)) keys.emplace_back(wis[q], wj);
+            }
+        run_planner_windows(g, keys, true);
+    }
+    std::vector<Item> items;
+    for (int64_t wi : wis) {
+        for (int64_t wj : wjs) {
+            const int64_t a0 = wi * S, b0 = wj * S;
+            const int64_t r0 = std::max(ci0, a0), r1 = std::min(ci0 + hc, a0 + W);
+            const int64_t s0 = std::max(cj0, b0), s1 = std::min(cj0 + wc, b0 + W);
+            if (r0 >= r1 || s0 >= s1) continue;
+            const Cache::Key k = key3(g, wi, wj);
+            if (!hcache.contains(k) && !full.contains(k)) run_planner_windows(g, {{wi, wj}}, true);   // evicted meanwhile
+            Tensor h = hcache.get_or(k, [&] { return Fields::of(g.gpu.clone(call(g, "_window", {wi, wj}).one()[0])); }).one();
+            items.push_back({h, a0 - ci0, b0 - cj0});
+        }
+    }
+    return Fields::of(overlap_add(g, 1, hc, wc, items, fade2d(g, "CELLS_PLANNER_FADE", 1))[0]);
+}
+SBTG_METHOD("_planner_height", planner_height_m);
+
 // ---------------------------------------------------------------------------------------------- drainage
 // generator._drainage_inputs -> (planner height (EXT, EXT), controls).
 Fields drainage_inputs(Gen& g, const Args& a) {
@@ -671,6 +778,7 @@ Fields drainage_inputs(Gen& g, const Args& a) {
     const int64_t ci0 = a.i[0] * core - ap, cj0 = a.i[1] * core - ap;
     Tensor height = g.cache("cells._drainage_in", static_cast<size_t>(ki(g, "CELLS_DRAINAGE_IN_CAP")))
                         .get_or(key3(g, a.i[0], a.i[1]), [&] {
+                            if (g.native("_planner_height")) return Fields::of(planner_height(g, ci0, cj0, n, n));
                             Tensor pc = call(g, "_planner_cells", {ci0, cj0, n, n}).one();
                             return Fields::of(g.gpu.clone(pc[0]));
                         })
@@ -765,6 +873,7 @@ Cache& hydro_cache(Gen& g) { return g.cache("cells._hydro_windows", static_cast<
 Fields route_window(Gen& g, const Args& a) {
     need(a, 2, 0, 0, "_route_window");
     return route_cache(g).get_or(key3(g, a.i[0], a.i[1]), [&] {
+        ++g.counters["route_windows"];
         Fields ri = call(g, "_route_inputs", {a.i[0], a.i[1]});
         Tensor h = g.gpu.to_host(ri["0"]), p = g.gpu.to_host(ri["1"]), fl = g.gpu.to_host(ri["2"]);
         g.gpu.sync();
@@ -851,6 +960,7 @@ Tensor drainage_fields(Gen& g, const Tensor& acc, const Tensor& d8, int64_t n) {
 Fields hydro_window(Gen& g, const Args& a) {
     need(a, 2, 0, 0, "_hydro_window");
     return hydro_cache(g).get_or(key3(g, a.i[0], a.i[1]), [&] {
+        ++g.counters["hydro_windows"];
         Fields pred = call(g, "_hydro_pred", {a.i[0], a.i[1]});
         if (!kb(g, "CELLS_ROUTED_DRAINAGE") && !pred.empty()) return pred;
         auto r = route_of(g, call(g, "_stitched_route", {a.i[0], a.i[1]}));
@@ -908,8 +1018,27 @@ void prefetch_drainage(Gen& g, const std::vector<Key2>& keys) {
                 if (seen.insert({oi, oj}).second && !rte.contains(key3(g, oi, oj))) routes.emplace_back(oi, oj);
     }
     routes.resize(std::min(routes.size(), std::max<size_t>(1, rte.cap() / 2)));
+    {   // lanes: a route window another lane is computing is left to it
+        std::vector<Key2> mine;
+        for (auto& k : routes)
+            if (rte.claim(key3(g, k.first, k.second))) mine.push_back(k);
+        routes.swap(mine);
+    }
+    struct Unclaim {   // claims not filled (a failure) are released
+        Gen& g;
+        Cache& c;
+        std::vector<Key2>& keys;
+        ~Unclaim() {
+            for (auto& k : keys) c.release(key3(g, k.first, k.second));
+        }
+    } unclaim_routes{g, rte, routes};
     cells::HostPool& pool = cells::HostPool::get();
+    if (routes.size() == 1) {   // not batched below: computed by the method (its own claim)
+        rte.release(key3(g, routes[0].first, routes[0].second));
+        routes.clear();
+    }
     if (routes.size() > 1) {
+        g.counters["route_windows"] += static_cast<long long>(routes.size());
         std::vector<std::shared_ptr<Route>> res(routes.size());
         std::vector<std::unique_ptr<Fence>> fences;
         std::vector<std::future<void>> futs;
@@ -927,10 +1056,22 @@ void prefetch_drainage(Gen& g, const std::vector<Key2>& keys) {
         join(futs);
         for (size_t q = 0; q < routes.size(); ++q) {
             std::shared_ptr<const Route> r = res[q];
-            rte.get_or(key3(g, routes[q].first, routes[q].second), [&] { return route_fields(r); });
+            rte.put(key3(g, routes[q].first, routes[q].second), route_fields(r));
         }
     }
     if (todo.size() < 2) return;
+    {
+        std::vector<Key2> mine;
+        for (auto& k : todo)
+            if (hyd.claim(key3(g, k.first, k.second))) mine.push_back(k);
+        todo.swap(mine);
+    }
+    Unclaim unclaim_hydro{g, hyd, todo};
+    if (todo.size() < 2) {   // not batched: computed by the method (its own claim)
+        for (auto& k : todo) hyd.release(key3(g, k.first, k.second));
+        todo.clear();
+        return;
+    }
     struct Job {
         std::map<Key2, std::shared_ptr<const Route>> got;
         Tensor inflow;
@@ -939,6 +1080,7 @@ void prefetch_drainage(Gen& g, const std::vector<Key2>& keys) {
     };
     std::vector<Job> jobs(todo.size());
     std::vector<std::future<void>> futs;
+    g.counters["hydro_windows"] += static_cast<long long>(todo.size());
     for (size_t q = 0; q < todo.size(); ++q) {
         const auto [wi, wj] = todo[q];
         Job& j = jobs[q];
@@ -962,7 +1104,7 @@ void prefetch_drainage(Gen& g, const std::vector<Key2>& keys) {
     join(futs);
     for (size_t q = 0; q < todo.size(); ++q) {
         Job& j = jobs[q];
-        hyd.get_or(key3(g, todo[q].first, todo[q].second), [&] { return Fields::of(drainage_fields(g, j.acc, j.d8, n)); });
+        hyd.put(key3(g, todo[q].first, todo[q].second), Fields::of(drainage_fields(g, j.acc, j.d8, n)));
     }
 }
 
@@ -1025,15 +1167,14 @@ Tensor lapse_climate(Gen& g, const Fields& c, const Tensor& reg) {
 Fields overview_cells(Gen& g, const Args& a) {
     need(a, 4, 0, 0, "overview_cells");
     const int64_t ci0 = a.i[0], cj0 = a.i[1], hc = a.i[2], wc = a.i[3];
-    Tensor pc = call(g, "_planner_cells", {ci0, cj0, hc, wc}).one();
-    Tensor height = soft_cap_peaks(g, pc[0]);
+    Tensor height = soft_cap_peaks(g, planner_height(g, ci0, cj0, hc, wc));
     Fields dr = call(g, "drainage", {ci0, cj0, hc, wc});
     Tensor logacc = dr.empty() ? call(g, "_planner_cells", {ci0, cj0, hc, wc}).one()[10] : dr["logacc"];
     Fields c = call(g, "controls", {ci0, cj0, hc, wc});
     const double sigma = kd(g, "LAPSE_REGIONAL_SIGMA_CELLS");
     const int64_t m = static_cast<int64_t>(std::ceil(3.0 * sigma)) + 1;
-    Tensor big = call(g, "_planner_cells", {ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m}).one();
-    Tensor reg = ops::crop(g.gpu, ops::blur(g.gpu, soft_cap_peaks(g, big[0]), g.taps(sigma)), static_cast<int>(m),
+    Tensor big = planner_height(g, ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m);
+    Tensor reg = ops::crop(g.gpu, ops::blur(g.gpu, soft_cap_peaks(g, big), g.taps(sigma)), static_cast<int>(m),
                            static_cast<int>(m), static_cast<int>(hc), static_cast<int>(wc));
     if (g.st.sea_shelf) height = call(g, "shelf", {ci0, cj0, 1}, {height}).one();   // generator2: shelf(h, ci0, cj0, 1)
     Fields out;
@@ -1097,8 +1238,7 @@ Fields swamp_relief_cells(Gen& g, const Args& a) {
     const int64_t m = ki(g, "CELLS_SWAMP_MARGIN_CELLS");
     const double sigma = kd(g, "LAPSE_REGIONAL_SIGMA_CELLS");
     const int64_t mr = static_cast<int64_t>(std::ceil(3.0 * sigma)) + 1;
-    Tensor big = call(g, "_planner_cells", {ci0 - m - mr, cj0 - m - mr, hc + 2 * (m + mr), wc + 2 * (m + mr)}).one();
-    Tensor cells = soft_cap_peaks(g, big[0]);
+    Tensor cells = soft_cap_peaks(g, planner_height(g, ci0 - m - mr, cj0 - m - mr, hc + 2 * (m + mr), wc + 2 * (m + mr)));
     Fields ctrl = call(g, "controls", {ci0 - m, cj0 - m, hc + 2 * m, wc + 2 * m});
     const int H = static_cast<int>(hc + 2 * m), W = static_cast<int>(wc + 2 * m);
     Tensor reg = ops::crop(g.gpu, ops::blur(g.gpu, cells, g.taps(sigma)), static_cast<int>(mr), static_cast<int>(mr), H, W);
@@ -1145,7 +1285,7 @@ Fields sea_fields_cells(Gen& g, const Args& a) {
     const int64_t min_cells = ki(g, "CELLS_LAKE_SEED_MIN_CELLS"), max_cells = ki(g, "CELLS_SEA_PROFILE_MAX_CELLS");
     const int64_t m = std::max(ki(g, "CELLS_SEA_CELL_MARGIN") + min_cells + 1, max_cells + 1);
     const int64_t H = hc + 2 * m, W = wc + 2 * m, n = H * W;
-    Tensor cells = call(g, "_planner_cells", {ci0 - m, cj0 - m, H, W}).one()[0];
+    Tensor cells = planner_height(g, ci0 - m, cj0 - m, H, W);
     Tensor trend = call(g, "_layout", {ci0 - m, cj0 - m, H, W})["trend"];
     Tensor open_land = call(g, "C2.continent2", {ci0 - m, cj0 - m, H, W})["1"];
     Tensor sub = g.gpu.empty(DType::BOOL, {H, W}), land = g.gpu.empty(DType::BOOL, {H, W});

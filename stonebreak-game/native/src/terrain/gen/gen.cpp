@@ -1,5 +1,6 @@
 #include "gen/gen.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
@@ -17,64 +18,181 @@ Fields Cache::to(const Fields& f, bool host) {
     return o;
 }
 
-void Cache::settle() {
+void Cache::mark(const Fields& f) const {
+    if (!core_->shared_) return;
+    for (auto& [n, t] : f.items)
+        if (t.mem && t.mem->pool != nullptr && t.mem->pool->lane != lane_)
+            t.mem->foreign.fetch_or(1u << lane_, std::memory_order_relaxed);
+}
+
+std::shared_ptr<CiEvent> Cache::record() const {
+    if (!core_->shared_) return nullptr;
+    auto e = std::make_shared<CiEvent>();
+    e->ci = &gpu_->ci;
+    e->rt = gpu_->rt;
+    e->ev = gpu_->ci.event_create(gpu_->rt);
+    if (e->ev == nullptr || gpu_->ci.event_record(gpu_->rt, e->ev, gpu_->stream) != 0) {
+        gpu_->sync();   // no event: the value is complete once this stream is idle
+        return nullptr;
+    }
+    return e;
+}
+
+void Cache::adopt(CacheCore::Entry& e) {
+    if (!core_->shared_ || e.lane == lane_) return;
+    if (e.ev) gpu_->check(gpu_->ci.stream_wait(gpu_->rt, gpu_->stream, e.ev->ev), "ci_stream_wait");
+    mark(e.v);
+}
+
+void Cache::settle(std::unique_lock<std::mutex>&) {
     // GPU tier over its cap: its least recent entries spill to the host tier (Python's popitem(last=False) + _spill);
-    // host tier over the rest of the cap: its least recent entries are dropped.
-    const size_t host_cap = cap_ - gpu_cap_;
-    while (gpu_order_.size() > gpu_cap_) {
-        Key k = gpu_order_.back();
-        gpu_order_.pop_back();
-        Entry& e = map_.at(k);
+    // host tier over the rest of the cap: its least recent entries are dropped. The copies run on this lane's stream.
+    CacheCore& c = *core_;
+    const size_t host_cap = c.cap_ - c.gpu_cap_;
+    while (c.gpu_order_.size() > c.gpu_cap_) {
+        Key k = c.gpu_order_.back();
+        c.gpu_order_.pop_back();
+        CacheCore::Entry& e = c.map_.at(k);
         if (host_cap == 0) {
-            map_.erase(k);
+            c.map_.erase(k);
             continue;
         }
+        adopt(e);
         e.v = to(e.v, true);
+        e.lane = lane_;
+        e.ev = record();
         e.gpu = false;
-        host_order_.push_front(k);
-        e.it = host_order_.begin();
-        if (host_order_.size() > host_cap) {
-            map_.erase(host_order_.back());
-            host_order_.pop_back();
+        c.host_order_.push_front(k);
+        e.it = c.host_order_.begin();
+        if (c.host_order_.size() > host_cap) {
+            c.map_.erase(c.host_order_.back());
+            c.host_order_.pop_back();
         }
     }
+}
+
+bool Cache::contains(const Key& k) const {
+    std::lock_guard<std::mutex> l(core_->mu_);
+    return core_->map_.count(k) != 0;
+}
+
+size_t Cache::size() const {
+    std::lock_guard<std::mutex> l(core_->mu_);
+    return core_->map_.size();
+}
+
+void Cache::clear() {
+    std::lock_guard<std::mutex> l(core_->mu_);
+    CacheCore& c = *core_;
+    for (auto it = c.map_.begin(); it != c.map_.end();) {   // pending entries stay: their lanes fill them
+        if (it->second.ready) it = c.map_.erase(it);
+        else ++it;
+    }
+    c.gpu_order_.clear();
+    c.host_order_.clear();
+}
+
+bool Cache::claim(const Key& k) {
+    std::lock_guard<std::mutex> l(core_->mu_);
+    auto [it, fresh] = core_->map_.try_emplace(k);
+    if (!fresh) return false;
+    it->second.owner = lane_;
+    return true;
+}
+
+void Cache::release(const Key& k) {
+    {
+        std::lock_guard<std::mutex> l(core_->mu_);
+        auto it = core_->map_.find(k);
+        if (it != core_->map_.end() && !it->second.ready && it->second.owner == lane_) core_->map_.erase(it);
+    }
+    core_->cv_.notify_all();
 }
 
 Fields Cache::get_or(const Key& k, const std::function<Fields()>& fn) {
-    auto it = map_.find(k);
-    if (it != map_.end()) {
-        Entry& e = it->second;
-        if (e.gpu) {
-            gpu_order_.splice(gpu_order_.begin(), gpu_order_, e.it);
-            return e.v;
+    CacheCore& c = *core_;
+    std::unique_lock<std::mutex> l(c.mu_);
+    for (;;) {
+        auto it = c.map_.find(k);
+        if (it == c.map_.end()) {
+            c.map_[k].owner = lane_;   // pending: other lanes wait for this one
+            l.unlock();
+            Fields v;
+            try {
+                v = fn();
+            } catch (...) {
+                release(k);
+                throw;
+            }
+            put(k, v);
+            return v;
         }
-        host_order_.erase(e.it);
-        e.v = to(e.v, false);
-        e.gpu = true;
-        gpu_order_.push_front(k);
-        e.it = gpu_order_.begin();
-        Fields v = e.v;
-        settle();
-        return v;
+        CacheCore::Entry& e = it->second;
+        if (e.ready) {
+            if (e.gpu) {
+                c.gpu_order_.splice(c.gpu_order_.begin(), c.gpu_order_, e.it);
+                adopt(e);
+                return e.v;
+            }
+            c.host_order_.erase(e.it);
+            adopt(e);
+            e.v = to(e.v, false);
+            e.lane = lane_;
+            e.ev = record();
+            e.gpu = true;
+            c.gpu_order_.push_front(k);
+            e.it = c.gpu_order_.begin();
+            Fields v = e.v;
+            settle(l);
+            return v;
+        }
+        if (e.owner == lane_) {   // re-entrant need of a key this lane is computing: compute it here too
+            l.unlock();
+            Fields v = fn();
+            put(k, v);
+            return v;
+        }
+        c.cv_.wait(l);
     }
-    Fields v = fn();
-    put(k, v);
-    return v;
 }
 
 void Cache::put(const Key& k, Fields v) {
-    auto it = map_.find(k);
-    if (it != map_.end()) {
-        Entry& e = it->second;
-        (e.gpu ? gpu_order_ : host_order_).erase(e.it);
-        map_.erase(it);
+    CacheCore& c = *core_;
+    std::shared_ptr<CiEvent> ev = record();
+    {
+        std::unique_lock<std::mutex> l(c.mu_);
+        auto it = c.map_.find(k);
+        if (it != c.map_.end() && it->second.ready) (it->second.gpu ? c.gpu_order_ : c.host_order_).erase(it->second.it);
+        CacheCore::Entry& e = c.map_[k];
+        e.v = std::move(v);
+        e.ready = true;
+        e.owner = -1;
+        e.gpu = true;
+        e.lane = lane_;
+        e.ev = std::move(ev);
+        c.gpu_order_.push_front(k);
+        e.it = c.gpu_order_.begin();
+        settle(l);
     }
-    gpu_order_.push_front(k);
-    map_.emplace(k, Entry{std::move(v), gpu_order_.begin(), true});
-    settle();
+    c.cv_.notify_all();
 }
 
-Gen::Gen(Gpu& g, Json m) : gpu(g), manifest(std::move(m)) {}
+Shared::~Shared() {
+    for (auto& [n, m] : models)
+        if (m != nullptr && ci != nullptr) ci->model_destroy(m);
+}
+
+bool Shared::shares(const std::string& name) {
+    static const std::set<std::string> names = {
+        "cells._windows", "cells._windows_h", "cells._relief_windows", "cells._drainage_in", "cells._route_windows",
+        "cells._hydro_windows", "_climate_windows", "detail._detail_windows", "detail._sr_windows",
+        "detail._sr_windows_look", "detail._sr15_windows", "detail._sr15_windows_look"};
+    return names.count(name) != 0;
+}
+
+Gen::Gen(Gpu& g, Json m) : gpu(g), manifest(std::move(m)) {
+    if (const char* p = std::getenv("SBTG_PROFILE")) profile = std::atoi(p);
+}
 
 Gen::~Gen() {
     for (auto& [n, mo] : models_)
@@ -119,6 +237,14 @@ Fields Gen::call(const std::string& method, const Args& a) {
     } depth(*this);
     if (native(method)) {
         ++native_calls[method];
+        if (profile > 0) {
+            if (profile > 1) gpu.sync();
+            const auto t0 = std::chrono::steady_clock::now();
+            Fields r = MethodRegistry::all().at(method)(*this, a);
+            if (profile > 1) gpu.sync();
+            prof_s[method] += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            return r;
+        }
         return MethodRegistry::all().at(method)(*this, a);
     }
     if (!python) throw std::logic_error("method '" + method + "' is not native and there is no Python host");
@@ -163,7 +289,9 @@ const Tensor& Gen::taps(double sigma) {
 }
 
 Cache& Gen::cache(const std::string& name, size_t cap) {
-    auto it = caches_.find(name);
+    const bool sh = shared && Shared::shares(name);
+    const std::string key = sh ? name + "|" + st.climate_layout : name;
+    auto it = caches_.find(key);
     if (it != caches_.end()) return *it->second;
     // Python's GPU shares (generator.py / generator2.py _LRU(gpu, host)); everything else stays on the GPU.
     static const std::map<std::string, size_t> gpu_caps = {
@@ -172,27 +300,49 @@ Cache& Gen::cache(const std::string& name, size_t cap) {
         {"detail._sr_windows", 32}, {"detail._sr15_windows", 32}};
     auto g = gpu_caps.find(name);
     size_t gc = g != gpu_caps.end() ? g->second : cap;
-    return *caches_.emplace(name, std::make_unique<Cache>(&gpu, cap, gc)).first->second;
+    if (sh) {   // one core per (name, climate layout) for every lane: layouts never mix, so nothing is cleared
+        std::lock_guard<std::mutex> l(shared->mu);
+        auto& core = shared->cores[key];
+        if (!core) core = std::make_shared<CacheCore>(cap, gc, true);
+        return *caches_.emplace(key, std::make_unique<Cache>(core, &gpu, lane)).first->second;
+    }
+    return *caches_.emplace(key, std::make_unique<Cache>(&gpu, cap, gc)).first->second;
 }
 
 void Gen::clear_caches() {
-    for (auto& [n, c] : caches_) c->clear();
+    for (auto& [n, c] : caches_)
+        if (!c->shared()) c->clear();
 }
 
 ci_model* Gen::model(const std::string& name) {
     auto it = models_.find(name);
     if (it != models_.end()) return it->second.first;
     if (!manifest.has("models") || !manifest["models"].has(name)) return nullptr;
+    std::unique_lock<std::mutex> shl;
+    if (shared) {   // lanes: one model per pipeline with an execution context per lane
+        shl = std::unique_lock<std::mutex>(shared->mu);
+        auto s = shared->models.find(name);
+        if (s != shared->models.end()) {
+            models_[name] = {s->second, false};
+            return s->second;
+        }
+    }
     const Json& m = manifest["models"][name];
     ci_model_options o{};
     o.max_batch = static_cast<int32_t>(m.i64_or("max_batch", 1));
-    o.contexts = 1;
+    o.contexts = shared ? shared->lanes : 1;
     o.graphs = 1;
     std::string path = m["path"].str();
     if (!base_dir.empty() && !path.empty() && path[0] != '/' && path.find(':') == std::string::npos)
         path = base_dir + "/" + path;
     ci_model* h = gpu.ci.model_load(gpu.rt, path.c_str(), &o);
     if (h == nullptr) throw EngineError("ci_model_load(" + path + "): " + gpu.ci.last_error());
+    if (shared) {
+        shared->ci = &gpu.ci;
+        shared->models[name] = h;
+        models_[name] = {h, false};
+        return h;
+    }
     models_[name] = {h, true};
     return h;
 }

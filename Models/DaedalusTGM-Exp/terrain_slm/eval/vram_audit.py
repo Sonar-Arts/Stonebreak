@@ -105,12 +105,14 @@ def spiral(n: int):
 def main(argv=None) -> int:
     from terrain_slm.paths import MODEL_DIR
     from terrain_slm.tgmpipe.service import _bytes
-    from terrain_slm.world.generator import GenConfig, WorldGenerator
+    from terrain_slm.model_files import DEFAULT_MODEL, require_exp2_model
+    from terrain_slm.world.generator import GenConfig
+    from terrain_slm.world.generator2 import WorldGenerator2
     from terrain_slm.world.tiles import TileBuilder
     from terrain_slm.world.world_config import WorldConfig
 
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.eval.vram_audit")
-    ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
+    ap.add_argument("model_path", nargs="?", default=DEFAULT_MODEL)
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--cache-size", default="4G", help="as the service's --cache-size")
     ap.add_argument("--tiles", type=int, default=36)
@@ -126,6 +128,7 @@ def main(argv=None) -> int:
     model_dir = Path(args.model_path)
     if not model_dir.is_absolute():
         model_dir = MODEL_DIR / model_dir
+    require_exp2_model(model_dir)       # the service's generator: EXP-2 only (v4 removed 2026-11-19)
     regions = max(64, min(8192, _bytes(args.cache_size) // (384 * 384 * 4)))   # the service's sizing
     report: dict = {"cache_regions": regions}
 
@@ -135,9 +138,10 @@ def main(argv=None) -> int:
     show("CUDA context only", [("= NVML process total", report["context_only"].get("process_bytes", 0))])
 
     t0 = time.monotonic()
-    gen = WorldGenerator(model_dir, args.seed, str(device),
-                         GenConfig(t_start=0.6, steps=8, amp_scale=1.0, river_log_threshold=None),
-                         cache_regions=regions)
+    gen = WorldGenerator2(model_dir, args.seed, str(device),
+                          GenConfig(t_start=0.6, steps=8, amp_scale=1.0, river_log_threshold=None),
+                          cache_regions=regions)
+    gen.use_climate_layout("belts")
     rows = audit(gen, device)
     show(f"model loaded ({time.monotonic() - t0:.1f} s) {gen.model_id}", rows)
     report["loaded"] = rows

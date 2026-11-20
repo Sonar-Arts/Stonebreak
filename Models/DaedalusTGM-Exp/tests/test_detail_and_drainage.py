@@ -150,22 +150,28 @@ def test_biomenet_receptive_field_fits_inside_the_tile_margin():
         assert radius < RP.BLOCK_MARGIN, f"receptive-field radius {radius} >= margin {RP.BLOCK_MARGIN}"
 
 
-def test_v4_tile_with_detail_sampler_and_biome_sidecar_matches_a_bigger_request():
-    """The shipped v4 path end to end (detail windows, routed drainage, river stages, biome sidecar on
-    pre-river ground): a tile's planes equal the same blocks cut from a larger request."""
+def test_release_tile_with_detail_sampler_and_biome_sidecar_matches_a_bigger_request():
+    """The shipped release end to end through the service's generator (EXP-2 detail windows, routed drainage, river
+    stages, biome sidecar on pre-river ground): a tile's planes equal the same blocks cut from a larger request.
+    (Was the v4 path; v4 was removed 2026-11-19.)"""
     import pytest
-    from pathlib import Path
-    v4 = Path(__file__).resolve().parents[1] / "checkpoints/v4"
-    if not (v4 / "detail.pt").exists() or not torch.cuda.is_available():
-        pytest.skip("no v4 model / GPU")
-    from terrain_slm.world.generator import WorldGenerator
+    from terrain_slm.model_files import DEFAULT_MODEL, lfs_pointers
+    from terrain_slm.paths import MODEL_DIR
+    model = MODEL_DIR / DEFAULT_MODEL
+    if not (model / "detail.pt").exists() or lfs_pointers(model) or not torch.cuda.is_available():
+        pytest.skip(f"no {DEFAULT_MODEL} weights (git lfs pull) / GPU")
+    from terrain_slm.world.generator2 import WorldGenerator2
     from terrain_slm.world.tiles import TileBuilder
     from terrain_slm.world.world_config import WorldConfig
     dev = "cuda:1" if torch.cuda.device_count() > 1 else "cuda"
-    gen = WorldGenerator(v4, 7, dev)
+    gen = WorldGenerator2(model, 7, dev)
+    gen.use_climate_layout("belts")
     api = TileBuilder(gen, WorldConfig.GAME)
     assert gen.detail is not None and gen.biomenet is not None
-    small, big = api._blocks(0, 0, 64, 64, 2), api._blocks(-32, -32, 96, 96, 2)
+    with gen.lock:   # build() sets these per world under the lock; _blocks needs them set the same way
+        gen.set_block_scale(api.scale)
+        gen.use_seed(7)
+        small, big = api._blocks(0, 0, 64, 64, 2), api._blocks(-32, -32, 96, 96, 2)
     for k in range(4):   # height, biome, water, wet
         assert torch.equal(small[k], big[k][32:96, 32:96]), k
     assert gen.detail_failures == 0

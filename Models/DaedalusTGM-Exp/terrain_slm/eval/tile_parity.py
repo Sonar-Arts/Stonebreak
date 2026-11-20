@@ -30,15 +30,20 @@ def game_world():
 def build_all(args) -> dict[str, np.ndarray]:
     from terrain_slm.eval.vram_audit import spiral
     from terrain_slm.paths import MODEL_DIR
-    from terrain_slm.world.generator import GenConfig, WorldGenerator
+    from terrain_slm.model_files import require_exp2_model
+    from terrain_slm.world.generator import GenConfig
+    from terrain_slm.world.generator2 import WorldGenerator2
     from terrain_slm.world.tiles import TileBuilder
 
     torch.cuda.set_device(torch.device(args.device))
     model_dir = Path(args.model_path)
     if not model_dir.is_absolute():
         model_dir = MODEL_DIR / model_dir
-    gen = WorldGenerator(model_dir, args.seeds[0], args.device,
-                         GenConfig(t_start=0.6, steps=8, amp_scale=1.0, river_log_threshold=None))
+    require_exp2_model(model_dir)
+    # The service's generator and defaults (tgmpipe/service.py): EXP-2 only since v4 was removed (2026-11-19).
+    gen = WorldGenerator2(model_dir, args.seeds[0], args.device,
+                          GenConfig(t_start=0.6, steps=8, amp_scale=1.0, river_log_threshold=None))
+    gen.use_climate_layout("belts")
     gen.warm_up()
     builder = TileBuilder(gen, game_world())
     out = {}
@@ -57,7 +62,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m terrain_slm.eval.tile_parity")
     ap.add_argument("mode", choices=("dump", "check"))
     ap.add_argument("path")
-    ap.add_argument("model_path", nargs="?", default="checkpoints/v4")
+    from terrain_slm.model_files import DEFAULT_MODEL
+    ap.add_argument("model_path", nargs="?", default=DEFAULT_MODEL)
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--tiles", type=int, default=16)
     ap.add_argument("--overview", type=int, default=4)

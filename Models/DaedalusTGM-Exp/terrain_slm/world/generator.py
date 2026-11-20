@@ -915,6 +915,8 @@ class WorldGenerator:
         self.seed, self.device, self.cfg = seed, device, cfg
         self.relief_gain = 1.0   # sampled relief x this (EXP-2 knob; v4 stays 1.0, bit-exact)
         self.relief_preblur = RL.TREND_PREBLUR_SIGMA   # cells; trend blur before the relief node (v4: 4)
+        from terrain_slm.model_files import check_weights
+        check_weights(Path(model_dir))   # Git LFS pointers instead of weights: a clear error, never torch.load
         pk = torch.load(model_dir / "planner.pt", map_location=device, weights_only=False)
         self.planner = P.Planner(P.PlannerConfig(**pk["config"])).to(device).eval()
         self.planner.load_state_dict(pk["model"])

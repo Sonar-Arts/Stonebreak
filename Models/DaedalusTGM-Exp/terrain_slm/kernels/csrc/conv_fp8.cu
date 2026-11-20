@@ -38,12 +38,7 @@ __device__ __forceinline__ void mma_e4m3(float* d, const u32* a, const u32* b) {
                  : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]), "r"(b[1]));
 }
 
-// two floats -> two e4m3 bytes (lo in the low byte), round to nearest even, saturating
-__device__ __forceinline__ u16 pack_e4m3x2(float lo, float hi) {
-    u16 r;
-    asm("cvt.rn.satfinite.e4m3x2.f32 %0, %1, %2;" : "=h"(r) : "f"(hi), "f"(lo));
-    return r;
-}
+// pack_e4m3x2: conv_common.cuh
 
 struct Epi8 {
     const float* sc;      // F8_SC: (NP,) [x phases for MODE 1]
@@ -283,6 +278,204 @@ __global__ void __launch_bounds__(WM * WN * 32) hconv8_kernel(const HConv8Args a
             int n = bn + wn * WTN + c8 * 8;
             bool ok = task < 16 * CH && oy < a.H && ox < a.W && n < e.CO;
             offs[mt][k] = ok ? ((long long)(b * a.H + oy) * a.W + ox) * e.CO + n : -1;
+            rv[mt][k] = (ok && (e.flags & F8_RES)) ? *reinterpret_cast<const uint4*>(e.res + offs[mt][k])
+                                                    : make_uint4(0, 0, 0, 0);
+        }
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt) {
+#pragma unroll
+        for (int nt = 0; nt < NTL; ++nt)
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                float2 v;
+                v.x = acc[mt][nt][h * 2] * fs[nt][0] + fb[nt][0];
+                v.y = acc[mt][nt][h * 2 + 1] * fs[nt][1] + fb[nt][1];
+                *reinterpret_cast<float2*>(stg + (g + h * 8) * ESTR + nt * 8 + 2 * t) = v;
+            }
+        __syncwarp();
+#pragma unroll
+        for (int k = 0; k < TPL; ++k) {
+            int task = lane + 32 * k;
+            if (offs[mt][k] >= 0) {
+                int r = task / CH, c8 = task - r * CH;
+                const float* sp = stg + r * ESTR + c8 * 8;
+                float4 lo = *reinterpret_cast<const float4*>(sp), hi = *reinterpret_cast<const float4*>(sp + 4);
+                float v[8] = {lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w};
+                store8_fp8(e, offs[mt][k], v, rv[mt][k]);
+            }
+        }
+        __syncwarp();
+    }
+}
+
+// =====================================================================================================================
+// Halo-tiled stride-2 3x3 FP8 convolution (K4, 2026-11-19): hconv8_kernel over the stride-2 halo (dconv_kernel's
+// column-parity planes). Kernel type "dconv8" (chunk-major K order: its own numbers vs conv8's tap-major one).
+template <int TH, int TW, int BN, int WM, int WN, int ST>
+__global__ void __launch_bounds__(WM * WN * 32) dconv8_kernel(const HConv8Args a) {
+    constexpr int NT = WM * WN * 32;
+    constexpr int BM = TH * TW;
+    constexpr int WTM = BM / WM, WTN = BN / WN;
+    constexpr int MT = WTM / 16, NTL = WTN / 8;
+    static_assert(TW % 8 == 0 && WTM % 16 == 0 && WTN % 16 == 0, "tile shape");
+    constexpr int HR = 2 * TH + 1, NE = HR * (TW + 1), HN = NE + HR * TW;   // column-parity planes (dconv_kernel)
+    constexpr int A_ST = HN * 32, B_ST = BN * WROW8;    // bytes per stage
+
+    extern __shared__ __align__(16) u8 smem8[];
+    u8* sA = smem8;
+    u8* sB = smem8 + ST * A_ST;
+
+    const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
+    const int wm = warp / WN, wn = warp % WN;
+    const int num_n = a.NP / BN;
+    const int Ho = (a.H + 1) / 2, Wo = (a.W + 1) / 2;
+    const int tiles_x = (Wo + TW - 1) / TW, tiles_y = (Ho + TH - 1) / TH;
+    int pid = blockIdx.x;
+    const int pid_n = pid % num_n;
+    pid /= num_n;
+    const int bx = pid % tiles_x;
+    pid /= tiles_x;
+    const int by = pid % tiles_y, b = pid / tiles_y;
+    const int bn = pid_n * BN, oy0 = by * TH, ox0 = bx * TW;
+
+    auto load_stage = [&](int stage, int kc) {
+        u32 sa = smem_u32(sA + stage * A_ST);
+        for (int id = tid; id < HN * 2; id += NT) {
+            int r = id >> 1, q = id & 1;
+            int hr, hc;
+            if (r < NE) {
+                hr = r / (TW + 1);
+                hc = 2 * (r - hr * (TW + 1));
+            } else {
+                hr = (r - NE) / TW;
+                hc = 2 * (r - NE - hr * TW) + 1;
+            }
+            int iy = 2 * oy0 - 1 + hr, ix = 2 * ox0 - 1 + hc;
+            bool ok = iy >= 0 && iy < a.H && ix >= 0 && ix < a.W;
+            const u8* p = ok ? a.x + ((size_t)((b * a.H + iy) * a.W + ix)) * a.C + kc * 32 + q * 16 : a.x;
+            cp_async16(sa + r * 32 + swz32(r, q) * 16, p, ok);
+        }
+        u32 sb = smem_u32(sB + stage * B_ST);
+        const u8* wp = a.w + ((size_t)kc * a.NP + bn) * 288;
+        for (int id = tid; id < BN * 18; id += NT) {
+            int n = id / 18, cc = id - n * 18;
+            cp_async16(sb + n * WROW8 + cc * 16, wp + (size_t)n * 288 + cc * 16, true);
+        }
+    };
+
+    int fpy[MT], fpx[MT];
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt) {
+        int p = wm * WTM + mt * 16 + (lane & 15);
+        fpy[mt] = p / TW;
+        fpx[mt] = p - fpy[mt] * TW;
+    }
+    // B fragment rows for ldmatrix.x4: matrices (n 0-7, k 0-15), (n 0-7, k 16-31), (n 8-15, k 0-15), (n 8-15, k 16-31)
+    const int bn_l = (lane & 7) + ((lane >> 4) << 3), bk_l = ((lane >> 3) & 1) * 16;
+
+    float acc[MT][NTL][4];
+#pragma unroll
+    for (int i = 0; i < MT; ++i)
+#pragma unroll
+        for (int j = 0; j < NTL; ++j)
+#pragma unroll
+            for (int k = 0; k < 4; ++k) acc[i][j][k] = 0.0f;
+
+    const int nk = a.C / 32;
+#pragma unroll
+    for (int s = 0; s < ST - 1; ++s) {
+        if (s < nk) load_stage(s, s);
+        cp_commit();
+    }
+    for (int kc = 0; kc < nk; ++kc) {
+        cp_wait<ST - 2>();
+        __syncthreads();
+        {
+            int nx = kc + ST - 1;
+            if (nx < nk) load_stage(nx % ST, nx);
+            cp_commit();
+        }
+        const int stage = kc % ST;
+        const u8* As = sA + stage * A_ST;
+        const u8* Bs = sB + stage * B_ST;
+#pragma unroll
+        for (int tap = 0; tap < 9; ++tap) {
+            const int kh = tap / 3, kw = tap % 3;
+            u32 af[MT][4], bf[NTL][2];
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt) {
+                int hr = 2 * fpy[mt] + kh;
+                int row = kw == 1 ? NE + hr * TW + fpx[mt] : hr * (TW + 1) + fpx[mt] + (kw >> 1);
+                ldm_x4(af[mt], smem_u32(As + row * 32 + swz32(row, lane >> 4) * 16));
+            }
+#pragma unroll
+            for (int np = 0; np < NTL / 2; ++np) {
+                u32 r[4];
+                ldm_x4(r, smem_u32(Bs + (wn * WTN + np * 16 + bn_l) * WROW8 + tap * 32 + bk_l));
+                bf[2 * np][0] = r[0];
+                bf[2 * np][1] = r[1];
+                bf[2 * np + 1][0] = r[2];
+                bf[2 * np + 1][1] = r[3];
+            }
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt)
+#pragma unroll
+                for (int nt = 0; nt < NTL; ++nt) mma_e4m3(acc[mt][nt], af[mt], bf[nt]);
+        }
+    }
+    cp_wait<0>();
+
+    // ------------------------------------------------------------------ epilogue (staged, as hconv.cu)
+    const Epi8& e = a.e;
+    const int g = lane >> 2, t = lane & 3;
+    if (e.flags & F8_EULER) {
+        if (bn == 0 && wn == 0 && t == 0) {
+            const float s0 = (e.flags & F8_SC) ? e.sc[0] : 1.0f;
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt)
+#pragma unroll
+                for (int h = 0; h < 2; ++h) {
+                    int p = wm * WTM + mt * 16 + g + h * 8;
+                    int py = p / TW, px = p - py * TW, oy = oy0 + py, ox = ox0 + px;
+                    if (oy >= Ho || ox >= Wo) continue;
+                    long long m = (long long)(b * Ho + oy) * Wo + ox;
+                    float x = e.xs[m] + e.dt * (acc[mt][0][h * 2] * s0);
+                    e.xs[m] = x;
+                    e.stem_in[m * e.stem_c] = to_h(x);
+                }
+        }
+        return;
+    }
+    constexpr int ESTR = WTN + 4;
+    __syncthreads();
+    float* stg = reinterpret_cast<float*>(smem8) + warp * 16 * ESTR;
+    float fs[NTL][2], fb[NTL][2];
+#pragma unroll
+    for (int nt = 0; nt < NTL; ++nt) {
+        int n = bn + wn * WTN + nt * 8 + 2 * t;
+        float s0 = (e.flags & F8_SC) ? e.sc[n] : 1.0f, s1 = (e.flags & F8_SC) ? e.sc[n + 1] : 1.0f;
+        bool f = (e.flags & F8_FILM) && n < e.CO;
+        fs[nt][0] = s0 * (f ? e.film[n] : 1.0f);
+        fs[nt][1] = s1 * (f ? e.film[n + 1] : 1.0f);
+        fb[nt][0] = f ? e.film[e.CO + n] : 0.0f;
+        fb[nt][1] = f ? e.film[e.CO + n + 1] : 0.0f;
+    }
+    constexpr int CH = WTN / 8;
+    constexpr int TPL = (16 * CH + 31) / 32;
+    uint4 rv[MT][TPL];
+    long long offs[MT][TPL];
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt)
+#pragma unroll
+        for (int k = 0; k < TPL; ++k) {
+            int task = lane + 32 * k;
+            int r = task / CH, c8 = task - r * CH;
+            int p = wm * WTM + mt * 16 + r;
+            int py = p / TW, px = p - py * TW;
+            int oy = oy0 + py, ox = ox0 + px;
+            int n = bn + wn * WTN + c8 * 8;
+            bool ok = task < 16 * CH && oy < Ho && ox < Wo && n < e.CO;
+            offs[mt][k] = ok ? ((long long)(b * Ho + oy) * Wo + ox) * e.CO + n : -1;
             rv[mt][k] = (ok && (e.flags & F8_RES)) ? *reinterpret_cast<const uint4*>(e.res + offs[mt][k])
                                                     : make_uint4(0, 0, 0, 0);
         }
@@ -614,4 +807,189 @@ __global__ void __launch_bounds__(256) quant8_kernel(const Quant8Args a) {
     }
     reinterpret_cast<uint2*>(a.y)[i] = make_uint2((u32)pack_e4m3x2(f[0], f[1]) | ((u32)pack_e4m3x2(f[2], f[3]) << 16),
                                                  (u32)pack_e4m3x2(f[4], f[5]) | ((u32)pack_e4m3x2(f[6], f[7]) << 16));
+}
+
+// =====================================================================================================================
+// Halo-tiled FP8 up-merge (K4, 2026-11-19; conv.cu uconv_kernel with e4m3 operands): per 32-channel chunk the
+// (TH+1) x (TW+1) low-resolution halo is loaded once and the phase's four taps run out of shared memory, then the skip
+// chunks. Kernel type "uconv8": K order chunk-major (chunk, tap, one k32 MMA), its own numbers (vs conv8 MODE 1's
+// tap-major order). Grid (spatial tiles x N tiles, 1, 4 phases); Hg % TH == 0, Wg % TW == 0. Weights: conv8's MODE 1
+// packing ((4 * NP, K) bytes, k = tap * C1 + c, then 4 * C1 + c), sc per phase (sc[phase * NP + n]).
+template <int TH, int TW, int BN, int WM, int WN, int ST>
+__global__ void __launch_bounds__(WM * WN * 32) uconv8_kernel(const Conv8Args a) {
+    constexpr int NT = WM * WN * 32;
+    constexpr int BM = TH * TW;
+    constexpr int WTM = BM / WM, WTN = BN / WN;
+    constexpr int MT = WTM / 16, NTL = WTN / 8;
+    static_assert(TW % 8 == 0 && WTM % 16 == 0 && WTN % 16 == 0, "tile shape");
+    constexpr int HC = TW + 1, HN = (TH + 1) * HC;
+    constexpr int AR = HN > BM ? HN : BM;
+    constexpr int A_ST = AR * 32, B_ST = 4 * BN * 32;   // bytes
+
+    extern __shared__ __align__(16) u8 smem8[];
+    u8* sA = smem8;
+    u8* sB = smem8 + ST * A_ST;
+
+    const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
+    const int wm = warp / WN, wn = warp % WN;
+    const int num_n = a.NP / BN;
+    const int pid_n = blockIdx.x % num_n, sp = blockIdx.x / num_n;
+    const int tiles_x = a.Wg / TW, tiles_y = a.Hg / TH;
+    const int tx = sp % tiles_x, ty = (sp / tiles_x) % tiles_y, b = sp / (tiles_x * tiles_y);
+    const int bn = pid_n * BN, y0 = ty * TH, x0 = tx * TW;
+    const int phase = blockIdx.z, py = phase >> 1, px = phase & 1;
+    const u8* wbase = a.w + (long long)phase * a.w_phase;
+
+    const int kc1 = a.C1 / 32, kc2 = a.C2 / 32;
+    const int n_it = kc1 + kc2;
+
+    auto load_stage = [&](int stage, int it) {
+        const u32 sa = smem_u32(sA + stage * A_ST);
+        const u32 sb = smem_u32(sB + stage * B_ST);
+        if (it < kc1) {
+            for (int id = tid; id < HN * 2; id += NT) {
+                int r = id >> 1, q = id & 1;
+                int hr = r / HC, hc = r - hr * HC;
+                int iy = y0 + py - 1 + hr, ix = x0 + px - 1 + hc;
+                bool ok = iy >= 0 && iy < a.H1 && ix >= 0 && ix < a.W1;
+                const u8* p = ok ? a.x1 + ((size_t)((b * a.H1 + iy) * a.W1 + ix)) * a.C1 + it * 32 + q * 16 : a.x1;
+                cp_async16(sa + r * 32 + swz32(r, q) * 16, p, ok);
+            }
+            for (int id = tid; id < 4 * BN * 2; id += NT) {   // (tap, n, 16 B half)
+                int t = id / (BN * 2), rem = id - t * BN * 2, n = rem >> 1, q = rem & 1;
+                const u8* wp = wbase + (size_t)(bn + n) * a.K + t * a.C1 + it * 32 + q * 16;
+                cp_async16(sb + t * BN * 32 + n * 32 + swz32(n, q) * 16, wp, true);
+            }
+        } else {
+            const int c0 = (it - kc1) * 32;
+            for (int id = tid; id < BM * 2; id += NT) {
+                int r = id >> 1, q = id & 1;
+                int i = r / TW, j = r - i * TW;
+                int iy = 2 * (y0 + i) + py, ix = 2 * (x0 + j) + px;
+                bool ok = iy < a.H2 && ix < a.W2;
+                const u8* p = ok ? a.x2 + ((size_t)((b * a.H2 + iy) * a.W2 + ix)) * a.C2 + c0 + q * 16 : a.x2;
+                cp_async16(sa + r * 32 + swz32(r, q) * 16, p, ok);
+            }
+            for (int id = tid; id < BN * 2; id += NT) {
+                int n = id >> 1, q = id & 1;
+                const u8* wp = wbase + (size_t)(bn + n) * a.K + 4 * a.C1 + c0 + q * 16;
+                cp_async16(sb + n * 32 + swz32(n, q) * 16, wp, true);
+            }
+        }
+    };
+
+    int hrow0[MT], srow[MT];
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt) {
+        int p = wm * WTM + mt * 16 + (lane & 15);
+        int i = p / TW, j = p - i * TW;
+        hrow0[mt] = i * HC + j;
+        srow[mt] = p;
+    }
+    const int bn_l = (lane & 7) + ((lane >> 4) << 3), bq_l = (lane >> 3) & 1;
+
+    float acc[MT][NTL][4];
+#pragma unroll
+    for (int i = 0; i < MT; ++i)
+#pragma unroll
+        for (int j = 0; j < NTL; ++j)
+#pragma unroll
+            for (int k = 0; k < 4; ++k) acc[i][j][k] = 0.0f;
+
+#pragma unroll
+    for (int s = 0; s < ST - 1; ++s) {
+        if (s < n_it) load_stage(s, s);
+        cp_commit();
+    }
+    for (int it = 0; it < n_it; ++it) {
+        cp_wait<ST - 2>();
+        __syncthreads();
+        {
+            int nx = it + ST - 1;
+            if (nx < n_it) load_stage(nx % ST, nx);
+            cp_commit();
+        }
+        const int stage = it % ST;
+        const u8* As = sA + stage * A_ST;
+        const u8* Bs = sB + stage * B_ST;
+        auto tap = [&](int row_off, const u8* Bt, bool seg0) {
+            u32 af[MT][4], bf[NTL][2];
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt) {
+                int row = seg0 ? hrow0[mt] + row_off : srow[mt];
+                ldm_x4(af[mt], smem_u32(As + row * 32 + swz32(row, lane >> 4) * 16));
+            }
+#pragma unroll
+            for (int np = 0; np < NTL / 2; ++np) {
+                u32 r[4];
+                int n = wn * WTN + np * 16 + bn_l;
+                ldm_x4(r, smem_u32(Bt + n * 32 + swz32(n, bq_l) * 16));
+                bf[2 * np][0] = r[0];
+                bf[2 * np][1] = r[1];
+                bf[2 * np + 1][0] = r[2];
+                bf[2 * np + 1][1] = r[3];
+            }
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt)
+#pragma unroll
+                for (int nt = 0; nt < NTL; ++nt) mma_e4m3(acc[mt][nt], af[mt], bf[nt]);
+        };
+        if (it < kc1) {
+#pragma unroll
+            for (int t = 0; t < 4; ++t) tap((t >> 1) * HC + (t & 1), Bs + t * BN * 32, true);
+        } else {
+            tap(0, Bs, false);
+        }
+    }
+    cp_wait<0>();
+
+    // ------------------------------------------------------------------ epilogue (conv8 MODE 1's, staged)
+    const Epi8& e = a.e;
+    const float* sc = e.sc + phase * a.NP;
+    const int g = lane >> 2, tq = lane & 3;
+    constexpr int ESTR = WTN + 4;
+    __syncthreads();
+    float* stg = reinterpret_cast<float*>(smem8) + warp * 16 * ESTR;
+    float fs[NTL][2], fb[NTL][2];
+#pragma unroll
+    for (int nt = 0; nt < NTL; ++nt) {
+        int n = bn + wn * WTN + nt * 8 + 2 * tq;
+        float s0 = (e.flags & F8_SC) ? sc[n] : 1.0f, s1 = (e.flags & F8_SC) ? sc[n + 1] : 1.0f;
+        bool f = (e.flags & F8_FILM) && n < e.CO;
+        fs[nt][0] = s0 * (f ? e.film[n] : 1.0f);
+        fs[nt][1] = s1 * (f ? e.film[n + 1] : 1.0f);
+        fb[nt][0] = f ? e.film[e.CO + n] : 0.0f;
+        fb[nt][1] = f ? e.film[e.CO + n + 1] : 0.0f;
+    }
+    constexpr int CH = WTN / 8;
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt) {
+#pragma unroll
+        for (int nt = 0; nt < NTL; ++nt)
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                float2 v;
+                v.x = acc[mt][nt][h * 2] * fs[nt][0] + fb[nt][0];
+                v.y = acc[mt][nt][h * 2 + 1] * fs[nt][1] + fb[nt][1];
+                *reinterpret_cast<float2*>(stg + (g + h * 8) * ESTR + nt * 8 + 2 * tq) = v;
+            }
+        __syncwarp();
+#pragma unroll
+        for (int task = lane; task < 16 * CH; task += 32) {
+            int r = task / CH, c8 = task - r * CH;
+            int p = wm * WTM + mt * 16 + r;
+            int i = p / TW, j = p - i * TW;
+            int n = bn + wn * WTN + c8 * 8;
+            if (n < e.CO) {
+                long long o = ((long long)b * a.Ho + 2 * (y0 + i) + py) * a.Wo + 2 * (x0 + j) + px;
+                const float* sp2 = stg + r * ESTR + c8 * 8;
+                float4 lo = *reinterpret_cast<const float4*>(sp2), hi = *reinterpret_cast<const float4*>(sp2 + 4);
+                float v[8] = {lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w};
+                uint4 rr = make_uint4(0, 0, 0, 0);
+                if (e.flags & F8_RES) rr = *reinterpret_cast<const uint4*>(e.res + o * e.CO + n);
+                store8_fp8(e, o * e.CO + n, v, rr);
+            }
+        }
+        __syncwarp();
+    }
 }

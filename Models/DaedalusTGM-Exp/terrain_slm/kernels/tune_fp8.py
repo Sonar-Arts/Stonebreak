@@ -124,10 +124,8 @@ def tune(shapes: list[tuple], dev, reps: int) -> dict:
 
 
 def load_table() -> dict:
-    if not TABLE.exists():
-        return {}
-    raw = json.loads(TABLE.read_text())
-    return {gpu: {tuple(json.loads(k)): tuple(v) for k, v in t.items()} for gpu, t in raw.items()}
+    """{GPU name: {key: config}}; a GPU without its own table borrows a same-capability GPU's (cuda_conv.TunedTables)."""
+    return C.load_tables(TABLE)
 
 
 def main(argv=None) -> int:

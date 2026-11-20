@@ -35,6 +35,7 @@ import ctypes
 import json
 import math
 import re
+import os
 import struct
 from pathlib import Path
 
@@ -284,7 +285,7 @@ def export_detail2(model, h: int, w: int, steps: int, t_start: float, path: Path
     menc, mmid, mdec = ns._model_blocks
     plan = []   # (s -> Launch, when, drop_unless): cuda_detail2._plan with every expert, tagged
 
-    def block(b, x, tmp, encoder: bool, site, silu_out: bool):
+    def block(b, x, tmp, encoder: bool, site, silu_out: bool, raw_out: bool = True):
         ads = list(ns._sites.get(site, []))
         if encoder:
             plan.append((lambda s, x=x: C.make_pixnorm(x[0], x[1]), 0, 0))
@@ -293,8 +294,9 @@ def export_detail2(model, h: int, w: int, steps: int, t_start: float, path: Path
         plan.append((lambda s, c0=c0, x=x, tmp=tmp, tab=tab: c0(x[1], film=tab[s], out_silu=tmp), 0, 0))
         o = x[1] if silu_out else None
         site_mask = sum(1 << bit[st] for st in ads)
-        plan.append((lambda s, c1=c1, x=x, tmp=tmp, o=o: c1(tmp, res=x[0], res_scale=ns._rs_x, clip=True,
-                                                             out_raw=x[0], out_silu=o), 0, site_mask))
+        r_out = x[0] if (raw_out or ads) else None   # K4: the sampler skips the dead raw store of a level's last block
+        plan.append((lambda s, c1=c1, x=x, tmp=tmp, o=o, r_out=r_out: c1(tmp, res=x[0], res_scale=ns._rs_x, clip=True,
+                                                                         out_raw=r_out, out_silu=o), 0, site_mask))
         for k, style in enumerate(ads):
             dn, md, up, rp = ns._adapters[style, site]
             a1, a2 = ns._ad_bufs[site[1], rp]
@@ -313,14 +315,15 @@ def export_detail2(model, h: int, w: int, steps: int, t_start: float, path: Path
         plan.append((lambda s, i=i: L["down", i](enc[i][1], out_raw=enc[i + 1][0],
                                                   out_silu=enc[i + 1][1] if i + 1 == n_lvl else None), 0, 0))
     for bi, b in enumerate(mmid):
-        block(b, enc[n_lvl], tmp_enc[n_lvl], False, ("mid", n_lvl, bi), silu_out=True)
+        block(b, enc[n_lvl], tmp_enc[n_lvl], False, ("mid", n_lvl, bi), silu_out=True, raw_out=bi < len(mmid) - 1)
     for i in reversed(range(n_lvl)):
         src = enc[n_lvl][1] if i == n_lvl - 1 else dec[i + 1][1]
         wq, bq, cfg = ns._upmerge[i]
-        plan.append((lambda s, src=src, i=i, wq=wq, bq=bq, cfg=cfg: C.make_conv(
-            src, wq, bq, cfg, mode=1, x2=enc[i][0], out_raw=dec[i][0], out_silu=dec[i][1]), 0, 0))
+        mk = C.make_uconv if len(cfg) == 6 else (lambda *a, **k: C.make_conv(*a, mode=1, **k))   # K4 generation 2
+        plan.append((lambda s, src=src, i=i, wq=wq, bq=bq, cfg=cfg, mk=mk: mk(
+            src, wq, bq, cfg, x2=enc[i][0], out_raw=dec[i][0], out_silu=dec[i][1]), 0, 0))
         for bi, b in enumerate(mdec[i]):
-            block(b, dec[i], tmp_dec[i], False, ("dec", i, bi), silu_out=True)
+            block(b, dec[i], tmp_dec[i], False, ("dec", i, bi), silu_out=True, raw_out=bi < len(mdec[i]) - 1)
     plan.append((lambda s: C.make_hconv(dec[0][1], ns.out_w, ns.out_b, ns.out_cfg,
                                         euler=(ns.xs, ns.stem_in, ns.dts[s])), 0, 0))
     for s in range(steps):
@@ -1083,7 +1086,8 @@ def _merge_fp8(ns, rec: PlanRecorder) -> tuple[list, list]:
                 drop = {"unless": int(u), "ptr": f, "flags": ff, "bit": int(bit)}
         op = {"src": getattr(lc_full, "source", "conv"), "name": lc_full.name, "layout": lname,
               "grid": list(lc_full.grid) + [1] * (3 - len(lc_full.grid)), "block": int(lc_full.block),
-              "smem": int(lc_full.smem), "args": base, "scale": _scale_rule8(lc_full)}
+              "smem": int(lc_full.smem), "args": base,
+              "scale": lc_full.scale if hasattr(lc_full, "scale") else _scale_rule8(lc_full)}   # K4: uconv / uconv8
         if when:
             op["when"] = int(when)
         if drop is not None:
@@ -1275,6 +1279,109 @@ extern "C" __global__ void biome_norm_silu(const BiomeNormArgs a) {
         a.x[i] = bn_silu((a.x[i] - mu) * r * a.w[c] + a.b[c]);
     }
 }
+// biome_conv_t<BN>: biome_conv's numbers (bias, then taps ky-major, then input channels ascending, one fmaf each,
+// out-of-image taps skipped), as a register-tiled implicit GEMM: a block computes BT_BM output pixels x BN output
+// channels, staging BT_BK input channels of one tap (A) and their weights (B) in shared memory; each thread owns
+// TM = 8 pixels x TN = BN / 16 channels. Same accumulation order per output => bitwise biome_conv.
+#define BT_BM 128
+#define BT_BK 16
+template <int BN>
+__global__ void __launch_bounds__(256) biome_conv_t(const BiomeConvArgs a) {
+    constexpr int TN = BN / 16;
+    constexpr int TM = BT_BM / 16;
+    __shared__ float As[BT_BK][BT_BM];
+    __shared__ float Bs[BT_BK][BN];
+    const int tid = threadIdx.x, tx = tid & 15, ty = tid >> 4;
+    const long long P = (long long)a.Ho * a.Wo;
+    const long long p0 = (long long)blockIdx.x * BT_BM;
+    const int co0 = blockIdx.y * BN;
+    const int CI = a.CA + a.CB, KK = a.k * a.k;
+    int oy[TM], ox[TM];
+    bool live[TM];
+#pragma unroll
+    for (int i = 0; i < TM; ++i) {
+        const long long p = p0 + tx + 16 * i;
+        live[i] = p < P;
+        oy[i] = live[i] ? (int)(p / a.Wo) : 0;
+        ox[i] = live[i] ? (int)(p - (long long)oy[i] * a.Wo) : 0;
+    }
+    float acc[TM][TN];
+#pragma unroll
+    for (int j = 0; j < TN; ++j) {
+        const int co = co0 + ty + 16 * j;
+        const float b = co < a.CO ? a.bias[co] : 0.0f;
+#pragma unroll
+        for (int i = 0; i < TM; ++i) acc[i][j] = b;
+    }
+    const long long planeA = (long long)a.HA * a.WA, planeB = (long long)a.H * a.W;
+    for (int ky = 0; ky < a.k; ++ky) {
+        for (int kx = 0; kx < a.k; ++kx) {
+            const int tap = ky * a.k + kx;
+            bool v[TM];
+#pragma unroll
+            for (int i = 0; i < TM; ++i) {
+                const int iy = oy[i] * a.stride - a.pad + ky, ix = ox[i] * a.stride - a.pad + kx;
+                v[i] = live[i] && iy >= 0 && iy < a.H && ix >= 0 && ix < a.W;
+            }
+            for (int c0 = 0; c0 < CI; c0 += BT_BK) {
+#pragma unroll
+                for (int r = 0; r < (BT_BK * BT_BM) / 256; ++r) {
+                    const int e = tid + 256 * r, kk = e / BT_BM, pp = e - kk * BT_BM;
+                    const int ci = c0 + kk;
+                    const long long p = p0 + pp;
+                    float val = 0.0f;
+                    if (ci < CI && p < P) {
+                        const int py = (int)(p / a.Wo), px = (int)(p - (long long)py * a.Wo);
+                        const int iy = py * a.stride - a.pad + ky, ix = px * a.stride - a.pad + kx;
+                        if (iy >= 0 && iy < a.H && ix >= 0 && ix < a.W) {
+                            if (ci < a.CA) {
+                                const long long ia = a.up ? (long long)bn_nearest(iy, a.HA, a.H) * a.WA + bn_nearest(ix, a.WA, a.W)
+                                                          : (long long)iy * a.WA + ix;
+                                val = a.a[(long long)ci * planeA + ia];
+                            } else {
+                                val = a.b[(long long)(ci - a.CA) * planeB + (long long)iy * a.W + ix];
+                            }
+                        }
+                    }
+                    As[kk][pp] = val;
+                }
+                for (int e = tid; e < BT_BK * BN; e += 256) {
+                    const int kk = e / BN, c = e - kk * BN;
+                    const int ci = c0 + kk, co = co0 + c;
+                    Bs[kk][c] = (ci < CI && co < a.CO) ? __ldg(a.w + ((long long)co * CI + ci) * KK + tap) : 0.0f;
+                }
+                __syncthreads();
+                const int nk = CI - c0 < BT_BK ? CI - c0 : BT_BK;
+                for (int kk = 0; kk < nk; ++kk) {
+                    float av[TM], bv[TN];
+#pragma unroll
+                    for (int i = 0; i < TM; ++i) av[i] = As[kk][tx + 16 * i];
+#pragma unroll
+                    for (int j = 0; j < TN; ++j) bv[j] = Bs[kk][ty + 16 * j];
+#pragma unroll
+                    for (int i = 0; i < TM; ++i)
+                        if (v[i]) {
+#pragma unroll
+                            for (int j = 0; j < TN; ++j) acc[i][j] = fmaf(av[i], bv[j], acc[i][j]);
+                        }
+                }
+                __syncthreads();
+            }
+        }
+    }
+#pragma unroll
+    for (int j = 0; j < TN; ++j) {
+        const int co = co0 + ty + 16 * j;
+        if (co >= a.CO) continue;
+#pragma unroll
+        for (int i = 0; i < TM; ++i) {
+            if (!live[i]) continue;
+            const long long o = (long long)co * P + p0 + tx + 16 * i;
+            const float val = a.act ? bn_silu(acc[i][j]) : acc[i][j];
+            a.y[o] = a.res ? a.res[o] + val : val;
+        }
+    }
+}
 """
 
 
@@ -1286,6 +1393,20 @@ class BiomeConvArgs(ctypes.Structure):
 
 class BiomeNormArgs(ctypes.Structure):
     _fields_ = [(n, ctypes.c_uint64) for n in ("x", "w", "b")] + [("P", ctypes.c_int64), ("C", ctypes.c_int32)]
+
+
+# The sidecars' convolution kernel (agent PX, 2026-11-19): "tiled" = biome_conv_t<BN> (register-tiled implicit GEMM,
+# shared-memory staging; the same fmaf sequence per output, so bitwise biome_conv - verified on biome / veg / surface at
+# 320 / 160 / 80 frames: 2.5-3.4x faster at 320), "naive" = biome_conv (TGM_BIOME_CONV=naive, A/B). Numbers identical
+# either way: no model_id marker.
+BIOME_CONV = os.getenv("TGM_BIOME_CONV", "tiled").strip().lower()
+
+
+def _biome_conv_launch(pixels: int, co: int):
+    if BIOME_CONV == "naive":
+        return "biome_conv", (-(-pixels // 256), -(-co // 8), 1)
+    bn = 16 if co <= 16 else 32 if co <= 32 else 48 if co <= 48 else 64
+    return f"biome_conv_t<{bn}>", (-(-pixels // 128), -(-co // bn), 1)
 
 
 class _BiomeLaunch(KLaunch):
@@ -1328,9 +1449,9 @@ class _BiomePlan:
                                  bias=bq.data_ptr(), y=y.data_ptr(), CA=ca, HA=ha, WA=wa,
                                  CB=0 if b is None else b.shape[-3], H=hh, W=ww, CO=m.out_channels, Ho=ho, Wo=wo,
                                  k=k, stride=stride, pad=m.padding[0], act=act, up=up)
-            grid = (-(-(ho * wo) // 256), -(-m.out_channels // 8), 1)
+            name, grid = _biome_conv_launch(ho * wo, m.out_channels)
             keep = [a, y, wq, bq] + ([b] if b is not None else [])
-            L.append(_BiomeLaunch("biome_conv", grid, args, keep, ("y",), "biome_conv_args"))
+            L.append(_BiomeLaunch(name, grid, args, keep, ("y",), "biome_conv_args"))
 
         def norm(n, x):
             wq, bq = wt(n.weight.flatten()), wt(n.bias.flatten())
@@ -1399,9 +1520,9 @@ class _ConvKit:
                              res=0 if res is None else res.data_ptr(), y=y.data_ptr(), CA=ca, HA=ha, WA=wa,
                              CB=0 if b is None else b.shape[-3], H=hh, W=ww, CO=m.out_channels, Ho=ho, Wo=wo,
                              k=m.kernel_size[0], stride=stride, pad=m.padding[0], act=act, up=up)
-        grid = (-(-(ho * wo) // 256), -(-m.out_channels // 8), 1)
+        name, grid = _biome_conv_launch(ho * wo, m.out_channels)
         keep = [a, y, wq, bq] + ([b] if b is not None else []) + ([res] if res is not None else [])
-        self.launches.append(_BiomeLaunch("biome_conv", grid, args, keep, ("y",), "biome_conv_args"))
+        self.launches.append(_BiomeLaunch(name, grid, args, keep, ("y",), "biome_conv_args"))
 
     def norm(self, n, x):
         wq, bq = self.wt(n.weight.flatten()), self.wt(n.bias.flatten())

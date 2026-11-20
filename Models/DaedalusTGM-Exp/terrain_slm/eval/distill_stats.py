@@ -22,6 +22,8 @@ from scipy import ndimage as ndi
 
 SEA = 64
 N = 256
+# The cubic world's column [-384, 640) (2026-11-18); the 2026-11-01 sample lived in [0, 256), whose heights fit too.
+Y_MIN, Y_MAX = -384, 640
 
 # DiffusionBiomeMapper.landBiomeFor (stonebreak-game), Daedalus id -> BiomeType name. Beach bands are a
 # Java-side post-process for both generators and are left out of both.
@@ -55,6 +57,8 @@ def load_tile(path: Path, biome_names: dict[int, str] | None):
     h = np.frombuffer(raw[4:4 + 2 * n * n], "<i2").reshape(n, n).astype(np.int32)
     b = np.frombuffer(raw[4 + 2 * n * n:4 + 4 * n * n], "<i2").reshape(n, n)
     lod = int(path.stem.rsplit("_l", 1)[1])
+    if (b < 0).all():                       # StandardNativeDumpTest: heights only
+        return h, None, lod
     names = np.array([biome_names[i] for i in range(max(biome_names) + 1)], dtype=object)
     return h, names[b], lod
 
@@ -101,12 +105,30 @@ def elongation(mask: np.ndarray, min_area: int) -> tuple[float, int]:
     return float(np.average(ratios, weights=weights)), len(ratios)
 
 
-def coarse_metrics(h: np.ndarray, biome: np.ndarray, out: dict) -> None:
+def census(elev: np.ndarray, out: dict) -> None:
+    """eval/terrain_census on a lod-8 tile (8 blocks = 480 m per sample at 1:4), in metres: local relief in ~10 km
+    (21 samples) and ~2.4 km (5 samples) windows. hills = land below 1000 m with 2.4 km relief 60..400 m, flat = < 30 m,
+    epic = 10 km relief > 2000 m, big = > 1000 m (shares of land; the window's own tile only, edges cropped)."""
+    e = elev.astype(np.float64)
+    r10 = (ndi.maximum_filter(e, 21) - ndi.minimum_filter(e, 21))[10:-10, 10:-10]
+    r24 = (ndi.maximum_filter(e, 5) - ndi.minimum_filter(e, 5))[10:-10, 10:-10]
+    ec = e[10:-10, 10:-10]
+    land = ec > 0
+    low = land & (ec < 1000)
+    out.setdefault("c_land", []).append(int(land.sum()))
+    out.setdefault("c_hills", []).append(int((low & (r24 >= 60) & (r24 <= 400)).sum()))
+    out.setdefault("c_flat", []).append(int((low & (r24 < 30)).sum()))
+    out.setdefault("c_epic", []).append(int((land & (r10 > 2000)).sum()))
+    out.setdefault("c_big", []).append(int((land & (r10 > 1000)).sum()))
+
+
+def coarse_metrics(h: np.ndarray, biome: np.ndarray, out: dict, elev: np.ndarray | None = None) -> None:
     land = h >= SEA
     out.setdefault("land", []).append(land.ravel())
     out.setdefault("h_land", []).append(h[land])
     out.setdefault("h_sea", []).append(h[~land])
-    out.setdefault("hist", []).append(np.bincount(np.clip(h, 0, 255).ravel(), minlength=256))
+    out.setdefault("hist", []).append(np.bincount((np.clip(h, Y_MIN, Y_MAX - 1) - Y_MIN).ravel(),
+                                                  minlength=Y_MAX - Y_MIN))
     out.setdefault("spec_coarse", []).append(band_rms(h.astype(np.float64), 8, COARSE_BANDS))
     # coastline: land/sea 4-neighbour edges per sample (complexity of the land shape), on a mask smoothed by
     # one sample so area-averaged (Daedalus lod 8) and point-sampled (noise) tiles are measured alike
@@ -126,6 +148,8 @@ def coarse_metrics(h: np.ndarray, biome: np.ndarray, out: dict) -> None:
         e, k = elongation(hi & land, 12)
         if not math.isnan(e):
             out.setdefault("high_elong", []).append(e)
+    if elev is not None:
+        census(elev, out)
     if biome is None:
         return
     for name in np.unique(biome):
@@ -137,7 +161,7 @@ def coarse_metrics(h: np.ndarray, biome: np.ndarray, out: dict) -> None:
         out.setdefault("biome_patch", {}).setdefault(name, []).extend(sizes.tolist())
 
 
-def fine_metrics(h: np.ndarray, biome: np.ndarray, out: dict) -> None:
+def fine_metrics(h: np.ndarray, biome: np.ndarray, out: dict, water: np.ndarray | None = None) -> None:
     land = h >= SEA
     f = h.astype(np.float64)
     s = np.maximum(np.abs(np.diff(f, axis=0))[:, :-1], np.abs(np.diff(f, axis=1))[:-1, :])
@@ -151,23 +175,99 @@ def fine_metrics(h: np.ndarray, biome: np.ndarray, out: dict) -> None:
     out.setdefault("spec_fine", []).append(band_rms(f, 1, FINE_BANDS))
     hp = f - ndi.gaussian_filter(f, 16, mode="nearest")
     out.setdefault("hp16", []).append(hp[land])
+    # closed depressions ("orange peel" vs drained, dendritic relief): a column whose ring at radius 6..8 blocks
+    # stands everywhere >= 2 blocks above it sits in a pit; eroded land drains, so almost none do
+    yy, xx = np.mgrid[-8:9, -8:9]
+    rr = np.hypot(yy, xx)
+    ring = (rr >= 6) & (rr <= 8)
+    rmin = ndi.minimum_filter(f, footprint=ring, mode="nearest")
+    core = np.zeros_like(land)
+    core[8:-8, 8:-8] = True
+    out.setdefault("pit", []).append(((rmin - f >= 2) & land & core)[core & land])
+    # lowland block mix (eval/lowland_flatness): 9x9 block range of dry lowland (sea < h <= sea + 40)
+    rel9 = ndi.maximum_filter(h, 9) - ndi.minimum_filter(h, 9)
+    low = (h > SEA) & (h <= SEA + 40) & core
+    if water is not None:
+        low &= ~((water != -1) & (water > h))
+    out.setdefault("low_rel9", []).append(rel9[low])
+    # sea: depth and block-flat (9x9 range <= 1) by distance to the nearest dry column, in blocks
+    wet = h < SEA
+    if wet.any() and (~wet).any():
+        dist = ndi.distance_transform_edt(wet)
+        sea = wet & core
+        out.setdefault("sea_depth", []).append((SEA - h)[sea])
+        out.setdefault("sea_dist", []).append(dist[sea])
+        out.setdefault("sea_flat", []).append((rel9 <= 1)[sea])
+
+
+def dir_curve(d: Path):
+    """The height curve a sample dir was built with (`curve.json`: {"scale": "1:4", "version": 2}), or None."""
+    f = d / "curve.json"
+    if not f.exists():
+        return None
+    import json as _json
+    c = _json.loads(f.read_text())
+    return game_curve(c.get("scale", "1:4"), int(c.get("version", 1)))
+
+
+def game_curve(scale: str = "1:4", version: int = 2):
+    from terrain_slm.eval.distill_sample import game_world
+    return game_world(scale, version).curve()
 
 
 def measure(d: Path) -> dict:
-    return measure_tiles(((h, b, lod) for _, h, b, lod in tiles(d)), str(d))
+    curve = dir_curve(d)
+
+    def items():
+        for f, h, b, lod in tiles(d):
+            water = np.load(f)["water"].astype(np.int32) if f.suffix == ".npz" else None
+            yield h, b, lod, None, water
+    return measure_tiles(items(), str(d), curve)
 
 
-def measure_tiles(items, label: str) -> dict:
-    """`items`: (height, biome names or None, lod) per tile."""
+def measure_tiles(items, label: str, curve=None) -> dict:
+    """`items`: (height, biome names or None, lod) per tile, or (height, biome, lod, elevation metres or None[, water]).
+    `curve` converts block heights to metres for the census when a tile carries no elevation."""
     coarse, fine = {}, {}
     nc = nf = 0
-    for h, b, lod in items:
-        if lod == 8:
-            coarse_metrics(h, b, coarse)
-            nc += 1
-        elif lod == 1:
-            fine_metrics(h, b, fine)
-            nf += 1
+    for item in items:
+        nc_, nf_ = accumulate(item, coarse, fine, curve)
+        nc += nc_
+        nf += nf_
+    return summarize(coarse, fine, nc, nf, label)
+
+
+def accumulate(item, coarse: dict, fine: dict, curve=None) -> tuple[int, int]:
+    """Adds one tile's measurements to the (coarse, fine) accumulators; returns (coarse tiles, fine tiles) added."""
+    h, b, lod = item[:3]
+    elev = item[3] if len(item) > 3 else None
+    water = item[4] if len(item) > 4 else None
+    if elev is None and curve is not None and lod == 8:
+        elev = curve.to_elevation(h.astype(np.float64) + 0.5)
+    if lod == 8:
+        coarse_metrics(h, b, coarse, elev)
+        return 1, 0
+    if lod == 1:
+        fine_metrics(h, b, fine, water)
+        return 0, 1
+    return 0, 0
+
+
+def merge(into: dict, part: dict) -> None:
+    """Merges accumulator `part` into `into` (lists extend, biome counters add)."""
+    for k, v in part.items():
+        if isinstance(v, list):
+            into.setdefault(k, []).extend(v)
+        elif isinstance(v, dict):
+            d = into.setdefault(k, {})
+            for kk, vv in v.items():
+                if isinstance(vv, list):
+                    d.setdefault(kk, []).extend(vv)
+                else:
+                    d[kk] = d.get(kk, 0) + vv
+
+
+def summarize(coarse: dict, fine: dict, nc: int, nf: int, label: str) -> dict:
     r: dict = {"dir": label, "tiles_coarse": nc, "tiles_fine": nf}
     if nc:
         hl = np.concatenate(coarse["h_land"])
@@ -183,6 +283,9 @@ def measure_tiles(items, label: str) -> dict:
         r["chain_elongation"] = float(np.nanmean(coarse.get("chain_elong", [np.nan])))
         r["chains_per_tile"] = float(np.mean(coarse.get("chain_count", [0])))
         r["high_ground_elongation"] = float(np.nanmean(coarse.get("high_elong", [np.nan])))
+        if coarse.get("c_land"):
+            nl = max(1, sum(coarse["c_land"]))
+            r["census"] = {k: sum(coarse["c_" + k]) / nl for k in ("hills", "flat", "big", "epic")}
     if nc and "biome_n" in coarse:
         tot = sum(coarse["biome_n"].values())
         r["biome_share"] = {k: v / tot for k, v in sorted(coarse["biome_n"].items(), key=lambda kv: -kv[1])}
@@ -205,10 +308,30 @@ def measure_tiles(items, label: str) -> dict:
                                   np.sqrt(np.mean(np.square(fine["spec_fine"]), axis=0)).tolist()))
         hp = np.concatenate(fine["hp16"])
         r["hp16_skew"] = float(((hp - hp.mean()) ** 3).mean() / max(hp.std() ** 3, 1e-9))
+        r["pit_share"] = float(np.concatenate(fine["pit"]).mean())
+        lr = np.concatenate(fine["low_rel9"])
+        r["lowland_mix"] = {"flat": float((lr <= 1).mean()), "gentle": float(((lr >= 2) & (lr <= 3)).mean()),
+                            "rolling": float(((lr >= 4) & (lr <= 8)).mean()), "hilly": float((lr >= 9).mean())} \
+            if lr.size else {}
+        if fine.get("sea_depth"):
+            dep = np.concatenate(fine["sea_depth"])
+            dist = np.concatenate(fine["sea_dist"])
+            fl = np.concatenate(fine["sea_flat"])
+            r["sea_flat"] = float(fl.mean())
+            r["sea_shallow3"] = float((dep < 3).mean())
+            bins = ((0, 8), (8, 33), (33, 83), (83, 250))     # blocks at 1:4 = 0-0.5 / 0.5-2 / 2-5 / 5-15 km
+            r["sea_depth_by_km"] = {f"{a}-{b}": (float(np.median(dep[(dist >= a) & (dist < b)]))
+                                                  if ((dist >= a) & (dist < b)).sum() > 200 else None) for a, b in bins}
+            r["sea_flat_by_km"] = {f"{a}-{b}": (float(fl[(dist >= a) & (dist < b)].mean())
+                                                 if ((dist >= a) & (dist < b)).sum() > 200 else None) for a, b in bins}
     return r
 
 
 # ----------------------------------------------------------------------------- comparison
+#: Score the 2026-11-19 terms too (census, pits, lowland mix, sea). False = the 2026-11-01 distance (14.2 -> 6.76).
+WIDE = True
+
+
 def distance(t: dict, s: dict) -> dict:
     """Per-group mismatch (dimensionless, 0 = identical) and the weighted total the fit minimises."""
     g = {}
@@ -234,6 +357,19 @@ def distance(t: dict, s: dict) -> dict:
         g["relief"] = abs(math.log(t["relief8_std"] / max(s["relief8_std"], 1e-6))) / math.log(2)
         g["skew"] = abs(t["hp16_skew"] - s["hp16_skew"]) / 0.5          # peaky vs V-valleyed relief
         g["cliffs"] = abs(math.log((t["step_ge"]["4"] + 1e-4) / (s["step_ge"]["4"] + 1e-4))) / math.log(4)
+    # 2026-11-19 (EXP-2 distillation): landform census, closed depressions, lowland block mix, the coastal sea
+    if WIDE and "census" in t and "census" in s:
+        ct, cs = t["census"], s["census"]
+        g["census"] = sum(abs(ct[k] - cs[k]) for k in ("hills", "flat", "epic")) / 0.1
+    if WIDE and "pit_share" in t and "pit_share" in s:
+        g["pits"] = abs(math.log((t["pit_share"] + 1e-3) / (s["pit_share"] + 1e-3))) / math.log(2)
+    if WIDE and t.get("lowland_mix") and s.get("lowland_mix"):
+        g["lowland_mix"] = 0.5 * sum(abs(t["lowland_mix"][k] - s["lowland_mix"][k]) for k in t["lowland_mix"]) / 0.1
+    if WIDE and "sea_flat" in t and "sea_flat" in s:
+        dt, ds = t["sea_depth_by_km"], s["sea_depth_by_km"]
+        ks = [k for k in dt if dt[k] is not None and ds.get(k) is not None]
+        dd = float(np.mean([abs(math.log((dt[k] + 1) / (ds[k] + 1))) for k in ks])) / math.log(2) if ks else 0.0
+        g["sea"] = dd + abs(t["sea_flat"] - s["sea_flat"]) / 0.1
     g["total"] = float(sum(g.values()))
     return g
 

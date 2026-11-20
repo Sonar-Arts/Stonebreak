@@ -940,7 +940,7 @@ public final class IntegratedServer {
 
         // 1. Welcome: who you are + the seed + the authoritative spawn.
         sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), ctx.terrainScale(), ctx.climateLayout(),
-                ctx.heightCurve(), ctx.terrainModel(), spawn.x, spawn.y, spawn.z, sp.clientSecret()));
+                ctx.heightCurve(), ctx.terrainModel(), ctx.standardShape(), spawn.x, spawn.y, spawn.z, sp.clientSecret()));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);

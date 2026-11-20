@@ -481,6 +481,43 @@ extern "C" __global__ void tiles_sidecar_mix(const SidecarMixArgs a) {
     if (is_ocean_id(clean, a.k)) clean = rule;
     a.out[t] = is_ocean_id(rule, a.k) ? rule : (side == a.k.id_swamp ? clean : side);
 }
+// BV (TileBuilder._classify, v2 worlds): sidecar DESERT within r samples (square, clipped to the frame) of an inland
+// water column (elev in [0, lake_elev]: sub-sea columns off the true ocean, lifted) takes the cleaned rule biome
+// (ocean ids -> rule) unless the rule itself says desert.
+struct LakeShoreArgs {
+    const float* elev;    // frame (H, W)
+    const short* rule;    // frame
+    const short* clean;   // frame
+    short* biome;         // (h, w) in place
+    int H, W, mb, h, w, r;
+    float lake_elev;
+    BiomeK k;
+};
+extern "C" __global__ void tiles_lake_shore_desert(const LakeShoreArgs a) {
+    long long t = gtid();
+    if (t >= (long long)a.h * a.w) return;
+    if (a.biome[t] != a.k.id_desert) return;
+    const int r = (int)(t / a.w), c = (int)(t - (long long)r * a.w);
+    const long long i = (long long)(r + a.mb) * a.W + (c + a.mb);
+    const short rule = a.rule[i];
+    if (rule == a.k.id_desert) return;
+    bool near = false;
+    for (int y = r + a.mb - a.r; y <= r + a.mb + a.r && !near; ++y) {
+        if (y < 0 || y >= a.H) continue;
+        for (int x = c + a.mb - a.r; x <= c + a.mb + a.r; ++x) {
+            if (x < 0 || x >= a.W) continue;
+            const float e = a.elev[(long long)y * a.W + x];
+            if (e >= 0.0f && e <= a.lake_elev) {
+                near = true;
+                break;
+            }
+        }
+    }
+    if (!near) return;
+    short clean = a.clean[i];
+    if (is_ocean_id(clean, a.k)) clean = rule;
+    a.biome[t] = clean;
+}
 // biomes.apply_swamps(biome, crop(swamps)): swamps frame (H, W) read at (r + R0, c + C0).
 struct ApplySwampsArgs {
     short* biome;   // (h, w) in place

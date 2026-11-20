@@ -19,6 +19,11 @@ target_compile_options(worldgen_land_surface_test PRIVATE $<$<NOT:$<CXX_COMPILER
 add_test(NAME worldgen_land_surface COMMAND worldgen_land_surface_test)
 # Sea-floor materials (SBW_FLAG_SEA_FLOOR, FX1 / review-native F3): no 32-block edge bias (slope and shelter read across
 # the cube edge), pointwise across build orders, only ocean columns change, a failed neighbour upcall fails the tile.
+add_executable(worldgen_standard_shape_test standard_shape_test.cpp)
+target_link_libraries(worldgen_standard_shape_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
+target_compile_options(worldgen_standard_shape_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+add_test(NAME worldgen_standard_shape COMMAND worldgen_standard_shape_test)
+
 add_executable(worldgen_sea_floor_test sea_floor_test.cpp)
 target_link_libraries(worldgen_sea_floor_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
 target_compile_options(worldgen_sea_floor_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)

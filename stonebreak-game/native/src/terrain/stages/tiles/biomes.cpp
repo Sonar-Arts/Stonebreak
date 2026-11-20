@@ -395,7 +395,7 @@ Tensor sea_mask_for_samples(Gen& g, int64_t s1, int64_t t1, int64_t h, int64_t w
     const int64_t CP = ci(g, "CP"), m = ci(g, "O.SEA_CELL_MARGIN");
     const int64_t ci0 = floordiv(s1 * d, CP) - m, cj0 = floordiv(t1 * d, CP) - m;
     const int64_t ci1 = floordiv((s1 + h) * d - 1, CP) + 1 + m, cj1 = floordiv((t1 + w) * d - 1, CP) + 1 + m;
-    Tensor cells = g.call("_planner_cells", {{ci0, cj0, ci1 - ci0, cj1 - cj0}, {}, {}}).one()[0];
+    Tensor cells = planner_height(g, ci0, cj0, ci1 - ci0, cj1 - cj0);
     Tensor sea = sea_cells(g, cells, land_cells(g, ci0, cj0, ci1 - ci0, cj1 - cj0));
     Tensor out = g.gpu.empty(DType::BOOL, {h, w});
     const int k = static_cast<int>(std::max<int64_t>(1, ceildiv(d, CP)));

@@ -48,6 +48,13 @@ def _bind(lib):
     lib.sbtg_tile_free.argtypes = [V]
     lib.sbtg_terrain_stats.argtypes = [V, ctypes.c_char_p, I32]
     lib.sbtg_terrain_stats.restype = I32
+    if hasattr(lib, "sbtg_terrain_set_lanes"):   # lanes (agent PX; additive to ABI 2)
+        lib.sbtg_terrain_set_lanes.argtypes = [V, I32]
+        lib.sbtg_terrain_set_lanes.restype = I32
+        lib.sbtg_terrain_lanes.argtypes = [V]
+        lib.sbtg_terrain_lanes.restype = I32
+        lib.sbtg_terrain_tile_lane.argtypes = [V, I32, I32, ctypes.c_int64, I32, I32, I32, P(V)]
+        lib.sbtg_terrain_tile_lane.restype = I32
     lib._terrain_bound = True
     return lib
 
@@ -58,7 +65,9 @@ class NativeTerrainError(RuntimeError):
 
 class NativeTerrain:
     def __init__(self, native_dir: Path, device: int, cache_dir: Path | None = None, nvrtc: str | None = None,
-                 cenda_lib: str | None = None, warm: bool = True):
+                 cenda_lib: str | None = None, warm: bool = True, lanes: int = 1):
+        """`lanes` > 1: that many tile builders on their own streams sharing models and window caches (agent PX); a
+        library without lanes keeps one. Tiles are bit-identical whatever the lane count or lane."""
         from terrain_slm.export import cenda_engine as E
         from terrain_slm.kernels import native
 
@@ -76,6 +85,11 @@ class NativeTerrain:
         self.handle = h
         self.info = json.loads(self.lib.sbtg_terrain_info(h).decode())
         self.model_id = self.info["model_id"]
+        self.lanes = 1
+        if hasattr(self.lib, "sbtg_terrain_set_lanes"):
+            if lanes > 1 and self.lib.sbtg_terrain_lanes(h) == 1:   # ($SBTG_LANES may have set them at open)
+                self._check(self.lib.sbtg_terrain_set_lanes(h, lanes), "set_lanes")
+            self.lanes = self.lib.sbtg_terrain_lanes(h)
         if warm:
             self._check(self.lib.sbtg_terrain_warmup(h), "warmup")
 
@@ -92,10 +106,15 @@ class NativeTerrain:
     def set_world(self, index: int, world: dict) -> None:
         self._check(self.lib.sbtg_terrain_set_world(self.handle, index, json.dumps(world).encode()), "set_world")
 
-    def tile(self, world: int, seed: int, tile_x: int, tile_z: int, lod: int):
+    def tile(self, world: int, seed: int, tile_x: int, tile_z: int, lod: int, lane: int = 0):
+        """One tile on `lane` (calls on different lanes run concurrently; ctypes drops the GIL)."""
         from terrain_slm.world import surface_channels as SC
         out = ctypes.c_void_p()
-        self._check(self.lib.sbtg_terrain_tile(self.handle, world, seed, tile_x, tile_z, lod, ctypes.byref(out)), "tile")
+        if lane:
+            r = self.lib.sbtg_terrain_tile_lane(self.handle, lane, world, seed, tile_x, tile_z, lod, ctypes.byref(out))
+        else:
+            r = self.lib.sbtg_terrain_tile(self.handle, world, seed, tile_x, tile_z, lod, ctypes.byref(out))
+        self._check(r, "tile")
         try:
             p, r, c = ctypes.c_int32(), ctypes.c_int32(), ctypes.c_int32()
             ptr = self.lib.sbtg_tile_planes(out, ctypes.byref(p), ctypes.byref(r), ctypes.byref(c))
@@ -127,16 +146,35 @@ class NativeBuilder:
         n = self.world.tile_size
         return tile_x * n, tile_z * n, (tile_x + 1) * n, (tile_z + 1) * n
 
-    def build(self, seed: int, tile_x: int, tile_z: int, lod: int):
+    def build(self, seed: int, tile_x: int, tile_z: int, lod: int, lane: int = 0):
         if lod < 1 or lod & (lod - 1):
             raise ValueError(f"lod must be a power of two, got {lod}")
-        return self.terrain.tile(self.index, seed, tile_x, tile_z, lod)
+        return self.terrain.tile(self.index, seed, tile_x, tile_z, lod, lane)
 
 
 #: The TGMPipe service's native mode (tgmpipe/service.py): "1" = native tiles (fail the start if unavailable),
 #: "auto" (default since 2026-11-19, parity proven) = native when the engine + libstonebreak_terrain are there, else the
 #: Python generator, "0" = Python only (the reference path).
 SERVICE_MODE = __import__("os").environ.get("TGM_NATIVE_TILES", "auto").strip().lower()
+
+#: Lanes of the service's native pipeline (agent PX): concurrent tile builders sharing models and window caches, one
+#: GPU thread each (lane 0 = the express lane for priority-0 tiles, service.py). TGM_NATIVE_LANES=N, or "auto"
+#: (default): DEFAULT_LANES on a GPU with AUTO_LANES_MIN_VRAM or more (a second lane costs ~2.5 GB), else 1.
+#: TGM_NATIVE_LANES=1 = the sequential pipeline (A/B, fallback).
+DEFAULT_LANES = 2
+AUTO_LANES_MIN_VRAM = 16 * 2**30
+
+
+def service_lanes(device: str | None = None) -> int:
+    v = __import__("os").environ.get("TGM_NATIVE_LANES", "auto").strip().lower()
+    if v not in ("", "auto"):
+        return max(1, min(8, int(v)))
+    try:
+        import torch
+        total = torch.cuda.get_device_properties(torch.device(device or "cuda")).total_memory
+    except Exception:  # noqa: BLE001
+        return 1
+    return DEFAULT_LANES if total >= AUTO_LANES_MIN_VRAM else 1
 
 
 def open_for_service(model_dir: Path, device: str, layout: str, log) -> "NativeTerrain | None":
@@ -167,8 +205,11 @@ def open_for_service(model_dir: Path, device: str, layout: str, log) -> "NativeT
             del gen
             gc.collect()
             torch.cuda.empty_cache()
-        t = NativeTerrain(out, torch.device(device).index)
-        log.info("native tiles: %s on %s", t.model_id, device)
+        idx = torch.device(device).index           # bare "cuda" has no index: use the current device (was None -> silent
+        if idx is None:                              # fallback to the Python generator, 2026-11-19 K4 finding)
+            idx = torch.cuda.current_device()
+        t = NativeTerrain(out, idx, lanes=service_lanes(device))
+        log.info("native tiles: %s on %s, %d lane(s)", t.model_id, device, t.lanes)
         return t
     except Exception as e:  # noqa: BLE001 - mode "auto" falls back to the Python generator
         if SERVICE_MODE == "1":

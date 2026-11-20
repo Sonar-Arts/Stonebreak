@@ -270,6 +270,15 @@ public final class NativeCubeGenerator implements AutoCloseable {
          * {@code worldgen/rocks/rock_bank_v<id>.sbrb}, registered on first use); 0 = procedural shapes only.
          */
         public int rockBank;
+        /**
+         * {@link Kind#STANDARD}: the world's Standard shape ({@link StandardShapeVersion#number()}, native
+         * {@code standard_shape}); 1 = the 2026-11-01 shape. Shape 2 also needs its curve in {@link #curveRates} /
+         * {@link #curveKnots} ({@code scale.heightCurve(V2)}): see {@link NativeTerrain#config}.
+         */
+        public int standardShape = 1;
+        /** Height-curve rates / knots to send instead of the scale's v1 ones (null = {@code scale.curveRates()}). */
+        public double[] curveRates;
+        public double[] curveKnots;
         /** Required for {@link Kind#PROFILE}. */
         public ColumnProfiles profiles;
     }
@@ -297,7 +306,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
     private static final Path LIBRARY_PATH;
     private static MethodHandle CONFIG_DEFAULTS, CREATE, DESTROY, LAST_ERROR, GENERATE_CUBE, SAMPLE_COLUMNS,
         SAMPLE_OPENINGS, SAMPLE_OPENINGS_WATER, PROBE_TREES, QUERY_COLUMN, COLUMN_CARVE, COLUMN_SURFACE,
-        REGISTER_ROCK_BANK;
+        REGISTER_ROCK_BANK, STANDARD_SHAPE_MAX;
 
     static {
         boolean ok = false;
@@ -355,9 +364,25 @@ public final class NativeCubeGenerator implements AutoCloseable {
         REGISTER_ROCK_BANK = l.find("sbw_register_rock_bank")
             .map(s -> LINKER.downcallHandle(s, FunctionDescriptor.of(I, I, A, J)))
             .orElse(null);
+        // Added within ABI 5 (2026-11-19, Standard shape 2): optional; a library without it knows only shape 1.
+        STANDARD_SHAPE_MAX = l.find("sbw_standard_shape_max")
+            .map(s -> LINKER.downcallHandle(s, FunctionDescriptor.of(I)))
+            .orElse(null);
         PROBE_TREES = down(l, "sbw_probe_cell_trees", FunctionDescriptor.of(I, A, J, J, I, I, A, A, A, A, I));
         QUERY_COLUMN = down(l, "sbw_query_column", FunctionDescriptor.of(I, A, J, J, A));
         COLUMN_CARVE = down(l, "sbw_column_carve", FunctionDescriptor.of(I, A, J, J, A, A));
+    }
+
+    /** The highest Standard shape the loaded library generates (1 for a library older than shape 2). */
+    public static int standardShapeMax() {
+        if (!AVAILABLE || STANDARD_SHAPE_MAX == null) {
+            return 1;
+        }
+        try {
+            return (int) STANDARD_SHAPE_MAX.invokeExact();
+        } catch (Throwable t) {
+            return 1;
+        }
     }
 
     /** True when the library loaded and passed its ABI handshake. */
@@ -452,8 +477,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
         cfg.set(ValueLayout.JAVA_INT, 32, config.seaLevel);
         cfg.set(ValueLayout.JAVA_INT, 36, config.flags);
         cfg.set(ValueLayout.JAVA_DOUBLE, 40, config.scale.horizontalMetresPerBlock());
-        double[] rates = config.scale.curveRates();
-        double[] knots = config.scale.curveKnots();
+        double[] rates = config.curveRates != null ? config.curveRates.clone() : config.scale.curveRates();
+        double[] knots = config.curveKnots != null ? config.curveKnots.clone() : config.scale.curveKnots();
         for (int i = 0; i < 4; i++) cfg.set(ValueLayout.JAVA_DOUBLE, 48 + 8L * i, rates[i]);
         for (int i = 0; i < 5; i++) cfg.set(ValueLayout.JAVA_DOUBLE, 80 + 8L * i, knots[i]);
         if (config.blockFlags.length > 0) {
@@ -479,6 +504,17 @@ public final class NativeCubeGenerator implements AutoCloseable {
         if ((config.flags & FLAG_BOULDERS) != 0 && config.rockBank != 0) {
             ensureRockBank(config.rockBank);
             cfg.set(ValueLayout.JAVA_SHORT, 236, (short) config.rockBank);
+        }
+        if (config.kind == Kind.STANDARD && config.standardShape > 1) {
+            // A library older than the shape would ignore the field and silently build shape 1 terrain into a shape-2
+            // world (a seam in its saves): refuse instead.
+            if (standardShapeMax() < config.standardShape) {
+                arena.close();
+                throw new IllegalStateException("libstonebreak_worldgen at " + LIBRARY_PATH + " generates Standard shapes"
+                    + " up to " + standardShapeMax() + ", the world needs " + config.standardShape
+                    + " (rebuild stonebreak-game/native)");
+            }
+            cfg.set(ValueLayout.JAVA_SHORT, 238, (short) config.standardShape);
         }
         MemorySegment created;
         try {

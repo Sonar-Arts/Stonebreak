@@ -211,6 +211,17 @@ void sbtg_tile_free(sbtg_tile* tile);
 /* JSON counters of the generator (as sbtg_gen_stats) + tiles built; returns the length. */
 int32_t sbtg_terrain_stats(sbtg_terrain* t, char* buf, int32_t cap);
 
+/* Lanes (agent PX, 2026-11-19; additive to ABI 2): `lanes` generators on their own streams and memory pools that build
+ * tiles CONCURRENTLY (one host thread per lane), sharing the engine models (one execution context per lane) and the
+ * window caches (a window in flight in one lane is waited for, not recomputed, by the others). Tiles are bit-identical
+ * whatever lane builds them, in whatever order. Call once, before sbtg_terrain_warmup and the first tile ($SBTG_LANES
+ * sets it at open time); 1 = the sequential pipeline. sbtg_terrain_tile builds on lane 0. */
+int32_t sbtg_terrain_set_lanes(sbtg_terrain* t, int32_t lanes);
+int32_t sbtg_terrain_lanes(sbtg_terrain* t);
+/* sbtg_terrain_tile on lane `lane` (0 .. lanes-1); calls on one lane are serialised, different lanes run at once. */
+int32_t sbtg_terrain_tile_lane(sbtg_terrain* t, int32_t lane, int32_t world, int64_t seed, int32_t tile_x,
+                               int32_t tile_z, int32_t lod, sbtg_tile** out);
+
 #ifdef __cplusplus
 }
 #endif

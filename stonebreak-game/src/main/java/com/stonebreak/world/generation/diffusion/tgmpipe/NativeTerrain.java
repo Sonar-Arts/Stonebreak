@@ -19,8 +19,9 @@ import java.util.Map;
 /**
  * FFM binding of {@code libstonebreak_terrain}'s standalone pipeline ({@code sbtg_terrain_*},
  * {@code stonebreak-game/native/include/stonebreak/terrain.h}): the DaedalusTGM tile pipeline in-process on Open
- * Mason's engine runtime (Cenda {@code ci_*}), no Python. One instance = one engine runtime + one CUDA stream; calls
- * are serialised natively, and {@link NativeTerrainService} calls it from a single worker thread anyway.
+ * Mason's engine runtime (Cenda {@code ci_*}), no Python. One instance = one engine runtime; its lanes
+ * ({@link #setLanes}) are tile builders on their own CUDA streams that {@link NativeTerrainService} drives from one worker
+ * thread each (calls on one lane are serialised natively).
  */
 final class NativeTerrain implements AutoCloseable {
 
@@ -41,6 +42,8 @@ final class NativeTerrain implements AutoCloseable {
     private static final Path LIBRARY_PATH;
     private static MethodHandle ABI, LAST_ERROR, OPEN, CLOSE, INFO, WARMUP, SET_WORLD, TILE, TILE_PLANES,
             SURFACE_COUNT, SURFACE_NAME, SURFACE, TILE_FREE, STATS;
+    /** Lanes (additive to ABI 2; null with an older library = one lane). */
+    private static MethodHandle SET_LANES, LANES, TILE_LANE;
 
     /** sbtg_terrain_options: device, flags, cache_dir, nvrtc_path, reserved[6]. */
     private static final MemoryLayout OPTIONS = MemoryLayout.structLayout(
@@ -94,6 +97,43 @@ final class NativeTerrain implements AutoCloseable {
         SURFACE = down(l, "sbtg_tile_surface", FunctionDescriptor.of(A, A, I));
         TILE_FREE = down(l, "sbtg_tile_free", FunctionDescriptor.ofVoid(A));
         STATS = down(l, "sbtg_terrain_stats", FunctionDescriptor.of(I, A, A, I));
+        if (l.find("sbtg_terrain_set_lanes").isPresent()) {
+            SET_LANES = down(l, "sbtg_terrain_set_lanes", FunctionDescriptor.of(I, A, I));
+            LANES = down(l, "sbtg_terrain_lanes", FunctionDescriptor.of(I, A));
+            TILE_LANE = down(l, "sbtg_terrain_tile_lane", FunctionDescriptor.of(I, A, I, I, J, I, I, I, A));
+        }
+    }
+
+    /**
+     * Lanes: {@code n} tile builders on their own streams that run concurrently (one thread each) and share the models
+     * and window caches; tiles are bit-identical whatever lane builds them. Before {@link #warmup()}; a library without
+     * lanes stays at one. Returns the lane count now in effect.
+     */
+    int setLanes(int n) {
+        if (SET_LANES == null) {
+            return 1;
+        }
+        try {
+            if (n > 1 && (int) LANES.invokeExact(handle) == 1) {
+                check((int) SET_LANES.invokeExact(handle, n), "sbtg_terrain_set_lanes");
+            }
+            return (int) LANES.invokeExact(handle);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
+    int lanes() {
+        if (LANES == null) {
+            return 1;
+        }
+        try {
+            return (int) LANES.invokeExact(handle);
+        } catch (Throwable t) {
+            return 1;
+        }
     }
 
     /** Null when the library loaded with the expected ABI, else why not. */
@@ -178,9 +218,19 @@ final class NativeTerrain implements AutoCloseable {
     }
 
     Tile tile(int world, long seed, int tileX, int tileZ, int lod) {
+        return tile(0, world, seed, tileX, tileZ, lod);
+    }
+
+    /** A tile on {@code lane}: calls on different lanes run concurrently, on one lane they are serialised. */
+    Tile tile(int lane, int world, long seed, int tileX, int tileZ, int lod) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
-            check((int) TILE.invokeExact(handle, world, seed, tileX, tileZ, lod, out), "sbtg_terrain_tile");
+            if (lane == 0 || TILE_LANE == null) {
+                check((int) TILE.invokeExact(handle, world, seed, tileX, tileZ, lod, out), "sbtg_terrain_tile");
+            } else {
+                check((int) TILE_LANE.invokeExact(handle, lane, world, seed, tileX, tileZ, lod, out),
+                        "sbtg_terrain_tile_lane");
+            }
             MemorySegment tile = out.get(ValueLayout.ADDRESS, 0);
             try {
                 MemorySegment dims = arena.allocate(ValueLayout.JAVA_INT, 3);

@@ -57,9 +57,14 @@ public final class WorldData {
      */
     private final WorldFeatureVersion worldFeatures;
     /**
+     * The Standard shape of a STANDARD world (world.json {@code "standardShape"}, 2026-11-19): missing (worlds saved
+     * before the field) = {@link com.stonebreak.world.generation.StandardShapeVersion#LEGACY}; new worlds = CURRENT.
+     */
+    private final com.stonebreak.world.generation.StandardShapeVersion standardShape;
+    /**
      * The DaedalusTGM terrain model the world was created with (2026-11-19, review-python HIGH-1), part of its identity
      * (DIFFUSION worlds only): saved worlds keep running it, so unexplored cubes meet explored ones without a wall when
-     * the game's default model changes. Missing (worlds saved before the field) = {@link TerrainModelRef#LEGACY} (v4);
+     * the game's default model changes. Missing (worlds saved before the field) = {@link TerrainModelRef#LEGACY} (v4, retired: runs the default with a notice);
      * new worlds (the builder) = the default model ({@code TerrainModels.current()}).
      */
     private final TerrainModelRef terrainModel;
@@ -95,6 +100,7 @@ public final class WorldData {
             @JsonProperty("climateLayout") String climateLayout,
             @JsonProperty("heightCurve") String heightCurve,
             @JsonProperty("worldFeatures") Integer worldFeatures,
+            @JsonProperty("standardShape") Integer standardShape,
             @JsonProperty("terrainModel") String terrainModel,
             @JsonProperty("terrainModelId") String terrainModelId,
             @JsonProperty("minY") Long minY,
@@ -108,6 +114,9 @@ public final class WorldData {
              parseClimateLayout(climateLayout), parseHeightCurve(heightCurve),
              worldFeatures != null ? WorldFeatureVersion.of(worldFeatures, WorldFeatureVersion.LEGACY)
                                    : WorldFeatureVersion.LEGACY,
+             standardShape != null ? com.stonebreak.world.generation.StandardShapeVersion.of(standardShape,
+                     com.stonebreak.world.generation.StandardShapeVersion.LEGACY)
+                                   : com.stonebreak.world.generation.StandardShapeVersion.LEGACY,
              TerrainModelRef.parse(terrainModel, terrainModelId),
              // Missing bounds = a world written before the cubic format: the old 0..256 column world.
              minY != null ? minY : com.stonebreak.world.save.WorldFormat.LEGACY_MIN_Y,
@@ -152,6 +161,7 @@ public final class WorldData {
                       WeatherMode weatherMode, List<WeatherZone> weatherZones, int formatVersion,
                       TerrainGeneratorType generatorType, com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
                       ClimateLayout climateLayout, HeightCurveVersion heightCurve, WorldFeatureVersion worldFeatures,
+                      com.stonebreak.world.generation.StandardShapeVersion standardShape,
                       TerrainModelRef terrainModel, long minY, long maxY, int cubeEdge) {
         this.seed = seed;
         this.worldName = worldName;
@@ -172,6 +182,8 @@ public final class WorldData {
         this.climateLayout = ClimateLayout.orDefault(climateLayout);
         this.heightCurve = heightCurve != null ? heightCurve : HeightCurveVersion.LEGACY;
         this.worldFeatures = worldFeatures != null ? worldFeatures : WorldFeatureVersion.LEGACY;
+        this.standardShape = standardShape != null ? standardShape
+                                                   : com.stonebreak.world.generation.StandardShapeVersion.LEGACY;
         this.terrainModel = TerrainModelRef.orLegacy(terrainModel);
         this.minY = minY;
         this.maxY = maxY;
@@ -184,7 +196,8 @@ public final class WorldData {
              builder.totalPlayTimeMillis, builder.worldTimeTicks, builder.cheatsEnabled,
              builder.pvpEnabled, builder.weatherSeconds, builder.weatherMode, builder.weatherZones, builder.formatVersion,
              builder.generatorType, builder.terrainScale, builder.climateLayout, builder.heightCurve,
-             builder.worldFeatures, builder.terrainModelOrCurrent(), builder.minY, builder.maxY, builder.cubeEdge);
+             builder.worldFeatures, builder.standardShape, builder.terrainModelOrCurrent(), builder.minY, builder.maxY,
+             builder.cubeEdge);
     }
 
     // Getters
@@ -213,6 +226,8 @@ public final class WorldData {
     public HeightCurveVersion getHeightCurve() { return heightCurve; }
     /** The world's feature set (fixed at creation; never null). */
     public WorldFeatureVersion getWorldFeatures() { return worldFeatures; }
+    /** The world's Standard shape (fixed at creation; never null; STANDARD worlds only use it). */
+    public com.stonebreak.world.generation.StandardShapeVersion getStandardShape() { return standardShape; }
     /** The world's terrain model (fixed at creation; never null; {@link TerrainModelRef#LEGACY} for older saves). */
     public TerrainModelRef getTerrainModel() { return terrainModel; }
     /** Lowest block y of the world (inclusive). */
@@ -306,6 +321,9 @@ public final class WorldData {
         private HeightCurveVersion heightCurve = HeightCurveVersion.CURRENT;
         /** New worlds get the current feature set (a loaded record keeps its own). */
         private WorldFeatureVersion worldFeatures = WorldFeatureVersion.CURRENT;
+        /** New worlds get the current Standard shape (a loaded record keeps its own). */
+        private com.stonebreak.world.generation.StandardShapeVersion standardShape =
+            com.stonebreak.world.generation.StandardShapeVersion.CURRENT;
         /** Null = new worlds get the default model, resolved at {@link #build()} (a loaded record keeps its own). */
         private TerrainModelRef terrainModel;
         private long minY = com.stonebreak.world.operations.WorldConfiguration.MIN_Y;
@@ -334,6 +352,7 @@ public final class WorldData {
             this.climateLayout = data.climateLayout;
             this.heightCurve = data.heightCurve;
             this.worldFeatures = data.worldFeatures;
+            this.standardShape = data.standardShape;
             this.terrainModel = data.terrainModel;
             this.minY = data.minY;
             this.maxY = data.maxY;
@@ -446,6 +465,12 @@ public final class WorldData {
         /** The world's feature set; null = {@link WorldFeatureVersion#CURRENT}. */
         public Builder worldFeatures(WorldFeatureVersion worldFeatures) {
             this.worldFeatures = WorldFeatureVersion.orCurrent(worldFeatures);
+            return this;
+        }
+
+        /** The world's Standard shape; null = {@link com.stonebreak.world.generation.StandardShapeVersion#CURRENT}. */
+        public Builder standardShape(com.stonebreak.world.generation.StandardShapeVersion standardShape) {
+            this.standardShape = com.stonebreak.world.generation.StandardShapeVersion.orCurrent(standardShape);
             return this;
         }
 

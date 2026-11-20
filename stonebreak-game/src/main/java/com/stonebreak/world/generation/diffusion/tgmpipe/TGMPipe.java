@@ -113,22 +113,19 @@ public final class TGMPipe {
      * release folder: real files built by {@code scripts/make_release.py} (licence gate, inference-only weights,
      * {@code release.json} manifest) from a model folder of training symlinks ({@code checkpoints/exp2/world_exp2f}; exp2-r3 = 2026-11-19 release:
      * MeanFlow relief, FP8 detail, SR-15 v2, surface + vegetation nodes).
-     * It is gitignored (detail.pt is 256 MB, above GitHub's 100 MiB limit) until its distribution is decided, so a
-     * checkout without it falls back to {@link #LEGACY_MODEL}. {@code -Dstonebreak.tgmpipe.model=<dir>} picks any
-     * model folder (a candidate such as {@code checkpoints/exp2/world_exp2b}, or {@code checkpoints/v4}).
+     * Its weights ({@code *.pt}, ~590 MB) are stored with Git LFS: a checkout without {@code git lfs pull} has pointer
+     * files instead, and the game refuses to start the model with a message saying so
+     * ({@link TerrainModels#installProblem}). There is no fallback model (EXP-1's v4 was removed 2026-11-19).
+     * {@code -Dstonebreak.tgmpipe.model=<dir>} picks another model folder for new worlds (a candidate such as
+     * {@code checkpoints/exp2/world_exp2f}).
      */
     static final String DEFAULT_MODEL = "checkpoints/exp2-r3";
-    /**
-     * EXP-1's v4 (WorldClim-trained: never ship it): kept reachable with {@code -Dstonebreak.tgmpipe.model=checkpoints/v4}
-     * and as the fallback of a checkout without {@link #DEFAULT_MODEL}, until v4 is removed.
-     */
-    static final String LEGACY_MODEL = "checkpoints/v4";
 
     /**
      * The model folder the service loads, relative to {@link #SLM_DIR} (or absolute): the current world's model
      * ({@link #useWorldModel}: the one a saved world was made with, review-python HIGH-1) once a world chose one, else
-     * {@link TerrainModels#defaultModelPath()} ({@code -Dstonebreak.tgmpipe.model} when set, else {@link #DEFAULT_MODEL},
-     * else (that folder missing) {@link #LEGACY_MODEL} with a warning). Every backend reads the model through here.
+     * {@link TerrainModels#defaultModelPath()} ({@code -Dstonebreak.tgmpipe.model} when set, else {@link #DEFAULT_MODEL}).
+     * Every backend reads the model through here.
      */
     static String modelPath() {
         TGMPipe pipe = INSTANCE;   // null only while the instance itself is being built
@@ -574,6 +571,9 @@ public final class TGMPipe {
             throw new TGMPipeException("could not create TGMPipe log directory " + logFile.getParent(), e);
         }
         String model = modelPath();   // the world's model (useWorldModel) or the default: both backends below read it
+        // Missing release folder / Git LFS pointers instead of weights: say so (and how to fetch them) instead of
+        // handing torch a pointer file or falling back to another model.
+        TerrainModels.requireInstalled(model);
         if (NativeTerrainLauncher.wanted()) {
             // Native engine phase 3: the pipeline in-process; the child process is the fallback (backend "auto").
             try {

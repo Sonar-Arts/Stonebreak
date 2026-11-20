@@ -199,7 +199,8 @@ def test_fixed_step_sea_growth_equals_ocean_sea_cells():
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs the EXP-2 model on a GPU")
 def test_sea_fields_seed_land_matches_continent_land_cells():
     """sea_fields_cells rebuilds v2's sea seeds from continent2 + the layout trend (one continent2 call); they must
-    stay the true-sea classification's (`continent_land_cells`)."""
+    stay the true-sea classification's (`continent_land_cells`) -- minus BV's sea link, which the classification adds
+    (closed basins are lakes there) while the lake-bed cap keeps FX3's seeds (its depths unchanged)."""
     import os
     from pathlib import Path
     from terrain_slm.eval import DEFAULT_EXP2_MODEL
@@ -215,5 +216,8 @@ def test_sea_fields_seed_land_matches_continent_land_cells():
         cj = torch.arange(cj0, cj0 + n, device=dev, dtype=torch.float32).view(1, -1).expand(n, n)
         land = C2.continent2(ci, cj, seed=2)[1]
         trend = gen._layout(ci0, cj0, n, n)["trend"].to(dev)
+        drowned = trend < G2.SEA_SEED_TREND_M
+        if G2.SEA_LINK:
+            drowned = drowned & gen.sea_link_cells(ci0, cj0, n, n, dev)
     gen.use_sea_shelf(False)
-    assert torch.equal(torch.where(trend < G2.SEA_SEED_TREND_M, torch.zeros_like(land), land), ref)
+    assert torch.equal(torch.where(drowned, torch.zeros_like(land), land), ref)

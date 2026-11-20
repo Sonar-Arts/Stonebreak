@@ -46,7 +46,6 @@ class TerrainModelsTest {
     void newWorldsRecordTheDefaultReleaseWithItsContentId() throws IOException {
         System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
         model(TGMPipe.DEFAULT_MODEL, "aaa111");
-        model("checkpoints/v4", null);
         assertEquals(new TerrainModelRef(TGMPipe.DEFAULT_MODEL, "aaa111"), TerrainModels.current());
 
         System.setProperty("stonebreak.tgmpipe.model", "checkpoints/exp2/world_exp2b");
@@ -61,13 +60,7 @@ class TerrainModelsTest {
     void aSavedWorldRunsItsOwnModelWhenItIsInstalled() throws IOException {
         System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
         model(TGMPipe.DEFAULT_MODEL, "new222");
-        model("checkpoints/v4", null);
         model("checkpoints/exp2-old", "old111");
-
-        TerrainModels.Choice v4 = TerrainModels.resolve(TerrainModelRef.LEGACY);
-        assertEquals("checkpoints/v4", v4.path());
-        assertTrue(v4.matches());
-        assertNull(v4.notice());
 
         TerrainModels.Choice old = TerrainModels.resolve(new TerrainModelRef("checkpoints/exp2-old", "old111"));
         assertEquals("checkpoints/exp2-old", old.path());
@@ -87,11 +80,12 @@ class TerrainModelsTest {
         System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
         model(TGMPipe.DEFAULT_MODEL, "new222");
 
-        TerrainModels.Choice v4 = TerrainModels.resolve(TerrainModelRef.LEGACY);   // v4 not installed (a player build)
-        assertEquals(TGMPipe.DEFAULT_MODEL, v4.path());
-        assertFalse(v4.matches());
-        assertNotNull(v4.notice());
-        assertTrue(v4.notice().contains("v4") && v4.notice().contains("unexplored terrain"), v4.notice());
+        TerrainModels.Choice gone = TerrainModels.resolve(new TerrainModelRef("checkpoints/exp2-r0", "zzz"));
+        assertEquals(TGMPipe.DEFAULT_MODEL, gone.path());
+        assertFalse(gone.matches());
+        assertNotNull(gone.notice());
+        assertTrue(gone.notice().contains("exp2-r0") && gone.notice().contains("unexplored terrain")
+                && gone.notice().contains("Install checkpoints/exp2-r0"), gone.notice());
 
         // A different release rebuilt at the world's path is not the world's model.
         model("checkpoints/exp2-r9", "other");
@@ -101,18 +95,34 @@ class TerrainModelsTest {
     }
 
     @Test
-    void aCheckoutWithoutTheReleaseRecordsTheV4ItRunsAndKeepsItWhenTheReleaseArrives() throws IOException {
-        // review-java finding 1: the gitignored release folder missing -> the v4 fallback. A world made then is a v4
-        // world and stays one; it must not switch to EXP-2 once the release is installed.
+    void worldsSavedWithoutAModelOrWithARetiredOneRunTheDefaultWithAClearWarning() throws IOException {
+        // v4 removed 2026-11-19 (user decision): a save without "terrainModel" (= v4, TerrainModelRef.LEGACY) or one
+        // naming an EXP-1 folder runs the default model with FX1's rule-4 notice - even if an old copy of the folder
+        // is still on disk. The world keeps its honest record (LEGACY), so the notice repeats on every load.
+        System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
+        model(TGMPipe.DEFAULT_MODEL, "rel123");
+        model("checkpoints/v4", null);
+        model("checkpoints/v3", null);
+        for (TerrainModelRef old : new TerrainModelRef[]{TerrainModelRef.LEGACY, TerrainModelRef.parse(null, null),
+                new TerrainModelRef("checkpoints/v4/", ""), new TerrainModelRef("checkpoints/v3", "")}) {
+            TerrainModels.Choice c = TerrainModels.resolve(old);
+            assertEquals(TGMPipe.DEFAULT_MODEL, c.path(), old.toString());
+            assertFalse(c.matches());
+            assertNotNull(c.notice());
+            assertTrue(c.notice().contains("retired") && c.notice().contains("unexplored terrain")
+                    && c.notice().contains("removed from the game") && !c.notice().contains("Install "), c.notice());
+        }
+        assertEquals(new TerrainModelRef(TGMPipe.DEFAULT_MODEL, "rel123"), TerrainModels.current(), "new worlds: EXP-2");
+    }
+
+    @Test
+    void aCheckoutWithoutTheReleaseNeverFallsBackToAnotherModel() throws IOException {
+        // review-java finding 1 used to fall back to v4 here. Now: new worlds record the release they are meant to
+        // run, and the service refuses to start with a message naming it (TerrainModels.installProblem).
         System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
         model("checkpoints/v4", null);
-        TerrainModelRef made = TerrainModels.current();
-        assertEquals(TerrainModelRef.LEGACY, made, "the fallback that actually runs is what the world records");
-        model(TGMPipe.DEFAULT_MODEL, "rel123");
-        assertEquals(new TerrainModelRef(TGMPipe.DEFAULT_MODEL, "rel123"), TerrainModels.current(), "new worlds: EXP-2");
-        TerrainModels.Choice old = TerrainModels.resolve(made);
-        assertEquals("checkpoints/v4", old.path());
-        assertTrue(old.matches());
+        assertEquals(new TerrainModelRef(TGMPipe.DEFAULT_MODEL, ""), TerrainModels.current());
+        assertNotNull(TerrainModels.installProblem(TerrainModels.defaultModelPath()));
     }
 
     @Test
@@ -133,13 +143,14 @@ class TerrainModelsTest {
     void forceModelRunsTheFlagModelForSavedWorldsToo() throws IOException {
         System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
         model(TGMPipe.DEFAULT_MODEL, "new222");
-        model("checkpoints/v4", null);
+        model("checkpoints/exp2-old", "old111");
         model("checkpoints/exp2/world_exp2e", null);
+        TerrainModelRef saved = new TerrainModelRef("checkpoints/exp2-old", "old111");
         System.setProperty("stonebreak.tgmpipe.model", "checkpoints/exp2/world_exp2e");
-        assertEquals("checkpoints/v4", TerrainModels.resolve(TerrainModelRef.LEGACY).path(),
+        assertEquals("checkpoints/exp2-old", TerrainModels.resolve(saved).path(),
                 "without forceModel the flag only sets the model of NEW worlds");
         System.setProperty("stonebreak.tgmpipe.forceModel", "true");
-        TerrainModels.Choice forced = TerrainModels.resolve(TerrainModelRef.LEGACY);
+        TerrainModels.Choice forced = TerrainModels.resolve(saved);
         assertEquals("checkpoints/exp2/world_exp2e", forced.path());
         assertFalse(forced.matches());
         assertNotNull(forced.notice());
@@ -152,15 +163,18 @@ class TerrainModelsTest {
     void theWorldModelIsWhatBothBackendsLoad() throws IOException {
         System.setProperty("stonebreak.tgmpipe.repoDir", slm.toString());
         model(TGMPipe.DEFAULT_MODEL, "new222");
-        model("checkpoints/v4", null);
+        model("checkpoints/exp2-old", "old111");
         TGMPipe pipe = TGMPipe.getInstance();
         assertEquals(TGMPipe.DEFAULT_MODEL, TGMPipe.modelPath());
 
-        pipe.useWorldModel(TerrainModelRef.LEGACY);
-        assertEquals("checkpoints/v4", TGMPipe.modelPath(), "the TGMPipe child's command line");
-        assertEquals(slm.resolve("checkpoints/v4").resolve("native"), NativeTerrainLauncher.nativeDir(),
+        pipe.useWorldModel(new TerrainModelRef("checkpoints/exp2-old", "old111"));
+        assertEquals("checkpoints/exp2-old", TGMPipe.modelPath(), "the TGMPipe child's command line");
+        assertEquals(slm.resolve("checkpoints/exp2-old").resolve("native"), NativeTerrainLauncher.nativeDir(),
                 "the native pipeline's release export");
-        assertTrue(TGMPipe.generatorLabel().endsWith("v4"));
+        assertTrue(TGMPipe.generatorLabel().endsWith("exp2-old"));
+
+        pipe.useWorldModel(TerrainModelRef.LEGACY);   // a pre-2026-11-19 save: v4 is retired -> the default
+        assertEquals(TGMPipe.DEFAULT_MODEL, TGMPipe.modelPath());
 
         pipe.useDefaultModel();   // the terrain mapper: new worlds
         assertEquals(TGMPipe.DEFAULT_MODEL, TGMPipe.modelPath());

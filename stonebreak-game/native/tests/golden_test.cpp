@@ -105,6 +105,7 @@ struct Case {
     int32_t cache;      /* cache_columns, 0 = default */
     int64_t cx0, cz0;
     int n;              /* n x n column cubes */
+    int shape = 0;      /* sbw_gen_config.standard_shape (0 = unset = 1); 2 = the EXP-2 distillation + its passes */
 };
 
 sbw_gen_config makeConfig(const Case& k) {
@@ -141,6 +142,16 @@ sbw_gen_config makeConfig(const Case& k) {
     if (k.profile) {
         c.kind = SBW_KIND_PROFILE;
         c.column_fn = synthProfile;
+    }
+    if (k.shape >= 2) {
+        /* Standard shape 2 as NativeTerrain.applyStandardShape sends it: the v2 curve, the channel-driven passes */
+        const double s = k.hm / 60.0;
+        const double rates[4] = {32.0, 16.0 * s, 24.0 * s, 38.0 * s};
+        const double knots[5] = {600.0, 2000.0, 10.0, 150.0, 300.0};
+        std::memcpy(c.curve_rates, rates, sizeof(rates));
+        std::memcpy(c.curve_knots, knots, sizeof(knots));
+        c.standard_shape = static_cast<uint16_t>(k.shape);
+        c.flags |= SBW_FLAG_SEA_FLOOR | SBW_FLAG_LAND_SURFACE | SBW_FLAG_BOULDERS | SBW_FLAG_VEGETATION;
     }
     return c;
 }
@@ -428,6 +439,10 @@ std::vector<Case> cases(bool big) {
         {"sm77-q-nodeep", -77, 60.0, SBW_FLAG_PEAK_DAMP | SBW_FLAG_FEATURES, false, 0, 5, 5, 2},
         {"s31337-q-tiny", 31337, 60.0, ALL, false, 64, -3, 7, 3},
         {"s9-profile", 9, 60.0, ALL, true, 0, -1, 0, 3},
+        /* Standard shape 2 (2026-11-19, the DaedalusTGM-Exp-2 distillation) */
+        {"s1-q-shape2", 1, 60.0, ALL, false, 0, 0, 0, 3, 2},
+        {"s4242-h-shape2", 4242, 30.0, ALL, false, 0, 40, -25, 3, 2},
+        {"sm77-q-shape2-coast", -77, 60.0, ALL, false, 64, 60, -90, 2, 2},
     };
     if (big) {
         const int64_t seeds[] = {2, 77, 8086, 123456789, -5, 2024, 31337, 20261117};

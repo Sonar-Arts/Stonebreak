@@ -1,6 +1,9 @@
 # DaedalusTGM-Exp: Terrain Generation Model Architecture
 
 **Branch:** `Project-Daedalus` (off Project-Heracles) · **As of:** 2026-09-29 (v4: 49M detail sampler, 24 regions, routed drainage + downhill-only rivers, hilly lowlands, biome sidecar, §1a; native CUDA + C++ kernels (2026-10-19), §12a; done / left checklist, §15)
+
+> **2026-11-19:** EXP-1 (v2 / v3 / v4, WorldClim-trained) was removed from the checkout and from the game; this document describes it historically. The game runs DaedalusTGM-Exp-2 (`checkpoints/exp2-r3`, weights in Git LFS, `world/generator2.py`); see `README.md` and `Dev Working/docs/DaedalusTGM-Exp-2-Plan.md`.
+
 **Name:** **DaedalusTGM-Exp** (Daedalus Terrain Generation Model, experimental): the official name of the model (the process that serves it to the game is **TGMPipe**). Code identifiers keep their original names: Python package `terrain_slm`. The name appears in `terrain_slm.MODEL_NAME`, the service's READY handshake (`"name"`), its `model_id` (`DaedalusTGM-Exp/v3:p…:r…:l…:h…:b…:g…`), its log, and `TGMPipe.MODEL_NAME` (Java)
 **Home:** `Models/DaedalusTGM-Exp/` (this model: code, training, TGMPipe, checkpoints, reports, docs) · Java `TGMPipe` + world constants (`TerrainScale`)
 **Plan / history:** [`Terrain-SLM-Plan.md`](Terrain-SLM-Plan.md) (§13 onward is the running log)
@@ -11,7 +14,7 @@
 
 | | |
 |---|---|
-| Default generator | **DaedalusTGM-Exp v4** (`TGMPipe.DEFAULT_MODEL`, model dir `checkpoints/v4`, ~131 MB: `detail.pt` 99 MB bf16, tracked in plain git (no LFS)). v3 kept in `checkpoints/v3`. **§1a describes v4; the rows below are v3 unless marked** |
+| Default generator | (until 2026-11-19) **DaedalusTGM-Exp v4** (`checkpoints/v4`, ~131 MB, plain git; removed 2026-11-19, now `checkpoints/exp2-r3`, Git LFS). v3 was `checkpoints/v3` (removed). **§1a describes v4; the rows below are v3 unless marked** |
 | **v4 additions** | detail sampler 49.4M (replaces synth + refiner + MaskGIT for heights), planner R2 4.83M, relief wide 2.54M, hydro/bank retrained on 24 regions, routed drainage, biome sidecar 1.10M (§1a, §1b) |
 | Controls | **v2**: continents + long, winding **mountain ranges** (spines, spurs, foothills) + climate archetypes (§6) |
 | Relief sampler | **new**: flow-matching conv UNet on 240 m cells, **425,033 params**, 11 min; samples valley networks onto the smooth trend (§7) |
@@ -144,7 +147,7 @@ same classification with coherent regions.
 | Training | class-balanced CE (1/sqrt(freq), clipped), AdamW 1e-3, grad clip 1, 30k steps, bf16, ~14 min. lr 2e-3 without clipping diverged at the wider size |
 | Held-out | 97.0% agreement with cleaned targets; every biome's share within ~0.1 pt of the rule's (swamp 2.79/2.80%, jungle 5.77/5.74%, desert 3.47/3.44%); specks per 160^2 crop 153 (rule) -> 8.6 (cleaned: 2) |
 | In game (46 km, seeds 1/2) | specks 739 -> **102** and 415 -> **9**; boundary share 3.2 -> 1.7% and 1.3 -> 0.9%; biome shares preserved |
-| Wiring | optional `biome.pt` in the model dir (`gen.biomenet`); `TileBuilder._blocks` classifies tile + margin on the **pre-river ground** (quantised like training; carved channels and raised banks drew ribbons: seed-1 specks 228 -> 102), noise coordinates aligned to the rule's, then crops. Request-independent (`test_v4_tile_with_detail_sampler_and_biome_sidecar_matches_a_bigger_request`). Far-zoom overview tiles keep the rule classifier |
+| Wiring | optional `biome.pt` in the model dir (`gen.biomenet`); `TileBuilder._blocks` classifies tile + margin on the **pre-river ground** (quantised like training; carved channels and raised banks drew ribbons: seed-1 specks 228 -> 102), noise coordinates aligned to the rule's, then crops. Request-independent (`test_release_tile_with_detail_sampler_and_biome_sidecar_matches_a_bigger_request`, on the release since v4's removal). Far-zoom overview tiles keep the rule classifier |
 | Known gap | faint traces of biome ribbons along a few river channels remain |
 | Aridity-first rule + b4 (2026-09-28, after in-game review) | `biomes._classify_biome` (vendored upstream rule, now changed): treeless land that is hyper-arid (`too_arid` or < `HYPER_ARID_PRECIP_MM` 250 mm) is **desert at any temperature**; `grove` now means only cold barren ground; semi-arid steppe (lowland and mountain) is plains. The old rule needed >= 20 C, so a desert's outline was the ~750 m contour and 61% of a 72 mm/yr zone became grove. Sidecar retrained on the new rule as **b4** with per-pixel `ChannelNorm` in every block (b3 without it collapsed to one class at step ~3.5k even with grad clipping; GroupNorm would be window-dependent = tile seams): 97.2% vs cleaned targets, 5.3 specks/crop (b2: 8.6), shares within 0.7 pt. Exact float64 receptive-field test found radius 28 (a 1e-6 threshold had reported 23): `pipeline.BLOCK_MARGIN` 24 -> 32. Caveat: `model_id` records steps only (`B28000` for both b2 and b4) — the cache stayed correct because the source changed too |
 | Oceans (2026-09-28, after in-game review) | the sidecar's classes are land biomes only, and b2/b4 training mapped any other id (the ocean ids) to class 0 = plains, so every sea column reached the game as plains. `TileBuilder` now keeps the rule classifier's ocean ids (`biomes.OCEAN_IDS`: 41/44/46/48, decided by `elev < 0` like the game's sea level) and uses the sidecar for land only; `train_biomes` maps non-land ids to an ignored class. Game side: ocean ids -> `BiomeType.OCEAN` (appended last), sea floor 97% sand / 2% dirt / 1% clay per column (`DiffusionTerrainGenerator.oceanFloorBlock`, seeded hash; `OceanFloorTest`) |
@@ -505,7 +508,7 @@ only less energy per window helps. What is left per steady-state tile is ~55% th
 
 | Where | What |
 |---|---|
-| `tgmpipe/TGMPipe` | launches `python -m terrain_slm.tgmpipe` (model dir **`checkpoints/v4`**) once `ModelSetup` has installed and warmed it on game launch, handshake, restart + re-send, stall watchdog; `requestTile(seed, x, z, lod, priority)`; finds `Models/` from the repo root or a module dir |
+| `tgmpipe/TGMPipe` | launches `python -m terrain_slm.tgmpipe` (model dir **`checkpoints/exp2-r3`**; was `checkpoints/v4` until 2026-11-19) once `ModelSetup` has installed and warmed it on game launch, handshake, restart + re-send, stall watchdog; `requestTile(seed, x, z, lod, priority)`; finds `Models/` from the repo root or a module dir |
 | `tgmpipe/TGMPipeProtocol`, `TGMPipeConnection` | frame codec; one multiplexed connection, tiles pushed when done, CANCEL for withdrawn requests |
 | `DiffusionTileCache` | per seed + lod + priority; floorDiv bucketing, in-flight de-dup, LRU; `close()` withdraws what is still in flight |
 | Terrain mapper | **Rivers** mode (`RiverVisualizer`: flow octant as hue, red undercuts, orange overhangs); footer and loading line name the model (`generatorLabel()`); at 8+ blocks per sample it reads `lod`-8 overview tiles (`VisualizerRegistry.overviewColumns`, `TerrainMapperConfig.OVERVIEW_*`), and `PreviewSampleStore` keeps full-detail and overview levels apart |
@@ -536,7 +539,7 @@ only less energy per window helps. What is left per steady-state tile is ~55% th
 - ✅ **Cold start 28.7 s for the first tile** — now **6.3-6.9 s** (v4 + native kernels, §12a); a first-ever launch also compiles the kernels during the game's setup screen, not on the first tile.
 - ✅ **Inference speed** — own CUDA + C++ kernels (replaced the Triton ones 2026-10-19): ~0.5 s per streaming tile, 7x closer to the fp32 model than Triton's bf16; routing native (§12a).
 - ✅ **Setup by hand** — the game installs the Python environment and compiles the kernels itself on launch (`ModelSetup`, README "Playing").
-- ✅ **Checkpoint shipping** — v4 tracked as bf16 in plain git (no LFS).
+- ✅ **Checkpoint shipping** — v4 tracked as bf16 in plain git (no LFS); since 2026-11-19 the EXP-2 release `checkpoints/exp2-r3` via Git LFS (v4 removed).
 - ◐ **Bland lowlands** — hilly lowland provinces calibrated on real hilly regions (v4, §1a); *terrain shape following climate zones* is still left (below).
 - ◐ **Orange peel / missing 1–4 km dendritic valleys** — v4's detail sampler (60 m samples, ~24 km receptive field, trained on real DEMs, conditioned on drainage) replaced synth + refiner to fix exactly this. **Left:** an in-game check that it did, before closing it.
 

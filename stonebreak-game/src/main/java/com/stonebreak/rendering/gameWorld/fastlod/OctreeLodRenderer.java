@@ -211,6 +211,10 @@ public final class OctreeLodRenderer {
                 if (daedalus && world.getHeightCurve() != com.stonebreak.world.generation.HeightCurveVersion.V1) {
                     layoutSuffix += "-c" + world.getHeightCurve().number();
                 }
+                // Standard shape 1 keeps the old name; later shapes are their own terrain
+                if (!daedalus && world.getStandardShape() != com.stonebreak.world.generation.StandardShapeVersion.V1) {
+                    layoutSuffix += "-s" + world.getStandardShape().number();
+                }
                 // Two servers with the same seed are not the same world, nor are two terrain models (review-java
                 // LOW 3): the store is keyed by the server's address and, for Daedalus worlds, the model too.
                 var view = com.stonebreak.network.MultiplayerSession.getClient();

@@ -47,6 +47,7 @@ public class JsonWorldSerializer {
         json.append("  \"climateLayout\": \"").append(world.getClimateLayout().name()).append("\",\n");
         json.append("  \"heightCurve\": ").append(world.getHeightCurve().number()).append(",\n");
         json.append("  \"worldFeatures\": ").append(world.getWorldFeatures().number()).append(",\n");
+        json.append("  \"standardShape\": ").append(world.getStandardShape().number()).append(",\n");
         json.append("  \"terrainModel\": \"").append(JsonParsingUtil.escapeJson(world.getTerrainModel().path())).append("\",\n");
         json.append("  \"terrainModelId\": \"").append(JsonParsingUtil.escapeJson(world.getTerrainModel().contentId())).append("\",\n");
         json.append("  \"minY\": ").append(world.getMinY()).append(",\n");
@@ -90,7 +91,11 @@ public class JsonWorldSerializer {
                 .worldFeatures(WorldFeatureVersion.of(
                     JsonParsingUtil.extractLong(json, "worldFeatures", WorldFeatureVersion.LEGACY.number()),
                     WorldFeatureVersion.LEGACY))
-                // Missing = a world saved before terrain models were recorded: made by v4 (TerrainModelRef.LEGACY).
+                .standardShape(com.stonebreak.world.generation.StandardShapeVersion.of(
+                    JsonParsingUtil.extractLong(json, "standardShape",
+                        com.stonebreak.world.generation.StandardShapeVersion.LEGACY.number()),
+                    com.stonebreak.world.generation.StandardShapeVersion.LEGACY))
+                // Missing = a world saved before terrain models were recorded: made by v4 (TerrainModelRef.LEGACY, retired).
                 .terrainModel(com.stonebreak.world.generation.TerrainModelRef.parse(
                     JsonParsingUtil.extractStringOptional(json, "terrainModel"),
                     JsonParsingUtil.extractStringOptional(json, "terrainModelId")))
