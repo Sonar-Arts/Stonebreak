@@ -65,6 +65,11 @@ public final class NativeCubeGenerator implements AutoCloseable {
      * {@link WorldFeatureVersion} (V3+), so saved worlds never change vegetation at their explored edge.
      */
     public static final int FLAG_VEGETATION = 0x80;
+    /**
+     * With {@link #FLAG_VEGETATION}: open the land up - big meadow patches by biome on wooded land, a steeper cover-to-density curve - so
+     * temperate land is not ~90 % closed forest (2026-11-20); set per world by {@link WorldFeatureVersion} (V4+).
+     */
+    public static final int FLAG_VEG_OPEN_LAND = 0x100;
     public static final int SAMPLE_CARVED = 1;
     private static final int CONFIG_SIZE = 368;
     private static final int PROFILE_SIZE = 36864;

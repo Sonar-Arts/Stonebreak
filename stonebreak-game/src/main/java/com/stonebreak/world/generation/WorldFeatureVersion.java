@@ -13,38 +13,47 @@ package com.stonebreak.world.generation;
 public enum WorldFeatureVersion {
 
     /** Worlds saved before 2026-11-19 (no {@code worldFeatures} in world.json): no boulders. */
-    V0(0, false, 0, false, false),
+    V0(0, false, 0, false, false, false),
     /** 2026-11-19: boulders, scree and erratics (native {@code SBW_FLAG_BOULDERS}) with rock shape bank 1. */
-    V1(1, true, 1, false, false),
+    V1(1, true, 1, false, false, false),
     /**
      * 2026-11-19 (agent L): V1 + land surface materials from the terrain model's surface-detail channels (native
      * {@code SBW_FLAG_LAND_SURFACE}: bare rock, talus, broken ground where the tiles carry rock / scree / roughness).
      */
-    V2(2, true, 1, true, false),
+    V2(2, true, 1, true, false, false),
     /**
      * 2026-11-19 (agent V): V2 + vegetation from the terrain model's vegetation channels (native
      * {@code SBW_FLAG_VEGETATION}: tree density, size and clearings, bushes, grass, bare and wet-meadow patches where
      * the tiles carry canopy / ground-cover channels; ETH canopy height + ESA WorldCover trained).
      */
-    V3(3, true, 1, true, true);
+    V3(3, true, 1, true, true, false),
+    /**
+     * 2026-11-20: V3 + open land (native {@code SBW_FLAG_VEG_OPEN_LAND}): V3 temperate worlds came out ~90 % closed
+     * forest (the node predicts natural vegetation and its canopy cover saturates in forest), so V4 adds big meadow
+     * patches per biome and a steeper cover-to-density curve; closed forest stays closed.
+     */
+    V4(4, true, 1, true, true, true);
 
     /** The feature set of worlds saved without one (older saves). */
     public static final WorldFeatureVersion LEGACY = V0;
     /** The feature set new worlds get. */
-    public static final WorldFeatureVersion CURRENT = V3;
+    public static final WorldFeatureVersion CURRENT = V4;
 
     private final int number;
     private final boolean boulders;
     private final int rockBank;
     private final boolean landSurface;
     private final boolean vegetation;
+    private final boolean openLand;
 
-    WorldFeatureVersion(int number, boolean boulders, int rockBank, boolean landSurface, boolean vegetation) {
+    WorldFeatureVersion(int number, boolean boulders, int rockBank, boolean landSurface, boolean vegetation,
+                        boolean openLand) {
         this.number = number;
         this.boulders = boulders;
         this.rockBank = rockBank;
         this.landSurface = landSurface;
         this.vegetation = vegetation;
+        this.openLand = openLand;
     }
 
     /**
@@ -53,6 +62,14 @@ public enum WorldFeatureVersion {
      */
     public boolean vegetation() {
         return vegetation;
+    }
+
+    /**
+     * Whether vegetation opens the land up ({@link NativeCubeGenerator#FLAG_VEG_OPEN_LAND}: meadows, steeper density
+     * curve); only with {@link #vegetation()}. V3 worlds keep their denser forests at the explored edge.
+     */
+    public boolean openLand() {
+        return openLand;
     }
 
     /**

@@ -183,6 +183,42 @@ int main() {
     CHECK(per(FOREST, &Stats::dirtSwaps) == 0.0);
     /* probe = population, but for the odd column a carver cut (population needs uncarved ground) */
     for (Quad q : {FOREST, CLEARINGS, SAVANNA, BARE}) CHECK(st[q].probeTrees >= st[q].trees && st[q].probeTrees <= st[q].trees * 1.15 + 2);
+
+    /* SBW_FLAG_VEG_OPEN_LAND (WorldFeatureVersion V4): meadows + steeper density curve open the land up; closed
+     * forest keeps most of its trees, half cover thins out more, no-data columns are untouched */
+    sbw_gen_config oc = makeConfig(vegProfile);
+    oc.flags |= SBW_FLAG_VEG_OPEN_LAND;
+    Gen open(oc);
+    if (open.t == nullptr) return 1;
+    int probeOpen[QUADS] = {}, probeVeg[QUADS] = {}, plantsOpen[QUADS] = {}, plantsVeg[QUADS] = {}, noDataDiff = 0;
+    for (int64_t cx = 0; cx < 8; cx++) {
+        for (int64_t cz = 0; cz < 16; cz++) {
+            const Quad q = quadOf(cx, cz);
+            for (int lz = 0; lz < 32; lz++)
+                for (int lx = 0; lx < 32; lx++) {
+                    int t1 = 0, t2 = 0;
+                    const bool a = open.g().treeAt(cx * 32 + lx, cz * 32 + lz, SBW_GRASS, SBW_PLAINS, t1) >= 0;
+                    const bool b = veg.g().treeAt(cx * 32 + lx, cz * 32 + lz, SBW_GRASS, SBW_PLAINS, t2) >= 0;
+                    probeOpen[q] += a;
+                    probeVeg[q] += b;
+                    if (q == NODATA) noDataDiff += a != b;
+                }
+            auto fo = open.g().features(cx, cz);
+            auto fv = veg.g().features(cx, cz);
+            if (fo) for (const Feature& f : fo->fs) plantsOpen[q] += f.kind == Feature::PLANT;
+            if (fv) for (const Feature& f : fv->fs) plantsVeg[q] += f.kind == Feature::PLANT;
+        }
+    }
+    for (int q = 1; q < QUADS; q++)
+        std::printf("  open land %-9s trees %d -> %d (x%.2f), plants %d -> %d\n", NAME[q], probeVeg[q], probeOpen[q],
+                    probeVeg[q] ? double(probeOpen[q]) / probeVeg[q] : 0.0, plantsVeg[q], plantsOpen[q]);
+    CHECK(noDataDiff == 0);
+    CHECK(probeOpen[FOREST] > 0.65 * probeVeg[FOREST]);    /* closed forest stays forest outside the meadows */
+    CHECK(probeOpen[FOREST] < 0.9 * probeVeg[FOREST]);     /* ... and the meadows open it up */
+    CHECK(probeOpen[CLEARINGS] < 0.92 * probeVeg[CLEARINGS]);
+    CHECK(probeOpen[SAVANNA] > 0.75 * probeVeg[SAVANNA]);  /* open savanna keeps its scattered trees */
+    CHECK(probeOpen[BARE] == 0);
+    CHECK(plantsOpen[FOREST] > plantsVeg[FOREST]);         /* meadow grass and flowers */
     std::printf("vegetation: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

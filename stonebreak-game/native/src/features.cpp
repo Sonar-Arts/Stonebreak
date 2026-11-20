@@ -595,6 +595,38 @@ float vegDensity(const DeterministicRandom& r, int64_t x, int64_t z, const Veg& 
     const float patch = 0.75f + 0.5f * forestLattice(r, x, z, 6, H_PATCH);
     return std::min(1.0f, inside * patch);
 }
+/* SBW_FLAG_VEG_OPEN_LAND (WorldFeatureVersion V4, 2026-11-20): the node predicts natural vegetation and its cover
+ * (share of ground under canopy >= 5 m) saturates near 1 in any closed forest, so V3 temperate worlds came out ~90 %
+ * dense forest. V4 opens the land up while closed forest stays closed:
+ *  - meadows: big open patches (a 40-block lattice) take a per-biome share of wooded land (plains 20 %, meadow
+ *    35 %, swamp 12 %, snowy plains 15 %, taiga / tundra / peaks 8 %; scaled in from cover 0.3 to 0.7, so open
+ *    savanna keeps its scattered trees) with only the odd lone tree;
+ *  - a steeper cover curve (1 stays 1, 0.8 -> 0.77, 0.5 -> 0.45, 0.1 -> 0.10: low cover nearly untouched;
+ *    2026-11-20 second pass: meadow shares and curve halved, halfway back toward V3's density), so
+ *    only near-closed canopy reaches the full density. */
+constexpr int VEG_MEADOW_SPACING = 40;
+float vegMeadowShare(int biome) {
+    switch (biome) {
+        case SBW_PLAINS: return 0.20f;
+        case SBW_MEADOW: return 0.35f;
+        case SBW_SWAMP: return 0.12f;
+        case SBW_SNOWY_PLAINS: return 0.15f;
+        case SBW_TAIGA: case SBW_TUNDRA: case SBW_STONY_PEAKS: return 0.08f;
+        default: return 0.15f;
+    }
+}
+bool vegInMeadow(const DeterministicRandom& r, int64_t x, int64_t z, int biome, float cover) {
+    static const int32_t H_MEADOW = javaStringHash("veg_meadow");
+    const float share = vegMeadowShare(biome) * std::clamp((cover - 0.3f) / 0.4f, 0.0f, 1.0f);
+    return share > 0.0f && latticeUniform(forestLattice(r, x, z, VEG_MEADOW_SPACING, H_MEADOW)) < share;
+}
+float vegDensityOpen(const DeterministicRandom& r, int64_t x, int64_t z, const Veg& v, int biome) {
+    const float c = v.cover - 0.2f * v.cover * (1.0f - v.cover) * std::min(1.0f, v.cover / 0.4f);
+    if (vegInMeadow(r, x, z, biome, v.cover)) return 0.1f * c;   /* a meadow: the odd lone tree */
+    Veg o = v;
+    o.cover = c;
+    return vegDensity(r, x, z, o);
+}
 /* real canopy height (m) -> tree size class: short scrub / savanna trees, mid forest, tall forest */
 int vegSize(const Veg& v) { return v.height < 9.0f ? 0 : v.height < 21.0f ? 1 : 2; }
 
@@ -645,7 +677,8 @@ int Generator::treeAtVeg(int64_t x, int64_t z, uint16_t surface, int biome, cons
         default: break;   /* deserts, beaches, ice, badlands, ocean: no trees (their ground is sand / ice / rock) */
     }
     if (kind < 0 || v.cover <= 0.0f) return -1;
-    const float dens = vegDensity(drand, x, z, v);
+    const bool open = (cfg.flags & SBW_FLAG_VEG_OPEN_LAND) != 0;
+    const float dens = open ? vegDensityOpen(drand, x, z, v, biome) : vegDensity(drand, x, z, v);
     const float p = VEG_TREE_MAX * std::pow(dens, 1.25f) * (kind == SBW_TREE_CYPRESS ? 0.5f : 1.0f);
     if (!rolls(drand, x, z, H_VTREE, p)) return -1;
     size = vegSize(v);
@@ -786,7 +819,10 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
             ft.ax = x; ft.ay = h; ft.az = z;
             ft.priority = featurePriority(cfg.seed, x, h, z);
             /* ground vegetation from the vegetation channels (ABI 5): replaces the biome flower rule there */
-            const Veg gv = vegOf(f.veg);
+            Veg gv = vegOf(f.veg);
+            /* V4 meadows: open sky, so grass tufts and flowers as on open grassland and no understorey bushes */
+            if (gv.present && (cfg.flags & SBW_FLAG_VEG_OPEN_LAND) != 0 && vegInMeadow(drand, x, z, f.biome, gv.cover))
+                gv.cover *= 0.1f;
             if (gv.present && f.uncarved) {
                 static const int32_t H_VBARE = javaStringHash("veg_bare"), H_VWET = javaStringHash("veg_wetland"),
                                      H_VBUSH = javaStringHash("veg_bush"), H_VBUSH_SHAPE = javaStringHash("veg_bush_shape"),

@@ -130,6 +130,9 @@ extern "C" {
                                        flowers, bare / wet-meadow patches) follow the vegetation channels (SBW_SURF_CANOPY_*
                                        / CLEARING / GROUND_*; agent V). Columns without channel data (255) keep the biome
                                        rules, so it is a no-op for tiles without the node; off by default (2026-11-19) */
+#define SBW_FLAG_VEG_OPEN_LAND 0x100u /* with SBW_FLAG_VEGETATION: open the land up (big meadow patches by biome on wooded land,
+                                       a steeper cover-to-density curve) so temperate land is not ~90 % closed forest; per world
+                                       (WorldFeatureVersion V4, 2026-11-20); without it the V3 rules exactly */
 #define SBW_FLAG_LAND_SURFACE 0x40u /* profile kind: dry land's surface block follows the surface-detail node's channels
                                        (SBW_SURF_ROCK_EXPOSURE / SCREE / ROUGHNESS, 1 m lidar-trained; agent L): bare rock,
                                        talus gravel / cobble, broken ground. Columns without channel data (255) keep their

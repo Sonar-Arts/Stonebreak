@@ -180,6 +180,9 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             // only. Dev A/B only (never saved): -Dstonebreak.vegetation=off.
             if (f.vegetation() && !"off".equalsIgnoreCase(System.getProperty("stonebreak.vegetation"))) {
                 config.flags |= NativeCubeGenerator.FLAG_VEGETATION;
+                if (f.openLand()) {
+                    config.flags |= NativeCubeGenerator.FLAG_VEG_OPEN_LAND;
+                }
             }
         } else {
             applyStandardShape(config, s, sv);
