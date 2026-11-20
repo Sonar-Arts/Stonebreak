@@ -117,6 +117,14 @@ public class World {
     private final Path storeDir;
     private volatile NativeTerrain terrain;
     private final Object terrainLock = new Object();
+    /**
+     * Where a render-view world borrows its terrain (2026-11-20): singleplayer / host = the integrated server's world,
+     * whose terrain has the same identity, so the client does not build a second generator with its own tile caches
+     * (~450 MB of Daedalus tiles + coarse generators). Null, or a supplier answering null, = build its own.
+     */
+    private volatile java.util.function.Supplier<World> terrainSource;
+    /** {@link #terrain} belongs to the source world: never closed here. */
+    private boolean terrainBorrowed;
     private volatile StreamBudget budget = DEFAULT_BUDGET;
 
     private final Map<CubePos, Cube> cubes = new ConcurrentHashMap<>();
@@ -1463,8 +1471,15 @@ public class World {
                     if (cleanedUp) {
                         throw new com.stonebreak.world.generation.TerrainClosedException("World is cleaned up");
                     }
-                    t = NativeTerrain.create(seed, generatorType, terrainScale, climateLayout, heightCurve,
-                        worldFeatures, standardShape, blockStates);
+                    World source = terrainSourceWorld();
+                    if (source != null) {
+                        t = source.terrain();
+                        terrainBorrowed = true;
+                        LOGGER.info("Client world borrows the integrated server's terrain (seed {}, {})", seed, generatorType);
+                    } else {
+                        t = NativeTerrain.create(seed, generatorType, terrainScale, climateLayout, heightCurve,
+                            worldFeatures, standardShape, blockStates);
+                    }
                     terrain = t;
                 }
                 if (cleanedUp) {
@@ -1476,6 +1491,43 @@ public class World {
             }
         }
         return t;
+    }
+
+    /**
+     * Lets this render-view world borrow {@code source}'s terrain instead of building its own (see
+     * {@link #terrainSource}); asked on first use. Only a world with the same terrain identity is borrowed from.
+     */
+    public void setTerrainSource(java.util.function.Supplier<World> source) {
+        this.terrainSource = source;
+    }
+
+    /** True when this world's terrain belongs to another world (a borrowed integrated-server terrain). */
+    public boolean isTerrainBorrowed() {
+        return terrainBorrowed;
+    }
+
+    private World terrainSourceWorld() {
+        java.util.function.Supplier<World> s = terrainSource;
+        if (s == null || mode != Mode.CLIENT) {
+            return null;
+        }
+        World w;
+        try {
+            w = s.get();
+        } catch (RuntimeException e) {
+            return null;
+        }
+        return w != null && w != this && !w.isCleanedUp() && sameTerrainAs(w) ? w : null;
+    }
+
+    /**
+     * Same terrain identity as {@code o}: seed, generator, scale, climate layout, height curve and Standard shape. (The
+     * feature version is not compared: a client view does not know the saved world's, and the server's is the right
+     * one - a client building its own uses the current version.)
+     */
+    boolean sameTerrainAs(World o) {
+        return seed == o.seed && generatorType == o.generatorType && terrainScale == o.terrainScale
+            && climateLayout == o.climateLayout && heightCurve == o.heightCurve && standardShape == o.standardShape;
     }
 
     /** The terrain if it was built, else null (never builds it). */
@@ -1630,12 +1682,14 @@ public class World {
         // queries) before freeing it, so no thread can run on a destroyed generator. Taken under the build lock so a
         // terrain() racing this cleanup is either closed here or refuses (cleanedUp is already set).
         NativeTerrain t;
+        boolean borrowed;
         synchronized (terrainLock) {
             t = terrain;
             terrain = null;
+            borrowed = terrainBorrowed;
         }
-        if (t != null) {
-            t.close();
+        if (t != null && !borrowed) {
+            t.close();   // a borrowed terrain is its owner's to close
         }
     }
 

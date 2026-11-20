@@ -557,18 +557,47 @@ public final class NativeCubeGenerator implements AutoCloseable {
         }
     }
 
+    /**
+     * One thread's profile buffers (2026-11-20): the upcall used to allocate ~30 KB of fresh arrays per column cube,
+     * a quarter of a Daedalus session's allocation. Cleared before every use, so profiles see exactly what fresh arrays
+     * gave them; a re-entrant call on the same thread gets fresh arrays.
+     */
+    private static final class ProfileScratch {
+        final int[] height = new int[1024], water = new int[1024], floor = new int[1024], roof = new int[1024];
+        final byte[] biome = new byte[1024], flow = new byte[1024];
+        final short[] carve = new short[1024];
+        final byte[] surface = new byte[SURFACE_SLOTS * 1024];
+        boolean inUse;
+
+        ProfileScratch reset() {
+            java.util.Arrays.fill(height, 0);
+            java.util.Arrays.fill(water, 0);
+            java.util.Arrays.fill(floor, 0);
+            java.util.Arrays.fill(roof, 0);
+            java.util.Arrays.fill(biome, (byte) 0);
+            java.util.Arrays.fill(flow, (byte) 0);
+            java.util.Arrays.fill(carve, (short) 0);
+            java.util.Arrays.fill(surface, (byte) 0xFF);
+            return this;
+        }
+    }
+
+    private static final ThreadLocal<ProfileScratch> PROFILE_SCRATCH = ThreadLocal.withInitial(ProfileScratch::new);
+
     /** The upcall: never lets an exception unwind into native code. */
     @SuppressWarnings("unused")
     private int fillProfile(MemorySegment user, long cx, long cz, MemorySegment out) {
         if (isClosing()) {
             return 0;   // closing: fail fast so the calls in flight (and the prefetch helpers) wind down
         }
+        ProfileScratch shared = PROFILE_SCRATCH.get();
+        ProfileScratch s = shared.inUse ? new ProfileScratch().reset() : shared.reset();
+        s.inUse = true;
         try {
-            int[] height = new int[1024], water = new int[1024], floor = new int[1024], roof = new int[1024];
-            byte[] biome = new byte[1024], flow = new byte[1024];
-            short[] carve = new short[1024];
-            byte[] surface = new byte[SURFACE_SLOTS * 1024];
-            java.util.Arrays.fill(surface, (byte) 0xFF);
+            int[] height = s.height, water = s.water, floor = s.floor, roof = s.roof;
+            byte[] biome = s.biome, flow = s.flow;
+            short[] carve = s.carve;
+            byte[] surface = s.surface;
             if (!profiles.fill(cx, cz, height, water, floor, roof, biome, flow, carve, surface)) {
                 return 0;
             }
@@ -584,6 +613,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
             return 1;
         } catch (Throwable t) {
             return 0;
+        } finally {
+            s.inUse = false;
         }
     }
 

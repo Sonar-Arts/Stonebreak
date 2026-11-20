@@ -48,9 +48,14 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
     private final int lod;
     private final int priority;
     private final int tileSize;
-    private final int maxCachedTiles;
+    private volatile int maxCachedTiles;
     private final ConcurrentHashMap<TileKey, Pending> tiles = new ConcurrentHashMap<>();
     private final LinkedHashMap<TileKey, Boolean> lru = new LinkedHashMap<>(16, 0.75f, true);
+    /** Recently evicted keys (guarded by lruLock): a miss on one of them is a thrash miss. */
+    private final java.util.LinkedHashSet<TileKey> ghosts = new java.util.LinkedHashSet<>();
+    /** Adaptive growth ceiling (0 = fixed size): each thrash miss grows the cache by {@link #GROW_STEP} up to it. */
+    private volatile int growLimit;
+    static final int GROW_STEP = 4;
     private final Object lruLock = new Object();
     private volatile boolean closed;
 
@@ -143,8 +148,10 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
         }
         int want = effectivePriority();
         TileKey key = new TileKey(Math.floorDiv(worldX, tileSize), Math.floorDiv(worldZ, tileSize));
-        Pending pending = tiles.computeIfAbsent(key,
-                k -> new Pending(fetcher.fetch(seed, k.tileX(), k.tileZ(), lod, want), want));
+        Pending pending = tiles.computeIfAbsent(key, k -> {
+            noteMiss(k);
+            return new Pending(fetcher.fetch(seed, k.tileX(), k.tileZ(), lod, want), want);
+        });
         if (want < pending.priority() && !pending.future().isDone()) {
             expedite(key, pending, want);
         }
@@ -202,18 +209,73 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
     }
 
     private void touch(TileKey key) {
-        TileKey evicted = null;
+        java.util.List<TileKey> evicted = null;
         synchronized (lruLock) {
             lru.put(key, Boolean.TRUE);
-            if (lru.size() > maxCachedTiles) {
-                Iterator<Map.Entry<TileKey, Boolean>> it = lru.entrySet().iterator();
-                evicted = it.next().getKey();
+            Iterator<Map.Entry<TileKey, Boolean>> it = lru.entrySet().iterator();
+            while (lru.size() > maxCachedTiles && it.hasNext()) {   // a loop: the limit may have just shrunk
+                TileKey k = it.next().getKey();
+                if (k.equals(key)) continue;
                 it.remove();
+                if (evicted == null) evicted = new java.util.ArrayList<>(1);
+                evicted.add(k);
+                if (growLimit > 0) {
+                    ghosts.add(k);
+                }
+            }
+            if (ghosts.size() > 2 * maxCachedTiles) {
+                Iterator<TileKey> g = ghosts.iterator();
+                for (int drop = ghosts.size() - 2 * maxCachedTiles; drop > 0 && g.hasNext(); drop--) {
+                    g.next();
+                    g.remove();
+                }
             }
         }
         if (evicted != null) {
-            tiles.remove(evicted);
+            evicted.forEach(tiles::remove);
         }
+    }
+
+    /**
+     * Resizes the cache (2026-11-20): the tiles a sweep over the area its users cover needs at once. Below that an LRU
+     * misses on nearly every request (FastLOD's ring sweeps round the player nearest-first, cube generation spirals):
+     * a 64-tile lod-1 cache under an Ultra ring re-read ~100 tiles per second from the disk tile cache, ~190 MB/s of
+     * fresh tile arrays. Shrinking evicts the least recent tiles on the next insertion.
+     */
+    public void setMaxCachedTiles(int tiles) {
+        this.maxCachedTiles = Math.max(1, tiles);
+    }
+
+    /**
+     * Lets the cache grow by itself, up to {@code limit} tiles (0 = fixed size): a request for a tile it evicted
+     * recently (it remembers twice its size of evicted keys) means the working set is larger than the cache, so it
+     * grows by {@link #GROW_STEP}. Measured 2026-11-20: a ring-sized lod-1 cache still re-read every tile ~19 times
+     * when FastLOD's nearest-first sweep and cube generation interleaved; with room for the real working set every
+     * tile was read once.
+     */
+    public void setGrowLimit(int limit) {
+        this.growLimit = Math.max(0, limit);
+        if (limit <= 0) {
+            synchronized (lruLock) {
+                ghosts.clear();
+            }
+        }
+    }
+
+    private void noteMiss(TileKey key) {
+        int limit = growLimit;
+        if (limit <= 0) {
+            return;
+        }
+        synchronized (lruLock) {
+            if (ghosts.remove(key) && maxCachedTiles < limit) {
+                maxCachedTiles = Math.min(limit, maxCachedTiles + GROW_STEP);
+            }
+        }
+    }
+
+    public int maxCachedTiles() {
+        return maxCachedTiles;
     }
 
     private void withdraw() {

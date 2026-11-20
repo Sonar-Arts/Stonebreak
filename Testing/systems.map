@@ -35,7 +35,7 @@ leaves	stonebreak-game	com/stonebreak/world/leaves/**/*Test,com/stonebreak/world
 terrain-gen	stonebreak-game	com/stonebreak/world/generation/**/*Test,com/stonebreak/world/spawn/**/*Test
 persistence	stonebreak-game	com/stonebreak/world/save/**/*Test
 physics	stonebreak-game	com/stonebreak/world/physics/**/*Test
-voxel-world	stonebreak-game	com/stonebreak/world/voxel/**/*Test,com/stonebreak/world/WorldCubeApiTest,com/stonebreak/world/WorldStreamIntegrationTest
+voxel-world	stonebreak-game	com/stonebreak/world/voxel/**/*Test,com/stonebreak/world/WorldCubeApiTest,com/stonebreak/world/WorldTerrainShareTest,com/stonebreak/world/WorldStreamIntegrationTest
 bench	stonebreak-game	com/stonebreak/world/bench/**/*Test
 
 # ---- tool ----

@@ -81,6 +81,92 @@ class DiffusionTileCacheTest {
     }
 
     @Test
+    void aSweepLargerThanTheCacheMissesEverywhereAndResizingStopsIt() {
+        // The 2026-11-20 thrash: a ring sweep over more tiles than the LRU holds misses on every request.
+        AtomicInteger fetches = new AtomicInteger();
+        DiffusionTileCache cache = cache((seed, x, z, lod, prio) -> {
+            fetches.incrementAndGet();
+            return CompletableFuture.completedFuture(stubTile(x, z));
+        });
+        Runnable sweep = () -> {
+            for (int t = 0; t < 12; t++) {
+                cache.getTile(t * TILE, 0);
+            }
+        };
+        sweep.run();
+        sweep.run();
+        assertEquals(24, fetches.get(), "12 tiles through an 8-tile LRU in order: every request misses");
+
+        cache.setMaxCachedTiles(16);
+        fetches.set(0);
+        sweep.run();
+        sweep.run();
+        assertTrue(fetches.get() <= 12, "sized to the sweep: the second pass hits, got " + fetches.get());
+        sweep.run();
+        assertEquals(16, cache.maxCachedTiles());
+    }
+
+    @Test
+    void thrashMissesGrowTheCacheToTheWorkingSetButNoFurtherThanItsLimit() {
+        AtomicInteger fetches = new AtomicInteger();
+        DiffusionTileCache cache = cache((seed, x, z, lod, prio) -> {
+            fetches.incrementAndGet();
+            return CompletableFuture.completedFuture(stubTile(x, z));
+        });
+        cache.setGrowLimit(20);
+        Runnable sweep = () -> {
+            for (int t = 0; t < 12; t++) {
+                cache.getTile(t * TILE, 0);
+            }
+        };
+        for (int i = 0; i < 4; i++) {
+            sweep.run();   // each pass re-asks for tiles it just evicted: the cache grows
+        }
+        fetches.set(0);
+        sweep.run();
+        assertEquals(0, fetches.get(), "grown to the 12-tile sweep: no more misses");
+        assertTrue(cache.maxCachedTiles() >= 12 && cache.maxCachedTiles() <= 20, "size " + cache.maxCachedTiles());
+
+        for (int pass = 0; pass < 20; pass++) {   // a 40-tile sweep: grows to the limit, never past it
+            for (int t = 0; t < 40; t++) {
+                cache.getTile(t * TILE, TILE);
+            }
+        }
+        assertEquals(20, cache.maxCachedTiles());
+    }
+
+    @Test
+    void aFixedSizeCacheNeverGrows() {
+        DiffusionTileCache cache = cache((seed, x, z, lod, prio) -> CompletableFuture.completedFuture(stubTile(x, z)));
+        for (int pass = 0; pass < 5; pass++) {
+            for (int t = 0; t < 12; t++) {
+                cache.getTile(t * TILE, 0);
+            }
+        }
+        assertEquals(8, cache.maxCachedTiles());
+    }
+
+    @Test
+    void shrinkingTheCacheEvictsTheLeastRecentTiles() {
+        AtomicInteger fetches = new AtomicInteger();
+        DiffusionTileCache cache = cache((seed, x, z, lod, prio) -> {
+            fetches.incrementAndGet();
+            return CompletableFuture.completedFuture(stubTile(x, z));
+        });
+        for (int t = 0; t < 8; t++) {
+            cache.getTile(t * TILE, 0);
+        }
+        cache.setMaxCachedTiles(2);
+        cache.getTile(8 * TILE, 0);   // the next insertion trims down to 2: tiles 7 and 8 stay
+        fetches.set(0);
+        cache.getTile(7 * TILE, 0);
+        cache.getTile(8 * TILE, 0);
+        assertEquals(0, fetches.get(), "the most recent tiles stayed");
+        cache.getTile(0, 0);
+        assertEquals(1, fetches.get(), "the oldest was evicted");
+    }
+
+    @Test
     void closingWithdrawsRequestsStillInFlight() {
         CompletableFuture<TerrainTile> never = new CompletableFuture<>();
         DiffusionTileCache cache = cache((seed, x, z, lod, prio) -> never);

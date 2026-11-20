@@ -1,6 +1,5 @@
 package com.stonebreak.world.generation.diffusion;
 
-import java.util.Arrays;
 
 /**
  * A tile's surface channels (TGMPipe v3): per {@link SurfaceChannel#slot() slot} a row-major byte plane of the
@@ -12,12 +11,21 @@ public final class SurfaceChannels {
     public static final SurfaceChannels NONE = new SurfaceChannels(new byte[SurfaceChannel.SLOTS][]);
 
     private final byte[][] planes;   // [slot] -> plane or null
+    private final boolean empty;     // computed once: isEmpty() runs per sample in the coarse profiles
 
     public SurfaceChannels(byte[][] planesBySlot) {
         if (planesBySlot.length != SurfaceChannel.SLOTS) {
             throw new IllegalArgumentException("expected " + SurfaceChannel.SLOTS + " slots");
         }
         this.planes = planesBySlot;
+        boolean none = true;
+        for (byte[] p : planesBySlot) {
+            if (p != null) {
+                none = false;
+                break;
+            }
+        }
+        this.empty = none;
     }
 
     public boolean has(SurfaceChannel channel) {
@@ -26,7 +34,7 @@ public final class SurfaceChannels {
 
     /** True when no channel is present. */
     public boolean isEmpty() {
-        return Arrays.stream(planes).allMatch(p -> p == null);
+        return empty;
     }
 
     /** Unsigned byte at a plane index, {@link SurfaceChannel#NO_DATA} when the channel is absent. */

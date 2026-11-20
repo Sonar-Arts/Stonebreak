@@ -14,6 +14,15 @@ import com.stonebreak.world.generation.features.VegetationGenerator;
  */
 public interface TerrainGenerator {
 
+    /**
+     * The LOD ring around the player that samples this terrain (FastLOD calls it whenever the ring changes): Chebyshev
+     * radii in blocks of the render disc ({@code innerBlocks}) and the ring's outer edge, and the quality's blocks per
+     * cell size (level k, cells of 2^k blocks, starts at 2^k x {@code blocksPerCell} blocks). Terrains that cache tiles
+     * size their caches to it; the default ignores it.
+     */
+    default void lodRing(int innerBlocks, int outerBlocks, int blocksPerCell) {
+    }
+
     /** {@code outFloor} sentinel for a cell with no cave mouth; see {@link #sampleCellOpenings}. */
     int NO_OPENING = Integer.MIN_VALUE;
 

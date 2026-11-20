@@ -75,6 +75,9 @@ public final class FastLodManager {
 
     private final WorldConfiguration config;
     private final FastLodSampler sampler;
+    /** The terrain sampled: told the ring's geometry whenever it changes (tile cache sizing). */
+    private final com.stonebreak.world.generation.TerrainGenerator terrain;
+    private long lastRingSignature = Long.MIN_VALUE;
     private final FastLodMesher mesher;
     private final ExecutorService executor;
     private final FastLodStore store;   // may be null when persistence is disabled
@@ -184,6 +187,7 @@ public final class FastLodManager {
                    long uploadBudgetNanos) {
         this.config   = config;
         this.sampler  = new FastLodSampler(terrain);
+        this.terrain  = terrain;
         this.mesher   = new FastLodMesher(textureArray);
         this.store    = store;
         this.executor = executor;
@@ -203,6 +207,16 @@ public final class FastLodManager {
         int inner = config.getRenderDistance();
         int outer = inner + range;
         FastLodQuality quality = config.getLodQuality();
+        long signature = ((long) inner << 40) ^ ((long) range << 16) ^ quality.ordinal();
+        if (signature != lastRingSignature) {
+            lastRingSignature = signature;
+            try {
+                int cs = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
+                terrain.lodRing(inner * cs, (outer + FastLodBandPolicy.HANDOVER_RING) * cs, quality.blocksPerCell());
+            } catch (RuntimeException e) {
+                // sizing only: a terrain that is closing keeps its caches as they are
+            }
+        }
         long column = packColumn(playerCx, playerCz);
         if (ringSettled && column == scannedColumn && inner == scannedInner && range == scannedRange
                 && quality == scannedQuality && inFlight.isEmpty() && readyToUpload.isEmpty()) {

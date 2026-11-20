@@ -30,6 +30,10 @@ public final class WorldLifecycle {
         game.cancelClientWorldBuild(); // a build still in flight must not install a world after the reset
         resetWorld();
         com.stonebreak.network.MultiplayerSession.shutdown();
+        // The worlds have closed their terrain: the Daedalus pipeline (models, GPU memory, pinned host caches) goes
+        // too instead of idling under the menu (2026-11-20). A no-op when it is not running; the world list's
+        // prestart or the next world starts it again (~1 s).
+        com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.getInstance().shutdown();
         game.setState(com.stonebreak.core.GameState.MAIN_MENU);
         if (game.getPauseMenu() != null) {
             game.getPauseMenu().setVisible(false);
@@ -194,8 +198,20 @@ public final class WorldLifecycle {
                                            com.stonebreak.world.generation.ClimateLayout climateLayout,
                                            com.stonebreak.world.generation.HeightCurveVersion heightCurve,
                                            com.stonebreak.world.generation.StandardShapeVersion standardShape) {
-        return World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale, climateLayout,
+        World w = World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale, climateLayout,
             heightCurve, standardShape);
+        // Singleplayer / host / the menu showcase: borrow the integrated server's terrain (same identity) instead of a
+        // second generator with its own tile caches. A remote client finds no server and builds its own.
+        w.setTerrainSource(WorldLifecycle::integratedServerWorld);
+        return w;
+    }
+
+    /** The integrated server's world in this process, or null (a remote client, or no session). */
+    static World integratedServerWorld() {
+        var server = com.stonebreak.network.MultiplayerSession.getServer();
+        var ctx = server != null ? server.worldContext() : null;
+        var level = ctx != null ? ctx.serverLevel() : null;
+        return level != null ? level.world() : null;
     }
 
     /**

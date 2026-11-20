@@ -66,6 +66,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
     private static final long RELIEF_MAX_WAIT_MS = Long.getLong("stonebreak.tgmpipe.reliefMaxWaitMs", 20_000L);
     private final Object coarseLock = new Object();
     private final NativeCubeGenerator[] coarseGenerators = new NativeCubeGenerator[2];
+    /** Tile budget of each coarse cache ({@link #lodRing}; COARSE_CACHED_TILES until a ring is known). */
+    private final int[] coarseBudget = {COARSE_CACHED_TILES, COARSE_CACHED_TILES};
     private final CoarseProfiles[] coarseProfiles = new CoarseProfiles[2];
     private final boolean[] coarseFailed = new boolean[2];
 
@@ -374,6 +376,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             CoarseProfiles source = null;
             try {
                 source = new CoarseProfiles(seed, coarseLods[i], scale, climateLayout, heightCurve);
+                source.setMaxCachedTiles(coarseBudget[i]);
+                source.setGrowLimit(COARSE_TILES_MAX);
                 NativeCubeGenerator.Config c = copyConfig(config);
                 c.profiles = source;
                 c.cacheColumns = COARSE_CACHE_COLUMNS;
@@ -416,6 +420,78 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         c.curveKnots = from.curveKnots != null ? from.curveKnots.clone() : null;
         c.profiles = from.profiles;
         return c;
+    }
+
+    /** Lod-1 tile cache bounds (tiles of ~1.8 MB each in Java). */
+    static final int NEAR_TILES_MIN = 64, NEAR_TILES_MAX = 384;
+    /** Coarse tile cache bounds. */
+    static final int COARSE_TILES_MAX = 128;
+
+    /**
+     * Sizes the tile caches to the LOD ring (2026-11-20, measured: a 64-tile lod-1 cache under an Ultra ring missed on
+     * ~100 requests a second). lod 1 serves every sample finer than 8 blocks plus cube generation, so its area reaches
+     * the render disc or the start of 8-block cells, whichever is further; coarse cache i serves its band of the ring.
+     * A tile (TerrainScale.TILE_SIZE_BLOCKS of samples) is margin enough for the sea-level look-around and movement.
+     * {@code -Dstonebreak.tgmpipe.maxCachedTiles} pins the lod-1 size instead.
+     */
+    @Override
+    public void lodRing(int innerBlocks, int outerBlocks, int blocksPerCell) {
+        if (profiles == null) {
+            return;   // Standard: no tiles
+        }
+        int tile = com.stonebreak.world.generation.diffusion.TerrainScale.TILE_SIZE_BLOCKS;
+        long lod1Reach = Math.max(innerBlocks, Math.min(outerBlocks, 8L * blocksPerCell));
+        if (Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles") == null) {
+            profiles.setMaxCachedTiles(clamp(squareTiles(lod1Reach + tile, tile), NEAR_TILES_MIN, NEAR_TILES_MAX));
+            profiles.setGrowLimit(NEAR_TILES_MAX);   // the ring is the floor; thrash misses grow it to the real need
+        }
+        org.slf4j.LoggerFactory.getLogger(NativeTerrain.class).debug("Daedalus tile caches sized to the LOD ring (inner {} / outer {} blocks, {} blocks per cell): lod 1 "
+                + "{} tiles, coarse {} / {}", innerBlocks, outerBlocks, blocksPerCell, profiles.maxCachedTiles(),
+                coarseBudgetPreview(innerBlocks, outerBlocks, blocksPerCell, 0),
+                coarseBudgetPreview(innerBlocks, outerBlocks, blocksPerCell, 1));
+        synchronized (coarseLock) {
+            for (int i = 0; i < coarseLods.length; i++) {
+                int tileBlocks = tile * coarseLods[i];
+                long from = i == 0 ? 8L * blocksPerCell : 16L * blocksPerCell;
+                long to = i == 0 ? Math.min(outerBlocks, 16L * blocksPerCell) : outerBlocks;
+                int want = to <= from ? COARSE_CACHED_TILES
+                        : ringTiles(from - tileBlocks, to + tileBlocks, tileBlocks);
+                coarseBudget[i] = clamp(want, COARSE_CACHED_TILES, COARSE_TILES_MAX);
+                if (coarseProfiles[i] != null) {
+                    coarseProfiles[i].setMaxCachedTiles(coarseBudget[i]);
+                    coarseProfiles[i].setGrowLimit(COARSE_TILES_MAX);
+                }
+            }
+        }
+    }
+
+    private int coarseBudgetPreview(int innerBlocks, int outerBlocks, int blocksPerCell, int i) {
+        int tileBlocks = com.stonebreak.world.generation.diffusion.TerrainScale.TILE_SIZE_BLOCKS * coarseLods[i];
+        long from = i == 0 ? 8L * blocksPerCell : 16L * blocksPerCell;
+        long to = i == 0 ? Math.min(outerBlocks, 16L * blocksPerCell) : outerBlocks;
+        int want = to <= from ? COARSE_CACHED_TILES : ringTiles(from - tileBlocks, to + tileBlocks, tileBlocks);
+        return clamp(want, COARSE_CACHED_TILES, COARSE_TILES_MAX);
+    }
+
+    /** Tiles of {@code tileBlocks} a square of Chebyshev radius {@code radius} (any alignment) can touch. */
+    static int squareTiles(long radius, int tileBlocks) {
+        long across = (2 * Math.max(0, radius) + tileBlocks - 1) / tileBlocks + 1;
+        return (int) Math.min(Integer.MAX_VALUE, across * across);
+    }
+
+    /** Tiles a Chebyshev ring between {@code inner} and {@code outer} can touch (the square minus what lies inside). */
+    static int ringTiles(long inner, long outer, int tileBlocks) {
+        long inside = Math.max(0, 2 * Math.max(0, inner) / tileBlocks - 1);
+        return (int) Math.max(1, squareTiles(outer, tileBlocks) - inside * inside);
+    }
+
+    private static int clamp(int v, int lo, int hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    /** The lod-1 tile cache size (test seam / diagnostics), or 0 for a Standard world. */
+    int nearTileBudget() {
+        return profiles == null ? 0 : profiles.maxCachedTiles();
     }
 
     /**
@@ -640,12 +716,43 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         }
 
         /** Also copies the tiles' surface channels (TGMPipe v3) into their native slots; absent ones stay 255. */
+        /** One thread's per-chunk planes (cleared per use, as fresh arrays; fresh ones for a re-entrant call). */
+        private static final class ChunkScratch {
+            final int[] h = new int[CS * CS], w = new int[CS * CS], f = new int[CS * CS], r = new int[CS * CS],
+                flow = new int[CS * CS];
+            final BiomeType[] b = new BiomeType[CS * CS];
+            boolean inUse;
+
+            ChunkScratch reset() {
+                java.util.Arrays.fill(h, 0);
+                java.util.Arrays.fill(w, 0);
+                java.util.Arrays.fill(f, 0);
+                java.util.Arrays.fill(r, 0);
+                java.util.Arrays.fill(flow, 0);
+                java.util.Arrays.fill(b, null);
+                return this;
+            }
+        }
+
+        private static final ThreadLocal<ChunkScratch> CHUNK_SCRATCH = ThreadLocal.withInitial(ChunkScratch::new);
+
         @Override
         public boolean fill(long cx, long cz, int[] height, int[] water, int[] riverFloor, int[] riverRoof,
                             byte[] biome, byte[] riverFlow, short[] carve, byte[] surface) {
-            int[] h = new int[CS * CS], w = new int[CS * CS], f = new int[CS * CS], r = new int[CS * CS],
-                flow = new int[CS * CS];
-            BiomeType[] b = new BiomeType[CS * CS];
+            ChunkScratch shared = CHUNK_SCRATCH.get();
+            ChunkScratch s = shared.inUse ? new ChunkScratch() : shared.reset();
+            s.inUse = true;
+            try {
+                return fillWith(s, cx, cz, height, water, riverFloor, riverRoof, biome, riverFlow, carve, surface);
+            } finally {
+                s.inUse = false;
+            }
+        }
+
+        private boolean fillWith(ChunkScratch s, long cx, long cz, int[] height, int[] water, int[] riverFloor,
+                                 int[] riverRoof, byte[] biome, byte[] riverFlow, short[] carve, byte[] surface) {
+            int[] h = s.h, w = s.w, f = s.f, r = s.r, flow = s.flow;
+            BiomeType[] b = s.b;
             for (int sx = 0; sx < 2; sx++) {
                 for (int sz = 0; sz < 2; sz++) {
                     int chunkX = Math.toIntExact(cx * 2 + sx);
@@ -693,6 +800,18 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             }
         }
 
+        void setMaxCachedTiles(int n) {
+            tiles.setMaxCachedTiles(n);
+        }
+
+        void setGrowLimit(int n) {
+            tiles.setGrowLimit(n);
+        }
+
+        int maxCachedTiles() {
+            return tiles.maxCachedTiles();
+        }
+
         @Override
         public void close() {
             tiles.close();
@@ -735,6 +854,19 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             this.tiles = tiles;
             this.closer = tiles;
             this.beach = beach;
+        }
+
+        /** Resizes the tile cache when it is a {@link DiffusionTileCache} (test sources ignore it). */
+        void setMaxCachedTiles(int n) {
+            if (tiles instanceof DiffusionTileCache c) {
+                c.setMaxCachedTiles(n);
+            }
+        }
+
+        void setGrowLimit(int n) {
+            if (tiles instanceof DiffusionTileCache c) {
+                c.setGrowLimit(n);
+            }
         }
 
         @Override

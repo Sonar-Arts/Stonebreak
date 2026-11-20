@@ -100,6 +100,12 @@ final class NativeTerrainService implements AutoCloseable {
      * recompute their windows (identical results, slower until the caches refill).
      */
     static final long IDLE_RELEASE_SECONDS = Long.getLong("stonebreak.terrain.idleReleaseSeconds", 120L);
+    /** Dev: {@code -Dstonebreak.terrain.memLog=<s>} logs the pipeline's memory counters every s seconds (0 = off). */
+    static final long MEM_LOG_SECONDS = Long.getLong("stonebreak.terrain.memLog", 0L);
+    private long lastMemLogNanos;
+    /** Requests served per lod (index = log2 lod) and how many of them the disk cache answered (dev memLog). */
+    private final java.util.concurrent.atomic.AtomicLongArray servedByLod = new java.util.concurrent.atomic.AtomicLongArray(8),
+            diskByLod = new java.util.concurrent.atomic.AtomicLongArray(8);
 
     private static Thread daemon(Runnable r, String name) {
         Thread t = new Thread(r, name);
@@ -151,6 +157,11 @@ final class NativeTerrainService implements AutoCloseable {
 
     /** Idle-thread tick: trims, then releases, a pipeline nothing has asked anything of for a while. */
     void checkIdle() {
+        if (MEM_LOG_SECONDS > 0 && System.nanoTime() - lastMemLogNanos >= TimeUnit.SECONDS.toNanos(MEM_LOG_SECONDS)) {
+            lastMemLogNanos = System.nanoTime();
+            LOG.info("[terrain-mem] " + memorySummary(terrain.stats()) + " generated=" + generated.get()
+                    + " served=" + served.get() + " byLod(served/disk/distinct)=" + byLod());
+        }
         if (closed || building.get() > 0) {
             return;
         }
@@ -258,6 +269,7 @@ final class NativeTerrainService implements AutoCloseable {
         if (hit != null) {
             cacheHits.incrementAndGet();
             served.incrementAndGet();
+            countServed(key, true);
             r.future().complete(toTile(key, hit.rows(), hit.cols(), hit.planes(), hit.surface()));
             return;
         }
@@ -337,6 +349,7 @@ final class NativeTerrainService implements AutoCloseable {
                 }
                 for (TileRequest w : waiters) {
                     served.incrementAndGet();
+                    countServed(k, false);
                     w.future().complete(tile);
                 }
                 TileDiskCache.Entry e = new TileDiskCache.Entry(t.rows(), t.cols(), t.planes(), t.surface());
@@ -401,6 +414,47 @@ final class NativeTerrainService implements AutoCloseable {
             }
         }
         return true;
+    }
+
+    private String byLod() {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < servedByLod.length(); i++) {
+            if (servedByLod.get(i) > 0) {
+                b.append(1 << i).append(':').append(servedByLod.get(i)).append('/').append(diskByLod.get(i))
+                        .append('/').append(distinctByLod.get(i).size()).append(' ');
+            }
+        }
+        return b.toString().strip();
+    }
+
+    /** Dev memLog only: distinct tiles served per lod index. */
+    private final java.util.List<java.util.Set<Long>> distinctByLod = java.util.stream.IntStream.range(0, 8)
+            .mapToObj(i -> (java.util.Set<Long>) java.util.concurrent.ConcurrentHashMap.<Long>newKeySet()).toList();
+
+    private void countServed(Key k, boolean disk) {
+        int i = Math.min(7, Integer.numberOfTrailingZeros(Math.max(1, k.lod)));
+        if (MEM_LOG_SECONDS > 0) {
+            distinctByLod.get(i).add(((long) k.tileX << 32) ^ (k.tileZ & 0xffffffffL) ^ ((long) k.world << 60));
+        }
+        servedByLod.incrementAndGet(i);
+        if (disk) {
+            diskByLod.incrementAndGet(i);
+        }
+    }
+
+    /** The memory counters of a native stats json, in MiB: host caches, pinned / device pool live + cached. */
+    static String memorySummary(String stats) {
+        StringBuilder out = new StringBuilder();
+        for (String k : List.of("host_cache_bytes", "host_evictions", "pool_host_live", "pool_host_cached", "pool_live",
+                "pool_cached", "releases")) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + k + "\":(\\d+)").matcher(stats);
+            if (m.find()) {
+                long v = Long.parseLong(m.group(1));
+                boolean count = k.equals("host_evictions") || k.equals("releases");
+                out.append(k.replace("_bytes", "")).append('=').append(count ? v : v >> 20).append(count ? " " : "M ");
+            }
+        }
+        return out.toString().strip();
     }
 
     String statusJson() {
