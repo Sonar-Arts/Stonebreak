@@ -1,7 +1,7 @@
 """Ocean census (2026-11-19): how deep and how flat EXP-2's seas are, in metres AND in blocks, near coasts.
 
     python -m terrain_slm.eval.ocean_census [--seeds 0 1 2 3] [--areas 3] [--size 512] [--device cuda:0] \\
-        [--model checkpoints/exp2-r2] [--curve 1:4 [1:4+shelf:10:-200:100 ...]] [--json out.json] \\
+        [--model checkpoints/exp2-r3] [--curve 1:4 [1:4+shelf:10:-200:100 ...]] [--json out.json] \\
         [--samples cache.npz] [--real aegean dalmatia ...]
 
 Areas: 512 x 512 detail samples (60 m, ~30 km) whose centre probe is 20..70 % land (coastal). `--real` reads real

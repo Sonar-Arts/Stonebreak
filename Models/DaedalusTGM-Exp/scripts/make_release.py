@@ -1,6 +1,6 @@
 """Make a self-contained, shippable DaedalusTGM model folder from a model directory of symlinks.
 
-    .venv/bin/python scripts/make_release.py checkpoints/exp2/world_exp2b checkpoints/exp2-r1
+    .venv/bin/python scripts/make_release.py checkpoints/exp2/world_exp2f checkpoints/exp2-r3
     .venv/bin/python scripts/make_release.py <src> <out> --verify-tiles 12 --device cuda:1     (default: 9 tiles)
     .venv/bin/python scripts/make_release.py <src> <out> --check-only                          (licence gate only)
 
