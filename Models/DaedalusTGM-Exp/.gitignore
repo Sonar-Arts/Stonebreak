@@ -60,15 +60,20 @@ __pycache__/
 # --- The shipped release is tracked (Git LFS) ----------------------------------
 # The model folder the game loads (TGMPipe.DEFAULT_MODEL, checkpoints/exp2-r3: the DaedalusTGM-Exp-2 release built
 # by scripts/make_release.py) is committed: its *.pt weights through Git LFS (root .gitattributes), release.json and
-# ATTRIBUTION.md as normal files. Its native/ export (~144 MB, regenerated from the weights on first use) and anything
-# else written into the folder stay ignored. Training runs (checkpoints/<run>/, checkpoints/exp2/*, exp2-r1, exp2-r2)
+# ATTRIBUTION.md as normal files, and its native/ export (what the game runs: manifest.json as a normal file, the
+# *.cim networks through Git LFS; ~144 MB, written by `python -m terrain_slm.export.native_release` when the release
+# is made - the game never runs Python). Anything else written into the folder stays ignored. Training runs (checkpoints/<run>/, checkpoints/exp2/*, exp2-r1, exp2-r2)
 # stay ignored. Shipping a new model = a NEW directory name (the tile caches are keyed on it), these lines for it
-# here, and its `git lfs track` line in the root .gitattributes.
+# here, and its `git lfs track` lines (*.pt and native/*.cim) in the root .gitattributes.
 # (EXP-1's v2 / v3 / v4 were tracked here in plain git until 2026-11-19: removed, WorldClim-trained.)
 !/checkpoints/exp2-r3/
 /checkpoints/exp2-r3/*
 !/checkpoints/exp2-r3/*.pt
 !/checkpoints/exp2-r3/release.json
 !/checkpoints/exp2-r3/ATTRIBUTION.md
+!/checkpoints/exp2-r3/native/
+/checkpoints/exp2-r3/native/*
+!/checkpoints/exp2-r3/native/manifest.json
+!/checkpoints/exp2-r3/native/*.cim
 # written by the game's model setup (ModelSetup.java)
 /.setup-unavailable

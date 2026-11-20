@@ -1,11 +1,10 @@
 package com.stonebreak.world.generation.diffusion.tgmpipe;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stonebreak.world.generation.diffusion.TGMPipeException;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.UncheckedIOException;
@@ -22,50 +21,54 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
- * Sets up {@value TGMPipe#MODEL_NAME} on game launch, so a player only ever starts the game:
+ * Gets {@value TGMPipe#MODEL_NAME} ready on game launch, so a player only ever starts the game. Everything is native:
+ * no Python, no PyTorch (those are for training and for writing the model's release export only).
  *
  * <ol>
- *   <li><b>Graphics card</b> — an NVIDIA GPU ({@code nvidia-smi}); without one the model cannot run and
- *       nothing is downloaded.</li>
- *   <li><b>Package manager</b> — {@code uv}: the one this game downloaded before, one on the PATH, or a
- *       pinned release downloaded into {@code Models/tools/uv/} ({@link UvTool}).</li>
- *   <li><b>Python environment</b> — {@code uv sync --frozen} in {@code Models/DaedalusTGM-Exp/} (Python,
- *       CUDA PyTorch: several GB the first time, seconds afterwards).</li>
- *   <li><b>Model check</b> and <b>GPU kernels</b> — {@code python -m terrain_slm.tgmpipe.warmup}: loads the
- *       model on the GPU and compiles the project's own kernels (CUDA through NVRTC, C++ through the
- *       system compiler) into {@code Models/kernel_cache/}, where the TGMPipe service finds them, so the
- *       first world never waits on a compiler.</li>
+ *   <li><b>Graphics card</b> - an NVIDIA GPU ({@code nvidia-smi}); without one the model cannot run and nothing is
+ *       downloaded.</li>
+ *   <li><b>CUDA compiler</b> - the pinned NVRTC ({@link NvrtcTool}, ~90 MB download the first time).</li>
+ *   <li><b>Model files</b> - the release's native export is there and not Git LFS pointers
+ *       ({@link TerrainModels#installProblem}).</li>
+ *   <li><b>Model on the GPU</b> and <b>GPU kernels</b> - the native engine opens the export (loads the networks) and
+ *       warms up, compiling its kernels into {@code Models/kernel_cache/} (content-addressed), where the world's
+ *       pipeline finds them, so the first world never waits on the compiler. Then it is closed again: nothing of the
+ *       model stays loaded on the main menu.</li>
  * </ol>
  *
- * <p>It runs on its own thread from the moment the game starts (under the intro). A stamp in the
- * environment records what was set up (hashes of {@code uv.lock} + {@code pyproject.toml}, and of the
- * kernel sources + the model's release manifest), so an unchanged install costs a few file reads and shows
- * nothing; an update redoes only what changed. Everything the steps print goes to {@code Models/logs/setup.log}.
+ * <p><b>When it runs.</b> Only when something that decides those kernels or that model changed since the last
+ * successful setup, judged by <em>content</em>, never by timestamps or paths: the stamp
+ * ({@code Models/kernel_cache/.stonebreak-setup}) holds a fingerprint of the SHA-256 of the native terrain library,
+ * the engine library (inference runtime), the NVRTC library and the model export's {@code manifest.json} (which names
+ * the export and its networks), plus the GPUs' compute capabilities and the device used. A file whose size and mtime
+ * match the stamp's record reuses its recorded hash; one that changed is hashed again, so a rebuild or checkout that
+ * produces the same bytes (an incremental build relinking, a fresh clone, an LFS pull) does not count as a change. An
+ * unchanged install costs a few file stats and one {@code nvidia-smi} call and shows nothing. Deleting the kernel
+ * cache forgets the stamp with it. Everything the steps do goes to {@code Models/logs/setup.log}.
  *
- * <p>{@code -Dstonebreak.modelSetup=off} disables it (the service is then launched as before);
- * {@code -Dstonebreak.modelSetup.force=true} ignores the stamp and runs every step.
+ * <p>It runs on its own thread from the moment the game starts (under the intro). {@code -Dstonebreak.modelSetup=off}
+ * disables it (the world's start then does the work); {@code -Dstonebreak.modelSetup.force=true} ignores the stamp.
  */
 public final class ModelSetup {
 
     private static final Logger LOG = Logger.getLogger(ModelSetup.class.getName());
     private static final ModelSetup INSTANCE = new ModelSetup();
-    private static final String STAMP = ".stonebreak-setup";
+    static final String STAMP = ".stonebreak-setup";
     private static final String UNAVAILABLE_MARKER = ".setup-unavailable";
+    private static final String FINGERPRINT_KEY = "fingerprint";
+    private static final String FILE_KEY = "file.";
 
     public enum StepId {
         GPU("Checking graphics card"),
-        UV("Getting package manager"),
-        ENVIRONMENT("Installing Python environment"),
+        NVRTC("Getting the CUDA compiler"),
+        MODEL("Checking the model files"),
         VERIFY("Checking the model on the GPU"),
         KERNELS("Compiling GPU kernels");
 
@@ -85,9 +88,9 @@ public final class ModelSetup {
     public record Step(StepId id, Status status, String detail, double fraction) { }
 
     /**
-     * @param activity   the latest thing a step printed (a download, a compile), for the screen
+     * @param activity   the latest thing a step did (a download, a compile), for the screen
      * @param message    why setup failed or the model is unavailable, else null
-     * @param workNeeded this launch had something to install or compile
+     * @param workNeeded this launch had something to download, load or compile
      */
     public record Snapshot(Outcome outcome, List<Step> steps, String activity, String message,
                            long elapsedMs, boolean workNeeded) { }
@@ -105,15 +108,9 @@ public final class ModelSetup {
     private boolean unavailableKnownBefore;
     private long startNanos;
     private long endNanos;
-    private volatile Process child;
 
     private ModelSetup() {
         resetSteps();
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            Process p = child;
-            if (p != null) p.descendants().forEach(ProcessHandle::destroy);
-            if (p != null) p.destroy();
-        }, "model-setup-shutdown"));
     }
 
     // ------------------------------------------------------------------ public API
@@ -154,8 +151,8 @@ public final class ModelSetup {
 
     /**
      * Whether the setup screen belongs between the intro and the main menu: while setup works, when it
-     * failed, the first time the model turns out unavailable, and briefly after a launch that installed
-     * or compiled something (so the player sees it finish). An unchanged install shows nothing.
+     * failed, the first time the model turns out unavailable, and briefly after a launch that downloaded,
+     * loaded or compiled something (so the player sees it finish). An unchanged install shows nothing.
      */
     public boolean shouldShowScreen() {
         synchronized (lock) {
@@ -271,16 +268,9 @@ public final class ModelSetup {
 
     private void runSteps(Paths p, PrintWriter log) {
         boolean force = Boolean.getBoolean("stonebreak.modelSetup.force");
-        Properties stamp = readStamp(p);
-        String envHash = hashFiles(List.of(p.slmDir.resolve("uv.lock"), p.slmDir.resolve("pyproject.toml")));
-        String kernelHash = kernelHash(p);
-        boolean envOk = !force && Files.isExecutable(p.python) && envHash.equals(stamp.getProperty("env"));
-        boolean kernelsOk = !force && envOk && kernelHash.equals(stamp.getProperty("kernels"))
-                && Files.isDirectory(p.kernelCache);
         boolean knownUnavailable = Files.exists(p.slmDir.resolve(UNAVAILABLE_MARKER));
         synchronized (lock) {
             unavailableKnownBefore = knownUnavailable;
-            workNeeded = !(envOk && kernelsOk);
         }
         // Before the up-to-date shortcut: an installed model is still disabled on a machine below the bar.
         DaedalusRequirements.Verdict requirements = DaedalusRequirements.check();
@@ -292,53 +282,101 @@ public final class ModelSetup {
             unavailable(p, "Below system requirements", DaedalusRequirements.disabledMessage(requirements));
             return;
         }
-        if (envOk && kernelsOk) {
-            for (StepId id : StepId.values()) set(id, Status.SKIPPED, "up to date", -1);
-            finish(Outcome.READY, null);
-            return;
-        }
-        log.println("env " + (envOk ? "up to date" : "needs sync") + ", kernels " + (kernelsOk ? "up to date" : "need compiling"));
-
-        // 1. Graphics card
-        set(StepId.GPU, Status.RUNNING, "", -1);
-        String gpu = nvidiaGpu(log);
-        if (gpu == null) {
+        List<String> gpus = nvidiaGpus(log);
+        if (gpus == null) {
+            synchronized (lock) {
+                workNeeded = true;
+            }
             unavailable(p, "No NVIDIA GPU found",
                     "no NVIDIA graphics card found (the terrain model needs one); standard terrain still works");
             return;
         }
-        set(StepId.GPU, Status.DONE, gpu, -1);
 
-        // 2 + 3. Package manager and Python environment
-        if (envOk) {
-            set(StepId.UV, Status.SKIPPED, "not needed", -1);
-            set(StepId.ENVIRONMENT, Status.SKIPPED, "already installed", -1);
+        Properties stamp = readStamp(p.stampFile());
+        Path nvrtcHere = NvrtcTool.installed(p.toolsDir);
+        Fingerprint now = nvrtcHere == null ? null : fingerprint(p, nvrtcHere, gpus, stamp);
+        boolean upToDate = !force && now != null && Files.isDirectory(p.kernelCache)
+                && now.value().equals(stamp.getProperty(FINGERPRINT_KEY));
+        synchronized (lock) {
+            workNeeded = !upToDate;
+        }
+        if (upToDate) {
+            for (StepId id : StepId.values()) set(id, Status.SKIPPED, "up to date", -1);
+            finish(Outcome.READY, null);
+            return;
+        }
+        log.println(now == null ? "no CUDA compiler yet" : "changed since the last setup: "
+                + now.changedFrom(stamp));
+
+        // 1. Graphics card
+        set(StepId.GPU, Status.DONE, gpus.size() == 1 ? gpus.get(0) : gpus.size() + " GPUs: " + String.join(", ", gpus), -1);
+
+        // 2. CUDA compiler
+        Path nvrtc;
+        if (nvrtcHere != null) {
+            set(StepId.NVRTC, Status.SKIPPED, describeNvrtc(nvrtcHere, p.toolsDir), -1);
+            nvrtc = nvrtcHere;
         } else {
-            set(StepId.UV, Status.RUNNING, "", -1);
-            Path uv;
+            set(StepId.NVRTC, Status.RUNNING, "First time: downloads about 90 MB", -1);
             try {
-                uv = UvTool.locate(p.toolsDir, log, (text, fraction) -> {
-                    detail(StepId.UV, text, fraction);
+                nvrtc = NvrtcTool.locate(p.toolsDir, log, (text, fraction) -> {
+                    detail(StepId.NVRTC, text, fraction);
                     activity(text);
                 });
-            } catch (IOException | RuntimeException e) {
-                throw new StepFailure(StepId.UV, "could not get uv: " + e.getMessage());
+            } catch (TGMPipeException e) {
+                throw new StepFailure(StepId.NVRTC, e.getMessage());
             }
-            set(StepId.UV, Status.DONE, UvTool.describe(uv, p.toolsDir), -1);
-            syncEnvironment(uv, p, log);
-            writeStamp(p, envHash, null);
+            set(StepId.NVRTC, Status.DONE, describeNvrtc(nvrtc, p.toolsDir), -1);
         }
 
-        // 4 + 5. Model check and kernels
-        warmUp(p, log);
-        writeStamp(p, envHash, kernelHash);
+        // 3. Model files
+        set(StepId.MODEL, Status.RUNNING, "", -1);
+        String model = TerrainModels.defaultModelPath();   // the default (new worlds); a saved world's other model warms on first use
+        String problem = TerrainModels.installProblem(model);
+        if (problem != null) {
+            throw new StepFailure(StepId.MODEL, problem);
+        }
+        set(StepId.MODEL, Status.DONE, model, -1);
+
+        // 4 + 5. Model on the GPU, kernels
+        warmUp(log);
+        writeStamp(p.stampFile(), fingerprint(p, nvrtc, gpus, stamp));
         finish(Outcome.READY, null);
+    }
+
+    /** Opens the engine on the export (loads the networks), warms it up (compiles the kernels), closes it again. */
+    private void warmUp(PrintWriter log) {
+        set(StepId.VERIFY, Status.RUNNING, "", -1);
+        activity("Loading the model");
+        long t0 = System.nanoTime();
+        NativeTerrainLauncher.Opened opened;
+        try {
+            opened = NativeTerrainLauncher.open();
+        } catch (TGMPipeException e) {
+            throw new StepFailure(StepId.VERIFY, e.getMessage());
+        }
+        try (NativeTerrain terrain = opened.terrain()) {
+            log.println("opened: " + terrain.info());
+            set(StepId.VERIFY, Status.DONE, "cuda:" + opened.device(), -1);
+            set(StepId.KERNELS, Status.RUNNING, "", -1);
+            activity("Compiling GPU kernels");
+            long t1 = System.nanoTime();
+            try {
+                terrain.setLanes(1);   // one context is enough to compile; the world picks its own lane count
+                terrain.warmup();
+            } catch (RuntimeException e) {
+                throw new StepFailure(StepId.KERNELS, e.getMessage());
+            }
+            double s = (System.nanoTime() - t1) / 1e9;
+            log.println(String.format("warm-up %.1f s (open %.1f s)", s, (t1 - t0) / 1e9));
+            set(StepId.KERNELS, Status.DONE, String.format("ready in %.1f s", s), -1);
+        }
     }
 
     /** Ends setup with the model unusable on this machine: the GPU step failed, the rest skipped, nothing downloaded. */
     private void unavailable(Paths p, String gpuDetail, String why) {
         set(StepId.GPU, Status.FAILED, gpuDetail, -1);
-        for (StepId id : List.of(StepId.UV, StepId.ENVIRONMENT, StepId.VERIFY, StepId.KERNELS)) {
+        for (StepId id : List.of(StepId.NVRTC, StepId.MODEL, StepId.VERIFY, StepId.KERNELS)) {
             set(id, Status.SKIPPED, "", -1);
         }
         try {
@@ -349,160 +387,173 @@ public final class ModelSetup {
         finish(Outcome.UNAVAILABLE, why);
     }
 
-    private static final Pattern DL_START = Pattern.compile("^\\s*Downloading (\\S+).*\\(([\\d.]+)\\s*([KMGT]?i?B)\\)\\s*$");
-    private static final Pattern DL_DONE = Pattern.compile("^\\s*Downloaded (\\S+)");
-
-    private void syncEnvironment(Path uv, Paths p, PrintWriter log) {
-        set(StepId.ENVIRONMENT, Status.RUNNING, Files.isDirectory(p.slmDir.resolve(".venv"))
-                ? "Updating" : "First time: downloads a few GB, this can take several minutes", -1);
-        Map<String, Double> sizes = new LinkedHashMap<>();
-        List<String> done = new ArrayList<>();
-        int exit = runProcess(List.of(uv.toString(), "sync", "--frozen", "--color", "never"), p.slmDir,
-                Map.of("TGM_KERNEL_CACHE", p.kernelCache.toString()), log, line -> {
-                    String l = line.strip();
-                    if (l.isEmpty()) return;
-                    Matcher start = DL_START.matcher(l);
-                    Matcher end = DL_DONE.matcher(l);
-                    if (start.find()) {
-                        sizes.put(start.group(1), bytes(start.group(2), start.group(3)));
-                    } else if (end.find()) {
-                        done.add(end.group(1));
-                    }
-                    String say = friendlyUvLine(l);
-                    if (say == null) return;   // warnings and per-package lines: the log keeps them
-                    double total = sizes.values().stream().mapToDouble(Double::doubleValue).sum();
-                    double got = done.stream().mapToDouble(n -> sizes.getOrDefault(n, 0.0)).sum();
-                    String progressText = sizes.isEmpty() || done.size() == sizes.size() ? say
-                            : String.format("%s of %s downloaded (%d of %d large packages)", mb(got), mb(total),
-                            done.size(), sizes.size());
-                    detail(StepId.ENVIRONMENT, progressText, total > 0 && done.size() < sizes.size() ? got / total : -1);
-                    activity(say);
-                });
-        if (exit != 0) {
-            throw new StepFailure(StepId.ENVIRONMENT, "uv sync failed (exit " + exit + "): " + lastActivity());
-        }
-        set(StepId.ENVIRONMENT, Status.DONE, sizes.isEmpty() ? "installed" : mb(
-                sizes.values().stream().mapToDouble(Double::doubleValue).sum()) + " downloaded", -1);
+    private static String describeNvrtc(Path lib, Path toolsDir) {
+        return lib.startsWith(toolsDir) ? "NVRTC " + NvrtcTool.VERSION : "NVRTC (" + lib + ")";
     }
 
-    /** What the screen says for one line of {@code uv sync} output; null = not worth showing. */
-    static String friendlyUvLine(String line) {
-        if (line.startsWith("warning:") || line.startsWith("+ ") || line.startsWith("- ")
-                || line.startsWith("~ ") || line.startsWith("If ")) {
+    // ------------------------------------------------------------------ fingerprint
+
+    /**
+     * What decides the setup's work, by content.
+     *
+     * @param value   the fingerprint the stamp compares
+     * @param parts   role -> SHA-256 / fact, for the log
+     * @param records the file records (path|size|mtime|sha256) the stamp keeps for the next launch
+     */
+    record Fingerprint(String value, Map<String, String> parts, Map<String, String> records) {
+
+        /** The roles whose value differs from what {@code stamp} recorded (for the log). */
+        String changedFrom(Properties stamp) {
+            List<String> changed = new ArrayList<>();
+            for (var e : parts.entrySet()) {
+                if (!e.getValue().equals(stamp.getProperty("part." + e.getKey()))) {
+                    changed.add(e.getKey());
+                }
+            }
+            return changed.isEmpty() ? (stamp.isEmpty() ? "no earlier setup" : "nothing (forced)") : String.join(", ", changed);
+        }
+    }
+
+    private static Fingerprint fingerprint(Paths p, Path nvrtc, List<String> gpus, Properties stamp) {
+        Map<String, Path> files = new TreeMap<>();
+        files.put("terrain_lib", NativeTerrain.libraryPath());
+        files.put("engine_lib", cendaLibraryOrNull());
+        files.put("nvrtc", nvrtc);
+        files.put("export_manifest", NativeTerrainLauncher.nativeDir().resolve("manifest.json"));
+        Map<String, String> facts = new TreeMap<>();
+        facts.put("gpus", String.join(";", gpus));
+        facts.put("device", deviceOrUnknown());
+        return fingerprint(files, facts, stamp);
+    }
+
+    /**
+     * The fingerprint of {@code files} (role -> file; null or missing = "missing") and {@code facts} (role -> text).
+     * A file whose absolute path, size and mtime match its record in {@code stamp} reuses the recorded SHA-256; any
+     * other is hashed, so only a change of bytes changes the fingerprint.
+     */
+    static Fingerprint fingerprint(Map<String, Path> files, Map<String, String> facts, Properties stamp) {
+        Map<String, String> parts = new TreeMap<>(facts);
+        Map<String, String> records = new TreeMap<>();
+        for (var e : files.entrySet()) {
+            Path f = e.getValue();
+            if (f == null || !Files.isRegularFile(f)) {
+                parts.put(e.getKey(), "missing");
+                continue;
+            }
+            Path abs = f.toAbsolutePath().normalize();
+            try {
+                long size = Files.size(abs);
+                long mtime = Files.getLastModifiedTime(abs).toMillis();
+                String id = abs + "|" + size + "|" + mtime + "|";
+                String recorded = stamp.getProperty(FILE_KEY + e.getKey(), "");
+                String sha = recorded.startsWith(id) ? recorded.substring(id.length()) : sha256(abs);
+                parts.put(e.getKey(), sha);
+                records.put(e.getKey(), id + sha);
+            } catch (IOException ex) {
+                throw new UncheckedIOException(ex);
+            }
+        }
+        StringBuilder all = new StringBuilder();
+        parts.forEach((k, v) -> all.append(k).append('=').append(v).append('\n'));
+        return new Fingerprint(sha256(all.toString().getBytes(StandardCharsets.UTF_8)), parts, records);
+    }
+
+    static String sha256(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] buf = new byte[1 << 16];
+            for (int n; (n = in.read(buf)) > 0; ) {
+                md.update(buf, 0, n);
+            }
+            return HexFormat.of().formatHex(md.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static Path cendaLibraryOrNull() {
+        try {
+            return NativeTerrainLauncher.cendaLibrary();
+        } catch (TGMPipeException e) {
             return null;
         }
-        if (line.startsWith("Using CPython")) return "Using Python " + line.substring("Using CPython".length()).strip();
-        if (line.startsWith("Creating virtual environment")) return "Creating the Python environment";
-        if (line.startsWith("Building terrain-slm") || line.startsWith("Built terrain-slm")) return "Building the model package";
-        // uv prints nothing while it copies the packages into place, which is the long part without downloads.
-        if (line.startsWith("Prepared")) return line + " - installing (copies a few GB)";
-        return line;
     }
 
-    private void warmUp(Paths p, PrintWriter log) {
-        if (!Files.isExecutable(p.python)) {
-            throw new StepFailure(StepId.VERIFY, "Python environment missing: " + p.python);
+    private static String deviceOrUnknown() {
+        try {
+            return "cuda:" + NativeTerrainLauncher.device();
+        } catch (RuntimeException e) {
+            return "unknown";
         }
-        set(StepId.VERIFY, Status.RUNNING, "", -1);
-        // Never hand the warm-up a missing release or Git LFS pointer files (a clone without 'git lfs pull').
-        String problem = TerrainModels.installProblem(TerrainModels.defaultModelPath());
-        if (problem != null) {
-            throw new StepFailure(StepId.VERIFY, problem);
+    }
+
+    static Properties readStamp(Path file) {
+        Properties props = new Properties();
+        if (Files.exists(file)) {
+            try (var in = Files.newInputStream(file)) {
+                props.load(in);
+            } catch (IOException ignored) {
+                // unreadable = not set up
+            }
         }
-        ObjectMapper json = new ObjectMapper();
-        String[] gpuName = {""};
-        int[] compiled = {0};
-        String[] error = {null};
-        List<String> cmd = List.of(p.python.toString(), "-m", "terrain_slm.tgmpipe.warmup",
-                TerrainModels.defaultModelPath(),   // the default (new worlds); a saved world's other model warms on first use
-                "--device", System.getProperty("stonebreak.tgmpipe.device", "auto"));
-        int exit = runProcess(cmd, p.slmDir, Map.of("TGM_KERNEL_CACHE", p.kernelCache.toString()), log, line -> {
-            if (!line.startsWith("{")) {
-                if (!line.isBlank()) activity(line.strip());
-                return;
+        return props;
+    }
+
+    /** The stamp lives in the kernel cache: deleting the cache forgets the setup with it. */
+    static void writeStamp(Path file, Fingerprint f) {
+        Properties props = new Properties();
+        props.setProperty(FINGERPRINT_KEY, f.value());
+        f.parts().forEach((k, v) -> props.setProperty("part." + k, v));
+        f.records().forEach((k, v) -> props.setProperty(FILE_KEY + k, v));
+        try {
+            Files.createDirectories(file.getParent());
+            try (var out = Files.newOutputStream(file)) {
+                props.store(out, TGMPipe.MODEL_NAME + " setup (written by the game; delete to redo it)");
             }
-            JsonNode n;
-            try {
-                n = json.readTree(line);
-            } catch (IOException e) {
-                return;
-            }
-            if (n.has("error")) {
-                error[0] = n.get("error").asText();
-            } else if (n.has("done")) {
-                gpuName[0] = n.path("gpu").asText();
-                set(StepId.VERIFY, Status.DONE, gpuName[0] + " (" + n.path("device").asText() + ")", -1);
-                set(StepId.KERNELS, Status.DONE, String.format("%d kernel groups in %.1f s", compiled[0],
-                        n.path("seconds").asDouble()), -1);
-            } else if ("compile".equals(n.path("stage").asText())) {
-                if (steps.get(StepId.VERIFY).status() == Status.RUNNING) {
-                    set(StepId.VERIFY, Status.DONE, "model loaded", -1);
-                }
-                compiled[0]++;
-                String what = n.path("detail").asText();
-                set(StepId.KERNELS, Status.RUNNING, "Compiling " + what + " (" + compiled[0] + " of 3)",
-                        (compiled[0] - 1) / 3.0);
-                activity("Compiling " + what);
-            } else if (n.has("detail")) {
-                detail(StepId.VERIFY, n.get("detail").asText(), -1);
-                activity(n.get("detail").asText());
-            }
-        });
-        if (exit != 0 || error[0] != null) {
-            StepId at = steps.get(StepId.KERNELS).status() == Status.RUNNING ? StepId.KERNELS : StepId.VERIFY;
-            throw new StepFailure(at, error[0] != null ? error[0] : "exit " + exit + ": " + lastActivity());
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "could not write the setup stamp; setup will run again next launch", e);
         }
     }
 
     // ------------------------------------------------------------------ helpers
 
-    private String nvidiaGpu(PrintWriter log) {
-        if (Boolean.getBoolean("stonebreak.modelSetup.skipGpuCheck")) return "not checked";
-        List<String> names = new ArrayList<>();
+    /** "name (compute capability)" of every NVIDIA GPU, or null without a working {@code nvidia-smi}. */
+    private static List<String> nvidiaGpus(PrintWriter log) {
+        if (Boolean.getBoolean("stonebreak.modelSetup.skipGpuCheck")) return List.of("not checked");
+        List<String> out = new ArrayList<>();
         try {
-            int exit = runProcess(List.of("nvidia-smi", "--query-gpu=name", "--format=csv,noheader"), null,
-                    Map.of(), log, l -> {
-                        if (!l.isBlank()) names.add(l.strip());
-                    });
-            if (exit != 0 || names.isEmpty()) return null;
-        } catch (StepFailure e) {
-            return null;
-        }
-        return names.size() == 1 ? names.get(0) : names.size() + " GPUs: " + String.join(", ", names);
-    }
-
-    /** Runs {@code cmd}, logging and handing every output line (stdout + stderr) to {@code onLine}. */
-    private int runProcess(List<String> cmd, Path dir, Map<String, String> env, PrintWriter log, Consumer<String> onLine) {
-        log.println("$ " + String.join(" ", cmd));
-        log.flush();
-        ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
-        if (dir != null) pb.directory(dir.toFile());
-        pb.environment().putAll(env);
-        pb.environment().put("PYTHONUNBUFFERED", "1");
-        try {
-            Process proc = pb.start();
-            child = proc;
+            Process proc = new ProcessBuilder("nvidia-smi", "--query-gpu=name,compute_cap", "--format=csv,noheader")
+                    .redirectErrorStream(true).start();
             proc.getOutputStream().close();
             try (BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    log.println(line);
-                    log.flush();
-                    onLine.accept(line);
+                for (String line; (line = r.readLine()) != null; ) {
+                    if (line.isBlank()) continue;
+                    int comma = line.lastIndexOf(',');
+                    out.add(comma < 0 ? line.strip()
+                            : line.substring(0, comma).strip() + " (sm " + line.substring(comma + 1).strip() + ")");
                 }
             }
-            int exit = proc.waitFor();
-            log.println("(exit " + exit + ")");
-            return exit;
+            if (!proc.waitFor(10, TimeUnit.SECONDS)) {
+                proc.destroyForcibly();
+                return null;
+            }
+            if (proc.exitValue() != 0 || out.isEmpty()) return null;
         } catch (IOException e) {
-            log.println("could not run: " + e.getMessage());
-            throw new StepFailure(currentStep(), "could not run " + cmd.get(0) + ": " + e.getMessage());
+            log.println("nvidia-smi: " + e.getMessage());
+            return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new StepFailure(currentStep(), "interrupted");
-        } finally {
-            child = null;
+            return null;
         }
+        return out;
     }
 
     private StepId currentStep() {
@@ -517,102 +568,6 @@ public final class ModelSetup {
         set(id, Status.FAILED, why, -1);
     }
 
-    private String lastActivity() {
-        synchronized (lock) {
-            return activity;
-        }
-    }
-
-    private static double bytes(String number, String unit) {
-        double v = Double.parseDouble(number);
-        return switch (unit.charAt(0)) {
-            case 'K' -> v * 1024;
-            case 'M' -> v * 1024 * 1024;
-            case 'G' -> v * 1024 * 1024 * 1024;
-            case 'T' -> v * 1024 * 1024 * 1024 * 1024;
-            default -> v;
-        };
-    }
-
-    private static String mb(double bytes) {
-        return bytes >= 1024.0 * 1024 * 1024 ? String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024))
-                : String.format("%.0f MB", bytes / (1024.0 * 1024));
-    }
-
-    /** Native kernel sources by file name: Python, CUDA, C/C++ (headers too), tuned launch configs, CMake. */
-    private static final Pattern KERNEL_SOURCE =
-            Pattern.compile(".*\\.(py|cu|cuh|c|cc|cpp|cxx|h|hh|hpp|inl|json|cmake)$|CMakeLists\\.txt");
-
-    private static String kernelHash(Paths p) {
-        return kernelHash(p.slmDir, TerrainModels.defaultModelPath());
-    }
-
-    /**
-     * What the warm-up compiles and checks: every kernel source under {@code terrain_slm/kernels} (the tree is
-     * walked, so a new csrc file, header or config is picked up without touching this list; {@code __pycache__}
-     * is skipped), the warm-up itself, and the model: its folder name and, for a release folder
-     * ({@code scripts/make_release.py}), its {@code release.json}, so a release rebuilt at the same path warms up
-     * again. Any change means the warm-up must run again.
-     */
-    static String kernelHash(Path slmDir, String model) {
-        Path dir = slmDir.resolve("terrain_slm/kernels");
-        List<Path> files = new ArrayList<>();
-        if (Files.isDirectory(dir)) {
-            try (Stream<Path> s = Files.walk(dir)) {
-                s.filter(Files::isRegularFile)
-                        .filter(f -> !dir.relativize(f).toString().contains("__pycache__"))
-                        .filter(f -> KERNEL_SOURCE.matcher(f.getFileName().toString()).matches())
-                        .sorted().forEach(files::add);
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-        }
-        files.add(slmDir.resolve("terrain_slm/tgmpipe/warmup.py"));
-        Path modelDir = Path.of(model).isAbsolute() ? Path.of(model) : slmDir.resolve(model);
-        files.add(modelDir.resolve("release.json"));   // absent for dev (symlink) folders: the name alone counts
-        return hashFiles(files) + ":" + model;
-    }
-
-    static String hashFiles(List<Path> files) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            for (Path f : files) {
-                md.update(f.getFileName().toString().getBytes(StandardCharsets.UTF_8));
-                if (Files.exists(f)) md.update(Files.readAllBytes(f));
-            }
-            return HexFormat.of().formatHex(md.digest()).substring(0, 16);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private static Properties readStamp(Paths p) {
-        Properties props = new Properties();
-        Path f = p.venv().resolve(STAMP);
-        if (Files.exists(f)) {
-            try (var in = Files.newInputStream(f)) {
-                props.load(in);
-            } catch (IOException ignored) {
-                // unreadable = not set up
-            }
-        }
-        return props;
-    }
-
-    /** The stamp lives inside the environment: deleting .venv forgets the setup with it. */
-    private static void writeStamp(Paths p, String env, String kernels) {
-        Properties props = new Properties();
-        props.setProperty("env", env);
-        if (kernels != null) props.setProperty("kernels", kernels);
-        try (var out = Files.newOutputStream(p.venv().resolve(STAMP))) {
-            props.store(out, TGMPipe.MODEL_NAME + " setup (written by the game; delete to redo it)");
-        } catch (IOException e) {
-            LOG.log(Level.WARNING, "could not write the setup stamp; setup will run again next launch", e);
-        }
-    }
-
     private static PrintWriter openLog(Path logFile) {
         try {
             Files.createDirectories(logFile.getParent());
@@ -624,13 +579,13 @@ public final class ModelSetup {
     }
 
     private static Paths paths() {
-        return new Paths(TGMPipe.slmDir(), TGMPipe.pythonExe(), TGMPipe.kernelCacheDir(),
-                TGMPipe.modelsDir().resolve("tools"), TGMPipe.logDir().resolve("setup.log"));
+        return new Paths(TGMPipe.slmDir(), TGMPipe.kernelCacheDir(), TGMPipe.toolsDir(),
+                TGMPipe.logDir().resolve("setup.log"));
     }
 
-    private record Paths(Path slmDir, Path python, Path kernelCache, Path toolsDir, Path logFile) {
-        Path venv() {
-            return slmDir.resolve(".venv");
+    private record Paths(Path slmDir, Path kernelCache, Path toolsDir, Path logFile) {
+        Path stampFile() {
+            return kernelCache.resolve(STAMP);
         }
     }
 

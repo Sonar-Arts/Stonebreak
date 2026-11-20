@@ -22,19 +22,21 @@ import java.util.PriorityQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The DaedalusTGM tile pipeline in-process (native engine phase 3): what the Python TGMPipe child does, on
- * {@link NativeTerrain} instead. Same contract as {@code terrain_slm/tgmpipe/service.py}: requests are served from the
+ * The DaedalusTGM tile pipeline in-process (native engine phase 3; the only backend since the Python TGMPipe child
+ * was removed 2026-11-20), on {@link NativeTerrain}: requests are served from the
  * on-disk tile cache when present (an IO thread), otherwise queued by priority (lower first, then FIFO) for one GPU
  * worker thread per native lane ({@link NativeTerrain#setLanes}: concurrent tile builders sharing the models and window
  * caches - the GPU works on one tile while another lane waits on the host; tiles are identical whatever lane builds
  * them); equal requests share one build; a request whose future is completed from outside (cancelled) is withdrawn
  * before its build starts. Tiles are cached per world in their own namespaces (the native pipeline's
- * model_id carries the ":nt1" marker, so its tiles never mix with the Python service's).
+ * model_id carries the ":nt1" marker, so its tiles never mix with tiles the retired Python service cached).
  */
 final class NativeTerrainService implements AutoCloseable {
 
@@ -48,7 +50,7 @@ final class NativeTerrainService implements AutoCloseable {
         final Key key;
         int priority;           // the most urgent priority any of its requests asked for (guarded by jobs)
         final long order;
-        final List<TGMPipeConnection.TileRequest> waiters = new ArrayList<>();
+        final List<TileRequest> waiters = new ArrayList<>();
         boolean started;
 
         Job(Key key, int priority, long order) {
@@ -81,6 +83,23 @@ final class NativeTerrainService implements AutoCloseable {
     private final AtomicLong served = new AtomicLong(), cacheHits = new AtomicLong(), generated = new AtomicLong(),
             failed = new AtomicLong(), genMs = new AtomicLong();
     private volatile long lastActivityNanos = System.nanoTime();
+    /** Tiles being built right now (the idle check never trims under a build). */
+    private final AtomicInteger building = new AtomicInteger();
+    /** What the idle check did since the last activity: 0 nothing, 1 trimmed the pools, 2 released the caches. */
+    private volatile int idleLevel;
+    private final ScheduledExecutorService idle = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "terrain-native-idle"));
+    /**
+     * Idle this long ({@code -Dstonebreak.terrain.idleTrimSeconds}, default 5; 0 = never): unused pooled blocks (device
+     * and pinned) go back to the driver; cached windows stay, nothing is recomputed (the old Python service did this
+     * after 1 s).
+     */
+    static final long IDLE_TRIM_SECONDS = Long.getLong("stonebreak.terrain.idleTrimSeconds", 5L);
+    /**
+     * Idle this long ({@code -Dstonebreak.terrain.idleReleaseSeconds}, default 120; 0 = never): every cached window is
+     * dropped too (a world left, a player standing still): host and GPU memory back to the models alone. The next tiles
+     * recompute their windows (identical results, slower until the caches refill).
+     */
+    static final long IDLE_RELEASE_SECONDS = Long.getLong("stonebreak.terrain.idleReleaseSeconds", 120L);
 
     private static Thread daemon(Runnable r, String name) {
         Thread t = new Thread(r, name);
@@ -121,15 +140,53 @@ final class NativeTerrainService implements AutoCloseable {
         }
         this.gpus = List.copyOf(threads);
         this.gpus.forEach(Thread::start);
+        idle.scheduleWithFixedDelay(this::checkIdle, 1, 1, TimeUnit.SECONDS);
     }
 
-    /** Lanes on a GPU with at least {@link #AUTO_LANES_MIN_VRAM_MIB} MiB: a second lane costs ~2.5 GB of VRAM. */
+    /** Something used the pipeline: the idle clock starts again. */
+    private void active() {
+        lastActivityNanos = System.nanoTime();
+        idleLevel = 0;
+    }
+
+    /** Idle-thread tick: trims, then releases, a pipeline nothing has asked anything of for a while. */
+    void checkIdle() {
+        if (closed || building.get() > 0) {
+            return;
+        }
+        synchronized (jobs) {
+            if (!jobs.isEmpty()) {
+                return;
+            }
+        }
+        long idleFor = System.nanoTime() - lastActivityNanos;
+        try {
+            if (idleLevel < 2 && IDLE_RELEASE_SECONDS > 0 && idleFor >= TimeUnit.SECONDS.toNanos(IDLE_RELEASE_SECONDS)) {
+                terrain.release();
+                idleLevel = 2;
+                LOG.info(() -> "native terrain idle for " + IDLE_RELEASE_SECONDS + " s: window caches released");
+            } else if (idleLevel < 1 && IDLE_TRIM_SECONDS > 0 && idleFor >= TimeUnit.SECONDS.toNanos(IDLE_TRIM_SECONDS)) {
+                terrain.trim();
+                idleLevel = 1;
+            }
+        } catch (RuntimeException e) {
+            LOG.log(Level.WARNING, "native terrain idle trim failed", e);
+            idleLevel = 2;   // do not retry every second
+        }
+    }
+
+    /**
+     * Lanes on a GPU with at least {@link #AUTO_LANES_MIN_VRAM_MIB} MiB and a machine with at least
+     * {@link #AUTO_LANES_MIN_RAM_MIB} MiB of RAM: a second lane costs ~2.5 GB of VRAM and its own pinned pool and execution
+     * contexts in host memory (2026-11-20: a 32 GB machine with a 5090 ran out of RAM).
+     */
     static final int DEFAULT_LANES = 2;
     static final long AUTO_LANES_MIN_VRAM_MIB = 16384;
+    static final long AUTO_LANES_MIN_RAM_MIB = 48L * 1024 - 1024;   // a 48 GB machine reports a little under 48 GiB
 
-    /** {@code auto} (default): {@link #DEFAULT_LANES} on a big GPU, else 1 (unknown VRAM = 1). */
-    static int lanesFor(long vramMiB) {
-        return vramMiB >= AUTO_LANES_MIN_VRAM_MIB ? DEFAULT_LANES : 1;
+    /** {@code auto} (default): {@link #DEFAULT_LANES} on a big GPU in a big machine, else 1 (unknown = 1). */
+    static int lanesFor(long vramMiB, long ramMiB) {
+        return vramMiB >= AUTO_LANES_MIN_VRAM_MIB && ramMiB >= AUTO_LANES_MIN_RAM_MIB ? DEFAULT_LANES : 1;
     }
 
     /** {@code -Dstonebreak.terrain.lanes}: a count (1 = the sequential pipeline, A/B and fallback) or "auto". */
@@ -143,7 +200,7 @@ final class NativeTerrainService implements AutoCloseable {
             }
         }
         DaedalusRequirements.SystemSpecs specs = DaedalusRequirements.check().specs();
-        return lanesFor(specs == null ? -1 : specs.vramMiB());
+        return specs == null ? 1 : lanesFor(specs.vramMiB(), specs.ramMiB());
     }
 
     /** Cache namespace of one world: everything that decides its tiles (world config, model, native export). */
@@ -176,7 +233,7 @@ final class NativeTerrainService implements AutoCloseable {
         return lastActivityNanos;
     }
 
-    void submit(TGMPipeConnection.TileRequest r) {
+    void submit(TileRequest r) {
         if (closed) {
             throw new TGMPipeException("native terrain pipeline is closed");
         }
@@ -187,7 +244,7 @@ final class NativeTerrainService implements AutoCloseable {
         io.execute(() -> lookup(r));
     }
 
-    private void lookup(TGMPipeConnection.TileRequest r) {
+    private void lookup(TileRequest r) {
         if (r.future().isDone()) {
             return;
         }
@@ -220,7 +277,7 @@ final class NativeTerrainService implements AutoCloseable {
             }
             jobs.notifyAll();
         }
-        lastActivityNanos = System.nanoTime();
+        active();
     }
 
     /**
@@ -250,7 +307,7 @@ final class NativeTerrainService implements AutoCloseable {
                 }
                 job = queue.poll();
             }
-            List<TGMPipeConnection.TileRequest> waiters;
+            List<TileRequest> waiters;
             synchronized (jobs) {
                 job.waiters.removeIf(w -> w.future().isDone());   // cancelled while queued: withdrawn
                 if (job.waiters.isEmpty()) {
@@ -261,8 +318,15 @@ final class NativeTerrainService implements AutoCloseable {
             }
             Key k = job.key;
             long t0 = System.nanoTime();
+            building.incrementAndGet();
+            active();
             try {
-                NativeTerrain.Tile t = terrain.tile(lane, k.world, k.seed, k.tileX, k.tileZ, k.lod);
+                NativeTerrain.Tile t;
+                try {
+                    t = terrain.tile(lane, k.world, k.seed, k.tileX, k.tileZ, k.lod);
+                } finally {
+                    building.decrementAndGet();
+                }
                 long ms = (System.nanoTime() - t0) / 1_000_000;
                 generated.incrementAndGet();
                 genMs.addAndGet(ms);
@@ -271,7 +335,7 @@ final class NativeTerrainService implements AutoCloseable {
                     jobs.remove(k);
                     waiters = new ArrayList<>(job.waiters);
                 }
-                for (TGMPipeConnection.TileRequest w : waiters) {
+                for (TileRequest w : waiters) {
                     served.incrementAndGet();
                     w.future().complete(tile);
                 }
@@ -285,15 +349,15 @@ final class NativeTerrainService implements AutoCloseable {
                     jobs.remove(k);
                     waiters = new ArrayList<>(job.waiters);
                 }
-                for (TGMPipeConnection.TileRequest w : waiters) {
+                for (TileRequest w : waiters) {
                     w.future().completeExceptionally(new TGMPipeException("native terrain: " + e.getMessage(), e));
                 }
             }
-            lastActivityNanos = System.nanoTime();
+            active();
         }
     }
 
-    /** Planes -> TerrainTile exactly as {@link TGMPipeProtocol#decodeTile} builds it from a TILE_DATA frame. */
+    /** Planes -> TerrainTile (the layout the retired TGMPipe TILE_DATA frame carried). */
     private TerrainTile toTile(Key k, int rows, int cols, short[][] planes, Map<String, byte[]> surface) {
         int n = tileSize.get(k.world);
         int i1 = k.tileX * n, j1 = k.tileZ * n;
@@ -358,11 +422,11 @@ final class NativeTerrainService implements AutoCloseable {
     }
 
     /** Requests not finished, for a restart on another backend. */
-    List<TGMPipeConnection.TileRequest> unfinished() {
-        List<TGMPipeConnection.TileRequest> out = new ArrayList<>();
+    List<TileRequest> unfinished() {
+        List<TileRequest> out = new ArrayList<>();
         synchronized (jobs) {
             for (Job j : jobs.values()) {
-                for (TGMPipeConnection.TileRequest w : j.waiters) {
+                for (TileRequest w : j.waiters) {
                     if (!w.future().isDone()) {
                         out.add(w);
                     }
@@ -375,6 +439,12 @@ final class NativeTerrainService implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
+        idle.shutdown();
+        try {
+            idle.awaitTermination(30, TimeUnit.SECONDS);   // a release in progress finishes before the pipeline closes
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         synchronized (jobs) {
             jobs.notifyAll();
         }
@@ -394,7 +464,7 @@ final class NativeTerrainService implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        for (TGMPipeConnection.TileRequest r : unfinished()) {
+        for (TileRequest r : unfinished()) {
             r.future().completeExceptionally(new TGMPipeException("native terrain pipeline stopped"));
         }
         if (gpus.stream().noneMatch(Thread::isAlive)) {

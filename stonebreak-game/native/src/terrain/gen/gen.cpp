@@ -1,10 +1,73 @@
 #include "gen/gen.hpp"
 
+#include <algorithm>
+
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
 namespace sbtg {
+
+namespace {
+// Host bytes a cache value holds: every host tensor's block once (views of one block count once).
+size_t host_bytes_of(const Fields& f) {
+    size_t n = 0;
+    std::vector<const Block*> seen;
+    for (auto& [name, t] : f.items) {
+        if (!t.host || !t.mem) continue;
+        const Block* b = t.mem.get();
+        if (std::find(seen.begin(), seen.end(), b) != seen.end()) continue;
+        seen.push_back(b);
+        n += b->bytes != 0 ? b->bytes : t.bytes();
+    }
+    return n;
+}
+} // namespace
+
+CacheCore::~CacheCore() {
+    if (budget_) budget_->used.fetch_sub(host_bytes_);
+}
+
+void CacheCore::account(Entry& e) {
+    const size_t nb = host_bytes_of(e.v);
+    host_bytes_ = host_bytes_ - e.hb + nb;
+    if (budget_) {
+        budget_->used.fetch_add(nb);
+        budget_->used.fetch_sub(e.hb);
+    }
+    e.hb = nb;
+}
+
+void CacheCore::forget(Entry& e) {
+    host_bytes_ -= e.hb;
+    if (budget_) budget_->used.fetch_sub(e.hb);
+    e.hb = 0;
+}
+
+void CacheCore::enforce_budget(const Key& keep) {
+    if (!budget_ || budget_->limit == 0) return;
+    auto over = [this] { return budget_->used.load() > budget_->limit; };
+    // Spilled (pinned) entries first, least recent first ...
+    while (over() && !host_order_.empty() && host_order_.back() != keep) {
+        auto m = map_.find(host_order_.back());
+        host_order_.pop_back();
+        forget(m->second);
+        map_.erase(m);
+        budget_->evictions.fetch_add(1);
+    }
+    // ... then values that live on the host in the device tier (routes), least recent first. Pending entries are in no
+    // order list, so a window being computed is never evicted; `keep` (the entry just touched) stays.
+    for (auto it = gpu_order_.end(); over() && it != gpu_order_.begin();) {
+        --it;
+        if (*it == keep) continue;
+        auto m = map_.find(*it);
+        if (m->second.hb == 0) continue;
+        forget(m->second);
+        map_.erase(m);
+        it = gpu_order_.erase(it);
+        budget_->evictions.fetch_add(1);
+    }
+}
 
 Fields Cache::to(const Fields& f, bool host) {
     Fields o;
@@ -54,18 +117,22 @@ void Cache::settle(std::unique_lock<std::mutex>&) {
         c.gpu_order_.pop_back();
         CacheCore::Entry& e = c.map_.at(k);
         if (host_cap == 0) {
+            c.forget(e);
             c.map_.erase(k);
             continue;
         }
         adopt(e);
         e.v = to(e.v, true);
+        c.account(e);
         e.lane = lane_;
         e.ev = record();
         e.gpu = false;
         c.host_order_.push_front(k);
         e.it = c.host_order_.begin();
         if (c.host_order_.size() > host_cap) {
-            c.map_.erase(c.host_order_.back());
+            auto old = c.map_.find(c.host_order_.back());
+            c.forget(old->second);
+            c.map_.erase(old);
             c.host_order_.pop_back();
         }
     }
@@ -81,12 +148,21 @@ size_t Cache::size() const {
     return core_->map_.size();
 }
 
+size_t Cache::host_bytes() const {
+    std::lock_guard<std::mutex> l(core_->mu_);
+    return core_->host_bytes_;
+}
+
 void Cache::clear() {
     std::lock_guard<std::mutex> l(core_->mu_);
     CacheCore& c = *core_;
     for (auto it = c.map_.begin(); it != c.map_.end();) {   // pending entries stay: their lanes fill them
-        if (it->second.ready) it = c.map_.erase(it);
-        else ++it;
+        if (it->second.ready) {
+            c.forget(it->second);
+            it = c.map_.erase(it);
+        } else {
+            ++it;
+        }
     }
     c.gpu_order_.clear();
     c.host_order_.clear();
@@ -104,7 +180,10 @@ void Cache::release(const Key& k) {
     {
         std::lock_guard<std::mutex> l(core_->mu_);
         auto it = core_->map_.find(k);
-        if (it != core_->map_.end() && !it->second.ready && it->second.owner == lane_) core_->map_.erase(it);
+        if (it != core_->map_.end() && !it->second.ready && it->second.owner == lane_) {
+            core_->forget(it->second);
+            core_->map_.erase(it);
+        }
     }
     core_->cv_.notify_all();
 }
@@ -137,6 +216,7 @@ Fields Cache::get_or(const Key& k, const std::function<Fields()>& fn) {
             c.host_order_.erase(e.it);
             adopt(e);
             e.v = to(e.v, false);
+            c.account(e);
             e.lane = lane_;
             e.ev = record();
             e.gpu = true;
@@ -144,6 +224,7 @@ Fields Cache::get_or(const Key& k, const std::function<Fields()>& fn) {
             e.it = c.gpu_order_.begin();
             Fields v = e.v;
             settle(l);
+            c.enforce_budget(k);
             return v;
         }
         if (e.owner == lane_) {   // re-entrant need of a key this lane is computing: compute it here too
@@ -165,6 +246,7 @@ void Cache::put(const Key& k, Fields v) {
         if (it != c.map_.end() && it->second.ready) (it->second.gpu ? c.gpu_order_ : c.host_order_).erase(it->second.it);
         CacheCore::Entry& e = c.map_[k];
         e.v = std::move(v);
+        c.account(e);
         e.ready = true;
         e.owner = -1;
         e.gpu = true;
@@ -173,6 +255,7 @@ void Cache::put(const Key& k, Fields v) {
         c.gpu_order_.push_front(k);
         e.it = c.gpu_order_.begin();
         settle(l);
+        c.enforce_budget(k);
     }
     c.cv_.notify_all();
 }
@@ -258,7 +341,10 @@ void Gen::trim_pool() {
     const size_t budget = static_cast<size_t>(manifest.has("constants") && manifest["constants"].has("POOL_CACHE_MB")
                                                   ? manifest["constants"]["POOL_CACHE_MB"].i64()
                                                   : 768) << 20;
-    if (gpu.pool.cached_bytes() > 2 * budget) gpu.pool.trim_to(budget);
+    if (gpu.pool.cached_device_bytes() > 2 * budget) gpu.pool.trim_to(budget, false);
+    // Pinned host blocks on their own (2026-11-20): before, they were only freed once the device blocks were gone, so a
+    // lane kept up to ~1.5 GiB of page-locked memory it no longer used.
+    if (gpu.pool.cached_host_bytes() > 2 * pool_host_keep) gpu.pool.trim_to(pool_host_keep, true);
 }
 
 const Tensor& Gen::taps(double sigma) {
@@ -303,15 +389,27 @@ Cache& Gen::cache(const std::string& name, size_t cap) {
     if (sh) {   // one core per (name, climate layout) for every lane: layouts never mix, so nothing is cleared
         std::lock_guard<std::mutex> l(shared->mu);
         auto& core = shared->cores[key];
-        if (!core) core = std::make_shared<CacheCore>(cap, gc, true);
+        if (!core) core = std::make_shared<CacheCore>(cap, gc, true, host_budget);
         return *caches_.emplace(key, std::make_unique<Cache>(core, &gpu, lane)).first->second;
     }
-    return *caches_.emplace(key, std::make_unique<Cache>(&gpu, cap, gc)).first->second;
+    auto core = std::make_shared<CacheCore>(cap, gc, false, host_budget);
+    return *caches_.emplace(key, std::make_unique<Cache>(std::move(core), &gpu, lane)).first->second;
 }
 
 void Gen::clear_caches() {
     for (auto& [n, c] : caches_)
         if (!c->shared()) c->clear();
+}
+
+void Gen::clear_all_caches() {
+    for (auto& [n, c] : caches_) c->clear();
+}
+
+size_t Gen::cache_host_bytes() const {
+    size_t n = 0;
+    for (auto& [name, c] : caches_)
+        if (!c->shared()) n += c->host_bytes();
+    return n;
 }
 
 ci_model* Gen::model(const std::string& name) {

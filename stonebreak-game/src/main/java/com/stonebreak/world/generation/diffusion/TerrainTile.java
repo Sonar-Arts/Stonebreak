@@ -1,8 +1,7 @@
 package com.stonebreak.world.generation.diffusion;
 
 /**
- * One decoded tile from TGMPipe (a TILE_DATA frame, see
- * {@link com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipeProtocol}): a
+ * One tile from the terrain pipeline ({@link com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe}): a
  * {@code height x width} grid of block heights, the co-located biome ids, the
  * per-column water level and the river planes, row-major with
  * row = worldX - worldI1, col = worldZ - worldJ1.

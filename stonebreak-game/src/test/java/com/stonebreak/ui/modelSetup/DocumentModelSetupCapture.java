@@ -42,31 +42,32 @@ public final class DocumentModelSetupCapture implements MigrationGate.Renderer {
         return switch (v) {
             case "running" -> new Snapshot(Outcome.RUNNING, List.of(
                 new Step(StepId.GPU, Status.DONE, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", -1),
-                new Step(StepId.UV, Status.DONE, "uv 0.12.20 (downloaded)", -1),
-                new Step(StepId.ENVIRONMENT, Status.RUNNING, "1.84 GB of 4.37 GB downloaded (3 of 9 large packages)", 0.42),
+                new Step(StepId.NVRTC, Status.RUNNING, "Downloading the CUDA compiler: 38 / 85 MB", 0.44),
+                new Step(StepId.MODEL, Status.PENDING, "", -1),
                 new Step(StepId.VERIFY, Status.PENDING, "", -1),
-                new Step(StepId.KERNELS, Status.PENDING, "", -1)), "Downloading torch (846.1MiB)", null, 83_000, true);
+                new Step(StepId.KERNELS, Status.PENDING, "", -1)), "Downloading the CUDA compiler: 38 / 85 MB", null,
+                83_000, true);
             case "failed" -> new Snapshot(Outcome.FAILED, List.of(
                 new Step(StepId.GPU, Status.DONE, "NVIDIA GeForce RTX 5090", -1),
-                new Step(StepId.UV, Status.DONE, "uv (/usr/bin/uv)", -1),
-                new Step(StepId.ENVIRONMENT, Status.FAILED, "uv sync failed (exit 2): network unreachable", -1),
+                new Step(StepId.NVRTC, Status.FAILED, "could not download the CUDA compiler: network unreachable", -1),
+                new Step(StepId.MODEL, Status.PENDING, "", -1),
                 new Step(StepId.VERIFY, Status.PENDING, "", -1),
                 new Step(StepId.KERNELS, Status.PENDING, "", -1)), "",
-                "uv sync failed (exit 2): error sending request for url (https://download.pytorch.org/whl/cu128/torch/)",
+                "could not download the CUDA compiler (NVRTC 12.9.86): HTTP connect timed out (files.pythonhosted.org)",
                 83_000, true);
             case "unavailable" -> new Snapshot(Outcome.UNAVAILABLE, List.of(
                 new Step(StepId.GPU, Status.FAILED, "No NVIDIA GPU found", -1),
-                new Step(StepId.UV, Status.SKIPPED, "", -1),
-                new Step(StepId.ENVIRONMENT, Status.SKIPPED, "", -1),
+                new Step(StepId.NVRTC, Status.SKIPPED, "", -1),
+                new Step(StepId.MODEL, Status.SKIPPED, "", -1),
                 new Step(StepId.VERIFY, Status.SKIPPED, "", -1),
                 new Step(StepId.KERNELS, Status.SKIPPED, "", -1)), "",
                 "no NVIDIA graphics card found (the terrain model needs one); standard terrain still works", 83_000, true);
             case "ready" -> new Snapshot(Outcome.READY, List.of(
                 new Step(StepId.GPU, Status.DONE, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", -1),
-                new Step(StepId.UV, Status.SKIPPED, "not needed", -1),
-                new Step(StepId.ENVIRONMENT, Status.SKIPPED, "already installed", -1),
-                new Step(StepId.VERIFY, Status.DONE, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition (cuda:1)", -1),
-                new Step(StepId.KERNELS, Status.DONE, "3 kernel groups in 14.5 s", -1)), "", null, 83_000, true);
+                new Step(StepId.NVRTC, Status.SKIPPED, "NVRTC 12.9.86", -1),
+                new Step(StepId.MODEL, Status.DONE, "checkpoints/exp2-r3", -1),
+                new Step(StepId.VERIFY, Status.DONE, "cuda:1", -1),
+                new Step(StepId.KERNELS, Status.DONE, "ready in 14.5 s", -1)), "", null, 83_000, true);
             default -> throw new IllegalArgumentException("model-setup variant " + variant);
         };
     }

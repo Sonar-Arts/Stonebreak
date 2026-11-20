@@ -26,7 +26,7 @@ import java.util.Map;
 final class NativeTerrain implements AutoCloseable {
 
     /** {@code SBTG_ABI_VERSION} this binding speaks. */
-    static final int EXPECTED_ABI = 2;
+    static final int EXPECTED_ABI = 3;
 
     private static final NativeLibraryLocator.Spec LIBRARY = new NativeLibraryLocator.Spec(
             "stonebreak_terrain", "stonebreak.terrain.path", "STONEBREAK_TERRAIN_PATH",
@@ -41,15 +41,20 @@ final class NativeTerrain implements AutoCloseable {
     private static final String UNAVAILABLE_REASON;
     private static final Path LIBRARY_PATH;
     private static MethodHandle ABI, LAST_ERROR, OPEN, CLOSE, INFO, WARMUP, SET_WORLD, TILE, TILE_PLANES,
-            SURFACE_COUNT, SURFACE_NAME, SURFACE, TILE_FREE, STATS;
-    /** Lanes (additive to ABI 2; null with an older library = one lane). */
+            SURFACE_COUNT, SURFACE_NAME, SURFACE, TILE_FREE, STATS, RELEASE, TRIM;
+    /** Lanes (additive to ABI 2; always present since ABI 3). */
     private static MethodHandle SET_LANES, LANES, TILE_LANE;
 
-    /** sbtg_terrain_options: device, flags, cache_dir, nvrtc_path, reserved[6]. */
+    /** sbtg_terrain_options (ABI 3): device, flags, cache_dir, nvrtc_path, host_cache_bytes, pool_host_keep_bytes,
+     *  reserved[4]. */
     private static final MemoryLayout OPTIONS = MemoryLayout.structLayout(
             ValueLayout.JAVA_INT.withName("device"), ValueLayout.JAVA_INT.withName("flags"),
             ValueLayout.ADDRESS.withName("cache_dir"), ValueLayout.ADDRESS.withName("nvrtc_path"),
-            MemoryLayout.sequenceLayout(6, ValueLayout.JAVA_LONG).withName("reserved"));
+            ValueLayout.JAVA_LONG.withName("host_cache_bytes"), ValueLayout.JAVA_LONG.withName("pool_host_keep_bytes"),
+            MemoryLayout.sequenceLayout(4, ValueLayout.JAVA_LONG).withName("reserved"));
+    private static final long HOST_CACHE_OFFSET = OPTIONS.byteOffset(MemoryLayout.PathElement.groupElement("host_cache_bytes"));
+    private static final long POOL_HOST_KEEP_OFFSET =
+            OPTIONS.byteOffset(MemoryLayout.PathElement.groupElement("pool_host_keep_bytes"));
 
     static {
         String reason = null;
@@ -97,6 +102,8 @@ final class NativeTerrain implements AutoCloseable {
         SURFACE = down(l, "sbtg_tile_surface", FunctionDescriptor.of(A, A, I));
         TILE_FREE = down(l, "sbtg_tile_free", FunctionDescriptor.ofVoid(A));
         STATS = down(l, "sbtg_terrain_stats", FunctionDescriptor.of(I, A, A, I));
+        RELEASE = down(l, "sbtg_terrain_release", FunctionDescriptor.of(I, A));
+        TRIM = down(l, "sbtg_terrain_trim", FunctionDescriptor.of(I, A));
         if (l.find("sbtg_terrain_set_lanes").isPresent()) {
             SET_LANES = down(l, "sbtg_terrain_set_lanes", FunctionDescriptor.of(I, A, I));
             LANES = down(l, "sbtg_terrain_lanes", FunctionDescriptor.of(I, A));
@@ -162,6 +169,16 @@ final class NativeTerrain implements AutoCloseable {
      * the model's release export (manifest.json + .cim networks).
      */
     static NativeTerrain open(Path cendaLib, Path nativeDir, int device, Path kernelCache, Path nvrtc) {
+        return open(cendaLib, nativeDir, device, kernelCache, nvrtc, 0L, 0L);
+    }
+
+    /**
+     * {@link #open(Path, Path, int, Path, Path)} with the host-memory limits: {@code hostCacheBytes} = budget for window
+     * cache values held in host memory, over every cache and lane (0 = unlimited); {@code poolHostKeepBytes} = pinned
+     * blocks each lane's pool keeps for reuse (0 = the library's 128 MiB).
+     */
+    static NativeTerrain open(Path cendaLib, Path nativeDir, int device, Path kernelCache, Path nvrtc,
+                              long hostCacheBytes, long poolHostKeepBytes) {
         if (UNAVAILABLE_REASON != null) {
             throw new IllegalStateException(UNAVAILABLE_REASON);
         }
@@ -171,6 +188,8 @@ final class NativeTerrain implements AutoCloseable {
             opts.set(ValueLayout.ADDRESS, 8, kernelCache == null ? MemorySegment.NULL
                     : arena.allocateFrom(kernelCache.toString()));
             opts.set(ValueLayout.ADDRESS, 16, nvrtc == null ? MemorySegment.NULL : arena.allocateFrom(nvrtc.toString()));
+            opts.set(ValueLayout.JAVA_LONG, HOST_CACHE_OFFSET, Math.max(0L, hostCacheBytes));
+            opts.set(ValueLayout.JAVA_LONG, POOL_HOST_KEEP_OFFSET, Math.max(0L, poolHostKeepBytes));
             MemorySegment h = (MemorySegment) OPEN.invokeExact(arena.allocateFrom(cendaLib.toString()),
                     arena.allocateFrom(nativeDir.toString()), opts);
             if (h.equals(MemorySegment.NULL)) {
@@ -275,6 +294,31 @@ final class NativeTerrain implements AutoCloseable {
             return buf.getString(0);
         } catch (Throwable t) {
             return "{}";
+        }
+    }
+
+    /**
+     * Drops every cached window and hands every pooled block back to the driver (models stay loaded; tiles afterwards
+     * are identical, only slower until the caches refill). Waits for tiles in progress. For an idle pipeline.
+     */
+    void release() {
+        try {
+            check((int) RELEASE.invokeExact(handle), "sbtg_terrain_release");
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
+    /** Hands every lane's unused pooled blocks back to the driver; cached windows stay (nothing is recomputed). */
+    void trim() {
+        try {
+            check((int) TRIM.invokeExact(handle), "sbtg_terrain_trim");
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
         }
     }
 

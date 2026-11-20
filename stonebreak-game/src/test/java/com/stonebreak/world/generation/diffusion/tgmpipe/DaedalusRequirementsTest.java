@@ -22,7 +22,8 @@ class DaedalusRequirementsTest {
         Verdict v = DaedalusRequirements.evaluate(DEV_LAPTOP);
         assertFalse(v.met());
         assertTrue(v.reason().contains("4096 MiB of VRAM"), v.reason());
-        assertTrue(v.reason().contains("experimental"), v.reason());
+        assertTrue(v.reason().contains("needs more than 4096 MiB"), v.reason());
+        assertFalse(v.reason().contains("CPU kernels"), "there is no CPU path any more: " + v.reason());
         assertFalse(v.reason().contains("GiB of RAM"), v.reason());
         assertFalse(v.reason().contains("logical CPUs"), v.reason());
     }

@@ -42,3 +42,6 @@
 # git-lfs gets pointer files; the game and the service refuse them with a 'git lfs pull' message.
 # A new release folder = one more line like this (git lfs track "Models/DaedalusTGM-Exp/checkpoints/<name>/*.pt").
 Models/DaedalusTGM-Exp/checkpoints/exp2-r3/*.pt filter=lfs diff=lfs merge=lfs -text
+# Its native export: the *.cim networks the game actually runs (~144 MB). native/manifest.json stays a normal file.
+Models/DaedalusTGM-Exp/checkpoints/exp2-r3/native/*.cim filter=lfs diff=lfs merge=lfs -text
+*.cim    binary

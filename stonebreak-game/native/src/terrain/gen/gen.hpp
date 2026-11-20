@@ -18,6 +18,7 @@
 #include "core/json.hpp"
 #include "core/ops.hpp"
 
+#include <atomic>
 #include <condition_variable>
 #include <functional>
 #include <list>
@@ -77,10 +78,22 @@ struct CiEvent {
     }
 };
 
+// The pipeline's budget for cache values held in HOST memory (2026-11-20): spilled windows (pinned) and windows that
+// live on the host (routes, pageable), over every cache, lane and climate layout of one terrain pipeline. Over the
+// limit, the cache that is adding host bytes evicts its least recent host-resident entries (values are pure functions
+// of their keys: an evicted window is recomputed when needed again, bit for bit). limit 0 = unlimited.
+struct HostBudget {
+    std::atomic<size_t> used{0};
+    size_t limit = 0;
+    std::atomic<long long> evictions{0};
+};
+
 class CacheCore {
 public:
     using Key = std::vector<int64_t>;
-    CacheCore(size_t cap, size_t gpu_cap, bool shared) : cap_(cap), gpu_cap_(std::min(cap, gpu_cap)), shared_(shared) {}
+    CacheCore(size_t cap, size_t gpu_cap, bool shared, std::shared_ptr<HostBudget> budget = nullptr)
+        : cap_(cap), gpu_cap_(std::min(cap, gpu_cap)), shared_(shared), budget_(std::move(budget)) {}
+    ~CacheCore();
 
 private:
     friend class Cache;
@@ -92,6 +105,7 @@ private:
         int owner = -1;                 // pending: the lane computing it
         int lane = 0;                   // ready: the lane whose stream produced v
         std::shared_ptr<CiEvent> ev;    // ready (shared cores): recorded after v was produced
+        size_t hb = 0;                  // host bytes of v, counted in host_bytes_ and the budget
     };
     std::mutex mu_;
     std::condition_variable cv_;
@@ -99,6 +113,11 @@ private:
     bool shared_;
     std::list<Key> gpu_order_, host_order_;
     std::map<Key, Entry> map_;
+    std::shared_ptr<HostBudget> budget_;
+    size_t host_bytes_ = 0;
+    void account(Entry& e);                 // e.v changed: recount its host bytes (lock held)
+    void forget(Entry& e);                  // e leaves the cache: give its host bytes back (lock held)
+    void enforce_budget(const Key& keep);   // evict least recent host-resident entries while over budget (lock held)
 };
 
 // A lane's handle on a CacheCore (its own, or one shared by the pipeline's lanes).
@@ -119,6 +138,7 @@ public:
     size_t cap() const { return core_->cap_; }
     size_t gpu_cap() const { return core_->gpu_cap_; }
     bool shared() const { return core_->shared_; }
+    size_t host_bytes() const;
 
 private:
     void settle(std::unique_lock<std::mutex>& l);
@@ -174,9 +194,17 @@ public:
     // One per stage cache, created on first use with `cap` entries in total; the GPU share is Python's for the known
     // window caches (gpu_caps()), else everything.
     Cache& cache(const std::string& name, size_t cap);
-    // After a top-level call: hand cached pool memory above the budget back to the driver.
+    // After a top-level call: hand cached pool memory above the budget back to the driver (device blocks above
+    // 2 x POOL_CACHE_MB, pinned host blocks above 2 x pool_host_keep, each trimmed on its own).
     void trim_pool();
     void clear_caches();
+    // Every cache entry (lane-local and shared) dropped; the caller holds every lane idle. Then the pools can be trimmed.
+    void clear_all_caches();
+    size_t cache_host_bytes() const;                     // host bytes of this generator's lane-local caches
+    // Host-memory budget of the window caches (one per pipeline, shared by the lanes; null = unlimited) and the pinned
+    // blocks a lane's pool keeps for reuse.
+    std::shared_ptr<HostBudget> host_budget;
+    size_t pool_host_keep = size_t{128} << 20;
     ci_model* model(const std::string& name);            // engine model `name` (manifest "models"), or nullptr
     void warm_models();                                  // loads every manifest model + builds its graphs
     std::string base_dir;                                // relative model paths resolve against it

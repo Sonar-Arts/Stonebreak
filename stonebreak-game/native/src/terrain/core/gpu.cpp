@@ -29,6 +29,10 @@ std::shared_ptr<Block> Pool::take(size_t bytes, bool host) {
             fl.erase(it);
             cached_ -= got;
             live_ += got;
+            if (host) {
+                cached_host_ -= got;
+                live_host_ += got;
+            }
             auto b = std::make_shared<Block>();
             b->pool = this;
             b->ptr = p;
@@ -46,6 +50,7 @@ std::shared_ptr<Block> Pool::take(size_t bytes, bool host) {
     }
     std::lock_guard<std::mutex> lock(mu_);
     live_ += n;
+    if (host) live_host_ += n;
     auto b = std::make_shared<Block>();
     b->pool = this;
     b->ptr = p;
@@ -73,6 +78,10 @@ void Pool::give(Block* b) {
     (b->host ? free_host_ : free_dev_).emplace(b->bytes, std::move(f));
     cached_ += b->bytes;
     live_ -= b->bytes;
+    if (b->host) {
+        cached_host_ += b->bytes;
+        live_host_ -= b->bytes;
+    }
     b->ptr = nullptr;
 }
 
@@ -93,17 +102,20 @@ void Pool::trim() {
     free_dev_.clear();
     free_host_.clear();
     cached_ = 0;
+    cached_host_ = 0;
 }
 
-void Pool::trim_to(size_t keep) {
+void Pool::trim_to(size_t keep, bool host) {
     std::lock_guard<std::mutex> lock(mu_);
     // The caller's stream may still use a cached block's previous contents only through tensors already freed in
     // stream order; cuMemFree waits for outstanding work on the block, so freeing is safe.
-    while (cached_ > keep && (!free_dev_.empty() || !free_host_.empty())) {
-        auto& fl = !free_dev_.empty() ? free_dev_ : free_host_;
+    auto& fl = host ? free_host_ : free_dev_;
+    auto cached_kind = [&] { return host ? cached_host_ : cached_ - cached_host_; };
+    while (cached_kind() > keep && !fl.empty()) {
         auto it = std::prev(fl.end());   // largest
-        drop(it->second, &fl == &free_host_);
+        drop(it->second, host);
         cached_ -= it->first;
+        if (host) cached_host_ -= it->first;
         fl.erase(it);
     }
 }

@@ -13,42 +13,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
- * Chooses and starts the terrain backend's native half (native engine phase 3). {@code -Dstonebreak.terrain.backend}:
- * <ul>
- *   <li>{@code python} — the TGMPipe child process only (the explicit fallback, kept until the user approves
- *       removing it);</li>
- *   <li>{@code native} — in-process only: a native start failure fails the start;</li>
- *   <li>{@code auto} (default; parity proven 2026-11-19: whole tiles bit-identical to the Python generator on the
- *       engine path, all 18 handshake worlds) — in-process when the engine library carries the inference runtime, libstonebreak_terrain
- *       is present and the model's release export can be had; otherwise the TGMPipe child, with the reason logged.</li>
- * </ul>
- * The release export ({@code <model>/native}: manifest.json + .cim networks) is written by the model's Python
- * ({@code python -m terrain_slm.export.native_release}) when it is missing or stale and the Python environment exists;
- * a machine without Python uses an export that ships with the model.
+ * Starts the terrain pipeline in-process: the native engine ({@code libstonebreak_terrain} over the Cenda inference
+ * runtime) on the model's release export ({@code <model>/native}: manifest.json + .cim networks). The export is part
+ * of the model release (written by {@code python -m terrain_slm.export.native_release} when the release is made and
+ * stored with Git LFS); the game never runs Python. Kernels compile with the pinned NVRTC ({@link NvrtcTool}) into the
+ * content-addressed kernel cache. There is no other backend: a start that fails says why.
  */
 final class NativeTerrainLauncher {
 
     private static final Logger LOG = Logger.getLogger(NativeTerrainLauncher.class.getName());
-    private static final String RELEASE_MODULE = "terrain_slm.export.native_release";
-    static final String DEFAULT_MODE = "auto";
 
     private NativeTerrainLauncher() {
-    }
-
-    static String mode() {
-        return System.getProperty("stonebreak.terrain.backend", DEFAULT_MODE).trim().toLowerCase();
-    }
-
-    static boolean wanted() {
-        return !mode().equals("python");
-    }
-
-    static boolean forced() {
-        return mode().equals("native");
     }
 
     /** The model's release export directory ({@code -Dstonebreak.terrain.nativeDir} overrides). */
@@ -62,50 +40,105 @@ final class NativeTerrainLauncher {
         return dir.resolve("native");
     }
 
+    /** The engine opened on the model's export (before lanes and warm-up); the caller closes {@code terrain}. */
+    record Opened(NativeTerrain terrain, String exportKey, int device) {
+    }
+
     /**
-     * Starts the in-process pipeline: refreshes the release export if the model's Python is there, opens and warms the
-     * engine, registers the handshake's worlds. Throws {@link TGMPipeException} with the reason when it cannot.
+     * Opens the engine on the current model's release export with the pinned CUDA compiler: loads the networks onto
+     * the GPU, nothing compiled yet. Throws {@link TGMPipeException} with the reason when it cannot.
      */
-    static NativeTerrainService start(Path logFile) {
+    static Opened open() {
         String why = NativeTerrain.unavailableReason();
         if (why != null) {
             throw new TGMPipeException("native terrain unavailable: " + why);
         }
-        TerrainModels.requireInstalled(TGMPipe.modelPath());   // missing release / Git LFS pointers: a clear error
+        TerrainModels.requireInstalled(TGMPipe.modelPath());   // missing export / Git LFS pointers: a clear error
         Path cenda = cendaLibrary();
         Path dir = nativeDir();
-        refreshExport(dir, logFile);
-        if (!Files.isRegularFile(dir.resolve("manifest.json"))) {
-            throw new TGMPipeException("no native release export at " + dir
-                    + " (python -m " + RELEASE_MODULE + " " + TGMPipe.modelPath() + ")");
-        }
         String exportKey;
         try {
             exportKey = new ObjectMapper().readTree(dir.resolve("manifest.json").toFile()).path("export_key").asText("");
         } catch (IOException e) {
             throw new TGMPipeException("unreadable native manifest in " + dir, e);
         }
+        Path nvrtc = NvrtcTool.locate(TGMPipe.toolsDir(), null, (text, fraction) -> { });
         int device = device();
-        long t0 = System.nanoTime();
-        NativeTerrain terrain;
+        long hostCache = hostCacheBytes();
+        long poolKeep = poolHostKeepBytes();
+        LOG.info(() -> String.format("native terrain host memory: window caches %d MiB, pinned pool reserve %d MiB per lane",
+                hostCache >> 20, poolKeep >> 20));
         try {
-            terrain = NativeTerrain.open(cenda, dir, device, TGMPipe.kernelCacheDir(), torchNvrtc());
+            return new Opened(NativeTerrain.open(cenda, dir, device, TGMPipe.kernelCacheDir(), nvrtc, hostCache, poolKeep),
+                    exportKey, device);
         } catch (RuntimeException e) {
             throw new TGMPipeException("native terrain failed to open: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Starts the in-process pipeline: opens and warms the engine, registers the handshake's worlds. Throws
+     * {@link TGMPipeException} with the reason when it cannot.
+     */
+    static NativeTerrainService start() {
+        long t0 = System.nanoTime();
+        Opened o = open();
+        NativeTerrain terrain = o.terrain();
         try {
             terrain.setLanes(NativeTerrainService.configuredLanes());   // before the warm-up (models: a context per lane)
             terrain.warmup();
             List<String> worlds = worlds();
             Path cacheRoot = TGMPipe.modelsDir().resolve("tile_cache");
             long bytes = parseBytes(System.getProperty("stonebreak.tgmpipe.diskCache", "8G"));
-            NativeTerrainService s = new NativeTerrainService(terrain, worlds, cacheRoot, bytes, exportKey);
+            NativeTerrainService s = new NativeTerrainService(terrain, worlds, cacheRoot, bytes, o.exportKey());
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            LOG.info(() -> "native terrain ready in " + ms + " ms on cuda:" + device + ": " + terrain.info());
+            LOG.info(() -> "native terrain ready in " + ms + " ms on cuda:" + o.device() + ": " + terrain.info());
             return s;
         } catch (RuntimeException e) {
             terrain.close();
             throw e instanceof TGMPipeException t ? t : new TGMPipeException("native terrain failed to start: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Host-memory budget of the pipeline's window caches (pinned spills + host-resident windows, every lane and climate
+     * layout): {@code -Dstonebreak.terrain.hostCacheMb} (the old {@code stonebreak.tgmpipe.pinnedMb} is read too), else
+     * {@link #defaultHostCacheBytes} of this machine's RAM. Before 2026-11-20 there was no limit (about 1.7 GiB per
+     * climate layout, never given back). Evicted windows are recomputed bit for bit when needed again.
+     */
+    static long hostCacheBytes() {
+        long mb = megabytes("stonebreak.terrain.hostCacheMb", megabytes("stonebreak.tgmpipe.pinnedMb", -1));
+        if (mb >= 0) {
+            return mb << 20;
+        }
+        DaedalusRequirements.SystemSpecs specs = DaedalusRequirements.check().specs();
+        return defaultHostCacheBytes(specs == null ? -1 : specs.ramMiB());
+    }
+
+    /** RAM / 32, between 512 MiB and 2 GiB (512 MiB when RAM is unknown): 1 GiB on a 32 GB machine. */
+    static long defaultHostCacheBytes(long ramMiB) {
+        long min = 512L << 20, max = 2048L << 20;
+        if (ramMiB <= 0) {
+            return min;
+        }
+        return Math.max(min, Math.min(max, (ramMiB << 20) / 32));
+    }
+
+    /** Pinned blocks each lane's pool keeps for reuse: {@code -Dstonebreak.terrain.poolHostKeepMb}, default 128 MiB. */
+    static long poolHostKeepBytes() {
+        return Math.max(1, megabytes("stonebreak.terrain.poolHostKeepMb", 128)) << 20;
+    }
+
+    private static long megabytes(String property, long fallback) {
+        String v = System.getProperty(property);
+        if (v == null || v.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Long.parseLong(v.trim());
+        } catch (NumberFormatException e) {
+            LOG.warning(() -> "ignoring -D" + property + "=" + v + " (not a number of MiB)");
+            return fallback;
         }
     }
 
@@ -119,7 +152,7 @@ final class NativeTerrainLauncher {
                 .orElseThrow(() -> new TGMPipeException("the Cenda engine library is not loaded"));
     }
 
-    /** {@code stonebreak.tgmpipe.device}: "cuda:N" = N; "auto"/"cuda" = the service's rule (cuda:1 on a two-GPU
+    /** {@code stonebreak.tgmpipe.device}: "cuda:N" = N; "auto"/"cuda" = cuda:1 on a two-GPU
      *  machine, TERRAIN_SLM_DEVICE overrides). */
     static int device() {
         String d = System.getProperty("stonebreak.tgmpipe.device", "auto").trim();
@@ -145,33 +178,6 @@ final class NativeTerrainLauncher {
         return Math.max(n, 1);
     }
 
-    /** The NVRTC of the model's torch (the compiler the Python path's kernels came from), if installed. */
-    static Path torchNvrtc() {
-        String set = System.getProperty("stonebreak.terrain.nvrtc");
-        if (set != null && !set.isBlank()) {
-            return Path.of(set);
-        }
-        Path lib = TGMPipe.slmDir().resolve(".venv/lib");
-        try (DirectoryStream<Path> pys = Files.newDirectoryStream(lib, "python3*")) {
-            for (Path py : pys) {
-                Path d = py.resolve("site-packages/nvidia/cuda_nvrtc/lib");
-                if (!Files.isDirectory(d)) {
-                    continue;
-                }
-                try (DirectoryStream<Path> libs = Files.newDirectoryStream(d, "libnvrtc.so.*")) {
-                    for (Path p : libs) {
-                        if (!p.getFileName().toString().contains("builtins")) {
-                            return p;
-                        }
-                    }
-                }
-            }
-        } catch (IOException e) {
-            return null;
-        }
-        return null;
-    }
-
     /** The handshake's worlds as JSON texts, in {@code TerrainScale.worldIndex} order. */
     static List<String> worlds() {
         try {
@@ -185,47 +191,6 @@ final class NativeTerrainLauncher {
         } catch (IOException e) {
             throw new TGMPipeException("bad handshake json", e);
         }
-    }
-
-    /** Runs the model's exporter when its Python exists and the export is missing or stale (exit 3 of --check). */
-    private static void refreshExport(Path dir, Path logFile) {
-        Path python = TGMPipe.pythonExe();
-        if (!Files.isExecutable(python)) {
-            return;   // no Python here: whatever export ships with the model is used as is
-        }
-        String model = TGMPipe.modelPath();
-        try {
-            int check = run(List.of(python.toString(), "-m", RELEASE_MODULE, model, "--out", dir.toString(), "--check"),
-                    logFile, 120);
-            if (check == 0) {
-                return;
-            }
-            String dev = "cuda:" + device();
-            LOG.info(() -> "writing the native terrain export for " + model + " (" + dir + ") on " + dev);
-            int code = run(List.of(python.toString(), "-m", RELEASE_MODULE, model, "--out", dir.toString(),
-                    "--device", dev), logFile, 1800);
-            if (code != 0) {
-                throw new TGMPipeException("native export failed (exit " + code + "); see " + logFile);
-            }
-        } catch (IOException e) {
-            throw new TGMPipeException("could not run the native exporter", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new TGMPipeException("interrupted while exporting the native terrain model", e);
-        }
-    }
-
-    private static int run(List<String> cmd, Path logFile, long timeoutS) throws IOException, InterruptedException {
-        Files.createDirectories(logFile.getParent());
-        ProcessBuilder pb = new ProcessBuilder(cmd).directory(TGMPipe.slmDir().toFile())
-                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
-        pb.environment().put("TGM_KERNEL_CACHE", TGMPipe.kernelCacheDir().toString());
-        Process p = pb.start();
-        if (!p.waitFor(timeoutS, TimeUnit.SECONDS)) {
-            p.destroyForcibly();
-            throw new TGMPipeException("native exporter timed out after " + timeoutS + " s: " + cmd);
-        }
-        return p.exitValue();
     }
 
     static long parseBytes(String s) {

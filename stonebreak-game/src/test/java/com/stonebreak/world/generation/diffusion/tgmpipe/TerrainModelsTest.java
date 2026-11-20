@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Per-world terrain models (review-python HIGH-1): what new worlds record, which model a saved world runs, and that
- * both terrain backends see it through {@link TGMPipe#modelPath()}.
+ * the terrain pipeline sees it through {@link TGMPipe#modelPath()}.
  */
 class TerrainModelsTest {
 
@@ -35,8 +35,8 @@ class TerrainModelsTest {
 
     private void model(String rel, String contentId) throws IOException {
         Path dir = slm.resolve(rel);
-        Files.createDirectories(dir);
-        Files.writeString(dir.resolve("planner.pt"), "w");
+        Files.createDirectories(dir.resolve("native"));
+        Files.writeString(dir.resolve("native/manifest.json"), "{}");
         if (contentId != null) {
             Files.writeString(dir.resolve("release.json"), "{\"schema\": 1, \"content_id\": \"" + contentId + "\"}");
         }

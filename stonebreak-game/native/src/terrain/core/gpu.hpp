@@ -39,9 +39,13 @@ public:
     std::shared_ptr<Block> take(size_t bytes, bool host);
     void give(Block* b);                 // called by ~Block
     void trim();                         // frees every cached (unused) block
-    void trim_to(size_t keep_bytes);     // frees cached blocks, largest first, until at most keep_bytes stay cached
+    // Frees cached blocks of one kind (device or pinned host), largest first, until at most keep_bytes of that kind stay.
+    void trim_to(size_t keep_bytes, bool host);
     size_t cached_bytes() const { return cached_; }
+    size_t cached_host_bytes() const { return cached_host_; }
+    size_t cached_device_bytes() const { return cached_ - cached_host_; }
     size_t live_bytes() const { return live_; }
+    size_t live_host_bytes() const { return live_host_; }
 
 private:
     static size_t round(size_t n) {
@@ -58,6 +62,7 @@ private:
     std::mutex mu_;
     std::multimap<size_t, Free> free_dev_, free_host_;
     size_t cached_ = 0, live_ = 0;
+    size_t cached_host_ = 0, live_host_ = 0;   // the pinned (host) share of cached_ / live_
 };
 
 // Registry of embedded kernel modules: label -> CUDA source. Stage files register theirs with SBTG_MODULE.

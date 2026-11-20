@@ -124,18 +124,6 @@ class NativeTerrainPiecesTest {
     }
 
     @Test
-    void defaultBackendIsTheLauncherConstant() {
-        String old = System.clearProperty("stonebreak.terrain.backend");
-        try {
-            assertEquals(NativeTerrainLauncher.DEFAULT_MODE, NativeTerrainLauncher.mode());
-        } finally {
-            if (old != null) {
-                System.setProperty("stonebreak.terrain.backend", old);
-            }
-        }
-    }
-
-    @Test
     void laneCountComesFromThePropertyWithinBounds() {
         String old = System.clearProperty("stonebreak.terrain.lanes");
         try {
@@ -157,12 +145,33 @@ class NativeTerrainPiecesTest {
     }
 
     @Test
-    void autoLanesFollowTheGpuMemory() {
-        assertEquals(1, NativeTerrainService.lanesFor(-1));          // no nvidia-smi
-        assertEquals(1, NativeTerrainService.lanesFor(8192));
-        assertEquals(1, NativeTerrainService.lanesFor(NativeTerrainService.AUTO_LANES_MIN_VRAM_MIB - 1));
+    void autoLanesFollowTheGpuAndTheSystemMemory() {
+        long bigRam = 128 * 1024;
+        assertEquals(1, NativeTerrainService.lanesFor(-1, bigRam));          // no nvidia-smi
+        assertEquals(1, NativeTerrainService.lanesFor(8192, bigRam));
+        assertEquals(1, NativeTerrainService.lanesFor(NativeTerrainService.AUTO_LANES_MIN_VRAM_MIB - 1, bigRam));
         assertEquals(NativeTerrainService.DEFAULT_LANES,
-                NativeTerrainService.lanesFor(NativeTerrainService.AUTO_LANES_MIN_VRAM_MIB));
-        assertEquals(NativeTerrainService.DEFAULT_LANES, NativeTerrainService.lanesFor(98304));
+                NativeTerrainService.lanesFor(NativeTerrainService.AUTO_LANES_MIN_VRAM_MIB, bigRam));
+        assertEquals(NativeTerrainService.DEFAULT_LANES, NativeTerrainService.lanesFor(98304, bigRam));
+        // A 5090 in a 32 GB machine (the 2026-11-20 report): one lane. A 48 GB machine reports ~47 GiB: two.
+        assertEquals(1, NativeTerrainService.lanesFor(32607, 31 * 1024));
+        assertEquals(1, NativeTerrainService.lanesFor(32607, -1));          // unknown RAM
+        assertEquals(NativeTerrainService.DEFAULT_LANES, NativeTerrainService.lanesFor(32607, 47 * 1024 + 512));
+    }
+
+    @Test
+    void theHostCacheBudgetFollowsTheRam() {
+        assertEquals(512L << 20, NativeTerrainLauncher.defaultHostCacheBytes(-1));
+        assertEquals(512L << 20, NativeTerrainLauncher.defaultHostCacheBytes(16 * 1024));
+        assertEquals(1024L << 20, NativeTerrainLauncher.defaultHostCacheBytes(32 * 1024));
+        assertEquals(2048L << 20, NativeTerrainLauncher.defaultHostCacheBytes(64 * 1024));
+        assertEquals(2048L << 20, NativeTerrainLauncher.defaultHostCacheBytes(256 * 1024));
+        String old = System.setProperty("stonebreak.terrain.hostCacheMb", "300");
+        try {
+            assertEquals(300L << 20, NativeTerrainLauncher.hostCacheBytes());
+        } finally {
+            if (old == null) System.clearProperty("stonebreak.terrain.hostCacheMb");
+            else System.setProperty("stonebreak.terrain.hostCacheMb", old);
+        }
     }
 }

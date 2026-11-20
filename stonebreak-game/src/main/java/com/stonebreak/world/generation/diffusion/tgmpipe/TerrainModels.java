@@ -18,10 +18,9 @@ import java.util.logging.Logger;
 /**
  * Where the terrain models live and which one a world runs (review-python HIGH-1, FX1 2026-11-19). Pure file lookups:
  * no service, no {@link TGMPipe} instance (so save code and tests can ask what new worlds get without starting a
- * watchdog thread). Both terrain backends read the model through {@link TGMPipe#modelPath()}, which returns the world's
- * model chosen here ({@link TGMPipe#useWorldModel}) or {@link #defaultModelPath()}:
- * the TGMPipe child process (its command line) and the in-process native pipeline ({@code NativeTerrainLauncher}: the
- * release export under {@code <model>/native}). A future backend reads it the same way.
+ * watchdog thread). The terrain pipeline reads the model through {@link TGMPipe#modelPath()}, which returns the world's
+ * model chosen here ({@link TGMPipe#useWorldModel}) or {@link #defaultModelPath()}: the in-process native pipeline
+ * ({@code NativeTerrainLauncher}) reads the release export under {@code <model>/native}.
  *
  * <p>System properties:
  * <ul>
@@ -97,9 +96,16 @@ public final class TerrainModels {
         return p.isAbsolute() ? p : slmDir().resolve(p);
     }
 
-    /** A model folder (planner.pt is in every model; its weights may still be Git LFS pointers, see {@link #installProblem}). */
+    /** The release export the game reads inside a model folder (manifest.json + *.cim networks). */
+    static final String NATIVE_EXPORT = "native";
+
+    /**
+     * A model folder the game can run: it carries the native release export ({@code native/manifest.json}; its networks
+     * may still be Git LFS pointers, see {@link #installProblem}). The {@code *.pt} weights are for training and for
+     * writing the export; the game never reads them.
+     */
     static boolean isModelDir(Path dir) {
-        return Files.isRegularFile(dir.resolve("planner.pt"));
+        return Files.isRegularFile(dir.resolve(NATIVE_EXPORT).resolve("manifest.json"));
     }
 
     /**
@@ -141,41 +147,43 @@ public final class TerrainModels {
     }
 
     /**
-     * Why the model folder {@code path} cannot be loaded, or null when it can: folder or {@code planner.pt} missing, or
-     * weight files that are still Git LFS pointers. The message names the folder and how to fetch it ({@code git lfs
-     * pull}): the release weights are stored with Git LFS, so a clone without git-lfs has tiny text files instead.
+     * Why the model folder {@code path} cannot be run, or null when it can: folder or its native export
+     * ({@code native/manifest.json}) missing, or export files that are still Git LFS pointers. The message names the
+     * folder and how to fetch it ({@code git lfs pull}): the release is stored with Git LFS, so a clone without git-lfs
+     * has tiny text files instead.
      */
     public static String installProblem(String path) {
         Path dir = dirOf(path);
-        String how = "The DaedalusTGM-Exp model weights are stored with Git LFS: install git-lfs, then run "
+        Path export = dir.resolve(NATIVE_EXPORT);
+        String how = "The DaedalusTGM-Exp model release is stored with Git LFS: install git-lfs, then run "
                 + "'git lfs install' and 'git lfs pull' in the Stonebreak checkout";
         if (isRetired(path)) {
             return "terrain model " + path + " was retired (EXP-1 models were removed on 2026-11-19); the default is "
                     + TGMPipe.DEFAULT_MODEL;
         }
         if (!isModelDir(dir)) {
-            return "terrain model " + path + " is not installed (" + dir.resolve("planner.pt") + " is missing). " + how
-                    + (path.equals(TGMPipe.DEFAULT_MODEL) ? "." : ", or pick an installed model with -Dstonebreak.tgmpipe.model.");
+            return "terrain model " + path + " is not installed (" + export.resolve("manifest.json") + " is missing). "
+                    + how + (path.equals(TGMPipe.DEFAULT_MODEL) ? "." : ", or pick an installed model with -Dstonebreak.tgmpipe.model.");
         }
         List<String> pointers = new ArrayList<>();
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir, "*.pt")) {
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(export)) {
             for (Path f : files) {
                 if (isLfsPointer(f)) {
-                    pointers.add(f.getFileName().toString());
+                    pointers.add(NATIVE_EXPORT + "/" + f.getFileName());
                 }
             }
         } catch (IOException | RuntimeException e) {
-            return "terrain model " + path + " is unreadable (" + dir + "): " + e.getMessage();
+            return "terrain model " + path + " is unreadable (" + export + "): " + e.getMessage();
         }
         if (!pointers.isEmpty()) {
             pointers.sort(null);
-            return "terrain model " + path + " has Git LFS pointer files instead of weights (" + String.join(", ", pointers)
+            return "terrain model " + path + " has Git LFS pointer files instead of its export (" + String.join(", ", pointers)
                     + " in " + dir + "). " + how + ".";
         }
         return null;
     }
 
-    /** {@link #installProblem} as a {@link TGMPipeException}: called before either terrain backend starts. */
+    /** {@link #installProblem} as a {@link TGMPipeException}: called before the terrain pipeline starts. */
     static void requireInstalled(String path) {
         String problem = installProblem(path);
         if (problem != null) {

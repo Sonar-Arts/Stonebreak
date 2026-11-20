@@ -6,48 +6,36 @@ import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.TerrainScale;
 import com.stonebreak.world.generation.diffusion.TGMPipeException;
 import com.stonebreak.world.generation.diffusion.TerrainTile;
-import com.stonebreak.world.generation.diffusion.TileRequestCancelledException;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.DoubleConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The game's terrain model, {@value #MODEL_NAME}: one Python child process
- * ({@code python -m terrain_slm.tgmpipe}, Models/DaedalusTGM-Exp/) spoken to over its stdin/stdout
- * with {@link TGMPipeProtocol} frames. No ports, no HTTP, no second process.
+ * The game's terrain model, {@value #MODEL_NAME}: the native pipeline in-process ({@link NativeTerrainService} over
+ * {@code libstonebreak_terrain} + the Cenda inference runtime, reading the model's release export
+ * {@code <model>/native}). The game never runs Python or PyTorch: they are for training and for writing the release
+ * export only. The old Python child process ({@code terrain_slm.tgmpipe} over stdin/stdout) was removed 2026-11-20;
+ * the name TGMPipe stays as this facade's.
  *
  * <ul>
- *   <li><b>Any seed, per request.</b> The service keys its caches by seed, so the world and the
+ *   <li><b>Any seed, per request.</b> The pipeline keys its caches by seed, so the world and the
  *       terrain mapper share one loaded model and a seed change costs nothing.</li>
  *   <li><b>Pushed, prioritised, cancellable.</b> Tiles arrive the moment they finish; world
  *       tiles go before preview tiles; a closed tile cache withdraws what it no longer wants.</li>
- *   <li><b>Never outlives the game.</b> The service exits when its stdin closes — including when
- *       the JVM is killed — so there are no leaked processes or ports to reclaim.</li>
- *   <li><b>Heals.</b> If the service dies while running, it is restarted and every tile still in
- *       flight is re-sent ({@value #MAX_RESTARTS} restarts per {@value #RESTART_WINDOW_MINUTES}
- *       minutes; past that, requests fail loudly). A service that stops answering while tiles are
- *       pending for {@code stallTimeoutMs} is treated as dead.</li>
  * </ul>
  *
  * <p>Lifecycle is explicit: {@link #ensureRunning} starts it (world load, terrain mapper), and
- * {@link #shutdown} stops it. Requests made while it is stopped fail fast.
+ * {@link #shutdown} stops it. Requests made while it is stopped fail fast. A pipeline that cannot start (no native
+ * library, no CUDA compiler, no release export) fails with the reason: there is no fallback.
  */
 public final class TGMPipe {
 
@@ -107,13 +95,14 @@ public final class TGMPipe {
 
     static final String MODELS_DIR = "Models";
     static final String SLM_DIR = MODELS_DIR + "/" + MODEL_NAME;
-    static final String MODULE = "terrain_slm.tgmpipe";
     /**
      * Default model directory, relative to {@link #SLM_DIR}; its name is the model version. DaedalusTGM-Exp-2's
      * release folder: real files built by {@code scripts/make_release.py} (licence gate, inference-only weights,
      * {@code release.json} manifest) from a model folder of training symlinks ({@code checkpoints/exp2/world_exp2f}; exp2-r3 = 2026-11-19 release:
      * MeanFlow relief, FP8 detail, SR-15 v2, surface + vegetation nodes).
-     * Its weights ({@code *.pt}, ~590 MB) are stored with Git LFS: a checkout without {@code git lfs pull} has pointer
+     * The game reads only its native export ({@code native/manifest.json} + {@code *.cim}, written by
+     * {@code python -m terrain_slm.export.native_release} when the release is made); the export and the
+     * {@code *.pt} weights are stored with Git LFS: a checkout without {@code git lfs pull} has pointer
      * files instead, and the game refuses to start the model with a message saying so
      * ({@link TerrainModels#installProblem}). There is no fallback model (EXP-1's v4 was removed 2026-11-19).
      * {@code -Dstonebreak.tgmpipe.model=<dir>} picks another model folder for new worlds (a candidate such as
@@ -132,8 +121,6 @@ public final class TGMPipe {
         String world = pipe != null ? pipe.worldModel : null;
         return world != null ? world : TerrainModels.defaultModelPath();
     }
-    static final int MAX_RESTARTS = 3;
-    static final int RESTART_WINDOW_MINUTES = 10;
 
     /** What generates the terrain, for the UI: {@code "DaedalusTGM-Exp · v3"}. */
     public static String generatorLabel() {
@@ -146,24 +133,18 @@ public final class TGMPipe {
 
     /** The world's model ({@link #useWorldModel}), null = {@link TerrainModels#defaultModelPath()}. */
     private volatile String worldModel;
-    /** The model the running service was started with (null while it is down). */
+    /** The model the running pipeline was started with (null while it is down). */
     private String runningModel;
-    private final Path workingDir;
     private final Path logFile;
-    private final long startupTimeoutMs;
-    private final long stallTimeoutMs;
 
     private final Object lock = new Object();
-    private final Deque<Long> crashes = new ArrayDeque<>();
-    private Process process;
-    private TGMPipeConnection connection;
-    /** The in-process pipeline (native engine phase 3) when it serves instead of the child process. */
+    /** The in-process pipeline while it runs. */
     private NativeTerrainService nativeService;
-    /** True between {@link #ensureRunning} and {@link #shutdown}: a death in between is a crash. */
+    /** True between {@link #ensureRunning} and {@link #shutdown}. */
     private boolean wanted;
     /** True after {@link #shutdown} until the next {@link #ensureRunning}: stopped on purpose (quit, world switch). */
     private volatile boolean shutDown;
-    /** The running service's tile-cache namespaces, one per handshake world ({@code TerrainScale.worldIndex}). */
+    /** The running pipeline's tile-cache namespaces, one per handshake world ({@code TerrainScale.worldIndex}). */
     private volatile List<String> cacheNamespaces = List.of();
     /** When {@link #prestart} started the running service, while nobody has claimed it; 0 = not prestart-only. */
     private volatile long prestartedAtNanos;
@@ -171,17 +152,13 @@ public final class TGMPipe {
     private static final long PRESTART_IDLE_SECONDS = Long.getLong("stonebreak.tgmpipe.prestartIdleSeconds", 300L);
 
     private TGMPipe() {
-        this.workingDir = slmDir();
         this.logFile = logDir().resolve("tgmpipe.log");
-        this.startupTimeoutMs = Long.getLong("stonebreak.tgmpipe.startupTimeoutMs", 180_000L);
-        this.stallTimeoutMs = Long.getLong("stonebreak.tgmpipe.stallTimeoutMs", 600_000L);
 
         ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "tgmpipe-watchdog");
             t.setDaemon(true);
             return t;
         });
-        watchdog.scheduleWithFixedDelay(this::checkStall, 15, 15, TimeUnit.SECONDS);
         watchdog.scheduleWithFixedDelay(this::checkPrestartIdle, 15, 15, TimeUnit.SECONDS);
         Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown, "tgmpipe-shutdown"));
     }
@@ -204,23 +181,22 @@ public final class TGMPipe {
         return root().resolve(MODELS_DIR);
     }
 
-    /** The model's project folder, where the service runs ({@code -Dstonebreak.tgmpipe.repoDir}). */
+    /** The model's project folder, holding the model folders ({@code -Dstonebreak.tgmpipe.repoDir}). */
     static Path slmDir() {
         return TerrainModels.slmDir();
-    }
-
-    /** The model's Python, inside the environment {@link ModelSetup} installs. */
-    static Path pythonExe() {
-        String venvPython = UvTool.windows() ? "/.venv/Scripts/python.exe" : "/.venv/bin/python";
-        return resolve(root(), "stonebreak.tgmpipe.pythonExe", SLM_DIR + venvPython);
     }
 
     static Path logDir() {
         return resolve(root(), "stonebreak.tgmpipe.logDir", MODELS_DIR + "/logs");
     }
 
-    /** Compiled native kernels (NVRTC cubins, C++ libraries), shared by the setup's warm-up and the service
-     *  (ignored by git; the model's own default, passed explicitly so both always agree). */
+    /** Downloaded tools ({@link NvrtcTool}; ignored by git). */
+    static Path toolsDir() {
+        return modelsDir().resolve("tools");
+    }
+
+    /** Compiled native kernels (NVRTC cubins, content-addressed), shared by the setup's warm-up and the pipeline
+     *  (ignored by git). */
     static Path kernelCacheDir() {
         return modelsDir().resolve("kernel_cache");
     }
@@ -235,9 +211,9 @@ public final class TGMPipe {
     }
 
     /**
-     * Starts the service if it is not running, blocking until it has loaded the model and
-     * answered the handshake. {@code progress} hears 0 when a start begins and 1 when it is ready;
-     * it is not called at all when the service is already up.
+     * Starts the pipeline if it is not running, blocking until it has loaded the model and
+     * registered the handshake's worlds. {@code progress} hears 0 when a start begins and 1 when it is ready;
+     * it is not called at all when the pipeline is already up.
      *
      * @throws TGMPipeException if this machine is below {@link DaedalusRequirements}, or the service fails
      *                          to start or become ready in time
@@ -250,18 +226,17 @@ public final class TGMPipe {
     private void ensureRunning(DoubleConsumer progress, boolean claim) {
         // Below the requirements the model is disabled outright (it would land on the experimental CPU kernels).
         DaedalusRequirements.requireMet();
-        // First launch installs the environment and compiles the kernels (ModelSetup, started with the
-        // game): wait for it here, outside the lock, rather than launching a Python that is not there yet.
+        // A launch with something new gets the CUDA compiler and compiles the kernels (ModelSetup, started with the
+        // game): wait for it here, outside the lock, rather than racing it for the GPU.
         ModelSetup.getInstance().awaitUsable(progress);
         synchronized (lock) {
             if (claim) {
                 prestartedAtNanos = 0L;
             } else if (wanted && isUpLocked()) {
-                return;     // somebody else's service: never mark it unused
+                return;     // somebody else's pipeline: never mark it unused
             }
             wanted = true;
             shutDown = false;
-            crashes.clear();
             if (isUpLocked()) {
                 return;
             }
@@ -275,13 +250,13 @@ public final class TGMPipe {
     }
 
     /**
-     * Starts the service in the background ahead of a world that will probably need it (the world list with a
+     * Starts the pipeline in the background ahead of a world that will probably need it (the world list with a
      * Daedalus world selected), so entering the world does not wait for its start (7.5-11 s warm, 17-25 s after a
      * kernel change; review R4). No-op when it already runs or is starting, below {@link DaedalusRequirements}, or with
      * {@code -Dstonebreak.tgmpipe.prestart=off}. Until a world or the terrain mapper claims it
      * ({@link #ensureRunning}), it is stopped by {@link #releasePrestart} or after
-     * {@code stonebreak.tgmpipe.prestartIdleSeconds} (default 300) unclaimed. Its GPU memory follows the service's own
-     * idle release meanwhile.
+     * {@code stonebreak.tgmpipe.prestartIdleSeconds} (default 300) unclaimed. It holds its full GPU and pinned host
+     * memory meanwhile (the native pipeline has no idle release).
      */
     public void prestart() {
         prestart(null);
@@ -371,9 +346,9 @@ public final class TGMPipe {
     }
 
     /**
-     * True once {@link #shutdown} stopped the service on purpose (until the next {@link #ensureRunning}): tile
+     * True once {@link #shutdown} stopped the pipeline on purpose (until the next {@link #ensureRunning}): tile
      * requests then fail by design, so the terrain queries that fail with them are refused quietly
-     * ({@code TerrainClosedException}), not reported as terrain failures. A crash is not a shutdown.
+     * ({@code TerrainClosedException}), not reported as terrain failures. A failed start is not a shutdown.
      */
     public boolean isShutDown() {
         return shutDown;
@@ -386,8 +361,6 @@ public final class TGMPipe {
 
     /** {@code onlyIfPrestart}: stop it only while it is a prestarted service nobody claimed ({@link #releasePrestart}). */
     private void shutdown(boolean onlyIfPrestart) {
-        TGMPipeConnection c;
-        Process p;
         NativeTerrainService n;
         synchronized (lock) {
             if (onlyIfPrestart && prestartedAtNanos == 0L) {
@@ -396,24 +369,13 @@ public final class TGMPipe {
             prestartedAtNanos = 0L;
             wanted = false;
             shutDown = true;
-            c = connection;
-            p = process;
             n = nativeService;
-            connection = null;
-            process = null;
             nativeService = null;
             runningModel = null;
         }
         if (n != null) {
             LOG.info("Stopping the native terrain pipeline");
             n.close();
-        }
-        if (c != null) {
-            c.close(); // stdin EOF: the service exits on its own
-        }
-        if (p != null) {
-            LOG.info(() -> "Stopping TGMPipe (pid " + p.pid() + ")");
-            stop(p);
         }
     }
 
@@ -450,7 +412,7 @@ public final class TGMPipe {
         if (priority < PRIORITY_RELIEF) {
             lastUrgentRequestNanos = System.nanoTime();
         }
-        var request = new TGMPipeConnection.TileRequest(seed, tileX, tileZ, lod, priority,
+        var request = new TileRequest(seed, tileX, tileZ, lod, priority,
                 TerrainScale.worldIndex(layout, scale, curve), new CompletableFuture<>());
         submit(request);
         return request.future();
@@ -458,8 +420,8 @@ public final class TGMPipe {
 
     /**
      * Fingerprint of everything that decides a tile's content — world config, model checkpoint and
-     * generator source — as the service reported it at its last handshake; null before the first
-     * one. Anything the game caches from tiles (FastLOD's node store) keys on it, so a retrained
+     * generator source — as the pipeline reported it when it started; null before the first
+     * start. Anything the game caches from tiles (FastLOD's node store) keys on it, so a retrained
      * model or edited pipeline is never shown from a stale cache.
      */
     public String cacheNamespace() {
@@ -486,75 +448,40 @@ public final class TGMPipe {
         return i < all.size() ? all.get(i) : null;
     }
 
-    /** The READY json's {@code cache_namespaces} (one per world of the handshake, in order); empty if unreadable. */
-    static List<String> cacheNamespacesOf(String readyJson) {
-        try {
-            JsonNode ns = new ObjectMapper().readTree(readyJson).get("cache_namespaces");
-            if (ns == null || !ns.isArray()) {
-                return List.of();
-            }
-            List<String> out = new ArrayList<>();
-            ns.forEach(n -> out.add(n.asText()));
-            return List.copyOf(out);
-        } catch (IOException e) {
-            LOG.log(Level.WARNING, "unreadable TGMPipe handshake: " + readyJson, e);
-            return List.of();
-        }
-    }
-
-    /** The service's status json (model, queue depth, cache, timings), for diagnostics. */
+    /** The pipeline's status json (model, queue depth, cache, timings), for diagnostics. */
     public CompletableFuture<String> status() {
-        TGMPipeConnection c;
         NativeTerrainService n;
         synchronized (lock) {
-            c = connection;
             n = nativeService;
         }
-        if (n != null) {
-            return CompletableFuture.completedFuture(n.statusJson());
-        }
-        return c == null
-                ? CompletableFuture.failedFuture(new TGMPipeException("TGMPipe is not running"))
-                : c.status();
+        return n == null
+                ? CompletableFuture.failedFuture(new TGMPipeException("the terrain pipeline is not running"))
+                : CompletableFuture.completedFuture(n.statusJson());
     }
 
-    private void submit(TGMPipeConnection.TileRequest request) {
-        for (int attempt = 0; attempt < 2 && !request.future().isDone(); attempt++) {
-            TGMPipeConnection c;
-            NativeTerrainService n;
-            try {
-                synchronized (lock) {
-                    if (!wanted) {
-                        throw new TGMPipeException("TGMPipe is not running");
-                    }
-                    if (!isUpLocked()) {
-                        startOrGiveUpLocked(); // after a crash: the restart thread may not have got here yet
-                    }
-                    c = connection;
-                    n = nativeService;
+    private void submit(TileRequest request) {
+        NativeTerrainService n;
+        try {
+            synchronized (lock) {
+                if (!wanted) {
+                    throw new TGMPipeException("the terrain pipeline is not running");
                 }
-                if (n != null) {
-                    n.submit(request);
-                } else {
-                    c.send(request);
+                if (!isUpLocked()) {
+                    startOrGiveUpLocked();
                 }
-                return;
-            } catch (TGMPipeException e) {
-                if (attempt == 1 || !wanted) {
-                    request.future().completeExceptionally(e);
-                }
+                n = nativeService;
             }
+            n.submit(request);
+        } catch (TGMPipeException e) {
+            request.future().completeExceptionally(e);
         }
     }
 
     private boolean isUpLocked() {
-        if (nativeService != null) {
-            return true;
-        }
-        return connection != null && !connection.isClosed() && process != null && process.isAlive();
+        return nativeService != null;
     }
 
-    /** A service that cannot start stays down: queued requests fail fast instead of each retrying. */
+    /** A pipeline that cannot start stays down: queued requests fail fast instead of each retrying. */
     private void startOrGiveUpLocked() {
         try {
             startLocked();
@@ -568,81 +495,17 @@ public final class TGMPipe {
         try {
             Files.createDirectories(logFile.getParent());
         } catch (IOException e) {
-            throw new TGMPipeException("could not create TGMPipe log directory " + logFile.getParent(), e);
+            throw new TGMPipeException("could not create the terrain log directory " + logFile.getParent(), e);
         }
-        String model = modelPath();   // the world's model (useWorldModel) or the default: both backends below read it
-        // Missing release folder / Git LFS pointers instead of weights: say so (and how to fetch them) instead of
-        // handing torch a pointer file or falling back to another model.
+        String model = modelPath();   // the world's model (useWorldModel) or the default
+        // Missing release folder / Git LFS pointers instead of the export: say so (and how to fetch it) instead of
+        // handing the engine a pointer file or falling back to another model.
         TerrainModels.requireInstalled(model);
-        if (NativeTerrainLauncher.wanted()) {
-            // Native engine phase 3: the pipeline in-process; the child process is the fallback (backend "auto").
-            try {
-                NativeTerrainService n = NativeTerrainLauncher.start(logFile);
-                nativeService = n;
-                runningModel = model;
-                cacheNamespaces = n.namespaces();
-                LOG.info(() -> "terrain: " + MODEL_NAME + " in-process (native), model " + n.modelId());
-                return;
-            } catch (TGMPipeException e) {
-                if (NativeTerrainLauncher.forced()) {
-                    throw e;
-                }
-                LOG.warning(() -> "native terrain unavailable (" + e.getMessage() + "); using the TGMPipe service");
-            }
-        }
-        List<String> command = command(model);
-        LOG.info(() -> "Starting TGMPipe (" + MODEL_NAME + "): " + command);
-        Process p;
-        try {
-            ProcessBuilder pb = new ProcessBuilder(command)
-                    .directory(workingDir.toFile())
-                    .redirectError(ProcessBuilder.Redirect.appendTo(logFile.toFile()));
-            pb.environment().put("TGM_KERNEL_CACHE", kernelCacheDir().toString());
-            // Page-locked spill budget per GPU (review-python MEDIUM-2): the service sizes it from RAM unless set here.
-            String pinnedMb = System.getProperty("stonebreak.tgmpipe.pinnedMb");
-            if (pinnedMb != null && !pinnedMb.isBlank()) {
-                pb.environment().put("TGM_PINNED_MB", pinnedMb.trim());
-            }
-            p = pb.start();
-        } catch (IOException e) {
-            throw new TGMPipeException("failed to launch " + command + " in " + workingDir, e);
-        }
-        TGMPipeConnection c = new TGMPipeConnection(p.getInputStream(), p.getOutputStream(), this::closed);
-        c.open(TerrainScale.handshakeJson());
-        try {
-            String info = c.ready().get(startupTimeoutMs, TimeUnit.MILLISECONDS);
-            cacheNamespaces = cacheNamespacesOf(info);
-            LOG.info(() -> "TGMPipe ready, serving " + MODEL_NAME + " (pid " + p.pid() + "): " + info);
-        } catch (TimeoutException e) {
-            c.close();
-            stop(p);
-            throw new TGMPipeException("TGMPipe did not become ready within "
-                    + startupTimeoutMs + "ms; see " + logFile);
-        } catch (ExecutionException e) {
-            stop(p);
-            throw new TGMPipeException("TGMPipe failed to start ("
-                    + e.getCause().getMessage() + "); see " + logFile, e.getCause());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            c.close();
-            stop(p);
-            throw new TGMPipeException("interrupted while starting TGMPipe", e);
-        }
-        process = p;
-        connection = c;
+        NativeTerrainService n = NativeTerrainLauncher.start();
+        nativeService = n;
         runningModel = model;
-    }
-
-    /** The service's command line for the model folder {@code model}. */
-    private static List<String> command(String model) {
-        return List.of(
-                pythonExe().toString(),
-                "-m", MODULE,
-                model,
-                "--device", System.getProperty("stonebreak.tgmpipe.device", "auto"),
-                // In-memory generation cache (GPU) and finished-tile cache on disk.
-                "--cache-size", System.getProperty("stonebreak.tgmpipe.cacheSize", "4G"),
-                "--disk-cache", System.getProperty("stonebreak.tgmpipe.diskCache", "8G"));
+        cacheNamespaces = n.namespaces();
+        LOG.info(() -> "terrain: " + MODEL_NAME + " in-process (native), model " + n.modelId());
     }
 
     /**
@@ -681,93 +544,6 @@ public final class TGMPipe {
         }
         if (restart) {
             shutdown();   // the next ensureRunning starts the chosen model
-        }
-    }
-
-    /** Reader thread of a finished connection: tells a crash from a shutdown and acts on it. */
-    private void closed(TGMPipeConnection c, String reason, List<TGMPipeConnection.TileRequest> unfinished) {
-        boolean resubmit;
-        synchronized (lock) {
-            boolean current = c == connection;
-            Process dead = current ? process : null;
-            if (current) {
-                connection = null;
-                process = null;
-            }
-            if (c.closedByClient() || !wanted) {
-                // Stopped on purpose (or a start that failed): nobody will answer these.
-                cancel(unfinished, "TGMPipe stopped");
-                return;
-            }
-            resubmit = true;
-            if (current) {
-                long now = System.nanoTime();
-                crashes.addLast(now);
-                while (now - crashes.peekFirst() > TimeUnit.MINUTES.toNanos(RESTART_WINDOW_MINUTES)) {
-                    crashes.removeFirst();
-                }
-                resubmit = crashes.size() <= MAX_RESTARTS;
-                String exit = dead != null && !dead.isAlive() ? " (exit code " + dead.exitValue() + ")" : "";
-                LOG.log(Level.WARNING, "TGMPipe ({0}) died{1}: {2}; {3} tile(s) in flight; {4}. See {5}",
-                        new Object[] {MODEL_NAME, exit, reason, unfinished.size(),
-                                resubmit ? "restarting" : "not restarting (" + crashes.size() + " crashes in "
-                                        + RESTART_WINDOW_MINUTES + " min)", logFile});
-                if (!resubmit) {
-                    wanted = false;
-                    if (dead != null) {
-                        dead.destroyForcibly();
-                    }
-                }
-            }
-            // Not current: a request already restarted the service before this report ran; its
-            // in-flight tiles still just need re-sending.
-        }
-        if (!resubmit) {
-            TGMPipeException failure = new TGMPipeException("TGMPipe died ("
-                    + reason + ") and is not being restarted after " + MAX_RESTARTS + " crashes in "
-                    + RESTART_WINDOW_MINUTES + " minutes; see " + logFile);
-            unfinished.forEach(r -> r.future().completeExceptionally(failure));
-            return;
-        }
-        Thread restarter = new Thread(() -> unfinished.forEach(this::submit), "tgmpipe-restart");
-        restarter.setDaemon(true);
-        restarter.start();
-    }
-
-    /** A service with tiles pending that has sent nothing for {@code stallTimeoutMs} is hung: kill it. */
-    private void checkStall() {
-        Process p;
-        synchronized (lock) {
-            TGMPipeConnection c = connection;
-            if (c == null || c.pendingCount() == 0
-                    || System.nanoTime() - c.lastActivityNanos() < TimeUnit.MILLISECONDS.toNanos(stallTimeoutMs)) {
-                return;
-            }
-            p = process;
-        }
-        if (p != null) {
-            LOG.warning(() -> "TGMPipe sent nothing for " + stallTimeoutMs
-                    + "ms with tiles pending; killing it (pid " + p.pid() + ") to restart");
-            p.destroyForcibly(); // the reader sees the stream end: the crash path restarts it
-        }
-    }
-
-    private static void cancel(List<TGMPipeConnection.TileRequest> requests, String why) {
-        TileRequestCancelledException cancelled = new TileRequestCancelledException(why);
-        requests.forEach(r -> r.future().completeExceptionally(cancelled));
-    }
-
-    private static void stop(Process process) {
-        try {
-            if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                process.destroy();
-                if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                    process.destroyForcibly();
-                }
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
         }
     }
 }

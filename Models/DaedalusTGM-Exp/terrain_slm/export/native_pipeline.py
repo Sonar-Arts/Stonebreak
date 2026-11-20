@@ -13,7 +13,7 @@ from pathlib import Path
 
 import torch
 
-ABI_VERSION = 2
+ABI_VERSION = 3   # sbtg ABI 3 (2026-11-20): host-cache budget options + sbtg_terrain_release; layout unchanged
 _ROOT = Path(__file__).resolve().parents[2]                       # Models/DaedalusTGM-Exp
 _NATIVE = Path(os.getenv("TGM_GAME_NATIVE_DIR") or _ROOT.parents[1] / "stonebreak-game" / "native")
 

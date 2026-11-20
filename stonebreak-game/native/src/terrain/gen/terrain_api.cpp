@@ -48,8 +48,11 @@ struct sbtg_terrain {
     std::map<int32_t, sbtg::Json> worlds;
     std::map<int32_t, std::string> world_text;
     std::mutex wmu;                          // worlds
-    std::mutex mu;                           // lane layout (set_lanes) + warm-up
+    std::mutex mu;                           // lane layout (set_lanes) + warm-up + release
     bool warmed = false;
+    std::shared_ptr<sbtg::HostBudget> budget = std::make_shared<sbtg::HostBudget>();   // every lane's caches
+    size_t pool_host_keep = size_t{128} << 20;
+    std::atomic<long long> releases{0};
     std::string info;
     std::string manifest_path;
 
@@ -116,6 +119,8 @@ std::unique_ptr<sbtg_lane> make_lane(sbtg_terrain& t, int id) {
     l->gen = std::make_unique<sbtg::Gen>(*l->gpu, sbtg::Json::parse(t.manifest_text));
     l->gen->base_dir = t.native_dir;
     l->gen->lane = id;
+    l->gen->host_budget = t.budget;
+    l->gen->pool_host_keep = t.pool_host_keep;
     l->gen->route("*", true);
     return l;
 }
@@ -223,6 +228,10 @@ sbtg_terrain* sbtg_terrain_open(const char* cenda_lib, const char* native_dir, c
         ro.nvrtc_path = options != nullptr ? options->nvrtc_path : nullptr;
         t->rt = t->ci.runtime_create(device, &ro);
         if (t->rt == nullptr) throw sbtg::EngineError(std::string("ci_runtime_create: ") + t->ci.last_error());
+        if (options != nullptr && options->host_cache_bytes > 0)
+            t->budget->limit = static_cast<size_t>(options->host_cache_bytes);
+        if (options != nullptr && options->pool_host_keep_bytes > 0)
+            t->pool_host_keep = static_cast<size_t>(options->pool_host_keep_bytes);
         t->manifest_path = std::string(native_dir) + "/manifest.json";
         t->manifest_text = read_file(t->manifest_path);
         t->native_dir = native_dir;
@@ -269,6 +278,42 @@ int32_t sbtg_terrain_warmup(sbtg_terrain* t) {
         t->lanes[0]->gen->warm_models();   // the models are shared: lane 0 loads them (a context per lane)
         t->lanes[0]->gpu->sync();
         t->warmed = true;
+        return SBTG_OK;
+    } catch (const std::exception& e) {
+        return translate(e);
+    }
+}
+
+int32_t sbtg_terrain_release(sbtg_terrain* t) {
+    if (t == nullptr) return fail(SBTG_ERR_ARG, "null terrain");
+    try {
+        std::lock_guard<std::mutex> lock(t->mu);
+        std::vector<std::unique_lock<std::mutex>> held;   // every lane idle (waits for tiles in progress)
+        for (auto& l : t->lanes) held.emplace_back(l->mu);
+        for (auto& l : t->lanes) l->gpu->sync();
+        for (auto& l : t->lanes) {   // all caches first (shared windows hold blocks of every lane's pool) ...
+            std::lock_guard<std::recursive_mutex> g(l->gen->lock);
+            l->gen->clear_all_caches();
+        }
+        for (auto& l : t->lanes) {   // ... then every pool gives its blocks back
+            l->gpu->sync();
+            l->gpu->pool.trim();
+        }
+        ++t->releases;
+        return SBTG_OK;
+    } catch (const std::exception& e) {
+        return translate(e);
+    }
+}
+
+int32_t sbtg_terrain_trim(sbtg_terrain* t) {
+    if (t == nullptr) return fail(SBTG_ERR_ARG, "null terrain");
+    try {
+        for (auto& l : t->lanes) {   // one lane at a time: the others keep building
+            std::lock_guard<std::mutex> g(l->mu);
+            l->gpu->sync();
+            l->gpu->pool.trim();
+        }
         return SBTG_OK;
     } catch (const std::exception& e) {
         return translate(e);
@@ -336,7 +381,7 @@ int32_t sbtg_terrain_stats(sbtg_terrain* t, char* buf, int32_t cap) {
     if (t == nullptr) return 0;
     // Totals over the lanes; a lane busy with a tile is skipped for the per-method maps (never blocks a status call).
     long long tiles = 0, launches = 0;
-    size_t live = 0, cached = 0;
+    size_t live = 0, cached = 0, host_live = 0, host_cached = 0;
     std::map<std::string, long long> counters, native;
     std::map<std::string, double> prof;
     std::vector<long long> per_lane;
@@ -350,6 +395,8 @@ int32_t sbtg_terrain_stats(sbtg_terrain* t, char* buf, int32_t cap) {
         launches += L.gpu->launches;
         live += L.gpu->pool.live_bytes();
         cached += L.gpu->pool.cached_bytes();
+        host_live += L.gpu->pool.live_host_bytes();
+        host_cached += L.gpu->pool.cached_host_bytes();
         for (auto& [n, v] : L.gen->counters) counters[n] += v;
         for (auto& [n, v] : L.gen->native_calls) native[n] += v;
         for (auto& [n, v] : L.gen->prof_s) prof[n] += v;
@@ -358,7 +405,10 @@ int32_t sbtg_terrain_stats(sbtg_terrain* t, char* buf, int32_t cap) {
     std::ostringstream o;
     o << "{\"tiles\":" << tiles << ",\"lanes\":" << t->lanes.size() << ",\"lane_tiles\":[";
     for (size_t i = 0; i < per_lane.size(); ++i) o << (i ? "," : "") << per_lane[i];
-    o << "],\"launches\":" << launches << ",\"pool_live\":" << live << ",\"pool_cached\":" << cached;
+    o << "],\"launches\":" << launches << ",\"pool_live\":" << live << ",\"pool_cached\":" << cached
+      << ",\"pool_host_live\":" << host_live << ",\"pool_host_cached\":" << host_cached
+      << ",\"host_cache_bytes\":" << t->budget->used.load() << ",\"host_cache_limit\":" << t->budget->limit
+      << ",\"host_evictions\":" << t->budget->evictions.load() << ",\"releases\":" << t->releases.load();
     auto dump = [&o](const char* name, const auto& m) {
         o << ",\"" << name << "\":{";
         bool first = true;

@@ -20,7 +20,7 @@
 extern "C" {
 #endif
 
-#define SBTG_ABI_VERSION 2
+#define SBTG_ABI_VERSION 3
 
 typedef struct sbtg_ctx sbtg_ctx;
 
@@ -174,7 +174,7 @@ int32_t sbtg_fields_get(const sbtg_fields* f, int32_t i, sbtg_tensor* t);
 int32_t sbtg_fields_add(sbtg_fields* f, const char* name, const sbtg_tensor* t);
 void sbtg_fields_free(sbtg_fields* f);
 
-/* ================================================================================================ terrain (ABI 2)
+/* ================================================================================================ terrain (ABI 3)
  * The whole tile pipeline in-process, without Python (phase 3: the game's JVM through FFM; also what the Python
  * service runs in native mode). `native_dir` holds the release export (export/native_release.py): manifest.json + the
  * .cim networks it names. The library opens `cenda_lib` (libcenda_kernels with ci ABI 2) and creates its own engine
@@ -187,7 +187,13 @@ typedef struct sbtg_terrain_options {
     int32_t flags;           /* reserved, 0 */
     const char* cache_dir;   /* compiled-kernel cache (NULL = none) */
     const char* nvrtc_path;  /* NVRTC library (NULL = engine default search) */
-    int64_t reserved[6];
+    /* ABI 3: budget for window-cache values held in HOST memory (pinned spills + host-resident windows), over every
+     * cache, lane and climate layout of the pipeline; least recent evicted first, recomputed bit for bit when needed
+     * again. 0 = unlimited. */
+    int64_t host_cache_bytes;
+    /* ABI 3: pinned blocks each lane's memory pool keeps cached for reuse (trimmed above twice this). 0 = 128 MiB. */
+    int64_t pool_host_keep_bytes;
+    int64_t reserved[4];
 } sbtg_terrain_options;
 
 sbtg_terrain* sbtg_terrain_open(const char* cenda_lib, const char* native_dir, const sbtg_terrain_options* options);
@@ -208,8 +214,16 @@ int32_t sbtg_tile_surface_count(const sbtg_tile* tile);
 const char* sbtg_tile_surface_name(const sbtg_tile* tile, int32_t i);
 const uint8_t* sbtg_tile_surface(const sbtg_tile* tile, int32_t i);
 void sbtg_tile_free(sbtg_tile* tile);
-/* JSON counters of the generator (as sbtg_gen_stats) + tiles built; returns the length. */
+/* JSON counters of the generator (as sbtg_gen_stats) + tiles built + host memory (host_cache_bytes / _limit,
+ * host_evictions, pool_host_cached / _live, releases); returns the length. */
 int32_t sbtg_terrain_stats(sbtg_terrain* t, char* buf, int32_t cap);
+/* ABI 3: drops every cached window (device and host, every lane) and hands every pooled block back to the driver; the
+ * models stay loaded, so the next tile only recomputes windows (identical results). Waits for tiles in progress. For an
+ * idle pipeline (a world left, the game paused). */
+int32_t sbtg_terrain_release(sbtg_terrain* t);
+/* ABI 3: hands every lane's UNUSED pooled blocks (device and pinned) back to the driver; cached windows stay, so nothing
+ * is recomputed. Waits for tiles in progress. For a pipeline idle for a few seconds. */
+int32_t sbtg_terrain_trim(sbtg_terrain* t);
 
 /* Lanes (agent PX, 2026-11-19; additive to ABI 2): `lanes` generators on their own streams and memory pools that build
  * tiles CONCURRENTLY (one host thread per lane), sharing the engine models (one execution context per lane) and the
