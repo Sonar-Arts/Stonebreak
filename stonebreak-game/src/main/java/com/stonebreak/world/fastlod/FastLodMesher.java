@@ -150,54 +150,61 @@ public final class FastLodMesher {
         int maxVerts   = maxQuads * 4;
         int maxIndices = maxQuads * 6;
 
-        float[] positions       = new float[maxVerts * 3];
-        float[] texCoords       = new float[maxVerts * 2];
-        float[] normals         = new float[maxVerts * 3];
-        float[] waterFlags      = new float[maxVerts];
-        float[] alphaFlags      = new float[maxVerts];
-        float[] translucentFlags = new float[maxVerts];
-        float[] lightValues     = new float[maxVerts];
-        float[] layerIndices    = new float[maxVerts];
-        int[]   indices         = new int[maxIndices];
-
-        QuadWriter w = new QuadWriter(positions, texCoords, normals,
-                waterFlags, alphaFlags, translucentFlags, lightValues, layerIndices, indices);
-        w.uvBaseX = data.chunkX() * WorldConfiguration.CHUNK_SIZE;
-        w.uvBaseZ = data.chunkZ() * WorldConfiguration.CHUNK_SIZE;
-
-        // Water sheet: at most one quad per cell.
-        int maxWaterQuads = cellsPerAxis * cellsPerAxis;
-        float[] wPositions       = new float[maxWaterQuads * 4 * 3];
-        float[] wTexCoords       = new float[maxWaterQuads * 4 * 2];
-        float[] wNormals         = new float[maxWaterQuads * 4 * 3];
-        float[] wSurfaceFlags    = new float[maxWaterQuads * 4];
-        float[] wFallingFlags    = new float[maxWaterQuads * 4];
-        float[] wSourceFlags     = new float[maxWaterQuads * 4];
-        float[] wLight           = new float[maxWaterQuads * 4];
-        float[] wLayers          = new float[maxWaterQuads * 4];
-        int[]   wIndices         = new int[maxWaterQuads * 6];
-        QuadWriter ww = new QuadWriter(wPositions, wTexCoords, wNormals,
-                wSurfaceFlags, wFallingFlags, wSourceFlags, wLight, wLayers, wIndices);
-
-        // Pulled LOD quads: 16 bytes per quad relative to the LOD region origin
-        // (MmsLodQuadCodec) instead of 4 × 20-byte vertices + indices. The
-        // per-vertex writer stays for legacy/compact formats and for water.
-        LodQuadWriter pulled = MmsVertexFormat.active().pulled()
-            ? new LodQuadWriter(maxQuads,
+        // Pulled LOD quads (the default QUAD16 format): 16 bytes per quad relative to the LOD region origin
+        // (MmsLodQuadCodec) instead of 4 x 20-byte vertices + indices. The per-vertex arrays exist only for the
+        // legacy / compact formats: allocated per node regardless, they were a third of a session's Java garbage
+        // (2026-11-20, JFR) and never written.
+        boolean pulledFormat = MmsVertexFormat.active().pulled();
+        int maxWaterQuads = cellsPerAxis * cellsPerAxis;   // water sheet: at most one quad per cell
+        float[] positions = null, texCoords = null, normals = null, waterFlags = null, alphaFlags = null,
+                translucentFlags = null, lightValues = null, layerIndices = null;
+        int[] indices = null;
+        float[] wPositions = null, wTexCoords = null, wNormals = null, wSurfaceFlags = null, wFallingFlags = null,
+                wSourceFlags = null, wLight = null, wLayers = null;
+        int[] wIndices = null;
+        QuadWriter w;
+        QuadWriter ww;
+        LodQuadWriter pulled = null;
+        LodWaterWriter pulledWater = null;
+        if (pulledFormat) {
+            pulled = new LodQuadWriter(maxQuads,
                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkX()),
                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkZ()),
                 cellsPerAxis, cellSize,
-                data.chunkX() * WorldConfiguration.CHUNK_SIZE, data.chunkZ() * WorldConfiguration.CHUNK_SIZE)
-            : null;
-        LodWaterWriter pulledWater = null;
-        if (pulled != null) {
-            w = pulled;
+                data.chunkX() * WorldConfiguration.CHUNK_SIZE, data.chunkZ() * WorldConfiguration.CHUNK_SIZE);
             pulledWater = new LodWaterWriter(maxWaterQuads,
                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkX()),
                 com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher.regionOrigin(data.chunkZ()),
                 cellsPerAxis, cellSize,
                 data.chunkX() * WorldConfiguration.CHUNK_SIZE, data.chunkZ() * WorldConfiguration.CHUNK_SIZE);
+            w = pulled;
             ww = pulledWater;
+        } else {
+            positions        = new float[maxVerts * 3];
+            texCoords        = new float[maxVerts * 2];
+            normals          = new float[maxVerts * 3];
+            waterFlags       = new float[maxVerts];
+            alphaFlags       = new float[maxVerts];
+            translucentFlags = new float[maxVerts];
+            lightValues      = new float[maxVerts];
+            layerIndices     = new float[maxVerts];
+            indices          = new int[maxIndices];
+            w = new QuadWriter(positions, texCoords, normals,
+                    waterFlags, alphaFlags, translucentFlags, lightValues, layerIndices, indices);
+            // (only the vertex writer carries the UV base: the pulled writer never had it set)
+            w.uvBaseX = data.chunkX() * WorldConfiguration.CHUNK_SIZE;
+            w.uvBaseZ = data.chunkZ() * WorldConfiguration.CHUNK_SIZE;
+            wPositions    = new float[maxWaterQuads * 4 * 3];
+            wTexCoords    = new float[maxWaterQuads * 4 * 2];
+            wNormals      = new float[maxWaterQuads * 4 * 3];
+            wSurfaceFlags = new float[maxWaterQuads * 4];
+            wFallingFlags = new float[maxWaterQuads * 4];
+            wSourceFlags  = new float[maxWaterQuads * 4];
+            wLight        = new float[maxWaterQuads * 4];
+            wLayers       = new float[maxWaterQuads * 4];
+            wIndices      = new int[maxWaterQuads * 6];
+            ww = new QuadWriter(wPositions, wTexCoords, wNormals,
+                    wSurfaceFlags, wFallingFlags, wSourceFlags, wLight, wLayers, wIndices);
         }
 
         // Height-gradient normals shared at cell corners ((cellsPerAxis+1)² grid).

@@ -79,7 +79,8 @@ public final class OctreeLod implements AutoCloseable {
     /** FALLBACK footprints FastLOD must draw (owner thread). */
     private final FootprintSet fallback = new FootprintSet();
     /** Columns (cube columns cx, cz) that went UNREADY recently -> when. */
-    private final Map<CubePos, Long> recentUnready = new HashMap<>();
+    /** Packed cube column ({@link #column}) -> when it went UNREADY. No boxing per lookup (render pass, per node). */
+    private final LongKeyMap<Long> recentUnready = new LongKeyMap<>(64);
 
     private long[] notes = new long[3 * 64];
     private int noteCount;
@@ -209,7 +210,7 @@ public final class OctreeLod implements AutoCloseable {
             return;
         }
         if (!ready) {
-            recentUnready.put(new CubePos(cx, 0, cz), System.nanoTime());
+            recentUnready.put(column(cx, cz), System.nanoTime());
         }
         try {
             lod.setColumnReady(cx, cz, ready);
@@ -232,7 +233,7 @@ public final class OctreeLod implements AutoCloseable {
         }
         long now = System.nanoTime();
         if (!recentUnready.isEmpty()) {
-            recentUnready.values().removeIf(t -> now - t > SNAP_WINDOW_NANOS);
+            recentUnready.removeValuesIf(t -> now - t > SNAP_WINDOW_NANOS);
         }
         if (noteCount > 0) {
             lod.noteCubes(java.util.Arrays.copyOf(notes, noteCount));
@@ -293,12 +294,19 @@ public final class OctreeLod implements AutoCloseable {
         if (recentUnready.isEmpty()) {
             return false;
         }
-        for (CubePos c : recentUnready.keySet()) {
-            if ((c.x() >> level) == x && (c.z() >> level) == z) {
-                return true;
-            }
-        }
-        return false;
+        return recentUnready.anyKey(k -> (columnX(k) >> level) == x && (columnZ(k) >> level) == z);
+    }
+
+    private static long column(long cx, long cz) {
+        return (cx << 32) | (cz & 0xFFFFFFFFL);
+    }
+
+    private static long columnX(long k) {
+        return k >> 32;
+    }
+
+    private static long columnZ(long k) {
+        return (int) k;
     }
 
     /**
@@ -311,7 +319,7 @@ public final class OctreeLod implements AutoCloseable {
 
     /** OWNER THREAD. The cube column under a 16-block column turned UNREADY just now (show it solid at once). */
     public boolean justUnready(int chunkX16, int chunkZ16) {
-        return !recentUnready.isEmpty() && recentUnready.containsKey(new CubePos(chunkX16 >> 1, 0, chunkZ16 >> 1));
+        return !recentUnready.isEmpty() && recentUnready.get(column(chunkX16 >> 1, chunkZ16 >> 1)) != null;
     }
 
     public int fallbackFootprints() {
@@ -400,10 +408,6 @@ public final class OctreeLod implements AutoCloseable {
 
     /** Test seam: drops expired entries of the snap window. */
     void expireUnready() {
-        Iterator<Map.Entry<CubePos, Long>> it = recentUnready.entrySet().iterator();
-        while (it.hasNext()) {
-            it.next();
-            it.remove();
-        }
+        recentUnready.clear();
     }
 }

@@ -108,7 +108,7 @@ public final class FastLodManager {
     private final Map<FastLodKey, Entry> handles = new ConcurrentHashMap<>();
     private final Queue<AutoCloseable> cleanupQueue = new ConcurrentLinkedQueue<>();
     /** Columns that have the node at the listed key already resident — used to avoid double-scheduling. */
-    private final Map<Long, FastLodKey> residentByColumn = new ConcurrentHashMap<>();
+    private final LongKeyMap<FastLodKey> residentByColumn = new LongKeyMap<>(4096);   // no Long boxing per lookup
     /** newKey → previous resident key at that column; retires the old handle only once the new one has uploaded. */
     private final Map<FastLodKey, FastLodKey> pendingSupersede = new ConcurrentHashMap<>();
 
@@ -289,13 +289,21 @@ public final class FastLodManager {
                 FastLodLevel wanted = FastLodBandPolicy.levelFor(d, inner, range, quality);
                 if (wanted == null) continue;
                 int cx = playerCx + dx, cz = playerCz + dz;
-                FastLodKey target = FastLodKey.of(wanted, cx, cz,
-                        quality.carves(wanted), quality.drawsTrees(wanted));
+                boolean carves = quality.carves(wanted), trees = quality.drawsTrees(wanted);
+                // The column already holds exactly the wanted node (the steady state for nearly every column):
+                // nothing to do, and no key to build for it - the scan used to allocate one per ring column per
+                // tick (a sixth of a session's Java garbage, 2026-11-20). Same outcome as the checks below,
+                // which all end in `continue` for a resident target.
+                FastLodKey resident = residentByColumn.get(packColumn(cx, cz));
+                if (resident != null && resident.level() == wanted && resident.carved() == carves
+                        && resident.trees() == (trees || wanted == FastLodLevel.L0)) {
+                    continue;
+                }
+                FastLodKey target = FastLodKey.of(wanted, cx, cz, carves, trees);
                 if (handles.containsKey(target) || inFlight.contains(target)) continue;
                 Backoff failed = backoff.get(target);
                 if (failed != null && now - failed.retryAtNanos() < 0) continue;
 
-                FastLodKey resident = residentByColumn.get(packColumn(cx, cz));
                 if (target.equals(resident)) continue;
                 if (resident != null) {
                     // Band change — remember which handle to retire once the

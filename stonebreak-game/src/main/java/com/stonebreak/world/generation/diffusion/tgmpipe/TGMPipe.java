@@ -140,6 +140,10 @@ public final class TGMPipe {
     private final Object lock = new Object();
     /** The in-process pipeline while it runs. */
     private NativeTerrainService nativeService;
+    /** When the last stopped pipeline is really freed: a new one never opens beside one that is still closing. */
+    private CompletableFuture<Void> lastRelease = CompletableFuture.completedFuture(null);
+    /** How long a start waits for the previous pipeline to be freed. */
+    static final long RELEASE_WAIT_SECONDS = Long.getLong("stonebreak.terrain.releaseWaitSeconds", 60L);
     /** True between {@link #ensureRunning} and {@link #shutdown}. */
     private boolean wanted;
     /** True after {@link #shutdown} until the next {@link #ensureRunning}: stopped on purpose (quit, world switch). */
@@ -372,6 +376,9 @@ public final class TGMPipe {
             n = nativeService;
             nativeService = null;
             runningModel = null;
+            if (n != null) {
+                lastRelease = n.released();   // before close(): a start racing this shutdown waits for it
+            }
         }
         if (n != null) {
             LOG.info("Stopping the native terrain pipeline");
@@ -491,6 +498,26 @@ public final class TGMPipe {
         }
     }
 
+    /** Waits (bounded) for the previous pipeline to be freed: two at once would double the GPU and host memory. */
+    private void awaitPreviousRelease() {
+        CompletableFuture<Void> previous = lastRelease;
+        if (previous.isDone()) {
+            return;
+        }
+        LOG.info("waiting for the previous terrain pipeline to be freed before starting a new one");
+        try {
+            previous.get(RELEASE_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new TGMPipeException("the previous terrain pipeline is still shutting down (a tile build has not"
+                    + " finished in " + RELEASE_WAIT_SECONDS + " s); not opening a second one - try again shortly");
+        } catch (java.util.concurrent.ExecutionException e) {
+            LOG.log(Level.WARNING, "previous terrain pipeline release failed", e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new TGMPipeException("interrupted while the previous terrain pipeline was shutting down", e);
+        }
+    }
+
     private void startLocked() {
         try {
             Files.createDirectories(logFile.getParent());
@@ -501,6 +528,7 @@ public final class TGMPipe {
         // Missing release folder / Git LFS pointers instead of the export: say so (and how to fetch it) instead of
         // handing the engine a pointer file or falling back to another model.
         TerrainModels.requireInstalled(model);
+        awaitPreviousRelease();
         NativeTerrainService n = NativeTerrainLauncher.start();
         nativeService = n;
         runningModel = model;

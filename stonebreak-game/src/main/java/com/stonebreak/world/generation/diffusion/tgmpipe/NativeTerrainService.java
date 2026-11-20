@@ -83,6 +83,8 @@ final class NativeTerrainService implements AutoCloseable {
     private final AtomicLong served = new AtomicLong(), cacheHits = new AtomicLong(), generated = new AtomicLong(),
             failed = new AtomicLong(), genMs = new AtomicLong();
     private volatile long lastActivityNanos = System.nanoTime();
+    /** Completes once the native pipeline is really freed (at once, or by the reaper after a stuck build). */
+    private final java.util.concurrent.CompletableFuture<Void> released = new java.util.concurrent.CompletableFuture<>();
     /** Tiles being built right now (the idle check never trims under a build). */
     private final AtomicInteger building = new AtomicInteger();
     /** What the idle check did since the last activity: 0 nothing, 1 trimmed the pools, 2 released the caches. */
@@ -523,6 +525,34 @@ final class NativeTerrainService implements AutoCloseable {
         }
         if (gpus.stream().noneMatch(Thread::isAlive)) {
             terrain.close();
+            released.complete(null);
+            return;
         }
+        // A build still running after 30 s (a stuck GPU call): freeing the pipeline under it would crash, and
+        // skipping the free leaked the whole pipeline (models, contexts, pinned memory) - a new start then opened a
+        // second one beside it. The reaper waits for the builds, then frees it; TGMPipe waits for `released` before
+        // it opens another pipeline.
+        LOG.warning("native terrain: a tile build is still running 30 s after close; freeing the pipeline when it ends");
+        Thread reaper = new Thread(() -> {
+            for (Thread g : gpus) {
+                try {
+                    g.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    released.completeExceptionally(e);
+                    return;
+                }
+            }
+            terrain.close();
+            released.complete(null);
+            LOG.info("native terrain: the late build ended; pipeline freed");
+        }, "terrain-native-reaper");
+        reaper.setDaemon(true);
+        reaper.start();
+    }
+
+    /** Completes once the native pipeline is freed (see {@link #close}). */
+    java.util.concurrent.CompletableFuture<Void> released() {
+        return released;
     }
 }

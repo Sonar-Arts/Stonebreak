@@ -77,12 +77,12 @@ public final class WorldLeafWorld implements LeafWorld {
             return null;
         }
         int cells = CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE;
-        BlockType[] out = new BlockType[cells];
         if (uniform != CubeWorld.NOT_UNIFORM) {
             BlockType b = BlockIds.of(uniform);
             if (!b.isLeaves() && !b.isLog()) {
                 return null;
             }
+            BlockType[] out = new BlockType[cells];
             java.util.Arrays.fill(out, b);
             return out;
         }
@@ -92,13 +92,21 @@ public final class WorldLeafWorld implements LeafWorld {
         if (!voxels.readIds(pos.x(), pos.y(), pos.z(), ids)) {
             return null;
         }
+        // Most cubes hold no leaf and no log: look before allocating the 32768-entry array (it was ~6% of a
+        // session's Java garbage, 2026-11-20). Same result as before: null without foliage, every cell with it.
         boolean any = false;
-        for (int i = 0; i < cells; i++) {
+        for (int i = 0; i < cells && !any; i++) {
             BlockType b = BlockIds.of(Short.toUnsignedInt(ids[i]));
-            out[i] = b;
-            any |= b.isLeaves() || b.isLog();
+            any = b.isLeaves() || b.isLog();
         }
-        return any ? out : null;
+        if (!any) {
+            return null;
+        }
+        BlockType[] out = new BlockType[cells];
+        for (int i = 0; i < cells; i++) {
+            out[i] = BlockIds.of(Short.toUnsignedInt(ids[i]));
+        }
+        return out;
     }
 
     @Override
