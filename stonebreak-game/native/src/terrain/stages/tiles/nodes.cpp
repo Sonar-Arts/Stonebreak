@@ -216,7 +216,7 @@ Fields surface(Gen& g, const Args& a) {
         ActArgs aa{raw.f32(), per.f32(), H, W, F, S, 0, static_cast<int>(t["fractions"].i64())};
         g.gpu.launch(nk(g, "tiles_surf_activate"), per.numel(), aa);
     } else {
-        Tensor p15 = g.gpu.empty(DType::F32, {F, H * S, W * S});
+        Tensor p15 = g.gpu.empty(DType::F32, {F, static_cast<int64_t>(H) * S, static_cast<int64_t>(W) * S});
         ActArgs aa{raw.f32(), p15.f32(), H, W, F, S, 1, static_cast<int>(t["fractions"].i64())};
         g.gpu.launch(nk(g, "tiles_surf_activate"), p15.numel(), aa);
         per = d == 1.0 ? ops::avg_pool(g.gpu, p15, 2) : p15;

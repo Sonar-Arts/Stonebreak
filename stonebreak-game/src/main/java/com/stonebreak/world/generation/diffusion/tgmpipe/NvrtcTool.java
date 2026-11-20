@@ -260,7 +260,7 @@ final class NvrtcTool {
      * moves the folder into place, so a failed or altered unpack never leaves an installed copy.
      */
     static void extract(Path wheel, Path dir, Map<String, String> pinned) throws IOException {
-        Path tmp = dir.resolveSibling(dir.getFileName() + ".tmp");
+        Path tmp = dir.resolveSibling(dir.getFileName() + ".tmp").toAbsolutePath().normalize();
         deleteTree(tmp);
         Files.createDirectories(tmp);
         try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(Files.newInputStream(wheel)))) {
@@ -270,8 +270,12 @@ final class NvrtcTool {
                 if (e.isDirectory() || !name.startsWith("nvidia/cuda_nvrtc/") || !pinned.containsKey(base)) {
                     continue;
                 }
-                Files.copy(zip, tmp.resolve(base), StandardCopyOption.REPLACE_EXISTING);
-                tmp.resolve(base).toFile().setExecutable(true);
+                Path target = tmp.resolve(base).normalize();
+                if (!target.startsWith(tmp) || target.equals(tmp)) {   // never write outside the unpack folder
+                    throw new IOException("unsafe entry " + name + " in " + wheel.getFileName());
+                }
+                Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING);
+                target.toFile().setExecutable(true);
             }
         }
         if (!verify(tmp, pinned)) {

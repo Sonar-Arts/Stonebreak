@@ -1231,7 +1231,7 @@ void testSeaMouths() {
                         bool seaWater = false;
                         for (int dx = 0; dx < cellSize; dx++) {
                             for (int dz = 0; dz < cellSize; dz++) {
-                                seaWater = seaWater || S.at(x0 + ix * cellSize + dx, SEA - 1, z0 + iz * cellSize + dz) == SBW_WATER;
+                                seaWater = seaWater || S.at(x0 + static_cast<int64_t>(ix) * cellSize + dx, SEA - 1, z0 + static_cast<int64_t>(iz) * cellSize + dz) == SBW_WATER;
                             }
                         }
                         dryUnderSea += floor[c] < SEA && seaWater && water[c] == SBW_NO_WATER;

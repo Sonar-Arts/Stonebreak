@@ -748,7 +748,7 @@ void placeStalagmites(CubeCtx& c, const Pad& pad, const std::vector<CavernZone>&
                     }
                 }
                 for (int i = 0; i < size; i++) {
-                    const int64_t cy = anchorY + i * direction;
+                    const int64_t cy = anchorY + static_cast<int64_t>(i) * direction;
                     if (!c.contains(x, cy, z)) continue;
                     c.at(x, cy, z) = stalagmite;
                     if (c.stateLayer) {

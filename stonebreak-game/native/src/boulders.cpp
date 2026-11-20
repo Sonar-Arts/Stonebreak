@@ -91,7 +91,7 @@ BoulderFields heuristicFields(Generator& g, int64_t x, int64_t z, int32_t h, int
     float up = 0.0f;
     static const int DIRS[8][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
     for (const auto& d : DIRS) {
-        for (int dist : {3, 6}) up = std::max(up, hAt(d[0] * dist, d[1] * dist) - hf);
+        for (int dist : {3, 6}) up = std::max(up, hAt(static_cast<int64_t>(d[0]) * dist, static_cast<int64_t>(d[1]) * dist) - hf);
     }
     const float cliffAbove = smooth(4.0f, 12.0f, up);
     f.scree = cliffAbove * (1.0f - smooth(0.8f, 1.8f, slope));
