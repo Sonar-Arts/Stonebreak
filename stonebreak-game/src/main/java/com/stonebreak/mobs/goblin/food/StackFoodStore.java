@@ -2,6 +2,7 @@ package com.stonebreak.mobs.goblin.food;
 
 import com.stonebreak.items.FoodRules;
 import com.stonebreak.items.ItemStack;
+import com.stonebreak.items.ItemStackStateCodec;
 
 /**
  * A {@link FoodStore} over a fixed row of item slots. It holds any item (a goblin may pocket
@@ -10,17 +11,24 @@ import com.stonebreak.items.ItemStack;
 public class StackFoodStore implements FoodStore {
 
     private final ItemStack[] slots;
+    /** Slots owned by a block grid (chest, rack): emptied with an empty stack, never {@code null}. */
+    private final boolean backed;
 
     public StackFoodStore(int size) {
         this.slots = new ItemStack[size];
+        this.backed = false;
     }
 
-    /** Over slots that live elsewhere — a chest's — read and written in place. */
+    /**
+     * Over slots that live elsewhere — a chest's — read and written in place. Emptied slots get
+     * {@link ItemStackStateCodec#empty()}: the grid and the container code expect no {@code null}s.
+     */
     public StackFoodStore(ItemStack[] backing) {
         this.slots = backing;
+        this.backed = true;
     }
 
-    /** The live slots, {@code null} for empty: read them, do not keep them. */
+    /** The live slots ({@code null} or an empty stack for empty): read them, do not keep them. */
     public ItemStack[] slots() {
         return slots;
     }
@@ -74,7 +82,7 @@ public class StackFoodStore implements FoodStore {
                 int value = FoodRules.goblinFood(s.getItem());
                 s.decrementCount(1);
                 if (s.isEmpty()) {
-                    slots[i] = null;
+                    slots[i] = cleared();
                 }
                 return value;
             }
@@ -120,9 +128,13 @@ public class StackFoodStore implements FoodStore {
             if (slots[i] != null && !slots[i].isEmpty()) {
                 out[n++] = slots[i];
             }
-            slots[i] = null;
+            slots[i] = cleared();
         }
         return out;
+    }
+
+    private ItemStack cleared() {
+        return backed ? ItemStackStateCodec.empty() : null;
     }
 
     private static boolean stacksWith(ItemStack a, ItemStack b) {

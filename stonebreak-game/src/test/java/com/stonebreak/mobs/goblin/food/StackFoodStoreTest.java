@@ -51,4 +51,21 @@ class StackFoodStoreTest {
         assertEquals(3, both.eatOne());
         assertEquals(0, both.food());
     }
+
+    @Test
+    void aChestBackedStoreNeverLeavesNullSlots() {
+        // A chest's slots are read by the container code as never-null (slot.get().isEmpty()).
+        ItemStack[] chest = {
+                com.stonebreak.items.ItemStackStateCodec.empty(),
+                com.stonebreak.items.ItemStackStateCodec.empty()};
+        StackFoodStore store = new StackFoodStore(chest);
+        store.add(new ItemStack(ItemType.RAW_BEEF, 1));
+        store.add(new ItemStack(ItemType.BANANA, 1));
+        assertEquals(3, store.eatOne());
+        assertTrue(chest[0] != null && chest[0].isEmpty(), "eaten slot is an empty stack, not null");
+        assertEquals(1, store.takeAll().length);
+        for (ItemStack s : chest) {
+            assertTrue(s != null && s.isEmpty(), "taken slot is an empty stack, not null");
+        }
+    }
 }

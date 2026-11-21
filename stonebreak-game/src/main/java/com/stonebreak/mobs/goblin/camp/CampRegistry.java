@@ -286,7 +286,8 @@ public final class CampRegistry implements CampAnchor {
                 camp.unbindChest();
             } else if (world.getBlockAt(chest.x(), chest.y(), chest.z()) != BlockType.CHEST) {
                 camp.loseChest(); // broken: its loot dropped with it
-            } else if (!camp.chestBound()) {
+            } else if (!camp.chestBound() || camp.stash().slots() != chests.getOrCreate(chest).getSlots()) {
+                // Unbound, or bound to a grid that left the world (chest broken and replaced in one drain).
                 camp.bindChest(chests.getOrCreate(chest).getSlots());
                 chests.persist(world, chest);
             }

@@ -95,8 +95,8 @@ public final class ServerHealthHandler {
             if (world != null) {
                 double half = PLAYER_WIDTH / 2.0;
                 boolean touching = CactusContactRules.touchesCactus(world,
-                        (float) (sp.x() - half), (float) sp.y(), (float) (sp.z() - half),
-                        (float) (sp.x() + half), (float) (sp.y() + PLAYER_HEIGHT), (float) (sp.z() + half));
+                        sp.x() - half, sp.y(), sp.z() - half,
+                        sp.x() + half, sp.y() + PLAYER_HEIGHT, sp.z() + half);
                 boolean flying = PlayerStateFlags.has(sp.movementFlags(), PlayerStateFlags.FLYING);
                 float cactus = vitals.onCactusContact(touching, flying, dt, nowNs,
                         CactusContactRules.PULSE_INTERVAL, CactusContactRules.DAMAGE_PER_PULSE);
@@ -104,12 +104,13 @@ public final class ServerHealthHandler {
                     hurt(sp, cactus, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
                 }
                 float[] spikes = SpikeContactRules.pointsTouching(world,
-                        (float) (sp.x() - half), (float) sp.y(), (float) (sp.z() - half),
-                        (float) (sp.x() + half), (float) (sp.y() + PLAYER_HEIGHT), (float) (sp.z() + half));
+                        sp.x() - half, sp.y(), sp.z() - half,
+                        sp.x() + half, sp.y() + PLAYER_HEIGHT, sp.z() + half);
                 if (vitals.onSpikeContact(spikes != null && !flying, dt, nowNs, SpikeContactRules.COOLDOWN_SECONDS)) {
-                    hurt(sp, SpikeContactRules.DAMAGE, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
+                    float dealt = hurt(sp, SpikeContactRules.DAMAGE, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
                     // Thrown back the way the points lean: pushed away from a point behind the player.
-                    knockback(sp, new org.joml.Vector3d(sp.x() - spikes[0], sp.y(), sp.z() - spikes[1]),
+                    // No shove when the hit was absorbed (invincible, dodge i-frames).
+                    if (dealt > 0f) knockback(sp, new org.joml.Vector3d(sp.x() - spikes[0], sp.y(), sp.z() - spikes[1]),
                             SpikeContactRules.KNOCKBACK);
                 }
             }

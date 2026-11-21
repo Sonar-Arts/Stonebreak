@@ -384,7 +384,9 @@ public final class ServerBlockHandler {
     private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
                               String prevState, boolean scoop, PlacementDebit debit, World world,
                               ServerWorldContext ctx) {
-        applyAccepted(sp, c, incoming, prev, prevState, debit, world, ctx);
+        if (!applyAccepted(sp, c, incoming, prev, prevState, debit, world, ctx)) {
+            return; // refused placement (torch/bush): reverted and refunded, so nothing was heard
+        }
         emitEditNoise(sp, world, c, incoming, prev);
         SoundEventS2C sound = editSound(c.x(), c.y(), c.z(), incoming, prev);
         if (sound != null) {
@@ -659,10 +661,12 @@ public final class ServerBlockHandler {
      * every side effect reach clients as per-block packets (block batches, state echoes,
      * snow/water meta), so the chunk version is NOT bumped — a bump would re-stream the whole
      * chunk to every viewer, and the stale snapshot would briefly undo the editor's newer
-     * predictions (issue #362). Only the audit hash is dropped.
+     * predictions (issue #362). Only the audit hash is dropped. Returns false when the edit was
+     * refused here after all (an invalid torch or bush placement: cell restored, placer reverted
+     * and refunded).
      */
-    private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
-                               String prevState, PlacementDebit debit, World world, ServerWorldContext ctx) {
+    private boolean applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
+                                   String prevState, PlacementDebit debit, World world, ServerWorldContext ctx) {
         // A container leaving its cell — broken, or replaced by any other block — drops its
         // contents and leaves its registry, so nothing keeps ticking or broadcasting on a cell
         // that no longer holds it (issue #370). {@code prev} is the server's own cell.
@@ -797,7 +801,7 @@ public final class ServerBlockHandler {
                 queueOutgoing(c.x(), c.y(), c.z(), (short) restore.getId());
                 sendRevert(sp, c.x(), c.y(), c.z(), ctx);
                 refund(sp, debit, ctx);
-                return;
+                return false; // refused: no edit noise or sound
             }
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
             queueStateEcho(c.x(), c.y(), c.z());
@@ -814,7 +818,7 @@ public final class ServerBlockHandler {
             queueOutgoing(c.x(), c.y(), c.z(), (short) restore.getId());
             sendRevert(sp, c.x(), c.y(), c.z(), ctx);
             refund(sp, debit, ctx);
-            return;
+            return false; // refused: no edit noise or sound
         }
         // Stalagmite placement: hanging and facing come from the client's proposal (only it knows
         // which face was clicked); a missing or unreadable one stands upright facing the placer's
@@ -876,6 +880,7 @@ public final class ServerBlockHandler {
             }
         }
         queueOutgoing(c.x(), c.y(), c.z(), c.blockTypeId());
+        return true;
     }
 
     /**
