@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.core.Game;
+import com.stonebreak.items.weapon.DamageType;
+import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
@@ -21,6 +23,8 @@ public class Arrow extends Entity {
     private static final float HIT_RADIUS  = 0.4f;
     /** Body boxes are grown by this much when a player's arrow sweeps through them. */
     private static final float ENTITY_HIT_MARGIN = 0.1f;
+    /** Movement shorter than this (between network updates, say) keeps the previous heading. */
+    private static final float MIN_HEADING_STEP = 1.0e-3f;
 
     private final float launchSpeed;
     /**
@@ -34,6 +38,10 @@ public class Arrow extends Entity {
     private LivingEntity shooter;
     /** Damage a mob's arrow does to the player it hits. */
     private float mobArrowDamage;
+    /** Unit flight direction for drawing; see {@link #heading()}. */
+    private final Vector3f heading = new Vector3f();
+    /** Where {@link #heading()} last saw the arrow, or null before its first call. */
+    private Vector3d headingSample;
 
     public Arrow(World world, Vector3dc position, Vector3f velocity) {
         super(world, position);
@@ -43,14 +51,14 @@ public class Arrow extends Entity {
         this.width  = 0.05f;
         this.height = 0.05f;
         this.length = 0.5f;
-        // Face the travel direction (yaw from xz, no pitch stored — visual only)
+        // Face the travel direction (yaw from xz; the drawn pitch comes from heading())
         this.rotation.y = (float) Math.toDegrees(Math.atan2(-velocity.x, -velocity.z));
         this.scale.set(0.15f, 0.15f, 0.5f);
     }
 
     /**
      * Marks this as a mob's arrow: it flies through its shooter and other mobs (no friendly
-     * fire), and hurts the local player it strikes for {@code damage}.
+     * fire), and hurts the player it strikes for {@code damage}.
      */
     public Arrow firedBy(LivingEntity shooter, float damage) {
         this.shooter = shooter;
@@ -83,7 +91,7 @@ public class Arrow extends Entity {
             }
         }
 
-        if (shooter != null ? strikePlayer() : strikeEntity()) {
+        if (shooter != null ? strikePlayer() || strikeMob() : strikeEntity()) {
             alive = false;
             return;
         }
@@ -100,7 +108,7 @@ public class Arrow extends Entity {
      * the local player.
      */
     private boolean strikePlayer() {
-        com.stonebreak.mobs.entities.ai.behavior.PlayerLocator players = roster();
+        PlayerLocator players = roster();
         if (players != null) {
             return players.hitPlayerAt(position, HIT_RADIUS, mobArrowDamage, -1);
         }
@@ -108,6 +116,26 @@ public class Arrow extends Entity {
             return false;
         }
         Game.getPlayer().damage(mobArrowDamage);
+        return true;
+    }
+
+    /**
+     * A mob's arrow that missed every player: hits the first other mob on its path — a goblin's
+     * quarry, a rival goblin, or a cow that wandered into the line of fire. Never the shooter or
+     * one of its allies.
+     */
+    private boolean strikeMob() {
+        EntityManager em = OwningEntityManager.of(this);
+        if (em == null) {
+            return false;
+        }
+        LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN,
+                e -> e != shooter && !shooter.isAllyOf(e));
+        if (le == null) {
+            return false;
+        }
+        le.damage(mobArrowDamage, LivingEntity.DamageSource.MOB, DamageType.PIERCING,
+                shooter.getPosition(), false);
         return true;
     }
 
@@ -125,7 +153,7 @@ public class Arrow extends Entity {
         LivingEntity le = ProjectileSweep.firstHit(em, lastPosition, position, ENTITY_HIT_MARGIN);
         if (le == null) {
             // Another player, where the world allows PvP (#343); never the shooter.
-            com.stonebreak.mobs.entities.ai.behavior.PlayerLocator players = roster();
+            PlayerLocator players = roster();
             return players != null && getOwnerPlayerId() >= 0
                     && players.hitPlayerAt(position, ENTITY_HIT_MARGIN, damage, getOwnerPlayerId());
         }
@@ -136,10 +164,10 @@ public class Arrow extends Entity {
     }
 
     /** The connected players of this arrow's world, or null when it has none (not the server's). */
-    private com.stonebreak.mobs.entities.ai.behavior.PlayerLocator roster() {
-        com.stonebreak.mobs.entities.ai.behavior.PlayerLocator players =
+    private PlayerLocator roster() {
+        PlayerLocator players =
                 world != null ? world.getPlayerLocator() : null;
-        return players == com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NONE ? null : players;
+        return players == PlayerLocator.NONE ? null : players;
     }
 
     /** Whether the arrow is inside the local player's body box (feet position, standing height). */
@@ -154,6 +182,29 @@ public class Arrow extends Entity {
                 && Math.abs(position.z - feet.z) <= halfWidth
                 && position.y >= feet.y - HIT_RADIUS
                 && position.y <= feet.y + com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT + HIT_RADIUS;
+    }
+
+    /**
+     * The direction the arrow is flying, for drawing it nose-first. Taken from how far it moved
+     * since the previous call (once per rendered frame), because a client's copy is replicated
+     * as position and yaw only: it has no velocity, and it would draw level without this. Before
+     * the arrow has moved, it faces its yaw.
+     */
+    public Vector3f heading() {
+        if (headingSample == null) {
+            float yaw = (float) Math.toRadians(rotation.y);
+            heading.set((float) -Math.sin(yaw), 0f, (float) -Math.cos(yaw));
+            headingSample = new Vector3d(position);
+            return heading;
+        }
+        float dx = (float) (position.x - headingSample.x);
+        float dy = (float) (position.y - headingSample.y);
+        float dz = (float) (position.z - headingSample.z);
+        if (dx * dx + dy * dy + dz * dz > MIN_HEADING_STEP * MIN_HEADING_STEP) {
+            heading.set(dx, dy, dz).normalize();
+            headingSample.set(position);
+        }
+        return heading;
     }
 
     @Override

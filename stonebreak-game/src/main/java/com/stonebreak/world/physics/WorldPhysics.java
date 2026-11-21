@@ -445,7 +445,8 @@ public final class WorldPhysics implements AutoCloseable {
             if (b == null) {
                 continue;
             }
-            int category = TorchBlock.isTorch(type) ? MODEL_PICK : PANEL;
+            // Torches and other non-solid models (the campfire) are aimed at, never walked into.
+            int category = TorchBlock.isTorch(type) || !type.isSolid() ? MODEL_PICK : PANEL;
             if (current == null) {
                 current = new ModelBox();
                 current.id = engine.addBox(b[0], b[1], b[2], b[3], b[4], b[5], category, 0, BlockPosKey.pack(pos));

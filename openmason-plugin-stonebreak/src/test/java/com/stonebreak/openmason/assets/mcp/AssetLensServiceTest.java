@@ -38,7 +38,7 @@ class AssetLensServiceTest {
 
     private static AssetLensService service() {
         ObjectMapper mapper = new ObjectMapper();
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        mapper.setDefaultPropertyInclusion(JsonInclude.Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL));
         return new AssetLensService(null, mapper); // null main interface — snapshot-test discipline
     }
 

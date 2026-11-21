@@ -1,0 +1,104 @@
+package com.stonebreak.rendering.sbo;
+
+import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
+import com.openmason.engine.voxel.stamp.StampRotator;
+import com.openmason.engine.voxel.stamp.render.StampCache;
+import com.stonebreak.blocks.BlockFacing;
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.multipart.MultipartRegistry;
+import com.stonebreak.blocks.multipart.MultipartShape;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Bakes neighbour-driven shapes into the stamp cache: for each block with a {@code multipart}
+ * table, one stamp per neighbour combination, merged from the SBO states its parts name and stored
+ * under that combination's {@link MultipartShape#key}. The mesher then draws a cell by looking its
+ * key up like any other state.
+ */
+public final class MultipartStamps {
+
+    private static final Logger logger = LoggerFactory.getLogger(MultipartStamps.class);
+
+    private MultipartStamps() {
+    }
+
+    /**
+     * Whether {@code block} hides a neighbour's face on {@code face}, for the mesher's face culling.
+     *
+     * <p>The stamp cache answers for all of a block's variants at once (a face occludes only if
+     * every variant fills it). A multipart block's variants are its neighbour combinations, and
+     * the rounded ones fill no plane, so that answer would say a leaf never occludes, and the
+     * cutout-against-opaque cull would leave a leaf's flat side z-fighting the log beside it. A
+     * multipart block answers with its default model instead: a side is only ever flat and
+     * filled where its neighbour fills the cell, which is exactly when the question is asked.
+     */
+    public static boolean occludesFace(StampCache cache, com.openmason.engine.voxel.IBlockType block, int face) {
+        if (block instanceof BlockType type && MultipartRegistry.of(type) != null) {
+            BlockStamp base = cache.get(type);
+            if (base != null && face >= 0 && face < base.occludesFace().length) {
+                return base.occludesFace()[face];
+            }
+        }
+        return cache.occludesFace(block, face);
+    }
+
+    /** Registers every compiled shape whose block has a stamp. */
+    public static void register(StampCache cache) {
+        for (MultipartShape shape : MultipartRegistry.all()) {
+            register(cache, shape);
+        }
+    }
+
+    /** Registers one block's shapes; does nothing when the block has no stamp. */
+    public static void register(StampCache cache, MultipartShape shape) {
+        BlockType type = shape.owner();
+        BlockStamp base = cache.get(type);
+        if (base == null) {
+            return; // not a stamp block (animated, or no mesh)
+        }
+        Map<String, BlockStamp> parts = new HashMap<>();
+        for (String state : shape.partStates()) {
+            BlockStamp stamp = cache.get(type, state);
+            if (stamp == base) {
+                // The cache falls back to the default model for an unknown state; drawing that
+                // would put a whole cube where a part should be.
+                logger.error("{}: multipart names state '{}', which the SBO lacks", type.name(), state);
+                continue;
+            }
+            parts.put(state, stamp);
+        }
+        // A block that turns with its facing gets every combination baked at each of its four
+        // turns. Many masks draw the same parts, so each distinct part list is composed (and
+        // turned) once and shared.
+        int turnCount = BlockFacing.isOrientable(type) ? 4 : 1;
+        Map<List<String>, BlockStamp[]> composed = new HashMap<>();
+        for (int mask = 0; mask < shape.maskCount(); mask++) {
+            BlockStamp[] turned = composed.computeIfAbsent(shape.states(mask), states -> {
+                List<BlockStamp> drawn = new ArrayList<>();
+                for (String state : states) {
+                    BlockStamp part = parts.get(state);
+                    if (part != null) {
+                        drawn.add(part);
+                    }
+                }
+                BlockStamp stamp = StampComposer.compose(drawn);
+                BlockStamp[] out = new BlockStamp[turnCount];
+                for (int turns = 0; turns < turnCount; turns++) {
+                    out[turns] = StampRotator.rotateY(stamp, turns);
+                }
+                return out;
+            });
+            for (int turns = 0; turns < turnCount; turns++) {
+                cache.put(type, shape.key(mask, turns), turned[turns]);
+            }
+        }
+        logger.debug("Registered {} multipart shapes ({} distinct) x {} turns for {}",
+                shape.maskCount(), composed.size(), turnCount, type.name());
+    }
+}

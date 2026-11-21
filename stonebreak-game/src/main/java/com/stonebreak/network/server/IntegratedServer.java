@@ -192,6 +192,9 @@ public final class IntegratedServer {
         // And for water flow-level mutations → BlockMetaS2C (KIND_WATER_LEVEL), so clients
         // render live flow heights instead of full-height columns.
         level.world().serverSinks().setWaterSink(blockHandler::onServerWaterChange);
+        // State strings the simulation writes with a block it builds (a camp's spiked wall leans)
+        // → BlockStateS2C, queued behind the block batches like a placement echo.
+        level.world().serverSinks().setStateSink(blockHandler::queueStateEcho);
         // Sounds the simulation makes (a mob's hurt/death voice) → SoundEventS2C to the players
         // near it (issue #344); the tick thread never plays into the host client's mixer (#340).
         level.world().serverSinks().setSoundSink((type, event, x, y, z) -> ServerSounds.sendNear(ctx,
@@ -205,8 +208,23 @@ public final class IntegratedServer {
             level.world().getFurnaceRegistry().setStateChangeListener((pos, state) ->
                 blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
         }
+        // Blueberry bush stage changes (growth, ripening, picking) → BlockStateS2C, queued behind
+        // the block batches for the same reason as the furnace: a placed bush writes its first
+        // stage in the tick its block change goes out. Timer-only rewrites never fire this.
+        if (level.world().getBlueberryBushGrowth() != null) {
+            level.world().getBlueberryBushGrowth().setStageListener((x, y, z) ->
+                blockHandler.queueStateEcho(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z)));
+        }
+        // Campfire contents and camp data → BlockStateS2C, same dedup-at-source rule.
+        level.world().getCampfireRegistry().setStateChangeListener((pos, state) ->
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
         // Crafting-table grid changes (issue #307) → BlockStateS2C, same dedup-at-source rule.
         level.world().getWorkbenchRegistry().setStateChangeListener((pos, state) ->
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
+        level.world().getChestRegistry().setStateChangeListener((pos, state) ->
+            blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
+        // Meat-rack hooks → BlockStateS2C, so every client draws the food that hangs there.
+        level.world().getMeatRackRegistry().setStateChangeListener((pos, state) ->
             blockHandler.queueStateEcho(pos.x(), pos.y(), pos.z()));
 
         networkServer.start(localAddress, tcpAddress);
@@ -251,7 +269,7 @@ public final class IntegratedServer {
         for (ServerPlayer sp : roster) {
             if (!sp.handshakeDone() || sp.lastStateNs() == 0L) continue;
             out.add(new EntitySpawner.SpawnAnchor(
-                new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld()));
+                new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), sp.viewDistanceChunks(), sp.isLiveInWorld(), sp.playerId()));
         }
         return out;
     }
@@ -395,6 +413,10 @@ public final class IntegratedServer {
         // on every tick, for as long as it kept throwing.
         long tickStart = System.nanoTime();
         ServerLevel level = ctx.serverLevel();
+        if (level != null && level.isPreview()) {
+            previewTick(level, tickStart);
+            return;
+        }
         if (level != null) {
             runTickStep("stream-centers", () -> level.updateStreamCenters(ctx.players()));
             runTickStep("world", () -> level.tick(TICK_PERIOD_NS / 1_000_000_000f));
@@ -447,6 +469,36 @@ public final class IntegratedServer {
             }
         }
         chunkHandler.onTickEnded(System.nanoTime() - tickStart, ctx.players());
+    }
+
+    /**
+     * The main menu's held preview of a saved world ({@link ServerLevel#isPreview}): the camera
+     * still gets its chunks and the mobs standing in them, but nothing simulates — no health,
+     * fishing or decoy step, and no time/weather sync (the client's clouds drift on their own
+     * and must not be pulled back to the held server clock). Local players only: no keepalive.
+     */
+    private void previewTick(ServerLevel level, long tickStart) {
+        runTickStep("world", level::tickPreview);
+        runTickStep("entities", () -> entityHandler.tick(ctx));
+        runTickStep("chunks", () -> chunkHandler.tick(ctx));
+        for (ServerPlayer sp : ctx.players()) {
+            sp.flushInventoryResync();
+        }
+        chunkHandler.onTickEnded(System.nanoTime() - tickStart, ctx.players());
+    }
+
+    /**
+     * The player resumed the menu's preview of this world ({@link ServerLevel#promoteFromPreview}):
+     * from the next tick it simulates and saves like any singleplayer world. Any thread.
+     */
+    public void promotePreview(double weatherSeconds) {
+        executeOnTick(() -> {
+            ServerLevel level = ctx.serverLevel();
+            if (level != null) {
+                level.promoteFromPreview(weatherSeconds);
+            }
+            step.reset(System.nanoTime()); // no catch-up burst for the time spent in the menu
+        });
     }
 
     private static void runTickStep(String name, Runnable step) {
@@ -940,7 +992,8 @@ public final class IntegratedServer {
 
         // 1. Welcome: who you are + the seed + the authoritative spawn.
         sp.send(new WelcomeS2C(sp.playerId(), ctx.worldSeed(), ctx.generatorType(), ctx.terrainScale(), ctx.climateLayout(),
-                ctx.heightCurve(), ctx.terrainModel(), ctx.standardShape(), spawn.x, spawn.y, spawn.z, sp.clientSecret()));
+                ctx.heightCurve(), ctx.terrainModel(), ctx.standardShape(), ctx.worldFeatures(), spawn.x, spawn.y, spawn.z,
+                sp.clientSecret()));
         TimeSyncS2C timeSync = currentTimeSync();
         if (timeSync != null) {
             sp.send(timeSync, false);

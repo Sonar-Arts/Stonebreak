@@ -62,6 +62,12 @@ public class SaveService implements AutoCloseable {
         new java.util.concurrent.ConcurrentHashMap<>();
 
     private ScheduledFuture<?> autoSaveTask;
+    /**
+     * While true every write is a no-op that leaves the in-memory state (dirty flags, play time)
+     * as it was: the main menu's preview of a saved world ({@link #suspendWrites}) shows the
+     * world without one byte of it changing on disk.
+     */
+    private volatile boolean writesSuspended;
     /** Once true, close() has started: no further autosave may snapshot or submit. */
     private final AtomicBoolean closed = new AtomicBoolean();
     /** The autosave currently past its in-progress gate, so close() can join it before the final flush. */
@@ -265,6 +271,28 @@ public class SaveService implements AutoCloseable {
         return game != null ? game.getTimeOfDay() : null;
     }
 
+    /**
+     * Makes every write a no-op until {@link #resumeWrites}: saves, autosaves, chunk-unload saves,
+     * remote-player writes and the close flush. For the main menu's preview of a saved world,
+     * which loads it but must never change it.
+     */
+    public void suspendWrites() {
+        writesSuspended = true;
+    }
+
+    /**
+     * Ends {@link #suspendWrites}: the world is being played from here. Play time counts from
+     * now, not from the load: time spent looking at the menu is not play time.
+     */
+    public synchronized void resumeWrites() {
+        lastAutoSaveTime = clock.getAsLong();
+        writesSuspended = false;
+    }
+
+    public boolean areWritesSuspended() {
+        return writesSuspended;
+    }
+
     public void startAutoSave() {
         if (autoSaveTask != null) {
             return;
@@ -296,6 +324,10 @@ public class SaveService implements AutoCloseable {
      *                       could not run the snapshot while blocked here)
      */
     private void flushSavesBlocking(String reason, boolean snapshotInline) {
+        if (writesSuspended) {
+            System.out.println("[SAVE] Flush skipped (" + reason + "): writes are suspended");
+            return;
+        }
         CompletableFuture<Void> future;
         if (worldData != null && world != null) {
             future = saveAll(snapshotInline);
@@ -324,6 +356,9 @@ public class SaveService implements AutoCloseable {
     }
 
     private CompletableFuture<Void> saveAll(boolean snapshotInline) {
+        if (writesSuspended) {
+            return CompletableFuture.completedFuture(null);
+        }
         if (worldData == null || world == null) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("Save service not initialized")
@@ -355,7 +390,7 @@ public class SaveService implements AutoCloseable {
     }
 
     private CompletableFuture<Void> saveCubes(boolean inline) {
-        if (world == null) {
+        if (writesSuspended || world == null) {
             return CompletableFuture.completedFuture(null);
         }
         return flushBlobsAsync(inline).thenCompose(ignored -> submitSave(new SaveWork(null, null, true, "cubes")));
@@ -520,7 +555,7 @@ public class SaveService implements AutoCloseable {
      * thread, ordered behind this player's previous write ({@link #pendingNamedSaves}).
      */
     public CompletableFuture<Void> saveNamedPlayer(String username, byte[] json) {
-        if (username == null || json == null || json.length == 0) {
+        if (writesSuspended || username == null || json == null || json.length == 0) {
             return CompletableFuture.completedFuture(null);
         }
         return chainNamed(username, () -> {
@@ -560,6 +595,10 @@ public class SaveService implements AutoCloseable {
      */
     public CompletableFuture<java.nio.file.Path> setNamedPlayerAside(String username) {
         CompletableFuture<java.nio.file.Path> result = new CompletableFuture<>();
+        if (writesSuspended) {
+            result.completeExceptionally(new IllegalStateException("writes are suspended"));
+            return result;
+        }
         chainNamed(username, () -> {
             try {
                 result.complete(repository.setNamedPlayerFileAside(username));
@@ -609,6 +648,14 @@ public class SaveService implements AutoCloseable {
             snapshot.cancel(false);
         }
         awaitInFlightAutoSave();
+        World closing = world;
+        if (closing != null && !writesSuspended) {
+            try {
+                closing.freezeCampsForClose();
+            } catch (RuntimeException e) {
+                System.err.println("[SAVE] Freezing goblin camps before the close flush failed: " + e);
+            }
+        }
         flushSavesBlocking("service close", true);
         autoSaveScheduler.shutdown();
         shutdownAndAwait(savePool, "save");
@@ -705,7 +752,7 @@ public class SaveService implements AutoCloseable {
     }
 
     void performAutoSave() {
-        if (closed.get() || worldData == null || world == null) {
+        if (writesSuspended || closed.get() || worldData == null || world == null) {
             return;
         }
         if (!autoSaveInProgress.compareAndSet(false, true)) {

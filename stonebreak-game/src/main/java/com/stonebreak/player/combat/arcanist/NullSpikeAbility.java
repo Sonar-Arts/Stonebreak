@@ -75,8 +75,8 @@ public class NullSpikeAbility implements AbilitySpell {
             : NULL_SPIKE_SPELLMARKED_DURATION;
         float burstDamage = NULL_SPIKE_BURST_DAMAGE * (1f + ARCANIST_INT_SCALING * intelligence);
 
-        Vector3f direction = new Vector3f(player.getCamera().getFront()).normalize();
-        Vector3d spawnPos = new Vector3d(player.getCamera().getPosition())
+        Vector3f direction = player.getRaycastEngine().aimDirection();
+        Vector3d spawnPos = new Vector3d(player.getRaycastEngine().eyeOrigin())
             .add(direction.x * 0.5, direction.y * 0.5, direction.z * 0.5);
         // Server-authoritative spawn (replicated to all); local fallback only with no session.
         if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(

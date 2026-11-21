@@ -95,7 +95,7 @@ public class BlockIconRenderer {
      */
     public void draw3DItemInSlot(ShaderProgram shaderProgram, BlockType type, int screenSlotX, int screenSlotY,
                                 int screenSlotWidth, int screenSlotHeight, BlockTextureArray textureAtlas, boolean isDraggedItem) {
-        if (type == null || type.getAtlasX() == -1) {
+        if (!com.stonebreak.rendering.sbo.SBOHandMeshRegistry.isDisplayable(type)) {
             return; // Nothing to draw
         }
 
@@ -257,7 +257,7 @@ public class BlockIconRenderer {
         glClear(GL_DEPTH_BUFFER_BIT);
 
         // Handle leaf transparency - enable blending only for transparent leaf blocks
-        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
+        boolean isLeafBlock = blockType != null && blockType.isLeaves();
         if (isLeafBlock && blockType.isTransparent()) {
             // Enable blending for transparent leaves
             glEnable(GL_BLEND);

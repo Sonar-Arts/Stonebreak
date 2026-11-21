@@ -100,4 +100,37 @@ class BlockShapeTest {
         assertEquals(max, BlockShape.collisionHeight(world, 6, Y, 6), EPS,
                 "the whole cell answers the tallest step the footprint overlaps");
     }
+
+    /**
+     * A lone spiked wall leaning SOUTH runs east-west with its beam on the north side: a player
+     * whose footprint only reaches the beam stands on it, below the half block that would step
+     * them on up onto the stakes, which still take a jump like a full block.
+     */
+    @Test
+    void aSpikedWallHasABeamLedgeBehindStakesAFullBlockTall() {
+        world.setBlockRaw(7, Y, 7, BlockType.PALISADE);
+        world.setBlockStateAt(7, Y, 7, com.stonebreak.blocks.palisade.PalisadeState.stateStringFor(
+                StairState.Facing.SOUTH));
+
+        // A 0.6-wide body centred just north of the cell, toes over the beam.
+        float ledge = BlockShape.collisionHeight(world, 7, Y, 7, 7.2f, 6.6f, 7.8f, 7.2f);
+        assertTrue(ledge > 0.4f && ledge < 0.5f, "standing on the beam, was " + ledge);
+        assertEquals(1.0f, BlockShape.collisionHeight(world, 7, Y, 7, 7.2f, 7.5f, 7.8f, 7.6f), EPS,
+                "the stakes");
+        assertEquals(0.0f, BlockShape.collisionHeight(world, 7, Y, 7, 7.2f, 7.85f, 7.8f, 8.0f), EPS,
+                "nothing at the south edge, past the leaning tips");
+    }
+
+    @Test
+    void aSpikedWallsLedgeTurnsWithItsLean() {
+        world.setBlockRaw(8, Y, 8, BlockType.PALISADE);
+        world.setBlockStateAt(8, Y, 8, com.stonebreak.blocks.palisade.PalisadeState.stateStringFor(
+                StairState.Facing.EAST));
+
+        // Leaning east, the wall runs north-south and its beam is on the west side.
+        float west = BlockShape.collisionHeight(world, 8, Y, 8, 7.6f, 8.2f, 8.2f, 8.8f);
+        assertTrue(west > 0.4f && west < 0.5f, "standing on the beam, was " + west);
+        assertEquals(1.0f, BlockShape.collisionHeight(world, 8, Y, 8, 8.5f, 8.2f, 8.6f, 8.8f), EPS,
+                "the stakes");
+    }
 }

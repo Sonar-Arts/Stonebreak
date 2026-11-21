@@ -64,6 +64,7 @@ public final class GameScreens {
     private CharacterScreen characterScreen;
     private WorkbenchScreen workbenchScreen;
     private FurnaceScreen furnaceScreen;
+    private com.stonebreak.ui.chest.ChestScreen chestScreen;
     private RecipeScreen recipeScreen;
 
     /**
@@ -186,6 +187,9 @@ public final class GameScreens {
         // The shipped OMUI/SBUI furnace screen (#298).
         furnaceScreen.setPresentation(new com.stonebreak.ui.furnace.FurnaceDocument(
                 com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
+        chestScreen = new com.stonebreak.ui.chest.ChestScreen(game, player.getInventory(), inputHandler);
+        chestScreen.setPresentation(new com.stonebreak.ui.chest.ChestDocument(
+                com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
         // The shipped workbench screen (#300), same rules.
         workbenchScreen.setPresentation(new com.stonebreak.ui.runtime.screens.ContainerDocument(
                 WorkbenchScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get()));
@@ -278,6 +282,10 @@ public final class GameScreens {
 
     public FurnaceScreen furnaceScreen() {
         return furnaceScreen;
+    }
+
+    public com.stonebreak.ui.chest.ChestScreen chestScreen() {
+        return chestScreen;
     }
 
     public RecipeScreen recipeScreen() {

@@ -106,6 +106,8 @@ class ScreenActionsTest {
         try {
             var s = new com.stonebreak.player.PlayerStats();
             s.restore(1234, 4567.25, 15432.5, 9876.4, 4321.0, 512.75, 3725.0);
+            s.restoreActivity(845.0, 37, 2048);
+            s.restoreKillsByType(java.util.Map.of(com.stonebreak.mobs.entities.EntityType.GOBLIN, 5L));
             services.stats = com.stonebreak.ui.runtime.contracts.StatsRecord.of(s);
             game.drain();
             UiValue.Obj root = (UiValue.Obj) game.host().data().root("stats").source().state().valueOrNull();
@@ -114,6 +116,10 @@ class ScreenActionsTest {
             assertEquals(UiValue.of("15.43 km"), text.get("totalDistance"));
             assertEquals(UiValue.of("512.8 m"), text.get("distanceInAir"));
             assertEquals(UiValue.of("1h 2m 5s"), text.get("timeInAir"));
+            assertEquals(UiValue.of("5"), text.get("killsGoblin"));
+            assertEquals(UiValue.of("14m 5s"), text.get("timeFishing"));
+            assertEquals(UiValue.of("37"), text.get("bassCaught"));
+            assertEquals(UiValue.of("2,048"), text.get("itemsCrafted"));
             assertEquals(UiValue.of(1234), root.get("entitiesKilled"));
         } finally {
             java.util.Locale.setDefault(previous);
@@ -148,7 +154,7 @@ class ScreenActionsTest {
         assertEquals(UiValue.of("Cow"), root.get("name"));
         assertEquals(UiValue.of("2 defeated"), root.get("badge"));
         assertEquals(UiValue.of("Default  1/2"), root.get("chip"));
-        assertEquals(UiValue.of("1 / 5 observed"), root.get("observedText"));
+        assertEquals(UiValue.of("1 / 6 observed"), root.get("observedText"));
 
         assertEquals(ActionCall.State.SUCCEEDED, scope.invoke("stonebreak:screen.glossary.cycle",
             new UiValue.Obj(java.util.Map.of("delta", UiValue.of(1))), site).state());

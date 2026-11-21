@@ -24,7 +24,13 @@ import java.util.WeakHashMap;
 
 import static org.lwjgl.opengl.GL20.*;
 
-/** Render-thread snapshot shared by terrain, water and entity lighting. */
+/**
+ * Render-thread snapshot shared by terrain, water and entity lighting, in two tiers ranked
+ * together by distance. The near tier is the {@link PointLightGlsl#MAX_LIGHTS} nearest within
+ * 64 blocks, each with a point shadow and bounce light. The far tier is the next
+ * {@link #MAX_FAR_LIGHTS}, unshadowed, which keeps torches lit past that reach and on the
+ * FastLOD terrain of unloaded chunks ({@link RememberedLights}); only the world shader reads it.
+ */
 public final class DynamicLights {
     private static final float MAX_DISTANCE_SQ = 64f * 64f;
     /** Held-torch ember offset in the camera's own basis (right hand, below the view axis). */
@@ -35,7 +41,10 @@ public final class DynamicLights {
     private static final float REMOTE_FLAME_UP = 0.25f;
     /** A remote player's torch falls back to their chest when the hand is inside a wall. */
     private static final float REMOTE_CHEST_UP = 1.2f;
-    private static final NearestLightSources nearest = new NearestLightSources(PointLightGlsl.MAX_LIGHTS);
+    /** Distant, unshadowed lights; matches {@code MAX_FAR_POINT_LIGHTS} in far_lights.glsl. */
+    public static final int MAX_FAR_LIGHTS = 64;
+    private static final NearestLightSources nearest =
+            new NearestLightSources(PointLightGlsl.MAX_LIGHTS + MAX_FAR_LIGHTS);
     private static final Vector3d[] positions = new Vector3d[PointLightGlsl.MAX_LIGHTS];
     /** Who carries each light: a remote player for their held torch, null otherwise. */
     private static final Entity[] holders = new Entity[PointLightGlsl.MAX_LIGHTS];
@@ -53,8 +62,11 @@ public final class DynamicLights {
     private static final Vector3f renderScratch = new Vector3f();
     private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
+    private static final FloatBuffer farPositionData = BufferUtils.createFloatBuffer(MAX_FAR_LIGHTS * 4);
+    private static final FloatBuffer farColorData = BufferUtils.createFloatBuffer(MAX_FAR_LIGHTS * 4);
     private static final Map<ShaderProgram, Upload> uploads = new WeakHashMap<>();
     private static int count;
+    private static int farCount;
     private static long frame;
     private static boolean held;
     private static boolean shadowsEnabled;
@@ -64,6 +76,7 @@ public final class DynamicLights {
     private static final class Upload {
         final int countLocation, positionLocation, colorLocation, shadowLocation, samplerLocation;
         final int indirectLocation, indirectSamplerLocation;
+        final int farCountLocation, farPositionLocation, farColorLocation;
         long frame = -1;
         Upload(ShaderProgram shader) {
             int program = shader.getProgramId();
@@ -74,6 +87,10 @@ public final class DynamicLights {
             samplerLocation = glGetUniformLocation(program, "u_pointShadowMap");
             indirectLocation = glGetUniformLocation(program, "u_pointIndirectEnabled");
             indirectSamplerLocation = glGetUniformLocation(program, "u_pointIndirectMap");
+            // -1 in shaders without far_lights.glsl (water, entities); GL ignores those uploads.
+            farCountLocation = glGetUniformLocation(program, "u_farLightCount");
+            farPositionLocation = glGetUniformLocation(program, "u_farLightPos[0]");
+            farColorLocation = glGetUniformLocation(program, "u_farLightColor[0]");
         }
     }
 
@@ -89,14 +106,17 @@ public final class DynamicLights {
     }
 
     /**
-     * Select the nearest emitting lights, reserving one slot for the held torch: placed
-     * {@link BlockLightSource}s and the torches {@code remotePlayers} hold (issue #344 — their
-     * held item arrives with {@code PlayerHeldItemS2C}), ranked together by distance.
+     * Select the nearest emitting lights, reserving one near slot for the held torch: placed
+     * {@link BlockLightSource}s, those remembered in unloaded chunks, and the torches
+     * {@code remotePlayers} hold (issue #344 — their held item arrives with
+     * {@code PlayerHeldItemS2C}), ranked together by distance. The nearest fill the shadowed
+     * near tier; the rest, and any past its reach, fall to the far tier.
      */
     public static void update(World world, Player player, Vector3dc cameraPos, float totalTime,
                               Iterable<RemotePlayer> remotePlayers) {
         frame++;
         count = 0;
+        farCount = 0;
         Arrays.fill(holders, null);
         Arrays.fill(sourceBlocks, null);
         shadowsEnabled = false;
@@ -104,17 +124,25 @@ public final class DynamicLights {
         held = world != null && player != null && !player.getCamera().isCinematicActive() && isHoldingTorch(player);
         positionData.clear();
         colorData.clear();
-        nearest.clear(PointLightGlsl.MAX_LIGHTS - (held ? 1 : 0));
+        farPositionData.clear();
+        farColorData.clear();
+        int nearLimit = PointLightGlsl.MAX_LIGHTS - (held ? 1 : 0);
+        nearest.clear(nearLimit + MAX_FAR_LIGHTS);
         if (world != null && cameraPos != null) {
             for (BlockLightSource source : BlockLightSource.VALUES) {
                 for (BlockPos pos : source.candidates(world)) {
-                    double dx = pos.x() + 0.5 - cameraPos.x();
-                    double dy = pos.y() + 0.5 - cameraPos.y();
-                    double dz = pos.z() + 0.5 - cameraPos.z();
-                    float distance = (float) (dx * dx + dy * dy + dz * dz);
-                    // Reject distant sources before querying blocks or parsing their state.
-                    if (distance <= MAX_DISTANCE_SQ && source.isEmitting(world, pos)) {
+                    float distance = distanceSquared(pos, cameraPos);
+                    // Reject sources that can't make the list before querying blocks or parsing their state.
+                    if (nearest.wouldAccept(distance) && source.isEmitting(world, pos)) {
                         nearest.offer(pos, distance);
+                    }
+                }
+            }
+            RememberedLights remembered = world.getRememberedLights();
+            if (remembered != null) {
+                for (RememberedLights.Light[] lights : remembered.chunks()) {
+                    for (RememberedLights.Light light : lights) {
+                        nearest.offer(light.pos(), distanceSquared(light.pos(), cameraPos));
                     }
                 }
             }
@@ -131,28 +159,63 @@ public final class DynamicLights {
                 addLight(TorchLight.PROFILE, totalTime);
             }
             for (int i = 0; i < nearest.size(); i++) {
+                // Sorted by distance, so once one light is far every later one is too.
+                boolean near = i < nearLimit && nearest.distance(i) <= MAX_DISTANCE_SQ;
+                // Near slots left empty by distant lights leave the list longer than the far tier.
+                if (!near && farCount == MAX_FAR_LIGHTS) break;
+                Vector3d out = near ? positions[count] : scratch;
+                LightProfile profile;
+                float elapsed;
+                BlockType sourceBlock;
+                long sourceKey;
                 if (nearest.holder(i) instanceof RemotePlayer rp) {
-                    remoteTorchPosition(world, rp, positions[count]);
-                    holders[count] = rp;
-                    sourceBlocks[count] = BlockType.TORCH_PLACED;
-                    sourceKeys[count] = com.stonebreak.fx.bindings.AmbientSources.holderKey(rp.getPlayerId());
+                    remoteTorchPosition(world, rp, out);
+                    if (near) holders[count] = rp;
+                    profile = TorchLight.PROFILE;
+                    sourceBlock = BlockType.TORCH_PLACED;
+                    sourceKey = com.stonebreak.fx.bindings.AmbientSources.holderKey(rp.getPlayerId());
                     // Each holder flickers on its own phase, as placed torches do.
-                    float phase = (rp.getPlayerId() & 0xFF) / 256f * TorchLight.PROFILE.period();
-                    addLight(TorchLight.PROFILE, totalTime + phase);
-                    continue;
+                    elapsed = totalTime + (rp.getPlayerId() & 0xFF) / 256f * profile.period();
+                } else {
+                    BlockPos pos = nearest.get(i);
+                    RememberedLights.Light light = remembered != null ? remembered.find(pos) : null;
+                    if (light != null) {
+                        out.set(light.x(), light.y(), light.z());
+                        profile = light.source().profile();
+                        // Its chunk is unloaded: nothing there to start ambient FX on.
+                        sourceBlock = null;
+                    } else {
+                        sourceBlock = world.getBlockAt(pos.x(), pos.y(), pos.z());
+                        BlockLightSource source = BlockLightSource.of(sourceBlock);
+                        if (source == null) continue;
+                        out.set(source.emitterPosition(world, pos, emitterScratch));
+                        profile = source.profile();
+                    }
+                    sourceKey = com.stonebreak.fx.bindings.AmbientSources.blockKey(pos.x(), pos.y(), pos.z());
+                    elapsed = totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, profile.period());
                 }
-                BlockPos pos = nearest.get(i);
-                BlockLightSource source = BlockLightSource.of(world.getBlockAt(pos.x(), pos.y(), pos.z()));
-                if (source == null) continue;
-                positions[count].set(source.emitterPosition(world, pos, emitterScratch));
-                sourceBlocks[count] = world.getBlockAt(pos.x(), pos.y(), pos.z());
-                sourceKeys[count] = com.stonebreak.fx.bindings.AmbientSources.blockKey(pos.x(), pos.y(), pos.z());
-                LightProfile profile = source.profile();
-                addLight(profile, totalTime + AnimatedBlockRenderer.loopPhaseOffset(pos, profile.period()));
+                if (near) {
+                    // Ambient FX (#437) follow the near tier only.
+                    sourceBlocks[count] = sourceBlock;
+                    sourceKeys[count] = sourceKey;
+                    addLight(profile, elapsed);
+                } else {
+                    putLight(farPositionData, farColorData, out, profile, elapsed, 0f);
+                    farCount++;
+                }
             }
         }
         positionData.flip();
         colorData.flip();
+        farPositionData.flip();
+        farColorData.flip();
+    }
+
+    private static float distanceSquared(BlockPos pos, Vector3dc cameraPos) {
+        double dx = pos.x() + 0.5 - cameraPos.x();
+        double dy = pos.y() + 0.5 - cameraPos.y();
+        double dz = pos.z() + 0.5 - cameraPos.z();
+        return (float) (dx * dx + dy * dy + dz * dz);
     }
 
     /**
@@ -196,18 +259,23 @@ public final class DynamicLights {
         return block != null && block.isSolid();
     }
 
+    /** A near light at {@code positions[count]}, whose shadow slot is its index. */
     private static void addLight(LightProfile profile, float elapsed) {
+        pulses[count] = profile.pulse(elapsed);
+        putLight(positionData, colorData, positions[count], profile, elapsed, count);
+        count++;
+    }
+
+    private static void putLight(FloatBuffer posOut, FloatBuffer colorOut, Vector3dc world,
+                                 LightProfile profile, float elapsed, float slot) {
         // positions[] stay in world space (double: shadow views, indirect volumes and cube lookups
         // want that); the uniform goes up in render space, because the shaders subtract it from a
         // render-space fragment position. The origin is fixed for the frame before update() runs
         // (Renderer.renderWorld).
-        Vector3f p = RenderOrigin.toRender(positions[count], renderScratch);
-        positionData.put(p.x).put(p.y).put(p.z).put(PointLightGlsl.RADIUS);
-        float pulse = profile.pulse(elapsed);
-        pulses[count] = pulse;
-        float k = profile.peak() * (profile.floor() + (1f - profile.floor()) * pulse);
-        colorData.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(count);
-        count++;
+        Vector3f p = RenderOrigin.toRender(world, renderScratch);
+        posOut.put(p.x).put(p.y).put(p.z).put(PointLightGlsl.RADIUS);
+        float k = profile.peak() * profile.intensity(elapsed);
+        colorOut.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(slot);
     }
 
     /** Whether a player figure (a remote player or a decoy) is alive and holding a torch. */
@@ -222,6 +290,9 @@ public final class DynamicLights {
     }
 
     public static int count() { return count; }
+
+    /** Distant, unshadowed lights selected this frame; never given a shadow slot. */
+    public static int farCount() { return farCount; }
 
     /**
      * Slot of the held torch's light, or {@code -1} when none is held. Always slot 0 —
@@ -284,6 +355,11 @@ public final class DynamicLights {
         glUniform1i(upload.samplerLocation, POINT_SHADOW_TEXTURE_UNIT);
         glUniform1i(upload.indirectLocation, indirectEnabled ? 1 : 0);
         glUniform1i(upload.indirectSamplerLocation, INDIRECT_TEXTURE_UNIT);
+        glUniform1i(upload.farCountLocation, farCount);
+        if (farCount > 0) {
+            glUniform4fv(upload.farPositionLocation, farPositionData);
+            glUniform4fv(upload.farColorLocation, farColorData);
+        }
         upload.frame = frame;
     }
 
@@ -302,6 +378,7 @@ public final class DynamicLights {
         glUniform1i(upload.samplerLocation, POINT_SHADOW_TEXTURE_UNIT);
         glUniform1i(upload.indirectLocation, 0);
         glUniform1i(upload.indirectSamplerLocation, INDIRECT_TEXTURE_UNIT);
+        glUniform1i(upload.farCountLocation, 0);
         upload.frame = -1;
     }
 

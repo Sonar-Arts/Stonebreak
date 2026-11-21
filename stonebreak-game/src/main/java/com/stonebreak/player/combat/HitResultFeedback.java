@@ -18,7 +18,8 @@ import org.joml.Vector3fc;
  *       a lethal hit's despawn cannot take away. The hurt/death voice is not played here: the
  *       server replicates it to every player near the victim ({@code SoundEventS2C}, #344),
  *       this one included;</li>
- *   <li>melee: Rage, Quarry and T3 lifesteal via {@link Player#onMeleeHitLanded};</li>
+ *   <li>melee: Rage, Quarry and T3 lifesteal via {@link Player#onMeleeHitLanded}, and the stealth
+ *       break a silent kill escapes;</li>
  *   <li>arrows: the Ranger's Quarry/Study — arrows simulate on the server, so this result is
  *       the only place the shooter learns what they hit.</li>
  * </ul>
@@ -33,13 +34,18 @@ public final class HitResultFeedback {
      * @param anchor where the damage number shows (the victim's head, as the server saw it)
      */
     public static void apply(Player player, LivingEntity target, LivingEntity.DamageSource source,
-                             HitKind kind, float dealt, Vector3dc anchor) {
+                             HitKind kind, float dealt, boolean killed, Vector3dc anchor) {
         // DamageNumbers keeps float world coordinates (UI-owned); narrowed at that boundary only.
         DamageNumbers.getInstance().spawn((float) anchor.x(), (float) anchor.y(), (float) anchor.z(), dealt);
         if (player == null) {
             return;
         }
         if (kind == HitKind.MELEE) {
+            if (!killed) {
+                // A swing breaks stealth unless it killed an unaware target outright (#321); the
+                // swing itself already broke it for any other target, making this a no-op there.
+                player.getStealth().onAttack(player);
+            }
             player.onMeleeHitLanded(target, dealt);
         }
         if (source == LivingEntity.DamageSource.ARROW && target != null) {
@@ -49,8 +55,8 @@ public final class HitResultFeedback {
 
     /** Float-anchor form kept for callers not yet on double positions (network). */
     public static void apply(Player player, LivingEntity target, LivingEntity.DamageSource source,
-                             HitKind kind, float dealt, Vector3fc anchor) {
-        apply(player, target, source, kind, dealt,
+                             HitKind kind, float dealt, boolean killed, Vector3fc anchor) {
+        apply(player, target, source, kind, dealt, killed,
                 new org.joml.Vector3d(anchor.x(), anchor.y(), anchor.z()));
     }
 }

@@ -10,13 +10,15 @@ import com.stonebreak.mobs.entities.LivingEntity;
  * no second set of numbers to keep in sync with physics.
  *
  * <p>Every limit here traces to something the body actually does: the step is the one
- * {@link EntityCollision} gives the physics body ({@link EntityCollision#MOB_STEP}, for full and
- * partial shapes alike — mobs do not mantle), and the climb ceiling comes from the mob's own jump
- * apex rather than a constant, so a stronger jumper really does plan routes a weaker one will not.
+ * {@link EntityCollision} gives the mob's physics body ({@link LivingEntity#getMaxStepUp()}, half a
+ * block — {@link EntityCollision#MOB_STEP} — unless the mob steps higher; full and partial shapes
+ * alike, mobs do not mantle), the climb ceiling comes from the mob's own jump apex rather than a
+ * constant, so a stronger jumper really does plan routes a weaker one will not, and a glider takes
+ * any drop it can float down.
  */
 public final class NavProfiles {
 
-    /** The step the body climbs without a jump. */
+    /** The step a body climbs without a jump, unless the mob steps higher. */
     public static final float MAX_STEP_UP = EntityCollision.MOB_STEP;
 
     /**
@@ -32,6 +34,9 @@ public final class NavProfiles {
     /** Drops a mob will take on purpose. Below the player's four-block fall-damage threshold. */
     private static final float WALKER_MAX_FALL = 3.0f;
     private static final float SWIMMER_MAX_FALL = 5.0f;
+    /** A drop costs a walker care; a glider just floats down it, so routes barely charge for one. */
+    private static final float FALL_COST_PER_BLOCK = 0.5f;
+    private static final float GLIDE_COST_PER_BLOCK = 0.1f;
 
     /**
      * Footprint beyond which a route demands clearance either side. No current mob reaches it —
@@ -52,25 +57,29 @@ public final class NavProfiles {
         float footprint = Math.max(entity.getWidth(), entity.getLength());
         int columnRadius = footprint > WIDE_FOOTPRINT ? 1 : 0;
 
-        float maxClimb = Math.max(MAX_STEP_UP,
+        float stepUp = entity.getMaxStepUp();
+        float maxClimb = Math.max(stepUp,
                 Math.min(CLIMB_CEILING, entity.getJumpApexHeight() * USABLE_JUMP_FRACTION));
         // Leaving water is a swim stroke, which reaches higher than a standing jump.
         float waterEscapeClimb = Math.max(maxClimb,
                 entity.getSwimStrokeReach() * USABLE_JUMP_FRACTION);
+        // A glider takes any drop it can float down, and prefers it to the long way round.
+        float glideDrop = entity.getGlideSinkSpeed() > 0f ? entity.getMaxGlideDrop() : 0f;
+        float fallCost = glideDrop > 0f ? GLIDE_COST_PER_BLOCK : FALL_COST_PER_BLOCK;
 
         if (entity.canSwim()) {
             return new GroundProfile(standingHeight, columnRadius,
-                    MAX_STEP_UP, maxClimb, waterEscapeClimb, SWIMMER_MAX_FALL,
+                    stepUp, maxClimb, waterEscapeClimb, Math.max(SWIMMER_MAX_FALL, glideDrop),
                     true, 1.0f, 1.2f,
-                    0.5f, 2.0f, 0.2f);
+                    0.5f, 2.0f, glideDrop > 0f ? GLIDE_COST_PER_BLOCK : 0.2f);
         }
         // Land mobs CAN swim — they just hate it. Marking deep water impassable instead would be
         // worse than a preference: a cow that fell in a lake would have no route out at all, and
         // would stand on the bottom until something else moved it. The multipliers are steep
         // enough that any dry route of comparable length wins, so they still walk around ponds.
         return new GroundProfile(standingHeight, columnRadius,
-                MAX_STEP_UP, maxClimb, waterEscapeClimb, WALKER_MAX_FALL,
+                stepUp, maxClimb, waterEscapeClimb, Math.max(WALKER_MAX_FALL, glideDrop),
                 true, 3.0f, 8.0f,
-                0.5f, 2.0f, 0.5f);
+                0.5f, 2.0f, fallCost);
     }
 }

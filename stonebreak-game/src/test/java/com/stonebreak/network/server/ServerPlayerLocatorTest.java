@@ -1,12 +1,16 @@
 package com.stonebreak.network.server;
 
+import com.openmason.engine.net.server.ConnectionRegistry;
+import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
 import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.world.TestWorld;
+import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -21,6 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Mobs on the authoritative world see the connected roster, not the host's client player (#340).
@@ -71,9 +79,27 @@ class ServerPlayerLocatorTest {
 
         remote.setMovementFlags((byte) PlayerStateFlags.SPRINTING);
         assertTrue(flee.canStart(context), "the reported sprint flag carries the trigger further");
-        assertEquals(com.stonebreak.player.PlayerConstants.NOISE_RADIUS_RUN,
-                locator.nearestPlayerNoiseRadius(goose.getPosition()), 1e-4f,
-                "and a sprinter is audible to stealth awareness");
+        remote.updateState(6.5f, 64, 0, 0f, 0f); // and it is actually moving
+        assertEquals(Loudness.SPRINT, locator.nearestPlayerLoudness(goose.getPosition()), 1e-4f,
+                "a sprinter is audible to stealth awareness");
+    }
+
+    @Test
+    void theRosterReportsHowLoudAndHowHiddenThePlayerIs() {
+        ServerPlayer player = joined(1, 3, 0);
+        assertEquals(0f, locator.nearestPlayerLoudness(goose.getPosition()), "standing still is silent");
+
+        player.updateState(3.5f, 64, 0, 0f, 0f);
+        assertEquals(Loudness.WALK, locator.nearestPlayerLoudness(goose.getPosition()), 1e-4f);
+        assertFalse(locator.nearestPlayerStealthed(goose.getPosition()));
+
+        player.setMovementFlags((short) PlayerStateFlags.STEALTHED);
+        assertEquals(Loudness.STEALTH, locator.nearestPlayerLoudness(goose.getPosition()), 1e-4f);
+        assertTrue(locator.nearestPlayerStealthed(goose.getPosition()));
+
+        player.setMovementFlags((short) (PlayerStateFlags.STEALTHED | PlayerStateFlags.DODGE_NOISE));
+        assertEquals(Loudness.DODGE, locator.nearestPlayerLoudness(goose.getPosition()), 1e-4f,
+                "a dodge's scuff gives a stealthed player away");
     }
 
     @Test
@@ -109,5 +135,28 @@ class ServerPlayerLocatorTest {
         org.joml.Vector3d nearest = viaWorld.nearestPlayer(mob.getPosition(), new org.joml.Vector3d());
         assertNotNull(nearest, "resolved lazily, so wiring after the mob was built still counts");
         assertEquals(4.0, nearest.x, 1e-4);
+    }
+    // ── Line of sight ──────────────────────────────────────────────────────
+    // Mob hits on players are covered by ServerHealthHandlerTest (server-owned health, #343).
+
+    @Test
+    void aWallBetweenTheArcherAndThePlayerBlocksTheShot() {
+        joined(1, 6, 0);
+        World world = mock(World.class);
+        when(world.getAnimatedBlockRegistry()).thenReturn(new com.stonebreak.blocks.anim.AnimatedBlockRegistry());
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(call ->
+                (long) call.getArgument(0) == 3 ? BlockType.STONE : BlockType.AIR);
+        ServerLevel level = mock(ServerLevel.class);
+        when(level.world()).thenReturn(world);
+        ServerWorldContext ctx = new ServerWorldContext(mock(ConnectionRegistry.class));
+        ctx.setServerLevel(level);
+        ServerPlayerLocator sighted = new ServerPlayerLocator(roster, ctx, null);
+        org.joml.Vector3d eye = new org.joml.Vector3d(0, 65, 0);
+
+        assertFalse(sighted.canSeeNearestPlayer(goose.getPosition(), eye));
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenReturn(BlockType.AIR);
+        // Sight reads the physics cache: tell it the wall went, as World.setBlockAt would.
+        com.stonebreak.world.physics.WorldPhysics.of(world).engine().invalidateAll();
+        assertTrue(sighted.canSeeNearestPlayer(goose.getPosition(), eye));
     }
 }

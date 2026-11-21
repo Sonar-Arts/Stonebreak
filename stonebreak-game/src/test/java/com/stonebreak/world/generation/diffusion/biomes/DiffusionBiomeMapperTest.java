@@ -27,6 +27,7 @@ class DiffusionBiomeMapperTest {
         assertEquals(BiomeType.SNOWY_PLAINS, DiffusionBiomeMapper.map((short) 3, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.DESERT, DiffusionBiomeMapper.map((short) 5, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.RED_SAND_DESERT, DiffusionBiomeMapper.map((short) 205, WELL_ABOVE_SHORE, NO_WATER)); // red_desert
+        assertEquals(BiomeType.SHADE, DiffusionBiomeMapper.map((short) 206, WELL_ABOVE_SHORE, NO_WATER));   // shade
         assertEquals(BiomeType.TAIGA, DiffusionBiomeMapper.map((short) 15, WELL_ABOVE_SHORE, NO_WATER));
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 17, WELL_ABOVE_SHORE, NO_WATER));   // savanna
         assertEquals(BiomeType.STONY_PEAKS, DiffusionBiomeMapper.map((short) 19, WELL_ABOVE_SHORE, NO_WATER));
@@ -63,6 +64,7 @@ class DiffusionBiomeMapperTest {
     void beachEligibleLandBiomesNearShoreBecomeBeach() {
         assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 1, SEA_LEVEL, SEA_LEVEL));     // plains, at sea level, sea nearby
         assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 5, SEA_LEVEL + 2, SEA_LEVEL)); // desert, just above
+        assertEquals(BiomeType.BEACH, DiffusionBiomeMapper.map((short) 206, SEA_LEVEL + 2, SEA_LEVEL)); // shade, just above
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, SEA_LEVEL + 8, SEA_LEVEL)); // just outside the band
         assertEquals(BiomeType.PLAINS, DiffusionBiomeMapper.map((short) 1, SEA_LEVEL - 1, SEA_LEVEL)); // below sea level, not "near shore land"
     }
@@ -87,7 +89,7 @@ class DiffusionBiomeMapperTest {
         for (short id : new short[] {41, 44, 46, 48}) {
             assertTrue(DiffusionBiomeMapper.isOceanId(id), "ocean id " + id);
         }
-        for (short id : new short[] {1, 5, 6, 8, 15, 29, 205}) {
+        for (short id : new short[] {1, 5, 6, 8, 15, 29, 205, 206}) {
             assertFalse(DiffusionBiomeMapper.isOceanId(id), "land id " + id);
         }
     }

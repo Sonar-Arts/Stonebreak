@@ -2,7 +2,6 @@ package com.stonebreak.player.combat.stealth;
 
 import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerConstants;
-import org.joml.Vector3f;
 
 /**
  * Universal toggleable stealth mode available to every player class (not a class ability).
@@ -131,33 +130,6 @@ public class StealthController {
 
     /** Duration FLAT_FOOTED lasts when applied to an unaware target, per the player's class. */
     public float getFlatFootedDuration(Player player) { return config(player).flatFootedDuration(); }
-
-    /**
-     * Current player noise radius (blocks) for enemy sound detection. Stealthed emits the class
-     * stealth radius; otherwise running/walking/idle by horizontal speed. A recent dodge spike
-     * ({@link Player#getDodgeNoiseRadius()}) takes over when louder, even mid-stealth.
-     */
-    public float getNoiseRadius(Player player) {
-        float base;
-        if (isStealthed()) {
-            base = config(player).noiseRadiusStealth();
-        } else {
-            float horiz = horizontalSpeed(player);
-            if (horiz <= 0.5f) {
-                base = 0f; // standing still emits no movement noise
-            } else if (horiz >= PlayerConstants.MOVE_SPEED * 1.2f) {
-                base = PlayerConstants.NOISE_RADIUS_RUN;
-            } else {
-                base = PlayerConstants.NOISE_RADIUS_WALK;
-            }
-        }
-        return Math.max(base, player.getDodgeNoiseRadius());
-    }
-
-    private static float horizontalSpeed(Player player) {
-        Vector3f v = player.getVelocity();
-        return (float) Math.sqrt(v.x * v.x + v.z * v.z);
-    }
 
     private static StealthConfig config(Player player) {
         return StealthConfig.forClass(player.getCharacterStats());

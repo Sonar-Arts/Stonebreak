@@ -44,6 +44,15 @@ public enum TerrainGeneratorType {
         return NativeTerrain.create(seed, this, scale, layout, states);
     }
 
+    /**
+     * True when {@link #create} starts (and blocks on) an external model service — TGMPipe for
+     * DaedalusTGM-Exp. Anything that should stay cheap, like the main menu's backdrop, must not
+     * build such a generator until the player asks for the world.
+     */
+    public boolean needsModelService() {
+        return this == DIFFUSION;
+    }
+
     /** Parses a persisted or networked name; anything unrecognised falls back to {@code fallback}. */
     public static TerrainGeneratorType parse(String name, TerrainGeneratorType fallback) {
         if (name != null) {

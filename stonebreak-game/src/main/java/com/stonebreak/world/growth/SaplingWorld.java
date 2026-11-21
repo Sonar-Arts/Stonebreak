@@ -33,4 +33,26 @@ public interface SaplingWorld {
     /** Called once by the system it serves (adapters register world hooks here). */
     default void attach(SaplingGrowthSystem system) {
     }
+
+    /** Called once by the blueberry bush system it serves (adapters register world hooks here). */
+    default void attach(BlueberryBushGrowthSystem system) {
+    }
+
+    /** The block-state string at a cell, or null. */
+    default String getState(long x, long y, long z) {
+        return null;
+    }
+
+    /** Writes a cell's block-state string (null clears it). */
+    default void setState(long x, long y, long z, String state) {
+    }
+
+    /** A named blob section persisted with a cube, or null. */
+    default byte[] readSection(CubePos cube, String section) {
+        return null;
+    }
+
+    /** Stores (non-null) or clears (null) a named blob section of a cube; no-op for an unloaded cube. */
+    default void writeSection(CubePos cube, String section, byte[] bytes) {
+    }
 }

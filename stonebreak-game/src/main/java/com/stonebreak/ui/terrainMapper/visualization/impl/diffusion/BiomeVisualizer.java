@@ -56,20 +56,12 @@ public final class BiomeVisualizer implements NoiseVisualizer {
         return BIOMES_BY_ORDINAL[i];
     }
 
+    /** One palette for both generators' maps (Standard's, which carries every biome: swamp and the Shade too). */
     private static Map<BiomeType, Integer> buildColorTable() {
         EnumMap<BiomeType, Integer> map = new EnumMap<>(BiomeType.class);
-        map.put(BiomeType.PLAINS,          0xFF8DB600);
-        map.put(BiomeType.DESERT,          0xFFEDC9AF);
-        map.put(BiomeType.RED_SAND_DESERT, 0xFFCE6E3A);
-        map.put(BiomeType.SNOWY_PLAINS,    0xFFEAF3F7);
-        map.put(BiomeType.TUNDRA,          0xFFB5C4C4);
-        map.put(BiomeType.TAIGA,           0xFF2F5339);
-        map.put(BiomeType.STONY_PEAKS,     0xFF8A8A8A);
-        map.put(BiomeType.BEACH,           0xFFE9DDB6);
-        map.put(BiomeType.OCEAN,           0xFF2F5F8F);
-        map.put(BiomeType.ICE_FIELDS,      0xFFC7E4EC);
-        map.put(BiomeType.BADLANDS,        0xFFB85A2E);
-        map.put(BiomeType.MEADOW,          0xFF9DC46B);
+        for (BiomeType biome : BiomeType.values()) {
+            map.put(biome, com.stonebreak.ui.terrainMapper.visualization.impl.BiomeVisualizer.colorOf(biome));
+        }
         return map;
     }
 }

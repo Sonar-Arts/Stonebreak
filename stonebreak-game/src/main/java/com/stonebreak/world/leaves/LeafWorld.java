@@ -72,6 +72,16 @@ public interface LeafWorld {
     void setBlock(long x, long y, long z, BlockType type);
 
     /**
+     * Whether the leaf at these coords was placed by a player
+     * ({@link com.stonebreak.blocks.leaves.LeafState#PLACED}). Such a leaf never
+     * decays. It still carries support through itself like any leaf, but it is
+     * not an anchor: only logs hold a canopy up.
+     */
+    default boolean isPersistent(long x, long y, long z) {
+        return false;
+    }
+
+    /**
      * The blocks of one resident cube in {@link CubeWorld#cellIndex} order, for the install rescan, or null
      * when the cube is not resident or provably holds no leaf and no log (e.g. a uniform air or stone cube).
      * The default reads the cells one by one.

@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
 import com.stonebreak.world.World;
@@ -96,31 +97,99 @@ public final class AiContext {
     }
 
     /**
-     * Turns the mob toward the nearest player without moving it.
+     * The player this mob is after — the one it has locked onto ({@link LivingEntity#lockedTargetPlayerId}),
+     * else the one its stealth awareness tracks (#321), else the nearest — or {@code null}. Scratch
+     * owned by this context: read it, do not retain it.
+     */
+    public Vector3d targetPlayer() {
+        return players.playerPosition(targetId(), self(), playerScratch);
+    }
+
+    /** Distance to {@link #targetPlayer()}, or {@link Float#MAX_VALUE} when there is none. */
+    public float distanceToTarget() {
+        Vector3d player = targetPlayer();
+        return player == null ? Float.MAX_VALUE : (float) self().distance(player);
+    }
+
+    /**
+     * Turns the mob toward {@link #targetPlayer()} without moving it.
      *
      * @return degrees still left to turn, or {@link Float#MAX_VALUE} when there is no player
      */
-    public float facePlayer(float turnSpeedDegPerSec) {
-        Vector3d player = nearestPlayer();
-        if (player == null) {
+    public float faceTarget(float turnSpeedDegPerSec) {
+        return facePoint(targetPlayer(), turnSpeedDegPerSec);
+    }
+
+    /**
+     * Turns the mob toward {@code point} without moving it; a turn speed of zero only measures.
+     *
+     * @return degrees still left to turn, or {@link Float#MAX_VALUE} when {@code point} is null
+     */
+    public float facePoint(Vector3dc point, float turnSpeedDegPerSec) {
+        if (point == null) {
             return Float.MAX_VALUE;
         }
-        Vector3f toPlayer = faceScratch.set((float) (player.x - entity.getX()), 0.0f, (float) (player.z - entity.getZ()));
-        if (toPlayer.lengthSquared() < 1.0e-6f) {
+        Vector3f toPoint = faceScratch.set((float) (point.x() - entity.getX()), 0.0f,
+                (float) (point.z() - entity.getZ()));
+        if (toPoint.lengthSquared() < 1.0e-6f) {
             return 0.0f;
         }
-        steering().faceDirection(toPlayer, turnSpeedDegPerSec, deltaTime);
-        return steering().yawErrorTo(toPlayer);
+        steering().faceDirection(toPoint, turnSpeedDegPerSec, deltaTime);
+        return steering().yawErrorTo(toPoint);
     }
 
-    /** Whether the nearest player is in clear sight from {@code eye}. */
-    public boolean canSeeNearestPlayer(Vector3dc eye) {
-        return players.canSeeNearestPlayer(self(), eye);
+    /** Distance from this mob to {@code point}, or {@link Float#MAX_VALUE} when it is null. */
+    public float distanceTo(Vector3dc point) {
+        return point == null ? Float.MAX_VALUE : (float) self().distance(point);
     }
 
-    /** Lands a blow from this mob on the nearest player; see {@link PlayerLocator#hurtNearestPlayer}. */
-    public boolean hurtNearestPlayer(float amount, float knockback) {
-        return players.hurtNearestPlayer(self(), amount, knockback);
+    /** Whether {@link #targetPlayer()} is in clear sight from {@code eye}. */
+    public boolean canSeeTarget(Vector3dc eye) {
+        return players.canSeePlayer(targetId(), self(), eye);
+    }
+
+    /** {@link #canSeeTarget}, with leaves no bar to the view. */
+    public boolean canSeeTargetThroughLeaves(Vector3dc eye) {
+        return players.canSeePlayerThroughLeaves(targetId(), self(), eye);
+    }
+
+    /** Lands a blow from this mob on {@link #targetPlayer()}; see {@link PlayerLocator#hurtPlayer}. */
+    public boolean hurtTarget(float amount, float knockback) {
+        return players.hurtPlayer(targetId(), self(), amount, knockback);
+    }
+
+    /**
+     * Writes the direction {@link #targetPlayer()} is looking into {@code out}; see
+     * {@link PlayerLocator#playerLook}.
+     *
+     * @return {@code out}, or {@code null} when that is not known
+     */
+    public Vector3f targetLook(Vector3f out) {
+        return players.playerLook(targetId(), self(), out);
+    }
+
+    /** The players this mob can perceive. */
+    public PlayerLocator players() {
+        return players;
+    }
+
+    private int targetId() {
+        int locked = entity.lockedTargetPlayerId();
+        if (locked != PlayerLocator.NEAREST) {
+            return locked;
+        }
+        AwarenessController awareness = entity.getAwareness();
+        return awareness != null ? awareness.targetPlayerId() : PlayerLocator.NEAREST;
+    }
+
+    /**
+     * Whether this mob knows the player is there to fight: always for a mob without stealth
+     * awareness, only while ALERTED for one with it — an unaware goblin does not swing at a
+     * stealthed player who wanders into reach (#321).
+     */
+    public boolean alertedToPlayer() {
+        AwarenessController awareness = entity.getAwareness();
+        return awareness == null || awareness.getState() == AwarenessController.AwarenessState.ALERTED;
     }
 
     /** Whether the nearest player is sprinting — skittish mobs notice that from further off. */

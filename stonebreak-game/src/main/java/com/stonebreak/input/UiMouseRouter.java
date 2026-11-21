@@ -65,6 +65,10 @@ final class UiMouseRouter {
         if (furnaceScreen != null && furnaceScreen.isVisible() && game.getState() == GameState.FURNACE_UI) {
             return;
         }
+        com.stonebreak.ui.chest.ChestScreen chestScreen = game.getChestScreen();
+        if (chestScreen != null && chestScreen.isVisible() && game.getState() == GameState.CHEST_UI) {
+            return;
+        }
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (inventoryScreen != null && inventoryScreen.isVisible()) {
             return;

@@ -1,10 +1,14 @@
 package com.stonebreak.input;
 
 import com.stonebreak.blocks.stalagmite.StalagmiteInteraction;
+import com.stonebreak.rendering.player.items.StaffHead;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.blueberrybush.BlueberryBushInteraction;
+import com.stonebreak.blocks.blueberrybush.BlueberryBushPlanting;
 import com.stonebreak.blocks.door.DoorInteraction;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.ItemStack;
@@ -107,8 +111,24 @@ final class WorldMouseHandler {
             return;
         }
 
-        // Food consumption takes priority over block placement.
-        if (!held.isEmpty() && held.isFood()) {
+        // A blueberry aimed at grass plants a bush instead of being eaten.
+        if (!held.isEmpty() && BlueberryBushPlanting.isBerryItem(held.getItem()) && isAimingAtGrass(player)) {
+            interactOrPlaceBlock(player);
+            return;
+        }
+
+        // Raw meat (anything smeltable) aimed at a campfire goes on the fire instead of being eaten.
+        if (!held.isEmpty() && tryCookOnCampfire(player, held)) {
+            return;
+        }
+
+        // Food aimed at a meat rack hangs on its hooks instead of being eaten.
+        if (!held.isEmpty() && tryHangOnMeatRack(player, held)) {
+            return;
+        }
+
+        // Food consumption takes priority over block placement; a full-health player can't eat.
+        if (!held.isEmpty() && held.isFood() && !player.isFullHealth()) {
             ItemType foodType = held.asItemType();
             if (foodType != null && foodType.getHealAmount() > 0) {
                 player.heal(foodType.getHealAmount());
@@ -130,14 +150,17 @@ final class WorldMouseHandler {
         interactOrPlaceBlock(player);
     }
 
-    /** Staff fire bolt, rate-limited. Server-authoritative spawn with a local fallback when sessionless. */
+    /**
+     * Staff fire bolt, rate-limited: leaves the staff head, aimed at the crosshair.
+     * Server-authoritative spawn with a local fallback when sessionless.
+     */
     private void castFireBolt(Player player) {
         long now = System.nanoTime();
         if (now - lastFireBoltCastNanos < STAFF_CAST_COOLDOWN_NANOS) {
             return;
         }
-        Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-        org.joml.Vector3d spawnPos = new org.joml.Vector3d(player.getCamera().getPosition());
+        Vector3d spawnPos = player.getRaycastEngine().launchOrigin(StaffHead.world(player));
+        Vector3f dir = player.getRaycastEngine().aimDirectionFrom(spawnPos);
         if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_FIRE_BOLT, spawnPos, dir)) {
             EntityManager em = Game.getEntityManager();
             if (em != null) {
@@ -155,8 +178,9 @@ final class WorldMouseHandler {
      * rod does nothing.
      */
     private void useFishingRod(Player player, ItemStack rod) {
-        Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
-        if (!MultiplayerSession.sendFishingRodUse(player.getCamera().getPosition(), dir)) {
+        Vector3f dir = player.getRaycastEngine().aimDirection();
+        Vector3d pos = player.getRaycastEngine().eyeOrigin();
+        if (!MultiplayerSession.sendFishingRodUse(pos, dir)) {
             return;
         }
         boolean cast = ItemType.FISHING_ROD_STATE_CAST.equals(rod.getState());
@@ -164,6 +188,33 @@ final class WorldMouseHandler {
         if (cast) {
             player.setActiveBobber(null); // the server retires it; the line goes at once
         }
+    }
+
+    private static boolean tryCookOnCampfire(Player player, ItemStack held) {
+        if (!com.stonebreak.blocks.campfire.CampfireState.isCookable(
+                Game.getInstance().getSmeltingManager(), held.getItem())) {
+            return false; // nothing to cook: no need to look for a fire
+        }
+        Vector3i target = player.raycast();
+        return target != null
+                && Game.getWorld().getBlockAt(target.x, target.y, target.z) == BlockType.CAMPFIRE
+                && com.stonebreak.blocks.campfire.CampfireInteraction.tryCook(player, held, target.x, target.y, target.z);
+    }
+
+    private static boolean tryHangOnMeatRack(Player player, ItemStack held) {
+        if (!com.stonebreak.blocks.meatrack.MeatRackState.accepts(held.getItem())) {
+            return false; // not food: no need to look for a rack
+        }
+        Vector3i target = player.raycast();
+        return target != null
+                && Game.getWorld().getBlockAt(target.x, target.y, target.z) == BlockType.MEAT_RACK
+                && com.stonebreak.blocks.meatrack.MeatRackInteraction.tryHang(player, held, target.x, target.y, target.z);
+    }
+
+    private static boolean isAimingAtGrass(Player player) {
+        Vector3i target = player.raycast();
+        return target != null
+                && BlueberryBushPlanting.canPlantOn(Game.getWorld().getBlockAt(target.x, target.y, target.z));
     }
 
     /** Interactable blocks (workbench/furnace/door) open/toggle; anything else falls through to placement. */
@@ -179,12 +230,23 @@ final class WorldMouseHandler {
         if (targetedBlockType == BlockType.WORKBENCH) {
             Game.getInstance().openWorkbenchScreen(
                     new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
+        } else if (targetedBlockType == BlockType.CHEST) {
+            Game.getInstance().openChestScreen(
+                    new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
         } else if (targetedBlockType == BlockType.FURNACE) {
             Game.getInstance().openFurnaceScreen(
                     new com.openmason.engine.util.BlockPos(targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z));
         } else if (targetedBlockType == BlockType.LIMESTONE_STALAGMITE
                 && StalagmiteInteraction.tryGrow(player, targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
             // Watered with a full bucket: grew one size.
+        } else if (targetedBlockType == BlockType.BLUEBERRY_BUSH
+                && BlueberryBushInteraction.tryHarvest(player, targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
+            // Picked a ripe bush: it goes back to Mature instead of breaking.
+        } else if (targetedBlockType == BlockType.MEAT_RACK
+                && player.getInventory().getSelectedHotbarSlot().isEmpty()
+                && com.stonebreak.blocks.meatrack.MeatRackInteraction.tryTake(
+                        targetedBlockPos.x, targetedBlockPos.y, targetedBlockPos.z)) {
+            // Empty-handed: took the food off the last filled hook.
         } else if (targetedBlockType == BlockType.OAK_DOOR) {
             // Toggle the door open/closed — plays the target state's one-shot
             // clip and holds the final pose.
@@ -204,9 +266,9 @@ final class WorldMouseHandler {
         float arrowSpeed = player.getBowController().getArrowSpeed();
         if (player.getBowController().releaseAndFire() && player.getInventory().hasItem(ItemType.ARROW)) {
             player.getInventory().removeItem(ItemType.ARROW);
-            Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
+            Vector3f dir = player.getRaycastEngine().aimDirection();
             Vector3f vel = new Vector3f(dir).mul(arrowSpeed);
-            org.joml.Vector3d spawnPos = new org.joml.Vector3d(player.getCamera().getPosition());
+            Vector3d spawnPos = player.getRaycastEngine().eyeOrigin();
             // Server-authoritative spawn (replicated to all); local fallback
             // only when there is no session at all.
             if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_ARROW, spawnPos, vel)) {

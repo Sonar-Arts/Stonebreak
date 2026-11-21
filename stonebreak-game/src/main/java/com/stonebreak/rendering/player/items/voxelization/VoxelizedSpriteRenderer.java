@@ -36,6 +36,9 @@ public class VoxelizedSpriteRenderer {
     // Cache for voxelization results (palette + voxel data), same keying.
     private final Map<SpriteVoxelizer.SpriteKey, SpriteVoxelizer.VoxelizationResult> voxelizationCache = new HashMap<>();
 
+    // Raw-to-cooked voxel pairings for food cooking on a campfire, built once per pair.
+    private final Map<CookPair, CookBlend> cookBlends = new HashMap<>();
+
     // OpenGL state tracking for proper restoration
     private boolean previousCullFaceEnabled = false;
 
@@ -123,6 +126,142 @@ public class VoxelizedSpriteRenderer {
     }
 
     /**
+     * Draws {@code raw} part-way to {@code cooked}: food cooking on a campfire. {@code doneness}
+     * runs 0 (all raw) to 1 (all cooked). Pixels turn at their own pace (a fixed per-pixel scatter,
+     * {@link #pixelDoneness}), so the sprite browns unevenly rather than fading as one. A pixel both
+     * sprites have blends its colour; one only the raw sprite has drops out, and one only the cooked
+     * sprite has appears, halfway through that pixel's own turn — so the shape changes too.
+     */
+    public void renderCookingSprite(ItemType raw, ItemType cooked, float doneness, Matrix4f spriteTransform) {
+        SpriteVoxelizer.SpriteKey rawKey = SpriteVoxelizer.SpriteKey.of(raw);
+        SpriteVoxelizer.SpriteKey cookedKey = SpriteVoxelizer.SpriteKey.of(cooked);
+        VoxelMesh rawMesh = getOrCreateMesh(rawKey);
+        VoxelMesh cookedMesh = getOrCreateMesh(cookedKey);
+        if (rawMesh == null || !rawMesh.isCreated()) {
+            return;
+        }
+        if (cookedMesh == null || !cookedMesh.isCreated()) {
+            renderVoxelizedSprite(raw, null, spriteTransform);
+            return;
+        }
+        List<VoxelData> rawVoxels = voxelizationCache.get(rawKey).getVoxels();
+        List<VoxelData> cookedVoxels = voxelizationCache.get(cookedKey).getVoxels();
+        CookBlend blend = cookBlends.computeIfAbsent(new CookPair(rawKey, cookedKey),
+                pair -> CookBlend.of(rawVoxels, cookedVoxels));
+        float t = Math.max(0.0f, Math.min(1.0f, doneness));
+
+        setupShaderUniforms();
+        applyTransformMatrix(spriteTransform);
+        setupRenderState();
+        bindColorPaletteTexture(raw);
+
+        Vector4f color = new Vector4f();
+        rawMesh.bind();
+        for (int i = 0; i < rawVoxels.size(); i++) {
+            VoxelData voxel = rawVoxels.get(i);
+            float local = pixelDoneness(voxel, t);
+            int match = blend.cookedAt()[i];
+            if (match < 0) {
+                if (local >= 0.5f) {
+                    continue; // a raw-only pixel, cooked away
+                }
+                drawVoxel(i, unpack(voxel.getOriginalRGBA(), color));
+            } else {
+                drawVoxel(i, mix(voxel.getOriginalRGBA(), cookedVoxels.get(match).getOriginalRGBA(), local, color));
+            }
+        }
+        rawMesh.unbind();
+
+        cookedMesh.bind();
+        for (int j : blend.cookedOnly()) {
+            VoxelData voxel = cookedVoxels.get(j);
+            if (pixelDoneness(voxel, t) >= 0.5f) {
+                drawVoxel(j, unpack(voxel.getOriginalRGBA(), color));
+            }
+        }
+        cookedMesh.unbind();
+
+        applyTransformMatrix(getCurrentModelMatrix());
+        restoreRenderState();
+    }
+
+    /** The share of a pixel's turn the whole sprite spreads its start over; the rest is the turn. */
+    private static final float COOK_SCATTER = 0.6f;
+
+    /** How far one pixel is from raw (0) to cooked (1) when the sprite is {@code t} done. */
+    static float pixelDoneness(VoxelData voxel, float t) {
+        int px = Math.round(voxel.getPosition().x / SpriteVoxelizer.getSpriteScale());
+        int py = Math.round(voxel.getPosition().y / SpriteVoxelizer.getSpriteScale());
+        int h = px * 73856093 ^ py * 19349663;
+        h ^= h >>> 13;
+        h *= 0x5bd1e995;
+        h ^= h >>> 15;
+        float start = ((h & 0xFFFF) / 65535.0f) * COOK_SCATTER;
+        float x = Math.max(0.0f, Math.min(1.0f, (t - start) / (1.0f - COOK_SCATTER)));
+        return x * x * (3.0f - 2.0f * x);
+    }
+
+    private static Vector4f unpack(int argb, Vector4f dest) {
+        return dest.set(((argb >> 16) & 0xFF) / 255.0f, ((argb >> 8) & 0xFF) / 255.0f,
+                (argb & 0xFF) / 255.0f, ((argb >>> 24) & 0xFF) / 255.0f);
+    }
+
+    private static Vector4f mix(int fromArgb, int toArgb, float t, Vector4f dest) {
+        float r = ((fromArgb >> 16) & 0xFF) + (((toArgb >> 16) & 0xFF) - ((fromArgb >> 16) & 0xFF)) * t;
+        float g = ((fromArgb >> 8) & 0xFF) + (((toArgb >> 8) & 0xFF) - ((fromArgb >> 8) & 0xFF)) * t;
+        float b = (fromArgb & 0xFF) + ((toArgb & 0xFF) - (fromArgb & 0xFF)) * t;
+        float a = ((fromArgb >>> 24) & 0xFF) + (((toArgb >>> 24) & 0xFF) - ((fromArgb >>> 24) & 0xFF)) * t;
+        return dest.set(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+    }
+
+    /** Draws voxel {@code index} of the bound mesh — all six faces — in {@code color}. */
+    private void drawVoxel(int index, Vector4f color) {
+        shaderProgram.setUniform("u_color", color);
+        int indicesPerVoxel = 6 * 6;
+        GL11.glDrawElements(GL11.GL_TRIANGLES, indicesPerVoxel, GL11.GL_UNSIGNED_INT,
+                (long) index * indicesPerVoxel * Integer.BYTES);
+    }
+
+    private record CookPair(SpriteVoxelizer.SpriteKey raw, SpriteVoxelizer.SpriteKey cooked) {}
+
+    /**
+     * Which cooked voxel sits on each raw voxel's pixel ({@code cookedAt}, -1 for none), and the
+     * cooked voxels on pixels the raw sprite leaves empty. Pixels are matched by position, not
+     * texel, so sprites of different sizes still line up on their shared centre.
+     */
+    private record CookBlend(int[] cookedAt, int[] cookedOnly) {
+        static CookBlend of(List<VoxelData> raw, List<VoxelData> cooked) {
+            Map<Long, Integer> cookedByPixel = new HashMap<>();
+            for (int j = 0; j < cooked.size(); j++) {
+                cookedByPixel.put(pixelOf(cooked.get(j)), j);
+            }
+            int[] cookedAt = new int[raw.size()];
+            boolean[] matched = new boolean[cooked.size()];
+            for (int i = 0; i < raw.size(); i++) {
+                Integer j = cookedByPixel.get(pixelOf(raw.get(i)));
+                cookedAt[i] = j == null ? -1 : j;
+                if (j != null) {
+                    matched[j] = true;
+                }
+            }
+            int[] only = new int[cooked.size()];
+            int n = 0;
+            for (int j = 0; j < cooked.size(); j++) {
+                if (!matched[j]) {
+                    only[n++] = j;
+                }
+            }
+            return new CookBlend(cookedAt, java.util.Arrays.copyOf(only, n));
+        }
+
+        private static long pixelOf(VoxelData v) {
+            long px = Math.round(v.getPosition().x / SpriteVoxelizer.getSpriteScale());
+            long py = Math.round(v.getPosition().y / SpriteVoxelizer.getSpriteScale());
+            return (px << 32) ^ (py & 0xFFFFFFFFL);
+        }
+    }
+
+    /**
      * Gets or creates a voxel mesh for the given item type.
      */
     private VoxelMesh getOrCreateMesh(SpriteVoxelizer.SpriteKey key) {
@@ -197,27 +336,11 @@ public class VoxelizedSpriteRenderer {
 
         mesh.bind();
 
-        List<VoxelData> voxels = result.getVoxels();
-        int facesPerVoxel = 6;
-        int indicesPerFace = 6;
-
         // Render each voxel with its own color
+        List<VoxelData> voxels = result.getVoxels();
+        Vector4f color = new Vector4f();
         for (int i = 0; i < voxels.size(); i++) {
-            VoxelData voxel = voxels.get(i);
-
-            // Convert RGBA to normalized color values
-            int rgba = voxel.getOriginalRGBA();
-            float red = ((rgba >> 16) & 0xFF) / 255.0f;
-            float green = ((rgba >> 8) & 0xFF) / 255.0f;
-            float blue = (rgba & 0xFF) / 255.0f;
-            float alpha = ((rgba >> 24) & 0xFF) / 255.0f;
-
-            // Set the color uniform for this voxel
-            shaderProgram.setUniform("u_color", new Vector4f(red, green, blue, alpha));
-
-            // Render all faces of this voxel
-            int startIndex = i * facesPerVoxel * indicesPerFace;
-            GL11.glDrawElements(GL11.GL_TRIANGLES, facesPerVoxel * indicesPerFace, GL11.GL_UNSIGNED_INT, startIndex * Integer.BYTES);
+            drawVoxel(i, unpack(voxels.get(i).getOriginalRGBA(), color));
         }
 
         mesh.unbind();
@@ -387,6 +510,7 @@ public class VoxelizedSpriteRenderer {
 
         meshCache.clear();
         voxelizationCache.clear();
+        cookBlends.clear();
         SpriteVoxelizer.clearCache();
 
         logger.debug("Cleared voxel renderer cache");

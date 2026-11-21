@@ -33,6 +33,16 @@ add_executable(worldgen_vegetation_test vegetation_test.cpp)
 target_link_libraries(worldgen_vegetation_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
 target_compile_options(worldgen_vegetation_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
 add_test(NAME worldgen_vegetation COMMAND worldgen_vegetation_test)
+
+add_executable(worldgen_blueberry_test blueberry_test.cpp)
+target_link_libraries(worldgen_blueberry_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
+target_compile_options(worldgen_blueberry_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+add_test(NAME worldgen_blueberry COMMAND worldgen_blueberry_test)
+
+add_executable(worldgen_shade_test shade_test.cpp)
+target_link_libraries(worldgen_shade_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
+target_compile_options(worldgen_shade_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+add_test(NAME worldgen_shade COMMAND worldgen_shade_test)
 # The shared library's exported surface (sbw_* only) - a plain C caller through the public header.
 add_executable(worldgen_abi_test abi_test.c)
 target_link_libraries(worldgen_abi_test PRIVATE stonebreak_worldgen)

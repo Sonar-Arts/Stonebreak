@@ -123,7 +123,7 @@ final class CubeEntityStore implements CubeEvents.InstallListener, CubeEvents.Sa
         List<Entity> owned = ownedBy(cube.pos());
         List<EntityData> records = new ArrayList<>(owned.size());
         for (Entity entity : owned) {
-            if (!entity.isAlive() || !entity.isPersistent() || entity.isNetworkShadow()) {
+            if (!entity.isAlive() || !entity.isPersistent() || entity.isNetworkShadow() || manager.isLeaving(entity)) {
                 continue;
             }
             EntityData data = EntitySerializer.serialize(entity);

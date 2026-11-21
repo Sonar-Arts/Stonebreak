@@ -101,10 +101,6 @@ public final class CharacterCreationActionHandler {
         state.getCharacterStats().investSkillPoint(skillId);
     }
 
-    public void onSelectSkillMode(com.stonebreak.rpg.SkillListMode mode) {
-        state.setSkillMode(mode);
-    }
-
     /** Spends the starting (or earned) WTP on one proficiency rank. */
     public void onTrainWeapon(com.stonebreak.items.weapon.WeaponGroup group) {
         state.getCharacterStats().trainWeapon(group);

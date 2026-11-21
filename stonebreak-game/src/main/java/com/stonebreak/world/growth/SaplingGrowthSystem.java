@@ -21,9 +21,12 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
 import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.generation.trees.CypressTree;
+import com.stonebreak.world.generation.trees.RegularTree;
+import com.stonebreak.world.generation.trees.TreeBlockSink;
+import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Grows placed cypress saplings into {@link CypressTree}s after a random delay, the way a
+ * Grows placed saplings into trees ({@link Species}) after a random delay, the way a
  * Minecraft sapling matures. The delay only counts down while the sapling's cube is loaded.
  *
  * <p><b>Persistence (#447).</b> Each sapling's remaining time is kept in its cube's blob section
@@ -44,12 +47,48 @@ public final class SaplingGrowthSystem {
     static final int GROW_TICK_RANGE = 5 * 60 * 20;
     /** Wait before retrying a sapling that was due but couldn't grow. */
     static final int RETRY_TICKS = 10 * 20;
-    /** Clear cells a sapling needs above it: the shortest cypress trunk. */
-    static final int REQUIRED_HEADROOM = 10;
     /** How often remaining time is written back to the cube for saving. */
     static final int PERSIST_INTERVAL_TICKS = 20;
     private static final int MAX_TICKS_PER_FRAME = 2;
     private static final float TICK_INTERVAL = 1.0f / 20.0f;
+
+    /** What each sapling grows into, with the space that tree needs. */
+    private enum Species {
+        // headroom: the shortest cypress trunk
+        CYPRESS(BlockType.CYPRESS_SAPLING, CypressTree.MAX_HEIGHT, CypressTree.LEAF_RADIUS, 10,
+            CypressTree::place),
+        // headroom: the tallest oak trunk, so no variant is cut short by a ceiling
+        DRY_OAK(BlockType.DRY_OAK_SAPLING, RegularTree.MAX_HEIGHT, RegularTree.LEAF_RADIUS, 7,
+            (out, x, y, z) -> RegularTree.place(out, x, y, z, BlockType.DRY_OAK_LOG, BlockType.DRY_OAK_LEAVES));
+
+        private final BlockType sapling;
+        private final int maxHeight;
+        private final int leafRadius;
+        private final int headroom;
+        private final TreeShape shape;
+
+        Species(BlockType sapling, int maxHeight, int leafRadius, int headroom, TreeShape shape) {
+            this.sapling = sapling;
+            this.maxHeight = maxHeight;
+            this.leafRadius = leafRadius;
+            this.headroom = headroom;
+            this.shape = shape;
+        }
+
+        static Species of(BlockType block) {
+            for (Species s : values()) {
+                if (s.sapling == block) {
+                    return s;
+                }
+            }
+            return null;
+        }
+    }
+
+    @FunctionalInterface
+    private interface TreeShape {
+        void place(TreeBlockSink out, int x, int y, int z);
+    }
 
     private final SaplingWorld world;
     private final Random random;
@@ -65,11 +104,12 @@ public final class SaplingGrowthSystem {
 
     /** Soil a sapling may be planted on and grow from. */
     public static boolean isSoil(BlockType block) {
-        return block == BlockType.DIRT || block == BlockType.GRASS || block == BlockType.SWAMPY_GRASS;
+        return block == BlockType.DIRT || block == BlockType.GRASS || block == BlockType.SWAMPY_GRASS
+            || block == BlockType.DRY_GRASS;
     }
 
     public static boolean isSapling(BlockType block) {
-        return block == BlockType.CYPRESS_SAPLING;
+        return Species.of(block) != null;
     }
 
     // ===== Tick driving =====
@@ -254,20 +294,21 @@ public final class SaplingGrowthSystem {
         long x = pos.x();
         long y = pos.y();
         long z = pos.z();
-        if (!isSapling(world.getBlock(x, y, z))) {
+        Species species = Species.of(world.getBlock(x, y, z));
+        if (species == null) {
             return true; // gone without a funnel notice — just stop tracking it
         }
         if (!isSoil(world.getBlock(x, y - 1, z))
-                || y + CypressTree.MAX_HEIGHT >= com.stonebreak.world.operations.WorldConfiguration.MAX_Y
-                || !world.isAreaLoaded(x, y, z, CypressTree.LEAF_RADIUS, CypressTree.MAX_HEIGHT)) {
+                || y + species.maxHeight >= com.stonebreak.world.operations.WorldConfiguration.MAX_Y
+                || !world.isAreaLoaded(x, y, z, species.leafRadius, species.maxHeight)) {
             return false;
         }
-        for (int dy = 1; dy <= REQUIRED_HEADROOM; dy++) {
+        for (int dy = 1; dy <= species.headroom; dy++) {
             if (!isReplaceable(world.getBlock(x, y + dy, z))) {
                 return false;
             }
         }
-        CypressTree.place((bx, by, bz, type) -> {
+        species.shape.place((bx, by, bz, type) -> {
             if (isReplaceable(world.getBlock(bx, by, bz))) {
                 world.setBlock(bx, by, bz, type);
             }

@@ -1,10 +1,13 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.Entity;
-import com.stonebreak.player.PlayerConstants;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
 import com.stonebreak.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
+import org.joml.Vector3f;
+
+import java.util.function.Consumer;
 
 /**
  * Where the nearest player is, as far as a behaviour is concerned.
@@ -53,8 +56,8 @@ public interface PlayerLocator {
 
     /**
      * Hurts the player whose body {@code point} is inside (grown by {@code margin}) — a
-     * projectile's hit (issue #343). A player's own shot never hits them, and hits another
-     * player only where the world allows PvP.
+     * projectile's hit (issue #343). No knockback: an arrow stings, it does not shove. A player's
+     * own shot never hits them, and hits another player only where the world allows PvP.
      *
      * @param ownerPlayerId the player who shot it, or -1 for a mob's shot
      * @return whether a player took the hit (the projectile is spent)
@@ -64,18 +67,101 @@ public interface PlayerLocator {
     }
 
     /**
-     * How far the nearest player's movement can be heard, in blocks, for stealth awareness.
-     *
-     * <p>The default knows only what the server is told — whether the player sprints. Stealth
-     * state, walking noise and dodge spikes live on the player's own client and are not
-     * replicated, so a walking player is heard at zero range and found by sight alone.
+     * How loud the nearest player's movement is right now, on the {@link Loudness} scale, for
+     * stealth awareness. The default knows only whether the player sprints; the server's roster
+     * also knows stealth, pace and dodges from the replicated movement flags.
      */
-    default float nearestPlayerNoiseRadius(Vector3dc from) {
-        return nearestPlayerSprinting(from) ? PlayerConstants.NOISE_RADIUS_RUN : 0.0f;
+    default float nearestPlayerLoudness(Vector3dc from) {
+        return nearestPlayerSprinting(from) ? Loudness.SPRINT : 0.0f;
+    }
+
+    /** Whether the nearest player is fully stealthed — a smaller shape for mobs to pick out. */
+    default boolean nearestPlayerStealthed(Vector3dc from) {
+        return false;
+    }
+
+    /**
+     * One player as a mob's senses take them in (#321). {@code id} names them to the targeted calls
+     * ({@link #playerPosition}, {@link #canSeePlayer}, {@link #hurtPlayer}); {@code position} is a
+     * fresh vector the receiver may keep.
+     *
+     * @param loudness     movement loudness on the {@link Loudness} scale, Stealth skill included
+     * @param stealthed    fully stealthed: a smaller shape to pick out
+     * @param stealthSkill Stealth skill points, which slow detection
+     */
+    record SensedPlayer(int id, Vector3d position, float loudness, boolean stealthed, float stealthSkill) {}
+
+    /** The id a locator that cannot tell players apart gives its one player: "whoever is nearest". */
+    int NEAREST = -1;
+
+    /**
+     * Hands every player within {@code radius} of {@code from} to {@code sink}, so a mob perceives
+     * each of them and not just the nearest — a quiet player close by must not hide a loud one
+     * further off. The default knows only the nearest player, as {@link #NEAREST}.
+     */
+    default void forEachPlayer(Vector3dc from, float radius, Consumer<SensedPlayer> sink) {
+        Vector3d position = nearestPlayer(from, new Vector3d());
+        if (position != null && position.distance(from) <= radius) {
+            sink.accept(new SensedPlayer(NEAREST, position, nearestPlayerLoudness(from),
+                    nearestPlayerStealthed(from), 0f));
+        }
+    }
+
+    /**
+     * Writes where player {@code id} is into {@code out}.
+     *
+     * @return {@code out}, or {@code null} once that player is gone; the default ignores the id and
+     *         answers for the nearest player
+     */
+    default Vector3d playerPosition(int id, Vector3dc from, Vector3d out) {
+        return nearestPlayer(from, out);
+    }
+
+    /** Whether nothing solid stands between {@code eye} and player {@code id}'s body. */
+    default boolean canSeePlayer(int id, Vector3dc from, Vector3dc eye) {
+        return canSeeNearestPlayer(from, eye);
+    }
+
+    /**
+     * {@link #canSeePlayer}, but leaves do not block the view — for a mob at home in the canopy
+     * that makes its victim out through the foliage.
+     */
+    default boolean canSeePlayerThroughLeaves(int id, Vector3dc from, Vector3dc eye) {
+        return canSeePlayer(id, from, eye);
+    }
+
+    /** Hurts player {@code id}, shoved away from {@code from}; see {@link #hurtNearestPlayer}. */
+    default boolean hurtPlayer(int id, Vector3dc from, float amount, float knockback) {
+        return hurtNearestPlayer(from, amount, knockback);
+    }
+
+    /**
+     * Writes the unit direction player {@code id} is looking in into {@code out} — what a mob that
+     * must not be seen (the Vestige) reads to know when it is being watched.
+     *
+     * @return {@code out}, or {@code null} when the locator does not know (the default) or the
+     *         player is gone
+     */
+    default Vector3f playerLook(int id, Vector3dc from, Vector3f out) {
+        return null;
+    }
+
+    /**
+     * Sets the player whose body {@code point} is inside (grown by {@code margin}) burning for
+     * {@code seconds} at {@code damagePerSecond}; a projectile's lingering fire. Refreshes, never
+     * stacks.
+     *
+     * @return whether a player was there to catch fire
+     */
+    default boolean ignitePlayerAt(Vector3dc point, float margin, float seconds, float damagePerSecond) {
+        return false;
     }
 
     /** Height above a player's feet that ranged attackers aim at and sight on. */
     float CHEST_HEIGHT = 1.1f;
+
+    /** Height above a player's feet that they see from. */
+    float EYE_HEIGHT = com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 
     /** Nobody to react to; for tests and for worlds with no players. */
     PlayerLocator NONE = (from, out) -> null;
@@ -99,8 +185,18 @@ public interface PlayerLocator {
             }
 
             @Override
-            public float nearestPlayerNoiseRadius(Vector3dc from) {
-                return players().nearestPlayerNoiseRadius(from);
+            public float nearestPlayerLoudness(Vector3dc from) {
+                return players().nearestPlayerLoudness(from);
+            }
+
+            @Override
+            public boolean nearestPlayerStealthed(Vector3dc from) {
+                return players().nearestPlayerStealthed(from);
+            }
+
+            @Override
+            public boolean canSeeNearestPlayer(Vector3dc from, Vector3dc eye) {
+                return players().canSeeNearestPlayer(from, eye);
             }
 
             @Override
@@ -109,8 +205,43 @@ public interface PlayerLocator {
             }
 
             @Override
+            public void forEachPlayer(Vector3dc from, float radius, Consumer<SensedPlayer> sink) {
+                players().forEachPlayer(from, radius, sink);
+            }
+
+            @Override
+            public Vector3d playerPosition(int id, Vector3dc from, Vector3d out) {
+                return players().playerPosition(id, from, out);
+            }
+
+            @Override
+            public boolean canSeePlayer(int id, Vector3dc from, Vector3dc eye) {
+                return players().canSeePlayer(id, from, eye);
+            }
+
+            @Override
+            public boolean canSeePlayerThroughLeaves(int id, Vector3dc from, Vector3dc eye) {
+                return players().canSeePlayerThroughLeaves(id, from, eye);
+            }
+
+            @Override
+            public boolean hurtPlayer(int id, Vector3dc from, float amount, float knockback) {
+                return players().hurtPlayer(id, from, amount, knockback);
+            }
+
+            @Override
             public boolean hitPlayerAt(Vector3dc point, float margin, float amount, int ownerPlayerId) {
                 return players().hitPlayerAt(point, margin, amount, ownerPlayerId);
+            }
+
+            @Override
+            public Vector3f playerLook(int id, Vector3dc from, Vector3f out) {
+                return players().playerLook(id, from, out);
+            }
+
+            @Override
+            public boolean ignitePlayerAt(Vector3dc point, float margin, float seconds, float damagePerSecond) {
+                return players().ignitePlayerAt(point, margin, seconds, damagePerSecond);
             }
 
             private PlayerLocator players() {

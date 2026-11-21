@@ -38,6 +38,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
     private final HeightCurveVersion heightCurve;
     /** The Standard shape of a STANDARD world (DIFFUSION worlds carry it and ignore it). */
     private StandardShapeVersion standardShape = StandardShapeVersion.CURRENT;
+    /** DaedalusTGM-Exp worlds' Shade overlay (NONE for Standard worlds and worlds created without The Shade). */
+    private com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shadeOverlay = com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay.NONE;
     private final NativeCubeGenerator generator;
     private final DiffusionProfiles profiles;
     /** The config {@link #generator} was built from: the coarse generators copy it (DIFFUSION only). */
@@ -156,9 +158,16 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         ClimateLayout l = ClimateLayout.orDefault(layout);
         HeightCurveVersion c = HeightCurveVersion.orCurrent(curve);
         NativeCubeGenerator.Config config = config(seed, s, states);
+        // The Shade (Project-Heracles): worlds created with it only, Standard and DaedalusTGM-Exp alike (the native
+        // selector's dry temperate band / the chance-based overlay on the model's biomes). -Dstonebreak.shade=off: A/B.
+        boolean shade = f.shade() && !"off".equalsIgnoreCase(System.getProperty("stonebreak.shade"));
+        if (shade) {
+            config.flags |= NativeCubeGenerator.FLAG_SHADE;
+        }
+        com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shadeOverlay = shade ? com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay.of(seed) : com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay.NONE;
         DiffusionProfiles profiles = null;
         if (t == TerrainGeneratorType.DIFFUSION) {
-            profiles = new DiffusionProfiles(seed, s, l, c);
+            profiles = new DiffusionProfiles(seed, s, l, c, shadeOverlay);
             config.kind = NativeCubeGenerator.Kind.PROFILE;
             config.profiles = profiles;
             // Terrain-aware ravines and sinkholes from the model's carve node (TGMPipe v2 plane 6).
@@ -193,6 +202,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             NativeTerrain terrain = new NativeTerrain(seed, t, s, l, c, NativeCubeGenerator.create(config), profiles,
                 config);
             terrain.standardShape = sv;
+            terrain.shadeOverlay = shadeOverlay;
             return terrain;
         } catch (RuntimeException e) {
             if (profiles != null) profiles.close();
@@ -247,6 +257,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         BlockStateRegistry s = states != null ? states : new BlockStateRegistry();
         config.stalagmiteStates = s.stalagmiteAnchorIds();
         config.stalagmitePartStates = s.stalagmitePartIds();
+        config.blueberryStates = s.blueberryWildStateIds();
         return config;
     }
 
@@ -375,7 +386,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             }
             CoarseProfiles source = null;
             try {
-                source = new CoarseProfiles(seed, coarseLods[i], scale, climateLayout, heightCurve);
+                source = new CoarseProfiles(seed, coarseLods[i], scale, climateLayout, heightCurve, shadeOverlay);
                 source.setMaxCachedTiles(coarseBudget[i]);
                 source.setGrowLimit(COARSE_TILES_MAX);
                 NativeCubeGenerator.Config c = copyConfig(config);
@@ -413,6 +424,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         c.waterRiverValues = from.waterRiverValues.clone();
         c.stalagmiteStates = from.stalagmiteStates.clone();
         c.stalagmitePartStates = from.stalagmitePartStates.clone();
+        c.blueberryStates = from.blueberryStates.clone();
         c.cacheColumns = from.cacheColumns;
         c.rockBank = from.rockBank;
         c.standardShape = from.standardShape;
@@ -682,7 +694,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         int[] out = new int[spots.length];
         for (int i = 0; i < spots.length; i++) {
             int s = spots[i];
-            int lx = s & 0xFF, lz = (s >>> 8) & 0xFF, kind = (s >>> 16) & 3, trunk = (s >>> 18) & 0xFF;
+            // SBW ABI 7: kind in 3 bits (DRY_OAK = 4), trunk from bit 19
+            int lx = s & 0xFF, lz = (s >>> 8) & 0xFF, kind = (s >>> 16) & 7, trunk = (s >>> 19) & 0xFF;
             out[i] = FastLodChunkData.packTreeSpot(lx, lz, kinds[kind], trunk);
         }
         return out;
@@ -699,12 +712,13 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         private final com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator heights;
         private final com.stonebreak.world.generation.diffusion.biomes.BiomeManager biomes;
 
-        DiffusionProfiles(long seed, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
+        DiffusionProfiles(long seed, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                          com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shade) {
             TGMPipe.getInstance().ensureRunning(fraction -> { });
             this.tiles = new DiffusionTileCache(seed, scale, layout, curve);
             this.heights = new com.stonebreak.world.generation.diffusion.heightmap.HeightMapGenerator(tiles);
             this.biomes = new com.stonebreak.world.generation.diffusion.biomes.BiomeManager(tiles,
-                    com.stonebreak.world.generation.diffusion.biomes.BeachRule.of(scale, curve));
+                    com.stonebreak.world.generation.diffusion.biomes.BeachRule.of(scale, curve), shade);
         }
 
         @Override
@@ -833,10 +847,14 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
         private final AutoCloseable closer;
         /** The world's beach height band (BeachRule.of); the coarse reach is one sample. */
         private final com.stonebreak.world.generation.diffusion.biomes.BeachRule beach;
+        /** The world's Shade overlay, at each sample's centre block. */
+        private com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shade = com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay.NONE;
 
-        CoarseProfiles(long seed, int lod, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
+        CoarseProfiles(long seed, int lod, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                       com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shade) {
             this(lod, new DiffusionTileCache(seed, lod, TGMPipe.PRIORITY_LOD, scale, layout, curve,
                     COARSE_CACHED_TILES), com.stonebreak.world.generation.diffusion.biomes.BeachRule.of(scale, curve));
+            this.shade = shade;
         }
 
         /** Test seam: lod-{@code lod} tiles from {@code tiles} (sample units), the legacy beach rule. */
@@ -885,6 +903,7 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
             int sj0 = Math.toIntExact(Math.floorDiv(cz * 32, lod));
             TerrainTile tile = tiles.getTile(si0, sj0);
             var channels = tile.surface();
+            var seaProbe = com.stonebreak.world.generation.diffusion.biomes.BiomeManager.seaProbe(tiles, lod);
             for (int a = 0; a < n; a++) {
                 for (int b = 0; b < n; b++) {
                     int si = si0 + a, sj = sj0 + b;
@@ -895,6 +914,8 @@ public final class NativeTerrain implements TerrainGenerator, AutoCloseable {
                     short f = tile.riverFlowAt(si, sj);
                     byte flow = (byte) (f < 0 || f > 7 ? -1 : f);
                     BiomeType bt = com.stonebreak.world.generation.diffusion.biomes.BiomeManager.biomeAt(tile, si, sj, h, beach);
+                    bt = shade.apply(bt, tile.biomeIdAt(si, sj), (long) si * lod + lod / 2, (long) sj * lod + lod / 2,
+                            seaProbe);
                     byte bo = (byte) (bt != null ? bt.ordinal() : 0);
                     short cv = tile.carveAt(si, sj);
                     int src = (si - tile.worldI1()) * tile.width() + (sj - tile.worldJ1());

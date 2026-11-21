@@ -154,6 +154,11 @@ class PacketRoundTripTest {
         assertEquals(new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (short) 0x7FF), roundTrip(PlayerStateC2S.CODEC, new PlayerStateC2S(1f, 2f, 3f, 90f, -10f, (short) 0x7FF)));
         assertEquals(new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (short) 0x5BF), roundTrip(PlayerStateS2C.CODEC, new PlayerStateS2C(4, 1f, 2f, 3f, 90f, -10f, (short) 0x5BF)));
         assertEquals(new HotbarSelectC2S(5), roundTrip(HotbarSelectC2S.CODEC, new HotbarSelectC2S(5)));
+        for (com.stonebreak.mobs.entities.ai.AwarenessController.AwarenessState state
+                : com.stonebreak.mobs.entities.ai.AwarenessController.AwarenessState.values()) {
+            var awareness = new com.stonebreak.network.packet.entity.EntityAwarenessS2C(42, state);
+            assertEquals(awareness, roundTrip(com.stonebreak.network.packet.entity.EntityAwarenessS2C.CODEC, awareness));
+        }
         assertEquals(new com.stonebreak.network.packet.player.ConsumeHeldC2S(1032, 70_000),
             roundTrip(com.stonebreak.network.packet.player.ConsumeHeldC2S.CODEC,
                 new com.stonebreak.network.packet.player.ConsumeHeldC2S(1032, 70_000)));
@@ -231,6 +236,9 @@ class PacketRoundTripTest {
             roundTrip(BlockStateS2C.CODEC, new BlockStateS2C(10, 64, -5, "workbench:grid=", 300_000)));
         assertEquals(new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(2, 7.5f, true, 15, 42, (byte) 7, (byte) 2, 1f, 65.5f, -3f)));
         assertEquals(new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f), roundTrip(KillCreditS2C.CODEC, new KillCreditS2C(0, 1f, false, 0, -1, (byte) 1, (byte) 0, 0f, 0f, 0f)));
+        assertEquals(new com.stonebreak.network.packet.player.StatCreditS2C(com.stonebreak.network.packet.player.StatCreditS2C.STAT_ITEMS_CRAFTED, 64),
+                roundTrip(com.stonebreak.network.packet.player.StatCreditS2C.CODEC,
+                        new com.stonebreak.network.packet.player.StatCreditS2C(com.stonebreak.network.packet.player.StatCreditS2C.STAT_ITEMS_CRAFTED, 64)));
         assertEquals(new EntityResyncC2S(), roundTrip(EntityResyncC2S.CODEC, new EntityResyncC2S()));
         assertEquals(new com.stonebreak.network.packet.player.PlayerPrefsC2S(7, "{\"k\":1}"),
             roundTrip(com.stonebreak.network.packet.player.PlayerPrefsC2S.CODEC,

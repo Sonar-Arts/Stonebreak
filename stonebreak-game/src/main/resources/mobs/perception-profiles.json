@@ -1,0 +1,20 @@
+{
+  "_comment": "How each mob type perceives the player (#321). Keyed by EntityType name; a type not listed uses PerceptionProfile.DEFAULT. Field meanings are on the PerceptionProfile record.",
+  "GOBLIN": {
+    "visionRange": 12,
+    "fovDeg": 120,
+    "sideVisionFactor": 0.3,
+    "darkVisionFloor": 0.6,
+    "darkRangeMult": 1.5,
+    "hearingRange": 16,
+    "suspicionThreshold": 25,
+    "alarmThreshold": 70,
+    "sightGain": 80,
+    "hearGain": 45,
+    "eventGain": 45,
+    "decayPerSec": 12,
+    "shoutRange": 20,
+    "memorySeconds": 10,
+    "alertness": { "unaware": 1, "suspicious": 1.6, "searching": 2, "alerted": 2 }
+  }
+}

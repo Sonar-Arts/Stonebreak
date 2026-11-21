@@ -3,9 +3,14 @@ package com.stonebreak.mobs.entities.ai.behavior;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.StubMob;
+import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
+import com.stonebreak.mobs.entities.ai.perception.LightProbe;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
+import com.stonebreak.mobs.entities.ai.perception.PerceptionProfile;
+import com.stonebreak.mobs.entities.ai.perception.ShoutRelay;
 import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 import org.joml.Vector3d;
@@ -19,10 +24,11 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The fighting rules for hostile mobs: when a chase starts and gives up, when a swing lands, and
+ * The fighting rules for hostile mobs: when a pursuit starts and holds, when a swing lands, and
  * when a bow shot leaves. Damage must land on the clip's impact beat — not on the first frame — so
  * what the player sees and what they feel agree.
  */
@@ -92,37 +98,56 @@ class CombatBehaviorTest {
         return (WeaponProfile.Ranged) MobWeapon.BOW.profile();
     }
 
-    // ── Chase ───────────────────────────────────────────────────────────────
+    // ── Pursue ──────────────────────────────────────────────────────────────
 
-    @Test
-    void aPlayerInsideTheNoticeRadiusStartsAChaseAndOneBeyondItDoesNot() {
-        ChasePlayerBehavior chase = new ChasePlayerBehavior(15f, 24f, 1.5f, 1.3f);
-        playerAhead(14f);
-        assertTrue(chase.canStart(context));
-        playerAhead(16f);
-        assertFalse(chase.canStart(context));
+    /** Awareness on the stub goblin, in whatever state the test puts it. */
+    private AwarenessController aware(AwarenessController.AwarenessState state) {
+        AwarenessController awareness = new AwarenessController(mob, PerceptionProfile.forType(EntityType.GOBLIN), players,
+                LightProbe.FULL, ShoutRelay.NONE, new NoiseBus());
+        awareness.applyReplicatedState(state);
+        mob.setAwareness(awareness);
+        return awareness;
     }
 
     @Test
-    void aRunningChaseHoldsUntilThePlayerIsPastTheGiveUpRadius() {
-        ChasePlayerBehavior chase = new ChasePlayerBehavior(15f, 24f, 1.5f, 1.3f);
-        playerAhead(20f);
-        assertFalse(chase.canStart(context), "too far to notice");
-        assertTrue(chase.shouldContinue(context), "but not far enough to give up on");
-        playerAhead(25f);
-        assertFalse(chase.shouldContinue(context));
+    void onlyAnAlertedGoblinClosesInOnThePlayer() {
+        AwarenessController awareness = aware(AwarenessController.AwarenessState.UNAWARE);
+        PursuePlayerBehavior pursue = new PursuePlayerBehavior(awareness, 1.5f, 0.9f, 1.3f);
+        playerAhead(5f);
+        assertFalse(pursue.canStart(context), "it has not noticed anyone");
+        awareness.applyReplicatedState(AwarenessController.AwarenessState.ALERTED);
+        assertTrue(pursue.canStart(context));
+        awareness.applyReplicatedState(AwarenessController.AwarenessState.SEARCHING);
+        assertFalse(pursue.canStart(context), "searching is the search behaviour's business");
     }
 
     @Test
-    void aChaserAtItsHoldDistanceStandsAndLooksIdle() {
-        ChasePlayerBehavior chase = new ChasePlayerBehavior(15f, 24f, 2f, 1.3f);
+    void aPursuerAtItsHoldDistanceStandsAndLooksIdle() {
+        AwarenessController awareness = aware(AwarenessController.AwarenessState.ALERTED);
+        PursuePlayerBehavior pursue = new PursuePlayerBehavior(awareness, 2f, 0.9f, 1.3f);
         playerAhead(1f);
-        chase.start(context);
-        step(chase);
-        assertEquals(MobBehaviorState.IDLE, chase.animationState());
+        pursue.start(context);
+        step(pursue);
+        assertEquals(MobBehaviorState.IDLE, pursue.animationState());
         playerAhead(10f);
-        step(chase);
-        assertEquals(MobBehaviorState.WANDERING, chase.animationState());
+        step(pursue);
+        assertEquals(MobBehaviorState.WANDERING, pursue.animationState());
+    }
+
+    @Test
+    void anUnawareGoblinNeitherSwingsNorShootsAtAPlayerInReach() {
+        AwarenessController awareness = aware(AwarenessController.AwarenessState.UNAWARE);
+        mob.setAge(10f);
+        MeleeAttackBehavior swing = new MeleeAttackBehavior(dagger());
+        RangedAttackBehavior shot = new RangedAttackBehavior(bow(), recordShots);
+        playerAhead(1f);
+        assertFalse(swing.canStart(context));
+        playerAhead(bow().minRange() + 1f);
+        assertFalse(shot.canStart(context));
+
+        awareness.applyReplicatedState(AwarenessController.AwarenessState.ALERTED);
+        playerAhead(1f);
+        assertTrue(swing.canStart(context));
     }
 
     // ── Melee ───────────────────────────────────────────────────────────────
@@ -243,5 +268,60 @@ class CombatBehaviorTest {
         playerAhead(bow().maxRange() + 5f);
         runToEnd(ranged, 5f);
         assertTrue(shots.isEmpty());
+    }
+
+    // ── Other targets (goblins hunting livestock) ───────────────────────────
+
+    /** Prey standing wherever the test puts it, recording the blows it takes. */
+    private static final class FakePrey implements AttackTarget {
+        Vector3d position;
+        final List<Float> hits = new ArrayList<>();
+
+        @Override public boolean engaged(AiContext c) { return position != null; }
+        @Override public Vector3d position(AiContext c) { return position; }
+        @Override public boolean canSee(AiContext c, Vector3dc eye) { return position != null; }
+        @Override public boolean hurt(AiContext c, float amount, float knockback) { hits.add(amount); return true; }
+        @Override public float aimHeight(AiContext c) { return 0.5f; }
+        @Override public boolean noisy(AiContext c) { return false; }
+    }
+
+    @Test
+    void aSwingLandsOnPreyWithoutAnyPlayerAround() {
+        aware(AwarenessController.AwarenessState.UNAWARE);
+        FakePrey prey = new FakePrey();
+        prey.position = new Vector3d(0, 64, -1f);
+        MeleeAttackBehavior melee = new MeleeAttackBehavior(dagger(), AttackTarget.playerFirst(prey));
+        assertTrue(melee.canStart(context));
+        runToEnd(melee, 5f);
+        assertEquals(List.of(dagger().damage()), prey.hits);
+        assertTrue(players.hits.isEmpty());
+    }
+
+    @Test
+    void anAlertedGoblinTurnsFromItsPreyToThePlayer() {
+        AwarenessController awareness = aware(AwarenessController.AwarenessState.UNAWARE);
+        FakePrey prey = new FakePrey();
+        prey.position = new Vector3d(0, 64, -1f);
+        playerAhead(1f);
+        AttackTarget target = AttackTarget.playerFirst(prey);
+        assertSame(prey.position, target.position(context), "unaware of the player: the prey");
+
+        awareness.applyReplicatedState(AwarenessController.AwarenessState.ALERTED);
+        MeleeAttackBehavior melee = new MeleeAttackBehavior(dagger(), target);
+        runToEnd(melee, 5f);
+        assertEquals(List.of(dagger().damage()), players.hits, "the player takes the blow");
+        assertTrue(prey.hits.isEmpty());
+    }
+
+    @Test
+    void anArcherShootsAtItsPreysBody() {
+        aware(AwarenessController.AwarenessState.UNAWARE);
+        FakePrey prey = new FakePrey();
+        prey.position = new Vector3d(0, 64, -10f);
+        RangedAttackBehavior ranged = new RangedAttackBehavior(bow(), recordShots, AttackTarget.playerFirst(prey));
+        assertTrue(ranged.canStart(context));
+        runToEnd(ranged, 5f);
+        assertEquals(1, shots.size());
+        assertTrue(shots.get(0).velocity().z < 0, "toward the prey");
     }
 }

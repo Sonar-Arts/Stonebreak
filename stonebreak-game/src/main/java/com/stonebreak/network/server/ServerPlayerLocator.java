@@ -1,12 +1,16 @@
 package com.stonebreak.network.server;
 
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
+import com.stonebreak.mobs.entities.ai.perception.SightLine;
 import com.stonebreak.network.packet.player.PlayerHealthS2C;
 import com.stonebreak.network.server.handlers.ServerHealthHandler;
+import com.stonebreak.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
+import org.joml.Vector3f;
 
 import java.util.Collection;
+import java.util.function.Consumer;
 
 /**
  * The connected roster as mob AI sees it: every player standing in the authoritative world, the
@@ -21,8 +25,8 @@ import java.util.Collection;
  * handshaking sits at the {@code (0,0,0)} default, and a corpse behind the death menu should not
  * keep a herd running.
  *
- * <p>Mobs hurt players through it too (issue #343): a melee blow lands on the nearest player and a
- * mob's arrow on the player it is inside, both through the server-owned health
+ * <p>Mobs hurt players through it too (issue #343): a melee blow lands on the player it targets and
+ * a mob's arrow on the player it is inside, both through the server-owned health
  * ({@link ServerHealthHandler}). Built without one (tests), hits land on nobody.
  */
 public final class ServerPlayerLocator implements PlayerLocator {
@@ -31,8 +35,11 @@ public final class ServerPlayerLocator implements PlayerLocator {
     static final float MAX_MELEE_DISTANCE = 6f;
 
     private final Collection<ServerPlayer> roster;
+    /** Whose world sight is marched through; null (tests) sees through everything. */
     private final ServerWorldContext ctx;
     private final ServerHealthHandler health;
+
+    private final SightLine sight = new SightLine();
 
     /** @param roster a live view of the connected players ({@link ServerWorldContext#players()}) */
     public ServerPlayerLocator(Collection<ServerPlayer> roster) {
@@ -60,8 +67,77 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
+    public float nearestPlayerLoudness(Vector3dc from) {
+        ServerPlayer nearest = nearest(from);
+        return nearest != null ? nearest.movementLoudness() : 0f;
+    }
+
+    @Override
+    public boolean nearestPlayerStealthed(Vector3dc from) {
+        ServerPlayer nearest = nearest(from);
+        return nearest != null && nearest.isStealthed();
+    }
+
+    /** Nothing solid between {@code eye} and the nearest player's chest. */
+    @Override
+    public boolean canSeeNearestPlayer(Vector3dc from, Vector3dc eye) {
+        return canSee(nearest(from), eye, false);
+    }
+
+    @Override
+    public void forEachPlayer(Vector3dc from, float radius, Consumer<SensedPlayer> sink) {
+        float radiusSq = radius * radius;
+        for (ServerPlayer player : roster) {
+            if (!player.isLiveInWorld()) {
+                continue;
+            }
+            Vector3d position = new Vector3d(player.x(), player.y(), player.z());
+            if (position.distanceSquared(from) <= radiusSq) {
+                sink.accept(new SensedPlayer(player.playerId(), position, player.movementLoudness(),
+                        player.isStealthed(), player.stealthSkill()));
+            }
+        }
+    }
+
+    @Override
+    public Vector3d playerPosition(int id, Vector3dc from, Vector3d out) {
+        ServerPlayer player = byId(id, from);
+        return player == null ? null : out.set(player.x(), player.y(), player.z());
+    }
+
+    @Override
+    public boolean canSeePlayer(int id, Vector3dc from, Vector3dc eye) {
+        return canSee(byId(id, from), eye, false);
+    }
+
+    @Override
+    public boolean canSeePlayerThroughLeaves(int id, Vector3dc from, Vector3dc eye) {
+        return canSee(byId(id, from), eye, true);
+    }
+
+    private boolean canSee(ServerPlayer player, Vector3dc eye, boolean throughLeaves) {
+        if (player == null) {
+            return false;
+        }
+        World world = ctx != null ? ctx.world() : null;
+        if (world == null) {
+            return true;
+        }
+        return sight.clear(world, eye, new Vector3d(player.x(), player.y() + CHEST_HEIGHT, player.z()), throughLeaves);
+    }
+
+    /** The nearest player takes the blow, shoved horizontally away from {@code from}. */
+    @Override
     public boolean hurtNearestPlayer(Vector3dc from, float amount, float knockback) {
-        ServerPlayer target = nearest(from);
+        return hurt(nearest(from), from, amount, knockback);
+    }
+
+    @Override
+    public boolean hurtPlayer(int id, Vector3dc from, float amount, float knockback) {
+        return hurt(byId(id, from), from, amount, knockback);
+    }
+
+    private boolean hurt(ServerPlayer target, Vector3dc from, float amount, float knockback) {
         if (health == null || target == null
                 || distanceSq(target, from) > MAX_MELEE_DISTANCE * MAX_MELEE_DISTANCE) {
             return false;
@@ -91,11 +167,48 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return false;
     }
 
+    /** The camera convention: yaw about +Y from +X, pitch up from the horizon, in degrees. */
+    @Override
+    public Vector3f playerLook(int id, Vector3dc from, Vector3f out) {
+        ServerPlayer player = byId(id, from);
+        if (player == null) {
+            return null;
+        }
+        double yaw = Math.toRadians(player.yaw());
+        double pitch = Math.toRadians(player.pitch());
+        return out.set((float) (Math.cos(yaw) * Math.cos(pitch)), (float) Math.sin(pitch),
+                (float) (Math.sin(yaw) * Math.cos(pitch))).normalize();
+    }
+
+    @Override
+    public boolean ignitePlayerAt(Vector3dc point, float margin, float seconds, float damagePerSecond) {
+        for (ServerPlayer player : roster) {
+            if (player.isLiveInWorld() && ServerHealthHandler.insideBody(player, point, margin)) {
+                player.vitals().ignite(seconds, damagePerSecond);
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static double distanceSq(ServerPlayer player, Vector3dc from) {
         double dx = player.x() - from.x();
         double dy = player.y() - from.y();
         double dz = player.z() - from.z();
         return dx * dx + dy * dy + dz * dz;
+    }
+
+    /** Live player {@code id}; {@link #NEAREST} means the one nearest {@code from}. */
+    private ServerPlayer byId(int id, Vector3dc from) {
+        if (id == NEAREST) {
+            return nearest(from);
+        }
+        for (ServerPlayer player : roster) {
+            if (player.playerId() == id && player.isLiveInWorld()) {
+                return player;
+            }
+        }
+        return null;
     }
 
     private ServerPlayer nearest(Vector3dc from) {

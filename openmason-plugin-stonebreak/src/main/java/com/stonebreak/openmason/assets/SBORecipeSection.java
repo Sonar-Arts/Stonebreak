@@ -681,6 +681,11 @@ public class SBORecipeSection implements AutoCloseable {
             g.textEllipsized(shortLabel(objectId), x + 5f, y + h / 2f, w - 10f,
                     Weight.REGULAR, MortarType.CAPTION, color);
         }
+        if (SBODictionaryIndex.isRef(objectId)) {
+            // Dictionary slot: the icon cycles through the members; badge it so it reads as "any".
+            int accent = alpha >= 1f ? g.theme().accent : Argb.withAlpha(g.theme().accent, alpha);
+            g.textEllipsized("#", x + 4f, y + 9f, 12f, Weight.BOLD, MortarType.CAPTION, accent);
+        }
     }
 
     private static void paintOutputTile(MortarPainter g, float x, float y, float w, float h,
@@ -703,7 +708,7 @@ public class SBORecipeSection implements AutoCloseable {
             boolean active = isActive(r, hoveredIdx);
             String slot = r.slots[hoveredIdx] == null ? "" : r.slots[hoveredIdx];
             if (active && !slot.isEmpty()) {
-                ImGui.setTooltip(slot + "\nCtrl+C copy - Ctrl+V paste - Del clear");
+                ImGui.setTooltip(SBODictionaryIndex.shared().describe(slot) + "\nCtrl+C copy - Ctrl+V paste - Del clear");
             } else if (!active) {
                 ImGui.setTooltip("Click to grow the grid to " + (hoveredIdx % 3 + 1)
                         + "x" + (hoveredIdx / 3 + 1));
@@ -821,7 +826,7 @@ public class SBORecipeSection implements AutoCloseable {
                         clicked = ImGui.button(slot.isEmpty() ? "+" : shortLabel(slot), CELL, CELL);
                     }
                     if (ImGui.isItemHovered() && !slot.isEmpty()) {
-                        ImGui.setTooltip(slot + "\nCtrl+C copy - Ctrl+V paste - Del clear");
+                        ImGui.setTooltip(SBODictionaryIndex.shared().describe(slot) + "\nCtrl+C copy - Ctrl+V paste - Del clear");
                     }
                     if (ImGui.isItemHovered()) {
                         handleCellKeyboard(r, idx, slot);
@@ -1033,11 +1038,12 @@ public class SBORecipeSection implements AutoCloseable {
         onDirty.run();
     }
 
-    /** Render a slot's objectId compactly (drop namespace). */
+    /** Render a slot's objectId compactly (drop namespace; a dictionary keeps its {@code #}). */
     private static String shortLabel(String objectId) {
         if (objectId == null) return "";
         int colon = objectId.indexOf(':');
-        return colon >= 0 ? objectId.substring(colon + 1) : objectId;
+        String local = colon >= 0 ? objectId.substring(colon + 1) : objectId;
+        return SBODictionaryIndex.isRef(objectId) && !local.startsWith("#") ? "#" + local : local;
     }
 
     /** Test/util hook — allows clearing all recipes (e.g. on editor close). */

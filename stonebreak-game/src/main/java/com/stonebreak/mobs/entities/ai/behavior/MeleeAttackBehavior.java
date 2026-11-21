@@ -1,12 +1,14 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 
 import java.util.EnumSet;
 
 /**
- * Swings a melee weapon at a player in reach: plant feet, turn to face, play the swing, and land
+ * Swings a melee weapon at its {@link AttackTarget} in reach — the player unless told otherwise: plant feet, turn to face, play the swing, and land
  * the blow at the moment the clip shows it. The mob is committed for the whole clip — no gliding
  * attacks, no cancelling a swing to chase.
  */
@@ -22,6 +24,7 @@ public final class MeleeAttackBehavior implements Behavior {
     private static final float REACH_GRACE = 1.5f;
 
     private final WeaponProfile.Melee weapon;
+    private final AttackTarget target;
 
     private float elapsed;
     private boolean landed;
@@ -29,7 +32,12 @@ public final class MeleeAttackBehavior implements Behavior {
     private float readyAt;
 
     public MeleeAttackBehavior(WeaponProfile.Melee weapon) {
+        this(weapon, AttackTarget.PLAYER);
+    }
+
+    public MeleeAttackBehavior(WeaponProfile.Melee weapon, AttackTarget target) {
         this.weapon = weapon;
+        this.target = target;
     }
 
     @Override
@@ -45,8 +53,9 @@ public final class MeleeAttackBehavior implements Behavior {
     @Override
     public boolean canStart(AiContext context) {
         return context.entity().getAge() >= readyAt
-                && context.distanceToNearestPlayer() <= weapon.reach()
-                && context.facePlayer(0.0f) <= START_FACING_DEGREES;
+                && target.engaged(context)
+                && context.distanceTo(target.position(context)) <= weapon.reach()
+                && context.facePoint(target.position(context), 0.0f) <= START_FACING_DEGREES;
     }
 
     @Override
@@ -66,12 +75,16 @@ public final class MeleeAttackBehavior implements Behavior {
         elapsed += deltaTime;
         context.steering().stopMoving();
         if (!landed) {
-            context.facePlayer(TURN_SPEED); // track the target through the wind-up only
+            context.facePoint(target.position(context), TURN_SPEED); // track the target through the wind-up only
         }
         if (!landed && elapsed >= weapon.impactSeconds()) {
             landed = true;
-            if (context.distanceToNearestPlayer() <= weapon.reach() * REACH_GRACE) {
-                context.hurtNearestPlayer(weapon.damage(), weapon.knockback());
+            // The swing is heard, hit or miss (#321): a fight draws in mobs out of shout range.
+            if (target.noisy(context)) {
+                NoiseBus.emitIn(context.world(), context.entity().getPosition(), Loudness.MELEE_ATTACK, context.entity());
+            }
+            if (context.distanceTo(target.position(context)) <= weapon.reach() * REACH_GRACE) {
+                target.hurt(context, weapon.damage(), weapon.knockback());
             }
         }
     }

@@ -479,6 +479,11 @@ public class Game {
         return screens.furnaceScreen();
     }
 
+    /** The chest screen. */
+    public com.stonebreak.ui.chest.ChestScreen getChestScreen() {
+        return screens.chestScreen();
+    }
+
     /** The Focus battle HUD screen (shell screen; bound per encounter by the battle coordinator). */
     public com.stonebreak.ui.focusBattle.FocusBattleScreen getFocusBattleScreen() {
         return screens.focusBattleScreen();
@@ -689,6 +694,16 @@ public class Game {
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeFurnaceScreen()}. */
     public void closeFurnaceScreen() {
         stateController.closeFurnaceScreen();
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#openChestScreen(com.openmason.engine.util.BlockPos)}. */
+    public void openChestScreen(com.openmason.engine.util.BlockPos pos) {
+        stateController.openChestScreen(pos);
+    }
+
+    /** Delegates to {@link com.stonebreak.core.state.GameStateController#closeChestScreen()}. */
+    public void closeChestScreen() {
+        stateController.closeChestScreen();
     }
 
     /** Delegates to {@link com.stonebreak.core.state.GameStateController#openFocusBattle()}. */
@@ -917,19 +932,19 @@ public class Game {
         return game != null && game.clientWorldBuilder.isReady();
     }
 
-    /** The main menu showcase's render world is installed and may be drawn. */
-    public static boolean isShowcaseWorldReady() {
+    /** The main menu backdrop's render world (showcase or preview) is installed and may be drawn. */
+    public static boolean isBackdropWorldReady() {
         Game game = instance;
-        return game != null && game.clientWorldBuilder.isShowcaseInstalled();
+        return game != null && game.clientWorldBuilder.isBackdropInstalled();
     }
 
     /**
      * True while a world the player plays is installed: world and player present, and not the main
-     * menu's live showcase world (which occupies the same slots behind the menu). Use this, never a
+     * menu's live backdrop world, the showcase or the preview (which occupy the same slots behind the menu). Use this, never a
      * bare {@code getWorld() != null}, to ask "is the player in a game?".
      */
     public static boolean isInGameWorld() {
-        return getWorld() != null && getPlayer() != null && !com.stonebreak.network.MultiplayerSession.isShowcase();
+        return getWorld() != null && getPlayer() != null && !com.stonebreak.network.MultiplayerSession.isMenuBackdrop();
     }
 
     /**
@@ -971,8 +986,21 @@ public class Game {
                                  com.stonebreak.world.generation.HeightCurveVersion heightCurve,
                                  com.stonebreak.world.generation.StandardShapeVersion standardShape,
                                  org.joml.Vector3dc spawn) {
+        startClientWorld(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, standardShape, null,
+            spawn);
+    }
+
+    /** As above with the server world's feature set (null = the current one; The Shade). */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                 com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                 com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                                 com.stonebreak.world.generation.WorldFeatureVersion worldFeatures,
+                                 org.joml.Vector3dc spawn) {
         clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve,
-            standardShape, spawn);
+            standardShape, worldFeatures, spawn);
     }
 
     /** {@link #startClientWorld(String, long, com.stonebreak.world.generation.TerrainGeneratorType, org.joml.Vector3dc)}

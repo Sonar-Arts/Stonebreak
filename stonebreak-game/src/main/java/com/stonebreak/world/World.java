@@ -132,16 +132,43 @@ public class World {
 
     private final SnowLayerManager snowLayerManager;
     private final com.stonebreak.blocks.furnace.FurnaceStateRegistry furnaceRegistry;
+    /** Cooking and goblin camps at campfires; authoritative worlds only (see getCampfireRegistry). */
+    private final com.stonebreak.blocks.campfire.CampfireRegistry campfireRegistry;
+    /** Goblin camps in this world; only ever populated on authoritative worlds. */
+    private final com.stonebreak.mobs.goblin.camp.CampRegistry goblinCamps;
     // Per-world crafting-table grids (issue #307), same two-world split as the furnaces.
     private final com.stonebreak.blocks.workbench.WorkbenchStateRegistry workbenchRegistry =
             new com.stonebreak.blocks.workbench.WorkbenchStateRegistry();
+    // Per-world chests, the same two-world split as the crafting tables.
+    private final com.stonebreak.blocks.container.ChestRegistry chestRegistry =
+            new com.stonebreak.blocks.container.ChestRegistry();
+    // Per-world meat racks: the hooks' food, the same two-world split as the chests.
+    private final com.stonebreak.blocks.meatrack.MeatRackRegistry meatRackRegistry =
+            new com.stonebreak.blocks.meatrack.MeatRackRegistry();
     private final com.stonebreak.blocks.anim.AnimatedBlockRegistry animatedBlockRegistry =
             new com.stonebreak.blocks.anim.AnimatedBlockRegistry();
+    private final com.stonebreak.rendering.lighting.RememberedLights rememberedLights =
+            new com.stonebreak.rendering.lighting.RememberedLights();
 
     private final WaterSim waterSim;
     private final LeafDecaySystem leafDecay;
     private final com.stonebreak.world.growth.SaplingGrowthSystem saplingGrowth;
+    private final com.stonebreak.world.growth.BlueberryBushGrowthSystem blueberryBushGrowth;
     private final com.stonebreak.blocks.cactus.CactusContactSystem cactusContact;
+    private final com.stonebreak.blocks.palisade.SpikeContactSystem spikeContact;
+
+    // The one-off sounds made in this world lately, for its mobs' hearing (#321). Only the
+    // authoritative world's mobs listen; on a render world nothing posts and nothing reads.
+    // Created on first use: test worlds are built without running this class's initialisers.
+    private com.stonebreak.mobs.entities.ai.perception.NoiseBus noiseBus;
+
+    // Daylight 0..1 for its mobs' sight (#321). The server level binds its clock; full light
+    // until then (and on worlds with no clock: tests, render views).
+    private volatile java.util.function.DoubleSupplier daylightSource;
+
+    // How thick the Shade's night fog is, 0..1, for the creatures that hunt in it. The server level
+    // binds its clock; none (0) until then, so unbound worlds have no fog-born spawns.
+    private volatile java.util.function.DoubleSupplier nightFogSource;
     private final FastLodLifecycle fastLod;
 
     // Event listeners (Phase 3 API).
@@ -336,7 +363,15 @@ public class World {
     public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                                          TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
                                          com.stonebreak.world.generation.StandardShapeVersion standard) {
-        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, null, standard, null, true);
+        return createClientView(config, seed, generatorType, scale, layout, curve, standard, null);
+    }
+
+    /** A client render-view world of a server world created with the feature set {@code features} (null = current). */
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                         TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                                         com.stonebreak.world.generation.StandardShapeVersion standard,
+                                         com.stonebreak.world.generation.WorldFeatureVersion features) {
+        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, features, standard, null, true);
     }
 
     /** A detached world (no stream, no store; cubes created by writes) for tests and tools. */
@@ -422,6 +457,9 @@ public class World {
             // very early bootstrap / tests
         }
         this.furnaceRegistry = new com.stonebreak.blocks.furnace.FurnaceStateRegistry(smelting);
+        this.campfireRegistry = new com.stonebreak.blocks.campfire.CampfireRegistry(smelting);
+        // Eager: it must be the fires' anchor before the first cube carrying a camp installs.
+        this.goblinCamps = new com.stonebreak.mobs.goblin.camp.CampRegistry(this);
         this.snowLayerManager.setMutationListener((x, y, z, layers) -> {
             invalidatePhysicsCell(x, y, z);
             Cube cube = getCubeAt(x, y, z);
@@ -438,7 +476,10 @@ public class World {
         this.leafDecay = new LeafDecaySystem(new WorldLeafWorld(this));
         this.saplingGrowth = new com.stonebreak.world.growth.SaplingGrowthSystem(
             new com.stonebreak.world.growth.WorldSaplingWorld(this), new java.util.Random());
+        this.blueberryBushGrowth = new com.stonebreak.world.growth.BlueberryBushGrowthSystem(
+            new com.stonebreak.world.growth.WorldSaplingWorld(this), new java.util.Random());
         this.cactusContact = new com.stonebreak.blocks.cactus.CactusContactSystem(this);
+        this.spikeContact = new com.stonebreak.blocks.palisade.SpikeContactSystem(this);
         this.fastLod = new FastLodLifecycle(config, this::terrain);
         LOGGER.info("World created: mode={} seed={} generator={} scale={} climate={} store={}", mode, seed,
             this.generatorType, this.terrainScale, this.climateLayout, storeDir);
@@ -640,9 +681,14 @@ public class World {
             waterSim.onCubeInstalled(cube);
             leafDecay.onCubeInstalled(cube);
             saplingGrowth.onCubeInstalled(cube);
+            blueberryBushGrowth.onCubeInstalled(cube);
+            campfireRegistry.onCubeInstalled(cube);
         }
         furnaceRegistry.onCubeInstalled(cube);
         workbenchRegistry.onCubeInstalled(cube);
+        chestRegistry.onCubeInstalled(cube);
+        meatRackRegistry.onCubeInstalled(cube);
+        rememberedLights.onCubeInstalled(cube);
         animatedBlockRegistry.onCubeInstalled(cube);
         for (CubeEvents.InstallListener l : installListeners) {
             l.onCubeInstalled(this, cube);
@@ -654,8 +700,18 @@ public class World {
         if (cube == null) {
             return;
         }
+        // Before the registries below forget the cube's torches: they keep lighting the LOD terrain
+        // that takes the cube's place.
+        rememberedLights.onCubeUnloadPending(this, cube);
+        // Before the blob is written: a camp freezes into its fire, and the fire's state is written
+        // while the cube is still resident, so the save carries it. Authoritative worlds only.
+        if (isAuthoritative()) {
+            campfireRegistry.freezeCamps(this, cube);
+        }
         furnaceRegistry.onCubeUnloadPending(cube);
         workbenchRegistry.onCubeUnloadPending(cube);
+        chestRegistry.onCubeUnloadPending(cube);
+        meatRackRegistry.onCubeUnloadPending(cube);
         runSaveHooks(cube);
         for (CubeEvents.UnloadPendingHook h : unloadPendingHooks) {
             h.onCubeUnloadPending(this, cube);
@@ -680,9 +736,13 @@ public class World {
             waterSim.onCubeUnloaded(cube);
             leafDecay.onCubeUnloaded(cube);
             saplingGrowth.onCubeUnloaded(cube);
+            blueberryBushGrowth.onCubeUnloaded(cube);
+            campfireRegistry.onCubeUnloaded(cube);
         }
         furnaceRegistry.onCubeUnloaded(cube);
         workbenchRegistry.onCubeUnloaded(cube);
+        chestRegistry.onCubeUnloaded(cube);
+        meatRackRegistry.onCubeUnloaded(cube);
         animatedBlockRegistry.onCubeUnloaded(cube);
         for (CubeEvents.UnloadListener l : unloadListeners) {
             l.onCubeUnloaded(this, cube);
@@ -696,11 +756,15 @@ public class World {
      */
     private void onChanged(CubePos pos) {
         invalidatePhysicsCube(pos.x(), pos.y(), pos.z());
-        if (changeListeners.isEmpty()) {
-            return;
-        }
         Cube cube = cubes.get(pos);
         if (cube == null) {
+            return;
+        }
+        if (isAuthoritative()) {
+            // Population writes wild blueberry bushes after their cube's INSTALLED event.
+            blueberryBushGrowth.onCubeChanged(cube);
+        }
+        if (changeListeners.isEmpty()) {
             return;
         }
         for (CubeEvents.ChangeListener l : changeListeners) {
@@ -743,6 +807,11 @@ public class World {
         for (Cube cube : cubes.values()) {
             furnaceRegistry.flushToWorld(cube);
             workbenchRegistry.flushToWorld(cube);
+            chestRegistry.flushToWorld(cube);
+            meatRackRegistry.flushToWorld(cube);
+            if (isAuthoritative()) {
+                campfireRegistry.flushToWorld(this, cube);
+            }
             runSaveHooks(cube);
             writeBlob(cube);
         }
@@ -844,8 +913,34 @@ public class World {
         waterSim.tick(deltaTime);
         leafDecay.tick(deltaTime);
         saplingGrowth.tick(deltaTime);
+        blueberryBushGrowth.tick(deltaTime);
         cactusContact.tick(deltaTime);
+        spikeContact.tick(deltaTime);
         furnaceRegistry.tick(this, deltaTime);
+        campfireRegistry.tick(this, deltaTime);
+        goblinCamps.tick(deltaTime);
+    }
+
+    /**
+     * OWNER THREAD (or inline at shutdown), before the final save: every goblin camp freezes into its fire as it
+     * would at a cube unload — its members leave the entity manager and the camp is written into the fire's state —
+     * so the closing save carries each camp once (as camp data, not also as loose goblins). Authoritative only.
+     */
+    public void freezeCampsForClose() {
+        if (!isAuthoritative()) {
+            return;
+        }
+        for (Cube cube : new ArrayList<>(cubes.values())) {
+            campfireRegistry.freezeCamps(this, cube);
+        }
+    }
+
+    /**
+     * The streaming half of {@link #updateSimulation} alone: installs, unloads and population run, but
+     * nothing simulates — no water, growth, furnaces. The main menu's preview of a saved world ticks only this.
+     */
+    public void updateStreaming() {
+        tickStream();
     }
 
     /**
@@ -1148,6 +1243,7 @@ public class World {
             waterSim.onBlockChanged(x, y, z, previous, blockType);
             leafDecay.onBlockChanged(x, y, z, previous, blockType);
             saplingGrowth.onBlockChanged(x, y, z, previous, blockType);
+            blueberryBushGrowth.onBlockChanged(x, y, z, previous, blockType);
         }
         if (placementState != null && !placementState.isEmpty()) {
             setBlockStateAt(x, y, z, placementState);
@@ -1575,6 +1671,74 @@ public class World {
         return animatedBlockRegistry;
     }
 
+    /** Blueberry bush stages and harvesting (authoritative worlds drive it). */
+    public com.stonebreak.world.growth.BlueberryBushGrowthSystem getBlueberryBushGrowth() {
+        return blueberryBushGrowth;
+    }
+
+    /** The recent one-off sounds this world's mobs can hear (#321); never null. */
+    public com.stonebreak.mobs.entities.ai.perception.NoiseBus noiseBus() {
+        if (noiseBus == null) {
+            noiseBus = new com.stonebreak.mobs.entities.ai.perception.NoiseBus();
+        }
+        return noiseBus;
+    }
+
+    /** Bind the clock this world's daylight follows; null restores full light. */
+    public void setDaylightSource(java.util.function.DoubleSupplier daylightSource) {
+        this.daylightSource = daylightSource;
+    }
+
+    /** Sky light right now, 0 (darkest night) to 1 (full day). */
+    public float getDaylight() {
+        java.util.function.DoubleSupplier source = daylightSource;
+        return source != null ? (float) source.getAsDouble() : 1f;
+    }
+
+    /** Bind the clock the Shade's night fog follows ({@code ShadeNight}); null for none. */
+    public void setNightFogSource(java.util.function.DoubleSupplier nightFogSource) {
+        this.nightFogSource = nightFogSource;
+    }
+
+    /** How formed the Shade's night fog is right now, 0 (none) to 1 (full). */
+    public float getNightFog() {
+        java.util.function.DoubleSupplier source = nightFogSource;
+        return source != null ? (float) source.getAsDouble() : 0f;
+    }
+
+    /**
+     * This world's campfires: what is cooking on them and the goblin camps they anchor. Fed only
+     * on authoritative worlds — a client draws a fire from its block and state string alone.
+     */
+    public com.stonebreak.blocks.campfire.CampfireRegistry getCampfireRegistry() {
+        return campfireRegistry;
+    }
+
+    /** Spiked wall contact damage for this world's mobs (authoritative worlds tick it). */
+    public com.stonebreak.blocks.palisade.SpikeContactSystem spikeContact() {
+        return spikeContact;
+    }
+
+    /** This world's goblin camps (server-side); never null. */
+    public com.stonebreak.mobs.goblin.camp.CampRegistry goblinCamps() {
+        return goblinCamps;
+    }
+
+    /** This world's chests, PER-WORLD like {@link #getWorkbenchRegistry()}. */
+    public com.stonebreak.blocks.container.ChestRegistry getChestRegistry() {
+        return chestRegistry;
+    }
+
+    /** This world's meat racks, PER-WORLD like {@link #getChestRegistry()}. */
+    public com.stonebreak.blocks.meatrack.MeatRackRegistry getMeatRackRegistry() {
+        return meatRackRegistry;
+    }
+
+    /** Light sources in this world's unloaded cubes, still lighting their LOD terrain. */
+    public com.stonebreak.rendering.lighting.RememberedLights getRememberedLights() {
+        return rememberedLights;
+    }
+
     public WorldConfiguration getConfig() {
         return config;
     }
@@ -1654,6 +1818,8 @@ public class World {
                     for (Cube cube : new ArrayList<>(cubes.values())) {
                         furnaceRegistry.flushToWorld(cube);
                         workbenchRegistry.flushToWorld(cube);
+                        chestRegistry.flushToWorld(cube);
+                        meatRackRegistry.flushToWorld(cube);
                         writeBlob(cube);
                     }
                 }

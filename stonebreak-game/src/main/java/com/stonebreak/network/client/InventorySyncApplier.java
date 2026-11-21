@@ -136,6 +136,9 @@ public final class InventorySyncApplier {
                 && game.getFurnaceScreen().getController().getInputManager() != null) {
             return game.getFurnaceScreen().getController().getInputManager();
         }
+        if (game.getChestScreen() != null && game.getChestScreen().isVisible()) {
+            return game.getChestScreen().getController().getInputManager();
+        }
         if (game.getWorkbenchScreen() != null && game.getWorkbenchScreen().isVisible()) {
             return game.getWorkbenchScreen().getSlotInput();
         }

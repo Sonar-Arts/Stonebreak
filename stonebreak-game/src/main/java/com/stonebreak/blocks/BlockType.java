@@ -79,6 +79,12 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType SAND = fromRegistry("stonebreak:sand", "SAND");
     public static final BlockType COAL_ORE = fromRegistry("stonebreak:coal_ore", "COAL_ORE");
     public static final BlockType IRON_ORE = fromRegistry("stonebreak:iron_ore", "IRON_ORE");
+    // Metal ores placed as veins by world/generation/features/OreGenerator: copper anywhere,
+    // tin near the surface, silver and gold deep down.
+    public static final BlockType COPPER_ORE = fromRegistry("stonebreak:copper_ore", "COPPER_ORE");
+    public static final BlockType TIN_ORE = fromRegistry("stonebreak:tin_ore", "TIN_ORE");
+    public static final BlockType SILVER_ORE = fromRegistry("stonebreak:silver_ore", "SILVER_ORE");
+    public static final BlockType GOLD_ORE = fromRegistry("stonebreak:gold_ore", "GOLD_ORE");
     public static final BlockType RED_SAND = fromRegistry("stonebreak:red_sand", "RED_SAND");
     public static final BlockType MAGMA = fromRegistry("stonebreak:magma", "MAGMA");
     public static final BlockType CRYSTAL = fromRegistry("stonebreak:crystal", "CRYSTAL");
@@ -108,11 +114,18 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType CYPRESS_LEAVES = fromRegistry("stonebreak:cypress_leaves", "CYPRESS_LEAVES");
     public static final BlockType CYPRESS_SAPLING = fromRegistry("stonebreak:cypress_sapling", "CYPRESS_SAPLING");
     public static final BlockType SWAMPY_GRASS = fromRegistry("stonebreak:swampy_grass", "SWAMPY_GRASS");
+    // Dry oak set ("The Shade"): no worldgen yet. Saplings grow into RegularTree shapes built
+    // from the dry blocks via world/growth/SaplingGrowthSystem.
+    public static final BlockType DRY_GRASS = fromRegistry("stonebreak:dry_grass", "DRY_GRASS");
+    public static final BlockType DRY_OAK_LOG = fromRegistry("stonebreak:dry_oak_log", "DRY_OAK_LOG");
+    public static final BlockType DRY_OAK_LEAVES = fromRegistry("stonebreak:dry_oak_leaves", "DRY_OAK_LEAVES");
+    public static final BlockType DRY_OAK_PLANKS = fromRegistry("stonebreak:dry_oak_planks", "DRY_OAK_PLANKS");
+    public static final BlockType DRY_OAK_SAPLING = fromRegistry("stonebreak:dry_oak_sapling", "DRY_OAK_SAPLING");
     public static final BlockType COBBLESTONE = fromRegistry("stonebreak:cobblestone", "COBBLESTONE");
     public static final BlockType GRAVEL = fromRegistry("stonebreak:gravel", "GRAVEL");
     public static final BlockType CLAY = fromRegistry("stonebreak:clay", "CLAY");
-    public static final BlockType RED_SAND_COBBLESTONE = fromRegistry("stonebreak:red_sand_cobblestone", "RED_SAND_COBBLESTONE");
-    public static final BlockType SAND_COBBLESTONE = fromRegistry("stonebreak:sand_cobblestone", "SAND_COBBLESTONE");
+    public static final BlockType COBBLED_RED_SANDSTONE = fromRegistry("stonebreak:cobbled_red_sandstone", "COBBLED_RED_SANDSTONE");
+    public static final BlockType COBBLED_SANDSTONE = fromRegistry("stonebreak:cobbled_sandstone", "COBBLED_SANDSTONE");
     // Brick / stone-brick building blocks (SBO: bricks_block / stone_bricks) —
     // solid stone-family blocks (SBO material "stone", so pickaxes speed them up).
     public static final BlockType BRICKS_BLOCK = fromRegistry("stonebreak:bricks_block", "BRICKS_BLOCK");
@@ -133,6 +146,7 @@ public final class BlockType implements Item, IBlockType {
     public static final BlockType OAK_STAIRS = fromRegistry("stonebreak:oak_stairs", "OAK_STAIRS");
     public static final BlockType ELM_STAIRS = fromRegistry("stonebreak:elm_stairs", "ELM_STAIRS");
     public static final BlockType PINE_STAIRS = fromRegistry("stonebreak:pine_stairs", "PINE_STAIRS");
+    public static final BlockType DRY_OAK_STAIRS = fromRegistry("stonebreak:dry_oak_stairs", "DRY_OAK_STAIRS");
     // Torch: placed by the stonebreak:torch ITEM (see blocks/torch/TorchBlock),
     // Ground/Side states with looping flicker clips drawn by
     // AnimatedBlockRenderer; emits a pulsing point light (rendering/lighting).
@@ -141,6 +155,18 @@ public final class BlockType implements Item, IBlockType {
     // stacks per-cell; the lower cell's top face is culled when a cactus sits above
     // (Renderer instance cull policy) and contact rules live in blocks/cactus/.
     public static final BlockType CACTUS = fromRegistry("stonebreak:cactus", "CACTUS");
+    // Blueberry bush: cross-pane plant whose SBO carries one state per growth stage (see
+    // blocks/blueberrybush/BlueberryBushState). Grows via world/growth/BlueberryBushGrowthSystem;
+    // a ripe bush is picked with right-click and goes back to Mature instead of breaking.
+    public static final BlockType BLUEBERRY_BUSH = fromRegistry("stonebreak:blueberry_bush", "BLUEBERRY_BUSH");
+    /** Cooks raw meat put on it; a goblin camp gathers round one (blocks.campfire). */
+    public static final BlockType CAMPFIRE = fromRegistry("stonebreak:campfire", "CAMPFIRE");
+    /** Twenty-seven slots of storage (blocks.container.ChestState). */
+    public static final BlockType CHEST = fromRegistry("stonebreak:chest", "CHEST");
+    /** Goblin camp structures (mobs.goblin.camp.CampBuilder). */
+    public static final BlockType BEDROLL = fromRegistry("stonebreak:bedroll", "BEDROLL");
+    public static final BlockType MEAT_RACK = fromRegistry("stonebreak:meat_rack", "MEAT_RACK");
+    public static final BlockType PALISADE = fromRegistry("stonebreak:palisade", "PALISADE");
 
     // ----- Promote any SBO entries that didn't match a static-final field
     //       above. New SBOs dropped into sbo/blocks/ become BlockType
@@ -448,7 +474,7 @@ public final class BlockType implements Item, IBlockType {
      * than a full cell.
      */
     public boolean isStairs() {
-        return this == OAK_STAIRS || this == ELM_STAIRS || this == PINE_STAIRS;
+        return this == OAK_STAIRS || this == ELM_STAIRS || this == PINE_STAIRS || this == DRY_OAK_STAIRS;
     }
 
     /**
@@ -456,14 +482,15 @@ public final class BlockType implements Item, IBlockType {
      * "supported" (won't decay) while it remains connected to one of these.
      */
     public boolean isLog() {
-        return this == WOOD || this == PINE || this == ELM_WOOD_LOG || this == CYPRESS_LOG;
+        return this == WOOD || this == PINE || this == ELM_WOOD_LOG || this == CYPRESS_LOG || this == DRY_OAK_LOG;
     }
 
     /**
      * True for foliage blocks subject to decay when detached from a log.
      */
     public boolean isLeaves() {
-        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES || this == CYPRESS_LEAVES;
+        return this == LEAVES || this == PINE_LEAVES || this == ELM_LEAVES || this == CYPRESS_LEAVES
+            || this == DRY_OAK_LEAVES;
     }
 
     /**

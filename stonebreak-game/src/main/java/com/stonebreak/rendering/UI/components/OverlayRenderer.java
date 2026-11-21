@@ -5,17 +5,19 @@ import com.stonebreak.player.Player;
 
 /**
  * Full-screen world effects drawn over the world and under the UI: the underwater tint, the dodge
- * invincibility flash and screen droplets.
+ * invincibility flash, the stealth border and screen droplets.
  */
 public class OverlayRenderer {
 
     private final UnderwaterOverlayRenderer underwaterOverlayRenderer;
     private final DodgeInvincibilityOverlay dodgeInvincibilityOverlay;
+    private final StealthVignetteOverlay stealthVignetteOverlay;
     private final ScreenDropletOverlay screenDropletOverlay;
 
     public OverlayRenderer() {
         this.underwaterOverlayRenderer = new UnderwaterOverlayRenderer();
         this.dodgeInvincibilityOverlay = new DodgeInvincibilityOverlay();
+        this.stealthVignetteOverlay = new StealthVignetteOverlay();
         this.screenDropletOverlay = new ScreenDropletOverlay();
     }
 
@@ -31,6 +33,8 @@ public class OverlayRenderer {
             underwaterOverlayRenderer.render(windowWidth, windowHeight);
             dodgeInvincibilityOverlay.update(player, game.getDeltaTime());
             dodgeInvincibilityOverlay.render(windowWidth, windowHeight);
+            stealthVignetteOverlay.update(player, game.getDeltaTime());
+            stealthVignetteOverlay.render(windowWidth, windowHeight);
             screenDropletOverlay.update(player, game.getDeltaTime());
             screenDropletOverlay.render(windowWidth, windowHeight);
         }

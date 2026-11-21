@@ -30,7 +30,7 @@ final class SbeRenderSupport {
         if (geometry == null) {
             return position;
         }
-        float offset = -mob.getLegHeight() - geometry.restMinY() * mob.getScale().y;
+        float offset = -mob.getLegHeight() - geometry.restMinY() * mob.getScale().y + mob.renderLift();
         position.y += offset;
         return position;
     }

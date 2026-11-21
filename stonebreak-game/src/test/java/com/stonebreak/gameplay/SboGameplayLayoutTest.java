@@ -23,9 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The shipped SBOs stay in the pre-1.11 layout on disk (#383, user decision): every one must read
- * the same game data and rendering from that layout as from a copy re-saved in the namespaced
- * {@code stonebreak:gameplay} layout.
+ * The shipped SBOs are kept in the pre-1.11 layout on disk (#383, user decision), but an asset saved
+ * from the Open Mason editor comes out in the namespaced {@code stonebreak:gameplay} layout (the
+ * Heracles coal ore did), so both are shipped. Each one must be wholly in one layout — never legacy
+ * fields beside the extension — and must read the same game data and rendering as a copy re-saved
+ * in the namespaced layout.
  */
 @Tag("integration")
 class SboGameplayLayoutTest {
@@ -54,14 +56,24 @@ class SboGameplayLayoutTest {
     }
 
     @Test
-    void shippedAssetsAreStillInTheLegacyLayout() throws IOException {
-        int withGameData = 0;
+    void shippedAssetsAreEachInOneLayout() throws IOException {
+        int legacy = 0;
+        int namespaced = 0;
         for (Path sbo : shipped()) {
             JsonNode root = manifestJson(sbo);
-            assertFalse(root.has("extensions"), sbo + " was re-saved in the new layout");
-            if (root.hasNonNull("gameProperties")) withGameData++;
+            if (root.path("extensions").has(SboGameplayCodec.KEY)) {
+                namespaced++;
+                for (String field : SboGameplayCodec.LEGACY_FIELDS) {
+                    assertFalse(root.has(field), sbo + ": legacy " + field + " beside the stonebreak:gameplay extension");
+                }
+            } else if (root.hasNonNull("gameProperties")) {
+                legacy++;
+            }
         }
-        assertTrue(withGameData > 50, "most shipped SBOs carry legacy gameProperties: " + withGameData);
+        assertTrue(legacy + namespaced > 50, "most shipped SBOs carry game data: " + legacy + " legacy + "
+                + namespaced + " namespaced");
+        assertTrue(legacy > namespaced, "the legacy layout stays the shipped norm (#383): " + legacy + " legacy vs "
+                + namespaced + " namespaced");
     }
 
     @Test

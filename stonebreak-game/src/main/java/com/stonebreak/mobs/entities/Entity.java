@@ -232,6 +232,15 @@ public abstract class Entity {
      */
     public boolean isPersistent() { return true; }
 
+    /** Whether the hostile spawner may despawn this mob when no player is near. */
+    public boolean despawnsWhenFar() { return true; }
+
+    /**
+     * Called on the first of a group the natural spawner brought in together, with the whole
+     * group (this one included) — for mobs that band up, like a goblin pack.
+     */
+    public void onSpawnedWithGroup(java.util.List<Entity> group) { }
+
     // Setters
     public void setPosition(Vector3dc position) { this.position.set(position); }
     public void setVelocity(Vector3f velocity) { this.velocity.set(velocity); }
@@ -261,7 +270,8 @@ public abstract class Entity {
     /**
      * Called once when this entity has left its {@link EntityManager} (death, despawn, a shadow the server
      * dropped), after the manager's update: let go of anything held for it outside the entity, such as a
-     * playing FX. Not called when the whole world is torn down. No-op by default.
+     * playing FX, or whatever it is part of (a goblin, its pack). Not called when the whole world is torn down.
+     * No-op by default.
      */
     public void onRemovedFromWorld() {
     }

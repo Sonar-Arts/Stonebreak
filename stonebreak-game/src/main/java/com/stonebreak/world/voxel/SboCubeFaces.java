@@ -34,7 +34,21 @@ public final class SboCubeFaces {
      * emitted as individual pulled quads instead of raw triangles.
      */
     private final boolean[] perCell;
-    private final boolean[] shaped; // SBO block that is NOT a cube (stairs, slabs, crosses…)
+    /**
+     * Non-cube SBO block whose flush geometry leaves some boundary plane open
+     * (stairs, slabs, crosses…), so it can't hide a neighbour's face. A
+     * non-cube that still closes all six planes — an ore cube with nuggets
+     * poking out — occludes like any cube.
+     */
+    private final boolean[] shaped;
+    /**
+     * Per block id, for a cube block whose shape depends on its neighbours (rounded leaves): per
+     * neighbour combination, whether that combination's shape is still a plain unit cube. Cells
+     * that resolve to one stay on the cube path; the rest are drawn from their stamp.
+     */
+    private final boolean[][] cubeMasks;
+    /** Per block id: the block has a baked stamp (drawn as a cube or from its model, never as the id's layer). */
+    private final boolean[] stamped;
 
     public SboCubeFaces(StampEmitter emitter) {
         int maxId = 0;
@@ -46,27 +60,45 @@ public final class SboCubeFaces {
         cube = new boolean[maxId + 1];
         perCell = new boolean[maxId + 1];
         shaped = new boolean[maxId + 1];
+        cubeMasks = new boolean[maxId + 1][];
+        stamped = new boolean[maxId + 1];
         for (BlockType type : BlockType.values()) {
             if (!emitter.hasBlock(type)) {
                 continue;
             }
             int id = type.getId();
-            if (!tryBuildCube(emitter, type, id)) {
+            stamped[id] = true;
+            if (!tryBuildCube(emitter, type, id) && !occludesEveryFace(emitter, type)) {
                 shaped[id] = true;
             }
         }
     }
 
+    /** True when every state variant's flush geometry fills all six boundary planes. */
+    private static boolean occludesEveryFace(StampEmitter emitter, BlockType type) {
+        for (int face = 0; face < 6; face++) {
+            if (!emitter.getCache().occludesFace(type, face)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private boolean tryBuildCube(StampEmitter emitter, BlockType type, int id) {
-        if (emitter.getCache().variantCount(type) != 1) {
+        com.stonebreak.blocks.multipart.MultipartShape multipart =
+            com.stonebreak.blocks.multipart.MultipartRegistry.of(type);
+        // A multipart block's states are its parts, not alternatives to the default model, so
+        // only its default stamp decides whether it is a cube.
+        if (multipart == null && emitter.getCache().variantCount(type) != 1) {
             return false;
         }
         // Translucent blocks (per-face opacity overrides) and snow layers
         // (per-cell height) stay per-cell but still pull as quads.
         boolean needsPerCell = emitter.isTranslucent(type) || type == BlockType.SNOW;
         BlockStamp stamp = emitter.getCache().get(type);
-        if (stamp == null || stamp.faces() == null || stamp.faces().length != 6) {
-            return false;
+        if (stamp == null || stamp.faces() == null || stamp.faces().length != 6
+                || stamp.hasProtrusions()) {
+            return false; // protruding detail (ore nuggets) only the stamp emitter draws
         }
         float[][] uv = new float[6][8];
         float[] layer = new float[6];
@@ -88,6 +120,17 @@ public final class SboCubeFaces {
         }
         texCoords[id] = uv;
         layers[id] = layer;
+        if (multipart != null) {
+            if (needsPerCell) {
+                return false; // per-cell cubes have no kernel records to swap out
+            }
+            boolean[] masks = new boolean[multipart.maskCount()];
+            for (int mask = 0; mask < masks.length; mask++) {
+                masks[mask] = com.stonebreak.rendering.sbo.StampComposer.isUnitCube(
+                    emitter.getCache().get(type, multipart.key(mask)));
+            }
+            cubeMasks[id] = masks;
+        }
         if (needsPerCell) {
             perCell[id] = true;
         } else {
@@ -154,13 +197,42 @@ public final class SboCubeFaces {
         return true;
     }
 
+    /**
+     * For a cube block with a neighbour-driven shape: whether the cell with neighbour combination
+     * {@code mask} is still a plain cube. False for blocks without one.
+     */
+    public boolean isCubeMask(BlockType type, int mask) {
+        int id = type.getId();
+        boolean[] masks = id < cubeMasks.length ? cubeMasks[id] : null;
+        return masks != null && masks[mask];
+    }
+
+    /** True for a cube block whose cells can resolve to other shapes by their neighbours. */
+    public boolean hasCubeMasks(BlockType type) {
+        int id = type.getId();
+        return id < cubeMasks.length && cubeMasks[id] != null;
+    }
+
     /** True when this SBO block is an exact unit cube and may take the cube path. */
     public boolean isCube(BlockType type) {
         int id = type.getId();
         return id < cube.length && cube[id];
     }
 
-    /** True for SBO blocks that are NOT unit cubes (stay on the stamp emitter). */
+    /**
+     * True for an SBO block drawn from its stamp model rather than the cube path: every stamped block that is
+     * neither a unit cube nor a per-cell cube, whether or not it occludes (an ore cube with nuggets, a block
+     * with several state models). Such a block has no cube face textures, so it must never be flagged a cube.
+     */
+    public boolean isModel(BlockType type) {
+        int id = type.getId();
+        return id < stamped.length && stamped[id] && !cube[id] && !perCell[id];
+    }
+
+    /**
+     * True for SBO blocks whose flush geometry leaves a boundary plane open, so they never hide a neighbour's
+     * face (stairs, slabs, crosses). A subset of {@link #isModel}.
+     */
     public boolean isShaped(BlockType type) {
         int id = type.getId();
         return id < shaped.length && shaped[id];

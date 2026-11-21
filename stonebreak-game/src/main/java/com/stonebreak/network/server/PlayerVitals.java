@@ -46,6 +46,13 @@ public final class PlayerVitals {
     private double fallApexY;
 
     private float cactusTimer;
+    /** Seconds until a spiked wall may prick this player again. */
+    private float spikeCooldown;
+
+    /** Seconds of burning left, and its damage per second (a Vestige's fire, say). */
+    private float burnSeconds;
+    private float burnDps;
+    private float burnTimer;
 
     private boolean wasDodging;
     private long dodgeRiseNs = Long.MIN_VALUE;
@@ -60,6 +67,7 @@ public final class PlayerVitals {
 
     public float health() { return health; }
     public float maxHealth() { return maxHealth; }
+    public boolean isFullHealth() { return health >= maxHealth; }
     public byte lastCause() { return lastCause; }
 
     /** Sets the health outright (a loaded save, a seeded character), clamped to the maximum. */
@@ -128,6 +136,7 @@ public final class PlayerVitals {
         hasLastReport = false;
         airborne = false;
         cactusTimer = 0f;
+        burnSeconds = 0f;
     }
 
     /** Opens the spawn-protection window ({@code SPAWN_PROTECTION_DURATION}). */
@@ -223,6 +232,61 @@ public final class PlayerVitals {
         while (cactusTimer >= pulseInterval) {
             cactusTimer -= pulseInterval;
             damage += damagePerPulse;
+        }
+        return damage;
+    }
+
+    /**
+     * Advances spiked-wall contact by {@code dt} seconds: whether the player, {@code touching} a
+     * wall's points, is pricked now — at most once per {@code cooldown}.
+     */
+    public boolean onSpikeContact(boolean touching, float dt, long nowNs, float cooldown) {
+        spikeCooldown = Math.max(0f, spikeCooldown - dt);
+        if (!touching || spikeCooldown > 0f || isProtected(nowNs)) {
+            return false;
+        }
+        spikeCooldown = cooldown;
+        return true;
+    }
+
+    /** Burn pulses land this far apart, like cactus pulses. */
+    static final float BURN_PULSE_SECONDS = 0.5f;
+
+    /** Sets the player burning; refreshes the longer and hotter of the old and new fire. */
+    public void ignite(float seconds, float damagePerSecond) {
+        if (!(seconds > 0f) || !(damagePerSecond > 0f) || health <= 0f) {
+            return;
+        }
+        if (burnSeconds <= 0f) {
+            burnTimer = 0f;
+            burnDps = 0f;
+        }
+        burnSeconds = Math.max(burnSeconds, seconds);
+        burnDps = Math.max(burnDps, damagePerSecond);
+    }
+
+    /** Whether the player is on fire. */
+    public boolean isBurning() {
+        return burnSeconds > 0f;
+    }
+
+    /** Advances any burn by {@code dt} seconds and returns the damage due this tick. */
+    public float onBurnTick(float dt) {
+        if (burnSeconds <= 0f) {
+            return 0f;
+        }
+        float step = Math.min(dt, burnSeconds);
+        burnSeconds -= step;
+        burnTimer += step;
+        float damage = 0f;
+        while (burnTimer >= BURN_PULSE_SECONDS) {
+            burnTimer -= BURN_PULSE_SECONDS;
+            damage += burnDps * BURN_PULSE_SECONDS;
+        }
+        if (burnSeconds <= 0f) {
+            damage += burnDps * burnTimer; // the last part-pulse, so a burn deals its whole damage
+            burnTimer = 0f;
+            burnDps = 0f;
         }
         return damage;
     }

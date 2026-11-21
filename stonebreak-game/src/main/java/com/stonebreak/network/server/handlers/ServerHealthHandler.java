@@ -2,10 +2,13 @@ package com.stonebreak.network.server.handlers;
 
 import com.stonebreak.audio.EntitySounds;
 import com.stonebreak.blocks.cactus.CactusContactRules;
+import com.stonebreak.blocks.palisade.SpikeContactRules;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.network.packet.player.KillCreditS2C;
 import com.stonebreak.network.packet.player.PlayerDamageC2S;
 import com.stonebreak.network.packet.player.PlayerHealthS2C;
@@ -85,6 +88,10 @@ public final class ServerHealthHandler {
             }
             PlayerVitals vitals = sp.vitals();
             vitals.applyMaxHealth(sp.serverStats().computeMaxHealth());
+            float burn = vitals.onBurnTick(dt);
+            if (burn > 0f) {
+                hurt(sp, burn, PlayerHealthS2C.CAUSE_MOB, nowNs, ctx);
+            }
             if (world != null) {
                 double half = PLAYER_WIDTH / 2.0;
                 boolean touching = CactusContactRules.touchesCactus(world,
@@ -95,6 +102,16 @@ public final class ServerHealthHandler {
                         CactusContactRules.PULSE_INTERVAL, CactusContactRules.DAMAGE_PER_PULSE);
                 if (cactus > 0f) {
                     hurt(sp, cactus, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
+                }
+                float[] spikes = SpikeContactRules.pointsTouching(world,
+                        sp.x() - half, sp.y(), sp.z() - half,
+                        sp.x() + half, sp.y() + PLAYER_HEIGHT, sp.z() + half);
+                if (vitals.onSpikeContact(spikes != null && !flying, dt, nowNs, SpikeContactRules.COOLDOWN_SECONDS)) {
+                    float dealt = hurt(sp, SpikeContactRules.DAMAGE, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
+                    // Thrown back the way the points lean: pushed away from a point behind the player.
+                    // No shove when the hit was absorbed (invincible, dodge i-frames).
+                    if (dealt > 0f) knockback(sp, new org.joml.Vector3d(sp.x() - spikes[0], sp.y(), sp.z() - spikes[1]),
+                            SpikeContactRules.KNOCKBACK);
                 }
             }
         }
@@ -234,11 +251,11 @@ public final class ServerHealthHandler {
 
     /**
      * {@code amount} of {@code cause} damage to {@code sp}; returns what it took (a dead or
-     * unpositioned player takes nothing, a dodge negates combat damage). A blow that empties
-     * the health kills.
+     * unpositioned player takes nothing, a dodge negates combat damage, an invincible player
+     * takes nothing but a life it gives up itself). A blow that empties the health kills.
      */
     public float hurt(ServerPlayer sp, float amount, byte cause, long nowNs, ServerWorldContext ctx) {
-        if (!sp.isLiveInWorld()) {
+        if (!sp.isLiveInWorld() || (sp.invincible() && cause != PlayerHealthS2C.CAUSE_SELF)) {
             return 0f;
         }
         float taken = sp.vitals().damage(amount, cause, nowNs);
@@ -282,6 +299,7 @@ public final class ServerHealthHandler {
         sp.vitals().markDirty();
         onDeath.accept(sp, ctx);
         ServerPlayerHandler.scatterInventory(sp, ctx);
+        NoiseBus.emitIn(ctx.world(), new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), Loudness.DEATH); // #321
     }
 
     /**

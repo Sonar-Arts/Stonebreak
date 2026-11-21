@@ -12,7 +12,6 @@ import com.stonebreak.ui.characterCreation.CharacterCreationScreen;
 import com.stonebreak.ui.characterCreation.CharacterCreationStateManager;
 import com.stonebreak.ui.characterCreation.CharacterCreationTab;
 import com.stonebreak.items.weapon.WeaponGroup;
-import com.stonebreak.rpg.SkillListMode;
 import com.stonebreak.rpg.TalentSubTab;
 import com.stonebreak.ui.runtime.contracts.CharacterCreationContracts;
 
@@ -38,10 +37,10 @@ public final class CharacterCreationFixtures {
     }
 
     public static final List<String> STATES = List.of("ability", "classes-none", "classes", "classes-scrolled", "skills",
-        "skills-scrolled", "skills-weapons", "feats", "feats-owned", "looks");
+        "skills-weapons", "feats", "feats-owned", "looks");
     public static final List<String> HOVERS = List.of("hover-tab3", "hover-next", "hover-back", "hover-undo",
         "hover-bg1", "hover-tile2", "hover-plus0", "hover-minus4", "hover-talent1", "hover-cls2", "hover-node5",
-        "hover-invest2", "hover-mode1", "hover-train0", "hover-acquire0", "hover-equip1");
+        "hover-invest2", "hover-train0", "hover-acquire0", "hover-equip1");
 
     public static List<FidelityCase> cases() {
         List<FidelityCase> out = new ArrayList<>(FidelityCase.matrix("character-creation", List.of("background"),
@@ -50,6 +49,8 @@ public final class CharacterCreationFixtures {
             out.add(new FidelityCase("character-creation", v, FidelityCase.STANDARD.get(0)));
         }
         out.add(new FidelityCase("character-creation", "classes", FidelityCase.STANDARD.get(1)));
+        // at 1080p the whole Skills column fits its pane: scrolled, it is shown in the smaller window
+        out.add(new FidelityCase("character-creation", "skills-scrolled", FidelityCase.STANDARD.get(1)));
         for (String h : HOVERS) {
             out.add(new FidelityCase("character-creation", h, FidelityCase.STANDARD.get(0)));
         }
@@ -74,7 +75,7 @@ public final class CharacterCreationFixtures {
         if (t.startsWith("tile") || t.startsWith("plus") || t.startsWith("minus")) return "ability";
         if (t.startsWith("cls") || t.startsWith("node") || t.startsWith("talent")) return "classes";
         if (t.startsWith("invest")) return "skills";
-        if (t.startsWith("mode") || t.startsWith("train")) return "skills-weapons";
+        if (t.startsWith("train")) return "skills-weapons";
         if (t.startsWith("acquire")) return "feats";
         if (t.startsWith("equip")) return "looks";
         return "background";
@@ -106,10 +107,11 @@ public final class CharacterCreationFixtures {
                 if ("skills-scrolled".equals(variant)) s.setSkillScroll(48f);
             }
             case "skills-weapons" -> {
-                // the starting WTP spent on one group; the others show their next rank or level gate
+                // the starting WTP spent on one group; the others show their next rank or level gate. Scrolled to
+                // the end (the host clamps it), where the Weapons section is in view
                 talents(s, TalentSubTab.SKILLS);
-                a.onSelectSkillMode(SkillListMode.WEAPONS);
                 a.onTrainWeapon(WeaponGroup.ONE_HANDED);
+                s.setSkillScroll(Float.MAX_VALUE);
             }
             case "feats", "feats-owned" -> {
                 talents(s, TalentSubTab.FEATS);
@@ -181,18 +183,15 @@ public final class CharacterCreationFixtures {
                 }
             }
             case "skills", "skills-scrolled", "skills-weapons" -> {
-                // the General | Weapons toggle, right-aligned in the header; then +1 SP or Train per row
-                out.put("mode0", new float[]{c.x() + c.width() - 116f - 96f, c.y() + 2f, 96f, 24f});
-                out.put("mode1", new float[]{c.x() + c.width() - 16f - 96f, c.y() + 2f, 96f, 24f});
-                if (s.getSkillMode() == SkillListMode.WEAPONS) {
-                    for (int i = 0; i < WeaponGroup.values().length; i++) {
-                        out.put("train" + i, new float[]{listX + rowW - 80f, c.y() + 36f + i * 42f + 7f, 80f, 26f});
-                    }
-                } else {
-                    for (int i = 0; i < SkillRegistry.ALL.size(); i++) {
-                        out.put("invest" + i, new float[]{listX + rowW - 80f,
-                            c.y() + 36f + i * 42f - s.getSkillScroll() + 7f, 80f, 26f});
-                    }
+                // one scrolled column under the SP line: the General header (30), +1 SP per row, a 10 px gap, the
+                // Weapons header (30), Train per row
+                float top = c.y() + 36f + 30f - s.getSkillScroll();
+                for (int i = 0; i < SkillRegistry.ALL.size(); i++) {
+                    out.put("invest" + i, new float[]{listX + rowW - 80f, top + i * 42f + 7f, 80f, 26f});
+                }
+                top += SkillRegistry.ALL.size() * 42f + 10f + 30f;
+                for (int i = 0; i < WeaponGroup.values().length; i++) {
+                    out.put("train" + i, new float[]{listX + rowW - 80f, top + i * 42f + 7f, 80f, 26f});
                 }
             }
             case "feats", "feats-owned" -> {

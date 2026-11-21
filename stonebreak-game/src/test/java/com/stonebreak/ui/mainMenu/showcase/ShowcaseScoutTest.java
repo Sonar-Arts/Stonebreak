@@ -355,6 +355,7 @@ class ShowcaseScoutTest {
                 case BEACH -> 0xF2E3A6;
                 case SWAMP -> 0x4B5E2E;
                 case OCEAN -> 0x2050A0;
+                case SHADE -> 0x3A4030;
             };
         }
 

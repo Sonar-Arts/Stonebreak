@@ -501,6 +501,7 @@ public final class FastLodMesher {
             return BlockType.RED_SANDSTONE;
         }
         if (surface == BlockType.GRASS || surface == BlockType.SNOWY_DIRT || surface == BlockType.SWAMPY_GRASS
+                || surface == BlockType.DRY_GRASS
                 || surface == BlockType.DIRT || surface == BlockType.GRAVEL || surface == BlockType.CLAY) {
             return BlockType.DIRT;
         }
@@ -674,7 +675,8 @@ public final class FastLodMesher {
      */
     static int[] canopyTiers(com.stonebreak.world.generation.features.VegetationGenerator.TreeKind kind, int h) {
         return switch (kind) {
-            case OAK -> new int[] {2, Math.max(1, h - 2), h + 1, 1, h + 1, h + 2};
+            // The Shade's dry oak (Project-Heracles) grows the oak's shape (RegularTree, other blocks).
+            case OAK, DRY_OAK -> new int[] {2, Math.max(1, h - 2), h + 1, 1, h + 1, h + 2};
             case ELM -> new int[] {3, h - 1, h + 3, 2, h + 3, h + 5};
             case PINE -> {
                 int total = h + 2;

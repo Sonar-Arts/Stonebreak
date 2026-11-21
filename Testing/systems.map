@@ -18,7 +18,7 @@ shaders	stonebreak-game	com/stonebreak/rendering/core/**/*Test
 formats	stonebreak-formats	com/stonebreak/format/**/*Test
 audio	stonebreak-game	com/stonebreak/audio/**/*Test
 fx	stonebreak-game	com/stonebreak/fx/**/*Test
-blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test
+blocks	stonebreak-game	com/stonebreak/blocks/**/*Test,!com/stonebreak/blocks/waterSystem/**,com/stonebreak/util/**/*Test,com/stonebreak/rendering/sbo/**/*Test
 water	stonebreak-game	com/stonebreak/blocks/waterSystem/**/*Test
 core	stonebreak-game	com/stonebreak/core/**/*Test,com/stonebreak/config/**/*Test,com/stonebreak/world/TimeOfDayTest,com/stonebreak/world/DeterministicRandomTest,com/stonebreak/world/SnowLayerManagerTest
 items	stonebreak-game	com/stonebreak/items/**/*Test,com/stonebreak/gameplay/**/*Test

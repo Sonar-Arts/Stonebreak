@@ -105,6 +105,29 @@ class FoodAutoSwitchTest {
         }
     }
 
+    @Test
+    void aFullHealthPlayerCannotEat() {
+        try (PlayerSession session = new PlayerSession();
+             MockedStatic<com.stonebreak.network.MultiplayerSession> net =
+                     mockStatic(com.stonebreak.network.MultiplayerSession.class)) {
+            Player player = session.player;
+            player.getInventory().setHotbarSlot(0, new ItemStack(ItemType.BANANA, 3));
+            // Not eating falls through to block interaction, which raycasts the world.
+            when(session.world.getAnimatedBlockRegistry())
+                    .thenReturn(new com.stonebreak.blocks.anim.AnimatedBlockRegistry());
+            when(session.world.getBlockAt(org.mockito.ArgumentMatchers.anyInt(),
+                    org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
+                    .thenReturn(com.stonebreak.blocks.BlockType.AIR);
+
+            new WorldMouseHandler().handleUse(player); // full health: no pre-damage
+
+            assertEquals(3, player.getInventory().getSelectedHotbarSlot().getCount(), "the banana is kept");
+            assertEquals(player.getMaxHealth(), player.getHealth(), 0.001f);
+            net.verify(() -> com.stonebreak.network.MultiplayerSession.sendConsumeHeld(org.mockito.ArgumentMatchers.anyInt()),
+                    org.mockito.Mockito.never());
+        }
+    }
+
     /** Pre-damages the player so heal(4) is observable (heal clamps at max health), then uses the held food. */
     private void eat(Player player) {
         player.setHealth(player.getMaxHealth() - 10f);

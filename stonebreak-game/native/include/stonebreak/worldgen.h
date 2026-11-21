@@ -62,6 +62,8 @@
  *  - state_layer: LIMESTONE_STALAGMITE cells - the anchor gets stalagmite_states[((size - 1) * 2 +
  *    hanging) * 4 + facing] (facing = StairState.Facing ordinal: 0 SOUTH, 1 EAST, 2 NORTH, 3 WEST), the
  *    part cells stalagmite_part_states[0] (upright, StalagmiteUpper) / [1] (hanging, StalagmiteLower).
+ *    BLUEBERRY_BUSH cells (wild bushes, SBW ABI 6) get blueberry_states[stage] (a grown bush: 0 Mature,
+ *    1 Berries_Unripe, 2 Berries_Ripening, 3 Berries_Ripe = BlueberryBushState stages 3..6).
  *  - snow_layer: SNOW cells get their layer count (1..8, SnowLayerManager).
  *  Population writes reset these three layers to 0 on every cell it overwrites (a log replacing a
  *  pool's water cell drops the water value).
@@ -94,7 +96,10 @@ extern "C" {
 
 /* 1 (#386): split out of the engine's CK ABI 12; 2: distilled Standard shape (column ABI);
  * 3 (#446): cube generator behind cv_generator, column ABI removed. */
-#define SBW_ABI_VERSION 5   /* 5 (2026-11-19): sbw_column_profile.surface (surface channels) */
+#define SBW_ABI_VERSION 7   /* 5 (2026-11-19): sbw_column_profile.surface (surface channels);
+                              6 (2026-11-21, Project-Heracles): SBW_BLUEBERRY_BUSH + sbw_gen_config.blueberry_states;
+                              7 (2026-11-21, Project-Heracles): The Shade - SBW_SHADE biome, SBW_FLAG_SHADE, dry grass /
+                                dry oak roles, SBW_TREE_DRY_OAK */
 
 /* Standard shape versions (sbw_gen_config.standard_shape), fixed per world like the seed (a saved world keeps its own):
  *  1 = the 2026-11-01 DaedalusTGM-Exp v4 distillation (height curve v1, no surface features);
@@ -138,6 +143,14 @@ extern "C" {
                                        talus gravel / cobble, broken ground. Columns without channel data (255) keep their
                                        surface, so it is a no-op for tiles without the node; off by default (2026-11-19) */
 
+#define SBW_FLAG_SHADE       0x200u /* SBW ABI 7 (Project-Heracles): The Shade, an accursed dry woodland (SBW_SHADE). Standard:
+                                       large chance-rolled regions (~1 km, warped borders; shape.cpp shade_regions = Java
+                                       ShadeRegions bit for bit) turn every temperate plains / meadow column inside them
+                                       Shade, so it stands as one mass; profile kind: column_fn supplies SBW_SHADE itself
+                                       (the game's ShadeOverlay, the same regions). Shade columns lay dry grass over dirt
+                                       and grow dense, clumped dry oaks (rule trees even with SBW_FLAG_VEGETATION).
+                                       Per world (WorldFeatureVersion V5), off by default */
+
 #define SBW_DEEP_LAYERS 4         /* layers 100, 200, 300, 400 blocks under the top carvers */
 
 /* Block roles: config.block_ids[role] = the game's id (BlockType.getId()). */
@@ -151,6 +164,10 @@ enum sbw_block {
     SBW_RED_SAND_COBBLESTONE,
     /* 2026-11-19 (boulders; id 0 = not supplied -> stone / the sandstone body) */
     SBW_COBBLESTONE, SBW_SAND_COBBLESTONE,
+    /* SBW ABI 6 (2026-11-21, Project-Heracles): wild blueberry bushes on plains grass; id 0 = not supplied -> none */
+    SBW_BLUEBERRY_BUSH,
+    /* SBW ABI 7 (Project-Heracles): The Shade's ground and trees; 0 = not supplied -> grass / the oak's blocks */
+    SBW_DRY_GRASS, SBW_DRY_OAK_LOG, SBW_DRY_OAK_LEAVES,
     SBW_BLOCK_COUNT
 };
 #define SBW_BLOCK_CAP 64
@@ -159,11 +176,13 @@ enum sbw_block {
 enum sbw_biome {
     SBW_PLAINS = 0, SBW_DESERT, SBW_RED_SAND_DESERT, SBW_SNOWY_PLAINS, SBW_TUNDRA, SBW_TAIGA,
     SBW_STONY_PEAKS, SBW_BEACH, SBW_ICE_FIELDS, SBW_BADLANDS, SBW_MEADOW, SBW_OCEAN, SBW_SWAMP,
+    SBW_SHADE,   /* SBW ABI 7 (Project-Heracles), see SBW_FLAG_SHADE */
     SBW_BIOME_COUNT
 };
 
 /* Tree kinds (VegetationGenerator.TreeKind ordinals). */
-enum sbw_tree { SBW_TREE_OAK = 0, SBW_TREE_ELM, SBW_TREE_PINE, SBW_TREE_CYPRESS };
+enum sbw_tree { SBW_TREE_OAK = 0, SBW_TREE_ELM, SBW_TREE_PINE, SBW_TREE_CYPRESS,
+                SBW_TREE_DRY_OAK /* SBW ABI 7: The Shade's tree, the oak's shape in dry oak blocks */ };
 
 /* Column profile for SBW_KIND_PROFILE, filled by column_fn for column cube (cx, cz); arrays are
  * [lz * 32 + lx]. No padding. height = first y above the ground; water = first y that
@@ -224,7 +243,7 @@ enum sbw_surface_slot {
  * (the cube or query asking for it fails with a negative result). */
 typedef int32_t (*sbw_column_fn)(void* user, int64_t cx, int64_t cz, sbw_column_profile* out);
 
-/* Generator config (368 bytes; offsets fixed, see sbw_config_size). Fill with sbw_config_defaults
+/* Generator config (376 bytes; offsets fixed, see sbw_config_size). Fill with sbw_config_defaults
  * first, then override. Ids come from the game's runtime block registry (SBO), never constants. */
 typedef struct sbw_gen_config {
     uint32_t struct_size;            /*   0: sizeof(sbw_gen_config) */
@@ -257,7 +276,8 @@ typedef struct sbw_gen_config {
                                         0 = 1, the 2026-11-01 v4 distillation; was reserved, 0). Added within ABI 5
                                         (2026-11-19): callers check sbw_standard_shape_max() first */
     uint16_t block_ids[SBW_BLOCK_CAP]; /* 240: indexed by sbw_block */
-} sbw_gen_config;                    /* 368 */
+    uint16_t blueberry_states[4];    /* 368: SBW ABI 6, wild bush stage states (state_layer), see LAYERS */
+} sbw_gen_config;                    /* 376 */
 
 /* sbw_gen_config.surface_prefetch: no helper threads. COLUMN SURFACE PREFETCH: a column_surface call that
  * misses the generator's caches also queues the column cubes within 2 of it to a few helper threads
@@ -338,7 +358,7 @@ SBW_API int32_t sbw_sample_cell_openings_water(const cv_generator* g, int64_t x0
                                                const int32_t* cell_heights, int32_t* out_floor,
                                                uint8_t* out_coverage, int32_t* out_water);
 /* Every tree planted inside a coarse node: spots packed (lx & 0xFF) | (lz & 0xFF) << 8 |
- * kind << 16 | trunk << 18 (lx, lz relative to x0, z0). Returns the count, or -(needed) - 16 when
+ * kind << 16 (3 bits since SBW ABI 7: SBW_TREE_DRY_OAK = 4) | trunk << 19 (lx, lz relative to x0, z0). Returns the count, or -(needed) - 16 when
  * out_cap is too small (CV_NEED convention). */
 SBW_API int32_t sbw_probe_cell_trees(const cv_generator* g, int64_t x0, int64_t z0, int32_t cells,
                                      int32_t cell_size, const int32_t* cell_heights,

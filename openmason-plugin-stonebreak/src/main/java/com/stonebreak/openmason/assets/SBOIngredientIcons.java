@@ -61,8 +61,12 @@ public final class SBOIngredientIcons {
 
     private SBOIngredientIcons() {}
 
-    /** GL texture id for the object's icon, or 0 when unavailable. */
+    /**
+     * GL texture id for the object's icon, or 0 when unavailable. A {@code #dictionary} ingredient
+     * shows its members in turn (one per second).
+     */
     public static int glIcon(String objectId) {
+        objectId = resolveDictionary(objectId);
         if (objectId == null || objectId.isEmpty()) return 0;
         Integer cached = glCache.get(objectId);
         if (cached != null) return cached;
@@ -72,8 +76,9 @@ public final class SBOIngredientIcons {
         return id;
     }
 
-    /** Skija image for the object's icon, or null when unavailable. */
+    /** Skija image for the object's icon, or null when unavailable ({@code #dictionary}: cycling member). */
     public static Image skijaIcon(String objectId) {
+        objectId = resolveDictionary(objectId);
         if (objectId == null || objectId.isEmpty()) return null;
         if (skijaCache.containsKey(objectId)) return skijaCache.get(objectId);
         byte[] png = primaryPng(objectId);
@@ -87,6 +92,12 @@ public final class SBOIngredientIcons {
         }
         skijaCache.put(objectId, image);
         return image;
+    }
+
+    private static String resolveDictionary(String ingredient) {
+        return SBODictionaryIndex.isRef(ingredient)
+                ? SBODictionaryIndex.shared().displayObjectId(ingredient, System.currentTimeMillis())
+                : ingredient;
     }
 
     /** Free every cached GL texture and Skija image. GL thread only. */

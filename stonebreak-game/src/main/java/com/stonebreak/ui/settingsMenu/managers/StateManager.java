@@ -40,6 +40,7 @@ public final class StateManager {
     private MButton hideArmWithHudButton;
     private MButton liveMenuBackgroundButton;
     private MButton leafTransparencyButton;
+    private MButton connectedShapesButton;
     private MButton waterShaderButton;
     private MButton cloudsButton;
     private MButton godRaysButton;
@@ -80,6 +81,7 @@ public final class StateManager {
             case HIDE_ARM_WITH_HUD -> hideArmWithHudButton;
             case LIVE_MENU_BACKGROUND -> liveMenuBackgroundButton;
             case LEAF_TRANSPARENCY -> leafTransparencyButton;
+            case CONNECTED_SHAPES -> connectedShapesButton;
             case WATER_SHADER     -> waterShaderButton;
             case CLOUDS_ENABLED   -> cloudsButton;
             case GOD_RAYS         -> godRaysButton;
@@ -249,6 +251,7 @@ public final class StateManager {
         liveMenuBackgroundButton = new MButton(liveMenuBackgroundLabel()).size(bw, bh);
 
         leafTransparencyButton = new MButton(leafTransparencyLabel()).size(bw, bh);
+        connectedShapesButton = new MButton(connectedShapesLabel()).size(bw, bh);
         waterShaderButton = new MButton(waterShaderLabel()).size(bw, bh);
         cloudsButton = new MButton(cloudsLabel()).size(bw, bh);
         godRaysButton = new MButton(godRaysLabel()).size(bw, bh);
@@ -315,7 +318,7 @@ public final class StateManager {
         // Text on every settings widget tracks the UI scale (opt-in; persists across resizeWidgets).
         for (MWidget w : new MWidget[]{
                 applyButton, backButton, resolutionButton, crosshairStyleButton,
-                volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, pauseWorldButton, hideArmWithHudButton, liveMenuBackgroundButton, leafTransparencyButton, waterShaderButton,
+                volumeSlider, musicVolumeSlider, musicEnabledButton, crosshairSizeSlider, playerNameTagsButton, pauseWorldButton, hideArmWithHudButton, liveMenuBackgroundButton, leafTransparencyButton, connectedShapesButton, waterShaderButton,
                 cloudsButton, godRaysButton, shadowsButton, shadowQualityButton, shadowDistanceSlider,
                 smoothLightingButton, particlesButton, particleDensitySlider, renderDistanceSlider, verticalRenderDistanceSlider, lodDistanceSlider,
                 lodEnabledButton, lodQualityButton, vsyncButton, maxFpsSlider, uiScaleSlider, keepUiScaleButton, revertUiScaleButton}) {
@@ -349,6 +352,7 @@ public final class StateManager {
         hideArmWithHudButton.size(bw, bh);
         liveMenuBackgroundButton.size(bw, bh);
         leafTransparencyButton.size(bw, bh);
+        connectedShapesButton.size(bw, bh);
         waterShaderButton.size(bw, bh);
         cloudsButton.size(bw, bh);
         godRaysButton.size(bw, bh);
@@ -387,7 +391,8 @@ public final class StateManager {
                              Runnable pauseWorldAction,
                              Runnable hideArmWithHudAction,
                              Runnable liveMenuBackgroundAction,
-                             Runnable leafTransparencyAction, Runnable waterShaderAction,
+                             Runnable leafTransparencyAction, Runnable connectedShapesAction,
+                             Runnable waterShaderAction,
                              Runnable cloudsAction, Runnable godRaysAction, Runnable shadowsAction,
                              Runnable shadowQualityAction,
                              java.util.function.Consumer<Float> shadowDistanceAction,
@@ -417,6 +422,7 @@ public final class StateManager {
         hideArmWithHudButton.setOnClick(hideArmWithHudAction);
         liveMenuBackgroundButton.setOnClick(liveMenuBackgroundAction);
         leafTransparencyButton.setOnClick(leafTransparencyAction);
+        connectedShapesButton.setOnClick(connectedShapesAction);
         waterShaderButton.setOnClick(waterShaderAction);
         cloudsButton.setOnClick(cloudsAction);
         godRaysButton.setOnClick(godRaysAction);
@@ -471,6 +477,7 @@ public final class StateManager {
         applyButton.setSelected(false);
         backButton.setSelected(false);
         leafTransparencyButton.setSelected(false);
+        connectedShapesButton.setSelected(false);
         waterShaderButton.setSelected(false);
         cloudsButton.setSelected(false);
         godRaysButton.setSelected(false);
@@ -540,6 +547,7 @@ public final class StateManager {
         hideArmWithHudButton.setText(hideArmWithHudLabel());
         liveMenuBackgroundButton.setText(liveMenuBackgroundLabel());
         leafTransparencyButton.setText(leafTransparencyLabel());
+        connectedShapesButton.setText(connectedShapesLabel());
         waterShaderButton.setText(waterShaderLabel());
         cloudsButton.setText(cloudsLabel());
         godRaysButton.setText(godRaysLabel());
@@ -577,6 +585,10 @@ public final class StateManager {
 
     private String liveMenuBackgroundLabel() {
         return "Live Menu Background: " + (settings.getLiveMenuBackground() ? "ON" : "OFF");
+    }
+
+    private String connectedShapesLabel() {
+        return "Connected Shapes: " + (settings.getConnectedShapes() ? "ON" : "OFF");
     }
 
     private String leafTransparencyLabel() {
@@ -710,6 +722,7 @@ public final class StateManager {
     public MButton getHideArmWithHudButton() { return hideArmWithHudButton; }
     public MButton getLiveMenuBackgroundButton() { return liveMenuBackgroundButton; }
     public MButton getLeafTransparencyButton() { return leafTransparencyButton; }
+    public MButton getConnectedShapesButton() { return connectedShapesButton; }
     public MButton getWaterShaderButton() { return waterShaderButton; }
     public MButton getCloudsButton() { return cloudsButton; }
     public MButton getGodRaysButton() { return godRaysButton; }

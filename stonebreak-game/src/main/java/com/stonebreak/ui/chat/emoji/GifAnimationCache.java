@@ -83,7 +83,7 @@ public final class GifAnimationCache {
 
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     ImageIO.write(canvas, "PNG", baos);
-                    Image skijaImage = Image.makeFromEncoded(baos.toByteArray());
+                    Image skijaImage = Image.makeDeferredFromEncodedBytes(baos.toByteArray());
                     frames.add(new GifFrame(skijaImage, delayMs));
                 }
                 return frames;

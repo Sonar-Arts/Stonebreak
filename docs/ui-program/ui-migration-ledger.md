@@ -172,6 +172,7 @@ These apply to every row unless the row says otherwise.
 | dragged-item-layer | overlay | the inventory/workbench/furnace documents (cursor layer) | per-frame immediate | migrated |
 | workbench | screen | `ui.workbench.WorkbenchScreen` | per-world | migrated |
 | furnace | screen | `ui.furnace.FurnaceScreen` | per-world | migrated |
+| chest | screen | `ui.chest.ChestScreen` (document-native: `chest.sbui` from the start, no legacy renderer) | per-world | n/a |
 | recipe-book | overlay | `ui.recipeScreen.RecipeScreen` | per-world | migrated |
 | recipe-book-tooltip | tooltip | `ui.recipeScreen.RecipeScreen` (the document router tooltip) | per-world | migrated |
 | character-sheet | screen | `ui.characterScreen.CharacterScreen` | per-world | migrated |
@@ -196,6 +197,7 @@ These apply to every row unless the row says otherwise.
 | world-revealed-outline | custom-renderer | `rendering.gameWorld.effects.WorldEffectsRenderer` | process-persistent | world-render |
 | effect-underwater-tint | effect | `rendering.UI.components.UnderwaterOverlayRenderer` | process-persistent | world-render |
 | effect-dodge-vignette | effect | `rendering.UI.components.DodgeInvincibilityOverlay` | process-persistent | world-render |
+| effect-stealth-vignette | effect | `rendering.UI.components.StealthVignetteOverlay` | process-persistent | world-render |
 | effect-screen-droplets | effect | `rendering.UI.components.ScreenDropletOverlay` | process-persistent | world-render |
 | effect-pause-depth-curtain | effect | `rendering.pipeline.DepthCurtainRenderer` | process-persistent | world-render |
 | battle-hud | screen | `ui.focusBattle.FocusBattleScreen` + `BattleHudLayers` + `BattleHudDocument` | shell-persistent, bound per encounter | migrated |
@@ -333,7 +335,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 - **Performance:** the drop-shadow `ImageFilter` and the 64-gon path are allocated every frame. The space bake is cached per size.
 - **Fixtures:** `ui/fidelity/LegacyMainMenuBaselineTest` + `LegacyMainMenuCapture` (#299): pinned splash and space clock,
   the stage driven in fixed 1/60 s steps through the easter egg (`shake`, `reveal`, `space`), the renderer's layout sink.
-- **Fidelity:** `main-menu/main-menu-live_1920x1080_s1` `main-menu/main-menu-live_1280x720_s0_75` `main-menu/main-menu-live_3840x2160_s2` `main-menu/main-menu-live_1921x1081_s1_25` `main-menu/main-menu-loading_1920x1080_s1` `main-menu/main-menu-static_1920x1080_s1` `main-menu/main-menu-live-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-live-hover-quit_1920x1080_s1`
+- **Fidelity:** `main-menu/main-menu-live_1920x1080_s1` `main-menu/main-menu-live_1280x720_s0_75` `main-menu/main-menu-live_3840x2160_s2` `main-menu/main-menu-live_1921x1081_s1_25` `main-menu/main-menu-loading_1920x1080_s1` `main-menu/main-menu-static_1920x1080_s1` `main-menu/main-menu-live-hover-singleplayer_1920x1080_s1` `main-menu/main-menu-live-hover-quit_1920x1080_s1` `main-menu/main-menu-live-resume_1920x1080_s1` `main-menu/main-menu-live-resume-exit_1920x1080_s1`
 - **Migration (#299; migrated, legacy removed in #302):** shipped as `ui/documents/main_menu.sbui` + `menu_button` and the shared logo image
   ("Stonebreak Menus": `UI/stonebreak/ui/screens/main_menu.omui`). A state screen (`runtime.screens.StateScreens`);
   `ui.mainMenu.MainMenuDocument` advances the stage where the legacy `render` did and lets the host publish before it
@@ -358,12 +360,24 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   (dirt when the live backdrop is off or failed — setting `liveMenuBackground`), `seedLine`; actions `.singleplayer`,
   `.multiplayer`, `.settings`, `.quit`. Sources: "Stonebreak Menus" `screens/main_menu.omui` +
   `components/menu_entry.omui` + `images/menu_scrim.png` (builder `Dev Working/ui-builders-menu/`).
+- **Resume (2026-11-08):** with a saved world, the backdrop is the player's **last-played world** (by `metadata.json`'s
+  `lastPlayed`; the world list now reads it too) in a held `PREVIEW` session — `ServerLevel.createAndLoad(…, preview)`
+  streams but never simulates (no water/growth/mobs/spawner/day clock/weather tick, `IntegratedServer.previewTick`) and
+  its `SaveService` writes nothing (`suspendWrites`) — the camera orbiting the player. The seed showcase remains for
+  no saved world. Contract `stonebreak:screen.main-menu` 3 adds `canResume` (shows the RESUME entry, first) and `exit`
+  (Resume's slide-off, 0..1: column, scrim and splash slide left, the seed line right, each fading) and the
+  `.resume` action, appended to the choices so earlier indices hold. Resume (`MenuShowcase.resume`) flies the camera
+  into the player's eye (`ResumeTransition`) and promotes the session to `SINGLEPLAYER` in place
+  (`MultiplayerSession.promotePreview`: the server adopts the client's drifted weather clock, resumes writes and
+  autosave); with no preview on screen it loads the world the ordinary way. Edited through the `UiArchiveTool`
+  round trip (the "Stonebreak Menus" source was not on disk): re-export from the source must carry these changes.
 - **Decision:** the redesign has no legacy reference, so its baselines were recorded once from the reviewed document
   (`MainMenuDocumentGateTest.refreezeTheBaselines`, opt-in) and lock it from then on; the legacy captures above
   describe the menu before it.
 - **Gate:** `ui.fidelity.MainMenuDocumentGateTest`: revealed over the live world at the standard viewports, the
-  "Loading main menu" wait (the world loading screen's look, at 40 %), the static backdrop and two hovered entries, all at `EXACT` (0 px) with the same hit regions and actions;
-  keyboard (Tab, Down, Enter) and click script.
+  "Loading main menu" wait (the world loading screen's look, at 40 %), the static backdrop, two hovered entries, and the
+  RESUME entry shown and a fifth slid off, all at `EXACT` (0 px) with the same hit regions and actions;
+  keyboard (Tab, Down, Enter) and click script; with a world to resume, Tab focuses RESUME first.
 
 ### world-select
 - **Kind:** screen.
@@ -500,7 +514,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   - Scrolled-out Skills/Feats/ClassAbilities buttons stay clickable.
   - ClassAbilities hit-tests five spend slots regardless of the class.
   - `handleClick` recomputes the layout from `Game.getWindowWidth/Height` rather than its parameters.
-- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-mode1_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-node5_1920x1080_s1` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-talent1_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-hover-train0_1920x1080_s1` `character-creation/character-creation-hover-undo_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1920x1080_s1` `character-creation/character-creation-skills-weapons_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1`
+- **Fidelity:** `character-creation/character-creation-ability_1920x1080_s1` `character-creation/character-creation-background_1280x720_s0_75` `character-creation/character-creation-background_1920x1080_s1` `character-creation/character-creation-background_1921x1081_s1_25` `character-creation/character-creation-background_3840x2160_s2` `character-creation/character-creation-classes-none_1920x1080_s1` `character-creation/character-creation-classes-scrolled_1920x1080_s1` `character-creation/character-creation-classes_1280x720_s0_75` `character-creation/character-creation-classes_1920x1080_s1` `character-creation/character-creation-feats-owned_1920x1080_s1` `character-creation/character-creation-feats_1920x1080_s1` `character-creation/character-creation-hover-acquire0_1920x1080_s1` `character-creation/character-creation-hover-back_1920x1080_s1` `character-creation/character-creation-hover-bg1_1920x1080_s1` `character-creation/character-creation-hover-cls2_1920x1080_s1` `character-creation/character-creation-hover-equip1_1920x1080_s1` `character-creation/character-creation-hover-invest2_1920x1080_s1` `character-creation/character-creation-hover-minus4_1920x1080_s1` `character-creation/character-creation-hover-next_1920x1080_s1` `character-creation/character-creation-hover-next_1921x1081_s1_25` `character-creation/character-creation-hover-node5_1920x1080_s1` `character-creation/character-creation-hover-plus0_1920x1080_s1` `character-creation/character-creation-hover-tab3_1920x1080_s1` `character-creation/character-creation-hover-talent1_1920x1080_s1` `character-creation/character-creation-hover-tile2_1920x1080_s1` `character-creation/character-creation-hover-train0_1920x1080_s1` `character-creation/character-creation-hover-undo_1920x1080_s1` `character-creation/character-creation-looks_1920x1080_s1` `character-creation/character-creation-skills-scrolled_1280x720_s0_75` `character-creation/character-creation-skills-weapons_1920x1080_s1` `character-creation/character-creation-skills_1920x1080_s1`
 - **Migration (#301; migrated, legacy removed in #302):** shipped as `ui/documents/character_creation.sbui`
   (`UI/stonebreak/ui/screens/character_creation.omui`); legacy renderer removed in #302. A state
   document (`GameScreens.stateDocument(CHARACTER_CREATION, ...)`); the keyboard stays dead, as before.
@@ -961,6 +975,15 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   hit region and action; values repaint when the host publishes; only Back reaches an action). Needed exact line
   boxes off the pixel grid and the new root `-sb-font-grid: none` (15 px rows at 0.75/1.25 were half-pixel-snapped;
   this renderer sized fonts exactly).
+- **Post-migration (#180):** added a Goblins kill row and an ACTIVITY section (Time Spent Fishing, Bass Caught, Items
+  Crafted; `StatsRecord` fields `killsGoblin`, `timeFishing`, `bassCaught`, `itemsCrafted`), so the panel is now 520×750·s
+  with a second section rule at 535 and Back at 670. All 7 captures were re-frozen from the live document (the legacy
+  oracle is gone); only the panel/Back y and height moved in `geometry.json`.
+  The rows then moved into a `ScrollView` (`rows-scroll`, `.stats-scroll`: 550 high, `requires` gains `ui-scroll`) sized
+  to fit today's rows exactly, so trackers added later scroll above Back instead of growing the panel. The section rules
+  now ride inside the gaps (`.stats-gap > .stats-rule`, top 25) so they scroll with the rows; the view is inset 8 px
+  (rows `margin` 8) on both sides so the clip never trims glyph antialiasing at fractional scales and the scrollbar has
+  its own gutter. All 7 captures stayed pixel-identical.
 
 ### glossary
 - **Kind:** screen.
@@ -1190,6 +1213,17 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   items conserved, and what the document shows equals the state). Live (`-Dstonebreak.autofurnace=3
   -Dstonebreak.autofurnace.ui=30`, rolled back vs not): the panels agree except icon pixels under count digits
   (atlas-rendered block icons vs direct GL) and the world behind the translucent panel.
+
+### chest
+
+- **Owner:** `com.stonebreak.ui.chest.ChestScreen` with `ChestController`, `ChestInputManager`, `ChestLayout` and the
+  presentation `ChestDocument`.
+- **Entry:** right-click a CHEST block (`WorldMouseHandler`) → `GSC.openChestScreen`. CHEST_UI is **unpaused**, like the
+  furnace.
+- **Status n/a:** born as a document (`ui/documents/chest.sbui`, derived from `furnace.sbui`'s source with
+  `UiArchiveTool`: the crucible band replaced by a 9×3 `chest` grid bound to `stonebreak:chest` 1). There was never a
+  legacy renderer to migrate from, so there is no fidelity baseline or MigrationGate; `ChestDocumentTest` opens the
+  shipped document on a real `GameUiHost` and moves a stack through its slot addresses.
 
 ### recipe-book
 - **Kind:** overlay (full panel over the hotbar).
@@ -1697,9 +1731,9 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 ### world-enemy-awareness
 - **Kind:** hud (world-space).
 - **Owner:** singleton `EnemyAwarenessRenderer`.
-- **Draw:** "?" amber when SUSPICIOUS, "!" red when ALERTED, over entities of the **client** `Game.getEntityManager()`.
+- **Draw:** "?" amber when SUSPICIOUS, "!" red when ALERTED, "?" grey when SEARCHING, over entities of the **client** `Game.getEntityManager()`.
 - **Notes:**
-  - Network shadows never tick awareness, so this likely never shows for server mobs (two-world trap; `EntityManager.java:98-102`).
+  - Network shadows never tick awareness; since #321 the server mob's state reaches them through `EntityAwarenessS2C`, so server mobs show their glyphs.
   - **Opens a Skija bracket every PLAYING frame** even with no glyphs (:52).
 - **Fixtures:** none.
 - **Fidelity:** `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-texts_1920x1080_s1`
@@ -1721,7 +1755,7 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
 ### stealth-hud
 - **Kind:** hud (screen-space).
 - **Owner:** singleton `StealthHudRenderer`.
-- **Draw:** "STEALTH" / "ENTERING STEALTH…" at a fixed y=64 top-centre, plus a 160×8 "Re-entry" cooldown bar. The doc comment claims "under the crosshair", which is wrong.
+- **Draw:** "STEALTH" (dim while entering, since #321) at a fixed y=64 top-centre, plus a 160×8 "Re-entry" cooldown bar. The doc comment claims "under the crosshair", which is wrong.
 - **Bindings:** `player.getStealth()`.
 - **Fixtures:** none.
 - **Fidelity:** `world-hud/world-hud-cooling_1920x1080_s1` `world-hud/world-hud-entering_1920x1080_s1` `world-hud/world-hud-mixed_1280x720_s0_75` `world-hud/world-hud-mixed_1920x1080_s1` `world-hud/world-hud-mixed_1921x1081_s1_25` `world-hud/world-hud-mixed_3840x2160_s2` `world-hud/world-hud-stealth_1920x1080_s1`
@@ -1752,6 +1786,15 @@ These are never to be dropped. Each needs a host-code draw provider, a native sl
   underwater tint and droplets (same immediate-mode GL path, same place in the frame, under the HUD), keyed on the dodge's
   i-frames. It stays with them; moving it would split one effect pass across two pipelines. The immediate-mode GL is
   renderer modernisation (Hard visuals #10), not a UI migration.
+
+### effect-stealth-vignette
+- **Kind:** effect. Owner: `StealthVignetteOverlay` (same path as underwater).
+- **Draw:** black edge band at 30 % of the min dimension, alpha 0.85, four gradient trapezoids (the shared `EdgeVignette`
+  the dodge flash also draws through), ~0.3 s fade in / ~0.15 s out, keyed on `getStealth().isStealthed()` (#321) —
+  nothing during the entry delay.
+- **Fixtures:** none.
+- **Decision:** (#321) world-render, for the dodge vignette's reasons: a screen effect of the world pass drawn by
+  `OverlayRenderer` under the HUD, beside the effects it shares a pipeline with.
 
 ### effect-screen-droplets
 - **Kind:** effect. Owner: `ScreenDropletOverlay` (same path).

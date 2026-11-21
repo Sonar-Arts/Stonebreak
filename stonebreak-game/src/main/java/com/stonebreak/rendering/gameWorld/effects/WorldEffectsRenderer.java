@@ -62,7 +62,7 @@ public final class WorldEffectsRenderer {
         World world = Game.getWorld();
         org.joml.Vector3d cameraPos = player.getCamera().getPosition();
         for (Entity entity : entities.getAllEntities()) {
-            if (entity.isAlive() && entity.getType() == EntityType.FIRE_BOLT) {
+            if (entity.isAlive() && entity instanceof com.stonebreak.mobs.entities.FireBolt) {
                 entityRenderer.renderEntity(entity, player.getViewMatrix(), projectionMatrix, world, cameraPos);
             }
         }

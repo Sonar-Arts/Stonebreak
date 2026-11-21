@@ -27,8 +27,9 @@ public class EntityCollision {
 
     /**
      * Mobs climb anything up to half a block (cows step lower than players), partial shapes (snow,
-     * slabs) no higher: they have no mantle either. Route planning reads this ({@code NavProfiles}),
-     * so a route never plans a step the body will not take.
+     * slabs) no higher: they have no mantle either. A mob may step higher
+     * ({@link LivingEntity#getMaxStepUp()}). Route planning reads the same number
+     * ({@code NavProfiles}), so a route never plans a step the body will not take.
      */
     public static final float MOB_STEP = 0.5f;
     private static final float GROUND_FRICTION = 5.0f;
@@ -55,14 +56,20 @@ public class EntityCollision {
         return entity instanceof LivingEntity living ? living.getLegHeight() : 0.0f;
     }
 
+    /** The step a body climbs without a jump: its own for a mob, half a block for anything else. */
+    private static float stepOf(Entity entity) {
+        return entity instanceof LivingEntity living ? living.getMaxStepUp() : MOB_STEP;
+    }
+
     /** Loads the entity into the scratch body. */
     private PhysicsBody bodyOf(Entity entity, WorldPhysics physics) {
+        float step = stepOf(entity);
         Vector3d position = entity.position;
         ox = PhysicsFrame.originX(physics.engine());
         oy = PhysicsFrame.originY(physics.engine());
         oz = PhysicsFrame.originZ(physics.engine());
         body.box(entity.getWidth() / 2.0f, entity.getLength() / 2.0f, legHeight(entity), entity.getHeight())
-            .steps(MOB_STEP, MOB_STEP)
+            .steps(step, step)
             .position(position.x - ox, position.y - oy, position.z - oz);
         Vector3f v = entity.velocity;
         body.velocity(v.x, v.y, v.z);
@@ -154,7 +161,18 @@ public class EntityCollision {
         }
         WorldPhysics physics = WorldPhysics.of(world);
         PhysicsBody b = bodyOf(entity, physics);
+        // A glider floats down instead of dropping: airborne and dry, it never falls faster than its
+        // sink speed. The step adds gravity itself, so cap the speed it starts from such that, once
+        // gravity is added, the fall is at most the sink speed — gravity first, then the cap.
+        float sink = entity instanceof LivingEntity living ? living.getGlideSinkSpeed() : 0f;
+        boolean gliding = sink > 0f && !entity.isOnGround() && entity.getSubmersion() <= 0f;
+        if (gliding) {
+            b.vy = Math.max(b.vy, -sink - Entity.GRAVITY * deltaTime);
+        }
         physics.step(b, deltaTime, INTEGRATOR, sample);
+        if (gliding && sample.submersion <= 0f) {
+            b.vy = Math.max(b.vy, -sink);
+        }
         entity.setSubmersion(sample.submersion);
         storeBody(entity);
     }

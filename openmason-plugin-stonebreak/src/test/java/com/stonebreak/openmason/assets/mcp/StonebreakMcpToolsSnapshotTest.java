@@ -33,7 +33,7 @@ class StonebreakMcpToolsSnapshotTest {
 
     private static List<String> namesOf(McpToolContribution group) {
         ObjectMapper mapper = new ObjectMapper();
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        mapper.setDefaultPropertyInclusion(JsonInclude.Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL));
         McpToolRegistry registry = new McpToolRegistry();
         group.contributor().contribute(McpToolRegistryFactory.context(null, mapper, ToolCapabilities.none(),
                 registry, McpSurface.builtin()));

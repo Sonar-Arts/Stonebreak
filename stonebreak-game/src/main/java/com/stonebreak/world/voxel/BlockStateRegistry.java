@@ -86,6 +86,26 @@ public final class BlockStateRegistry {
         return out;
     }
 
+    /**
+     * The state ids of a wild (grown) blueberry bush's stages for the native generator config (SBW ABI 6):
+     * Mature, Berries_Unripe, Berries_Ripening, Berries_Ripe — the stage-only strings the world stores
+     * ({@code BlueberryBushState.toStageString}). Registered on first use, so a world's table only gains
+     * them once it generates with them (fixed ids would collide with ids an existing world already holds).
+     */
+    public short[] blueberryWildStateIds() {
+        com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage[] wild = {
+            com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage.MATURE,
+            com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage.BERRIES_UNRIPE,
+            com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage.BERRIES_RIPENING,
+            com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage.BERRIES_RIPE
+        };
+        short[] out = new short[wild.length];
+        for (int i = 0; i < wild.length; i++) {
+            out[i] = (short) idOf(new com.stonebreak.blocks.blueberrybush.BlueberryBushState(wild[i], 0).toStageString());
+        }
+        return out;
+    }
+
     /** {upright part, hanging part} for the native generator config. */
     public short[] stalagmitePartIds() {
         return new short[]{(short) 25, (short) 26};

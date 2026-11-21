@@ -2,6 +2,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
@@ -10,7 +12,7 @@ import org.joml.Vector3f;
 import java.util.EnumSet;
 
 /**
- * Shoots a bow at a player in range and in sight: plant feet, draw while tracking the target,
+ * Shoots a bow at its {@link AttackTarget} — the player unless told otherwise — in range and in sight: plant feet, draw while tracking the target,
  * loose at the end of the draw clip, then play the follow-through. A draw is abandoned if the
  * player gets out of range before it finishes.
  */
@@ -26,6 +28,7 @@ public final class RangedAttackBehavior implements Behavior {
 
     private final WeaponProfile.Ranged weapon;
     private final ArrowLauncher launcher;
+    private final AttackTarget target;
 
     private final Vector3d eye = new Vector3d();
     private final Vector3f aim = new Vector3f();
@@ -36,8 +39,13 @@ public final class RangedAttackBehavior implements Behavior {
     private float readyAt;
 
     public RangedAttackBehavior(WeaponProfile.Ranged weapon, ArrowLauncher launcher) {
+        this(weapon, launcher, AttackTarget.PLAYER);
+    }
+
+    public RangedAttackBehavior(WeaponProfile.Ranged weapon, ArrowLauncher launcher, AttackTarget target) {
         this.weapon = weapon;
         this.launcher = launcher;
+        this.target = target;
     }
 
     @Override
@@ -52,10 +60,12 @@ public final class RangedAttackBehavior implements Behavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        float distance = context.distanceToNearestPlayer();
-        return context.entity().getAge() >= readyAt
-                && distance >= weapon.minRange() && distance <= weapon.maxRange()
-                && context.canSeeNearestPlayer(eyeOf(context.entity()));
+        if (context.entity().getAge() < readyAt || !target.engaged(context)) {
+            return false;
+        }
+        float distance = context.distanceTo(target.position(context));
+        return distance >= weapon.minRange() && distance <= weapon.maxRange()
+                && target.canSee(context, eyeOf(context.entity()));
     }
 
     @Override
@@ -76,8 +86,8 @@ public final class RangedAttackBehavior implements Behavior {
         context.steering().stopMoving();
         switch (phase) {
             case DRAW -> {
-                context.facePlayer(TURN_SPEED);
-                if (context.distanceToNearestPlayer() > weapon.maxRange()) {
+                context.facePoint(target.position(context), TURN_SPEED);
+                if (context.distanceTo(target.position(context)) > weapon.maxRange()) {
                     phase = Phase.DONE; // they got away: lower the bow
                 } else if (elapsed >= weapon.drawSeconds()) {
                     loose(context);
@@ -110,16 +120,16 @@ public final class RangedAttackBehavior implements Behavior {
         return "Ranged";
     }
 
-    /** Fires at the player's chest, lifted to cancel the drop over the flight, plus some wobble. */
+    /** Fires at the target's aim point, lifted to cancel the drop over the flight, plus some wobble. */
     private void loose(AiContext context) {
-        Vector3d player = context.nearestPlayer();
-        if (player == null) {
+        Vector3d victim = target.position(context);
+        if (victim == null) {
             return;
         }
         Vector3d origin = eyeOf(context.entity());
         // Aim as an offset from the bow (a small float vector wherever the fight is).
-        aim.set((float) (player.x - origin.x), (float) (player.y + PlayerLocator.CHEST_HEIGHT - origin.y),
-                (float) (player.z - origin.z));
+        aim.set((float) (victim.x - origin.x), (float) (victim.y + target.aimHeight(context) - origin.y),
+                (float) (victim.z - origin.z));
         float horizontal = (float) Math.hypot(aim.x, aim.z);
         float flightSeconds = horizontal / weapon.arrowSpeed();
         aim.y += 0.5f * ARROW_NET_GRAVITY * flightSeconds * flightSeconds;
@@ -128,6 +138,9 @@ public final class RangedAttackBehavior implements Behavior {
                 (float) context.random().nextGaussian() * weapon.spread(),
                 (float) context.random().nextGaussian() * weapon.spread()).normalize(weapon.arrowSpeed());
         launcher.launch(context.entity(), new Vector3d(origin), new Vector3f(aim), weapon.damage());
+        if (target.noisy(context)) {
+            NoiseBus.emitIn(context.world(), context.entity().getPosition(), Loudness.RANGED_ATTACK, context.entity());
+        }
     }
 
     private Vector3d eyeOf(LivingEntity entity) {

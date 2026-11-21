@@ -68,7 +68,18 @@ final class NearestLightSources {
         return p.z() < other.z();
     }
 
+    /**
+     * Whether a source this far away would make the list. Lets callers skip a costly emission
+     * check for a candidate that would be thrown away anyway. A tie with the last entry may still
+     * win on position, so it answers true.
+     */
+    boolean wouldAccept(float distanceSquared) {
+        return size < limit || (size > 0 && distanceSquared <= distances[size - 1]);
+    }
+
     int size() { return size; }
+    /** Squared distance of the source at {@code index}; ascending with the index. */
+    float distance(int index) { return distances[index]; }
     /** The placed source at {@code index}, or null when it is a held light ({@link #holder}). */
     BlockPos get(int index) { return positions[index]; }
     /** The entity carrying the light at {@code index}, or null for a placed source. */

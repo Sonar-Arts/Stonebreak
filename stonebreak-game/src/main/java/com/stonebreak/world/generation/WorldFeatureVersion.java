@@ -7,37 +7,44 @@ package com.stonebreak.world.generation;
  * would grow boulders beside old ones that have none; so it comes with a new version and only new worlds get it.
  *
  * <p>Unlike {@link HeightCurveVersion} this never changes the TGMPipe tiles (features are native population only), so it
- * is not part of the TGMPipe world identity or the multiplayer handshake: only the world's generator (the server) needs
- * it. Standard (noise) worlds carry the value and ignore it.
+ * is not part of the TGMPipe world identity. Standard (noise) worlds carry the value and ignore it, except for The
+ * Shade ({@link #shade()}, V5), which both kinds use. The Shade changes biomes a client reads too (night fog, LOD), so
+ * the handshake carries the number ({@code WelcomeS2C}).
  */
 public enum WorldFeatureVersion {
 
     /** Worlds saved before 2026-11-19 (no {@code worldFeatures} in world.json): no boulders. */
-    V0(0, false, 0, false, false, false),
+    V0(0, false, 0, false, false, false, false),
     /** 2026-11-19: boulders, scree and erratics (native {@code SBW_FLAG_BOULDERS}) with rock shape bank 1. */
-    V1(1, true, 1, false, false, false),
+    V1(1, true, 1, false, false, false, false),
     /**
      * 2026-11-19 (agent L): V1 + land surface materials from the terrain model's surface-detail channels (native
      * {@code SBW_FLAG_LAND_SURFACE}: bare rock, talus, broken ground where the tiles carry rock / scree / roughness).
      */
-    V2(2, true, 1, true, false, false),
+    V2(2, true, 1, true, false, false, false),
     /**
      * 2026-11-19 (agent V): V2 + vegetation from the terrain model's vegetation channels (native
      * {@code SBW_FLAG_VEGETATION}: tree density, size and clearings, bushes, grass, bare and wet-meadow patches where
      * the tiles carry canopy / ground-cover channels; ETH canopy height + ESA WorldCover trained).
      */
-    V3(3, true, 1, true, true, false),
+    V3(3, true, 1, true, true, false, false),
     /**
      * 2026-11-20: V3 + open land (native {@code SBW_FLAG_VEG_OPEN_LAND}): V3 temperate worlds came out ~90 % closed
      * forest (the node predicts natural vegetation and its canopy cover saturates in forest), so V4 adds big meadow
      * patches per biome and a steeper cover-to-density curve; closed forest stays closed.
      */
-    V4(4, true, 1, true, true, true);
+    V4(4, true, 1, true, true, true, false),
+    /**
+     * 2026-11-21 (Project-Heracles): V4 + The Shade, dry temperate woodland of dry oaks under a night ground fog (native
+     * {@code SBW_FLAG_SHADE}; DaedalusTGM-Exp: the chance-based {@code ShadeOverlay} on the model's plains / sparse
+     * forest). Unlike the features above it is used by Standard worlds too.
+     */
+    V5(5, true, 1, true, true, true, true);
 
     /** The feature set of worlds saved without one (older saves). */
     public static final WorldFeatureVersion LEGACY = V0;
     /** The feature set new worlds get. */
-    public static final WorldFeatureVersion CURRENT = V4;
+    public static final WorldFeatureVersion CURRENT = V5;
 
     private final int number;
     private final boolean boulders;
@@ -45,15 +52,25 @@ public enum WorldFeatureVersion {
     private final boolean landSurface;
     private final boolean vegetation;
     private final boolean openLand;
+    private final boolean shade;
 
     WorldFeatureVersion(int number, boolean boulders, int rockBank, boolean landSurface, boolean vegetation,
-                        boolean openLand) {
+                        boolean openLand, boolean shade) {
         this.number = number;
         this.boulders = boulders;
         this.rockBank = rockBank;
         this.landSurface = landSurface;
         this.vegetation = vegetation;
         this.openLand = openLand;
+        this.shade = shade;
+    }
+
+    /**
+     * Whether the world has The Shade ({@link NativeCubeGenerator#FLAG_SHADE}) - Standard and DaedalusTGM-Exp worlds
+     * alike; worlds created before it keep their biomes, so explored edges never show a Shade seam.
+     */
+    public boolean shade() {
+        return shade;
     }
 
     /**

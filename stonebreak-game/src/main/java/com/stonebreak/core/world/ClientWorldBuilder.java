@@ -57,10 +57,11 @@ public final class ClientWorldBuilder {
     private volatile boolean pending = false;
 
     /**
-     * True once the main menu showcase's render world (a {@code SHOWCASE} session) is installed and
-     * its observer camera restored: the menu may start drawing it. Cleared by every start and cancel.
+     * True once a main menu backdrop's render world (a {@code SHOWCASE} or {@code PREVIEW} session)
+     * is installed and its player restored: the menu may start drawing it. Cleared by every start
+     * and cancel.
      */
-    private volatile boolean showcaseInstalled = false;
+    private volatile boolean backdropInstalled = false;
 
     public ClientWorldBuilder(Game game, WorldLifecycle worldLifecycle) {
         this.game = game;
@@ -71,12 +72,12 @@ public final class ClientWorldBuilder {
     public void cancel() {
         generation.incrementAndGet();
         pending = false;
-        showcaseInstalled = false;
+        backdropInstalled = false;
     }
 
-    /** The main menu showcase's world is installed and may be drawn (see {@link #showcaseInstalled}). */
-    public boolean isShowcaseInstalled() {
-        return showcaseInstalled && MultiplayerSession.isShowcase();
+    /** A main menu backdrop's world is installed and may be drawn (see {@link #backdropInstalled}). */
+    public boolean isBackdropInstalled() {
+        return backdropInstalled && MultiplayerSession.isMenuBackdrop();
     }
 
     /** True when inbound network state can safely be applied to the current world. */
@@ -111,6 +112,16 @@ public final class ClientWorldBuilder {
                       com.stonebreak.world.generation.ClimateLayout climateLayout,
                       com.stonebreak.world.generation.HeightCurveVersion heightCurve,
                       com.stonebreak.world.generation.StandardShapeVersion standardShape, Vector3dc spawn) {
+        start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, standardShape, null, spawn);
+    }
+
+    /** As above with the server world's feature set (null = the current one; The Shade). */
+    public void start(String worldName, long seed, TerrainGeneratorType generatorType,
+                      com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                      com.stonebreak.world.generation.ClimateLayout climateLayout,
+                      com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                      com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                      com.stonebreak.world.generation.WorldFeatureVersion worldFeatures, Vector3dc spawn) {
         // The client never persists — drop any save service so the chunk store stays read-only.
         SaveService previous = game.getSaveService();
         if (previous != null) {
@@ -124,21 +135,21 @@ public final class ClientWorldBuilder {
         }
         // The main menu showcase builds quietly behind the menu: no loading screen, no world name
         // (nothing may mistake it for a world the player is in), and it never enters PLAYING.
-        boolean showcase = MultiplayerSession.isShowcase();
-        game.setCurrentWorldName(showcase ? null : worldName);
-        game.setCurrentWorldSeed(showcase ? 0 : seed);
+        boolean backdrop = MultiplayerSession.isMenuBackdrop();
+        game.setCurrentWorldName(backdrop ? null : worldName);
+        game.setCurrentWorldSeed(backdrop ? 0 : seed);
         game.setCurrentWorldData(null);
 
         LoadingScreen loadingScreen = game.getLoadingScreen();
-        if (loadingScreen != null && !showcase) {
+        if (loadingScreen != null && !backdrop) {
             loadingScreen.show();
         }
 
         int buildGeneration = generation.incrementAndGet();
         pending = true;
-        showcaseInstalled = false;
+        backdropInstalled = false;
         new Thread(() -> build(buildGeneration, seed, generatorType, terrainScale, climateLayout, heightCurve,
-            standardShape, spawn), "ClientWorld-Build").start();
+            standardShape, worldFeatures, spawn), "ClientWorld-Build").start();
     }
 
     /** True while {@code buildGeneration} is still the latest build AND the session is alive. */
@@ -150,11 +161,12 @@ public final class ClientWorldBuilder {
                        com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
                        com.stonebreak.world.generation.ClimateLayout climateLayout,
                        com.stonebreak.world.generation.HeightCurveVersion heightCurve,
-                       com.stonebreak.world.generation.StandardShapeVersion standardShape, Vector3dc spawn) {
+                       com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                       com.stonebreak.world.generation.WorldFeatureVersion worldFeatures, Vector3dc spawn) {
         try {
             LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.STREAM));
             World renderWorld = worldLifecycle.createClientWorldInstance(seed, generatorType, terrainScale,
-                climateLayout, heightCurve, standardShape);
+                climateLayout, heightCurve, standardShape, worldFeatures);
             if (!installWorld(buildGeneration, renderWorld)) {
                 return;
             }
@@ -182,8 +194,21 @@ public final class ClientWorldBuilder {
                     player.setSpectator(true);
                 }
                 if (stillCurrent(buildGeneration)) {
-                    showcaseInstalled = true;
+                    backdropInstalled = true;
                     logger.info("[CLIENT-WORLD] Main menu showcase world installed.");
+                }
+                return;
+            }
+            if (MultiplayerSession.isPreview()) {
+                // The preview of the last-played world: the player stands where they saved (the
+                // menu's camera orbits them) and the day clock holds, as the server's does. Resume
+                // (MenuShowcase) unfreezes it and enters PLAYING without this builder.
+                if (game.getTimeOfDay() != null) {
+                    game.getTimeOfDay().setFrozen(true);
+                }
+                if (stillCurrent(buildGeneration)) {
+                    backdropInstalled = true;
+                    logger.info("[CLIENT-WORLD] Main menu preview world installed.");
                 }
                 return;
             }
@@ -285,11 +310,11 @@ public final class ClientWorldBuilder {
         if (!stillCurrent(buildGeneration)) {
             return;
         }
-        if (MultiplayerSession.isShowcase()) {
+        if (MultiplayerSession.isMenuBackdrop()) {
             // The menu backdrop failed: end its session quietly (the menu shows its static backdrop).
             MultiplayerSession.noteShowcaseFailure();
             game.runOnMainThread(() -> {
-                if (stillCurrent(buildGeneration) && MultiplayerSession.isShowcase()) {
+                if (stillCurrent(buildGeneration) && MultiplayerSession.isMenuBackdrop()) {
                     MultiplayerSession.shutdown();
                 }
             });

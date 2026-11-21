@@ -139,7 +139,7 @@ int poolDepthProbe(Generator& g, int biome, uint16_t surface, int32_t rawHeight,
 
 bool growsTreeOn(const Generator& g, uint16_t s) {
     return s == g.cfg.id[SBW_GRASS] || s == g.cfg.id[SBW_SNOWY_DIRT] || s == g.cfg.id[SBW_SWAMPY_GRASS]
-           || s == g.cfg.id[SBW_WATER];
+           || s == g.cfg.id[SBW_WATER] || (g.cfg.id[SBW_DRY_GRASS] != 0 && s == g.cfg.id[SBW_DRY_GRASS]);   /* the Shade */
 }
 
 } // namespace
@@ -248,6 +248,7 @@ const cv_generator* sbw_cv_generator_create(const sbw_gen_config* in) {
         std::memcpy(c.waterRiver, in->water_river_values, sizeof(c.waterRiver));
         std::memcpy(c.stalagmiteState, in->stalagmite_states, sizeof(c.stalagmiteState));
         std::memcpy(c.stalagmitePart, in->stalagmite_part_states, sizeof(c.stalagmitePart));
+        std::memcpy(c.blueberryState, in->blueberry_states, sizeof(c.blueberryState));
         std::memcpy(c.id, in->block_ids, sizeof(c.id));
         c.rockBank = in->rock_bank;
         c.standardShape = in->standard_shape == 0 ? SBW_STANDARD_SHAPE_V1 : static_cast<int>(in->standard_shape);
@@ -379,7 +380,8 @@ int32_t sbw_sample_columns(const cv_generator* gp, int64_t x0, int64_t z0, int32
                     int kind = -1;
                     if (!submerged && height == raw && pool != 2) {
                         const uint16_t ground = pool > 0 ? g->cfg.id[SBW_WATER] : surface;
-                        if (point && g->cfg.standardShape >= SBW_STANDARD_SHAPE_V2
+                        /* the Shade keeps its rule woods (dry oaks), as population does */
+                        if (point && biome != SBW_SHADE && g->cfg.standardShape >= SBW_STANDARD_SHAPE_V2
                                 && (g->cfg.flags & SBW_FLAG_VEGETATION) != 0) {
                             /* Standard shape 2: the column's distilled vegetation channels, pointwise (no tile) */
                             uint8_t veg[8];
@@ -498,8 +500,9 @@ int32_t sbw_probe_cell_trees(const cv_generator* gp, int64_t x0, int64_t z0, int
                         const int kind = g->treeAt(x0 + lx, z0 + lz, surface, biome, trunk);
                         if (kind < 0) continue;
                         if (n < outCap && outSpots != nullptr) {
-                            outSpots[n] = (lx & 0xFF) | ((lz & 0xFF) << 8) | (kind << 16)
-                                          | (std::max(0, std::min(31, trunk)) << 18);
+                            /* kind: 3 bits (SBW ABI 7: SBW_TREE_DRY_OAK = 4) */
+                            outSpots[n] = (lx & 0xFF) | ((lz & 0xFF) << 8) | ((kind & 7) << 16)
+                                          | (std::max(0, std::min(31, trunk)) << 19);
                         }
                         n++;
                     }

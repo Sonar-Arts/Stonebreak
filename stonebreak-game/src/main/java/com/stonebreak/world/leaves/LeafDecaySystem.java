@@ -368,6 +368,9 @@ public final class LeafDecaySystem {
     }
 
     private void scheduleDecay(Cell pos) {
+        if (world.isPersistent(pos.x(), pos.y(), pos.z())) {
+            return; // player-placed leaves never decay
+        }
         long h = pos.mix();
         int jitter = Math.floorMod((int) (h ^ (h >>> 32)), DECAY_DELAY_JITTER_TICKS + 1);
         enqueue(pendingDecays, scheduledDecays, pos, DECAY_DELAY_BASE_TICKS + jitter);
@@ -520,6 +523,9 @@ public final class LeafDecaySystem {
         BlockType block = world.getBlock(x, y, z);
         if (!isLeaves(block)) {
             return; // already gone or replaced
+        }
+        if (world.isPersistent(x, y, z)) {
+            return; // marked as player-placed after it was scheduled
         }
         if (isAnchored(x, y, z)) {
             return; // a log is orthogonally within reach again — keep the leaf

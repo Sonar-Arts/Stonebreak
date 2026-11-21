@@ -151,6 +151,7 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
@@ -219,6 +220,7 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
@@ -309,11 +311,9 @@ public class DropRenderer {
 
         // Reset UI element mode back to false for world rendering
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
     }
     
-    /** Scratch for {@link #renderHeldItems}' hand positions. */
-    private final org.joml.Vector3d handPosition = new org.joml.Vector3d();
-
     /**
      * Render the held item of every visible player-shaped entity at its hand.
      * Dispatches on the entity's resolved {@link com.stonebreak.items.Item}:
@@ -349,9 +349,8 @@ public class DropRenderer {
         glEnable(GL_DEPTH_TEST);
 
         final float HAND_SCALE   = 0.30f;
-        // Voxelized tools reuse the world-drop pipeline, which renders at scale 0.25.
-        final float TOOL_SCALE   = 0.25f;
 
+        org.joml.Vector3d handPosition = new org.joml.Vector3d();
         for (com.stonebreak.mobs.entities.RemotePlayer rp : players) {
             if (!rp.isAlive()) continue;
             com.stonebreak.items.Item held = rp.getHeldItem();
@@ -374,6 +373,7 @@ public class DropRenderer {
                         .rotateY(yawRad)
                         .scale(HAND_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
+                groundFogAt(shaderProgram, dropModelMatrix);
 
                 DisplayMesh mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
                 boolean isTransparent = isTransparentBlock(blockType);
@@ -403,8 +403,9 @@ public class DropRenderer {
                 // at the hand (no spin), then let the drop helper drive the voxel render.
                 RenderOrigin.modelAt(dropModelMatrix, handX, handY, handZ)
                         .rotateY(yawRad)
-                        .scale(TOOL_SCALE);
+                        .scale(HeldItemPose.TOOL_SCALE);
                 shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
+                groundFogAt(shaderProgram, dropModelMatrix);
                 glDisable(GL_BLEND);
                 glDepthMask(true);
                 renderVoxelizedItemDrop(itemType, null);
@@ -427,9 +428,21 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_useTextureArray", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
+    }
+
+    /**
+     * Fogs the next draw by the Shade's ground fog at the model's origin (render space).
+     * These draws fold their model into viewMatrix, so the shader's fragPos is
+     * model-local and cannot place the fog itself; at a quarter block across, one
+     * point per item is indistinguishable from per-pixel.
+     */
+    private static void groundFogAt(ShaderProgram shaderProgram, Matrix4f model) {
+        shaderProgram.setBool("u_groundFogAtPoint", true);
+        shaderProgram.setVec3("u_groundFogPoint", model.getTranslation(new Vector3f()));
     }
 
     /**
@@ -468,6 +481,7 @@ public class DropRenderer {
         // Combine with view matrix
         Matrix4f modelViewMatrix = new Matrix4f(viewMatrix).mul(dropModelMatrix);
         shaderProgram.setUniform("viewMatrix", modelViewMatrix);
+        groundFogAt(shaderProgram, dropModelMatrix);
 
         // Render based on drop type
         if (isBlockDrop(drop)) {
@@ -604,7 +618,13 @@ public class DropRenderer {
             if (!SpriteVoxelizer.isVoxelizable(entry.type())) continue;
             modelView.set(viewMatrix).mul(entry.socketMatrix());
             shaderProgram.setUniform("viewMatrix", modelView);
-            voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
+            groundFogAt(shaderProgram, entry.socketMatrix());
+            if (entry.cooksInto() != null && SpriteVoxelizer.isVoxelizable(entry.cooksInto())) {
+                voxelizedSpriteRenderer.renderCookingSprite(entry.type(), entry.cooksInto(), entry.cooked(),
+                        SOCKET_SPRITE_TRANSFORM);
+            } else {
+                voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
+            }
         }
 
         // Same shared-state restore as renderHeldItems: later passes assume the camera view.
@@ -615,6 +635,7 @@ public class DropRenderer {
         GL30.glBindVertexArray(0);
         shaderProgram.setUniform("u_transformUVsForItem", false);
         shaderProgram.setUniform("u_isUIElement", false);
+        shaderProgram.setBool("u_groundFogAtPoint", false);
         shaderProgram.setUniform("u_useSolidColor", false);
         shaderProgram.setUniform("u_useTextureArray", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
@@ -634,7 +655,7 @@ public class DropRenderer {
         // Apply drop-specific adjustments to counteract hand-held positioning
         // VoxelizedSpriteRenderer has BASE_TRANSLATION.y = -1.1f for hand positioning
         // We need to lift item drops higher so they don't sink into blocks
-        float dropYOffset = 1.3f; // Compensate for base translation + extra lift for floating
+        float dropYOffset = HeldItemPose.VOXEL_DROP_LIFT; // Compensate for base translation + extra lift for floating
         voxelizedSpriteRenderer.adjustInstanceTransform(
             0.0f, dropYOffset, 0.0f,     // Translation: lift Y position
             0.0f, 0.0f, 0.0f,            // Rotation: no additional rotation needed

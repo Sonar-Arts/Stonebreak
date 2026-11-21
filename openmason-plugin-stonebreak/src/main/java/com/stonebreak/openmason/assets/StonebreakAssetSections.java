@@ -5,7 +5,6 @@ import com.openmason.api.PluginContext;
 import com.openmason.api.asset.AssetEditorSection;
 import com.openmason.api.asset.AssetSectionContribution;
 import com.openmason.api.asset.AssetSectionHost;
-import com.openmason.api.asset.AssetSurface;
 import com.stonebreak.format.sbe.SBEFormat;
 import com.stonebreak.format.sbo.SBOFormat;
 import com.openmason.main.systems.themes.utils.ThemeColors;
@@ -18,7 +17,7 @@ import java.util.List;
 
 /**
  * Stonebreak's game data in the SBO/SBE editor and export windows (#431). The tab order matches the
- * pre-#431 editor: Metadata, Game Properties, States, Recipes, Smelting, Sounds, Drops, Tool, Weapon.
+ * pre-#431 editor: Metadata, Game Properties, States, Neighbour Shapes, Recipes, Smelting, Sounds, Drops, Tool, Weapon.
  *
  * <p>The SBO sections read and write the {@code stonebreak:gameplay} extension ({@link SboGameplay},
  * #383); an older file's top-level fields are read through it and move into the extension on save.
@@ -33,10 +32,14 @@ public final class StonebreakAssetSections {
         return List.of(
                 new AssetSectionContribution<>("stonebreak.sbo.game-properties", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 100,
                         GamePropertiesSection::new),
+                new AssetSectionContribution<>("stonebreak.sbo.neighbour-shapes", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 250,
+                        MultipartSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.recipes", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 300,
                         RecipesSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.smelting", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 400,
                         SmeltingSection::new),
+                new AssetSectionContribution<>("stonebreak.sbo.fuel-table", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 450,
+                        FuelTableSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.drops", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 600,
                         DropsSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.tool", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 700,
@@ -119,6 +122,35 @@ public final class StonebreakAssetSections {
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
             return SboGameplay.of(doc).withSmeltingRecipes(form.toSmeltingRecipeData()).applyTo(doc);
+        }
+    }
+
+    /** Fuel table: burn times for other objects / whole dictionaries (the furnace carries the game's). */
+    static final class FuelTableSection implements AssetEditorSection<SBOFormat.Document> {
+        final SBOFuelTableSection form;
+
+        FuelTableSection(AssetSectionHost host) {
+            this.form = new SBOFuelTableSection(host::markDirty);
+        }
+
+        @Override
+        public String title() {
+            return "Fuel Table";
+        }
+
+        @Override
+        public void load(SBOFormat.Document doc) {
+            form.setFrom(SboGameplay.of(doc).fuelTable());
+        }
+
+        @Override
+        public void render() {
+            form.render();
+        }
+
+        @Override
+        public SBOFormat.Document write(SBOFormat.Document doc) {
+            return SboGameplay.of(doc).withFuelTable(form.toFuelTableData()).applyTo(doc);
         }
     }
 

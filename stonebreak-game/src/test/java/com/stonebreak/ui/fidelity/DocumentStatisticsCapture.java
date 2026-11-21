@@ -22,11 +22,13 @@ import java.util.Map;
  */
 public final class DocumentStatisticsCapture implements MigrationGate.Renderer {
 
-    /** A played world: four-digit counts (grouping), kilometres and metres, hours of air time. */
+    /** A played world: four-digit counts (grouping), kilometres and metres, hours of air time, minutes fishing. */
     public static PlayerStats sample() {
         PlayerStats s = new PlayerStats();
         s.restore(1234, 4567.25, 15432.5, 9876.4, 4321.0, 512.75, 3725.0);
-        s.restoreKillsByType(Map.of(EntityType.COW, 12L, EntityType.SHEEP, 7L, EntityType.CHICKEN, 1203L));
+        s.restoreKillsByType(Map.of(EntityType.COW, 12L, EntityType.SHEEP, 7L, EntityType.CHICKEN, 1203L,
+            EntityType.GOBLIN, 12L));
+        s.restoreActivity(845.0, 37, 2048);
         return s;
     }
 

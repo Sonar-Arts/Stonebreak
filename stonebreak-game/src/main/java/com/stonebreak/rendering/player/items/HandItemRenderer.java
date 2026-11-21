@@ -102,7 +102,7 @@ public class HandItemRenderer {
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
         bindArray();
 
-        boolean isLeafBlock = (blockType == BlockType.LEAVES || blockType == BlockType.PINE_LEAVES || blockType == BlockType.ELM_LEAVES);
+        boolean isLeafBlock = blockType != null && blockType.isLeaves();
         if (isLeafBlock && blockType.isTransparent()) {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

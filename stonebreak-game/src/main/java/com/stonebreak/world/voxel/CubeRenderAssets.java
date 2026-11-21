@@ -177,15 +177,20 @@ public final class CubeRenderAssets {
      */
     public static Boolean[] cubeOverride() {
         SboCubeFaces c = cubes;
-        if (c == null) {
-            return null;
-        }
+        return c == null ? null : cubeOverride(c);
+    }
+
+    /** {@link #cubeOverride()} for the verdicts {@code c}. */
+    static Boolean[] cubeOverride(SboCubeFaces c) {
         Boolean[] out = new Boolean[StonebreakBlockTable.maxId() + 1];
         for (BlockType type : BlockType.values()) {
             if (type == BlockType.AIR || type == BlockType.WATER) continue;
             if (c.isCube(type) || (c.isPerCellCube(type) && type != BlockType.SNOW)) {
                 out[type.getId()] = Boolean.TRUE;
-            } else if (c.isShaped(type) || type == BlockType.SNOW) {
+            } else if (c.isModel(type) || type == BlockType.SNOW) {
+                // Every stamped non-cube draws from its model, occluding or not: left to the headless rule it
+                // would be flagged a cube with no face textures set, and the packer then uses layer = id
+                // (limestone, id 44, drew texture layer 44 = pine planks).
                 out[type.getId()] = Boolean.FALSE;
             }
         }

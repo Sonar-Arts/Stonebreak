@@ -38,6 +38,34 @@ enum BlockLightSource {
             return TorchState.parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z()))
                     .emberPosition(pos.x(), pos.y(), pos.z(), out);
         }
+
+        @Override boolean rememberEmitter(World world, BlockPos pos, Vector3f out) {
+            TorchState.parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z())).emberPosition(pos.x(), pos.y(), pos.z(), out);
+            return true;
+        }
+    },
+
+    /**
+     * A campfire glows from just above its logs, brighter than a torch and on its own flicker
+     * (the {@code Campfire_flicker} clip runs 2 s). Indexed with the torches: both are animated blocks.
+     */
+    CAMPFIRE(new LightProfile(1.00f, 0.66f, 0.32f, 1.35f, 2.0f, 0.75f)) {
+        @Override Iterable<BlockPos> candidates(World world) {
+            return world.getAnimatedBlockRegistry().positions();
+        }
+
+        @Override boolean isBlock(BlockType type) {
+            return type == BlockType.CAMPFIRE;
+        }
+
+        @Override Vector3f emitterPosition(World world, BlockPos pos, Vector3f out) {
+            return out.set(pos.x() + 0.5f, pos.y() + 0.45f, pos.z() + 0.5f);
+        }
+
+        @Override boolean rememberEmitter(World world, BlockPos pos, Vector3f out) {
+            out.set(pos.x() + 0.5f, pos.y() + 0.45f, pos.z() + 0.5f);
+            return true;
+        }
     },
 
     /**
@@ -91,6 +119,16 @@ enum BlockLightSource {
 
     /** World-space point the light is emitted from. */
     abstract Vector3f emitterPosition(World world, BlockPos pos, Vector3f out);
+
+    /**
+     * Where a source in a cube that is about to unload keeps emitting from while its terrain is
+     * drawn as LOD ({@link RememberedLights}). Called while the cube is still resident, so it may
+     * read the world at {@code pos}. False for a source that cannot be judged from its own cell (a
+     * furnace's lit state and sealed mouth live in the world's registry and its neighbours).
+     */
+    boolean rememberEmitter(World world, BlockPos pos, Vector3f out) {
+        return false;
+    }
 
     /** True when {@code pos} holds this source and it is currently giving off light. */
     boolean isEmitting(World world, BlockPos pos) {

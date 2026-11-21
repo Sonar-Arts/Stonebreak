@@ -129,7 +129,6 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
             case "cls" -> doc.qAll(".cls").get(i);
             case "node" -> doc.qAll(".tn").get(i);
             case "invest" -> shown(doc.qAll(".invest"), i);
-            case "mode" -> doc.qAll(".mode-btn").get(i);
             case "train" -> shown(doc.qAll(".train"), i);
             case "acquire" -> shown(doc.qAll(".acquire"), i);
             case "equip" -> doc.qAll(".hair .equip").get(i);

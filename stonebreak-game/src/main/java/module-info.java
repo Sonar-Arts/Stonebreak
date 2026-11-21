@@ -2,7 +2,7 @@
  * Stonebreak Game Module
  * 3D voxel-based sandbox game with model and texture systems
  */
-module stonebreak.game {
+module stonebreak.game{
     
     // LWJGL for graphics and input
     requires org.lwjgl;
@@ -85,6 +85,7 @@ module stonebreak.game {
     opens com.stonebreak.blocks to com.fasterxml.jackson.databind;
     opens com.stonebreak.items to com.fasterxml.jackson.databind;
     opens com.stonebreak.mobs.cow to com.fasterxml.jackson.databind;
+    opens com.stonebreak.mobs.entities.ai.perception to com.fasterxml.jackson.databind; // PerceptionProfile (#321)
     exports com.stonebreak.rendering.models.blocks;
     opens com.stonebreak.rendering.models.blocks to com.fasterxml.jackson.databind;
 

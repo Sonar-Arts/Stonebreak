@@ -10,6 +10,7 @@ import com.stonebreak.mobs.entities.FishingManager;
 import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.network.packet.player.FishingRodC2S;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
+import com.stonebreak.network.packet.player.StatCreditS2C;
 import com.stonebreak.network.server.ServerPlayer;
 import com.stonebreak.network.server.ServerWorldContext;
 import com.stonebreak.world.World;
@@ -83,6 +84,41 @@ class ServerFishingHandlerTest {
         verify(sp.connection(), atLeastOnce()).send(captor.capture(), anyBoolean());
         List<Packet> sent = captor.getAllValues();
         return sent.stream().filter(p -> p instanceof InventorySyncS2C).count();
+    }
+
+    private List<StatCreditS2C> statCredits() {
+        ArgumentCaptor<Packet> captor = ArgumentCaptor.forClass(Packet.class);
+        verify(sp.connection(), atLeastOnce()).send(captor.capture(), anyBoolean());
+        return captor.getAllValues().stream()
+                .filter(p -> p instanceof StatCreditS2C).map(p -> (StatCreditS2C) p).toList();
+    }
+
+    /** Casts, lands the bobber, waits for a bite and reels in with a loot roll of {@code roll}. */
+    private void catchWithRoll(float roll) {
+        long[] now = {0L};
+        handler = new ServerFishingHandler(new FishingManager(new Random() {
+            @Override
+            public float nextFloat() {
+                return roll;
+            }
+        }), () -> now[0] += 1_000_000_000L);
+        handler.handleRodUse(sp, use(), ctx);
+        bite(handler.activeBobber(sp));
+        handler.handleRodUse(sp, use(), ctx);
+    }
+
+    @Test
+    void reelingInABassCreditsTheAnglersBassCaughtStat() {
+        catchWithRoll(0f);
+
+        assertEquals(List.of(new StatCreditS2C(StatCreditS2C.STAT_BASS_CAUGHT, 1)), statCredits());
+    }
+
+    @Test
+    void reelingInJunkCreditsNoBass() {
+        catchWithRoll(0.99f);
+
+        assertEquals(List.of(), statCredits());
     }
 
     /** Lands the bobber in water and waits out the longest bite delay. */

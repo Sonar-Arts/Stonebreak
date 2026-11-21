@@ -165,6 +165,14 @@ public final class ClientBlockHandler {
             world.getWorkbenchRegistry().applyAuthoritativeState(
                 new com.openmason.engine.util.BlockPos((int) s.x(), (int) s.y(), (int) s.z()), s.state(), s.ack());
         }
+        if (com.stonebreak.blocks.container.ChestState.isChestState(s.state())) {
+            world.getChestRegistry().applyAuthoritativeState(
+                new com.openmason.engine.util.BlockPos(Math.toIntExact(s.x()), Math.toIntExact(s.y()), Math.toIntExact(s.z())), s.state(), s.ack());
+        }
+        if (com.stonebreak.blocks.meatrack.MeatRackState.isMeatRackState(s.state())) {
+            world.getMeatRackRegistry().applyAuthoritativeState(
+                new com.openmason.engine.util.BlockPos(Math.toIntExact(s.x()), Math.toIntExact(s.y()), Math.toIntExact(s.z())), s.state(), s.ack());
+        }
     }
 
     private static BlockType resolve(short blockTypeId) {

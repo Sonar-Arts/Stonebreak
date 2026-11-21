@@ -81,7 +81,7 @@ public abstract class LivingEntity extends Entity {
 
     /**
      * Optional per-enemy stealth awareness (sight/sound detection driving UNAWARE/SUSPICIOUS/
-     * ALERTED). Null on entities that don't react to a stealthed player; subclasses opt in by
+     * ALERTED/SEARCHING, #321). Null on entities that don't react to a stealthed player; subclasses opt in by
      * assigning one. Exposed so the combat and UI layers can query any entity generically.
      */
     protected AwarenessController awareness;
@@ -165,8 +165,9 @@ public abstract class LivingEntity extends Entity {
 
     /**
      * Runs this entity's AI for one tick. The default drives the shared mob
-     * framework: stealth awareness (investigate/pursue) overrides the passive
-     * {@link MobAI} while the entity is SUSPICIOUS/ALERTED. Subclasses with
+     * framework: stealth awareness perceives first, so the {@link MobAI}'s
+     * awareness-driven behaviours (investigate, pursue, search) act on this
+     * tick's state. Subclasses with
      * bespoke behaviour may override.
      */
     protected void updateAI(float deltaTime) {
@@ -406,6 +407,36 @@ public abstract class LivingEntity extends Entity {
     /** This entity's stealth awareness component, or null if it doesn't track the player. */
     public AwarenessController getAwareness() { return awareness; }
 
+    /**
+     * The one player this mob is set on, whoever else is closer, or
+     * {@link com.stonebreak.mobs.entities.ai.behavior.PlayerLocator#NEAREST} for none (the usual
+     * case). A stalker that picked its victim overrides this.
+     */
+    public int lockedTargetPlayerId() { return com.stonebreak.mobs.entities.ai.behavior.PlayerLocator.NEAREST; }
+
+    /**
+     * How far above its position the model floats, in blocks: 0 for anything that stands. Visual
+     * only — collision and pathing still treat the mob as standing on the ground.
+     */
+    public float renderLift() { return 0f; }
+
+    /**
+     * The tallest rise this entity walks straight up without jumping, in blocks: half a block for
+     * anything with feet. Collision, route planning and the obstacle hop all read it, so a mob
+     * that glides up whole blocks never stops to jump at one.
+     */
+    public float getMaxStepUp() { return com.stonebreak.mobs.entities.ai.nav.NavProfiles.MAX_STEP_UP; }
+
+    /**
+     * How fast this entity sinks with nothing under it, in blocks per second, or 0 to fall like a
+     * stone. Collision caps the fall at this speed; pair it with {@link #getMaxGlideDrop()} so its
+     * routes use the drops it can float down.
+     */
+    public float getGlideSinkSpeed() { return 0f; }
+
+    /** The tallest drop a route may glide this entity down, in blocks, or 0 for a walker's usual. */
+    public float getMaxGlideDrop() { return 0f; }
+
     // ─────────────────────────────────────────────── Illusionist Fracture stubs
 
     /** World position of the most recent attacker (null if unknown / the local player). */
@@ -422,6 +453,12 @@ public abstract class LivingEntity extends Entity {
 
     /** The forced attack target set by Fracture, or null. */
     public LivingEntity getForcedAttackTarget() { return combat.getForcedAttackTarget(); }
+
+    /**
+     * Whether this mob counts {@code other} as one of its own — never fights it, never shoots it.
+     * By default a mob's own kind; goblins draw the line by pack and camp instead.
+     */
+    public boolean isAllyOf(LivingEntity other) { return other != null && other.getType() == getType(); }
 
     /**
      * Makes the entity face a specific direction, honoring the entity type's
@@ -600,7 +637,7 @@ public abstract class LivingEntity extends Entity {
         if (model == null) {
             return getBoundingBox();
         }
-        return model.placed(position.x, position.y - legHeight, position.z, modelYaw(),
+        return model.placed(position.x, position.y - legHeight + renderLift(), position.z, modelYaw(),
                 scale.x, scale.y, scale.z);
     }
 
@@ -630,7 +667,13 @@ public abstract class LivingEntity extends Entity {
         ARROW,
         BLEED,
         /** Player-cast spell damage. Credits the player and interacts with Amplified/Spellmarked. */
-        ARCANE;
+        ARCANE,
+        /**
+         * One mob attacking another — a goblin hunting a sheep. Never credits a player, never
+         * alerts the victim's stealth awareness (that assumes a player attacker), and a kill makes
+         * no death noise. MUST stay last: sources travel the wire as their ordinal.
+         */
+        MOB;
 
         /**
          * Whether this source counts as magical for the Amplified debuff. Only ARCANE for

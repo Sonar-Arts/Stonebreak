@@ -7,6 +7,8 @@ import com.stonebreak.items.ItemStackStateCodec;
 import com.stonebreak.mobs.entities.BlockDrop;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.ItemDrop;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.network.packet.player.ConsumeHeldC2S;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
 import com.stonebreak.network.packet.player.DropItemC2S;
@@ -175,6 +177,7 @@ public final class ServerPlayerHandler {
         float fz = (float) Math.sin(yawRad);
         org.joml.Vector3d pos = new org.joml.Vector3d(sp.x() + fx * 1.5, sp.y() + 1.0, sp.z() + fz * 1.5);
         Vector3f vel = new Vector3f(fx * 2.0f, 1.0f, fz * 2.0f);
+        NoiseBus.emitIn(world, pos, sp.quieted(Loudness.DROP_ITEM)); // mobs can hear it land (#321)
 
         BlockType bt = BlockType.getById(itemId);
         if (bt != null && bt != BlockType.AIR) {
@@ -303,7 +306,8 @@ public final class ServerPlayerHandler {
      */
     public void handleConsumeHeld(ServerPlayer sp, ConsumeHeldC2S c) {
         sp.recordActionSeq(c.seq());
-        if (!sp.isDead() && sp.inventory().consumeHeldFood(c.itemId())) {
+        // Full health refuses the bite: nothing to restore, so the food isn't spent.
+        if (!sp.isDead() && !sp.vitals().isFullHealth() && sp.inventory().consumeHeldFood(c.itemId())) {
             // The food heals the server-owned health (#343); the client's heal was a prediction.
             com.stonebreak.items.ItemType food = com.stonebreak.items.ItemType.getById(c.itemId());
             if (food != null) {

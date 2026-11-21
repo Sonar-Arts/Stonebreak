@@ -23,8 +23,8 @@ import org.joml.Vector3f;
  *
  * <p>The rules are the engine's ({@link NavSteering}, Open Mason {@code cn_steering}, OpenMason #116):
  * the yaw turn, the obstacle probe (one cell column just past the bounding box's leading edge, a full
- * cell with two clear above, read from the physics cache), the shore probe from water, and the one
- * jump/stroke cooldown. This class is the game's side: Stonebreak's numbers, the mob's body as the
+ * cell with two clear above, read from the physics cache; never for a mob whose own step is a whole
+ * block), the shore probe from water, and the one jump/stroke cooldown. This class is the game's side: Stonebreak's numbers, the mob's body as the
  * engine sees it each call, and applying what the engine decided.
  *
  * <p>Facing always goes through {@code EntityType.getModelYawOffsetDegrees()}, so a mob faces its
@@ -69,7 +69,9 @@ public final class Steering {
         this.modelYawOffset = entity.getType().getModelYawOffsetDegrees();
         this.engine = NavSteering.create(new SteeringDesc(rotationSpeedDegPerSec, hopBoostSpeed, hopDurationSeconds,
                 JUMP_COOLDOWN_SECONDS, SWIM_STROKE_COOLDOWN_SECONDS, OBSTACLE_LOOK_AHEAD, FOOT_PROBE_LIFT,
-                MAX_SHORE_PROBE_CELLS, modelYawOffset, WorldPhysics.MOB_MASK));
+                MAX_SHORE_PROBE_CELLS, modelYawOffset, WorldPhysics.MOB_MASK,
+                // A mob that steps a whole block (collision carries it up) never hops one.
+                entity.getMaxStepUp()));
     }
 
     /** The engine steering this wraps; its cooldowns are shared with the mob's {@link PathAgent}. */
@@ -159,6 +161,8 @@ public final class Steering {
         // so drag in the physics step would just be overwritten).
         out.waterSpeedFactor = out.inWater ? EntityWaterPhysics.speedFactor(entity.getSubmersion()) : 1.0f;
         out.swimStrokeReach = entity.getSwimStrokeReach();
+        // A glider floating down onto a waypoint is held over it instead of overshooting.
+        out.gliding = entity.getGlideSinkSpeed() > 0f;
         return out;
     }
 

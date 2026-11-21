@@ -11,7 +11,7 @@
 int main(void) {
     CHECK(sbw_abi_version() == SBW_ABI_VERSION);
     CHECK(sbw_config_size() == (int32_t) sizeof(sbw_gen_config));
-    CHECK(sizeof(sbw_gen_config) == 368);
+    CHECK(sizeof(sbw_gen_config) == 376);                       /* ABI 6: + blueberry_states[4] */
     CHECK(sizeof(sbw_column_profile) == 36864);                 /* ABI 5: + uint8 surface[16][1024] */
     CHECK(offsetof(sbw_column_profile, surface) == 20480);      /* Java writes it there */
     CHECK(offsetof(sbw_column_profile, carve) == 18432);        /* Java writes it there */

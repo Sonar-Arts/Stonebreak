@@ -81,6 +81,12 @@ public final class ServerWorldContext {
                              : com.stonebreak.world.generation.StandardShapeVersion.CURRENT;
     }
 
+    /** The world's feature set, so a client's generator (The Shade: night fog, LOD) matches the server world's. */
+    public com.stonebreak.world.generation.WorldFeatureVersion worldFeatures() {
+        ServerLevel level = serverLevel;
+        return level != null ? level.world().getWorldFeatures() : com.stonebreak.world.generation.WorldFeatureVersion.CURRENT;
+    }
+
     /** The world's terrain model, so a DaedalusTGM-Exp client's TGMPipe (FastLOD fallback, queries) runs the same one. */
     public com.stonebreak.world.generation.TerrainModelRef terrainModel() {
         ServerLevel level = serverLevel;

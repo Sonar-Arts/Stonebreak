@@ -35,6 +35,39 @@ public final class WorldSaplingWorld implements SaplingWorld {
     }
 
     @Override
+    public void attach(BlueberryBushGrowthSystem system) {
+        world.addSaveHook((w, cube) -> {
+            if (w.isAuthoritative()) {
+                system.onCubeUnloadPending(cube.pos());
+            }
+        });
+    }
+
+    @Override
+    public String getState(long x, long y, long z) {
+        return world.getBlockStateAt(x, y, z);
+    }
+
+    @Override
+    public void setState(long x, long y, long z, String state) {
+        world.setBlockStateAt(x, y, z, state);
+    }
+
+    @Override
+    public byte[] readSection(CubePos cube, String section) {
+        Cube c = world.getCube(cube.x(), cube.y(), cube.z());
+        return c == null ? null : c.blobSection(section);
+    }
+
+    @Override
+    public void writeSection(CubePos cube, String section, byte[] bytes) {
+        Cube c = world.getCube(cube.x(), cube.y(), cube.z());
+        if (c != null) {
+            c.putBlobSection(section, bytes);
+        }
+    }
+
+    @Override
     public BlockType getBlock(long x, long y, long z) {
         return world.getBlockAt(x, y, z);
     }

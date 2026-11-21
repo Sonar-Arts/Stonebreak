@@ -2,6 +2,7 @@ package com.stonebreak.player.interaction;
 
 import com.stonebreak.audio.BlockSounds;
 import com.stonebreak.blocks.BlockType;
+import com.stonebreak.blocks.blueberrybush.BlueberryBushPlanting;
 import com.stonebreak.items.BucketStacks;
 import com.stonebreak.items.Inventory;
 import com.stonebreak.items.ItemStack;
@@ -63,14 +64,16 @@ public class BlockPlacer {
         }
 
         // Items that place a block they are not themselves: the torch item
-        // places the torch block (with a state derived from the clicked face).
+        // places the torch block (with a state derived from the clicked face),
+        // and a blueberry plants a blueberry bush.
         boolean placingTorch = com.stonebreak.blocks.torch.TorchBlock.isTorchItem(selectedItem.getItem());
+        boolean plantingBerry = BlueberryBushPlanting.isBerryItem(selectedItem.getItem());
 
-        if (!placingTorch && !selectedItem.isPlaceable()) return;
+        if (!placingTorch && !plantingBerry && !selectedItem.isPlaceable()) return;
 
         BlockType selectedBlockType = placingTorch
                 ? com.stonebreak.blocks.torch.TorchBlock.block()
-                : selectedItem.asBlockType();
+                : plantingBerry ? BlockType.BLUEBERRY_BUSH : selectedItem.asBlockType();
         if (selectedBlockType == null) return;
 
         Vector3i hitBlockPos = raycastEngine.raycastForPlacement();
@@ -108,6 +111,12 @@ public class BlockPlacer {
             if (torch == null) return;
             placementState = torch.toStateString();
         }
+        // Blueberry bush: never into water (BlockPlacementValidator holds it to grass), and it
+        // always starts as a Sprout.
+        if (selectedBlockType == BlockType.BLUEBERRY_BUSH) {
+            if (blockAtPos == BlockType.WATER) return;
+            placementState = BlueberryBushPlanting.PLANTED_STATE;
+        }
         // Stalagmite: clicking the underside of a block hangs it from that ceiling; either way
         // it faces the way the placer looks. Proposed in the packet like the torch's state,
         // and settled by the server (see ServerBlockHandler).
@@ -126,6 +135,18 @@ public class BlockPlacer {
             Vector3f look = raycastEngine.eyeDirection();
             placementState = com.stonebreak.blocks.stairs.StairState
                     .placedFromLook(look.x, look.z).toStateString();
+        }
+        // Spiked wall: the stakes lean away from the placer, the way they look, unless that would
+        // lean a stretch to a wall it joins against the way that wall leans it.
+        if (selectedBlockType == BlockType.PALISADE) {
+            Vector3f look = raycastEngine.eyeDirection();
+            final Vector3i at = placePos;
+            placementState = com.stonebreak.blocks.palisade.PalisadeState
+                    .placedBeside(look.x, look.z, (dx, dz) -> world.getBlockAt(at.x + dx, at.y, at.z + dz) == BlockType.PALISADE
+                            ? com.stonebreak.blocks.palisade.PalisadeState.parse(
+                                    world.getBlockStateAt(at.x + dx, at.y, at.z + dz)).facing()
+                            : null)
+                    .toStateString();
         }
         if (selectedBlockType == BlockType.OAK_DOOR) {
             Vector3d playerPos = state.getPosition();
@@ -166,6 +187,12 @@ public class BlockPlacer {
             if (selectedBlockType == BlockType.WORKBENCH) {
                 // Predictive: a new table starts empty, even where a broken one held items.
                 world.getWorkbenchRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
+            }
+            if (selectedBlockType == BlockType.CHEST) {
+                world.getChestRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
+            }
+            if (selectedBlockType == BlockType.MEAT_RACK) {
+                world.getMeatRackRegistry().onBlockPlaced(world, placePos.x, placePos.y, placePos.z);
             }
         }
     }

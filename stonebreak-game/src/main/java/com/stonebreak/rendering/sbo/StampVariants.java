@@ -18,39 +18,38 @@ public final class StampVariants {
     /** Registers every derived variant for {@code types} (the stamped SBO blocks). */
     public static void registerAll(com.openmason.engine.voxel.stamp.render.StampCache cache,
                                    java.util.Collection<com.stonebreak.blocks.BlockType> types) {
-        registerStairRotations(cache, types);
+        registerFacingRotations(cache, types);
         registerStalagmiteVariants(cache);
+        MultipartStamps.register(cache);
     }
 
     /**
-     * Registers a pre-rotated stamp for each stair facing. Rotating once at
-     * startup (four cheap array copies per stair type) keeps the per-chunk mesh
-     * path exactly as it was — look the stamp up by state name and copy it.
+     * Registers a pre-rotated stamp for each facing of every orientable block — stairs and the
+     * spiked wall. Rotating once at startup (four cheap array copies per type) keeps the
+     * per-cube mesh path exactly as it was — look the stamp up by state name and copy it.
      *
-     * <p>The key is the state string {@code StairState} writes at placement,
-     * run through the same {@code BlockRenderState.meshVariantKey} projection
-     * the mesher applies when it reads the state back. Deriving both ends from
-     * one rule is what stops a stair from silently meshing un-rotated.
+     * <p>The key is the state string the block writes at placement, run through the same
+     * {@code BlockRenderState.meshVariantKey} projection the mesher applies when it reads the
+     * state back. Deriving both ends from one rule is what stops a block from silently meshing
+     * un-rotated.
      */
-    static void registerStairRotations(
+    static void registerFacingRotations(
             com.openmason.engine.voxel.stamp.render.StampCache cache,
             java.util.Collection<com.stonebreak.blocks.BlockType> types) {
         for (com.stonebreak.blocks.BlockType type : types) {
-            if (!type.isStairs()) {
-                continue;
-            }
-            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp base = cache.get(type);
+            com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp base =
+                    com.stonebreak.blocks.BlockFacing.isOrientable(type) ? cache.get(type) : null;
             if (base == null) {
                 continue;
             }
             for (com.stonebreak.blocks.stairs.StairState.Facing facing
                     : com.stonebreak.blocks.stairs.StairState.Facing.values()) {
                 String key = com.stonebreak.blocks.BlockRenderState.meshVariantKey(
-                        com.stonebreak.blocks.stairs.StairState.stateStringFor(facing));
+                        com.stonebreak.blocks.BlockFacing.stateStringFor(type, facing));
                 cache.put(type, key,
                         com.openmason.engine.voxel.stamp.StampRotator.rotateY(base, facing.quarterTurns()));
             }
-            LOGGER.debug("[Renderer] Registered {} stair orientations for {}",
+            LOGGER.debug("[Renderer] Registered {} orientations for {}",
                     com.stonebreak.blocks.stairs.StairState.Facing.values().length, type.name());
         }
     }

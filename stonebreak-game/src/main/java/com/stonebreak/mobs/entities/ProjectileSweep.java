@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
+import java.util.function.Predicate;
+
 /**
  * Hit detection for projectiles: which living entity the segment a projectile travelled
  * this step passes through.
@@ -22,10 +24,19 @@ public final class ProjectileSweep {
      * {@code from → to} enters first; null when it enters none.
      */
     public static LivingEntity firstHit(EntityManager em, Vector3dc from, Vector3dc to, float margin) {
+        return firstHit(em, from, to, margin, le -> true);
+    }
+
+    /** As {@link #firstHit(EntityManager, Vector3dc, Vector3dc, float)}, among entities {@code hittable} accepts. */
+    public static LivingEntity firstHit(EntityManager em, Vector3dc from, Vector3dc to, float margin,
+                                        Predicate<LivingEntity> hittable) {
         Vector3d dir = new Vector3d(to).sub(from);
         LivingEntity closest = null;
         float closestT = Float.MAX_VALUE;
         for (LivingEntity le : em.getLivingEntities()) {
+            if (!hittable.test(le)) {
+                continue;
+            }
             float t = le.getHitBox().expand(margin).rayIntersect(from, dir);
             if (t <= 1.0f && t < closestT) {
                 closestT = t;

@@ -52,6 +52,11 @@ public class Renderer {
     
     // SBO renderer API (deferred emitter setup until MmsAPI is initialized)
     private StampRendererAPI sboRendererAPI;
+
+    /** The baked SBO block stamps, or null if SBO initialization failed. */
+    public com.openmason.engine.voxel.stamp.render.StampCache getSboStampCache() {
+        return sboRendererAPI != null ? sboRendererAPI.getStampCache() : null;
+    }
     private StampEmitter pendingSBOEmitter;
     private MmsFaceCullingService sboCullingService;
 
@@ -104,7 +109,7 @@ public class Renderer {
         // texture array (initializeSBOBlocks above) are populated.
         if (sboBlockBridge != null && sboBlockBridge.size() > 0) {
             sboHandMeshRegistry = new SBOHandMeshRegistry(displayMeshes, blockTextureArray);
-            int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge);
+            int built = sboHandMeshRegistry.buildMeshes(sboBlockBridge, getSboStampCache());
             logger.debug("[Renderer] SBO hand-mesh registry: built {} flower meshes", built);
         }
 
@@ -139,7 +144,6 @@ public class Renderer {
         
         entityRenderer = new EntityRenderer();
         entityRenderer.initialize();
-        entityRenderer.initializeArrowRenderer(resourceManager.getShaderProgram());
 
         dropRenderer = new DropRenderer(displayMeshes, blockTextureArray, sboHandMeshRegistry, resourceManager.getShaderProgram());
 
@@ -203,10 +207,10 @@ public class Renderer {
                             com.stonebreak.rendering.sbo.SboBlockModels.of(sboBlockMap), arrayAdapter, arrayAdapter);
 
                     if (processed > 0) {
-                        // Stairs are orientable: bake one stamp per facing under
-                        // that facing's state string, so the mesher's existing
-                        // "block state selects a mesh variant" path draws them
-                        // turned with no per-instance work.
+                        // Stairs and spiked walls are orientable: bake one stamp per
+                        // facing under that facing's state string, so the mesher's
+                        // existing "block state selects a mesh variant" path draws
+                        // them turned with no per-instance work.
                         com.stonebreak.rendering.sbo.StampVariants.registerAll(
                                 sboRendererAPI.getStampCache(), sboBlockMap.keySet());
 
@@ -218,8 +222,10 @@ public class Renderer {
                         // its model actually fills that boundary plane. Keeps
                         // the open side of a stair from cutting a hole in the
                         // block behind it.
-                        sboCullingService.setFaceOcclusionPolicy(
-                                sboRendererAPI.getStampCache()::occludesFace);
+                        com.openmason.engine.voxel.stamp.render.StampCache stamps =
+                                sboRendererAPI.getStampCache();
+                        sboCullingService.setFaceOcclusionPolicy((block, face) ->
+                                com.stonebreak.rendering.sbo.MultipartStamps.occludesFace(stamps, block, face));
 
                         // Translucency policy: the block's SBO-resolved render
                         // layer (BlockRenderTraits) — no code-side list of
@@ -245,9 +251,30 @@ public class Renderer {
                                 block instanceof com.stonebreak.blocks.BlockType bt
                                         && bt == com.stonebreak.blocks.BlockType.SNOW);
 
-                        pendingSBOEmitter = sboRendererAPI.createEmitter(sboCullingService, translucencyPolicy);
-
                         MmsFaceCullingService cullingForNeighborLookup = sboCullingService;
+
+                        // A stalagmite's anchor draws the whole spire, and everything
+                        // above its own cell (below, when hanging) is emitted through
+                        // its top (bottom) face. The cell there is the stalagmite's own
+                        // part cell — opaque and the same type — so the opaque-vs-opaque
+                        // rule would drop that whole bucket and leave a size 2-3 spire as
+                        // a flat-topped stub. Neither side fills the shared plane, so
+                        // never cull a stalagmite face against another stalagmite.
+                        com.openmason.engine.voxel.stamp.render.StampCullingPolicy stampCulling =
+                                (block, lx, ly, lz, face, chunkData) -> {
+                                    if (block == com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE
+                                            && (face == com.openmason.engine.voxel.stamp.render.StampFaceConventions.MMS_TOP
+                                                || face == com.openmason.engine.voxel.stamp.render.StampFaceConventions.MMS_BOTTOM)) {
+                                        int ny = face == com.openmason.engine.voxel.stamp.render.StampFaceConventions.MMS_TOP
+                                                ? ly + 1 : ly - 1;
+                                        if (cullingForNeighborLookup.getAdjacentBlock(lx, ny, lz, chunkData)
+                                                == com.stonebreak.blocks.BlockType.LIMESTONE_STALAGMITE) {
+                                            return true;
+                                        }
+                                    }
+                                    return cullingForNeighborLookup.shouldRenderFace(block, lx, ly, lz, face, chunkData);
+                                };
+                        pendingSBOEmitter = sboRendererAPI.createEmitter(stampCulling, translucencyPolicy);
 
                         // Per-face cull policy: cull a translucent block's
                         // (ice, glass) top face when a snow layer sits directly
@@ -370,6 +397,14 @@ public class Renderer {
      */
     public DropRenderer getDropRenderer() {
         return dropRenderer;
+    }
+
+    /**
+     * Get the first-person arm renderer sub-component.
+     * @return PlayerArmRenderer instance
+     */
+    public PlayerArmRenderer getPlayerArmRenderer() {
+        return playerArmRenderer;
     }
     
     // ============ UI RENDERER PROXY METHODS ============

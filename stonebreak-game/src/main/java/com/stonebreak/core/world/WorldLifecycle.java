@@ -137,6 +137,10 @@ public final class WorldLifecycle {
                 cursorToInventory(game.getFurnaceScreen().getController().getInputManager(), game);
                 game.getFurnaceScreen().close();
             }
+            if (game.getChestScreen() != null && game.getChestScreen().isVisible()) {
+                cursorToInventory(game.getChestScreen().getController().getInputManager(), game);
+                game.getChestScreen().close();
+            }
             if (game.getInventoryScreen() != null) game.getInventoryScreen().returnHeldItemsToPlayer();
         } catch (RuntimeException e) {
             System.err.println("[WORLD-ISOLATION] Error returning crafting grids: " + e.getMessage());
@@ -198,8 +202,20 @@ public final class WorldLifecycle {
                                            com.stonebreak.world.generation.ClimateLayout climateLayout,
                                            com.stonebreak.world.generation.HeightCurveVersion heightCurve,
                                            com.stonebreak.world.generation.StandardShapeVersion standardShape) {
+        return createClientWorldInstance(seed, generatorType, terrainScale, climateLayout, heightCurve, standardShape,
+            null);
+    }
+
+    /** As above with the server world's feature set (null = the current one; The Shade). */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                           com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                           com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                           com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                                           com.stonebreak.world.generation.WorldFeatureVersion worldFeatures) {
         World w = World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale, climateLayout,
-            heightCurve, standardShape);
+            heightCurve, standardShape, worldFeatures);
         // Singleplayer / host / the menu showcase: borrow the integrated server's terrain (same identity) instead of a
         // second generator with its own tile caches. A remote client finds no server and builds its own.
         w.setTerrainSource(WorldLifecycle::integratedServerWorld);

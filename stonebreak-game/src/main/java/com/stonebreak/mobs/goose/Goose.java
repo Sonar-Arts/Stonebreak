@@ -10,6 +10,7 @@ import com.stonebreak.mobs.entities.EntityCollision;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobAI;
+import com.stonebreak.mobs.entities.ai.behavior.ThreatSense;
 import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.FloatOnWaterBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
@@ -63,7 +64,8 @@ public class Goose extends LivingEntity {
         // when it finds water, and otherwise waddles about.
         this.mobAI = new MobAI(this, steering,
                 flight,
-                new FleeBehavior(10.0f, 4.0f, 1.0f, 5.0f, 7.0f, 11.0f),
+                new FleeBehavior(10.0f, 4.0f, 1.0f, 5.0f, 7.0f, 11.0f)
+                        .withThreat(ThreatSense.ofTypes(18.0f, EntityType.GOBLIN), 12.0f, 18.0f),
                 new FloatOnWaterBehavior(),
                 StandStillBehavior.idle(0.45f, 3.0f, 7.0f),
                 new WanderBehavior(0.55f, 3.0f, 8.0f, 0.7f));
@@ -92,7 +94,7 @@ public class Goose extends LivingEntity {
 
     @Override
     public void onDamage(float damage, DamageSource source) {
-        if (source == DamageSource.PLAYER) {
+        if (source == DamageSource.PLAYER || source == DamageSource.MOB) {
             applyPlayerKnockback();
         }
         mobAI.onDamaged(damage);
@@ -108,11 +110,12 @@ public class Goose extends LivingEntity {
 
     @Override
     public ItemStack[] getDrops() {
+        ItemStack meat = new ItemStack(ItemType.RAW_GOOSE, 1);
         if (Math.random() < 0.55) {
             int count = 1 + (int) (Math.random() * 3); // 1–3 feathers
-            return new ItemStack[] { new ItemStack(ItemType.FEATHER, count) };
+            return new ItemStack[] { meat, new ItemStack(ItemType.FEATHER, count) };
         }
-        return new ItemStack[0];
+        return new ItemStack[] { meat };
     }
 
     @Override

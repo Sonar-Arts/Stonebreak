@@ -12,12 +12,14 @@ out vec4 fragColor;
 
 #include "/shaders/shadow/csm_uniforms.glsl"
 #include "/shaders/lighting/point_lights.glsl"
+#include "/shaders/lighting/far_lights.glsl"
 #include "/shaders/shadow/csm_functions.glsl"
 #include "/shaders/clouds/cloud_field.glsl"
 #include "/shaders/clouds/cloud_shadow.glsl"
 // Ice and glass draw after the clouds are composited; this keeps them behind them.
 #include "/shaders/clouds/clouds_in_front.glsl"
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/ground_fog.glsl"
 #include "/shaders/world/sunset_fog.glsl"
 
 uniform sampler2D texture_sampler;
@@ -57,6 +59,9 @@ uniform bool u_fogSpherical;
 // screen-door dither below so LOD nodes dissolve over/under the
 // native chunk mesh without blending or depth artifacts.
 uniform float u_lodFade;
+// Ground fog taken at one render-space point rather than per fragment (DropRenderer).
+uniform bool u_groundFogAtPoint;
+uniform vec3 u_groundFogPoint;
 // Dev cost probe (WorldRenderer.DEBUG_SHADE): 1 no cloud shadow, 2 no sun cascades, 4 no torch lights, 8 texture only.
 uniform int u_debugShade;
 
@@ -183,8 +188,9 @@ void main() {
         // they light caves and night. Player-held geometry has no world-space
         // fragPos; it is lit through u_playerLight instead.
         if (u_playerLight < 0.0 && (u_debugShade & 4) == 0) {
-            vec3 torch = pointLightContribution(fragPos, norm,
-                    pointLightWeight(u_ambientLight, worldLight, shadowFactor));
+            float torchWeight = pointLightWeight(u_ambientLight, worldLight, shadowFactor);
+            vec3 torch = pointLightContribution(fragPos, norm, torchWeight)
+                    + farLightContribution(fragPos, norm, torchWeight);
             result = applyPointLight(result, textureColor.rgb, torch);
         }
 
@@ -235,6 +241,8 @@ void main() {
             // own where the distance fog dissolves it into the sky.
             fragColor.rgb = applyPrecipFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos,
                     horizonFogColor(u_fogColor, fragPos - u_viewPos), fogF);
+            // The Shade's night fog lying on the ground in front of it.
+            fragColor.rgb = applyGroundFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos);
             // Only the translucent pass turns this on (WorldRenderer).
             fragColor.rgb = behindClouds(fragColor.rgb, u_viewPos, fragPos);
         }
@@ -248,5 +256,11 @@ void main() {
             // Blend fragment color with fog color, preserving alpha
             fragColor = mix(vec4(u_underwaterFogColor, fragColor.a), fragColor, fogFactor);
         }
+    }
+
+    // Drops and held items (DropRenderer): their model rides in viewMatrix, so
+    // fragPos is model-local; they are fogged at their centre instead.
+    if (u_groundFogAtPoint) {
+        fragColor.rgb = applyGroundFog(fragColor.rgb, u_viewPos, u_groundFogPoint - u_viewPos);
     }
 }

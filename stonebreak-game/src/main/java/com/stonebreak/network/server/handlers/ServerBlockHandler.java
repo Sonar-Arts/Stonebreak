@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.ToolMiningRules;
+import com.stonebreak.mobs.entities.ai.perception.Loudness;
+import com.stonebreak.mobs.entities.ai.perception.NoiseBus;
 import com.stonebreak.network.packet.world.BlockChangeC2S;
 import com.stonebreak.network.packet.world.BlockChangeS2C;
 import com.stonebreak.network.packet.world.MultiBlockChangeS2C;
@@ -182,6 +184,7 @@ public final class ServerBlockHandler {
             }
         }
         boolean scoop = isScoop(world, c, incoming, serverPrev); // pre-apply snapshot
+        String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
             // Server cube not loaded yet (the reach check bounds this to a near-player cube, so it's a
@@ -191,7 +194,7 @@ public final class ServerBlockHandler {
             retryQueue.add(new PendingEdit(sp, c, debit, receivedNs, loaded));
             return;
         }
-        completeEdit(sp, c, incoming, serverPrev, scoop, debit, world, ctx);
+        completeEdit(sp, c, incoming, serverPrev, prevState, scoop, debit, world, ctx);
     }
 
     /**
@@ -322,8 +325,12 @@ public final class ServerBlockHandler {
                 retryQueue.add(new PendingEdit(d.sp(), c, PlacementDebit.NONE, d.dueNs(), true));
             } else if (conflictsWithServerCell(c, BlockType.AIR, serverPrev)) {
                 sendRevert(d.sp(), c.x(), c.y(), c.z(), ctx);
-            } else if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
-                completeEdit(d.sp(), c, BlockType.AIR, serverPrev, false, PlacementDebit.NONE, world, ctx);
+            } else {
+                String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
+                if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
+                    completeEdit(d.sp(), c, BlockType.AIR, serverPrev, prevState, false, PlacementDebit.NONE,
+                            world, ctx);
+                }
             }
         }
     }
@@ -372,11 +379,15 @@ public final class ServerBlockHandler {
     /**
      * Everything that follows a successful world apply — shared by the direct path and the
      * chunk-load retry path, so a retried edit gets the same effects (issue #334). {@code prev}
-     * is the server's own pre-apply cell.
+     * is the server's own pre-apply cell and {@code prevState} that cell's block state.
      */
     private void completeEdit(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
-                              boolean scoop, PlacementDebit debit, World world, ServerWorldContext ctx) {
-        applyAccepted(sp, c, incoming, prev, debit, world, ctx);
+                              String prevState, boolean scoop, PlacementDebit debit, World world,
+                              ServerWorldContext ctx) {
+        if (!applyAccepted(sp, c, incoming, prev, prevState, debit, world, ctx)) {
+            return; // refused placement (torch/bush): reverted and refunded, so nothing was heard
+        }
+        emitEditNoise(sp, world, c, incoming, prev);
         SoundEventS2C sound = editSound(c.x(), c.y(), c.z(), incoming, prev);
         if (sound != null) {
             ServerSounds.sendNear(ctx, sound, sp); // the editor's client played it already
@@ -396,6 +407,21 @@ public final class ServerBlockHandler {
             // away inside the round trip): its mirror filled a bucket the server did not.
             syncInventory(sp);
         }
+    }
+
+    /**
+     * Breaking a block is loud and placing one less so (#321); scooping or pouring water is quiet.
+     * The editor's Stealth skill softens either.
+     */
+    private static void emitEditNoise(ServerPlayer sp, World world, BlockChangeC2S c, BlockType incoming,
+                                      BlockType prev) {
+        float loudness;
+        if (incoming == null || incoming == BlockType.AIR) {
+            loudness = prev == BlockType.AIR || prev == BlockType.WATER ? 0f : Loudness.BREAK_BLOCK;
+        } else {
+            loudness = incoming == BlockType.WATER ? 0f : Loudness.PLACE_BLOCK;
+        }
+        NoiseBus.emitIn(world, new org.joml.Vector3d(c.x() + 0.5, c.y() + 0.5, c.z() + 0.5), sp.quieted(loudness));
     }
 
     /**
@@ -485,7 +511,7 @@ public final class ServerBlockHandler {
      * The placement debit for one block (issue #334), or null when the player does not hold
      * what the placement costs (nothing taken). Most blocks debit their own id, but the torch
      * ITEM places the torch BLOCK (ids differ — a stack may hold either: crafted torches carry
-     * the item id, picked-up ones the block id), and water poured from a selected water bucket
+     * the item id, picked-up ones the block id), a blueberry plants the bush, and water poured from a selected water bucket
      * empties exactly one bucket (mirrors {@code BlockPlacer.handleWaterBucket}).
      */
     private static PlacementDebit debitForPlacement(ServerPlayer sp, BlockType incoming,
@@ -501,17 +527,27 @@ public final class ServerBlockHandler {
             return takeOne(sp, incoming.getId());
         }
         if (incoming == BlockType.TORCH_PLACED) {
-            ItemType torch = com.stonebreak.blocks.torch.TorchBlock.item();
-            int blockId = incoming.getId();
-            int itemId = torch != null ? torch.getId() : blockId;
-            // Whichever torch id the selected slot holds goes first — the stack the client's
-            // placer spent (and auto-switches); the other id only when that one is not held.
-            int first = sp.inventory().heldItemId() == blockId ? blockId : itemId;
-            int second = first == blockId ? itemId : blockId;
-            PlacementDebit taken = takeOne(sp, first);
-            return taken != null || second == first ? taken : takeOne(sp, second);
+            return takeItemOrBlock(sp, com.stonebreak.blocks.torch.TorchBlock.item(), incoming);
+        }
+        if (incoming == BlockType.BLUEBERRY_BUSH) {
+            // A blueberry plants the bush; a held bush block places itself.
+            return takeItemOrBlock(sp, ItemType.BLUEBERRY, incoming);
         }
         return takeOne(sp, incoming.getId());
+    }
+
+    /**
+     * Debit for a block that an ITEM with a different id also places (torch, blueberry): a stack
+     * may hold either id. Whichever id the selected slot holds goes first — the stack the
+     * client's placer spent (and auto-switches); the other id only when that one is not held.
+     */
+    private static PlacementDebit takeItemOrBlock(ServerPlayer sp, ItemType item, BlockType block) {
+        int blockId = block.getId();
+        int itemId = item != null ? item.getId() : blockId;
+        int first = sp.inventory().heldItemId() == blockId ? blockId : itemId;
+        int second = first == blockId ? itemId : blockId;
+        PlacementDebit taken = takeOne(sp, first);
+        return taken != null || second == first ? taken : takeOne(sp, second);
     }
 
     /**
@@ -625,10 +661,12 @@ public final class ServerBlockHandler {
      * every side effect reach clients as per-block packets (block batches, state echoes,
      * snow/water meta), so the chunk version is NOT bumped — a bump would re-stream the whole
      * chunk to every viewer, and the stale snapshot would briefly undo the editor's newer
-     * predictions (issue #362). Only the audit hash is dropped.
+     * predictions (issue #362). Only the audit hash is dropped. Returns false when the edit was
+     * refused here after all (an invalid torch or bush placement: cell restored, placer reverted
+     * and refunded).
      */
-    private void applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
-                               PlacementDebit debit, World world, ServerWorldContext ctx) {
+    private boolean applyAccepted(ServerPlayer sp, BlockChangeC2S c, BlockType incoming, BlockType prev,
+                                   String prevState, PlacementDebit debit, World world, ServerWorldContext ctx) {
         // A container leaving its cell — broken, or replaced by any other block — drops its
         // contents and leaves its registry, so nothing keeps ticking or broadcasting on a cell
         // that no longer holds it (issue #370). {@code prev} is the server's own cell.
@@ -636,6 +674,19 @@ public final class ServerBlockHandler {
             if (prev == BlockType.FURNACE && world.getFurnaceRegistry() != null) {
                 // The SERVER world's registry (per-world) — drops contents authoritatively.
                 world.getFurnaceRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
+            }
+            if (prev == BlockType.CHEST) {
+                world.getChestRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
+                        new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
+            }
+            if (prev == BlockType.MEAT_RACK) {
+                // The food on its hooks drops with it.
+                world.getMeatRackRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
+                        new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
+            }
+            if (prev == BlockType.CAMPFIRE) {
+                // Spills what was cooking; a goblin camp anchored here disbands.
+                world.getCampfireRegistry().onBlockBroken(world, c.x(), c.y(), c.z());
             }
             if (prev == BlockType.WORKBENCH) {
                 // Issue #307: the grid's items drop with the table, never vanish.
@@ -657,7 +708,9 @@ public final class ServerBlockHandler {
             com.stonebreak.items.ItemType tool = com.stonebreak.items.ItemType.getById(sp.inventory().heldItemId());
             // Issue #225: the breaker's position biases which adjacent passable cell the
             // drops spawn into (nearest to the player) and the direction they spit out.
-            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, tool, 0,
+            // The pre-break state lets state-gated blocks decide (a blueberry bush drops only
+            // when ripe).
+            com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, prevState, tool, 0,
                     new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
         }
         // Furnace placement: register the authoritative state (Unlit, empty). The client's
@@ -669,6 +722,15 @@ public final class ServerBlockHandler {
         // registry drops whatever a table previously broken at this cell held.
         if (incoming == BlockType.WORKBENCH) {
             world.getWorkbenchRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
+        }
+        if (incoming == BlockType.CHEST) {
+            world.getChestRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
+        }
+        if (incoming == BlockType.CAMPFIRE) {
+            world.getCampfireRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
+        }
+        if (incoming == BlockType.MEAT_RACK) {
+            world.getMeatRackRegistry().onBlockPlaced(world, c.x(), c.y(), c.z());
         }
         // Door placement: initialize the authoritative state (closed, panel on the placer's
         // edge) and echo it so every client — the placer included — agrees on the facing.
@@ -698,6 +760,23 @@ public final class ServerBlockHandler {
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
             queueStateEcho(c.x(), c.y(), c.z());
         }
+        // Spiked-wall placement: the lean is authoritative like a stair's facing. The placer's
+        // proposal (any of the four is legitimate); none: away from them along their yaw.
+        if (incoming == BlockType.PALISADE) {
+            String placed = (c.hasPlacementState()
+                    && com.stonebreak.blocks.palisade.PalisadeState.isPalisadeState(c.placementState())
+                    ? com.stonebreak.blocks.palisade.PalisadeState.parse(c.placementState())
+                    : new com.stonebreak.blocks.palisade.PalisadeState(
+                            com.stonebreak.blocks.stairs.StairState.Facing.fromYaw(sp.yaw()))).toStateString();
+            world.setBlockStateAt(c.x(), c.y(), c.z(), placed);
+            queueStateEcho(c.x(), c.y(), c.z());
+        }
+        // Leaf placement: a leaf the player placed never decays. Only this server world
+        // runs decay and the marker draws nothing, so there's no echo. Worldgen and
+        // sapling growth never come through here, so their leaves stay natural.
+        if (incoming != null && incoming.isLeaves() && prev != incoming) {
+            world.setBlockStateAt(c.x(), c.y(), c.z(), com.stonebreak.blocks.leaves.LeafState.PLACED);
+        }
         // Torch placement: Ground/Side + facing depend on which FACE the placer
         // clicked, which only the client knows — it proposes the state in the
         // packet and the server validates it against its own world (the support
@@ -722,10 +801,24 @@ public final class ServerBlockHandler {
                 queueOutgoing(c.x(), c.y(), c.z(), (short) restore.getId());
                 sendRevert(sp, c.x(), c.y(), c.z(), ctx);
                 refund(sp, debit, ctx);
-                return;
+                return false; // refused: no edit noise or sound
             }
             world.setBlockStateAt(c.x(), c.y(), c.z(), placed.toStateString());
             queueStateEcho(c.x(), c.y(), c.z());
+        }
+        // Blueberry bush placement: only on top of grass, never into water (mirrors the client's
+        // BlockPlacer/BlockPlacementValidator). A refusal restores the cell, reverts the placer
+        // and refunds the berry, like a refused torch. An accepted bush is already a Sprout: the
+        // World.setBlockAt funnel started it there, and the growth system echoes that stage.
+        if (incoming == BlockType.BLUEBERRY_BUSH && (prev == BlockType.WATER
+                || !com.stonebreak.blocks.blueberrybush.BlueberryBushPlanting.canPlantOn(
+                        world.getBlockAt(c.x(), c.y() - 1, c.z())))) {
+            BlockType restore = prev == null ? BlockType.AIR : prev;
+            world.setBlockAt(c.x(), c.y(), c.z(), restore, false);
+            queueOutgoing(c.x(), c.y(), c.z(), (short) restore.getId());
+            sendRevert(sp, c.x(), c.y(), c.z(), ctx);
+            refund(sp, debit, ctx);
+            return false; // refused: no edit noise or sound
         }
         // Stalagmite placement: hanging and facing come from the client's proposal (only it knows
         // which face was clicked); a missing or unreadable one stands upright facing the placer's
@@ -787,6 +880,7 @@ public final class ServerBlockHandler {
             }
         }
         queueOutgoing(c.x(), c.y(), c.z(), c.blockTypeId());
+        return true;
     }
 
     /**
@@ -872,6 +966,22 @@ public final class ServerBlockHandler {
             growStalagmite(sp, world, t.x(), t.y(), t.z(), ctx);
             return;
         }
+        // Blueberry bush: the toggle intent picks a ripe bush. The growth system sets it back
+        // to Mature; its stage listener queues the state echo (IntegratedServer), and the berry
+        // drops replicate as entities. An unripe bush ignores the intent.
+        if (target == BlockType.CAMPFIRE) {
+            cookOnCampfire(sp, world, t.x(), t.y(), t.z());
+            return;
+        }
+        if (target == BlockType.MEAT_RACK) {
+            useMeatRack(sp, world, t.x(), t.y(), t.z());
+            return;
+        }
+        if (target == BlockType.BLUEBERRY_BUSH) {
+            com.stonebreak.blocks.blueberrybush.BlueberryBushHarvest.harvest(
+                    world, t.x(), t.y(), t.z(), new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
+            return;
+        }
         if (target != BlockType.OAK_DOOR) {
             return;
         }
@@ -891,6 +1001,58 @@ public final class ServerBlockHandler {
         }
         ctx.broadcast(new com.stonebreak.network.packet.world.BlockStateS2C(
                 t.x(), t.y(), t.z(), next.toStateString()), false);
+    }
+
+    /**
+     * The toggle intent on a campfire puts one of the held item on it to cook. The client
+     * already took it from its hand; a refusal (nothing cookable held, the fire full) syncs
+     * the sender so it comes back.
+     */
+    private void cookOnCampfire(ServerPlayer sp, World world, int x, int y, int z) {
+        com.stonebreak.blocks.campfire.CampfireRegistry fires = world.getCampfireRegistry();
+        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(x, y, z);
+        com.stonebreak.blocks.campfire.CampfireState fire = fires.get(pos);
+        int heldId = sp.inventory().heldItemId();
+        com.stonebreak.items.Item held = sp.inventory().slot(sp.inventory().selectedHotbarSlot()).getItem();
+        if (fire == null || !fire.hasFreeSpot() || !fires.isCookable(held)
+                || sp.inventory().debitOneWithAutoSwitch(heldId) == null
+                || !fires.cook(world, pos, held)) {
+            syncInventory(sp);
+        }
+    }
+
+    /**
+     * The toggle intent on a meat rack: with food held, the held stack goes on the hooks as far as
+     * there is room; empty-handed, the food on the last filled hook comes back into the inventory
+     * (whatever does not fit stays on its hook). The inventory is synced either way — the client
+     * predicted only how much it hung, from a display copy that may be behind.
+     */
+    private void useMeatRack(ServerPlayer sp, World world, int x, int y, int z) {
+        com.stonebreak.blocks.meatrack.MeatRackRegistry racks = world.getMeatRackRegistry();
+        com.openmason.engine.util.BlockPos pos = new com.openmason.engine.util.BlockPos(x, y, z);
+        com.stonebreak.blocks.meatrack.MeatRackState rack = racks.getOrCreate(pos);
+        com.stonebreak.items.ItemStack held = sp.inventory().slot(sp.inventory().selectedHotbarSlot());
+        if (!held.isEmpty()) {
+            int fits = rack.roomFor(held);
+            com.stonebreak.items.ItemStack taken = fits > 0
+                    ? sp.inventory().debitStack(held.getBlockTypeId(), fits, held.getState())
+                    : null;
+            if (taken != null) {
+                rack.hang(taken);
+            }
+        } else {
+            int hook = rack.lastFilledHook();
+            if (hook >= 0) {
+                com.stonebreak.items.ItemStack food = rack.takeLast();
+                int added = sp.inventory().addStack(food);
+                if (added < food.getCount()) {
+                    food.setCount(food.getCount() - added);
+                    rack.restore(hook, food);
+                }
+            }
+        }
+        racks.persist(world, pos);
+        syncInventory(sp);
     }
 
     /**
@@ -1001,8 +1163,9 @@ public final class ServerBlockHandler {
                 }
             }
             boolean scoop = isScoop(world, c, incoming, serverPrev);
+            String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
             if (applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId())) {
-                completeEdit(pe.sp, c, incoming, serverPrev, scoop, pe.debit, world, ctx);
+                completeEdit(pe.sp, c, incoming, serverPrev, prevState, scoop, pe.debit, world, ctx);
                 if (scoop) {
                     // The intent was acknowledged when it arrived, and syncs sent since then
                     // lack the filled bucket — this one carries it.

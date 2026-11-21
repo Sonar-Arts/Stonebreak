@@ -22,6 +22,7 @@ public class BiomeManager {
 
     private final TerrainTileSource tileSource;
     private final BeachRule beach;
+    private final ShadeOverlay shade;
 
     public BiomeManager(TerrainTileSource tileSource) {
         this(tileSource, BeachRule.LEGACY);
@@ -29,14 +30,36 @@ public class BiomeManager {
 
     /** Biomes with the world's own beach rule ({@link BeachRule#of}: height-curve v2 worlds size it in metres). */
     public BiomeManager(TerrainTileSource tileSource, BeachRule beach) {
+        this(tileSource, beach, ShadeOverlay.NONE);
+    }
+
+    /** {@link #BiomeManager(TerrainTileSource, BeachRule)} with the world's Shade overlay ({@link ShadeOverlay}). */
+    public BiomeManager(TerrainTileSource tileSource, BeachRule beach, ShadeOverlay shade) {
         this.tileSource = tileSource;
         this.beach = beach;
+        this.shade = shade != null ? shade : ShadeOverlay.NONE;
+    }
+
+    /** The open sea at block (x, z) (a model ocean id; the Shade's sea clearance, {@link ShadeOverlay}). */
+    private boolean isSea(long x, long z) {
+        int bx = Math.toIntExact(x), bz = Math.toIntExact(z);
+        return DiffusionBiomeMapper.isOceanId(tileSource.getTile(bx, bz).biomeIdAt(bx, bz));
+    }
+
+    /** {@link #isSea} over tiles read in SAMPLE units of {@code lod} blocks (coarse LOD, the mapper's overview). */
+    public static ShadeOverlay.SeaProbe seaProbe(TerrainTileSource sampleTiles, int lod) {
+        return (x, z) -> {
+            int sx = Math.toIntExact(Math.floorDiv(x, lod)), sz = Math.toIntExact(Math.floorDiv(z, lod));
+            return DiffusionBiomeMapper.isOceanId(sampleTiles.getTile(sx, sz).biomeIdAt(sx, sz));
+        };
     }
 
     public BiomeType getBiome(int x, int z) {
         TerrainTile tile = tileSource.getTile(x, z);
         int h = tile.heightAt(x, z);
-        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), h, seaLevelNear(tile, x, z, h), beach.bandBlocks());
+        short id = tile.biomeIdAt(x, z);
+        return shade.apply(DiffusionBiomeMapper.map(id, h, seaLevelNear(tile, x, z, h), beach.bandBlocks()), id, x, z,
+                this::isSea);
     }
 
     /**
@@ -54,8 +77,10 @@ public class BiomeManager {
                 int idx = x * CHUNK_SIZE + z;
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
-                out[idx] = DiffusionBiomeMapper.map(tile.biomeIdAt(worldX, worldZ), heights[idx],
-                        seaLevelNear(tile, worldX, worldZ, heights[idx]), beach.bandBlocks());
+                short id = tile.biomeIdAt(worldX, worldZ);
+                out[idx] = shade.apply(DiffusionBiomeMapper.map(id, heights[idx],
+                        seaLevelNear(tile, worldX, worldZ, heights[idx]), beach.bandBlocks()), id, worldX, worldZ,
+                        this::isSea);
             }
         }
     }

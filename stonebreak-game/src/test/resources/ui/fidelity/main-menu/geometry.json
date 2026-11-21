@@ -169,6 +169,54 @@
         "settings" : "stonebreak:screen.main-menu.settings",
         "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
       }
+    },
+    "main-menu-live-resume_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 72.0, 347.0, 360.31503, 92.0 ],
+        "multiplayer" : [ 72.0, 583.0, 360.0, 44.0 ],
+        "quit" : [ 72.0, 683.0, 360.0, 44.0 ],
+        "resume" : [ 72.0, 483.0, 360.0, 44.0 ],
+        "settings" : [ 72.0, 633.0, 360.0, 44.0 ],
+        "singleplayer" : [ 72.0, 533.0, 360.0, 44.0 ]
+      },
+      "hits" : {
+        "multiplayer" : [ 72.0, 583.0, 360.0, 44.0 ],
+        "quit" : [ 72.0, 683.0, 360.0, 44.0 ],
+        "resume" : [ 72.0, 483.0, 360.0, 44.0 ],
+        "settings" : [ 72.0, 633.0, 360.0, 44.0 ],
+        "singleplayer" : [ 72.0, 533.0, 360.0, 44.0 ]
+      },
+      "actions" : {
+        "multiplayer" : "stonebreak:screen.main-menu.multiplayer",
+        "quit" : "stonebreak:screen.main-menu.quit",
+        "resume" : "stonebreak:screen.main-menu.resume",
+        "settings" : "stonebreak:screen.main-menu.settings",
+        "singleplayer" : "stonebreak:screen.main-menu.singleplayer"
+      }
+    },
+    "main-menu-live-resume-exit_1920x1080_s1" : {
+      "rects" : {
+        "logo" : [ 72.0, 347.0, 360.31503, 92.0 ],
+        "multiplayer" : [ 72.0, 583.0, 360.0, 44.0 ],
+        "quit" : [ 72.0, 683.0, 360.0, 44.0 ],
+        "resume" : [ 72.0, 483.0, 360.0, 44.0 ],
+        "settings" : [ 72.0, 633.0, 360.0, 44.0 ],
+        "singleplayer" : [ 72.0, 533.0, 360.0, 44.0 ]
+      },
+      "hits" : {
+        "multiplayer" : [ 252.0, 605.0, 0.0, 0.0 ],
+        "quit" : [ 252.0, 705.0, 0.0, 0.0 ],
+        "resume" : [ 252.0, 505.0, 0.0, 0.0 ],
+        "settings" : [ 252.0, 655.0, 0.0, 0.0 ],
+        "singleplayer" : [ 252.0, 555.0, 0.0, 0.0 ]
+      },
+      "actions" : {
+        "multiplayer" : "fired []",
+        "quit" : "fired []",
+        "resume" : "fired []",
+        "settings" : "fired []",
+        "singleplayer" : "fired []"
+      }
     }
   }
 }

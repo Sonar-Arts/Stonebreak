@@ -223,7 +223,7 @@ public final class ClientPlayerHandler {
         com.stonebreak.player.combat.HitResultFeedback.apply(local,
                 target instanceof com.stonebreak.mobs.entities.LivingEntity le ? le : null,
                 source, com.stonebreak.mobs.entities.HitKind.fromWire(k.hitKind()),
-                k.damageDealt(), new org.joml.Vector3d(k.x(), k.y(), k.z()));
+                k.damageDealt(), k.killed(), new org.joml.Vector3d(k.x(), k.y(), k.z()));
         local.getStats().addDamageDealt(k.damageDealt());
         if (k.killed()) {
             local.getStats().incrementEntitiesKilled();
@@ -231,6 +231,21 @@ public final class ClientPlayerHandler {
             if (k.entityTypeOrdinal() >= 0 && k.entityTypeOrdinal() < types.length) {
                 local.getStats().incrementKillsForType(types[k.entityTypeOrdinal()]);
             }
+        }
+    }
+
+    /** A statistic the server resolved (crafting, fishing catches) credited to the local player (#180). */
+    public void handleStatCredit(com.stonebreak.network.packet.player.StatCreditS2C c) {
+        Player local = Game.getPlayer();
+        if (local == null || c.amount() <= 0) {
+            return;
+        }
+        switch (c.stat()) {
+            case com.stonebreak.network.packet.player.StatCreditS2C.STAT_ITEMS_CRAFTED ->
+                local.getStats().addItemsCrafted(c.amount());
+            case com.stonebreak.network.packet.player.StatCreditS2C.STAT_BASS_CAUGHT ->
+                local.getStats().addBassCaught(c.amount());
+            default -> { }
         }
     }
 

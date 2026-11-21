@@ -6,8 +6,6 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
-import com.openmason.engine.rendering.shaders.ShaderProgram;
-
 /**
  * Specialized entity renderer managed by the main Renderer: a thin coordinator
  * that owns the per-kind sub-renderers and dispatches each entity to one of them.
@@ -15,11 +13,12 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
  * <p>All AI-driven mobs render through one generic {@link SbeMobRenderer} path
  * keyed off {@code EntityType.getSbeObjectId()} (ground-anchored via the model's
  * rest-pose feet); player-shaped figures (local third-person, remote players,
- * decoys, previews) go through {@link PlayerFigureRenderer}; effect entities
- * through {@link GlowCubeRenderer}; arrows, the bobber and anything else through
- * {@link ArrowRenderer}, {@link BobberRenderer} and {@link FallbackCubeRenderer},
- * all of which draw via the shared {@link SimpleCubePipeline}. The depth-only
- * shadow pass is {@link EntityShadowCasterRenderer}.
+ * decoys, previews) go through {@link PlayerFigureRenderer}; fire bolts through
+ * {@link FireBoltRenderer}; other effect entities through {@link GlowCubeRenderer};
+ * arrows through {@link ArrowRenderer}, which queues the arrow item's sprite for the
+ * drop pass; the bobber and anything else through {@link BobberRenderer} and
+ * {@link FallbackCubeRenderer}, which draw via the shared {@link SimpleCubePipeline}.
+ * The depth-only shadow pass is {@link EntityShadowCasterRenderer}.
  */
 public class EntityRenderer {
     private boolean initialized = false;
@@ -39,8 +38,11 @@ public class EntityRenderer {
     private final PlayerFigureRenderer playerFigureRenderer =
             new PlayerFigureRenderer(sbeEntityRenderer, remotePlayerRenderer, attachmentRenderer);
     private final FallbackCubeRenderer fallbackCubeRenderer = new FallbackCubeRenderer(simpleCubePipeline);
-    private final ArrowRenderer arrowRenderer = new ArrowRenderer(simpleCubePipeline);
+    private final ArrowRenderer arrowRenderer = new ArrowRenderer(socketItems);
+    private final MeatRackItemRenderer meatRackItemRenderer = new MeatRackItemRenderer(socketItems);
+    private final CampfireFoodRenderer campfireFoodRenderer = new CampfireFoodRenderer(socketItems);
     private final GlowCubeRenderer glowCubeRenderer = new GlowCubeRenderer(simpleCubePipeline);
+    private final FireBoltRenderer fireBoltRenderer = new FireBoltRenderer();
     private final BobberRenderer bobberRenderer = new BobberRenderer(sbeEntityRenderer, fallbackCubeRenderer);
     private final DinghyRenderer dinghyRenderer = new DinghyRenderer(sbeEntityRenderer, fallbackCubeRenderer);
     private final EntityShadowCasterRenderer shadowCasterRenderer =
@@ -54,6 +56,16 @@ public class EntityRenderer {
         return socketItems;
     }
 
+    /** Queues the food hanging on nearby meat racks for the drop pass (see {@link MeatRackItemRenderer}). */
+    public void queueMeatRackItems(com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
+        meatRackItemRenderer.queue(world, cameraPos);
+    }
+
+    /** Queues the food cooking on nearby campfires for the drop pass (see {@link CampfireFoodRenderer}). */
+    public void queueCampfireFood(com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
+        campfireFoodRenderer.queue(world, cameraPos);
+    }
+
     /**
      * Initialize the entity renderer. Called by the main Renderer.
      */
@@ -63,18 +75,10 @@ public class EntityRenderer {
         simpleCubePipeline.initialize();
         fallbackCubeRenderer.initialize();
         glowCubeRenderer.initialize();
-        arrowRenderer.initialize();
+        fireBoltRenderer.initialize();
         sbeEntityRenderer.initialize();
         remotePlayerRenderer.initialize();
         initialized = true;
-    }
-
-    /**
-     * Wires up the voxelized-sprite renderer used for arrow projectiles.
-     * Must be called after initialize() and after the main scene shader is ready.
-     */
-    public void initializeArrowRenderer(ShaderProgram mainSceneShader) {
-        arrowRenderer.initializeVoxelRenderer(mainSceneShader);
     }
 
     /**
@@ -83,6 +87,12 @@ public class EntityRenderer {
      */
     public void setShadowMapRenderer(com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer renderer) {
         sbeEntityRenderer.setShadowMapRenderer(renderer);
+    }
+
+    /** Wires the Shade's ground fog. Called by WorldRenderer once at construction. */
+    public void setGroundFog(com.stonebreak.rendering.gameWorld.fog.GroundFog fog) {
+        sbeEntityRenderer.setGroundFog(fog);
+        simpleCubePipeline.setGroundFog(fog);
     }
 
     /**
@@ -140,13 +150,18 @@ public class EntityRenderer {
             return;
         }
 
+        if (entity instanceof com.stonebreak.mobs.entities.FireBolt bolt) {
+            fireBoltRenderer.render(bolt, viewMatrix, projectionMatrix);
+            return;
+        }
+
         if (GlowCubeRenderer.handles(entityType)) {
             glowCubeRenderer.render(entity, viewMatrix, projectionMatrix, cameraPos);
             return;
         }
 
-        if (entityType == EntityType.ARROW) {
-            arrowRenderer.render(entity, viewMatrix, projectionMatrix);
+        if (entity instanceof com.stonebreak.mobs.entities.Arrow arrow) {
+            arrowRenderer.render(arrow);
             return;
         }
 
@@ -392,7 +407,7 @@ public class EntityRenderer {
         simpleCubePipeline.cleanup();
         fallbackCubeRenderer.cleanup();
         glowCubeRenderer.cleanup();
-        arrowRenderer.cleanup();
+        fireBoltRenderer.cleanup();
 
         sbeEntityRenderer.cleanup();
         remotePlayerRenderer.cleanup();

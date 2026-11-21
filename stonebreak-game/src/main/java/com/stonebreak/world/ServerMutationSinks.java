@@ -21,6 +21,8 @@ import com.stonebreak.mobs.entities.EntityType;
  *   <li><b>sounds</b> — a sound the simulation makes (a mob's hurt/death voice), replicated as
  *       {@code SoundEventS2C} to the players near it (issue #344). The server tick thread must
  *       never play into the client's mixer itself (#340)</li>
+ *   <li><b>states</b> — a block state string the simulation writes with a block it builds (a goblin
+ *       camp's spiked wall), echoed as {@code BlockStateS2C} behind the block batches</li>
  * </ul>
  *
  * <p>All fields are volatile: sinks are installed on the main thread and read from the sim thread.</p>
@@ -43,6 +45,12 @@ public final class ServerMutationSinks {
     }
 
     @FunctionalInterface
+    public interface StateSink {
+        /** The block state string at {@code (x, y, z)} changed; echo it to clients. */
+        void onServerStateChange(int x, int y, int z);
+    }
+
+    @FunctionalInterface
     public interface SoundSink {
         /** {@code event} from {@code type}'s SBE {@code sounds[]}, heard at {@code (x, y, z)}. */
         void onServerEntitySound(EntityType type, String event, double x, double y, double z);
@@ -52,6 +60,7 @@ public final class ServerMutationSinks {
     private volatile SnowSink snow;
     private volatile WaterSink water;
     private volatile SoundSink sounds;
+    private volatile StateSink states;
 
     public void setBlockSink(BlockSink sink) {
         this.blocks = sink;
@@ -67,6 +76,15 @@ public final class ServerMutationSinks {
 
     public void setSoundSink(SoundSink sink) {
         this.sounds = sink;
+    }
+
+    public void setStateSink(StateSink sink) {
+        this.states = sink;
+    }
+
+    /** The block-state sink, or null on client/render worlds. */
+    public StateSink states() {
+        return states;
     }
 
     /** The block sink, or null on client/render worlds. */

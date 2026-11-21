@@ -52,9 +52,10 @@ public interface Item {
     }
 
     /**
-     * True when this item can be drawn as a 2D icon in the UI — either it has
-     * legacy texture-atlas coordinates, or it's an SBO-backed sprite item
-     * (atlas coords {@code -1, -1} but registered under {@code sbo/items/}).
+     * True when this item can be drawn as an icon in the UI — either it has
+     * legacy texture-atlas coordinates, or it's SBO-backed (atlas coords
+     * {@code -1, -1}): a sprite item under {@code sbo/items/}, or a block under
+     * {@code sbo/blocks/} drawn from its model (the campfire, the chest).
      *
      * <p>Centralised here so that every inventory / hotbar / recipe / workbench
      * slot renderer agrees on the rule. Without this, items like the wooden
@@ -65,6 +66,12 @@ public interface Item {
         if (this instanceof ItemType itemType) {
             return com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer
                     .isSboBackedItem(itemType);
+        }
+        if (this instanceof com.stonebreak.blocks.BlockType blockType
+                && blockType != com.stonebreak.blocks.BlockType.AIR) {
+            return com.stonebreak.blocks.registry.BlockRegistry.getInstance().getById(blockType.getId())
+                    .map(entry -> entry.sboData() != null)
+                    .orElse(false);
         }
         return false;
     }

@@ -17,7 +17,9 @@ public final class VegetationGenerator {
         OAK(BlockType.WOOD, BlockType.LEAVES),
         ELM(BlockType.ELM_WOOD_LOG, BlockType.ELM_LEAVES),
         PINE(BlockType.PINE, BlockType.PINE_LEAVES),
-        CYPRESS(BlockType.CYPRESS_LOG, BlockType.CYPRESS_LEAVES);
+        CYPRESS(BlockType.CYPRESS_LOG, BlockType.CYPRESS_LEAVES),
+        /** The Shade's tree (Project-Heracles). Not yet planted by the native generator. */
+        DRY_OAK(BlockType.DRY_OAK_LOG, BlockType.DRY_OAK_LEAVES);
 
         private final BlockType trunk;
         private final BlockType leaves;
@@ -29,9 +31,10 @@ public final class VegetationGenerator {
     /** A tree the generator plants at a column. */
     public record TreeSample(TreeKind kind, int trunkHeight) {}
 
-    /** Surfaces trees grow on (grass, snowy dirt, swampy grass). */
+    /** Surfaces trees grow on (grass, snowy dirt, swampy grass, the Shade's dry grass). */
     public static boolean growsTreeOn(BlockType surfaceBlock) {
         return surfaceBlock == BlockType.GRASS || surfaceBlock == BlockType.SNOWY_DIRT
-            || surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER;
+            || surfaceBlock == BlockType.SWAMPY_GRASS || surfaceBlock == BlockType.WATER
+            || surfaceBlock == BlockType.DRY_GRASS;
     }
 }

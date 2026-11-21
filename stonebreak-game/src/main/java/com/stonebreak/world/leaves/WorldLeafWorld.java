@@ -64,6 +64,11 @@ public final class WorldLeafWorld implements LeafWorld {
     }
 
     @Override
+    public boolean isPersistent(long x, long y, long z) {
+        return com.stonebreak.blocks.leaves.LeafState.isPlaced(world.getBlockStateAt(x, y, z));
+    }
+
+    @Override
     public com.openmason.engine.physics.PhysicsWorld physics() {
         return com.stonebreak.world.physics.WorldPhysics.of(world).engine();
     }

@@ -13,6 +13,7 @@ import com.stonebreak.crafting.Recipe;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.network.packet.player.ContainerActionC2S;
+import com.stonebreak.network.packet.player.StatCreditS2C;
 import com.stonebreak.network.packet.player.InventorySyncS2C;
 import com.stonebreak.network.packet.world.BlockStateS2C;
 import com.stonebreak.network.server.ServerPlayer;
@@ -178,6 +179,28 @@ class ContainerActionServerTest {
                 ContainerActionC2S.Action.TAKE_OUTPUT, (short) 0, false), ctx);
         assertTrue(!second);
         assertEquals(4, alice.inventory().carried().getCount());
+    }
+
+    @Test
+    void craftingCreditsTheItemsCraftedStatOncePerCraft() {
+        workbench.getSlots()[0] = new ItemStack(BlockType.WOOD, 3);
+        ContainerActionC2S take = new ContainerActionC2S(BENCH_POS.x(), BENCH_POS.y(), BENCH_POS.z(),
+                ContainerActionC2S.ContainerKind.WORKBENCH,
+                ContainerActionC2S.Region.WORKBENCH_OUT, (byte) 0,
+                ContainerActionC2S.Action.TAKE_OUTPUT, (short) 0, false);
+        ContainerActionC2S craftAll = new ContainerActionC2S(BENCH_POS.x(), BENCH_POS.y(), BENCH_POS.z(),
+                ContainerActionC2S.ContainerKind.WORKBENCH,
+                ContainerActionC2S.Region.WORKBENCH_OUT, (byte) 0,
+                ContainerActionC2S.Action.CRAFT_ALL, (short) 0, false);
+
+        assertTrue(processor.apply(alice, take, ctx));
+        assertTrue(processor.apply(alice, craftAll, ctx), "the two remaining planks' worth");
+
+        List<StatCreditS2C> credits = sent(alice).stream()
+                .filter(p -> p instanceof StatCreditS2C).map(p -> (StatCreditS2C) p).toList();
+        assertEquals(List.of(new StatCreditS2C(StatCreditS2C.STAT_ITEMS_CRAFTED, 4),
+                new StatCreditS2C(StatCreditS2C.STAT_ITEMS_CRAFTED, 8)), credits,
+                "each craft credits the output count; Craft All credits its batches once");
     }
 
     @Test

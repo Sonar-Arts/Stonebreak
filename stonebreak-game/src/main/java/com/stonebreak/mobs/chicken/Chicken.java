@@ -12,6 +12,8 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.ai.MobAI;
+import com.stonebreak.mobs.entities.ai.behavior.FleeBehavior;
+import com.stonebreak.mobs.entities.ai.behavior.ThreatSense;
 import com.stonebreak.mobs.entities.ai.behavior.StandStillBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.StartleBehavior;
 import com.stonebreak.mobs.entities.ai.behavior.WanderBehavior;
@@ -47,6 +49,9 @@ public class Chicken extends LivingEntity {
         // (1.2s matches the SB_Chicken.sbe Wingflap clip), and it freezes rather than bolts.
         this.mobAI = new MobAI(this, new Steering(this, ROTATION_SPEED, HOP_BOOST_SPEED, HOP_DURATION),
                 new StartleBehavior(2.0f),
+                // A hit still only startles it; a goblin padding up makes it scurry off.
+                new FleeBehavior(6.0f, 3.0f, 1.0f).ignoringHits()
+                        .withThreat(ThreatSense.ofTypes(12.0f, EntityType.GOBLIN), 8.0f, 12.0f),
                 new WingFlapBehavior(0.15f, 1.2f),
                 StandStillBehavior.idle(0.5f, 3.0f, 8.0f),
                 new WanderBehavior(0.5f, 3.0f, 8.0f, 0.8f));
@@ -90,11 +95,12 @@ public class Chicken extends LivingEntity {
 
     @Override
     public ItemStack[] getDrops() {
+        ItemStack meat = new ItemStack(ItemType.RAW_CHICKEN, 1);
         if (Math.random() < 0.60) {
             int count = 1 + (int)(Math.random() * 2);
-            return new ItemStack[] { new ItemStack(ItemType.FEATHER, count) };
+            return new ItemStack[] { meat, new ItemStack(ItemType.FEATHER, count) };
         }
-        return new ItemStack[0];
+        return new ItemStack[] { meat };
     }
 
     @Override

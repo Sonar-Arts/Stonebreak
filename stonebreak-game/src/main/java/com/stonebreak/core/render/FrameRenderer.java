@@ -52,7 +52,7 @@ public final class FrameRenderer {
     /** In-game states that keep the crosshair/hotbar/chat HUD on screen. */
     private static final java.util.Set<GameState> HUD_STATES = java.util.EnumSet.of(
             GameState.PLAYING, GameState.PAUSED, GameState.INVENTORY_UI, GameState.RECIPE_BOOK_UI,
-            GameState.CHARACTER_SHEET_UI, GameState.FURNACE_UI, GameState.WORKBENCH_UI);
+            GameState.CHARACTER_SHEET_UI, GameState.FURNACE_UI, GameState.WORKBENCH_UI, GameState.CHEST_UI);
 
     private final Window window;
     private final com.stonebreak.ui.runtime.DevDocumentOverlay devDocument =
@@ -369,9 +369,11 @@ public final class FrameRenderer {
         InventoryScreen inventory = game.getInventoryScreen();
         WorkbenchScreen workbench = game.getWorkbenchScreen();
         FurnaceScreen furnace = game.getFurnaceScreen();
+        com.stonebreak.ui.chest.ChestScreen chest = game.getChestScreen();
         return !((inventory != null && inventory.isVisible())
                 || (workbench != null && workbench.isVisible())
-                || (furnace != null && furnace.isVisible()));
+                || (furnace != null && furnace.isVisible())
+                || (chest != null && chest.isVisible()));
     }
 
     /**
@@ -418,7 +420,7 @@ public final class FrameRenderer {
         }
 
         // Furnace and workbench are drawn exclusively by renderFullscreenMenus.
-        if (state == GameState.FURNACE_UI || state == GameState.WORKBENCH_UI) {
+        if (state == GameState.FURNACE_UI || state == GameState.WORKBENCH_UI || state == GameState.CHEST_UI) {
             return;
         }
 
@@ -465,6 +467,12 @@ public final class FrameRenderer {
             FurnaceScreen furnace = game.getFurnaceScreen();
             if (furnace != null && furnace.isVisible()) {
                 furnace.render();
+            }
+        }
+        if (game.getState() == GameState.CHEST_UI) {
+            com.stonebreak.ui.chest.ChestScreen chest = game.getChestScreen();
+            if (chest != null && chest.isVisible()) {
+                chest.render();
             }
         }
     }

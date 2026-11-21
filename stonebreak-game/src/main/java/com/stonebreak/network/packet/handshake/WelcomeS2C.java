@@ -12,7 +12,8 @@ import io.netty.buffer.ByteBuf;
 /**
  * Server → client: handshake accepted; carries the assigned player id, world seed, terrain
  * generator, terrain scale, climate layout, height-curve version and terrain model (so a DaedalusTGM-Exp client
- * builds the same terrain: its TGMPipe runs the server world's model, protocol 28), spawn
+ * builds the same terrain: its TGMPipe runs the server world's model, protocol 28), the Standard shape (29), the world's
+ * feature set (31: The Shade changes biomes the client reads - night fog, LOD), spawn
  * (int64 cell + float offset per axis), and the client's join secret for this server ("" for the in-process host).
  * The client keeps the secret and presents it in its next {@link HandshakeC2S} (issue #335).
  */
@@ -20,10 +21,12 @@ public record WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType gene
                          com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
                          ClimateLayout climateLayout, HeightCurveVersion heightCurve, TerrainModelRef terrainModel,
                          com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                         com.stonebreak.world.generation.WorldFeatureVersion worldFeatures,
                          double spawnX, double spawnY, double spawnZ, String clientSecret) implements Packet {
 
     public WelcomeS2C {
         standardShape = com.stonebreak.world.generation.StandardShapeVersion.orCurrent(standardShape);
+        worldFeatures = com.stonebreak.world.generation.WorldFeatureVersion.orCurrent(worldFeatures);
         clientSecret = clientSecret == null ? "" : clientSecret;
         terrainScale = terrainScale == null ? com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset.ONE_TO_FOUR : terrainScale;
         climateLayout = ClimateLayout.orDefault(climateLayout);
@@ -31,13 +34,23 @@ public record WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType gene
         terrainModel = TerrainModelRef.orLegacy(terrainModel);
     }
 
+    /** A welcome of a world with the current feature set (protocol 31: the world's {@link com.stonebreak.world.generation.WorldFeatureVersion}). */
+    public WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType generatorType,
+                      com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                      ClimateLayout climateLayout, HeightCurveVersion heightCurve, TerrainModelRef terrainModel,
+                      com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                      double spawnX, double spawnY, double spawnZ, String clientSecret) {
+        this(playerId, worldSeed, generatorType, terrainScale, climateLayout, heightCurve, terrainModel, standardShape,
+            null, spawnX, spawnY, spawnZ, clientSecret);
+    }
+
     /** A welcome of a world with the current Standard shape. */
     public WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType generatorType,
                       com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
                       ClimateLayout climateLayout, HeightCurveVersion heightCurve, TerrainModelRef terrainModel,
                       double spawnX, double spawnY, double spawnZ, String clientSecret) {
-        this(playerId, worldSeed, generatorType, terrainScale, climateLayout, heightCurve, terrainModel, null,
-            spawnX, spawnY, spawnZ, clientSecret);
+        this(playerId, worldSeed, generatorType, terrainScale, climateLayout, heightCurve, terrainModel,
+            (com.stonebreak.world.generation.StandardShapeVersion) null, spawnX, spawnY, spawnZ, clientSecret);
     }
 
     /** A welcome without a recorded terrain model ({@link TerrainModelRef#LEGACY}). */
@@ -89,6 +102,7 @@ public record WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType gene
             ByteBufIO.writeString(out, p.terrainModel().path(), TerrainModelRef.MAX_CHARS);
             ByteBufIO.writeString(out, p.terrainModel().contentId(), TerrainModelRef.MAX_CHARS);
             out.writeByte(p.standardShape().number());
+            out.writeByte(p.worldFeatures().number());
             com.stonebreak.network.packet.NetCoords.writePosition(out, p.spawnX(), p.spawnY(), p.spawnZ());
             ByteBufIO.writeString(out, p.clientSecret(), HandshakeC2S.MAX_SECRET_CHARS);
         }
@@ -124,11 +138,16 @@ public record WelcomeS2C(int playerId, long worldSeed, TerrainGeneratorType gene
             if (shape == null) {
                 throw new IllegalArgumentException("Unknown Standard shape " + shapeNumber);
             }
+            int featuresNumber = in.readUnsignedByte();
+            var features = com.stonebreak.world.generation.WorldFeatureVersion.of(featuresNumber);
+            if (features == null) {
+                throw new IllegalArgumentException("Unknown world feature set " + featuresNumber);
+            }
             double x = com.stonebreak.network.packet.NetCoords.readPosition(in);
             double y = com.stonebreak.network.packet.NetCoords.readPosition(in);
             double z = com.stonebreak.network.packet.NetCoords.readPosition(in);
             return new WelcomeS2C(id, seed, TerrainGeneratorType.values()[type], scales[scale], climates[climate], curve,
-                model, shape, x, y, z,
+                model, shape, features, x, y, z,
                 ByteBufIO.readString(in, HandshakeC2S.MAX_SECRET_CHARS));
         }
     };

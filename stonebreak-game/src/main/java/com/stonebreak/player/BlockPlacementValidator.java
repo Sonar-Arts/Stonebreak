@@ -90,6 +90,11 @@ public class BlockPlacementValidator implements IBlockPlacementService {
                 && !SaplingGrowthSystem.isSoil(world.getBlockAt(blockPos.x, blockPos.y - 1, blockPos.z))) {
             return false;
         }
+        // Blueberry bushes are planted on grass only (the server checks this too).
+        if (blockType == BlockType.BLUEBERRY_BUSH && !com.stonebreak.blocks.blueberrybush.BlueberryBushPlanting
+                .canPlantOn(world.getBlockAt(blockPos.x, blockPos.y - 1, blockPos.z))) {
+            return false;
+        }
 
         // Can place in air or water (replacing water)
         if (existingBlock == BlockType.AIR || existingBlock == BlockType.WATER) {

@@ -348,14 +348,28 @@ public class DropUtil {
         // Mining substitutions: a few blocks drop something other than
         // themselves. Most fall through to the brokenBlock itself.
         if (brokenBlock == BlockType.STONE) return BlockType.COBBLESTONE;
-        if (brokenBlock == BlockType.RED_SANDSTONE) return BlockType.RED_SAND_COBBLESTONE;
-        if (brokenBlock == BlockType.SANDSTONE) return BlockType.SAND_COBBLESTONE;
+        if (brokenBlock == BlockType.RED_SANDSTONE) return BlockType.COBBLED_RED_SANDSTONE;
+        if (brokenBlock == BlockType.SANDSTONE) return BlockType.COBBLED_SANDSTONE;
         if (brokenBlock == BlockType.GRASS) return BlockType.DIRT;
         // Future: IRON_ORE / COAL_ORE should drop ingot/coal items here once
         // those items exist. Currently they drop themselves via the fallthrough.
         return brokenBlock;
     }
     
+    /**
+     * Whether a block in {@code state} drops anything when broken. Only the blueberry bush is
+     * gated: before its berries are ripe it drops nothing, so a bush can't be farmed for
+     * berries by breaking it early.
+     */
+    public static boolean dropsInState(BlockType block, String state) {
+        if (block == BlockType.BLUEBERRY_BUSH) {
+            com.stonebreak.blocks.blueberrybush.BlueberryBushState s =
+                    com.stonebreak.blocks.blueberrybush.BlueberryBushState.parse(state);
+            return s != null && s.isRipe();
+        }
+        return true;
+    }
+
     /**
      * Handles block breaking and creates appropriate drops.
      */
@@ -389,7 +403,20 @@ public class DropUtil {
      */
     public static void handleBlockBroken(World world, Vector3dc position, BlockType brokenBlock, ItemType toolItem,
                                          int snowLayers, Vector3dc preferencePoint) {
+        handleBlockBroken(world, position, brokenBlock, null, toolItem, snowLayers, preferencePoint);
+    }
+
+    /**
+     * State-aware overload: {@code brokenState} is the block's state string from just before
+     * the break ({@code null} when it had none). Blocks whose drops depend on their state read
+     * it here; a blueberry bush drops only when it is ripe.
+     */
+    public static void handleBlockBroken(World world, Vector3dc position, BlockType brokenBlock, String brokenState,
+                                         ItemType toolItem, int snowLayers, Vector3dc preferencePoint) {
         if (world == null || brokenBlock == null || brokenBlock == BlockType.AIR) {
+            return;
+        }
+        if (!dropsInState(brokenBlock, brokenState)) {
             return;
         }
 

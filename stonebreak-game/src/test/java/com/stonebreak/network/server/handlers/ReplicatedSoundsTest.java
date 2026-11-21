@@ -123,7 +123,7 @@ class ReplicatedSoundsTest {
     }
 
     private void mining(boolean on) {
-        miner.setMovementFlags((byte) (on ? PlayerStateFlags.MINING : 0));
+        miner.setMovementFlags((short) (on ? PlayerStateFlags.MINING : 0));
     }
 
     // ─── break / place ──────────────────────────────────────────────────────────

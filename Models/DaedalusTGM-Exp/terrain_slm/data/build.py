@@ -29,7 +29,7 @@ from terrain_slm.data.descriptors import CELL_PX
 from terrain_slm.paths import REPO_DIR
 from terrain_slm.device import default_device
 
-WORLDCLIM_DIR = REPO_DIR / "Dev Working/terrain-diffusion-spike/repo/data/global"
+WORLDCLIM_DIR = REPO_DIR / "Dev Working/worldclim"
 LAPSE_C_PER_M = 0.0065
 
 

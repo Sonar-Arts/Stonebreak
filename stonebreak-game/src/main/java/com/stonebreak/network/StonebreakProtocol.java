@@ -182,6 +182,10 @@ public final class StonebreakProtocol {
         r.register(PLAY, CLIENTBOUND, 35, com.stonebreak.network.packet.world.PvpStateS2C.class,
                 com.stonebreak.network.packet.world.PvpStateS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 36, BlockStateNamesS2C.class, BlockStateNamesS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 37, com.stonebreak.network.packet.player.StatCreditS2C.class,
+                com.stonebreak.network.packet.player.StatCreditS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 38, com.stonebreak.network.packet.entity.EntityAwarenessS2C.class,
+                com.stonebreak.network.packet.entity.EntityAwarenessS2C.CODEC);
 
         return r;
     }

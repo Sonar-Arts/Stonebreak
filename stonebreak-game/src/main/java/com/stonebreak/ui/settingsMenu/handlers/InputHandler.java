@@ -93,6 +93,7 @@ public final class InputHandler {
             case HIDE_ARM_WITH_HUD -> { if (direction != 0) actionHandler.toggleHideArmWithHud(); }
             case LIVE_MENU_BACKGROUND -> { if (direction != 0) actionHandler.toggleLiveMenuBackground(); }
             case LEAF_TRANSPARENCY -> { if (direction != 0) actionHandler.toggleLeafTransparency(); }
+            case CONNECTED_SHAPES -> { if (direction != 0) actionHandler.toggleConnectedShapes(); }
             case WATER_SHADER -> { if (direction != 0) actionHandler.toggleWaterShader(); }
             case CLOUDS_ENABLED -> { if (direction != 0) actionHandler.toggleClouds(); }
             case GOD_RAYS -> { if (direction != 0) actionHandler.toggleGodRays(); }

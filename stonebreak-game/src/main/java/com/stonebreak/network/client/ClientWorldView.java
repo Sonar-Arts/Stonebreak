@@ -485,6 +485,8 @@ public final class ClientWorldView {
         if (!p.isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
         if (p.isOnGround())  flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
         if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
+        if (p.getStealth().isStealthed()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED;
+        if (p.getDodge().isMakingNoise()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE;
         if (p.getBreakingBlock() != null) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.MINING;
         // #343: what the server needs to resolve the player's health — flight voids falls and
         // cactus contact, a dodge's i-frames negate blows, Rage T3 heals by lifesteal.
@@ -861,6 +863,7 @@ public final class ClientWorldView {
             case com.stonebreak.network.packet.player.KillCreditS2C kc ->
                 playerHandler.handleKillCredit(kc, entityHandler.shadow(kc.targetNetworkId()));
             case com.stonebreak.network.packet.player.ProgressS2C pr -> applyProgress(pr);
+            case com.stonebreak.network.packet.player.StatCreditS2C sc -> playerHandler.handleStatCredit(sc);
             case com.stonebreak.network.packet.player.PlayerDataS2C pd -> onPlayerData(pd.json());
             case EntitySpawnS2C s -> entityHandler.applySpawn(s);
             case EntityDespawnS2C d -> entityHandler.applyDespawn(d.networkId());
@@ -870,6 +873,7 @@ public final class ClientWorldView {
             case com.stonebreak.network.packet.entity.EntityVariantS2C v ->
                 entityHandler.applyVariant(v.networkId(), v.variant());
             case com.stonebreak.network.packet.entity.EntityStatusS2C st -> entityHandler.applyStatus(st);
+            case com.stonebreak.network.packet.entity.EntityAwarenessS2C aw -> entityHandler.applyAwareness(aw);
             case com.stonebreak.network.packet.world.SoundEventS2C se ->
                 com.stonebreak.network.client.handlers.ClientSoundHandler.apply(se);
             case com.stonebreak.network.packet.player.PlayerHealthS2C ph ->
@@ -938,7 +942,8 @@ public final class ClientWorldView {
         if (clock != null) {
             clock.nudgeTo(ts.worldTimeTicks());
             clock.setTimeSpeed(ts.timeSpeed());
-            clock.setFrozen(ts.frozen());
+            // The main menu's preview holds the day clock however the world's own is set.
+            clock.setFrozen(ts.frozen() || com.stonebreak.network.MultiplayerSession.isPreview());
         }
     }
 
@@ -996,6 +1001,6 @@ public final class ClientWorldView {
             ? Game.getInstance().getCurrentWorldName()
             : "mp_" + System.currentTimeMillis();
         Game.getInstance().startClientWorld(label, w.worldSeed(), w.generatorType(), w.terrainScale(),
-            w.climateLayout(), w.heightCurve(), w.standardShape(), spawn);
+            w.climateLayout(), w.heightCurve(), w.standardShape(), w.worldFeatures(), spawn);
     }
 }

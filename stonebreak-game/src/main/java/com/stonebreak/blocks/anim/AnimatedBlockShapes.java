@@ -65,10 +65,24 @@ public final class AnimatedBlockShapes {
             // Hand-sized targeting box (the model is only 2 px wide), no collision.
             return com.stonebreak.blocks.torch.TorchState.parse(raw).worldAabb(x, y, z);
         }
-        String state = raw != null && !raw.isBlank() ? raw : defaultStateOf(type);
+        // prefix:state=<clip>;payload strings (a campfire's cooking) pick their clip by the state
+        // key alone; keying on the raw string would miss the clip and cache every payload.
+        String variant = com.stonebreak.blocks.BlockRenderState.meshVariantKey(raw);
+        String state = variant != null ? variant : defaultStateOf(type);
         float[] m = settledModelAabb(type, state);
-        return new float[]{x + m[0], y + m[1], z + m[2], x + m[3], y + m[4], z + m[5]};
+        // Plain block SBOs are centred on the model origin; AnimatedBlockRenderer draws that
+        // origin at the cell centre, so the box sits there too.
+        float c = PLAIN_MODEL_ANCHOR;
+        return new float[]{x + c + m[0], y + c + m[1], z + c + m[2],
+                x + c + m[3], y + c + m[4], z + c + m[5]};
     }
+
+    /**
+     * Where a plain (non-door, non-torch) animated block's model origin sits in its cell, on every
+     * axis: such SBOs are authored like static blocks, spanning -0.5..0.5 about the origin. The
+     * renderer and this class's world boxes must agree, or the block is targeted off its model.
+     */
+    public static final float PLAIN_MODEL_ANCHOR = 0.5f;
 
     /**
      * Model-space AABB of the block's geometry posed at the given state

@@ -54,6 +54,16 @@ public final class WeatherState {
         return seconds;
     }
 
+    /**
+     * Sets the clock outright: the main menu's preview of a saved world ran its clouds on the
+     * client alone, and the server adopts that clock when the player resumes.
+     */
+    public void setSeconds(double seconds) {
+        if (Double.isFinite(seconds)) {
+            this.seconds = seconds;
+        }
+    }
+
     public WeatherMode mode() {
         return mode;
     }

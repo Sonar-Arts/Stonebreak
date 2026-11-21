@@ -424,6 +424,7 @@ public class EntityManager {
             case GOOSE -> new com.stonebreak.mobs.goose.Goose(world, position);
             case SHEEP -> new com.stonebreak.mobs.sheep.Sheep(world, position);
             case GOBLIN -> new com.stonebreak.mobs.goblin.Goblin(world, position);
+            case VESTIGE -> new com.stonebreak.mobs.vestige.Vestige(world, position);
             // Sheep always spawn with wool (the "default" fallback): unlike cows, a
             // random variant pick here would spawn ~half of them already sheared
             // now that "Sheared" is a registered appearance variant.
@@ -941,6 +942,18 @@ public class EntityManager {
     /** Snapshot of live entities + queued additions. Needed when callers
      *  inspect what was just queued via {@link #addEntity} before the next
      *  update tick promotes it into {@code entities}. */
+    /**
+     * Whether {@code entity} is leaving at the end of this update ({@link #removeEntity} on a live entity): it is
+     * still in the live list until then, but a save must not write it — a goblin frozen into its camp as its cube
+     * unloads is saved with the camp, not also as a loose entity.
+     */
+    public boolean isLeaving(Entity entity) {
+        synchronized (nativeWorld) {
+            return entity.getEntityWorld() == nativeWorld
+                    && nativeWorld.state(entity.getEntityHandle()) == EntityWorld.STATE_REMOVING;
+        }
+    }
+
     public List<Entity> getAllEntitiesIncludingPending() {
         List<Entity> out = new ArrayList<>(entities);
         synchronized (nativeWorld) {

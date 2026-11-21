@@ -3,8 +3,11 @@ package com.stonebreak.network.server.handlers;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.server.ConnectionRegistry;
 import com.openmason.engine.net.server.ServerConnection;
+import com.stonebreak.mobs.entities.Arrow;
+import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
+import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.network.packet.player.KillCreditS2C;
 import com.stonebreak.network.packet.player.PlayerDamageC2S;
 import com.stonebreak.network.packet.player.PlayerHealthS2C;
@@ -117,6 +120,20 @@ class ServerHealthHandlerTest {
 
         assertEquals(16f, target.health());
         assertEquals(20f, bystander.health());
+    }
+
+    @Test
+    void aGoblinsArrowInFlightHurtsTheConnectedPlayerItHits() {
+        ServerPlayer target = player(1, 5f);
+        World world = mock(World.class); // getBlockAt → null: nothing to stop the arrow
+        when(world.getPlayerLocator()).thenReturn(locator);
+        StubMob goblin = new StubMob(EntityType.GOBLIN, new org.joml.Vector3d(0f, 64f, 0f), world);
+        Arrow arrow = new Arrow(world, new org.joml.Vector3d(5f, 65f, 0f), new Vector3f(1f, 0f, 0f)).firedBy(goblin, 4f);
+
+        arrow.update(0.01f);
+
+        assertFalse(arrow.isAlive(), "spent on the hit");
+        assertEquals(16f, target.health());
     }
 
     @Test

@@ -63,6 +63,7 @@ public class WorldRenderer {
             new com.stonebreak.rendering.gameWorld.clouds.CloudShadowCache();
     private final Vector3f cloudCacheEye = new Vector3f();
     private final PrecipitationFog precipitationFog;
+    private final com.stonebreak.rendering.gameWorld.fog.GroundFog groundFog;
     /** How much a full lightning flash adds to the scene's ambient light. */
     private static final float LIGHTNING_AMBIENT = 0.6f;
     private final WeatherEffects weatherEffects =
@@ -120,12 +121,14 @@ public class WorldRenderer {
         this.skyRenderer = new SkyRenderer();
         this.cloudRenderer = new CloudRenderer();
         this.precipitationFog = new PrecipitationFog();
+        this.groundFog = new com.stonebreak.rendering.gameWorld.fog.GroundFog();
         this.precipitationRenderer = new PrecipitationRenderer();
         this.lightningRenderer = new LightningRenderer();
         this.shadowMapRenderer =
                 new com.stonebreak.rendering.gameWorld.shadow.ShadowMapRenderer(projectionMatrix, blockTextureArray);
         if (entityRenderer != null) {
             entityRenderer.setShadowMapRenderer(shadowMapRenderer);
+            entityRenderer.setGroundFog(groundFog);
         }
         if (animatedBlockRenderer != null) {
             animatedBlockRenderer.setShadowMapRenderer(shadowMapRenderer);
@@ -248,6 +251,7 @@ public class WorldRenderer {
         Vector3f earthShadow = new Vector3f();
         float earthShadowHeight = 0f, twilightBand = 0f;
         Vector3f sunAureole = new Vector3f();
+        float seaHorizon = SunsetFog.seaHorizon((float) player.getCamera().getPosition().y, weatherReach);
         if (sky != null) {
             sunDirection = sky.sunDir();
             keyDirection = sky.keyDir();
@@ -261,7 +265,7 @@ public class WorldRenderer {
             weatherEffects.tintSky(sky.earthShadowColor(), earthShadow);
             earthShadowHeight = sky.earthShadowHeight();
             twilightBand = sky.twilightBand() * clear;
-            SunsetFog.sunAureole(sky, clear, sunAureole);
+            SunsetFog.sunAureole(sky, clear, seaHorizon, sunAureole);
             weatherEffects.updateFogColor(sky);
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
             skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
@@ -269,7 +273,7 @@ public class WorldRenderer {
                     weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
                     weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
                     new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
-                    earthShadow, earthShadowHeight, twilightBand, sky.daylight());
+                    earthShadow, earthShadowHeight, twilightBand, sky.daylight(), seaHorizon);
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
@@ -278,7 +282,7 @@ public class WorldRenderer {
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
                     skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
-                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f);
+                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon);
         }
 
         // Cube terrain: this world's stream events feed the region renderer (idempotent attach); publish
@@ -326,6 +330,9 @@ public class WorldRenderer {
         WeatherFog.set(
                 cameraUnderwater ? 0f : weatherEffects.extinction(), weatherEffects.localFogColor(new Vector3f()));
         precipitationFog.prepare(!cameraUnderwater, weatherEffects);
+        // The Shade's night ground fog; underwater the murk replaces it too.
+        groundFog.prepare(!cameraUnderwater, sky, world.terrain(), cameraPos,
+                projectionMatrix, player.getViewMatrix());
         // Near rain and snow drops for the FX pass (drawn with the other particles, before the water).
         if (bench != null) bench.begin(PrecipitationBench.Section.SPAWN);
         precipitationFx.update(world, weather, cameraPos, totalTime, cameraUnderwater);
@@ -453,6 +460,12 @@ public class WorldRenderer {
         octreeLodRenderer.drawTerrain(shaderProgram, cameraViewProj);
         if (bench != null) bench.end(PrecipitationBench.Section.OCTREE);
 
+        // The Shade's ground fog over the sky and the opaque terrain, once per pixel from
+        // the depth buffer; everything drawn from here on fogs itself.
+        groundFog.renderScreen(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()));
+        shaderProgram.bind();
+        groundFog.applyTo(shaderProgram);
+
         // Render entities after opaque blocks but before transparent water
         // This allows water to blend over entities when viewing through water
         if (bench != null) bench.begin(PrecipitationBench.Section.ENTITIES);
@@ -486,9 +499,9 @@ public class WorldRenderer {
             if (bench != null) bench.begin(PrecipitationBench.Section.CLOUDS);
             lightningRenderer.render(projectionMatrix, player.getViewMatrix(), cameraPos);
             cloudRenderer.render(projectionMatrix, player.getViewMatrix(), player.getRenderPosition(new Vector3f()),
-                    sky, skyColor,
+                    sky, skyColor, clearFogColor,
                     timeOfDay != null ? com.stonebreak.rendering.lighting.SceneLight.steadyAmbient() : ambientLightLevel,
-                    lightningRenderer.flashes(), precipitationFog, weatherReach);
+                    lightningRenderer.flashes(), precipitationFog, groundFog, weatherReach);
             if (bench != null) bench.end(PrecipitationBench.Section.CLOUDS);
             checkGLError("After cloud rendering");
         }
@@ -542,7 +555,7 @@ public class WorldRenderer {
                 player.getCamera().getPosition(), totalTime, keyDirection,
                 ambientLightLevel, waterAnimationEnabled, fogColor, fogStart, fogEnd, fogSpherical,
                 reusableLodWater, lodRegionBatcher, lodStamp, cloudRenderer.uniforms(),
-                cloudRenderer, precipitationFog);
+                cloudRenderer, precipitationFog, groundFog);
         if (bench != null) bench.end(PrecipitationBench.Section.WATER);
         checkGLError("After water pass");
 
@@ -690,6 +703,8 @@ public class WorldRenderer {
         shaderProgram.setUniform("u_fogSpherical", fogSpherical);
         // Rain and snow fog (precip_fog.glsl), marched in front of every fragment.
         precipitationFog.applyTo(shaderProgram);
+        // The Shade's ground fog: the opaque passes leave it to its screen pass.
+        com.stonebreak.rendering.gameWorld.fog.GroundFog.applyDisabled(shaderProgram);
     }
     
     /**
@@ -761,11 +776,29 @@ public class WorldRenderer {
     }
 
     /**
+     * Back-face culling for opaque cube quads in the opaque pass (see
+     * {@code u_cullBackQuads} in world.vert). {@code -Dstonebreak.backfaceCull=false}
+     * turns it off for A/B comparisons.
+     */
+    private static final boolean BACKFACE_CULL =
+        !"false".equalsIgnoreCase(System.getProperty("stonebreak.backfaceCull"));
+
+    /**
      * Opaque pass: atlas (opaque + cutout QUAD16) and stamp (COMPACT20) geometry of every enabled cube - the
      * enable bits carry the column handover and this frame's visibility walk; GPU cull on GL 4.3, CPU
-     * multidraw otherwise.
+     * multidraw otherwise. Opaque cube faces that point away from the camera are dropped. Scoped to this
+     * pass only: the same shader draws items, entities and LOD, which must not be culled.
      */
     private void renderOpaquePass() {
+        shaderProgram.setUniform("u_cullBackQuads", BACKFACE_CULL);
+        try {
+            drawOpaqueAtlas();
+        } finally {
+            shaderProgram.setUniform("u_cullBackQuads", false);
+        }
+    }
+
+    private void drawOpaqueAtlas() {
         shaderProgram.setUniform("u_renderPass", 0); // 0 for opaque/non-water pass
         glDepthMask(true);  // Enable depth writing for opaque objects
         glDisable(GL_BLEND); // Opaque objects typically don't need blending
@@ -845,7 +878,12 @@ public class WorldRenderer {
                 || currentState == GameState.CHARACTER_SHEET_UI
                 || currentState == GameState.RECIPE_BOOK_UI
                 || currentState == GameState.WORKBENCH_UI
-                || currentState == GameState.FURNACE_UI;
+                || currentState == GameState.FURNACE_UI
+                || currentState == GameState.CHEST_UI;
+        if (currentState == GameState.MAIN_MENU && com.stonebreak.network.MultiplayerSession.isPreview()) {
+            renderPreviewBody(player);
+            return;
+        }
         if (!activeState) return;
 
         if (player.isThirdPerson()) {
@@ -858,6 +896,28 @@ public class WorldRenderer {
         } else if (!armHiddenWithHud(currentState)) {
             playerArmRenderer.renderPlayerArm(player);
         }
+    }
+
+    /** Closer than this to the eye, the main menu preview's camera would see inside the head. */
+    private static final float PREVIEW_BODY_MIN_EYE_DISTANCE = 0.6f;
+
+    /**
+     * The main menu's preview of the last-played world: its camera orbits the player, so the whole
+     * body is drawn, until Resume brings the camera into the eye.
+     */
+    private void renderPreviewBody(Player player) {
+        if (entityRenderer == null) {
+            return;
+        }
+        org.joml.Vector3d cameraPos = player.getCamera().getPosition();
+        org.joml.Vector3d feet = player.getPosition();
+        float dx = (float) (cameraPos.x - feet.x);
+        float dy = (float) (cameraPos.y - (feet.y + com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET));
+        float dz = (float) (cameraPos.z - feet.z);
+        if (dx * dx + dy * dy + dz * dz < PREVIEW_BODY_MIN_EYE_DISTANCE * PREVIEW_BODY_MIN_EYE_DISTANCE) {
+            return;
+        }
+        entityRenderer.renderLocalPlayer(player, player.getViewMatrix(), projectionMatrix, Game.getWorld(), cameraPos);
     }
 
     /**
@@ -913,6 +973,8 @@ public class WorldRenderer {
             dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
         if (entityRenderer != null) {
+            entityRenderer.queueMeatRackItems(world, cameraPos);
+            entityRenderer.queueCampfireFood(world, cameraPos);
             dropRenderer.renderSocketItems(entityRenderer.socketItems(), shaderProgram, projectionMatrix,
                     player.getViewMatrix(), cameraPos);
         }
@@ -1020,6 +1082,7 @@ public class WorldRenderer {
             skyRenderer.cleanup();
         }
         precipitationFog.cleanup();
+        groundFog.cleanup();
         if (cloudRenderer != null) {
             cloudRenderer.cleanup();
         }

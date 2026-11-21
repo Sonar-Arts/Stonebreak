@@ -50,6 +50,31 @@ public final class BlockShape {
         if (block.isStairs()) {
             return StairShape.stepHeight(world, x, y, z, block, minX, minZ, maxX, maxZ);
         }
+        com.stonebreak.blocks.multipart.MultipartShape shape =
+                com.stonebreak.blocks.multipart.MultipartRegistry.of(block);
+        if (shape != null && shape.hasBoxes()) {
+            // A shape that turns with a stored facing (the spiked wall) reads its sides and boxes
+            // turned with it, exactly as its stamp is drawn.
+            int turns = BlockFacing.isOrientable(block)
+                    ? BlockFacing.quarterTurns(block, world.getBlockStateAt(x, y, z)) : 0;
+            return boxHeight(shape.boxes(shape.evaluate(world::getBlockAt, x, y, z, turns), turns),
+                    (float) (minX - x), (float) (minZ - z), (float) (maxX - x), (float) (maxZ - z));
+        }
         return block.getCollisionHeight();
+    }
+
+    /**
+     * The tallest top among the boxes (6 floats each, cell space) whose XZ extent overlaps the
+     * cell-local footprint; 0 when none does. A neighbour-shaped block with no boxes for its
+     * current neighbours (a lone fence post's missing arms) is answered by its post alone.
+     */
+    static float boxHeight(float[] boxes, float minX, float minZ, float maxX, float maxZ) {
+        float top = 0f;
+        for (int b = 0; b < boxes.length; b += 6) {
+            if (boxes[b] < maxX && boxes[b + 3] > minX && boxes[b + 2] < maxZ && boxes[b + 5] > minZ) {
+                top = Math.max(top, boxes[b + 4]);
+            }
+        }
+        return top;
     }
 }

@@ -52,6 +52,7 @@ final class SbeMobRenderer {
         String stateName = stateName(entityType, mob);
         float clipTime = clipTime(mob);
         org.joml.Vector3d anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
+        sbeEntityRenderer.setLook(lookOf(mob, cameraPos));
         sbeEntityRenderer.render(
                 asset,
                 mob.getTextureVariant(),
@@ -61,10 +62,41 @@ final class SbeMobRenderer {
                 mob.getRotation().y,
                 mob.getScale(),
                 viewMatrix, projectionMatrix, world, cameraPos);
+        sbeEntityRenderer.setLook(SbeEntityRenderer.Look.NONE);
         attachmentRenderer.render(mob, asset, mob.getTextureVariant(),
                 com.stonebreak.mobs.sbe.AnimState.single(stateName, clipTime),
                 anchoredPos, mob.getRotation().y, mob.getScale(), 0f, 0f,
                 viewMatrix, projectionMatrix, world, cameraPos);
+    }
+
+    /** Veiled body opacity, and the eyes' through the veil (unless dimmed, when they match the body). */
+    static final float VEILED_BODY_ALPHA = 0.05f;
+    static final float VEILED_EYE_ALPHA = 0.4f;
+    /** A veiled Vestige starts to shimmer inside this many blocks of the camera, fully by the near one. */
+    static final float SHIMMER_FAR = 4f;
+    static final float SHIMMER_NEAR = 1.5f;
+
+    /**
+     * How a mob is drawn beyond its clip: a Vestige's eyes glow, and veiled it is nearly invisible, a
+     * shimmer up close. Every other mob draws as authored.
+     */
+    static SbeEntityRenderer.Look lookOf(LivingEntity mob, org.joml.Vector3dc cameraPos) {
+        if (!(mob instanceof com.stonebreak.mobs.vestige.Vestige vestige)) {
+            return SbeEntityRenderer.Look.NONE;
+        }
+        if (!vestige.isVeiled()) {
+            return new SbeEntityRenderer.Look(1f, 0f, com.stonebreak.mobs.vestige.Vestige.EYE_PARTS, 1f);
+        }
+        float distance = cameraPos != null ? (float) cameraPos.distance(vestige.getPosition()) : Float.MAX_VALUE;
+        float shimmer = Math.clamp((SHIMMER_FAR - distance) / (SHIMMER_FAR - SHIMMER_NEAR), 0f, 1f);
+        // Eyes dimmed, they fade with the body: nothing left to track.
+        return new SbeEntityRenderer.Look(VEILED_BODY_ALPHA, shimmer, com.stonebreak.mobs.vestige.Vestige.EYE_PARTS,
+                vestige.eyesDark() ? VEILED_BODY_ALPHA : VEILED_EYE_ALPHA);
+    }
+
+    /** Whether the mob casts no shadow right now (a veiled Vestige). */
+    static boolean castsNoShadow(LivingEntity mob) {
+        return mob instanceof com.stonebreak.mobs.vestige.Vestige vestige && vestige.isVeiled();
     }
 
     /** Flat-colored draw with the same bindings as {@link #render} (shadow-caster pass). */

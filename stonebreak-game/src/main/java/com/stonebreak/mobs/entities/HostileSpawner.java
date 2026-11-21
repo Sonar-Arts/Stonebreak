@@ -2,48 +2,65 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.world.TimeOfDay;
+import com.stonebreak.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.function.BooleanSupplier;
 
 /**
- * Night-time goblin bands. Ticked by {@link EntitySpawner} on the authoritative server world, and
- * borrows its anchors (where the players are) and its standable-site finders, so hostile and
- * passive spawns can never disagree about what ground a mob may stand on.
+ * Night-time hostile spawns, one {@link HostileSpawnRule} per creature: goblin bands everywhere
+ * (seldom in the Shade), the Vestige for whoever lingers in the Shade's fog. Ticked by {@link EntitySpawner} on the
+ * authoritative server world, and borrows its anchors (where the players are) and its
+ * standable-site finders, so hostile and passive spawns can never disagree about what ground a mob
+ * may stand on.
  *
- * <p>Bands of {@link #MIN_BAND}–{@link #MAX_BAND} spawn {@link #MIN_DISTANCE}–{@link #MAX_DISTANCE}
- * blocks from a player, only at night, up to {@link #CAP} goblins near the players. Goblins that
- * end up far from everyone despawn, so bands don't pile up across nights.
+ * <p>Groups spawn {@link #MIN_DISTANCE}–{@link #MAX_DISTANCE} blocks from a player, up to each
+ * rule's cap near the players. Hostiles that end up far from everyone despawn, so they don't pile
+ * up across nights.
  */
 final class HostileSpawner {
 
     private static final float SPAWN_INTERVAL_SECONDS = 20.0f;
     private static final float DESPAWN_INTERVAL_SECONDS = 1.0f;
+    /** How often the players' Shade clocks are run on. */
+    private static final float CLOCK_INTERVAL_SECONDS = 1.0f;
+    /** Tries at a spot far enough out before a rule gives up for this interval. */
+    private static final int SPOT_ATTEMPTS = 4;
 
-    static final int CAP = 8;
-    static final int MIN_BAND = 2;
-    static final int MAX_BAND = 4;
-    /** Ring the band's first goblin lands in; {@link EntitySpawner#findSpawnNear} keeps 24 as its floor. */
+    /** Ring the group's first mob lands in; {@link EntitySpawner#findSpawnNear} keeps 24 as its floor. */
     static final int MIN_DISTANCE = 24;
     static final int MAX_DISTANCE = 48;
-    /** Farther than this from every player and a goblin is gone. */
+    /** Farther than this from every player and a hostile is gone. */
     static final int DESPAWN_DISTANCE = 64;
+
+    static final List<HostileSpawnRule> RULES = List.of(HostileSpawnRule.GOBLIN, HostileSpawnRule.VESTIGE);
 
     private final EntitySpawner sites;
     private final EntityManager entityManager;
     private final Random random;
+    /** A Shade clock for each rule that spawns on one, in place of the interval. */
+    private final Map<HostileSpawnRule, ShadeClock> clocks = new LinkedHashMap<>();
 
     private BooleanSupplier isNight = HostileSpawner::clientNight;
     private float spawnTimer;
     private float despawnTimer;
+    private float clockTimer;
 
     HostileSpawner(EntitySpawner sites, EntityManager entityManager, Random random) {
         this.sites = sites;
         this.entityManager = entityManager;
         this.random = random;
+        for (HostileSpawnRule rule : RULES) {
+            if (rule.shadeClockSeconds() > 0f) {
+                clocks.put(rule, new ShadeClock(rule.shadeClockSeconds()));
+            }
+        }
     }
 
     void setNightSource(BooleanSupplier isNight) {
@@ -56,11 +73,19 @@ final class HostileSpawner {
     }
 
     void update(float deltaTime) {
+        clockTimer += deltaTime;
+        if (clockTimer >= CLOCK_INTERVAL_SECONDS) {
+            runClocks(clockTimer);
+            clockTimer = 0f;
+        }
         spawnTimer += deltaTime;
         if (spawnTimer >= SPAWN_INTERVAL_SECONDS) {
             spawnTimer = 0f;
-            if (isNight.getAsBoolean()) {
-                spawnBand();
+            boolean night = isNight.getAsBoolean();
+            for (HostileSpawnRule rule : RULES) {
+                if (!clocks.containsKey(rule) && rule.when().allows(sites.world(), night)) {
+                    spawnGroup(rule);
+                }
             }
         }
         despawnTimer += deltaTime;
@@ -70,24 +95,82 @@ final class HostileSpawner {
         }
     }
 
-    private void spawnBand() {
+    /** Runs the Shade clocks on; each that comes round while its rule's time is right spawns near its player. */
+    private void runClocks(float elapsed) {
+        World world = sites.world();
         List<EntitySpawner.SpawnAnchor> anchors = sites.collectAnchors();
-        int room = CAP - goblinCount();
-        if (anchors.isEmpty() || room < MIN_BAND) {
+        boolean night = isNight.getAsBoolean();
+        clocks.forEach((rule, clock) -> {
+            for (EntitySpawner.SpawnAnchor anchor : clock.update(anchors, elapsed,
+                    point -> HostileSpawnRule.isShade(world, point))) {
+                if (rule.when().allows(world, night)) {
+                    spawnGroupNear(rule, anchor);
+                }
+            }
+        });
+    }
+
+    private void spawnGroup(HostileSpawnRule rule) {
+        List<EntitySpawner.SpawnAnchor> anchors = sites.collectAnchors();
+        if (!anchors.isEmpty()) {
+            spawnGroupNear(rule, anchors.get(random.nextInt(anchors.size())));
+        }
+    }
+
+    private void spawnGroupNear(HostileSpawnRule rule, EntitySpawner.SpawnAnchor anchor) {
+        int room = rule.cap() - count(rule.type());
+        if (room < rule.groupMin()) {
             return;
         }
-        EntitySpawner.SpawnAnchor anchor = anchors.get(random.nextInt(anchors.size()));
-        Vector3d spot = sites.findSpawnNear(anchor.position(), MAX_DISTANCE);
-        if (spot == null) {
+        Vector3d spot = findSpot(rule, anchor.position());
+        if (spot == null || !roll(rule.chance().at(sites.world(), spot))) {
             return; // try again next interval
         }
-        int band = Math.min(room, MIN_BAND + random.nextInt(MAX_BAND - MIN_BAND + 1));
-        for (int i = 0; i < band; i++) {
+        int size = Math.min(room, rule.groupMin() + random.nextInt(rule.groupMax() - rule.groupMin() + 1));
+        List<Entity> group = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
             Vector3d pos = i == 0 ? spot : sites.jitterStandable(spot);
-            if (pos != null && sites.isValidSpawnLocation(pos, EntityType.GOBLIN)) {
-                entityManager.spawnEntity(EntityType.GOBLIN, pos);
+            if (pos != null && sites.isValidSpawnLocation(pos, rule.type())
+                    && rule.where().allows(sites.world(), pos, anchor.position())) {
+                Entity spawned = entityManager.spawnEntity(rule.type(), pos);
+                if (spawned != null) {
+                    group.add(spawned);
+                }
             }
         }
+        if (!group.isEmpty()) {
+            group.get(0).onSpawnedWithGroup(group); // a goblin band becomes one pack
+        }
+    }
+
+    private boolean roll(float chance) {
+        return chance >= 1f || random.nextFloat() < chance;
+    }
+
+    private Vector3d findSpot(HostileSpawnRule rule, Vector3dc anchor) {
+        World world = sites.world();
+        for (int attempt = 0; attempt < SPOT_ATTEMPTS; attempt++) {
+            Vector3d spot = sites.findSpawnNear(anchor, MAX_DISTANCE);
+            if (spot != null && spot.distance(anchor) >= rule.minDistance()
+                    && rule.where().allows(world, spot, anchor) && !crowded(rule, spot)) {
+                return spot;
+            }
+        }
+        return null;
+    }
+
+    /** Whether a living mob of the rule's type is within its {@link HostileSpawnRule#spacing() spacing} of {@code spot}. */
+    private boolean crowded(HostileSpawnRule rule, Vector3dc spot) {
+        if (rule.spacing() <= 0f) {
+            return false;
+        }
+        for (Entity entity : entityManager.getAllEntitiesIncludingPending()) {
+            if (entity.isAlive() && entity.getType() == rule.type()
+                    && entity.getPosition().distance(spot) < rule.spacing()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void despawnStragglers() {
@@ -96,17 +179,27 @@ final class HostileSpawner {
             return;
         }
         for (Entity entity : entityManager.getAllEntitiesIncludingPending()) {
-            if (entity.isAlive() && entity.getType() == EntityType.GOBLIN && !entity.isCommandSpawned()
+            if (entity.isAlive() && isRuled(entity.getType()) && !entity.isCommandSpawned()
+                    && entity.despawnsWhenFar()
                     && !withinDistance(entity.getPosition(), anchors, DESPAWN_DISTANCE)) {
                 entityManager.removeEntity(entity);
             }
         }
     }
 
-    private int goblinCount() {
+    private static boolean isRuled(EntityType type) {
+        for (HostileSpawnRule rule : RULES) {
+            if (rule.type() == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int count(EntityType type) {
         int count = 0;
         for (Entity entity : entityManager.getAllEntitiesIncludingPending()) {
-            if (entity.isAlive() && entity.getType() == EntityType.GOBLIN) {
+            if (entity.isAlive() && entity.getType() == type) {
                 count++;
             }
         }

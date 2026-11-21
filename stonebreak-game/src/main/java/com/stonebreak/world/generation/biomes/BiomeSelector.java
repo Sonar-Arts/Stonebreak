@@ -11,8 +11,10 @@ import com.stonebreak.world.generation.noise.MultiNoiseSample;
  *   1. Submerged columns (surface under sea level) → ocean, or ice fields when frozen
  *   2. Coastal strip (within two blocks of the sea, in the continent-edge transition) → beach variants
  *   3. Mountain-range body → peak biomes, climate-skinned (smooth bodies read as plateaus)
- *   4. Range flanks and hill-country provinces → rolling biomes, climate-skinned
- *   5. Flatland → swamp on low-lying, wet, non-cold ground; otherwise pure climate Whittaker selection
+ *   4. Range flanks and hill-country provinces → the Shade on dry temperate ground; otherwise
+ *      rolling biomes, climate-skinned
+ *   5. Flatland → swamp on low-lying, wet, non-cold ground; the Shade on dry temperate ground;
+ *      otherwise pure climate Whittaker selection
  */
 public final class BiomeSelector {
 
@@ -75,6 +77,11 @@ public final class BiomeSelector {
     private static final float SWAMP_MAX_ROUGH_V1 = 0.3f;
     private static final float SWAMP_MAX_MOUNTAIN = 0.1f;
 
+
+    /**
+     * @param submerged whether the column's final surface is under sea level. Standard's only
+     *                  standing water is the sea, so a submerged column is exactly an ocean one.
+     */
     public BiomeType select(MultiNoiseSample s, boolean submerged) {
         if (submerged) {
             return ocean(s);
@@ -169,5 +176,28 @@ public final class BiomeSelector {
             && s.rough() < SWAMP_MAX_ROUGH && s.mountain() < SWAMP_MAX_MOUNTAIN
             && s.temperature() >= T_COLD
             && s.moisture() >= M_WET;
+    }
+
+    /**
+     * The Shade over a selected biome (mirrors native shape.cpp {@code shadeOver}): inside a Shade region
+     * ({@link ShadeRegions}, at world block (x, z)) it takes all temperate-to-warm deep land whatever its moisture,
+     * stopping at the sea and its shore, small isles and coastal fringes (the continent mask not saturated), mountains
+     * and ice, the cold (T &lt; T_COLD) and the hot (T &gt;= T_HOT).
+     */
+    public static BiomeType shadeOver(BiomeType biome, MultiNoiseSample s, long seed, long x, long z) {
+        // Deep land only (native SHADE_MIN_LAND): small isles and coastal fringes never saturate the continent mask.
+        if (s.land() < 1.0f) {
+            return biome;
+        }
+        switch (biome) {
+            case OCEAN, BEACH, ICE_FIELDS, STONY_PEAKS, SNOWY_PLAINS, TAIGA, TUNDRA -> {
+                return biome;
+            }
+            default -> { }
+        }
+        if (s.temperature() < T_COLD || s.temperature() >= T_HOT) {
+            return biome;
+        }
+        return ShadeRegions.isShadeRegion(seed, x, z) ? BiomeType.SHADE : biome;
     }
 }

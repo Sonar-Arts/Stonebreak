@@ -1,0 +1,126 @@
+package com.stonebreak.mobs.vestige;
+
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.mobs.entities.EntityType;
+import com.stonebreak.mobs.entities.FireBolt;
+import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
+import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
+import org.joml.Vector3f;
+
+/**
+ * The Vestige's will-o'-wisp: a slow ball of cold blue fire that bends after the player it was thrown
+ * at for its first few seconds, then flies straight on. Slow enough to sidestep, and it leaves its
+ * victim burning briefly. It only hurts players — a vestige's fire passes through the forest's other
+ * creatures.
+ */
+public final class WillOWispOrb extends FireBolt {
+
+    /** Blocks per second: about a sprint, so a player who moves sideways gets out of its way. */
+    static final float SPEED = 8.0f;
+    /** Seconds it keeps bending toward its victim before it commits to a straight line. */
+    static final float HOMING_SECONDS = 3.0f;
+    /** How fast it can bend, degrees per second — a curve, never a hairpin. */
+    static final float TURN_RATE_DEG = 70.0f;
+    static final float MAX_AGE = 6.0f;
+    static final float HIT_RADIUS = 0.45f;
+
+    private final int victimId;
+    private final float damage;
+    private final float burnSeconds;
+    private final float burnDps;
+
+    private final Vector3d scratch = new Vector3d();
+    private final Vector3f toward = new Vector3f();
+
+    /** A shadow or a stray orb: flies straight, hurts nobody in particular. */
+    public WillOWispOrb(World world, Vector3dc position, Vector3f direction) {
+        this(world, position, direction, PlayerLocator.NEAREST, 0f, 0f, 0f);
+    }
+
+    public WillOWispOrb(World world, Vector3dc position, Vector3f direction, int victimId,
+                        float damage, float burnSeconds, float burnDps) {
+        super(world, position, direction);
+        this.victimId = victimId;
+        this.damage = damage;
+        this.burnSeconds = burnSeconds;
+        this.burnDps = burnDps;
+    }
+
+    @Override
+    protected float speed() {
+        return SPEED;
+    }
+
+    @Override
+    protected float maxAge() {
+        return MAX_AGE;
+    }
+
+    /** Bends toward the victim's chest at a capped rate, while it still has the will to. */
+    @Override
+    protected void steer(float deltaTime) {
+        if (age > HOMING_SECONDS) {
+            return;
+        }
+        PlayerLocator players = roster();
+        Vector3d target = players != null ? players.playerPosition(victimId, position, scratch) : null;
+        if (target == null) {
+            return;
+        }
+        toward.set((float) (target.x - position.x),
+                (float) (target.y + PlayerLocator.CHEST_HEIGHT - position.y), (float) (target.z - position.z));
+        if (toward.lengthSquared() < 1.0e-4f) {
+            return;
+        }
+        turnToward(direction, toward.normalize(), (float) Math.toRadians(TURN_RATE_DEG) * deltaTime);
+    }
+
+    /** Rotates unit {@code dir} toward unit {@code goal} by at most {@code maxRadians}. */
+    static void turnToward(Vector3f dir, Vector3f goal, float maxRadians) {
+        float angle = dir.angle(goal);
+        if (angle <= maxRadians || angle < 1.0e-5f) {
+            dir.set(goal);
+            return;
+        }
+        // Slerp by the fraction of the gap we are allowed to close this tick.
+        float t = maxRadians / angle;
+        float sin = (float) Math.sin(angle);
+        float a = (float) Math.sin((1f - t) * angle) / sin;
+        float b = (float) Math.sin(t * angle) / sin;
+        dir.set(dir.x * a + goal.x * b, dir.y * a + goal.y * b, dir.z * a + goal.z * b).normalize();
+    }
+
+    /** It drifts through leaves as through air: a Vestige throws from the canopy it sees through. */
+    @Override
+    protected boolean passesThrough(BlockType block) {
+        return block == BlockType.AIR || block.isLeaves();
+    }
+
+    /** Burns the first player it passes through. */
+    @Override
+    protected boolean strike(Vector3dc from, Vector3dc to) {
+        PlayerLocator players = roster();
+        if (players == null || !players.hitPlayerAt(to, HIT_RADIUS, damage, -1)) {
+            return false;
+        }
+        players.ignitePlayerAt(to, HIT_RADIUS, burnSeconds, burnDps);
+        return true;
+    }
+
+    private PlayerLocator roster() {
+        PlayerLocator players = world != null ? world.getPlayerLocator() : null;
+        return players == PlayerLocator.NONE ? null : players;
+    }
+
+    @Override
+    public Palette palette() {
+        return Palette.VESTIGE;
+    }
+
+    @Override
+    public EntityType getType() {
+        return EntityType.VESTIGE_ORB;
+    }
+}

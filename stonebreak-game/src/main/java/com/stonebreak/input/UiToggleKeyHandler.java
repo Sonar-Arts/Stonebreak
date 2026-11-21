@@ -112,6 +112,12 @@ final class UiToggleKeyHandler {
             return;
         }
 
+        com.stonebreak.ui.chest.ChestScreen chestScreen = game.getChestScreen();
+        if (chestScreen != null && chestScreen.isVisible() && game.getState() == GameState.CHEST_UI) {
+            chestScreen.handleCloseRequest();
+            return;
+        }
+
         InventoryScreen inventoryScreen = game.getInventoryScreen();
         if (game.getState() == GameState.INVENTORY_UI && inventoryScreen != null && inventoryScreen.isVisible()) {
             game.toggleInventoryScreen();
@@ -169,7 +175,7 @@ final class UiToggleKeyHandler {
         if (recipeScreen != null && recipeScreen.isVisible()) {
             return;
         }
-        if (game.getState() == GameState.FURNACE_UI) {
+        if (game.getState() == GameState.FURNACE_UI || game.getState() == GameState.CHEST_UI) {
             return;
         }
 
@@ -220,7 +226,7 @@ final class UiToggleKeyHandler {
         if (recipeScreen != null && recipeScreen.isVisible()) {
             return;
         }
-        if (game.getState() == GameState.FURNACE_UI) {
+        if (game.getState() == GameState.FURNACE_UI || game.getState() == GameState.CHEST_UI) {
             return;
         }
 

@@ -75,6 +75,8 @@ public final class ItemType implements Item {
     public static final ItemType WAR_AXE = fromRegistry("stonebreak:war_axe", "WAR_AXE");
     public static final ItemType WOODEN_SHOVEL = fromRegistry("stonebreak:wooden_shovel", "WOODEN_SHOVEL");
     public static final ItemType BANANA = fromRegistry("stonebreak:banana", "BANANA");
+    /** Food (2 hearts); placed on grass it plants a blueberry bush (BlueberryBushPlanting). */
+    public static final ItemType BLUEBERRY = fromRegistry("stonebreak:blueberry", "BLUEBERRY");
 
     /**
      * Wooden bucket (SBO 1.3, two states: "sb_wooden_bucket_empty" default
@@ -105,6 +107,18 @@ public final class ItemType implements Item {
      * SBE model (see {@link ItemModels}) instead of the fallback sprite.
      */
     public static final ItemType DINGHY = fromRegistry("stonebreak:dinghy", "DINGHY");
+
+    // ----- Meat (SBO, Food Items project). Animals drop the raw cut; a furnace or campfire cooks
+    // it. Heal and goblin food values live in FoodRules. -------------------------------------
+
+    public static final ItemType RAW_MUTTON = fromRegistry("stonebreak:raw_mutton", "RAW_MUTTON");
+    public static final ItemType COOKED_MUTTON = fromRegistry("stonebreak:cooked_mutton", "COOKED_MUTTON");
+    public static final ItemType RAW_BEEF = fromRegistry("stonebreak:raw_beef", "RAW_BEEF");
+    public static final ItemType COOKED_BEEF = fromRegistry("stonebreak:cooked_beef", "COOKED_BEEF");
+    public static final ItemType RAW_CHICKEN = fromRegistry("stonebreak:raw_chicken", "RAW_CHICKEN");
+    public static final ItemType COOKED_CHICKEN = fromRegistry("stonebreak:cooked_chicken", "COOKED_CHICKEN");
+    public static final ItemType RAW_GOOSE = fromRegistry("stonebreak:raw_goose", "RAW_GOOSE");
+    public static final ItemType COOKED_GOOSE = fromRegistry("stonebreak:cooked_goose", "COOKED_GOOSE");
 
     // ----- SBO state name constants for the wooden bucket. ----------------
 
@@ -315,9 +329,9 @@ public final class ItemType implements Item {
     }
 
 
+    /** Health restored by eating this item; zero when it is not edible. See {@link FoodRules}. */
     public float getHealAmount() {
-        if (this == BANANA) return 4.0f;
-        return 0.0f;
+        return FoodRules.heal(this);
     }
 
     /**

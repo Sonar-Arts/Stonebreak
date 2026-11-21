@@ -20,7 +20,7 @@ import java.util.function.Consumer;
  *
  * <p>UX: the search field is focused on open (type-to-filter immediately),
  * results are icon-labelled rows sorted prefix-matches-first, a Blocks/Items
- * segment narrows by type, a "Recent" strip of icon tiles fronts the list
+ * segment narrows by type (Dictionaries lists {@code #id} entries: any member fits), a "Recent" strip of icon tiles fronts the list
  * ({@link IngredientMru}), Enter picks the top match and Escape cancels.
  * Every successful pick feeds the shared MRU.</p>
  */
@@ -30,7 +30,7 @@ public class SBOObjectPickerPopup {
     private static final float RECENT_TILE = 30f;
     private static final float ICON_SIZE = 22f;
 
-    /** 0 = all, 1 = blocks, 2 = items. Sticky across opens — a deliberate default. */
+    /** 0 = all, 1 = blocks, 2 = items, 3 = dictionaries. Sticky across opens — a deliberate default. */
     private int typeFilter = 0;
 
     private final ImString filter = new ImString(128);
@@ -60,7 +60,7 @@ public class SBOObjectPickerPopup {
         renderRecentStrip();
         ImGui.dummy(0, 2);
 
-        List<SBOObjectIndex.Entry> visible = visibleEntries();
+        List<Row> visible = visibleEntries();
 
         renderResultsTable(visible);
 
@@ -70,7 +70,13 @@ public class SBOObjectPickerPopup {
 
     // ---- pieces ------------------------------------------------------------
 
-    private static final String[] TYPE_LABELS = {"All", "Blocks", "Items"};
+    private static final String[] TYPE_LABELS = {"All", "Blocks", "Items", "Dictionaries"};
+
+    /**
+     * One pickable row: an SBO object, or an item dictionary ({@code value} = {@code "#id"}, any
+     * member fits the slot).
+     */
+    private record Row(String value, String displayName, String typeLabel) {}
 
     private void renderSearchRow() {
         if (focusFilter) {
@@ -131,38 +137,50 @@ public class SBOObjectPickerPopup {
             } else {
                 clicked = ImGui.button(initial(id), RECENT_TILE + 8, RECENT_TILE + 8);
             }
-            if (ImGui.isItemHovered()) ImGui.setTooltip(id);
+            if (ImGui.isItemHovered()) ImGui.setTooltip(SBODictionaryIndex.shared().describe(id));
             if (clicked) pick(id);
             ImGui.popID();
         }
         ImGui.popStyleVar();
     }
 
-    private List<SBOObjectIndex.Entry> visibleEntries() {
+    private List<Row> visibleEntries() {
         String needle = filter.get().trim().toLowerCase();
-        List<SBOObjectIndex.Entry> prefix = new ArrayList<>();
-        List<SBOObjectIndex.Entry> contains = new ArrayList<>();
-        for (SBOObjectIndex.Entry e : SBOObjectIndex.listAll()) {
-            if (typeFilter == 1 && !e.isBlock()) continue;
-            if (typeFilter == 2 && !e.isItem()) continue;
-            if (needle.isEmpty()) {
-                contains.add(e);
-                continue;
+        List<Row> rows = new ArrayList<>();
+        if (typeFilter == 0 || typeFilter == 3) {
+            SBODictionaryIndex dicts = SBODictionaryIndex.shared();
+            for (String id : dicts.ids()) {
+                int n = dicts.members(id).size();
+                rows.add(new Row(SBODictionaryIndex.ref(id),
+                        "Any " + com.stonebreak.gameplay.SboGameplay.dictionaryDisplayName(id) + " (" + n + ")",
+                        "dict"));
             }
-            String id = e.objectId().toLowerCase();
-            String name = e.displayName().toLowerCase();
+        }
+        if (typeFilter != 3) {
+            for (SBOObjectIndex.Entry e : SBOObjectIndex.listAll()) {
+                if (typeFilter == 1 && !e.isBlock()) continue;
+                if (typeFilter == 2 && !e.isItem()) continue;
+                rows.add(new Row(e.objectId(), e.displayName(), e.objectType()));
+            }
+        }
+        if (needle.isEmpty()) return rows;
+        List<Row> prefix = new ArrayList<>();
+        List<Row> contains = new ArrayList<>();
+        for (Row r : rows) {
+            String id = r.value().toLowerCase();
+            String name = r.displayName().toLowerCase();
             String localId = localName(id);
             if (localId.startsWith(needle) || name.startsWith(needle)) {
-                prefix.add(e);
+                prefix.add(r);
             } else if (id.contains(needle) || name.contains(needle)) {
-                contains.add(e);
+                contains.add(r);
             }
         }
         prefix.addAll(contains);
         return prefix;
     }
 
-    private void renderResultsTable(List<SBOObjectIndex.Entry> visible) {
+    private void renderResultsTable(List<Row> visible) {
         int tableFlags = ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersOuter
                 | ImGuiTableFlags.ScrollY;
         if (!ImGui.beginTable("##picker_table", 3, tableFlags, 0, 380)) {
@@ -175,11 +193,11 @@ public class SBOObjectPickerPopup {
         ImGui.tableHeadersRow();
 
         for (int i = 0; i < visible.size(); i++) {
-            SBOObjectIndex.Entry e = visible.get(i);
+            Row e = visible.get(i);
             ImGui.tableNextRow(0, ICON_SIZE + 6);
 
             ImGui.tableSetColumnIndex(0);
-            int icon = SBOIngredientIcons.glIcon(e.objectId());
+            int icon = SBOIngredientIcons.glIcon(e.value());
             if (icon > 0) {
                 ImGui.image(icon, ICON_SIZE, ICON_SIZE);
             } else {
@@ -190,23 +208,26 @@ public class SBOObjectPickerPopup {
             ImGui.setCursorPosY(ImGui.getCursorPosY() + (ICON_SIZE - ImGui.getTextLineHeight()) / 2f);
             if (ImGui.selectable(e.displayName() + "##row_" + i, false,
                     ImGuiSelectableFlags.SpanAllColumns)) {
-                pick(e.objectId());
+                pick(e.value());
+            }
+            if (ImGui.isItemHovered() && SBODictionaryIndex.isRef(e.value())) {
+                ImGui.setTooltip(SBODictionaryIndex.shared().describe(e.value()));
             }
 
             ImGui.tableSetColumnIndex(1);
-            ImGui.textDisabled(e.objectId());
+            ImGui.textDisabled(e.value());
 
             ImGui.tableSetColumnIndex(2);
-            ImGui.textDisabled(e.objectType());
+            ImGui.textDisabled(e.typeLabel());
         }
         ImGui.endTable();
     }
 
-    private void renderFooter(List<SBOObjectIndex.Entry> visible) {
+    private void renderFooter(List<Row> visible) {
         ModalDialogs.buttonsBegin();
         // Enter picks the top match, even while the search field has focus.
         if (ModalDialogs.primary("Select", !visible.isEmpty(), true)) {
-            pick(visible.get(0).objectId());
+            pick(visible.get(0).value());
             return;
         }
         if (ModalDialogs.secondary("Clear Slot")) {
@@ -218,7 +239,7 @@ public class SBOObjectPickerPopup {
         }
         int matchCount = visible.size();
         ImGui.sameLine();
-        ImGui.textDisabled("  " + matchCount + (matchCount == 1 ? " object" : " objects")
+        ImGui.textDisabled("  " + matchCount + (matchCount == 1 ? " entry" : " entries")
                 + " - Enter picks the top match");
     }
 

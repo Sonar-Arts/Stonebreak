@@ -20,6 +20,9 @@ final class FakeLeafWorld implements LeafWorld {
     /** Tracks leaves the sim removed (set to AIR), for decay assertions. */
     final List<int[]> removals = new ArrayList<>();
 
+    /** Cells marked player-placed; cleared when the cell changes type, like the chunk state map. */
+    private final java.util.Set<Long> persistent = new java.util.HashSet<>();
+
     /** Shapes of the mirrored physics world: what the reachability flood reads. */
     private static final short LEAF_SHAPE = 1;
     private static final short LOG_SHAPE = 2;
@@ -104,6 +107,9 @@ final class FakeLeafWorld implements LeafWorld {
         }
         BlockType previous = blocks[(int) x][(int) y][(int) z];
         blocks[(int) x][(int) y][(int) z] = type;
+        if (previous != type) {
+            persistent.remove(key((int) x, (int) y, (int) z));
+        }
         if (physics != null) {
             physics.invalidateCell(x, y, z); // as World.setBlockAt keeps the real cache honest
         }
@@ -112,7 +118,25 @@ final class FakeLeafWorld implements LeafWorld {
         }
     }
 
+    @Override
+    public boolean isPersistent(long x, long y, long z) {
+        return persistent.contains(key((int) x, (int) y, (int) z));
+    }
+
+    private static long key(int x, int y, int z) {
+        return ((long) x << 40) | ((long) y << 20) | z;
+    }
+
     // ===== Test helpers =====
+
+    /**
+     * Mirrors a player placing a leaf: the block goes through the funnel, then the
+     * server writes the placed marker in the same tick (before the delayed recompute).
+     */
+    void placeByPlayer(LeafDecaySystem sim, int x, int y, int z, BlockType type) {
+        placeBlock(sim, x, y, z, type);
+        persistent.add(key(x, y, z));
+    }
 
     /** Mirrors World.setBlockAt: writes the block and feeds the sim funnel. */
     void placeBlock(LeafDecaySystem sim, int x, int y, int z, BlockType type) {

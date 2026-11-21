@@ -18,6 +18,7 @@
     "settingsMenu": "stonebreak:screen.settings",
     "crafting": "stonebreak:crafting",
     "craftOutput": "stonebreak:crafting",
+    "chest": "stonebreak:chest",
     "character": "stonebreak:player.character",
     "hud": "stonebreak:hud",
     "hearts": "stonebreak:hud",
@@ -106,7 +107,9 @@
       "seedLine": "Seed 1854228654",
       "loading": 0,
       "progress": 1,
-      "percent": "100%"
+      "percent": "100%",
+      "canResume": false,
+      "exit": 0
     },
     "hostWorld": {
       "worlds": [
@@ -234,23 +237,31 @@
       "killsCow": 12,
       "killsSheep": 7,
       "killsChicken": 1203,
+      "killsGoblin": 12,
       "damageDealt": 4567.25,
       "totalDistance": 15432.5,
       "distanceWalked": 9876.4,
       "distanceSprinted": 4321,
       "distanceInAir": 512.75,
       "timeInAir": 3725,
+      "timeFishing": 845,
+      "bassCaught": 37,
+      "itemsCrafted": 2048,
       "text": {
         "entitiesKilled": "1,234",
         "killsCow": "12",
         "killsSheep": "7",
         "killsChicken": "1,203",
+        "killsGoblin": "12",
         "damageDealt": "4567.3",
         "totalDistance": "15.43 km",
         "distanceWalked": "9.88 km",
         "distanceSprinted": "4.32 km",
         "distanceInAir": "512.8 m",
-        "timeInAir": "1h 2m 5s"
+        "timeInAir": "1h 2m 5s",
+        "timeFishing": "14m 5s",
+        "bassCaught": "37",
+        "itemsCrafted": "2,048"
       }
     },
     "vitals": {
@@ -286,6 +297,7 @@
       "crosshairColorB": 1,
       "crosshairOutline": true,
       "leafTransparency": true,
+      "connectedShapes": true,
       "waterShaderEnabled": true,
       "cloudsEnabled": true,
       "godRaysEnabled": true,
@@ -1278,8 +1290,6 @@
       "classScroll": 0,
       "skillScroll": 0,
       "featScroll": 0,
-      "isGeneral": true,
-      "isWeapons": false,
       "wtpHint": "Earn 1 WTP per 5 ranks in each class. Any class's ranks train any weapon."
     },
     "ccTree": {
@@ -1693,6 +1703,281 @@
         },
         {
           "slot": "hotbar:1",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        }
+      ]
+    },
+    "chest": {
+      "identity": "slot",
+      "items": [
+        {
+          "slot": "chest:0",
+          "item": 1040,
+          "objectId": "stonebreak:raw_beef",
+          "name": "Raw Beef",
+          "count": 5,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "chest:1",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:2",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:3",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:4",
+          "item": 1039,
+          "objectId": "stonebreak:cooked_mutton",
+          "name": "Cooked Mutton",
+          "count": 12,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "chest:5",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:6",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:7",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:8",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:9",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:10",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:11",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:12",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:13",
+          "item": 1045,
+          "objectId": "stonebreak:cooked_goose",
+          "name": "Cooked Goose",
+          "count": 1,
+          "state": "",
+          "maxStack": 64,
+          "selected": false
+        },
+        {
+          "slot": "chest:14",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:15",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:16",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:17",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:18",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:19",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:20",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:21",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:22",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:23",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:24",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:25",
+          "item": 0,
+          "objectId": "",
+          "name": "",
+          "count": 0,
+          "state": "",
+          "maxStack": 0,
+          "selected": false
+        },
+        {
+          "slot": "chest:26",
           "item": 0,
           "objectId": "",
           "name": "",
@@ -2302,6 +2587,9 @@
     "stonebreak:screen.main-menu.quit": {
       "contract": "stonebreak:screen.main-menu"
     },
+    "stonebreak:screen.main-menu.resume": {
+      "contract": "stonebreak:screen.main-menu"
+    },
     "stonebreak:screen.multiplayer.host": {
       "contract": "stonebreak:screen.multiplayer"
     },
@@ -2724,12 +3012,6 @@
       "contract": "stonebreak:screen.character-creation",
       "params": {
         "id": "string"
-      }
-    },
-    "stonebreak:screen.character-creation.skill-mode": {
-      "contract": "stonebreak:screen.character-creation",
-      "params": {
-        "mode": "string"
       }
     },
     "stonebreak:screen.character-creation.train": {

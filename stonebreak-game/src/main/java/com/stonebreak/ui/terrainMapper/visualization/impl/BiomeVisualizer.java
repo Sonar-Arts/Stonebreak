@@ -53,6 +53,11 @@ public final class BiomeVisualizer implements NoiseVisualizer {
         return BIOMES_BY_ORDINAL[i];
     }
 
+    /** The map colour of {@code biome} (magenta for one without a colour) - shared with the DaedalusTGM-Exp map. */
+    public static int colorOf(BiomeType biome) {
+        return COLORS.getOrDefault(biome, 0xFFFF00FF);
+    }
+
     private static Map<BiomeType, Integer> buildColorTable() {
         EnumMap<BiomeType, Integer> map = new EnumMap<>(BiomeType.class);
         map.put(BiomeType.PLAINS,          0xFF8DB600);
@@ -68,6 +73,7 @@ public final class BiomeVisualizer implements NoiseVisualizer {
         map.put(BiomeType.BADLANDS,        0xFFB85A2E);
         map.put(BiomeType.MEADOW,          0xFF9DC46B);
         map.put(BiomeType.SWAMP,           0xFF4F6B3A);
+        map.put(BiomeType.SHADE,           0xFF6B6438);
         return map;
     }
 }
