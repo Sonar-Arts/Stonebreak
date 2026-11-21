@@ -199,8 +199,8 @@ class FastLodSerializerTest {
     void previousVersionBlobsAreRejected() {
         FastLodChunkData data = makeData(FastLodLevel.L2, false);
         byte[] blob = FastLodSerializer.serialize(data);
-        assertEquals(17, blob[4], "version byte moved; update this test and the note above");
-        for (byte older = 4; older < 17; older++) {
+        assertEquals(22, blob[4], "version byte moved; update this test and the note above");
+        for (byte older = 4; older < 22; older++) {
             blob[4] = older;
             assertNull(FastLodSerializer.deserialize(data.key(), blob),
                     "a v" + older + " blob must miss, not load");

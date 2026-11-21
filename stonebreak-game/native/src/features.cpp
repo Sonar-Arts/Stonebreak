@@ -42,11 +42,12 @@ struct Blocks {
 };
 
 bool isLogId(const Config& c, uint16_t id) {
-    return id == c.id[SBW_WOOD] || id == c.id[SBW_PINE] || id == c.id[SBW_ELM_WOOD_LOG] || id == c.id[SBW_CYPRESS_LOG];
+    return id == c.id[SBW_WOOD] || id == c.id[SBW_PINE] || id == c.id[SBW_ELM_WOOD_LOG] || id == c.id[SBW_CYPRESS_LOG]
+           || (c.id[SBW_DRY_OAK_LOG] != 0 && id == c.id[SBW_DRY_OAK_LOG]);
 }
 bool isLeavesId(const Config& c, uint16_t id) {
     return id == c.id[SBW_LEAVES] || id == c.id[SBW_PINE_LEAVES] || id == c.id[SBW_ELM_LEAVES]
-           || id == c.id[SBW_CYPRESS_LEAVES];
+           || id == c.id[SBW_CYPRESS_LEAVES] || (c.id[SBW_DRY_OAK_LEAVES] != 0 && id == c.id[SBW_DRY_OAK_LEAVES]);
 }
 
 /* TreeShapeBuffer.flushAnchored: drop leaves farther than DECAY_RADIUS leaf/log steps from a log. */
@@ -99,7 +100,9 @@ int sizedVariant(int variant, int size, const int (&table)[3][2]) {
     return table[size][variant & 1];
 }
 
-void regularTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz, int size = -1) {
+/* An oak; dry = The Shade's dry oak (same shape and random stream, its own blocks - Heracles' RegularTree.place with
+ * DRY_OAK_LOG / DRY_OAK_LEAVES). */
+void regularTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_t wz, int size = -1, bool dry = false) {
     JavaRandom rng = treeRandom(wx, wy, wz, UINT64_C(0xA5A5A5A5C3C3C3C3));
     static const int SIZED[3][2] = {{2, 2}, {0, 1}, {3, 1}};
     const int variant = sizedVariant(rng.nextInt(4), size, SIZED); /* ROUND, TALL, COMPACT, BIG_BRANCHED */
@@ -112,7 +115,8 @@ void regularTree(const Config& cfg, TreeBuf& out, int64_t wx, int64_t wy, int64_
         default: trunk = 6 + rng.nextInt(2); bottom = 3; top = 8; canLean = false; break;
     }
     if (wy + top >= cfg.maxY) return;
-    const uint16_t wood = cfg.id[SBW_WOOD], leaves = cfg.id[SBW_LEAVES];
+    const uint16_t wood = dry && cfg.id[SBW_DRY_OAK_LOG] != 0 ? cfg.id[SBW_DRY_OAK_LOG] : cfg.id[SBW_WOOD];
+    const uint16_t leaves = dry && cfg.id[SBW_DRY_OAK_LEAVES] != 0 ? cfg.id[SBW_DRY_OAK_LEAVES] : cfg.id[SBW_LEAVES];
     for (int dy = 0; dy < trunk; dy++) out.put(wx, wy + dy, wz, wood);
     const int leanX = canLean ? rng.nextInt(3) - 1 : 0;
     const int leanZ = canLean ? rng.nextInt(3) - 1 : 0;
@@ -636,6 +640,7 @@ struct Resolved {
         uint16_t id;
         uint16_t snow;
         int32_t owner; /* feature index */
+        uint16_t state = 0; /* state_layer value (wild blueberry bushes) */
     };
     std::unordered_map<uint64_t, Cell> cells;
 };
@@ -646,7 +651,8 @@ uint64_t cellKey(int64_t x, int64_t y, int64_t z) { return TreeBuf::key(x, y, z)
 
 /* ------------------------------------------------------------------------- tree probe */
 int Generator::treeAt(int64_t x, int64_t z, uint16_t surface, int biome, int& trunk) {
-    if (cfg.channelWorld() && (cfg.flags & SBW_FLAG_VEGETATION) != 0) {   /* vegetation channels (ABI 5; Standard 2) */
+    /* The Shade keeps its rule woods everywhere (as collectFeatures) */
+    if (biome != SBW_SHADE && cfg.channelWorld() && (cfg.flags & SBW_FLAG_VEGETATION) != 0) {   /* vegetation channels (ABI 5; Standard 2) */
         auto b = base(x >> 5, z >> 5);
         if (b) {
             const int col = colIdx(static_cast<int>(x & 31), static_cast<int>(z & 31));
@@ -700,7 +706,28 @@ int Generator::treeAtVeg(int64_t x, int64_t z, uint16_t surface, int biome, cons
     return SBW_TREE_CYPRESS;
 }
 
+/* The Shade's tree chance (Heracles ForestDensityField.shadeTreeChance): woodland throughout, a thin floor in the
+ * forest field's lows to a capped peak in its highs - more trees than plains overall, no thicket denser than DENSE. */
+static float shadeTreeChance(const DeterministicRandom& r, int64_t x, int64_t z) {
+    static const int32_t H = javaStringHash("forest_density");
+    constexpr float SPARSE = 0.015f, DENSE = 0.085f, LOW = 0.25f, HIGH = 0.75f;
+    const float d = forestLattice(r, x, z, 96, H);
+    float t = std::max(0.0f, std::min(1.0f, (d - LOW) / (HIGH - LOW)));
+    t = t * t * (3.0f - 2.0f * t);
+    return SPARSE + (DENSE - SPARSE) * t;
+}
+
 int Generator::treeAtRule(int64_t x, int64_t z, uint16_t surface, int biome, int& trunk) {
+    /* The Shade skips the clearings the forest field cuts below: it is woodland throughout */
+    if (biome == SBW_SHADE) {
+        static const int32_t H_SHADE = javaStringHash("shade_tree");
+        const uint16_t ground = cfg.id[SBW_DRY_GRASS] != 0 ? cfg.id[SBW_DRY_GRASS] : cfg.id[SBW_GRASS];
+        if (surface == ground && rolls(drand, x, z, H_SHADE, shadeTreeChance(drand, x, z))) {
+            trunk = 5;
+            return SBW_TREE_DRY_OAK;
+        }
+        return -1;
+    }
     static const int32_t H_TREE = javaStringHash("tree"), H_TYPE = javaStringHash("tree_type"),
                          H_ELM = javaStringHash("elm_tree"), H_PINE = javaStringHash("pine_tree"),
                          H_TAIGA = javaStringHash("taiga_pine_tree"), H_MEADOW = javaStringHash("meadow_tree"),
@@ -770,7 +797,11 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
                          H_CLAY_SIZE = javaStringHash("clay_patch_size"), H_CLAY_PLACE = javaStringHash("clay_place"),
                          H_TUNDRA = javaStringHash("tundra_feature"), H_TAIGA_SNOW = javaStringHash("taiga_snow"),
                          H_STONY = javaStringHash("stony_peaks_feature"), H_GLACIAL = javaStringHash("glacial_feature"),
-                         H_BADLANDS = javaStringHash("badlands_feature");
+                         H_BADLANDS = javaStringHash("badlands_feature"),
+                         H_BB_GROUP = javaStringHash("blueberry_group"), H_BB_SIZE = javaStringHash("blueberry_group_size"),
+                         H_BB_STAGE = javaStringHash("blueberry_stage");
+    /* Chance an open plains grass column anchors a blueberry group (about one group per four 16x16 plains areas). */
+    constexpr float BB_GROUP_CHANCE = 0.001f;
     FactSource facts(*this);
     const uint16_t AIRID = cfg.id[SBW_AIR];
     (void) AIRID;
@@ -784,7 +815,8 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
             /* trees */
             if (f.uncarved) {
                 int trunk = 0, size = -1;
-                const int kind = f.veg[SBW_SURF_CANOPY_COVER] != SBW_SURF_NO_DATA
+                /* The Shade keeps its rule woods (dense, clumped dry oaks) even where the tiles carry vegetation */
+                const int kind = f.veg[SBW_SURF_CANOPY_COVER] != SBW_SURF_NO_DATA && f.biome != SBW_SHADE
                                      ? treeAtVeg(x, z, surface, f.biome, f.veg, trunk, size)
                                      : treeAtRule(x, z, surface, f.biome, trunk);
                 if (kind >= 0) {
@@ -796,9 +828,11 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
                     }
                     if (ok) {
                         TreeBuf buf;
-                        int maxH = kind == SBW_TREE_OAK ? 13 : kind == SBW_TREE_PINE ? 14 : kind == SBW_TREE_ELM ? 18 : 28;
+                        int maxH = kind == SBW_TREE_OAK || kind == SBW_TREE_DRY_OAK ? 13 : kind == SBW_TREE_PINE ? 14
+                                   : kind == SBW_TREE_ELM ? 18 : 28;
                         if (base + maxH < cfg.maxY) {
                             if (kind == SBW_TREE_OAK) regularTree(cfg, buf, x, base, z, size);
+                            else if (kind == SBW_TREE_DRY_OAK) regularTree(cfg, buf, x, base, z, size, true);
                             else if (kind == SBW_TREE_ELM) elmTree(cfg, buf, x, base, z, size);
                             else if (kind == SBW_TREE_PINE) pineTree(cfg, buf, x, base, z, size);
                             else cypressTree(cfg, buf, x, base, z, size);
@@ -887,6 +921,39 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
                 ft.kind = Feature::PLANT;
                 ft.cells = {{x, h, z, flower, 0}};
                 out.push_back(ft);
+            }
+            /* wild blueberry bushes (SBW ABI 6, Project-Heracles' BlueberryBushGenerator): open plains grass anchors a group of
+             * 1..3 grown bushes, the others within 2 blocks on plains grass at most 2 blocks up or down (so a group stays
+             * inside the feature reach); each starts at a random berry stage. Same DeterministicRandom keys as the Java
+             * generator. Rule-based in every world, vegetation channels or not. */
+            if (cfg.id[SBW_BLUEBERRY_BUSH] != 0 && f.uncarved && f.biome == SBW_PLAINS && surface == cfg.id[SBW_GRASS]
+                    && h + 2 < cfg.maxY && drand.getFloat(x, z, H_BB_GROUP) < BB_GROUP_CHANCE) {
+                static const int32_t H_BB_DX[3] = {0, javaStringHash("blueberry_dx1"), javaStringHash("blueberry_dx2")},
+                                     H_BB_DZ[3] = {0, javaStringHash("blueberry_dz1"), javaStringHash("blueberry_dz2")};
+                const uint16_t bushId = cfg.id[SBW_BLUEBERRY_BUSH];
+                auto stageState = [&](int64_t bx, int64_t bz) {
+                    return cfg.blueberryState[drand.getInt(bx, bz, H_BB_STAGE, 4)];
+                };
+                Feature g;
+                g.kind = Feature::PLANT;
+                g.ax = x; g.ay = h; g.az = z;
+                /* beats every grass tuft / flower rolled on its cells (trees and boulders still win: they resolve
+                 * first); two groups on one cell fall back to the anchor order */
+                g.priority = UINT64_MAX;
+                g.cells.push_back({x, h, z, bushId, 0, stageState(x, z)});
+                const int size = 1 + drand.getInt(x, z, H_BB_SIZE, 3);
+                for (int i = 1; i < size; i++) {
+                    const int dx = drand.getInt(x, z, H_BB_DX[i], 5) - 2;
+                    const int dz = drand.getInt(x, z, H_BB_DZ[i], 5) - 2;
+                    if (dx == 0 && dz == 0) continue;
+                    const int64_t px = x + dx, pz = z + dz;
+                    const ColumnFacts pf = facts.at(px, pz);
+                    if (!pf.uncarved || pf.biome != SBW_PLAINS || pf.topBlock != cfg.id[SBW_GRASS]) continue;
+                    if (pf.water != NO_WATER && pf.water > pf.h) continue;
+                    if (pf.h > h + 2 || pf.h < h - 2 || pf.h + 2 >= cfg.maxY) continue;
+                    g.cells.push_back({px, static_cast<int64_t>(pf.h), pz, bushId, 0, stageState(px, pz)});
+                }
+                out.push_back(std::move(g));
             }
             /* cactus */
             if ((f.biome == SBW_DESERT || f.biome == SBW_RED_SAND_DESERT)
@@ -1054,7 +1121,7 @@ void resolve(const Config& cfg, const std::vector<const Feature*>& fs, Resolved&
             }
             if (f.kind == Feature::SWAP && clay.count(k) != 0) continue;
             auto it = r.cells.find(k);
-            if (it == r.cells.end() || beats(fi, it->second.owner)) r.cells[k] = {c.id, c.snow, fi};
+            if (it == r.cells.end() || beats(fi, it->second.owner)) r.cells[k] = {c.id, c.snow, fi, c.state};
         }
     }
 }
@@ -1098,7 +1165,7 @@ int32_t Generator::populate(const cv_gen_api* api, cv_world* world, int64_t cx, 
             if (api->set(world, c.x, c.y, c.z, it->second.id) < 0) return -1;
             if (api->layer_set != nullptr) {
                 if (cfg.waterLayer >= 0) api->layer_set(world, cfg.waterLayer, c.x, c.y, c.z, 0);
-                if (cfg.stateLayer >= 0) api->layer_set(world, cfg.stateLayer, c.x, c.y, c.z, 0);
+                if (cfg.stateLayer >= 0) api->layer_set(world, cfg.stateLayer, c.x, c.y, c.z, it->second.state);
                 if (cfg.snowLayer >= 0) api->layer_set(world, cfg.snowLayer, c.x, c.y, c.z, it->second.snow);
             }
             writes++;

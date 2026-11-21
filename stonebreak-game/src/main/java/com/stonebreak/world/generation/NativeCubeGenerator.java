@@ -17,7 +17,8 @@ import java.util.List;
 import java.util.function.ToIntFunction;
 
 /**
- * Thin FFM binding to the native cube generator ({@code libstonebreak_worldgen}, SBW ABI 5 (#446; 4 = profile carve codes; 5 = surface channels)): the
+ * Thin FFM binding to the native cube generator ({@code libstonebreak_worldgen}, SBW ABI 6 (#446; 4 = profile carve codes; 5 = surface channels;
+ * 6 = wild blueberry bushes)): the
  * whole Stonebreak world generator behind Open Mason's {@code cv_generator}. Layouts and semantics per
  * {@code stonebreak-game/native/include/stonebreak/worldgen.h}.
  *
@@ -32,11 +33,17 @@ import java.util.function.ToIntFunction;
  */
 public final class NativeCubeGenerator implements AutoCloseable {
 
-    /** SBW ABI this binding speaks (5: the column profile's surface channels). */
-    public static final int EXPECTED_ABI = 5;
+    /** SBW ABI this binding speaks (7: The Shade, {@link #FLAG_SHADE}; 6: wild blueberry bushes). */
+    public static final int EXPECTED_ABI = 7;
     /** Water level of a dry column. */
     public static final int NO_WATER = Integer.MIN_VALUE;
     public static final int FLAG_PEAK_DAMP = 0x1, FLAG_DEEP_LAYERS = 0x2, FLAG_FEATURES = 0x4;
+    /**
+     * The Shade (SBW ABI 7, Project-Heracles): Standard's selector picks it for dry temperate land; Shade columns
+     * (also profile-kind ones the column source marks Shade) lay dry grass and grow dry oaks. Set per world by
+     * {@link WorldFeatureVersion#shade()} (V5+), so saved worlds never grow Shade beside their explored terrain.
+     */
+    public static final int FLAG_SHADE = 0x200;
     /** PROFILE kind: ravines and sinkholes follow the profiles' carve codes (SBW ABI 4), not the hash. */
     public static final int FLAG_PROFILE_CARVE = 0x8;
     /**
@@ -71,7 +78,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
      */
     public static final int FLAG_VEG_OPEN_LAND = 0x100;
     public static final int SAMPLE_CARVED = 1;
-    private static final int CONFIG_SIZE = 368;
+    private static final int CONFIG_SIZE = 376;
     private static final int PROFILE_SIZE = 36864;
     /** Offset of {@code sbw_column_profile.surface[16][1024]} (SBW ABI 5). */
     private static final int PROFILE_SURFACE_OFFSET = 20480;
@@ -91,7 +98,11 @@ public final class NativeCubeGenerator implements AutoCloseable {
         /* native SBW_RED_SAND_COBBLESTONE: Project-Heracles renamed the block */
         COBBLED_RED_SANDSTONE,
         /* 2026-11-19, boulders; native SBW_SAND_COBBLESTONE = Heracles' COBBLED_SANDSTONE */
-        COBBLESTONE, COBBLED_SANDSTONE
+        COBBLESTONE, COBBLED_SANDSTONE,
+        /* SBW ABI 6 (Project-Heracles): wild bushes on plains grass */
+        BLUEBERRY_BUSH,
+        /* SBW ABI 7 (Project-Heracles): The Shade's ground and trees */
+        DRY_GRASS, DRY_OAK_LOG, DRY_OAK_LEAVES
     }
 
     /**
@@ -271,6 +282,11 @@ public final class NativeCubeGenerator implements AutoCloseable {
         public short[] stalagmiteStates = new short[24];
         /** {upright part, hanging part}. */
         public short[] stalagmitePartStates = new short[2];
+        /**
+         * Wild blueberry bush stage states (SBW ABI 6): Mature, Berries_Unripe, Berries_Ripening, Berries_Ripe
+         * ({@link com.stonebreak.world.voxel.BlockStateRegistry#blueberryWildStateIds()}); 0 = the bush has no state.
+         */
+        public short[] blueberryStates = new short[4];
         public int cacheColumns;
         /**
          * {@link #FLAG_BOULDERS}: id of the SBRB rock shape bank the world's boulders read (game resource
@@ -508,6 +524,7 @@ public final class NativeCubeGenerator implements AutoCloseable {
         copyShorts(cfg, 184, config.stalagmiteStates, 24);
         copyShorts(cfg, 232, config.stalagmitePartStates, 2);
         copyShorts(cfg, 240, config.blockIds, Math.min(config.blockIds.length, 64));
+        copyShorts(cfg, 368, config.blueberryStates, 4);
         if ((config.flags & FLAG_BOULDERS) != 0 && config.rockBank != 0) {
             ensureRockBank(config.rockBank);
             cfg.set(ValueLayout.JAVA_SHORT, 236, (short) config.rockBank);
@@ -772,8 +789,8 @@ public final class NativeCubeGenerator implements AutoCloseable {
     }
 
     /**
-     * TerrainGenerator.probeCellTrees: spots packed (lx &amp; 0xFF) | (lz &amp; 0xFF) &lt;&lt; 8 | kind &lt;&lt; 16 |
-     * trunk &lt;&lt; 18, relative to (x0, z0).
+     * TerrainGenerator.probeCellTrees: spots packed (lx &amp; 0xFF) | (lz &amp; 0xFF) &lt;&lt; 8 | kind &lt;&lt; 16 (3 bits,
+     * SBW ABI 7) | trunk &lt;&lt; 19, relative to (x0, z0).
      */
     public int[] probeCellTrees(long x0, long z0, int cells, int cellSize, int[] cellHeights, int[] cellWater,
                                 short[] cellSurface) {

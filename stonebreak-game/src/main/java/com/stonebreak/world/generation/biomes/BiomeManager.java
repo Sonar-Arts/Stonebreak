@@ -20,6 +20,11 @@ public class BiomeManager {
     private final NoiseRouter noise;
     private final HeightMapGenerator heightMap;
     private final BiomeSelector selector;
+    /** The Shade ({@link #withShade}): world seed, or none. */
+    private boolean shade;
+    private long shadeSeed;
+    /** World blocks per coordinate unit this manager is asked in (the terrain mapper asks in shape space). */
+    private double blocksPerUnit = 1.0;
 
     public BiomeManager(NoiseRouter noise, HeightMapGenerator heightMap) {
         this.noise = noise;
@@ -27,11 +32,28 @@ public class BiomeManager {
         this.selector = new BiomeSelector(noise.isV2());
     }
 
+    /**
+     * The Shade of a world with seed {@code seed}, as the native generator places it in a world created with it
+     * ({@link BiomeSelector#shadeOver}); {@code shapeScale} = shape units per world block of the coordinates this
+     * manager is asked in (1 = world blocks).
+     */
+    public BiomeManager withShade(long seed, double shapeScale) {
+        this.shade = true;
+        this.shadeSeed = seed;
+        this.blocksPerUnit = 1.0 / shapeScale;
+        return this;
+    }
+
     public BiomeType getBiome(int x, int z) {
         DistilledShape.Column c = new DistilledShape.Column();
         heightMap.column(x, z, c);
         MultiNoiseSample s = NoiseRouter.sampleOf(c, noise.temperature(x, z, c.shapedHeight), noise.moisture(x, z));
-        return selector.select(s, isSubmerged(c.height) && !c.lake);
+        BiomeType biome = selector.select(s, isSubmerged(c.height) && !c.lake);
+        if (!shade) {
+            return biome;
+        }
+        return BiomeSelector.shadeOver(biome, s, shadeSeed, (long) Math.floor(x * blocksPerUnit),
+                (long) Math.floor(z * blocksPerUnit));
     }
 
     /**

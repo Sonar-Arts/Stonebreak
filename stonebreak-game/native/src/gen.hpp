@@ -66,6 +66,7 @@ struct Config {
     uint16_t waterRiver[8]{};
     uint16_t stalagmiteState[24]{};
     uint16_t stalagmitePart[2]{};
+    uint16_t blueberryState[4]{};   /* SBW ABI 6: wild blueberry bush stage states */
     uint16_t id[SBW_BLOCK_CAP]{};
     uint16_t rockBank = 0;          /* SBW_FLAG_BOULDERS: registered SBRB bank id, 0 = procedural only */
     int standardShape = 1;          /* SBW_KIND_STANDARD: SBW_STANDARD_SHAPE_* */
@@ -404,10 +405,19 @@ private:
 };
 
 /* ------------------------------------------------------------------------------- features */
+/* The Shade's regions (shape.cpp; Java ShadeRegions.isShadeRegion bit for bit) */
+namespace shade_regions {
+bool isShadeRegion(int64_t seed, int64_t x, int64_t z);
+/* The Shade over a selected Standard biome: deep land (land == 1), temperate to warm, not sea / shore / mountain / ice /
+ * cold, inside a Shade region. */
+int shadeOver(int biome, float land, float temperature, int64_t seed, int64_t x, int64_t z);
+}
+
 struct FeatureCell {
     int64_t x, y, z;
     uint16_t id;
     uint16_t snow;  /* snow layers for SNOW cells */
+    uint16_t state = 0; /* state_layer value (wild blueberry bushes), 0 = none */
 };
 
 /* One surface feature (tree, cactus, flower, snow, surface swap, clay patch). */

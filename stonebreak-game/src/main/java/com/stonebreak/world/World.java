@@ -363,7 +363,15 @@ public class World {
     public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                                          TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
                                          com.stonebreak.world.generation.StandardShapeVersion standard) {
-        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, null, standard, null, true);
+        return createClientView(config, seed, generatorType, scale, layout, curve, standard, null);
+    }
+
+    /** A client render-view world of a server world created with the feature set {@code features} (null = current). */
+    public static World createClientView(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
+                                         TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
+                                         com.stonebreak.world.generation.StandardShapeVersion standard,
+                                         com.stonebreak.world.generation.WorldFeatureVersion features) {
+        return new World(Mode.CLIENT, config, seed, generatorType, scale, layout, curve, features, standard, null, true);
     }
 
     /** A detached world (no stream, no store; cubes created by writes) for tests and tools. */
@@ -748,11 +756,15 @@ public class World {
      */
     private void onChanged(CubePos pos) {
         invalidatePhysicsCube(pos.x(), pos.y(), pos.z());
-        if (changeListeners.isEmpty()) {
-            return;
-        }
         Cube cube = cubes.get(pos);
         if (cube == null) {
+            return;
+        }
+        if (isAuthoritative()) {
+            // Population writes wild blueberry bushes after their cube's INSTALLED event.
+            blueberryBushGrowth.onCubeChanged(cube);
+        }
+        if (changeListeners.isEmpty()) {
             return;
         }
         for (CubeEvents.ChangeListener l : changeListeners) {

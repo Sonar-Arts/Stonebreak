@@ -110,8 +110,22 @@ public final class FastLodSerializer {
      * <p>17 (Project-Heracles; its own 15 before main's cube world): the Shade's dry oak is a fifth
      * {@code TreeKind}, so a tree spot's kind field widened to 3 bits and its trunk height moved up
      * one bit ({@code packTreeSpot}); an older spot would decode with the wrong trunk.
+     *
+     * <p>18 (Project-Heracles, 2026-11-21): The Shade is generated again (native SBW_SHADE: dry grass, dry oaks); a
+     * cached v17 node of the same seed shows plains and oaks where the Shade now stands.
+     *
+     * <p>19 (2026-11-21): the Shade's dry oaks reach every LOD band (coarse tree spots pack the native kind in 3 bits;
+     * shape-2 point samples keep the Shade's rule trees); a v18 node may hold dry oaks read as oaks, or none.
+     *
+     * <p>20 (2026-11-21): the Shade is placed by region (ShadeRegions: one mass per ~1.5 km region), not by the old
+     * moisture band; a v19 node draws it where it no longer stands.
+     *
+     * <p>21 (2026-11-21): the Shade is rarer (18 % of regions) and never on small isles or the shore; a v20 node draws
+     * it where it no longer stands.
+     *
+     * <p>22 (2026-11-21): the Shade takes 3 % of regions (was 18 %); a v21 node draws it where it no longer stands.
      */
-    public static final int VERSION = 17;
+    public static final int VERSION = 22;
     private static final int MAGIC  = 0x444F4C46; // 'FLOD' little-endian
     /**
      * Wire sentinel for "this cell has no cave mouth". The in-memory sentinel

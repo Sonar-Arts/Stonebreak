@@ -77,10 +77,6 @@ public final class BiomeSelector {
     private static final float SWAMP_MAX_ROUGH_V1 = 0.3f;
     private static final float SWAMP_MAX_MOUNTAIN = 0.1f;
 
-    // The Shade: dry temperate woodland, carved out of what was the dry half of temperate plains.
-    // Drier than SHADE_MIN_M stays plains, so open grassland survives between the woods
-    // (at M_ARID the Shade took ~12% of land; 0.30 keeps it a regional biome, see ShadeBiomeTest).
-    private static final float SHADE_MIN_M = 0.30f;
 
     /**
      * @param submerged whether the column's final surface is under sea level. Standard's only
@@ -131,9 +127,6 @@ public final class BiomeSelector {
     }
 
     private BiomeType hilly(MultiNoiseSample s) {
-        if (isShade(s)) {
-            return BiomeType.SHADE;
-        }
         if (s.temperature() < T_FREEZING) {
             return BiomeType.TUNDRA;
         }
@@ -155,9 +148,6 @@ public final class BiomeSelector {
     private BiomeType flatland(MultiNoiseSample s) {
         if (isSwamp(s)) {
             return BiomeType.SWAMP;
-        }
-        if (isShade(s)) {
-            return BiomeType.SHADE;
         }
         if (s.temperature() < T_FREEZING) {
             return s.moisture() >= M_WET ? BiomeType.ICE_FIELDS : BiomeType.TUNDRA;
@@ -188,8 +178,26 @@ public final class BiomeSelector {
             && s.moisture() >= M_WET;
     }
 
-    private static boolean isShade(MultiNoiseSample s) {
-        return s.temperature() >= T_COLD && s.temperature() < T_WARM
-            && s.moisture() >= SHADE_MIN_M && s.moisture() < M_DRY;
+    /**
+     * The Shade over a selected biome (mirrors native shape.cpp {@code shadeOver}): inside a Shade region
+     * ({@link ShadeRegions}, at world block (x, z)) it takes all temperate-to-warm deep land whatever its moisture,
+     * stopping at the sea and its shore, small isles and coastal fringes (the continent mask not saturated), mountains
+     * and ice, the cold (T &lt; T_COLD) and the hot (T &gt;= T_HOT).
+     */
+    public static BiomeType shadeOver(BiomeType biome, MultiNoiseSample s, long seed, long x, long z) {
+        // Deep land only (native SHADE_MIN_LAND): small isles and coastal fringes never saturate the continent mask.
+        if (s.land() < 1.0f) {
+            return biome;
+        }
+        switch (biome) {
+            case OCEAN, BEACH, ICE_FIELDS, STONY_PEAKS, SNOWY_PLAINS, TAIGA, TUNDRA -> {
+                return biome;
+            }
+            default -> { }
+        }
+        if (s.temperature() < T_COLD || s.temperature() >= T_HOT) {
+            return biome;
+        }
+        return ShadeRegions.isShadeRegion(seed, x, z) ? BiomeType.SHADE : biome;
     }
 }

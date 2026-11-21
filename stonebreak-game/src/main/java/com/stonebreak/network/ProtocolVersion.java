@@ -94,8 +94,10 @@ public final class ProtocolVersion {
      *  mob's awareness state to its shadows, StatCreditS2C (37) credits non-kill stats, and the state flags carry
      *  STEALTHED (the old reserved sneak bit) and DODGE_NOISE (bit 11); the Vestige - EntityAnimS2C's known states
      *  gain its clips (Float, PeekLean, JerkBack, Woosh, Cast, Scratch, Dissolve), and the replicated status set
-     *  gains VEILED and SMOKESCREEN; KillCreditS2C carries whether the hit killed. */
-    public static final int CURRENT = 30;
+     *  gains VEILED and SMOKESCREEN; KillCreditS2C carries whether the hit killed.
+     *  31 = WelcomeS2C carries the world's feature set (WorldFeatureVersion number, one byte) after the Standard shape: The
+     *  Shade (V5) changes the biomes a client's generator reads (night fog, LOD fallback). */
+    public static final int CURRENT = 31;
 
     private ProtocolVersion() {}
 }

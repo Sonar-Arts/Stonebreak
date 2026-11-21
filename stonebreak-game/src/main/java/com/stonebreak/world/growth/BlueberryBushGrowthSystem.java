@@ -220,6 +220,19 @@ public final class BlueberryBushGrowthSystem {
      * timer saved in the cube (a fresh one for its stage when none was saved — wild bushes).
      */
     public void onCubeInstalled(Cube cube) {
+        resume(cube);
+    }
+
+    /**
+     * The cube's content moved after it installed (CV_EV_CHANGED): above all, the world generator's population
+     * wrote its features — wild bushes appear after their cube's install event, not with it. Starts tracking any
+     * bush not tracked yet; a tracked bush keeps its running timer.
+     */
+    public void onCubeChanged(Cube cube) {
+        resume(cube);
+    }
+
+    private void resume(Cube cube) {
         Map<Integer, Integer> timers = SaplingGrowthSystem.decodeSection(
                 world.readSection(cube.pos(), BLOB_SECTION));
         cube.forEachState((x, y, z, value) -> {
@@ -227,9 +240,13 @@ public final class BlueberryBushGrowthSystem {
             if (state == null || state.isRipe() || !isBush(world.getBlock(x, y, z))) {
                 return;
             }
+            SaplingGrowthSystem.Pos pos = new SaplingGrowthSystem.Pos(x, y, z);
+            if (tracked.containsKey(pos)) {
+                return;
+            }
             Integer saved = timers.get(Cube.cellOf(x, y, z));
             int ticks = saved != null ? saved : timerFor(state.stage());
-            tracked.put(new SaplingGrowthSystem.Pos(x, y, z), new BlueberryBushState(state.stage(), ticks));
+            tracked.put(pos, new BlueberryBushState(state.stage(), ticks));
         });
     }
 

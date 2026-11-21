@@ -69,7 +69,10 @@ final class DiffusionPreview implements GeneratorPreview {
         com.stonebreak.world.generation.ClimateLayout layout = climateLayout;
         DiffusionTileCache tiles = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_PREVIEW, preset, layout);
         HeightMapGenerator heightMap = new HeightMapGenerator(tiles);
-        BiomeManager biomes = new BiomeManager(tiles);
+        // A new world's biomes: The Shade too (WorldFeatureVersion.CURRENT has it); block coordinates at lod 1.
+        com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shade = newWorldShade(seed);
+        BiomeManager biomes = new BiomeManager(tiles,
+                com.stonebreak.world.generation.diffusion.biomes.BeachRule.LEGACY, shade);
 
         // HEIGHT, TOPOGRAPHY, WATER and RIVERS deliberately share one HeightMapGenerator: they are
         // renderings of the same resolved tile, so a second generator would only double the
@@ -97,7 +100,12 @@ final class DiffusionPreview implements GeneratorPreview {
             overview.close();
         };
         return new Built(visualizers, new PreviewSource(seed, columns, store,
-                overviewColumns(overview), TerrainMapperConfig.OVERVIEW_MIN_SPACING), resources);
+                overviewColumns(overview, shade), TerrainMapperConfig.OVERVIEW_MIN_SPACING), resources);
+    }
+
+    /** The Shade overlay a new world of {@code seed} gets ({@link com.stonebreak.world.generation.WorldFeatureVersion#CURRENT}). */
+    static com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay newWorldShade(long seed) {
+        return com.stonebreak.world.generation.WorldFeatureVersion.CURRENT.shade() ? com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay.of(seed) : com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay.NONE;
     }
 
     /**
@@ -105,16 +113,21 @@ final class DiffusionPreview implements GeneratorPreview {
      * sample, straight from the model's 240 m cells (no refiner or river pipeline), so a zoomed-out
      * view costs a few coarse tiles instead of thousands of full ones.
      */
-    private static TerrainColumns overviewColumns(DiffusionTileCache overview) {
+    static TerrainColumns overviewColumns(com.stonebreak.world.generation.diffusion.TerrainTileSource overview,
+                                          com.stonebreak.world.generation.diffusion.biomes.ShadeOverlay shade) {
         int lod = TerrainMapperConfig.OVERVIEW_LOD;
         HeightMapGenerator heights = new HeightMapGenerator(overview);
         BiomeManager biomes = new BiomeManager(overview);
+        var sea = BiomeManager.seaProbe(overview, lod);
         return (x, z, out) -> {
             int sx = Math.floorDiv(x, lod);
             int sz = Math.floorDiv(z, lod);
             out[PreviewChannel.HEIGHT.ordinal()] = heights.generateHeight(sx, sz);
             out[PreviewChannel.WATER.ordinal()] = heights.waterLevel(sx, sz);
-            out[PreviewChannel.BIOME.ordinal()] = biomes.getBiome(sx, sz).ordinal();
+            // The coarse tile is read in sample units, the Shade overlay at the block (as the world's coarse LOD).
+            var mapped = biomes.getBiome(sx, sz);
+            short modelId = overview.getTile(sx, sz).biomeIdAt(sx, sz);
+            out[PreviewChannel.BIOME.ordinal()] = shade.apply(mapped, modelId, x, z, sea).ordinal();
             out[PreviewChannel.RIVER.ordinal()] = RiverVisualizer.code(heights.waterLevel(sx, sz),
                     heights.riverFloor(sx, sz), heights.riverRoof(sx, sz), heights.riverFlow(sx, sz));
         };

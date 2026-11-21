@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace sbw {
 
@@ -165,6 +166,97 @@ float temperatureV2(float raw, int32_t height) {
 }
 
 float moistureV2(float raw) { return std::max(0.0f, std::min(1.0f, raw * M2_SCALE + M2_OFFSET)); }
+
+/* The Shade's regions (Project-Heracles' accursed forest): a bit-exact port of Java ShadeRegions.isShadeRegion (this
+ * library builds with -ffp-contract=off, so the double maths agree). Large chance-rolled regions under a smooth domain
+ * warp; inside one every temperate grassland / woodland column is Shade, so the Shade stands as one mass. */
+} // namespace
+
+namespace shade_regions {
+constexpr double REGION = 1536.0, CHANCE = 0.03, WARP = 200.0;
+constexpr int64_t WARP_CELL = 384;
+constexpr uint64_t SALT_REGION = UINT64_C(0x5348414445524547), SALT_JITTER_X = UINT64_C(0x534841444A495458),
+                   SALT_JITTER_Z = UINT64_C(0x534841444A49545A), SALT_WARP_X = UINT64_C(0x5348414457415258),
+                   SALT_WARP_Z = UINT64_C(0x534841445741525A);
+
+uint64_t mix(uint64_t z) {
+    z = (z ^ (z >> 30)) * UINT64_C(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)) * UINT64_C(0x94D049BB133111EB);
+    return z ^ (z >> 31);
+}
+uint64_t hash(uint64_t seed, int64_t a, int64_t b, uint64_t salt) {
+    uint64_t h = seed ^ salt;
+    h = mix(h + static_cast<uint64_t>(a) * UINT64_C(0x9E3779B97F4A7C15));
+    h = mix(h + static_cast<uint64_t>(b) * UINT64_C(0xC2B2AE3D27D4EB4F));
+    return h;
+}
+double unit(uint64_t h) { return static_cast<double>(h >> 11) * 0x1.0p-53; }
+int64_t floorDiv(int64_t a, int64_t b) { return a / b - ((a % b != 0) && ((a < 0) != (b < 0)) ? 1 : 0); }
+double valueNoise(uint64_t seed, int64_t x, int64_t z, uint64_t salt) {
+    const int64_t ix = floorDiv(x, WARP_CELL), iz = floorDiv(z, WARP_CELL);
+    double fx = static_cast<double>(x - ix * WARP_CELL) / static_cast<double>(WARP_CELL);
+    double fz = static_cast<double>(z - iz * WARP_CELL) / static_cast<double>(WARP_CELL);
+    fx = fx * fx * (3.0 - 2.0 * fx);
+    fz = fz * fz * (3.0 - 2.0 * fz);
+    const double v00 = unit(hash(seed, ix, iz, salt)), v10 = unit(hash(seed, ix + 1, iz, salt));
+    const double v01 = unit(hash(seed, ix, iz + 1, salt)), v11 = unit(hash(seed, ix + 1, iz + 1, salt));
+    const double a = v00 + (v10 - v00) * fx, b = v01 + (v11 - v01) * fx;
+    return a + (b - a) * fz;
+}
+bool isShadeRegion(int64_t seedSigned, int64_t x, int64_t z) {
+    const auto seed = static_cast<uint64_t>(seedSigned);
+    const double wx = static_cast<double>(x) + WARP * (2.0 * valueNoise(seed, x, z, SALT_WARP_X) - 1.0);
+    const double wz = static_cast<double>(z) + WARP * (2.0 * valueNoise(seed, x, z, SALT_WARP_Z) - 1.0);
+    const auto cx = static_cast<int64_t>(std::floor(wx / REGION));
+    const auto cz = static_cast<int64_t>(std::floor(wz / REGION));
+    double best = std::numeric_limits<double>::max();
+    int64_t bx = cx, bz = cz;
+    for (int64_t gz = cz - 1; gz <= cz + 1; gz++) {
+        for (int64_t gx = cx - 1; gx <= cx + 1; gx++) {
+            const double px = (static_cast<double>(gx) + 0.15 + 0.7 * unit(hash(seed, gx, gz, SALT_JITTER_X))) * REGION;
+            const double pz = (static_cast<double>(gz) + 0.15 + 0.7 * unit(hash(seed, gx, gz, SALT_JITTER_Z))) * REGION;
+            const double d = (px - wx) * (px - wx) + (pz - wz) * (pz - wz);
+            if (d < best) {
+                best = d;
+                bx = gx;
+                bz = gz;
+            }
+        }
+    }
+    return unit(hash(seed, bx, bz, SALT_REGION)) < CHANCE;
+}
+} // namespace shade_regions
+
+namespace {
+
+/* The Shade over a selected biome: inside a Shade region it takes ALL temperate-to-warm land whatever its moisture
+ * (plains, meadow, swamp, deserts, badlands), so it stands as one mass instead of following Standard's small-scale
+ * moisture patterns. It stops only where the land cannot take it: the sea and its shore, mountains and ice, and the cold
+ * (T < T_COLD: snow, taiga, tundra) and the hot (T >= T_HOT) - temperature contours are large and smooth, so those
+ * borders are clean curves, not specks. Applied after selection, so the selector itself is main's. */
+/* Deep land only: the continent mask saturated (well inland). Small isles and coastal fringes never saturate, so the
+ * Shade never stands on an isle too small to hold a forest, nor in a strip along the shore. */
+constexpr float SHADE_MIN_LAND = 1.0f;
+
+} // namespace
+
+int shade_regions::shadeOver(int biome, float land, float temperature, int64_t seed, int64_t x, int64_t z) {
+    if (land < SHADE_MIN_LAND) return biome;
+    switch (biome) {
+        case SBW_OCEAN: case SBW_BEACH: case SBW_ICE_FIELDS: case SBW_STONY_PEAKS:
+        case SBW_SNOWY_PLAINS: case SBW_TAIGA: case SBW_TUNDRA:
+            return biome;
+        default: break;
+    }
+    if (temperature < T_COLD || temperature >= T_HOT) return biome;
+    return isShadeRegion(seed, x, z) ? SBW_SHADE : biome;
+}
+
+namespace {
+
+int shadeOver(int biome, const Sample& s, int64_t seed, int64_t x, int64_t z) {
+    return shade_regions::shadeOver(biome, s.land, s.temperature, seed, x, z);
+}
 
 int selectBiome(const Sample& s, bool submerged, int32_t sea, const BiomeParams& bp) {
     const float MOUNTAIN_MIN = bp.mountainMin, HILL_MIN_MOUNTAIN = bp.hillMinMountain, HILL_MIN_HILLY = bp.hillMinHilly;
@@ -376,6 +468,7 @@ uint16_t Generator::surfaceBaseId(int biome) const {
         case SBW_RED_SAND_DESERT: case SBW_BADLANDS: return cfg.id[SBW_RED_SAND];
         case SBW_PLAINS: case SBW_MEADOW: return cfg.id[SBW_GRASS];
         case SBW_SWAMP: return cfg.id[SBW_SWAMPY_GRASS];
+        case SBW_SHADE: return cfg.id[SBW_DRY_GRASS] != 0 ? cfg.id[SBW_DRY_GRASS] : cfg.id[SBW_GRASS];
         case SBW_SNOWY_PLAINS: case SBW_TAIGA: case SBW_TUNDRA: return cfg.id[SBW_SNOWY_DIRT];
         case SBW_STONY_PEAKS: return cfg.id[SBW_STONE];
         case SBW_ICE_FIELDS: return cfg.id[SBW_ICE];
@@ -752,6 +845,7 @@ ColumnOut evaluateColumn(const Generator& g, int64_t x, int64_t z, const ShapeSa
         o.temp = smp.temperature;
         o.moist = smp.moisture;
         o.biome = selectBiome(smp, o.h < cfg.sea, cfg.sea, BIOME_V1);
+        if ((cfg.flags & SBW_FLAG_SHADE) != 0) o.biome = shadeOver(o.biome, smp, cfg.seed, x, z);
     } else {
         /* inland sub-sea pits are lakes: the land's biome and a lake bed (never an ocean with a beach); one block deep
          * puddles fill in. Pointwise (continent field), so base tiles, aprons and point samples agree. */
@@ -765,6 +859,7 @@ ColumnOut evaluateColumn(const Generator& g, int64_t x, int64_t z, const ShapeSa
         o.temp = smp.temperature;
         o.moist = smp.moisture;
         o.biome = selectBiome(smp, o.h < cfg.sea && !lake, cfg.sea, BIOME_V2);
+        if ((cfg.flags & SBW_FLAG_SHADE) != 0) o.biome = shadeOver(o.biome, smp, cfg.seed, x, z);
     }
     const int32_t depth = o.water == NO_WATER ? 0 : o.water - o.h;
     o.surface = g.surfaceAt(o.biome, x, z, depth);

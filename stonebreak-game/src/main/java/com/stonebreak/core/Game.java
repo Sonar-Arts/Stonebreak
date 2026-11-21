@@ -986,8 +986,21 @@ public class Game {
                                  com.stonebreak.world.generation.HeightCurveVersion heightCurve,
                                  com.stonebreak.world.generation.StandardShapeVersion standardShape,
                                  org.joml.Vector3dc spawn) {
+        startClientWorld(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, standardShape, null,
+            spawn);
+    }
+
+    /** As above with the server world's feature set (null = the current one; The Shade). */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                 com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                 com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                                 com.stonebreak.world.generation.WorldFeatureVersion worldFeatures,
+                                 org.joml.Vector3dc spawn) {
         clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve,
-            standardShape, spawn);
+            standardShape, worldFeatures, spawn);
     }
 
     /** {@link #startClientWorld(String, long, com.stonebreak.world.generation.TerrainGeneratorType, org.joml.Vector3dc)}
