@@ -81,7 +81,9 @@ public final class FastLodMesher {
     private static final int TOP_QUAD            = 1;
     /** Four edges, each a wall of up to three strata bands (see {@link #forEachBand}). */
     private static final int MAX_SKIRTS_PER_CELL = 4 * 3;
-    private static final int TREE_QUADS_PER_CELL = 9;   // 4 trunk + 5 canopy
+    /** Dev A/B: {@code -Dstonebreak.fastlod.legacyTrees=true} draws the old single-cube crowns. */
+    private static final boolean LEGACY_TREES = Boolean.getBoolean("stonebreak.fastlod.legacyTrees");
+    private static final int TREE_QUADS_PER_CELL = 20;  // 4 trunk + up to 16 canopy (pine: 6 + 5 + 5)
     /** Floor + four inward walls of up to three bands, and three more rim tops than the one top they replace. */
     private static final int NOTCH_QUADS_PER_CELL = 1 + 4 * 3 + 3;
 
@@ -109,8 +111,6 @@ public final class FastLodMesher {
      */
     private static final float FOUNDATION_LIGHT = 0.0f;
 
-    private static final float CANOPY_RADIUS      = 1.5f;
-    private static final float CANOPY_HALF_HEIGHT = 1.5f;
 
     private final BlockTextureArray textureArray;
 
@@ -138,15 +138,24 @@ public final class FastLodMesher {
 
         boolean notches = data.hasOpenings();
         int maxQuadsPerCell = TOP_QUAD + MAX_SKIRTS_PER_CELL
-                + (level.emitsTrees() ? TREE_QUADS_PER_CELL : 0)
                 + (notches ? NOTCH_QUADS_PER_CELL : 0);
+        // Trees are counted, not reserved per cell (2026-11-20): an L0 node used to size its quad buffers for a
+        // tree in each of its 256 cells (~1.3 trees per chunk on average) - allocation that was never written.
+        int cellTrees = 0;
+        if (level.emitsTrees()) {
+            for (int ix = 0; ix < cellsPerAxis; ix++) {
+                for (int iz = 0; iz < cellsPerAxis; iz++) {
+                    if (data.treeAt(ix, iz) != null) cellTrees++;
+                }
+            }
+        }
         // Foundations are bounded by the node's border-edge count, NOT per
         // cell: at L4 the single cell owns all four border edges (a per-cell
         // constant would under-allocate there and overflow the arrays).
         int maxFoundations = 4 * cellsPerAxis;
         int[] treeSpots = data.treeSpots();
         int maxQuads   = cellsPerAxis * cellsPerAxis * maxQuadsPerCell + maxFoundations
-                + (treeSpots == null ? 0 : treeSpots.length * TREE_QUADS_PER_CELL);
+                + (cellTrees + (treeSpots == null ? 0 : treeSpots.length)) * TREE_QUADS_PER_CELL;
         int maxVerts   = maxQuads * 4;
         int maxIndices = maxQuads * 6;
 
@@ -278,7 +287,7 @@ public final class FastLodMesher {
                 if (level.emitsTrees()) {
                     TreeSample tree = data.treeAt(ix, iz);
                     if (tree != null) {
-                        emitTree(w, wx, wz, terrainH, tree, 1);
+                        emitTree(w, wx, wz, terrainH, tree.kind(), tree.trunkHeight(), 1, true);
                     }
                 }
             }
@@ -294,8 +303,8 @@ public final class FastLodMesher {
                 int lz = FastLodChunkData.spotZ(spot);
                 // Spots are only ever probed on dry cells and 1-deep swamp pools (cypress).
                 int terrainH = data.heightAt(lx / cellSize, lz / cellSize);
-                emitTree(w, baseX + lx, baseZ + lz, terrainH,
-                        new TreeSample(FastLodChunkData.spotKind(spot), FastLodChunkData.spotTrunk(spot)), trunkWidth);
+                emitTree(w, baseX + lx, baseZ + lz, terrainH, FastLodChunkData.spotKind(spot),
+                        FastLodChunkData.spotTrunk(spot), trunkWidth, cellSize <= 2);
             }
         }
 
@@ -591,15 +600,21 @@ public final class FastLodMesher {
      * The trunk spans whole blocks from the tree's column ({@code [wx, wx+trunkWidth]}),
      * since LOD records store x/z in whole blocks; the 3-block canopy still covers it.
      */
-    private void emitTree(QuadWriter w, float wx, float wz, int terrainH, TreeSample tree, int trunkWidth) {
+    /**
+     * @param fullCrown the stepped per-species crown (near rings: cells of 1-2 blocks); false = one box spanning the
+     *                  crown (its widest tier, full height) - the tiers are under a few pixels there and cost VRAM
+     */
+    private void emitTree(QuadWriter w, float wx, float wz, int terrainH,
+                          com.stonebreak.world.generation.features.VegetationGenerator.TreeKind kind, int trunkHeight,
+                          int trunkWidth, boolean fullCrown) {
         float trunkBase = terrainH;
-        float trunkTop  = terrainH + tree.trunkHeight();
+        float trunkTop  = terrainH + trunkHeight;
         float cx = wx + 0.5f;
         float cz = wz + 0.5f;
         float tx0 = wx, tx1 = wx + trunkWidth;
         float tz0 = wz, tz1 = wz + trunkWidth;
 
-        int trunkLayer = textureArray.getBlockFaceLayer(tree.kind().trunkBlock(),
+        int trunkLayer = textureArray.getBlockFaceLayer(kind.trunkBlock(),
                 BlockType.Face.SIDE_NORTH.getIndex());
         w.axisAlignedQuad(tx1, trunkTop, tz0,
                           tx1, trunkTop, tz1,
@@ -622,31 +637,80 @@ public final class FastLodMesher {
                           tx0, trunkBase, tz0,
                           0, 0, -1, trunkLayer, 0f);
 
-        int leafTopLayer  = textureArray.getBlockFaceLayer(tree.kind().leavesBlock(),
+        int leafTopLayer  = textureArray.getBlockFaceLayer(kind.leavesBlock(),
                 BlockType.Face.TOP.getIndex());
-        int leafSideLayer = textureArray.getBlockFaceLayer(tree.kind().leavesBlock(),
+        int leafSideLayer = textureArray.getBlockFaceLayer(kind.leavesBlock(),
                 BlockType.Face.SIDE_NORTH.getIndex());
-        float canopyMidY = trunkTop + 1f;
-        float canopyTop  = canopyMidY + CANOPY_HALF_HEIGHT;
-        float canopyBot  = canopyMidY - CANOPY_HALF_HEIGHT;
-        float xMin = cx - CANOPY_RADIUS, xMax = cx + CANOPY_RADIUS;
-        float zMin = cz - CANOPY_RADIUS, zMax = cz + CANOPY_RADIUS;
+        // Per-species crowns (2026-11-20), sized like the native generator's trees (native/src/features.cpp) from the
+        // sample's trunk height, as stacked boxes (voxel crowns are stepped too). The old stand-in was one 3x3x3 cube
+        // on every species: far smaller than an elm or a pine, and floating above a cypress's pads. Box x/z stay on
+        // the block grid (LODQUAD16 x/z are whole blocks); the lowest tier closes its underside (near rings are seen
+        // from below).
+        if (LEGACY_TREES) {   // dev A/B: the pre-2026-11-20 3x3x3 crown one block above the trunk top
+            emitLeafBox(w, cx - 1.5f, trunkTop - 0.5f, cz - 1.5f, cx + 1.5f, trunkTop + 2.5f, cz + 1.5f,
+                    leafTopLayer, leafSideLayer, false);
+            return;
+        }
+        int[] tiers = canopyTiers(kind, trunkHeight);
+        if (!fullCrown) {
+            int r = tiers[0];
+            emitLeafBox(w, wx - r, trunkBase + tiers[1], wz - r, wx + trunkWidth + r,
+                    trunkBase + tiers[tiers.length - 1], wz + trunkWidth + r, leafTopLayer, leafSideLayer, false);
+            return;
+        }
+        for (int t = 0; t < tiers.length; t += 3) {
+            int r = tiers[t];
+            emitLeafBox(w, wx - r, trunkBase + tiers[t + 1], wz - r, wx + trunkWidth + r, trunkBase + tiers[t + 2],
+                    wz + trunkWidth + r, leafTopLayer, leafSideLayer, t == 0);
+        }
+    }
 
-        w.axisAlignedQuad(xMin, canopyTop, zMin, xMax, canopyTop, zMin,
-                          xMax, canopyTop, zMax, xMin, canopyTop, zMax,
-                          0, 1, 0, leafTopLayer, 1f);
-        w.axisAlignedQuad(xMax, canopyTop, zMin, xMax, canopyTop, zMax,
-                          xMax, canopyBot, zMax, xMax, canopyBot, zMin,
-                          1, 0, 0, leafSideLayer, 1f);
-        w.axisAlignedQuad(xMin, canopyTop, zMax, xMin, canopyTop, zMin,
-                          xMin, canopyBot, zMin, xMin, canopyBot, zMax,
-                          -1, 0, 0, leafSideLayer, 1f);
-        w.axisAlignedQuad(xMax, canopyTop, zMax, xMin, canopyTop, zMax,
-                          xMin, canopyBot, zMax, xMax, canopyBot, zMax,
-                          0, 0, 1, leafSideLayer, 1f);
-        w.axisAlignedQuad(xMin, canopyTop, zMin, xMax, canopyTop, zMin,
-                          xMax, canopyBot, zMin, xMin, canopyBot, zMin,
-                          0, 0, -1, leafSideLayer, 1f);
+    /**
+     * A LOD tree's crown as tiers {radius, bottom, top} (blocks above the ground; radius r = a box 2r + trunk wide
+     * around the trunk), widest first. From the native shapes: oak = a radius-2 crown from 2 below the trunk top plus
+     * a radius-1 cap; elm = a radius-3 crown around the trunk top (its radius-4 disc is trimmed at 0.9 r) plus a
+     * radius-2 top; pine = a stepped cone over the top ~70% of the tree (radius 2, 1, then the trunk-wide tip);
+     * cypress = a radius-2 column of pads over the upper 65% of the trunk plus a radius-1 cap.
+     */
+    static int[] canopyTiers(com.stonebreak.world.generation.features.VegetationGenerator.TreeKind kind, int h) {
+        return switch (kind) {
+            case OAK -> new int[] {2, Math.max(1, h - 2), h + 1, 1, h + 1, h + 2};
+            case ELM -> new int[] {3, h - 1, h + 3, 2, h + 3, h + 5};
+            case PINE -> {
+                int total = h + 2;
+                int start = Math.max(2, Math.round(h * 0.3f));
+                int layers = Math.max(3, total - start);
+                int wide = start + Math.max(1, Math.round(layers * 0.3f));
+                int mid = Math.max(wide + 1, start + Math.round(layers * 0.85f));
+                yield new int[] {2, start, wide, 1, wide, mid, 0, mid, Math.max(mid + 1, total + 1)};
+            }
+            case CYPRESS -> new int[] {2, h - Math.round(h * 0.65f), h - 1, 1, h - 1, h + 2};
+        };
+    }
+
+    /** A leaf box: top, four sides and (the lowest tier) the underside; alpha-tested leaf faces like the old crown. */
+    private static void emitLeafBox(QuadWriter w, float xMin, float yBot, float zMin, float xMax, float yTop,
+                                    float zMax, int topLayer, int sideLayer, boolean bottom) {
+        w.axisAlignedQuad(xMin, yTop, zMin, xMax, yTop, zMin,
+                          xMax, yTop, zMax, xMin, yTop, zMax,
+                          0, 1, 0, topLayer, 1f);
+        w.axisAlignedQuad(xMax, yTop, zMin, xMax, yTop, zMax,
+                          xMax, yBot, zMax, xMax, yBot, zMin,
+                          1, 0, 0, sideLayer, 1f);
+        w.axisAlignedQuad(xMin, yTop, zMax, xMin, yTop, zMin,
+                          xMin, yBot, zMin, xMin, yBot, zMax,
+                          -1, 0, 0, sideLayer, 1f);
+        w.axisAlignedQuad(xMax, yTop, zMax, xMin, yTop, zMax,
+                          xMin, yBot, zMax, xMax, yBot, zMax,
+                          0, 0, 1, sideLayer, 1f);
+        w.axisAlignedQuad(xMin, yTop, zMin, xMax, yTop, zMin,
+                          xMax, yBot, zMin, xMin, yBot, zMin,
+                          0, 0, -1, sideLayer, 1f);
+        if (bottom) {
+            w.axisAlignedQuad(xMin, yBot, zMax, xMax, yBot, zMax,
+                              xMax, yBot, zMin, xMin, yBot, zMin,
+                              0, -1, 0, topLayer, 1f);
+        }
     }
 
     /**

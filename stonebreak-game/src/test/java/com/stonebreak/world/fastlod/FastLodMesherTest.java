@@ -313,11 +313,11 @@ class FastLodMesherTest {
                 FastLodKey.of(level, 0, 0), heights, waterLevels, surface, trees);
 
         FastLodMesher.Result result = mesher.build(data);
-        // 256 flat top quads + 9 tree quads (4 trunk + 5 canopy)
+        // 256 flat top quads + 15 tree quads (4 trunk + oak crown: radius-2 box with underside 6 + radius-1 cap 5)
         // + 4 × 16 border foundations.
-        assertEquals((256 + 9 + 64) * 4, result.mesh().getVertexCount());
-        // Canopy top: trunkTop(SEA_LEVEL+10) + 1 + CANOPY_HALF_HEIGHT(1.5).
-        assertEquals((SEA_LEVEL + 12.5f), result.maxY(), EPS);
+        assertEquals((256 + 15 + 64) * 4, result.mesh().getVertexCount());
+        // Oak cap top: ground (SEA_LEVEL+6) + trunk 4 + 2 (FastLodMesher.canopyTiers).
+        assertEquals((SEA_LEVEL + 12f), result.maxY(), EPS);
         assertEquals(FastLodMesher.foundationBottom(SEA_LEVEL + 6), result.minY(), EPS);
     }
 
@@ -340,11 +340,11 @@ class FastLodMesherTest {
                 FastLodKey.of(level, 0, 0), heights, waterLevels, surface, trees);
 
         FastLodMesher.Result result = mesher.build(data);
-        assertEquals((256 + 9 + 64) * 4, result.mesh().getVertexCount(),
-                "pool-bed tops + one tree + border foundations");
+        assertEquals((256 + 15 + 64) * 4, result.mesh().getVertexCount(),
+                "pool-bed tops + one tree (4 trunk + 6 + 5 crown) + border foundations");
         assertEquals(256 * 4, result.waterMesh().getVertexCount(), "full sheet cover");
-        // Canopy top: trunkTop(bed + 16) + 1 + CANOPY_HALF_HEIGHT(1.5).
-        assertEquals(bed + 18.5f, result.maxY(), EPS);
+        // Cypress cap top: bed + trunk 16 + 2 (FastLodMesher.canopyTiers).
+        assertEquals(bed + 18f, result.maxY(), EPS);
     }
 
     @Test
@@ -399,8 +399,11 @@ class FastLodMesherTest {
             MmsMeshData both = mesher.build(new FastLodChunkData(key, heights, dry, surface, null, null, null,
                 spots)).mesh();
 
-            assertEquals(2 * 9, (both.getVertexCount() - bare.getVertexCount()) / 4,
-                level + ": 4 trunk + 5 canopy quads per tree");
+            // Near rings (cells <= 2 blocks): stepped crowns - oak 4 trunk + 6 + 5, pine 4 trunk + 6 + 5 + 5.
+            // Farther: one crown box each (4 trunk + 5), sized per species, as cheap as the old cube.
+            int expected = level.cellSize() <= 2 ? 15 + 20 : 2 * 9;
+            assertEquals(expected, (both.getVertexCount() - bare.getVertexCount()) / 4,
+                level + ": whole trees, per-species crowns");
 
             // Trunk of the first tree (column 3,3): the non-alpha quads the tree added.
             float[] p = treed.getVertexPositions();
@@ -422,5 +425,31 @@ class FastLodMesherTest {
             assertEquals(80f, minY, EPS, level + " trunk stands on the cell surface");
             assertEquals(85f, maxY, EPS, level + " trunk reaches the canopy (trunk height 5)");
         }
+    }
+
+    /** The per-species crowns follow the native trees' proportions (features.cpp) for every shipped trunk height. */
+    @Test
+    void crownsFollowEachSpeciesShape() {
+        for (int h = 3; h <= 25; h++) {
+            for (TreeKind kind : TreeKind.values()) {
+                int[] t = FastLodMesher.canopyTiers(kind, h);
+                assertEquals(0, t.length % 3);
+                for (int i = 0; i < t.length; i += 3) {
+                    assertTrue(t[i + 2] > t[i + 1], kind + " h" + h + ": tier " + i / 3 + " has height");
+                    if (i > 0) {
+                        assertTrue(t[i] <= t[i - 3], kind + ": tiers narrow upward");
+                        assertEquals(t[i - 1], t[i + 1], kind + ": tiers stack without gaps");
+                    }
+                }
+                assertTrue(t[t.length - 1] >= h, kind + " h" + h + ": the crown reaches the trunk top");
+            }
+        }
+        // The widest crowns match the generator: elm ~7 wide, oak / pine / cypress 5 wide.
+        assertEquals(3, FastLodMesher.canopyTiers(TreeKind.ELM, 9)[0]);
+        assertEquals(2, FastLodMesher.canopyTiers(TreeKind.OAK, 5)[0]);
+        assertEquals(2, FastLodMesher.canopyTiers(TreeKind.PINE, 8)[0]);
+        // A cypress's pads cover the upper 65% of its trunk instead of a cube on top.
+        int[] cypress = FastLodMesher.canopyTiers(TreeKind.CYPRESS, 20);
+        assertEquals(20 - 13, cypress[1]);
     }
 }

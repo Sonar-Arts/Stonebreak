@@ -59,6 +59,9 @@ public class WorldRenderer {
     private final AnimatedBlockRenderer animatedBlockRenderer;
     private final SkyRenderer skyRenderer;
     private final CloudRenderer cloudRenderer;
+    private final com.stonebreak.rendering.gameWorld.clouds.CloudShadowCache cloudShadowCache =
+            new com.stonebreak.rendering.gameWorld.clouds.CloudShadowCache();
+    private final Vector3f cloudCacheEye = new Vector3f();
     private final PrecipitationFog precipitationFog;
     /** How much a full lightning flash adds to the scene's ambient light. */
     private static final float LIGHTNING_AMBIENT = 0.6f;
@@ -73,6 +76,11 @@ public class WorldRenderer {
             new com.stonebreak.rendering.lighting.TorchIndirectLighting();
     private final FastLodRenderPass lodRenderPass;
     private static final boolean OCTREE_ONLY = Boolean.getBoolean("stonebreak.octreeLod.noFallback");
+    /**
+     * Dev cost probe of the world shader's per-pixel terms ({@code -Dstonebreak.debugShade=<mask>}): 1 = no cloud
+     * shadow, 2 = no sun cascades, 4 = no torch lights, 8 = texture only. Wrong pictures on purpose; 0 = normal.
+     */
+    private static final int DEBUG_SHADE = Integer.getInteger("stonebreak.debugShade", 0);
     private final com.stonebreak.rendering.gameWorld.fastlod.OctreeLodRenderer octreeLodRenderer =
             new com.stonebreak.rendering.gameWorld.fastlod.OctreeLodRenderer();
     // Shared region arenas for FastLOD nodes (multidraw batching); created
@@ -308,6 +316,9 @@ public class WorldRenderer {
         // Clouds resolve before any receiver of cloud shadows is set up.
         cloudRenderer.prepareFrame(weather, cameraPos, keyDirection,
                 com.stonebreak.config.Settings.getInstance().getCloudsEnabled());
+        // The shadow column cache, from the uniforms just prepared, before any receiver is set up.
+        cloudShadowCache.build(cloudRenderer.uniforms(), player.getRenderPosition(cloudCacheEye),
+                world.getConfig().getHorizontalRenderRadiusBlocks());
         if (bench != null) bench.end(PrecipitationBench.Section.CLOUD_PREP);
         boolean cameraUnderwater = world.isPositionUnderwater(
                 (int) Math.floor(cameraPos.x), (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z));
@@ -641,6 +652,7 @@ public class WorldRenderer {
             shaderProgram.setUniform("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
             shaderProgram.setUniform("u_sunDirection", com.stonebreak.rendering.lighting.SceneLight.keyDirection());
             shaderProgram.setUniform("u_keyLight", com.stonebreak.rendering.lighting.SceneLight.keyLight());
+            shaderProgram.setUniform("u_debugShade", DEBUG_SHADE);
         } else {
             // Fallback to default lighting if TimeOfDay not initialized
             shaderProgram.setUniform("u_ambientLight", 1.0f);
@@ -661,6 +673,7 @@ public class WorldRenderer {
         shadowMapRenderer.applyToShader(shaderProgram);
         // Cloud shadows (sunlight dimmed by the cloud above, Beer-Lambert).
         cloudRenderer.uniforms().applyTo(shaderProgram);
+        cloudShadowCache.applyTo(shaderProgram);
         CloudsInFront.bindSampler(shaderProgram);
         shaderProgram.setBool("u_cloudsInFront", false);
 
@@ -1030,5 +1043,6 @@ public class WorldRenderer {
             lodRegionBatcher.cleanup();
         }
         octreeLodRenderer.cleanup();
+        cloudShadowCache.cleanup();
     }
 }
