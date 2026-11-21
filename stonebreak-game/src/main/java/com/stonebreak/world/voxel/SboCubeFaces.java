@@ -47,6 +47,8 @@ public final class SboCubeFaces {
      * that resolve to one stay on the cube path; the rest are drawn from their stamp.
      */
     private final boolean[][] cubeMasks;
+    /** Per block id: the block has a baked stamp (drawn as a cube or from its model, never as the id's layer). */
+    private final boolean[] stamped;
 
     public SboCubeFaces(StampEmitter emitter) {
         int maxId = 0;
@@ -59,11 +61,13 @@ public final class SboCubeFaces {
         perCell = new boolean[maxId + 1];
         shaped = new boolean[maxId + 1];
         cubeMasks = new boolean[maxId + 1][];
+        stamped = new boolean[maxId + 1];
         for (BlockType type : BlockType.values()) {
             if (!emitter.hasBlock(type)) {
                 continue;
             }
             int id = type.getId();
+            stamped[id] = true;
             if (!tryBuildCube(emitter, type, id) && !occludesEveryFace(emitter, type)) {
                 shaped[id] = true;
             }
@@ -215,7 +219,20 @@ public final class SboCubeFaces {
         return id < cube.length && cube[id];
     }
 
-    /** True for SBO blocks that are NOT unit cubes (stay on the stamp emitter). */
+    /**
+     * True for an SBO block drawn from its stamp model rather than the cube path: every stamped block that is
+     * neither a unit cube nor a per-cell cube, whether or not it occludes (an ore cube with nuggets, a block
+     * with several state models). Such a block has no cube face textures, so it must never be flagged a cube.
+     */
+    public boolean isModel(BlockType type) {
+        int id = type.getId();
+        return id < stamped.length && stamped[id] && !cube[id] && !perCell[id];
+    }
+
+    /**
+     * True for SBO blocks whose flush geometry leaves a boundary plane open, so they never hide a neighbour's
+     * face (stairs, slabs, crosses). A subset of {@link #isModel}.
+     */
     public boolean isShaped(BlockType type) {
         int id = type.getId();
         return id < shaped.length && shaped[id];
