@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.Behavior;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -41,7 +43,7 @@ abstract class VestigeBehavior implements Behavior {
     }
 
     /** Heads for {@code goal} along a route, if there is one. */
-    static void goTo(AiContext context, Vector3f goal, float radius, float speed) {
+    static void goTo(AiContext context, Vector3dc goal, float radius, float speed) {
         context.nav().moveTo(goal, radius, speed);
     }
 
@@ -65,7 +67,7 @@ abstract class VestigeBehavior implements Behavior {
     }
 
     /** Where to run to: hidden, away from the victim, between {@code bandMin} and {@code bandMax}. */
-    Vector3f escapeSpot(float bandMin, float bandMax) {
+    Vector3d escapeSpot(float bandMin, float bandMax) {
         VestigeSenses senses = senses();
         return vestige.cover().find(vestige.getPosition(), 16f, senses.victimEye(), senses.victimLook(),
                 bandMin, bandMax, CoverFinder.Preference.AWAY);
@@ -75,8 +77,8 @@ abstract class VestigeBehavior implements Behavior {
      * Where to run, {@code bandMin}–{@code bandMax} from the victim: hidden cover if there is any,
      * else open ground away from them. Null only when every way off is barred.
      */
-    Vector3f fleeSpot(float bandMin, float bandMax) {
-        Vector3f spot = escapeSpot(bandMin, bandMax);
+    Vector3d fleeSpot(float bandMin, float bandMax) {
+        Vector3d spot = escapeSpot(bandMin, bandMax);
         if (spot != null || !senses().hasVictim()) {
             return spot;
         }
@@ -96,7 +98,7 @@ abstract class VestigeBehavior implements Behavior {
     }
 
     /** Where its throwing hand is now. */
-    Vector3f handPosition(Vector3f out) {
+    Vector3d handPosition(Vector3d out) {
         Vector3f forward = vestige.getForwardDirection();
         return out.set(vestige.getPosition())
                 .add(forward.x * HAND_FORWARD, VestigeSenses.HEAD_HEIGHT + vestige.renderLift() - 0.2f,
@@ -105,13 +107,14 @@ abstract class VestigeBehavior implements Behavior {
 
     /** Hurls a will-o'-wisp from its hand at the victim's chest. */
     void castOrb(AiContext context) {
-        Vector3f target = context.targetPlayer();
+        Vector3d target = context.targetPlayer();
         EntityManager manager = context.world() != null ? context.world().getEntityManager() : null;
         if (target == null || manager == null) {
             return;
         }
-        Vector3f origin = handPosition(new Vector3f());
-        Vector3f direction = new Vector3f(target).add(0f, PlayerLocator.CHEST_HEIGHT, 0f).sub(origin).normalize();
+        Vector3d origin = handPosition(new Vector3d());
+        Vector3f direction = new Vector3f((float) (target.x - origin.x),
+                (float) (target.y + PlayerLocator.CHEST_HEIGHT - origin.y), (float) (target.z - origin.z)).normalize();
         manager.addEntity(new WillOWispOrb(context.world(), origin, direction, vestige.lockedTargetPlayerId(),
                 tuning().orbDamage(), tuning().orbBurnSeconds(), tuning().orbBurnDps()));
     }
@@ -120,7 +123,7 @@ abstract class VestigeBehavior implements Behavior {
      * Where to slip to from a victim who is tracking it: hidden, well off, round to their side or
      * behind, clear of where they last saw it and of the way they are heading.
      */
-    Vector3f flankSpot(float radius) {
+    Vector3d flankSpot(float radius) {
         VestigeSenses senses = senses();
         return vestige.cover().find(vestige.getPosition(), radius, senses.victimEye(), senses.victimLook(),
                 tuning().trackedBandMin(), tuning().trackedBandMax(), CoverFinder.Preference.FLANK, pursuit());
@@ -128,10 +131,10 @@ abstract class VestigeBehavior implements Behavior {
 
     /** What the victim is about to do, from what it has seen of them. */
     CoverFinder.Pursuit pursuit() {
-        Vector3f feet = new Vector3f(senses().victimFeet());
-        Vector3f lastSeen = mind().tracking().lastSeen();
-        return new CoverFinder.Pursuit(feet, lastSeen != null ? new Vector3f(lastSeen) : null,
-                mind().look().predict(feet, PREDICT_SECONDS, new Vector3f()));
+        Vector3d feet = new Vector3d(senses().victimFeet());
+        Vector3d lastSeen = mind().tracking().lastSeen();
+        return new CoverFinder.Pursuit(feet, lastSeen != null ? new Vector3d(lastSeen) : null,
+                mind().look().predict(feet, PREDICT_SECONDS, new Vector3d()));
     }
 
     /** Whether the victim is hunting for it, so it should keep its distance and play no tricks. */

@@ -50,7 +50,8 @@ public class BlockPickupSoundEmitter extends SoundEmitter {
         // Check if the sound is loaded before trying to play it
         if (soundSystem.isSoundLoaded(SOUND_NAME)) {
             // Play the sound at the emitter's 3D position with proper spatial audio
-            soundSystem.playSoundAt3D(SOUND_NAME, volume, position);
+            soundSystem.playSoundAt3D(SOUND_NAME, volume,
+                com.stonebreak.audio.AudioSpace.toMixer(position.x, position.y, position.z, new Vector3f()));
         } else {
             // Fallback: try to play any available sound for testing
             // This ensures the emitter still functions even if the specific sound isn't loaded

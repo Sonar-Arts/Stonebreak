@@ -14,6 +14,8 @@ import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 import com.openmason.engine.util.BlockPos;
+import com.openmason.engine.voxel.world.CubePos;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.blueberrybush.BlueberryBushState;
 import com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage;
@@ -33,42 +35,78 @@ class BlueberryBushGrowthSystemTest {
         final Map<BlockPos, BlockType> blocks = new HashMap<>();
         final Map<BlockPos, String> states = new HashMap<>();
         final List<BlockPos> announced = new ArrayList<>();
+        final Map<String, byte[]> sections = new HashMap<>();
         final BlueberryBushGrowthSystem system = new BlueberryBushGrowthSystem(this, new Random(7));
 
         FakeWorld() {
-            system.setStageListener((x, y, z) -> announced.add(new BlockPos(x, y, z)));
+            system.setStageListener((x, y, z) -> announced.add(pos(x, y, z)));
+        }
+
+        private static BlockPos pos(long x, long y, long z) {
+            return new BlockPos((int) x, (int) y, (int) z);
         }
 
         @Override
-        public BlockType getBlock(int x, int y, int z) {
-            return blocks.getOrDefault(new BlockPos(x, y, z), BlockType.AIR);
+        public BlockType getBlock(long x, long y, long z) {
+            return blocks.getOrDefault(pos(x, y, z), BlockType.AIR);
         }
 
         @Override
-        public void setBlock(int x, int y, int z, BlockType type) {
+        public void setBlock(long x, long y, long z, BlockType type) {
             BlockType previous = getBlock(x, y, z);
-            blocks.put(new BlockPos(x, y, z), type);
-            states.remove(new BlockPos(x, y, z));
+            blocks.put(pos(x, y, z), type);
+            states.remove(pos(x, y, z));
             system.onBlockChanged(x, y, z, previous, type);
         }
 
         @Override
-        public String getState(int x, int y, int z) {
-            return states.get(new BlockPos(x, y, z));
+        public String getState(long x, long y, long z) {
+            return states.get(pos(x, y, z));
         }
 
         @Override
-        public void setState(int x, int y, int z, String state) {
-            states.put(new BlockPos(x, y, z), state);
+        public void setState(long x, long y, long z, String state) {
+            states.put(pos(x, y, z), state);
         }
 
         @Override
-        public boolean isAreaLoaded(int x, int z, int radius) {
+        public boolean isAreaLoaded(long x, long y, long z, int radius, int height) {
             return true;
         }
 
+        @Override
+        public byte[] readSaplings(CubePos cube) {
+            return null;
+        }
+
+        @Override
+        public void writeSaplings(CubePos cube, byte[] section) {
+        }
+
+        @Override
+        public byte[] readSection(CubePos cube, String section) {
+            return sections.get(cube + "/" + section);
+        }
+
+        @Override
+        public void writeSection(CubePos cube, String section, byte[] bytes) {
+            if (bytes == null) {
+                sections.remove(cube + "/" + section);
+            } else {
+                sections.put(cube + "/" + section, bytes);
+            }
+        }
+
+        /** The bush's stage (from its state string) with the system's live timer. */
         BlueberryBushState bush() {
-            return BlueberryBushState.parse(getState(X, Y, Z));
+            BlueberryBushState stage = BlueberryBushState.parse(getState(X, Y, Z));
+            return stage == null ? null : new BlueberryBushState(stage.stage(), Math.max(0, system.remainingAt(X, Y, Z)));
+        }
+
+        /** The timer the cube's blob section holds for the bush at (X, Y, Z), or null. */
+        Integer savedTimer() {
+            return SaplingGrowthSystem.decodeSection(readSection(CubePos.ofBlock(X, Y, Z),
+                    BlueberryBushGrowthSystem.BLOB_SECTION)).get(Cube.cellOf(X, Y, Z));
         }
     }
 
@@ -76,7 +114,7 @@ class BlueberryBushGrowthSystemTest {
     private static FakeWorld worldWithRipeBush() {
         FakeWorld world = new FakeWorld();
         world.blocks.put(new BlockPos(X, Y, Z), BlockType.BLUEBERRY_BUSH);
-        world.setState(X, Y, Z, new BlueberryBushState(Stage.BERRIES_RIPE, 0).toStateString());
+        world.setState(X, Y, Z, new BlueberryBushState(Stage.BERRIES_RIPE, 0).toStageString());
         return world;
     }
 
@@ -159,7 +197,7 @@ class BlueberryBushGrowthSystemTest {
         assertEquals(Stage.SPROUT, world.bush().stage());
 
         world.blocks.put(new BlockPos(0, Y, 0), BlockType.DIRT);
-        world.setState(0, Y, 0, new BlueberryBushState(Stage.BERRIES_RIPE, 0).toStateString());
+        world.setState(0, Y, 0, new BlueberryBushState(Stage.BERRIES_RIPE, 0).toStageString());
         assertFalse(world.system.harvest(0, Y, 0));
     }
 
@@ -178,6 +216,34 @@ class BlueberryBushGrowthSystemTest {
         world.announced.clear();
         world.system.advanceTicks(BlueberryBushGrowthSystem.MIN_GROW_TICKS - 1);
         assertTrue(world.announced.isEmpty());
-        assertTrue(world.bush().ticksLeft() < LONGEST_GROW - 20, "remaining time was persisted");
+        Integer saved = world.savedTimer();
+        assertTrue(saved != null && saved < LONGEST_GROW - 20, "remaining time was persisted: " + saved);
+        assertEquals(new BlueberryBushState(Stage.SPROUT, 0).toStageString(), world.getState(X, Y, Z),
+            "the state string carries the stage only (a countdown there would mint a state id a second)");
+    }
+
+    @Test
+    void aCubeInstallResumesSavedTimersAndStartsWildBushes() {
+        FakeWorld world = worldWithBush();
+        world.system.advanceTicks(BlueberryBushGrowthSystem.PERSIST_INTERVAL_TICKS);
+        int saved = world.savedTimer();
+        Cube cube = org.mockito.Mockito.mock(Cube.class);
+        org.mockito.Mockito.when(cube.pos()).thenReturn(CubePos.ofBlock(X, Y, Z));
+        org.mockito.Mockito.doAnswer(inv -> {
+            Cube.StateVisitor v = inv.getArgument(0);
+            v.accept(X, Y, Z, world.getState(X, Y, Z));
+            v.accept(X + 1, Y, Z, new BlueberryBushState(Stage.MATURE, 0).toStageString());
+            return null;
+        }).when(cube).forEachState(org.mockito.ArgumentMatchers.any());
+        world.blocks.put(new BlockPos(X + 1, Y, Z), BlockType.BLUEBERRY_BUSH);
+
+        world.system.onCubeUnloaded(cube);
+        assertEquals(0, world.system.getTrackedCount());
+        world.system.onCubeInstalled(cube);
+        assertEquals(2, world.system.getTrackedCount());
+        assertEquals(saved, world.system.remainingAt(X, Y, Z), "the saved timer resumes");
+        int wild = world.system.remainingAt(X + 1, Y, Z);
+        assertTrue(wild >= BlueberryBushGrowthSystem.MIN_FRUIT_TICKS && wild < LONGEST_FRUIT,
+            "a bush with no saved timer starts a fresh one for its stage: " + wild);
     }
 }

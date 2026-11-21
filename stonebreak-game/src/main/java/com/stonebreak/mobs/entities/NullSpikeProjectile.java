@@ -8,6 +8,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.HashSet;
@@ -37,7 +39,7 @@ public class NullSpikeProjectile extends Entity {
     private final Set<LivingEntity> hitEntities = new HashSet<>();
     private float distanceTraveled;
 
-    public NullSpikeProjectile(World world, Vector3f position, Vector3f direction,
+    public NullSpikeProjectile(World world, Vector3dc position, Vector3f direction,
                                float damagePerHit, float spellmarkDuration,
                                boolean pierce, float burstDamage) {
         super(world, position);
@@ -74,7 +76,7 @@ public class NullSpikeProjectile extends Entity {
             float stepLen = Math.min(COLLISION_STEP, remaining);
             remaining -= stepLen;
 
-            Vector3f newPos = new Vector3f(direction).mul(stepLen).add(position);
+            Vector3d newPos = new Vector3d(position).fma(stepLen, direction);
 
             // Block collision at the leading sample point.
             BlockType block = world.getBlockAt(

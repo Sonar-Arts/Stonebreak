@@ -3,6 +3,8 @@ package com.stonebreak.mobs.vestige;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.mobs.entities.ai.perception.PlayerGaze;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -29,8 +31,8 @@ final class VestigeSenses {
     private int victimId = PlayerLocator.NEAREST;
     private boolean hasVictim;
     private boolean victimChosen;
-    private final Vector3f victimFeet = new Vector3f();
-    private final Vector3f victimEye = new Vector3f();
+    private final Vector3d victimFeet = new Vector3d();
+    private final Vector3d victimEye = new Vector3d();
     private final Vector3f victimLook = new Vector3f();
     private boolean hasLook;
     private boolean victimInShade;
@@ -38,9 +40,9 @@ final class VestigeSenses {
     private boolean inView;
     private boolean watched;
 
-    private final Vector3f head = new Vector3f();
-    private final Vector3f chest = new Vector3f();
-    private final Vector3f scratch = new Vector3f();
+    private final Vector3d head = new Vector3d();
+    private final Vector3d chest = new Vector3d();
+    private final Vector3d scratch = new Vector3d();
 
     VestigeSenses(LivingEntity vestige, PlayerLocator players, ShadeColumns shade) {
         this.vestige = vestige;
@@ -53,7 +55,7 @@ final class VestigeSenses {
      * replaced after the last one was lost), so the caller can forget what it knew of the old one.
      */
     boolean refresh(boolean veiled, boolean eyesDark) {
-        Vector3f self = vestige.getPosition();
+        Vector3d self = vestige.getPosition();
         boolean changed = false;
         if (!victimChosen || players.playerPosition(victimId, self, scratch) == null) {
             changed = chooseVictim(self);
@@ -68,7 +70,7 @@ final class VestigeSenses {
         }
         victimEye.set(victimFeet).add(0f, PlayerLocator.EYE_HEIGHT, 0f);
         victimInShade = shade.isShade(victimFeet);
-        distance = self.distance(victimFeet);
+        distance = (float) self.distance(victimFeet);
         head.set(self).add(0f, HEAD_HEIGHT + vestige.renderLift(), 0f);
         chest.set(self).add(0f, CHEST_HEIGHT + vestige.renderLift(), 0f);
         hasLook = players.playerLook(victimId, self, victimLook) != null;
@@ -89,11 +91,11 @@ final class VestigeSenses {
     }
 
     /** The nearest live player standing in the Shade, else the nearest at all. */
-    private boolean chooseVictim(Vector3f self) {
+    private boolean chooseVictim(Vector3dc self) {
         int[] best = {PlayerLocator.NEAREST, 0};
         float[] bestScore = {Float.MAX_VALUE};
         players.forEachPlayer(self, VICTIM_SEARCH_RADIUS, sensed -> {
-            float score = sensed.position().distance(self) + (shade.isShade(sensed.position()) ? 0f : 1000f);
+            float score = (float) sensed.position().distance(self) + (shade.isShade(sensed.position()) ? 0f : 1000f);
             if (score < bestScore[0]) {
                 bestScore[0] = score;
                 best[0] = sensed.id();
@@ -119,11 +121,11 @@ final class VestigeSenses {
     }
 
     /** The victim's feet; meaningful only while {@link #hasVictim()}. Do not retain. */
-    Vector3f victimFeet() {
+    Vector3d victimFeet() {
         return victimFeet;
     }
 
-    Vector3f victimEye() {
+    Vector3d victimEye() {
         return victimEye;
     }
 

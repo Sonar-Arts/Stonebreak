@@ -98,6 +98,14 @@ public record BlueberryBushState(Stage stage, int ticksLeft) {
         return stage == null ? null : new BlueberryBushState(stage, ticks);
     }
 
+    /**
+     * The state string the world stores: the stage only. The cubic world keeps block states as ids in a
+     * per-world table, so the timer lives in the cube's blob section instead ({@code BlueberryBushGrowthSystem}).
+     */
+    public String toStageString() {
+        return STATE_PREFIX + "state=" + stage.sboStateName();
+    }
+
     public String toStateString() {
         String base = STATE_PREFIX + "state=" + stage.sboStateName();
         return ticksLeft == NO_TIMER ? base : base + ";grow=" + ticksLeft;

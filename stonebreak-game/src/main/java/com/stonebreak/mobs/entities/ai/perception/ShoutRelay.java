@@ -5,7 +5,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 /**
  * Carries an alerted mob's shout to its packmates (#321): same-type mobs within the shout range
@@ -15,7 +15,7 @@ import org.joml.Vector3f;
 public interface ShoutRelay {
 
     /** @param targetId the player the shouter is after ({@code PlayerLocator} id) */
-    void shout(LivingEntity shouter, Vector3f lastKnown, int targetId, float range);
+    void shout(LivingEntity shouter, Vector3dc lastKnown, int targetId, float range);
 
     /** Nobody hears; for tests and loners. */
     ShoutRelay NONE = (shouter, lastKnown, targetId, range) -> { };

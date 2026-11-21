@@ -22,7 +22,7 @@ public class JsonEntitySerializer {
         json.append("  \"entityType\": \"").append(entity.getEntityType().name()).append("\",\n");
 
         // Position
-        Vector3f pos = entity.getPosition();
+        org.joml.Vector3d pos = entity.getPosition();
         json.append("  \"position\": {\"x\": ").append(pos.x).append(", \"y\": ").append(pos.y)
             .append(", \"z\": ").append(pos.z).append("},\n");
 
@@ -66,7 +66,7 @@ public class JsonEntitySerializer {
 
         try {
             EntityType entityType = EntityType.valueOf(JsonParsingUtil.extractString(json, "entityType"));
-            Vector3f position = JsonParsingUtil.extractVector3f(json, "position");
+            org.joml.Vector3d position = JsonParsingUtil.extractVector3d(json, "position");
             Vector3f velocity = JsonParsingUtil.extractVector3f(json, "velocity");
             Vector3f rotation = JsonParsingUtil.extractVector3f(json, "rotation");
             float health = (float) JsonParsingUtil.extractDouble(json, "health");

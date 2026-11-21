@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.ai.perception.SightLine;
 import com.stonebreak.network.packet.player.PlayerHealthS2C;
 import com.stonebreak.network.server.handlers.ServerHealthHandler;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.Collection;
@@ -53,43 +55,43 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
-    public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+    public Vector3d nearestPlayer(Vector3dc from, Vector3d out) {
         ServerPlayer nearest = nearest(from);
         return nearest == null ? null : out.set(nearest.x(), nearest.y(), nearest.z());
     }
 
     @Override
-    public boolean nearestPlayerSprinting(Vector3f from) {
+    public boolean nearestPlayerSprinting(Vector3dc from) {
         ServerPlayer nearest = nearest(from);
         return nearest != null && nearest.isSprinting();
     }
 
     @Override
-    public float nearestPlayerLoudness(Vector3f from) {
+    public float nearestPlayerLoudness(Vector3dc from) {
         ServerPlayer nearest = nearest(from);
         return nearest != null ? nearest.movementLoudness() : 0f;
     }
 
     @Override
-    public boolean nearestPlayerStealthed(Vector3f from) {
+    public boolean nearestPlayerStealthed(Vector3dc from) {
         ServerPlayer nearest = nearest(from);
         return nearest != null && nearest.isStealthed();
     }
 
     /** Nothing solid between {@code eye} and the nearest player's chest. */
     @Override
-    public boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
+    public boolean canSeeNearestPlayer(Vector3dc from, Vector3dc eye) {
         return canSee(nearest(from), eye, false);
     }
 
     @Override
-    public void forEachPlayer(Vector3f from, float radius, Consumer<SensedPlayer> sink) {
+    public void forEachPlayer(Vector3dc from, float radius, Consumer<SensedPlayer> sink) {
         float radiusSq = radius * radius;
         for (ServerPlayer player : roster) {
             if (!player.isLiveInWorld()) {
                 continue;
             }
-            Vector3f position = new Vector3f(player.x(), player.y(), player.z());
+            Vector3d position = new Vector3d(player.x(), player.y(), player.z());
             if (position.distanceSquared(from) <= radiusSq) {
                 sink.accept(new SensedPlayer(player.playerId(), position, player.movementLoudness(),
                         player.isStealthed(), player.stealthSkill()));
@@ -98,22 +100,22 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
-    public Vector3f playerPosition(int id, Vector3f from, Vector3f out) {
+    public Vector3d playerPosition(int id, Vector3dc from, Vector3d out) {
         ServerPlayer player = byId(id, from);
         return player == null ? null : out.set(player.x(), player.y(), player.z());
     }
 
     @Override
-    public boolean canSeePlayer(int id, Vector3f from, Vector3f eye) {
+    public boolean canSeePlayer(int id, Vector3dc from, Vector3dc eye) {
         return canSee(byId(id, from), eye, false);
     }
 
     @Override
-    public boolean canSeePlayerThroughLeaves(int id, Vector3f from, Vector3f eye) {
+    public boolean canSeePlayerThroughLeaves(int id, Vector3dc from, Vector3dc eye) {
         return canSee(byId(id, from), eye, true);
     }
 
-    private boolean canSee(ServerPlayer player, Vector3f eye, boolean throughLeaves) {
+    private boolean canSee(ServerPlayer player, Vector3dc eye, boolean throughLeaves) {
         if (player == null) {
             return false;
         }
@@ -121,21 +123,21 @@ public final class ServerPlayerLocator implements PlayerLocator {
         if (world == null) {
             return true;
         }
-        return sight.clear(world, eye, new Vector3f(player.x(), player.y() + CHEST_HEIGHT, player.z()), throughLeaves);
+        return sight.clear(world, eye, new Vector3d(player.x(), player.y() + CHEST_HEIGHT, player.z()), throughLeaves);
     }
 
     /** The nearest player takes the blow, shoved horizontally away from {@code from}. */
     @Override
-    public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+    public boolean hurtNearestPlayer(Vector3dc from, float amount, float knockback) {
         return hurt(nearest(from), from, amount, knockback);
     }
 
     @Override
-    public boolean hurtPlayer(int id, Vector3f from, float amount, float knockback) {
+    public boolean hurtPlayer(int id, Vector3dc from, float amount, float knockback) {
         return hurt(byId(id, from), from, amount, knockback);
     }
 
-    private boolean hurt(ServerPlayer target, Vector3f from, float amount, float knockback) {
+    private boolean hurt(ServerPlayer target, Vector3dc from, float amount, float knockback) {
         if (health == null || target == null
                 || distanceSq(target, from) > MAX_MELEE_DISTANCE * MAX_MELEE_DISTANCE) {
             return false;
@@ -147,7 +149,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
-    public boolean hitPlayerAt(Vector3f point, float margin, float amount, int ownerPlayerId) {
+    public boolean hitPlayerAt(Vector3dc point, float margin, float amount, int ownerPlayerId) {
         if (health == null) {
             return false;
         }
@@ -167,7 +169,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
 
     /** The camera convention: yaw about +Y from +X, pitch up from the horizon, in degrees. */
     @Override
-    public Vector3f playerLook(int id, Vector3f from, Vector3f out) {
+    public Vector3f playerLook(int id, Vector3dc from, Vector3f out) {
         ServerPlayer player = byId(id, from);
         if (player == null) {
             return null;
@@ -179,7 +181,7 @@ public final class ServerPlayerLocator implements PlayerLocator {
     }
 
     @Override
-    public boolean ignitePlayerAt(Vector3f point, float margin, float seconds, float damagePerSecond) {
+    public boolean ignitePlayerAt(Vector3dc point, float margin, float seconds, float damagePerSecond) {
         for (ServerPlayer player : roster) {
             if (player.isLiveInWorld() && ServerHealthHandler.insideBody(player, point, margin)) {
                 player.vitals().ignite(seconds, damagePerSecond);
@@ -189,15 +191,15 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return false;
     }
 
-    private static float distanceSq(ServerPlayer player, Vector3f from) {
-        float dx = player.x() - from.x;
-        float dy = player.y() - from.y;
-        float dz = player.z() - from.z;
+    private static double distanceSq(ServerPlayer player, Vector3dc from) {
+        double dx = player.x() - from.x();
+        double dy = player.y() - from.y();
+        double dz = player.z() - from.z();
         return dx * dx + dy * dy + dz * dz;
     }
 
     /** Live player {@code id}; {@link #NEAREST} means the one nearest {@code from}. */
-    private ServerPlayer byId(int id, Vector3f from) {
+    private ServerPlayer byId(int id, Vector3dc from) {
         if (id == NEAREST) {
             return nearest(from);
         }
@@ -209,17 +211,17 @@ public final class ServerPlayerLocator implements PlayerLocator {
         return null;
     }
 
-    private ServerPlayer nearest(Vector3f from) {
+    private ServerPlayer nearest(Vector3dc from) {
         ServerPlayer best = null;
-        float bestDistanceSq = Float.MAX_VALUE;
+        double bestDistanceSq = Double.MAX_VALUE;
         for (ServerPlayer player : roster) {
             if (!player.isMobTargetable()) {
                 continue;
             }
-            float dx = player.x() - from.x;
-            float dy = player.y() - from.y;
-            float dz = player.z() - from.z;
-            float distanceSq = dx * dx + dy * dy + dz * dz;
+            double dx = player.x() - from.x();
+            double dy = player.y() - from.y();
+            double dz = player.z() - from.z();
+            double distanceSq = dx * dx + dy * dy + dz * dz;
             if (distanceSq < bestDistanceSq) {
                 bestDistanceSq = distanceSq;
                 best = player;

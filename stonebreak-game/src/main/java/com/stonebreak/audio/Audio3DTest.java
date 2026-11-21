@@ -32,15 +32,15 @@ public final class Audio3DTest {
             return;
         }
 
-        org.joml.Vector3f playerPos = player.getPosition();
+        org.joml.Vector3d playerPos = player.getPosition();
         System.out.println("🧪 3D AUDIO TEST: Player position: (" + playerPos.x + ", " + playerPos.y + ", " + playerPos.z + ")");
 
         // Test sounds at various distances
-        float[][] testPositions = {
-            {playerPos.x + 2.0f, playerPos.y, playerPos.z},     // 2 blocks away (should be loud)
-            {playerPos.x + 10.0f, playerPos.y, playerPos.z},    // 10 blocks away (should be quieter)
-            {playerPos.x + 25.0f, playerPos.y, playerPos.z},    // 25 blocks away (should be very quiet)
-            {playerPos.x + 60.0f, playerPos.y, playerPos.z}     // 60 blocks away (should be silent)
+        double[][] testPositions = {
+            {playerPos.x + 2.0, playerPos.y, playerPos.z},     // 2 blocks away (should be loud)
+            {playerPos.x + 10.0, playerPos.y, playerPos.z},    // 10 blocks away (should be quieter)
+            {playerPos.x + 25.0, playerPos.y, playerPos.z},    // 25 blocks away (should be very quiet)
+            {playerPos.x + 60.0, playerPos.y, playerPos.z}     // 60 blocks away (should be silent)
         };
 
         String[] descriptions = {
@@ -51,7 +51,7 @@ public final class Audio3DTest {
         };
 
         for (int i = 0; i < testPositions.length; i++) {
-            float[] pos = testPositions[i];
+            double[] pos = testPositions[i];
             System.out.println("🧪 3D AUDIO TEST: Playing sound at " + descriptions[i] + " - position (" + pos[0] + ", " + pos[1] + ", " + pos[2] + ")");
 
             // Calculate distance for reference
@@ -62,7 +62,8 @@ public final class Audio3DTest {
             );
             System.out.println("🧪 3D AUDIO TEST: Calculated distance: " + distance + " blocks");
 
-            soundSystem.playSoundAt3D("blockpickup", 0.8f, pos[0], pos[1], pos[2]);
+            soundSystem.playSoundAt3D("blockpickup", 0.8f,
+                AudioSpace.x(pos[0]), AudioSpace.y(pos[1]), AudioSpace.z(pos[2]));
 
             // Wait a bit between sounds
             try {
@@ -96,14 +97,14 @@ public final class Audio3DTest {
             return;
         }
 
-        org.joml.Vector3f playerPos = player.getPosition();
-        float testX = playerPos.x + distance;
-        float testY = playerPos.y;
-        float testZ = playerPos.z;
+        org.joml.Vector3d playerPos = player.getPosition();
+        double testX = playerPos.x + distance;
+        double testY = playerPos.y;
+        double testZ = playerPos.z;
 
         System.out.println("🧪 SINGLE 3D TEST: Player at (" + playerPos.x + ", " + playerPos.y + ", " + playerPos.z + ")");
         System.out.println("🧪 SINGLE 3D TEST: Playing sound " + distance + " blocks away at (" + testX + ", " + testY + ", " + testZ + ")");
 
-        soundSystem.playSoundAt3D("blockpickup", 0.8f, testX, testY, testZ);
+        soundSystem.playSoundAt3D("blockpickup", 0.8f, AudioSpace.x(testX), AudioSpace.y(testY), AudioSpace.z(testZ));
     }
 }

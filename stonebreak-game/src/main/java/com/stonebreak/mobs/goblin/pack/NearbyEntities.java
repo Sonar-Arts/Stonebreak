@@ -3,7 +3,7 @@ package com.stonebreak.mobs.goblin.pack;
 import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 import java.util.List;
 
@@ -14,7 +14,7 @@ import java.util.List;
 @FunctionalInterface
 public interface NearbyEntities {
 
-    List<Entity> within(Vector3f center, float radius);
+    List<Entity> within(Vector3dc center, float radius);
 
     /** Scans {@code world}'s entity manager; nothing when it has none bound. */
     static NearbyEntities of(World world) {

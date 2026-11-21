@@ -22,10 +22,10 @@ import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.player.state.PhysicsState;
-import com.stonebreak.rendering.effects.WaterRippleParticles;
-import com.stonebreak.rendering.effects.WaterSplashParticles;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
@@ -70,7 +70,7 @@ public class Player {
     // Fishing
     private com.stonebreak.mobs.entities.FishingBobber activeBobber = null;
 
-    // Water entry splash + surface ripple particles
+    // Water entry splash + surface ripple FX
     private final PlayerWaterEffects waterEffects = new PlayerWaterEffects();
 
     // Third-person body model
@@ -150,21 +150,21 @@ public class Player {
     public void processFlightDescent(boolean shift) { c.flight.processDescent(shift); }
 
     // Position / state
-    public Vector3f getPosition() { return state.getPosition(); }
+    public Vector3d getPosition() { return state.getPosition(); }
     public Vector3f getVelocity() { return state.getVelocity(); }
     public void setVelocity(Vector3f velocity) { state.getVelocity().set(velocity); }
     public boolean isOnGround() { return state.isOnGround(); }
     public void setOnGround(boolean onGround) { state.setOnGround(onGround); }
 
-    public void setPosition(float x, float y, float z) {
+    public void setPosition(double x, double y, double z) {
         state.getPosition().set(x, y, z);
         camera.setPosition(x, y + CAMERA_EYE_OFFSET, z);
     }
 
     /** Teleport between temporary scenes without carrying a fall arc or a death state across worlds. */
-    public void resetForScene(Vector3f position) {
+    public void resetForScene(Vector3dc position) {
         stopBreakingBlock();
-        state.setPreviousY(position.y);
+        state.setPreviousY(position.y());
         state.setWasFalling(false);
         state.setOnGround(false);
         state.getVelocity().zero();
@@ -173,8 +173,8 @@ public class Player {
         setPosition(position);
     }
 
-    public void setPosition(Vector3f position) {
-        setPosition(position.x, position.y, position.z);
+    public void setPosition(Vector3dc position) {
+        setPosition(position.x(), position.y(), position.z());
     }
 
     /**
@@ -185,7 +185,7 @@ public class Player {
      * of that whole height. {@code onGround} is cleared because the destination column is
      * usually not loaded yet; physics re-establishes it once terrain arrives.
      */
-    public void teleport(float x, float y, float z) {
+    public void teleport(double x, double y, double z) {
         setPosition(x, y, z);
         state.getVelocity().set(0, 0, 0);
         state.setPreviousY(y);
@@ -539,12 +539,6 @@ public class Player {
 
     // Illusionist
     public IllusionistAbilityController getIllusionistAbilities() { return c.illusionistAbilities; }
-
-    // Water splash particles
-    public WaterSplashParticles getSplashParticles() { return waterEffects.getSplashParticles(); }
-
-    // Water surface ripples
-    public WaterRippleParticles getRippleParticles() { return waterEffects.getRippleParticles(); }
 
     // Rogue
     public RogueAbilityController getRogueAbilities() { return c.rogueAbilities; }

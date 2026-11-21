@@ -1,6 +1,6 @@
 """Mountain report: does a generated world have tall, valley-cut ranges in blocks?
 
-    python -m terrain_slm.eval.mountains --model checkpoints/v3 --seed 2 --out reports/v3
+    python -m terrain_slm.eval.mountains --model checkpoints/exp2-r3 --seed 2 --out reports/exp2-r3
 
 Finds the tallest trend near spawn, generates a 1024x1024-block (61 km) square around it,
 and compares it with the highest Alps window of the same size:
@@ -79,7 +79,7 @@ def real_alps_window(data: Path) -> np.ndarray:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", type=Path, default=Path("checkpoints/v3"))
+    ap.add_argument("--model", type=Path, default=Path("checkpoints/exp2-r3"))   # EXP-1 (v2/v3/v4) removed 2026-11-19
     ap.add_argument("--seed", type=int, default=2)
     ap.add_argument("--device", default=default_device())
     ap.add_argument("--data", type=Path, default=Path("data"))
@@ -87,7 +87,8 @@ def main():
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     curve = game_curve()
-    gen = G.WorldGenerator(args.model, args.seed, args.device)
+    from terrain_slm.world.generator2 import WorldGenerator2
+    gen = WorldGenerator2(args.model, args.seed, args.device)
 
     c = G.procedural_controls(-1200, -1200, 2400, 2400, args.seed, args.device)
     k = int(torch.argmax(c["trend"]))

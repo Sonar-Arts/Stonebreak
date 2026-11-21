@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
  */
 class EntitySoundsRoutingTest {
 
-    private record Heard(EntityType type, String event, float x, float y, float z) {}
+    private record Heard(EntityType type, String event, double x, double y, double z) {}
 
     @Test
     void aServerWorldVoiceGoesToItsSoundSinkAtTheEntitysMiddle() {
@@ -32,7 +32,7 @@ class EntitySoundsRoutingTest {
 
         EntitySounds.emit(cow, EntitySounds.EVENT_DEATH);
 
-        assertEquals(List.of(new Heard(EntityType.COW, EntitySounds.EVENT_DEATH, 3f, 65f, -2f)), heard);
+        assertEquals(List.of(new Heard(EntityType.COW, EntitySounds.EVENT_DEATH, 3.0, 65.0, -2.0)), heard);
     }
 
     @Test
@@ -48,7 +48,7 @@ class EntitySoundsRoutingTest {
         Entity entity = mock(Entity.class);
         when(entity.getWorld()).thenReturn(world);
         when(entity.getType()).thenReturn(EntityType.COW);
-        when(entity.getPosition()).thenReturn(new Vector3f(3f, 64f, -2f));
+        when(entity.getPosition()).thenReturn(new org.joml.Vector3d(3, 64, -2));
         when(entity.getHeight()).thenReturn(2f);
         return entity;
     }

@@ -24,28 +24,30 @@ public final class HeldItemPose {
     }
 
     /** World position of the hand of a figure standing at {@code feet}, facing {@code bodyYawDeg}. */
-    static Vector3f hand(Vector3f feet, float bodyYawDeg, Vector3f dest) {
+    static org.joml.Vector3d hand(org.joml.Vector3dc feet, float bodyYawDeg, org.joml.Vector3d dest) {
         float yawRad = (float) Math.toRadians(bodyYawDeg);
         float cos = (float) Math.cos(yawRad);
         float sin = (float) Math.sin(yawRad);
         // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
-        return dest.set(feet.x + HAND_RIGHT * cos + HAND_FORWARD * (-sin),
-                feet.y + HAND_UP,
-                feet.z + HAND_RIGHT * (-sin) + HAND_FORWARD * (-cos));
+        return dest.set(feet.x() + HAND_RIGHT * cos + HAND_FORWARD * (-sin),
+                feet.y() + HAND_UP,
+                feet.z() + HAND_RIGHT * (-sin) + HAND_FORWARD * (-cos));
     }
 
     /**
      * A point of a held voxelized tool, given in the tool's voxel-mesh space, in world space —
      * the transform chain {@link DropRenderer#renderHeldItems} draws the tool with.
      */
-    public static Vector3f toolPointWorld(Vector3f feet, float bodyYawDeg, Vector3f meshPoint, Vector3f dest) {
-        Vector3f hand = hand(feet, bodyYawDeg, new Vector3f());
-        return new Matrix4f()
-                .translate(hand)
+    public static org.joml.Vector3d toolPointWorld(org.joml.Vector3dc feet, float bodyYawDeg, Vector3f meshPoint,
+                                                   org.joml.Vector3d dest) {
+        org.joml.Vector3d hand = hand(feet, bodyYawDeg, new org.joml.Vector3d());
+        // The tool's offset from the hand in float, added to the double hand position.
+        Vector3f local = new Matrix4f()
                 .rotateY((float) Math.toRadians(bodyYawDeg))
                 .scale(TOOL_SCALE)
                 .translate(0f, VOXEL_DROP_LIFT, 0f)
                 .mul(VoxelizedSpriteRenderer.getBaseSpriteTransform())
-                .transformPosition(meshPoint, dest);
+                .transformPosition(meshPoint, new Vector3f());
+        return dest.set(hand).add(local.x, local.y, local.z);
     }
 }

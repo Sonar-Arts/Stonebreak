@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -17,7 +17,7 @@ class SpikeContactRulesTest {
     /** One spiked wall at the origin, its points leaning east (+X). */
     private static World wallLeaningEast() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(BlockType.AIR);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenReturn(BlockType.AIR);
         when(world.getBlockAt(0, 0, 0)).thenReturn(BlockType.PALISADE);
         when(world.getBlockStateAt(0, 0, 0)).thenReturn("palisade:facing=EAST");
         return world;

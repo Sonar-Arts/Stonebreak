@@ -145,8 +145,9 @@ public class SoundEmitterRenderer {
         // Make the triangle always face the player (billboard effect)
         Player player = Game.getPlayer();
         if (player != null) {
-            Vector3f playerPos = player.getPosition();
-            Vector3f direction = new Vector3f(playerPos).sub(position).normalize();
+            org.joml.Vector3d playerPos = player.getPosition();
+            Vector3f direction = new Vector3f((float) (playerPos.x - position.x), (float) (playerPos.y - position.y),
+                    (float) (playerPos.z - position.z)).normalize();
 
             // Calculate rotation to face player (simple Y-axis rotation)
             float yaw = (float) Math.atan2(direction.x, direction.z);

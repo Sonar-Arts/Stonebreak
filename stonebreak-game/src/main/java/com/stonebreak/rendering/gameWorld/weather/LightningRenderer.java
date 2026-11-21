@@ -100,7 +100,7 @@ public final class LightningRenderer {
      * @param reach blocks to the terrain's horizon: no strikes beyond it
      * @return this frame's flash in [0, 1]
      */
-    public float update(ClientWeather weather, World world, Vector3f cameraWorldPos, float reach) {
+    public float update(ClientWeather weather, World world, org.joml.Vector3dc cameraWorldPos, float reach) {
         if (weather == null) {
             bolts.clear();
             lastSeconds = Double.NaN;
@@ -110,11 +110,11 @@ public final class LightningRenderer {
         double now = weather.seconds();
         if (!Double.isNaN(lastSeconds)) {
             for (LightningScheduler.Strike s : weather.strikesBetween(lastSeconds, now,
-                    cameraWorldPos.x, cameraWorldPos.z, Math.min(RANGE, reach))) {
+                    cameraWorldPos.x(), cameraWorldPos.z(), Math.min(RANGE, reach))) {
                 int ground = world != null
                         ? WeatherSurface.groundY(world, (int) Math.floor(s.x()), (int) Math.floor(s.z()))
                         : WeatherSurface.UNKNOWN;
-                double d = Math.hypot(s.x() - cameraWorldPos.x, s.z() - cameraWorldPos.z);
+                double d = Math.hypot(s.x() - cameraWorldPos.x(), s.z() - cameraWorldPos.z());
                 // The bolt leaves the cloud it struck from: its base, as the
                 // ground trims it, not a fixed storm altitude.
                 CloudColumn col = weather.columnAt(s.x(), s.z(), s.seconds());
@@ -141,9 +141,9 @@ public final class LightningRenderer {
             flash += glow / (1f + (float) bolt.distance() / FLASH_HALF_DISTANCE);
             // Bolts are in strike order, so the ring keeps the newest flashes.
             flashes[flashIndex++ % MAX_FLASHES].set(
-                    (float) bolt.strike().x() - RenderOrigin.x(),
-                    bolt.cloudY() + FLASH_DEPTH,
-                    (float) bolt.strike().z() - RenderOrigin.z(),
+                    RenderOrigin.relativeX(bolt.strike().x()),
+                    RenderOrigin.relativeY((double) (bolt.cloudY() + FLASH_DEPTH)),
+                    RenderOrigin.relativeZ(bolt.strike().z()),
                     glow);
         }
         return Math.min(flash, 1f);
@@ -162,7 +162,7 @@ public final class LightningRenderer {
      * so the cloud pass drawn next treats bolts as scene: cloud in front of a
      * bolt veils it, cloud behind it does not cover it.
      */
-    public void render(Matrix4f projection, Matrix4f view, Vector3f cameraWorldPos) {
+    public void render(Matrix4f projection, Matrix4f view, org.joml.Vector3dc cameraWorldPos) {
         if (bolts.isEmpty() || Double.isNaN(lastSeconds)) return;
         vertices.clear();
         int count = 0;
@@ -202,20 +202,25 @@ public final class LightningRenderer {
         glDepthMask(depthMask);
     }
 
+    private final Vector3f camRender = new Vector3f();
+
     /** Appends one bolt's camera-facing ribbon (render space); returns vertices added. */
-    private int buildRibbon(Bolt bolt, float alpha, Vector3f cam) {
+    private int buildRibbon(Bolt bolt, float alpha, org.joml.Vector3dc camWorld) {
         LightningScheduler.Strike s = bolt.strike();
         Random rng = new Random(s.seed());
         float top = bolt.cloudY();
         float bottom = Math.min(bolt.groundY(), top - 1f);
         float width = Math.max(0.7f, (float) bolt.distance() * 0.004f);
-        float ox = RenderOrigin.x(), oz = RenderOrigin.z();
-        float camX = cam.x - ox, camZ = cam.z - oz;
+        // Render space on all three axes (exact double differences against the origin).
+        Vector3f cam = RenderOrigin.toRender(camWorld, camRender);
+        float camX = cam.x, camZ = cam.z;
+        float topR = RenderOrigin.relativeY((double) top);
+        float bottomR = RenderOrigin.relativeY((double) bottom);
 
-        a.set((float) s.x() - ox, top, (float) s.z() - oz);
+        a.set(RenderOrigin.relativeX(s.x()), topR, RenderOrigin.relativeZ(s.z()));
         int added = 0;
         for (int i = 1; i <= SEGMENTS; i++) {
-            float y = top + (bottom - top) * i / SEGMENTS;
+            float y = topR + (bottomR - topR) * i / SEGMENTS;
             float jitter = i == SEGMENTS ? 0.5f : 3.5f;
             b.set(a.x + (rng.nextFloat() - 0.5f) * 2f * jitter, y, a.z + (rng.nextFloat() - 0.5f) * 2f * jitter);
             // Ribbon edge: perpendicular to the segment and to the view.

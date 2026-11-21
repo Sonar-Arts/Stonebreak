@@ -5,7 +5,7 @@ import com.stonebreak.world.chunk.ChunkWaterLayer;
 
 /**
  * Shared water level-to-height conversion, used by both mesh generation
- * ({@code MmsWaterGenerator}) and player physics (submersion depth).
+ * (the native fluid mesher's {@code surface_by_level}, see VoxelLayers) and player physics (submersion depth).
  */
 public final class WaterHeightUtil {
 
@@ -21,7 +21,7 @@ public final class WaterHeightUtil {
      * position: sources and falling columns are full height, flowing water steps down
      * with its level. NaN when the position is not water.
      */
-    public static float resolveSurfaceHeightFraction(World world, int x, int y, int z) {
+    public static float resolveSurfaceHeightFraction(World world, long x, long y, long z) {
         int value = world.getWaterLevelAt(x, y, z);
         if (value < 0) {
             return Float.NaN;

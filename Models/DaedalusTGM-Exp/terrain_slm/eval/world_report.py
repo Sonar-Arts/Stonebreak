@@ -1,6 +1,6 @@
 """World report: the three things players see first, measured in game blocks.
 
-    python -m terrain_slm.eval.world_report --model checkpoints/v4 --seeds 0 1 2 --out reports/v4
+    python -m terrain_slm.eval.world_report --model checkpoints/exp2-r3 --seeds 0 1 2 --out reports/exp2-r3
 
 For each seed, builds a BLOCKS x BLOCKS square of block columns through the full pipeline
 (river_field -> block stages, exactly what TGMPipe sends) centred on spawn, and reports:
@@ -26,7 +26,6 @@ import torch.nn.functional as F
 
 from terrain_slm.device import default_device
 from terrain_slm.river import pipeline as RP
-from terrain_slm.world import generator as G
 
 BLOCKS = 768
 LOWLAND_Y = 100      # ~600 m under the game curve
@@ -48,9 +47,9 @@ def containment(builder, bi0: int, bj0: int, n: int) -> dict:
     column's top one -- must meet, sideways, solid ground, the sea or another wet column; and a wet
     neighbour may sit at most one block lower (a taller drop exposes water to air)."""
     height, _, level, wet, (floor, roof, _) = builder._blocks(bi0, bj0, bi0 + n, bj0 + n, D)
-    top = builder.world.world_height - 1
-    h = height.clamp(0, top).cpu().numpy(); wet = wet.cpu().numpy()
-    lv = np.where(wet, level.clamp(0, top).cpu().numpy(), -1)
+    top, bottom = builder.world.world_height - 1, builder.world.min_y
+    h = height.clamp(bottom, top).cpu().numpy(); wet = wet.cpu().numpy()
+    lv = np.where(wet, level.clamp(bottom, top).cpu().numpy(), -1)
     floor, roof = floor.cpu().numpy(), roof.cpu().numpy()
     sea = h < builder.world.sea_level
     tunnel = roof > floor
@@ -126,7 +125,8 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     rows = []
     for seed in args.seeds:
-        gen = G.WorldGenerator(args.model, seed, args.device)
+        from terrain_slm.world.generator2 import WorldGenerator2
+        gen = WorldGenerator2(args.model, seed, args.device)   # the service's generator (EXP-2 only)
         sea_y = int(gen.scale.sea_level)
         c, stats = columns(gen, -args.blocks // 2, -args.blocks // 2, args.blocks)
         from terrain_slm.world.tiles import TileBuilder
@@ -134,12 +134,29 @@ def main():
         leak = containment(TileBuilder(gen, WorldConfig.GAME), -args.blocks // 2, -args.blocks // 2, args.blocks)
         row = {"model": gen.model_id, "seed": seed, "river_threshold": gen.cfg.river_log_threshold, "containment": leak,
                "lowland": lowland_stats(c["height"], c["wet"], sea_y), "rivers": river_stats(c, sea_y),
-               "pipeline_stats": {k: v for k, v in stats.items() if isinstance(v, (int, float))}}
+               "pipeline_stats": pipeline_stats(stats)}
         rows.append(row)
         print(json.dumps(row), flush=True)
         _sheet(c, args.out / f"world_seed{seed}.png", f"seed {seed} · {gen.model_id}")
         np.savez_compressed(args.out / f"world_seed{seed}.npz", **c)
     (args.out / "world_report.json").write_text(json.dumps(rows, indent=2))
+
+
+def pipeline_stats(stats: dict) -> dict:
+    """The numeric ctx.stats, with the river / block stages' device-resident `Lazy` numbers read out (review-python
+    LOW-1: an isinstance(int, float) filter dropped every one of them, so pipeline_stats came out empty)."""
+    from terrain_slm.river.field import Lazy
+    out = {}
+    for k, v in stats.items():
+        if isinstance(v, Lazy):
+            v = v.value()
+        if not isinstance(v, (int, float)):
+            if hasattr(v, "item") and getattr(v, "ndim", 1) == 0:   # 0-d numpy / torch scalars
+                v = v.item()
+            else:
+                continue
+        out[k] = v
+    return out
 
 
 def _sheet(c: dict, path: Path, title: str):

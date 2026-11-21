@@ -19,8 +19,9 @@ public class SpawnSoundEmitCommand implements ChatCommand {
         }
 
         Player player = Game.getPlayer();
-        Vector3f playerPos = player.getPosition();
-        Vector3f spawnPos = new Vector3f(playerPos.x, playerPos.y + 1.0f, playerPos.z);
+        // Debug emitters keep a float world position (engine audio.emitters); played through AudioSpace.
+        var playerPos = player.getPosition();
+        Vector3f spawnPos = new Vector3f((float) playerPos.x, (float) (playerPos.y + 1.0), (float) playerPos.z);
 
         var emitterManager = Game.getSoundEmitterManager();
         if (emitterManager != null) {

@@ -85,7 +85,7 @@ public final class WeatherEffects {
      *
      * @param flash lightning light to add this frame (0 = none)
      */
-    public void update(ClientWeather weather, World world, Vector3f cameraPos, float totalTime, float flash) {
+    public void update(ClientWeather weather, World world, org.joml.Vector3dc cameraPos, float totalTime, float flash) {
         float target = weather == null ? 0f : sampleAround(weather, cameraPos);
         float targetSnow = world == null ? snow : snowAround(world, cameraPos);
         if (Float.isNaN(lastTime)) {
@@ -101,23 +101,23 @@ public final class WeatherEffects {
         this.flash = flash;
         // Rain and snow fall from the cloud base down; above the clouds the air is clear.
         float under = smoothstep(Math.clamp(
-                (PrecipitationFog.BASE + PrecipitationFog.RISE - cameraPos.y) / PrecipitationFog.RISE, 0f, 1f));
+                (float) ((PrecipitationFog.BASE + PrecipitationFog.RISE - cameraPos.y()) / PrecipitationFog.RISE), 0f, 1f));
         extinction = extinction(storminess, snow) * under;
         SceneLight.setWeather(1f - MAX_DIMMING * storminess, flash);
     }
 
-    private static float sampleAround(ClientWeather weather, Vector3f p) {
-        float sum = weather.precipitationAt(p.x, p.z);
-        sum += weather.precipitationAt(p.x + SAMPLE_SPREAD, p.z);
-        sum += weather.precipitationAt(p.x - SAMPLE_SPREAD, p.z);
-        sum += weather.precipitationAt(p.x, p.z + SAMPLE_SPREAD);
-        sum += weather.precipitationAt(p.x, p.z - SAMPLE_SPREAD);
+    private static float sampleAround(ClientWeather weather, org.joml.Vector3dc p) {
+        float sum = weather.precipitationAt(p.x(), p.z());
+        sum += weather.precipitationAt(p.x() + SAMPLE_SPREAD, p.z());
+        sum += weather.precipitationAt(p.x() - SAMPLE_SPREAD, p.z());
+        sum += weather.precipitationAt(p.x(), p.z() + SAMPLE_SPREAD);
+        sum += weather.precipitationAt(p.x(), p.z() - SAMPLE_SPREAD);
         return sum / 5f;
     }
 
     /** Share of the ground around the camera where it snows instead of rains (as the precipitation renderer decides). */
-    private static float snowAround(World world, Vector3f p) {
-        int x = (int) Math.floor(p.x), z = (int) Math.floor(p.z), s = (int) SAMPLE_SPREAD;
+    private static float snowAround(World world, org.joml.Vector3dc p) {
+        int x = (int) Math.floor(p.x()), z = (int) Math.floor(p.z()), s = (int) SAMPLE_SPREAD;
         int n = 0;
         if (WeatherSurface.isSnow(world, x, z)) n++;
         if (WeatherSurface.isSnow(world, x + s, z)) n++;

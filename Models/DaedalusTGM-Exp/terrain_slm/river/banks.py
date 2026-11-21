@@ -22,10 +22,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from terrain_slm.data import descriptors as D
-from terrain_slm.river.field import RiverContext, RiverField
+from terrain_slm.river.field import Lazy, RiverContext, RiverField
 from terrain_slm.river.geometry import dilate
 
 N_IN = 4                  # filled relative ground, band mask, water mask, signed distance
+#: The bank network's convolutions in exact fp32 (cuDNN TF32 off, scoped to its forward): see BankStage.__call__.
+BANK_FP32 = True
 REL_SCALE_BLOCKS = 10.0   # model units: blocks / 10
 SD_CAP_PX = 32
 FILL_SIGMAS = (3.0, 6.0, 12.0, 24.0)
@@ -153,7 +155,11 @@ class LearnedBanks:
         x = F.pad(x, (0, pw, 0, ph), mode="replicate")
         # Full precision: this runs on request-shaped tensors, and bf16 rounding that depends on
         # the kernel chosen for a shape would make the ground depend on the request.
-        pred = self.model(x.float())[0, 0, :h, :w] * REL_SCALE_BLOCKS
+        # Exact fp32 convolutions (2026-11-19, agent D, user-approved): torch's default runs them in cuDNN TF32, whose
+        # summation order nothing else can reproduce; with TF32 off the native river stage (libstonebreak_terrain) is
+        # bit-identical to this. Scoped to this forward only (BANK_FP32; model_id marker ":bf32" in generator.py).
+        with torch.backends.cudnn.flags(enabled=torch.backends.cudnn.enabled, allow_tf32=not BANK_FP32):
+            pred = self.model(x.float())[0, 0, :h, :w] * REL_SCALE_BLOCKS
         # Fade to the untouched ground over the band's outer rim, so the band never shows.
         rim = ctx.scale.px_per_block * 1.5
         sd = signed_distance(f.channel[None, None])[0, 0]
@@ -194,10 +200,12 @@ class BankGuard:
         water = torch.where(ring, torch.maximum(f.level, touching), f.level)
         need = water + GUARD_MARGIN_BLOCKS * ctx.scale.rate(water)
         low = ring & (f.carved < need)
-        ctx.stats["guard_raised_px"] = int(low.sum())
-        ctx.stats["bank_ring_px"] = int(ring.sum())
-        lift = ((need - f.carved) / ctx.scale.rate(water))[low]
-        ctx.stats["guard_mean_lift_blocks"] = float(lift.mean()) if lift.numel() else 0.0
-        ctx.stats["guard_lift_over_half_block_px"] = int((lift > 0.5).sum())
+        n_low = low.sum()
+        ctx.stats["guard_raised_px"] = Lazy(n_low)
+        ctx.stats["bank_ring_px"] = Lazy(ring.sum())
+        lift = torch.where(low, (need - f.carved) / ctx.scale.rate(water), torch.zeros_like(need))
+        ctx.stats["guard_mean_lift_blocks"] = Lazy(torch.stack([lift.sum(dtype=torch.float32), n_low.float()]),
+                                                   lambda t: float(t[0] / t[1]) if float(t[1]) > 0 else 0.0)
+        ctx.stats["guard_lift_over_half_block_px"] = Lazy(((lift > 0.5) & low).sum())
         f.carved = torch.where(low, need, f.carved)
         return f

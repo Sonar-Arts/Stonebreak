@@ -1,10 +1,13 @@
 package com.stonebreak.world.save.serialization;
 
+import com.stonebreak.world.generation.HeightCurveVersion;
+import com.stonebreak.world.generation.WorldFeatureVersion;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
 import com.stonebreak.world.weather.WeatherZone;
-import org.joml.Vector3f;
+import com.stonebreak.world.save.WorldFormat;
+import org.joml.Vector3d;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 
@@ -21,7 +24,7 @@ public class JsonWorldSerializer {
         json.append("  \"seed\": ").append(world.getSeed()).append(",\n");
         json.append("  \"worldName\": \"").append(JsonParsingUtil.escapeJson(world.getWorldName())).append("\",\n");
 
-        Vector3f spawn = world.getSpawnPosition();
+        Vector3d spawn = world.getSpawnPosition();
         json.append("  \"spawnPosition\": {\n");
         json.append("    \"x\": ").append(spawn.x).append(",\n");
         json.append("    \"y\": ").append(spawn.y).append(",\n");
@@ -39,7 +42,17 @@ public class JsonWorldSerializer {
         json.append("  \"weatherMode\": \"").append(world.getWeatherMode().name()).append("\",\n");
         json.append("  \"weatherZones\": \"").append(WeatherZone.formatAll(world.getWeatherZones())).append("\",\n");
         json.append("  \"formatVersion\": ").append(world.getFormatVersion()).append(",\n");
-        json.append("  \"generatorType\": \"").append(world.getGeneratorType().name()).append("\"\n");
+        json.append("  \"generatorType\": \"").append(world.getGeneratorType().name()).append("\",\n");
+        json.append("  \"terrainScale\": \"").append(world.getTerrainScale().name()).append("\",\n");
+        json.append("  \"climateLayout\": \"").append(world.getClimateLayout().name()).append("\",\n");
+        json.append("  \"heightCurve\": ").append(world.getHeightCurve().number()).append(",\n");
+        json.append("  \"worldFeatures\": ").append(world.getWorldFeatures().number()).append(",\n");
+        json.append("  \"standardShape\": ").append(world.getStandardShape().number()).append(",\n");
+        json.append("  \"terrainModel\": \"").append(JsonParsingUtil.escapeJson(world.getTerrainModel().path())).append("\",\n");
+        json.append("  \"terrainModelId\": \"").append(JsonParsingUtil.escapeJson(world.getTerrainModel().contentId())).append("\",\n");
+        json.append("  \"minY\": ").append(world.getMinY()).append(",\n");
+        json.append("  \"maxY\": ").append(world.getMaxY()).append(",\n");
+        json.append("  \"cubeEdge\": ").append(world.getCubeEdge()).append("\n");
         json.append("}");
 
         return json.toString().getBytes(StandardCharsets.UTF_8);
@@ -52,7 +65,7 @@ public class JsonWorldSerializer {
             return WorldData.builder()
                 .seed(JsonParsingUtil.extractLong(json, "seed"))
                 .worldName(JsonParsingUtil.extractString(json, "worldName"))
-                .spawnPosition(JsonParsingUtil.extractVector3f(json, "spawnPosition"))
+                .spawnPosition(JsonParsingUtil.extractVector3d(json, "spawnPosition"))
                 .hasExplicitSpawn(JsonParsingUtil.extractBoolean(json, "hasExplicitSpawn", false))
                 .createdTime(JsonParsingUtil.extractDateTime(json, "creationTime"))
                 .lastPlayed(JsonParsingUtil.extractDateTime(json, "lastPlayed"))
@@ -64,9 +77,32 @@ public class JsonWorldSerializer {
                 .weatherMode(WorldData.parseWeatherMode(
                     JsonParsingUtil.extractStringOptional(json, "weatherMode")))
                 .weatherZones(WeatherZone.parseAll(JsonParsingUtil.extractStringOptional(json, "weatherZones")))
-                .formatVersion(JsonParsingUtil.extractInt(json, "formatVersion", 1))
+                // A record without a version predates versioning: the column format.
+                .formatVersion(JsonParsingUtil.extractInt(json, "formatVersion", WorldFormat.LEGACY_COLUMN_VERSION))
                 .generatorType(TerrainGeneratorType.parse(
                     JsonParsingUtil.extractStringOptional(json, "generatorType"), WorldData.LEGACY_GENERATOR))
+                .terrainScale(WorldData.parseTerrainScale(JsonParsingUtil.extractStringOptional(json, "terrainScale")))
+                .climateLayout(WorldData.parseClimateLayout(JsonParsingUtil.extractStringOptional(json, "climateLayout")))
+                // Missing = a world saved before curve versions: it keeps the curve it was generated with.
+                .heightCurve(HeightCurveVersion.parse(
+                    Long.toString(JsonParsingUtil.extractLong(json, "heightCurve", HeightCurveVersion.LEGACY.number())),
+                    HeightCurveVersion.LEGACY))
+                // Missing = a world saved before world feature versions: no boulders next to its old terrain.
+                .worldFeatures(WorldFeatureVersion.of(
+                    JsonParsingUtil.extractLong(json, "worldFeatures", WorldFeatureVersion.LEGACY.number()),
+                    WorldFeatureVersion.LEGACY))
+                .standardShape(com.stonebreak.world.generation.StandardShapeVersion.of(
+                    JsonParsingUtil.extractLong(json, "standardShape",
+                        com.stonebreak.world.generation.StandardShapeVersion.LEGACY.number()),
+                    com.stonebreak.world.generation.StandardShapeVersion.LEGACY))
+                // Missing = a world saved before terrain models were recorded: made by v4 (TerrainModelRef.LEGACY, retired).
+                .terrainModel(com.stonebreak.world.generation.TerrainModelRef.parse(
+                    JsonParsingUtil.extractStringOptional(json, "terrainModel"),
+                    JsonParsingUtil.extractStringOptional(json, "terrainModelId")))
+                // Missing bounds = the old 0..256 column world (WorldFormat then reports it incompatible).
+                .bounds(JsonParsingUtil.extractLong(json, "minY", WorldFormat.LEGACY_MIN_Y),
+                    JsonParsingUtil.extractLong(json, "maxY", WorldFormat.LEGACY_MAX_Y),
+                    JsonParsingUtil.extractInt(json, "cubeEdge", WorldFormat.LEGACY_EDGE))
                 .build();
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize WorldData: " + e.getMessage(), e);

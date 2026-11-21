@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class StartleBehaviorTest {
 
-    private final StubMob mob = new StubMob(EntityType.CHICKEN, new Vector3f(0, 64, 0));
+    private final StubMob mob = new StubMob(EntityType.CHICKEN, new org.joml.Vector3d(0, 64, 0));
     private final AiContext context = new AiContext(
             mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), PlayerLocator.NONE);
 

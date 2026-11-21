@@ -173,7 +173,8 @@ public class PlayerArmRenderer {
         org.joml.Vector3f eyeTip = armViewModel.transformPosition(new org.joml.Vector3f(modelTip));
         eyeTip.x += ROD_TIP_NUDGE_RIGHT;
         eyeTip.y += ROD_TIP_NUDGE_UP;
-        return eyeToWorld(player, eyeTip);
+        org.joml.Vector3d world = eyeToWorld(player, eyeTip);
+        return new org.joml.Vector3f((float) world.x, (float) world.y, (float) world.z);
     }
 
     /**
@@ -182,7 +183,7 @@ public class PlayerArmRenderer {
      * same transform chain the item is rendered with, so the point follows the arm's
      * walk bob, idle sway and swing.
      */
-    public org.joml.Vector3f heldPointWorld(Player player, org.joml.Vector3f meshPoint) {
+    public org.joml.Vector3d heldPointWorld(Player player, org.joml.Vector3f meshPoint) {
         Matrix4f armViewModel = heldItemArmPose(player);
         org.joml.Vector3f model = com.stonebreak.rendering.player.items.voxelization.VoxelizedSpriteRenderer
                 .getBaseSpriteTransform().transformPosition(new org.joml.Vector3f(meshPoint));
@@ -205,11 +206,11 @@ public class PlayerArmRenderer {
      * coordinates. Inverting the render-space view matrix lands in render space, so step
      * back out of it — callers pair these points with entities' world positions.
      */
-    private static org.joml.Vector3f eyeToWorld(Player player, org.joml.Vector3f eyePoint) {
+    private static org.joml.Vector3d eyeToWorld(Player player, org.joml.Vector3f eyePoint) {
         Matrix4f invView = new Matrix4f();
         player.getViewMatrix().invert(invView);
         org.joml.Vector3f renderPoint = invView.transformPosition(eyePoint);
-        return com.openmason.engine.rendering.RenderOrigin.toWorld(renderPoint, renderPoint);
+        return com.openmason.engine.rendering.RenderOrigin.toWorld(renderPoint, new org.joml.Vector3d());
     }
 
     /**
@@ -259,11 +260,11 @@ public class PlayerArmRenderer {
         try {
             com.stonebreak.world.World world = com.stonebreak.core.Game.getWorld();
             if (world == null) return 1.0f;
-            org.joml.Vector3f pos = player.getPosition();
+            org.joml.Vector3d pos = player.getPosition();
             com.stonebreak.world.lighting.WorldLightingContext ctx =
                 new com.stonebreak.world.lighting.WorldLightingContext(world);
             return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
-                ctx, pos.x, pos.y + 1.6f, pos.z);
+                ctx, (float) pos.x, (float) pos.y + 1.6f, (float) pos.z);
         } catch (Exception ignored) {
             // Lighting sampler throws when the player's chunk is unloaded (early boot, menu transitions).
             // Return full brightness so the arm is never rendered pitch-black.

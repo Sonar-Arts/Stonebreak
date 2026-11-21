@@ -59,7 +59,6 @@ class ServerLevelInterruptTest {
     void anInterruptedBootOfASavedWorldThrowsAndKeepsItsMetadata() throws Exception {
         String name = "interrupt-368";
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             globals.when(Game::getInstance).thenReturn(mock(Game.class));
             globals.when(Game::getWorld).thenReturn(world);

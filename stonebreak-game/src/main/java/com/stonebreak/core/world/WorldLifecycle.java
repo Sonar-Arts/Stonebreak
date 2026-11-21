@@ -30,6 +30,10 @@ public final class WorldLifecycle {
         game.cancelClientWorldBuild(); // a build still in flight must not install a world after the reset
         resetWorld();
         com.stonebreak.network.MultiplayerSession.shutdown();
+        // The worlds have closed their terrain: the Daedalus pipeline (models, GPU memory, pinned host caches) goes
+        // too instead of idling under the menu (2026-11-20). A no-op when it is not running; the world list's
+        // prestart or the next world starts it again (~1 s).
+        com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.getInstance().shutdown();
         game.setState(com.stonebreak.core.GameState.MAIN_MENU);
         if (game.getPauseMenu() != null) {
             game.getPauseMenu().setVisible(false);
@@ -169,18 +173,63 @@ public final class WorldLifecycle {
      */
     public World createClientWorldInstance(long seed,
                                            com.stonebreak.world.generation.TerrainGeneratorType generatorType) {
-        return World.createClientView(new WorldConfiguration(), seed, generatorType);
+        return createClientWorldInstance(seed, generatorType, null);
+    }
+
+    /** As above for the server world's terrain scale (null = 1:4): the client's generator serves FastLOD. */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale) {
+        return createClientWorldInstance(seed, generatorType, terrainScale, null, null);
+    }
+
+    /**
+     * As above with the server world's climate layout and height curve (null = belts / the current curve):
+     * DIFFUSION worlds build their terrain from them.
+     */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                           com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                           com.stonebreak.world.generation.HeightCurveVersion heightCurve) {
+        return createClientWorldInstance(seed, generatorType, terrainScale, climateLayout, heightCurve, null);
+    }
+
+    /** As above with the server world's Standard shape (null = the current one). */
+    public World createClientWorldInstance(long seed,
+                                           com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                           com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                           com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                           com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                           com.stonebreak.world.generation.StandardShapeVersion standardShape) {
+        World w = World.createClientView(new WorldConfiguration(), seed, generatorType, terrainScale, climateLayout,
+            heightCurve, standardShape);
+        // Singleplayer / host / the menu showcase: borrow the integrated server's terrain (same identity) instead of a
+        // second generator with its own tile caches. A remote client finds no server and builds its own.
+        w.setTerrainSource(WorldLifecycle::integratedServerWorld);
+        return w;
+    }
+
+    /** The integrated server's world in this process, or null (a remote client, or no session). */
+    static World integratedServerWorld() {
+        var server = com.stonebreak.network.MultiplayerSession.getServer();
+        var ctx = server != null ? server.worldContext() : null;
+        var level = ctx != null ? ctx.serverLevel() : null;
+        return level != null ? level.world() : null;
     }
 
     /**
      * Replaces the current world with a new instance, disposes of the old
      * one, creates a fresh player, and re-runs world-dependent bootstrap.
+     *
+     * <p>Called from the {@code ClientWorld-Build} thread while the main thread keeps ticking and drawing
+     * {@code Game.getWorld()}. The new world is published FIRST and the old one is closed on the MAIN thread
+     * (between frames): closing it here used to free its native {@code CubeWorld} under the main thread's
+     * per-tick queries ({@code WeatherAudio} -> {@code World.topY}: "CubeWorld is closed", or a native call
+     * racing the free).
      */
     public void replaceWorldInstance(World newWorld) {
         World oldWorld = Game.getWorld();
-        if (oldWorld != null) {
-            oldWorld.cleanup();
-        }
 
         Player newPlayer = new Player(newWorld);
         System.out.println("[WORLD-ISOLATION] Created fresh player for new world to ensure inventory isolation");
@@ -188,6 +237,16 @@ public final class WorldLifecycle {
         if (newWorld != null) {
             game.initWorldComponents(newWorld, newPlayer);
             System.out.println("[WORLD-ISOLATION] Initialized world components for new world");
+        }
+
+        if (oldWorld != null && oldWorld != newWorld) {
+            game.runOnMainThread(() -> {
+                try {
+                    oldWorld.cleanup();
+                } catch (RuntimeException e) {
+                    System.err.println("[WORLD-ISOLATION] Error cleaning up the replaced world: " + e);
+                }
+            });
         }
 
         System.out.println("[WORLD-ISOLATION] World instance replaced successfully");

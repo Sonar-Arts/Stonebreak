@@ -130,7 +130,10 @@ public final class PrecipitationFx {
      * particle pass draws. Inactive in lanes mode, with particles off or without the asset; spawns nothing while
      * the camera is under water (the lanes are not drawn there either).
      */
-    public void update(World world, ClientWeather weather, Vector3f cam, float totalTime, boolean underwater) {
+    public void update(World world, ClientWeather weather, org.joml.Vector3dc camera, float totalTime,
+                       boolean underwater) {
+        // The FX runtime places particles in float world space: the drop field is built around a float copy.
+        Vector3f cam = new Vector3f((float) camera.x(), (float) camera.y(), (float) camera.z());
         float dt = Float.isNaN(lastTime) ? 0f : Math.clamp(totalTime - lastTime, 0f, 0.1f);
         lastTime = totalTime;
         spawnedLastFrame = 0;

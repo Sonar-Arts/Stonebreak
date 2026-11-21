@@ -49,6 +49,11 @@ public final class CearlBootstrap {
         install(detectVramBytes());
     }
 
+    /** Headless install (no GL context: tools, the cube footprint lab) - the plan's VRAM floor applies. */
+    public static void installHeadless() {
+        install(0L);
+    }
+
     /**
      * Compiles and installs with an explicit environment (tests pass 0).
      * Returns the compiled program, or null when CEARL is off or compilation

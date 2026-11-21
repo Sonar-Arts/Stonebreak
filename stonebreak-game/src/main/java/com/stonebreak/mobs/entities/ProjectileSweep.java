@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.function.Predicate;
 
@@ -22,14 +23,14 @@ public final class ProjectileSweep {
      * The living entity whose hitbox, grown by {@code margin}, the segment
      * {@code from → to} enters first; null when it enters none.
      */
-    public static LivingEntity firstHit(EntityManager em, Vector3f from, Vector3f to, float margin) {
+    public static LivingEntity firstHit(EntityManager em, Vector3dc from, Vector3dc to, float margin) {
         return firstHit(em, from, to, margin, le -> true);
     }
 
-    /** As {@link #firstHit(EntityManager, Vector3f, Vector3f, float)}, among entities {@code hittable} accepts. */
-    public static LivingEntity firstHit(EntityManager em, Vector3f from, Vector3f to, float margin,
+    /** As {@link #firstHit(EntityManager, Vector3dc, Vector3dc, float)}, among entities {@code hittable} accepts. */
+    public static LivingEntity firstHit(EntityManager em, Vector3dc from, Vector3dc to, float margin,
                                         Predicate<LivingEntity> hittable) {
-        Vector3f dir = new Vector3f(to).sub(from);
+        Vector3d dir = new Vector3d(to).sub(from);
         LivingEntity closest = null;
         float closestT = Float.MAX_VALUE;
         for (LivingEntity le : em.getLivingEntities()) {

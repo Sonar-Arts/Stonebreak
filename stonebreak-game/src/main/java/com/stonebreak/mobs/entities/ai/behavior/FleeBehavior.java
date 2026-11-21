@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.EnumSet;
@@ -41,9 +43,9 @@ public final class FleeBehavior implements Behavior {
     /** Whether a hit sets off a flight; off for a mob whose reaction to being hit is another behaviour's. */
     private boolean armOnHit = true;
 
-    private final Vector3f threat = new Vector3f();
-    private final Vector3f sensed = new Vector3f();
-    private final Vector3f target = new Vector3f();
+    private final Vector3d threat = new Vector3d();
+    private final Vector3d sensed = new Vector3d();
+    private final Vector3d target = new Vector3d();
     private boolean threatKnown;
     /** The threat came from a hit, which already says who to run from. */
     private boolean hitArmed;
@@ -109,8 +111,8 @@ public final class FleeBehavior implements Behavior {
         if (!armOnHit) {
             return;
         }
-        Vector3f attacker = context.attacker();
-        Vector3f player = attacker != null ? attacker : context.nearestPlayer();
+        Vector3d attacker = context.attacker();
+        Vector3d player = attacker != null ? attacker : context.nearestPlayer();
         if (player != null) {
             // Whoever landed the hit; only when the source did not say, the nearest player.
             threat.set(player);
@@ -168,14 +170,14 @@ public final class FleeBehavior implements Behavior {
     }
 
     /** The nearest sensed non-player threat within {@code range}, or null. Scratch. */
-    private Vector3f sensedWithin(AiContext context, float range) {
+    private Vector3d sensedWithin(AiContext context, float range) {
         return range > 0.0f ? threats.nearest(context, range, sensed) : null;
     }
 
     /** Runs from the nearer of the nearest player and the nearest sensed threat. */
     private void rememberThreat(AiContext context) {
-        Vector3f other = sensedWithin(context, Math.max(threatTriggerRange, threatSafeRange));
-        Vector3f player = context.nearestPlayer();
+        Vector3d other = sensedWithin(context, Math.max(threatTriggerRange, threatSafeRange));
+        Vector3d player = context.nearestPlayer();
         if (other != null && (player == null || context.distanceTo(other) < context.distanceTo(player))) {
             threat.set(other);
             threatKnown = true;
@@ -202,13 +204,13 @@ public final class FleeBehavior implements Behavior {
         if (!threatKnown) {
             return; // hurt by nothing we can locate and nobody nearby — nothing to run from
         }
-        Vector3f position = context.entity().getPosition();
+        Vector3d position = context.entity().getPosition();
         target.set(position).sub(threat);
-        target.y = 0.0f;
-        if (target.lengthSquared() < 0.01f) {
+        target.y = 0.0;
+        if (target.lengthSquared() < 0.01) {
             // Standing on top of the threat: any direction is away from it.
-            float angle = context.random().nextFloat() * (float) (Math.PI * 2.0);
-            target.set((float) Math.cos(angle), 0.0f, (float) Math.sin(angle));
+            double angle = context.random().nextFloat() * (Math.PI * 2.0);
+            target.set(Math.cos(angle), 0.0, Math.sin(angle));
         }
         target.normalize().mul(distance).add(position);
         target.y = position.y;

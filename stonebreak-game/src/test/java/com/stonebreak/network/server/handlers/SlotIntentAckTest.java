@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
@@ -54,8 +54,8 @@ class SlotIntentAckTest {
     @BeforeEach
     void setUp() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(BlockType.WORKBENCH);
-        when(world.getBlockStateAt(anyInt(), anyInt(), anyInt())).thenReturn(GRID);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenReturn(BlockType.WORKBENCH);
+        when(world.getBlockStateAt(anyLong(), anyLong(), anyLong())).thenReturn(GRID);
         when(world.getWorkbenchRegistry()).thenReturn(new WorkbenchStateRegistry());
         ServerLevel level = mock(ServerLevel.class);
         when(level.world()).thenReturn(world);

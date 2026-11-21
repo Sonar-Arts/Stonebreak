@@ -125,6 +125,21 @@ public final class CloudUniforms {
         return blocks - Math.floor(blocks / CloudMap.PERIOD_BLOCKS) * CloudMap.PERIOD_BLOCKS;
     }
 
+    /** Whether receivers get cloud shadows this frame ({@code u_cloudShadowsEnabled}). */
+    boolean shadowsActive() {
+        return shadowsEnabled && mapTexture != 0;
+    }
+
+    /** The normalized direction toward the sun this frame ({@code u_cloudSunDir}). */
+    Vector3f sunDirection() {
+        return sunDir;
+    }
+
+    /** Altitude the shadow lookup projects sun rays to ({@code u_cloudShadowY}). */
+    static float shadowY() {
+        return SHADOW_Y;
+    }
+
     /** Render-space XZ + this = cloud-space XZ, wrapped to the map period ({@code u_cloudOffset}). */
     public Vector2f cloudOffset() {
         return offset;

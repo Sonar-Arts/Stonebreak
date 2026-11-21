@@ -10,6 +10,7 @@ import com.stonebreak.mobs.entities.EntityWaterPhysics;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.world.World;
 import com.stonebreak.world.physics.WorldPhysics;
+import com.stonebreak.mobs.entities.PhysicsFrame;
 import org.joml.Vector3f;
 
 /**
@@ -92,7 +93,8 @@ public final class Steering {
      * @param allowJump       false to suppress the obstacle hop (swimming, for one)
      */
     public void steerAlong(Vector3f direction, float speedMultiplier, float deltaTime, boolean allowJump) {
-        engine.steerAlong(physicsOf(entity), bodyOf(entity, body), direction.x, direction.z, speedMultiplier,
+        PhysicsWorld physics = physicsOf(entity);
+        engine.steerAlong(physics, bodyOf(entity, physics, body), direction.x, direction.z, speedMultiplier,
                 deltaTime, allowJump, apply);
         applyTo(entity, apply);
     }
@@ -105,7 +107,7 @@ public final class Steering {
      * @return whether the mob actually pushed upward
      */
     public boolean requestJump() {
-        boolean pushed = engine.requestJump(bodyOf(entity, body), apply);
+        boolean pushed = engine.requestJump(bodyOf(entity, physicsOf(entity), body), apply);
         applyTo(entity, apply);
         return pushed;
     }
@@ -142,11 +144,11 @@ public final class Steering {
     // ---- the body, both ways ---------------------------------------------------------------------
 
     /** The mob as the engine sees it this instant. */
-    static AgentBody bodyOf(LivingEntity entity, AgentBody out) {
-        Vector3f position = entity.getPosition();
-        out.x = position.x;
-        out.y = position.y;
-        out.z = position.z;
+    /** The entity as the engine's agent body, its position in {@code physics}'s frame. */
+    static AgentBody bodyOf(LivingEntity entity, PhysicsWorld physics, AgentBody out) {
+        out.x = entity.getX() - PhysicsFrame.originX(physics);
+        out.y = entity.getY() - PhysicsFrame.originY(physics);
+        out.z = entity.getZ() - PhysicsFrame.originZ(physics);
         out.yaw = entity.getRotation().y;
         out.legHeight = entity.getLegHeight();
         out.halfWidth = entity.getWidth() * 0.5f;

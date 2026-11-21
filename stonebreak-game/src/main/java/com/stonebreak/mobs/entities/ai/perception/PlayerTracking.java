@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.perception;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
+import org.joml.Vector3fc;
 
 /**
  * How hard one player is hunting a stalker with their eyes, and where they last saw it. A glimpse
@@ -24,7 +26,7 @@ public final class PlayerTracking {
     static final float TRACKING_LEVEL = 0.4f;
 
     private float level;
-    private final Vector3f lastSeen = new Vector3f();
+    private final Vector3d lastSeen = new Vector3d();
     private boolean hasLastSeen;
 
     /**
@@ -36,7 +38,7 @@ public final class PlayerTracking {
      * @param eye      the player's eye
      * @param look     unit direction the player looks, or null when unknown
      */
-    public void update(boolean inView, boolean watched, Vector3f stalker, Vector3f eye, Vector3f look, float dt) {
+    public void update(boolean inView, boolean watched, Vector3dc stalker, Vector3dc eye, Vector3fc look, float dt) {
         if (!(dt > 0f)) {
             return;
         }
@@ -62,7 +64,7 @@ public final class PlayerTracking {
     }
 
     /** Where they last saw it, or null if they never have. Do not retain. */
-    public Vector3f lastSeen() {
+    public Vector3d lastSeen() {
         return hasLastSeen ? lastSeen : null;
     }
 

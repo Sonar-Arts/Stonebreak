@@ -41,7 +41,6 @@ class ServerLevelSaveBindingTest {
             String name = "bind-366";
             assertTrue(WorldStorage.worldDir(name).startsWith(home), "the test never touches the real worlds");
             World world = mock(World.class);
-            when(world.getDirtyChunks()).thenReturn(List.of());
             try (MockedStatic<Game> globals = mockStatic(Game.class)) {
                 globals.when(Game::getInstance).thenReturn(mock(Game.class));
                 globals.when(Game::getWorld).thenReturn(world);

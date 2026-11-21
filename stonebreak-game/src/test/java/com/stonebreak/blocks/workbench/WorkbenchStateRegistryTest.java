@@ -9,8 +9,10 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.ItemDrop;
 import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -40,15 +43,15 @@ class WorkbenchStateRegistryTest {
     private static final int Y = 20;
 
     private TestWorld world;
-    private Chunk chunk;
+    private Cube chunk;
     private WorkbenchStateRegistry registry;
     private final List<String> echoes = new ArrayList<>();
 
     @BeforeEach
     void freshWorld() {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        chunk = new Chunk(0, 0);
-        world.setChunk(0, 0, chunk);
+        world.setBlockAt(3, Y, 5, BlockType.WORKBENCH);
+        chunk = world.getCubeAt(3, Y, 5);
         registry = new WorkbenchStateRegistry();
         registry.setStateChangeListener((pos, state) -> echoes.add(state));
     }
@@ -67,7 +70,7 @@ class WorkbenchStateRegistryTest {
         BlockPos pos = new BlockPos(3, Y, 5);
         seed(world, registry, pos, new ItemStack(BlockType.DIRT, 4));
 
-        String stored = chunk.getBlockState(3, Y, 5);
+        String stored = world.getBlockStateAt(3, Y, 5);
         assertTrue(WorkbenchState.isWorkbenchState(stored), "the grid is in the chunk's saved states");
         assertEquals(List.of(stored), echoes);
 
@@ -81,12 +84,13 @@ class WorkbenchStateRegistryTest {
         BlockPos pos = new BlockPos(3, Y, 5);
         seed(world, registry, pos, new ItemStack(ItemType.STICK, 6));
 
-        registry.onChunkUnloaded(chunk);
+        registry.onCubeUnloadPending(chunk);
+        registry.onCubeUnloaded(chunk);
         assertNull(registry.get(pos), "unload releases the in-memory entry");
 
         // A new session: a fresh registry hydrates from the (saved) chunk states.
         WorkbenchStateRegistry reloaded = new WorkbenchStateRegistry();
-        reloaded.onChunkLoaded(chunk);
+        reloaded.onCubeInstalled(chunk);
         ItemStack slot0 = reloaded.get(pos).getSlots()[0];
         assertSame(ItemType.STICK, slot0.getItem());
         assertEquals(6, slot0.getCount());
@@ -109,8 +113,8 @@ class WorkbenchStateRegistryTest {
 
         WorkbenchState server = new WorkbenchState(pos);
         server.getSlots()[1] = new ItemStack(BlockType.DIRT, 3);
-        chunk.setBlockState(3, Y, 5, server.toStateString());
-        registry.onChunkLoaded(chunk);
+        world.setBlockStateAt(3, Y, 5, server.toStateString());
+        registry.onCubeInstalled(chunk);
 
         assertSame(bound, registry.get(pos).getSlots());
         assertEquals(3, bound[1].getCount());
@@ -135,15 +139,15 @@ class WorkbenchStateRegistryTest {
         when(em.getAllEntities()).thenReturn(List.of());
         World dropWorld = mock(World.class);
         when(dropWorld.getEntityManager()).thenReturn(em);
-        when(dropWorld.getBlockAt(anyInt(), anyInt(), anyInt()))
-                .thenAnswer(inv -> (int) inv.getArgument(1) < Y ? BlockType.DIRT : BlockType.AIR);
+        when(dropWorld.getBlockAt(anyLong(), anyLong(), anyLong()))
+                .thenAnswer(inv -> inv.getArgument(1, Long.class) < Y ? BlockType.DIRT : BlockType.AIR);
 
         BlockPos pos = new BlockPos(3, Y, 5);
         WorkbenchState s = registry.getOrCreate(pos);
         s.getSlots()[0] = new ItemStack(BlockType.DIRT, 4);
         s.getSlots()[7] = new ItemStack(ItemType.STICK, 2);
 
-        registry.onBlockBroken(dropWorld, 3, Y, 5, new Vector3f(6f, Y, 5f));
+        registry.onBlockBroken(dropWorld, 3, Y, 5, new Vector3d(6f, Y, 5f));
 
         ArgumentCaptor<Entity> captor = ArgumentCaptor.forClass(Entity.class);
         verify(em, atLeastOnce()).addEntity(captor.capture());

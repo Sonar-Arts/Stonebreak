@@ -1,5 +1,8 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.ClimateLayout;
+import com.stonebreak.world.generation.HeightCurveVersion;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe;
 
 import java.util.Iterator;
@@ -45,15 +48,38 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
     private final int lod;
     private final int priority;
     private final int tileSize;
-    private final int maxCachedTiles;
+    private volatile int maxCachedTiles;
     private final ConcurrentHashMap<TileKey, Pending> tiles = new ConcurrentHashMap<>();
     private final LinkedHashMap<TileKey, Boolean> lru = new LinkedHashMap<>(16, 0.75f, true);
+    /** Recently evicted keys (guarded by lruLock): a miss on one of them is a thrash miss. */
+    private final java.util.LinkedHashSet<TileKey> ghosts = new java.util.LinkedHashSet<>();
+    /** Adaptive growth ceiling (0 = fixed size): each thrash miss grows the cache by {@link #GROW_STEP} up to it. */
+    private volatile int growLimit;
+    static final int GROW_STEP = 4;
     private final Object lruLock = new Object();
     private volatile boolean closed;
 
-    /** Full-detail tiles for the world's chunks. */
+    /** Full-detail tiles for the world's chunks (1:4). */
     public DiffusionTileCache(long seed) {
         this(seed, 1, TGMPipe.PRIORITY_WORLD);
+    }
+
+    /** Full-detail tiles for the chunks of a belts world at {@code scale}. */
+    public DiffusionTileCache(long seed, TerrainScalePreset scale) {
+        this(seed, scale, ClimateLayout.DEFAULT);
+    }
+
+    /** Full-detail tiles for the chunks of a world at {@code scale} with the climate {@code layout}. */
+    public DiffusionTileCache(long seed, TerrainScalePreset scale, ClimateLayout layout) {
+        this(seed, scale, layout, null);
+    }
+
+    /**
+     * Full-detail tiles for the chunks of a world at {@code scale} with the climate {@code layout}, created with the
+     * height curve {@code curve} (null = {@link HeightCurveVersion#CURRENT}; a saved world passes its own).
+     */
+    public DiffusionTileCache(long seed, TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
+        this(seed, 1, TGMPipe.PRIORITY_WORLD, scale, layout, curve);
     }
 
     /**
@@ -61,8 +87,34 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
      *            returned is in SAMPLE units (world blocks / lod): the terrain mapper zoomed out.
      */
     public DiffusionTileCache(long seed, int lod, int priority) {
-        this(TGMPipe.getInstance()::requestTile, seed, lod, priority, TerrainScale.TILE_SIZE_BLOCKS,
-                Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
+        this(seed, lod, priority, TerrainScalePreset.ONE_TO_FOUR);
+    }
+
+    /** {@link #DiffusionTileCache(long, int, int)} built at {@code scale}: its blocks, height curve and cache. */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale) {
+        this(seed, lod, priority, scale, ClimateLayout.DEFAULT);
+    }
+
+    /**
+     * {@link #DiffusionTileCache(long, int, int, TerrainScalePreset)} for a world with the climate {@code layout}
+     * (its own handshake world, so its tiles never mix with another layout's).
+     */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale, ClimateLayout layout) {
+        this(seed, lod, priority, scale, layout, null);
+    }
+
+    /** {@link #DiffusionTileCache(long, int, int, TerrainScalePreset, ClimateLayout)} with the height curve {@code curve}. */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale, ClimateLayout layout,
+                              HeightCurveVersion curve) {
+        this(seed, lod, priority, scale, layout, curve, Integer.getInteger("stonebreak.tgmpipe.maxCachedTiles", 64));
+    }
+
+    /** {@link #DiffusionTileCache(long, int, int, TerrainScalePreset, ClimateLayout, HeightCurveVersion)} keeping at
+     *  most {@code maxCachedTiles} resolved tiles (the coarse-LOD caches keep fewer: their tiles cover lod^2 more). */
+    public DiffusionTileCache(long seed, int lod, int priority, TerrainScalePreset scale, ClimateLayout layout,
+                              HeightCurveVersion curve, int maxCachedTiles) {
+        this((s, x, z, l, p) -> TGMPipe.getInstance().requestTile(s, x, z, l, p, scale, layout, curve), seed, lod,
+                priority, TerrainScale.TILE_SIZE_BLOCKS, maxCachedTiles);
     }
 
     DiffusionTileCache(TileFetcher fetcher, long seed, int lod, int priority, int tileSize, int maxCachedTiles) {
@@ -96,8 +148,10 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
         }
         int want = effectivePriority();
         TileKey key = new TileKey(Math.floorDiv(worldX, tileSize), Math.floorDiv(worldZ, tileSize));
-        Pending pending = tiles.computeIfAbsent(key,
-                k -> new Pending(fetcher.fetch(seed, k.tileX(), k.tileZ(), lod, want), want));
+        Pending pending = tiles.computeIfAbsent(key, k -> {
+            noteMiss(k);
+            return new Pending(fetcher.fetch(seed, k.tileX(), k.tileZ(), lod, want), want);
+        });
         if (want < pending.priority() && !pending.future().isDone()) {
             expedite(key, pending, want);
         }
@@ -155,18 +209,73 @@ public class DiffusionTileCache implements TerrainTileSource, AutoCloseable {
     }
 
     private void touch(TileKey key) {
-        TileKey evicted = null;
+        java.util.List<TileKey> evicted = null;
         synchronized (lruLock) {
             lru.put(key, Boolean.TRUE);
-            if (lru.size() > maxCachedTiles) {
-                Iterator<Map.Entry<TileKey, Boolean>> it = lru.entrySet().iterator();
-                evicted = it.next().getKey();
+            Iterator<Map.Entry<TileKey, Boolean>> it = lru.entrySet().iterator();
+            while (lru.size() > maxCachedTiles && it.hasNext()) {   // a loop: the limit may have just shrunk
+                TileKey k = it.next().getKey();
+                if (k.equals(key)) continue;
                 it.remove();
+                if (evicted == null) evicted = new java.util.ArrayList<>(1);
+                evicted.add(k);
+                if (growLimit > 0) {
+                    ghosts.add(k);
+                }
+            }
+            if (ghosts.size() > 2 * maxCachedTiles) {
+                Iterator<TileKey> g = ghosts.iterator();
+                for (int drop = ghosts.size() - 2 * maxCachedTiles; drop > 0 && g.hasNext(); drop--) {
+                    g.next();
+                    g.remove();
+                }
             }
         }
         if (evicted != null) {
-            tiles.remove(evicted);
+            evicted.forEach(tiles::remove);
         }
+    }
+
+    /**
+     * Resizes the cache (2026-11-20): the tiles a sweep over the area its users cover needs at once. Below that an LRU
+     * misses on nearly every request (FastLOD's ring sweeps round the player nearest-first, cube generation spirals):
+     * a 64-tile lod-1 cache under an Ultra ring re-read ~100 tiles per second from the disk tile cache, ~190 MB/s of
+     * fresh tile arrays. Shrinking evicts the least recent tiles on the next insertion.
+     */
+    public void setMaxCachedTiles(int tiles) {
+        this.maxCachedTiles = Math.max(1, tiles);
+    }
+
+    /**
+     * Lets the cache grow by itself, up to {@code limit} tiles (0 = fixed size): a request for a tile it evicted
+     * recently (it remembers twice its size of evicted keys) means the working set is larger than the cache, so it
+     * grows by {@link #GROW_STEP}. Measured 2026-11-20: a ring-sized lod-1 cache still re-read every tile ~19 times
+     * when FastLOD's nearest-first sweep and cube generation interleaved; with room for the real working set every
+     * tile was read once.
+     */
+    public void setGrowLimit(int limit) {
+        this.growLimit = Math.max(0, limit);
+        if (limit <= 0) {
+            synchronized (lruLock) {
+                ghosts.clear();
+            }
+        }
+    }
+
+    private void noteMiss(TileKey key) {
+        int limit = growLimit;
+        if (limit <= 0) {
+            return;
+        }
+        synchronized (lruLock) {
+            if (ghosts.remove(key) && maxCachedTiles < limit) {
+                maxCachedTiles = Math.min(limit, maxCachedTiles + GROW_STEP);
+            }
+        }
+    }
+
+    public int maxCachedTiles() {
+        return maxCachedTiles;
     }
 
     private void withdraw() {

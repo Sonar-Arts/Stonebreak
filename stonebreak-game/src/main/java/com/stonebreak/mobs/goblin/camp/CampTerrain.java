@@ -7,15 +7,19 @@ import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
  * The few things a goblin needs to know about the ground to pick a camp: what block is where, and
- * how high each column's solid top is (what is overhead). Never loads a chunk — an unloaded cell
- * is {@code null} and an unloaded column {@code -1}, and the search treats both as off-limits.
+ * how high each column's solid top is (what is overhead). Never loads a cube — an unknown cell
+ * is {@code null} and an unready column {@link #NO_COLUMN}, and the search treats both as off-limits.
+ * (The cubic world reaches below y = 0, so a negative top is a real one.)
  */
 public interface CampTerrain {
+
+    /** {@link #columnTop} of a column that is not ready (not every cube of its band is in). */
+    int NO_COLUMN = Integer.MIN_VALUE;
 
     /** The block at a cell, or {@code null} when its chunk is not loaded. */
     BlockType block(int x, int y, int z);
 
-    /** The highest opaque cell in a column, or {@code -1} when its chunk is not loaded. */
+    /** The highest opaque cell in a column, or {@link #NO_COLUMN} when the column is not ready. */
     int columnTop(int x, int z);
 
     default boolean solid(int x, int y, int z) {
@@ -37,7 +41,7 @@ public interface CampTerrain {
     /** Something solid overhead — out of the sun. */
     default boolean covered(int x, int y, int z) {
         int top = columnTop(x, z);
-        return top >= 0 && top > y + 1;
+        return top != NO_COLUMN && top > y + 1;
     }
 
     /**
@@ -64,11 +68,10 @@ public interface CampTerrain {
         return new CampTerrain() {
             @Override
             public BlockType block(int x, int y, int z) {
-                if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
-                    return y < 0 ? BlockType.BEDROCK : BlockType.AIR;
+                if (!WorldConfiguration.inBounds(y)) {
+                    return y < WorldConfiguration.MIN_Y ? BlockType.BEDROCK : BlockType.AIR;
                 }
-                if (world.getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                        Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE)) == null) {
+                if (!world.isKnown(x, y, z)) {
                     return null;
                 }
                 return world.getBlockAt(x, y, z);
@@ -76,6 +79,9 @@ public interface CampTerrain {
 
             @Override
             public int columnTop(int x, int z) {
+                if (!world.isColumnReadyAt(x, z)) {
+                    return NO_COLUMN;
+                }
                 return light.getColumnHeight(x, z);
             }
         };

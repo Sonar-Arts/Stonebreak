@@ -1,5 +1,6 @@
 package com.stonebreak.ui.worldHud;
 
+import com.openmason.engine.rendering.RenderOrigin;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 
@@ -37,12 +38,15 @@ public record WorldMarker(String id, Kind kind, float x, float y, String text, f
     }
 
     /**
-     * The world-to-window projection every world marker uses ({@code proj × view} of the player's camera,
-     * no depth test): the window position, or null when the point is behind the camera or outside the
-     * view ({@code |ndc| > 1}).
+     * The world-to-window projection every world marker uses ({@code proj × view} of the player's camera in
+     * RENDER space, no depth test): the WORLD position is made camera-relative in double
+     * ({@link RenderOrigin#relativeX(double)}) before it meets the float matrix, so markers stay exact
+     * anywhere in the 64-bit world. The window position, or null when the point is behind the camera or
+     * outside the view ({@code |ndc| > 1}).
      */
-    public static float[] project(Matrix4f vp, float wx, float wy, float wz, int screenW, int screenH) {
-        Vector4f clip = new Vector4f(wx, wy, wz, 1f);
+    public static float[] project(Matrix4f vp, double wx, double wy, double wz, int screenW, int screenH) {
+        Vector4f clip = new Vector4f(RenderOrigin.relativeX(wx), RenderOrigin.relativeY(wy),
+            RenderOrigin.relativeZ(wz), 1f);
         vp.transform(clip);
         if (clip.w <= 0f) return null;
         float ndcX = clip.x / clip.w;

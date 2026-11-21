@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.nav;
 
 import com.openmason.engine.nav.NavProbes;
+import com.openmason.engine.physics.PhysicsWorld;
+import com.stonebreak.mobs.entities.PhysicsFrame;
 import com.stonebreak.world.World;
 import com.stonebreak.world.physics.WorldPhysics;
 
@@ -37,23 +39,27 @@ public final class GroundProbe {
      *
      * @return the surface height, or {@link Float#NEGATIVE_INFINITY} if the column has none
      */
-    public static float groundLevel(World world, float x, float z, float startY) {
+    public static double groundLevel(World world, double x, double z, double startY) {
         if (world == null) {
-            return Float.NEGATIVE_INFINITY;
+            return Double.NEGATIVE_INFINITY;
         }
-        return NavProbes.groundLevel(WorldPhysics.of(world).engine(), x, z, startY, GROUND_SCAN_UP,
-                GROUND_SCAN_DOWN, WorldPhysics.MOB_MASK);
+        PhysicsWorld p = WorldPhysics.of(world).engine();
+        long ox = PhysicsFrame.originX(p), oy = PhysicsFrame.originY(p), oz = PhysicsFrame.originZ(p);
+        return NavProbes.groundLevel(p, x - ox, z - oz, startY - oy, GROUND_SCAN_UP,
+                GROUND_SCAN_DOWN, WorldPhysics.MOB_MASK) + oy;
     }
 
     /**
      * The top face of the highest water block near (x, y, z), or
      * {@link Float#NEGATIVE_INFINITY} when there is no water within reach.
      */
-    public static float waterSurface(World world, float x, float y, float z) {
+    public static double waterSurface(World world, double x, double y, double z) {
         if (world == null) {
-            return Float.NEGATIVE_INFINITY;
+            return Double.NEGATIVE_INFINITY;
         }
-        return NavProbes.fluidTop(WorldPhysics.of(world).engine(), x, y, z, WATER_SCAN_UP, WATER_SCAN_DOWN,
-                WorldPhysics.WATER);
+        PhysicsWorld p = WorldPhysics.of(world).engine();
+        long ox = PhysicsFrame.originX(p), oy = PhysicsFrame.originY(p), oz = PhysicsFrame.originZ(p);
+        return NavProbes.fluidTop(p, x - ox, y - oy, z - oz, WATER_SCAN_UP, WATER_SCAN_DOWN,
+                WorldPhysics.WATER) + oy;
     }
 }

@@ -2,7 +2,9 @@ package com.stonebreak.util;
 
 import com.stonebreak.world.physics.WorldPhysics;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import com.openmason.engine.physics.PhysicsWorld;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * Resolves passable spawn and escape cells for item and block drops (issues #225
@@ -33,14 +35,14 @@ public final class DropSpawnResolver {
      * #265), backed by {@code BlockShape.collisionHeight} — the whole-cell form, because
      * the drop would occupy the whole cell; a null block (out of bounds) answers nothing.
      */
-    public static boolean isPassable(World world, int x, int y, int z) {
-        return world == null || com.stonebreak.world.physics.WorldPhysics.of(world).isOpen(x, y, z, WorldPhysics.DROP_MASK);
+    public static boolean isPassable(World world, long x, long y, long z) {
+        return world == null || WorldPhysics.of(world).isOpen(x, y, z, WorldPhysics.DROP_MASK);
     }
 
     /** True when the drop's own cell collides — the drop is embedded inside a block
      *  (trunk, snow, stairs; a snow or stair cell collides at partial height). */
-    public static boolean isEmbedded(World world, int x, int y, int z) {
-        return world != null && !com.stonebreak.world.physics.WorldPhysics.of(world).isOpen(x, y, z, WorldPhysics.DROP_MASK);
+    public static boolean isEmbedded(World world, long x, long y, long z) {
+        return world != null && !WorldPhysics.of(world).isOpen(x, y, z, WorldPhysics.DROP_MASK);
     }
 
     /**
@@ -52,8 +54,8 @@ public final class DropSpawnResolver {
      * <p>Ties in distance resolve in declaration order: the broken cell itself, the four
      * horizontal neighbours, down, then up (surfacing is the last resort per the issue).</p>
      */
-    public static Vector3f resolveSpawn(World world, int cellX, int cellY, int cellZ, Vector3f preferencePoint) {
-        int[][] candidates = {
+    public static Vector3d resolveSpawn(World world, long cellX, long cellY, long cellZ, Vector3dc preferencePoint) {
+        long[][] candidates = {
             {cellX, cellY, cellZ},
             {cellX + 1, cellY, cellZ}, {cellX - 1, cellY, cellZ},
             {cellX, cellY, cellZ + 1}, {cellX, cellY, cellZ - 1},
@@ -73,38 +75,41 @@ public final class DropSpawnResolver {
      * embedded in flat ground below the surface has no side or down escape). Returns the
      * chosen cell's centre, or null when the drop is fully enclosed above too.
      */
-    public static Vector3f resolveEscape(World world, int cellX, int cellY, int cellZ, Vector3f preferencePoint) {
-        int[][] candidates = {
+    public static Vector3d resolveEscape(World world, long cellX, long cellY, long cellZ, Vector3dc preferencePoint) {
+        long[][] candidates = {
             {cellX + 1, cellY, cellZ}, {cellX - 1, cellY, cellZ},
             {cellX, cellY, cellZ + 1}, {cellX, cellY, cellZ - 1},
             {cellX, cellY - 1, cellZ},
         };
-        Vector3f escape = nearestPassable(world, candidates, preferencePoint);
+        Vector3d escape = nearestPassable(world, candidates, preferencePoint);
         if (escape != null) {
             return escape;
         }
-        return nearestPassable(world, new int[][]{{cellX, cellY + 1, cellZ}}, preferencePoint);
+        return nearestPassable(world, new long[][]{{cellX, cellY + 1, cellZ}}, preferencePoint);
     }
 
     /**
      * First passable candidate when {@code preferencePoint} is null (declaration order),
      * otherwise the passable candidate whose centre is nearest the preference point.
      */
-    private static Vector3f nearestPassable(World world, int[][] candidates, Vector3f preferencePoint) {
+    private static Vector3d nearestPassable(World world, long[][] candidates, Vector3dc preferencePoint) {
         int best;
         if (world == null) {
             best = 0;
         } else {
-            int[] flat = new int[candidates.length * 3];
+            long[] flat = new long[candidates.length * 3];
             for (int i = 0; i < candidates.length; i++) {
-                System.arraycopy(candidates[i], 0, flat, i * 3, 3);
+                for (int k = 0; k < 3; k++) flat[i * 3 + k] = candidates[i][k];
             }
+            PhysicsWorld physics = WorldPhysics.of(world).engine();
+            // Cells are absolute; the preference point is a frame position (relative to the origin).
             best = preferencePoint == null
-                ? com.stonebreak.world.physics.WorldPhysics.of(world).engine().nearestOpenCell(flat, candidates.length, false, 0, 0, 0, WorldPhysics.DROP_MASK)
-                : com.stonebreak.world.physics.WorldPhysics.of(world).engine().nearestOpenCell(flat, candidates.length, true,
-                    preferencePoint.x, preferencePoint.y, preferencePoint.z, WorldPhysics.DROP_MASK);
+                ? physics.nearestOpenCell(flat, candidates.length, false, 0, 0, 0, WorldPhysics.DROP_MASK)
+                : physics.nearestOpenCell(flat, candidates.length, true,
+                    preferencePoint.x() - physics.originX(), preferencePoint.y() - physics.originY(),
+                    preferencePoint.z() - physics.originZ(), WorldPhysics.DROP_MASK);
         }
         return best < 0 ? null
-                : new Vector3f(candidates[best][0] + 0.5f, candidates[best][1] + 0.5f, candidates[best][2] + 0.5f);
+                : new Vector3d(candidates[best][0] + 0.5, candidates[best][1] + 0.5, candidates[best][2] + 0.5);
     }
 }

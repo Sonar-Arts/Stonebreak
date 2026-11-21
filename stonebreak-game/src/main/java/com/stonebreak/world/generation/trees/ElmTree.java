@@ -70,7 +70,7 @@ public final class ElmTree {
         Variant variant = Variant.values()[rng.nextInt(Variant.values().length)];
         Profile profile = profileFor(variant, rng);
 
-        if (worldY + profile.trunkHeight + 6 >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (worldY + profile.trunkHeight + 6 >= WorldConfiguration.MAX_Y) return;
 
         placeTrunk(placer, worldX, worldY, worldZ, profile.trunkHeight);
         placeBranches(placer, rng, variant, profile, worldX, worldY, worldZ);
@@ -107,7 +107,7 @@ public final class ElmTree {
     private static void placeBranches(TreeBlockSink placer, Random rng, Variant variant,
                                       Profile profile, int wx, int wy, int wz) {
         int branchLevel = wy + profile.trunkHeight - 3;
-        if (branchLevel + 3 >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (branchLevel + 3 >= WorldConfiguration.MAX_Y) return;
 
         switch (variant) {
             case CLASSIC    -> placeClassicBranches(placer, branchLevel, wx, wz);
@@ -138,7 +138,7 @@ public final class ElmTree {
     private static void placeHighInnerBranches(TreeBlockSink placer, Random rng,
                                                int wx, int wy, int wz, int trunkHeight) {
         int innerY = wy + trunkHeight;
-        if (innerY >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (innerY >= WorldConfiguration.MAX_Y) return;
 
         int branchCount = 1 + rng.nextInt(2);
         int[] dx = {1, -1, 0, 0};
@@ -163,7 +163,7 @@ public final class ElmTree {
     private static void placeCanopyCore(TreeBlockSink placer, int wx, int wy, int wz, int trunkHeight) {
         for (int dy = trunkHeight; dy <= trunkHeight + CORE_TOP; dy++) {
             int worldY = wy + dy;
-            if (worldY >= WorldConfiguration.WORLD_HEIGHT) return;
+            if (worldY >= WorldConfiguration.MAX_Y) return;
             placer.placeBlock(wx, worldY, wz, BlockType.ELM_WOOD_LOG);
         }
     }
@@ -232,7 +232,7 @@ public final class ElmTree {
         int radius = profile.lowerRadius;
         for (int dy = profile.trunkHeight - 1; dy <= profile.trunkHeight + 2; dy++) {
             int worldY = wy + dy;
-            if (worldY >= WorldConfiguration.WORLD_HEIGHT) continue;
+            if (worldY >= WorldConfiguration.MAX_Y) continue;
 
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
@@ -253,7 +253,7 @@ public final class ElmTree {
         int radius = profile.upperRadius;
         for (int dy = profile.trunkHeight + 3; dy <= profile.trunkHeight + 5; dy++) {
             int worldY = wy + dy;
-            if (worldY >= WorldConfiguration.WORLD_HEIGHT) continue;
+            if (worldY >= WorldConfiguration.MAX_Y) continue;
 
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
@@ -270,7 +270,7 @@ public final class ElmTree {
     }
 
     private static void placeTopCap(TreeBlockSink placer, int wx, int topY, int wz) {
-        if (topY >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (topY >= WorldConfiguration.MAX_Y) return;
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 if (Math.abs(dx) == 1 && Math.abs(dz) == 1) continue;

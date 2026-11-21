@@ -115,6 +115,16 @@ public final class GameScreens {
                 LoadingScreen.DOCUMENT_ID, com.stonebreak.ui.runtime.screens.DocumentScreenHost.get(),
                 com.stonebreak.ui.runtime.screens.DocumentScreen.Options.menu()));
         worldSelectScreen = new WorldSelectScreen();
+        // A Daedalus world selected in the list: start its terrain model now, so entering the world does not wait for
+        // the service's 7.5-11 s start (FX2); any other selection, or leaving the list, stops an unclaimed prestart.
+        worldSelectScreen.setSelectionWatcher(w -> {
+            var pipe = com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.getInstance();
+            if (w != null && w.getGeneratorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION) {
+                pipe.prestart(w.getTerrainModel());
+            } else {
+                pipe.releasePrestart();
+            }
+        });
         stateDocument(com.stonebreak.core.GameState.WORLD_SELECT, "world_select");
         characterCreationScreen = new CharacterCreationScreen(skija);
         stateDocument(com.stonebreak.core.GameState.CHARACTER_CREATION, CharacterCreationScreen.DOCUMENT_ID); // #301

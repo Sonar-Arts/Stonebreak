@@ -173,14 +173,20 @@ public record TorchState(String renderState, Facing facing) {
      * ~0.2 blocks off the wall.
      */
     public Vector3f emberPosition(int x, int y, int z, Vector3f out) {
-        float cx = x + 0.5f;
-        float cz = z + 0.5f;
+        org.joml.Vector3d d = emberPosition((long) x, y, z, new org.joml.Vector3d());
+        return out.set((float) d.x, (float) d.y, (float) d.z);
+    }
+
+    /** {@link #emberPosition(int, int, int, Vector3f)} for any cell, in double (#445). */
+    public org.joml.Vector3d emberPosition(long x, long y, long z, org.joml.Vector3d out) {
+        double cx = x + 0.5;
+        double cz = z + 0.5;
         if (!isSide()) {
-            return out.set(cx, y + 0.6f, cz);
+            return out.set(cx, y + 0.6, cz);
         }
         // Authored (NORTH): ember center at roughly (0, 0.68, −0.22).
-        float off = 0.22f;
-        float ey = y + 0.68f;
+        double off = 0.22;
+        double ey = y + 0.68;
         return switch (facing) {
             case NORTH -> out.set(cx, ey, cz - off);
             case SOUTH -> out.set(cx, ey, cz + off);

@@ -4,6 +4,8 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -27,22 +29,22 @@ class FleeBehaviorTest {
 
     /** A player wherever the test puts one, or nowhere. */
     private static final class FakePlayers implements PlayerLocator {
-        Vector3f position;
+        Vector3d position;
         boolean sprinting;
 
         @Override
-        public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+        public Vector3d nearestPlayer(Vector3dc from, Vector3d out) {
             return position == null ? null : out.set(position);
         }
 
         @Override
-        public boolean nearestPlayerSprinting(Vector3f from) {
+        public boolean nearestPlayerSprinting(Vector3dc from) {
             return sprinting;
         }
     }
 
     private final FakePlayers players = new FakePlayers();
-    private final StubMob mob = new StubMob(EntityType.COW, new Vector3f(0, 64, 0));
+    private final StubMob mob = new StubMob(EntityType.COW, new Vector3d(0, 64, 0));
     private final AiContext context = new AiContext(mob, null, new Random(1), players);
 
     private FleeBehavior skittish() {
@@ -50,7 +52,7 @@ class FleeBehaviorTest {
     }
 
     private void playerAt(float distance) {
-        players.position = new Vector3f(distance, 64, 0);
+        players.position = new Vector3d(distance, 64, 0);
     }
 
     @Test
@@ -121,15 +123,15 @@ class FleeBehaviorTest {
     void aHitRunsFromTheAttackerNotTheNearestPlayer() {
         AiContext navigating = new AiContext(
                 mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
-        players.position = new Vector3f(3, 64, 0);   // a bystander, east and closest
-        navigating.setAttacker(new Vector3f(-8, 64, 0)); // the archer who hit it, west
+        players.position = new Vector3d(3, 64, 0);   // a bystander, east and closest
+        navigating.setAttacker(new Vector3d(-8, 64, 0)); // the archer who hit it, west
 
         FleeBehavior placid = new FleeBehavior(16.0f, 5.0f, 1.4f);
         placid.onDamaged(navigating, 2.0f);
         assertTrue(placid.canStart(navigating));
         placid.start(navigating);
 
-        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        Vector3d retreat = navigating.nav().goal(new Vector3d());
         assertTrue(retreat.x > mob.getPosition().x,
                 "flees east, away from the attacker, even though that is toward the bystander: " + retreat);
     }
@@ -138,14 +140,14 @@ class FleeBehaviorTest {
     void anUnattributedHitFallsBackToTheNearestPlayer() {
         AiContext navigating = new AiContext(
                 mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
-        players.position = new Vector3f(3, 64, 0);
+        players.position = new Vector3d(3, 64, 0);
         navigating.setAttacker(null); // e.g. a damage-over-time tick: the source does not say
 
         FleeBehavior placid = new FleeBehavior(16.0f, 5.0f, 1.4f);
         placid.onDamaged(navigating, 2.0f);
         placid.start(navigating);
 
-        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        Vector3d retreat = navigating.nav().goal(new Vector3d());
         assertTrue(retreat.x < mob.getPosition().x, "flees west, away from the nearest player: " + retreat);
     }
 
@@ -164,10 +166,10 @@ class FleeBehaviorTest {
 
     /** A goblin wherever the test puts one, sensed at any range the flight asks about. */
     private static final class FakeThreat implements ThreatSense {
-        Vector3f position;
+        Vector3d position;
 
         @Override
-        public Vector3f nearest(AiContext context, float range, Vector3f out) {
+        public Vector3d nearest(AiContext context, float range, Vector3d out) {
             return position != null && context.distanceTo(position) <= range ? out.set(position) : null;
         }
     }
@@ -176,13 +178,13 @@ class FleeBehaviorTest {
     void livestockBoltsFromANearbyGoblinAndKeepsGoingUntilClear() {
         FakeThreat goblin = new FakeThreat();
         FleeBehavior cow = new FleeBehavior(10.0f, 0.0f, 1.0f).withThreat(goblin, 10.0f, 16.0f);
-        goblin.position = new Vector3f(12, 64, 0);
+        goblin.position = new Vector3d(12, 64, 0);
         assertFalse(cow.canStart(context), "not close enough to notice");
-        goblin.position = new Vector3f(8, 64, 0);
+        goblin.position = new Vector3d(8, 64, 0);
         assertTrue(cow.canStart(context));
-        goblin.position = new Vector3f(14, 64, 0);
+        goblin.position = new Vector3d(14, 64, 0);
         assertTrue(cow.shouldContinue(context), "still too close to stop running");
-        goblin.position = new Vector3f(20, 64, 0);
+        goblin.position = new Vector3d(20, 64, 0);
         assertFalse(cow.shouldContinue(context));
     }
 
@@ -191,11 +193,11 @@ class FleeBehaviorTest {
         AiContext navigating = new AiContext(
                 mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(1), players);
         FakeThreat goblin = new FakeThreat();
-        goblin.position = new Vector3f(5, 64, 0);
-        players.position = new Vector3f(-30, 64, 0);
+        goblin.position = new Vector3d(5, 64, 0);
+        players.position = new Vector3d(-30, 64, 0);
         FleeBehavior cow = new FleeBehavior(10.0f, 4.0f, 1.0f).withThreat(goblin, 10.0f, 16.0f);
         cow.start(navigating);
-        Vector3f retreat = navigating.nav().goal(new Vector3f());
+        Vector3d retreat = navigating.nav().goal(new Vector3d());
         assertTrue(retreat.x < mob.getPosition().x, "flees west, away from the goblin: " + retreat);
     }
 
@@ -203,7 +205,7 @@ class FleeBehaviorTest {
     void aChickenThatOnlyFleesGoblinsIgnoresAHit() {
         FleeBehavior chicken = new FleeBehavior(6.0f, 3.0f, 1.0f).ignoringHits()
                 .withThreat(new FakeThreat(), 8.0f, 12.0f);
-        players.position = new Vector3f(2, 64, 0);
+        players.position = new Vector3d(2, 64, 0);
         chicken.onDamaged(context, 1.0f);
         assertFalse(chicken.canStart(context), "a hit startles it instead");
     }

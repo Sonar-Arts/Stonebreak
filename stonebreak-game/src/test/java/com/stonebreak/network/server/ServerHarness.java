@@ -53,13 +53,33 @@ public final class ServerHarness implements AutoCloseable {
                 IntegratedServer.KEEPALIVE_INTERVAL_TICKS);
     }
 
+    /** In-JVM address of {@link #bootWithLocal} servers (the singleplayer host's channel). */
+    public static final String LOCAL_ID = "harness-local";
+
+    /**
+     * A server that also listens on the in-JVM Local transport, as a singleplayer/host session does: a
+     * {@link HarnessClient#joinLocal} client is the host (packet objects, no encoding, host privileges).
+     */
+    public static ServerHarness bootWithLocal(Path home, String worldName) throws InterruptedException {
+        String previousDataDir = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
+        System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
+        IntegratedServer server = new IntegratedServer(ServerLimits.DEFAULTS, IntegratedServer.INBOUND_SILENCE_TIMEOUT_NS,
+                IntegratedServer.KEEPALIVE_INTERVAL_TICKS);
+        try {
+            server.start(NetAddress.local(LOCAL_ID), NetAddress.tcp("127.0.0.1", 0), worldName, 347L);
+        } catch (InterruptedException | RuntimeException e) {
+            restoreDataDir(previousDataDir);
+            throw e;
+        }
+        ServerHarness harness = new ServerHarness(server, previousDataDir);
+        harness.tickThread.start();
+        return harness;
+    }
+
     /** A server with its own limits and silence timing (so timeouts run in seconds). */
     public static ServerHarness boot(Path home, String worldName, ServerLimits limits,
                                      long silenceTimeoutNs, int keepaliveIntervalTicks)
             throws InterruptedException {
-        // The engine bounds the game installs at startup (GameBootstrap.configureEngine): feature
-        // population and the CCO coordinate helpers read them.
-        com.openmason.engine.voxel.cco.coordinates.CcoBounds.configure(WorldConfiguration.voxelConfig());
         String previousDataDir = System.getProperty(WorldStorage.DATA_DIR_PROPERTY);
         System.setProperty(WorldStorage.DATA_DIR_PROPERTY, home.toString());
         IntegratedServer server = new IntegratedServer(limits, silenceTimeoutNs, keepaliveIntervalTicks);

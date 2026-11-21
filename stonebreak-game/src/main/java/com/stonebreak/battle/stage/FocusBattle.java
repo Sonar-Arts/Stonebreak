@@ -470,7 +470,9 @@ public final class FocusBattle implements BattleScreenHost {
         if (frame == null) {
             return;
         }
-        player.getCamera().setCinematicView(frame.eye(), frame.target(), frame.rollDeg());
+        // Battle cameras are authored in the arena's own float frame (a detached world near the origin).
+        player.getCamera().setCinematicView(new org.joml.Vector3d(frame.eye()), new org.joml.Vector3d(frame.target()),
+            frame.rollDeg());
         Renderer renderer = Game.getRenderer();
         float fov = frame.fovDeg();
         if (renderer != null && Float.isFinite(fov)) {

@@ -21,7 +21,7 @@ final class DinghyRenderer {
     }
 
     void render(Dinghy dinghy, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                com.stonebreak.world.World world, Vector3f cameraPos) {
+                com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         EntityAsset asset = SbeEntityRegistry.get(dinghy.getType().getSbeObjectId());
         if (asset == null) {
             fallback.render(dinghy, viewMatrix, projectionMatrix, world, cameraPos);

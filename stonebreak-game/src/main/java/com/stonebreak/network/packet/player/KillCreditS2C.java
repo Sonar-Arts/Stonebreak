@@ -2,6 +2,7 @@ package com.stonebreak.network.packet.player;
 
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -28,14 +29,14 @@ import io.netty.buffer.ByteBuf;
  */
 public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean killed, int xpReward,
                             int targetNetworkId, byte sourceOrdinal, byte hitKind,
-                            float x, float y, float z) implements Packet {
+                            double x, double y, double z) implements Packet {
 
     /** Credit for a hit of {@code source}/{@code kind} that landed on {@code victim}, anchored at its head. */
     public static KillCreditS2C forHit(com.stonebreak.mobs.entities.LivingEntity victim, float dealt,
                                        boolean killed,
                                        com.stonebreak.mobs.entities.LivingEntity.DamageSource source,
                                        com.stonebreak.mobs.entities.HitKind kind) {
-        org.joml.Vector3f p = victim.getPosition();
+        org.joml.Vector3d p = victim.getPosition();
         return new KillCreditS2C(victim.getType().ordinal(), dealt, killed,
             killed ? victim.getXpReward() : 0, victim.getNetworkId(),
             (byte) source.ordinal(), kind.wireId(),
@@ -52,15 +53,13 @@ public record KillCreditS2C(int entityTypeOrdinal, float damageDealt, boolean ki
             out.writeInt(p.targetNetworkId());
             out.writeByte(p.sourceOrdinal());
             out.writeByte(p.hitKind());
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
         }
 
         @Override
         public KillCreditS2C decode(ByteBuf in) {
             return new KillCreditS2C(in.readInt(), in.readFloat(), in.readBoolean(), in.readInt(),
-                in.readInt(), in.readByte(), in.readByte(), in.readFloat(), in.readFloat(), in.readFloat());
+                in.readInt(), in.readByte(), in.readByte(), NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in));
         }
     };
 }

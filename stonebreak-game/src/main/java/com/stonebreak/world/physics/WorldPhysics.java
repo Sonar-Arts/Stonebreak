@@ -17,9 +17,11 @@ import com.stonebreak.blocks.torch.TorchBlock;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.blocks.waterSystem.WaterHeightUtil;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
+import com.openmason.engine.voxel.world.CubeWorld;
 import com.stonebreak.world.chunk.ChunkWaterLayer;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.voxel.BlockIds;
+import com.stonebreak.world.voxel.VoxelLayers;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,9 +52,15 @@ import java.util.Objects;
  * <p><b>Fluids.</b> Water cells carry their surface height ({@link WaterHeightUtil}) and the force
  * of their current ({@link WaterFlowPhysics#cellForce}).
  *
- * <p><b>Cache.</b> The engine pulls cells through {@link #fill} one 16³ brick (a chunk section) at a
- * time and keeps them; the world calls the {@code invalidate*} methods wherever a block, state, snow
- * layer, water level or chunk changes. Invalidation is lazy and cheap.
+ * <p><b>Cache.</b> The engine pulls cells through {@link #fill} one 16³ brick (an eighth of a cube) at a
+ * time and keeps them; {@link #fill} reads the bricks from the native voxel world in one
+ * {@code CubeWorld.readBox} ({@code cv_read_box}: known air reads as air, a brick touching unknown cells is
+ * not loaded and not cached). The world calls the {@code invalidate*} methods wherever a block, state, snow
+ * layer or water level changes and when cubes install, re-mesh (population) or unload. Invalidation is lazy
+ * and cheap.
+ *
+ * <p><b>Coordinates (OpenMason #142).</b> Cells are {@code long}; positions stay {@code float} in the game
+ * (Phase 4 converts them) and widen to {@code double} at the engine boundary. The frame origin stays 0.
  *
  * <p><b>Threads.</b> Owned by the thread that simulates the world (the client's main thread, the
  * server's tick thread); invalidation is safe from anywhere.
@@ -97,7 +105,10 @@ public final class WorldPhysics implements AutoCloseable {
     public static final float PLAYER_STEP = 0.5f;
     public static final float PLAYER_PARTIAL_STEP = 1.0f;
 
-    private static final int BRICK_SHIFT = brickShift();
+    private static final int BRICK_SHIFT = 4;
+    private static final int BRICK = 1 << BRICK_SHIFT;
+    /** {@code cv_read_box} id for unknown cells (no block uses it). */
+    private static final int MISSING_ID = 0xFFFF;
     /** 2048 bricks = 2048 chunk sections per world, a few MiB with uniform bricks folded. */
     private static final int CACHE_BRICKS = 2048;
     /** A safety resync of the model boxes every this many syncs, whatever the version says. */
@@ -123,6 +134,7 @@ public final class WorldPhysics implements AutoCloseable {
 
     // Scratch.
     private final FluidSample sample = new FluidSample();
+    private short[] ids = new short[BRICK * BRICK * BRICK];
 
     private record ShapeKey(float[] boxes, int category, int flags) {
         @Override
@@ -188,16 +200,6 @@ public final class WorldPhysics implements AutoCloseable {
         }
     }
 
-    private static int brickShift() {
-        int size = WorldConfiguration.CHUNK_SIZE;
-        for (int shift = 5; shift >= 3; shift--) {
-            if (size % (1 << shift) == 0) {
-                return shift;
-            }
-        }
-        return 3;
-    }
-
     /** The engine world, for callers that drive bodies or rays directly. */
     public PhysicsWorld engine() {
         return engine;
@@ -210,40 +212,42 @@ public final class WorldPhysics implements AutoCloseable {
 
     // ---- the source -----------------------------------------------------------------------
 
-    private boolean fill(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+    private boolean fill(long x0, long y0, long z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
         if (throughAccessors) {
             fillThroughAccessors(x0, y0, z0, sx, sy, sz, shapes, fluids);
             return true;
         }
-        final int cs = WorldConfiguration.CHUNK_SIZE;
-        final int height = WorldConfiguration.WORLD_HEIGHT;
-        // A brick never spans two chunks (its edge divides the chunk size).
-        Chunk chunk = world.getChunkIfLoaded(Math.floorDiv(x0, cs), Math.floorDiv(z0, cs));
-        if (chunk == null) {
+        int cells = sx * sy * sz;
+        if (ids.length < cells) {
+            ids = new short[cells];
+        }
+        CubeWorld voxels = world.voxels();
+        long unknown = voxels.readBox(x0, y0, z0, sx, sy, sz, ids, MISSING_ID);
+        if (unknown > 0) {
             return false;
         }
-        int lx0 = Math.floorMod(x0, cs);
-        int lz0 = Math.floorMod(z0, cs);
+        int air = BlockType.AIR.getId();
+        int water = BlockType.WATER.getId();
         for (int dy = 0; dy < sy; dy++) {
-            int y = y0 + dy;
-            if (y < 0 || y >= height) {
-                continue; // outside the column: air (arrays arrive zeroed)
-            }
             for (int dz = 0; dz < sz; dz++) {
                 int base = (dy * sz + dz) * sx;
                 for (int dx = 0; dx < sx; dx++) {
-                    BlockType block = chunk.getBlock(lx0 + dx, y, lz0 + dz);
-                    if (block == null || block == BlockType.AIR) {
+                    int id = Short.toUnsignedInt(ids[base + dx]);
+                    if (id == air) {
                         continue;
                     }
-                    int x = x0 + dx;
-                    int z = z0 + dz;
-                    if (block == BlockType.WATER) {
-                        int level = ChunkWaterLayer.level(chunk.getWaterLayer().get(lx0 + dx, y, lz0 + dz));
+                    long x = x0 + dx, y = y0 + dy, z = z0 + dz;
+                    if (id == water) {
+                        int raw = voxels.getLayer(VoxelLayers.WATER, x, y, z);
+                        int level = ChunkWaterLayer.level(VoxelLayers.waterToGame(Math.max(raw, 0)));
                         fluids[base + dx] = (short) waterFluid(level, x, y, z);
                         continue;
                     }
-                    String state = block.isStairs() ? chunk.getBlockState(lx0 + dx, y, lz0 + dz) : null;
+                    BlockType block = BlockIds.of(id);
+                    if (block == BlockType.AIR) {
+                        continue;
+                    }
+                    String state = block.isStairs() ? world.getBlockStateAt(x, y, z) : null;
                     shapes[base + dx] = (short) shapeOf(block, state, x, y, z);
                 }
             }
@@ -251,12 +255,12 @@ public final class WorldPhysics implements AutoCloseable {
         return true;
     }
 
-    private void fillThroughAccessors(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+    private void fillThroughAccessors(long x0, long y0, long z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
         for (int dy = 0; dy < sy; dy++) {
             for (int dz = 0; dz < sz; dz++) {
                 int base = (dy * sz + dz) * sx;
                 for (int dx = 0; dx < sx; dx++) {
-                    int x = x0 + dx, y = y0 + dy, z = z0 + dz;
+                    long x = x0 + dx, y = y0 + dy, z = z0 + dz;
                     BlockType block = world.getBlockAt(x, y, z);
                     if (block == null || block == BlockType.AIR) {
                         continue;
@@ -273,7 +277,7 @@ public final class WorldPhysics implements AutoCloseable {
         }
     }
 
-    private int shapeOf(BlockType block, String state, int x, int y, int z) {
+    private int shapeOf(BlockType block, String state, long x, long y, long z) {
         if (AnimatedBlockRegistry.isAnimatedType(block)) {
             float h = block.getCollisionHeight();
             return h > 0f ? shapeId(new float[]{0, 0, 0, 1, h, 1}, DOOR_CELL, 0) : 0;
@@ -293,7 +297,7 @@ public final class WorldPhysics implements AutoCloseable {
             return shapeId(flatten(boxes), SOLID | PICK, 0);
         }
         if (block == BlockType.LIMESTONE_STALAGMITE) {
-            return stalagmiteShape(x, y, z);
+            return stalagmiteShape(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z));
         }
         Integer cached = simpleShape.get(block);
         if (cached != null) {
@@ -336,9 +340,9 @@ public final class WorldPhysics implements AutoCloseable {
         return shapeId(flatten(local), SOLID | PICK, 0);
     }
 
-    private int waterFluid(int level, int x, int y, int z) {
+    private int waterFluid(int level, long x, long y, long z) {
         float surface = WaterHeightUtil.surfaceFraction(level);
-        WaterFlowPhysics.cellForce(world, x, y, z, force);
+        WaterFlowPhysics.cellForce(world, Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z), force);
         FluidKey key = new FluidKey(surface, force.x, force.y, force.z);
         Integer id = fluidIds.get(key);
         if (id != null) {
@@ -388,27 +392,25 @@ public final class WorldPhysics implements AutoCloseable {
      * A block (or its state) changed: the cell, the neighbours whose water flow reads it, and the
      * column a stalagmite of up to {@link Stalagmite#MAX_SIZE} cells can share with it.
      */
-    public void invalidateBlock(int x, int y, int z) {
+    public void invalidateBlock(long x, long y, long z) {
         int reach = Stalagmite.MAX_SIZE;
         engine.invalidateBox(x - 1, y - reach, z - 1, x + 2, y + reach + 1, z + 2);
     }
 
     /** A water level changed: the cell and the horizontal neighbours whose flow reads it. */
-    public void invalidateWater(int x, int y, int z) {
+    public void invalidateWater(long x, long y, long z) {
         engine.invalidateBox(x - 1, y, z - 1, x + 2, y + 1, z + 2);
     }
 
     /** A cell's own shape changed (a snow layer). */
-    public void invalidateCell(int x, int y, int z) {
+    public void invalidateCell(long x, long y, long z) {
         engine.invalidateCell(x, y, z);
     }
 
-    /** A whole chunk column arrived, left or was replaced. */
-    public void invalidateChunk(int chunkX, int chunkZ) {
-        int cs = WorldConfiguration.CHUNK_SIZE;
-        // One cell of margin: water flow at the seam reads across it.
-        engine.invalidateBox(chunkX * cs - 1, Integer.MIN_VALUE / 2, chunkZ * cs - 1,
-            chunkX * cs + cs + 1, Integer.MAX_VALUE / 2, chunkZ * cs + cs + 1);
+    /** A whole cube arrived, left, was replaced or re-meshed (one cell of margin: water flow reads across). */
+    public void invalidateCube(long cx, long cy, long cz) {
+        long x = cx << 5, y = cy << 5, z = cz << 5;
+        engine.invalidateBox(x - 1, y - 1, z - 1, x + 33, y + 33, z + 33);
     }
 
     // ---- model boxes of animated blocks ------------------------------------------------------
@@ -480,35 +482,35 @@ public final class WorldPhysics implements AutoCloseable {
         engine.step(body, dt, params, out);
     }
 
-    public boolean raycast(float ox, float oy, float oz, float dx, float dy, float dz, float maxDistance,
+    public boolean raycast(double ox, double oy, double oz, double dx, double dy, double dz, double maxDistance,
                            int mask, int fluidMask, RayHit out) {
         syncModelBoxes();
         return engine.raycast(ox, oy, oz, dx, dy, dz, maxDistance, mask, fluidMask, out);
     }
 
-    public boolean sweep(float fromX, float fromY, float fromZ, float toX, float toY, float toZ,
+    public boolean sweep(double fromX, double fromY, double fromZ, double toX, double toY, double toZ,
                          float hx, float hy, float hz, int mask, RayHit out) {
         syncModelBoxes();
         return engine.sweep(fromX, fromY, fromZ, toX, toY, toZ, hx, hy, hz, mask, out);
     }
 
-    public boolean overlaps(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int mask) {
+    public boolean overlaps(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int mask) {
         syncModelBoxes();
         return engine.overlaps(minX, minY, minZ, maxX, maxY, maxZ, mask);
     }
 
     /** Height of the tallest box of the cell's shape (in mask) over the XZ footprint; see {@link PhysicsWorld#cellTop}. */
-    public float cellTop(int x, int y, int z, float minX, float minZ, float maxX, float maxZ, int mask) {
+    public float cellTop(long x, long y, long z, double minX, double minZ, double maxX, double maxZ, int mask) {
         return engine.cellTop(x, y, z, minX, minZ, maxX, maxZ, mask);
     }
 
     /** {@link #cellTop} over the whole cell. */
-    public float cellTop(int x, int y, int z, int mask) {
+    public float cellTop(long x, long y, long z, int mask) {
         return engine.cellTop(x, y, z, mask);
     }
 
     /** Whether the whole cell holds nothing in {@code mask}. */
-    public boolean isOpen(int x, int y, int z, int mask) {
+    public boolean isOpen(long x, long y, long z, int mask) {
         return engine.cellTop(x, y, z, mask) <= 0f;
     }
 
@@ -517,8 +519,8 @@ public final class WorldPhysics implements AutoCloseable {
      * current over the flow samples taken from {@code flowBaseY} up {@code flowHeight}. The returned
      * sample is reused by the next call.
      */
-    public FluidSample measureFluid(float x, float feetY, float z, float height, float halfWidth,
-                                    float flowBaseY, float flowHeight) {
+    public FluidSample measureFluid(double x, double feetY, double z, float height, float halfWidth,
+                                    double flowBaseY, float flowHeight) {
         return engine.measureFluid(x, feetY, z, height, halfWidth, flowBaseY, flowHeight, WATER, sample);
     }
 

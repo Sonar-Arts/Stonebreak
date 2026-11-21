@@ -126,6 +126,11 @@ public final class TerrainMapperFixtures {
         }
         put(out, "spawn", l.spawnButton());
         put(out, "center", l.centerOnSpawnButton());
+        if (s.getSelectedGenerator() != null) {
+            // the world-options row (EXP-2): shown once a generator is picked
+            put(out, "scale", l.scaleButton());
+            put(out, "climate", l.climateButton());
+        }
         TerrainMapperLayout.Rect footer = l.footer();
         float bw = TerrainMapperConfig.FOOTER_BUTTON_WIDTH;
         float bh = TerrainMapperConfig.FOOTER_BUTTON_HEIGHT;

@@ -2,6 +2,7 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -34,7 +35,7 @@ final class VestigeEvadeBehavior extends VestigeBehavior {
     private float elapsed;
     private float replanAt;
     private float readyAt;
-    private Vector3f goal;
+    private Vector3d goal;
     private final Vector3f side = new Vector3f();
 
     VestigeEvadeBehavior(Vestige vestige) {
@@ -98,7 +99,7 @@ final class VestigeEvadeBehavior extends VestigeBehavior {
                 // They moved and the spot is in plain view now: find another.
                 if (elapsed >= replanAt && !vestige.cover().hidden(senses().victimEye(), goal)) {
                     replanAt = elapsed + REPLAN_SECONDS;
-                    Vector3f next = flankSpot(SEARCH_RADIUS);
+                    Vector3d next = flankSpot(SEARCH_RADIUS);
                     if (next != null) {
                         goal = next;
                     }
@@ -114,16 +115,16 @@ final class VestigeEvadeBehavior extends VestigeBehavior {
      * further from the way they are heading. False when neither side is open Shade.
      */
     private boolean chooseBreakSide() {
-        Vector3f self = vestige.getPosition();
-        Vector3f feet = senses().victimFeet();
-        float dx = self.x - feet.x;
-        float dz = self.z - feet.z;
+        Vector3d self = vestige.getPosition();
+        Vector3d feet = senses().victimFeet();
+        float dx = (float) (self.x - feet.x);
+        float dz = (float) (self.z - feet.z);
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len < 1.0e-3f) {
             return false;
         }
         CoverFinder.Pursuit pursuit = pursuit();
-        Vector3f probe = new Vector3f();
+        Vector3d probe = new Vector3d();
         float bestClearance = Float.NEGATIVE_INFINITY;
         boolean found = false;
         for (int sign = -1; sign <= 1; sign += 2) {

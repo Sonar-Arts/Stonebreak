@@ -27,7 +27,7 @@ final class BobberRenderer {
     }
 
     void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                com.stonebreak.world.World world, Vector3f cameraPos) {
+                com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         if (!bobberAssetLoadAttempted) {
             bobberAssetLoadAttempted = true;
             try {

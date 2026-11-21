@@ -36,10 +36,10 @@ public final class ServerSounds {
     }
 
     /** Whether a listener at {@code (lx, ly, lz)} hears a sound at {@code (x, y, z)}. */
-    static boolean inRange(float lx, float ly, float lz, float x, float y, float z) {
-        float dx = x - lx;
-        float dy = y - ly;
-        float dz = z - lz;
+    static boolean inRange(double lx, double ly, double lz, double x, double y, double z) {
+        double dx = x - lx;
+        double dy = y - ly;
+        double dz = z - lz;
         return dx * dx + dy * dy + dz * dz <= HEARING_RANGE * HEARING_RANGE;
     }
 }

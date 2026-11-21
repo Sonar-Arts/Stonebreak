@@ -7,14 +7,12 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
-import org.joml.Vector3f;
+import com.stonebreak.world.chunk.Cube;
+import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,13 +21,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * The authoritative world's campfires: cooking and the camp data they carry. Server-side only —
  * a client draws a fire from its block and state string and needs nothing more.
  *
- * <p>Like the furnace and crafting table, a fire's state lives in its chunk's block states, so the
- * chunk save captures it. The string is rewritten (and echoed to clients) only when what is on
- * the fire or the camp changes; cooking progress in between is flushed when the chunk unloads.
+ * <p>Like the furnace and crafting table, a fire's state lives in its cube's block states, so the
+ * cube save captures it. The string is rewritten (and echoed to clients) only when what is on
+ * the fire or the camp changes; cooking progress in between is flushed at save points and when
+ * the cube unloads.
  */
 public class CampfireRegistry {
-
-    private static final int CHUNK_SIZE = 16;
 
     /** Fired when a fire's state string changes, to echo it to clients. */
     @FunctionalInterface
@@ -108,41 +105,38 @@ public class CampfireRegistry {
         if (s == null) {
             return;
         }
-        Vector3f at = new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
+        Vector3d at = new Vector3d(x + 0.5, y + 0.5, z + 0.5);
         for (ItemStack item : s.contents()) {
             DropUtil.createItemDrop(world, at, item);
         }
         anchor.extinguished(pos);
     }
 
-    public void onChunkLoaded(Chunk chunk) {
-        int cx = chunk.getX();
-        int cz = chunk.getZ();
+    /** Discovers the fires of a cube that entered the world, and wakes the camps they anchor. */
+    public void onCubeInstalled(Cube cube) {
         List<CampfireState> withCamps = new ArrayList<>();
-        for (Map.Entry<Integer, String> e : chunk.getBlockStates().entrySet()) {
-            if (!CampfireState.isCampfireState(e.getValue())) {
-                continue;
+        cube.forEachState((x, y, z, value) -> {
+            if (!CampfireState.isCampfireState(value)) {
+                return;
             }
-            int key = e.getKey();
-            BlockPos pos = new BlockPos(cx * CHUNK_SIZE + LocalBlockKey.x(key), LocalBlockKey.y(key),
-                    cz * CHUNK_SIZE + LocalBlockKey.z(key));
-            CampfireState s = CampfireState.parse(pos, e.getValue());
+            BlockPos pos = new BlockPos(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z));
+            CampfireState s = CampfireState.parse(pos, value);
             states.put(pos, s);
             if (s.campData() != null) {
                 withCamps.add(s);
             }
-        }
+        });
         for (CampfireState s : withCamps) {
             anchor.loaded(s.pos(), s.campData());
         }
     }
 
     /**
-     * The chunk is about to unload: every camp anchored in it freezes into its fire, and the
-     * fire's state — cooking included — is written to the still-resident chunk, ahead of its save.
+     * The cube is about to unload: every camp anchored in it freezes into its fire, and the fire's
+     * state — cooking included — is written to the still-resident cube, ahead of its save.
      */
-    public void freezeCamps(World world, Chunk chunk) {
-        for (CampfireState s : statesIn(chunk)) {
+    public void freezeCamps(World world, Cube cube) {
+        for (CampfireState s : statesIn(cube)) {
             if (s.campData() != null) {
                 s.setCampData(anchor.unloading(s.pos()));
             }
@@ -150,34 +144,26 @@ public class CampfireRegistry {
         }
     }
 
-    /** Drops the chunk's fires, flushing each one's state (the camps froze in freezeCamps). */
-    public void onChunkUnloaded(Chunk chunk) {
-        int xMin = chunk.getX() * CHUNK_SIZE;
-        int zMin = chunk.getZ() * CHUNK_SIZE;
-        Iterator<Map.Entry<BlockPos, CampfireState>> it = states.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<BlockPos, CampfireState> entry = it.next();
-            BlockPos p = entry.getKey();
-            if (p.x() < xMin || p.x() >= xMin + CHUNK_SIZE || p.z() < zMin || p.z() >= zMin + CHUNK_SIZE) {
-                continue;
+    /** A save point: writes every fire's current state (cooking progress) into the cube. */
+    public void flushToWorld(World world, Cube cube) {
+        for (CampfireState s : statesIn(cube)) {
+            BlockPos p = s.pos();
+            if (CampfireState.isCampfireState(world.getBlockStateAt(p.x(), p.y(), p.z()))) {
+                write(world, s);
             }
-            CampfireState s = entry.getValue();
-            int lx = Math.floorMod(p.x(), CHUNK_SIZE);
-            int lz = Math.floorMod(p.z(), CHUNK_SIZE);
-            if (CampfireState.isCampfireState(chunk.getBlockState(lx, p.y(), lz))) {
-                chunk.setBlockState(lx, p.y(), lz, s.toStateString());
-            }
-            it.remove();
         }
     }
 
-    private List<CampfireState> statesIn(Chunk chunk) {
-        int xMin = chunk.getX() * CHUNK_SIZE;
-        int zMin = chunk.getZ() * CHUNK_SIZE;
+    /** Drops the cube's fires (their camps froze and their state was written in {@link #freezeCamps}). */
+    public void onCubeUnloaded(Cube cube) {
+        states.keySet().removeIf(p -> cube.contains(p.x(), p.y(), p.z()));
+    }
+
+    private List<CampfireState> statesIn(Cube cube) {
         List<CampfireState> in = new ArrayList<>();
         for (CampfireState s : states.values()) {
             BlockPos p = s.pos();
-            if (p.x() >= xMin && p.x() < xMin + CHUNK_SIZE && p.z() >= zMin && p.z() < zMin + CHUNK_SIZE) {
+            if (cube.contains(p.x(), p.y(), p.z())) {
                 in.add(s);
             }
         }
@@ -188,8 +174,8 @@ public class CampfireRegistry {
     public void tick(World world, float dt) {
         for (CampfireState s : states.values()) {
             BlockPos p = s.pos();
-            if (world.getChunkIfLoaded(Math.floorDiv(p.x(), CHUNK_SIZE), Math.floorDiv(p.z(), CHUNK_SIZE)) == null) {
-                continue; // unloading — the chunk hook saves it
+            if (!world.isLoaded(p.x(), p.y(), p.z())) {
+                continue; // unloading — the cube hook saves it
             }
             if (world.getBlockAt(p.x(), p.y(), p.z()) != BlockType.CAMPFIRE) {
                 onBlockBroken(world, p.x(), p.y(), p.z());
@@ -198,7 +184,7 @@ public class CampfireRegistry {
             List<ItemStack> done = s.tick(smelting, dt);
             if (!done.isEmpty()) {
                 // Cooked food hops off the fire, for a player — or a goblin — to pick up.
-                Vector3f at = new Vector3f(p.x() + 0.5f, p.y() + 0.6f, p.z() + 0.5f);
+                Vector3d at = new Vector3d(p.x() + 0.5, p.y() + 0.6, p.z() + 0.5);
                 for (ItemStack item : done) {
                     DropUtil.createItemDrop(world, at, item);
                 }

@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 
 from terrain_slm.data import descriptors as D
-from terrain_slm.river.field import RiverContext, RiverField
+from terrain_slm.river.field import Lazy, RiverContext, RiverField
 
 CP = D.CELL_PX
 
@@ -126,11 +126,15 @@ class Centrelines:
         line = weak & (up >= ctx.cfg.log_threshold)
         wk = weak.float()[None, None]
         grown = line.float()[None, None]
-        for _ in range(self.reach_px):
-            nxt = F.max_pool2d(grown, 3, 1, 1) * wk
-            if torch.equal(nxt, grown):
-                break
-            grown = nxt
+        from terrain_slm.kernels import cuda_river as KR
+        if KR.usable(grown):             # same numbers: one launch per step, a convergence check every 8 (2026-11-19)
+            grown = KR.grow(grown, wk, self.reach_px)
+        else:
+            for _ in range(self.reach_px):
+                nxt = F.max_pool2d(grown, 3, 1, 1) * wk
+                if torch.equal(nxt, grown):
+                    break
+                grown = nxt
         line = prune_spurs(grown[0, 0] > 0, self.spur_px)
         f.line, f.flow = line[oi : oi + h, oj : oj + w], flow[oi : oi + h, oj : oj + w]
         return f
@@ -194,6 +198,9 @@ def monotone_downstream(level: torch.Tensor, line: torch.Tensor, flow: torch.Ten
     downstream, so the result never rises along a river; where the flow ordering is noisy the
     river runs flat, never uphill. Only lowers. `iters` bounds how far (px, along the line) a
     low point can pull the level down downstream -- keep it inside the request halo."""
+    from terrain_slm.kernels import cuda_river as KR
+    if KR.usable(level):                 # same numbers: one launch per step, a convergence check every 8 (2026-11-19)
+        return KR.monotone_downstream(level, line, flow, iters)
     inf = float("inf")
     lv = torch.where(line, level, torch.full_like(level, inf))
     fl = torch.where(line, flow, torch.full_like(flow, inf))
@@ -232,9 +239,9 @@ class WaterSurface:
         if self.monotone_iters > 0:
             before = on_line[0, 0]
             mono = monotone_downstream(before, f.line, f.flow, self.monotone_iters)
-            drop = (before - mono)[f.line]
-            ctx.stats["monotone_lowered_px"] = int((drop > 0.01).sum())
-            ctx.stats["monotone_max_drop_m"] = float(drop.max()) if drop.numel() else 0.0
+            drop = before - mono                                   # >= 0: mono only lowers
+            ctx.stats["monotone_lowered_px"] = Lazy(((drop > 0.01) & f.line).sum())
+            ctx.stats["monotone_max_drop_m"] = Lazy(torch.where(f.line, drop, torch.zeros_like(drop)).max(), float)
             on_line = mono[None, None]
         steps = int(math.ceil(ctx.cfg.width_max_blocks * ctx.scale.px_per_block / 2)) + 2
         across = propagate(on_line[0, 0], f.line, f.channel, steps)

@@ -11,6 +11,8 @@ import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
+import com.stonebreak.util.Positions;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -55,7 +57,7 @@ public class CaltropScatterAbility {
         World world = Game.getWorld();
         if (entityManager == null || world == null) return false;
 
-        Vector3f origin = player.getPosition();
+        Vector3d origin = player.getPosition();
         Vector3f forward = new Vector3f(player.getCamera().getFront());
         forward.y = 0f;
         if (forward.lengthSquared() < 0.0001f) {
@@ -72,11 +74,11 @@ public class CaltropScatterAbility {
             float yaw = baseYaw - halfAngle + angleT * (2f * halfAngle);
             float distance = CALTROP_CONE_RANGE * (0.45f + 0.55f * ((i % 2 == 0) ? 1f : 0.7f));
 
-            float x = origin.x + (float) Math.sin(yaw) * distance;
-            float z = origin.z + (float) Math.cos(yaw) * distance;
-            float y = findGroundY(world, x, z, origin.y);
+            double x = origin.x + Math.sin(yaw) * distance;
+            double z = origin.z + Math.cos(yaw) * distance;
+            double y = findGroundY(world, x, z, origin.y);
 
-            Vector3f clusterPos = new Vector3f(x, y, z);
+            Vector3d clusterPos = new Vector3d(x, y, z);
             // Server-authoritative spawn (replicated to all); local fallback only with no session.
             if (!com.stonebreak.network.MultiplayerSession.sendProjectileSpawn(
                     com.stonebreak.network.packet.entity.ProjectileSpawnC2S.KIND_CALTROP,
@@ -109,15 +111,15 @@ public class CaltropScatterAbility {
      * player's feet. Returns the surface Y to rest a cluster on, or the player's feet Y as a fallback
      * when no surface is found within the scan window (e.g. over a void or unloaded terrain).
      */
-    private float findGroundY(World world, float x, float z, float feetY) {
-        int bx = (int) Math.floor(x);
-        int bz = (int) Math.floor(z);
-        int startY = (int) Math.floor(feetY) + GROUND_SCAN_UP;
-        int endY = (int) Math.floor(feetY) - GROUND_SCAN_DOWN;
-        for (int by = startY; by >= endY; by--) {
+    private double findGroundY(World world, double x, double z, double feetY) {
+        long bx = Positions.cell(x);
+        long bz = Positions.cell(z);
+        long startY = Positions.cell(feetY) + GROUND_SCAN_UP;
+        long endY = Positions.cell(feetY) - GROUND_SCAN_DOWN;
+        for (long by = startY; by >= endY; by--) {
             BlockType block = world.getBlockAt(bx, by, bz);
             if (block != null && block.isSolid()) {
-                return by + 1f; // sit on top of the solid block
+                return by + 1.0; // sit on top of the solid block
             }
         }
         return feetY;

@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -29,14 +31,15 @@ public final class WillOWispOrb extends FireBolt {
     private final float burnSeconds;
     private final float burnDps;
 
-    private final Vector3f scratch = new Vector3f();
+    private final Vector3d scratch = new Vector3d();
+    private final Vector3f toward = new Vector3f();
 
     /** A shadow or a stray orb: flies straight, hurts nobody in particular. */
-    public WillOWispOrb(World world, Vector3f position, Vector3f direction) {
+    public WillOWispOrb(World world, Vector3dc position, Vector3f direction) {
         this(world, position, direction, PlayerLocator.NEAREST, 0f, 0f, 0f);
     }
 
-    public WillOWispOrb(World world, Vector3f position, Vector3f direction, int victimId,
+    public WillOWispOrb(World world, Vector3dc position, Vector3f direction, int victimId,
                         float damage, float burnSeconds, float burnDps) {
         super(world, position, direction);
         this.victimId = victimId;
@@ -62,15 +65,16 @@ public final class WillOWispOrb extends FireBolt {
             return;
         }
         PlayerLocator players = roster();
-        Vector3f target = players != null ? players.playerPosition(victimId, position, scratch) : null;
+        Vector3d target = players != null ? players.playerPosition(victimId, position, scratch) : null;
         if (target == null) {
             return;
         }
-        target.add(0f, PlayerLocator.CHEST_HEIGHT, 0f).sub(position);
-        if (target.lengthSquared() < 1.0e-4f) {
+        toward.set((float) (target.x - position.x),
+                (float) (target.y + PlayerLocator.CHEST_HEIGHT - position.y), (float) (target.z - position.z));
+        if (toward.lengthSquared() < 1.0e-4f) {
             return;
         }
-        turnToward(direction, target.normalize(), (float) Math.toRadians(TURN_RATE_DEG) * deltaTime);
+        turnToward(direction, toward.normalize(), (float) Math.toRadians(TURN_RATE_DEG) * deltaTime);
     }
 
     /** Rotates unit {@code dir} toward unit {@code goal} by at most {@code maxRadians}. */
@@ -96,7 +100,7 @@ public final class WillOWispOrb extends FireBolt {
 
     /** Burns the first player it passes through. */
     @Override
-    protected boolean strike(Vector3f from, Vector3f to) {
+    protected boolean strike(Vector3dc from, Vector3dc to) {
         PlayerLocator players = roster();
         if (players == null || !players.hitPlayerAt(to, HIT_RADIUS, damage, -1)) {
             return false;

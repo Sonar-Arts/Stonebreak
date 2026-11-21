@@ -1,6 +1,8 @@
 package com.stonebreak.ui.worldSelect.managers;
 
+import com.stonebreak.world.save.WorldFormat;
 import com.stonebreak.world.save.WorldStorage;
+import com.stonebreak.world.save.io.CubeRegionFiles;
 
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -19,10 +21,12 @@ import java.util.function.Function;
 /**
  * Computes on-disk statistics of world directories off the render thread.
  *
- * <p>A world's size is the sum of every file under its directory (chunk files, the
- * fastlod cache, the json metadata) and its chunk count is how many {@code .sbc} files
- * it holds. Walking that tree touches hundreds of files, so it is far too slow to do
- * while drawing a frame: stats are computed by a single background worker and cached.
+ * <p>A world's size is the sum of every file under its directory (cube store regions, the
+ * fastlod cache, the json metadata) and its "chunk" count is the number of saved CUBES: the
+ * records listed in the committed headers of its cube store's region files
+ * ({@code cubes/r.*.cvr}, read with {@link CubeRegionFiles} without opening the store). Walking
+ * that tree is far too slow to do while drawing a frame: stats are computed by a single
+ * background worker and cached.
  * Callers get {@link #PENDING} (or {@code null} from {@link #getStats}) until a result
  * lands, and the cached value from then on.
  */
@@ -31,10 +35,10 @@ public final class WorldStatsService {
     /** Returned while the size of a world is still being computed. */
     public static final long PENDING = -1L;
 
-    /** Suffix of a saved chunk file, per {@code com.stonebreak.world.save.io.ChunkStorage}. */
-    private static final String CHUNK_SUFFIX = ".sbc";
-
-    /** What a completed walk of one world directory found. */
+    /**
+     * What a completed walk of one world directory found. {@code chunkCount} = saved cubes (32^3 records of
+     * the cube store; the name is kept for the world-select contract's "chunks" field).
+     */
     public record Stats(long bytes, int chunkCount) {}
 
     /** Resolves a world name to the directory to measure. */
@@ -144,16 +148,12 @@ public final class WorldStatsService {
             return new Stats(0L, 0);
         }
         final long[] total = {0L};
-        final int[] chunks = {0};
         try {
             Files.walkFileTree(dir, new SimpleFileVisitor<Path>() {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     if (attrs.isRegularFile()) {
                         total[0] += attrs.size();
-                        if (file.getFileName().toString().endsWith(CHUNK_SUFFIX)) {
-                            chunks[0]++;
-                        }
                     }
                     return FileVisitResult.CONTINUE;
                 }
@@ -167,6 +167,7 @@ public final class WorldStatsService {
         } catch (IOException e) {
             System.err.println("Error measuring world size for " + dir + ": " + e.getMessage());
         }
-        return new Stats(total[0], chunks[0]);
+        long cubes = CubeRegionFiles.countCubes(dir.resolve(WorldFormat.CUBES_DIR));
+        return new Stats(total[0], (int) Math.min(Integer.MAX_VALUE, cubes));
     }
 }

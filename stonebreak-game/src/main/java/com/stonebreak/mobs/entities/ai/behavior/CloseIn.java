@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 /**
  * Closing in on something to fight: walk toward it until within a working distance, then plant
@@ -18,7 +18,7 @@ public final class CloseIn {
      * @param holdDistance stop closing in once this near, and just face the target
      * @return whether the mob is holding (in position) rather than still closing in
      */
-    public boolean toward(AiContext context, Vector3f point, float holdDistance, float speedMultiplier) {
+    public boolean toward(AiContext context, Vector3dc point, float holdDistance, float speedMultiplier) {
         if (context.distanceTo(point) > holdDistance) {
             holding = false;
             context.nav().moveTo(point, Math.max(1.0f, holdDistance * 0.8f), speedMultiplier);

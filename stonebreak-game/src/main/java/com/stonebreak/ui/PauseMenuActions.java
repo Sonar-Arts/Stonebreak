@@ -42,14 +42,14 @@ public final class PauseMenuActions {
      * Asks the server to re-stream the world, reports it in chat, and resumes so the re-stream is
      * visible.
      *
-     * @return chunks audited, or -1 when not connected to a server
+     * @return cubes audited, or -1 when not connected to a server
      */
     public static int resync(Game game) {
         int audited = MultiplayerSession.requestFullResync();
         ChatSystem chat = game.getChatSystem();
         if (chat != null) {
             chat.addMessage(audited >= 0
-                ? "Resyncing with server (" + audited + " chunks audited)..."
+                ? "Resyncing with server (" + audited + " cubes audited)..."
                 : "Resync failed: not connected to a server.");
         }
         game.togglePauseMenu();

@@ -114,10 +114,10 @@ public final class CampSiteFinder {
 
     private void scanColumn(int x, int z) {
         int top = terrain.columnTop(x, z);
-        if (top < 0) {
+        if (top == CampTerrain.NO_COLUMN) {
             return;
         }
-        for (int y = top - MIN_DEPTH; y >= top - MAX_DEPTH && y > 0; y--) {
+        for (int y = top - MIN_DEPTH; y >= top - MAX_DEPTH && y > com.stonebreak.world.operations.WorldConfiguration.MIN_Y; y--) {
             if (!terrain.standable(x, y, z) || !terrain.roofed(x, y, z)) {
                 continue;
             }
@@ -261,7 +261,8 @@ public final class CampSiteFinder {
         com.openmason.engine.nav.NavWorld.Reach reach = walker.reach(from, radius, WALK_BUDGET);
         Set<Vector3i> cells = new HashSet<>();
         for (int i = 0; i < reach.count(); i++) {
-            cells.add(new Vector3i(reach.x(i), reach.y(i), reach.z(i)));
+            cells.add(new Vector3i(Math.toIntExact(reach.x(i)), Math.toIntExact(reach.y(i)),
+                    Math.toIntExact(reach.z(i))));
         }
         return cells;
     }
@@ -279,10 +280,12 @@ public final class CampSiteFinder {
     public static java.util.List<Vector3i> pathToSky(CampWalker walker, CampTerrain terrain, Vector3i from) {
         com.openmason.engine.nav.NavWorld.Reach reach = walker.reach(from, REACH_RADIUS, REACH_BUDGET);
         for (int i = 0; i < reach.count(); i++) {
-            if (!terrain.covered(reach.x(i), reach.y(i), reach.z(i))) {
+            if (!terrain.covered(Math.toIntExact(reach.x(i)), Math.toIntExact(reach.y(i)),
+                    Math.toIntExact(reach.z(i)))) {
                 java.util.LinkedList<Vector3i> path = new java.util.LinkedList<>();
                 for (int at = i; at >= 0; at = reach.parent(at)) {
-                    path.addFirst(new Vector3i(reach.x(at), reach.y(at), reach.z(at)));
+                    path.addFirst(new Vector3i(Math.toIntExact(reach.x(at)), Math.toIntExact(reach.y(at)),
+                            Math.toIntExact(reach.z(at))));
                 }
                 return path;
             }

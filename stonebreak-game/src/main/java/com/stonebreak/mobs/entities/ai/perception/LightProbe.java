@@ -2,7 +2,7 @@ package com.stonebreak.mobs.entities.ai.perception;
 
 import com.stonebreak.world.World;
 import com.stonebreak.world.lighting.WorldLightingContext;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 /**
  * How lit a spot is, 0 (pitch dark) to 1 (full daylight), for vision-based detection (#321).
@@ -13,7 +13,7 @@ public interface LightProbe {
     /** Light reaching anything under a roof, cave ceiling or canopy. */
     float COVERED_LIGHT = 0.1f;
 
-    float lightAt(World world, Vector3f position);
+    float lightAt(World world, Vector3dc position);
 
     /** Everything fully lit, for tests and worlds with no sky. */
     LightProbe FULL = (world, position) -> 1f;
@@ -27,10 +27,10 @@ public interface LightProbe {
         if (world == null) {
             return 1f;
         }
-        int x = (int) Math.floor(position.x);
-        int z = (int) Math.floor(position.z);
+        int x = (int) Math.floor(position.x());
+        int z = (int) Math.floor(position.z());
         int column = new WorldLightingContext(world).getColumnHeight(x, z);
-        boolean covered = column >= 0 && column > (int) Math.floor(position.y) + 1;
+        boolean covered = column >= 0 && column > (int) Math.floor(position.y()) + 1;
         return covered ? Math.min(COVERED_LIGHT, world.getDaylight()) : world.getDaylight();
     };
 }

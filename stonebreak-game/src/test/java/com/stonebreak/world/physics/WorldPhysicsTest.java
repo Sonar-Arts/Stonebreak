@@ -7,7 +7,6 @@ import com.stonebreak.blocks.BlockShape;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.stairs.StairState;
 import com.stonebreak.world.TestWorld;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,18 +27,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WorldPhysicsTest {
 
     private TestWorld world;
-    private Chunk chunk;
 
     @BeforeEach
     void setUp() {
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        chunk = new Chunk(0, 0);
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                chunk.setBlock(x, 10, z, BlockType.STONE);
+                world.setBlockAt(x, 10, z, BlockType.STONE);
             }
         }
-        world.setChunk(0, 0, chunk);
     }
 
     @AfterEach
@@ -50,17 +46,16 @@ class WorldPhysicsTest {
     @Test
     void cellHeightsMatchTheBlockShapeRuleForEveryKindAndFootprint() {
         // A row of every shape kind on the floor.
-        chunk.setBlock(1, 11, 1, BlockType.SNOW);
-        chunk.setBlock(2, 11, 1, BlockType.ROSE);
-        chunk.setBlock(3, 11, 1, BlockType.TORCH_PLACED);
-        chunk.setBlock(4, 11, 1, BlockType.WATER);
-        chunk.setBlock(5, 11, 1, BlockType.STONE);
+        world.setBlockRaw(1, 11, 1, BlockType.SNOW);
+        world.setBlockRaw(2, 11, 1, BlockType.ROSE);
+        world.setBlockRaw(3, 11, 1, BlockType.TORCH_PLACED);
+        world.setBlockRaw(4, 11, 1, BlockType.WATER);
+        world.setBlockRaw(5, 11, 1, BlockType.STONE);
         StairState.Facing[] facings = StairState.Facing.values();
         for (int i = 0; i < facings.length; i++) {
-            chunk.setBlock(6 + i, 11, 1, BlockType.OAK_STAIRS);
-            chunk.setBlockState(6 + i, 11, 1, new StairState(facings[i]).toStateString());
+            world.setBlockRaw(6 + i, 11, 1, BlockType.OAK_STAIRS);
+            world.setBlockStateAt(6 + i, 11, 1, new StairState(facings[i]).toStateString());
         }
-        world.setChunk(0, 0, chunk);
         world.getSnowLayerManager().setSnowLayers(1, 11, 1, 3);
 
         WorldPhysics physics = world.physics();
@@ -118,7 +113,7 @@ class WorldPhysicsTest {
         assertTrue(physics.isOpen(2, 11, 8, WorldPhysics.PLAYER_MASK));
         RayHit hit = new RayHit();
         assertTrue(physics.raycast(0.5f, 11.3f, 8.5f, 1, 0, 0, 10, WorldPhysics.PICK_MASK, 0, hit));
-        assertEquals(2, hit.x);
+        assertEquals(2L, hit.x);
     }
 
     @Test
@@ -141,7 +136,7 @@ class WorldPhysicsTest {
         assertTrue(physics.isOpen(7, 11, 7, WorldPhysics.SOLID)); // cached as air first
         com.stonebreak.world.generation.trees.TreeBlockPlacer placer =
             new com.stonebreak.world.generation.trees.TreeBlockPlacer(world);
-        placer.placeBlock(7, 11, 7, BlockType.WOOD); // chunk.setBlock: bypasses World.setBlockAt
+        placer.placeBlock(7, 11, 7, BlockType.WOOD); // setBlockRaw: bypasses the World.setBlockAt funnel
         placer.complete();
         assertFalse(physics.isOpen(7, 11, 7, WorldPhysics.SOLID), "a generated trunk must not be invisible");
         assertTrue(physics.cellTop(7, 11, 7, WorldPhysics.LOG) > 0f);

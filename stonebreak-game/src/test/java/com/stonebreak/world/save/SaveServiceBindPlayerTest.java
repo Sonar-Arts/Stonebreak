@@ -38,7 +38,6 @@ class SaveServiceBindPlayerTest {
     void bindPlayerKeepsAccumulatedWorldData() throws Exception {
         String worldPath = tempDir.resolve("bind-player").toString();
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
 
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             Game game = mock(Game.class);
@@ -70,7 +69,7 @@ class SaveServiceBindPlayerTest {
                 "registering the player must not reset the accumulated play time");
             assertTrue(result.getWorldData().isCheatsEnabled(),
                 "registering the player must not discard runtime WorldData edits");
-            assertEquals(new Vector3f(77f, 80f, 99f), result.getPlayerData().getPosition(),
+            assertEquals(new org.joml.Vector3d(77, 80, 99), result.getPlayerData().getPosition(),
                 "the rebound (live) player is the one persisted");
         }
     }

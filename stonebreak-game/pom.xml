@@ -187,7 +187,7 @@
                          JUnit (unnamed module) instantiates it for tests in OTHER packages; surefire only
                          opens it when a tgmpipe test class happens to be selected, so a filtered run of
                          e.g. ChunkCodecZstdTest errored instead of skipping. -->
-                    <argLine>-Dnet.bytebuddy.experimental=true --add-reads stonebreak.game=io.netty.codec,io.netty.common --add-opens stonebreak.game/com.stonebreak.world.generation.diffusion.tgmpipe=ALL-UNNAMED</argLine>
+                    <argLine>-Dnet.bytebuddy.experimental=true --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel,stonebreak.game --add-reads stonebreak.game=io.netty.codec,io.netty.common --add-opens stonebreak.game/com.stonebreak.world.generation.diffusion.tgmpipe=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
             <!-- Stonebreak's own native library (#386: the worldgen kernels moved out of the engine's
@@ -214,6 +214,18 @@
                                         <include>libstonebreak_worldgen.so</include>
                                         <include>libstonebreak_worldgen.dylib</include>
                                         <include>stonebreak_worldgen.dll</include>
+                                    </includes>
+                                </resource>
+                                <resource>
+                                    <!-- libstonebreak_terrain: the DaedalusTGM tile pipeline in-process (native engine
+                                         phase 3, tgmpipe/NativeTerrain); built only when the Cenda SDK carries
+                                         cenda/infer.h -->
+                                    <directory>${project.basedir}/native/build/release/src/terrain</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>libstonebreak_terrain.so</include>
+                                        <include>libstonebreak_terrain.dylib</include>
+                                        <include>stonebreak_terrain.dll</include>
                                     </includes>
                                 </resource>
                                 <resource>
@@ -265,7 +277,7 @@
                     <mainClass>com.stonebreak.core.Main</mainClass>
                     <options>
                         <!-- Enable native access for LWJGL modules (Java 21+ requirement, critical for Java 24+) -->
-                        <option>--enable-native-access=ALL-UNNAMED</option>
+                        <option>--enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel</option>
                         <!-- Alternative: specific modules if needed -->
                         <!-- <option>enable-native-access=org.lwjgl,org.lwjgl.opengl,org.lwjgl.glfw,org.lwjgl.stb,org.lwjgl.nanovg,org.lwjgl.openal</option> -->
                         
@@ -281,6 +293,11 @@
                         <!-- Heap sizing — preallocate to avoid grow-time pauses -->
                         <option>-Xms2g</option>
                         <option>-Xmx8g</option>
+                        <!-- Live set ~0.7-1.5 GB: collect before 3 GB instead of letting the committed heap reach
+                             -Xmx (measured 2026-11-20: 8 GB -> 3.2 GB committed, no allocation stalls), and hand
+                             freed memory back after 30 s. -Xmx stays the ceiling for spikes. -->
+                        <option>-XX:SoftMaxHeapSize=3g</option>
+                        <option>-XX:ZUncommitDelay=30</option>
                         <!-- Optimize for consistent low-latency performance.
                              Linux-only knobs; harmless no-ops on Windows. -->
                         <option>-XX:+UseLargePages</option>

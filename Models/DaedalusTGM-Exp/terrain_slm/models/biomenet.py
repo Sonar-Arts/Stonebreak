@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 import torch
+
+from terrain_slm.world.devcopy import const, to_device   # host -> device without a device sync
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -24,7 +26,8 @@ from terrain_slm import biomes as B
 
 CLASS_IDS = tuple(sorted(set(B._BIOME_ID.values())))   # biome id per output class
 N_CLASSES = len(CLASS_IDS)
-N_IN = 10   # elev, slope, 4 climate, 3 classifier noise fields, land flag
+N_IN = 10   # elev, slope, 4 climate, 3 classifier noise fields, land flag (+ N_EXTRA with BiomeNetConfig.extras)
+N_EXTRA = 3  # EXP-2 climate extras: aridity, soil water, snow water equivalent (biomes.has_extras)
 PIXEL_M = 60.0
 
 
@@ -32,6 +35,7 @@ PIXEL_M = 60.0
 class BiomeNetConfig:
     channels: tuple = (32, 64, 96)
     norm: bool = False   # per-pixel channel norm in every block: without it training collapsed to one class (b3)
+    extras: bool = False # reads the 7-channel climate (aridity, soil, snow); False = v4's 4-channel sidecar
 
     def to_dict(self):
         d = asdict(self)
@@ -67,7 +71,7 @@ class BiomeNet(nn.Module):
         self.cfg = cfg
         c0, c1, c2 = cfg.channels
         nb = lambda a, b: _block(a, b, cfg.norm)
-        self.e0 = nb(N_IN, c0)
+        self.e0 = nb(N_IN + (N_EXTRA if cfg.extras else 0), c0)
         self.d0 = nn.Conv2d(c0, c1, 3, stride=2, padding=1)
         self.e1 = nb(c1, c1)
         self.d1 = nn.Conv2d(c1, c2, 3, stride=2, padding=1)
@@ -101,26 +105,29 @@ def classifier_noise(i0: int, j0: int, h: int, w: int) -> np.ndarray:
     return np.stack([temp, precip, snow])
 
 
-def build_input(elev_m: torch.Tensor, climate: torch.Tensor, i0: int, j0: int) -> torch.Tensor:
-    """(H, W) mid-block metres + (4, H, W) climate in the classifier's units -> (1, N_IN, H, W)."""
+def build_input(elev_m: torch.Tensor, climate: torch.Tensor, i0: int, j0: int, extras: bool = False) -> torch.Tensor:
+    """(H, W) mid-block metres + (4 or 7, H, W) climate in the classifier's units -> (1, N_IN [+ N_EXTRA], H, W)."""
     h, w = elev_m.shape
     p = F.pad(elev_m[None, None], (1, 1, 1, 1), mode="replicate")[0, 0]
     gx = 0.5 * (p[1:-1, 2:] - p[1:-1, :-2])
     gy = 0.5 * (p[2:, 1:-1] - p[:-2, 1:-1])
     slope = torch.sqrt(gx * gx + gy * gy) / PIXEL_M
-    noise = torch.from_numpy(classifier_noise(i0, j0, h, w)).to(elev_m.device)
+    noise = to_device(classifier_noise(i0, j0, h, w), elev_m.device)
     t, ts, pr, cv = climate[0], climate[1], climate[2].clamp_min(0.0), climate[3]
     return torch.stack([
         elev_m.clamp_min(0.0) / 1000.0, slope.clamp(0, 3), t / 10.0, ts / 500.0,
         torch.log1p(pr) / 7.0, cv / 50.0, noise[0], noise[1] * 5.0, noise[2], (elev_m > 0).float(),
-    ])[None]
+    ] + ([torch.log(climate[4].clamp_min(0.0) + 0.01) / 3.0, climate[5] / 0.4,
+          torch.log1p(climate[6].clamp_min(0.0) * 100.0) / 3.0] if extras else []))[None]
 
 
 @torch.no_grad()
 def classify(model: BiomeNet, elev_m: torch.Tensor, climate: torch.Tensor, i0: int, j0: int) -> torch.Tensor:
     """(H, W) int16 biome ids for the whole input (callers crop their margin)."""
-    logits = model(build_input(elev_m, climate, i0, j0).float())
-    ids = torch.tensor(CLASS_IDS, device=elev_m.device, dtype=torch.int16)
+    if model.cfg.extras and climate.shape[0] < 7:
+        raise ValueError("this biome sidecar reads the 7-channel EXP-2 climate (aridity, soil, snow)")
+    logits = model(build_input(elev_m, climate, i0, j0, extras=model.cfg.extras).float())
+    ids = const(CLASS_IDS, elev_m.device, torch.int16)
     return ids[logits[0].argmax(0)]
 
 

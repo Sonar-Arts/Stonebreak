@@ -91,6 +91,16 @@ public final class SbePoseSolver {
     }
 
     /**
+     * {@link #baseMatrix(Vector3f, float, Vector3f)} for a double WORLD position: the translation is made
+     * camera-relative in double ({@code RenderOrigin.modelAt}), so models stay precise at any distance.
+     */
+    public static Matrix4f baseMatrix(org.joml.Vector3dc position, float yawDegrees, Vector3f scale) {
+        return RenderOrigin.modelAt(position.x(), position.y(), position.z())
+                .rotateY((float) Math.toRadians(yawDegrees))
+                .scale(scale);
+    }
+
+    /**
      * Walks the geometry's parts, computing each part's world matrix from the
      * base transform plus its hierarchy-propagated pose delta, and hands it to
      * {@code consumer}. Un-animated children inherit their parent's delta.

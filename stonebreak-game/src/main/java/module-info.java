@@ -94,11 +94,14 @@ module stonebreak.game{
     opens com.stonebreak.world.save.repository to com.fasterxml.jackson.databind;
     opens com.stonebreak.world.save.serialization to com.fasterxml.jackson.databind;
 
-    // Export and open remaining MMS packages (most moved to the Open Mason engine)
-    exports com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-    exports com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
-    exports com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
-    opens com.stonebreak.world.chunk.api.mightyMesh.mmsCore;
-    opens com.stonebreak.world.chunk.api.mightyMesh.mmsGeometry;
-    opens com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration;
+    // Export and open packages for JUnit testing
+    exports com.stonebreak.world.save to org.junit.platform.commons;
+    exports com.stonebreak.world.chunk to org.junit.platform.commons;
+    opens com.stonebreak.world.save to org.junit.platform.commons;
+    opens com.stonebreak.world.chunk to org.junit.platform.commons;
+    exports com.stonebreak.world.voxel to org.junit.platform.commons;
+    opens com.stonebreak.world.voxel to org.junit.platform.commons;
+    exports com.stonebreak.network to org.junit.platform.commons;
+    opens com.stonebreak.network to org.junit.platform.commons;
+
 }

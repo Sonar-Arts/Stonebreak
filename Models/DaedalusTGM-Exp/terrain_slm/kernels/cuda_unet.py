@@ -80,7 +80,10 @@ class NativeSampler:
         blocks = [b for lvl in model.enc for b in lvl] + list(model.mid) + [b for lvl in model.dec for b in lvl]
         film = {}
         with torch.no_grad():
-            e = model.temb(timestep_embedding(ts[:steps].float(), model.cfg.temb).float())   # (steps, te)
+            if getattr(model, "mean_flow", False) and hasattr(model, "embed"):   # MeanFlow relief student: e(t, r),
+                e = model.embed(ts[:steps].float(), ts[1:steps + 1].float()).float()   # r = the step's end (relief.py)
+            else:
+                e = model.temb(timestep_embedding(ts[:steps].float(), model.cfg.temb).float())   # (steps, te)
             for b in blocks:
                 c = b.conv1.out_channels
                 tab = b.film(e).float()                       # (steps, 2c): scale, shift
@@ -94,11 +97,20 @@ class NativeSampler:
         buf = lambda i: torch.zeros(1, res[i][0], res[i][1], chans[i], **hf)
         self.stem_in = torch.zeros(1, h, w, STEM_PAD, **hf)
         self.xs = torch.zeros(h * w, device=dev, dtype=torch.float32)
+        # Buffers by lifetime (VRAM audit 2026-11-18: six full buffers per level made the detail sampler
+        # 619 MiB). Per step, at level i < n_lvl:
+        #   enc raw   stem/encoder .. the decoder's merge at level i (the skip)
+        #   enc silu  encoder .. the down conv              -> then reused as the decoder's silu
+        #   dec raw   merge .. end of the decoder            -> before that, the encoder's conv1 temp
+        #   enc raw   is dead after the merge                -> so it is the decoder's conv1 temp
+        # No launch reads a buffer it also writes through a different alias, and nothing but xs and
+        # stem_in carries from one Euler step to the next, so every value is unchanged.
         enc = [(buf(i), buf(i)) for i in range(n_lvl + 1)]      # (raw, silu); enc[n_lvl] = mid
-        dec = [(buf(i), buf(i)) for i in range(n_lvl)]
-        tmp = [buf(i) for i in range(n_lvl + 1)]                 # conv1 -> FiLM -> SiLU
-        up = [buf(i) for i in range(n_lvl)]
-        self._bufs = (enc, dec, tmp, up)
+        dec = [(buf(i), enc[i][1]) for i in range(n_lvl)]       # (raw, silu shared with enc)
+        tmp_enc = [dec[i][0] for i in range(n_lvl)] + [buf(n_lvl)]   # conv1 -> FiLM -> SiLU
+        tmp_dec = [enc[i][0] for i in range(n_lvl)]
+        up = [None] * n_lvl                                      # unfolded up-convs only (allocated below)
+        self._bufs = (enc, dec, tmp_enc, up)
 
         # ---------------------------------------------------------------- weights
         def cfg_for(kind, cin, cout, ks, stride, hh, mode, kdim):
@@ -133,19 +145,19 @@ class NativeSampler:
                                               film=film_of[s] if film_of is not None else None,
                                               res=res_t, out_raw=out_raw, out_silu=out_silu))
 
-        def block_ops(b, x, lvl):
+        def block_ops(b, x, lvl, tmp):
             tab = film[id(b)]
             hh = res[lvl][0]
-            conv_op("c1", b.conv1, x[1], hh, out_silu=tmp[lvl], film_of=tab)
-            conv_op("c2", b.conv2, tmp[lvl], hh, res_t=x[0], out_raw=x[0], out_silu=x[1])
+            conv_op("c1", b.conv1, x[1], hh, out_silu=tmp, film_of=tab)
+            conv_op("c2", b.conv2, tmp, hh, res_t=x[0], out_raw=x[0], out_silu=x[1])
 
         conv_op("stem", model.stem, self.stem_in, h, out_raw=enc[0][0], out_silu=enc[0][1], cin_pad=STEM_PAD)
         for i in range(n_lvl):
             for b in model.enc[i]:
-                block_ops(b, enc[i], i)
+                block_ops(b, enc[i], i, tmp_enc[i])
             conv_op("down", model.down[i], enc[i][1], res[i][0], stride=2, out_raw=enc[i + 1][0], out_silu=enc[i + 1][1])
         for b in model.mid:
-            block_ops(b, enc[n_lvl], n_lvl)
+            block_ops(b, enc[n_lvl], n_lvl, tmp_enc[n_lvl])
         for i in reversed(range(n_lvl)):
             src = enc[n_lvl][1] if i == n_lvl - 1 else dec[i + 1][1]
             upc, mg = model.up[i], model.merge[i]
@@ -156,6 +168,7 @@ class NativeSampler:
                 plan.append(lambda s, src=src, i=i, wq=wq, bq=bq, cfg=cfg: C.make_conv(
                     src, wq, bq, cfg, mode=1, x2=enc[i][0], out_raw=dec[i][0], out_silu=dec[i][1]))
             else:
+                up[i] = buf(i)   # read by the merge while it writes both dec buffers: needs its own
                 cfg = cfg_for("up", upc.in_channels, upc.out_channels, 2, 1, lo, 1, 4 * upc.in_channels)
                 np_ = C.round_up(upc.out_channels, cfg[1])
                 wq, bq = C.pack_up(upc.weight, np_), C.pad_bias(upc.bias, np_)
@@ -164,7 +177,7 @@ class NativeSampler:
                 conv_op("merge", mg, up[i], res[i][0], ks=mg.kernel_size[0], x2=enc[i][0],
                         out_raw=dec[i][0], out_silu=dec[i][1], concat_c1=upc.out_channels)
             for b in model.dec[i]:
-                block_ops(b, dec[i], i)
+                block_ops(b, dec[i], i, tmp_dec[i])
         # Output conv (CO = 1, one 16-wide N tile) on the halo kernel, Euler update fused.
         out_key = ("out", chans[0], 1, 3, 1, h)
         out_cfg = self._configs.get(out_key) or C.TUNED.get(torch.cuda.get_device_name(dev), {}).get(out_key) \

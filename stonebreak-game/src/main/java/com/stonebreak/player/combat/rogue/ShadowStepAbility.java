@@ -9,6 +9,7 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -88,16 +89,16 @@ public class ShadowStepAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return null;
 
-        Vector3f origin = player.getPosition();
+        Vector3d origin = player.getPosition();
         LivingEntity nearest = null;
-        float nearestDistSq = SHADOW_STEP_RANGE * SHADOW_STEP_RANGE;
+        double nearestDistSq = SHADOW_STEP_RANGE * SHADOW_STEP_RANGE;
         for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive()) continue;
             AwarenessController awareness = entity.getAwareness();
             if (awareness == null || awareness.getState() != AwarenessController.AwarenessState.UNAWARE) {
                 continue;
             }
-            float distSq = entity.getPosition().distanceSquared(origin);
+            double distSq = entity.getPosition().distanceSquared(origin);
             if (distSq <= nearestDistSq) {
                 nearestDistSq = distSq;
                 nearest = entity;
@@ -111,7 +112,7 @@ public class ShadowStepAbility {
      * Uses the same yaw-to-forward convention as {@link AwarenessController} (model front is -Z).
      */
     private void teleportBehind(Player player, LivingEntity target) {
-        Vector3f targetPos = target.getPosition();
+        Vector3d targetPos = target.getPosition();
         float yaw = (float) Math.toRadians(target.getRotation().y);
         Vector3f forward = new Vector3f((float) Math.sin(yaw), 0f, (float) -Math.cos(yaw));
         player.setPosition(targetPos.x - forward.x, targetPos.y, targetPos.z - forward.z);

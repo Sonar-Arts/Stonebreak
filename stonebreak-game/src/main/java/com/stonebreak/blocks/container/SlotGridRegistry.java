@@ -2,30 +2,25 @@ package com.stonebreak.blocks.container;
 
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.LocalBlockKey;
-import org.joml.Vector3f;
+import com.stonebreak.world.chunk.Cube;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * World-scoped registry of one kind of {@link SlotGridState} (crafting tables, chests), one per
  * block that has (or had) items in it. PER-WORLD: the authoritative server world's registry owns
- * the real grids and writes every change straight into the chunk's block states (so the autosave
- * captures it); each client render world holds a display copy hydrated from streamed chunk states
+ * the real grids and writes every change straight into the world's block states (so the autosave
+ * captures it); each client render world holds a display copy hydrated from streamed cube states
  * and live {@code BlockStateS2C} echoes.
  *
  * <p>There is no tick: a grid only changes when a player edits it ({@link #persist}) or the block
  * is placed/broken.
  */
 public class SlotGridRegistry<S extends SlotGridState> {
-
-    private static final int CHUNK_SIZE = 16;
 
     // Concurrent: slot intents + chunk load/unload run on the server thread while the
     // container UI and block placement run on the main thread.
@@ -117,28 +112,21 @@ public class SlotGridRegistry<S extends SlotGridState> {
      * The block was broken: drop its grid at the block. Server-side (authoritative);
      * {@code breaker} biases where the drops spawn and may be null.
      */
-    public void onBlockBroken(World world, int x, int y, int z, Vector3f breaker) {
+    public void onBlockBroken(World world, int x, int y, int z, org.joml.Vector3dc breaker) {
         S state = states.remove(new BlockPos(x, y, z));
         if (state == null) return;
-        state.dropContentsAt(world, new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f), breaker);
-        // Chunk.setBlock(AIR) already cleared the per-block state map entry.
+        state.dropContentsAt(world, new org.joml.Vector3d(x + 0.5, y + 0.5, z + 0.5), breaker);
+        // Setting the cell to AIR already cleared its block state.
     }
 
-    public void onChunkLoaded(Chunk chunk) {
-        int cx = chunk.getX();
-        int cz = chunk.getZ();
-        for (Map.Entry<Integer, String> e : chunk.getBlockStates().entrySet()) {
-            String value = e.getValue();
-            if (!ownsState.test(value)) continue;
-
-            int key = e.getKey();
-            BlockPos pos = new BlockPos(
-                cx * CHUNK_SIZE + LocalBlockKey.x(key),
-                LocalBlockKey.y(key),
-                cz * CHUNK_SIZE + LocalBlockKey.z(key));
-            // In place when already tracked (a client re-stream of this chunk) so an open UI
-            // stays bound to the same grid; treated like an echo so the UI re-baselines. A
-            // re-stream carries no ack, so it is ignored while one of our snapshots is in flight.
+    /** Discovers this kind's grids in a cube that entered the world. */
+    public void onCubeInstalled(Cube cube) {
+        cube.forEachState((x, y, z, value) -> {
+            if (!ownsState.test(value)) return;
+            BlockPos pos = new BlockPos(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z));
+            // In place when already tracked (a client re-stream) so an open UI stays bound to the
+            // same grid; treated like an echo so the UI re-baselines. A re-stream carries no ack, so
+            // it is ignored while one of our snapshots is in flight.
             states.compute(pos, (p, existing) -> {
                 if (existing == null) {
                     S created = fresh.apply(p);
@@ -148,50 +136,50 @@ public class SlotGridRegistry<S extends SlotGridState> {
                 existing.applyStateString(value);
                 return existing;
             });
+        });
+    }
+
+    /**
+     * Writes every tracked grid of the cube back into the world (before its blob is saved): the
+     * server already wrote each change through; this also covers grids created without a write,
+     * e.g. a UI that was opened but never edited.
+     */
+    public void flushToWorld(Cube cube) {
+        World world = cube.world();
+        for (Map.Entry<BlockPos, S> entry : states.entrySet()) {
+            BlockPos p = entry.getKey();
+            if (!cube.contains(p.x(), p.y(), p.z())) continue;
+            S s = entry.getValue();
+            String existing = world.getBlockStateAt(p.x(), p.y(), p.z());
+            // Never write a grid over a cell that no longer holds this kind of grid (broken and
+            // replaced while tracked) — only refresh our own entry or record a new one.
+            if (existing == null || ownsState.test(existing)) {
+                if (!s.isEmpty() || existing != null) {
+                    String current = s.toStateString();
+                    if (!current.equals(existing)) {
+                        world.setBlockStateAt(p.x(), p.y(), p.z(), current);
+                    }
+                }
+            }
         }
     }
 
-    public void onChunkUnloaded(Chunk chunk) {
-        int xMin = chunk.getX() * CHUNK_SIZE;
-        int zMin = chunk.getZ() * CHUNK_SIZE;
-        int xMax = xMin + CHUNK_SIZE;
-        int zMax = zMin + CHUNK_SIZE;
+    public void onCubeUnloadPending(Cube cube) {
+        flushToWorld(cube);
+    }
 
-        // Flush every grid inside this chunk back into the chunk's state map (the server
-        // already wrote each change through; this also covers states created without a
-        // write, e.g. a UI that was opened but never edited), then drop the entries.
-        Iterator<Map.Entry<BlockPos, S>> it = states.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<BlockPos, S> entry = it.next();
-            BlockPos p = entry.getKey();
-            if (p.x() < xMin || p.x() >= xMax || p.z() < zMin || p.z() >= zMax) continue;
-
-            S s = entry.getValue();
-            int lx = Math.floorMod(p.x(), CHUNK_SIZE);
-            int lz = Math.floorMod(p.z(), CHUNK_SIZE);
-            String existing = chunk.getBlockState(lx, p.y(), lz);
-            // Never write a grid over a cell that no longer holds this kind of grid (broken
-            // and replaced while tracked) — only refresh our own entry or record a new one.
-            if (existing == null || ownsState.test(existing)) {
-                if (!s.isEmpty() || existing != null) {
-                    chunk.setBlockState(lx, p.y(), lz, s.toStateString());
-                }
-            }
-            it.remove();
-        }
+    public void onCubeUnloaded(Cube cube) {
+        states.keySet().removeIf(p -> cube.contains(p.x(), p.y(), p.z()));
     }
 
     /* ── Helpers ─────────────────────────────────────────────── */
 
     private void writeChunkState(World world, BlockPos pos, String stateString) {
         if (world == null || stateString == null) return;
-        Chunk chunk = world.getChunkIfLoaded(Math.floorDiv(pos.x(), CHUNK_SIZE), Math.floorDiv(pos.z(), CHUNK_SIZE));
-        if (chunk == null) return;
-        int lx = Math.floorMod(pos.x(), CHUNK_SIZE);
-        int lz = Math.floorMod(pos.z(), CHUNK_SIZE);
-        String previous = chunk.getBlockState(lx, pos.y(), lz);
-        chunk.setBlockState(lx, pos.y(), lz, stateString);
+        if (!world.isLoaded(pos.x(), pos.y(), pos.z())) return;
+        String previous = world.getBlockStateAt(pos.x(), pos.y(), pos.z());
         if (!stateString.equals(previous)) {
+            world.setBlockStateAt(pos.x(), pos.y(), pos.z(), stateString);
             StateChangeListener l = stateChangeListener;
             if (l != null) {
                 l.onStateChanged(pos, stateString);

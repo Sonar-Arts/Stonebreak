@@ -26,9 +26,37 @@ public final class BiomeSelector {
     private static final int COAST_MAX_Y = StandardTerrain.SEA_LEVEL + 2;
     private static final float COAST_MAX_LAND = 0.999f;
     private static final float BEACH_MAX_MOUNTAIN = 0.15f;
-    private static final float MOUNTAIN_MIN = 0.617f;
-    private static final float HILL_MIN_MOUNTAIN = 0.46f;
-    private static final float HILL_MIN_HILLY = 0.237f;
+    private static final float MOUNTAIN_MIN_V1 = 0.617f;
+    private static final float HILL_MIN_MOUNTAIN_V1 = 0.46f;
+    private static final float HILL_MIN_HILLY_V1 = 0.237f;
+
+    // Standard shape 2 (2026-11-19): every knob fitted to DaedalusTGM-Exp-2's biome mix by
+    // terrain_slm.eval.distill_biomes --v2 (mirrors native shape.cpp BIOMES_V2; NoiseRouter applies the climate part).
+    // BEGIN BIOMES_V2 (terrain_slm.eval.distill_biomes --v2)
+    static final float MOUNTAIN_MIN_V2 = 0.6666f, HILL_MIN_MOUNTAIN_V2 = 0.4184f, HILL_MIN_HILLY_V2 = 0.1765f;
+    static final float SWAMP_MAX_ROUGH_V2 = 0.3782f;
+    public static final float T2_SCALE = 0.3203f, T2_OFFSET = 0.5510f, M2_SCALE = 1.1693f, M2_OFFSET = 0.7153f;
+    public static final int CHILL2_START_Y = 113;
+    public static final float CHILL2_FACTOR = 185.02f;
+    // END BIOMES_V2
+
+    private final float MOUNTAIN_MIN;
+    private final float HILL_MIN_MOUNTAIN;
+    private final float HILL_MIN_HILLY;
+    private final float SWAMP_MAX_ROUGH;
+
+    /** The 2026-11-01 selector (Standard shape 1). */
+    public BiomeSelector() {
+        this(false);
+    }
+
+    /** The selector of Standard shape 1 or ({@code v2}) shape 2. */
+    public BiomeSelector(boolean v2) {
+        MOUNTAIN_MIN = v2 ? MOUNTAIN_MIN_V2 : MOUNTAIN_MIN_V1;
+        HILL_MIN_MOUNTAIN = v2 ? HILL_MIN_MOUNTAIN_V2 : HILL_MIN_MOUNTAIN_V1;
+        HILL_MIN_HILLY = v2 ? HILL_MIN_HILLY_V2 : HILL_MIN_HILLY_V1;
+        SWAMP_MAX_ROUGH = v2 ? SWAMP_MAX_ROUGH_V2 : SWAMP_MAX_ROUGH_V1;
+    }
 
     // A smooth range body (high but gentle) reads as a plateau.
     private static final float PLATEAU_MAX_ROUGH = 0.45f;
@@ -46,7 +74,7 @@ public final class BiomeSelector {
 
     // Swamp: flat, low-lying inland ground, away from ranges (DaedalusTGM-Exp swamps sit below ~300 m).
     private static final int SWAMP_MAX_Y = 80;
-    private static final float SWAMP_MAX_ROUGH = 0.3f;
+    private static final float SWAMP_MAX_ROUGH_V1 = 0.3f;
     private static final float SWAMP_MAX_MOUNTAIN = 0.1f;
 
     // The Shade: dry temperate woodland, carved out of what was the dry half of temperate plains.
@@ -153,7 +181,7 @@ public final class BiomeSelector {
         return BiomeType.PLAINS;
     }
 
-    private static boolean isSwamp(MultiNoiseSample s) {
+    private boolean isSwamp(MultiNoiseSample s) {
         return s.height() <= SWAMP_MAX_Y
             && s.rough() < SWAMP_MAX_ROUGH && s.mountain() < SWAMP_MAX_MOUNTAIN
             && s.temperature() >= T_COLD

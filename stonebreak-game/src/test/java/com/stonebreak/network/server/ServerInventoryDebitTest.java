@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
@@ -143,7 +143,7 @@ class ServerInventoryDebitTest {
     private static Fakes fakes() {
         ServerWorldContext ctx = mock(ServerWorldContext.class);
         World world = mock(World.class);
-        SnowLayerManager snow = new SnowLayerManager();
+        SnowLayerManager snow = new SnowLayerManager(com.stonebreak.world.World.createDetached(new com.stonebreak.world.operations.WorldConfiguration(), 0L));
         EntityManager em = Mockito.spy(new EntityManager(world));
         when(ctx.world()).thenReturn(world);
         when(world.getSnowLayerManager()).thenReturn(snow);
@@ -154,7 +154,7 @@ class ServerInventoryDebitTest {
     @Test
     void placementWithoutItemRevertsAndSyncs() {
         Fakes f = fakes();
-        when(f.world().getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(BlockType.AIR);
+        when(f.world().getBlockAt(anyLong(), anyLong(), anyLong())).thenReturn(BlockType.AIR);
         ServerBlockHandler blocks = new ServerBlockHandler(new ServerChunkHandler());
         ServerPlayer sp = newPlayer();
         sp.updateState(10.5f, 65f, 10.5f, 0f, 0f);
@@ -214,7 +214,7 @@ class ServerInventoryDebitTest {
         sp.updateState(10.5f, 65f, 10.5f, 0f, 0f);
         sp.inventory().add(ItemType.WOODEN_BUCKET.getId(), 3, ItemType.BUCKET_STATE_EMPTY);
         sp.inventory().selectHotbarSlot(0);
-        when(f.world().setBlockAt(anyInt(), anyInt(), anyInt(), any(), anyBoolean())).thenReturn(true);
+        when(f.world().setBlockAt(anyLong(), anyLong(), anyLong(), any(), anyBoolean())).thenReturn(true);
         when(f.world().getBlockAt(10, 65, 10)).thenReturn(BlockType.WATER);
 
         blocks.handleBlockChange(sp, new BlockChangeC2S(10, 65, 10,
@@ -233,7 +233,7 @@ class ServerInventoryDebitTest {
         sp.updateState(10.5f, 65f, 10.5f, 0f, 0f);
         sp.inventory().add(ItemType.WOODEN_BUCKET.getId(), 3, ItemType.BUCKET_STATE_EMPTY);
         sp.inventory().selectHotbarSlot(0);
-        when(f.world().setBlockAt(anyInt(), anyInt(), anyInt(), any(), anyBoolean())).thenReturn(true);
+        when(f.world().setBlockAt(anyLong(), anyLong(), anyLong(), any(), anyBoolean())).thenReturn(true);
         // The server's own cell holds no water; the client claims prev=WATER anyway.
         when(f.world().getBlockAt(10, 65, 10)).thenReturn(BlockType.AIR);
 

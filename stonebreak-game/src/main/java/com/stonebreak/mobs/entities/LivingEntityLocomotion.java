@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.entities;
 
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.Entity.BoundingBox;
@@ -108,30 +109,30 @@ final class LivingEntityLocomotion {
      * Checks if the owner can move to a specific position. Collision detection starts from the
      * very bottom of the entity's legs.
      */
-    boolean canMoveTo(Vector3f targetPosition) {
+    boolean canMoveTo(Vector3dc targetPosition) {
         // Create bounding box starting from the bottom of the legs
         // targetPosition.y represents the bottom of the body, so subtract legHeight to get leg bottom
-        float legBottomY = targetPosition.y - owner.legHeight;
+        double legBottomY = targetPosition.y() - owner.legHeight;
         BoundingBox targetBounds = new BoundingBox(
-            targetPosition.x - owner.width / 2.0f,
+            targetPosition.x() - owner.width / 2.0f,
             legBottomY, // Start from bottom of legs
-            targetPosition.z - owner.length / 2.0f,
-            targetPosition.x + owner.width / 2.0f,
-            targetPosition.y + owner.height, // Extend to full height
-            targetPosition.z + owner.length / 2.0f
+            targetPosition.z() - owner.length / 2.0f,
+            targetPosition.x() + owner.width / 2.0f,
+            targetPosition.y() + owner.height, // Extend to full height
+            targetPosition.z() + owner.length / 2.0f
         );
 
         // Check for solid blocks in the target area
-        int minX = (int) Math.floor(targetBounds.minX);
-        int maxX = (int) Math.ceil(targetBounds.maxX);
-        int minY = (int) Math.floor(targetBounds.minY);
-        int maxY = (int) Math.ceil(targetBounds.maxY);
-        int minZ = (int) Math.floor(targetBounds.minZ);
-        int maxZ = (int) Math.ceil(targetBounds.maxZ);
+        long minX = (long) Math.floor(targetBounds.minX);
+        long maxX = (long) Math.ceil(targetBounds.maxX);
+        long minY = (long) Math.floor(targetBounds.minY);
+        long maxY = (long) Math.ceil(targetBounds.maxY);
+        long minZ = (long) Math.floor(targetBounds.minZ);
+        long maxZ = (long) Math.ceil(targetBounds.maxZ);
 
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
+        for (long x = minX; x <= maxX; x++) {
+            for (long y = minY; y <= maxY; y++) {
+                for (long z = minZ; z <= maxZ; z++) {
                     if (owner.world.getBlockAt(x, y, z) != null &&
                         owner.world.getBlockAt(x, y, z).isSolid()) {
                         return false;
@@ -147,7 +148,7 @@ final class LivingEntityLocomotion {
      * Checks if the owner can move to a specific position while avoiding flowers (for cows and
      * other passive mobs that should not trample them).
      */
-    boolean canMoveToAvoidingFlowers(Vector3f targetPosition) {
+    boolean canMoveToAvoidingFlowers(Vector3dc targetPosition) {
         // First do basic collision check
         if (!owner.canMoveTo(targetPosition)) {
             return false;
@@ -155,16 +156,16 @@ final class LivingEntityLocomotion {
 
         // Check for flowers at ground level to avoid trampling them
         // Use bottom of legs position for ground checking
-        float legBottomY = targetPosition.y - owner.legHeight;
-        int groundX = (int) Math.floor(targetPosition.x);
-        int groundY = (int) Math.floor(legBottomY);
-        int groundZ = (int) Math.floor(targetPosition.z);
+        double legBottomY = targetPosition.y() - owner.legHeight;
+        long groundX = (long) Math.floor(targetPosition.x());
+        long groundY = (long) Math.floor(legBottomY);
+        long groundZ = (long) Math.floor(targetPosition.z());
 
         // Check current ground block and surrounding area
-        for (int x = groundX - 1; x <= groundX + 1; x++) {
-            for (int z = groundZ - 1; z <= groundZ + 1; z++) {
+        for (long x = groundX - 1; x <= groundX + 1; x++) {
+            for (long z = groundZ - 1; z <= groundZ + 1; z++) {
                 // Check at ground level and one block up (where flowers typically are)
-                for (int y = groundY; y <= groundY + 1; y++) {
+                for (long y = groundY; y <= groundY + 1; y++) {
                     var blockType = owner.world.getBlockAt(x, y, z);
                     if (blockType != null && isFlower(blockType)) {
                         return false; // Avoid trampling flowers

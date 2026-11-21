@@ -25,16 +25,19 @@ class BlockScale:
     blocks: torch.Tensor    # (N,) continuous block height, increasing
     horizontal_m: float     # metres per block horizontally
     sea_level: int
-    world_height: int
+    world_height: int       # top of the column, exclusive
+    min_y: int = 0          # bottom of the column, inclusive (heights clamp to [min_y, world_height))
 
     @staticmethod
     def from_world(world: WorldConfig, device) -> "BlockScale":
         curve = world.curve()
-        e = np.arange(-4000.0, 9000.0, 2.0)
+        # v1 worlds clamp the sea bed at -4 km (kept: saved worlds stay seamless); v2 reaches the column bottom.
+        lo = world.sea_bed_floor_m() if hasattr(world, "sea_bed_floor_m") else -4000.0
+        e = np.arange(lo, 9000.0, 2.0)
         y = curve.to_block_height_exact(e)
         return BlockScale(torch.tensor(e, dtype=torch.float32, device=device),
                           torch.tensor(y, dtype=torch.float32, device=device),
-                          world.horizontal_m, world.sea_level, world.world_height)
+                          world.horizontal_m, world.sea_level, world.world_height, world.min_y)
 
     @staticmethod
     def game_default(device) -> "BlockScale":

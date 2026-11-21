@@ -1,6 +1,6 @@
 package com.stonebreak.blocks.blueberrybush;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import com.stonebreak.core.Game;
 import com.stonebreak.network.MultiplayerSession;
@@ -35,7 +35,7 @@ public final class BlueberryBushInteraction {
             return true; // the server will echo the new stage and spawn the berries
         }
         // No live connection (bare/test world): pick locally.
-        Vector3f picker = player == null ? null : new Vector3f(player.getPosition());
+        Vector3d picker = player == null ? null : new Vector3d(player.getPosition());
         return BlueberryBushHarvest.harvest(world, x, y, z, picker);
     }
 }

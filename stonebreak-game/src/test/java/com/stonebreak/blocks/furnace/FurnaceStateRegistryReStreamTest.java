@@ -3,7 +3,9 @@ package com.stonebreak.blocks.furnace;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.World;
+import com.stonebreak.world.operations.WorldConfiguration;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,13 +26,19 @@ class FurnaceStateRegistryReStreamTest {
     private static final int Y = 20;
     private static final BlockPos POS = new BlockPos(3, Y, 5);
 
-    private Chunk chunk;
+    private World world;
     private FurnaceStateRegistry registry;
 
     @BeforeEach
     void freshRegistry() {
-        chunk = new Chunk(0, 0);
+        world = World.createDetached(new WorldConfiguration(), 1L);
+        world.setBlockAt(POS.x(), POS.y(), POS.z(), BlockType.FURNACE);
         registry = new FurnaceStateRegistry(null);
+    }
+
+    @AfterEach
+    void close() {
+        world.cleanup();
     }
 
     /** What the server streams for a lit furnace holding {@code ingredients} with {@code cook} progress. */
@@ -43,8 +51,8 @@ class FurnaceStateRegistryReStreamTest {
     }
 
     private void stream(String state) {
-        chunk.setBlockState(POS.x(), POS.y(), POS.z(), state);
-        registry.onChunkLoaded(chunk);
+        world.setBlockStateAt(POS.x(), POS.y(), POS.z(), state);
+        registry.onCubeInstalled(world.getCubeAt(POS.x(), POS.y(), POS.z()));
     }
 
     @Test

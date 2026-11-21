@@ -40,7 +40,7 @@ final class PlayerFigureRenderer {
      */
     void renderLocalPlayer(com.stonebreak.player.Player player,
                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                           com.stonebreak.world.World world, Vector3f cameraPos) {
+                           com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) return;
 
@@ -95,7 +95,7 @@ final class PlayerFigureRenderer {
                            float yaw, float headYaw, float headPitch,
                            Vector4f untexturedTint,
                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                           com.stonebreak.world.World world, Vector3f cameraPos) {
+                           com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) {
             // Asset not loaded — fall back to cylinder so the figure never goes invisible.
@@ -149,7 +149,7 @@ final class PlayerFigureRenderer {
         com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) return;
         PlayerFigureRenderState figure = new PlayerFigureRenderState(
-                position, yawDegrees, scale, 0f, 0f, stateName, animationTime,
+                new org.joml.Vector3d(position), yawDegrees, scale, 0f, 0f, stateName, animationTime,
                 ensureLocalPlayerColor());
         renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, null, null,
                 attachmentKey);
@@ -167,7 +167,7 @@ final class PlayerFigureRenderer {
     private void renderPlayerFigure(com.openmason.engine.entity.model.EntityAsset asset,
                                     PlayerFigureRenderState figure,
                                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                    com.stonebreak.world.World world, Vector3f cameraPos,
+                                    com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
                                     Object attachmentKey) {
         com.stonebreak.mobs.sbe.AnimState anim = figure.hasOverlay()
                 ? new com.stonebreak.mobs.sbe.AnimState(figure.stateName(), figure.animTime(),

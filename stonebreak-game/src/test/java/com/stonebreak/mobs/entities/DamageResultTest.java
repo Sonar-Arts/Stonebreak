@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities;
 
 import org.junit.jupiter.api.Test;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -55,7 +57,7 @@ class DamageResultTest {
 
     @Test
     void remotePlayersAreNotAttackable() {
-        assertFalse(new RemotePlayer(null, new Vector3f(0, 64, 0), 2, "other").isPlayerAttackable());
+        assertFalse(new RemotePlayer(null, new Vector3d(0, 64, 0), 2, "other").isPlayerAttackable());
     }
 
     @Test

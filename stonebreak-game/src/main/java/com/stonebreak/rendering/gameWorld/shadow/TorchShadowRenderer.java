@@ -14,7 +14,7 @@ import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.rendering.models.entities.EntityRenderer;
 import com.stonebreak.rendering.textures.BlockTextureArray;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.rendering.gameWorld.regions.CubeDraw;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
@@ -33,14 +33,16 @@ import static org.lwjgl.opengl.GL33.*;
 public final class TorchShadowRenderer implements AutoCloseable {
     private final BlockTextureArray textures;
     private final PointShadowCache cache = new PointShadowCache(PointLightGlsl.MAX_LIGHTS);
-    private final List<Chunk> nearbyChunks = new ArrayList<>();
-    private final List<Chunk> faceChunks = new ArrayList<>();
+    private final List<CubeDraw> nearbyChunks = new ArrayList<>();
+    private final List<CubeDraw> faceChunks = new ArrayList<>();
+    /** The current light's render-space position. */
     private final Vector3f position = new Vector3f();
+    private final org.joml.Vector3d worldPosition = new org.joml.Vector3d();
     private final Matrix4f projection = PointShadowProjection.projection(PointLightGlsl.RADIUS, new Matrix4f());
     private final Matrix4f view = new Matrix4f();
     private final Matrix4f viewProjection = new Matrix4f();
-    // Draw-side twins of view/viewProjection: casters are drawn in render space
-    // (RenderOrigin), while culling, caching and chunk selection stay in world space.
+    // view/viewProjection are built at the light's RENDER-space position, so they are the draw matrices
+    // too (the twins below are kept as named copies for the entity/animated caster calls).
     private final Matrix4f viewRender = new Matrix4f();
     private final Matrix4f viewProjectionRender = new Matrix4f();
     private final FrustumIntersection frustum = new FrustumIntersection();
@@ -64,8 +66,10 @@ public final class TorchShadowRenderer implements AutoCloseable {
         faceChunks.clear();
     }
 
-    public void render(World world, Player player, List<Chunk> loadedChunks,
+    public void render(World world, Player player,
                        EntityRenderer entities, AnimatedBlockRenderer animated, float totalTime) {
+        List<CubeDraw> loadedChunks = ChunkRegionRenderer.isEnabled()
+                ? ChunkRegionRenderer.getInstance().cubes() : List.of();
         if (world == null || !Settings.getInstance().getShadowsEnabled() || DynamicLights.count() == 0) {
             suspend();
             return;
@@ -115,10 +119,17 @@ public final class TorchShadowRenderer implements AutoCloseable {
             textures.bind();
             glActiveTexture(GL_TEXTURE0);
 
+            if (ChunkRegionRenderer.isEnabled()) {
+                // Light views ignore camera visibility; non-READY columns stay hidden like everywhere else.
+                ChunkRegionRenderer.getInstance().prepareShadowPass();
+            }
             cache.retain(DynamicLights.count());
             for (int i = DynamicLights.count(); i < terrainSnapshots.length; i++) terrainSnapshots[i].clear();
             for (int i = 0; i < DynamicLights.count(); i++) {
-                DynamicLights.position(i, position);
+                // Render space throughout (views, frustum, cube boxes): exact at any distance from zero.
+                // The world position only feeds the entity casters' cull sphere.
+                DynamicLights.renderPosition(i, position);
+                DynamicLights.position(i, worldPosition);
                 // The held torch rides the camera, so the player's own body sits on top of
                 // the light and would stamp a head/torso shadow over whatever they look at.
                 // Another player's torch likewise skips its holder (DynamicLights.holder).
@@ -129,8 +140,8 @@ public final class TorchShadowRenderer implements AutoCloseable {
                     int layer = i * PointShadowProjection.FACE_COUNT + face;
                     PointShadowProjection.view(position, face, view);
                     projection.mul(view, viewProjection);
-                    RenderOrigin.acceptRenderSpace(viewRender.set(view));
-                    projection.mul(viewRender, viewProjectionRender);
+                    viewRender.set(view);
+                    viewProjectionRender.set(viewProjection);
                     if (refresh) {
                         terrain.beginCascade(layer);
                         renderTerrain();
@@ -138,10 +149,10 @@ public final class TorchShadowRenderer implements AutoCloseable {
                     terrain.copyLayerTo(layer, live);
                     if (entities != null) {
                         entities.renderShadowCasters(bodyCaster, DynamicLights.holder(i),
-                                viewRender, projection, position, PointLightGlsl.RADIUS);
+                                viewRender, projection, worldPosition, PointLightGlsl.RADIUS);
                     }
                     if (animated != null) {
-                        animated.renderShadowCasters(world, viewRender, projection, position, PointLightGlsl.RADIUS, totalTime);
+                        animated.renderShadowCasters(world, viewRender, projection, worldPosition, PointLightGlsl.RADIUS, totalTime);
                     }
                 }
                 if (refresh) {
@@ -170,34 +181,40 @@ public final class TorchShadowRenderer implements AutoCloseable {
         }
     }
 
-    private void collectNearbyChunks(List<Chunk> chunks) {
+    private void collectNearbyChunks(List<CubeDraw> cubes) {
         nearbyChunks.clear();
-        if (chunks == null) return;
-        for (Chunk chunk : chunks) {
-            float x = chunk.getWorldX(0), z = chunk.getWorldZ(0);
-            float dx = position.x - Math.clamp(position.x, x, x + WorldConfiguration.CHUNK_SIZE);
-            float dz = position.z - Math.clamp(position.z, z, z + WorldConfiguration.CHUNK_SIZE);
-            if (dx * dx + dz * dz < PointLightGlsl.RADIUS * PointLightGlsl.RADIUS) nearbyChunks.add(chunk);
+        if (cubes == null) return;
+        float edge = WorldConfiguration.CUBE_EDGE;
+        ChunkRegionRenderer regions = ChunkRegionRenderer.getInstance();
+        for (int c = 0; c < cubes.size(); c++) {
+            CubeDraw cube = cubes.get(c);
+            if (!cube.hasSolid() || !regions.isDrawable(cube)) continue;
+            float x = RenderOrigin.relativeX(cube.minBlockX());
+            float y = RenderOrigin.relativeY(cube.minBlockY());
+            float z = RenderOrigin.relativeZ(cube.minBlockZ());
+            float dx = position.x - Math.clamp(position.x, x, x + edge);
+            float dy = position.y - Math.clamp(position.y, y, y + edge);
+            float dz = position.z - Math.clamp(position.z, z, z + edge);
+            if (dx * dx + dy * dy + dz * dz < PointLightGlsl.RADIUS * PointLightGlsl.RADIUS) nearbyChunks.add(cube);
         }
     }
 
     private void renderTerrain() {
         faceChunks.clear();
         frustum.set(viewProjection);
-        for (Chunk chunk : nearbyChunks) {
-            float x = chunk.getWorldX(0), z = chunk.getWorldZ(0);
-            if (frustum.testAab(x, 0, z, x + WorldConfiguration.CHUNK_SIZE,
-                    WorldConfiguration.WORLD_HEIGHT, z + WorldConfiguration.CHUNK_SIZE)) {
-                faceChunks.add(chunk);
+        float edge = WorldConfiguration.CUBE_EDGE;
+        for (CubeDraw cube : nearbyChunks) {
+            float x = RenderOrigin.relativeX(cube.minBlockX());
+            float y = RenderOrigin.relativeY(cube.minBlockY());
+            float z = RenderOrigin.relativeZ(cube.minBlockZ());
+            if (frustum.testAab(x, y, z, x + edge, y + edge, z + edge)) {
+                faceChunks.add(cube);
             }
         }
         shader.bind();
         shader.setUniform("u_lightViewProj", viewProjectionRender);
-        if (ChunkRegionRenderer.isEnabled()) {
-            ChunkRegionRenderer.getInstance().drawChunks(faceChunks, ChunkRegionRenderer.LAYER_ATLAS);
-        } else {
-            for (Chunk chunk : faceChunks) chunk.render();
-        }
+        // Atlas + stamp handles of the cubes in this face's frustum, one multidraw per region.
+        ChunkRegionRenderer.getInstance().drawCubes(faceChunks, ChunkRegionRenderer.LAYER_ATLAS);
         shader.unbind();
     }
 

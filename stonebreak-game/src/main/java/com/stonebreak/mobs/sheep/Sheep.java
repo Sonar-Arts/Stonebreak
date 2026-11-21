@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.sheep;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
@@ -37,11 +39,11 @@ public class Sheep extends LivingEntity {
     /** Whether the current (or last) graze started while the sheep was shorn. */
     private boolean grazedWhileSheared;
 
-    public Sheep(World world, Vector3f position) {
+    public Sheep(World world, Vector3dc position) {
         this(world, position, "default");
     }
 
-    public Sheep(World world, Vector3f position, String textureVariant) {
+    public Sheep(World world, Vector3dc position, String textureVariant) {
         super(world, position, EntityType.SHEEP);
         this.textureVariant = textureVariant != null ? textureVariant : "default";
         // Sheep personality: slightly restless — more wandering than a cow, and it bolts when hit.

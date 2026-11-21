@@ -6,7 +6,7 @@ import com.stonebreak.world.World;
 import com.stonebreak.world.weather.ClientWeather;
 import com.stonebreak.world.weather.CloudColumn;
 import com.stonebreak.world.weather.WeatherSurface;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 /**
  * The sound of the weather at the listener: a rain loop that swells under
@@ -57,14 +57,14 @@ public final class WeatherAudio {
         GameSoundLoader.load(sounds, THUNDER[1], "/sounds/weather/thunder_2.wav");
     }
 
-    /** Call every game tick; a null weather or world (no session) fades the rain out. */
-    public void update(ClientWeather weather, World world, Vector3f ear, float deltaSeconds) {
+    /** Call every game tick; a null weather or a null/closed world (no session, world switch) fades the rain out. */
+    public void update(ClientWeather weather, World world, Vector3dc ear, float deltaSeconds) {
         float target = 0f;
-        if (weather != null && world != null) {
-            int x = (int) Math.floor(ear.x), z = (int) Math.floor(ear.z);
+        if (weather != null && world != null && !world.isClosed()) {
+            int x = (int) Math.floor(ear.x()), z = (int) Math.floor(ear.z());
             if (!WeatherSurface.isSnow(world, x, z)) {
                 int ground = WeatherSurface.groundY(world, x, z);
-                boolean roofed = ground != WeatherSurface.UNKNOWN && ground > ear.y + 1;
+                boolean roofed = ground != WeatherSurface.UNKNOWN && ground > ear.y() + 1;
                 target = precipitationAround(weather, ear) * (roofed ? ROOFED : 1f);
             }
         }
@@ -74,16 +74,17 @@ public final class WeatherAudio {
         updateThunder(weather, ear);
     }
 
-    private static float precipitationAround(ClientWeather weather, Vector3f p) {
-        float sum = heardAt(weather, p.x, p.z, p.y);
-        sum += heardAt(weather, p.x + SAMPLE_SPREAD, p.z, p.y);
-        sum += heardAt(weather, p.x - SAMPLE_SPREAD, p.z, p.y);
-        sum += heardAt(weather, p.x, p.z + SAMPLE_SPREAD, p.y);
-        sum += heardAt(weather, p.x, p.z - SAMPLE_SPREAD, p.y);
+    private static float precipitationAround(ClientWeather weather, Vector3dc p) {
+        float earY = (float) p.y();
+        float sum = heardAt(weather, p.x(), p.z(), earY);
+        sum += heardAt(weather, p.x() + SAMPLE_SPREAD, p.z(), earY);
+        sum += heardAt(weather, p.x() - SAMPLE_SPREAD, p.z(), earY);
+        sum += heardAt(weather, p.x(), p.z() + SAMPLE_SPREAD, earY);
+        sum += heardAt(weather, p.x(), p.z() - SAMPLE_SPREAD, earY);
         return sum / 5f;
     }
 
-    private static float heardAt(ClientWeather weather, float x, float z, float earY) {
+    private static float heardAt(ClientWeather weather, double x, double z, float earY) {
         return rainHeard(weather.columnAt(x, z), earY);
     }
 
@@ -104,7 +105,7 @@ public final class WeatherAudio {
     }
 
     /** Queues thunder for each new strike, delayed by distance, and plays what is due. */
-    private void updateThunder(ClientWeather weather, Vector3f ear) {
+    private void updateThunder(ClientWeather weather, Vector3dc ear) {
         if (weather == null) {
             pendingThunder.clear();
             lastSeconds = Double.NaN;
@@ -112,8 +113,8 @@ public final class WeatherAudio {
         }
         double now = weather.seconds();
         if (!Double.isNaN(lastSeconds)) {
-            for (var strike : weather.strikesBetween(lastSeconds, now, ear.x, ear.z, THUNDER_RANGE)) {
-                double d = Math.hypot(strike.x() - ear.x, strike.z() - ear.z);
+            for (var strike : weather.strikesBetween(lastSeconds, now, ear.x(), ear.z(), THUNDER_RANGE)) {
+                double d = Math.hypot(strike.x() - ear.x(), strike.z() - ear.z());
                 float volume = (float) (1.0 / (1.0 + d / THUNDER_HALF_DISTANCE));
                 // Far thunder rumbles lower.
                 float pitch = (float) (1.0 - 0.25 * Math.min(1.0, d / THUNDER_RANGE));

@@ -62,6 +62,8 @@ uniform float u_lodFade;
 // Ground fog taken at one render-space point rather than per fragment (DropRenderer).
 uniform bool u_groundFogAtPoint;
 uniform vec3 u_groundFogPoint;
+// Dev cost probe (WorldRenderer.DEBUG_SHADE): 1 no cloud shadow, 2 no sun cascades, 4 no torch lights, 8 texture only.
+uniform int u_debugShade;
 
 // 4x4 Bayer thresholds for the LOD crossfade dither.
 const float LOD_BAYER[16] = float[16](
@@ -118,6 +120,20 @@ void main() {
             return;
         }
 
+        if ((u_debugShade & 16) != 0 && u_playerLight < 0.0) {
+            // dev check of the cloud-shadow column cache: R = |cached - exact| x 10, G = 0 (marks terrain pixels in a
+            // screenshot: no sky, cloud or water pixel has G = 0), B = the exact shadow
+            float exact = cloudShadowExact(fragPos), cached = cloudShadow(fragPos);
+            if (u_renderPass != 0) discard;
+            fragColor = vec4(clamp(abs(cached - exact) * 10.0, 0.0, 1.0), 0.0, exact, 1.0);
+            return;
+        }
+        if ((u_debugShade & 8) != 0) {   // dev cost probe: texture only (cutouts and translucency not handled)
+            if (u_renderPass != 0) discard;
+            fragColor = vec4(textureColor.rgb, 1.0);
+            return;
+        }
+
         // --- Phong Lighting Model for World Objects ---
         // (FastLOD water sheets no longer render through this
         // shader — they have their own mesh drawn by the
@@ -138,7 +154,8 @@ void main() {
         // towers almost entirely (Beer-Lambert through the column above).
         float shadowFactor = (u_playerLight >= 0.0)
             ? 1.0
-            : csmShadowFactor(fragPos, norm, v_viewDepth) * cloudShadow(fragPos);
+            : ((u_debugShade & 2) != 0 ? 1.0 : csmShadowFactor(fragPos, norm, v_viewDepth))
+              * ((u_debugShade & 1) != 0 ? 1.0 : cloudShadow(fragPos));
 
         // Diffuse component (directional sunlight)
         float diff = max(dot(norm, lightDir), 0.0);
@@ -170,7 +187,7 @@ void main() {
         // Dynamic point lights (torches) add on top of the baked/sun terms so
         // they light caves and night. Player-held geometry has no world-space
         // fragPos; it is lit through u_playerLight instead.
-        if (u_playerLight < 0.0) {
+        if (u_playerLight < 0.0 && (u_debugShade & 4) == 0) {
             float torchWeight = pointLightWeight(u_ambientLight, worldLight, shadowFactor);
             vec3 torch = pointLightContribution(fragPos, norm, torchWeight)
                     + farLightContribution(fragPos, norm, torchWeight);

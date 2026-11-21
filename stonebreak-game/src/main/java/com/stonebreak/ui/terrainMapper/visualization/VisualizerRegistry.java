@@ -1,6 +1,7 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.TerrainGeneratorType;
 
 import java.util.List;
@@ -72,6 +73,41 @@ public final class VisualizerRegistry {
             diffusion.activate();
         }
         rebuild(seed);
+    }
+
+    /** The terrain scale the previews show (Standard and Daedalus; the new world will use it). */
+    public TerrainScalePreset scale() {
+        return standard.scale();
+    }
+
+    /** Switches the previewed terrain scale; rebuilds the visualizers when it changes. */
+    public void selectScale(TerrainScalePreset scale) {
+        TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        if (s == standard.scale() && s == diffusion.scale()) return;
+        standard.setScale(s);
+        if (s != diffusion.scale()) {
+            diffusion.setScale(s);
+            // Daedalus samples are stored by seed and level only: another scale's blocks must not be shown.
+            previewStore.clear();
+        }
+        rebuild(seed);
+    }
+
+    /** The climate layout the Daedalus previews show (the new world will use it); Standard ignores it. */
+    public com.stonebreak.world.generation.ClimateLayout climateLayout() {
+        return diffusion.climateLayout();
+    }
+
+    /** Switches the previewed climate layout; the Daedalus previews rebuild when it changes. */
+    public void selectClimateLayout(com.stonebreak.world.generation.ClimateLayout layout) {
+        var l = com.stonebreak.world.generation.ClimateLayout.orDefault(layout);
+        if (l == diffusion.climateLayout()) return;
+        diffusion.setClimateLayout(l);
+        // Daedalus samples are stored by seed and level only: another layout's terrain must not be shown.
+        previewStore.clear();
+        if (generatorType == TerrainGeneratorType.DIFFUSION) {
+            rebuild(seed);
+        }
     }
 
     /**

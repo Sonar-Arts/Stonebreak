@@ -328,7 +328,7 @@ public final class SbeEntityRenderer {
     public void render(EntityAsset asset, String variantName, String stateName,
                        float animationTime, Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                       com.stonebreak.world.World world, Vector3f cameraPos) {
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         render(asset, variantName, stateName, animationTime, position, yawDegrees, scale,
                 viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
     }
@@ -343,7 +343,7 @@ public final class SbeEntityRenderer {
     public void render(EntityAsset asset, String variantName, String stateName,
                        float animationTime, Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
                        float headYawDeg, float headPitchDeg) {
         render(asset, variantName, AnimState.single(stateName, animationTime), position,
                 yawDegrees, scale, viewMatrix, projectionMatrix, world, cameraPos,
@@ -358,7 +358,7 @@ public final class SbeEntityRenderer {
     public void render(EntityAsset asset, String variantName, AnimState anim,
                        Vector3f position, float yawDegrees,
                        Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
                        float headYawDeg, float headPitchDeg) {
         // Base transform: the OMO model is placed exactly as authored in the
         // SBE — its model-space origin sits at the entity position, with no
@@ -374,7 +374,7 @@ public final class SbeEntityRenderer {
      */
     public void render(EntityAsset asset, String variantName, AnimState anim,
                        Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
                        float headYawDeg, float headPitchDeg) {
         render(asset, variantName, anim, baseMatrix, viewMatrix, projectionMatrix, world, cameraPos,
                 headYawDeg, headPitchDeg, null);
@@ -386,7 +386,7 @@ public final class SbeEntityRenderer {
      */
     public void render(EntityAsset asset, String variantName, AnimState anim,
                        Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                       com.stonebreak.world.World world, Vector3f cameraPos,
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
                        float headYawDeg, float headPitchDeg,
                        SbePoseSolver.PartOverrides overrides) {
         if (!initialized || asset == null) return;
@@ -413,11 +413,11 @@ public final class SbeEntityRenderer {
         float fogDensity = 0.0f;
         Vector3f fogColor = new Vector3f(0.1f, 0.3f, 0.5f);
         if (world != null && cameraPos != null
-                && world.isPositionUnderwater((int) Math.floor(cameraPos.x),
-                        (int) Math.floor(cameraPos.y), (int) Math.floor(cameraPos.z))) {
+                && world.isPositionUnderwater((long) Math.floor(cameraPos.x()),
+                        (long) Math.floor(cameraPos.y()), (long) Math.floor(cameraPos.z()))) {
             // Scaled by depth, so an entity dissolves at the same range as the
             // seabed behind it (see UnderwaterFog).
-            fogDensity = UnderwaterFog.density(cameraPos.y);
+            fogDensity = UnderwaterFog.density((float) cameraPos.y());
         } else if (cameraPos != null && !uiPreviewLighting) {
             // Rain and snow fog, as the terrain behind the entity gets it.
             fogDensity = WeatherFog.density();
@@ -441,7 +441,7 @@ public final class SbeEntityRenderer {
         } else {
             // baseMatrix is render-space; the sky-light probe is a world block lookup.
             applyEnvironmentLighting(world,
-                    RenderOrigin.toWorld(baseMatrix.getTranslation(new Vector3f()), new Vector3f()));
+                    RenderOrigin.toWorld(baseMatrix.getTranslation(new Vector3f()), new org.joml.Vector3d()));
         }
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
@@ -497,6 +497,57 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(previousVertexArray);
     }
 
+    // ─── World-entity overloads: double world positions, made camera-relative in double ──────────────
+
+    /** {@link #render(EntityAsset, String, String, float, Vector3f, float, Vector3f, Matrix4f, Matrix4f,
+     *  com.stonebreak.world.World, org.joml.Vector3dc)} at a double world position. */
+    public void render(EntityAsset asset, String variantName, String stateName,
+                       float animationTime, org.joml.Vector3dc position, float yawDegrees,
+                       Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
+        render(asset, variantName, AnimState.single(stateName, animationTime),
+                SbePoseSolver.baseMatrix(position, yawDegrees, scale),
+                viewMatrix, projectionMatrix, world, cameraPos, 0f, 0f);
+    }
+
+    /** Layered variant at a double world position (head turn as the Vector3f form). */
+    public void render(EntityAsset asset, String variantName, AnimState anim,
+                       org.joml.Vector3dc position, float yawDegrees,
+                       Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                       com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
+                       float headYawDeg, float headPitchDeg) {
+        render(asset, variantName, anim, SbePoseSolver.baseMatrix(position, yawDegrees, scale),
+                viewMatrix, projectionMatrix, world, cameraPos, headYawDeg, headPitchDeg);
+    }
+
+    /** Flat-coloured draw at a double world position. */
+    public void renderColored(EntityAsset asset, String variantName, String stateName,
+                              float animationTime, org.joml.Vector3dc position, float yawDegrees,
+                              Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector4f color) {
+        renderColored(asset, variantName, AnimState.single(stateName, animationTime),
+                SbePoseSolver.baseMatrix(position, yawDegrees, scale),
+                viewMatrix, projectionMatrix, color, 0f, 0f);
+    }
+
+    /** Layered flat-coloured draw at a double world position. */
+    public void renderColored(EntityAsset asset, String variantName, AnimState anim,
+                              org.joml.Vector3dc position, float yawDegrees,
+                              Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              Vector4f color, float headYawDeg, float headPitchDeg) {
+        renderColored(asset, variantName, anim, SbePoseSolver.baseMatrix(position, yawDegrees, scale),
+                viewMatrix, projectionMatrix, color, headYawDeg, headPitchDeg);
+    }
+
+    /** Debug wireframe at a double world position. */
+    public void renderWireframe(EntityAsset asset, String variantName, String stateName,
+                                float animationTime, org.joml.Vector3dc position, float yawDegrees,
+                                Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                Vector4f color) {
+        renderWireframe(asset, variantName, stateName, animationTime,
+                SbePoseSolver.baseMatrix(position, yawDegrees, scale), viewMatrix, projectionMatrix, color);
+    }
+
     /**
      * Draws an SBE entity as a flat-coloured, see-through wireframe overlay.
      *
@@ -514,6 +565,13 @@ public final class SbeEntityRenderer {
                                 float animationTime, Vector3f position, float yawDegrees,
                                 Vector3f scale, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                 Vector4f color) {
+        renderWireframe(asset, variantName, stateName, animationTime,
+                SbePoseSolver.baseMatrix(position, yawDegrees, scale), viewMatrix, projectionMatrix, color);
+    }
+
+    private void renderWireframe(EntityAsset asset, String variantName, String stateName,
+                                 float animationTime, Matrix4f base, Matrix4f viewMatrix,
+                                 Matrix4f projectionMatrix, Vector4f color) {
         if (!initialized || asset == null || wireShader == null) return;
 
         EntityGeometry geometry = asset.geometryFor(variantName);
@@ -540,7 +598,6 @@ public final class SbeEntityRenderer {
         wireShader.setUniform("color", color);
 
         // Same base transform as render(): no re-anchoring of the model origin.
-        Matrix4f base = SbePoseSolver.baseMatrix(position, yawDegrees, scale);
 
         GL30.glBindVertexArray(gpu.vao);
 
@@ -662,7 +719,7 @@ public final class SbeEntityRenderer {
      * position (so mobs darken in caves and at night), and this frame's shadow
      * cascade state. Falls back to fully lit outside the world pipeline.
      */
-    private void applyEnvironmentLighting(com.stonebreak.world.World world, Vector3f position) {
+    private void applyEnvironmentLighting(com.stonebreak.world.World world, org.joml.Vector3dc position) {
         com.stonebreak.world.TimeOfDay timeOfDay = com.stonebreak.core.Game.getTimeOfDay();
         if (timeOfDay != null) {
             shader.setFloat("u_ambientLight", com.stonebreak.rendering.lighting.SceneLight.ambient());
@@ -715,7 +772,7 @@ public final class SbeEntityRenderer {
      * Sky-light probe at the entity's mid-body. Fully lit when the world (or the
      * entity's chunk) isn't available so entities are never mysteriously black.
      */
-    static float sampleEntityLight(com.stonebreak.world.World world, Vector3f position) {
+    static float sampleEntityLight(com.stonebreak.world.World world, org.joml.Vector3dc position) {
         if (world == null || position == null) {
             return 1.0f;
         }
@@ -723,7 +780,7 @@ public final class SbeEntityRenderer {
             com.stonebreak.world.lighting.WorldLightingContext ctx =
                     new com.stonebreak.world.lighting.WorldLightingContext(world);
             return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
-                    ctx, position.x, position.y + 0.5f, position.z);
+                    ctx, (float) position.x(), (float) position.y() + 0.5f, (float) position.z());
         } catch (Exception ignored) {
             return 1.0f;
         }

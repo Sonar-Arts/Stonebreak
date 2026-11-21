@@ -51,9 +51,9 @@ public final class EntitySounds {
         ServerMutationSinks sinks = world.serverSinks();
         ServerMutationSinks.SoundSink sink = sinks != null ? sinks.sounds() : null;
         if (sink != null && entity.getType() != null) {
-            org.joml.Vector3f pos = entity.getPosition();
+            org.joml.Vector3d pos = entity.getPosition();
             sink.onServerEntitySound(entity.getType(), event,
-                    pos.x, pos.y + entity.getHeight() * 0.5f, pos.z);
+                    pos.x, pos.y + entity.getHeight() * 0.5, pos.z);
         }
     }
 
@@ -63,8 +63,8 @@ public final class EntitySounds {
      */
     public static void playAt(Entity entity, String event) {
         if (entity == null) return;
-        org.joml.Vector3f pos = entity.getPosition();
-        playAt(entity.getType(), event, pos.x, pos.y + entity.getHeight() * 0.5f, pos.z);
+        org.joml.Vector3d pos = entity.getPosition();
+        playAt(entity.getType(), event, pos.x, pos.y + entity.getHeight() * 0.5, pos.z);
     }
 
     /**
@@ -72,9 +72,10 @@ public final class EntitySounds {
      * ({@code SoundEventS2C}) needs no live copy of the entity, so a death voice still plays
      * after the despawn that follows it.
      */
-    public static void playAt(EntityType type, String event, float x, float y, float z) {
+    public static void playAt(EntityType type, String event, double x, double y, double z) {
         if (type == null) return;
-        CACHE.get(type.getSbeObjectId()).playAt(Game.getSoundSystem(), event, x, y, z, 1f);
+        CACHE.get(type.getSbeObjectId()).playAt(Game.getSoundSystem(), event,
+            AudioSpace.x(x), AudioSpace.y(y), AudioSpace.z(z), 1f);
     }
 
     /** Drop all cached resolutions (e.g. after the SBE registry reloads). */

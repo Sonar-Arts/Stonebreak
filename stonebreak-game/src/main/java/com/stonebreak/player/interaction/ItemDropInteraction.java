@@ -40,7 +40,7 @@ public class ItemDropInteraction {
         if (blockToPlace == null || blockToPlace == BlockType.AIR) return false;
 
         Vector3f front = camera.getFront();
-        Vector3f position = state.getPosition();
+        org.joml.Vector3d position = state.getPosition();
         Vector3i dropPos = new Vector3i(
                 (int) Math.floor(position.x + front.x),
                 (int) Math.floor(position.y),

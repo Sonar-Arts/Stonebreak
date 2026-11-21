@@ -5,7 +5,7 @@ import java.util.List;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.openmason.engine.rendering.shaders.ShaderResourceLoader;
 import com.openmason.engine.voxel.mms.mmsCore.MmsRenderableHandle;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.rendering.gameWorld.regions.CubeDraw;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.opengl.GL13;
@@ -82,7 +82,20 @@ public class WaterRenderer {
      */
     public static final int SCENE_DEPTH_TEXTURE_UNIT = 9;
 
+    /**
+     * The water surface pattern repeats every this many blocks (the shader gets the render origin modulo
+     * it, so its float math stays exact at any int64 coordinate). A multiple of {@code RenderOrigin.GRID}.
+     */
+    public static final int PATTERN_PERIOD = 4096;
+    /** Wave directions + wavenumbers: the host-side mirror of {@code gerstnerHeight} in water.vert. */
+    static final double[] WAVE_DIR_X = {0.800, -0.352, 0.981, -0.555, 0.148};
+    static final double[] WAVE_DIR_Z = {0.600, 0.936, -0.196, -0.832, 0.989};
+    static final double[] WAVE_K = {0.45, 0.70, 0.30, 1.10, 1.60};
+
     private final ShaderProgram shader;
+    private final float[] wavePhase = new float[WAVE_K.length];
+    /** {@code uWavePhase[0]}'s location (-2 = not looked up yet, -1 = optimised out). */
+    private int wavePhaseLocation = -2;
     private final Matrix4f invProjection = new Matrix4f();
     private final com.stonebreak.rendering.gameWorld.SceneDepthCopy sceneDepth =
             new com.stonebreak.rendering.gameWorld.SceneDepthCopy();
@@ -160,8 +173,8 @@ public class WaterRenderer {
      *                          cloud distances), or null when none apply
      * @param precipitationFog  rain and snow fog in front of the water
      */
-    public void render(List<Chunk> chunksBackToFront, Matrix4f projection, Matrix4f view,
-                       Vector3f cameraPos, float time, Vector3f sunDirection,
+    public void render(List<CubeDraw> chunksBackToFront, Matrix4f projection, Matrix4f view,
+                       org.joml.Vector3dc cameraPos, float time, Vector3f sunDirection,
                        float ambientLight, boolean wavesEnabled,
                        Vector3f fogColor, float fogStart, float fogEnd, boolean fogSpherical,
                        List<LodWaterNode> lodWater,
@@ -231,11 +244,20 @@ public class WaterRenderer {
         // Render space, to difference against the render-space mesh position...
         shader.setUniform("uCameraPos",
             com.openmason.engine.rendering.RenderOrigin.toRender(cameraPos, new org.joml.Vector3f()));
-        // ...and the origin itself, for the wave/flow lattices, which are
-        // world-space functions and must not slide when the origin steps.
-        shader.setVec2("uRenderOrigin", new org.joml.Vector2f(
-            com.openmason.engine.rendering.RenderOrigin.x(),
-            com.openmason.engine.rendering.RenderOrigin.z()));
+        // ...and the origin itself, for the wave/flow lattices, which are world-space functions and must
+        // not slide when the origin steps: exact per-wave phases and the origin modulo the pattern period.
+        long ox = com.openmason.engine.rendering.RenderOrigin.blockX();
+        long oy = com.openmason.engine.rendering.RenderOrigin.blockY();
+        long oz = com.openmason.engine.rendering.RenderOrigin.blockZ();
+        shader.setVec3("uRenderOrigin", new org.joml.Vector3f(
+            Math.floorMod(ox, PATTERN_PERIOD), Math.floorMod(oy, PATTERN_PERIOD), Math.floorMod(oz, PATTERN_PERIOD)));
+        wavePhases(ox, oz, wavePhase);
+        if (wavePhaseLocation == -2) {
+            wavePhaseLocation = org.lwjgl.opengl.GL20.glGetUniformLocation(shader.getProgramId(), "uWavePhase");
+        }
+        if (wavePhaseLocation >= 0) {
+            org.lwjgl.opengl.GL20.glUniform1fv(wavePhaseLocation, wavePhase);
+        }
         shader.setUniform("uFogColor", fogColor);
         com.stonebreak.rendering.gameWorld.SunsetFog.applyTo(shader);
         shader.setUniform("uFogStart", fogStart);
@@ -296,7 +318,14 @@ public class WaterRenderer {
         glPolygonOffset(currentOffsetFactor, currentOffsetUnits);
     }
 
-    private void drawWaterMeshes(List<Chunk> chunksBackToFront, List<LodWaterNode> lodWater,
+    /** The octree LOD renderer whose drawn nodes' water tops join the water pass (null = none). */
+    private com.stonebreak.rendering.gameWorld.fastlod.OctreeLodRenderer octreeLod;
+
+    public void setOctreeLod(com.stonebreak.rendering.gameWorld.fastlod.OctreeLodRenderer octreeLod) {
+        this.octreeLod = octreeLod;
+    }
+
+    private void drawWaterMeshes(List<CubeDraw> chunksBackToFront, List<LodWaterNode> lodWater,
                                  com.stonebreak.rendering.gameWorld.fastlod.FastLodRegionBatcher lodBatcher,
                                  int lodStamp) {
         // Native chunks render fully solid; the depth prepass makes draw order
@@ -304,23 +333,20 @@ public class WaterRenderer {
         // so LOD sheets can simply follow the chunk list.
         shader.setUniform("uLodFade", 1.0f);
         if (com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.isEnabled()) {
-            // One multidraw per region holding water geometry (water meshes
-            // live in their own region arenas, same 40-byte vertex layout).
+            // One multidraw per 3D region holding WATERQUAD16 geometry, list order kept per region.
             com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.getInstance()
-                .drawChunks(chunksBackToFront,
+                .drawCubes(chunksBackToFront,
                     com.stonebreak.rendering.gameWorld.regions.ChunkRegionRenderer.LAYER_WATER);
-        } else {
-            for (Chunk chunk : chunksBackToFront) {
-                if (chunk.hasWaterMesh()) {
-                    chunk.renderWater();
-                }
-            }
         }
         // Fully-faded LOD sheets: one multidraw per touched LOD region
         // (buckets were filled by this frame's FastLodRenderPass; the same
         // stamp serves both water sub-passes).
         if (lodBatcher != null) {
             lodBatcher.drawWater(lodStamp);
+        }
+        // Octree LOD nodes' water tops (node-mode records, this frame's drawn nodes).
+        if (octreeLod != null) {
+            octreeLod.drawWater(shader);
         }
         if (lodWater == null || lodWater.isEmpty()) {
             return;
@@ -337,6 +363,25 @@ public class WaterRenderer {
         if (boundFade != 1.0f) {
             shader.setUniform("uLodFade", 1.0f);
         }
+    }
+
+    /**
+     * Per-wave phase of an exact int64 origin: {@code (ox * dirX + oz * dirZ) * k} modulo 2 pi, in double.
+     * The phase error grows like |origin| * 1e-16 rad - 1e-4 rad at 2^40 blocks - so the lattice never visibly
+     * jumps when the origin steps; the shader adds render-space positions (within a few hundred blocks).
+     */
+    static void wavePhases(long ox, long oz, float[] out) {
+        for (int i = 0; i < out.length; i++) {
+            double a = mod2Pi((double) ox * (WAVE_DIR_X[i] * WAVE_K[i]))
+                + mod2Pi((double) oz * (WAVE_DIR_Z[i] * WAVE_K[i]));
+            out[i] = (float) mod2Pi(a);
+        }
+    }
+
+    static double mod2Pi(double v) {
+        double twoPi = 2.0 * Math.PI;
+        double r = v % twoPi;
+        return r < 0 ? r + twoPi : r;
     }
 
     /** Releases the shader and depth copy. Water mesh handles are owned by their chunks. */

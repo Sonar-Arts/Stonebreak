@@ -4,6 +4,7 @@ import com.openmason.engine.rendering.sprite.VoxelData;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.rendering.models.entities.HeldItemPose;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -34,9 +35,9 @@ class StaffHeadTest {
     @Test
     void thirdPersonHeadTurnsWithTheBody() {
         Vector3f head = StaffHead.meshPoint();
-        Vector3f feet = new Vector3f(10f, 64f, -5f);
-        Vector3f facing0 = HeldItemPose.toolPointWorld(feet, 0f, head, new Vector3f()).sub(feet);
-        Vector3f facing90 = HeldItemPose.toolPointWorld(feet, 90f, head, new Vector3f()).sub(feet);
+        Vector3d feet = new Vector3d(10f, 64f, -5f);
+        Vector3d facing0 = HeldItemPose.toolPointWorld(feet, 0f, head, new Vector3d()).sub(feet);
+        Vector3d facing90 = HeldItemPose.toolPointWorld(feet, 90f, head, new Vector3d()).sub(feet);
 
         assertEquals(facing0.y, facing90.y, 1e-4f, "height does not depend on facing");
         // A quarter turn about +Y maps (x, z) to (z, -x).

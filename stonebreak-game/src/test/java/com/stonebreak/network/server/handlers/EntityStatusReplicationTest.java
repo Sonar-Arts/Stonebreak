@@ -51,7 +51,7 @@ class EntityStatusReplicationTest {
         ServerWorldContext ctx = mock(ServerWorldContext.class);
         when(ctx.players()).thenReturn(List.of(sp));
         ServerEntityHandler handler = new ServerEntityHandler();
-        Cow mob = new Cow(mock(World.class), new Vector3f(3f, 64f, 0f));
+        Cow mob = new Cow(mock(World.class), new org.joml.Vector3d(3f, 64f, 0f));
         handler.onEntitySpawned(mob, ctx);
 
         handler.tick(ctx);
@@ -75,7 +75,7 @@ class EntityStatusReplicationTest {
         ServerWorldContext ctx = mock(ServerWorldContext.class);
         when(ctx.players()).thenReturn(List.of());
         ServerEntityHandler handler = new ServerEntityHandler();
-        Cow mob = new Cow(mock(World.class), new Vector3f(3f, 64f, 0f));
+        Cow mob = new Cow(mock(World.class), new org.joml.Vector3d(3f, 64f, 0f));
         handler.onEntitySpawned(mob, ctx);
         mob.applyStatusEffect(StatusEffectType.SPELLMARKED, 4f, 0f);
 

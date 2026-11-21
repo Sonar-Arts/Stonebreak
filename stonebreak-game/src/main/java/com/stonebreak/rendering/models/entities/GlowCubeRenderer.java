@@ -47,7 +47,7 @@ final class GlowCubeRenderer {
     }
 
     /** Dispatches an entity accepted by {@link #handles} to its glow-cube variant. */
-    void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
+    void render(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix, org.joml.Vector3dc cameraPos) {
         EntityType entityType = entity.getType();
         if (entityType == EntityType.NULL_SPIKE) {
             renderGlowCube(entity, nullSpikeTexture, 1.8f, viewMatrix, projectionMatrix, cameraPos);
@@ -65,9 +65,9 @@ final class GlowCubeRenderer {
      * @param glowScale scale multiplier for the outer glow pass; {@code <= 1} skips it
      */
     private void renderGlowCube(Entity entity, int texture, float glowScale,
-                                Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector3f cameraPos) {
+                                Matrix4f viewMatrix, Matrix4f projectionMatrix, org.joml.Vector3dc cameraPos) {
         pipeline.begin(texture, viewMatrix, projectionMatrix,
-                cameraPos != null ? cameraPos : new Vector3f(0, 0, 0),
+                cameraPos != null ? cameraPos : new org.joml.Vector3d(),
                 0.0f, new Vector3f(0.1f, 0.3f, 0.5f),
                 entity, false); // emissive — never world-lit
 

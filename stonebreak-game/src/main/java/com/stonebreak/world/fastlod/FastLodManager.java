@@ -75,6 +75,9 @@ public final class FastLodManager {
 
     private final WorldConfiguration config;
     private final FastLodSampler sampler;
+    /** The terrain sampled: told the ring's geometry whenever it changes (tile cache sizing). */
+    private final com.stonebreak.world.generation.TerrainGenerator terrain;
+    private long lastRingSignature = Long.MIN_VALUE;
     private final FastLodMesher mesher;
     private final ExecutorService executor;
     private final FastLodStore store;   // may be null when persistence is disabled
@@ -105,7 +108,7 @@ public final class FastLodManager {
     private final Map<FastLodKey, Entry> handles = new ConcurrentHashMap<>();
     private final Queue<AutoCloseable> cleanupQueue = new ConcurrentLinkedQueue<>();
     /** Columns that have the node at the listed key already resident — used to avoid double-scheduling. */
-    private final Map<Long, FastLodKey> residentByColumn = new ConcurrentHashMap<>();
+    private final LongKeyMap<FastLodKey> residentByColumn = new LongKeyMap<>(4096);   // no Long boxing per lookup
     /** newKey → previous resident key at that column; retires the old handle only once the new one has uploaded. */
     private final Map<FastLodKey, FastLodKey> pendingSupersede = new ConcurrentHashMap<>();
 
@@ -118,6 +121,8 @@ public final class FastLodManager {
     java.util.function.LongSupplier clock = System::nanoTime;
 
     private volatile boolean shutdown = false;
+    /** The rendered world's octree LOD (closed with this manager), or null. */
+    private volatile OctreeLod octree;
     /**
      * Player chunk column from the most recent {@link #updateRing} tick,
      * packed via {@link #packColumn}. Lets the upload path re-validate a
@@ -182,6 +187,7 @@ public final class FastLodManager {
                    long uploadBudgetNanos) {
         this.config   = config;
         this.sampler  = new FastLodSampler(terrain);
+        this.terrain  = terrain;
         this.mesher   = new FastLodMesher(textureArray);
         this.store    = store;
         this.executor = executor;
@@ -201,6 +207,16 @@ public final class FastLodManager {
         int inner = config.getRenderDistance();
         int outer = inner + range;
         FastLodQuality quality = config.getLodQuality();
+        long signature = ((long) inner << 40) ^ ((long) range << 16) ^ quality.ordinal();
+        if (signature != lastRingSignature) {
+            lastRingSignature = signature;
+            try {
+                int cs = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
+                terrain.lodRing(inner * cs, (outer + FastLodBandPolicy.HANDOVER_RING) * cs, quality.blocksPerCell());
+            } catch (RuntimeException e) {
+                // sizing only: a terrain that is closing keeps its caches as they are
+            }
+        }
         long column = packColumn(playerCx, playerCz);
         if (ringSettled && column == scannedColumn && inner == scannedInner && range == scannedRange
                 && quality == scannedQuality && inFlight.isEmpty() && readyToUpload.isEmpty()) {
@@ -273,13 +289,21 @@ public final class FastLodManager {
                 FastLodLevel wanted = FastLodBandPolicy.levelFor(d, inner, range, quality);
                 if (wanted == null) continue;
                 int cx = playerCx + dx, cz = playerCz + dz;
-                FastLodKey target = FastLodKey.of(wanted, cx, cz,
-                        quality.carves(wanted), quality.drawsTrees(wanted));
+                boolean carves = quality.carves(wanted), trees = quality.drawsTrees(wanted);
+                // The column already holds exactly the wanted node (the steady state for nearly every column):
+                // nothing to do, and no key to build for it - the scan used to allocate one per ring column per
+                // tick (a sixth of a session's Java garbage, 2026-11-20). Same outcome as the checks below,
+                // which all end in `continue` for a resident target.
+                FastLodKey resident = residentByColumn.get(packColumn(cx, cz));
+                if (resident != null && resident.level() == wanted && resident.carved() == carves
+                        && resident.trees() == (trees || wanted == FastLodLevel.L0)) {
+                    continue;
+                }
+                FastLodKey target = FastLodKey.of(wanted, cx, cz, carves, trees);
                 if (handles.containsKey(target) || inFlight.contains(target)) continue;
                 Backoff failed = backoff.get(target);
                 if (failed != null && now - failed.retryAtNanos() < 0) continue;
 
-                FastLodKey resident = residentByColumn.get(packColumn(cx, cz));
                 if (target.equals(resident)) continue;
                 if (resident != null) {
                     // Band change — remember which handle to retire once the
@@ -497,9 +521,33 @@ public final class FastLodManager {
         return config.getRenderDistance();
     }
 
+    /**
+     * Attaches the rendered world's octree LOD ({@link OctreeLod}): it lives exactly as long as this manager and
+     * closes first in {@link #shutdown()} (world switch / cleanup, before the world it reads closes).
+     */
+    public void attachOctree(OctreeLod lod) {
+        OctreeLod old = this.octree;
+        this.octree = lod;
+        if (old != null && old != lod) {
+            old.close();
+        }
+        if (shutdown && lod != null) {
+            lod.close();
+        }
+    }
+
+    /** The attached octree LOD, or null. */
+    public OctreeLod octree() {
+        return octree;
+    }
+
     public void shutdown() {
         if (shutdown) return;
         shutdown = true;
+        OctreeLod o = octree;
+        if (o != null) {
+            o.close();
+        }
         executor.shutdown();
         try {
             if (!executor.awaitTermination(
@@ -545,7 +593,11 @@ public final class FastLodManager {
                 if (shutdown || !inFlight.contains(key)) return;
             }
             if (data == null) {
-                data = sampler.sample(key);
+                // Tiles a model-backed terrain misses are asked for by distance from the player (FX2): nearest first.
+                long col = lastPlayerColumn;
+                long distanceBlocks = (long) chebyshev(key.chunkX(), key.chunkZ(), (int) (col >> 32), (int) col)
+                        * WorldConfiguration.CHUNK_SIZE;
+                data = sampler.sample(key, distanceBlocks);
                 if (store != null) {
                     store.saveAsync(data);
                 }
@@ -580,6 +632,9 @@ public final class FastLodManager {
                 long wait = Math.min(MAX_RETRY_BACKOFF_NANOS, RETRY_BACKOFF_NANOS << Math.min(failures - 1, 5));
                 return new Backoff(now + wait, failures);
             });
+            if (com.stonebreak.world.generation.TerrainClosedException.isCause(e)) {
+                return; // the terrain is shutting down (generator closing, tile service stopped on quit): expected
+            }
             logFailure(key, e, now);
         }
     }
@@ -668,6 +723,15 @@ public final class FastLodManager {
          * instead of fading in over a hole.
          */
         public volatile boolean nativeCovered;
+        /** Render pass (GL thread): cached octree FALLBACK coverage of this column, valid for {@link #coverStamp}. */
+        public boolean fallbackCovered;
+        public long coverStamp = -1;
+        /**
+         * Octree handover (render pass, GL thread): seconds this node keeps drawing after its footprint stopped
+         * being a FALLBACK footprint, so whatever replaced it (octree nodes fading in, READY detail) is drawn
+         * before it goes - never a frame of hole.
+         */
+        public float hold;
         public Entry(FastLodKey key, MmsRenderableHandle handle, float minY, float maxY) {
             this(key, handle, null, null, null, minY, maxY);
         }

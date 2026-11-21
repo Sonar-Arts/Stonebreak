@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.entities;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import com.stonebreak.audio.MobSounds;
 import com.stonebreak.player.Player;
@@ -87,7 +89,7 @@ public abstract class LivingEntity extends Entity {
     /**
      * Creates a new living entity at the specified position.
      */
-    public LivingEntity(World world, Vector3f position, EntityType type) {
+    public LivingEntity(World world, Vector3dc position, EntityType type) {
         super(world, position);
 
         // Set properties based on entity type
@@ -269,23 +271,23 @@ public abstract class LivingEntity extends Entity {
      *                          server passes false for remote attackers so the host isn't
      *                          credited for their kills
      */
-    public boolean damage(float amount, DamageSource source, Vector3f attackerPos, boolean creditLocalPlayer) {
+    public boolean damage(float amount, DamageSource source, Vector3dc attackerPos, boolean creditLocalPlayer) {
         return damage(amount, source, source.defaultDamageType(), attackerPos, creditLocalPlayer);
     }
 
-    /** As {@link #damage(float, DamageSource, Vector3f, boolean)}, with an explicit damage type. */
+    /** As {@link #damage(float, DamageSource, Vector3dc, boolean)}, with an explicit damage type. */
     public boolean damage(float amount, DamageSource source, DamageType type,
-                          Vector3f attackerPos, boolean creditLocalPlayer) {
+                          Vector3dc attackerPos, boolean creditLocalPlayer) {
         return damage(amount, source, type, NO_WEAPON, attackerPos, creditLocalPlayer);
     }
 
     /**
-     * As {@link #damage(float, DamageSource, DamageType, Vector3f, boolean)}, from the melee weapon
+     * As {@link #damage(float, DamageSource, DamageType, Vector3dc, boolean)}, from the melee weapon
      * {@code weaponId}. A hit with a weapon is a {@link HitKind#MELEE} intent on a network shadow;
      * one without ({@link #NO_WEAPON}) an {@link HitKind#ABILITY} intent.
      */
     public boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
-                          Vector3f attackerPos, boolean creditLocalPlayer) {
+                          Vector3dc attackerPos, boolean creditLocalPlayer) {
         HitKind kind = weaponId != NO_WEAPON ? HitKind.MELEE : HitKind.ABILITY;
         return combat.damage(amount, source, type, weaponId, attackerPos, creditLocalPlayer, kind);
     }
@@ -438,7 +440,7 @@ public abstract class LivingEntity extends Entity {
     // ─────────────────────────────────────────────── Illusionist Fracture stubs
 
     /** World position of the most recent attacker (null if unknown / the local player). */
-    public Vector3f getLastAttackerPosition() { return combat.getLastAttackerPosition(); }
+    public Vector3d getLastAttackerPosition() { return combat.getLastAttackerPosition(); }
 
     /** Puts this entity into the Bewildered panic state for {@code duration} seconds. */
     public void setBewildered(float duration) { combat.setBewildered(duration); }
@@ -482,7 +484,7 @@ public abstract class LivingEntity extends Entity {
     public boolean canInteractWith(Player player) {
         if (!alive || player == null) return false;
 
-        float distance = position.distance(player.getPosition());
+        double distance = position.distance(player.getPosition());
         long currentTime = System.currentTimeMillis();
 
         return distance <= interactionRange &&
@@ -510,7 +512,7 @@ public abstract class LivingEntity extends Entity {
      * Checks if the entity can move to a specific position.
      * This method performs collision detection starting from the very bottom of the entity's legs.
      */
-    public boolean canMoveTo(Vector3f targetPosition) {
+    public boolean canMoveTo(Vector3dc targetPosition) {
         return locomotion.canMoveTo(targetPosition);
     }
 
@@ -518,7 +520,7 @@ public abstract class LivingEntity extends Entity {
      * Checks if the entity can move to a specific position while avoiding flowers.
      * This method is specifically for cows and other passive mobs that should avoid trampling flowers.
      */
-    public boolean canMoveToAvoidingFlowers(Vector3f targetPosition) {
+    public boolean canMoveToAvoidingFlowers(Vector3dc targetPosition) {
         return locomotion.canMoveToAvoidingFlowers(targetPosition);
     }
 

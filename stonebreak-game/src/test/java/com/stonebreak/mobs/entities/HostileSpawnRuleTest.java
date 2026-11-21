@@ -1,9 +1,9 @@
 package com.stonebreak.mobs.entities;
 
 import com.stonebreak.world.World;
-import com.stonebreak.world.generation.TerrainGenerator;
+import com.stonebreak.world.generation.NativeTerrain;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,7 +19,7 @@ class HostileSpawnRuleTest {
     /** A world whose biome is the Shade west of x=0 and plains east of it. */
     private static World halfShade(float fog) {
         World world = mock(World.class);
-        TerrainGenerator terrain = mock(TerrainGenerator.class);
+        NativeTerrain terrain = mock(NativeTerrain.class);
         when(terrain.getBiomeAt(anyInt(), anyInt())).thenAnswer(inv ->
                 (int) inv.getArgument(0) < 0 ? BiomeType.SHADE : BiomeType.PLAINS);
         when(world.terrain()).thenReturn(terrain);
@@ -32,15 +32,15 @@ class HostileSpawnRuleTest {
         World world = halfShade(0f);
         assertTrue(HostileSpawnRule.GOBLIN.when().allows(world, true));
         assertFalse(HostileSpawnRule.GOBLIN.when().allows(world, false));
-        assertTrue(HostileSpawnRule.GOBLIN.where().allows(world, new Vector3f(5, 64, 0), new Vector3f(9, 64, 0)));
-        assertTrue(HostileSpawnRule.GOBLIN.chance().at(world, new Vector3f(5, 64, 0)) >= 1f,
+        assertTrue(HostileSpawnRule.GOBLIN.where().allows(world, new Vector3d(5, 64, 0), new Vector3d(9, 64, 0)));
+        assertTrue(HostileSpawnRule.GOBLIN.chance().at(world, new Vector3d(5, 64, 0)) >= 1f,
                 "a band every interval outside the Shade, as before");
     }
 
     @Test
     void goblinsAreRareInTheShade() {
         World world = halfShade(0f);
-        assertTrue(HostileSpawnRule.GOBLIN.chance().at(world, new Vector3f(-40, 64, 0)) <= 0.1f);
+        assertTrue(HostileSpawnRule.GOBLIN.chance().at(world, new Vector3d(-40, 64, 0)) <= 0.1f);
     }
 
     @Test
@@ -52,18 +52,18 @@ class HostileSpawnRuleTest {
     @Test
     void vestigesSpawnOnlyInTheShadeAndOnlyNearSomeoneInIt() {
         World world = halfShade(1f);
-        Vector3f shade = new Vector3f(-40, 64, 0);
-        Vector3f plains = new Vector3f(40, 64, 0);
-        assertTrue(HostileSpawnRule.VESTIGE.where().allows(world, shade, new Vector3f(-5, 64, 0)));
-        assertFalse(HostileSpawnRule.VESTIGE.where().allows(world, plains, new Vector3f(-5, 64, 0)));
-        assertFalse(HostileSpawnRule.VESTIGE.where().allows(world, shade, new Vector3f(5, 64, 0)),
+        Vector3d shade = new Vector3d(-40, 64, 0);
+        Vector3d plains = new Vector3d(40, 64, 0);
+        assertTrue(HostileSpawnRule.VESTIGE.where().allows(world, shade, new Vector3d(-5, 64, 0)));
+        assertFalse(HostileSpawnRule.VESTIGE.where().allows(world, plains, new Vector3d(-5, 64, 0)));
+        assertFalse(HostileSpawnRule.VESTIGE.where().allows(world, shade, new Vector3d(5, 64, 0)),
                 "the player is outside the Shade");
     }
 
     @Test
     void vestigesComeEveryMinuteAndAHalfInTheShade() {
         assertEquals(90f, HostileSpawnRule.VESTIGE.shadeClockSeconds());
-        assertEquals(1f, HostileSpawnRule.VESTIGE.chance().at(halfShade(1f), new Vector3f(-40, 64, 0)),
+        assertEquals(1f, HostileSpawnRule.VESTIGE.chance().at(halfShade(1f), new Vector3d(-40, 64, 0)),
                 "once the time is served, no roll stands in the way");
         assertEquals(0f, HostileSpawnRule.GOBLIN.shadeClockSeconds(), "goblins keep the spawn interval");
     }

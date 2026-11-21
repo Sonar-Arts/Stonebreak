@@ -2,47 +2,69 @@ package com.stonebreak.world.leaves;
 
 import java.util.Objects;
 
+import com.openmason.engine.voxel.world.CubePos;
+import com.openmason.engine.voxel.world.CubeWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.utils.CachedChunkAccess;
-import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.voxel.BlockIds;
 
 /**
- * Production {@link LeafWorld} over a {@link World}: CCO block reads through the
- * shared {@link CachedChunkAccess} plumbing, with decay writes routed through
- * {@link World#setBlockAt} — the same block-change funnel player edits use — so
- * everything watching that funnel observes the removal: the water simulation
- * (settled water flows into the opened cell), the animated-block registry, mesh
- * rebuild scheduling where a mesh pipeline exists, and the leaf system's own
- * cascade trigger. Replication to clients goes through the integrated server's
- * mutation sink, exactly like water-flow writes.
+ * Production {@link LeafWorld} over a {@link World}: block reads from the native voxel world, decay writes
+ * routed through {@link World#setBlockAt} — the same block-change funnel player edits use — so everything
+ * watching that funnel observes the removal: the water simulation (settled water flows into the opened
+ * cell), the animated-block registry, physics, and the leaf system's own cascade trigger. Replication to
+ * clients goes through the integrated server's mutation sink, exactly like water-flow writes.
  */
 public final class WorldLeafWorld implements LeafWorld {
 
-    /** Headroom above the surface the chunk-load rescan still sweeps. */
-    private static final int TREE_HEADROOM = 32;
-
     private final World world;
-    private final CachedChunkAccess access;
+    /** Owner-thread scratch for {@link #cubeBlocks} (one cube of ids). */
+    private short[] ids;
 
     public WorldLeafWorld(World world) {
         this.world = Objects.requireNonNull(world, "world");
-        this.access = new CachedChunkAccess(world);
     }
 
     @Override
-    public BlockType getBlock(int x, int y, int z) {
-        return access.getBlock(x, y, z);
+    public BlockType getBlock(long x, long y, long z) {
+        return world.getBlockAt(x, y, z);
+    }
+
+    /** Known content: resident cube, known air, or outside the world (air). */
+    @Override
+    public boolean isLoaded(long x, long y, long z) {
+        return world.isKnown(x, y, z);
+    }
+
+    /**
+     * Per cube of the box: resident, or - when missing - known air from the box's lowest y in every column
+     * it covers (known air is "at or above the column's top", so the lowest cell decides the column).
+     */
+    @Override
+    public boolean isRegionLoaded(long x0, long y0, long z0, long x1, long y1, long z1) {
+        for (long cx = x0 >> 5; cx <= x1 >> 5; cx++) {
+            for (long cy = y0 >> 5; cy <= y1 >> 5; cy++) {
+                for (long cz = z0 >> 5; cz <= z1 >> 5; cz++) {
+                    if (world.hasCube(cx, cy, cz)) {
+                        continue;
+                    }
+                    long ylo = Math.max(y0, cy << 5);
+                    for (long x = Math.max(x0, cx << 5); x <= Math.min(x1, (cx << 5) + 31); x++) {
+                        for (long z = Math.max(z0, cz << 5); z <= Math.min(z1, (cz << 5) + 31); z++) {
+                            if (!world.isKnown(x, ylo, z)) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     @Override
-    public boolean isLoaded(int x, int y, int z) {
-        return access.isLoaded(x, y, z);
-    }
-
-    @Override
-    public boolean isPersistent(int x, int y, int z) {
+    public boolean isPersistent(long x, long y, long z) {
         return com.stonebreak.blocks.leaves.LeafState.isPlaced(world.getBlockStateAt(x, y, z));
     }
 
@@ -51,54 +73,61 @@ public final class WorldLeafWorld implements LeafWorld {
         return com.stonebreak.world.physics.WorldPhysics.of(world).engine();
     }
 
+    /** Uniform cubes (air, stone, water...) are skipped without reading cells. */
     @Override
-    public int foliageScanTop(int x, int z) {
-        // The generator knows where the ground is without the chunk being
-        // resident, and nothing grows more than a canopy above it: the tallest
-        // trunk is 12 blocks (VegetationGenerator), so 32 clears any tree with
-        // room to spare. Above that a column is open sky.
-        int surface = world.terrain().getFinalTerrainHeightAt(x, z);
-        return Math.min(WorldConfiguration.WORLD_HEIGHT, surface + TREE_HEADROOM);
-    }
-
-    @Override
-    public long foliageSectionMask(int chunkX, int chunkZ) {
-        // The section palettes answer it with no cell reads and no terrain-height evaluation
-        // (foliageScanTop computes the generator's surface per column — the bulk of the rescan).
-        com.stonebreak.world.chunk.Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
-        if (chunk == null) {
-            return -1L;
+    public BlockType[] cubeBlocks(CubePos pos) {
+        CubeWorld voxels = world.voxels();
+        int uniform = voxels.uniformId(pos.x(), pos.y(), pos.z());
+        if (uniform == CubeWorld.MISSING) {
+            return null;
         }
-        return com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage.sectionMask(
-            chunk.getBlockStorageView(),
-            block -> block instanceof BlockType type && (type.isLeaves() || type.isLog()));
+        int cells = CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE * CubeWorld.CUBE_EDGE;
+        if (uniform != CubeWorld.NOT_UNIFORM) {
+            BlockType b = BlockIds.of(uniform);
+            if (!b.isLeaves() && !b.isLog()) {
+                return null;
+            }
+            BlockType[] out = new BlockType[cells];
+            java.util.Arrays.fill(out, b);
+            return out;
+        }
+        if (ids == null) {
+            ids = new short[cells];
+        }
+        if (!voxels.readIds(pos.x(), pos.y(), pos.z(), ids)) {
+            return null;
+        }
+        // Most cubes hold no leaf and no log: look before allocating the 32768-entry array (it was ~6% of a
+        // session's Java garbage, 2026-11-20). Same result as before: null without foliage, every cell with it.
+        boolean any = false;
+        for (int i = 0; i < cells && !any; i++) {
+            BlockType b = BlockIds.of(Short.toUnsignedInt(ids[i]));
+            any = b.isLeaves() || b.isLog();
+        }
+        if (!any) {
+            return null;
+        }
+        BlockType[] out = new BlockType[cells];
+        for (int i = 0; i < cells; i++) {
+            out[i] = BlockIds.of(Short.toUnsignedInt(ids[i]));
+        }
+        return out;
     }
 
     @Override
-    public void setBlock(int x, int y, int z, BlockType type) {
-        BlockType previous = access.getBlock(x, y, z);
-        if (previous == type || !access.isLoaded(x, y, z)) {
+    public void setBlock(long x, long y, long z, BlockType type) {
+        BlockType previous = world.getBlockAt(x, y, z);
+        if (previous == type || !world.isLoaded(x, y, z)) {
             return;
         }
-        // Through the funnel, not Chunk#setBlock: bypassing it left settled
-        // water beside a decayed leaf floating forever (WaterSim only wakes on
-        // funnel notifications), and skipped mesh scheduling on worlds that
-        // render. Not a player modification, so no client intent is emitted.
+        // Through the funnel: bypassing it left settled water beside a decayed leaf floating forever
+        // (WaterSim only wakes on funnel notifications). Not a player modification, so no client intent.
         if (!world.setBlockAt(x, y, z, type)) {
             return;
         }
-
-        // Report the mutation to the integrated server's replication funnel
-        // (installed on the headless server world only) so decay reaches clients
-        // through the same per-section batches as player edits and water flow.
         ServerMutationSinks.BlockSink sink = world.serverSinks().blocks();
         if (sink != null) {
-            sink.onServerBlockChange(x, y, z, type);
+            sink.onServerBlockChange(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z), type);
         }
-    }
-
-    @Override
-    public void onChunkUnloaded(int chunkX, int chunkZ) {
-        access.onChunkUnloaded(chunkX, chunkZ);
     }
 }

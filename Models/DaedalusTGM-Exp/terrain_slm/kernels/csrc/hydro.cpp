@@ -10,7 +10,17 @@
 #include <limits>
 #include <vector>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#define TGM_EXPORT extern "C" __declspec(dllexport)
+// MSVC has no __builtin_clzll / __builtin_ctzll; both callers pass a non-zero argument.
+static inline int tgm_clzll(uint64_t x) { unsigned long i; _BitScanReverse64(&i, x); return 63 - static_cast<int>(i); }
+static inline int tgm_ctzll(uint64_t x) { unsigned long i; _BitScanForward64(&i, x); return static_cast<int>(i); }
+#else
 #define TGM_EXPORT extern "C" __attribute__((visibility("default")))
+#define tgm_clzll __builtin_clzll
+#define tgm_ctzll __builtin_ctzll
+#endif
 
 namespace {
 
@@ -44,7 +54,7 @@ struct RadixHeap {
     uint64_t last = 0;
     uint64_t used = 0;   // bit i - 1 set: bucket i (1..64) non-empty
     size_t n = 0;
-    static int bucket(uint64_t k, uint64_t last) { return k == last ? 0 : 64 - __builtin_clzll(k ^ last); }
+    static int bucket(uint64_t k, uint64_t last) { return k == last ? 0 : 64 - tgm_clzll(k ^ last); }
     void push(double val, int64_t idx) {
         uint64_t k = okey(val);
         int bi = bucket(k, last);
@@ -59,7 +69,7 @@ struct RadixHeap {
         if (head0 == b[0].size()) {
             b[0].clear();
             head0 = 0;
-            int i = __builtin_ctzll(used) + 1;
+            int i = tgm_ctzll(used) + 1;
             uint64_t m = b[i][0].key;
             for (const Item& it : b[i]) m = it.key < m ? it.key : m;
             last = m;

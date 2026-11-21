@@ -12,6 +12,8 @@ import com.stonebreak.player.Camera;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.lwjgl.BufferUtils;
 
@@ -43,7 +45,7 @@ public final class DynamicLights {
     public static final int MAX_FAR_LIGHTS = 64;
     private static final NearestLightSources nearest =
             new NearestLightSources(PointLightGlsl.MAX_LIGHTS + MAX_FAR_LIGHTS);
-    private static final Vector3f[] positions = new Vector3f[PointLightGlsl.MAX_LIGHTS];
+    private static final Vector3d[] positions = new Vector3d[PointLightGlsl.MAX_LIGHTS];
     /** Who carries each light: a remote player for their held torch, null otherwise. */
     private static final Entity[] holders = new Entity[PointLightGlsl.MAX_LIGHTS];
     /**
@@ -55,7 +57,9 @@ public final class DynamicLights {
     private static final long[] sourceKeys = new long[PointLightGlsl.MAX_LIGHTS];
     /** Each light's flicker pulse this frame, {@code [0, 1]} ({@link LightProfile#pulse}). */
     private static final float[] pulses = new float[PointLightGlsl.MAX_LIGHTS];
-    private static final Vector3f scratch = new Vector3f();
+    private static final Vector3d scratch = new Vector3d();
+    private static final Vector3f emitterScratch = new Vector3f();
+    private static final Vector3f renderScratch = new Vector3f();
     private static final FloatBuffer positionData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer colorData = BufferUtils.createFloatBuffer(PointLightGlsl.MAX_LIGHTS * 4);
     private static final FloatBuffer farPositionData = BufferUtils.createFloatBuffer(MAX_FAR_LIGHTS * 4);
@@ -91,13 +95,13 @@ public final class DynamicLights {
     }
 
     static {
-        for (int i = 0; i < positions.length; i++) positions[i] = new Vector3f();
+        for (int i = 0; i < positions.length; i++) positions[i] = new Vector3d();
     }
 
     private DynamicLights() {}
 
-    /** {@link #update(World, Player, Vector3f, float, Iterable)} without other players' torches. */
-    public static void update(World world, Player player, Vector3f cameraPos, float totalTime) {
+    /** {@link #update(World, Player, Vector3dc, float, Iterable)} without other players' torches. */
+    public static void update(World world, Player player, Vector3dc cameraPos, float totalTime) {
         update(world, player, cameraPos, totalTime, null);
     }
 
@@ -108,7 +112,7 @@ public final class DynamicLights {
      * {@code PlayerHeldItemS2C}), ranked together by distance. The nearest fill the shadowed
      * near tier; the rest, and any past its reach, fall to the far tier.
      */
-    public static void update(World world, Player player, Vector3f cameraPos, float totalTime,
+    public static void update(World world, Player player, Vector3dc cameraPos, float totalTime,
                               Iterable<RemotePlayer> remotePlayers) {
         frame++;
         count = 0;
@@ -146,7 +150,7 @@ public final class DynamicLights {
                 for (RemotePlayer rp : remotePlayers) {
                     if (!isHoldingTorch(rp) || !com.stonebreak.rendering.models.entities.EntityRenderer
                             .isInRenderableChunk(rp, world)) continue;
-                    float distance = rp.handPosition(scratch).distanceSquared(cameraPos);
+                    float distance = (float) rp.handPosition(scratch).distanceSquared(cameraPos);
                     if (distance <= MAX_DISTANCE_SQ) nearest.offer(rp, distance);
                 }
             }
@@ -159,7 +163,7 @@ public final class DynamicLights {
                 boolean near = i < nearLimit && nearest.distance(i) <= MAX_DISTANCE_SQ;
                 // Near slots left empty by distant lights leave the list longer than the far tier.
                 if (!near && farCount == MAX_FAR_LIGHTS) break;
-                Vector3f out = near ? positions[count] : scratch;
+                Vector3d out = near ? positions[count] : scratch;
                 LightProfile profile;
                 float elapsed;
                 BlockType sourceBlock;
@@ -184,7 +188,7 @@ public final class DynamicLights {
                         sourceBlock = world.getBlockAt(pos.x(), pos.y(), pos.z());
                         BlockLightSource source = BlockLightSource.of(sourceBlock);
                         if (source == null) continue;
-                        source.emitterPosition(world, pos, out);
+                        out.set(source.emitterPosition(world, pos, emitterScratch));
                         profile = source.profile();
                     }
                     sourceKey = com.stonebreak.fx.bindings.AmbientSources.blockKey(pos.x(), pos.y(), pos.z());
@@ -207,11 +211,11 @@ public final class DynamicLights {
         farColorData.flip();
     }
 
-    private static float distanceSquared(BlockPos pos, Vector3f cameraPos) {
-        float dx = pos.x() + 0.5f - cameraPos.x;
-        float dy = pos.y() + 0.5f - cameraPos.y;
-        float dz = pos.z() + 0.5f - cameraPos.z;
-        return dx * dx + dy * dy + dz * dz;
+    private static float distanceSquared(BlockPos pos, Vector3dc cameraPos) {
+        double dx = pos.x() + 0.5 - cameraPos.x();
+        double dy = pos.y() + 0.5 - cameraPos.y();
+        double dz = pos.z() + 0.5 - cameraPos.z();
+        return (float) (dx * dx + dy * dy + dz * dz);
     }
 
     /**
@@ -222,9 +226,9 @@ public final class DynamicLights {
      * Pulled back toward the eye when the offset would land inside a block, which would
      * otherwise black the torch out whenever the player faces a nearby wall.
      */
-    private static void heldTorchPosition(World world, Player player, Vector3f out) {
+    private static void heldTorchPosition(World world, Player player, Vector3d out) {
         Camera camera = player.getCamera();
-        Vector3f eye = camera.getPosition();
+        Vector3d eye = camera.getPosition();
         for (float scale = 1f; scale >= 0.5f; scale *= 0.5f) {
             out.set(eye)
                     .fma(HELD_FORWARD * scale, camera.getFront())
@@ -240,18 +244,18 @@ public final class DynamicLights {
      * back to the hand and then their chest when it would sit inside a block (a player hugging a
      * wall would otherwise black their own torch out).
      */
-    private static void remoteTorchPosition(World world, RemotePlayer rp, Vector3f out) {
+    private static void remoteTorchPosition(World world, RemotePlayer rp, Vector3d out) {
         rp.handPosition(out);
         out.y += REMOTE_FLAME_UP;
         if (!isSolidAt(world, out)) return;
         out.y -= REMOTE_FLAME_UP;
         if (!isSolidAt(world, out)) return;
-        Vector3f feet = rp.getPosition();
+        Vector3d feet = rp.getPosition();
         out.set(feet.x, feet.y + REMOTE_CHEST_UP, feet.z);
     }
 
-    private static boolean isSolidAt(World world, Vector3f p) {
-        BlockType block = world.getBlockAt((int) Math.floor(p.x), (int) Math.floor(p.y), (int) Math.floor(p.z));
+    private static boolean isSolidAt(World world, Vector3d p) {
+        BlockType block = world.getBlockAt((long) Math.floor(p.x), (long) Math.floor(p.y), (long) Math.floor(p.z));
         return block != null && block.isSolid();
     }
 
@@ -262,13 +266,14 @@ public final class DynamicLights {
         count++;
     }
 
-    private static void putLight(FloatBuffer posOut, FloatBuffer colorOut, Vector3f p,
+    private static void putLight(FloatBuffer posOut, FloatBuffer colorOut, Vector3dc world,
                                  LightProfile profile, float elapsed, float slot) {
-        // positions[] stay in world space (shadow views, indirect volumes and chunk
-        // lookups want that); the uniform goes up in render space, because the
-        // shaders subtract it from a render-space fragment position. The origin is
-        // fixed for the frame before update() runs (Renderer.renderWorld).
-        posOut.put(p.x - RenderOrigin.x()).put(p.y).put(p.z - RenderOrigin.z()).put(PointLightGlsl.RADIUS);
+        // positions[] stay in world space (double: shadow views, indirect volumes and cube lookups
+        // want that); the uniform goes up in render space, because the shaders subtract it from a
+        // render-space fragment position. The origin is fixed for the frame before update() runs
+        // (Renderer.renderWorld).
+        Vector3f p = RenderOrigin.toRender(world, renderScratch);
+        posOut.put(p.x).put(p.y).put(p.z).put(PointLightGlsl.RADIUS);
         float k = profile.peak() * profile.intensity(elapsed);
         colorOut.put(profile.red() * k).put(profile.green() * k).put(profile.blue() * k).put(slot);
     }
@@ -297,7 +302,18 @@ public final class DynamicLights {
      */
     public static int heldTorchIndex() { return held && count > 0 ? 0 : -1; }
 
-    public static Vector3f position(int index, Vector3f out) { return out.set(positions[index]); }
+    public static Vector3d position(int index, Vector3d out) { return out.set(positions[index]); }
+
+    /** World position as floats (callers near world zero only, e.g. the FX ambient sources). */
+    public static Vector3f position(int index, Vector3f out) {
+        Vector3d p = positions[index];
+        return out.set((float) p.x, (float) p.y, (float) p.z);
+    }
+
+    /** Render-space (camera-relative) position of light {@code index}: exact at any distance from zero. */
+    public static Vector3f renderPosition(int index, Vector3f out) {
+        return RenderOrigin.toRender(positions[index], out);
+    }
 
     /**
      * The entity carrying light {@code index}, or null for a placed source or the local held

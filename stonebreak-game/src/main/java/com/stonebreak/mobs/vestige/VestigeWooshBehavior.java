@@ -2,6 +2,7 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -28,8 +29,8 @@ final class VestigeWooshBehavior extends VestigeBehavior {
     private Phase phase = Phase.DONE;
     private float elapsed;
     private boolean landed;
-    private Vector3f refuge;
-    private final Vector3f behind = new Vector3f();
+    private Vector3d refuge;
+    private final Vector3d behind = new Vector3d();
 
     VestigeWooshBehavior(Vestige vestige) {
         super(vestige);
@@ -102,7 +103,7 @@ final class VestigeWooshBehavior extends VestigeBehavior {
             return;
         }
         Vector3f look = senses.victimLook();
-        Vector3f feet = senses.victimFeet();
+        Vector3d feet = senses.victimFeet();
         float lx = look != null ? look.x : 0f;
         float lz = look != null ? look.z : 0f;
         float len = (float) Math.sqrt(lx * lx + lz * lz);

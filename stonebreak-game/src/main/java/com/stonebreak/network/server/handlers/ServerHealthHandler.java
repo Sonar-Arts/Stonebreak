@@ -93,10 +93,10 @@ public final class ServerHealthHandler {
                 hurt(sp, burn, PlayerHealthS2C.CAUSE_MOB, nowNs, ctx);
             }
             if (world != null) {
-                float half = PLAYER_WIDTH / 2;
+                double half = PLAYER_WIDTH / 2.0;
                 boolean touching = CactusContactRules.touchesCactus(world,
-                        sp.x() - half, sp.y(), sp.z() - half,
-                        sp.x() + half, sp.y() + PLAYER_HEIGHT, sp.z() + half);
+                        (float) (sp.x() - half), (float) sp.y(), (float) (sp.z() - half),
+                        (float) (sp.x() + half), (float) (sp.y() + PLAYER_HEIGHT), (float) (sp.z() + half));
                 boolean flying = PlayerStateFlags.has(sp.movementFlags(), PlayerStateFlags.FLYING);
                 float cactus = vitals.onCactusContact(touching, flying, dt, nowNs,
                         CactusContactRules.PULSE_INTERVAL, CactusContactRules.DAMAGE_PER_PULSE);
@@ -104,12 +104,12 @@ public final class ServerHealthHandler {
                     hurt(sp, cactus, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
                 }
                 float[] spikes = SpikeContactRules.pointsTouching(world,
-                        sp.x() - half, sp.y(), sp.z() - half,
-                        sp.x() + half, sp.y() + PLAYER_HEIGHT, sp.z() + half);
+                        (float) (sp.x() - half), (float) sp.y(), (float) (sp.z() - half),
+                        (float) (sp.x() + half), (float) (sp.y() + PLAYER_HEIGHT), (float) (sp.z() + half));
                 if (vitals.onSpikeContact(spikes != null && !flying, dt, nowNs, SpikeContactRules.COOLDOWN_SECONDS)) {
                     hurt(sp, SpikeContactRules.DAMAGE, PlayerHealthS2C.CAUSE_CACTUS, nowNs, ctx);
                     // Thrown back the way the points lean: pushed away from a point behind the player.
-                    knockback(sp, new Vector3f(sp.x() - spikes[0], sp.y(), sp.z() - spikes[1]),
+                    knockback(sp, new org.joml.Vector3d(sp.x() - spikes[0], sp.y(), sp.z() - spikes[1]),
                             SpikeContactRules.KNOCKBACK);
                 }
             }
@@ -197,7 +197,7 @@ public final class ServerHealthHandler {
             return;
         }
         if (kind == HitKind.MELEE) {
-            knockback(target, new Vector3f(attacker.x(), attacker.y(), attacker.z()), PVP_MELEE_KNOCKBACK);
+            knockback(target, new org.joml.Vector3d(attacker.x(), attacker.y(), attacker.z()), PVP_MELEE_KNOCKBACK);
             applyLifesteal(attacker, dealt);
         }
         credit(attacker, target, dealt, source, kind);
@@ -238,12 +238,12 @@ public final class ServerHealthHandler {
     }
 
     /** Whether {@code point} is inside {@code player}'s body, grown by {@code margin}. */
-    public static boolean insideBody(ServerPlayer player, Vector3f point, float margin) {
-        float halfWidth = PLAYER_WIDTH * 0.5f + margin;
-        return Math.abs(point.x - player.x()) <= halfWidth
-                && Math.abs(point.z - player.z()) <= halfWidth
-                && point.y >= player.y() - margin
-                && point.y <= player.y() + PLAYER_HEIGHT + margin;
+    public static boolean insideBody(ServerPlayer player, org.joml.Vector3dc point, float margin) {
+        double halfWidth = PLAYER_WIDTH * 0.5f + margin;
+        return Math.abs(point.x() - player.x()) <= halfWidth
+                && Math.abs(point.z() - player.z()) <= halfWidth
+                && point.y() >= player.y() - margin
+                && point.y() <= player.y() + PLAYER_HEIGHT + margin;
     }
 
     // ─── Outcomes ───────────────────────────────────────────────────────────────
@@ -270,12 +270,12 @@ public final class ServerHealthHandler {
     }
 
     /** A blow's push, horizontally away from {@code from} at {@code speed} blocks per second. */
-    public void knockback(ServerPlayer sp, Vector3f from, float speed) {
+    public void knockback(ServerPlayer sp, org.joml.Vector3dc from, float speed) {
         if (!(speed > 0f) || sp.isDead()) {
             return;
         }
-        float dx = sp.x() - from.x;
-        float dz = sp.z() - from.z;
+        float dx = (float) (sp.x() - from.x());
+        float dz = (float) (sp.z() - from.z());
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len < 0.01f) {
             return; // standing on the attacker: no direction to push in
@@ -298,7 +298,7 @@ public final class ServerHealthHandler {
         sp.vitals().markDirty();
         onDeath.accept(sp, ctx);
         ServerPlayerHandler.scatterInventory(sp, ctx);
-        NoiseBus.emitIn(ctx.world(), new Vector3f(sp.x(), sp.y(), sp.z()), Loudness.DEATH); // #321
+        NoiseBus.emitIn(ctx.world(), new org.joml.Vector3d(sp.x(), sp.y(), sp.z()), Loudness.DEATH); // #321
     }
 
     /**
@@ -307,7 +307,7 @@ public final class ServerHealthHandler {
      * normally makes that a no-op.
      */
     void respawn(ServerPlayer sp, ServerWorldContext ctx, long nowNs) {
-        Vector3f spawn = ctx.spawn();
+        org.joml.Vector3d spawn = ctx.spawn();
         sp.setDead(false);
         sp.vitals().applyMaxHealth(sp.serverStats().computeMaxHealth());
         sp.vitals().restore(nowNs);
@@ -334,16 +334,16 @@ public final class ServerHealthHandler {
     }
 
     private static Entity.BoundingBox bodyBox(ServerPlayer p) {
-        float half = PLAYER_WIDTH / 2;
+        double half = PLAYER_WIDTH / 2;
         return new Entity.BoundingBox(p.x() - half, p.y(), p.z() - half,
                 p.x() + half, p.y() + PLAYER_HEIGHT, p.z() + half);
     }
 
     private static float distanceSq(ServerPlayer a, ServerPlayer b) {
-        float dx = a.x() - b.x();
-        float dy = a.y() - b.y();
-        float dz = a.z() - b.z();
-        return dx * dx + dy * dy + dz * dz;
+        double dx = a.x() - b.x();
+        double dy = a.y() - b.y();
+        double dz = a.z() - b.z();
+        return (float) Math.min(Float.MAX_VALUE, dx * dx + dy * dy + dz * dz);
     }
 
     static PlayerHealthS2C healthPacket(ServerPlayer sp, byte cause) {

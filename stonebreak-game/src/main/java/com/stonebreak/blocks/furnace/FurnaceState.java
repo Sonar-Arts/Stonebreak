@@ -135,7 +135,7 @@ public final class FurnaceState {
     }
 
     /** Drops every non-empty slot as an ItemDrop at {@code worldPos}. */
-    public void dropContentsAt(World world, Vector3f worldPos) {
+    public void dropContentsAt(World world, org.joml.Vector3dc worldPos) {
         dropStack(world, worldPos, ingredient);
         dropStack(world, worldPos, fuel);
         dropStack(world, worldPos, output);
@@ -148,7 +148,7 @@ public final class FurnaceState {
         cooking = false;
     }
 
-    private static void dropStack(World world, Vector3f pos, ItemStack stack) {
+    private static void dropStack(World world, org.joml.Vector3dc pos, ItemStack stack) {
         if (stack == null || stack.isEmpty()) return;
         DropUtil.createItemDrop(world, pos, stack.copy());
     }

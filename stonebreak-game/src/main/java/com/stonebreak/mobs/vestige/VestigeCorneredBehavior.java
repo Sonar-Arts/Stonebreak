@@ -2,7 +2,7 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * Cornered: a flight failed with its victim close — pinned against the edge of the Shade, run into
@@ -32,7 +32,7 @@ final class VestigeCorneredBehavior extends VestigeBehavior {
     private float scratchReadyAt;
     private float castReadyAt;
     private boolean landed;
-    private final Vector3f scratch = new Vector3f();
+    private final Vector3d scratch = new Vector3d();
 
     VestigeCorneredBehavior(Vestige vestige) {
         super(vestige);

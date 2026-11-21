@@ -31,25 +31,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("regression")
 class ModelSetupDocumentTest {
 
-    /** A setup run as the fixtures show it: GPU done, the environment installing at 40 %, the rest waiting. */
+    /** A setup run as the fixtures show it: GPU done, the CUDA compiler downloading at 40 %, the rest waiting. */
     static Snapshot running() {
         return new Snapshot(Outcome.RUNNING, List.of(
             new Step(StepId.GPU, Status.DONE, "NVIDIA RTX PRO 6000 (sm_120)", -1),
-            new Step(StepId.UV, Status.SKIPPED, "already installed", -1),
-            new Step(StepId.ENVIRONMENT, Status.RUNNING, "torch 2.9 (1.2 GB)", 0.4),
+            new Step(StepId.NVRTC, Status.RUNNING, "Downloading the CUDA compiler: 34 / 85 MB", 0.4),
+            new Step(StepId.MODEL, Status.PENDING, null, -1),
             new Step(StepId.VERIFY, Status.PENDING, null, -1),
             new Step(StepId.KERNELS, Status.PENDING, null, -1)),
-            "Downloading torch-2.9.0-cp312-linux_x86_64.whl", null, 83_000, true);
+            "Downloading the CUDA compiler: 34 / 85 MB", null, 83_000, true);
     }
 
     static Snapshot failed() {
         return new Snapshot(Outcome.FAILED, List.of(
             new Step(StepId.GPU, Status.DONE, "NVIDIA RTX PRO 6000 (sm_120)", -1),
-            new Step(StepId.UV, Status.DONE, "uv 0.9", -1),
-            new Step(StepId.ENVIRONMENT, Status.FAILED, "uv sync exited with 1", -1),
+            new Step(StepId.NVRTC, Status.DONE, "NVRTC 12.9.86", -1),
+            new Step(StepId.MODEL, Status.FAILED, "terrain model checkpoints/exp2-r3 has Git LFS pointer files", -1),
             new Step(StepId.VERIFY, Status.PENDING, null, -1),
             new Step(StepId.KERNELS, Status.PENDING, null, -1)),
-            "", "The Python environment could not be installed: no network.", 12_000, true);
+            "", "The model release has Git LFS pointer files: run 'git lfs pull'.", 12_000, true);
     }
 
     /** The document on a stage over {@code snap}; {@code events} records menu / retry. */
@@ -80,35 +80,11 @@ class ModelSetupDocumentTest {
     @Test
     void everyStateRendersAndLooksDifferent() throws Exception {
         ChatDocumentGateTest.requireLua();
-        var running = render(new Snapshot(Outcome.RUNNING, List.of(
-            new Step(StepId.GPU, Status.DONE, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", -1),
-            new Step(StepId.UV, Status.DONE, "uv 0.12.20 (downloaded)", -1),
-            new Step(StepId.ENVIRONMENT, Status.RUNNING, "1.84 GB of 4.37 GB downloaded (3 of 9 large packages)", 0.42),
-            new Step(StepId.VERIFY, Status.PENDING, "", -1),
-            new Step(StepId.KERNELS, Status.PENDING, "", -1)), "Downloading torch (846.1MiB)", null, 83_000, true),
-            "running");
-        var failed = render(new Snapshot(Outcome.FAILED, List.of(
-            new Step(StepId.GPU, Status.DONE, "NVIDIA GeForce RTX 5090", -1),
-            new Step(StepId.UV, Status.DONE, "uv (/usr/bin/uv)", -1),
-            new Step(StepId.ENVIRONMENT, Status.FAILED, "uv sync failed (exit 2): network unreachable", -1),
-            new Step(StepId.VERIFY, Status.PENDING, "", -1),
-            new Step(StepId.KERNELS, Status.PENDING, "", -1)), "",
-            "uv sync failed (exit 2): error sending request for url (https://download.pytorch.org/whl/cu128/torch/)",
-            83_000, true), "failed");
-        var unavailable = render(new Snapshot(Outcome.UNAVAILABLE, List.of(
-            new Step(StepId.GPU, Status.FAILED, "No NVIDIA GPU found", -1),
-            new Step(StepId.UV, Status.SKIPPED, "", -1),
-            new Step(StepId.ENVIRONMENT, Status.SKIPPED, "", -1),
-            new Step(StepId.VERIFY, Status.SKIPPED, "", -1),
-            new Step(StepId.KERNELS, Status.SKIPPED, "", -1)), "",
-            "no NVIDIA graphics card found (the terrain model needs one); standard terrain still works", 83_000, true),
-            "unavailable");
-        var ready = render(new Snapshot(Outcome.READY, List.of(
-            new Step(StepId.GPU, Status.DONE, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", -1),
-            new Step(StepId.UV, Status.SKIPPED, "not needed", -1),
-            new Step(StepId.ENVIRONMENT, Status.SKIPPED, "already installed", -1),
-            new Step(StepId.VERIFY, Status.DONE, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition (cuda:1)", -1),
-            new Step(StepId.KERNELS, Status.DONE, "3 kernel groups in 14.5 s", -1)), "", null, 83_000, true), "ready");
+        // The gate's four snapshots (DocumentModelSetupCapture#snapshot), one per outcome.
+        var running = render(DocumentModelSetupCapture.snapshot("running"), "running");
+        var failed = render(DocumentModelSetupCapture.snapshot("failed"), "failed");
+        var unavailable = render(DocumentModelSetupCapture.snapshot("unavailable"), "unavailable");
+        var ready = render(DocumentModelSetupCapture.snapshot("ready"), "ready");
         assertTrue(differ(running, failed) > 1000);
         assertTrue(differ(failed, unavailable) > 1000);
         assertTrue(differ(unavailable, ready) > 1000);
@@ -143,7 +119,7 @@ class ModelSetupDocumentTest {
             assertEquals(5, steps.size());
             List<UiElement> bars = stage.view.instance().qAll(".ms-bar");
             for (int i = 0; i < bars.size(); i++) {
-                assertEquals(i == 2, !bars.get(i).isCollapsed(), "only the measured running step has a bar: " + i);
+                assertEquals(i == 1, !bars.get(i).isCollapsed(), "only the measured running step (the NVRTC download) has a bar: " + i);
             }
             List<UiElement> buttons = stage.view.instance().qAll(".ms-button");
             assertEquals(1, buttons.size());

@@ -25,7 +25,7 @@ class DoubtControllerTest {
     private final DoubtController doubt = new DoubtController();
 
     private static StubMob enemy() {
-        return new StubMob(EntityType.COW, new Vector3f(0, 64, 0));
+        return new StubMob(EntityType.COW, new org.joml.Vector3d(0, 64, 0));
     }
 
     @Test

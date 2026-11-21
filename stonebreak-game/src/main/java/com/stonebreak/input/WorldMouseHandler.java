@@ -2,6 +2,7 @@ package com.stonebreak.input;
 
 import com.stonebreak.blocks.stalagmite.StalagmiteInteraction;
 import com.stonebreak.rendering.player.items.StaffHead;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
@@ -158,7 +159,7 @@ final class WorldMouseHandler {
         if (now - lastFireBoltCastNanos < STAFF_CAST_COOLDOWN_NANOS) {
             return;
         }
-        Vector3f spawnPos = player.getRaycastEngine().launchOrigin(StaffHead.world(player));
+        Vector3d spawnPos = player.getRaycastEngine().launchOrigin(StaffHead.world(player));
         Vector3f dir = player.getRaycastEngine().aimDirectionFrom(spawnPos);
         if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_FIRE_BOLT, spawnPos, dir)) {
             EntityManager em = Game.getEntityManager();
@@ -178,7 +179,7 @@ final class WorldMouseHandler {
      */
     private void useFishingRod(Player player, ItemStack rod) {
         Vector3f dir = player.getRaycastEngine().aimDirection();
-        Vector3f pos = player.getRaycastEngine().eyeOrigin();
+        Vector3d pos = player.getRaycastEngine().eyeOrigin();
         if (!MultiplayerSession.sendFishingRodUse(pos, dir)) {
             return;
         }
@@ -267,7 +268,7 @@ final class WorldMouseHandler {
             player.getInventory().removeItem(ItemType.ARROW);
             Vector3f dir = player.getRaycastEngine().aimDirection();
             Vector3f vel = new Vector3f(dir).mul(arrowSpeed);
-            Vector3f spawnPos = player.getRaycastEngine().eyeOrigin();
+            Vector3d spawnPos = player.getRaycastEngine().eyeOrigin();
             // Server-authoritative spawn (replicated to all); local fallback
             // only when there is no session at all.
             if (!MultiplayerSession.sendProjectileSpawn(ProjectileSpawnC2S.KIND_ARROW, spawnPos, vel)) {

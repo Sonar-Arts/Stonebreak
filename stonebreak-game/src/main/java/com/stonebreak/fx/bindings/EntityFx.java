@@ -63,7 +63,7 @@ public final class EntityFx {
      * A replicated entity event ({@code SoundEventS2C} carries the body's middle, {@code position.y + height/2}):
      * played at the feet below it ({@code position.y - legHeight}, where models are anchored).
      */
-    public static boolean playReplicated(EntityType type, String event, float x, float midY, float z) {
+    public static boolean playReplicated(EntityType type, String event, double x, double midY, double z) {
         if (type == null) {
             return false;
         }
@@ -78,11 +78,27 @@ public final class EntityFx {
     /**
      * A player ({@code type}) broke the water surface at {@code feet} falling at {@code impactSpeed} blocks/s:
      * plays the SBE's {@value #EVENT_SPLASH} bindings, strength from the speed (0.35..1.6 x authored). True when
-     * the asset binds a splash, so the caller can retire its legacy splash.
+     * the asset binds a splash.
      */
     public static boolean splash(EntityType type, org.joml.Vector3f feet, float impactSpeed) {
+        return splash(type, feet.x, feet.y, feet.z, impactSpeed);
+    }
+
+    /** {@link #splash(EntityType, org.joml.Vector3f, float)} at a world position. */
+    public static boolean splash(EntityType type, double feetX, double feetY, double feetZ, float impactSpeed) {
         float intensity = Math.clamp(impactSpeed / SPLASH_REFERENCE_SPEED, 0.35f, 1.6f);
-        return play(type, EVENT_SPLASH, feet.x, feet.y, feet.z, intensity);
+        return play(type, EVENT_SPLASH, feetX, feetY, feetZ, intensity);
+    }
+
+    /** Custom entity event: a ring spreading on the water surface around a swimmer (Stonebreak#441). */
+    public static final String EVENT_RIPPLE = "ripple";
+
+    /**
+     * A {@code type} swimmer disturbs the water surface at {@code (x, surfaceY, z)}: plays the SBE's
+     * {@value #EVENT_RIPPLE} bindings there. True when the asset binds a ripple.
+     */
+    public static boolean ripple(EntityType type, double x, double surfaceY, double z) {
+        return play(type, EVENT_RIPPLE, x, surfaceY, z, AssetFx.NORMAL);
     }
 
     /** {@code event} of a live entity, at its feet. */
@@ -90,7 +106,7 @@ public final class EntityFx {
         if (entity == null || entity.getType() == null) {
             return false;
         }
-        org.joml.Vector3f p = entity.getPosition();
+        org.joml.Vector3d p = entity.getPosition();
         return play(entity.getType(), event, p.x, p.y - entity.getType().getLegHeight(), p.z, AssetFx.NORMAL);
     }
 

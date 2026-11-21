@@ -11,7 +11,7 @@ import com.stonebreak.mobs.goblin.camp.NaturalGround;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import com.stonebreak.world.SimBlockEdits;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.joml.Vector3i;
 
 import java.util.EnumSet;
@@ -41,7 +41,7 @@ public final class MakeCampBehavior implements Behavior {
     private static final float SPEED = 1.0f;
 
     private final Goblin goblin;
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
     private float digTimer;
     private float stall;
     private float bestDistance;
@@ -98,13 +98,13 @@ public final class MakeCampBehavior implements Behavior {
         CampTerrain terrain = CampTerrain.of(world);
         Vector3i next = nextToDig(terrain, plan);
         if (next != null) {
-            target.set(next.x + 0.5f, next.y, next.z + 0.5f);
+            target.set(next.x + 0.5, next.y, next.z + 0.5);
             if (context.distanceTo(target) > DIG_REACH) {
                 digging = false;
                 progress(context.distanceTo(target));
                 // Walk to open ground beside the block, not into the rock itself.
                 Vector3i stand = standBeside(terrain, next);
-                Vector3f goal = stand != null ? new Vector3f(stand.x + 0.5f, stand.y, stand.z + 0.5f) : target;
+                Vector3d goal = stand != null ? new Vector3d(stand.x + 0.5, stand.y, stand.z + 0.5) : target;
                 context.nav().moveTo(goal, 0.8f, SPEED);
                 return;
             }
@@ -127,7 +127,7 @@ public final class MakeCampBehavior implements Behavior {
         }
         digging = false;
         Vector3i site = plan.site();
-        target.set(site.x + 0.5f, site.y, site.z + 0.5f);
+        target.set(site.x + 0.5, site.y, site.z + 0.5);
         if (context.distanceTo(target) > SITE_REACH) {
             progress(context.distanceTo(target));
             context.nav().moveTo(target, SITE_REACH * 0.5f, SPEED);

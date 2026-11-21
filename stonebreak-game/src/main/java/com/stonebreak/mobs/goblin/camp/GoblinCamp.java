@@ -8,7 +8,7 @@ import com.stonebreak.mobs.goblin.food.FoodStore;
 import com.stonebreak.mobs.goblin.food.StackFoodStore;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import com.stonebreak.items.ItemStack;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -142,8 +142,8 @@ public final class GoblinCamp {
     }
 
     /** Where to stand to tend the fire. */
-    public Vector3f fireCenter(Vector3f out) {
-        return out.set(fire.x() + 0.5f, fire.y(), fire.z() + 0.5f);
+    public Vector3d fireCenter(Vector3d out) {
+        return out.set(fire.x() + 0.5, fire.y(), fire.z() + 0.5);
     }
 
     /** The camp's stores: its chest when it has one in the world, its pouch otherwise. */

@@ -27,13 +27,13 @@ public final class StaffHead {
      * The staff head in world space for how {@code player} is viewed, or null when the
      * staff's geometry (or the renderer) isn't available.
      */
-    public static Vector3f world(Player player) {
+    public static org.joml.Vector3d world(Player player) {
         Vector3f head = meshPoint();
         if (head == null) {
             return null;
         }
         if (player.isThirdPerson()) {
-            return HeldItemPose.toolPointWorld(player.getPosition(), player.getBodyYaw(), head, new Vector3f());
+            return HeldItemPose.toolPointWorld(player.getPosition(), player.getBodyYaw(), head, new org.joml.Vector3d());
         }
         com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
         return renderer != null ? renderer.getPlayerArmRenderer().heldPointWorld(player, head) : null;

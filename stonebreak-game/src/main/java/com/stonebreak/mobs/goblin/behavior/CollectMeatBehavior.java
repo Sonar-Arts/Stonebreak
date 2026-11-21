@@ -132,7 +132,7 @@ public final class CollectMeatBehavior implements Behavior {
         float bestDistance = Float.MAX_VALUE;
         for (Entity e : nearby.within(goblin.getPosition(), SCAN_RADIUS)) {
             if (e instanceof ItemDrop drop && isWanted(drop) && !unreachable.containsKey(drop)) {
-                float d = drop.getPosition().distanceSquared(goblin.getPosition());
+                float d = (float) drop.getPosition().distanceSquared(goblin.getPosition());
                 if (d < bestDistance) {
                     bestDistance = d;
                     best = drop;

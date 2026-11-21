@@ -62,6 +62,7 @@ class _Region:
         self.coarse = t(c["coarse"])
         self.desc = t(c["desc"])
         self.climate = torch.stack([t(c[k]) for k in P.CLIMATE_NAMES])
+        self._root, self._device, self._extra = root, device, None
         # Real D8 accumulation lives on 1-cell-wide lines the planner cannot localise
         # exactly; an L1 regression then predicts a low, blurred ridge that never reaches
         # the river threshold. Train on the 3x3-dilated field instead (true magnitude,
@@ -89,12 +90,29 @@ class _Region:
         self.train_mask = ~val.to(device)
 
 
+
+    @property
+    def climate_extra(self) -> torch.Tensor | None:
+        """(3, H, W) aridity, soil water, snow water equivalent (data v2 cells.npz), loaded on first use; None when the
+        region predates them (data v1). Lazy so the planner / relief / hydro trainers never pay for it."""
+        if self._extra is None:
+            c = np.load(self._root / "cells.npz")
+            if not all(k in c.files for k in ("aridity", "soil", "snow")):
+                return None
+            self._extra = torch.stack([torch.from_numpy(np.ascontiguousarray(c[k])).float().to(self._device)
+                                       for k in ("aridity", "soil", "snow")])
+        return self._extra
+
 class PlannerData:
     """Training crops drawn from one or more regions (data/<region>/). Regions are sampled
     uniformly, not by area, so a big region cannot drown out a small, distinctive one."""
 
-    def __init__(self, roots, device: str, crop: int = 64, seed: int = 0):
+    def __init__(self, roots, device: str, crop: int = 64, seed: int = 0, trend_blur=(1.5, 5.0), jitter_max_m=80.0,
+                 jitter_sigma=6.0):
         roots = [Path(roots)] if isinstance(roots, (str, Path)) else [Path(r) for r in roots]
+        # Trend degradation (what a painted / procedural trend looks like). 2026-11-19: up to 80 m of 6-cell jitter is
+        # hill-sized, so a planner trained on it learns to smooth hills out of an in-game (relief-sampled) trend.
+        self.trend_blur, self.jitter_max_m, self.jitter_sigma = tuple(trend_blur), jitter_max_m, jitter_sigma
         self.device = device
         self.crop = crop
         self.gen = torch.Generator(device="cpu").manual_seed(seed)
@@ -166,13 +184,14 @@ class PlannerData:
         b = coarse.shape[0]
         out = torch.empty_like(coarse)
         for i in range(b):
-            sigma = float(torch.empty(1).uniform_(1.5, 5.0, generator=self.gen))
+            sigma = float(torch.empty(1).uniform_(*self.trend_blur, generator=self.gen))
             t = D.blur(coarse[i : i + 1], sigma)
             step = float([0.0, 50.0, 100.0, 250.0][int(torch.randint(0, 4, (1,), generator=self.gen))])
             if step > 0:
                 t = torch.round(t / step) * step
-            jitter = D.blur(torch.randn(t.shape, generator=self.gen).to(t.device), 6.0)
-            jitter = jitter / jitter.std().clamp_min(1e-6) * float(torch.empty(1).uniform_(0, 80, generator=self.gen))
+            jitter = D.blur(torch.randn(t.shape, generator=self.gen).to(t.device), self.jitter_sigma)
+            jitter = jitter / jitter.std().clamp_min(1e-6) * float(torch.empty(1).uniform_(0, self.jitter_max_m,
+                                                                                               generator=self.gen))
             out[i : i + 1] = t + jitter
         return out
 

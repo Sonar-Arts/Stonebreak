@@ -4,7 +4,7 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.EnumSet;
 import java.util.Set;
@@ -20,7 +20,7 @@ public interface ThreatSense {
      *
      * @return {@code out}, or {@code null} when nothing threatening is that close
      */
-    Vector3f nearest(AiContext context, float range, Vector3f out);
+    Vector3d nearest(AiContext context, float range, Vector3d out);
 
     /** Afraid of nothing but players. */
     ThreatSense NONE = (context, range, out) -> null;
@@ -57,7 +57,7 @@ public interface ThreatSense {
         }
 
         @Override
-        public Vector3f nearest(AiContext context, float range, Vector3f out) {
+        public Vector3d nearest(AiContext context, float range, Vector3d out) {
             float age = context.entity().getAge();
             if (Float.isNaN(nextScanAt)) {
                 // A random phase, so a herd that spawned together does not scan on the same tick.
@@ -70,7 +70,7 @@ public interface ThreatSense {
             if (seen == null || !seen.isAlive()) {
                 return null;
             }
-            Vector3f position = seen.getPosition();
+            Vector3d position = seen.getPosition();
             return context.distanceTo(position) <= range ? out.set(position) : null;
         }
 
@@ -80,12 +80,12 @@ public interface ThreatSense {
             if (entities == null) {
                 return null;
             }
-            Vector3f self = context.entity().getPosition();
+            Vector3d self = context.entity().getPosition();
             Entity nearest = null;
             float best = Float.MAX_VALUE;
             for (Entity e : entities.getEntitiesInRange(self, scanRadius)) {
                 if (e != context.entity() && types.contains(e.getType())) {
-                    float d = e.getPosition().distanceSquared(self);
+                    float d = (float) e.getPosition().distanceSquared(self);
                     if (d < best) {
                         best = d;
                         nearest = e;

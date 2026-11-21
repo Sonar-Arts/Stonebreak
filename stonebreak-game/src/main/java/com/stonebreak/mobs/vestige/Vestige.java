@@ -11,9 +11,9 @@ import com.stonebreak.mobs.entities.ai.nav.Steering;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.effects.IllusionSmokeParticles;
+import com.stonebreak.fx.Fx;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 /**
  * The Shade's night stalker. A Vestige would rather frighten a player out of its forest than fight
@@ -66,16 +66,15 @@ public class Vestige extends LivingEntity {
     private boolean vanished;
 
     /** Client side: smoke thrown when the replicated smokescreen arrives. */
-    private final IllusionSmokeParticles smoke = new IllusionSmokeParticles();
     private boolean smokeShown;
     /** Client side: the height it is drawn at, easing up after a step rather than popping. */
-    private float drawnY = Float.NaN;
+    private double drawnY = Double.NaN;
 
-    public Vestige(World world, Vector3f position) {
+    public Vestige(World world, Vector3dc position) {
         this(world, position, VestigeTuning.DEFAULT);
     }
 
-    public Vestige(World world, Vector3f position, VestigeTuning tuning) {
+    public Vestige(World world, Vector3dc position, VestigeTuning tuning) {
         super(world, position, EntityType.VESTIGE);
         this.scale.set(MODEL_SCALE);
         this.moveSpeed = RUN_SPEED;
@@ -116,8 +115,8 @@ public class Vestige extends LivingEntity {
      * what holds against knockback and routes that clip a corner.
      */
     private void holdInsideShade(float deltaTime) {
-        float nextX = position.x + velocity.x * deltaTime;
-        float nextZ = position.z + velocity.z * deltaTime;
+        double nextX = position.x + velocity.x * deltaTime;
+        double nextZ = position.z + velocity.z * deltaTime;
         if (!shade.isShade((int) Math.floor(nextX), (int) Math.floor(nextZ))) {
             velocity.x = 0f;
             velocity.z = 0f;
@@ -150,10 +149,9 @@ public class Vestige extends LivingEntity {
         super.updateClientVisuals(deltaTime);
         boolean smoking = hasStatusEffect(StatusEffectType.SMOKESCREEN);
         if (smoking && !smokeShown) {
-            smoke.screen(new Vector3f(position).add(0f, renderLift(), 0f));
+            screenSmoke();
         }
         smokeShown = smoking;
-        smoke.update(deltaTime);
         easeDrawnHeight(deltaTime);
     }
 
@@ -162,8 +160,8 @@ public class Vestige extends LivingEntity {
      * teleports are taken at once — only climbing is eased.
      */
     private void easeDrawnHeight(float deltaTime) {
-        float y = position.y;
-        if (Float.isNaN(drawnY) || y <= drawnY || y - drawnY > 2f * STEP_UP) {
+        double y = position.y;
+        if (Double.isNaN(drawnY) || y <= drawnY || y - drawnY > 2f * STEP_UP) {
             drawnY = y;
         } else {
             drawnY = Math.min(y, drawnY + GLIDE_CLIMB_RATE * deltaTime);
@@ -265,7 +263,7 @@ public class Vestige extends LivingEntity {
 
     @Override
     public float renderLift() {
-        float easing = Float.isNaN(drawnY) ? 0f : drawnY - position.y; // ≤ 0 while gliding up a step
+        float easing = Double.isNaN(drawnY) ? 0f : (float) (drawnY - position.y); // ≤ 0 while gliding up a step
         return HOVER + BOB * (float) Math.sin(getAge() * BOB_RATE) + easing;
     }
 
@@ -331,10 +329,20 @@ public class Vestige extends LivingEntity {
         // Nothing to say to a vestige.
     }
 
-    /** Client side: the smoke it has thrown, for the effects renderer. */
-    public IllusionSmokeParticles getSmoke() {
-        return smoke;
+    /**
+     * A thick, slow smokescreen a body could vanish into: the decoys' smoke puff (an FX,
+     * Stonebreak#441), thrown several times over the body's height and spread.
+     */
+    private void screenSmoke() {
+        double y = position.y + renderLift();
+        Fx.fire(SMOKE_FX, position.x, y + 0.4, position.z);
+        Fx.fire(SMOKE_FX, position.x + 0.5, y + 1.2, position.z - 0.4);
+        Fx.fire(SMOKE_FX, position.x - 0.5, y + 1.6, position.z + 0.4);
     }
+
+    /** The smoke a vestige vanishes into (the Illusionist decoys' puff). */
+    private static final String SMOKE_FX =
+            com.stonebreak.player.combat.illusionist.MirroredDeceitAbility.SMOKE_FX;
 
     @Override
     public void render(Renderer renderer) {

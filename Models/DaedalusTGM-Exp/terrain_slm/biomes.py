@@ -15,6 +15,8 @@ from typing import Optional
 
 import numpy as np
 import torch
+
+from terrain_slm.world.devcopy import const, to_device   # host -> device without a device sync
 from pyfastnoiselite.pyfastnoiselite import FastNoiseLite, NoiseType, FractalType
 
 
@@ -107,6 +109,23 @@ _ELEV_NOISE_FINE.fractal_type = FractalType.FractalType_FBm
 _ELEV_NOISE_FINE.fractal_octaves = 2
 _ELEV_NOISE_FINE.fractal_lacunarity = 2.0
 _ELEV_NOISE_FINE.fractal_gain = 0.6  # slightly more high-freq contribution
+
+
+# EXP-2 climate extras (2026-11-18): a climate stack may carry 7 channels -- t0, tseason, precip, pcv, then ARIDITY
+# (P / Penman PET, the UNEP index the tree-moisture thresholds were defined on), top-layer SOIL water (m3/m3) and mean
+# SNOW water equivalent (m) -- from data v2 (CHELSA + ERA5) or the climate node. With 4 channels (v4) every rule below
+# is unchanged, so v4 tiles stay bit-identical.
+SNOW_COVER_M_WE = 0.40        # snow index (CHELSA swe / 1000: the 12 monthly values summed) for a PERSISTENT winter
+                              # snowpack: inland Norway, high Alps / Himalaya yes; Great Plains (0.03), Baltic (0.09) no
+SNOW_COVER_MAX_TEMP_C = 4.0   # ...and only where the column itself is cold (its lapsed mean temperature): mild coasts
+                              # under a snowy grid cell stay green
+SOIL_SWAMP_M3 = (0.30, 0.45)  # soil water where swamps start / are most likely (peat and marsh soils sit above 0.4)
+SOIL_SWAMP_MIN_M3 = 0.25      # drier soils host no swamp at all
+SWAMP_BOG_MIN_TEMP_C = 4.0    # very wet soils allow cool bogs (boreal peatland) below SWAMP_MIN_TEMP_C
+
+
+def has_extras(climate: Optional[torch.Tensor]) -> bool:
+    return climate is not None and climate.shape[0] >= 7
 
 
 def _compute_climate_vars(temp: torch.Tensor, t_season: torch.Tensor, 
@@ -216,30 +235,30 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
 
     # === ADD NOISE TO CLIMATE VARIABLES ===
     if h > 0 and w > 0:
-        x = np.arange(j0, j0 + w, dtype=np.float32)
-        y = np.arange(i0, i0 + h, dtype=np.float32)
-        xx, yy = np.meshgrid(x, y)
-        coords = np.array([xx.ravel(), yy.ravel()], dtype=np.float32)
-        
+        # (`_noise`: the same coordinates, memoised -- swamp_candidates reads the same fields for the same columns)
         # Temperature noise
-        temp_noise_coarse = _TEMP_NOISE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        temp_noise_fine = _TEMP_NOISE_FINE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
+        temp_noise_coarse = _noise(_TEMP_NOISE, i0, j0, h, w)
+        temp_noise_fine = _noise(_TEMP_NOISE_FINE, i0, j0, h, w)
         temp_noise = 0.4 * temp_noise_coarse + 0.2 * temp_noise_fine
-        temp = temp + torch.from_numpy(temp_noise).to(device=device, dtype=temp.dtype)
+        temp = temp + to_device(temp_noise, device, temp.dtype)
         
         # Precipitation noise (multiplicative for realistic relative variation ~±20%)
-        precip_noise = _PRECIP_NOISE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        precip_noise_factor = torch.from_numpy(1.0 + 0.2 * precip_noise).to(device=device, dtype=precip.dtype)
+        precip_noise = _noise(_PRECIP_NOISE, i0, j0, h, w)
+        precip_noise_factor = to_device(1.0 + 0.2 * precip_noise, device, precip.dtype)
         precip = precip * precip_noise_factor
         
         # Snow noise (separate from temp noise for edge variation)
-        snow_noise_coarse = _SNOW_NOISE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        snow_noise_fine = _SNOW_NOISE_FINE.gen_from_coords(coords).astype(np.float32).reshape(h, w)
-        snow_noise = torch.from_numpy(3.0 * snow_noise_coarse + 2.0 * snow_noise_fine).to(device=device, dtype=temp.dtype)
+        snow_noise_coarse = _noise(_SNOW_NOISE, i0, j0, h, w)
+        snow_noise_fine = _noise(_SNOW_NOISE_FINE, i0, j0, h, w)
+        snow_noise = to_device(3.0 * snow_noise_coarse + 2.0 * snow_noise_fine, device, temp.dtype)
 
     # === DERIVED CLIMATE VARIABLES ===
     cv = _compute_climate_vars(temp, t_season, precip, p_cv)
     tree_moisture = cv['tree_moisture']
+    ext = has_extras(climate)
+    if ext:   # real aridity (with the classifier's own precipitation noise) instead of the temperature-only PET estimate
+        p_noise = precip / torch.clamp(climate[2], min=1e-6)
+        tree_moisture = climate[4].clamp_min(0.0) * p_noise * (1.0 - 0.35 * (p_cv / 100.0).clamp(max=1.0))
     coldest_month = cv['coldest_month']
     tropical = cv['tropical']
     growing_season = cv['growing_season']
@@ -248,8 +267,8 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     elev_m = elev_padded
     
     # Sobel kernels (normalized by 8 to get proper gradient estimate)
-    sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=elev.dtype, device=device).view(1, 1, 3, 3) / 8.0
-    sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=elev.dtype, device=device).view(1, 1, 3, 3) / 8.0
+    sobel_x = const([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], device, elev.dtype).view(1, 1, 3, 3) / 8.0
+    sobel_y = const([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], device, elev.dtype).view(1, 1, 3, 3) / 8.0
     
     # Apply Sobel to get gradient in meters per pixel
     dx = torch.nn.functional.conv2d(elev_m.unsqueeze(0).unsqueeze(0), sobel_x, padding=0).squeeze()
@@ -337,6 +356,9 @@ def _classify_biome(elev: torch.Tensor, climate: Optional[torch.Tensor], i0: int
     cold_enough = snow_temp < 0.0
     wet_enough = precip > 150.0
     would_have_snow = cold_enough & wet_enough
+    if ext:   # ...or real seasonal snow cover (maritime snow above 0 C means, heavy-snow ranges); the lapse rule keeps peaks
+        would_have_snow = would_have_snow | ((climate[6].clamp_min(0.0) * (1.0 + 0.06 * snow_noise) > SNOW_COVER_M_WE)
+                                             & (snow_temp < SNOW_COVER_MAX_TEMP_C))
     has_snow = would_have_snow & ~is_steep
 
     # === ELEVATION BANDS ===
@@ -543,10 +565,33 @@ _SWAMP_NOISE.fractal_lacunarity = 2.0
 _SWAMP_NOISE.fractal_gain = 0.5
 
 
+_NOISE_MEMO: "OrderedDict" = None
+_NOISE_MEMO_CAP = 24          # a tile's rule classifier + swamp candidates read 6 fields over the same columns
+
+
 def _noise(n: FastNoiseLite, i0: int, j0: int, h: int, w: int, step: int = 1) -> np.ndarray:
-    """One noise field at h x w columns from (i0, j0), `step` apart, with the classifier's coordinate convention."""
+    """One noise field at h x w columns from (i0, j0), `step` apart, with the classifier's coordinate convention.
+    Memoised (2026-11-19: ~4 ms per field and tile, computed twice per tile); callers never write into the result."""
+    global _NOISE_MEMO
+    import threading
+    from collections import OrderedDict
+    if _NOISE_MEMO is None:
+        _NOISE_MEMO = OrderedDict()
+        _noise.lock = threading.Lock()
+    key = (id(n), i0, j0, h, w, step)
+    with _noise.lock:
+        hit = _NOISE_MEMO.get(key)
+        if hit is not None:
+            _NOISE_MEMO.move_to_end(key)
+            return hit
     xx, yy = np.meshgrid(np.arange(w, dtype=np.float32) * step + j0, np.arange(h, dtype=np.float32) * step + i0)
-    return n.gen_from_coords(np.array([xx.ravel(), yy.ravel()], dtype=np.float32)).astype(np.float32).reshape(h, w)
+    out = n.gen_from_coords(np.array([xx.ravel(), yy.ravel()], dtype=np.float32)).astype(np.float32).reshape(h, w)
+    out.setflags(write=False)
+    with _noise.lock:
+        _NOISE_MEMO[key] = out
+        while len(_NOISE_MEMO) > _NOISE_MEMO_CAP:
+            _NOISE_MEMO.popitem(last=False)
+    return out
 
 
 def _noise_sampler(elev: torch.Tensor, climate: torch.Tensor, i0: int, j0: int, step: int):
@@ -574,13 +619,31 @@ def swamp_candidates(elev: torch.Tensor, regional: torch.Tensor, climate: torch.
     `regional` in metres, `climate` exactly as `_classify_biome` takes it, (i0, j0) its noise origin and
     `step` the noise coordinates between samples.
     The host biome is checked separately (apply_swamps)."""
-    t = _noise_sampler(elev, climate, i0, j0, step)
-    temp, snow_temp, moisture, cv = _noisy_climate(climate, t)
+    h, w = elev.shape
+    dev, dt = elev.device, climate.dtype
+    t = lambda n: to_device(_noise(n, i0, j0, h, w, step), dev, dt)
+    # The classifier's own noisy climate, so this agrees with its snow line and forest classes.
+    temp = climate[0] + 0.4 * t(_TEMP_NOISE) + 0.2 * t(_TEMP_NOISE_FINE)
+    precip = torch.clamp(climate[2], min=0.0) * (1.0 + 0.2 * t(_PRECIP_NOISE))
+    snow_temp = temp + 3.0 * t(_SNOW_NOISE) + 2.0 * t(_SNOW_NOISE_FINE)
+    cv = _compute_climate_vars(temp, climate[1], precip, climate[3])
+    moisture = cv['tree_moisture'] * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0)
 
+    if has_extras(climate):   # real aridity, as in _classify_biome
+        p_noise = precip / torch.clamp(climate[2], min=1e-6)
+        moisture = (climate[4].clamp_min(0.0) * p_noise * (1.0 - 0.35 * (climate[3] / 100.0).clamp(max=1.0))
+                    * ((cv['growing_season'] - 60.0) / 90.0).clamp(0.0, 1.0))
     wet = ((moisture - SWAMP_MIN_MOISTURE) / (SWAMP_FULL_MOISTURE - SWAMP_MIN_MOISTURE)).clamp(0.0, 1.0)
     threshold = SWAMP_PATCH_DRY + (SWAMP_PATCH_WET - SWAMP_PATCH_DRY) * wet
+    min_temp = torch.full_like(temp, SWAMP_MIN_TEMP_C)
+    soil_ok = torch.ones_like(temp, dtype=torch.bool)
+    if has_extras(climate):   # wet soils: more swamp, and cool bogs; dry soils: none
+        soil_w = ((climate[5] - SOIL_SWAMP_M3[0]) / (SOIL_SWAMP_M3[1] - SOIL_SWAMP_M3[0])).clamp(0.0, 1.0)
+        threshold = threshold - 0.25 * soil_w
+        min_temp = SWAMP_MIN_TEMP_C + (SWAMP_BOG_MIN_TEMP_C - SWAMP_MIN_TEMP_C) * (soil_w > 0.5).to(temp.dtype)
+        soil_ok = climate[5] >= SOIL_SWAMP_MIN_M3
     patch = t(_SWAMP_NOISE) > threshold
-    return (patch & (moisture >= SWAMP_MIN_MOISTURE) & (temp >= SWAMP_MIN_TEMP_C)
+    return (patch & soil_ok & (moisture >= SWAMP_MIN_MOISTURE) & (temp >= min_temp)
             & (snow_temp >= SWAMP_SNOW_MARGIN_C) & ~cv['hard_frost']
             & (elev >= 0.0) & (elev < SWAMP_MAX_ELEV_M) & (regional < SWAMP_MAX_REGIONAL_M))
 
@@ -604,7 +667,7 @@ def majority(ids: torch.Tensor, size: int) -> torch.Tensor:
 def apply_swamps(biome: torch.Tensor, candidates: torch.Tensor) -> torch.Tensor:
     """Swamp where a candidate column's classified biome is a host (forest, sparse forest, jungle):
     never on snow, taiga, desert, peaks or sea."""
-    host = torch.isin(biome, torch.tensor(SWAMP_HOST_IDS, device=biome.device, dtype=biome.dtype))
+    host = torch.isin(biome, const(SWAMP_HOST_IDS, biome.device, biome.dtype))
     return torch.where(candidates & host, torch.full_like(biome, SWAMP_ID), biome)
 
 

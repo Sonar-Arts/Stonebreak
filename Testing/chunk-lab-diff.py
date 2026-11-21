@@ -7,45 +7,34 @@ import json
 import sys
 
 METRICS = [
-    # (section, key, label, unit)
-    ("generation", "nanosPerChunk", "gen ns/chunk (tier pass)", "ns"),
-    ("generation", "bestNanosCentre", "gen ns/chunk (best-of)", "ns"),
-    ("generation", "heapAllocBytesPerChunk", "gen heap alloc/chunk", "B"),
-    ("chunkRam", "bytesPerChunk", "chunk RAM/chunk", "B"),
-    ("chunkRam", "blockStorageBytesPerChunk", "  block storage/chunk", "B"),
-    ("chunkRam", "sectionsUniform", "  sections uniform", ""),
-    ("chunkRam", "sectionsNibbleTier", "  sections nibble-tier", ""),
-    ("chunkRam", "sectionsByteTier", "  sections byte-tier", ""),
-    ("chunkRam", "sectionsShortTier", "  sections short-tier", ""),
-    ("chunkRam", "maxPaletteSize", "  max palette", ""),
-    ("mesh", "nanosPerChunk", "mesh ns/chunk (tier pass)", "ns"),
-    ("mesh", "bestNanosCentre", "mesh ns/chunk (best-of)", "ns"),
-    ("mesh", "heapAllocBytesPerChunk", "mesh heap alloc/chunk", "B"),
-    ("mesh", "kernelQuads", "kernel quads", ""),
-    ("mesh", "greedyQuads", "greedy quads", ""),
-    ("mesh", "greedyRatio", "greedy ratio", "x"),
-    ("mesh.atlas", "vertices", "atlas vertices", ""),
-    ("mesh.atlas", "vertexBytes", "atlas vertex bytes", "B"),
-    ("mesh.atlas", "indexBytes", "atlas index bytes", "B"),
-    ("mesh.atlas", "conformantQuads", "atlas conformant quads", ""),
-    ("mesh.atlas", "quads", "atlas quads", ""),
-    ("mesh.water", "bytes", "water mesh bytes", "B"),
-    ("mesh.stamp", "bytes", "stamp mesh bytes", "B"),
-    ("mesh", "atlasBytesPerQuad", "atlas bytes/quad", "B"),
+    # (section, key, label, unit)  — cube ledger (CubeFootprintLab, cubic runtime)
+    ("stream", "wallNanos", "wall time to READY", "ms"),
+    ("stream", "cubesLoaded", "cubes loaded", ""),
+    ("stream", "generatedTotal", "cubes generated", ""),
+    ("stream", "meshedTotal", "cubes meshed", ""),
+    ("stream", "generatedPerSecond", "generated / s", ""),
+    ("stream", "meshedPerSecond", "meshed / s", ""),
+    ("stream", "tickUsMax", "owner tick max (us)", ""),
+    ("cubeRam", "encodeBytesAvg", "cube record bytes avg", "B"),
+    ("cubeRam", "encodeBytesP50", "  p50", "B"),
+    ("cubeRam", "encodeBytesP95", "  p95", "B"),
+    ("cubeRam", "encodeBytesMax", "  max", "B"),
+    ("cubeRam", "nearUniformCubes", "  near-uniform cubes", ""),
+    ("mesh", "meshedCubes", "meshed cubes (non-empty)", ""),
+    ("mesh", "bytesPerCubeAvg", "mesh bytes/cube avg", "B"),
+    ("mesh", "bytesPerCubeP95", "  p95", "B"),
+    ("mesh", "bytesPerCubeMax", "  max", "B"),
     ("mesh", "totalBytes", "mesh bytes total", "B"),
-    ("mesh", "bytesPerChunk", "mesh bytes/chunk", "B"),
-    ("mesh", "bytesPerQuad", "mesh bytes/quad", "B"),
-    ("vram.totals", "rawMeshBytes", "VRAM raw mesh bytes", "B"),
-    ("vram.totals", "copyReservedBytes", "VRAM reserved (copy)", "B"),
-    ("vram.totals", "copySlackBytes", "  slack (copy)", "B"),
-    ("vram.totals", "sparseReservedBytes", "VRAM reserved (sparse)", "B"),
-    ("vram.totals", "sparseSlackBytes", "  slack (sparse)", "B"),
-    ("vram.totals", "planModeReservedBytes", "VRAM reserved (plan mode)", "B"),
-    ("gl", "trackedChunkMeshBytes", "GL tracked CHUNK_MESH", "B"),
-    ("gl", "realRegionBytes", "GL real region bytes", "B"),
-    ("gl", "plannedRegionBytes", "GL planned region bytes", "B"),
-    ("gl", "plannedMatchesReal", "GL planned == real", ""),
-    ("gl", "driverDeltaBytes", "GL driver VRAM delta", "B"),
+    ("mesh", "opaqueQuads", "opaque quads", ""),
+    ("mesh", "cutoutQuads", "cutout quads", ""),
+    ("mesh", "translucentQuads", "translucent quads", ""),
+    ("mesh", "waterQuads", "water quads", ""),
+    ("mesh", "stampVertices", "stamp vertices", ""),
+    ("vram.totals", "regions", "VRAM regions (all layers)", ""),
+    ("vram.totals", "usedBytes", "VRAM used", "B"),
+    ("vram.totals", "reservedBytes", "VRAM reserved (planned)", "B"),
+    ("vram.totals", "slackBytes", "  slack", "B"),
+    ("vram.totals", "reservedBytesPerMeshedCube", "  reserved / meshed cube", "B"),
 ]
 
 
@@ -76,6 +65,8 @@ def fmt(v, unit):
         return f"{v} B"
     if unit == "ns":
         return f"{v / 1000:.1f} us"
+    if unit == "ms":
+        return f"{v / 1e6:.1f} ms"
     return f"{v}"
 
 
@@ -88,11 +79,10 @@ def main():
         except FileNotFoundError:
             base = None
     env = run.get("environment", {})
-    print(f"\n=== chunk-lab tier {run['tier']} — '{run['label']}'"
+    print(f"\n=== cube lab radius {run['tier']} — '{run['label']}'"
           + (f" vs baseline '{base['label']}'" if base else " (no baseline yet)") + " ===")
-    print(f"mesher={env.get('mesherBackend')} gen={env.get('terrainGenMode')} greedy={env.get('greedyMeshing')}"
-          f" vertexFormat={env.get('vertexFormat')} stride={env.get('vertexStrideBytes')}B"
-          f" features={env.get('featuresPopulated')} plan={env.get('cearlPlan')}")
+    print(f"seed={env.get('seed')} scale={env.get('scale')} workers={env.get('workers')}"
+          f" plan={env.get('cearlPlan')} allColumnsReady={env.get('allColumnsReady')}")
     w = 30
     head = f"{'metric':<{w}} {'run':>16}"
     if base:

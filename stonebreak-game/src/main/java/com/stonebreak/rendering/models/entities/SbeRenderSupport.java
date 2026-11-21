@@ -23,16 +23,16 @@ final class SbeRenderSupport {
      * feet gets a zero offset; any other authoring (e.g. origin at the feet)
      * is corrected here instead of floating or sinking.
      */
-    static Vector3f groundAnchoredPosition(LivingEntity mob, EntityAsset asset) {
-        Vector3f position = mob.getPosition();
+    static org.joml.Vector3d groundAnchoredPosition(LivingEntity mob, EntityAsset asset) {
+        org.joml.Vector3d position = mob.getPosition(); // a copy
         EntityGeometry geometry =
                 asset == null ? null : asset.geometryFor(mob.getTextureVariant());
         if (geometry == null) {
             return position;
         }
         float offset = -mob.getLegHeight() - geometry.restMinY() * mob.getScale().y + mob.renderLift();
-        return offset == 0f ? position
-                : new Vector3f(position.x, position.y + offset, position.z);
+        position.y += offset;
+        return position;
     }
 
     /**

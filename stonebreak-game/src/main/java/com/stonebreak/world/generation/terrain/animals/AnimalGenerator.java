@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.ChickenAnimal;
 import com.stonebreak.world.generation.terrain.animals.animalRegistry.CowAnimal;
@@ -46,7 +46,7 @@ public class AnimalGenerator {
      * @param random Random number generator
      * @param randomLock Synchronization lock for random access
      */
-    public static void spawnAnimals(World world, Chunk chunk, Random random, Object randomLock) {
+    public static void spawnAnimals(World world, Cube chunk, Random random, Object randomLock) {
         for (Animal animal : registeredAnimals) {
             if (animal.canSpawnInChunk(chunk)) {
                 double spawnChance;
@@ -71,7 +71,7 @@ public class AnimalGenerator {
      * @param randomLock Synchronization lock for random access
      */
     @Deprecated
-    public static void spawnCows(World world, Chunk chunk, Random random, Object randomLock) {
+    public static void spawnCows(World world, Cube chunk, Random random, Object randomLock) {
         // Find cow animal and spawn it
         for (Animal animal : registeredAnimals) {
             if ("cow".equals(animal.getName()) && animal.canSpawnInChunk(chunk)) {

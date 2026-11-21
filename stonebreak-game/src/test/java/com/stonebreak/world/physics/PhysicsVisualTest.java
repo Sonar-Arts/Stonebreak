@@ -11,7 +11,6 @@ import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.physics.CollisionHandler;
 import com.stonebreak.player.state.PhysicsState;
 import com.stonebreak.world.TestWorld;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +41,6 @@ class PhysicsVisualTest {
     private static final int FLOOR = 10;
 
     private TestWorld world;
-    private Chunk chunk;
     private Path out;
 
     @BeforeEach
@@ -51,10 +49,9 @@ class PhysicsVisualTest {
             "visual physics tests (-Dstonebreak.physics.visual=true)");
         out = Path.of(System.getProperty("stonebreak.physics.visual.dir", "target/physics-visual"));
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        chunk = new Chunk(0, 0);
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                chunk.setBlock(x, FLOOR, z, BlockType.STONE);
+                world.setBlockRaw(x, FLOOR, z, BlockType.STONE);
             }
         }
     }
@@ -67,12 +64,12 @@ class PhysicsVisualTest {
     }
 
     private void install() {
-        world.setChunk(0, 0, chunk);
+        // blocks are written straight into the world (setBlockRaw)
     }
 
     private void fillX(int y, int z, BlockType type) {
         for (int x = 0; x < 16; x++) {
-            chunk.setBlock(x, y, z, type);
+            world.setBlockRaw(x, y, z, type);
         }
     }
 
@@ -90,8 +87,8 @@ class PhysicsVisualTest {
 
     private void stairX(int y, int z, StairState.Facing facing) {
         for (int x = 0; x < 16; x++) {
-            chunk.setBlock(x, y, z, BlockType.OAK_STAIRS);
-            chunk.setBlockState(x, y, z, new StairState(facing).toStateString());
+            world.setBlockRaw(x, y, z, BlockType.OAK_STAIRS);
+            world.setBlockStateAt(x, y, z, new StairState(facing).toStateString());
         }
     }
 
@@ -107,9 +104,9 @@ class PhysicsVisualTest {
             }
             collision.move(DT);
             var p = state.getPosition();
-            path.add(new float[] {p.x, p.y, p.z});
+            path.add(new float[] {(float) p.x, (float) p.y, (float) p.z});
             if (i % 10 == 0) {
-                sketch.body(p.x, p.y, p.z, PlayerConstants.PLAYER_WIDTH / 2, 0f, PlayerConstants.PLAYER_HEIGHT,
+                sketch.body((float) p.x, (float) p.y, (float) p.z, PlayerConstants.PLAYER_WIDTH / 2, 0f, PlayerConstants.PLAYER_HEIGHT,
                     PhysicsSketch.BODY, 0.35f + 0.65f * i / frames);
             }
         }
@@ -202,10 +199,10 @@ class PhysicsVisualTest {
             }
             collision.move(DT);
             var p = state.getPosition();
-            path.add(new float[] {p.x, p.y, p.z});
-            if (!state.isOnGround()) peak = Math.max(peak, p.y);
+            path.add(new float[] {(float) p.x, (float) p.y, (float) p.z});
+            if (!state.isOnGround()) peak = Math.max(peak, (float) p.y);
             if (i % 6 == 0) {
-                sketch.body(p.x, p.y, p.z, 0.3f, 0f, 1.8f, PhysicsSketch.BODY, 0.3f + 0.7f * i / 80f);
+                sketch.body((float) p.x, (float) p.y, (float) p.z, 0.3f, 0f, 1.8f, PhysicsSketch.BODY, 0.3f + 0.7f * i / 80f);
             }
         }
         sketch.path(path, PhysicsSketch.PATH);
@@ -230,8 +227,8 @@ class PhysicsVisualTest {
         for (int i = 0; i < 6; i++) {
             collision.move(dt);
             var p = state.getPosition();
-            path.add(new float[] {p.x, p.y, p.z});
-            sketch.body(p.x, p.y, p.z, 0.3f, 0f, 1.8f, PhysicsSketch.BODY, 0.4f + 0.1f * i);
+            path.add(new float[] {(float) p.x, (float) p.y, (float) p.z});
+            sketch.body((float) p.x, (float) p.y, (float) p.z, 0.3f, 0f, 1.8f, PhysicsSketch.BODY, 0.4f + 0.1f * i);
         }
         sketch.path(path, PhysicsSketch.PATH);
         sketch.title("Swept fall at 80 blocks/s, dt 0.25: lands on the 1-block floor, no tunnelling");
@@ -245,7 +242,7 @@ class PhysicsVisualTest {
         for (int x = 3; x <= 12; x++) {
             for (int z = 3; z <= 12; z++) {
                 for (int y = 11; y <= 13; y++) {
-                    chunk.setBlock(x, y, z, BlockType.WATER);
+                    world.setBlockRaw(x, y, z, BlockType.WATER);
                 }
             }
         }
@@ -261,9 +258,9 @@ class PhysicsVisualTest {
             mob.vz = 0.4f; // drifting forward so the history spreads out
             WorldPhysics.of(world).step(mob, 0.05f, EntityCollision.INTEGRATOR, sample);
             t += 0.05f;
-            path.add(new float[] {mob.x, mob.y, mob.z});
+            path.add(new float[] {(float) mob.x, (float) mob.y, (float) mob.z});
             if (i % 12 == 0) {
-                sketch.body(mob.x, mob.y, mob.z, 0.65f, 0.6f, 0.8f, PhysicsSketch.BODY, 0.3f + 0.7f * i / 200f);
+                sketch.body((float) mob.x, (float) mob.y, (float) mob.z, 0.65f, 0.6f, 0.8f, PhysicsSketch.BODY, 0.3f + 0.7f * i / 200f);
             }
         }
         sketch.path(path, PhysicsSketch.PATH);
@@ -276,10 +273,10 @@ class PhysicsVisualTest {
     @Test
     void pickingRaysStopAtFlowersAndTreadsButOnlyBucketRaysAtWater() throws Exception {
         StairState.Facing up = climbingPlusZ();
-        chunk.setBlock(8, 11, 4, BlockType.ROSE);
+        world.setBlockRaw(8, 11, 4, BlockType.ROSE);
         stairX(11, 7, up);
         for (int z = 9; z <= 10; z++) {
-            chunk.setBlock(8, 11, z, BlockType.WATER);
+            world.setBlockRaw(8, 11, z, BlockType.WATER);
         }
         for (int y = 11; y <= 15; y++) {
             fillX(y, 13, BlockType.STONE);
@@ -296,7 +293,7 @@ class PhysicsVisualTest {
                 double pitch = Math.toRadians(-45 + i * 2.5);
                 float dy = (float) Math.sin(pitch), dz = (float) Math.cos(pitch);
                 boolean any = physics.raycast(eye[0], eye[1], eye[2], 0, dy, dz, 14f, WorldPhysics.PICK_MASK, fluid, hit);
-                float d = any ? hit.distance : 14f;
+                float d = any ? (float) hit.distance : 14f;
                 sketch.ray(eye, new float[] {eye[0], eye[1] + dy * d, eye[2] + dz * d}, any);
                 if (any && hit.kind == RayHit.KIND_FLUID) waterHits++;
                 if (any && hit.x == 8 && hit.y == 11 && hit.z == 4) roseHits++;
@@ -333,7 +330,7 @@ class PhysicsVisualTest {
             float[] next = {p[0] + v[0] * 0.05f, p[1] + v[1] * 0.05f, p[2] + v[2] * 0.05f};
             if (physics.sweep(p[0], p[1], p[2], next[0], next[1], next[2], 0.05f, 0.05f, 0.05f,
                     WorldPhysics.PROJECTILE_MASK, hit)) {
-                next = new float[] {hit.px, hit.py, hit.pz};
+                next = new float[] {(float) hit.px, (float) hit.py, (float) hit.pz};
                 stopped = true;
             }
             p = next;
@@ -360,8 +357,8 @@ class PhysicsVisualTest {
         for (int i = 0; i < 40; i++) {
             if (!drop.onGround()) drop.vy -= 20f * 0.05f;
             WorldPhysics.of(world).move(drop, 0.05f);
-            path.add(new float[] {drop.x, drop.y, drop.z});
-            if (i % 3 == 0) sketch.body(drop.x, drop.y, drop.z, 0.125f, 0.125f, 0.125f, PhysicsSketch.BODY, 0.8f);
+            path.add(new float[] {(float) drop.x, (float) drop.y, (float) drop.z});
+            if (i % 3 == 0) sketch.body((float) drop.x, (float) drop.y, (float) drop.z, 0.125f, 0.125f, 0.125f, PhysicsSketch.BODY, 0.8f);
         }
         sketch.path(path, PhysicsSketch.PATH);
         sketch.title("Drop mask: the rose is pick-only, so the drop falls through it to the stone");

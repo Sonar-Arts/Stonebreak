@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class StandStillBehaviorTest {
 
-    private final StubMob mob = new StubMob(EntityType.COW, new Vector3f(0, 64, 0));
+    private final StubMob mob = new StubMob(EntityType.COW, new org.joml.Vector3d(0, 64, 0));
     private final AiContext context = new AiContext(
             mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(7), PlayerLocator.NONE);
 

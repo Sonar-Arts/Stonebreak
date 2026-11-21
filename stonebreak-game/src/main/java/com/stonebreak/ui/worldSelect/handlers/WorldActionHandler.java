@@ -73,6 +73,17 @@ public class WorldActionHandler {
             // World load/generation + persistence happen on the authoritative ServerLevel; the
             // local client just builds the render world from the server's streamed chunks.
 
+            // A world saved in another format is never opened (no migration, pre-alpha): say so and stay.
+            String incompatible = discoveryManager.incompatibilityOf(worldName);
+            if (incompatible != null) {
+                System.err.println("Not loading world '" + worldName + "': " + incompatible);
+                com.stonebreak.core.Game game = com.stonebreak.core.Game.getInstance();
+                if (game != null && game.getChatSystem() != null) {
+                    game.getChatSystem().addMessage(incompatible, new float[]{1.0f, 0.4f, 0.4f, 1.0f});
+                }
+                return;
+            }
+
             // Get world metadata to retrieve the seed
             WorldData worldData = discoveryManager.getWorldData(worldName);
             long seed;

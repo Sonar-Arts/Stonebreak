@@ -23,7 +23,7 @@ class PathfindingServiceTest {
 
     private static final int GROUND_TOP = 63;
     private static final int STAND_Y = 64;
-    private static final int WORLD_HEIGHT = 256;
+    private static final int WORLD_HEIGHT = 256; // the test terrain's vertical range [0, 256)
     private static final com.openmason.engine.nav.GroundProfile WALKER =
             new com.openmason.engine.nav.GroundProfile(0.9f, 0, 0.5f, 1.125f, 1.5f, 3.0f, false, 3.0f, 8.0f,
                     0.5f, 2.0f, 0.5f);
@@ -40,7 +40,7 @@ class PathfindingServiceTest {
 
     private PathfindingService serviceOver(FlatWorldCells cells) {
         physics = cells.physics();
-        return PathfindingService.over(physics, WORLD_HEIGHT);
+        return PathfindingService.over(physics, 0, WORLD_HEIGHT);
     }
 
     @Test

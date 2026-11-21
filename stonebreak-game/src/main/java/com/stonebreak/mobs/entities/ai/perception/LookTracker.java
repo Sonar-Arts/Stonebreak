@@ -1,6 +1,8 @@
 package com.stonebreak.mobs.entities.ai.perception;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
+import org.joml.Vector3fc;
 
 /**
  * Reads one player's body language over the last few seconds, for a mob that must not be caught:
@@ -25,7 +27,7 @@ public final class LookTracker {
     private float backTurned;       // seconds the back has stayed turned
     private boolean hasLast;
     private float lastYaw;
-    private float lastX, lastZ;
+    private double lastX, lastZ;
 
     /**
      * Takes this tick's sample.
@@ -34,28 +36,28 @@ public final class LookTracker {
      * @param player   the player's feet
      * @param watcher  where the stalker is, for the back-turned clock
      */
-    public void update(Vector3f look, Vector3f player, Vector3f watcher, float dt) {
+    public void update(Vector3fc look, Vector3dc player, Vector3dc watcher, float dt) {
         if (!(dt > 0f)) {
             return;
         }
-        float yaw = (float) Math.toDegrees(Math.atan2(look.z, look.x));
+        float yaw = (float) Math.toDegrees(Math.atan2(look.z(), look.x()));
         if (hasLast) {
             float delta = Math.abs(wrap(yaw - lastYaw));
-            float moved = (float) Math.hypot(player.x - lastX, player.z - lastZ);
+            float moved = (float) Math.hypot(player.x() - lastX, player.z() - lastZ);
             // Exponential average with a time constant of the window: cheap, and no buffer to keep.
             float k = Math.min(1f, dt / WINDOW_SECONDS);
             yawRate += (delta / dt - yawRate) * k;
             speed += (moved / dt - speed) * k;
-            velX += ((player.x - lastX) / dt - velX) * k;
-            velZ += ((player.z - lastZ) / dt - velZ) * k;
+            velX += ((float) (player.x() - lastX) / dt - velX) * k;
+            velZ += ((float) (player.z() - lastZ) / dt - velZ) * k;
         }
         hasLast = true;
         lastYaw = yaw;
-        lastX = player.x;
-        lastZ = player.z;
+        lastX = player.x();
+        lastZ = player.z();
 
-        Vector3f eye = new Vector3f(player.x, player.y, player.z);
-        Vector3f target = new Vector3f(watcher.x, player.y, watcher.z);
+        Vector3d eye = new Vector3d(player.x(), player.y(), player.z());
+        Vector3d target = new Vector3d(watcher.x(), player.y(), watcher.z());
         if (PlayerGaze.horizontalAngleTo(eye, look, target) >= BACK_TURNED_ANGLE_DEG) {
             backTurned += dt;
         } else {
@@ -83,11 +85,11 @@ public final class LookTracker {
      * {@code player} carried along their recent average velocity. Standing still, that is where
      * they are.
      */
-    public Vector3f predict(Vector3f player, float seconds, Vector3f out) {
+    public Vector3d predict(Vector3dc player, float seconds, Vector3d out) {
         if (!isMoving()) {
             return out.set(player);
         }
-        return out.set(player.x + velX * seconds, player.y, player.z + velZ * seconds);
+        return out.set(player.x() + velX * seconds, player.y(), player.z() + velZ * seconds);
     }
 
     /** Forgets everything, as when the stalker picks a new victim. */

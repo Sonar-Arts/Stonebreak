@@ -2,6 +2,8 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -35,7 +37,7 @@ final class CoverFinder {
     }
 
     /** A hiding spot and, for a Peek-a-boo, where to lean out from it. */
-    record PeekSetup(Vector3f hide, Vector3f peek) {}
+    record PeekSetup(Vector3d hide, Vector3d peek) {}
 
     /**
      * What a tracking victim is about to do: look toward where they last saw the Vestige — and on past
@@ -46,22 +48,24 @@ final class CoverFinder {
      * @param lastSeen where they last saw the Vestige, or null if they never have
      * @param heading  where they will be in a few seconds (their feet, standing still)
      */
-    record Pursuit(Vector3f player, Vector3f lastSeen, Vector3f heading) {
+    record Pursuit(Vector3d player, Vector3d lastSeen, Vector3d heading) {
 
         /** Horizontal distance from {@code spot} to the nearer of the two lines. */
-        float distanceToPath(Vector3f spot) {
+        float distanceToPath(Vector3dc spot) {
             float d = lineDistance(spot, player, heading, 1f);
             return lastSeen != null ? Math.min(d, lineDistance(spot, player, lastSeen, Float.MAX_VALUE)) : d;
         }
 
         /** Distance from {@code p} to the line from {@code a} through {@code b}, out to {@code maxT} of it. */
-        private static float lineDistance(Vector3f p, Vector3f a, Vector3f b, float maxT) {
-            float abx = b.x - a.x;
-            float abz = b.z - a.z;
+        private static float lineDistance(Vector3dc p, Vector3dc a, Vector3dc b, float maxT) {
+            float abx = (float) (b.x() - a.x());
+            float abz = (float) (b.z() - a.z());
+            float pax = (float) (p.x() - a.x());
+            float paz = (float) (p.z() - a.z());
             float lenSq = abx * abx + abz * abz;
             float t = lenSq < 1.0e-6f ? 0f
-                    : Math.clamp(((p.x - a.x) * abx + (p.z - a.z) * abz) / lenSq, 0f, maxT);
-            return (float) Math.hypot(p.x - (a.x + abx * t), p.z - (a.z + abz * t));
+                    : Math.clamp((pax * abx + paz * abz) / lenSq, 0f, maxT);
+            return (float) Math.hypot(pax - abx * t, paz - abz * t);
         }
     }
 
@@ -98,26 +102,26 @@ final class CoverFinder {
      *
      * @param victimLook unit look direction, or null when unknown (no behind-them preference)
      */
-    Vector3f find(Vector3f around, float radius, Vector3f victimEye, Vector3f victimLook,
+    Vector3d find(Vector3dc around, float radius, Vector3dc victimEye, Vector3f victimLook,
                   float bandMin, float bandMax, Preference preference) {
         return find(around, radius, victimEye, victimLook, bandMin, bandMax, preference, null);
     }
 
     /**
-     * As {@link #find(Vector3f, float, Vector3f, Vector3f, float, float, Preference)}, knowing what
+     * As {@link #find(Vector3dc, float, Vector3dc, Vector3f, float, float, Preference)}, knowing what
      * a tracking victim is about to do, which {@link Preference#FLANK} steers clear of.
      *
      * @param pursuit what the victim is about to do, or null when it is not known
      */
-    Vector3f find(Vector3f around, float radius, Vector3f victimEye, Vector3f victimLook,
+    Vector3d find(Vector3dc around, float radius, Vector3dc victimEye, Vector3f victimLook,
                   float bandMin, float bandMax, Preference preference, Pursuit pursuit) {
-        Vector3f best = null;
+        Vector3d best = null;
         float bestScore = Float.NEGATIVE_INFINITY;
         List<int[]> trunks = trunksNear(around, radius,
                 preference == Preference.AWAY || preference == Preference.FLANK
                         ? ESCAPE_SCAN_DEPTH : TRUNK_SCAN_HEIGHT);
         Set<Long> trunkColumns = columnsOf(trunks);
-        Vector3f spot = new Vector3f();
+        Vector3d spot = new Vector3d();
         for (int[] trunk : trunks) {
             if (!behindTrunk(trunk, victimEye, spot) || !hidden(victimEye, spot)) {
                 continue;
@@ -126,7 +130,7 @@ final class CoverFinder {
                     bandMin, bandMax, preference, pursuit);
             if (score > bestScore) {
                 bestScore = score;
-                best = new Vector3f(spot);
+                best = new Vector3d(spot);
             }
         }
         return best;
@@ -136,13 +140,13 @@ final class CoverFinder {
      * A hiding spot near {@code around} the victim can be teased from: hidden itself, with a
      * sidestep to either side of its trunk that puts the Vestige's head in their sight.
      */
-    PeekSetup findPeek(Vector3f around, float radius, Vector3f victimEye, float bandMin, float bandMax) {
+    PeekSetup findPeek(Vector3dc around, float radius, Vector3dc victimEye, float bandMin, float bandMax) {
         PeekSetup best = null;
         float bestScore = Float.NEGATIVE_INFINITY;
         List<int[]> trunks = trunksNear(around, radius, TRUNK_SCAN_HEIGHT);
         Set<Long> trunkColumns = columnsOf(trunks);
-        Vector3f hide = new Vector3f();
-        Vector3f peek = new Vector3f();
+        Vector3d hide = new Vector3d();
+        Vector3d peek = new Vector3d();
         for (int[] trunk : trunks) {
             if (!behindTrunk(trunk, victimEye, hide) || !hidden(victimEye, hide)) {
                 continue;
@@ -152,8 +156,8 @@ final class CoverFinder {
             if (score <= bestScore) {
                 continue;
             }
-            float sideX = -(victimEye.z - hide.z);
-            float sideZ = victimEye.x - hide.x;
+            float sideX = (float) -(victimEye.z() - hide.z);
+            float sideZ = (float) (victimEye.x() - hide.x);
             float len = (float) Math.sqrt(sideX * sideX + sideZ * sideZ);
             if (len < 1.0e-4f) {
                 continue;
@@ -162,7 +166,7 @@ final class CoverFinder {
                 peek.set(hide.x + sign * sideX / len * PEEK_SIDESTEP, hide.y,
                         hide.z + sign * sideZ / len * PEEK_SIDESTEP);
                 if (isOpen(peek) && !blocked(victimEye, peek.x, peek.y + HEAD, peek.z)) {
-                    best = new PeekSetup(new Vector3f(hide), new Vector3f(peek));
+                    best = new PeekSetup(new Vector3d(hide), new Vector3d(peek));
                     bestScore = score;
                     break;
                 }
@@ -177,9 +181,9 @@ final class CoverFinder {
      * allow — never more than square to them, which would be running past them. Null when every
      * way off is barred.
      */
-    Vector3f runSpot(Vector3f from, Vector3f victim, float distance) {
-        float ax = from.x - victim.x;
-        float az = from.z - victim.z;
+    Vector3d runSpot(Vector3dc from, Vector3dc victim, float distance) {
+        float ax = (float) (from.x() - victim.x());
+        float az = (float) (from.z() - victim.z());
         float len = (float) Math.sqrt(ax * ax + az * az);
         if (len < 1.0e-3f) {
             ax = 1f;
@@ -188,40 +192,40 @@ final class CoverFinder {
         }
         ax /= len;
         az /= len;
-        int nearY = (int) Math.floor(from.y);
+        int nearY = (int) Math.floor(from.y());
         for (float angle : RUN_ANGLES) {
             double r = Math.toRadians(angle);
             float cos = (float) Math.cos(r);
             float sin = (float) Math.sin(r);
-            float x = from.x + (ax * cos - az * sin) * distance;
-            float z = from.z + (ax * sin + az * cos) * distance;
+            double x = from.x() + (ax * cos - az * sin) * distance;
+            double z = from.z() + (ax * sin + az * cos) * distance;
             if (!shade.isShade((int) Math.floor(x), (int) Math.floor(z))) {
                 continue;
             }
             Float ground = groundAt(x, z, nearY);
             if (ground != null) {
-                return new Vector3f(x, ground, z);
+                return new Vector3d(x, ground, z);
             }
         }
         return null;
     }
 
     /** Whether the victim at {@code eye} cannot see a body standing at {@code feet}. */
-    boolean hidden(Vector3f eye, Vector3f feet) {
-        return blocked(eye, feet.x, feet.y + HEAD, feet.z) && blocked(eye, feet.x, feet.y + CHEST, feet.z);
+    boolean hidden(Vector3dc eye, Vector3dc feet) {
+        return blocked(eye, feet.x(), feet.y() + HEAD, feet.z()) && blocked(eye, feet.x(), feet.y() + CHEST, feet.z());
     }
 
-    private float score(Vector3f spot, Vector3f around, int[] trunk, Set<Long> trunkColumns,
-                        Vector3f victimEye, Vector3f victimLook, float bandMin, float bandMax,
+    private float score(Vector3dc spot, Vector3dc around, int[] trunk, Set<Long> trunkColumns,
+                        Vector3dc victimEye, Vector3f victimLook, float bandMin, float bandMax,
                         Preference preference, Pursuit pursuit) {
-        float toVictim = (float) Math.hypot(spot.x - victimEye.x, spot.z - victimEye.z);
+        float toVictim = (float) Math.hypot(spot.x() - victimEye.x(), spot.z() - victimEye.z());
         float score = 0f;
         if (toVictim < bandMin) {
             score -= (bandMin - toVictim) * 3f;
         } else if (toVictim > bandMax) {
             score -= (toVictim - bandMax) * 3f;
         }
-        score -= 0.15f * spot.distance(around); // a long trip there is a long time in the open
+        score -= 0.15f * (float) spot.distance(around); // a long trip there is a long time in the open
         score += 0.6f * Math.min(8, density(trunk, trunkColumns));
         switch (preference) {
             case FOREST -> score += 0.6f * Math.min(8, density(trunk, trunkColumns));
@@ -234,7 +238,7 @@ final class CoverFinder {
                 if (pursuit != null) {
                     score -= 1.2f * Math.max(0f, PATH_HALF_WIDTH - pursuit.distanceToPath(spot));
                     if (pursuit.lastSeen() != null) {
-                        score += 0.3f * Math.min(LAST_SEEN_REACH, spot.distance(pursuit.lastSeen()));
+                        score += 0.3f * Math.min(LAST_SEEN_REACH, (float) spot.distance(pursuit.lastSeen()));
                     }
                 }
             }
@@ -243,7 +247,7 @@ final class CoverFinder {
     }
 
     /** Up to 6 for a spot directly behind where the victim looks, nothing dead ahead. */
-    private static float behindBonus(Vector3f spot, Vector3f victimEye, Vector3f victimLook) {
+    private static float behindBonus(Vector3dc spot, Vector3dc victimEye, Vector3f victimLook) {
         if (victimLook == null) {
             return 0f;
         }
@@ -252,17 +256,17 @@ final class CoverFinder {
     }
 
     /** Where to stand behind {@code trunk} as seen from {@code eye}; false if there is no footing. */
-    private boolean behindTrunk(int[] trunk, Vector3f eye, Vector3f out) {
-        float cx = trunk[0] + 0.5f;
-        float cz = trunk[2] + 0.5f;
-        float dx = cx - eye.x;
-        float dz = cz - eye.z;
+    private boolean behindTrunk(int[] trunk, Vector3dc eye, Vector3d out) {
+        double cx = trunk[0] + 0.5;
+        double cz = trunk[2] + 0.5;
+        float dx = (float) (cx - eye.x());
+        float dz = (float) (cz - eye.z());
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len < 1.0e-3f) {
             return false;
         }
-        float x = cx + dx / len * BEHIND_TRUNK;
-        float z = cz + dz / len * BEHIND_TRUNK;
+        double x = cx + dx / len * BEHIND_TRUNK;
+        double z = cz + dz / len * BEHIND_TRUNK;
         if (!shade.isShade((int) Math.floor(x), (int) Math.floor(z))) {
             return false;
         }
@@ -275,7 +279,7 @@ final class CoverFinder {
     }
 
     /** Feet height of the first spot with solid footing and two blocks of air, scanning down. */
-    private Float groundAt(float x, float z, int nearY) {
+    private Float groundAt(double x, double z, int nearY) {
         int bx = (int) Math.floor(x);
         int bz = (int) Math.floor(z);
         for (int y = nearY + 3; y >= nearY - 6; y--) {
@@ -286,10 +290,10 @@ final class CoverFinder {
         return null;
     }
 
-    private boolean isOpen(Vector3f feet) {
-        int bx = (int) Math.floor(feet.x);
-        int by = (int) Math.floor(feet.y);
-        int bz = (int) Math.floor(feet.z);
+    private boolean isOpen(Vector3dc feet) {
+        int bx = (int) Math.floor(feet.x());
+        int by = (int) Math.floor(feet.y());
+        int bz = (int) Math.floor(feet.z());
         return !solid(bx, by, bz) && !solid(bx, by + 1, bz) && shade.isShade(bx, bz);
     }
 
@@ -297,11 +301,11 @@ final class CoverFinder {
      * Logs near {@code around}, one per column: {x, y, z} of the lowest log seen, from
      * {@code depth} rows below it to {@link #TRUNK_SCAN_HEIGHT} above.
      */
-    private List<int[]> trunksNear(Vector3f around, float radius, int depth) {
+    private List<int[]> trunksNear(Vector3dc around, float radius, int depth) {
         List<int[]> trunks = new ArrayList<>();
-        int cx = (int) Math.floor(around.x);
-        int cy = (int) Math.floor(around.y);
-        int cz = (int) Math.floor(around.z);
+        int cx = (int) Math.floor(around.x());
+        int cy = (int) Math.floor(around.y());
+        int cz = (int) Math.floor(around.z());
         int r = (int) Math.ceil(radius);
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {
@@ -346,16 +350,16 @@ final class CoverFinder {
     }
 
     /** Whether a solid block stands anywhere on the segment from {@code eye} to the point. */
-    boolean blocked(Vector3f eye, float x, float y, float z) {
-        float dx = x - eye.x;
-        float dy = y - eye.y;
-        float dz = z - eye.z;
+    boolean blocked(Vector3dc eye, double x, double y, double z) {
+        double dx = x - eye.x();
+        double dy = y - eye.y();
+        double dz = z - eye.z();
         float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
         int steps = (int) Math.ceil(length / RAY_STEP);
         for (int i = 1; i < steps; i++) {
             float t = (float) i / steps;
-            if (solid((int) Math.floor(eye.x + dx * t), (int) Math.floor(eye.y + dy * t),
-                    (int) Math.floor(eye.z + dz * t))) {
+            if (solid((int) Math.floor(eye.x() + dx * t), (int) Math.floor(eye.y() + dy * t),
+                    (int) Math.floor(eye.z() + dz * t))) {
                 return true;
             }
         }

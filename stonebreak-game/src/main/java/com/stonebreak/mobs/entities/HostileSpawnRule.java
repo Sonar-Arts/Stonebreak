@@ -3,7 +3,7 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 /**
  * When, where and how many of one hostile mob {@link HostileSpawner} puts in the world. A new night
@@ -34,13 +34,13 @@ record HostileSpawnRule(EntityType type, Chance chance, int groupMin, int groupM
 
     @FunctionalInterface
     interface Where {
-        boolean allows(World world, Vector3f spot, Vector3f anchor);
+        boolean allows(World world, Vector3dc spot, Vector3dc anchor);
     }
 
     /** Odds a group spawns at {@code spot}, so a mob can be common in one biome and rare in another. */
     @FunctionalInterface
     interface Chance {
-        float at(World world, Vector3f spot);
+        float at(World world, Vector3dc spot);
     }
 
     /** Fog at least this thick before Vestiges come out: properly night, not dusk. */
@@ -65,7 +65,7 @@ record HostileSpawnRule(EntityType type, Chance chance, int groupMin, int groupM
             (world, spot) -> isShade(world, spot) ? GOBLIN_SHADE_CHANCE : 1f, 2, 4, 8, 0f, GOBLIN_SPACING, 0f,
             (world, night) -> night, (world, spot, anchor) -> !inCampTerritory(world, spot));
 
-    static boolean inCampTerritory(World world, Vector3f spot) {
+    static boolean inCampTerritory(World world, Vector3dc spot) {
         com.stonebreak.mobs.goblin.camp.CampRegistry camps = world != null ? world.goblinCamps() : null;
         return camps != null && camps.campWithin(spot, com.stonebreak.mobs.goblin.camp.CampRegistry.TERRITORY);
     }
@@ -80,8 +80,8 @@ record HostileSpawnRule(EntityType type, Chance chance, int groupMin, int groupM
             (world, night) -> world != null && world.getNightFog() >= VESTIGE_MIN_FOG,
             (world, spot, anchor) -> isShade(world, spot) && isShade(world, anchor));
 
-    static boolean isShade(World world, Vector3f point) {
+    static boolean isShade(World world, Vector3dc point) {
         TerrainGenerator terrain = world != null ? world.terrain() : null;
-        return terrain != null && terrain.getBiomeAt((int) Math.floor(point.x), (int) Math.floor(point.z)) == BiomeType.SHADE;
+        return terrain != null && terrain.getBiomeAt((int) Math.floor(point.x()), (int) Math.floor(point.z())) == BiomeType.SHADE;
     }
 }

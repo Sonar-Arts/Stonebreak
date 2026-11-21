@@ -4,6 +4,7 @@ import com.openmason.engine.rendering.shaders.ShaderProgram;
 import com.stonebreak.rendering.gameWorld.ChunkFrustumCuller;
 import com.stonebreak.rendering.gameWorld.water.WaterRenderer;
 import com.stonebreak.world.fastlod.FastLodManager;
+import com.stonebreak.world.fastlod.OctreeLod;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
@@ -73,6 +74,50 @@ public final class FastLodRenderPass {
 
     /** Crossfading region-resident nodes drawn individually after the batches. */
     private final List<FastLodManager.Entry> fadingRegionNodes = new ArrayList<>();
+    private final RegionCull regionCull = new RegionCull();
+    /** Dev A/B: {@code -Dstonebreak.fastlod.legacyLoop=true} = no coverage cache, no region pre-cull (pre-2026-11-20). */
+    private static final boolean LEGACY_LOOP = Boolean.getBoolean("stonebreak.fastlod.legacyLoop");
+
+
+    /**
+     * Per-frame frustum classification of 16x16-chunk regions (full world height), cached in a window around the
+     * player (2026-11-20: the per-node box tests were ~30% of FastLOD's render CPU at a 128-chunk ring; most nodes of
+     * a wide ring lie in regions wholly outside a 70-90 degree frustum and now skip their own test). GL thread only.
+     */
+    static final class RegionCull {
+        static final int OUTSIDE = 1, INSIDE = 2, PARTIAL = 3;
+        private static final int SHIFT = 4;                 // 16 chunks per region side
+        private static final int WINDOW = 64;               // regions per window side
+        private final int[] state = new int[WINDOW * WINDOW];
+        private final int[] frameOf = new int[WINDOW * WINDOW];
+        private int frame;
+        private int baseRx, baseRz;
+        private ChunkFrustumCuller culler;
+
+        void begin(ChunkFrustumCuller culler, int playerChunkX, int playerChunkZ) {
+            this.culler = culler;
+            frame++;
+            baseRx = (playerChunkX >> SHIFT) - WINDOW / 2;
+            baseRz = (playerChunkZ >> SHIFT) - WINDOW / 2;
+        }
+
+        /** OUTSIDE (skip the node), INSIDE (visible, no node test needed) or PARTIAL (test the node). */
+        int classify(int chunkX, int chunkZ) {
+            int rx = (chunkX >> SHIFT) - baseRx, rz = (chunkZ >> SHIFT) - baseRz;
+            if (culler == null || rx < 0 || rz < 0 || rx >= WINDOW || rz >= WINDOW) {
+                return PARTIAL;
+            }
+            int i = rz * WINDOW + rx;
+            if (frameOf[i] != frame) {
+                frameOf[i] = frame;
+                float side = (float) (WorldConfiguration.CHUNK_SIZE << SHIFT);
+                float x0 = (float) (chunkX >> SHIFT) * side, z0 = (float) (chunkZ >> SHIFT) * side;
+                int r = culler.intersectAab(x0, WorldConfiguration.MIN_Y, z0, x0 + side, WorldConfiguration.MAX_Y, z0 + side);
+                state[i] = r >= 0 ? OUTSIDE : r == org.joml.FrustumIntersection.INSIDE ? INSIDE : PARTIAL;
+            }
+            return state[i];
+        }
+    }
     /** Cached region-upload adapter; rebuilt only if the batcher instance changes. */
     private FastLodManager.RegionUploader regionUploader;
     private FastLodRegionBatcher adapterTarget;
@@ -99,7 +144,20 @@ public final class FastLodRenderPass {
                       int playerChunkX, int playerChunkZ, ChunkFrustumCuller culler,
                       NativeChunkTest nativeChunks, FastLodRegionBatcher batcher,
                       List<WaterRenderer.LodWaterNode> lodWaterOut) {
+        return render(shader, manager, playerChunkX, playerChunkZ, culler, nativeChunks, batcher, lodWaterOut, null);
+    }
+
+    /**
+     * As above; with a live {@code octree} the FastLOD ring only draws the octree LOD's FALLBACK footprints
+     * (never-explored land) - the octree nodes and READY detail cover everything else - and the per-column
+     * readiness test is not used.
+     */
+    public int render(ShaderProgram shader, FastLodManager manager,
+                      int playerChunkX, int playerChunkZ, ChunkFrustumCuller culler,
+                      NativeChunkTest nativeChunks, FastLodRegionBatcher batcher,
+                      List<WaterRenderer.LodWaterNode> lodWaterOut, OctreeLod octree) {
         if (manager == null) return 0;
+        if (octree != null && octree.isClosed()) octree = null;
         if (batcher != null && adapterTarget != batcher) {
             adapterTarget = batcher;
             final FastLodRegionBatcher b = batcher;
@@ -137,20 +195,39 @@ public final class FastLodRenderPass {
         GL11.glPolygonOffset(LOD_DEPTH_SLOPE, LOD_DEPTH_UNITS);
         float boundFade = 1.0f;
         fadingRegionNodes.clear();
+        long coverStamp = octree != null ? octree.fallbackStamp() : -1;
+        regionCull.begin(culler, playerChunkX, playerChunkZ);
 
         for (FastLodManager.Entry entry : entries) {
             int dx = Math.abs(entry.key.chunkX() - playerChunkX);
             int dz = Math.abs(entry.key.chunkZ() - playerChunkZ);
             int dist = Math.max(dx, dz);
 
-            boolean nativeReady = dist <= inner
-                    && nativeChunks.isRenderable(entry.key.chunkX(), entry.key.chunkZ());
-            float fade = updateFade(entry, dist, inner, nativeReady, dt);
+            // Cubic runtime: the detail cubes of a READY column draw wherever the column is (the stream keeps
+            // columns just outside the disc READY until their cubes unload), so readiness alone hands over -
+            // not the distance - or a READY column past the disc edge would draw detail AND LOD.
+            float fade;
+            if (octree != null) {
+                if (LEGACY_LOOP || entry.coverStamp != coverStamp) {   // the footprint set changed since this was asked
+                    entry.fallbackCovered = octree.fallbackCovers(entry.key.chunkX(), entry.key.chunkZ());
+                    entry.coverStamp = coverStamp;
+                }
+                boolean covered = entry.fallbackCovered;
+                fade = updateFallbackFade(entry, covered,
+                        covered && octree.justUnready(entry.key.chunkX(), entry.key.chunkZ()), dt);
+            } else {
+                boolean nativeReady = nativeChunks.isRenderable(entry.key.chunkX(), entry.key.chunkZ());
+                fade = updateFade(entry, nativeReady ? Math.min(dist, inner) : dist, inner, nativeReady, dt);
+            }
             if (fade <= 0f) continue;
 
             float minX = entry.key.chunkX() * (float) WorldConfiguration.CHUNK_SIZE;
             float minZ = entry.key.chunkZ() * (float) WorldConfiguration.CHUNK_SIZE;
-            if (!culler.isBoxVisible(minX, entry.minY, minZ,
+            int region = LEGACY_LOOP ? RegionCull.PARTIAL : regionCull.classify(entry.key.chunkX(), entry.key.chunkZ());
+            if (region == RegionCull.OUTSIDE) {
+                continue;   // its whole 16x16-chunk region is outside the frustum
+            }
+            if (region != RegionCull.INSIDE && !culler.isBoxVisible(minX, entry.minY, minZ,
                     minX + WorldConfiguration.CHUNK_SIZE, entry.maxY,
                     minZ + WorldConfiguration.CHUNK_SIZE)) {
                 continue;
@@ -191,7 +268,8 @@ public final class FastLodRenderPass {
                 shader.setUniform("u_lodFade", 1.0f);
                 boundFade = 1.0f;
             }
-            batcher.drawTerrain(stamp);
+            batcher.drawTerrain(stamp, (playerChunkX + 0.5) * WorldConfiguration.CHUNK_SIZE,
+                    (playerChunkZ + 0.5) * WorldConfiguration.CHUNK_SIZE);
             // The few crossfading nodes draw individually with their fade.
             for (int i = 0; i < fadingRegionNodes.size(); i++) {
                 FastLodManager.Entry entry = fadingRegionNodes.get(i);
@@ -216,6 +294,34 @@ public final class FastLodRenderPass {
             shader.setUniform("u_lodFade", 1.0f);
         }
         return stamp;
+    }
+
+    /** Seconds a node keeps drawing after its footprint stopped being an octree FALLBACK footprint. */
+    static final float FALLBACK_HOLD_SECONDS = 0.45f;
+
+    /**
+     * Octree handover step (pure, headless-testable): a node in a FALLBACK footprint fades in (or appears solid at
+     * once when {@code snap}: the detail under it just stopped drawing); a node whose footprint left the fallback
+     * set keeps drawing as it was for {@link #FALLBACK_HOLD_SECONDS} - octree nodes fading in or READY detail are
+     * drawn by then - and then stops. Never dissolves out: two screen-door fades at once would leave holes.
+     */
+    static float updateFallbackFade(FastLodManager.Entry entry, boolean covered, boolean snap, float dt) {
+        if (covered) {
+            entry.hold = 0f;
+            entry.nativeCovered = false;
+            entry.fade = snap ? 1f : Math.min(1f, entry.fade + dt * FADE_IN_PER_SEC);
+        } else {
+            if (!entry.nativeCovered) {
+                entry.nativeCovered = true;
+                entry.hold = entry.fade > 0f ? FALLBACK_HOLD_SECONDS : 0f;
+            }
+            if (entry.hold > 0f) {
+                entry.hold -= dt;
+            } else {
+                entry.fade = 0f;
+            }
+        }
+        return entry.fade;
     }
 
     /**

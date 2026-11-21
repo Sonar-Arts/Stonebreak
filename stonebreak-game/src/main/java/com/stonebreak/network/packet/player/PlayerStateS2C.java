@@ -2,6 +2,7 @@ package com.stonebreak.network.packet.player;
 
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -9,16 +10,14 @@ import io.netty.buffer.ByteBuf;
  * ({@link PlayerStateFlags}), relayed verbatim from that player's {@link PlayerStateC2S}.
  */
 public record PlayerStateS2C(int playerId,
-                             float x, float y, float z,
+                             double x, double y, double z,
                              float yaw, float pitch, short flags) implements Packet {
 
     public static final PacketCodec<PlayerStateS2C> CODEC = new PacketCodec<>() {
         @Override
         public void encode(ByteBuf out, PlayerStateS2C p) {
             out.writeInt(p.playerId());
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
             out.writeFloat(p.yaw());
             out.writeFloat(p.pitch());
             out.writeShort(p.flags());
@@ -28,7 +27,7 @@ public record PlayerStateS2C(int playerId,
         public PlayerStateS2C decode(ByteBuf in) {
             return new PlayerStateS2C(
                 in.readInt(),
-                in.readFloat(), in.readFloat(), in.readFloat(),
+                NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in),
                 in.readFloat(), in.readFloat(), in.readShort());
         }
     };

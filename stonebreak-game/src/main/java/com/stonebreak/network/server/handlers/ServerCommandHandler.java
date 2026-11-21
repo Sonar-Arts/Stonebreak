@@ -217,17 +217,17 @@ public final class ServerCommandHandler {
         // Camera convention: front = (cos yaw·cos pitch, sin pitch, sin yaw·cos pitch).
         double yaw = Math.toRadians(sp.yaw());
         double pitch = Math.toRadians(sp.pitch());
-        Vector3f base = new Vector3f(
-                sp.x() + (float) (Math.cos(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE,
-                sp.y() + (float) Math.sin(pitch) * SPAWN_DISTANCE,
-                sp.z() + (float) (Math.sin(yaw) * Math.cos(pitch)) * SPAWN_DISTANCE);
+        org.joml.Vector3d base = new org.joml.Vector3d(
+                sp.x() + Math.cos(yaw) * Math.cos(pitch) * SPAWN_DISTANCE,
+                sp.y() + Math.sin(pitch) * SPAWN_DISTANCE,
+                sp.z() + Math.sin(yaw) * Math.cos(pitch) * SPAWN_DISTANCE);
         int spawned = 0;
         List<Entity> group = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             // Jitter x/z slightly so multiple spawns don't stack on a single point.
             float jitterX = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
             float jitterZ = count > 1 ? (float) (Math.random() - 0.5) * 2.0f : 0f;
-            Entity entity = em.spawnEntity(type, new Vector3f(base).add(jitterX, 0f, jitterZ));
+            Entity entity = em.spawnEntity(type, new org.joml.Vector3d(base).add(jitterX, 0.0, jitterZ));
             if (entity != null) {
                 entity.setCommandSpawned(true);
                 group.add(entity);
@@ -271,7 +271,7 @@ public final class ServerCommandHandler {
         if (em == null) {
             return;
         }
-        Vector3f at = new Vector3f(sp.x(), sp.y(), sp.z());
+        org.joml.Vector3d at = new org.joml.Vector3d(sp.x(), sp.y(), sp.z());
         Set<GoblinPack> packs = new LinkedHashSet<>();
         for (Entity e : em.getEntitiesInRange(at, GOBLINS_RADIUS)) {
             if (e instanceof Goblin g) {
@@ -336,8 +336,8 @@ public final class ServerCommandHandler {
         com.stonebreak.mobs.goblin.camp.GoblinCamp nearest = null;
         float best = GOBLINS_RADIUS * GOBLINS_RADIUS;
         for (var camp : ctx.world().goblinCamps().camps()) {
-            float dx = camp.fire().x() + 0.5f - sp.x();
-            float dz = camp.fire().z() + 0.5f - sp.z();
+            float dx = (float) (camp.fire().x() + 0.5 - sp.x());
+            float dz = (float) (camp.fire().z() + 0.5 - sp.z());
             if (dx * dx + dz * dz < best) {
                 best = dx * dx + dz * dz;
                 nearest = camp;

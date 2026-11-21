@@ -225,7 +225,8 @@ public final class MenuShowcase {
             return null;
         }
         previewStage = new PreviewStage();
-        FlyoverShot orbit = previewOrbit(player.getPosition(), player.getCamera().getYaw());
+        // Shot frames are float world positions (CameraFrame); the orbit is built around the double position.
+        FlyoverShot orbit = previewOrbit(new org.joml.Vector3f(player.getPosition()), player.getCamera().getYaw());
         return new ShowcaseDirector(java.util.List.of(orbit), previewStage, 0L, 0);
     }
 
@@ -278,7 +279,7 @@ public final class MenuShowcase {
                 && player != null && from != null) {
             // Into the first-person eye whatever perspective they saved in (play resumes from there).
             resume = new ResumeTransition(from,
-                    ResumeTransition.firstPerson(player.getPosition(),
+                    ResumeTransition.firstPerson(new org.joml.Vector3f(player.getPosition()),
                             com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET,
                             player.getCamera().getYaw(), player.getCamera().getPitch(), GAMEPLAY_FOV),
                     ResumeTransition.DEFAULT_SECONDS);
@@ -333,7 +334,8 @@ public final class MenuShowcase {
         if (player == null) {
             return;
         }
-        player.getCamera().setCinematicView(frame.eye(), frame.target(), frame.rollDeg());
+        player.getCamera().setCinematicView(new org.joml.Vector3d(frame.eye()),
+                new org.joml.Vector3d(frame.target()), frame.rollDeg());
         Renderer renderer = Game.getRenderer();
         if (renderer != null) {
             renderer.setCinematicFov(frame.fovDeg());
@@ -616,9 +618,14 @@ public final class MenuShowcase {
             }
             // The eye IS the player: the server streams, and the world/LOD/sky passes centre, on the
             // player's position. Physics never runs on it (MAIN_MENU skips player.update()).
-            player.setPosition(frame.eye());
+            // Shots are authored as float world positions near the pinned seed's origin; the player/camera are
+            // double. At any altitude the streamer's SURFACE BAND keeps the ground under the camera loading
+            // (the vertical ellipsoid only adds the air/cave cubes around the eye), so a high orbit still
+            // sees terrain and reaches READY.
+            org.joml.Vector3d eye = new org.joml.Vector3d(frame.eye());
+            player.setPosition(eye);
             player.setVelocity(new org.joml.Vector3f());
-            player.getCamera().setCinematicView(frame.eye(), frame.target(), frame.rollDeg());
+            player.getCamera().setCinematicView(eye, new org.joml.Vector3d(frame.target()), frame.rollDeg());
             Renderer renderer = Game.getRenderer();
             if (renderer != null) {
                 renderer.setCinematicFov(frame.fovDeg());
@@ -677,7 +684,7 @@ public final class MenuShowcase {
             out.div(desired);
             // Through leaves: the orbit looks down over the canopy, and pulling in at every tree
             // between it and the player would keep the wide shot from ever showing in a forest.
-            float hit = player.getRaycastEngine().distanceToFirstSolid(look, out, desired, true);
+            float hit = player.getRaycastEngine().distanceToFirstSolid(new org.joml.Vector3d(look), out, desired, true);
             float allowed = hit == Float.MAX_VALUE ? desired : Math.max(MIN_DISTANCE, hit - WALL_BACKOFF);
             distance = Float.isNaN(distance) || allowed < distance ? allowed
                     : Math.min(allowed, distance + RELEASE_PER_FRAME);

@@ -14,7 +14,7 @@ import torch
 
 from terrain_slm.river.banks import BankGuard, BankNet, LearnedBanks, LeveeBanks
 from terrain_slm.river.blocks import (BlockContainment, BlockQuantize, FlattenAcross, FlowOctants, MonotoneBlocks,
-                                      Overhangs, Undercuts, pool_to_blocks)
+                                      Overhangs, Undercuts, pool_to_blocks, unpool_to_blocks)
 from terrain_slm.river.contain import MonotoneTop, NoSpill
 from terrain_slm.river.field import BlockColumns, Drainage, RiverConfig, RiverContext, RiverField
 from terrain_slm.river.geometry import CP, Centrelines, ChannelGeometry, UBed, WaterSurface
@@ -43,10 +43,16 @@ class RiverPipeline:
             f = stage(f, ctx)
         return f, ctx
 
-    def columns(self, f: RiverField, ctx: RiverContext, d: int) -> BlockColumns:
-        """Pool the field into d x d blocks (px_origin must be block-aligned) and run the block stages."""
-        origin = (ctx.px_origin[0] // d, ctx.px_origin[1] // d)
-        src = pool_to_blocks(f, d, origin, ctx.drainage)
+    def columns(self, f: RiverField, ctx: RiverContext, d, ground_fine: torch.Tensor | None = None) -> BlockColumns:
+        """Pool the field into d x d blocks (px_origin must be block-aligned) and run the block stages. d < 1 (1:1:
+        1/d blocks per pixel and axis) repeats the field over the finer blocks, with `ground_fine` as dry ground."""
+        if d < 1:
+            k = round(1 / d)
+            origin = (ctx.px_origin[0] * k, ctx.px_origin[1] * k)
+            src = unpool_to_blocks(f, k, origin, ctx.drainage, ground_fine)
+        else:
+            origin = (ctx.px_origin[0] // d, ctx.px_origin[1] // d)
+            src = pool_to_blocks(f, d, origin, ctx.drainage)
         cols = None
         for stage in self.blocks:
             cols = stage(cols, src, ctx)

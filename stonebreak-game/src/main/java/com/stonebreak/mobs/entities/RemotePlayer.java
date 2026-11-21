@@ -10,6 +10,8 @@ import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -45,7 +47,7 @@ public class RemotePlayer extends LivingEntity {
     private volatile Item heldItem;
 
     private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
-    private Vector3f prevPosition;
+    private Vector3d prevPosition;
     private final PlayerGaitClock gaitClock = new PlayerGaitClock();
     /** Whether the last {@link #updateMovementAnimation} planted a foot (walk/run only). */
     private boolean footContact;
@@ -74,17 +76,13 @@ public class RemotePlayer extends LivingEntity {
         new com.stonebreak.mobs.sbe.PlayerAttackAnimation();
 
     /**
-     * Splash/ripple state mirrors {@link Player}'s (same particle classes), but is driven from
-     * the replicated {@code PARTIALLY_IN_WATER}/{@code SWIMMING} flags and position deltas
+     * Splash/ripple FX, the same as {@link Player}'s ({@link com.stonebreak.fx.bindings.SwimFx}), but
+     * driven from the replicated {@code PARTIALLY_IN_WATER}/{@code SWIMMING} flags and position deltas
      * instead of local block queries — a remote player has no water physics of its own.
      */
-    private final com.stonebreak.rendering.effects.WaterSplashParticles splashParticles =
-        new com.stonebreak.rendering.effects.WaterSplashParticles();
-    private final com.stonebreak.rendering.effects.WaterRippleParticles rippleParticles =
-        new com.stonebreak.rendering.effects.WaterRippleParticles();
+    private final com.stonebreak.fx.bindings.SwimFx swimFx = new com.stonebreak.fx.bindings.SwimFx();
     private boolean wasPartiallyInWaterLastFrame;
     private boolean waterStateInitialized;
-    private float rippleSpawnTimer;
     /**
      * True once any real state packet has landed (both {@link #setStateFlags} and
      * {@link #updateWaterEffects} run on the game thread — packets are drained by the
@@ -104,14 +102,12 @@ public class RemotePlayer extends LivingEntity {
     }
     public short getStateFlags() { return stateFlags; }
     public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
-    public com.stonebreak.rendering.effects.WaterSplashParticles getSplashParticles() { return splashParticles; }
-    public com.stonebreak.rendering.effects.WaterRippleParticles getRippleParticles() { return rippleParticles; }
 
-    public RemotePlayer(World world, Vector3f position, int playerId, String username) {
+    public RemotePlayer(World world, Vector3dc position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
         this.playerId = playerId;
         this.username = username;
-        this.prevPosition = new Vector3f(position);
+        this.prevPosition = new Vector3d(position);
     }
 
     public int getPlayerId() { return playerId; }
@@ -145,7 +141,7 @@ public class RemotePlayer extends LivingEntity {
      * renderer draws at and a held torch lights from. Turned with the model-space body yaw, the
      * frame the figure itself is drawn in.
      */
-    public Vector3f handPosition(Vector3f out) {
+    public Vector3d handPosition(Vector3d out) {
         float yawRad = (float) Math.toRadians(getBodyYaw());
         float cos = (float) Math.cos(yawRad);
         float sin = (float) Math.sin(yawRad);
@@ -182,7 +178,7 @@ public class RemotePlayer extends LivingEntity {
      * target sample (smoothed across the next snapshot interval); otherwise
      * the position is set immediately.
      */
-    public void applyNetworkState(float x, float y, float z, float yaw, float pitch) {
+    public void applyNetworkState(double x, double y, double z, float yaw, float pitch) {
         com.stonebreak.network.client.NetworkInterpolator interp = getInterpolator();
         if (interp != null) {
             interp.receive(x, y, z, yaw, pitch, this);
@@ -207,9 +203,9 @@ public class RemotePlayer extends LivingEntity {
      * can reuse the same state/animation derivation after repositioning.
      */
     protected void updateMovementAnimation(float deltaTime) {
-        float dx = position.x - prevPosition.x;
-        float dy = position.y - prevPosition.y;
-        float dz = position.z - prevPosition.z;
+        float dx = (float) (position.x - prevPosition.x);
+        float dy = (float) (position.y - prevPosition.y);
+        float dz = (float) (position.z - prevPosition.z);
         float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
         boolean moving = deltaTime > 0f && horizDist / deltaTime > WALK_THRESHOLD;
         prevPosition.set(position);
@@ -274,31 +270,15 @@ public class RemotePlayer extends LivingEntity {
                 wasPartiallyInWaterLastFrame = partiallyInWater;
             }
         } else if (partiallyInWater && !wasPartiallyInWaterLastFrame && deltaTime > 0f) {
-            float impactSpeed = Math.max(0f, -dy / deltaTime);
-            if (!com.stonebreak.fx.bindings.EntityFx.splash(EntityType.REMOTE_PLAYER, position, impactSpeed)) {
-                splashParticles.burst(position, impactSpeed);
-            }
-            rippleParticles.spawn(position);
-            rippleSpawnTimer = 0f;
+            swimFx.enteredWater(EntityType.REMOTE_PLAYER, world, position, Math.max(0f, -dy / deltaTime));
         }
         if (waterStateInitialized) {
             wasPartiallyInWaterLastFrame = partiallyInWater;
         }
-        splashParticles.update(deltaTime);
 
-        // Surface ripples while touching water but not submerged, same as Player.update.
-        if (partiallyInWater && !eyesInWater) {
-            float horizSpeed = deltaTime > 0f ? (float) Math.sqrt(dx * dx + dz * dz) / deltaTime : 0f;
-            rippleSpawnTimer += deltaTime;
-            if (horizSpeed > com.stonebreak.player.PlayerConstants.WATER_RIPPLE_SPEED_THRESHOLD
-                    && rippleSpawnTimer >= com.stonebreak.player.PlayerConstants.WATER_RIPPLE_SPAWN_INTERVAL) {
-                rippleParticles.spawn(position);
-                rippleSpawnTimer = 0f;
-            }
-        } else {
-            rippleSpawnTimer = 0f;
-        }
-        rippleParticles.update(deltaTime);
+        // Surface ripples while touching water but not submerged, same as the local player.
+        float horizSpeed = deltaTime > 0f ? (float) Math.sqrt(dx * dx + dz * dz) / deltaTime : 0f;
+        swimFx.update(deltaTime, EntityType.REMOTE_PLAYER, world, position, partiallyInWater, eyesInWater, horizSpeed);
     }
 
     @Override

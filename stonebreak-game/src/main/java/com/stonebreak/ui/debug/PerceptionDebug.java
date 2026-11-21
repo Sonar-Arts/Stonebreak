@@ -12,6 +12,9 @@ import com.openmason.engine.ui.masonry.MStatPanel;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.UI.rendering.DebugRenderer;
+import com.openmason.engine.rendering.RenderOrigin;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
@@ -65,7 +68,7 @@ public final class PerceptionDebug {
         if (player == null) {
             return;
         }
-        Vector3f at = player.getPosition();
+        Vector3d at = player.getPosition();
         List<LivingEntity> near = new ArrayList<>();
         for (LivingEntity mob : awareMobs()) {
             if (mob.getPosition().distance(at) <= CARD_RADIUS) {
@@ -114,17 +117,17 @@ public final class PerceptionDebug {
     private void drawCone(DebugRenderer debug, LivingEntity mob, AwarenessController awareness, Vector4f color) {
         PerceptionProfile profile = awareness.profile();
         float range = awareness.snapshot().effRange() > 0f ? awareness.snapshot().effRange() : profile.visionRange();
-        Vector3f eye = new Vector3f(mob.getPosition()).add(0f, mob.getType().getHeight() * 0.9f, 0f);
+        Vector3d eye = new Vector3d(mob.getPosition()).add(0, mob.getType().getHeight() * 0.9f, 0);
         Vector3f forward = mob.getForwardDirection();
         float yaw = (float) Math.atan2(forward.z, forward.x);
         float half = (float) Math.toRadians(profile.fovDeg() * 0.5f);
 
         scratch.clear();
-        scratch.add(new Vector3f(eye));
+        scratch.add(point(eye.x, eye.y, eye.z));
         for (int i = 0; i <= ARC_SEGMENTS; i++) {
             scratch.add(pointAt(eye, yaw - half + 2f * half * i / ARC_SEGMENTS, range));
         }
-        scratch.add(new Vector3f(eye));
+        scratch.add(point(eye.x, eye.y, eye.z));
         debug.drawPath(scratch, color);
 
         if (profile.sideVisionFactor() > 0f) {
@@ -132,7 +135,7 @@ public final class PerceptionDebug {
             Vector4f faint = new Vector4f(color.x, color.y, color.z, 0.35f);
             for (float sign : new float[] {-1f, 1f}) {
                 scratch.clear();
-                scratch.add(new Vector3f(eye));
+                scratch.add(point(eye.x, eye.y, eye.z));
                 scratch.add(pointAt(eye, yaw + sign * side, range * profile.sideVisionFactor()));
                 debug.drawPath(scratch, faint);
             }
@@ -149,18 +152,24 @@ public final class PerceptionDebug {
         }
     }
 
-    private void drawCircle(DebugRenderer debug, Vector3f center, float radius, Vector4f color) {
+    private void drawCircle(DebugRenderer debug, Vector3dc center, float radius, Vector4f color) {
         scratch.clear();
-        Vector3f c = new Vector3f(center).add(0f, 0.1f, 0f);
+        Vector3d c = new Vector3d(center).add(0, 0.1f, 0);
         for (int i = 0; i <= CIRCLE_SEGMENTS; i++) {
             scratch.add(pointAt(c, (float) (2.0 * Math.PI * i / CIRCLE_SEGMENTS), radius));
         }
         debug.drawPath(scratch, color);
     }
 
-    private static Vector3f pointAt(Vector3f origin, float angle, float distance) {
-        return new Vector3f(origin.x + (float) Math.cos(angle) * distance, origin.y,
-                origin.z + (float) Math.sin(angle) * distance);
+    /** A point {@code distance} from {@code origin} at {@code angle}, in render space for the debug renderer. */
+    private static Vector3f pointAt(Vector3dc origin, float angle, float distance) {
+        return point(origin.x() + (float) Math.cos(angle) * distance, origin.y(),
+                origin.z() + (float) Math.sin(angle) * distance);
+    }
+
+    /** A world position in the camera-relative render space {@link DebugRenderer} draws in. */
+    private static Vector3f point(double x, double y, double z) {
+        return new Vector3f(RenderOrigin.relativeX(x), RenderOrigin.relativeY(y), RenderOrigin.relativeZ(z));
     }
 
     private static Vector4f colorFor(AwarenessController.AwarenessState state) {

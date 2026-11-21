@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.cow;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import com.stonebreak.world.World;
 import com.stonebreak.player.Player;
@@ -36,14 +38,14 @@ public class Cow extends LivingEntity {
     /**
      * Creates a new cow at the specified position with default texture variant.
      */
-    public Cow(World world, Vector3f position) {
+    public Cow(World world, Vector3dc position) {
         this(world, position, "default");
     }
 
     /**
      * Creates a new cow at the specified position with a specific texture variant.
      */
-    public Cow(World world, Vector3f position, String textureVariant) {
+    public Cow(World world, Vector3dc position, String textureVariant) {
         super(world, position, EntityType.COW);
 
         this.textureVariant = textureVariant != null ? textureVariant : "default";

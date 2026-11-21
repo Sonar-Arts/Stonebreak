@@ -1,6 +1,6 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,7 +27,7 @@ final class ShadeClock {
      * else's, and returns the players whose clock came round.
      */
     List<EntitySpawner.SpawnAnchor> update(List<EntitySpawner.SpawnAnchor> anchors, float deltaSeconds,
-                                           Predicate<Vector3f> inShade) {
+                                           Predicate<Vector3dc> inShade) {
         Map<Integer, Float> next = new HashMap<>();
         List<EntitySpawner.SpawnAnchor> due = new ArrayList<>();
         for (EntitySpawner.SpawnAnchor anchor : anchors) {

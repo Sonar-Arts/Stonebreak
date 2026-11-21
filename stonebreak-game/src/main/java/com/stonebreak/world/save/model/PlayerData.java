@@ -1,7 +1,9 @@
 package com.stonebreak.world.save.model;
 
 import com.stonebreak.player.PlayerStats;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
+import org.joml.Vector3fc;
 import org.joml.Vector2f;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
@@ -21,7 +23,8 @@ import java.util.Set;
  * Immutable for thread safety.
  */
 public final class PlayerData {
-    private final Vector3f position;
+    /** World position (double, Phase 4). */
+    private final Vector3d position;
     private final Vector2f rotation; // yaw, pitch
     private final float health;
     private final boolean flightEnabled;
@@ -35,7 +38,7 @@ public final class PlayerData {
     /** Remote player's join secret (issue #335); null for the host and for saves made before it. */
     private final String clientSecret;
     /** Where the boat the player sat in was, or null on foot: the next load boards it again. */
-    private final Vector3f vehiclePosition;
+    private final Vector3d vehiclePosition;
 
     // RPG / character progression
     private final String selectedClassId;
@@ -70,7 +73,7 @@ public final class PlayerData {
     private final Set<String> discoveredWeaknessEntityTypes;
 
     private PlayerData(Builder builder) {
-        this.position = new Vector3f(builder.position);
+        this.position = new Vector3d(builder.position);
         this.rotation = new Vector2f(builder.rotation);
         this.health = builder.health;
         this.flightEnabled = builder.flightEnabled;
@@ -82,7 +85,7 @@ public final class PlayerData {
         this.lastSaved = builder.lastSaved;
         this.worldName = builder.worldName;
         this.clientSecret = builder.clientSecret;
-        this.vehiclePosition = builder.vehiclePosition == null ? null : new Vector3f(builder.vehiclePosition);
+        this.vehiclePosition = builder.vehiclePosition == null ? null : new Vector3d(builder.vehiclePosition);
         this.selectedClassId = builder.selectedClassId;
         this.classInvestmentOrder = builder.classInvestmentOrder == null ? null : List.copyOf(builder.classInvestmentOrder);
         this.spentAbilityCp = Collections.unmodifiableMap(new HashMap<>(builder.spentAbilityCp));
@@ -111,7 +114,7 @@ public final class PlayerData {
     }
 
     // Getters - return defensive copies for mutable objects
-    public Vector3f getPosition() { return new Vector3f(position); }
+    public Vector3d getPosition() { return new Vector3d(position); }
     public Vector2f getRotation() { return new Vector2f(rotation); }
     public float getHealth() { return health; }
     public boolean isFlightEnabled() { return flightEnabled; }
@@ -123,7 +126,7 @@ public final class PlayerData {
     public LocalDateTime getLastSaved() { return lastSaved; }
     public String getWorldName() { return worldName; }
     public String getClientSecret() { return clientSecret; }
-    public Vector3f getVehiclePosition() { return vehiclePosition == null ? null : new Vector3f(vehiclePosition); }
+    public Vector3d getVehiclePosition() { return vehiclePosition == null ? null : new Vector3d(vehiclePosition); }
     public String getSelectedClassId() { return selectedClassId; }
     /** Null when the save predates multiclassing; {@code CharacterStats.restore} rebuilds it. */
     public List<String> getClassInvestmentOrder() { return classInvestmentOrder; }
@@ -177,7 +180,7 @@ public final class PlayerData {
     }
 
     public static final class Builder {
-        private Vector3f position = new Vector3f(0, 100, 0);
+        private Vector3d position = new Vector3d(0, 100, 0);
         private Vector2f rotation = new Vector2f(0, 0);
         private float health = 20.0f;
         private boolean flightEnabled = false;
@@ -189,7 +192,7 @@ public final class PlayerData {
         private LocalDateTime lastSaved = LocalDateTime.now();
         private String worldName;
         private String clientSecret;
-        private Vector3f vehiclePosition;
+        private Vector3d vehiclePosition;
         private String selectedClassId = null;
         private List<String> classInvestmentOrder = null;
         private Map<String, Integer> spentAbilityCp = new HashMap<>();
@@ -226,7 +229,7 @@ public final class PlayerData {
         }
 
         public Builder(PlayerData data) {
-            this.position = new Vector3f(data.position);
+            this.position = new Vector3d(data.position);
             this.rotation = new Vector2f(data.rotation);
             this.health = data.health;
             this.flightEnabled = data.flightEnabled;
@@ -266,8 +269,19 @@ public final class PlayerData {
             this.discoveredWeaknessEntityTypes = new HashSet<>(data.discoveredWeaknessEntityTypes);
         }
 
-        public Builder position(Vector3f position) {
-            this.position = new Vector3f(position);
+        /** Float convenience (widened exactly); prefer {@link #position(Vector3dc)}. */
+        public Builder position(Vector3fc position) {
+            this.position = new Vector3d(position);
+            return this;
+        }
+
+        public Builder position(double x, double y, double z) {
+            this.position = new Vector3d(x, y, z);
+            return this;
+        }
+
+        public Builder position(Vector3dc position) {
+            this.position = new Vector3d(position);
             return this;
         }
 
@@ -329,8 +343,14 @@ public final class PlayerData {
             return this;
         }
 
-        public Builder vehiclePosition(Vector3f vehiclePosition) {
-            this.vehiclePosition = vehiclePosition == null ? null : new Vector3f(vehiclePosition);
+        /** Float convenience (widened exactly); prefer {@link #vehiclePosition(Vector3dc)}. */
+        public Builder vehiclePosition(Vector3fc vehiclePosition) {
+            this.vehiclePosition = vehiclePosition == null ? null : new Vector3d(vehiclePosition);
+            return this;
+        }
+
+        public Builder vehiclePosition(Vector3dc vehiclePosition) {
+            this.vehiclePosition = vehiclePosition == null ? null : new Vector3d(vehiclePosition);
             return this;
         }
 

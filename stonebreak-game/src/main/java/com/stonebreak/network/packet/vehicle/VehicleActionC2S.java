@@ -3,6 +3,7 @@ package com.stonebreak.network.packet.vehicle;
 import com.openmason.engine.net.protocol.ByteBufIO;
 import com.openmason.engine.net.protocol.Packet;
 import com.openmason.engine.net.protocol.PacketCodec;
+import com.stonebreak.network.packet.NetCoords;
 import io.netty.buffer.ByteBuf;
 
 /**
@@ -17,7 +18,7 @@ import io.netty.buffer.ByteBuf;
  *   <li>{@link #HIT} — strike {@code networkId}; enough hits break it into its item.</li>
  * </ul>
  */
-public record VehicleActionC2S(byte action, int networkId, float x, float y, float z, float yaw, int seq)
+public record VehicleActionC2S(byte action, int networkId, double x, double y, double z, float yaw, int seq)
         implements Packet, com.stonebreak.network.packet.SequencedIntent {
 
     public static final byte PLACE = 0;
@@ -25,7 +26,7 @@ public record VehicleActionC2S(byte action, int networkId, float x, float y, flo
     public static final byte DISMOUNT = 2;
     public static final byte HIT = 3;
 
-    public static VehicleActionC2S place(float x, float y, float z, float yaw, int seq) {
+    public static VehicleActionC2S place(double x, double y, double z, float yaw, int seq) {
         return new VehicleActionC2S(PLACE, -1, x, y, z, yaw, seq);
     }
 
@@ -38,17 +39,15 @@ public record VehicleActionC2S(byte action, int networkId, float x, float y, flo
         public void encode(ByteBuf out, VehicleActionC2S p) {
             out.writeByte(p.action());
             out.writeInt(p.networkId());
-            out.writeFloat(p.x());
-            out.writeFloat(p.y());
-            out.writeFloat(p.z());
+            NetCoords.writePosition(out, p.x(), p.y(), p.z());
             out.writeFloat(p.yaw());
             ByteBufIO.writeVarInt(out, p.seq());
         }
 
         @Override
         public VehicleActionC2S decode(ByteBuf in) {
-            return new VehicleActionC2S(in.readByte(), in.readInt(), in.readFloat(), in.readFloat(),
-                    in.readFloat(), in.readFloat(), ByteBufIO.readVarInt(in));
+            return new VehicleActionC2S(in.readByte(), in.readInt(), NetCoords.readPosition(in), NetCoords.readPosition(in), NetCoords.readPosition(in),
+                    in.readFloat(), ByteBufIO.readVarInt(in));
         }
     };
 }

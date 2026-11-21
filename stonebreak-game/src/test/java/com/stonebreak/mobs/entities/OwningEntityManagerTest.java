@@ -5,6 +5,8 @@ import com.stonebreak.core.services.GameServices;
 import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.world.TestWorld;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +31,7 @@ import static org.mockito.Mockito.when;
 class OwningEntityManagerTest {
 
     private final TestWorld world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-    private final StubMob victim = new StubMob(EntityType.COW, new Vector3f(0, 64, 0), world);
+    private final StubMob victim = new StubMob(EntityType.COW, new Vector3d(0, 64, 0), world);
 
     /** Stands in for the client's manager behind the Game singleton. */
     private final EntityManager gameManager = mock(EntityManager.class);
@@ -59,7 +61,7 @@ class OwningEntityManagerTest {
     @Test
     void aWorldWithNoManagerIsNotPatchedWithTheGameSingletons() {
         assertNull(world.getEntityManager(), "precondition: nothing bound to this world");
-        CaltropCluster caltrop = new CaltropCluster(world, new Vector3f(0, 64, 0), 10f);
+        CaltropCluster caltrop = new CaltropCluster(world, new Vector3d(0, 64, 0), 10f);
 
         caltrop.update(0.05f);
 
@@ -71,7 +73,7 @@ class OwningEntityManagerTest {
 
     @Test
     void aLeylineZoneInAnUnboundWorldLeavesTheGameSingletonAlone() {
-        LeylineBreachZone zone = new LeylineBreachZone(world, new Vector3f(0, 64, 0),
+        LeylineBreachZone zone = new LeylineBreachZone(world, new Vector3d(0, 64, 0),
                 4f, 1f, 1f, 10f, false);
 
         zone.update(1.0f);
@@ -85,7 +87,7 @@ class OwningEntityManagerTest {
         EntityManager owning = mock(EntityManager.class);
         when(owning.getLivingEntities()).thenReturn(List.of(victim));
         world.setEntityManager(owning);
-        CaltropCluster caltrop = new CaltropCluster(world, new Vector3f(0, 64, 0), 10f);
+        CaltropCluster caltrop = new CaltropCluster(world, new Vector3d(0, 64, 0), 10f);
 
         caltrop.update(0.05f);
 

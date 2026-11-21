@@ -3,6 +3,7 @@ package com.stonebreak.battle.camera;
 import com.openmason.engine.rendering.gl.RenderingConfigurationManager;
 import com.stonebreak.player.Camera;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.junit.jupiter.api.Test;
@@ -20,9 +21,9 @@ class CameraSeamsTest {
         Matrix4f before = camera.getViewMatrix();
         Vector3f frontBefore = new Vector3f(camera.getFront());
 
-        camera.setCinematicView(new Vector3f(-9f, 4.5f, 17f), new Vector3f(0f, 1.6f, -2f), 0f);
+        camera.setCinematicView(new Vector3d(-9f, 4.5f, 17f), new Vector3d(0f, 1.6f, -2f), 0f);
         assertTrue(camera.isCinematicActive());
-        assertEquals(new Vector3f(-9f, 4.5f, 17f), camera.getPosition());
+        assertEquals(new Vector3d(-9f, 4.5f, 17f), camera.getPosition());
         // The look-at target must project to the centre of the screen.
         Vector4f clip = new Vector4f(0f, 1.6f, -2f, 1f).mul(camera.getViewMatrix());
         assertEquals(0f, clip.x, 1e-4f);
@@ -31,7 +32,7 @@ class CameraSeamsTest {
 
         camera.clearCinematicView();
         assertFalse(camera.isCinematicActive());
-        assertEquals(new Vector3f(1f, 2f, 3f), camera.getPosition());
+        assertEquals(new Vector3d(1f, 2f, 3f), camera.getPosition());
         assertEquals(frontBefore, camera.getFront());
         assertTrue(before.equals(camera.getViewMatrix(), 1e-6f));
     }
@@ -39,7 +40,7 @@ class CameraSeamsTest {
     @Test void mouseLookIsIgnoredWhileTheOverrideIsActive() {
         Camera camera = new Camera();
         float yaw = camera.getYaw(), pitch = camera.getPitch();
-        camera.setCinematicView(new Vector3f(0f, 5f, 10f), new Vector3f(0f, 0f, 0f), 0f);
+        camera.setCinematicView(new Vector3d(0f, 5f, 10f), new Vector3d(0f, 0f, 0f), 0f);
         camera.processMouseMovement(250f, -120f);
         camera.clearCinematicView();
         assertEquals(yaw, camera.getYaw());
@@ -49,21 +50,21 @@ class CameraSeamsTest {
     @Test void basisStaysOrthonormalWithRollAndWhenLookingStraightDown() {
         Camera camera = new Camera();
         for (float roll : new float[]{0f, 12f, -35f}) {
-            camera.setCinematicView(new Vector3f(3f, 9f, -4f), new Vector3f(-2f, 1f, 6f), roll);
+            camera.setCinematicView(new Vector3d(3f, 9f, -4f), new Vector3d(-2f, 1f, 6f), roll);
             assertOrthonormal(camera);
         }
-        camera.setCinematicView(new Vector3f(0f, 20f, 0f), new Vector3f(0f, 0f, 0f), 0f);
+        camera.setCinematicView(new Vector3d(0f, 20f, 0f), new Vector3d(0f, 0f, 0f), 0f);
         assertOrthonormal(camera);
         // Degenerate request (eye == target) must not produce NaNs.
-        camera.setCinematicView(new Vector3f(1f, 1f, 1f), new Vector3f(1f, 1f, 1f), 0f);
+        camera.setCinematicView(new Vector3d(1f, 1f, 1f), new Vector3d(1f, 1f, 1f), 0f);
         assertOrthonormal(camera);
     }
 
     @Test void rollTiltsTheHorizon() {
         Camera camera = new Camera();
-        camera.setCinematicView(new Vector3f(0f, 2f, 10f), new Vector3f(0f, 2f, 0f), 0f);
+        camera.setCinematicView(new Vector3d(0f, 2f, 10f), new Vector3d(0f, 2f, 0f), 0f);
         assertEquals(1f, camera.getUp().y, 1e-5f);
-        camera.setCinematicView(new Vector3f(0f, 2f, 10f), new Vector3f(0f, 2f, 0f), 30f);
+        camera.setCinematicView(new Vector3d(0f, 2f, 10f), new Vector3d(0f, 2f, 0f), 30f);
         assertEquals(Math.cos(Math.toRadians(30)), camera.getUp().y, 1e-4);
     }
 

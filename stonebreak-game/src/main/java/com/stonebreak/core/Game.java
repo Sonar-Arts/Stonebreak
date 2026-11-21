@@ -953,7 +953,48 @@ public class Game {
      */
     public void startClientWorld(String worldName, long seed,
                                  com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 org.joml.Vector3dc spawn) {
+        startClientWorld(worldName, seed, generatorType, null, spawn);
+    }
+
+    /** As above for a world of the given terrain scale (null = 1:4). */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 org.joml.Vector3dc spawn) {
+        startClientWorld(worldName, seed, generatorType, terrainScale, null, null, spawn);
+    }
+
+    /**
+     * As above for a world of the given terrain scale, climate layout and height curve (null = 1:4 / belts / the
+     * current curve): a DaedalusTGM-Exp client builds its FastLOD and queries from the server world's own tiles.
+     */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                 com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                 org.joml.Vector3dc spawn) {
+        startClientWorld(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve, null, spawn);
+    }
+
+    /** As above with the server world's Standard shape (null = the current one). */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
+                                 com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset terrainScale,
+                                 com.stonebreak.world.generation.ClimateLayout climateLayout,
+                                 com.stonebreak.world.generation.HeightCurveVersion heightCurve,
+                                 com.stonebreak.world.generation.StandardShapeVersion standardShape,
+                                 org.joml.Vector3dc spawn) {
+        clientWorldBuilder.start(worldName, seed, generatorType, terrainScale, climateLayout, heightCurve,
+            standardShape, spawn);
+    }
+
+    /** {@link #startClientWorld(String, long, com.stonebreak.world.generation.TerrainGeneratorType, org.joml.Vector3dc)}
+     *  from a float spawn (handshake packets that still carry floats). */
+    public void startClientWorld(String worldName, long seed,
+                                 com.stonebreak.world.generation.TerrainGeneratorType generatorType,
                                  org.joml.Vector3f spawn) {
-        clientWorldBuilder.start(worldName, seed, generatorType, spawn);
+        startClientWorld(worldName, seed, generatorType, new org.joml.Vector3d(spawn));
     }
 }

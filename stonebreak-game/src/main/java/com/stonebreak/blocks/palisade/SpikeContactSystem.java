@@ -4,6 +4,7 @@ import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.LivingEntity.DamageSource;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -40,7 +41,7 @@ public final class SpikeContactSystem {
             if (!entity.isAlive()) {
                 continue;
             }
-            Vector3f p = entity.getPosition();
+            Vector3d p = entity.getPosition();
             float hw = entity.getWidth() / 2;
             float hl = entity.getLength() / 2;
             float[] lean = SpikeContactRules.pointsTouching(world, p.x - hw, p.y, p.z - hl,

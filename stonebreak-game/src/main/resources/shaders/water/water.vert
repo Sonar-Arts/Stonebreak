@@ -15,9 +15,8 @@
 //                        untextured, so the texture-layer slot carries the
 //                        depth the fragment stage hides the seabed with)
 // Positions are render-space (chunk meshes carry no model matrix; their origin
-// attribute is baked relative to RenderOrigin). uRenderOrigin.xy is that
-// origin's world XZ, for the few places that need the absolute coordinate
-// back — the wave lattice, which has to stay anchored to the world.
+// attribute is baked relative to RenderOrigin). The wave lattice gets the
+// origin back as per-wave phases (uWavePhase), never as an absolute float.
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aUV;
 layout (location = 2) in vec3 aNormal;
@@ -27,8 +26,10 @@ layout (location = 4) in float aLayer;
 // w < -2.5 = pulled water quads (MmsWaterQuadCodec) read from u_quads by gl_VertexID.
 layout (location = 5) in vec4 aOrigin;
 uniform usamplerBuffer u_quads;
-// World XZ of the render origin (see com.openmason.engine.rendering.RenderOrigin).
-uniform vec2 uRenderOrigin;
+// Per-wave phase of the render origin: dot(originXZ, dir_i) * k_i modulo 2 pi, computed by the host in
+// long/double arithmetic (WaterRenderer.wavePhases), so the wave lattice stays anchored to the world at any
+// int64 coordinate while the shader only ever sees render-space (camera-relative) positions.
+uniform float uWavePhase[5];
 const vec3 QUAD_CORNER[24] = vec3[24](
     vec3(0,1,1), vec3(1,1,1), vec3(1,1,0), vec3(0,1,0),   // 0 top    (+Y)
     vec3(0,0,0), vec3(1,0,0), vec3(1,0,1), vec3(0,0,1),   // 1 bottom (-Y)
@@ -77,6 +78,34 @@ void pullWaterQuad(out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags,
     flags = vec4(surface, falling, source, flow);
 }
 
+// Octree LOD node water (MmsLodQuadCodec NODE MODE, cv_lod mesh `water` = tops of fluid cells under air):
+// aOrigin.w = -(4 + level). Flat sheets like FastLOD's, the surface 0.125 below the cell top (where near water
+// and the FastLOD sheets sit).
+void pullLodNodeWater(int level, out vec3 localPos, out vec2 uv, out vec3 nrm, out vec4 flags) {
+    int qi = gl_VertexID >> 2;
+    int corner = gl_VertexID & 3;
+    uvec4 q = texelFetch(u_quads, qi);
+    uint w0 = q.x;
+    uint w1 = q.y;
+    float cs = float(1 << level);
+    int face = int((w0 >> 29u) & 7u);
+    if (face > 5) { face = 0; corner = 0; }
+    vec3 c = QUAD_CORNER[face * 4 + corner];
+    int ua = QUAD_UAXIS[face];
+    int va = QUAD_VAXIS[face];
+    vec3 off = vec3(0.0);
+    off[ua] = c[ua] * float(w1 & 63u);
+    off[va] = c[va] * float((w1 >> 6u) & 2047u);
+    vec3 cell = vec3(float(int(w0 & 511u) - 8), float(int((w0 >> 18u) & 2047u) - 1024),
+                     float(int((w0 >> 9u) & 511u) - 8));
+    localPos = (cell + off) * cs;
+    localPos.y -= 0.125;
+    uv = vec2(c[ua], c[va]);
+    nrm = QUAD_NORMAL[face];
+    // surface 0.875 of the cell (as the FastLOD sheets), still, not falling, a source.
+    flags = vec4(0.875, 0.0, 1.0, 0.0);
+}
+
 uniform mat4 uProjection;
 uniform mat4 uView;
 uniform float uTime;
@@ -108,13 +137,14 @@ flat out float vFlow;
 // between blocks). Each term has its own direction, wavelength, amplitude, and speed so
 // the surface doesn't read as obviously periodic/axis-aligned. Total amplitude is kept
 // close to the old 2-term wave's ~0.16 so it stays within MAX_WAVE_DELTA's clamp.
+// Directions and wavenumbers mirror WaterRenderer.WAVE_DIR_X/Z and WAVE_K (the host phase table).
 float gerstnerHeight(vec2 xz, float t) {
     float h = 0.0;
-    h += 0.055 * sin(dot(xz, vec2(0.800,  0.600)) * 0.45 + t * 1.20);
-    h += 0.040 * sin(dot(xz, vec2(-0.352, 0.936)) * 0.70 + t * 1.65);
-    h += 0.030 * sin(dot(xz, vec2(0.981, -0.196)) * 0.30 + t * 0.85);
-    h += 0.020 * sin(dot(xz, vec2(-0.555,-0.832)) * 1.10 + t * 2.10);
-    h += 0.015 * sin(dot(xz, vec2(0.148,  0.989)) * 1.60 + t * 2.60);
+    h += 0.055 * sin(dot(xz, vec2(0.800,  0.600)) * 0.45 + uWavePhase[0] + t * 1.20);
+    h += 0.040 * sin(dot(xz, vec2(-0.352, 0.936)) * 0.70 + uWavePhase[1] + t * 1.65);
+    h += 0.030 * sin(dot(xz, vec2(0.981, -0.196)) * 0.30 + uWavePhase[2] + t * 0.85);
+    h += 0.020 * sin(dot(xz, vec2(-0.555,-0.832)) * 1.10 + uWavePhase[3] + t * 2.10);
+    h += 0.015 * sin(dot(xz, vec2(0.148,  0.989)) * 1.60 + uWavePhase[4] + t * 2.60);
     return h;
 }
 
@@ -127,7 +157,13 @@ void main() {
     float flowCode;
     float depth;
     bool inset = false; // per-vertex meshes are inset on the CPU
-    if (aOrigin.w < -2.5) {
+    if (aOrigin.w < -3.5) {
+        pullLodNodeWater(int(-aOrigin.w - 4.0 + 0.5), pos, uvIn, nrmIn, flagsIn);
+        pos += aOrigin.xyz;
+        sheet = true;
+        depth = 0.0;
+        flowCode = 0.0;
+    } else if (aOrigin.w < -2.5) {
         pullWaterQuad(pos, uvIn, nrmIn, flagsIn, sheet, depth, inset);
         pos += aOrigin.xyz;
         flowCode = flagsIn.w;
@@ -153,9 +189,9 @@ void main() {
     if (uWavesEnabled && falling < 0.5 && !sheet) {
         const float MIN_WATER_SURFACE = 0.125;
         const float MAX_WAVE_DELTA = 0.18;
-        // Absolute XZ: the Gerstner lattice is a world-space function, so it must
-        // not shift when the render origin steps.
-        float wave = gerstnerHeight(pos.xz + uRenderOrigin, uTime);
+        // Render-space XZ plus the origin's per-wave phase = the world-space lattice, so it never
+        // shifts when the render origin steps (and stays precise at any distance from world zero).
+        float wave = gerstnerHeight(pos.xz, uTime);
         if (uWaveFadeEnd > 0.0) {
             float dist = length(pos.xz - uCameraPos.xz);
             wave *= 1.0 - smoothstep(uWaveFadeEnd * 0.6, uWaveFadeEnd, dist);

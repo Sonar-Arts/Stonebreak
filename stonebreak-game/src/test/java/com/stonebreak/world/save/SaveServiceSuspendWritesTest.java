@@ -40,7 +40,6 @@ class SaveServiceSuspendWritesTest {
     void suspendedWritesLeaveTheFolderUntouchedThroughClose() throws Exception {
         Path worldDir = tempDir.resolve("held");
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             globals.when(Game::getInstance).thenReturn(mock(Game.class));
             globals.when(Game::getWorld).thenReturn(world);
@@ -49,7 +48,7 @@ class SaveServiceSuspendWritesTest {
             svc.initialize(WorldData.builder().seed(7L).worldName("held").build(), new Player(world), world);
 
             svc.saveAll().get(5, TimeUnit.SECONDS);
-            svc.saveDirtyChunks().get(5, TimeUnit.SECONDS);
+            svc.saveCubes().get(5, TimeUnit.SECONDS);
             svc.saveNamedPlayer("guest", "{}".getBytes()).get(5, TimeUnit.SECONDS);
             svc.performAutoSave();
             svc.flushSavesBlocking("test");
@@ -64,7 +63,6 @@ class SaveServiceSuspendWritesTest {
         Path worldDir = tempDir.resolve("resumed");
         AtomicLong clock = new AtomicLong(0L);
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             globals.when(Game::getInstance).thenReturn(mock(Game.class));
             globals.when(Game::getWorld).thenReturn(world);

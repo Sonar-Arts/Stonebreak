@@ -13,7 +13,8 @@ import com.stonebreak.world.World;
 import com.openmason.engine.util.BlockPos;
 import com.stonebreak.mobs.goblin.food.FoodLedger;
 import com.stonebreak.mobs.goblin.food.FoodStore;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.AbstractList;
 import java.util.ArrayList;
@@ -298,7 +299,7 @@ public final class GoblinPack {
     }
 
     /** The living enemy goblin nearest {@code from}, or {@code null}. */
-    public Goblin nearestEnemy(Vector3f from) {
+    public Goblin nearestEnemy(Vector3dc from) {
         GoblinPack e = enemy();
         if (e == null) {
             return null;
@@ -306,7 +307,7 @@ public final class GoblinPack {
         Goblin best = null;
         float bestDistance = Float.MAX_VALUE;
         for (Goblin g : e.members()) {
-            float d = g.getPosition().distanceSquared(from);
+            float d = (float) g.getPosition().distanceSquared(from);
             if (g.isAlive() && d < bestDistance) {
                 bestDistance = d;
                 best = g;
@@ -382,7 +383,7 @@ public final class GoblinPack {
                 if (other.size() < 2 && other.camp() == null) {
                     continue;
                 }
-                float d = g.getPosition().distanceSquared(leader.getPosition());
+                float d = (float) g.getPosition().distanceSquared(leader.getPosition());
                 if (d < bestDistance) {
                     bestDistance = d;
                     best = other;
@@ -452,7 +453,7 @@ public final class GoblinPack {
             if (searchCooldown > 0.0f) {
                 return;
             }
-            Vector3f at = leader.getPosition();
+            Vector3d at = leader.getPosition();
             CampRegistry camps = world.goblinCamps();
             if (camps == null) {
                 return;
@@ -461,7 +462,7 @@ public final class GoblinPack {
                     com.stonebreak.mobs.goblin.camp.CampWalker.of(world,
                             com.stonebreak.mobs.entities.ai.nav.NavProfiles.forEntity(leader)),
                     new org.joml.Vector3i((int) Math.floor(at.x), (int) Math.floor(at.y), (int) Math.floor(at.z)),
-                    cell -> !camps.campWithin(new Vector3f(cell.x, cell.y, cell.z), CampRegistry.TERRITORY));
+                    cell -> !camps.campWithin(new Vector3d(cell.x, cell.y, cell.z), CampRegistry.TERRITORY));
         }
         if (finder.step(SEARCH_COLUMNS_PER_TICK)) {
             plans.addAll(finder.results());
@@ -529,17 +530,17 @@ public final class GoblinPack {
     private float closestMemberDistance(LivingEntity target) {
         float best = Float.MAX_VALUE;
         for (Goblin g : members) {
-            best = Math.min(best, g.getPosition().distance(target.getPosition()));
+            best = Math.min(best, (float) g.getPosition().distance(target.getPosition()));
         }
         return best;
     }
 
-    private static LivingEntity nearestPrey(Vector3f from, NearbyEntities nearby, java.util.Set<LivingEntity> skip) {
+    private static LivingEntity nearestPrey(Vector3dc from, NearbyEntities nearby, java.util.Set<LivingEntity> skip) {
         LivingEntity best = null;
         float bestDistance = Float.MAX_VALUE;
         for (Entity e : nearby.within(from, PREY_RADIUS)) {
             if (e instanceof LivingEntity le && PREY.contains(e.getType()) && le.isAlive() && !skip.contains(le)) {
-                float d = e.getPosition().distanceSquared(from);
+                float d = (float) e.getPosition().distanceSquared(from);
                 if (d < bestDistance) {
                     bestDistance = d;
                     best = le;
@@ -557,7 +558,7 @@ public final class GoblinPack {
             if (e instanceof Goblin other && other != loner && other.isAlive()) {
                 GoblinPack candidate = other.pack();
                 if (candidate != this && candidate.size() < MAX_SIZE) {
-                    float d = other.getPosition().distanceSquared(loner.getPosition());
+                    float d = (float) other.getPosition().distanceSquared(loner.getPosition());
                     if (d < bestDistance) {
                         bestDistance = d;
                         best = candidate;

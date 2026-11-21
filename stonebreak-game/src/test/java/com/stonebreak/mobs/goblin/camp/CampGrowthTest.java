@@ -8,7 +8,7 @@ import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goblin.GoblinLoadout.Headwear;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.Random;
@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CampGrowthTest {
 
     private static Goblin goblin() {
-        return new Goblin(null, new Vector3f(), new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
+        return new Goblin(null, new Vector3d(), new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
     }
 
     private static GoblinCamp campOf(int goblins) {

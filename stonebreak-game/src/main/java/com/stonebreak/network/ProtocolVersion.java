@@ -66,12 +66,36 @@ public final class ProtocolVersion {
      *  the state flags grow to 16 bits (FLYING, DODGING, LIFESTEAL); DeathDropC2S (27) retired —
      *  the server scatters the inventory at the death it decides; PlayerLifeC2S's respawn is a
      *  request whose spot the server picks.
-     *  23 = stealth perception (issue #321): EntityAwarenessS2C (37) replicates a mob's awareness
-     *  state to its shadows, StatCreditS2C (36) credits non-kill stats, and the state flags carry STEALTHED
-     *  (the old reserved sneak bit) and DODGE_NOISE (bit 11).
-     *  24 = the Vestige: EntityAnimS2C's known states gain its clips (Float, PeekLean, JerkBack, Woosh,
-     *  Cast, Scratch, Dissolve), and the replicated status set gains VEILED and SMOKESCREEN. */
-    public static final int CURRENT = 24;
+     *  23 = cubic voxel runtime (#447) + 64-bit positions (#445): terrain streams as cubes. CubeDataS2C (id 1,
+     *  was ChunkDataS2C) carries column records + PARTS_NETWORK cube records + payload states in one compressed
+     *  blob; BlockStateNamesS2C (36) mirrors the server's block-state registry ids; CubeRequestC2S (11, was
+     *  ChunkResyncRequestC2S: the client's stream asks for the cubes it misses, a request for a held cube is a
+     *  resync), CubeHashesC2S (15), CubeUnloadC2S (30) and CubeAckC2S (33, cubes + KiB + rate) replace their
+     *  chunk versions; ViewDistanceC2S adds the vertical render distance. Block coordinates are zigzag varlongs
+     *  (BlockChangeS2C, BlockStateS2C; MultiBlockChangeS2C/BlockMetaS2C section coordinates); world positions
+     *  are an int64 cell varlong + float offset per axis (NetCoords) in WelcomeS2C, EntitySpawnS2C,
+     *  EntityTeleportS2C, ProjectileSpawnC2S, PlayerStateC2S/S2C, PlayerPositionS2C, PlayerJoinS2C,
+     *  PlayerLifeC2S, KillCreditS2C, FishingRodC2S, SoundEventS2C, VehicleActionC2S and VehicleMoveC2S.
+     *  24: WelcomeS2C carries the world's terrain scale (1:4 / 1:2) after the generator type, so the client's
+     *  generator (FastLOD fallback, terrain queries) matches the server's world.
+     *  25: WelcomeS2C carries the world's EXP-2 climate layout (ClimateLayout ordinal, one byte) after the terrain
+     *  scale, so a DaedalusTGM-Exp client asks TGMPipe for the same layout's tiles as the server.
+     *  26: WelcomeS2C carries the world's height-curve version (HeightCurveVersion number, one byte) after the
+     *  climate layout: a DaedalusTGM-Exp world keeps the curve it was created with (2026-11-19 shelf band).
+     *  27: the terrain scale in WelcomeS2C may be 1:1 (TerrainScalePreset.ONE_TO_ONE, ordinal 2: 15 m blocks), which
+     *  an older client cannot decode - the version check refuses it cleanly instead.
+     *  28: WelcomeS2C carries the world's terrain model (TerrainModelRef: folder path + release content id, two
+     *  strings) after the height curve, so a DaedalusTGM-Exp client's TGMPipe runs the model the server's world was
+     *  made with (review-python HIGH-1, FX1 2026-11-19).
+     *  29: WelcomeS2C carries the world's Standard shape (StandardShapeVersion number, one byte) after the terrain
+     *  model, so a Standard client's generator (FastLOD, queries) builds the shape the server's world was made with
+     *  (2026-11-19: shape 2, distilled from DaedalusTGM-Exp-2).
+     *  30 = Project-Heracles on top of 29: stealth perception (issue #321) - EntityAwarenessS2C (38) replicates a
+     *  mob's awareness state to its shadows, StatCreditS2C (37) credits non-kill stats, and the state flags carry
+     *  STEALTHED (the old reserved sneak bit) and DODGE_NOISE (bit 11); the Vestige - EntityAnimS2C's known states
+     *  gain its clips (Float, PeekLean, JerkBack, Woosh, Cast, Scratch, Dissolve), and the replicated status set
+     *  gains VEILED and SMOKESCREEN; KillCreditS2C carries whether the hit killed. */
+    public static final int CURRENT = 30;
 
     private ProtocolVersion() {}
 }

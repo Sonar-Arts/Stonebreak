@@ -1,21 +1,15 @@
 package com.stonebreak.world.lighting;
 
-import com.openmason.engine.voxel.lighting.ChunkHeightMap;
-import com.openmason.engine.voxel.lighting.ColumnOpacityProbe;
 import com.openmason.engine.voxel.lighting.LightingContext;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 /**
- * Game-side adapter bridging the engine's {@link LightingContext} contract to
- * Stonebreak's chunk map. Keeps the engine blind to {@code World} /
- * {@code BlockType} concrete types — the engine only sees integer world coords
- * and booleans.
- *
- * <p>Both query methods refuse to trigger chunk generation. Unloaded chunks
- * are reported as "no data" (column height -1, solid false) so the mesh-thread
- * sampler can't cascade into runaway loads.
+ * The engine's column-era {@link LightingContext} over a cube world, for the point sky samplers still in use
+ * (entity / arm / particle light probes: {@code VertexLightSampler.samplePointSky}). The column height is the
+ * native surface tracker ({@code cv_surface_y}: first free y above the topmost sky-opaque block - the same
+ * quantity the old {@code ChunkHeightMap} held); solidity is {@link BlockOpacity}. Terrain meshes get their
+ * sky light natively and do not use this.
  */
 public final class WorldLightingContext implements LightingContext {
 
@@ -27,37 +21,14 @@ public final class WorldLightingContext implements LightingContext {
 
     @Override
     public int getColumnHeight(int worldX, int worldZ) {
-        int cx = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
-        int cz = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
         if (world == null) return -1;
-        Chunk chunk = world.getChunkIfLoaded(cx, cz);
-        if (chunk == null) return -1;
-        ChunkHeightMap hm = chunk.getHeightMap();
-        if (!hm.isPopulated()) {
-            // Defensive lazy init — generation hook should have already done this,
-            // but if a mesh rebuild races ahead of it we catch up here.
-            hm.recomputeAll(probeFor(chunk));
-        }
-        int lx = Math.floorMod(worldX, WorldConfiguration.CHUNK_SIZE);
-        int lz = Math.floorMod(worldZ, WorldConfiguration.CHUNK_SIZE);
-        return hm.getHeight(lx, lz);
+        long y = world.surfaceY(worldX, worldZ);
+        return (int) Math.max(WorldConfiguration.MIN_Y, Math.min(WorldConfiguration.MAX_Y, y));
     }
 
     @Override
     public boolean isSolidAt(int worldX, int worldY, int worldZ) {
-        if (worldY < 0 || worldY >= WorldConfiguration.WORLD_HEIGHT) return false;
-        int cx = Math.floorDiv(worldX, WorldConfiguration.CHUNK_SIZE);
-        int cz = Math.floorDiv(worldZ, WorldConfiguration.CHUNK_SIZE);
-        if (world == null) return false;
-        Chunk chunk = world.getChunkIfLoaded(cx, cz);
-        if (chunk == null) return false;
-        int lx = Math.floorMod(worldX, WorldConfiguration.CHUNK_SIZE);
-        int lz = Math.floorMod(worldZ, WorldConfiguration.CHUNK_SIZE);
-        return BlockOpacity.isOpaque(chunk.getBlock(lx, worldY, lz));
-    }
-
-    /** Returns a {@link ColumnOpacityProbe} that queries the given chunk's blocks. */
-    public static ColumnOpacityProbe probeFor(Chunk chunk) {
-        return (lx, ly, lz) -> BlockOpacity.isOpaque(chunk.getBlock(lx, ly, lz));
+        if (world == null || !WorldConfiguration.inBounds(worldY)) return false;
+        return BlockOpacity.isOpaque(world.getBlockAt(worldX, worldY, worldZ));
     }
 }

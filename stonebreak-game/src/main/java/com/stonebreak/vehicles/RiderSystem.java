@@ -5,6 +5,7 @@ import com.stonebreak.mobs.entities.IllusionDecoy;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -74,7 +75,7 @@ public final class RiderSystem {
 
     /** Carries every seated entity to its seat; stands up riders of a vanished vehicle. */
     static void placeRiders(List<Entity> entities) {
-        Vector3f seatPos = new Vector3f();
+        Vector3d seatPos = new Vector3d();
         for (Entity rider : entities) {
             Rideable vehicle = rider.getVehicle();
             if (vehicle == null) {

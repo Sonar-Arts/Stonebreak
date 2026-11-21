@@ -2,6 +2,8 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
+import com.stonebreak.util.Positions;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -117,8 +119,8 @@ final class VestigePeekABooBehavior extends VestigeBehavior {
     }
 
     /** Glides straight at {@code point}; false once there. Short hops beside a trunk need no route. */
-    private boolean stepToward(AiContext context, Vector3f point, float speed) {
-        Vector3f toward = scratch.set(point).sub(vestige.getPosition());
+    private boolean stepToward(AiContext context, Vector3dc point, float speed) {
+        Vector3f toward = Positions.offset(vestige.getPosition(), point, scratch);
         toward.y = 0f;
         if (toward.lengthSquared() < 0.01f) {
             return false;

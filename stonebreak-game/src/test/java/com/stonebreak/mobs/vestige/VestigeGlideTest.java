@@ -14,13 +14,15 @@ import com.stonebreak.mobs.entities.ai.nav.NavProfiles;
 import com.stonebreak.mobs.entities.ai.nav.PathfindingService;
 import com.stonebreak.world.World;
 import com.stonebreak.world.physics.WorldPhysics;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,8 +45,8 @@ class VestigeGlideTest {
 
     private static World cliff() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv ->
-                solid(inv.getArgument(0), inv.getArgument(1)) ? BlockType.STONE : BlockType.AIR);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv ->
+                solid((int) (long) inv.getArgument(0), (int) (long) inv.getArgument(1)) ? BlockType.STONE : BlockType.AIR);
         return world;
     }
 
@@ -64,7 +66,7 @@ class VestigeGlideTest {
     @Test
     void itFloatsDownACliffRatherThanDropping() {
         World world = cliff();
-        Vestige vestige = new Vestige(world, new Vector3f(1.5f, HIGH, 0.5f));
+        Vestige vestige = new Vestige(world, new Vector3d(1.5f, HIGH, 0.5f));
         float fastest = walkOff(world, vestige, 1.5f);
         assertTrue(fastest <= Vestige.GLIDE_SINK_SPEED + 1e-3f, "sank at " + fastest);
         assertTrue(vestige.getPosition().y > LOW + 3f, "still on the way down after a second: " + vestige.getPosition());
@@ -76,15 +78,15 @@ class VestigeGlideTest {
     @Test
     void somethingWithoutAGlideStillDrops() {
         World world = cliff();
-        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3f(1.5f, HIGH, 0.5f), world);
+        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3d(1.5f, HIGH, 0.5f), world);
         assertTrue(walkOff(world, goblin, 1.5f) > 2f * Vestige.GLIDE_SINK_SPEED);
     }
 
     @Test
     void itsRoutesTakeTallDropsAndBarelyChargeForThem() {
         World world = mock(World.class);
-        GroundProfile vestige = NavProfiles.forEntity(new Vestige(world, new Vector3f()));
-        GroundProfile goblin = NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world));
+        GroundProfile vestige = NavProfiles.forEntity(new Vestige(world, new Vector3d()));
+        GroundProfile goblin = NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3d(), world));
         assertEquals(Vestige.MAX_GLIDE_DROP, vestige.maxFall(), 1e-6f);
         assertTrue(goblin.maxFall() < HIGH - LOW);
         assertTrue(vestige.fallCostPerBlock() < goblin.fallCostPerBlock());
@@ -93,24 +95,24 @@ class VestigeGlideTest {
     @Test
     void itPlansAnEscapeDownTheCliffThatAGoblinCannot() {
         World world = mock(World.class);
-        Vector3f top = new Vector3f(0.5f, HIGH, 0.5f);
-        Vector3f bottom = new Vector3f(8.5f, LOW, 0.5f);
+        Vector3d top = new Vector3d(0.5f, HIGH, 0.5f);
+        Vector3d bottom = new Vector3d(8.5f, LOW, 0.5f);
 
-        NavPath glide = route(NavProfiles.forEntity(new Vestige(world, new Vector3f())), top, bottom);
+        NavPath glide = route(NavProfiles.forEntity(new Vestige(world, new Vector3d())), top, bottom);
         assertTrue(glide.isComplete(), "the Vestige glides down");
         assertEquals(LOW, glide.y(glide.size() - 1), 0.01f);
 
-        NavPath walk = route(NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world)), top, bottom);
+        NavPath walk = route(NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3d(), world)), top, bottom);
         assertFalse(walk.isComplete(), "a ten-block drop is no route for a walker");
     }
 
     /** A route over the cliff, planned by the native search over a physics world of it. */
-    private static NavPath route(GroundProfile profile, Vector3f from, Vector3f to) {
+    private static NavPath route(GroundProfile profile, Vector3dc from, Vector3dc to) {
         try (PhysicsWorld physics = PhysicsWorld.create(VestigeGlideTest::fillCliff, 4, 0, 0)) {
             physics.defineShape(1, new float[] {0, 0, 0, 1, 1, 1}, WorldPhysics.SOLID | WorldPhysics.PICK, 0);
-            PathfindingService service = PathfindingService.over(physics, 256);
+            PathfindingService service = PathfindingService.over(physics, 0, 256);
             try {
-                long id = service.nav().searchGround(new NavWorld.GroundQuery(from.x, from.y, from.z, to.x, to.y, to.z,
+                long id = service.nav().searchGround(new NavWorld.GroundQuery(from.x(), from.y(), from.z(), to.x(), to.y(), to.z(),
                         1.0f, 4, 2, profile, new NavLimits(500, Float.MAX_VALUE, 1.0f)));
                 service.step();
                 return service.nav().poll(id).path();
@@ -120,11 +122,11 @@ class VestigeGlideTest {
         }
     }
 
-    private static boolean fillCliff(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+    private static boolean fillCliff(long x0, long y0, long z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
         for (int y = 0; y < sy; y++) {
             for (int z = 0; z < sz; z++) {
                 for (int x = 0; x < sx; x++) {
-                    if (y0 + y >= 0 && solid(x0 + x, y0 + y)) {
+                    if (y0 + y >= 0 && solid((int) (x0 + x), (int) (y0 + y))) {
                         shapes[(y * sz + z) * sx + x] = 1;
                     }
                 }

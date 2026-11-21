@@ -30,7 +30,12 @@ plan stonebreak
         headroom 10%       ~ keep a slice free: pressure hits 100% before the budget does
     end
 
-    ~ The native chunk renderer's 8x8-column region arenas. Initial sizes are
+    ~ The cube renderer's 3D region arenas (cubic runtime, 2026-11-17): a region is 8x8x8 cubes =
+    ~ 256^3 blocks, QUAD16 opaque + cutout of every cube in it (translucent quads get their own
+    ~ regions from the same pool). Surface regions hold ~2-3 surface cubes per column of the 64,
+    ~ greedy-merged (32-wide quads) - start at 2 MiB and let sparse growth follow the terrain;
+    ~ regions deep underground or in the sky stay tiny or never exist.
+    ~ (History: the column renderer's 8x8-column region arenas.) Initial sizes are
     ~ the proven pre-CEARL constants; growth is tightened from the old
     ~ x1.75/25% (≈35% average slack over live bytes) to x1.5/12.5% (≈20%) —
     ~ the cost is roughly one extra grow per region lifetime. 'trim' is the
@@ -56,8 +61,8 @@ plan stonebreak
         priority 100               ~ last to give ground under pressure
         grow sparse
         arena
-            vertex 1280 KiB        ~ 81920 pulled quads (16 B) per 8x8 region
-            index 48 KiB           ~ 24576 u16 indices (unused by pulled regions)
+            vertex 2 MiB           ~ 131072 pulled quads (16 B) per 256^3 region
+            index 64 KiB           ~ u16 indices (unused by pulled regions)
             growth 1.5             ~ grown arenas multiply capacity by this
             reserve 12.5%          ~ ...and keep this much slack over the need
             align 4                ~ element alignment keeps quad math tidy
@@ -72,8 +77,8 @@ plan stonebreak
         budget 2%
         priority 90
         arena
-            vertex 320 KiB
-            index 24 KiB
+            vertex 512 KiB         ~ WATERQUAD16 records (16 B) of a 256^3 region
+            index 24 KiB           ~ unused by pulled water
         end
     end
 
@@ -84,8 +89,8 @@ plan stonebreak
         budget 8%
         priority 95
         arena
-            vertex 1 MiB
-            index 64 KiB
+            vertex 256 KiB         ~ COMPACT20 stamp/model/snow vertices; most regions hold a few flowers/
+            index 96 KiB           ~ cacti only (smoke run: ~1 stamp mesh per region) - growth covers forests; u32
         end
     end
 

@@ -14,7 +14,7 @@ import com.stonebreak.mobs.goblin.camp.GoblinCamp;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import com.stonebreak.world.SimBlockEdits;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.EnumSet;
 
@@ -36,7 +36,7 @@ public final class RaidBehavior implements Behavior {
     private static final float SPEED = 1.1f;
 
     private final Goblin goblin;
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
 
     public RaidBehavior(Goblin goblin) {
         this.goblin = goblin;
@@ -64,7 +64,7 @@ public final class RaidBehavior implements Behavior {
         if (fire == null) {
             return;
         }
-        target.set(fire.x() + 0.5f, fire.y(), fire.z() + 0.5f);
+        target.set(fire.x() + 0.5, fire.y(), fire.z() + 0.5);
         if (context.distanceTo(target) > AT_FIRE) {
             context.nav().moveTo(target, AT_FIRE * 0.6f, SPEED);
             return;

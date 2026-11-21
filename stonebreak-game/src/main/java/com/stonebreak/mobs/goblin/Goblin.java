@@ -44,6 +44,8 @@ import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -94,11 +96,11 @@ public class Goblin extends LivingEntity {
     private final NearbyEntities nearby;
 
     /** A goblin with a freshly rolled loadout. */
-    public Goblin(World world, Vector3f position) {
+    public Goblin(World world, Vector3dc position) {
         this(world, position, GoblinLoadout.roll(new Random()));
     }
 
-    public Goblin(World world, Vector3f position, GoblinLoadout loadout) {
+    public Goblin(World world, Vector3dc position, GoblinLoadout loadout) {
         super(world, position, EntityType.GOBLIN);
         this.loadout = Objects.requireNonNull(loadout, "loadout");
         this.scale.set(MODEL_SCALE);

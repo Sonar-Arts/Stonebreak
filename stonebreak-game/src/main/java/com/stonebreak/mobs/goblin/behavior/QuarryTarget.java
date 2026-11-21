@@ -6,7 +6,8 @@ import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.AttackTarget;
 import com.stonebreak.mobs.entities.ai.perception.SightLine;
 import com.stonebreak.mobs.goblin.Goblin;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * The animal a goblin's pack is hunting, as something to swing or shoot at. Killing it is quiet
@@ -17,7 +18,7 @@ public final class QuarryTarget implements AttackTarget {
     private final Goblin goblin;
     private final DamageType damageType;
     private final SightLine sight = new SightLine();
-    private final Vector3f aim = new Vector3f();
+    private final Vector3d aim = new Vector3d();
 
     /** @param damageType what the goblin's weapon deals: a dagger stabs, a patty smacker bludgeons */
     public QuarryTarget(Goblin goblin, DamageType damageType) {
@@ -35,13 +36,13 @@ public final class QuarryTarget implements AttackTarget {
     }
 
     @Override
-    public Vector3f position(AiContext context) {
+    public Vector3d position(AiContext context) {
         LivingEntity quarry = quarry();
         return quarry != null ? quarry.getPosition() : null;
     }
 
     @Override
-    public boolean canSee(AiContext context, Vector3f eye) {
+    public boolean canSee(AiContext context, Vector3dc eye) {
         LivingEntity quarry = quarry();
         if (quarry == null) {
             return false;

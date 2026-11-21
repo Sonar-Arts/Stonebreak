@@ -2,8 +2,11 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.rendering.Renderer;
-import com.stonebreak.rendering.effects.FireTrailParticles;
+import com.stonebreak.fx.Fx;
+import com.stonebreak.fx.TrailFx;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -20,8 +23,12 @@ public class FireBolt extends Entity {
     private static final float DAMAGE     = 8.0f;
     // Body boxes are grown by the bolt's half-size when it sweeps through them.
     private static final float HIT_MARGIN = 0.15f;
-    /** How long an impacted bolt stays (at least): the longest trail/burst particle's life. */
+    /** How long an impacted bolt stays: the longest trail/burst particle's life. */
     private static final float IMPACT_LINGER = 0.75f;
+    /** Flames streaming back from a flying bolt (Stonebreak#441; follows the bolt, launched along its back). */
+    public static final String TRAIL_FX = "stonebreak:fire_trail";
+    /** The burst of flame where the bolt strikes. */
+    public static final String IMPACT_FX = "stonebreak:fire_burst";
     /** Replicated (EntityAnimS2C) when the bolt hits, so a client shadow bursts and hides its core. */
     static final String IMPACT_STATE = "Impact";
 
@@ -32,9 +39,10 @@ public class FireBolt extends Entity {
     // long enough for its trail/impact particles to fade out before despawning.
     private boolean impacted = false;
     private float impactAge;
-    public final FireTrailParticles particles = new FireTrailParticles();
+    /** Drawn copies only (see {@link #drawsParticles}): the server world's bolt is never rendered. */
+    private final TrailFx trail = new TrailFx(TRAIL_FX);
     /** Shadow only: last interpolated position, to aim the trail behind its motion. */
-    private final Vector3f lastShadowPos = new Vector3f(Float.NaN, 0f, 0f);
+    private final Vector3d lastShadowPos = new Vector3d(Double.NaN, 0, 0);
     /**
      * Which way the bolt is seen to fly, for the fireball's tail. A client shadow is built
      * with a placeholder direction, so it has no heading until it has been seen to move.
@@ -42,7 +50,7 @@ public class FireBolt extends Entity {
     private final Vector3f heading = new Vector3f();
     private boolean hasHeading;
 
-    public FireBolt(World world, Vector3f position, Vector3f direction) {
+    public FireBolt(World world, Vector3dc position, Vector3f direction) {
         super(world, position);
         this.direction = new Vector3f(direction).normalize();
         this.width  = 0.3f;
@@ -66,10 +74,7 @@ public class FireBolt extends Entity {
         // to fade (on clients too: their shadow goes when this does), then despawns.
         if (impacted) {
             impactAge += deltaTime;
-            if (drawsParticles()) {
-                particles.update(deltaTime);
-            }
-            if ((impactAge >= IMPACT_LINGER && particles.isEmpty()) || age > maxAge() + 2.0f) {
+            if (impactAge >= IMPACT_LINGER || age > maxAge() + 2.0f) {
                 alive = false;
             }
             return;
@@ -88,15 +93,15 @@ public class FireBolt extends Entity {
         // One swept move per update (OpenMason #117): the bolt's box against every block shape,
         // door and model in its path, and the centre line against water — no frame rate lets a fast
         // bolt tunnel through a thin block or skip past a mob.
-        Vector3f end = new Vector3f(direction).mul(travel).add(position);
+        Vector3d end = new Vector3d(position).fma(travel, direction);
         float reach = 1.0f; // fraction of the move before the first block or water
         boolean hitBlock = false;
-        int hitX = 0, hitY = 0, hitZ = 0;
+        long hitX = 0, hitY = 0, hitZ = 0;
         if (world != null && travel > 0.0f) {
             com.stonebreak.world.physics.WorldPhysics physics = com.stonebreak.world.physics.WorldPhysics.of(world);
             if (physics.sweep(position.x, position.y, position.z, end.x, end.y, end.z,
                     HIT_MARGIN, HIT_MARGIN, HIT_MARGIN, com.stonebreak.world.physics.WorldPhysics.PROJECTILE_MASK, rayHit)) {
-                reach = rayHit.distance;
+                reach = (float) rayHit.distance;
                 hitBlock = true;
                 hitX = rayHit.x;
                 hitY = rayHit.y;
@@ -105,7 +110,7 @@ public class FireBolt extends Entity {
             if (physics.raycast(position.x, position.y, position.z, direction.x, direction.y, direction.z, travel,
                     0, com.stonebreak.world.physics.WorldPhysics.WATER, rayHit)
                     && rayHit.distance / travel < reach) {
-                reach = rayHit.distance / travel;
+                reach = (float) (rayHit.distance / travel);
                 hitBlock = false; // water first
             }
         }
@@ -116,7 +121,7 @@ public class FireBolt extends Entity {
                 return;
             }
         } else {
-            Vector3f stop = new Vector3f(direction).mul(travel * reach).add(position);
+            Vector3d stop = new Vector3d(position).fma(travel * reach, direction);
             // Entity collision — whatever is on the stretch it actually flew.
             boolean struck = strike(position, stop);
             position.set(stop);
@@ -126,12 +131,10 @@ public class FireBolt extends Entity {
             }
         }
 
-        // Spawn fire trail particles behind the bolt — only where it is drawn: the server world's
-        // copy is never rendered (clients draw their shadow's own trail).
+        // The fire trail follows the bolt — only where it is drawn: the server world's copy is
+        // never rendered (clients trail their shadow instead).
         if (drawsParticles()) {
-            Vector3f backDir = new Vector3f(direction).negate();
-            particles.spawn(position, backDir);
-            particles.update(deltaTime);
+            trail.follow(position.x, position.y, position.z, -direction.x, -direction.y, -direction.z);
         }
     }
 
@@ -145,11 +148,11 @@ public class FireBolt extends Entity {
         while (remaining > 0.0f && !impacted) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
             remaining -= stepLen;
-            Vector3f newPos = new Vector3f(direction).mul(stepLen).add(position);
+            Vector3d newPos = new Vector3d(position).fma(stepLen, direction);
             BlockType block = world.getBlockAt(
-                    (int) Math.floor(newPos.x),
-                    (int) Math.floor(newPos.y),
-                    (int) Math.floor(newPos.z));
+                    (long) Math.floor(newPos.x),
+                    (long) Math.floor(newPos.y),
+                    (long) Math.floor(newPos.z));
             if (block != null && !passesThrough(block)) {
                 impact();
                 return true;
@@ -189,7 +192,7 @@ public class FireBolt extends Entity {
      *
      * @return whether something was hit (the bolt is spent)
      */
-    protected boolean strike(Vector3f from, Vector3f to) {
+    protected boolean strike(Vector3dc from, Vector3dc to) {
         EntityManager em = OwningEntityManager.of(this); // server-spawned: scan the OWNING world
         LivingEntity hit = em != null ? ProjectileSweep.firstHit(em, from, to, HIT_MARGIN) : null;
         if (hit == null) {
@@ -232,16 +235,18 @@ public class FireBolt extends Entity {
      */
     @Override
     public void updateClientVisuals(float deltaTime) {
-        if (!impacted && !Float.isNaN(lastShadowPos.x)) {
-            Vector3f moved = new Vector3f(position).sub(lastShadowPos);
-            if (moved.lengthSquared() > 1e-6f) {
-                heading.set(moved).normalize();
+        if (!impacted && !Double.isNaN(lastShadowPos.x)) {
+            float bx = (float) (lastShadowPos.x - position.x);
+            float by = (float) (lastShadowPos.y - position.y);
+            float bz = (float) (lastShadowPos.z - position.z);
+            float len = (float) Math.sqrt(bx * bx + by * by + bz * bz);
+            if (len > 1e-3f) {
+                heading.set(-bx / len, -by / len, -bz / len);
                 hasHeading = true;
-                particles.spawn(position, moved.negate().normalize());
+                trail.follow(position.x, position.y, position.z, bx / len, by / len, bz / len);
             }
         }
         lastShadowPos.set(position);
-        particles.update(deltaTime);
     }
 
     @Override
@@ -257,13 +262,22 @@ public class FireBolt extends Entity {
     }
 
     /**
-     * Stops the bolt and emits an impact burst. The entity remains alive until
-     * its particles fade so the trail does not pop out of existence.
+     * Stops the bolt: the trail stops emitting and a burst of flame goes up where it struck. The
+     * entity lingers while the trail's last flames fade (its core is no longer drawn), so a client's
+     * shadow does not vanish before the impact state reaches it.
      */
     private void impact() {
         if (impacted) return;
         impacted = true;
-        particles.burst(position);
+        if (drawsParticles()) {
+            trail.end();
+            Fx.fire(IMPACT_FX, position.x, position.y, position.z);
+        }
+    }
+
+    @Override
+    public void onRemovedFromWorld() {
+        trail.end();
     }
 
     /** Whether the bolt has been seen to move, so {@link #getHeading} is meaningful. */

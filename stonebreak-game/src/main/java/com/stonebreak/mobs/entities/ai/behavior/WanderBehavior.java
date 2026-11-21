@@ -1,7 +1,8 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.EnumSet;
 
@@ -27,7 +28,7 @@ public final class WanderBehavior implements Behavior {
     private final float maxDistance;
     private final float speedMultiplier;
 
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
     private float elapsed;
 
     public WanderBehavior(float weight, float minDistance, float maxDistance, float speedMultiplier) {
@@ -84,14 +85,14 @@ public final class WanderBehavior implements Behavior {
     }
 
     private void pickSpot(AiContext context) {
-        Vector3f position = context.entity().getPosition();
+        Vector3d position = context.entity().getPosition();
         float angle = context.random().nextFloat() * (float) (Math.PI * 2.0);
         float distance = context.randomBetween(minDistance, maxDistance);
 
         target.set(
-                position.x + (float) Math.cos(angle) * distance,
+                position.x + Math.cos(angle) * distance,
                 position.y,
-                position.z + (float) Math.sin(angle) * distance);
+                position.z + Math.sin(angle) * distance);
         context.nav().moveTo(target, ARRIVAL_RADIUS, speedMultiplier);
     }
 }

@@ -21,7 +21,7 @@ class NetworkInterpolatorTest {
     private static final long PERIOD = NetworkInterpolator.DEFAULT_PERIOD_NS;
 
     private static final class Shadow extends Entity {
-        Shadow() { super(null, new Vector3f()); }
+        Shadow() { super(null, new org.joml.Vector3d()); }
         @Override public void update(float deltaTime) { }
         @Override public void render(Renderer renderer) { }
         @Override public EntityType getType() { return EntityType.ITEM_DROP; }
@@ -62,7 +62,7 @@ class NetworkInterpolatorTest {
         float last = 0f;
         for (long t = 0; t <= 4 * PERIOD; t += PERIOD / 10) {
             interp.apply(shadow, start + t);
-            float x = shadow.getPosition().x;
+            float x = (float) shadow.getPosition().x;
             assertTrue(x >= last - 1e-4f, "never moves backward (t=" + t + ")");
             assertTrue(x - last <= 1.0f, "no jump of a whole snapshot in one frame (t=" + t + ")");
             last = x;

@@ -16,9 +16,24 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from terrain_slm.river.field import RiverContext, RiverField
+from terrain_slm.river.field import Lazy, RiverContext, RiverField, _max_or_zero
 
 MIN_WATER_M = 0.4
+
+
+_SEA_M: dict = {}   # id(BlockScale) -> (weakref, device, metres): the same scale every tile (two device syncs each)
+
+
+def _sea_level_m(sc, device) -> float:
+    import weakref
+    hit = _SEA_M.get(id(sc))
+    if hit is not None and hit[0]() is sc and hit[1] == device:
+        return hit[2]
+    v = float(sc.to_metres(torch.tensor([float(sc.sea_level)], device=device)))
+    if len(_SEA_M) > 16:
+        _SEA_M.clear()
+    _SEA_M[id(sc)] = (weakref.ref(sc), device, v)
+    return v
 
 
 class NoSpill:
@@ -33,14 +48,15 @@ class NoSpill:
         carved = f.carved
         wet = f.channel & (f.ground > 0.5)
         sc = ctx.scale
-        sea_level_m = float(sc.to_metres(torch.tensor([float(sc.sea_level)], device=carved.device)))
+        sea_level_m = _sea_level_m(sc, carved.device)
         wall = torch.where(carved < sea_level_m, torch.full_like(carved, sea_level_m), carved)
         wall = torch.where(wet, torch.full_like(carved, float("inf")), wall)
         top = torch.minimum(f.level, -F.max_pool2d(-wall[None, None], 3, 1, 1)[0, 0] - 0.05)
         cut = wet & (top < carved + MIN_WATER_M)
-        ctx.stats["incised_px"] = int(cut.sum())
-        ctx.stats["incised_max_m"] = float((carved - top + MIN_WATER_M)[cut].max()) if bool(cut.any()) else 0.0
-        ctx.stats["channel_px"] = int(wet.sum())
+        ctx.stats["incised_px"] = Lazy(cut.sum())
+        ctx.stats["incised_max_m"] = Lazy(torch.where(cut, carved - top + MIN_WATER_M,
+                                                      torch.full_like(carved, float("-inf"))).max(), _max_or_zero)
+        ctx.stats["channel_px"] = Lazy(wet.sum())
         f.carved = torch.where(cut, top - MIN_WATER_M, carved)
         f.wet = wet
         f.top = torch.where(wet, top, torch.full_like(top, float("nan")))
@@ -64,7 +80,7 @@ class MonotoneTop:
         top = torch.where(f.wet, f.top, f.carved)
         mono = monotone_downstream(top, f.wet, f.flow, self.iters)
         lowered = f.wet & (mono < top - 1e-3)
-        ctx.stats["top_lowered_px"] = int(lowered.sum())
+        ctx.stats["top_lowered_px"] = Lazy(lowered.sum())
         rate = ctx.scale.rate(mono)
         f.carved = torch.where(f.wet, torch.minimum(f.carved, mono - rate), f.carved)
         f.top = torch.where(f.wet, mono, f.top)

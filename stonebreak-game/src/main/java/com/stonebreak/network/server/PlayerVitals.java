@@ -40,10 +40,10 @@ public final class PlayerVitals {
     private long protectionUntilNs;
 
     private boolean hasLastReport;
-    private float lastX, lastY, lastZ;
+    private double lastX, lastY, lastZ;
     private boolean airborne;
     /** The ground height while grounded; the highest point reached while airborne. */
-    private float fallApexY;
+    private double fallApexY;
 
     private float cactusTimer;
     /** Seconds until a spiked wall may prick this player again. */
@@ -176,7 +176,7 @@ public final class PlayerVitals {
      *
      * @param seated riding a vehicle (no fall while seated)
      */
-    public float onStateReport(float x, float y, float z, short flags, boolean seated, long nowNs) {
+    public float onStateReport(double x, double y, double z, short flags, boolean seated, long nowNs) {
         if (!hasLastReport) {
             protect(nowNs); // arriving in the world (join, respawn): spawn protection starts here
         }
@@ -207,9 +207,9 @@ public final class PlayerVitals {
         }
         float damage = 0f;
         if (airborne) {
-            float fallen = fallApexY - y;
+            double fallen = fallApexY - y;
             if (fallen > SAFE_FALL_BLOCKS) {
-                damage = (fallen - SAFE_FALL_BLOCKS) * DAMAGE_PER_FALL_BLOCK;
+                damage = (float) ((fallen - SAFE_FALL_BLOCKS) * DAMAGE_PER_FALL_BLOCK);
             }
         }
         airborne = false;
@@ -301,10 +301,10 @@ public final class PlayerVitals {
         wasDodging = dodging;
     }
 
-    private float distanceSq(float x, float y, float z) {
-        float dx = x - lastX;
-        float dy = y - lastY;
-        float dz = z - lastZ;
+    private double distanceSq(double x, double y, double z) {
+        double dx = x - lastX;
+        double dy = y - lastY;
+        double dz = z - lastZ;
         return dx * dx + dy * dy + dz * dz;
     }
 

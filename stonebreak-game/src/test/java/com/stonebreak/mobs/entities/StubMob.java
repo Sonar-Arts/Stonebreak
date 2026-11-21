@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -17,15 +19,15 @@ public class StubMob extends LivingEntity {
     private final EntityType type;
 
     public StubMob(EntityType type) {
-        this(type, new Vector3f(0, 64, 0), null);
+        this(type, new Vector3d(0, 64, 0), null);
     }
 
-    public StubMob(EntityType type, Vector3f position) {
+    public StubMob(EntityType type, Vector3dc position) {
         this(type, position, null);
     }
 
     /** With a world, for the rules that need real blocks underneath — water, ground, collision. */
-    public StubMob(EntityType type, Vector3f position, com.stonebreak.world.World world) {
+    public StubMob(EntityType type, Vector3dc position, com.stonebreak.world.World world) {
         super(world, position, type);
         this.type = type;
     }

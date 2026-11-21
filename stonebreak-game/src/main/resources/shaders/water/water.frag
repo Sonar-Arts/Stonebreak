@@ -29,9 +29,11 @@ uniform vec3 uSunDirection;   // the key light: the sun, or the moon at night
 uniform vec3 uKeyLight;       // its colour × strength (white by day)
 uniform float uAmbientLight;
 uniform vec3 uCameraPos;
-// World XZ of the render origin — vWorldPos is render-space, and the
-// procedural lattices below are world-space functions.
-uniform vec2 uRenderOrigin;
+// The render origin modulo WaterRenderer.PATTERN_PERIOD blocks on each axis (exact long arithmetic on the
+// host) — vWorldPos is render-space, and the procedural lattices below are world-space functions. The
+// pattern therefore repeats every PATTERN_PERIOD blocks, which is invisible, and stays float-exact at any
+// int64 coordinate.
+uniform vec3 uRenderOrigin;
 uniform float uTime;
 uniform bool uWavesEnabled;
 // Atmospheric distance fog — same parameters the world shader gets, so far
@@ -126,7 +128,7 @@ void main() {
     // time the render origin steps. Everything else here (distance fades,
     // view vectors, point lights) is a difference against another render-space
     // quantity and uses vWorldPos directly.
-    vec3 absPos = vWorldPos + vec3(uRenderOrigin.x, 0.0, uRenderOrigin.y);
+    vec3 absPos = vWorldPos + uRenderOrigin;
 
     // Pattern domain per face kind.
     vec2 p;

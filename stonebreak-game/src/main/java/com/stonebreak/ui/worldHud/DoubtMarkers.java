@@ -6,7 +6,7 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.DoubtController;
 import com.stonebreak.player.combat.illusionist.IllusionistAbilityController;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.List;
 
@@ -45,7 +45,7 @@ public class DoubtMarkers {
         for (LivingEntity target : doubt.getAllDoubted()) {
             int stacks = doubt.getStacks(target);
             if (stacks <= 0) continue;
-            Vector3f pos = target.getPosition();
+            Vector3d pos = target.getPosition();
             float[] screen = WorldMarker.project(vp, pos.x, pos.y + target.getType().getHeight() + HEAD_OFFSET, pos.z,
                 screenW, screenH);
             if (screen == null) continue;

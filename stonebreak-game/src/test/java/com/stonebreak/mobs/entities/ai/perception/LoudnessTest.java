@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities.ai.perception;
 
 import com.stonebreak.mobs.entities.EntityType;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -85,8 +86,8 @@ class LoudnessTest {
         long[] clock = {0L};
         NoiseBus bus = new NoiseBus(() -> clock[0]);
         long heardUpTo = bus.latest();
-        bus.emit(new Vector3f(1, 2, 3), Loudness.BREAK_BLOCK);
-        bus.emit(new Vector3f(), 0f); // silent: never posted
+        bus.emit(new Vector3d(1, 2, 3), Loudness.BREAK_BLOCK);
+        bus.emit(new Vector3d(), 0f); // silent: never posted
 
         List<NoiseBus.NoiseEvent> heard = new ArrayList<>();
         bus.heardSince(heardUpTo, heard::add);

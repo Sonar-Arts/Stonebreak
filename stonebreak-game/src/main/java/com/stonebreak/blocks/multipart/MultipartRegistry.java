@@ -3,7 +3,7 @@ package com.stonebreak.blocks.multipart;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.registry.BlockRegistry;
 import com.stonebreak.gameplay.SboGameplay;
-import com.stonebreak.world.chunk.api.mightyMesh.mmsIntegration.CendaMesher;
+import com.stonebreak.world.voxel.StonebreakBlockTable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +18,7 @@ import java.util.function.Predicate;
  * read it without locking.
  *
  * <p>A neighbour is a "full cube" by the chunk mesher's own cube class
- * ({@link CendaMesher#isFullCube}): the same rule that decides which faces it culls.
+ * ({@link StonebreakBlockTable#isUnitCube}, the headless unit-cube rule of the voxel block table).
  */
 public final class MultipartRegistry {
 
@@ -52,7 +52,7 @@ public final class MultipartRegistry {
             synchronized (MultipartRegistry.class) {
                 table = shapes;
                 if (table == null) {
-                    table = build(CendaMesher::isFullCube);
+                    table = build(StonebreakBlockTable::isUnitCube);
                     shapes = table;
                 }
             }

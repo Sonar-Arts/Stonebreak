@@ -3,8 +3,9 @@ package com.stonebreak.mobs.entities;
 import com.openmason.engine.entity.model.EntityGeometry;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -41,15 +43,14 @@ class HitboxMatchesModelTest {
     /** Every glossary creature as the game spawns it — real scale, leg height and variant — plus a player. */
     private static List<LivingEntity> creatures() {
         World world = mock(World.class); // getBlockAt → null: open air
-        Chunk chunk = mock(Chunk.class);
-        when(chunk.areFeaturesPopulated()).thenReturn(true);
-        when(world.getChunkIfLoaded(anyInt(), anyInt())).thenReturn(chunk);
+        when(world.isColumnReadyAt(anyLong(), anyLong())).thenReturn(true);
+        when(world.isAreaReadyAt(anyLong(), anyLong(), anyLong())).thenReturn(true);
         EntityManager em = new EntityManager(world);
         List<LivingEntity> creatures = new ArrayList<>();
         for (EntityType type : EntityType.GLOSSARY_TYPES) {
-            creatures.add((LivingEntity) em.spawnEntity(type, new Vector3f(10.5f, 64f, -3.25f)));
+            creatures.add((LivingEntity) em.spawnEntity(type, new Vector3d(10.5f, 64f, -3.25f)));
         }
-        creatures.add(new RemotePlayer(world, new Vector3f(10.5f, 64f, -3.25f), 1, "archer"));
+        creatures.add(new RemotePlayer(world, new Vector3d(10.5f, 64f, -3.25f), 1, "archer"));
         em.cleanup();
         return creatures;
     }
@@ -57,9 +58,9 @@ class HitboxMatchesModelTest {
     /** The world-space box around the model's vertices, placed as SbePoseSolver + SbeRenderSupport place it. */
     private static Entity.BoundingBox renderedModel(LivingEntity le) {
         EntityGeometry geometry = SbeEntityRegistry.get(le.modelObjectId()).geometryFor(le.getTextureVariant());
-        Vector3f p = le.getPosition();
-        float anchorY = p.y - le.getLegHeight() - geometry.restMinY() * le.getScale().y + le.renderLift();
-        Matrix4f model = new Matrix4f().translate(p.x, anchorY, p.z)
+        Vector3d p = le.getPosition();
+        float anchorY = (float) (p.y - le.getLegHeight() - geometry.restMinY() * le.getScale().y + le.renderLift());
+        Matrix4f model = new Matrix4f().translate((float) p.x, anchorY, (float) p.z)
                 .rotateY((float) Math.toRadians(le.modelYaw()))
                 .scale(le.getScale());
         float[] v = geometry.vertices();

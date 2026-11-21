@@ -14,6 +14,8 @@ import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -90,9 +92,9 @@ public class AwarenessController {
     private long heardUntil = Long.MIN_VALUE;
     private PerceptionSnapshot snapshot = PerceptionSnapshot.NONE;
 
-    private final Vector3f lastKnownPos = new Vector3f();
+    private final Vector3d lastKnownPos = new Vector3d();
     private boolean hasLastKnown;
-    private final Vector3f noiseScratch = new Vector3f();
+    private final Vector3d noiseScratch = new Vector3d();
     private float loudestHeard;
 
     /** The player detected fastest this perception tick, filled by {@link #sense}. */
@@ -173,7 +175,7 @@ public class AwarenessController {
     }
 
     private void perceive(float dt) {
-        Vector3f selfPos = self.getPosition();
+        Vector3d selfPos = self.getPosition();
         best = null;
         bestRate = -1f;
         players.forEachPlayer(selfPos, activeRadius(), this::sense);
@@ -212,15 +214,15 @@ public class AwarenessController {
      * shows the light and range at someone.
      */
     private void sense(PlayerLocator.SensedPlayer player) {
-        Vector3f selfPos = self.getPosition();
-        float dist = selfPos.distance(player.position());
+        Vector3d selfPos = self.getPosition();
+        float dist = (float) selfPos.distance(player.position());
         float lightAtPlayer = light.lightAt(self.getWorld(), player.position());
         float effRange = effectiveRange(lightAtPlayer);
         float vision = vision(selfPos, player.position(), dist, lightAtPlayer, effRange, player.stealthed());
         float hearing = profile.hearGain() * Loudness.strength(player.loudness(), dist, profile.hearingRange());
         float rate = (vision + hearing) * StealthSkill.factor(player.stealthSkill());
         boolean better = rate > bestRate
-                || (rate == bestRate && best != null && dist < selfPos.distance(best.position()));
+                || (rate == bestRate && best != null && dist < (float) selfPos.distance(best.position()));
         if (better) {
             best = player;
             bestRate = rate;
@@ -268,7 +270,7 @@ public class AwarenessController {
     }
 
     /** Sight per second of a player, before alertness; 0 when out of range, behind, or blocked. */
-    private float vision(Vector3f selfPos, Vector3f playerPos, float dist, float lightAtPlayer, float effRange,
+    private float vision(Vector3dc selfPos, Vector3dc playerPos, float dist, float lightAtPlayer, float effRange,
                          boolean stealthed) {
         if (dist >= effRange) return 0f;
         float angle = angleFactor(selfPos, playerPos);
@@ -285,9 +287,9 @@ public class AwarenessController {
     }
 
     /** 1 inside the forward cone, the side factor out to the side limit, 0 behind. */
-    private float angleFactor(Vector3f selfPos, Vector3f playerPos) {
-        float dx = playerPos.x - selfPos.x;
-        float dz = playerPos.z - selfPos.z;
+    private float angleFactor(Vector3dc selfPos, Vector3dc playerPos) {
+        float dx = (float) (playerPos.x() - selfPos.x());
+        float dz = (float) (playerPos.z() - selfPos.z());
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len < 0.01f) return 1f; // on top of us
         // Forward from yaw, honoring the entity type's model yaw offset
@@ -301,10 +303,11 @@ public class AwarenessController {
     }
 
     /** Whether nothing solid stands between the mob's eye and the player's chest. */
-    private boolean lineOfSight(Vector3f selfPos, Vector3f playerPos) {
-        Vector3f eye = new Vector3f(selfPos.x, selfPos.y + self.getType().getHeight() * 0.9f, selfPos.z);
-        Vector3f dir = new Vector3f(playerPos.x, playerPos.y + PlayerConstants.PLAYER_HEIGHT * 0.5f, playerPos.z)
-                .sub(eye);
+    private boolean lineOfSight(Vector3dc selfPos, Vector3dc playerPos) {
+        Vector3d eye = new Vector3d(selfPos.x(), selfPos.y() + self.getType().getHeight() * 0.9f, selfPos.z());
+        Vector3f dir = new Vector3f((float) (playerPos.x() - eye.x),
+                (float) (playerPos.y() + PlayerConstants.PLAYER_HEIGHT * 0.5f - eye.y),
+                (float) (playerPos.z() - eye.z));
         float losDist = dir.length();
         if (losDist < 0.0001f) return true;
         dir.div(losDist);
@@ -317,7 +320,7 @@ public class AwarenessController {
      * the loudest one heard, and leaves its position in {@link #noiseScratch}. The loudest, not the
      * sum: a swing and the death it caused are one commotion, not two.
      */
-    private float hearEvents(Vector3f selfPos) {
+    private float hearEvents(Vector3dc selfPos) {
         NoiseBus bus = bus();
         if (bus == null) return 0f;
         long latest = bus.latest();
@@ -330,7 +333,7 @@ public class AwarenessController {
             if (e.source() == self) {
                 return; // a mob does not hear itself
             }
-            float s = Loudness.strength(e.loudness(), selfPos.distance(e.position()), profile.hearingRange());
+            float s = Loudness.strength(e.loudness(), (float) selfPos.distance(e.position()), profile.hearingRange());
             if (s > loudestHeard) {
                 loudestHeard = s;
                 noiseScratch.set(e.position());
@@ -352,10 +355,10 @@ public class AwarenessController {
      * A player hit this mob: it is alerted outright, knowing where the blow came from, and goes
      * after whoever stands there.
      */
-    public void onAttacked(Vector3f attackerPosition) {
+    public void onAttacked(Vector3dc attackerPosition) {
         if (!self.isAlive()) return;
         meter = PerceptionProfile.METER_MAX;
-        remember(attackerPosition != null ? attackerPosition : self.getPosition());
+        remember(attackerPosition != null ? attackerPosition : (Vector3dc) self.getPosition());
         if (attackerPosition != null) {
             targetId = playerAt(attackerPosition);
         }
@@ -369,7 +372,7 @@ public class AwarenessController {
      * just keeps looking, pointed at the new spot). Already alerted mobs ignore it. A shout-made
      * alert does not shout again, so one sighting cannot chain across the map.
      */
-    public void hearShout(Vector3f lastKnown, int targetId) {
+    public void hearShout(Vector3dc lastKnown, int targetId) {
         if (!self.isAlive() || state == AwarenessState.ALERTED) return;
         PlayerLocator.SensedPlayer seen = visiblePlayer();
         if (seen != null) {
@@ -392,11 +395,11 @@ public class AwarenessController {
 
     /** A player this mob can see right now, or null. */
     private PlayerLocator.SensedPlayer visiblePlayer() {
-        Vector3f selfPos = self.getPosition();
+        Vector3d selfPos = self.getPosition();
         PlayerLocator.SensedPlayer[] seen = new PlayerLocator.SensedPlayer[1];
         players.forEachPlayer(selfPos, activeRadius(), p -> {
             float lightAtPlayer = light.lightAt(self.getWorld(), p.position());
-            if (seen[0] == null && vision(selfPos, p.position(), selfPos.distance(p.position()), lightAtPlayer,
+            if (seen[0] == null && vision(selfPos, p.position(), (float) selfPos.distance(p.position()), lightAtPlayer,
                     effectiveRange(lightAtPlayer), p.stealthed()) > 0f) {
                 seen[0] = p;
             }
@@ -405,11 +408,11 @@ public class AwarenessController {
     }
 
     /** The id of the player standing nearest {@code position}, or {@link PlayerLocator#NEAREST} if none is close. */
-    private int playerAt(Vector3f position) {
+    private int playerAt(Vector3dc position) {
         int[] id = {PlayerLocator.NEAREST};
         float[] bestSq = {Float.MAX_VALUE};
         players.forEachPlayer(position, ATTACKER_MATCH_RADIUS, p -> {
-            float d = p.position().distanceSquared(position);
+            float d = (float) p.position().distanceSquared(position);
             if (d < bestSq[0]) {
                 bestSq[0] = d;
                 id[0] = p.id();
@@ -446,7 +449,7 @@ public class AwarenessController {
         if (to == AwarenessState.ALERTED && !byShout && profile.shoutRange() > 0f && hasLastKnown
                 && shoutCooldown <= 0f) {
             shoutCooldown = SHOUT_COOLDOWN_SECONDS;
-            shouts.shout(self, new Vector3f(lastKnownPos), targetId, profile.shoutRange());
+            shouts.shout(self, new Vector3d(lastKnownPos), targetId, profile.shoutRange());
         }
     }
 
@@ -479,7 +482,7 @@ public class AwarenessController {
 
     // ── Memory ────────────────────────────────────────────────────────────────
 
-    private void remember(Vector3f position) {
+    private void remember(Vector3dc position) {
         lastKnownPos.set(position);
         hasLastKnown = true;
     }
@@ -494,7 +497,7 @@ public class AwarenessController {
      * <em>whether</em> the mob has noticed the player, the behaviours decide what to do about it,
      * and navigation works out how to get there.
      */
-    public Vector3f lastKnownPlayerPosition(Vector3f out) {
+    public Vector3d lastKnownPlayerPosition(Vector3d out) {
         return hasLastKnown ? out.set(lastKnownPos) : null;
     }
 }

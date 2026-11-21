@@ -7,6 +7,7 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.StubMob;
 import com.stonebreak.mobs.entities.ai.nav.NavProfiles;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +15,7 @@ import java.util.function.IntPredicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -33,9 +34,9 @@ class VestigeStepTest {
 
     private static World terrain(IntPredicate solidFromX3) {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
-            int y = inv.getArgument(1);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            long x = inv.getArgument(0);
+            int y = (int) (long) inv.getArgument(1);
             boolean solid = y < GROUND || (x >= 3 && solidFromX3.test(y));
             return solid ? BlockType.STONE : BlockType.AIR;
         });
@@ -58,7 +59,7 @@ class VestigeStepTest {
     @Test
     void itRunsStraightUpAOneBlockRise() {
         World world = terrain(y -> y == GROUND);
-        Vestige vestige = new Vestige(world, new Vector3f(0.5f, GROUND, 0.5f));
+        Vestige vestige = new Vestige(world, new Vector3d(0.5f, GROUND, 0.5f));
         runEast(world, vestige);
         assertTrue(vestige.getPosition().x > 6f, "kept running: " + vestige.getPosition());
         assertEquals(GROUND + 1, vestige.getPosition().y, 0.05f);
@@ -67,7 +68,7 @@ class VestigeStepTest {
     @Test
     void somethingWithFeetStillHasToJumpIt() {
         World world = terrain(y -> y == GROUND);
-        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3f(0.5f, GROUND, 0.5f), world);
+        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3d(0.5f, GROUND, 0.5f), world);
         runEast(world, goblin);
         assertTrue(goblin.getPosition().x < 3f, "walked into the step: " + goblin.getPosition());
     }
@@ -75,7 +76,7 @@ class VestigeStepTest {
     @Test
     void aTwoBlockWallStopsIt() {
         World world = terrain(y -> y == GROUND || y == GROUND + 1);
-        Vestige vestige = new Vestige(world, new Vector3f(0.5f, GROUND, 0.5f));
+        Vestige vestige = new Vestige(world, new Vector3d(0.5f, GROUND, 0.5f));
         runEast(world, vestige);
         assertTrue(vestige.getPosition().x < 3f, "went through or over the wall: " + vestige.getPosition());
     }
@@ -84,7 +85,7 @@ class VestigeStepTest {
     void aStepWithNoRoomAboveItStopsIt() {
         // One block up, but a ceiling two blocks above the step: no room for a two-block body.
         World world = terrain(y -> y == GROUND || y == GROUND + 2);
-        Vestige vestige = new Vestige(world, new Vector3f(0.5f, GROUND, 0.5f));
+        Vestige vestige = new Vestige(world, new Vector3d(0.5f, GROUND, 0.5f));
         runEast(world, vestige);
         assertTrue(vestige.getPosition().x < 3f, "squeezed under the ceiling: " + vestige.getPosition());
         assertEquals(GROUND, vestige.getPosition().y, 0.05f);
@@ -93,9 +94,9 @@ class VestigeStepTest {
     @Test
     void itsRoutesTreatAWholeBlockAsAStepNotAJump() {
         World world = terrain(y -> false);
-        assertEquals(Vestige.STEP_UP, NavProfiles.forEntity(new Vestige(world, new Vector3f())).maxStepUp(), 1e-6f);
+        assertEquals(Vestige.STEP_UP, NavProfiles.forEntity(new Vestige(world, new Vector3d())).maxStepUp(), 1e-6f);
         assertEquals(NavProfiles.MAX_STEP_UP,
-                NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3f(), world)).maxStepUp(), 1e-6f);
+                NavProfiles.forEntity(new StubMob(EntityType.GOBLIN, new Vector3d(), world)).maxStepUp(), 1e-6f);
     }
 
     @Test

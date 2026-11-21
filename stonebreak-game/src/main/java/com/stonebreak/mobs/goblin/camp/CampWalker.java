@@ -16,7 +16,7 @@ import org.joml.Vector3i;
 public interface CampWalker {
 
     /** No world to walk in: nothing reachable. */
-    NavWorld.Reach NOTHING = new NavWorld.Reach(0, new int[0], new int[0], new float[0], new float[0]);
+    NavWorld.Reach NOTHING = new NavWorld.Reach(0, new long[0], new int[0], new double[0], new float[0]);
 
     /** How far below the given feet the walk looks for where the goblin really stands. */
     int FOOTING_DROP = 2;

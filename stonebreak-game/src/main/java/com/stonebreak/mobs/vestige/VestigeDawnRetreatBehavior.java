@@ -3,7 +3,7 @@ package com.stonebreak.mobs.vestige;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * Dawn: the fog lifts and the Vestige goes, whatever it was doing — veiled, away from its victim, and
@@ -18,7 +18,7 @@ final class VestigeDawnRetreatBehavior extends VestigeBehavior {
     private static final float RETREAT_SPEED = 1.5f;
 
     private float elapsed;
-    private Vector3f goal;
+    private Vector3d goal;
 
     VestigeDawnRetreatBehavior(Vestige vestige) {
         super(vestige);

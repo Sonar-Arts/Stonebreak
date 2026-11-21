@@ -57,12 +57,12 @@ public class EntityRenderer {
     }
 
     /** Queues the food hanging on nearby meat racks for the drop pass (see {@link MeatRackItemRenderer}). */
-    public void queueMeatRackItems(com.stonebreak.world.World world, Vector3f cameraPos) {
+    public void queueMeatRackItems(com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         meatRackItemRenderer.queue(world, cameraPos);
     }
 
     /** Queues the food cooking on nearby campfires for the drop pass (see {@link CampfireFoodRenderer}). */
-    public void queueCampfireFood(com.stonebreak.world.World world, Vector3f cameraPos) {
+    public void queueCampfireFood(com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         campfireFoodRenderer.queue(world, cameraPos);
     }
 
@@ -112,7 +112,7 @@ public class EntityRenderer {
      * @param cameraPos        The camera position (for fog distance), can be null
      */
     public void renderEntity(Entity entity, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                            com.stonebreak.world.World world, Vector3f cameraPos) {
+                            com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         if (!initialized || !entity.isAlive()) return;
         if (!isInRenderableChunk(entity, world)) return;
 
@@ -188,7 +188,7 @@ public class EntityRenderer {
      */
     public void renderLocalPlayer(com.stonebreak.player.Player player,
                                   Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                  com.stonebreak.world.World world, Vector3f cameraPos) {
+                                  com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         if (!initialized) return;
         playerFigureRenderer.renderLocalPlayer(player, viewMatrix, projectionMatrix, world, cameraPos);
     }
@@ -340,7 +340,7 @@ public class EntityRenderer {
     public void renderShadowCasters(com.stonebreak.player.Player player,
                                     Matrix4f lightView, Matrix4f lightProj,
                                     Vector3f cascadeCenter, float cascadeRadius) {
-        renderShadowCasters(player, null, lightView, lightProj, cascadeCenter, cascadeRadius);
+        renderShadowCasters(player, null, lightView, lightProj, new org.joml.Vector3d(cascadeCenter), cascadeRadius);
     }
 
     /**
@@ -350,7 +350,7 @@ public class EntityRenderer {
      */
     public void renderShadowCasters(com.stonebreak.player.Player player, Entity excluded,
                                     Matrix4f lightView, Matrix4f lightProj,
-                                    Vector3f cascadeCenter, float cascadeRadius) {
+                                    org.joml.Vector3dc cascadeCenter, float cascadeRadius) {
         if (!initialized) return;
         shadowCasterRenderer.render(player, excluded, lightView, lightProj, cascadeCenter, cascadeRadius);
     }
@@ -371,11 +371,9 @@ public class EntityRenderer {
         if (world == null || !entity.isNetworkShadow()) {
             return true;
         }
-        Vector3f p = entity.getPosition();
-        int cs = com.stonebreak.world.operations.WorldConfiguration.CHUNK_SIZE;
-        int cx = Math.floorDiv((int) Math.floor(p.x), cs);
-        int cz = Math.floorDiv((int) Math.floor(p.z), cs);
-        return world.isChunkRenderableAt(cx, cz);
+        org.joml.Vector3d p = entity.getPosition();
+        // "Renderable" = the shadow stands on known ground (its cell and the one below are known).
+        return world.isAreaReadyAt((long) Math.floor(p.x), (long) Math.floor(p.y), (long) Math.floor(p.z));
     }
 
     /**

@@ -32,10 +32,16 @@ class FastLodBandPolicyTest {
     void nullOutsideRing() {
         int inner = 8, range = 24;
         int outer = inner + range;
-        int preloadInner = inner - FastLodBandPolicy.PRELOAD_RING;
+        int preloadInner = FastLodBandPolicy.wholeDisc() ? -1 : inner - FastLodBandPolicy.PRELOAD_RING;
 
         for (int d = 0; d <= preloadInner; d++) {
             assertNull(FastLodBandPolicy.levelFor(d, inner, range, Q), "inside preloadInner d=" + d);
+        }
+        if (FastLodBandPolicy.wholeDisc()) {
+            // Cubic runtime: every column of the native disc keeps a finest node (per-column handover).
+            for (int d = 0; d <= inner; d++) {
+                assertEquals(FastLodLevel.finest(), FastLodBandPolicy.levelFor(d, inner, range, Q), "disc d=" + d);
+            }
         }
         assertNotNull(FastLodBandPolicy.levelFor(outer, inner, range, Q), "outer edge is inclusive");
         assertNull(FastLodBandPolicy.levelFor(outer + 1, inner, range, Q));
@@ -120,11 +126,17 @@ class FastLodBandPolicyTest {
 
     @Test
     void degenerateInnerDoesNotUnderflow() {
-        // inner=0: no native disk, no preload zone; ring starts at d=1.
-        assertNull(FastLodBandPolicy.levelFor(0, 0, 5, Q));
+        // Whole-disc coverage: even the player's own column has a node (it shows while not READY).
+        if (FastLodBandPolicy.wholeDisc()) {
+            assertEquals(FastLodLevel.L0, FastLodBandPolicy.levelFor(0, 0, 5, Q));
+            assertEquals(FastLodLevel.finest(), FastLodBandPolicy.levelFor(0, 1, 5, Q));
+        } else {
+            // inner=0: no native disk, no preload zone; ring starts at d=1.
+            assertNull(FastLodBandPolicy.levelFor(0, 0, 5, Q));
+            // inner=1: preloadInner clamps to 0, d=1 is the whole preload zone.
+            assertNull(FastLodBandPolicy.levelFor(0, 1, 5, Q));
+        }
         assertEquals(FastLodLevel.L0, FastLodBandPolicy.levelFor(1, 0, 5, Q));
-        // inner=1: preloadInner clamps to 0, d=1 is the whole preload zone.
-        assertNull(FastLodBandPolicy.levelFor(0, 1, 5, Q));
         assertEquals(FastLodLevel.finest(), FastLodBandPolicy.levelFor(1, 1, 5, Q));
     }
 

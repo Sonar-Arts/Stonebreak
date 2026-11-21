@@ -18,6 +18,12 @@ exactly in its interior; a sum of logistics was tried first and rejected,
 because its tails never vanish and the lowland band never actually reaches its
 configured rate.
 
+Curve v2 (2026-11-19) adds a *shelf* band below sea level: a finer rate from the
+shore down to `shelf_base_m`, blended (same finite-support smoothstep) into the
+deep-ocean rate below it, so coastal seas are tens of blocks deep with a visible
+floor instead of 2-5 blocks of flat sand. `shelf_meters_per_block == 0` is the v1
+curve, bit for bit (saved v1 worlds keep their curve: no seams).
+
 The game owns the knobs (`TerrainScale` in stonebreak-game, sent in the service
 handshake as a `WorldConfig`); the model only evaluates the curve.
 """
@@ -30,8 +36,9 @@ import numpy as np
 
 
 # The integration grid. Wide enough that both endpoints already fall outside
-# the block column (asserted in _curve_table), so np.interp's edge clamping can
-# never invent an in-range block height for an out-of-range elevation.
+# the block column (asserted in _curve_table, which widens it for deep columns),
+# so np.interp's edge clamping can never invent an in-range block height for an
+# out-of-range elevation.
 _TABLE_MIN_M = -20000.0
 _TABLE_MAX_M = 20000.0
 _TABLE_STEP_M = 1.0
@@ -70,6 +77,19 @@ class HeightCurve:
     highland_blend_m: float
     sea_level: int
     world_height: int
+    #: Bottom of the block column (inclusive); heights clamp to [min_y, world_height - 1].
+    min_y: int = 0
+    #: Shelf band (curve v2): metres per block from the shore blend down to `shelf_base_m`. 0 = no shelf band
+    #: (the v1 curve: the ocean rate runs right up to the shore blend).
+    shelf_meters_per_block: float = 0.0
+    #: Centre of the shelf -> ocean rate blend (metres, below sea level), and its half-width.
+    shelf_base_m: float = -200.0
+    shelf_blend_m: float = 100.0
+    #: Shallows band (curve v2, round 2): an even finer rate for the first metres below the waterline, blended into the
+    #: shelf rate around `shallow_base_m` (+- `shallow_blend_m`). 0 = none. Needs a shelf band and a narrow shore blend.
+    shallow_meters_per_block: float = 0.0
+    shallow_base_m: float = -16.0
+    shallow_blend_m: float = 8.0
 
     def __post_init__(self) -> None:
         rates = (
@@ -80,6 +100,31 @@ class HeightCurve:
         )
         if not all(r > 0.0 for r in rates):
             raise ValueError(f"all metres-per-block rates must be > 0, got {rates}")
+        if self.shelf_meters_per_block < 0.0:
+            raise ValueError(f"shelf_meters_per_block must be >= 0 (0 = no shelf band), got {self.shelf_meters_per_block}")
+        if self.has_shelf:
+            if not self.shelf_blend_m > 0.0:
+                raise ValueError(f"shelf_blend_m must be > 0, got {self.shelf_blend_m}")
+            # The shelf -> ocean blend must end before the shore blend starts (same rule as the land bands).
+            if self.shelf_base_m + self.shelf_blend_m > -self.shore_blend_m:
+                raise ValueError(
+                    "shelf and shore blend windows overlap: "
+                    f"{self.shelf_base_m} + {self.shelf_blend_m} > -{self.shore_blend_m}"
+                )
+        if self.shallow_meters_per_block < 0.0:
+            raise ValueError(f"shallow_meters_per_block must be >= 0, got {self.shallow_meters_per_block}")
+        if self.has_shallows:
+            if not self.has_shelf:
+                raise ValueError("a shallows band needs a shelf band")
+            if not self.shallow_blend_m > 0.0:
+                raise ValueError(f"shallow_blend_m must be > 0, got {self.shallow_blend_m}")
+            if self.shallow_base_m - self.shallow_blend_m < self.shelf_base_m + self.shelf_blend_m:
+                raise ValueError("shallows and shelf blend windows overlap: "
+                                 f"{self.shallow_base_m} - {self.shallow_blend_m} < "
+                                 f"{self.shelf_base_m} + {self.shelf_blend_m}")
+            if self.shallow_base_m + self.shallow_blend_m > -self.shore_blend_m:
+                raise ValueError("shallows and shore blend windows overlap: "
+                                 f"{self.shallow_base_m} + {self.shallow_blend_m} > -{self.shore_blend_m}")
         widths = (self.shore_blend_m, self.midland_blend_m, self.highland_blend_m)
         if not all(w > 0.0 for w in widths):
             raise ValueError(f"all blend widths must be > 0, got {widths}")
@@ -117,7 +162,23 @@ class HeightCurve:
             highland_blend_m=w.highland_blend_m,
             sea_level=w.sea_level,
             world_height=w.world_height,
+            min_y=getattr(w, "min_y", 0),
+            shelf_meters_per_block=getattr(w, "shelf_m_per_block", 0.0),
+            shelf_base_m=getattr(w, "shelf_base_m", -200.0),
+            shelf_blend_m=getattr(w, "shelf_blend_m", 100.0),
+            shallow_meters_per_block=getattr(w, "shallow_m_per_block", 0.0),
+            shallow_base_m=getattr(w, "shallow_base_m", -16.0),
+            shallow_blend_m=getattr(w, "shallow_blend_m", 8.0),
         )
+
+    @property
+    def has_shallows(self) -> bool:
+        return self.shallow_meters_per_block > 0.0
+
+    @property
+    def has_shelf(self) -> bool:
+        """True for a v2 curve (a shelf band below sea level)."""
+        return self.shelf_meters_per_block > 0.0
 
     def rate(self, elev_m: np.ndarray) -> np.ndarray:
         """Metres per block at each elevation. Strictly positive."""
@@ -133,6 +194,12 @@ class HeightCurve:
         # blended rate under the lowland rate.
         ramp = np.clip(ramp, min(lo, hi), max(lo, hi))
 
+        if self.has_shelf:
+            shelf = np.full_like(elev_m, self.shelf_meters_per_block)
+            ocean = _blend(ocean, shelf, elev_m, self.shelf_base_m, self.shelf_blend_m)
+        if self.has_shallows:
+            shallow = np.full_like(elev_m, self.shallow_meters_per_block)
+            ocean = _blend(ocean, shallow, elev_m, self.shallow_base_m, self.shallow_blend_m)
         m = _blend(ocean, lowland, elev_m, 0.0, self.shore_blend_m)
         m = _blend(m, ramp, elev_m, self.lowland_top_m, self.midland_blend_m)
         m = _blend(m, highland, elev_m, self.highland_base_m, self.highland_blend_m)
@@ -145,7 +212,7 @@ class HeightCurve:
 
     def to_block_height(self, elev_m: np.ndarray) -> np.ndarray:
         blocks = np.floor(self.to_block_height_exact(elev_m))
-        return np.clip(blocks, 0, self.world_height - 1).astype(np.int16)
+        return np.clip(blocks, self.min_y, self.world_height - 1).astype(np.int16)
 
     def to_elevation(self, block_height: np.ndarray) -> np.ndarray:
         """Inverse: block height back to elevation in metres.
@@ -153,28 +220,42 @@ class HeightCurve:
         The table is strictly increasing, so this is well defined, but it is only
         a left inverse of `to_block_height` -- that one floors and clamps, so what
         comes back is the *bottom* of the block's elevation band, and a column
-        clamped at 0 or `world_height - 1` is unrecoverable. For reading a tile
+        clamped at `min_y` or `world_height - 1` is unrecoverable. For reading a tile
         cache back as a DEM or building test fixtures, not for round-tripping.
         """
         elev_grid, block_grid = _curve_table(self)
         return np.interp(np.asarray(block_height, dtype=np.float64), block_grid, elev_grid)
 
 
-@lru_cache(maxsize=8)
-def _curve_table(curve: HeightCurve) -> tuple[np.ndarray, np.ndarray]:
-    """Integrate 1/m(e) onto a fixed grid. Memoized per distinct knob set."""
-    elev = np.arange(_TABLE_MIN_M, _TABLE_MAX_M + _TABLE_STEP_M, _TABLE_STEP_M)
+def _integrate(curve: HeightCurve, lo_m: float, hi_m: float) -> tuple[np.ndarray, np.ndarray]:
+    elev = np.arange(lo_m, hi_m + _TABLE_STEP_M, _TABLE_STEP_M)
     inv_rate = 1.0 / curve.rate(elev)
     # Cumulative trapezoid, then anchored so elevation 0 lands exactly on sea level.
     blocks = np.concatenate(
         [[0.0], np.cumsum(0.5 * (inv_rate[1:] + inv_rate[:-1]) * _TABLE_STEP_M)]
     )
-    blocks = blocks - np.interp(0.0, elev, blocks) + curve.sea_level
+    return elev, blocks - np.interp(0.0, elev, blocks) + curve.sea_level
 
-    if blocks[0] > 0.0 or blocks[-1] < curve.world_height - 1:
+
+@lru_cache(maxsize=8)
+def _curve_table(curve: HeightCurve) -> tuple[np.ndarray, np.ndarray]:
+    """Integrate 1/m(e) onto a fixed grid. Memoized per distinct knob set.
+
+    The grid is +-20 km (bit-identical tables for every column that fits in it); a deeper or taller column
+    (the cubic world's min_y -384) widens the side that falls short, doubling up to +-320 km."""
+    lo_m, hi_m = _TABLE_MIN_M, _TABLE_MAX_M
+    elev, blocks = _integrate(curve, lo_m, hi_m)
+    while (blocks[0] > curve.min_y or blocks[-1] < curve.world_height - 1) and hi_m - lo_m < 640000.0:
+        if blocks[0] > curve.min_y:
+            lo_m *= 2.0
+        if blocks[-1] < curve.world_height - 1:
+            hi_m *= 2.0
+        elev, blocks = _integrate(curve, lo_m, hi_m)
+
+    if blocks[0] > curve.min_y or blocks[-1] < curve.world_height - 1:
         raise ValueError(
-            f"curve does not span the block column within +-{_TABLE_MAX_M:.0f} m "
-            f"(spans y {blocks[0]:.1f}..{blocks[-1]:.1f}, need 0..{curve.world_height - 1}); "
+            f"curve does not span the block column within {lo_m:.0f}..{hi_m:.0f} m "
+            f"(spans y {blocks[0]:.1f}..{blocks[-1]:.1f}, need {curve.min_y}..{curve.world_height - 1}); "
             "np.interp would clamp an out-of-range elevation to an in-range block height"
         )
     return elev, blocks

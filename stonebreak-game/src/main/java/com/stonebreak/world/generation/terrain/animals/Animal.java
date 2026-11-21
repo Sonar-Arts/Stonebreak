@@ -2,7 +2,8 @@ package com.stonebreak.world.generation.terrain.animals;
 
 import java.util.Random;
 
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.blocks.BlockType;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.World;
 
 /**
@@ -26,7 +27,7 @@ public interface Animal {
      * @param random Random number generator for spawning decisions
      * @param randomLock Synchronization lock for thread-safe random access
      */
-    void spawn(World world, Chunk chunk, Random random, Object randomLock);
+    void spawn(World world, Cube chunk, Random random, Object randomLock);
     
     /**
      * Checks if this animal can spawn in the given chunk based on biome and other conditions.
@@ -34,7 +35,7 @@ public interface Animal {
      * @param chunk The chunk to check
      * @return true if this animal can spawn in the chunk, false otherwise
      */
-    boolean canSpawnInChunk(Chunk chunk);
+    boolean canSpawnInChunk(Cube chunk);
     
     /**
      * Gets the spawn probability for this animal type (0.0 to 1.0).
@@ -57,4 +58,22 @@ public interface Animal {
      * @return Maximum spawn count
      */
     int getMaxSpawnCount();
+
+    /** The block at cube-local (lx, lz) and WORLD y (column helpers for the spawn code). */
+    static BlockType blockAt(Cube cube, int lx, long y, int lz) {
+        return cube.world().getBlockAt(cube.minX() + lx, y, cube.minZ() + lz);
+    }
+
+    /** True when one of the cube's 32x32 columns (sampled every 4 blocks) has {@code block} on top. */
+    static boolean surfaceHas(Cube cube, BlockType block) {
+        for (int x = 0; x < Cube.EDGE; x += 4) {
+            for (int z = 0; z < Cube.EDGE; z += 4) {
+                long wx = cube.minX() + x, wz = cube.minZ() + z;
+                if (cube.world().getBlockAt(wx, cube.world().topY(wx, wz) - 1, wz) == block) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }

@@ -39,7 +39,7 @@ class StateConverterRespawnTest {
             StateConverter.applyPlayerData(loaded, saved);
             assertFalse(loaded.isDead());
             assertEquals(loaded.getMaxHealth(), loaded.getHealth(), "full health, not alive at zero");
-            assertEquals(SPAWN, loaded.getPosition(), "at the world spawn, not where they died");
+            assertEquals(new org.joml.Vector3d(SPAWN), loaded.getPosition(), "at the world spawn, not where they died");
         }
     }
 
@@ -57,7 +57,7 @@ class StateConverterRespawnTest {
             Player loaded = new Player(world);
             StateConverter.applyPlayerData(loaded, StateConverter.toPlayerData(hurt, "w"));
             assertEquals(3f, loaded.getHealth());
-            assertEquals(new Vector3f(300, 12, 300), loaded.getPosition());
+            assertEquals(new org.joml.Vector3d(300, 12, 300), loaded.getPosition());
         }
     }
 }

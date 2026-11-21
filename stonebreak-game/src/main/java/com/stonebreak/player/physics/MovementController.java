@@ -7,6 +7,7 @@ import com.stonebreak.player.locomotion.JumpHandler;
 import com.stonebreak.player.locomotion.SpectatorController;
 import com.stonebreak.player.locomotion.SwimmingController;
 import com.stonebreak.player.state.PhysicsState;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import static com.stonebreak.player.PlayerConstants.CURRENT_RESISTANCE_THRESHOLD;
@@ -69,7 +70,7 @@ public class MovementController {
     }
 
     public void integrateAndCollide() {
-        Vector3f position = state.getPosition();
+        Vector3d position = state.getPosition();
         Vector3f velocity = state.getVelocity();
         float dt = Game.getDeltaTime();
 

@@ -60,7 +60,7 @@ public final class ServerIllusionHandler {
         IllusionDecoy.MirrorSource source = mirrorOf(sp);
         Item held = heldItem(sp.inventory());
         for (float angle : IllusionDecoy.fanAngles()) {
-            IllusionDecoy decoy = new IllusionDecoy(ctx.world(), new Vector3f(sp.x(), sp.y(), sp.z()),
+            IllusionDecoy decoy = new IllusionDecoy(ctx.world(), new org.joml.Vector3d(sp.x(), sp.y(), sp.z()),
                     source, angle);
             decoy.setHeldItem(held);
             decoy.setOwnerPlayerId(sp.playerId());
@@ -110,10 +110,10 @@ public final class ServerIllusionHandler {
      */
     private static IllusionDecoy.MirrorSource mirrorOf(ServerPlayer sp) {
         return new IllusionDecoy.MirrorSource() {
-            private final Vector3f pos = new Vector3f();
+            private final org.joml.Vector3d pos = new org.joml.Vector3d();
 
             @Override
-            public Vector3f position() {
+            public org.joml.Vector3d position() {
                 return pos.set(sp.x(), sp.y(), sp.z());
             }
 

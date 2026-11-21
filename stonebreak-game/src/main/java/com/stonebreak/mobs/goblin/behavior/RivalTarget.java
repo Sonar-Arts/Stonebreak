@@ -6,7 +6,8 @@ import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.behavior.AttackTarget;
 import com.stonebreak.mobs.entities.ai.perception.SightLine;
 import com.stonebreak.mobs.goblin.Goblin;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * The nearest goblin of the rival pack this goblin's pack is fighting. Pack fights are noisy — any
@@ -17,7 +18,7 @@ public final class RivalTarget implements AttackTarget {
     private final Goblin goblin;
     private final DamageType damageType;
     private final SightLine sight = new SightLine();
-    private final Vector3f aim = new Vector3f();
+    private final Vector3d aim = new Vector3d();
 
     public RivalTarget(Goblin goblin, DamageType damageType) {
         this.goblin = goblin;
@@ -34,13 +35,13 @@ public final class RivalTarget implements AttackTarget {
     }
 
     @Override
-    public Vector3f position(AiContext context) {
+    public Vector3d position(AiContext context) {
         Goblin rival = rival();
         return rival != null ? rival.getPosition() : null;
     }
 
     @Override
-    public boolean canSee(AiContext context, Vector3f eye) {
+    public boolean canSee(AiContext context, Vector3dc eye) {
         Goblin rival = rival();
         if (rival == null) {
             return false;

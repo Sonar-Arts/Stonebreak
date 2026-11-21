@@ -1,0 +1,1620 @@
+{
+  "schema": 1,
+  "name": "exp2-r3",
+  "model": "DaedalusTGM-Exp-2",
+  "generator": "WorldGenerator2",
+  "content_id": "ec31f3be306aaf477c1e09af3f4ba3a07566a61e9e78f5f16e1c2d2edd38f1d1",
+  "created_utc": "2026-11-19T22:36:44Z",
+  "source_dir": "checkpoints/exp2/world_exp2f",
+  "made_by": "scripts/make_release.py",
+  "attribution": "ATTRIBUTION.md (copied into this folder)",
+  "sources": {
+    "ahn": {
+      "name": "Actueel Hoogtebestand Nederland (AHN) DTM 0.5 m",
+      "licence": "CC0 1.0"
+    },
+    "chelsa21": {
+      "name": "CHELSA v2.1 climatologies 1981-2010 (+ CHELSA-BIOCLIM+ pet_penman_mean, swe)",
+      "licence": "CC0 1.0"
+    },
+    "cudem": {
+      "name": "NOAA NCEI CUDEM 1/9 arc-second (Hawaii, Puerto Rico)",
+      "licence": "US Government work / CC0 1.0"
+    },
+    "era5_wb2": {
+      "name": "ERA5 (Copernicus C3S) via WeatherBench 2",
+      "licence": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+    },
+    "esa_worldcover2021": {
+      "name": "ESA WorldCover 10 m 2021 v200 (Zanaga et al. 2022, doi:10.5281/zenodo.7254221)",
+      "licence": "CC BY 4.0"
+    },
+    "eth_canopy2020": {
+      "name": "ETH Global Canopy Height 2020 10 m (Lang, Jetz, Schindler, Wegner 2023, Nat. Ecol. Evol.; doi:10.3929/ethz-b-000609802)",
+      "licence": "CC BY 4.0"
+    },
+    "gebco2024": {
+      "name": "GEBCO 2024 Grid",
+      "licence": "public domain, GEBCO terms of use (acknowledgement required)"
+    },
+    "gedtm30": {
+      "name": "GEDTM30 v1.2 (OpenGeoHub)",
+      "licence": "CC BY 4.0"
+    },
+    "glo30": {
+      "name": "Copernicus DEM GLO-30 (Copernicus WorldDEM-30)",
+      "licence": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)"
+    },
+    "ign_rgealti": {
+      "name": "IGN RGE ALTI + LiDAR HD MNT (France)",
+      "licence": "Licence Ouverte / Open Licence v2.0 (Etalab)"
+    },
+    "kartverket_nhm": {
+      "name": "Kartverket Nasjonal hoydemodell DTM (WCS nhm_dtm_topo_25833)",
+      "licence": "CC BY 4.0"
+    },
+    "linz_dem": {
+      "name": "Toitu Te Whenua LINZ New Zealand LiDAR 1m DEM",
+      "licence": "CC BY 4.0"
+    },
+    "swissalti3d": {
+      "name": "swisstopo swissALTI3D",
+      "licence": "swisstopo free geodata (OGD): commercial use allowed, source reference mandatory"
+    },
+    "usgs3dep": {
+      "name": "USGS 3DEP 1/3 arc-second DEM",
+      "licence": "public domain"
+    },
+    "usgs3dep_1m": {
+      "name": "USGS 3DEP 1 meter DEM (lidar)",
+      "licence": "public domain"
+    }
+  },
+  "datasets": {
+    "climate-025": {
+      "path": "/mnt/extrastorage/terrain-slm-data/raw/era5/{geo_025.npz, climatology.npz, era5_wb2.npz}",
+      "sources": [
+        "gebco2024",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "how": "train_climate inputs: GEBCO 2024 block means on the 0.25 deg ERA5 grid; ERA5 10 m wind (WB2); targets: CHELSA v2.1 block means + ERA5 soil/snow (climate_hybrid). Paleo planets only with --paleo."
+    },
+    "data-v2": {
+      "path": "/mnt/extrastorage/terrain-slm-data/v2-gedtm30 (49 regions, meta.json data_version 2, base gedtm30)",
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "how": "land = GEDTM30 (GLO-30 only where GEDTM30 has no value: water surfaces, build_v2._tile_job); sea floor = GEBCO 2024 (topobathy); hawaii + puerto_rico sea floors refined with NOAA CUDEM (refloor_v2 --cudem, 2026-11-18 18:45); cells_climate.npz = data/climate_hybrid (CHELSA v2.1 at 30\" + ERA5 u10/v10/soil/lsm/orog from the WeatherBench 2 climatology); drainage weighted by that precipitation (finish_v2); water.npz (banks) and carve labels derived from the DEM. No WorldClim anywhere (build.py, the v1 builder, is the only WorldClim reader and is not used)."
+    },
+    "v2-15m-lidar": {
+      "path": "/mnt/extrastorage/terrain-slm-data/v2-15m-lidar (90 regions: v2-15m's 21 USGS tiles (symlinks), 12 new USGS 1/3\" tiles (raw/3dep13_v2), 57 lidar boxes of 20-32 km (raw/<source>/sr10))",
+      "sources": [
+        "usgs3dep",
+        "kartverket_nhm",
+        "swissalti3d",
+        "ahn",
+        "linz_dem",
+        "ign_rgealti"
+      ],
+      "how": "scripts/download_lidar.py: each provider's DTM area-averaged to 10 m in its own CRS (COG overviews + Resampling.average, or 5 m / 2 m service data block-averaged); data/build_15m.py --lidar: 10 m -> 15 m with the 3DEP step (Gaussian 0.5(1/f-1) px + bilinear). Per-file URLs: raw/<source>/PROVENANCE.jsonl; licences: raw/<source>/LICENCE.json. Whole boxes held out (role val)."
+    },
+    "v2-surface": {
+      "path": "/mnt/extrastorage/terrain-slm-data/v2-surface (4 km windows, raw/<source>/fine)",
+      "sources": [
+        "usgs3dep_1m",
+        "kartverket_nhm",
+        "swissalti3d",
+        "ahn",
+        "linz_dem",
+        "ign_rgealti",
+        "chelsa21"
+      ],
+      "how": "data/surface_labels.py: 0.5-1 m DTM windows -> 15 m / 60 m labels (rock, scree, smooth, roughness, boulders) + 60 m block means as inputs; climate inputs = CHELSA v2.1 bio1 / bio12 at the window centre (temperature lapse-adjusted per cell)."
+    },
+    "v2-vegetation": {
+      "path": "/mnt/extrastorage/terrain-slm-data/v2-gedtm30/<region>/veg60.npy + veg_cc30.npy (data/vegetation.py) and the crop set /mnt/extrastorage/terrain-slm-data/veg_dataset (train/train_veg.py build)",
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2",
+        "eth_canopy2020",
+        "esa_worldcover2021"
+      ],
+      "how": "targets = ETH canopy height 2020 + ESA WorldCover 2021 10 m pixels binned into each data-v2 region's 60 m grid (raw tiles + sha256 in raw/vegetation_manifest.json); inputs = the data-v2 DEM (block-quantised), data-v2 climate cells (CHELSA v2.1 + ERA5), sea.npy + water.npz. No WorldClim."
+    }
+  },
+  "total_bytes": 589919427,
+  "files": {
+    "bank.pt": {
+      "source": "checkpoints/exp2/bank_v2/best.pt",
+      "run": "exp2/bank_v2",
+      "init_chain": [
+        "exp2/bank_v2"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/bank_v2": "train_banks has no --init; bank_v2.log lists data-v2-only regions (andes_aconcagua ...); inputs = dem.npy + water.npz only"
+      },
+      "params": 236497,
+      "tensors": 56,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 20000,
+      "config": {
+        "channels": [
+          16,
+          32,
+          48
+        ],
+        "blocks": 2
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "eval"
+      ],
+      "meta": {
+        "eval": {
+          "step": 20000,
+          "l1@1:4": 0.017809804253514284,
+          "grad@1:4": 0.01573803558835481,
+          "total@1:4": 0.0335478399038425,
+          "blocks_mae@1:4": 0.17809804253514283,
+          "fill_only_blocks_mae@1:4": 2.116482472856307,
+          "ring_below_water@1:4": 0.5005027233940663,
+          "l1@1:2": 0.012455465041390189,
+          "grad@1:2": 0.017546331627008655,
+          "total@1:2": 0.030001796699385547,
+          "blocks_mae@1:2": 0.12455465041390189,
+          "fill_only_blocks_mae@1:2": 1.9983017719359364,
+          "ring_below_water@1:2": 0.5335320212023195,
+          "total": 0.03177481830161402
+        }
+      },
+      "source_sha256": "7e62947adf8aec6975249889c83c3eaac26f1d5a105d10d22aa00d27720ea664",
+      "source_bytes": 962049,
+      "sha256": "8b580dd44a0215349cf1512f322d06bf37a47ec1c5a2665996202eaf849f9d70",
+      "bytes": 959297
+    },
+    "biome.pt": {
+      "source": "checkpoints/exp2/biome_v2/best.pt",
+      "run": "exp2/biome_v2",
+      "init_chain": [
+        "exp2/biome_v2"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/biome_v2": "rerun_biome.sh --data-dir .../v2-gedtm30 (train_biomes has no --init); labels = biomes.py rule classifier on data-v2 climate"
+      },
+      "params": 1106115,
+      "tensors": 50,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 30000,
+      "config": {
+        "channels": [
+          48,
+          96,
+          128
+        ],
+        "norm": true,
+        "extras": true
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "class_ids",
+        "eval"
+      ],
+      "meta": {
+        "class_ids": [
+          1,
+          3,
+          5,
+          6,
+          8,
+          15,
+          16,
+          17,
+          19,
+          23,
+          26,
+          29,
+          31,
+          32,
+          33,
+          35,
+          108,
+          115,
+          116
+        ],
+        "eval": {
+          "step": 30000,
+          "acc_vs_cleaned": 0.7342,
+          "acc_vs_rule": 0.7055,
+          "pred_fragmentation": {
+            "boundary": 0.0214,
+            "tiny_patches_per_crop": 9.88
+          },
+          "share_rule": {
+            "1": 0.0124,
+            "3": 0.0227,
+            "5": 0.0407,
+            "8": 0.1467,
+            "15": 0.1592,
+            "16": 0.0207,
+            "17": 0.024,
+            "19": 0.0065,
+            "23": 0.0397,
+            "31": 0.0046,
+            "32": 0.0219,
+            "33": 0.0001,
+            "35": 0.01,
+            "108": 0.096,
+            "115": 0.1454,
+            "116": 0.0166
+          },
+          "share_pred": {
+            "1": 0.0157,
+            "3": 0.0264,
+            "5": 0.0866,
+            "8": 0.1734,
+            "15": 0.1638,
+            "16": 0.028,
+            "17": 0.0253,
+            "19": 0.0064,
+            "23": 0.1668,
+            "31": 0.0039,
+            "32": 0.0229,
+            "35": 0.0083,
+            "108": 0.1057,
+            "115": 0.1505,
+            "116": 0.0164
+          }
+        }
+      },
+      "source_sha256": "ea73a0da601cf8ddd06add83dff1725ae54ea1162dd9eb9600543e24586532d2",
+      "source_bytes": 4438949,
+      "sha256": "7533e798f72e980d46ff2250240a6ff2a1a136208367db9d69a27607b8c640bc",
+      "bytes": 4436445
+    },
+    "climate.pt": {
+      "source": "checkpoints/exp2/climate_r1/climate.pt",
+      "run": "exp2/climate_r1",
+      "init_chain": [
+        "exp2/climate_r1"
+      ],
+      "datasets": [
+        "climate-025"
+      ],
+      "sources": [
+        "gebco2024",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/climate_r1": "climate.pt written 2026-11-18 16:01:09, first CHELSA-TraCE21k file downloaded 16:19:54; no --paleo ('planets:' line absent from climate_r1.log); 13 inputs (no forcing channels)"
+      },
+      "params": 2025377,
+      "tensors": 40,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 8000,
+      "config": {
+        "channels": [
+          32,
+          64,
+          96,
+          128
+        ],
+        "blocks": 2,
+        "arch": "climatenet"
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "eval"
+      ],
+      "meta": {
+        "eval": {
+          "step": 8000,
+          "min": 8.9,
+          "val_rmse_norm": {
+            "t0": 0.103,
+            "tseason": 0.242,
+            "log_precip": 0.686,
+            "pcv": 0.683,
+            "log_aridity": 0.639,
+            "soil": 0.89,
+            "log_snow": 0.182
+          },
+          "val_t0_rmse_C": 1.54
+        }
+      },
+      "source_sha256": "7f3f30d49ac41202668511979daa687c08b2567a8437e59ff9be3295a79c8d86",
+      "source_bytes": 8116907,
+      "sha256": "467b7f8fb5fdbb7c4b3a81fa40a19c4d2045d4b9ad4f8d461167dadafb0199e3",
+      "bytes": 8113835
+    },
+    "detail.pt": {
+      "source": "checkpoints/exp2/d2_full_v2_mf_experts/ema_0.10.pt",
+      "run": "exp2/d2_full_v2_mf_experts",
+      "init_chain": [
+        "exp2/d2_full_v2_mf_experts",
+        "exp2/d2_mf_plus_experts_init.pt",
+        "exp2/d2_full_v2_mf",
+        "exp2/d2_full_v2",
+        "exp2/d2_full_v2_experts"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/d2_full_v2_mf_experts": "rerun.sh / matching_card1.sh --init d2_mf_plus_experts_init.pt --experts all; d2_mf_experts.log lines 3-4",
+        "exp2/d2_mf_plus_experts_init.pt": "chain_d.sh merge (MeanFlow backbone + expert adapters), no training",
+        "exp2/d2_full_v2_mf": "chain_a.sh --objective meanflow --init d2_full_v2/ema_0.10.pt",
+        "exp2/d2_full_v2": "chain_a.sh teacher (no --init, no --resume); chain_a.log has no 'init from' before the experts step",
+        "exp2/d2_full_v2_experts": "chain_a.sh --init d2_full_v2/ema_0.10.pt --experts all"
+      },
+      "params": 64012105,
+      "tensors": 440,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 4000,
+      "config": {
+        "channels": [
+          96,
+          192,
+          288,
+          384,
+          512
+        ],
+        "blocks": 2,
+        "mid_blocks": 4,
+        "emb": 512,
+        "fourier": 128,
+        "dropout": 0.1,
+        "res_balance": 0.3,
+        "concat_balance": 0.5,
+        "arch": "detail2",
+        "mean_flow": true,
+        "experts": [
+          "glacial_fjord",
+          "volcanic",
+          "drowned_archipelago",
+          "skerries",
+          "lagoon_barrier",
+          "aeolian",
+          "undersea"
+        ]
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step",
+        "norms"
+      ],
+      "dropped_keys": [
+        "ema_std",
+        "eval",
+        "objective"
+      ],
+      "meta": {
+        "ema_std": 0.1,
+        "eval": {
+          "val_fm": 0.3092821379431297,
+          "amp_ratio_median": 1.0306928157806396,
+          "unstable": 0,
+          "windows": 580,
+          "max_abs_x": 4.804,
+          "unblurred_unstable": 0,
+          "unblurred_windows": 64
+        },
+        "objective": "meanflow"
+      },
+      "source_sha256": "bb6942bc6cc1964593c19a761797b3f2b446d0887ad65e89c385fa78555bd835",
+      "source_bytes": 256219789,
+      "sha256": "bb80351604fe37995c91a28b5a0fb9a33eb66fb8e78cc75a7de0c3dd5e1ed10e",
+      "bytes": 256181649
+    },
+    "detail_fp8.pt": {
+      "source": "checkpoints/exp2/qad_fp8_v4k8/student.pt",
+      "run": "exp2/qad_fp8_v4k8",
+      "init_chain": [
+        "exp2/qad_fp8_v4k8",
+        "exp2/qad_fp8_v4",
+        "exp2/qad_fp8_v3",
+        "exp2/qad_fp8_v2b",
+        "exp2/d2_full_v2_mf_experts",
+        "exp2/d2_mf_plus_experts_init.pt",
+        "exp2/d2_full_v2_mf",
+        "exp2/d2_full_v2",
+        "exp2/d2_full_v2_experts"
+      ],
+      "datasets": [
+        "data-v2",
+        "climate-025"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/qad_fp8_v4k8": "agent C 2026-11-19: checkpoints/exp2/qad_fp8_v4_chain.sh (train_qad --init qad_fp8_v4/student.pt --data-dir .../v2-gedtm30 --no-data, keep-8 = keep-6 + enc0.1.c0, enc0.0.c0); conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher d2_full_v2_mf_experts; log checkpoints/exp2/qad_fp8_v4k8.log",
+        "exp2/qad_fp8_v4": "agent C 2026-11-19: checkpoints/exp2/qad_fp8_v4_chain.sh (train_qad --init qad_fp8_v3/student.pt --data-dir .../v2-gedtm30 --no-data, keep-6); conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher d2_full_v2_mf_experts; log checkpoints/exp2/qad_fp8_v4.log",
+        "exp2/qad_fp8_v3": "agent C 2026-11-19: train_qad --init qad_fp8_v2b/student.pt --teacher d2_full_v2_mf_experts/ema_0.10.pt --data-dir .../v2-gedtm30 --no-data --p-gen 1.0 --keep stem,down0,enc1.1.c0,up0,down1,enc1.0.c0: conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (relief_v2c, planner_v4b, hydro_v2, climate_r1, ...; checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher; log checkpoints/exp2/qad_fp8_v3.log",
+        "exp2/qad_fp8_v2b": "agent C 2026-11-19: train_qad --teacher d2_full_v2_mf_experts/ema_0.10.pt --data-dir .../v2-gedtm30 --no-data --p-gen 1.0 (DetailData NOT loaded): conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (relief_v2c, planner_v4b, hydro_v2, climate_r1, ...; checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher; log checkpoints/exp2/qad_fp8_v2b.log (stopped at step 500, EMA kept)",
+        "exp2/d2_full_v2_mf_experts": "rerun.sh / matching_card1.sh --init d2_mf_plus_experts_init.pt --experts all; d2_mf_experts.log lines 3-4",
+        "exp2/d2_mf_plus_experts_init.pt": "chain_d.sh merge (MeanFlow backbone + expert adapters), no training",
+        "exp2/d2_full_v2_mf": "chain_a.sh --objective meanflow --init d2_full_v2/ema_0.10.pt",
+        "exp2/d2_full_v2": "chain_a.sh teacher (no --init, no --resume); chain_a.log has no 'init from' before the experts step",
+        "exp2/d2_full_v2_experts": "chain_a.sh --init d2_full_v2/ema_0.10.pt --experts all"
+      },
+      "params": 64012105,
+      "tensors": 440,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 5000,
+      "config": {
+        "channels": [
+          96,
+          192,
+          288,
+          384,
+          512
+        ],
+        "blocks": 2,
+        "mid_blocks": 4,
+        "emb": 512,
+        "fourier": 128,
+        "dropout": 0.1,
+        "res_balance": 0.3,
+        "concat_balance": 0.5,
+        "arch": "detail2",
+        "mean_flow": true,
+        "experts": [
+          "glacial_fjord",
+          "volcanic",
+          "drowned_archipelago",
+          "skerries",
+          "lagoon_barrier",
+          "aeolian",
+          "undersea"
+        ]
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step",
+        "norms",
+        "quant"
+      ],
+      "dropped_keys": [
+        "eval",
+        "teacher"
+      ],
+      "meta": {
+        "eval": {
+          "median": 0.825,
+          "p90": 2.15,
+          "max": 2.91
+        },
+        "teacher": "checkpoints/exp2/d2_full_v2_mf_experts/ema_0.10.pt"
+      },
+      "source_sha256": "c159aa87acaa77f5c2abdb2261c2e044d49b6f6aeaaae93f08d0c597a1c6ed9c",
+      "source_bytes": 256219087,
+      "sha256": "a22985ed4d52590ca0f222be1ad83ce6d2639d6739d4fbddc1e8b2502acd4f26",
+      "bytes": 256188873
+    },
+    "hydro.pt": {
+      "source": "checkpoints/exp2/hydro_v2/best.pt",
+      "run": "exp2/hydro_v2",
+      "init_chain": [
+        "exp2/hydro_v2"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/hydro_v2": "chain_b3.sh (train_hydro has no --init)"
+      },
+      "params": 400051,
+      "tensors": 78,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 20000,
+      "config": {
+        "channels": [
+          16,
+          24,
+          40,
+          56
+        ],
+        "blocks": 2
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "eval"
+      ],
+      "meta": {
+        "eval": {
+          "step": 20000,
+          "logacc": 0.06947560238441383,
+          "river": 0.2799735793523521,
+          "d8": 0.602073251953072,
+          "total": 0.4999674984386989,
+          "river_iou": 0.6352509276742049,
+          "d8_acc": 0.7621338906466713
+        }
+      },
+      "source_sha256": "41584b475553a8d5a75887e3444a1793b17fea222ce443ea76b9647c2279874d",
+      "source_bytes": 1622973,
+      "sha256": "7d7e4c6c547776251a06c7aaa90134ece1bebef061cb0a90a80204bb9ef92e82",
+      "bytes": 1619601
+    },
+    "planner.pt": {
+      "source": "checkpoints/exp2/planner_v4b/best.pt",
+      "run": "exp2/planner_v4b",
+      "init_chain": [
+        "exp2/planner_v4b",
+        "exp2/planner_v4a",
+        "exp2/planner_v3"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/planner_v4b": "overnight/train_planner_v4b.sh; planner_v4b.log 'init from checkpoints/exp2/planner_v4a/best.pt'",
+        "exp2/planner_v4a": "overnight/train_planner_v4a.sh; planner_v4a.log 'init from checkpoints/exp2/planner_v3/best.pt'",
+        "exp2/planner_v3": "chain_c.sh (no --init); planner_v3.log has no 'init from'"
+      },
+      "params": 4829616,
+      "tensors": 78,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 14000,
+      "config": {
+        "dim": 256,
+        "depth": 6,
+        "heads": 4,
+        "mlp_ratio": 4,
+        "patch": 4
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step",
+        "norms"
+      ],
+      "dropped_keys": [
+        "eval"
+      ],
+      "meta": {
+        "eval": {
+          "height": 0.02881747081024306,
+          "grad": 0.039127053426844735,
+          "desc": 0.3168630714416504,
+          "river": 0.4627425696509225,
+          "logacc": 0.09677311150516782,
+          "total": 0.9247597536359514,
+          "height_mae_m": 28.817470810243062,
+          "river_iou": 0.41010245082671426,
+          "step": 14000
+        }
+      },
+      "source_sha256": "b3938312de8569dbafa1a9b0afd32ab70d55cfa48505396f52e11a6d6b69effb",
+      "source_bytes": 19340029,
+      "sha256": "ca45116a885db062cbd532439c492994a6356ff6fa7dc812acb6cdd6b79628b7",
+      "bytes": 19341689
+    },
+    "refiner.pt": {
+      "source": "checkpoints/exp2/refiner_v2/best.pt",
+      "run": "exp2/refiner_v2",
+      "init_chain": [
+        "exp2/refiner_v2"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/refiner_v2": "chain_c.sh (train_refiner has no --init)"
+      },
+      "params": 336785,
+      "tensors": 80,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 20000,
+      "config": {
+        "channels": [
+          16,
+          32,
+          48
+        ],
+        "blocks": 2,
+        "temb": 64
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step",
+        "norms"
+      ],
+      "dropped_keys": [
+        "eval"
+      ],
+      "meta": {
+        "eval": {
+          "step": 20000,
+          "val_fm": 0.1476506045734396
+        }
+      },
+      "source_sha256": "861ece9806d40fbcfde110eaa4f2f701d9e66b2de3070757fcb494baad0368ca",
+      "source_bytes": 1369201,
+      "sha256": "c53115a3758024111ab2c3487b9344b2e74e05e0fe9f77890fe787bd9a0db606",
+      "bytes": 1370867
+    },
+    "relief.pt": {
+      "source": "checkpoints/exp2/relief_mf/student.pt",
+      "run": "exp2/relief_mf",
+      "init_chain": [
+        "exp2/relief_mf",
+        "exp2/relief_v2c",
+        "exp2/relief_v2b",
+        "exp2/relief_v2"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/relief_mf": "agent B 2026-11-19: train_relief --objective meanflow --distill-weight 1 --init checkpoints/exp2/relief_v2c/best.pt --data <every /mnt/extrastorage/terrain-slm-data/v2-gedtm30/*/ with cells.npz, 49 regions, passed explicitly>; relief_mf.log line 1 'init from checkpoints/exp2/relief_v2c/best.pt (step 12000)'; distillation teacher = relief_v2c itself (frozen); student.pt = the chosen EMA snapshot (Dev Working/docs/exp2-work/B-relief-meanflow.md)",
+        "exp2/relief_v2c": "chain_c.sh / rerun.sh --init relief_v2b/best.pt; relief_v2c.log line 1",
+        "exp2/relief_v2b": "chain_b3.sh --init relief_v2/last.pt; chain_b3.log 'init from checkpoints/exp2/relief_v2/last.pt (step 20000)'",
+        "exp2/relief_v2": "chain_b.sh (no --init), 38k planned / 20k used by v2b"
+      },
+      "params": 2568769,
+      "tensors": 114,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 20000,
+      "config": {
+        "channels": [
+          32,
+          64,
+          96,
+          128
+        ],
+        "blocks": 2,
+        "temb": 64,
+        "amp_norm": false,
+        "mean_flow": true
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "eval",
+        "objective"
+      ],
+      "meta": {
+        "eval": {
+          "step": 20000,
+          "val_fm": 0.016208470938109124,
+          "amp_ratio_1": 0.958728526752544,
+          "amp_ratio_2": 0.9611322681541712
+        },
+        "objective": "meanflow"
+      },
+      "source_sha256": "b87e2882824b8eec1cde3b5f9d07b238c2086e813981d46abe69dfd7db8ced93",
+      "source_bytes": 10314427,
+      "sha256": "c21550a600617d5f71638423b5d6f499ece8525d61020b981c32396b387b93b6",
+      "bytes": 10302819
+    },
+    "sr15.pt": {
+      "source": "checkpoints/exp2/sr15_v2/sr15_v2.pt",
+      "run": "exp2/sr15_v2",
+      "init_chain": [
+        "exp2/sr15_v2"
+      ],
+      "datasets": [
+        "v2-15m-lidar"
+      ],
+      "sources": [
+        "usgs3dep",
+        "kartverket_nhm",
+        "swissalti3d",
+        "ahn",
+        "linz_dem",
+        "ign_rgealti"
+      ],
+      "licences": {
+        "usgs3dep": "public domain",
+        "kartverket_nhm": "CC BY 4.0",
+        "swissalti3d": "swisstopo free geodata (OGD): commercial use allowed, source reference mandatory",
+        "ahn": "CC0 1.0",
+        "linz_dem": "CC BY 4.0",
+        "ign_rgealti": "Licence Ouverte / Open Licence v2.0 (Etalab)"
+      },
+      "evidence": {
+        "exp2/sr15_v2": "checkpoints/exp2/sr15_v2.sh: train_sr --data-dir v2-15m-lidar (from scratch, no --init); log checkpoints/exp2/sr15_v2/train.log"
+      },
+      "params": 3750219,
+      "tensors": 52,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 30000,
+      "config": {
+        "channels": [
+          64,
+          128,
+          192
+        ],
+        "blocks": 2,
+        "emb": 256,
+        "fourier": 64,
+        "dropout": 0.0,
+        "arch": "sr",
+        "sample_gain": 1.11
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "ema_std",
+        "eval",
+        "gain_eval"
+      ],
+      "meta": {
+        "ema_std": 0.1,
+        "eval": {
+          "val_fm": 0.17232037159717745,
+          "amp_ratio_median": 0.8788468241691589,
+          "mean_preserve_err_m": 0.00048828125,
+          "crops": 88
+        },
+        "gain_eval": "eval/sr_gain.py over v2-15m-lidar held-out (11 regions, 352 crops, 8 steps): amp 0.988 at 1.10, 1.036 at 1.15"
+      },
+      "source_sha256": "f31f16bef09619ea58b40d2dce1b4ca3051d3a9914d57d2bfa0cf0780659c033",
+      "source_bytes": 15019015,
+      "sha256": "31c6ee3fe4ec078aa9b5d4bce074655beb1086cf0d8ff976ea7cf1e20631208c",
+      "bytes": 15014233
+    },
+    "sr30.pt": {
+      "source": "checkpoints/exp2/sr30_r0/ema_0.10.pt",
+      "run": "exp2/sr30_r0",
+      "init_chain": [
+        "exp2/sr30_r0"
+      ],
+      "datasets": [
+        "data-v2"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products"
+      },
+      "evidence": {
+        "exp2/sr30_r0": "queue_sr30b.sh --data-dir .../v2-gedtm30 (train_sr has no --init)"
+      },
+      "params": 3750219,
+      "tensors": 52,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 30000,
+      "config": {
+        "channels": [
+          64,
+          128,
+          192
+        ],
+        "blocks": 2,
+        "emb": 256,
+        "fourier": 64,
+        "dropout": 0.0,
+        "arch": "sr"
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "ema_std",
+        "eval"
+      ],
+      "meta": {
+        "ema_std": 0.1,
+        "eval": {
+          "val_fm": 0.27051631150146327,
+          "amp_ratio_median": 0.8487307727336884,
+          "mean_preserve_err_m": 0.0009765625,
+          "crops": 318
+        }
+      },
+      "source_sha256": "d89fda8156c35f8a9c3a1ff0584f670c8a2641d777b6749333dc292691602fbb",
+      "source_bytes": 15020033,
+      "sha256": "55160b86f2ca65278593dc412213bad602036bf9d17d94b2567b97abec76440c",
+      "bytes": 15014169
+    },
+    "surface.pt": {
+      "source": "checkpoints/exp2/surface_r0/surface.pt",
+      "run": "exp2/surface_r0",
+      "init_chain": [
+        "exp2/surface_r0"
+      ],
+      "datasets": [
+        "v2-surface"
+      ],
+      "sources": [
+        "usgs3dep_1m",
+        "kartverket_nhm",
+        "swissalti3d",
+        "ahn",
+        "linz_dem",
+        "ign_rgealti",
+        "chelsa21"
+      ],
+      "licences": {
+        "usgs3dep_1m": "public domain",
+        "kartverket_nhm": "CC BY 4.0",
+        "swissalti3d": "swisstopo free geodata (OGD): commercial use allowed, source reference mandatory",
+        "ahn": "CC0 1.0",
+        "linz_dem": "CC BY 4.0",
+        "ign_rgealti": "Licence Ouverte / Open Licence v2.0 (Etalab)",
+        "chelsa21": "CC0 1.0"
+      },
+      "evidence": {
+        "exp2/surface_r0": "checkpoints/exp2/surface_r0.sh: train_surface --data-dir v2-surface (from scratch); log checkpoints/exp2/surface_r0/train.log"
+      },
+      "params": 122662,
+      "tensors": 12,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 2500,
+      "config": {
+        "width": 64,
+        "depth": 3,
+        "arch": "surface"
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "eval",
+        "fields",
+        "val_windows"
+      ],
+      "meta": {
+        "eval": {
+          "ch_engadin_f": {
+            "rock_exposure": {
+              "true_mean60": 0.09902634471654892,
+              "pred_mean60": 0.08815478533506393,
+              "mae60": 0.03816615045070648,
+              "mae60_const": 0.11166901141405106,
+              "mae60_slopebin": 0.05948376655578613,
+              "corr60": 0.917012095451355,
+              "corr60_slopebin": 0.8249123692512512,
+              "mae15": 0.06897535920143127,
+              "corr15": 0.7560599446296692
+            },
+            "scree": {
+              "true_mean60": 0.37809470295906067,
+              "pred_mean60": 0.3301418423652649,
+              "mae60": 0.0994180217385292,
+              "mae60_const": 0.28166669607162476,
+              "mae60_slopebin": 0.11278107017278671,
+              "corr60": 0.9040638208389282,
+              "corr60_slopebin": 0.8726257681846619,
+              "mae15": 0.16467727720737457,
+              "corr15": 0.7786523699760437
+            },
+            "smooth": {
+              "true_mean60": 0.016690704971551895,
+              "pred_mean60": 0.03433668240904808,
+              "mae60": 0.03510092571377754,
+              "mae60_const": 0.24024514853954315,
+              "mae60_slopebin": 0.06780946254730225,
+              "corr60": 0.2990090847015381,
+              "corr60_slopebin": 0.6062864661216736,
+              "mae15": 0.04450308904051781,
+              "corr15": 0.2370598465204239
+            },
+            "roughness": {
+              "true_mean60": 0.5703924894332886,
+              "pred_mean60": 0.3898870646953583,
+              "mae60": 0.21810953319072723,
+              "mae60_const": 0.28145352005958557,
+              "mae60_slopebin": 0.19497092068195343,
+              "corr60": 0.8168293833732605,
+              "corr60_slopebin": 0.7538883090019226,
+              "mae15": 0.26228564977645874,
+              "corr15": 0.6456133127212524
+            },
+            "boulder_density": {
+              "true_mean60": 0.2344982922077179,
+              "pred_mean60": 0.03751474991440773,
+              "mae60": 0.2007046490907669,
+              "mae60_const": 0.18738850951194763,
+              "mae60_slopebin": 0.16230575740337372,
+              "corr60": 0.29145118594169617,
+              "corr60_slopebin": 0.30807584524154663,
+              "mae15": 0.24237476289272308,
+              "corr15": 0.13577532768249512
+            },
+            "boulder_size": {
+              "true_mean60": 2.496284008026123,
+              "pred_mean60": 2.502786159515381,
+              "mae60": 0.37985965609550476,
+              "mae60_const": 0.41844215989112854,
+              "mae60_slopebin": 0.39489591121673584,
+              "corr60": 0.21725529432296753,
+              "corr60_slopebin": 0.2251822054386139,
+              "mae15": 0.7110488414764404,
+              "corr15": 0.07606102526187897
+            }
+          },
+          "fr_puys_f": {
+            "rock_exposure": {
+              "true_mean60": 0.008698122575879097,
+              "pred_mean60": 0.007216449361294508,
+              "mae60": 0.006198056973516941,
+              "mae60_const": 0.07626493275165558,
+              "mae60_slopebin": 0.01733088120818138,
+              "corr60": 0.891857385635376,
+              "corr60_slopebin": 0.7230393290519714,
+              "mae15": 0.009221813641488552,
+              "corr15": 0.7142220139503479
+            },
+            "scree": {
+              "true_mean60": 0.06926087290048599,
+              "pred_mean60": 0.06985007226467133,
+              "mae60": 0.03323053941130638,
+              "mae60_const": 0.19136017560958862,
+              "mae60_slopebin": 0.06777795404195786,
+              "corr60": 0.9295611381530762,
+              "corr60_slopebin": 0.8478336930274963,
+              "mae15": 0.04765086621046066,
+              "corr15": 0.843376636505127
+            },
+            "smooth": {
+              "true_mean60": 0.3284088373184204,
+              "pred_mean60": 0.33533012866973877,
+              "mae60": 0.15927095711231232,
+              "mae60_const": 0.2373506873846054,
+              "mae60_slopebin": 0.17293383181095123,
+              "corr60": 0.6689653396606445,
+              "corr60_slopebin": 0.5894044637680054,
+              "mae15": 0.2111487239599228,
+              "corr15": 0.5631155967712402
+            },
+            "roughness": {
+              "true_mean60": 0.1530955284833908,
+              "pred_mean60": 0.15129779279232025,
+              "mae60": 0.06508244574069977,
+              "mae60_const": 0.26617109775543213,
+              "mae60_slopebin": 0.1260581761598587,
+              "corr60": 0.7255600094795227,
+              "corr60_slopebin": 0.6444557905197144,
+              "mae15": 0.06926850229501724,
+              "corr15": 0.600745439529419
+            },
+            "boulder_density": {
+              "true_mean60": 0.013467703014612198,
+              "pred_mean60": 0.013898640871047974,
+              "mae60": 0.019327836111187935,
+              "mae60_const": 0.05254644528031349,
+              "mae60_slopebin": 0.043046433478593826,
+              "corr60": 0.3996374309062958,
+              "corr60_slopebin": 0.1667628437280655,
+              "mae15": 0.025651169940829277,
+              "corr15": 0.16404323279857635
+            },
+            "boulder_size": {
+              "true_mean60": 2.8147847652435303,
+              "pred_mean60": 2.4900026321411133,
+              "mae60": 0.6347097754478455,
+              "mae60_const": 0.6144986748695374,
+              "mae60_slopebin": 0.6136015057563782,
+              "corr60": 0.010714642703533173,
+              "corr60_slopebin": 0.0008675848366692662,
+              "mae15": 0.7814458012580872,
+              "corr15": 0.003991902805864811
+            }
+          },
+          "nl_limburg_f": {
+            "rock_exposure": {
+              "true_mean60": 0.000330951384967193,
+              "pred_mean60": 0.0007364681223407388,
+              "mae60": 0.0009357570670545101,
+              "mae60_const": 0.07422208040952682,
+              "mae60_slopebin": 0.003551933215931058,
+              "corr60": 0.12563224136829376,
+              "corr60_slopebin": 0.0793473869562149,
+              "mae15": 0.0011337348259985447,
+              "corr15": 0.05018387362360954
+            },
+            "scree": {
+              "true_mean60": 0.017705576494336128,
+              "pred_mean60": 0.007699355483055115,
+              "mae60": 0.016426019370555878,
+              "mae60_const": 0.16739541292190552,
+              "mae60_slopebin": 0.025804797187447548,
+              "corr60": 0.4905116856098175,
+              "corr60_slopebin": 0.30263304710388184,
+              "mae15": 0.02030620165169239,
+              "corr15": 0.3197532296180725
+            },
+            "smooth": {
+              "true_mean60": 0.701023280620575,
+              "pred_mean60": 0.7110909819602966,
+              "mae60": 0.19206584990024567,
+              "mae60_const": 0.4710111618041992,
+              "mae60_slopebin": 0.33071762323379517,
+              "corr60": 0.5211327075958252,
+              "corr60_slopebin": 0.3184977173805237,
+              "mae15": 0.28775325417518616,
+              "corr15": 0.3683319091796875
+            },
+            "roughness": {
+              "true_mean60": 0.12306692451238632,
+              "pred_mean60": 0.06321632862091064,
+              "mae60": 0.07765891402959824,
+              "mae60_const": 0.28116512298583984,
+              "mae60_slopebin": 0.1054549515247345,
+              "corr60": 0.4287605881690979,
+              "corr60_slopebin": 0.26924416422843933,
+              "mae15": 0.0766172707080841,
+              "corr15": 0.2932646870613098
+            },
+            "boulder_density": {
+              "true_mean60": 0.0056552402675151825,
+              "pred_mean60": 0.009877912700176239,
+              "mae60": 0.012503350153565407,
+              "mae60_const": 0.05415676534175873,
+              "mae60_slopebin": 0.02318541519343853,
+              "corr60": 0.15151472389698029,
+              "corr60_slopebin": 0.0037761456333100796,
+              "mae15": 0.016906367614865303,
+              "corr15": 0.0419999435544014
+            },
+            "boulder_size": {
+              "true_mean60": 2.6609060764312744,
+              "pred_mean60": 2.7791223526000977,
+              "mae60": 0.7588304877281189,
+              "mae60_const": 0.7327868938446045,
+              "mae60_slopebin": 0.7644363045692444,
+              "corr60": 0.08549979329109192,
+              "corr60_slopebin": 0.049514297395944595,
+              "mae15": 0.8718848824501038,
+              "corr15": 0.039468713104724884
+            }
+          },
+          "no_jotunheimen_f": {
+            "rock_exposure": {
+              "true_mean60": 0.055099137127399445,
+              "pred_mean60": 0.04387893155217171,
+              "mae60": 0.021935032680630684,
+              "mae60_const": 0.09509911388158798,
+              "mae60_slopebin": 0.031988125294446945,
+              "corr60": 0.9318222403526306,
+              "corr60_slopebin": 0.902158796787262,
+              "mae15": 0.03530149161815643,
+              "corr15": 0.8215397596359253
+            },
+            "scree": {
+              "true_mean60": 0.1636035144329071,
+              "pred_mean60": 0.18264362215995789,
+              "mae60": 0.06012629717588425,
+              "mae60_const": 0.18345777690410614,
+              "mae60_slopebin": 0.08396260440349579,
+              "corr60": 0.9037674069404602,
+              "corr60_slopebin": 0.8576832413673401,
+              "mae15": 0.0998639240860939,
+              "corr15": 0.785535454750061
+            },
+            "smooth": {
+              "true_mean60": 0.19857051968574524,
+              "pred_mean60": 0.20054125785827637,
+              "mae60": 0.10367715358734131,
+              "mae60_const": 0.25802725553512573,
+              "mae60_slopebin": 0.11208828538656235,
+              "corr60": 0.8375882506370544,
+              "corr60_slopebin": 0.8027120232582092,
+              "mae15": 0.1353238970041275,
+              "corr15": 0.7669854760169983
+            },
+            "roughness": {
+              "true_mean60": 0.30908718705177307,
+              "pred_mean60": 0.2563955783843994,
+              "mae60": 0.1214831992983818,
+              "mae60_const": 0.21895673871040344,
+              "mae60_slopebin": 0.14271527528762817,
+              "corr60": 0.7947853207588196,
+              "corr60_slopebin": 0.7362469434738159,
+              "mae15": 0.13777415454387665,
+              "corr15": 0.6648996472358704
+            },
+            "boulder_density": {
+              "true_mean60": 0.04953566566109657,
+              "pred_mean60": 0.05147556960582733,
+              "mae60": 0.05068311095237732,
+              "mae60_const": 0.05454472452402115,
+              "mae60_slopebin": 0.05484640225768089,
+              "corr60": 0.31173837184906006,
+              "corr60_slopebin": 0.2993687093257904,
+              "mae15": 0.0854349359869957,
+              "corr15": 0.13550965487957
+            },
+            "boulder_size": {
+              "true_mean60": 2.780581474304199,
+              "pred_mean60": 2.277678966522217,
+              "mae60": 0.7206826210021973,
+              "mae60_const": 0.6189897656440735,
+              "mae60_slopebin": 0.6046448349952698,
+              "corr60": 0.06288143247365952,
+              "corr60_slopebin": 0.2733195424079895,
+              "mae15": 0.9016839265823364,
+              "corr15": 0.0528201200067997
+            }
+          },
+          "nz_kaikoura_f": {
+            "rock_exposure": {
+              "true_mean60": 0.08803891390562057,
+              "pred_mean60": 0.06201588734984398,
+              "mae60": 0.046447575092315674,
+              "mae60_const": 0.11140567064285278,
+              "mae60_slopebin": 0.06447581946849823,
+              "corr60": 0.8364826440811157,
+              "corr60_slopebin": 0.6340821385383606,
+              "mae15": 0.07296928763389587,
+              "corr15": 0.6766563057899475
+            },
+            "scree": {
+              "true_mean60": 0.25392410159111023,
+              "pred_mean60": 0.25746580958366394,
+              "mae60": 0.07212388515472412,
+              "mae60_const": 0.2523761987686157,
+              "mae60_slopebin": 0.10388234257698059,
+              "corr60": 0.9214262962341309,
+              "corr60_slopebin": 0.8313600420951843,
+              "mae15": 0.12822353839874268,
+              "corr15": 0.8059158325195312
+            },
+            "smooth": {
+              "true_mean60": 0.25597354769706726,
+              "pred_mean60": 0.24042795598506927,
+              "mae60": 0.14719367027282715,
+              "mae60_const": 0.31089314818382263,
+              "mae60_slopebin": 0.16636374592781067,
+              "corr60": 0.7718698978424072,
+              "corr60_slopebin": 0.7103696465492249,
+              "mae15": 0.17183004319667816,
+              "corr15": 0.72652268409729
+            },
+            "roughness": {
+              "true_mean60": 0.33502519130706787,
+              "pred_mean60": 0.3429967761039734,
+              "mae60": 0.12733861804008484,
+              "mae60_const": 0.2537890672683716,
+              "mae60_slopebin": 0.16391365230083466,
+              "corr60": 0.8035657405853271,
+              "corr60_slopebin": 0.6250744462013245,
+              "mae15": 0.15061993896961212,
+              "corr15": 0.6717545986175537
+            },
+            "boulder_density": {
+              "true_mean60": 0.05888396129012108,
+              "pred_mean60": 0.03416510298848152,
+              "mae60": 0.054829973727464676,
+              "mae60_const": 0.0721847414970398,
+              "mae60_slopebin": 0.05735180154442787,
+              "corr60": 0.5170477628707886,
+              "corr60_slopebin": 0.4990779757499695,
+              "mae15": 0.08047303557395935,
+              "corr15": 0.27783676981925964
+            },
+            "boulder_size": {
+              "true_mean60": 2.449065685272217,
+              "pred_mean60": 2.4304020404815674,
+              "mae60": 0.4429486393928528,
+              "mae60_const": 0.49796897172927856,
+              "mae60_slopebin": 0.48101720213890076,
+              "corr60": 0.17538143694400787,
+              "corr60_slopebin": 0.13376273214817047,
+              "mae15": 0.6853793263435364,
+              "corr15": 0.07428725063800812
+            }
+          },
+          "us_tetons": {
+            "rock_exposure": {
+              "true_mean60": 0.3090914785861969,
+              "pred_mean60": 0.36046478152275085,
+              "mae60": 0.09149936586618423,
+              "mae60_const": 0.2765716016292572,
+              "mae60_slopebin": 0.12015129625797272,
+              "corr60": 0.9256196618080139,
+              "corr60_slopebin": 0.8221409916877747,
+              "mae15": 0.15789969265460968,
+              "corr15": 0.7924903035163879
+            },
+            "scree": {
+              "true_mean60": 0.41843923926353455,
+              "pred_mean60": 0.3693765699863434,
+              "mae60": 0.11762358248233795,
+              "mae60_const": 0.278923898935318,
+              "mae60_slopebin": 0.1349344253540039,
+              "corr60": 0.8093332052230835,
+              "corr60_slopebin": 0.710787296295166,
+              "mae15": 0.20199598371982574,
+              "corr15": 0.6293350458145142
+            },
+            "smooth": {
+              "true_mean60": 0.005230625160038471,
+              "pred_mean60": 0.007224415894597769,
+              "mae60": 0.009244266897439957,
+              "mae60_const": 0.24829819798469543,
+              "mae60_slopebin": 0.022750437259674072,
+              "corr60": 0.24623200297355652,
+              "corr60_slopebin": 0.24830999970436096,
+              "mae15": 0.010262618772685528,
+              "corr15": 0.2374206930398941
+            },
+            "roughness": {
+              "true_mean60": 1.314923882484436,
+              "pred_mean60": 1.1302210092544556,
+              "mae60": 0.44329869747161865,
+              "mae60_const": 0.9836983680725098,
+              "mae60_slopebin": 0.5669412612915039,
+              "corr60": 0.8491507768630981,
+              "corr60_slopebin": 0.7282576560974121,
+              "mae15": 0.5850186944007874,
+              "corr15": 0.6578622460365295
+            },
+            "boulder_density": {
+              "true_mean60": 0.13170817494392395,
+              "pred_mean60": 0.09569381177425385,
+              "mae60": 0.08860553801059723,
+              "mae60_const": 0.09541042894124985,
+              "mae60_slopebin": 0.08956512063741684,
+              "corr60": 0.11574725061655045,
+              "corr60_slopebin": 0.04420199617743492,
+              "mae15": 0.1823289692401886,
+              "corr15": 0.06115245819091797
+            },
+            "boulder_size": {
+              "true_mean60": 2.7494380474090576,
+              "pred_mean60": 2.6544573307037354,
+              "mae60": 0.5454955697059631,
+              "mae60_const": 0.5589187145233154,
+              "mae60_slopebin": 0.550755500793457,
+              "corr60": 0.22508308291435242,
+              "corr60_slopebin": 0.1989324986934662,
+              "mae15": 0.8389590382575989,
+              "corr15": 0.09695641696453094
+            }
+          }
+        },
+        "fields": [
+          "rock_exposure",
+          "scree",
+          "smooth",
+          "roughness",
+          "boulder_density",
+          "boulder_size"
+        ],
+        "val_windows": [
+          "us_tetons",
+          "ch_engadin_f",
+          "no_jotunheimen_f",
+          "nl_limburg_f",
+          "nz_kaikoura_f",
+          "fr_puys_f"
+        ]
+      },
+      "source_sha256": "b72a972c45b48a6df50c7721742bce0292e94879de411ad0b7d4df294a23a7e1",
+      "source_bytes": 499199,
+      "sha256": "77ae54e11567a0a21776231d13a81791bd84c7596379b5fc5236f8e10df931b1",
+      "bytes": 494655
+    },
+    "veg.pt": {
+      "source": "checkpoints/exp2/veg_r3/last.pt",
+      "run": "exp2/veg_r3",
+      "init_chain": [
+        "exp2/veg_r3"
+      ],
+      "datasets": [
+        "v2-vegetation"
+      ],
+      "sources": [
+        "gedtm30",
+        "glo30",
+        "gebco2024",
+        "cudem",
+        "chelsa21",
+        "era5_wb2",
+        "eth_canopy2020",
+        "esa_worldcover2021"
+      ],
+      "licences": {
+        "gedtm30": "CC BY 4.0",
+        "glo30": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+        "gebco2024": "public domain, GEBCO terms of use (acknowledgement required)",
+        "cudem": "US Government work / CC0 1.0",
+        "chelsa21": "CC0 1.0",
+        "era5_wb2": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products",
+        "eth_canopy2020": "CC BY 4.0",
+        "esa_worldcover2021": "CC BY 4.0"
+      },
+      "evidence": {
+        "exp2/veg_r3": "checkpoints/exp2/veg_r2.sh (second command): train_veg train --dataset veg_dataset_v2 --all-regions (from scratch); log checkpoints/exp2/veg_r3/train.log + log.jsonl"
+      },
+      "params": 218155,
+      "tensors": 36,
+      "dtypes": [
+        "float32"
+      ],
+      "step": 6000,
+      "config": {
+        "channels": [
+          32,
+          64
+        ]
+      },
+      "kept_keys": [
+        "model",
+        "config",
+        "step"
+      ],
+      "dropped_keys": [
+        "eval",
+        "holdout",
+        "outputs"
+      ],
+      "meta": {
+        "eval": {
+          "step": 6000,
+          "val": {
+            "cover": 0.1803,
+            "hcan": 4.8085,
+            "p90": 4.7977,
+            "clearing": 0.1467,
+            "tree": 0.2115,
+            "shrub": 0.046,
+            "grass": 0.263,
+            "bare": 0.0832,
+            "snow": 0.0079,
+            "wetland": 0.0117,
+            "moss": 0.0283,
+            "cover_r": 0.7547,
+            "cover_mean_pred": 0.6867,
+            "cover_mean_true": 0.7088
+          }
+        },
+        "holdout": [],
+        "outputs": [
+          "cover",
+          "hcan",
+          "p90",
+          "clearing",
+          "tree",
+          "shrub",
+          "grass",
+          "bare",
+          "snow",
+          "wetland",
+          "moss"
+        ]
+      },
+      "source_sha256": "26532f2aa16bf5884fb68db70a6a6b6d6db6c16d5588d5d66c47dde3cb030086",
+      "source_bytes": 883257,
+      "sha256": "52897bdb8efcb10d30e7435946d41a22c87a20c19ff8b7cf753b1bd9009ab006",
+      "bytes": 881295
+    }
+  },
+  "verification": {
+    "tiles": 32,
+    "bit_identical": 32,
+    "differing": [],
+    "planes_per_tile": 7,
+    "values_compared": 14680064,
+    "worlds": [
+      "1:1v2",
+      "1:2",
+      "1:4",
+      "1:4v2"
+    ],
+    "seeds": [
+      1,
+      7
+    ],
+    "device": "cuda:1",
+    "generator": "WorldGenerator2",
+    "model_id_src": "DaedalusTGM-Exp/world_exp2f:p14000:r20000:l20000mf:h20000:b20000:gnone:d4000:bf32:kc1:B30000:X2:c8000:s30000:sg1.18:S15-30000:sg15-1.11:V6000:SF2500:kd1:kd8-5000-67343:cg1:ks1:ks15:ds2:Lbelts:lb0:rg1.6:pb4:sd1:ht1:hr0:eaeolian-skerries-undersea:rs2:sh0.25x1500k1x30:lf1.3v6:k2-1.34h360:sp1:bl1h0.8",
+    "detail_fp8": true,
+    "model_id_release": "DaedalusTGM-Exp/.exp2-r3.staging-ah78_6sd:p14000:r20000:l20000mf:h20000:b20000:gnone:d4000:bf32:Rec31f3be306a:kc1:B30000:X2:c8000:s30000:sg1.18:S15-30000:sg15-1.11:V6000:SF2500:kd1:kd8-5000-67343:cg1:ks1:ks15:ds2:Lbelts:lb0:rg1.6:pb4:sd1:ht1:hr0:eaeolian-skerries-undersea:rs2:sh0.25x1500k1x30:lf1.3v6:k2-1.34h360:sp1:bl1h0.8"
+  }
+}

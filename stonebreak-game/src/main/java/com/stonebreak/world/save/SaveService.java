@@ -2,8 +2,6 @@ package com.stonebreak.world.save;
 
 import com.stonebreak.player.Player;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.repository.FileSaveRepository;
@@ -13,6 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,21 +21,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Coordinates save/load operations. Disk I/O runs on two small thread pools
- * (SSD-friendly — the old single Save-IO thread serialized every chunk-load
- * probe behind multi-second auto-save batches):
+ * Coordinates a world's saves (cubic voxel runtime, #447). What is saved where:
  * <ul>
- *   <li><b>Load pool</b> — chunk loads / existence probes. Never queues behind
- *       saves, so exploration keeps streaming during an auto-save.</li>
- *   <li><b>Save pool</b> — per-chunk save tasks (encode + atomic write are both
- *       parallel-safe: per-chunk files, temp+move, stateless codec) plus the
- *       rare metadata/player writes.</li>
+ *   <li><b>Cubes and columns</b> - by the world's native stream into its cube store ({@code <world>/cubes}):
+ *       a cube is written when it unloads and at every save point; nothing here encodes blocks. A save point
+ *       is two steps: {@link World#flushCubeBlobs()} on the world's OWNER thread (furnace/workbench registries
+ *       and the {@code SaveHook}s - entities, saplings - into each cube's game blob; no I/O), then
+ *       {@link World#commitCubes()} on the save pool (block-state table, every changed cube + column record,
+ *       {@code cv_store_flush} = durable).</li>
+ *   <li><b>metadata.json / player.json / players/*.json</b> - JSON records written here (atomic + fsync).</li>
  * </ul>
- * The only ordering that matters — operations on the SAME chunk — is enforced
- * by {@link #pendingChunkSaves}: a save of chunk K chains behind K's previous
- * in-flight save, and a load of K chains behind K's in-flight save (the
- * unload-save → immediate-reload race). Snapshots are still taken on the
- * calling thread to remain consistent with CCO expectations.
+ * Threads: the owner hand-offs are executors the caller binds - {@link #setWorldOwner} (the integrated server's
+ * {@code executeOnTick}) for the world, {@link #bindPlayerSource} for the player record. Without a world owner
+ * an autosave/pause save only commits what the world already handed to the store (blobs are still written at
+ * unload and on close); the close flush runs both steps inline (the owner has stopped by then).
+ * Close ordering: {@link #close()} (final save point, waits for any autosave) must run BEFORE
+ * {@link World#cleanup()} (stream close = last save + store close) and while the entity manager is alive.
  */
 public class SaveService implements AutoCloseable {
 
@@ -52,13 +52,8 @@ public class SaveService implements AutoCloseable {
     private final ScheduledExecutorService autoSaveScheduler;
     private final AtomicBoolean autoSaveInProgress = new AtomicBoolean(false);
 
-    /** In-flight save future per chunk key ((cx<<32)|cz) — the same-chunk ordering gate. */
-    private final java.util.concurrent.ConcurrentHashMap<Long, CompletableFuture<Void>> pendingChunkSaves =
-        new java.util.concurrent.ConcurrentHashMap<>();
-
     /**
-     * In-flight write per remote player name — the same ordering gate as
-     * {@link #pendingChunkSaves}, for {@code players/<name>.json}: a write chains behind that
+     * In-flight write per remote player name, for {@code players/<name>.json}: a write chains behind that
      * player's previous one (the save pool has several threads), and a load or set-aside of
      * the name waits for it. Without it a quick re-login read the pre-quit file while the
      * quit save was still in flight — items dropped just before quitting came back (#334).
@@ -100,6 +95,15 @@ public class SaveService implements AutoCloseable {
     /** The autosave's player snapshot still waiting for the owner thread; close() cancels it. */
     private volatile CompletableFuture<PlayerData> pendingPlayerSnapshot;
     private volatile World world;
+    /**
+     * Runs work on the thread that owns {@link #world}'s game state (the server tick thread). Null = not bound:
+     * save points skip the blob flush (see the class comment) except the close flush.
+     */
+    private volatile Executor worldOwner;
+    /** Logged once per service when a save point had no world owner. */
+    private final AtomicBoolean warnedNoWorldOwner = new AtomicBoolean();
+    /** Serializes cube commits so an autosave and a pause/manual save never write the store concurrently. */
+    private CompletableFuture<Void> cubeCommitChain = CompletableFuture.completedFuture(null);
     /** Wall clock the play time is measured on (milliseconds); a test seam. */
     private final java.util.function.LongSupplier clock;
     /** Clock reading up to which play time is already in {@link #worldData}; guarded by {@code this}. */
@@ -153,11 +157,19 @@ public class SaveService implements AutoCloseable {
         this.worldData = worldData;
         this.player = sourceOf(player);
         this.world = world;
-        // Bind this service to the world so its chunk store persists through it, instead of
-        // the chunk store reaching into the Game singleton's save service.
         if (world != null) {
             world.setSaveService(this);
         }
+    }
+
+    /**
+     * Binds the thread that owns the world's game state: {@code owner} runs a task on it (the integrated
+     * server's {@code executeOnTick}, which runs inline on the tick thread itself and once the loop stopped).
+     * Save points flush the cubes' game blobs there ({@link World#flushCubeBlobs()}); never from the AutoSave
+     * thread. {@code Runnable::run} for a world driven on the calling thread (tests, tools).
+     */
+    public void setWorldOwner(Executor owner) {
+        this.worldOwner = owner;
     }
 
     /**
@@ -320,7 +332,7 @@ public class SaveService implements AutoCloseable {
         if (worldData != null && world != null) {
             future = saveAll(snapshotInline);
         } else if (world != null) {
-            future = saveDirtyChunks();
+            future = saveCubes(snapshotInline);
         } else {
             return;
         }
@@ -334,10 +346,10 @@ public class SaveService implements AutoCloseable {
     }
 
     /**
-     * Saves world metadata, every dirty chunk and — when one is bound — the player, snapshotted
-     * on its owner thread (an owner that has stopped running tasks runs it inline, so a close
-     * after the server thread exits still saves the host). No bound player: everything else
-     * is still saved.
+     * A full save point: world metadata, the cubes (blob flush on the world owner, then the store commit) and -
+     * when one is bound - the player, snapshotted on its owner thread (an owner that has stopped running tasks
+     * runs it inline, so a close after the server thread exits still saves the host). No bound player:
+     * everything else is still saved. The future completes when everything is durable.
      */
     public CompletableFuture<Void> saveAll() {
         return saveAll(false);
@@ -361,8 +373,10 @@ public class SaveService implements AutoCloseable {
             : CompletableFuture.supplyAsync(() -> source.snapshot(updatedWorld.getWorldName()),
                     snapshotInline ? Runnable::run : playerOwner);
 
-        return playerData.thenCompose(pd -> submitSave(
-                new SaveWork(updatedWorld, pd, collectDirtyChunkTasks(), "manual/full")))
+        CompletableFuture<Boolean> blobs = flushBlobsAsync(snapshotInline);
+
+        return playerData.thenCombine(blobs, (pd, flushed) -> pd)
+            .thenCompose(pd -> submitSave(new SaveWork(updatedWorld, pd, true, "manual/full")))
             .whenComplete((ignored, throwable) -> {
                 if (throwable == null) {
                     System.out.printf("[SAVE] Complete save finished in %dms%n", clock.getAsLong() - now);
@@ -370,16 +384,56 @@ public class SaveService implements AutoCloseable {
             });
     }
 
-    public CompletableFuture<Void> saveDirtyChunks() {
+    /** A save point of the cubes only (no metadata / player). */
+    public CompletableFuture<Void> saveCubes() {
+        return saveCubes(false);
+    }
+
+    private CompletableFuture<Void> saveCubes(boolean inline) {
         if (writesSuspended || world == null) {
             return CompletableFuture.completedFuture(null);
         }
-        List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
-        if (chunkTasks.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
+        return flushBlobsAsync(inline).thenCompose(ignored -> submitSave(new SaveWork(null, null, true, "cubes")));
+    }
+
+    /**
+     * Step 1 of a save point: the cubes' game blobs, on the world owner ({@code inline}: on this thread - the
+     * close flush). Completes with whether the flush ran; never exceptionally (a failed flush still lets the
+     * commit save what the store already has).
+     */
+    private CompletableFuture<Boolean> flushBlobsAsync(boolean inline) {
+        World w = world;
+        if (w == null || w.cubeStore() == null) {
+            return CompletableFuture.completedFuture(false);
         }
-        return submitSave(new SaveWork(null, null, chunkTasks, "chunks-only"))
-            .thenRun(() -> System.out.printf("[SAVE] Saved %d dirty chunks%n", chunkTasks.size()));
+        Executor owner = inline ? Runnable::run : worldOwner;
+        if (owner == null) {
+            warnNoWorldOwner();
+            return CompletableFuture.completedFuture(false);
+        }
+        CompletableFuture<Boolean> done = new CompletableFuture<>();
+        try {
+            owner.execute(() -> {
+                try {
+                    w.flushCubeBlobs();
+                    done.complete(true);
+                } catch (RuntimeException e) {
+                    System.err.println("[SAVE] Cube blob flush failed: " + e);
+                    done.complete(false);
+                }
+            });
+        } catch (RuntimeException e) {
+            System.err.println("[SAVE] Could not reach the world's thread for the blob flush: " + e);
+            done.complete(false);
+        }
+        return done;
+    }
+
+    private void warnNoWorldOwner() {
+        if (warnedNoWorldOwner.compareAndSet(false, true)) {
+            System.err.println("[SAVE] No world owner bound (SaveService.setWorldOwner): save points commit the cube"
+                + " store without refreshing cube blobs (entities/furnaces are still saved at unload and on close)");
+        }
     }
 
     /**
@@ -404,7 +458,8 @@ public class SaveService implements AutoCloseable {
                 var worldOpt = repository.loadWorld();
                 if (worldOpt.isPresent()) {
                     System.out.printf("[LOAD] World metadata loaded in %dms%n", System.currentTimeMillis() - start);
-                    return loadPlayerInto(worldOpt.get(), null);
+                    LoadResult refused = refuseIfIncompatible(worldOpt.get());
+                    return refused != null ? refused : loadPlayerInto(worldOpt.get(), null);
                 }
                 if (!repository.hasSavedWorldContent()) {
                     return LoadResult.worldMissing();
@@ -447,10 +502,27 @@ public class SaveService implements AutoCloseable {
             return LoadResult.failed("World metadata is lost" + kept
                 + " and there is no world.json to rebuild it from; the world was not opened.");
         }
+        LoadResult refused = refuseIfIncompatible(record.get());
+        if (refused != null) {
+            return refused;
+        }
         String notice = "This world's metadata could not be read" + kept + "; it was rebuilt from world.json."
             + " The terrain is unchanged, but play time, world time, weather and world settings were reset.";
         System.err.println("[LOAD] " + why + ": " + notice);
         return loadPlayerInto(record.get(), notice);
+    }
+
+    /**
+     * Null when this build can open the world; else the refusal. An incompatible world (another save format,
+     * other bounds) is never opened, rewritten or deleted - no migration (pre-alpha rule).
+     */
+    private LoadResult refuseIfIncompatible(WorldData data) {
+        WorldFormat.Check check = WorldFormat.check(data, repository.worldRoot());
+        if (check.compatible()) {
+            return null;
+        }
+        System.err.println("[LOAD] " + check.reason());
+        return LoadResult.incompatible(check.reason());
     }
 
     /**
@@ -475,55 +547,6 @@ public class SaveService implements AutoCloseable {
             System.err.println("[LOAD] " + notice);
             return new LoadResult(true, null, data, null, notice, worldNotice);
         }
-    }
-
-    /** Completed future when no save of that chunk is in flight; else the save to chain after. */
-    private CompletableFuture<Void> saveGate(int chunkX, int chunkZ) {
-        CompletableFuture<Void> pending = pendingChunkSaves.get(chunkKey(chunkX, chunkZ));
-        return pending == null ? CompletableFuture.completedFuture(null)
-            : pending.exceptionally(t -> null);
-    }
-
-    private static long chunkKey(int chunkX, int chunkZ) {
-        return (((long) chunkX) << 32) | (chunkZ & 0xFFFFFFFFL);
-    }
-
-    public CompletableFuture<Chunk> loadChunk(int chunkX, int chunkZ) {
-        return saveGate(chunkX, chunkZ).thenApplyAsync(ignored -> {
-            try {
-                var dataOpt = repository.loadChunk(chunkX, chunkZ);
-                if (dataOpt.isEmpty()) {
-                    return null;
-                }
-                if (world == null) {
-                    throw new IllegalStateException("World not initialized");
-                }
-                return StateConverter.createChunkFromData(dataOpt.get(), world);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to load chunk (" + chunkX + "," + chunkZ + ")", e);
-            }
-        }, loadPool);
-    }
-
-    public CompletableFuture<Void> saveChunk(Chunk chunk) {
-        // Checked before the dirty flag is consumed: a suspended save must not mark it clean.
-        if (writesSuspended) {
-            return CompletableFuture.completedFuture(null);
-        }
-        if (!chunk.getCcoDirtyTracker().checkAndClearDataDirty()) {
-            return CompletableFuture.completedFuture(null);
-        }
-        if (world == null) {
-            return CompletableFuture.failedFuture(new IllegalStateException("World not initialized"));
-        }
-        ChunkData data = StateConverter.toChunkData(chunk, world);
-        List<ChunkSaveTask> tasks = List.of(new ChunkSaveTask(chunk, data));
-        return submitSave(new SaveWork(null, null, tasks, "single-chunk"));
-    }
-
-    public CompletableFuture<Boolean> chunkExists(int chunkX, int chunkZ) {
-        return saveGate(chunkX, chunkZ)
-            .thenApplyAsync(ignored -> repository.chunkExists(chunkX, chunkZ), loadPool);
     }
 
     /**
@@ -625,6 +648,14 @@ public class SaveService implements AutoCloseable {
             snapshot.cancel(false);
         }
         awaitInFlightAutoSave();
+        World closing = world;
+        if (closing != null && !writesSuspended) {
+            try {
+                closing.freezeCampsForClose();
+            } catch (RuntimeException e) {
+                System.err.println("[SAVE] Freezing goblin camps before the close flush failed: " + e);
+            }
+        }
         flushSavesBlocking("service close", true);
         autoSaveScheduler.shutdown();
         shutdownAndAwait(savePool, "save");
@@ -669,45 +700,14 @@ public class SaveService implements AutoCloseable {
         }
     }
 
-    private List<ChunkSaveTask> collectDirtyChunkTasks() {
-        if (world == null) {
-            return List.of();
-        }
-        // Entities (mobs, drops) live in the EntityManager, not in block data, so a chunk whose
-        // only change is the entities standing in it stays block-clean and would be skipped. Mark
-        // such chunks dirty first so every save captures current entity state. Cheap (bounded by
-        // the mob cap) and server-side (the headless world owns the SaveService + real entities).
-        var entityManager = world.getEntityManager();
-        if (entityManager != null) {
-            entityManager.markChunksWithLiveEntitiesDirty();
-        }
-
-        List<Chunk> dirtyChunks = world.getDirtyChunks();
-        if (dirtyChunks.isEmpty()) {
-            return List.of();
-        }
-        List<ChunkSaveTask> tasks = new ArrayList<>(dirtyChunks.size());
-        for (Chunk chunk : dirtyChunks) {
-            if (!chunk.getCcoDirtyTracker().checkAndClearDataDirty()) {
-                continue;
-            }
-            ChunkData data = StateConverter.toChunkData(chunk, world);
-            tasks.add(new ChunkSaveTask(chunk, data));
-        }
-        return List.copyOf(tasks);
-    }
-
     /**
-     * Fans the batch out as ONE task per chunk across the save pool (parallel
-     * encode + write on SSD) instead of a single monolithic batch task — a
-     * 2600-chunk auto-save used to hold the sole IO thread for 5+ seconds,
-     * starving every chunk-load probe behind it. Same-chunk ordering is kept
-     * by chaining each chunk's task behind its previous in-flight save; a
-     * failed chunk re-marks only itself dirty for the next save round.
+     * Step 2 of a save point, on the save pool: the JSON records and the cube commit
+     * ({@link World#commitCubes()}: block states + every changed cube/column record + store flush) run in
+     * parallel; cube commits are chained so two save points never commit at once. Completes exceptionally
+     * when a part failed (logged here too).
      */
     private CompletableFuture<Void> submitSave(SaveWork work) {
-        List<ChunkSaveTask> chunkTasks = work.chunks();
-        List<CompletableFuture<Void>> parts = new ArrayList<>(chunkTasks.size() + 1);
+        List<CompletableFuture<Void>> parts = new ArrayList<>(2);
 
         if (work.worldData() != null || work.playerData() != null) {
             parts.add(CompletableFuture.runAsync(() -> {
@@ -732,36 +732,23 @@ public class SaveService implements AutoCloseable {
             }));
         }
 
-        for (ChunkSaveTask task : chunkTasks) {
-            parts.add(submitChunkSave(task, work.reason()));
+        World w = world;
+        if (work.cubes() && w != null && w.cubeStore() != null) {
+            parts.add(chainCubeCommit(w, work.reason()));
         }
         return CompletableFuture.allOf(parts.toArray(CompletableFuture[]::new));
     }
 
-    private CompletableFuture<Void> submitChunkSave(ChunkSaveTask task, String reason) {
-        long key = chunkKey(task.data().getChunkX(), task.data().getChunkZ());
-        CompletableFuture<Void> run = pendingChunkSaves.compute(key, (k, prev) -> {
-            CompletableFuture<Void> gate = prev == null
-                ? CompletableFuture.completedFuture(null)
-                : prev.exceptionally(t -> null);
-            return gate.thenRunAsync(() -> {
-                try {
-                    repository.saveChunk(task.data());
-                } catch (IOException e) {
-                    throw new RuntimeException("Chunk save failed (" + reason + ")", e);
+    private synchronized CompletableFuture<Void> chainCubeCommit(World w, String reason) {
+        CompletableFuture<Void> next = cubeCommitChain.exceptionally(t -> null)
+            .thenRunAsync(w::commitCubes, savePool)
+            .whenComplete((ignored, throwable) -> {
+                if (throwable != null) {
+                    System.err.println("[SAVE] Cube save failed (" + reason + "): " + throwable.getMessage());
                 }
-            }, savePool);
-        });
-        run.whenComplete((ignored, throwable) -> {
-            pendingChunkSaves.remove(key, run);
-            if (throwable != null) {
-                task.chunk().getCcoDirtyTracker().markDataDirtyOnly();
-                System.err.println("[SAVE] Chunk (" + task.data().getChunkX() + ","
-                    + task.data().getChunkZ() + ") save failed (" + reason + "): "
-                    + throwable.getMessage());
-            }
-        });
-        return run;
+            });
+        cubeCommitChain = next;
+        return next;
     }
 
     void performAutoSave() {
@@ -783,11 +770,11 @@ public class SaveService implements AutoCloseable {
         CompletableFuture<Void> inFlight = new CompletableFuture<>();
         inFlightAutoSave = inFlight;
         long started = clock.getAsLong();
-        int chunkCount;
+        boolean blobsFlushed;
         CompletableFuture<Void> write;
         try {
             // A missing snapshot (no bound player, owner thread busy, close cancelled it) skips
-            // only player.json: chunks and world time still save. It used to skip the whole
+            // only player.json: cubes and world time still save. It used to skip the whole
             // autosave — every chunk of a host world went unsaved while the player was unbound.
             PlayerData playerData = player == null ? null : snapshotPlayerOnOwner(worldData.getWorldName());
             if (playerData == null && closed.get()) {
@@ -795,10 +782,9 @@ public class SaveService implements AutoCloseable {
                 inFlight.complete(null);
                 return;
             }
+            blobsFlushed = awaitBlobFlush();
             WorldData updatedWorld = advanceWorldDataForSave(started);
-            List<ChunkSaveTask> chunkTasks = collectDirtyChunkTasks();
-            chunkCount = chunkTasks.size();
-            write = submitSave(new SaveWork(updatedWorld, playerData, chunkTasks, "auto"));
+            write = submitSave(new SaveWork(updatedWorld, playerData, true, "auto"));
         } catch (RuntimeException e) {
             // Never leave the gate set: every later autosave would skip, and close() would wait
             // out its full deadline. Not rethrown, so the fixed-rate schedule keeps running.
@@ -813,7 +799,8 @@ public class SaveService implements AutoCloseable {
             if (throwable == null) {
                 inFlight.complete(null);
                 long duration = clock.getAsLong() - started;
-                System.out.printf("[AUTO-SAVE] Completed in %dms (%d chunks)%n", duration, chunkCount);
+                System.out.printf("[AUTO-SAVE] Completed in %dms (cube blobs %s)%n", duration,
+                    blobsFlushed ? "refreshed" : "not refreshed");
                 if (duration > 5000) {
                     System.err.printf("[AUTO-SAVE] WARNING: Save took %dms%n", duration);
                 }
@@ -857,20 +844,40 @@ public class SaveService implements AutoCloseable {
         }
     }
 
+    /**
+     * Step 1 for the AutoSave thread: waits (bounded) for the blob flush on the world owner. False when there is
+     * no owner, the owner did not get to it in time, or close() started - the commit then saves what the store
+     * already has, and the next save point (or the close flush) refreshes the blobs.
+     */
+    private boolean awaitBlobFlush() {
+        CompletableFuture<Boolean> flush = flushBlobsAsync(false);
+        try {
+            return flush.get(PLAYER_SNAPSHOT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            System.err.println("[AUTO-SAVE] Cube blobs not refreshed this round: the world's thread did not run the"
+                + " flush within " + PLAYER_SNAPSHOT_TIMEOUT_SECONDS + "s");
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.CancellationException e) {
+            return false;
+        }
+    }
+
     /** Test view of the autosave currently in flight (null when none). Package-private. */
     CompletableFuture<Void> inFlightAutoSaveForTesting() {
         return inFlightAutoSave;
     }
 
-    private record ChunkSaveTask(Chunk chunk, ChunkData data) { }
-
     private record SaveWork(WorldData worldData,
                             PlayerData playerData,
-                            List<ChunkSaveTask> chunks,
+                            boolean cubes,
                             String reason) { }
 
     public static class LoadResult {
         static final String WORLD_NOT_FOUND = "World metadata not found";
+        private boolean incompatible;
 
         private final boolean success;
         private final String error;
@@ -904,6 +911,20 @@ public class SaveService implements AutoCloseable {
 
         static LoadResult failed(String error) {
             return new LoadResult(false, error, null, null);
+        }
+
+        static LoadResult incompatible(String reason) {
+            LoadResult r = new LoadResult(false, reason, null, null);
+            r.incompatible = true;
+            return r;
+        }
+
+        /**
+         * True when the world exists but was saved in a format this build cannot open
+         * ({@link WorldFormat}); {@link #getError()} says why, starting with {@link WorldFormat#INCOMPATIBLE}.
+         */
+        public boolean isIncompatible() {
+            return incompatible;
         }
 
         public boolean isSuccess() {

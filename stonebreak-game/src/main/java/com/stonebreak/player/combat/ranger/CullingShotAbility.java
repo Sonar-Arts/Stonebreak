@@ -24,6 +24,9 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.combat.QuarryController;
 import com.stonebreak.world.World;
+import com.stonebreak.util.Positions;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -108,7 +111,7 @@ public class CullingShotAbility {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
-        Vector3f origin = player.getRaycastEngine().eyeOrigin();
+        var origin = player.getRaycastEngine().eyeOrigin();
         LivingEntity hit = player.getRaycastEngine().raycastEntityAlong(
             origin, lockedDirection, Player.combatTargets(entityManager), RANGER_CULLING_RANGE);
         if (hit == null || !hit.isAlive()) {
@@ -143,7 +146,7 @@ public class CullingShotAbility {
         quarry.onPlayerHit(hit);
 
         if (stacks >= RANGER_STUDY_MAX_STACKS && lowHpAtImpact) {
-            Vector3f toTarget = hit.getPosition().sub(player.getPosition());
+            Vector3f toTarget = Positions.offset(player.getPosition(), hit.getPosition());
             toTarget.y = 0f;
             if (toTarget.lengthSquared() > 0.0001f) {
                 dashDirection.set(toTarget).normalize();
@@ -166,7 +169,7 @@ public class CullingShotAbility {
 
         while (remaining > 0f) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
-            Vector3f newPos = new Vector3f(dashDirection).mul(stepLen).add(player.getPosition());
+            Vector3d newPos = new Vector3d(player.getPosition()).fma(stepLen, dashDirection);
 
             if (isBlocked(world, newPos)) {
                 stoppedByWall = true;
@@ -188,13 +191,13 @@ public class CullingShotAbility {
         cooldownRemaining = RANGER_CULLING_COOLDOWN;
     }
 
-    private boolean isBlocked(World world, Vector3f pos) {
-        return isSolidAt(world, pos.x, pos.y + 0.1f, pos.z)
-            || isSolidAt(world, pos.x, pos.y + PlayerConstants.PLAYER_HEIGHT * 0.6f, pos.z);
+    private boolean isBlocked(World world, Vector3dc pos) {
+        return isSolidAt(world, pos.x(), pos.y() + 0.1, pos.z())
+            || isSolidAt(world, pos.x(), pos.y() + PlayerConstants.PLAYER_HEIGHT * 0.6, pos.z());
     }
 
-    private boolean isSolidAt(World world, float x, float y, float z) {
-        BlockType block = world.getBlockAt((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z));
+    private boolean isSolidAt(World world, double x, double y, double z) {
+        BlockType block = world.getBlockAt(Positions.cell(x), Positions.cell(y), Positions.cell(z));
         return block != null && block.isSolid();
     }
 }

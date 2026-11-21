@@ -9,7 +9,7 @@ import com.stonebreak.network.packet.handshake.NeedsCharacterCreationS2C;
 import com.stonebreak.network.packet.handshake.WelcomeS2C;
 import com.stonebreak.network.packet.player.PlayerJoinS2C;
 import com.stonebreak.network.packet.player.PlayerLeaveS2C;
-import com.stonebreak.network.packet.world.ChunkDataS2C;
+import com.stonebreak.network.packet.world.CubeDataS2C;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -67,7 +67,8 @@ class SessionLifecycleIntegrationTest {
              HarnessClient ben = HarnessClient.join(server, "Ben")) {
             HarnessClient ann = HarnessClient.join(server, "Ann");
             ann.reportAtSpawn();
-            assertTrue(ann.await(ChunkDataS2C.class, HarnessClient.PROMPT).isPresent(), "streaming started");
+            ann.requestCubesAroundSpawn(2, 1);
+            assertTrue(ann.await(CubeDataS2C.class, HarnessClient.PROMPT).isPresent(), "streaming started");
 
             ann.close(); // drops the socket mid-stream, no DisconnectC2S
 

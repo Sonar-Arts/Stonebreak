@@ -1,6 +1,6 @@
 package com.stonebreak.player;
 
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 import org.joml.Vector3i;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.World;
@@ -35,7 +35,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * @param blockType The type of block to place
      * @return ValidationResult containing whether placement is valid and any adjustments needed
      */
-    public PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType) {
+    public PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3dc playerPos, BlockType blockType) {
         return validatePlacement(blockPos, playerPos, blockType, true);
     }
 
@@ -48,7 +48,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * @param playerOnGround Whether the player is currently on the ground
      * @return ValidationResult containing whether placement is valid and any adjustments needed
      */
-    public PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType, boolean playerOnGround) {
+    public PlacementValidationResult validatePlacement(Vector3i blockPos, Vector3dc playerPos, BlockType blockType, boolean playerOnGround) {
         // Check if target position is valid for placement
         if (!isValidPlacementLocation(blockPos, blockType)) {
             return new PlacementValidationResult(false, PlacementValidationResult.FailureReason.INVALID_LOCATION);
@@ -67,8 +67,8 @@ public class BlockPlacementValidator implements IBlockPlacementService {
         boolean hasSupport = hasAdjacentSolidBlock(blockPos);
         boolean isWaterReplacement = world.getBlockAt(blockPos.x, blockPos.y, blockPos.z) == BlockType.WATER;
         boolean isNerdpoling = !playerOnGround &&
-                              (blockPos.y < playerPos.y) &&
-                              (blockPos.y >= playerPos.y - 3.0f) &&
+                              (blockPos.y < playerPos.y()) &&
+                              (blockPos.y >= playerPos.y() - 3.0f) &&
                               isHorizontallyAligned(blockPos, playerPos);
 
         if (!hasSupport && !isWaterReplacement && !isNerdpoling) {
@@ -114,7 +114,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * Uses precise AABB (Axis-Aligned Bounding Box) collision detection.
      */
     @Override
-    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos) {
+    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3dc playerPos) {
         return wouldIntersectWithPlayer(blockPos, playerPos, null);
     }
 
@@ -123,7 +123,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * Uses precise AABB (Axis-Aligned Bounding Box) collision detection.
      */
     @Override
-    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos, BlockType blockType) {
+    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3dc playerPos, BlockType blockType) {
         return wouldIntersectWithPlayer(blockPos, playerPos, blockType, true);
     }
 
@@ -132,15 +132,15 @@ public class BlockPlacementValidator implements IBlockPlacementService {
      * Uses precise AABB (Axis-Aligned Bounding Box) collision detection.
      * Allows special case for placing blocks directly beneath player's feet when jumping.
      */
-    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3f playerPos, BlockType blockType, boolean playerOnGround) {
+    public boolean wouldIntersectWithPlayer(Vector3i blockPos, Vector3dc playerPos, BlockType blockType, boolean playerOnGround) {
         // Player's physics bounding box
         float halfPlayerWidth = PLAYER_WIDTH / 2;
-        float pMinX = playerPos.x - halfPlayerWidth;
-        float pMaxX = playerPos.x + halfPlayerWidth;
-        float pMinY = playerPos.y; // Player's feet
-        float pMaxY = playerPos.y + PLAYER_HEIGHT; // Player's head
-        float pMinZ = playerPos.z - halfPlayerWidth;
-        float pMaxZ = playerPos.z + halfPlayerWidth;
+        double pMinX = playerPos.x() - halfPlayerWidth;
+        double pMaxX = playerPos.x() + halfPlayerWidth;
+        double pMinY = playerPos.y(); // Player's feet
+        double pMaxY = playerPos.y() + PLAYER_HEIGHT; // Player's head
+        double pMinZ = playerPos.z() - halfPlayerWidth;
+        double pMaxZ = playerPos.z() + halfPlayerWidth;
 
         // Block's bounding box for the block we're trying to place
         float blockHeight = 1.0f; // Default to full block height
@@ -175,8 +175,8 @@ public class BlockPlacementValidator implements IBlockPlacementService {
         if (hasCollision && !playerOnGround) {
             // Check if block is strictly underneath the player's feet (very close)
             // Block must be directly below the player and very close
-            boolean isDirectlyUnderneath = (blockPos.y < playerPos.y) && // Block must be below player's feet
-                                         (blockPos.y >= playerPos.y - 1.5f) && // Must be very close (within 1.5 blocks)
+            boolean isDirectlyUnderneath = (blockPos.y < playerPos.y()) && // Block must be below player's feet
+                                         (blockPos.y >= playerPos.y() - 1.5f) && // Must be very close (within 1.5 blocks)
                                          collisionX && collisionZ; // Block overlaps with player horizontally
 
             if (isDirectlyUnderneath) {
@@ -200,12 +200,12 @@ public class BlockPlacementValidator implements IBlockPlacementService {
     /**
      * Checks if a block position is horizontally aligned with the player (overlaps horizontally).
      */
-    private boolean isHorizontallyAligned(Vector3i blockPos, Vector3f playerPos) {
+    private boolean isHorizontallyAligned(Vector3i blockPos, Vector3dc playerPos) {
         float halfPlayerWidth = PLAYER_WIDTH / 2;
-        float pMinX = playerPos.x - halfPlayerWidth;
-        float pMaxX = playerPos.x + halfPlayerWidth;
-        float pMinZ = playerPos.z - halfPlayerWidth;
-        float pMaxZ = playerPos.z + halfPlayerWidth;
+        double pMinX = playerPos.x() - halfPlayerWidth;
+        double pMaxX = playerPos.x() + halfPlayerWidth;
+        double pMinZ = playerPos.z() - halfPlayerWidth;
+        double pMaxZ = playerPos.z() + halfPlayerWidth;
 
         float bMinX = blockPos.x;
         float bMaxX = blockPos.x + 1.0f;
@@ -221,13 +221,13 @@ public class BlockPlacementValidator implements IBlockPlacementService {
     /**
      * Checks if this is a "clutch" block placement - placing a block near the player's feet while jumping.
      */
-    private boolean isClutchPlacement(Vector3i blockPos, Vector3f playerPos, BlockType blockType) {
+    private boolean isClutchPlacement(Vector3i blockPos, Vector3dc playerPos, BlockType blockType) {
         // Player's physics bounding box for horizontal overlap check
         float halfPlayerWidth = PLAYER_WIDTH / 2;
-        float pMinX = playerPos.x - halfPlayerWidth;
-        float pMaxX = playerPos.x + halfPlayerWidth;
-        float pMinZ = playerPos.z - halfPlayerWidth;
-        float pMaxZ = playerPos.z + halfPlayerWidth;
+        double pMinX = playerPos.x() - halfPlayerWidth;
+        double pMaxX = playerPos.x() + halfPlayerWidth;
+        double pMinZ = playerPos.z() - halfPlayerWidth;
+        double pMaxZ = playerPos.z() + halfPlayerWidth;
 
         // Block's bounding box
         float bMinX = blockPos.x;
@@ -240,7 +240,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
         boolean overlapZ = (pMinZ < bMaxZ) && (pMaxZ > bMinZ);
 
         // Check if block is near player's feet vertically (extremely permissive for testing)
-        boolean nearFeetVertically = (blockPos.y >= playerPos.y - 5.0f) && (blockPos.y <= playerPos.y + 2.0f);
+        boolean nearFeetVertically = (blockPos.y >= playerPos.y() - 5.0f) && (blockPos.y <= playerPos.y() + 2.0f);
 
 
         return overlapX && overlapZ && nearFeetVertically;

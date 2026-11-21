@@ -1,5 +1,6 @@
 package com.stonebreak.ui.terrainMapper.visualization;
 
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.BiomeVisualizer;
 import com.stonebreak.ui.terrainMapper.config.TerrainMapperConfig;
 import com.stonebreak.ui.terrainMapper.visualization.impl.diffusion.HeightVisualizer;
@@ -33,6 +34,28 @@ final class DiffusionPreview implements GeneratorPreview {
      */
     private final Object serviceLock = new Object();
     private volatile boolean active;
+    /** The terrain scale previewed (and the new world's): TGMPipe builds the tiles with its blocks and curve. */
+    private volatile TerrainScalePreset scale = TerrainScalePreset.ONE_TO_FOUR;
+
+    void setScale(TerrainScalePreset scale) {
+        this.scale = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+    }
+
+    TerrainScalePreset scale() {
+        return scale;
+    }
+
+    /** The climate layout previewed (and the new world's): its own TGMPipe world, so its own tiles. */
+    private volatile com.stonebreak.world.generation.ClimateLayout climateLayout =
+            com.stonebreak.world.generation.ClimateLayout.DEFAULT;
+
+    void setClimateLayout(com.stonebreak.world.generation.ClimateLayout layout) {
+        this.climateLayout = com.stonebreak.world.generation.ClimateLayout.orDefault(layout);
+    }
+
+    com.stonebreak.world.generation.ClimateLayout climateLayout() {
+        return climateLayout;
+    }
 
     @Override
     public List<VisualizerKind> modes() {
@@ -42,7 +65,9 @@ final class DiffusionPreview implements GeneratorPreview {
     @Override
     public Built build(long seed, PreviewSampleStore store) {
         // Same tile source the world generator uses.
-        DiffusionTileCache tiles = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_PREVIEW);
+        TerrainScalePreset preset = scale;
+        com.stonebreak.world.generation.ClimateLayout layout = climateLayout;
+        DiffusionTileCache tiles = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_PREVIEW, preset, layout);
         HeightMapGenerator heightMap = new HeightMapGenerator(tiles);
         BiomeManager biomes = new BiomeManager(tiles);
 
@@ -66,7 +91,7 @@ final class DiffusionPreview implements GeneratorPreview {
         };
 
         DiffusionTileCache overview = new DiffusionTileCache(seed, TerrainMapperConfig.OVERVIEW_LOD,
-                TGMPipe.PRIORITY_PREVIEW);
+                TGMPipe.PRIORITY_PREVIEW, preset, layout);
         AutoCloseable resources = () -> {
             tiles.close();
             overview.close();
@@ -109,6 +134,8 @@ final class DiffusionPreview implements GeneratorPreview {
     public void startServices(long seed) {
         synchronized (serviceLock) {
             if (active) {
+                // Previews become new worlds, which get the default model: leave a saved world's model if one ran.
+                TGMPipe.getInstance().useDefaultModel();
                 TGMPipe.getInstance().ensureRunning();
             }
         }

@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.vestige;
 
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -90,8 +91,8 @@ class VestigeMindTest {
     @Test
     void aWooshWaitsForATurnedBackAndACalmCamera() {
         VestigeMind mind = mind();
-        Vector3f player = new Vector3f();
-        Vector3f behind = new Vector3f(-10f, 0f, 0f);
+        Vector3d player = new Vector3d();
+        Vector3d behind = new Vector3d(-10f, 0f, 0f);
         Vector3f lookingAway = new Vector3f(1f, 0f, 0f);
         for (int i = 0; i < 10; i++) {
             mind.look().update(lookingAway, player, behind, TICK);
@@ -109,9 +110,9 @@ class VestigeMindTest {
     @Test
     void aVictimHuntingForItIsNotWooshed() {
         VestigeMind mind = mind();
-        Vector3f player = new Vector3f();
-        Vector3f eye = new Vector3f(0f, 1.6f, 0f);
-        Vector3f behind = new Vector3f(-10f, 0f, 0f);
+        Vector3d player = new Vector3d();
+        Vector3d eye = new Vector3d(0f, 1.6f, 0f);
+        Vector3d behind = new Vector3d(-10f, 0f, 0f);
         Vector3f lookingAway = new Vector3f(1f, 0f, 0f);
         for (int i = 0; i < 20; i++) {
             mind.tracking().update(true, true, behind, eye, lookingAway, TICK);
@@ -128,8 +129,8 @@ class VestigeMindTest {
     @Test
     void aFranticPlayerIsNotWooshed() {
         VestigeMind mind = mind();
-        Vector3f player = new Vector3f();
-        Vector3f behind = new Vector3f(-10f, 0f, 0f);
+        Vector3d player = new Vector3d();
+        Vector3d behind = new Vector3d(-10f, 0f, 0f);
         // Snapping between two headings that both keep the back to the Vestige, fast.
         for (int i = 0; i < 80; i++) {
             float yaw = (float) Math.toRadians(i % 2 == 0 ? -40 : 40);

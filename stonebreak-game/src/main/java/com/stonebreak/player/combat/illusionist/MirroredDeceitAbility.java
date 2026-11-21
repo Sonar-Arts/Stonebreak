@@ -14,9 +14,9 @@ import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.DoubtController;
-import com.stonebreak.rendering.effects.IllusionSmokeParticles;
+import com.stonebreak.fx.Fx;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,12 +35,13 @@ import java.util.Set;
 public class MirroredDeceitAbility {
 
     private static final int DECOY_COUNT = IllusionDecoy.fanAngles().length;
+    /** The pale violet puff decoys appear and vanish in (Stonebreak#441); it fills a body-high column above the point. */
+    public static final String SMOKE_FX = "stonebreak:illusion_smoke";
 
     private boolean active;
     private float cooldownRemaining;
     private float durationRemaining;
     private final List<IllusionDecoy> decoys = new ArrayList<>();
-    private final IllusionSmokeParticles smoke = new IllusionSmokeParticles();
     /**
      * True when this cast's decoys live on the server (#341): they arrive as replicated shadows
      * and are adopted into {@link #decoys} by owner id; {@link #adoptedIds} holds the network
@@ -52,7 +53,6 @@ public class MirroredDeceitAbility {
     public boolean isActive() { return active; }
     public boolean isOnCooldown() { return cooldownRemaining > 0f; }
     public float getCooldownRemaining() { return cooldownRemaining; }
-    public IllusionSmokeParticles getSmoke() { return smoke; }
 
     /**
      * Casts the decoys at the player's position. In a session the SERVER spawns them (#341), so
@@ -62,14 +62,14 @@ public class MirroredDeceitAbility {
      */
     public boolean tryActivate(Player player) {
         if (active || cooldownRemaining > 0f) return false;
-        Vector3f spawnPos = player.getPosition();
+        Vector3d spawnPos = player.getPosition();
         if (MultiplayerSession.sendDecoyCast()) {
             serverDecoys = true;
             adoptedIds.clear();
         } else if (!spawnLocalDecoys(player)) {
             return false;
         }
-        smoke.burst(new Vector3f(spawnPos.x, spawnPos.y + 1f, spawnPos.z));
+        Fx.fire(SMOKE_FX, spawnPos.x, spawnPos.y + 1.0, spawnPos.z);
 
         active = true;
         durationRemaining = com.stonebreak.player.PlayerConstants.ILLUSIONIST_DECOY_DURATION;
@@ -86,7 +86,7 @@ public class MirroredDeceitAbility {
         IllusionDecoy.MirrorSource source = mirrorOf(player);
         com.stonebreak.items.Item held = selectedItem(player);
         for (float angle : IllusionDecoy.fanAngles()) {
-            IllusionDecoy decoy = new IllusionDecoy(world, new Vector3f(player.getPosition()), source, angle);
+            IllusionDecoy decoy = new IllusionDecoy(world, new Vector3d(player.getPosition()), source, angle);
             decoy.setHeldItem(held);
             entityManager.addEntity(decoy);
             decoys.add(decoy);
@@ -114,7 +114,7 @@ public class MirroredDeceitAbility {
     private static IllusionDecoy.MirrorSource mirrorOf(Player player) {
         return new IllusionDecoy.MirrorSource() {
             @Override
-            public Vector3f position() {
+            public Vector3d position() {
                 return player.getPosition();
             }
 
@@ -136,7 +136,6 @@ public class MirroredDeceitAbility {
         if (cooldownRemaining > 0f) {
             cooldownRemaining -= deltaTime;
         }
-        smoke.update(deltaTime);
 
         if (!active) return;
 
@@ -208,7 +207,7 @@ public class MirroredDeceitAbility {
 
     /** Punishes the attacker that destroyed a decoy, then removes the decoy from the world. */
     private void onDecoyDestroyed(IllusionDecoy decoy, DoubtController doubt) {
-        smoke.burst(decoy.getPosition());
+        puff(decoy);
         LivingEntity killer = resolveKiller(decoy);
         if (killer != null) {
             killer.applyStatusEffect(StatusEffectType.CRIPPLE,
@@ -219,8 +218,13 @@ public class MirroredDeceitAbility {
         }
     }
 
+    private static void puff(IllusionDecoy decoy) {
+        Vector3d p = decoy.getPosition();
+        Fx.fire(SMOKE_FX, p.x, p.y, p.z);
+    }
+
     private void dismiss(IllusionDecoy decoy) {
-        smoke.burst(decoy.getPosition());
+        puff(decoy);
         decoy.setAlive(false);
     }
 
@@ -236,15 +240,15 @@ public class MirroredDeceitAbility {
     private LivingEntity resolveKiller(IllusionDecoy decoy) {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return null;
-        Vector3f reference = decoy.getLastAttackerPosition() != null
+        Vector3d reference = decoy.getLastAttackerPosition() != null
             ? decoy.getLastAttackerPosition()
             : decoy.getPosition();
 
         LivingEntity nearest = null;
-        float nearestDistSq = 9f; // within ~3 blocks (melee reach)
+        double nearestDistSq = 9.0; // within ~3 blocks (melee reach)
         for (LivingEntity entity : entityManager.getLivingEntities()) {
             if (entity == decoy || !Player.isCombatTarget(entity)) continue;
-            float distSq = entity.getPosition().distanceSquared(reference);
+            double distSq = entity.getPosition().distanceSquared(reference);
             if (distSq < nearestDistSq) {
                 nearestDistSq = distSq;
                 nearest = entity;

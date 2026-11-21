@@ -1,7 +1,6 @@
 package com.stonebreak.ui.settingsMenu.managers;
 
 import com.stonebreak.core.Game;
-import org.joml.Vector3f;
 
 /**
  * The settings whose change takes effect immediately, before Apply, and what "immediately"
@@ -76,7 +75,7 @@ public final class SettingsEffects {
     private static void rebuildLoadedChunks(String why) {
         try {
             if (Game.getWorld() != null && Game.getPlayer() != null) {
-                Vector3f playerPos = Game.getPlayer().getPosition();
+                org.joml.Vector3d playerPos = Game.getPlayer().getPosition();
                 int playerChunkX = (int) Math.floor(playerPos.x / 16);
                 int playerChunkZ = (int) Math.floor(playerPos.z / 16);
                 Game.getWorld().rebuildAllLoadedChunks(playerChunkX, playerChunkZ);

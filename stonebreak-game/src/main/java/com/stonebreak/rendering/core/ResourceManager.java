@@ -84,6 +84,7 @@ public class ResourceManager {
         shaderProgram.createUniform("u_sunDirection");
         // Key light colour × strength (SceneLight.keyLight): white unless the world pass sets moonlight.
         shaderProgram.createUniform("u_keyLight");
+        shaderProgram.createUniform("u_debugShade");   // dev cost probe (-Dstonebreak.debugShade), 0 = normal
         shaderProgram.setUniform("u_keyLight", new org.joml.Vector3f(1f, 1f, 1f));
         shaderProgram.createUniform("u_viewPos");
         // Per-quad back-face cull (world.vert); only the opaque terrain pass turns it on.

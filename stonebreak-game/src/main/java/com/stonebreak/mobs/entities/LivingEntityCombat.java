@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import com.stonebreak.core.Game;
 import com.stonebreak.items.weapon.DamageType;
@@ -39,7 +41,7 @@ final class LivingEntityCombat {
      * away from the actual attacker (e.g. a remote player on a host) instead of always the
      * local player. Null when the attacker is unknown or is the local player.
      */
-    private Vector3f lastAttackerPosition;
+    private Vector3d lastAttackerPosition;
 
     /**
      * Illusionist Fracture stubs. {@code bewilderedTimer} counts down while the entity is in a
@@ -94,8 +96,8 @@ final class LivingEntityCombat {
      *         (false when dead or invulnerable to this weapon)
      */
     boolean damage(float amount, DamageSource source, DamageType type, int weaponId,
-                   Vector3f attackerPos, boolean creditLocalPlayer, HitKind kind) {
-        Vector3f position = owner.position;
+                   Vector3dc attackerPos, boolean creditLocalPlayer, HitKind kind) {
+        Vector3d position = owner.position;
         float resistance = owner.getType().resistance(type);
         if (owner.isNetworkShadow()) {
             if (owner instanceof RemotePlayer rp && rp.isPlayerAttackable() && amount > 0f) {
@@ -148,7 +150,7 @@ final class LivingEntityCombat {
                 }
             }
         }
-        lastAttackerPosition = attackerPos;
+        lastAttackerPosition = attackerPos != null ? new Vector3d(attackerPos) : null;
         if (!owner.alive && owner.world != null && !owner.world.isRenderOnly() && source != DamageSource.MOB) {
             // A death is the loudest thing there is (#321) and nearby mobs come to look — unless
             // the victim never knew it was hunted: then it is only a body slumping. The state is
@@ -176,11 +178,11 @@ final class LivingEntityCombat {
      * player, which is another thread's state when this runs on the server tick (#340).
      */
     void applyPlayerKnockback() {
-        Vector3f attackerPos = lastAttackerPosition;
+        Vector3d attackerPos = lastAttackerPosition;
         if (attackerPos == null) {
             return;
         }
-        Vector3f knockbackDir = new Vector3f(owner.position).sub(attackerPos);
+        Vector3f knockbackDir = com.stonebreak.util.Positions.offset(attackerPos, owner.position);
         knockbackDir.y = 0;
         if (knockbackDir.length() > 0.01f) {
             knockbackDir.normalize();
@@ -189,7 +191,7 @@ final class LivingEntityCombat {
     }
 
     /** World position of the most recent attacker (null if unknown / the local player). */
-    Vector3f getLastAttackerPosition() { return lastAttackerPosition; }
+    Vector3d getLastAttackerPosition() { return lastAttackerPosition; }
 
     /** Puts this entity into the Bewildered panic state for {@code duration} seconds. */
     void setBewildered(float duration) {

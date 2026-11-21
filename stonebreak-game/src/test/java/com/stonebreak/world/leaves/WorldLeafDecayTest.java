@@ -2,7 +2,6 @@ package com.stonebreak.world.leaves;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.TestWorld;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,31 +21,29 @@ class WorldLeafDecayTest {
 
     @BeforeEach
     void setUp() {
+        // A detached world: writes create the cubes. Decay never acts beside an unknown cell (a log
+        // across the seam would look absent), and a detached world has no surface callback, so a
+        // never-written neighbour cube is UNKNOWN, not known air: create the neighbours (all air).
         world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        Chunk chunk = new Chunk(0, 0);
+        for (int cx = -1; cx <= 1; cx++) {
+            for (int cz = -1; cz <= 1; cz++) {
+                world.ensureCube(cx, 0, cz);
+            }
+        }
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                chunk.setBlock(x, 10, z, BlockType.STONE);
+                world.setBlockAt(x, 10, z, BlockType.STONE);
             }
         }
         // Two trees: one to chop, one that must keep its leaves.
         for (int y = 11; y <= 14; y++) {
-            chunk.setBlock(4, y, 4, BlockType.WOOD);
-            chunk.setBlock(11, y, 11, BlockType.WOOD);
+            world.setBlockAt(4, y, 4, BlockType.WOOD);
+            world.setBlockAt(11, y, 11, BlockType.WOOD);
         }
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                chunk.setBlock(4 + dx, 15, 4 + dz, BlockType.LEAVES);
-                chunk.setBlock(11 + dx, 15, 11 + dz, BlockType.LEAVES);
-            }
-        }
-        world.setChunk(0, 0, chunk);
-        // Decay never acts beside an unloaded chunk (a log across the seam would look absent).
-        for (int cx = -1; cx <= 1; cx++) {
-            for (int cz = -1; cz <= 1; cz++) {
-                if (cx != 0 || cz != 0) {
-                    world.setChunk(cx, cz, new Chunk(cx, cz));
-                }
+                world.setBlockAt(4 + dx, 15, 4 + dz, BlockType.LEAVES);
+                world.setBlockAt(11 + dx, 15, 11 + dz, BlockType.LEAVES);
             }
         }
     }

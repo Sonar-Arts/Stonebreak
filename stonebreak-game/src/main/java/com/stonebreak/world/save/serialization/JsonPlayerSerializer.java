@@ -6,7 +6,6 @@ import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.util.JsonParsingUtil;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.blocks.BlockType;
-import org.joml.Vector3f;
 import org.joml.Vector2f;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -32,7 +31,7 @@ public class JsonPlayerSerializer {
         StringBuilder json = new StringBuilder();
         json.append("{\n");
 
-        Vector3f pos = player.getPosition();
+        org.joml.Vector3d pos = player.getPosition();
         json.append("  \"position\": {\n");
         json.append("    \"x\": ").append(pos.x).append(",\n");
         json.append("    \"y\": ").append(pos.y).append(",\n");
@@ -59,7 +58,7 @@ public class JsonPlayerSerializer {
             json.append("  \"clientSecret\": \"").append(JsonParsingUtil.escapeJson(player.getClientSecret())).append("\",\n");
         }
 
-        Vector3f vehicle = player.getVehiclePosition();
+        org.joml.Vector3d vehicle = player.getVehiclePosition();
         if (vehicle != null) {
             json.append("  \"vehicle\": {\"x\": ").append(vehicle.x).append(", \"y\": ").append(vehicle.y)
                 .append(", \"z\": ").append(vehicle.z).append("},\n");
@@ -220,8 +219,8 @@ public class JsonPlayerSerializer {
 
         try {
             PlayerData.Builder builder = PlayerData.builder()
-                .position(tolerant("position", () -> JsonParsingUtil.extractVector3f(json, "position"),
-                    new Vector3f(0, 100, 0)))
+                .position(tolerant("position", () -> JsonParsingUtil.extractVector3d(json, "position"),
+                    new org.joml.Vector3d(0, 100, 0)))
                 .rotation(tolerant("rotation", () -> JsonParsingUtil.extractVector2f(json, "rotation"),
                     new Vector2f(0, 0)))
                 .health(tolerant("health", () -> JsonParsingUtil.extractFloat(json, "health", 20.0f), 20.0f))
@@ -240,7 +239,7 @@ public class JsonPlayerSerializer {
             builder.clientSecret(JsonParsingUtil.extractStringOptional(json, "clientSecret"));
             if (json.contains("\"vehicle\"")) {
                 builder.vehiclePosition(tolerant("vehicle",
-                    () -> JsonParsingUtil.extractVector3f(json, "vehicle"), null));
+                    () -> JsonParsingUtil.extractVector3d(json, "vehicle"), (org.joml.Vector3d) null));
             }
 
             builder.inventory(readInventory(json));

@@ -7,7 +7,7 @@ import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.mobs.goblin.camp.GoblinCamp;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.joml.Vector3i;
 
 import java.util.EnumSet;
@@ -32,7 +32,7 @@ public final class LoiterBehavior implements Behavior {
     private static final float MAX_REST_SECONDS = 7.0f;
 
     private final Goblin goblin;
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
     private float walking;
     private float resting;
 
@@ -87,7 +87,7 @@ public final class LoiterBehavior implements Behavior {
     private void pickSpot(AiContext context) {
         List<Vector3i> ground = goblin.pack().camp().homeGround();
         Vector3i cell = ground.get(context.random().nextInt(ground.size()));
-        target.set(cell.x + 0.5f, cell.y, cell.z + 0.5f);
+        target.set(cell.x + 0.5, cell.y, cell.z + 0.5);
         walking = 0.0f;
         resting = 0.0f;
         context.nav().moveTo(target, ARRIVAL_RADIUS, SPEED);

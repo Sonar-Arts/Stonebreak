@@ -13,9 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The game-launch setup for real, against this checkout: installs the model's environment with uv if
- * it is missing, checks the model on the GPU and compiles the kernels. Opt-in
- * ({@code -Dstonebreak.modelSetup.live=true}): needs an NVIDIA GPU and network (or uv's cache).
+ * The game-launch setup for real, against this checkout: gets the pinned CUDA compiler if it is missing, opens the
+ * model's native export on the GPU and compiles the kernels. Opt-in ({@code -Dstonebreak.modelSetup.live=true}): needs
+ * an NVIDIA GPU, the native terrain library, the model release (Git LFS) and network for the first NVRTC download.
  */
 class ModelSetupLiveTest {
 
@@ -24,19 +24,15 @@ class ModelSetupLiveTest {
     }
 
     @Test
-    void downloadsThePinnedUvRelease(@TempDir Path tools) throws Exception {
+    void downloadsThePinnedNvrtc(@TempDir Path tools) {
         assumeTrue(live(), "opt-in: -Dstonebreak.modelSetup.live=true");
+        assumeTrue(NvrtcTool.override() == null, "an NVRTC override would be returned instead of downloading");
+        assumeTrue(NvrtcTool.wheel() != null, "no NVRTC build for this platform");
         StringWriter out = new StringWriter();
-        // locate() would find a dev box's own uv on the PATH first, so exercise the download directly.
-        Path target = tools.resolve("uv").resolve(UvTool.windows() ? "uv.exe" : "uv");
-        java.lang.reflect.Method download = UvTool.class.getDeclaredMethod("download", Path.class, PrintWriter.class,
-                java.util.function.BiConsumer.class);
-        download.setAccessible(true);
-        download.invoke(null, target, new PrintWriter(out, true), (java.util.function.BiConsumer<String, Double>) (t, f) -> { });
-        Process p = new ProcessBuilder(target.toString(), "--version").redirectErrorStream(true).start();
-        String version = new String(p.getInputStream().readAllBytes()).strip();
-        assertEquals(0, p.waitFor());
-        assertTrue(version.startsWith("uv " + UvTool.VERSION), version);
+        Path lib = NvrtcTool.locate(tools, new PrintWriter(out, true), (t, f) -> { });
+        assertEquals(NvrtcTool.installDir(tools).resolve(NvrtcTool.wheel().library()), lib, out.toString());
+        assertTrue(Files.isRegularFile(lib), out.toString());
+        assertEquals(lib, NvrtcTool.installed(tools), "found again without downloading");
     }
 
     @Test
@@ -67,7 +63,7 @@ class ModelSetupLiveTest {
         System.out.println("outcome " + s.outcome() + " after " + s.elapsedMs() + " ms, work needed " + s.workNeeded()
                 + (s.message() != null ? ", " + s.message() : ""));
         assertEquals(ModelSetup.Outcome.READY, s.outcome(), s.message());
-        assertTrue(Files.isExecutable(TGMPipe.pythonExe()));
+        assertTrue(Files.isRegularFile(TGMPipe.kernelCacheDir().resolve(ModelSetup.STAMP)), "stamp written");
         setup.awaitUsable(f -> { });
     }
 }

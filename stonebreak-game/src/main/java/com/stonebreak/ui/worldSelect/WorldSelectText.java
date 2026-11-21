@@ -20,9 +20,19 @@ public final class WorldSelectText {
     private WorldSelectText() {
     }
 
-    /** A row's second line: last played and the seed, or null when there is neither. */
+    /** A row's second line for a world this build cannot open (old save format / other bounds). */
+    public static final String INCOMPATIBLE_META = com.stonebreak.world.save.WorldFormat.INCOMPATIBLE
+        + " - cannot be opened";
+
+    /**
+     * A row's second line: last played and the seed, or null when there is neither. A world in another save
+     * format reads {@link #INCOMPATIBLE_META} instead (pre-alpha: old worlds are not migrated).
+     */
     public static String meta(WorldData data) {
         if (data == null) return null;
+        if (!com.stonebreak.world.save.WorldFormat.isCompatible(data)) {
+            return INCOMPATIBLE_META;
+        }
         StringBuilder sb = new StringBuilder();
         if (data.getLastPlayed() != null) {
             LocalDateTime dt = data.getLastPlayed();

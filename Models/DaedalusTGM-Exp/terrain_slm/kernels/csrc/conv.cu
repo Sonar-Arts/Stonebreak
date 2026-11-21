@@ -41,6 +41,10 @@ struct ConvArgs {
     int stem_c;
     int flags;
     float dt;
+    const float* gate;   // F_GATE: (B * Ho * Wo,) fp32, one weight per output pixel
+    float rs;            // F_RSCALE: residual weight
+    unsigned char* out_silu8;   // F_SILU8: e4m3 SiLU codes (x qs)
+    float qs;
 };
 
 #define BK 32
@@ -251,6 +255,196 @@ __global__ void __launch_bounds__(WM * WN * 32) conv_kernel(const ConvArgs a) {
                 }
                 const float* sp = stg + r * ESTR + c8 * 8;
                 float4 lo = *reinterpret_cast<const float4*>(sp), hi = *reinterpret_cast<const float4*>(sp + 4);
+                float v[8] = {lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w};
+                store8(a, o * a.CO + n, v);
+            }
+        }
+        __syncwarp();
+    }
+}
+
+// =====================================================================================================================
+// Halo-tiled up-merge (K4, 2026-11-19): conv3x3(nearest_up_2x(x1)) + 1x1 merge with the skip x2 -- the MODE 1 GEMM of
+// conv_kernel, but a CTA loads the (TH+1) x (TW+1) low-resolution halo of a 16-channel chunk ONCE and runs its phase's
+// four taps out of shared memory (conv_kernel streamed the A operand once per tap: 4x the L2 traffic per phase).
+// Kernel type "uconv": K order chunk-major (segment 0: 16-channel chunk, tap, k16; then segment 1: skip chunks), a
+// fixed order per output (configs never change numbers) but NOT conv_kernel's tap-major order (different fp32
+// summation: its own model_id marker). Grid: (spatial tiles x N tiles, 1, 4 phases); a spatial tile = TH x TW
+// low-resolution pixels of one image (Hg % TH == 0, Wg % TW == 0, so M / (TH * TW) tiles: batch scales like M).
+// Weights: the conv_kernel MODE 1 packing (per phase 4 * C1 + C2 rows, NP columns).
+// 32 B smem rows (16 fp16 channels): 8 consecutive rows hit 8 distinct bank groups (hconv.cu's hswz)
+__device__ __forceinline__ int uswz(int row, int q) { return q ^ ((row >> 2) & 1); }
+
+template <int TH, int TW, int BN, int WM, int WN, int ST>
+__global__ void __launch_bounds__(WM * WN * 32) uconv_kernel(const ConvArgs a) {
+    constexpr int NT = WM * WN * 32;
+    constexpr int BM = TH * TW;
+    constexpr int WTM = BM / WM, WTN = BN / WN;
+    constexpr int MT = WTM / 16, NTL = WTN / 8;
+    static_assert(TW % 8 == 0 && WTM % 16 == 0 && WTN % 16 == 0, "tile shape");
+    constexpr int HC = TW + 1, HN = (TH + 1) * HC;               // low-res halo of one phase
+    constexpr int AR = HN > BM ? HN : BM;                         // A rows per stage (segment 0 halo / segment 1 tile)
+    constexpr int BSTR = ((BN / 8) % 2 == 0) ? BN + 8 : BN;
+    constexpr int A_ST = AR * 16, B_ST = 64 * BSTR;              // u16 elements per stage
+
+    extern __shared__ __align__(16) u16 smem[];
+    u16* sA = smem;
+    u16* sB = smem + ST * A_ST;
+
+    const int tid = threadIdx.x, lane = tid & 31, warp = tid >> 5;
+    const int wm = warp / WN, wn = warp % WN;
+    const int num_n = a.NP / BN;
+    const int pid_n = blockIdx.x % num_n, sp = blockIdx.x / num_n;
+    const int tiles_x = a.Wg / TW, tiles_y = a.Hg / TH;
+    const int tx = sp % tiles_x, ty = (sp / tiles_x) % tiles_y, b = sp / (tiles_x * tiles_y);
+    const int bn = pid_n * BN, y0 = ty * TH, x0 = tx * TW;
+    const int phase = blockIdx.z, py = phase >> 1, px = phase & 1;
+    const u16* wbase = a.w + (long long)phase * a.w_phase;
+
+    const int kc1 = a.C1 / 16, kc2 = a.C2 / 16;
+    const int n_it = kc1 + kc2;
+
+    auto load_stage = [&](int stage, int it) {
+        u32 sa = smem_u32(sA + stage * A_ST);
+        u32 sb = smem_u32(sB + stage * B_ST);
+        if (it < kc1) {   // segment 0: halo rows (y0 + py - 1 + hr, x0 + px - 1 + hc) of x1, channels it * 16..
+            for (int id = tid; id < HN * 2; id += NT) {
+                int r = id >> 1, q = id & 1;
+                int hr = r / HC, hc = r - hr * HC;
+                int iy = y0 + py - 1 + hr, ix = x0 + px - 1 + hc;
+                bool ok = iy >= 0 && iy < a.H1 && ix >= 0 && ix < a.W1;
+                const u16* p = ok ? a.x1 + ((size_t)((b * a.H1 + iy) * a.W1 + ix)) * a.C1 + it * 16 + q * 8 : a.x1;
+                cp_async16(sa + (r * 16 + uswz(r, q) * 8) * 2, p, ok);
+            }
+            // B: 4 taps x 16 rows (tap * C1 + it * 16 + k), stored tap-major
+            for (int id = tid; id < 64 * (BN / 8); id += NT) {
+                int kr = id / (BN / 8), cc = id - kr * (BN / 8);
+                int t = kr >> 4, k = kr & 15;
+                const u16* wp = wbase + (size_t)(t * a.C1 + it * 16 + k) * a.NP + bn + cc * 8;
+                cp_async16(sb + (kr * BSTR + cc * 8) * 2, wp, true);
+            }
+        } else {          // segment 1: the skip pixel (2 (y0 + i) + py, 2 (x0 + j) + px) of x2
+            const int c0 = (it - kc1) * 16;
+            for (int id = tid; id < BM * 2; id += NT) {
+                int r = id >> 1, q = id & 1;
+                int i = r / TW, j = r - i * TW;
+                int iy = 2 * (y0 + i) + py, ix = 2 * (x0 + j) + px;
+                bool ok = iy < a.H2 && ix < a.W2;
+                const u16* p = ok ? a.x2 + ((size_t)((b * a.H2 + iy) * a.W2 + ix)) * a.C2 + c0 + q * 8 : a.x2;
+                cp_async16(sa + (r * 16 + uswz(r, q) * 8) * 2, p, ok);
+            }
+            for (int id = tid; id < 16 * (BN / 8); id += NT) {
+                int k = id / (BN / 8), cc = id - k * (BN / 8);
+                const u16* wp = wbase + (size_t)(4 * a.C1 + c0 + k) * a.NP + bn + cc * 8;
+                cp_async16(sb + (k * BSTR + cc * 8) * 2, wp, true);
+            }
+        }
+    };
+
+    // this lane's A-fragment pixel: halo row for tap (0, 0) and its row in the skip tile
+    int hrow0[MT], srow[MT];
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt) {
+        int p = wm * WTM + mt * 16 + (lane & 15);
+        int i = p / TW, j = p - i * TW;
+        hrow0[mt] = i * HC + j;
+        srow[mt] = p;
+    }
+
+    float acc[MT][NTL][4];
+#pragma unroll
+    for (int i = 0; i < MT; ++i)
+#pragma unroll
+        for (int j = 0; j < NTL; ++j)
+#pragma unroll
+            for (int k = 0; k < 4; ++k) acc[i][j][k] = 0.0f;
+
+#pragma unroll
+    for (int s = 0; s < ST - 1; ++s) {
+        if (s < n_it) load_stage(s, s);
+        cp_commit();
+    }
+    for (int it = 0; it < n_it; ++it) {
+        cp_wait<ST - 2>();
+        __syncthreads();
+        {
+            int nx = it + ST - 1;
+            if (nx < n_it) load_stage(nx % ST, nx);
+            cp_commit();
+        }
+        const int stage = it % ST;
+        const u16* As = sA + stage * A_ST;
+        const u16* Bs = sB + stage * B_ST;
+        auto tap = [&](int row_off, int brow0, bool seg0) {
+            u32 af[MT][4], bf[NTL][2];
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt) {
+                int row = seg0 ? hrow0[mt] + row_off : srow[mt];
+                ldm_x4(af[mt], smem_u32(As + row * 16 + uswz(row, lane >> 4) * 8));
+            }
+#pragma unroll
+            for (int np = 0; np < NTL / 2; ++np) {
+                u32 r[4];
+                ldm_x4_t(r, smem_u32(Bs + (brow0 + (lane & 15)) * BSTR + wn * WTN + np * 16 + (lane >> 4) * 8));
+                bf[2 * np][0] = r[0];
+                bf[2 * np][1] = r[1];
+                bf[2 * np + 1][0] = r[2];
+                bf[2 * np + 1][1] = r[3];
+            }
+#pragma unroll
+            for (int mt = 0; mt < MT; ++mt)
+#pragma unroll
+                for (int nt = 0; nt < NTL; ++nt) mma16816(acc[mt][nt], af[mt], bf[nt]);
+        };
+        if (it < kc1) {
+#pragma unroll
+            for (int t = 0; t < 4; ++t) tap((t >> 1) * HC + (t & 1), t * 16, true);
+        } else {
+            tap(0, 0, false);
+        }
+    }
+    cp_wait<0>();
+
+    // ------------------------------------------------------------------ epilogue (conv_kernel MODE 1's, staged)
+    const int g = lane >> 2, tq = lane & 3;
+    constexpr int ESTR = WTN + 4;
+    __syncthreads();
+    float* stg = reinterpret_cast<float*>(smem) + warp * 16 * ESTR;
+    float bv[NTL][2], fs[NTL][2], fb[NTL][2];
+#pragma unroll
+    for (int nt = 0; nt < NTL; ++nt) {
+        int n = bn + wn * WTN + nt * 8 + 2 * tq;
+        bv[nt][0] = a.bias[n];
+        bv[nt][1] = a.bias[n + 1];
+        bool f = (a.flags & F_FILM) && n < a.CO;
+        fs[nt][0] = f ? a.film[n] : 1.0f;
+        fs[nt][1] = f ? a.film[n + 1] : 1.0f;
+        fb[nt][0] = f ? a.film[a.CO + n] : 0.0f;
+        fb[nt][1] = f ? a.film[a.CO + n + 1] : 0.0f;
+    }
+    constexpr int CH = WTN / 8;
+#pragma unroll
+    for (int mt = 0; mt < MT; ++mt) {
+#pragma unroll
+        for (int nt = 0; nt < NTL; ++nt)
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                float2 v;
+                v.x = (acc[mt][nt][h * 2] + bv[nt][0]) * fs[nt][0] + fb[nt][0];
+                v.y = (acc[mt][nt][h * 2 + 1] + bv[nt][1]) * fs[nt][1] + fb[nt][1];
+                *reinterpret_cast<float2*>(stg + (g + h * 8) * ESTR + nt * 8 + 2 * tq) = v;
+            }
+        __syncwarp();
+#pragma unroll
+        for (int task = lane; task < 16 * CH; task += 32) {
+            int r = task / CH, c8 = task - r * CH;
+            int p = wm * WTM + mt * 16 + r;
+            int i = p / TW, j = p - i * TW;
+            int n = bn + wn * WTN + c8 * 8;
+            if (n < a.CO) {
+                long long o = ((long long)b * a.Ho + 2 * (y0 + i) + py) * a.Wo + 2 * (x0 + j) + px;
+                const float* sp2 = stg + r * ESTR + c8 * 8;
+                float4 lo = *reinterpret_cast<const float4*>(sp2), hi = *reinterpret_cast<const float4*>(sp2 + 4);
                 float v[8] = {lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w};
                 store8(a, o * a.CO + n, v);
             }

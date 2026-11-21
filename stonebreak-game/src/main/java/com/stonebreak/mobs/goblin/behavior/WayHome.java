@@ -3,7 +3,8 @@ package com.stonebreak.mobs.goblin.behavior;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * Watches a camp goblin's walk home. One that has dropped down ledges it cannot climb back (a hunt
@@ -35,7 +36,7 @@ final class WayHome {
      *
      * @return whether the goblin was brought home (it has left the world)
      */
-    boolean check(Goblin goblin, AiContext context, Vector3f home, float dt) {
+    boolean check(Goblin goblin, AiContext context, Vector3dc home, float dt) {
         float distance = context.distanceTo(home);
         if (distance < best - 1.0f) {
             best = distance; // on its way
@@ -47,10 +48,10 @@ final class WayHome {
         if (stranded < STRANDED_SECONDS || world == null || world.goblinCamps() == null) {
             return false;
         }
-        Vector3f at = goblin.getPosition();
+        Vector3d at = goblin.getPosition();
         var players = world.getPlayerLocator();
-        Vector3f player = players.nearestPlayer(at, new Vector3f());
-        Vector3f eye = new Vector3f(at.x, at.y + goblin.getHeight() * 0.9f, at.z);
+        Vector3d player = players.nearestPlayer(at, new Vector3d());
+        Vector3d eye = new Vector3d(at.x, at.y + goblin.getHeight() * 0.9f, at.z);
         if (player != null && player.distance(at) < SIGHT_RADIUS && players.canSeeNearestPlayer(at, eye)) {
             return false;
         }

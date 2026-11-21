@@ -49,6 +49,13 @@ public:
 
     bool nextBoolean() { return next(1) != 0; }
 
+    /* java.util.Random#nextDouble: ((long) next(26) << 27) + next(27), times 2^-53. */
+    double nextDouble() {
+        const int64_t hi = static_cast<int64_t>(next(26)) << 27;
+        const int64_t lo = next(27);
+        return static_cast<double>(hi + lo) * 0x1.0p-53;
+    }
+
 private:
     static constexpr uint64_t MULTIPLIER = 0x5DEECE66DULL;
     static constexpr uint64_t ADDEND = 0xBULL;
@@ -135,5 +142,74 @@ inline uint64_t splitmix64Finalize(uint64_t h) {
     h ^= h >> 31;
     return h;
 }
+
+/* java.lang.String#hashCode for ASCII literals (feature salts of DeterministicRandom). */
+constexpr int32_t javaStringHash(const char* s) {
+    uint32_t h = 0;
+    for (; *s != 0; ++s) {
+        h = h * 31u + static_cast<uint32_t>(static_cast<unsigned char>(*s));
+    }
+    return static_cast<int32_t>(h);
+}
+
+/* com.stonebreak.world.DeterministicRandom: per-position java.util.Random streams. */
+class DeterministicRandom {
+public:
+    explicit DeterministicRandom(int64_t worldSeed = 0) : seed_(worldSeed) {}
+
+    [[nodiscard]] JavaRandom at(int64_t x, int64_t z, int32_t featureHash) const {
+        uint64_t h = static_cast<uint64_t>(seed_);
+        h ^= static_cast<uint64_t>(x) * UINT64_C(0x9e3779b9);
+        h ^= h >> 16;
+        h ^= static_cast<uint64_t>(z) * UINT64_C(0x85ebca6b);
+        h ^= h >> 13;
+        h ^= static_cast<uint64_t>(static_cast<int64_t>(featureHash)) * UINT64_C(0xc2b2ae35);
+        h ^= h >> 16;
+        h ^= h >> 32;
+        return JavaRandom(static_cast<int64_t>(h));
+    }
+
+    [[nodiscard]] JavaRandom at3(int64_t x, int64_t y, int64_t z, int32_t featureHash) const {
+        uint64_t h = static_cast<uint64_t>(seed_);
+        h ^= static_cast<uint64_t>(x) * UINT64_C(0x9e3779b9);
+        h ^= h >> 16;
+        h ^= static_cast<uint64_t>(y) * UINT64_C(0x8f8f8f8f);
+        h ^= h >> 11;
+        h ^= static_cast<uint64_t>(z) * UINT64_C(0x85ebca6b);
+        h ^= h >> 13;
+        h ^= static_cast<uint64_t>(static_cast<int64_t>(featureHash)) * UINT64_C(0xc2b2ae35);
+        h ^= h >> 16;
+        h ^= h >> 32;
+        return JavaRandom(static_cast<int64_t>(h));
+    }
+
+    [[nodiscard]] float getFloat(int64_t x, int64_t z, int32_t f) const { return at(x, z, f).nextFloat(); }
+    [[nodiscard]] float getFloat3(int64_t x, int64_t y, int64_t z, int32_t f) const {
+        return at3(x, y, z, f).nextFloat();
+    }
+    [[nodiscard]] bool getBoolean(int64_t x, int64_t z, int32_t f) const { return at(x, z, f).nextBoolean(); }
+    [[nodiscard]] int32_t getInt(int64_t x, int64_t z, int32_t f, int32_t bound) const {
+        return at(x, z, f).nextInt(bound);
+    }
+    [[nodiscard]] bool shouldGenerate(int64_t x, int64_t z, int32_t f, float p) const {
+        return getFloat(x, z, f) < p;
+    }
+    [[nodiscard]] bool shouldGenerate3(int64_t x, int64_t y, int64_t z, int32_t f, float p) const {
+        return getFloat3(x, y, z, f) < p;
+    }
+
+private:
+    int64_t seed_;
+};
+
+inline uint64_t mix64(uint64_t h) { return splitmix64Finalize(h + UINT64_C(0x9E3779B97F4A7C15)); }
+
+/* Floor division / modulo for int64 (block -> cube / chunk coordinates). */
+inline int64_t floorDiv64(int64_t a, int64_t b) {
+    int64_t q = a / b;
+    if ((a % b != 0) && ((a < 0) != (b < 0))) q -= 1;
+    return q;
+}
+inline int64_t floorMod64(int64_t a, int64_t b) { return a - floorDiv64(a, b) * b; }
 
 } // namespace stonebreak

@@ -149,7 +149,9 @@ if [[ "$NATIVES" -eq 1 ]]; then
 fi
 
 if [[ "$USE" -eq 1 ]]; then
-  printf -- '-Dopenmason.version=%s\n' "$VERSION" > "$CONFIG"
+  # --no-snapshot-updates: the local version is never published, so without it Maven re-checks GitHub Packages for
+  # it every update interval and logs 401 Unauthorized warnings (no token needed for a local build).
+  printf -- '-Dopenmason.version=%s\n--no-snapshot-updates\n' "$VERSION" > "$CONFIG"
   say "wrote .mvn/maven.config: Stonebreak now builds against your checkout ($VERSION; reload Maven in IntelliJ)."
   say "back to $PINNED (pom.xml): scripts/openmason-local.sh --release"
 elif [[ -n "$CHECKOUT" ]]; then

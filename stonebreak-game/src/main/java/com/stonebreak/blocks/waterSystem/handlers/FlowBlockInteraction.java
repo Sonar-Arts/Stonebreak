@@ -3,7 +3,6 @@ package com.stonebreak.blocks.waterSystem.handlers;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3f;
 
@@ -11,7 +10,6 @@ import org.joml.Vector3f;
  * Minimal helper providing the handful of interactions water needs with other
  * blocks. The intent is to keep policy decisions (what can be displaced, what
  * drops items) in one place so the core simulation stays focused on flow.
- * Uses CCO API for optimized block access.
  */
 public final class FlowBlockInteraction {
 
@@ -33,11 +31,11 @@ public final class FlowBlockInteraction {
                 && (blockType.isFlower() || com.stonebreak.blocks.torch.TorchBlock.isTorch(blockType));
     }
 
-    public static void dropFragile(World world, int x, int y, int z, BlockType blockType) {
+    public static void dropFragile(World world, long x, long y, long z, BlockType blockType) {
         if (!isFragile(blockType)) {
             return;
         }
-        Vector3f dropPosition = new Vector3f(x + 0.5f, y + 0.1f, z + 0.5f);
+        org.joml.Vector3d dropPosition = new org.joml.Vector3d(x + 0.5, y + 0.1, z + 0.5);
         if (com.stonebreak.blocks.torch.TorchBlock.isTorch(blockType)) {
             // The torch drops its ITEM (SBO drops table), not the placed block.
             DropUtil.handleBlockBroken(world, dropPosition, blockType);
@@ -53,24 +51,14 @@ public final class FlowBlockInteraction {
         DropUtil.createBlockDrop(world, dropPosition, blockType);
     }
 
-    public static boolean supportsSource(World world, int x, int y, int z) {
-        if (y <= 0) {
+    public static boolean supportsSource(World world, long x, long y, long z) {
+        if (y <= WorldConfiguration.MIN_Y) {
             return true;
         }
-
-        // Use CCO API for optimized block access
-        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        Chunk chunk = world.getChunkIfLoaded(chunkX, chunkZ);
-
-        if (chunk == null) {
+        if (!world.isLoaded(x, y - 1, z)) {
             return false;
         }
-
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        BlockType below = (BlockType) chunk.getBlockReader().get(localX, y - 1, localZ);
-
+        BlockType below = world.getBlockAt(x, y - 1, z);
         if (below == BlockType.WATER) {
             return true;
         }

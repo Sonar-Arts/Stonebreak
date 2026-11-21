@@ -27,7 +27,7 @@ public final class WaterSubmersion {
      *
      * @return 0 when the body is entirely dry, 1 when it is entirely under
      */
-    public static float fractionAt(World world, float x, float feetY, float z, float height) {
+    public static float fractionAt(World world, double x, double feetY, double z, float height) {
         if (world == null || height <= 0.0f) {
             return 0.0f;
         }
@@ -37,8 +37,19 @@ public final class WaterSubmersion {
         return com.stonebreak.world.physics.WorldPhysics.of(world).measureFluid(x, feetY, z, height, 0f, feetY, height).submersion;
     }
 
+    /**
+     * The world-space y of the water surface the body at ({@code x}, {@code feetY}..{@code feetY + height},
+     * {@code z}) is measured against, or NaN when it touches no water.
+     */
+    public static double surfaceY(World world, double x, double feetY, double z, float height) {
+        if (world == null || height <= 0.0f) {
+            return Double.NaN;
+        }
+        return com.stonebreak.world.physics.WorldPhysics.of(world).measureFluid(x, feetY, z, height, 0f, feetY, height).surfaceY;
+    }
+
     /** Whether any part of the body is in water. */
-    public static boolean touchesWater(World world, float x, float feetY, float z, float height) {
+    public static boolean touchesWater(World world, double x, double feetY, double z, float height) {
         return fractionAt(world, x, feetY, z, height) > 0.0f;
     }
 }

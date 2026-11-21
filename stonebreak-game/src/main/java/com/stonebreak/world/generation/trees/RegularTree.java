@@ -55,7 +55,7 @@ public final class RegularTree {
      */
     public static void place(TreeBlockSink out, int worldX, int worldY, int worldZ,
                              BlockType log, BlockType leaves) {
-        if (worldY + MAX_HEIGHT >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (worldY + MAX_HEIGHT >= WorldConfiguration.MAX_Y) return;
         TreeShapeBuffer buffer = new TreeShapeBuffer();
         generate(buffer, worldX, worldY, worldZ, log, leaves);
         buffer.flushAnchored(out);
@@ -68,7 +68,7 @@ public final class RegularTree {
         Variant variant = Variant.values()[rng.nextInt(Variant.values().length)];
         Profile profile = profileFor(variant, rng);
 
-        if (worldY + profile.canopyTopOffset() >= WorldConfiguration.WORLD_HEIGHT) return;
+        if (worldY + profile.canopyTopOffset() >= WorldConfiguration.MAX_Y) return;
 
         placeTrunk(placer, worldX, worldY, worldZ, profile.trunkHeight, log);
 
@@ -160,7 +160,7 @@ public final class RegularTree {
                                     int canopyCx, int canopyCz, BlockType leaves) {
         for (int dy = profile.canopyBottomOffset; dy <= profile.canopyTopOffset; dy++) {
             int worldY = trunkBaseY + dy;
-            if (worldY >= WorldConfiguration.WORLD_HEIGHT) continue;
+            if (worldY >= WorldConfiguration.MAX_Y) continue;
 
             float t = (profile.canopyTopOffset == profile.canopyBottomOffset) ? 0.5f
                     : (float) (dy - profile.canopyBottomOffset)
@@ -194,7 +194,7 @@ public final class RegularTree {
             // single cap leaf above the highest layer for a rounded peak.
             if (variant == Variant.COMPACT && dy == profile.canopyTopOffset) {
                 int capY = worldY + 1;
-                if (capY < WorldConfiguration.WORLD_HEIGHT) {
+                if (capY < WorldConfiguration.MAX_Y) {
                     placer.placeBlock(canopyCx, capY, canopyCz, leaves);
                 }
             }

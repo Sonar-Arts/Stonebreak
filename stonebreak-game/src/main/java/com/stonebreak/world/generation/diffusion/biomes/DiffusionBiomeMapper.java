@@ -39,7 +39,7 @@ final class DiffusionBiomeMapper {
      * sea level (~6 m/block average, plan.md §10.6), so preserving the same
      * physical band width needs more blocks: {@code 45 / 6 ≈ 8}.
      */
-    private static final int BEACH_BAND_BLOCKS = 8;
+    static final int BEACH_BAND_BLOCKS = 8;   // BeachRule.LEGACY; v2 worlds size it in metres (BeachRule.of)
 
     private DiffusionBiomeMapper() {}
 
@@ -53,11 +53,21 @@ final class DiffusionBiomeMapper {
      *                       is ocean. A lake or a river beside the column never counts.
      */
     static BiomeType map(short vanillaBiomeId, int height, int nearbySeaLevel) {
+        return map(vanillaBiomeId, height, nearbySeaLevel, BEACH_BAND_BLOCKS);
+    }
+
+    /** {@link #map(short, int, int)} with the world's own beach height band ({@link BeachRule#bandBlocks()}). */
+    static BiomeType map(short vanillaBiomeId, int height, int nearbySeaLevel, int beachBandBlocks) {
         BiomeType biome = landBiomeFor(vanillaBiomeId);
-        if (isBeachEligible(biome) && isNearShore(height, nearbySeaLevel)) {
+        if (isBeachEligible(biome) && isNearShore(height, nearbySeaLevel, beachBandBlocks)) {
             return BiomeType.BEACH;
         }
         return biome;
+    }
+
+    /** True if a column of this tile biome id can become beach at all (land biome, not cold / rocky). */
+    static boolean beachEligible(short vanillaBiomeId) {
+        return isBeachEligible(landBiomeFor(vanillaBiomeId));
     }
 
     /** True for the classifier's ocean ids, which the model assigns to the true ocean only. */
@@ -65,11 +75,11 @@ final class DiffusionBiomeMapper {
         return id == 41 || id == 44 || id == 46 || id == 48;
     }
 
-    private static boolean isNearShore(int height, int nearbySeaLevel) {
+    private static boolean isNearShore(int height, int nearbySeaLevel, int bandBlocks) {
         if (nearbySeaLevel == TerrainTile.NO_WATER || nearbySeaLevel > WorldConfiguration.SEA_LEVEL) {
             return false;
         }
-        return height >= nearbySeaLevel && height < nearbySeaLevel + BEACH_BAND_BLOCKS;
+        return height >= nearbySeaLevel && height < nearbySeaLevel + bandBlocks;
     }
 
     private static boolean isBeachEligible(BiomeType biome) {

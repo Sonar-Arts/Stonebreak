@@ -172,6 +172,22 @@ def _load_cuda():
     return _cuda
 
 
+_NVRTC_TAG = None
+
+
+def nvrtc_tag() -> str:
+    """The loaded NVRTC's identity for cache keys: `nvrtc<major>.<minor>:<library file name>` (review-native F6: a
+    torch / NVRTC upgrade must recompile the cubins, as the engine's key already does -- the engine's bitwise parity
+    rests on "same compiler, same machine code")."""
+    global _NVRTC_TAG
+    if _NVRTC_TAG is None:
+        nv = _load_nvrtc()
+        major, minor = ctypes.c_int(), ctypes.c_int()
+        nv.nvrtcVersion(ctypes.byref(major), ctypes.byref(minor))
+        _NVRTC_TAG = f"nvrtc{major.value}.{minor.value}:{Path(getattr(nv, '_name', '') or '').name}"
+    return _NVRTC_TAG
+
+
 def _check_nvrtc(res: int, prog=None) -> None:
     if res != 0:
         msg = _load_nvrtc().nvrtcGetErrorString(res).decode()
@@ -251,13 +267,14 @@ class CudaModule:
     """One NVRTC program (csrc/<name>.cu) with a list of kernel name expressions (template
     instantiations), compiled for one device and loaded into its primary context."""
 
-    def __init__(self, name: str, names: list[str], device, opts: tuple[str, ...] = ()):
+    def __init__(self, name: str, names: list[str], device, opts: tuple[str, ...] = (), source: str | None = None):
         import torch
         self.device = torch.device(device)
         cc = torch.cuda.get_device_capability(self.device)
-        src = _read_source(CSRC / f"{name}.cu")
+        src = _read_source(CSRC / f"{name}.cu") if source is None else source
+        self.source = src                        # exactly what NVRTC compiled (host tables check against it)
         names = sorted(set(names))
-        key = _digest(src, names, opts, cc, "nvrtc-v1")
+        key = _digest(src, names, opts, cc, "nvrtc-v2", nvrtc_tag())
         cdir = cache_dir()
         bin_path, meta_path = cdir / f"{name}-{key}.bin", cdir / f"{name}-{key}.json"
         with _LOCK:
@@ -305,7 +322,9 @@ class CudaModule:
 _MODULES: dict = {}
 
 
-def cuda_module(name: str, names: list[str], device, opts: tuple[str, ...] = ()) -> CudaModule:
+def cuda_module(name: str, names: list[str], device, opts: tuple[str, ...] = (), source: str | None = None) -> CudaModule:
+    """The process's module for csrc/<name>.cu (compiled once per device). `source`: the exact program text to compile
+    instead of reading the file (cuda_controls2 pins one copy for its kernel and its host-table checks)."""
     import torch
     dev = torch.device(device)
     if dev.index is None:
@@ -313,5 +332,5 @@ def cuda_module(name: str, names: list[str], device, opts: tuple[str, ...] = ())
     key = (name, tuple(sorted(set(names))), dev.index, tuple(opts))
     with _LOCK:
         if key not in _MODULES:
-            _MODULES[key] = CudaModule(name, names, dev, opts)
+            _MODULES[key] = CudaModule(name, names, dev, opts, source)
         return _MODULES[key]

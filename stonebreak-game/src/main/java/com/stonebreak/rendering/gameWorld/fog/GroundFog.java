@@ -141,9 +141,9 @@ public final class GroundFog {
      * there is none, nor when the view ({@code projection}, render-space {@code view})
      * does not reach the Shade; the map still follows the camera, so it is ready by sunset.
      */
-    public void prepare(boolean active, SkyLight sky, TerrainGenerator terrain, Vector3f cameraWorldPos,
+    public void prepare(boolean active, SkyLight sky, TerrainGenerator terrain, org.joml.Vector3dc cameraWorldPos,
                         Matrix4f projection, Matrix4f view) {
-        map.focus(cameraWorldPos.x, cameraWorldPos.z, terrain);
+        map.focus((float) cameraWorldPos.x(), (float) cameraWorldPos.z(), terrain);
         float strength = active && sky != null ? nightStrength(sky.sunDir().y) : 0f;
         ShadeFogMap.Grid grid = map.grid();
         enabled = strength > 0f && grid != null && grid.hasShade();

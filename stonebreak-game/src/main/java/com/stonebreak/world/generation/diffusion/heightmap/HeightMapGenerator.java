@@ -20,7 +20,7 @@ import com.stonebreak.world.operations.WorldConfiguration;
  * debug visualizers still address them by name.
  */
 public class HeightMapGenerator implements ColumnHeights, SurfaceHeights {
-    private static final int WORLD_HEIGHT = WorldConfiguration.WORLD_HEIGHT;
+    private static final int WORLD_TOP = WorldConfiguration.MAX_Y;
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final TerrainTileSource tileSource;
@@ -179,6 +179,6 @@ public class HeightMapGenerator implements ColumnHeights, SurfaceHeights {
     }
 
     private static int clampToWorld(int height) {
-        return Math.max(1, Math.min(height, WORLD_HEIGHT - 1));
+        return Math.max(1, Math.min(height, WORLD_TOP - 1));
     }
 }

@@ -31,8 +31,13 @@ import static org.mockito.Mockito.when;
 
 /**
  * The main menu's preview of a saved world ({@link ServerLevel#createAndLoad(String, long, boolean)}):
- * the world is loaded and streams, but its ticks move no clock and nothing it does reaches disk —
- * not the spawn pre-gen, not a save, not the close — until Resume promotes it.
+ * the world is loaded and streams, but its ticks move no clock and none of the world's save data
+ * changes — not on a save, not on the close — until Resume promotes it.
+ *
+ * <p>The one exception is the cube store ({@code cubes/}): since the cubic world (#447) the engine's
+ * {@code CubeStore} has no read-only mode, so terrain the preview streams in is generated and may be
+ * written there. That is terrain the generator would produce identically anyway (the preview
+ * simulates nothing, so it never edits a cell); a true read-only preview needs an engine change.
  */
 @Timeout(value = 180, unit = TimeUnit.SECONDS)
 class ServerLevelPreviewTest {
@@ -41,7 +46,7 @@ class ServerLevelPreviewTest {
     Path home;
 
     @Test
-    void aHeldPreviewChangesNothingOnDisk() throws Exception {
+    void aHeldPreviewLeavesTheSaveDataAsItWas() throws Exception {
         withDataDir(() -> {
             String name = "preview-held";
             saveWorld(name);
@@ -61,7 +66,11 @@ class ServerLevelPreviewTest {
             } finally {
                 level.cleanup(); // the close flush must not write either
             }
-            assertEquals(before, snapshot(WorldStorage.worldDir(name)), "the preview left every saved file as it was");
+            Map<String, String> after = snapshot(WorldStorage.worldDir(name));
+            assertEquals(saveData(before), saveData(after), "the preview left every save file as it was");
+            for (String file : before.keySet()) {
+                assertTrue(after.containsKey(file), "the preview deleted " + file);
+            }
         });
     }
 
@@ -90,7 +99,6 @@ class ServerLevelPreviewTest {
     /** A saved world on disk, as the game leaves it (metadata.json + world.json). */
     private void saveWorld(String name) throws Exception {
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             globals.when(Game::getInstance).thenReturn(mock(Game.class));
             globals.when(Game::getWorld).thenReturn(world);
@@ -99,6 +107,13 @@ class ServerLevelPreviewTest {
                 svc.saveAll().get(10, TimeUnit.SECONDS);
             }
         }
+    }
+
+    /** Every file of a snapshot except the cube store's (see the class note). */
+    private static Map<String, String> saveData(Map<String, String> snapshot) {
+        Map<String, String> files = new TreeMap<>(snapshot);
+        files.keySet().removeIf(rel -> rel.startsWith("cubes"));
+        return files;
     }
 
     private static Map<String, String> snapshot(Path dir) throws IOException {

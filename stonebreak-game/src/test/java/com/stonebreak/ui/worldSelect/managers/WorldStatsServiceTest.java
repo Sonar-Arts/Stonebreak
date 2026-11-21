@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Guards the world size / chunk count walk and the byte formatting shown on the card.
+ * Guards the world size / saved-cube count walk and the byte formatting shown on the card.
  *
  * <p>The size has to be the whole directory, not just the chunk files: the fastlod cache can
  * outweigh the saved chunks, and a number that quietly omits it would tell a player their
@@ -69,19 +69,27 @@ class WorldStatsServiceTest {
     }
 
     @Test
-    void chunkCountCountsSbcFilesAcrossRegionFolders() throws Exception {
+    void chunkCountCountsSavedCubesFromTheCubeStoreHeaders() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            com.openmason.engine.voxel.world.CendaVoxelWorld.isAvailable(), "needs the Cenda voxel library");
         Path world = Files.createDirectories(tempDir.resolve("My World"));
-        Files.createDirectories(world.resolve("chunks/r.0.0"));
-        Files.createDirectories(world.resolve("chunks/r.1.-1"));
-        Files.write(world.resolve("chunks/r.0.0/c.0.0.sbc"), new byte[1]);
-        Files.write(world.resolve("chunks/r.0.0/c.0.1.sbc"), new byte[1]);
-        Files.write(world.resolve("chunks/r.1.-1/c.32.-1.sbc"), new byte[1]);
-        Files.write(world.resolve("chunks/r.0.0/c.0.2.sbc.tmp"), new byte[1]); // half-written
         Files.write(world.resolve("world.json"), new byte[1]);
+        // Cubes in three regions (8^3 cubes each), negative coordinates included, plus a column record.
+        try (var store = com.openmason.engine.voxel.world.CubeStore.open(world.resolve("cubes"))) {
+            store.writeCube(0, 0, 0, new byte[]{1, 2, 3});
+            store.writeCube(7, -1, 7, new byte[]{4});
+            store.writeCube(-9, 3, 100, new byte[40_000]);
+            store.writeCube(1, 0, 0, new byte[]{5});
+            store.deleteCube(1, 0, 0);
+            store.writeColumn(0, 0, new byte[]{9});
+            store.flush();
+        }
+        Files.createDirectories(world.resolve("chunks/r.0.0"));
+        Files.write(world.resolve("chunks/r.0.0/c.0.0.sbc"), new byte[1]); // old column files are not cubes
 
         WorldStatsService.Stats stats = await("My World");
         assertNotNull(stats);
-        assertEquals(3, stats.chunkCount(), "only finished .sbc files are chunks");
+        assertEquals(3, stats.chunkCount(), "saved cube records (a deleted one and column records excluded)");
     }
 
     @Test

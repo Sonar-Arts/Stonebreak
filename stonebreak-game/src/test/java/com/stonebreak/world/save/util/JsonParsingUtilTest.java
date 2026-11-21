@@ -275,26 +275,29 @@ class JsonParsingUtilTest {
         assertEquals(42, JsonParsingUtil.extractInt(json, "level", 0));
     }
 
-    /**
-     * Characterization: extractFloat uses the pattern [-\\d.]+ which does not
-     * handle scientific notation — "1.0E-5" is parsed as "1.0" (exponent ignored).
-     */
+    /** Scientific notation (Java writes tiny / huge floats that way) parses with its exponent. */
     @Test
-    void scientificNotationIsMisparsed() {
-        assertEquals(1.0f, JsonParsingUtil.extractFloat("{\"h\": 1.0E-5}", "h", 0f), 0.001f);
+    void scientificNotationParses() {
+        assertEquals(1.0e-5f, JsonParsingUtil.extractFloat("{\"h\": 1.0E-5}", "h", 0f), 1e-9f);
     }
 
     /* ---------- extractVector3f with scientific notation (characterization) ---------- */
 
     /**
-     * Characterization: extractVector3f's float pattern does not support scientific
-     * notation, so components like 1.0E-5 cause the whole pattern to fail and the
-     * (0,100,0) default is returned silently.
+     * Scientific-notation components (tiny velocities, far positions) parse: they used to fail the whole
+     * pattern and silently return the (0,100,0) default.
      */
     @Test
-    void extractVector3f_scientificNotationComponents_returnDefault() {
+    void extractVector3f_scientificNotationComponents_parse() {
         String json = "{\"pos\": {\"x\": 1.0E-5, \"y\": 2.0E-3, \"z\": 3.0E-1}}";
         Vector3f result = JsonParsingUtil.extractVector3f(json, "pos");
-        assertEquals(new Vector3f(0f, 100f, 0f), result);
+        assertEquals(new Vector3f(1.0e-5f, 2.0e-3f, 0.3f), result);
+    }
+
+    @Test
+    void extractVector3d_keepsFullPrecision() {
+        String json = "{\"pos\": {\"x\": 1.234567890125E10, \"y\": -384.0, \"z\": -0.1}}";
+        assertEquals(new org.joml.Vector3d(12_345_678_901.25, -384, -0.1),
+            JsonParsingUtil.extractVector3d(json, "pos"));
     }
 }

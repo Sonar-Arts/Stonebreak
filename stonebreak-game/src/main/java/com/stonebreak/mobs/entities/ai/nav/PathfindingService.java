@@ -45,20 +45,21 @@ public final class PathfindingService implements AutoCloseable {
 
     private PathfindingService(NavWorld nav) {
         this.nav = nav;
+        syncOrigin();
     }
 
     /** The service of {@code world}, over its physics. Call on the world's simulation thread. */
     public static PathfindingService forWorld(World world) {
-        return over(WorldPhysics.of(world).engine(), WorldConfiguration.WORLD_HEIGHT);
+        return over(WorldPhysics.of(world).engine(), WorldConfiguration.MIN_Y, WorldConfiguration.MAX_Y);
     }
 
     /**
-     * A service over a physics world filled the way {@link WorldPhysics} fills one (its categories),
-     * for a column {@code [0, worldHeight)}. Tests build one over a hand-made physics world.
+     * A service over {@code physics} whose routes stay inside the absolute vertical bounds [minY, maxY)
+     * ({@code NavWorld.Y_UNBOUNDED_MIN/MAX} for none). Its frame origin starts equal to the physics one.
      */
-    public static PathfindingService over(PhysicsWorld physics, int worldHeight) {
+    public static PathfindingService over(PhysicsWorld physics, long minY, long maxY) {
         return new PathfindingService(NavWorld.create(physics, WorldPhysics.MOB_MASK, 0, WorldPhysics.WATER,
-                0, worldHeight, DEFAULT_MAX_IN_FLIGHT));
+                minY, maxY, DEFAULT_MAX_IN_FLIGHT));
     }
 
     /** The engine service; agents search through it. */
@@ -66,8 +67,33 @@ public final class PathfindingService implements AutoCloseable {
         return nav;
     }
 
+    /**
+     * {@link #nav()} with its frame origin brought in line with the physics world's first. The
+     * physics, nav and agent origins must stay EQUAL (G5i): positions handed to any of them are
+     * relative to the same frame. Agents follow on their own ({@code PathAgent.syncFrame}).
+     */
+    public NavWorld navInFrame() {
+        syncOrigin();
+        return nav;
+    }
+
+    private void syncOrigin() {
+        if (nav.isClosed()) {
+            return;
+        }
+        PhysicsWorld physics = nav.physics();
+        if (physics == null || physics.isClosed()) {
+            return;
+        }
+        if (physics.originX() != nav.originX() || physics.originY() != nav.originY()
+                || physics.originZ() != nav.originZ()) {
+            nav.setOrigin(physics.originX(), physics.originY(), physics.originZ());
+        }
+    }
+
     /** Runs this tick's queued searches. Call once per world tick, after the entities update. */
     public void step() {
+        syncOrigin();
         nav.step(STEP_EXPANSION_BUDGET);
     }
 

@@ -18,26 +18,24 @@ import java.util.logging.Logger;
  * model unavailable without downloading anything, and tests that need the real model skip
  * ({@code @RequiresDaedalus} in the test sources).
  *
- * <p><b>Why a GPU floor.</b> Daedalus is written for NVIDIA GPUs. With {@code --device auto} the service
- * falls back to its CPU kernels when the GPU has {@value #MAX_EXCLUDED_VRAM_MIB} MiB of VRAM or less
- * (Python {@code CPU_MAX_VRAM} in {@code terrain_slm/tgmpipe/service.py}).
- * <b>The CPU kernels ({@code cpu_sampler.py}, {@code controls_cpu.py}) are experimental and not yet
- * optimized</b>: they work, but a tile takes minutes, so worlds stall waiting for terrain. Until they
- * are optimized, a machine that would land on them does not meet the requirements.
+ * <p><b>Why a GPU floor.</b> Daedalus runs on NVIDIA GPUs only (the native engine is CUDA). A GPU with
+ * {@value #MAX_EXCLUDED_VRAM_MIB} MiB of VRAM or less has no room for the networks, the window caches and the
+ * game's own rendering at once (the old Python service sent such GPUs to its experimental CPU kernels, where a
+ * tile took minutes; there is no CPU path any more).
  *
  * <p><b>Reference machine.</b> The thresholds are set from the main dev laptop, which is <i>below</i> the
  * bar: RTX 3050 Ti Laptop GPU (4096 MiB), i7-11370H (4 cores / 8 threads), 16 GB RAM. It meets the RAM
  * and CPU floors and fails the VRAM one, so Daedalus is disabled there. Revisit these when the CPU
  * kernels are optimized or real minimum specs are measured.
  *
- * <p>{@code -Dstonebreak.daedalus.requirements=off} skips the check, to work on the experimental CPU
- * kernels on a machine below the bar.
+ * <p>{@code -Dstonebreak.daedalus.requirements=off} skips the check, to try the model on a machine below the
+ * bar.
  */
 public final class DaedalusRequirements {
 
     private static final Logger LOG = Logger.getLogger(DaedalusRequirements.class.getName());
 
-    /** A GPU with this much VRAM or less makes the service run on the experimental CPU kernels. */
+    /** A GPU with this much VRAM or less is below the bar. */
     static final long MAX_EXCLUDED_VRAM_MIB = 4096;
     /** System RAM floor; a little under 16 GB, since a 16 GB machine reports ~15.8 GiB usable. */
     static final long MIN_RAM_MIB = 15 * 1024;
@@ -95,7 +93,7 @@ public final class DaedalusRequirements {
         SystemSpecs specs = probe();
         if (bypassed()) {
             LOG.warning(() -> TGMPipe.MODEL_NAME + " system requirements skipped (-Dstonebreak.daedalus.requirements=off) on "
-                    + specs + "; below the bar the model runs on its experimental, unoptimized CPU kernels");
+                    + specs + "; below the bar the model may run out of GPU memory");
             return new Verdict(true, null, specs);
         }
         Verdict v = evaluate(specs);
@@ -118,8 +116,7 @@ public final class DaedalusRequirements {
             missing.add("no NVIDIA GPU found");
         } else if (specs.vramMiB() <= MAX_EXCLUDED_VRAM_MIB) {
             missing.add(specs.gpuName() + " has " + specs.vramMiB() + " MiB of VRAM, needs more than "
-                    + MAX_EXCLUDED_VRAM_MIB + " MiB (smaller GPUs fall back to the CPU kernels, which are"
-                    + " experimental and not yet optimized)");
+                    + MAX_EXCLUDED_VRAM_MIB + " MiB");
         }
         if (specs.ramMiB() >= 0 && specs.ramMiB() < MIN_RAM_MIB) {
             missing.add(String.format("%.1f GiB of RAM, needs %d GiB", specs.ramMiB() / 1024.0, MIN_RAM_MIB / 1024));
@@ -140,7 +137,7 @@ public final class DaedalusRequirements {
                 totalRamMiB(), Runtime.getRuntime().availableProcessors());
     }
 
-    /** {name, MiB} of the GPU the service would use, or null without a working {@code nvidia-smi}. */
+    /** {name, MiB} of the GPU the terrain would use, or null without a working {@code nvidia-smi}. */
     private static String[] nvidiaGpu() {
         List<String> lines = new ArrayList<>();
         try {
@@ -166,9 +163,9 @@ public final class DaedalusRequirements {
     }
 
     /**
-     * The GPU the service runs on, from {@code nvidia-smi} csv lines ({@code name, MiB}): the only one, or
-     * the second on a multi-GPU machine (the service keeps GPU 0 for the game's rendering; Python
-     * {@code pick_device}). Null when the output is not what was asked for.
+     * The GPU the terrain runs on, from {@code nvidia-smi} csv lines ({@code name, MiB}): the only one, or
+     * the second on a multi-GPU machine (GPU 0 is kept for the game's rendering; {@code NativeTerrainLauncher.device}).
+     * Null when the output is not what was asked for.
      */
     static String[] pickGpu(List<String> lines) {
         if (lines.isEmpty()) return null;

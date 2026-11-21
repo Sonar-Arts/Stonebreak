@@ -13,7 +13,8 @@ import static org.lwjgl.opengl.GL33.glGetQueryObjecti64;
 import static org.lwjgl.opengl.GL33.glQueryCounter;
 
 /**
- * Dev A/B timer for rain (lanes vs FX particles): {@code -Dstonebreak.rainbench=<warmup s>:<seconds>[:quit]}.
+ * Dev A/B frame timer (rain lanes vs FX particles; since 2026-11-20 also detail terrain vs the LOD passes):
+ * {@code -Dstonebreak.rainbench=<warmup s>:<seconds>[:quit]}.
  * Times the world frame and each rain-related section on the CPU ({@code System.nanoTime}) and the GPU (GL
  * timestamp queries, read back {@value #SLOTS} frames later so nothing stalls), then prints one summary line
  * ({@code [rainbench] ...}) and optionally closes the window. Inert (null instance) without the property.
@@ -30,7 +31,27 @@ public final class PrecipitationBench {
         /** FX drawn in front of the water. */
         FX_FRONT(true),
         /** The lane renderer (both rings, or the far ring alone). */
-        LANES(true);
+        LANES(true),
+        /** Detail terrain: the opaque pass of the visible cubes (the reference the LOD sections compare to). */
+        OPAQUE(true),
+        /** Octree LOD tick: events, meshes handed out, uploads (CPU, owner thread). */
+        LOD_TICK(false),
+        /** FastLOD fallback footprints: ring bookkeeping + draws. */
+        FASTLOD(true),
+        /** Octree LOD node draws (opaque). */
+        OCTREE(true),
+        /** Sun cascades + torch point shadows (+ torch indirect light update). */
+        SHADOWS(true),
+        /** Cloud field prepare (weather focus + cloud resolve). */
+        CLOUD_PREP(true),
+        /** Sky dome + precipitation sky fog. */
+        SKY(true),
+        /** Mobs, players, animated blocks, opaque drops. */
+        ENTITIES(true),
+        /** Lightning + volumetric clouds. */
+        CLOUDS(true),
+        /** The dedicated water pass (near + LOD water). */
+        WATER(true);
 
         final boolean gpu;
 

@@ -4,7 +4,8 @@ import com.stonebreak.mobs.entities.HitKind;
 import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.Player;
 import com.stonebreak.ui.worldHud.DamageNumbers;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
+import org.joml.Vector3fc;
 
 /**
  * Client side of a hit the SERVER applied for the local player ({@code KillCreditS2C}, #371/#374).
@@ -33,8 +34,9 @@ public final class HitResultFeedback {
      * @param anchor where the damage number shows (the victim's head, as the server saw it)
      */
     public static void apply(Player player, LivingEntity target, LivingEntity.DamageSource source,
-                             HitKind kind, float dealt, boolean killed, Vector3f anchor) {
-        DamageNumbers.getInstance().spawn(anchor.x, anchor.y, anchor.z, dealt);
+                             HitKind kind, float dealt, boolean killed, Vector3dc anchor) {
+        // DamageNumbers keeps float world coordinates (UI-owned); narrowed at that boundary only.
+        DamageNumbers.getInstance().spawn((float) anchor.x(), (float) anchor.y(), (float) anchor.z(), dealt);
         if (player == null) {
             return;
         }
@@ -49,5 +51,12 @@ public final class HitResultFeedback {
         if (source == LivingEntity.DamageSource.ARROW && target != null) {
             player.getRangerAbilities().onPlayerArrowHit(player, target);
         }
+    }
+
+    /** Float-anchor form kept for callers not yet on double positions (network). */
+    public static void apply(Player player, LivingEntity target, LivingEntity.DamageSource source,
+                             HitKind kind, float dealt, boolean killed, Vector3fc anchor) {
+        apply(player, target, source, kind, dealt, killed,
+                new org.joml.Vector3d(anchor.x(), anchor.y(), anchor.z()));
     }
 }

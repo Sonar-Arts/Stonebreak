@@ -1,5 +1,7 @@
 package com.stonebreak.mobs.goose;
 
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -48,21 +50,21 @@ public class GooseFlock {
     private static final int TRAIL_CAPACITY = 64;
 
     private final List<Goose> members = new ArrayList<>();
-    private final Vector3f destination = new Vector3f();
+    private final Vector3d destination = new Vector3d();
     private final float cruiseSpeed;
     /** Once the flock begins its landing descent it is no longer joinable. One-way. */
     private boolean landing = false;
 
     /** Leader positions, newest last; a ring buffer of x,y,z triples. */
-    private final float[] trail = new float[TRAIL_CAPACITY * 3];
+    private final double[] trail = new double[TRAIL_CAPACITY * 3];
     private int trailCount;
     private int trailNewest = -1;
 
     // Scratch for trail sampling — this runs for every wingman, every tick.
-    private final Vector3f trailPoint = new Vector3f();
+    private final Vector3d trailPoint = new Vector3d();
     private final Vector3f trailForward = new Vector3f();
 
-    public GooseFlock(Goose leader, Vector3f destination, float cruiseSpeed) {
+    public GooseFlock(Goose leader, Vector3dc destination, float cruiseSpeed) {
         this.cruiseSpeed = cruiseSpeed;
         this.destination.set(destination);
         members.add(leader);
@@ -105,11 +107,11 @@ public class GooseFlock {
         return getLeader() == goose;
     }
 
-    public Vector3f getDestination() {
-        return new Vector3f(destination);
+    public Vector3d getDestination() {
+        return new Vector3d(destination);
     }
 
-    public void setDestination(Vector3f dest) {
+    public void setDestination(Vector3dc dest) {
         this.destination.set(dest);
     }
 
@@ -134,21 +136,21 @@ public class GooseFlock {
      * per tick by the leader itself; sampling by distance rather than by time keeps the trail's
      * resolution independent of frame rate and of how fast the flock is flying.
      */
-    public void recordLeaderTrail(Vector3f position) {
+    public void recordLeaderTrail(Vector3dc position) {
         if (trailCount > 0) {
             int newest = trailNewest * 3;
-            float dx = position.x - trail[newest];
-            float dy = position.y - trail[newest + 1];
-            float dz = position.z - trail[newest + 2];
+            double dx = position.x() - trail[newest];
+            double dy = position.y() - trail[newest + 1];
+            double dz = position.z() - trail[newest + 2];
             if (dx * dx + dy * dy + dz * dz < TRAIL_SPACING * TRAIL_SPACING) {
                 return;
             }
         }
         trailNewest = (trailNewest + 1) % TRAIL_CAPACITY;
         int slot = trailNewest * 3;
-        trail[slot] = position.x;
-        trail[slot + 1] = position.y;
-        trail[slot + 2] = position.z;
+        trail[slot] = position.x();
+        trail[slot + 1] = position.y();
+        trail[slot + 2] = position.z();
         trailCount = Math.min(trailCount + 1, TRAIL_CAPACITY);
     }
 
@@ -172,7 +174,7 @@ public class GooseFlock {
      * <p>This is the fallback a wingman collapses onto when its own slot is blocked: the leader
      * flew through here moments ago, so it is guaranteed clear in a way no computed offset is.
      */
-    public Vector3f spineTargetFor(Goose goose) {
+    public Vector3d spineTargetFor(Goose goose) {
         Goose leader = getLeader();
         if (leader == null) {
             return goose.getPosition();
@@ -182,14 +184,14 @@ public class GooseFlock {
             return leader.getPosition();
         }
         sampleTrail(wingIndex(rank) * BACK_SPACING, leader);
-        return new Vector3f(trailPoint);
+        return new Vector3d(trailPoint);
     }
 
     /**
      * World-space target point for a member's slot in the V: its place on the leader's trail,
      * offset onto the left or right wing perpendicular to the trail's direction there.
      */
-    public Vector3f slotTargetFor(Goose goose) {
+    public Vector3d slotTargetFor(Goose goose) {
         Goose leader = getLeader();
         if (leader == null) {
             return goose.getPosition();
@@ -206,7 +208,7 @@ public class GooseFlock {
         sampleTrail(wing * BACK_SPACING, leader);
 
         // Right-hand perpendicular in the XZ plane of the trail's direction here.
-        return new Vector3f(trailPoint)
+        return new Vector3d(trailPoint)
                 .fma(sideSign * wing * SIDE_SPACING,
                         new Vector3f(trailForward.z, 0.0f, -trailForward.x));
     }
@@ -225,22 +227,22 @@ public class GooseFlock {
      * it is the right one while there is no history to bend around.
      */
     private void sampleTrail(float backDistance, Goose leader) {
-        Vector3f leaderPosition = leader.getPosition();
+        Vector3d leaderPosition = leader.getPosition();
 
         if (trailCount >= 2) {
-            float remaining = backDistance;
+            double remaining = backDistance;
             for (int step = 0; step < trailCount - 1; step++) {
                 int newer = index(step);
                 int older = index(step + 1);
-                float dx = trail[newer] - trail[older];
-                float dy = trail[newer + 1] - trail[older + 1];
-                float dz = trail[newer + 2] - trail[older + 2];
-                float segment = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-                if (segment < 1e-4f) {
+                double dx = trail[newer] - trail[older];
+                double dy = trail[newer + 1] - trail[older + 1];
+                double dz = trail[newer + 2] - trail[older + 2];
+                double segment = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (segment < 1e-4) {
                     continue;
                 }
                 if (remaining <= segment) {
-                    float t = remaining / segment;
+                    double t = remaining / segment;
                     trailPoint.set(trail[newer] - dx * t,
                             trail[newer + 1] - dy * t,
                             trail[newer + 2] - dz * t);
@@ -264,8 +266,8 @@ public class GooseFlock {
     }
 
     /** Direction of travel along a trail segment, flattened — wings spread horizontally. */
-    private void setForward(float dx, float dz) {
-        trailForward.set(dx, 0.0f, dz);
+    private void setForward(double dx, double dz) {
+        trailForward.set((float) dx, 0.0f, (float) dz);
         if (trailForward.lengthSquared() < 1e-8f) {
             trailForward.set(0.0f, 0.0f, 1.0f);
         } else {
@@ -273,11 +275,11 @@ public class GooseFlock {
         }
     }
 
-    private void fallbackForward(Goose leader, Vector3f leaderPosition) {
+    private void fallbackForward(Goose leader, Vector3d leaderPosition) {
         trailForward.set(leader.getVelocity());
         trailForward.y = 0.0f;
         if (trailForward.lengthSquared() < 0.0001f) {
-            trailForward.set(destination).sub(leaderPosition);
+            com.stonebreak.util.Positions.offset(leaderPosition, destination, trailForward);
             trailForward.y = 0.0f;
         }
         if (trailForward.lengthSquared() < 0.0001f) {

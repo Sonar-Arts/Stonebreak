@@ -225,7 +225,8 @@ public final class TerrainRelief implements AutoCloseable {
             heights.sample(tx * TILE_BLOCKS + CELL / 2, tz * TILE_BLOCKS + CELL / 2, TILE_CELLS, CELL, h);
         } catch (RuntimeException e) {
             // No terrain service (or it failed): this tile stays flat rather than retried forever.
-            if (!warned) {
+            // A terrain shutting down (quit, world switch) refuses quietly: expected, not a relief failure.
+            if (!warned && !closed && !com.stonebreak.world.generation.TerrainClosedException.isCause(e)) {
                 warned = true;
                 System.err.println("[TerrainRelief] relief unavailable, clouds ignore terrain there: " + e);
             }

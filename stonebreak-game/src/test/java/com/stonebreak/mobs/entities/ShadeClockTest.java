@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -12,10 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ShadeClockTest {
 
     /** The Shade is everything west of x=0. */
-    private static final Predicate<Vector3f> WEST_IS_SHADE = p -> p.x < 0;
+    private static final Predicate<Vector3dc> WEST_IS_SHADE = p -> p.x() < 0;
 
     private static EntitySpawner.SpawnAnchor player(int id, float x, boolean alive) {
-        return new EntitySpawner.SpawnAnchor(new Vector3f(x, 64, 0), 8, alive, id);
+        return new EntitySpawner.SpawnAnchor(new Vector3d(x, 64, 0), 8, alive, id);
     }
 
     /** Runs the clock a second at a time and counts how often {@code watched} came round. */

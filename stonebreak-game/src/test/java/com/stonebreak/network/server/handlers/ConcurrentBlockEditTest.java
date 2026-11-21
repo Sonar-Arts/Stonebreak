@@ -18,7 +18,6 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.SnowLayerManager;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
@@ -64,28 +64,31 @@ class ConcurrentBlockEditTest {
     private SnowLayerManager snow;
     private MockedStatic<DropUtil> drops;
 
-    private static String key(int x, int y, int z) {
+    private static String key(long x, long y, long z) {
         return x + "," + y + "," + z;
     }
 
     @BeforeEach
     void setUp() {
         World world = mock(World.class);
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> chunksLoaded
-                ? blocks.getOrDefault(key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), BlockType.AIR)
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> chunksLoaded
+                ? blocks.getOrDefault(key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class)), BlockType.AIR)
                 : BlockType.AIR); // an unloaded chunk reads AIR, like World.getBlockAt
-        when(world.getChunkIfLoaded(anyInt(), anyInt())).thenAnswer(inv -> chunksLoaded ? mock(Chunk.class) : null);
-        when(world.getWaterValueAt(anyInt(), anyInt(), anyInt())).thenReturn(-1);
-        when(world.setBlockAt(anyInt(), anyInt(), anyInt(), any(BlockType.class), anyBoolean()))
+        when(world.isLoaded(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> chunksLoaded);
+        when(world.getWaterValueAt(anyLong(), anyLong(), anyLong())).thenReturn(-1);
+        when(world.setBlockAt(anyLong(), anyLong(), anyLong(), any(BlockType.class), anyBoolean()))
                 .thenAnswer(inv -> {
                     if (!chunksLoaded) {
                         return false;
                     }
-                    blocks.put(key(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)), inv.getArgument(3));
+                    blocks.put(key(inv.getArgument(0, Long.class), inv.getArgument(1, Long.class), inv.getArgument(2, Long.class)), inv.getArgument(3));
                     return true;
                 });
         when(world.serverSinks()).thenReturn(new ServerMutationSinks());
-        snow = new SnowLayerManager();
+        com.stonebreak.world.World snowWorld =
+                com.stonebreak.world.World.createDetached(new com.stonebreak.world.operations.WorldConfiguration(), 0L);
+        snowWorld.ensureCube(0, 64 >> 5, 0); // snow layers live on the cube's SNOW layer (#447)
+        snow = new SnowLayerManager(snowWorld);
         when(world.getSnowLayerManager()).thenReturn(snow);
         furnaces = mock(FurnaceStateRegistry.class);
         when(world.getFurnaceRegistry()).thenReturn(furnaces);

@@ -37,8 +37,9 @@ final class ChunkShadowShader {
                     uint w2 = q.z;
                     int face = int((w0 >> 26u) & 7u);
                     if (face > 5) { face = 0; corner = 0; } // garbage record: collapse to a zero-area point
-                    float w = float((w1 >> 25u) & 15u) + 1.0;
-                    float h = float(w1 & 15u) + 1.0;
+                    // 5-bit w/h (cubic runtime): w bits 25..29, h low nibble + fifth bit at bit 30.
+                    float w = float((w1 >> 25u) & 31u) + 1.0;
+                    float h = float((w1 & 15u) | ((w1 >> 26u) & 16u)) + 1.0;
                     int orient = int((w1 >> 4u) & 7u);
                     vec3 c = QUAD_CORNER[face * 4 + corner];
                     int ua = QUAD_UAXIS[face];

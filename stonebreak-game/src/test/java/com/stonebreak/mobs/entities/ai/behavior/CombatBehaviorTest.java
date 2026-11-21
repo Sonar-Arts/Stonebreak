@@ -13,6 +13,8 @@ import com.stonebreak.mobs.entities.ai.perception.PerceptionProfile;
 import com.stonebreak.mobs.entities.ai.perception.ShoutRelay;
 import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.entities.combat.WeaponProfile;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -36,23 +38,23 @@ class CombatBehaviorTest {
 
     /** A player wherever the test puts one, recording the blows it takes. */
     private static final class FakePlayers implements PlayerLocator {
-        Vector3f position;
+        Vector3d position;
         boolean visible = true;
         final List<Float> hits = new ArrayList<>();
         float lastKnockback;
 
         @Override
-        public Vector3f nearestPlayer(Vector3f from, Vector3f out) {
+        public Vector3d nearestPlayer(Vector3dc from, Vector3d out) {
             return position == null ? null : out.set(position);
         }
 
         @Override
-        public boolean canSeeNearestPlayer(Vector3f from, Vector3f eye) {
+        public boolean canSeeNearestPlayer(Vector3dc from, Vector3dc eye) {
             return position != null && visible;
         }
 
         @Override
-        public boolean hurtNearestPlayer(Vector3f from, float amount, float knockback) {
+        public boolean hurtNearestPlayer(Vector3dc from, float amount, float knockback) {
             if (position == null) return false;
             hits.add(amount);
             lastKnockback = knockback;
@@ -61,13 +63,13 @@ class CombatBehaviorTest {
     }
 
     private final FakePlayers players = new FakePlayers();
-    private final StubMob mob = new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 0));
+    private final StubMob mob = new StubMob(EntityType.GOBLIN, new Vector3d(0, 64, 0));
     private final AiContext context = new AiContext(
             mob, new PathAgent(mob, new Steering(mob, 360f, 0f, 0f)), new Random(3), players);
 
     /** Goblins face -Z at yaw 0, so a player straight down -Z is already in front of it. */
     private void playerAhead(float distance) {
-        players.position = new Vector3f(0, 64, -distance);
+        players.position = new Vector3d(0, 64, -distance);
     }
 
     /** Runs a behaviour like the controller does, ageing the mob with it, until it ends. */
@@ -212,11 +214,11 @@ class CombatBehaviorTest {
 
     // ── Ranged ──────────────────────────────────────────────────────────────
 
-    private record Shot(Vector3f origin, Vector3f velocity, float damage) {}
+    private record Shot(Vector3dc origin, Vector3f velocity, float damage) {}
 
     private final List<Shot> shots = new ArrayList<>();
     private final ArrowLauncher recordShots =
-            (LivingEntity shooter, Vector3f origin, Vector3f velocity, float damage) ->
+            (LivingEntity shooter, Vector3dc origin, Vector3f velocity, float damage) ->
                     shots.add(new Shot(origin, velocity, damage));
 
     @Test
@@ -272,12 +274,12 @@ class CombatBehaviorTest {
 
     /** Prey standing wherever the test puts it, recording the blows it takes. */
     private static final class FakePrey implements AttackTarget {
-        Vector3f position;
+        Vector3d position;
         final List<Float> hits = new ArrayList<>();
 
         @Override public boolean engaged(AiContext c) { return position != null; }
-        @Override public Vector3f position(AiContext c) { return position; }
-        @Override public boolean canSee(AiContext c, Vector3f eye) { return position != null; }
+        @Override public Vector3d position(AiContext c) { return position; }
+        @Override public boolean canSee(AiContext c, Vector3dc eye) { return position != null; }
         @Override public boolean hurt(AiContext c, float amount, float knockback) { hits.add(amount); return true; }
         @Override public float aimHeight(AiContext c) { return 0.5f; }
         @Override public boolean noisy(AiContext c) { return false; }
@@ -287,7 +289,7 @@ class CombatBehaviorTest {
     void aSwingLandsOnPreyWithoutAnyPlayerAround() {
         aware(AwarenessController.AwarenessState.UNAWARE);
         FakePrey prey = new FakePrey();
-        prey.position = new Vector3f(0, 64, -1f);
+        prey.position = new Vector3d(0, 64, -1f);
         MeleeAttackBehavior melee = new MeleeAttackBehavior(dagger(), AttackTarget.playerFirst(prey));
         assertTrue(melee.canStart(context));
         runToEnd(melee, 5f);
@@ -299,7 +301,7 @@ class CombatBehaviorTest {
     void anAlertedGoblinTurnsFromItsPreyToThePlayer() {
         AwarenessController awareness = aware(AwarenessController.AwarenessState.UNAWARE);
         FakePrey prey = new FakePrey();
-        prey.position = new Vector3f(0, 64, -1f);
+        prey.position = new Vector3d(0, 64, -1f);
         playerAhead(1f);
         AttackTarget target = AttackTarget.playerFirst(prey);
         assertSame(prey.position, target.position(context), "unaware of the player: the prey");
@@ -315,7 +317,7 @@ class CombatBehaviorTest {
     void anArcherShootsAtItsPreysBody() {
         aware(AwarenessController.AwarenessState.UNAWARE);
         FakePrey prey = new FakePrey();
-        prey.position = new Vector3f(0, 64, -10f);
+        prey.position = new Vector3d(0, 64, -10f);
         RangedAttackBehavior ranged = new RangedAttackBehavior(bow(), recordShots, AttackTarget.playerFirst(prey));
         assertTrue(ranged.canStart(context));
         runToEnd(ranged, 5f);

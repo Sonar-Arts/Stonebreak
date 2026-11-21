@@ -7,6 +7,7 @@ import com.stonebreak.mobs.entities.status.StatusEffectType;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.player.interaction.RaycastEngine;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
@@ -27,9 +28,9 @@ public class SkullCrusherAbility {
 
     /** A lingering Armor Break zone left by a T3 slam. */
     private static final class CraterZone {
-        final Vector3f position;
+        final Vector3d position;
         float remaining;
-        CraterZone(Vector3f position, float remaining) {
+        CraterZone(Vector3d position, float remaining) {
             this.position = position;
             this.remaining = remaining;
         }
@@ -42,7 +43,7 @@ public class SkullCrusherAbility {
 
     private RageTier tier = RageTier.NONE;
     private LivingEntity targetEntity;
-    private final Vector3f impactPoint = new Vector3f();
+    private final Vector3d impactPoint = new Vector3d();
     private final List<CraterZone> craterZones = new ArrayList<>();
 
     public boolean isActive() { return state != State.IDLE; }
@@ -71,10 +72,10 @@ public class SkullCrusherAbility {
             this.targetEntity = null;
             Vector3i blockHit = player.raycast();
             if (blockHit != null) {
-                this.impactPoint.set(blockHit.x + 0.5f, blockHit.y + 1f, blockHit.z + 0.5f);
+                this.impactPoint.set(blockHit.x + 0.5, blockHit.y + 1.0, blockHit.z + 0.5);
             } else {
                 Vector3f front = new Vector3f(player.getCamera().getFront()).normalize();
-                this.impactPoint.set(front.mul(SKULLCRUSHER_RANGE).add(player.getPosition()));
+                this.impactPoint.set(player.getPosition()).fma(SKULLCRUSHER_RANGE, front);
             }
         }
 
@@ -131,7 +132,7 @@ public class SkullCrusherAbility {
         }
 
         if (tier == RageTier.T3) {
-            craterZones.add(new CraterZone(new Vector3f(impactPoint), SKULLCRUSHER_CRATER_DURATION));
+            craterZones.add(new CraterZone(new Vector3d(impactPoint), SKULLCRUSHER_CRATER_DURATION));
         }
     }
 

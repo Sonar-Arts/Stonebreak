@@ -101,7 +101,6 @@ class SaveServiceCloseOrderingTest {
         ExecutorService delegate = Executors.newFixedThreadPool(4);
         ExecutorService savePool = parkingSavePool(latch, armed, delegate);
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
 
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             Game game = mock(Game.class);
@@ -157,7 +156,6 @@ class SaveServiceCloseOrderingTest {
     void performAutoSaveAfterCloseIsANoOp() throws Exception {
         String worldPath = tempDir.resolve("closed-gate").toString();
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
 
         try (MockedStatic<Game> globals = mockStatic(Game.class)) {
             Game game = mock(Game.class);

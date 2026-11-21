@@ -74,7 +74,7 @@ final class FakeTerrain implements CampTerrain {
     @Override
     public int columnTop(int x, int z) {
         if (Math.abs(x) > SIZE || Math.abs(z) > SIZE) {
-            return -1;
+            return NO_COLUMN;
         }
         for (int y = 120; y >= 0; y--) {
             BlockType b = block(x, y, z);
@@ -107,7 +107,7 @@ final class FakeTerrain implements CampTerrain {
             physics.defineShape(1, new float[] {0, 0, 0, 1, 1, 1},
                 com.stonebreak.world.physics.WorldPhysics.SOLID | com.stonebreak.world.physics.WorldPhysics.PICK, 0);
             physics.defineFluid(1, 0.875f, 0, 0, 0, com.stonebreak.world.physics.WorldPhysics.WATER);
-            service = com.stonebreak.mobs.entities.ai.nav.PathfindingService.over(physics, 256);
+            service = com.stonebreak.mobs.entities.ai.nav.PathfindingService.over(physics, 0, 256);
         }
         com.openmason.engine.nav.GroundProfile profile = goblin();
         return (feet, radius, maxCells) -> {
@@ -124,11 +124,11 @@ final class FakeTerrain implements CampTerrain {
         return service.nav();
     }
 
-    private boolean fill(int x0, int y0, int z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
+    private boolean fill(long x0, long y0, long z0, int sx, int sy, int sz, short[] shapes, short[] fluids) {
         for (int y = 0; y < sy; y++) {
             for (int z = 0; z < sz; z++) {
                 for (int x = 0; x < sx; x++) {
-                    BlockType b = block(x0 + x, y0 + y, z0 + z);
+                    BlockType b = block((int) (x0 + x), (int) (y0 + y), (int) (z0 + z));
                     int i = (y * sz + z) * sx + x;
                     if (b == BlockType.WATER) {
                         fluids[i] = 1;

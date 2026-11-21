@@ -127,13 +127,18 @@ class AbuseLimitsServerTest {
     }
 
     @Test
-    void verticalMovementIsNotLimited() {
+    void fallingIsNeverLimitedButClimbingIs() {
         ServerPlayer sp = remotePlayer();
 
-        handler.handlePlayerState(sp, new PlayerStateC2S(5f, 200f, 5f, 0f, 0f, (byte) 0), ctx,
+        // A long fall (the 1024-tall world: down a deep shaft) is never refused.
+        handler.handlePlayerState(sp, new PlayerStateC2S(5f, -300f, 5f, 0f, 0f, (byte) 0), ctx,
                 System.nanoTime());
+        assertEquals(-300.0, sp.y());
 
-        assertEquals(200f, sp.y());
+        // Climbing has a budget now (#445: positions are 3D): 400 blocks up in one report is refused.
+        handler.handlePlayerState(sp, new PlayerStateC2S(5f, 100f, 5f, 0f, 0f, (byte) 0), ctx,
+                System.nanoTime());
+        assertEquals(-300.0, sp.y());
     }
 
     @Test

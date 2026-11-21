@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import java.util.EnumSet;
@@ -29,10 +30,10 @@ public final class SearchBehavior implements Behavior {
     private final AwarenessController awareness;
     private final float speedMultiplier;
 
-    private final Vector3f anchor = new Vector3f();
-    private final Vector3f spot = new Vector3f();
+    private final Vector3d anchor = new Vector3d();
+    private final Vector3d spot = new Vector3d();
     private final Vector3f lookDir = new Vector3f();
-    private final Vector3f lastKnown = new Vector3f();
+    private final Vector3d lastKnown = new Vector3d();
     private boolean walking;
     private float pause;
 
@@ -92,8 +93,8 @@ public final class SearchBehavior implements Behavior {
         if (pause <= 0f) {
             float angle = context.random().nextFloat() * (float) (Math.PI * 2.0);
             float distance = context.randomBetween(1.0f, LOOK_RADIUS);
-            spot.set(anchor.x + (float) Math.cos(angle) * distance, anchor.y,
-                    anchor.z + (float) Math.sin(angle) * distance);
+            spot.set(anchor.x + Math.cos(angle) * distance, anchor.y,
+                    anchor.z + Math.sin(angle) * distance);
             walking = true;
             context.nav().moveTo(spot, ARRIVAL_RADIUS, speedMultiplier);
         }

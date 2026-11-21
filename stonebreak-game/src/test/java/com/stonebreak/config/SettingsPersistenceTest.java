@@ -138,8 +138,9 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(45, tree.size());
+        assertEquals(46, tree.size());
         assertTrue(tree.has("connectedShapes"));
+        assertTrue(tree.has("verticalRenderDistance"));
         assertTrue(tree.has("selectedAccessory"));
         assertTrue(tree.has("particlesEnabled"));
         assertTrue(tree.has("particleDensity"));

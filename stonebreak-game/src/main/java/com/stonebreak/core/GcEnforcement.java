@@ -70,7 +70,7 @@ public final class GcEnforcement {
 
               Add these JVM options to your run configuration:
                 -XX:+UseZGC
-                -Xms2g -Xmx8g
+                -Xms2g -Xmx8g -XX:SoftMaxHeapSize=3g -XX:ZUncommitDelay=30
                 --enable-native-access=ALL-UNNAMED
                 --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
                 --add-exports=java.base/sun.security.util=ALL-UNNAMED

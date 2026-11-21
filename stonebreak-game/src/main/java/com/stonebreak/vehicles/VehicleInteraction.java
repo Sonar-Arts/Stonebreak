@@ -64,7 +64,7 @@ public final class VehicleInteraction {
         if (world == null || hit == null || player.getRiding().isRiding()) {
             return true;
         }
-        Vector3f pos = placement(world, hit);
+        org.joml.Vector3d pos = placement(world, hit);
         if (pos == null) {
             return true;
         }
@@ -77,19 +77,19 @@ public final class VehicleInteraction {
     }
 
     /** Where a dinghy goes for a crosshair hit on {@code hit}: afloat on water, else on top. */
-    static Vector3f placement(World world, Vector3i hit) {
+    static org.joml.Vector3d placement(World world, Vector3i hit) {
         BlockType block = world.getBlockAt(hit.x, hit.y, hit.z);
         if (block == null) {
             return null;
         }
-        float x = hit.x + 0.5f, z = hit.z + 0.5f;
+        double x = hit.x + 0.5, z = hit.z + 0.5;
         if (block == BlockType.WATER) {
-            float surface = DinghyPhysics.waterSurfaceY(world, x, hit.y + 0.5f, z);
-            float y = Float.isNaN(surface) ? hit.y + 1f : surface;
-            return new Vector3f(x, y - DinghyPhysics.WATERLINE, z);
+            double surface = DinghyPhysics.waterSurfaceY(world, x, hit.y + 0.5, z);
+            double y = Double.isNaN(surface) ? hit.y + 1.0 : surface;
+            return new org.joml.Vector3d(x, y - DinghyPhysics.WATERLINE, z);
         }
-        float y = hit.y + 1f;
-        return DinghyPhysics.blocked(world, x, y, z) ? null : new Vector3f(x, y, z);
+        double y = hit.y + 1.0;
+        return DinghyPhysics.blocked(world, x, y, z) ? null : new org.joml.Vector3d(x, y, z);
     }
 
     /** The nearest dinghy along the crosshair within reach and not behind terrain, or null. */
@@ -98,7 +98,7 @@ public final class VehicleInteraction {
         if (em == null) {
             return null;
         }
-        Vector3f origin = new Vector3f(player.getCamera().getPosition());
+        org.joml.Vector3d origin = new org.joml.Vector3d(player.getCamera().getPosition());
         Vector3f dir = new Vector3f(player.getCamera().getFront()).normalize();
         Dinghy best = null;
         float bestT = REACH + thirdPersonSlack(player);
@@ -120,6 +120,6 @@ public final class VehicleInteraction {
     /** The third-person camera sits up to 4 blocks behind the eyes; reach is from the eyes. */
     private static float thirdPersonSlack(Player player) {
         return player.getPerspective() == Player.Perspective.THIRD_PERSON
-                ? player.getCamera().getPosition().distance(player.getRaycastEngine().eyeOrigin()) : 0f;
+                ? (float) player.getCamera().getPosition().distance(player.getRaycastEngine().eyeOrigin()) : 0f;
     }
 }

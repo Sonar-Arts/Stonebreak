@@ -62,6 +62,7 @@ public final class SettingsMenu {
                 actionHandler::toggleParticles,
                 actionHandler::onParticleDensityChange,
                 actionHandler::onRenderDistanceChange,
+                actionHandler::onVerticalRenderDistanceChange,
                 actionHandler::onLodDistanceChange,
                 actionHandler::toggleLodEnabled,
                 actionHandler::onLodQualityChange,

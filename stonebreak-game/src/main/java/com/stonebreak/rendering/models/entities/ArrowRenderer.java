@@ -36,7 +36,7 @@ final class ArrowRenderer {
     void render(Arrow arrow) {
         Vector3f heading = arrow.heading();
         Vector3f up = Math.abs(heading.y) < NEAR_VERTICAL ? WORLD_UP : WORLD_NORTH;
-        Vector3f pos = arrow.getPosition();
+        org.joml.Vector3d pos = arrow.getPosition();
         // rotateTowards maps local +Z onto the heading; rotateY(90°) then turns the sprite's
         // head (-X) onto local +Z.
         RenderOrigin.modelAt(flight, pos.x, pos.y, pos.z)

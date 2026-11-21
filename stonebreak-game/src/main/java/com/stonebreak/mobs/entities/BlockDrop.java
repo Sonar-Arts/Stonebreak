@@ -4,6 +4,8 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.WaterFlowPhysics;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -37,7 +39,7 @@ public class BlockDrop extends Entity {
     /**
      * Creates a new block drop at the specified position.
      */
-    public BlockDrop(World world, Vector3f position, BlockType blockType) {
+    public BlockDrop(World world, Vector3dc position, BlockType blockType) {
         super(world, position);
         this.blockType = blockType;
         this.despawnTimer = DESPAWN_TIME;
@@ -84,7 +86,7 @@ public class BlockDrop extends Entity {
         mergeNearbyDrops();
         
         // Prevent drops from falling into the void
-        if (position.y < -10) {
+        if (position.y < com.stonebreak.world.operations.WorldConfiguration.MIN_Y - 16) {
             alive = false;
         }
     }
@@ -120,9 +122,8 @@ public class BlockDrop extends Entity {
         velocity.mul(DROP_AIR_RESISTANCE);
 
         // Update position based on velocity
-        Vector3f movement = new Vector3f(velocity).mul(deltaTime);
-        Vector3f oldPosition = new Vector3f(position);
-        position.add(movement);
+        Vector3d oldPosition = new Vector3d(position);
+        position.fma(deltaTime, velocity);
 
         // Simple collision detection with world
         checkWorldCollision(oldPosition);
@@ -144,7 +145,7 @@ public class BlockDrop extends Entity {
      * fall through flowers, wildgrass, torches and water and rest correctly on
      * snow layers and stairs.
      */
-    private void checkWorldCollision(Vector3f oldPosition) {
+    private void checkWorldCollision(Vector3d oldPosition) {
         DropWorldCollision.Result result = DropWorldCollision.resolveGround(
                 world, position, oldPosition, width, length, height);
         inWater = result.inWater();
@@ -238,7 +239,7 @@ public class BlockDrop extends Entity {
     /**
      * Checks if this drop can be picked up by a player at the given position.
      */
-    public boolean canPickup(Vector3f playerPosition) {
+    public boolean canPickup(Vector3dc playerPosition) {
         return position.distance(playerPosition) <= PICKUP_RANGE;
     }
     
@@ -280,14 +281,14 @@ public class BlockDrop extends Entity {
     /**
      * Factory method to create a block drop with initial physics.
      */
-    public static BlockDrop createDrop(World world, Vector3f position, BlockType blockType) {
+    public static BlockDrop createDrop(World world, Vector3dc position, BlockType blockType) {
         return new BlockDrop(world, position, blockType);
     }
     
     /**
      * Factory method to create a block drop with custom initial velocity.
      */
-    public static BlockDrop createDropWithVelocity(World world, Vector3f position, BlockType blockType, Vector3f initialVelocity) {
+    public static BlockDrop createDropWithVelocity(World world, Vector3dc position, BlockType blockType, Vector3f initialVelocity) {
         BlockDrop drop = new BlockDrop(world, position, blockType);
         drop.velocity.set(initialVelocity);
         return drop;

@@ -76,8 +76,8 @@ final class ChunkJoinProbe {
             if (p.complete) {
                 it.remove();
                 System.out.println(String.format(
-                    "[SERVER-CHUNK] Join view complete for player %d: view %d, %d chunks in %.0f ms,"
-                        + " longest tick %.1f ms (chunk step %.1f ms)",
+                    "[SERVER-CUBES] Join view complete for player %d: view %d, %d cubes in %.0f ms,"
+                        + " longest tick %.1f ms (cube step %.1f ms)",
                     sp.playerId(), p.viewDistance, p.chunks,
                     (System.nanoTime() - p.startNs) / 1e6, p.longestTickNs / 1e6, p.longestChunkStepNs / 1e6));
             }

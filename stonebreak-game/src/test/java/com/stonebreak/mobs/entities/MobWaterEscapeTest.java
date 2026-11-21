@@ -4,8 +4,9 @@ import com.stonebreak.audio.MobSounds;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
 import com.stonebreak.world.TestWorld;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.operations.WorldConfiguration;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -201,7 +202,6 @@ class MobWaterEscapeTest {
      */
     private TestWorld pond(int depth, int bankRise) {
         TestWorld world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        Chunk chunk = new Chunk(0, 0);
         int pondFloorTop = WATER_TOP - depth;
 
         for (int x = 0; x < 16; x++) {
@@ -217,11 +217,10 @@ class MobWaterEscapeTest {
                     } else {
                         block = BlockType.WATER;
                     }
-                    chunk.setBlock(x, y, z, block);
+                    world.setBlockRaw(x, y, z, block);
                 }
             }
         }
-        world.setChunk(0, 0, chunk);
         return world;
     }
 
@@ -240,8 +239,8 @@ class MobWaterEscapeTest {
     }
 
     private StubMob mobAtFeet(TestWorld world, EntityType type, float x, float feetY, float z) {
-        StubMob mob = new StubMob(type, new Vector3f(x, 0, z), world);
-        mob.setPosition(new Vector3f(x, feetY + mob.getLegHeight(), z));
+        StubMob mob = new StubMob(type, new Vector3d(x, 0, z), world);
+        mob.setPosition(new Vector3d(x, feetY + mob.getLegHeight(), z));
         return mob;
     }
 
@@ -257,7 +256,7 @@ class MobWaterEscapeTest {
     }
 
     private static float feetY(StubMob mob) {
-        return mob.getPosition().y - mob.getLegHeight();
+        return (float) (mob.getPosition().y - mob.getLegHeight());
     }
 
     private static float standingHeight(StubMob mob) {

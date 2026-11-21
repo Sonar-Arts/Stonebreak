@@ -30,6 +30,24 @@ public final class FastLodBandPolicy {
      */
     public static final int PRELOAD_RING = 2;
 
+    /**
+     * Whether finest nodes cover the whole native disc (the per-column handover of the cubic runtime:
+     * anything not READY is drawn by the LOD). {@code -Dstonebreak.lodWholeDisc=off} restores the old
+     * edge-only preload ring (holes while cubes stream in).
+     */
+    private static volatile boolean wholeDisc =
+            !"off".equalsIgnoreCase(System.getProperty("stonebreak.lodWholeDisc", "on"));
+
+    /** Whether finest nodes cover the whole native disc (see {@link #setWholeDisc}). */
+    public static boolean wholeDisc() {
+        return wholeDisc;
+    }
+
+    /** Test seam: the pre-cubic edge-only preload ring when false. */
+    static void setWholeDisc(boolean on) {
+        wholeDisc = on;
+    }
+
     /** Chunks beyond the native disk that stay at the finest level. */
     public static final int HANDOVER_RING = PRELOAD_RING;
 
@@ -46,7 +64,10 @@ public final class FastLodBandPolicy {
     public static FastLodLevel levelFor(int distance, int inner, int lodRange, FastLodQuality quality) {
         if (lodRange <= 0) return null;
         int outer = inner + lodRange;
-        int preloadInner = Math.max(0, inner - PRELOAD_RING);
+        // Cubic runtime (2026-11-17): the LOD covers EVERY column that is not READY, inside the native
+        // disc too (the renderer hides non-READY detail cubes and fades nodes out per column as their
+        // cube columns turn READY) - so the whole disc keeps finest nodes, never only a preload ring.
+        int preloadInner = wholeDisc ? -1 : Math.max(0, inner - PRELOAD_RING);
 
         if (distance <= preloadInner || distance > outer) return null;
 

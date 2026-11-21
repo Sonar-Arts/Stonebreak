@@ -1,0 +1,561 @@
+{
+ "_doc": [
+  "Training provenance of every checkpoint scripts/make_release.py may put in a release (read by that script).",
+  "A run is keyed by its path relative to checkpoints/ (the directory holding the .pt, or the .pt itself for a",
+  "loose file). 'data' names datasets below, 'init' the run(s) whose weights it started from (a merge lists",
+  "several). make_release walks the whole init chain and refuses any run that is unknown here or whose chain",
+  "touches a source with allowed=false. Add an entry for every new training run you want to ship, with the",
+  "evidence (the command, its log) in 'evidence'.",
+  "Audited 2026-11-19 (agent H, Dev Working/docs/exp2-work/H-ship-readiness.md); licence texts:",
+  "Dev Working/docs/DaedalusTGM-Exp-2-Data-Licences.md; credits: ATTRIBUTION.md."
+ ],
+ "sources": {
+  "gedtm30": {
+   "name": "GEDTM30 v1.2 (OpenGeoHub)",
+   "licence": "CC BY 4.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: GEDTM30: Global Ensemble Digital Terrain Model 30 m"
+  },
+  "glo30": {
+   "name": "Copernicus DEM GLO-30 (Copernicus WorldDEM-30)",
+   "licence": "Licence for the use of the Copernicus WorldDEM-30 (free, open with mandatory notice + legal-notice sentence)",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: Copernicus DEM GLO-30 (Copernicus WorldDEM-30)"
+  },
+  "gebco2024": {
+   "name": "GEBCO 2024 Grid",
+   "licence": "public domain, GEBCO terms of use (acknowledgement required)",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: GEBCO 2024 Grid"
+  },
+  "cudem": {
+   "name": "NOAA NCEI CUDEM 1/9 arc-second (Hawaii, Puerto Rico)",
+   "licence": "US Government work / CC0 1.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: NOAA NCEI CUDEM 1/9 arc-second (Hawaii, Puerto Rico)"
+  },
+  "usgs3dep": {
+   "name": "USGS 3DEP 1/3 arc-second DEM",
+   "licence": "public domain",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: USGS 3DEP 1/3 arc-second DEM"
+  },
+  "chelsa21": {
+   "name": "CHELSA v2.1 climatologies 1981-2010 (+ CHELSA-BIOCLIM+ pet_penman_mean, swe)",
+   "licence": "CC0 1.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: CHELSA v2.1 climatologies 1981-2010"
+  },
+  "era5_wb2": {
+   "name": "ERA5 (Copernicus C3S) via WeatherBench 2",
+   "licence": "CC BY 4.0 (CDS since 2025-07-02); WB2 copy: Licence to Use Copernicus Products",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: ERA5 (Copernicus Climate Change Service), via WeatherBench 2"
+  },
+  "chelsa_trace21k": {
+   "name": "CHELSA-TraCE21k v1.0",
+   "licence": "UNCONFIRMED (CC BY-SA 4.0 / CC BY 2.0 / CC0 1.0 on different official pages)",
+   "allowed": false,
+   "why": "licence not confirmed in writing by WSL; possible ShareAlike. Allowed only after confirmation."
+  },
+  "worldclim21": {
+   "name": "WorldClim 2.1",
+   "licence": "non-commercial; commercial use and redistribution need permission",
+   "allowed": false,
+   "why": "non-commercial licence: WorldClim-trained weights must never ship"
+  },
+  "etopo_10m_spike": {
+   "name": "etopo_10m.tif from the terrain-diffusion-spike data folder (EXP-1 lapse reference)",
+   "licence": "unverified",
+   "allowed": false,
+   "why": "EXP-1 only; licence never checked"
+  },
+  "fabdem": {
+   "name": "FABDEM",
+   "licence": "CC BY-NC-SA 4.0",
+   "allowed": false,
+   "why": "non-commercial"
+  },
+  "eea10": {
+   "name": "Copernicus DEM EEA-10",
+   "licence": "restricted to eligible users",
+   "allowed": false,
+   "why": "restricted"
+  },
+  "usgs3dep_1m": {
+   "name": "USGS 3DEP 1 meter DEM (lidar)",
+   "licence": "public domain",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: USGS 3DEP (1/3 arc-second and 1 m DEMs)",
+   "checked": "2026-11-19 https://www.usgs.gov/faqs/are-usgs-reportspublications-copyrighted"
+  },
+  "kartverket_nhm": {
+   "name": "Kartverket Nasjonal hoydemodell DTM (WCS nhm_dtm_topo_25833)",
+   "licence": "CC BY 4.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: Kartverket (Norway) national elevation model",
+   "checked": "2026-11-19 https://www.kartverket.no/en/api-and-data/terms-of-use; kartkatalog.geonorge.no getdata fd96e6c3-eff6-437c-8fd6-e7c4718b1bf8 (CC BY 4.0), 0f0a0f38-00c4-4213-a9e5-2d861dc4abb0 (WCS: open data, no conditions)"
+  },
+  "swissalti3d": {
+   "name": "swisstopo swissALTI3D",
+   "licence": "swisstopo free geodata (OGD): commercial use allowed, source reference mandatory",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: swisstopo swissALTI3D",
+   "checked": "2026-11-19 https://www.swisstopo.admin.ch/en/terms-of-use-free-geodata-and-geoservices"
+  },
+  "ahn": {
+   "name": "Actueel Hoogtebestand Nederland (AHN) DTM 0.5 m",
+   "licence": "CC0 1.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: AHN (Netherlands)",
+   "checked": "2026-11-19 https://service.pdok.nl/rws/actueel-hoogtebestand-nederland/atom/dtm_05m.xml <rights> CC0 1.0"
+  },
+  "linz_dem": {
+   "name": "Toitu Te Whenua LINZ New Zealand LiDAR 1m DEM",
+   "licence": "CC BY 4.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: LINZ New Zealand LiDAR 1m DEM",
+   "checked": "2026-11-19 s3://nz-elevation/new-zealand/new-zealand/dem_1m/2193/collection.json (license CC-BY-4.0, licensor LINZ)"
+  },
+  "ign_rgealti": {
+   "name": "IGN RGE ALTI + LiDAR HD MNT (France)",
+   "licence": "Licence Ouverte / Open Licence v2.0 (Etalab)",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: IGN RGE ALTI / LiDAR HD (France)",
+   "checked": "2026-11-19 data.gouv.fr datasets rge-alti-r and mnt-lidar-hd (publisher IGN, license lov2)"
+  },
+  "eth_canopy2020": {
+   "name": "ETH Global Canopy Height 2020 10 m (Lang, Jetz, Schindler, Wegner 2023, Nat. Ecol. Evol.; doi:10.3929/ethz-b-000609802)",
+   "licence": "CC BY 4.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: ETH Global Canopy Height 2020 (vegetation node); licence verified on https://langnico.github.io/globalcanopyheight/ 2026-11-19 (\"CC BY 4.0 ... without restriction of use\", cite the datasets and the article)"
+  },
+  "esa_worldcover2021": {
+   "name": "ESA WorldCover 10 m 2021 v200 (Zanaga et al. 2022, doi:10.5281/zenodo.7254221)",
+   "licence": "CC BY 4.0",
+   "allowed": true,
+   "attribution": "ATTRIBUTION.md, section: ESA WorldCover 2021 (vegetation node); licence verified on https://esa-worldcover.org/en/data-access 2026-11-19; credit line '(c) ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium'"
+  }
+ },
+ "datasets": {
+  "data-v2": {
+   "path": "/mnt/extrastorage/terrain-slm-data/v2-gedtm30 (49 regions, meta.json data_version 2, base gedtm30)",
+   "sources": [
+    "gedtm30",
+    "glo30",
+    "gebco2024",
+    "cudem",
+    "chelsa21",
+    "era5_wb2"
+   ],
+   "how": "land = GEDTM30 (GLO-30 only where GEDTM30 has no value: water surfaces, build_v2._tile_job); sea floor = GEBCO 2024 (topobathy); hawaii + puerto_rico sea floors refined with NOAA CUDEM (refloor_v2 --cudem, 2026-11-18 18:45); cells_climate.npz = data/climate_hybrid (CHELSA v2.1 at 30\" + ERA5 u10/v10/soil/lsm/orog from the WeatherBench 2 climatology); drainage weighted by that precipitation (finish_v2); water.npz (banks) and carve labels derived from the DEM. No WorldClim anywhere (build.py, the v1 builder, is the only WorldClim reader and is not used)."
+  },
+  "climate-025": {
+   "path": "/mnt/extrastorage/terrain-slm-data/raw/era5/{geo_025.npz, climatology.npz, era5_wb2.npz}",
+   "sources": [
+    "gebco2024",
+    "chelsa21",
+    "era5_wb2"
+   ],
+   "how": "train_climate inputs: GEBCO 2024 block means on the 0.25 deg ERA5 grid; ERA5 10 m wind (WB2); targets: CHELSA v2.1 block means + ERA5 soil/snow (climate_hybrid). Paleo planets only with --paleo."
+  },
+  "climate-025-paleo": {
+   "path": "climate-025 + raw/chelsa_trace/paleo_*.npz",
+   "sources": [
+    "gebco2024",
+    "chelsa21",
+    "era5_wb2",
+    "chelsa_trace21k"
+   ],
+   "how": "train_climate --paleo (CHELSA-TraCE21k deltas as extra planets)."
+  },
+  "v2-15m": {
+   "path": "/mnt/extrastorage/terrain-slm-data/v2-15m (USGS 3DEP tiles resampled to 15 m)",
+   "sources": [
+    "usgs3dep"
+   ],
+   "how": "data/build_15m.py from raw/3dep (scripts/download_3dep.py)."
+  },
+  "data-v1": {
+   "path": "/mnt/extrastorage/terrain-slm-data/<region> (EXP-1 / v4 data, data/build.py)",
+   "sources": [
+    "glo30",
+    "worldclim21",
+    "etopo_10m_spike"
+   ],
+   "how": "GLO-30 surface model + WorldClim 2.1 bio1/4/12/15 climate in cells.npz (t0, tseason, precip, pcv) and WorldClim-precipitation-weighted drainage (acc, rivers). Also the DEFAULT --data-dir of train_detail / train_qad / train_biomes (/mnt/extrastorage/terrain-slm-data globs only the v1 regions)."
+  },
+  "v2-15m-lidar": {
+   "path": "/mnt/extrastorage/terrain-slm-data/v2-15m-lidar (90 regions: v2-15m's 21 USGS tiles (symlinks), 12 new USGS 1/3\" tiles (raw/3dep13_v2), 57 lidar boxes of 20-32 km (raw/<source>/sr10))",
+   "sources": [
+    "usgs3dep",
+    "kartverket_nhm",
+    "swissalti3d",
+    "ahn",
+    "linz_dem",
+    "ign_rgealti"
+   ],
+   "how": "scripts/download_lidar.py: each provider's DTM area-averaged to 10 m in its own CRS (COG overviews + Resampling.average, or 5 m / 2 m service data block-averaged); data/build_15m.py --lidar: 10 m -> 15 m with the 3DEP step (Gaussian 0.5(1/f-1) px + bilinear). Per-file URLs: raw/<source>/PROVENANCE.jsonl; licences: raw/<source>/LICENCE.json. Whole boxes held out (role val)."
+  },
+  "v2-surface": {
+   "path": "/mnt/extrastorage/terrain-slm-data/v2-surface (4 km windows, raw/<source>/fine)",
+   "sources": [
+    "usgs3dep_1m",
+    "kartverket_nhm",
+    "swissalti3d",
+    "ahn",
+    "linz_dem",
+    "ign_rgealti",
+    "chelsa21"
+   ],
+   "how": "data/surface_labels.py: 0.5-1 m DTM windows -> 15 m / 60 m labels (rock, scree, smooth, roughness, boulders) + 60 m block means as inputs; climate inputs = CHELSA v2.1 bio1 / bio12 at the window centre (temperature lapse-adjusted per cell)."
+  },
+  "v2-vegetation": {
+   "path": "/mnt/extrastorage/terrain-slm-data/v2-gedtm30/<region>/veg60.npy + veg_cc30.npy (data/vegetation.py) and the crop set /mnt/extrastorage/terrain-slm-data/veg_dataset (train/train_veg.py build)",
+   "sources": [
+    "gedtm30",
+    "glo30",
+    "gebco2024",
+    "cudem",
+    "chelsa21",
+    "era5_wb2",
+    "eth_canopy2020",
+    "esa_worldcover2021"
+   ],
+   "how": "targets = ETH canopy height 2020 + ESA WorldCover 2021 10 m pixels binned into each data-v2 region's 60 m grid (raw tiles + sha256 in raw/vegetation_manifest.json); inputs = the data-v2 DEM (block-quantised), data-v2 climate cells (CHELSA v2.1 + ERA5), sea.npy + water.npz. No WorldClim."
+  }
+ },
+ "runs": {
+  "exp2/relief_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_b.sh (no --init), 38k planned / 20k used by v2b"
+  },
+  "exp2/relief_v2b": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/relief_v2"
+   ],
+   "evidence": "chain_b3.sh --init relief_v2/last.pt; chain_b3.log 'init from checkpoints/exp2/relief_v2/last.pt (step 20000)'"
+  },
+  "exp2/relief_v2c": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/relief_v2b"
+   ],
+   "evidence": "chain_c.sh / rerun.sh --init relief_v2b/best.pt; relief_v2c.log line 1"
+  },
+  "exp2/relief_v3": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_b2.sh (amp-norm, failed)"
+  },
+  "exp2/relief_mf": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/relief_v2c"
+   ],
+   "evidence": "agent B 2026-11-19: train_relief --objective meanflow --distill-weight 1 --init checkpoints/exp2/relief_v2c/best.pt --data <every /mnt/extrastorage/terrain-slm-data/v2-gedtm30/*/ with cells.npz, 49 regions, passed explicitly>; relief_mf.log line 1 'init from checkpoints/exp2/relief_v2c/best.pt (step 12000)'; distillation teacher = relief_v2c itself (frozen); student.pt = the chosen EMA snapshot (Dev Working/docs/exp2-work/B-relief-meanflow.md)"
+  },
+  "exp2/relief_mf_pure": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/relief_v2c"
+   ],
+   "evidence": "agent B 2026-11-19: pure MeanFlow A/B (no distillation), stopped at 6k; same command/data as exp2/relief_mf without --distill-weight; relief_mf_pure.log line 1"
+  },
+  "exp2/planner_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_b3.sh (no --init)"
+  },
+  "exp2/planner_v3": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_c.sh (no --init); planner_v3.log has no 'init from'"
+  },
+  "exp2/planner_v4a": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/planner_v3"
+   ],
+   "evidence": "overnight/train_planner_v4a.sh; planner_v4a.log 'init from checkpoints/exp2/planner_v3/best.pt'"
+  },
+  "exp2/planner_v4b": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/planner_v4a"
+   ],
+   "evidence": "overnight/train_planner_v4b.sh; planner_v4b.log 'init from checkpoints/exp2/planner_v4a/best.pt'"
+  },
+  "exp2/hydro_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_b3.sh (train_hydro has no --init)"
+  },
+  "exp2/bank_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "train_banks has no --init; bank_v2.log lists data-v2-only regions (andes_aconcagua ...); inputs = dem.npy + water.npz only"
+  },
+  "exp2/biome_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "rerun_biome.sh --data-dir .../v2-gedtm30 (train_biomes has no --init); labels = biomes.py rule classifier on data-v2 climate"
+  },
+  "exp2/refiner_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_c.sh (train_refiner has no --init)"
+  },
+  "exp2/climate_r0": {
+   "data": [
+    "climate-025"
+   ],
+   "init": [],
+   "evidence": "chain_b.sh (no --paleo; before any TraCE file existed)"
+  },
+  "exp2/climate_r1": {
+   "data": [
+    "climate-025"
+   ],
+   "init": [],
+   "evidence": "climate.pt written 2026-11-18 16:01:09, first CHELSA-TraCE21k file downloaded 16:19:54; no --paleo ('planets:' line absent from climate_r1.log); 13 inputs (no forcing channels)"
+  },
+  "exp2/climate_r2": {
+   "data": [
+    "climate-025-paleo"
+   ],
+   "init": [],
+   "evidence": "paleo experiment (plan log 2026-11-18 evening); conservatively counted as TraCE-trained"
+  },
+  "exp2/climate_r3": {
+   "data": [
+    "climate-025-paleo"
+   ],
+   "init": [],
+   "evidence": "paleo experiment; conservatively counted as TraCE-trained"
+  },
+  "exp2/climate_r4": {
+   "data": [
+    "climate-025-paleo"
+   ],
+   "init": [],
+   "evidence": "paleo experiment; conservatively counted as TraCE-trained"
+  },
+  "exp2/sr30_r0": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "queue_sr30b.sh --data-dir .../v2-gedtm30 (train_sr has no --init)"
+  },
+  "exp2/sr15_r0": {
+   "data": [
+    "v2-15m"
+   ],
+   "init": [],
+   "evidence": "sr15.sh: build_15m from raw/3dep, train_sr --data-dir .../v2-15m"
+  },
+  "exp2/d2_full_v2": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [],
+   "evidence": "chain_a.sh teacher (no --init, no --resume); chain_a.log has no 'init from' before the experts step"
+  },
+  "exp2/d2_full_v2_experts": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/d2_full_v2"
+   ],
+   "evidence": "chain_a.sh --init d2_full_v2/ema_0.10.pt --experts all"
+  },
+  "exp2/d2_full_v2_mf": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/d2_full_v2"
+   ],
+   "evidence": "chain_a.sh --objective meanflow --init d2_full_v2/ema_0.10.pt"
+  },
+  "exp2/d2_mf_plus_experts_init.pt": {
+   "data": [],
+   "init": [
+    "exp2/d2_full_v2_mf",
+    "exp2/d2_full_v2_experts"
+   ],
+   "evidence": "chain_d.sh merge (MeanFlow backbone + expert adapters), no training"
+  },
+  "exp2/d2_full_v2_mf_experts": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/d2_mf_plus_experts_init.pt"
+   ],
+   "evidence": "rerun.sh / matching_card1.sh --init d2_mf_plus_experts_init.pt --experts all; d2_mf_experts.log lines 3-4"
+  },
+  "exp2/qad_d2_mf_experts": {
+   "data": [
+    "data-v2"
+   ],
+   "init": [
+    "exp2/d2_full_v2_mf_experts"
+   ],
+   "evidence": "session transcript: train_qad --teacher d2_full_v2_mf_experts/ema_0.10.pt --data-dir .../v2-gedtm30 --mean-flow --steps 3000"
+  },
+  "exp2/qad_fp8_v2b": {
+   "data": [
+    "data-v2",
+    "climate-025"
+   ],
+   "init": [
+    "exp2/d2_full_v2_mf_experts"
+   ],
+   "evidence": "agent C 2026-11-19: train_qad --teacher d2_full_v2_mf_experts/ema_0.10.pt --data-dir .../v2-gedtm30 --no-data --p-gen 1.0 (DetailData NOT loaded): conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (relief_v2c, planner_v4b, hydro_v2, climate_r1, ...; checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher; log checkpoints/exp2/qad_fp8_v2b.log (stopped at step 500, EMA kept)"
+  },
+  "exp2/qad_fp8_v3": {
+   "data": [
+    "data-v2",
+    "climate-025"
+   ],
+   "init": [
+    "exp2/qad_fp8_v2b"
+   ],
+   "evidence": "agent C 2026-11-19: train_qad --init qad_fp8_v2b/student.pt --teacher d2_full_v2_mf_experts/ema_0.10.pt --data-dir .../v2-gedtm30 --no-data --p-gen 1.0 --keep stem,down0,enc1.1.c0,up0,down1,enc1.0.c0: conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (relief_v2c, planner_v4b, hydro_v2, climate_r1, ...; checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher; log checkpoints/exp2/qad_fp8_v3.log"
+  },
+  "exp2/qad_fp8_v4": {
+   "data": [
+    "data-v2",
+    "climate-025"
+   ],
+   "init": [
+    "exp2/qad_fp8_v3"
+   ],
+   "evidence": "agent C 2026-11-19: checkpoints/exp2/qad_fp8_v4_chain.sh (train_qad --init qad_fp8_v3/student.pt --data-dir .../v2-gedtm30 --no-data, keep-6); conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher d2_full_v2_mf_experts; log checkpoints/exp2/qad_fp8_v4.log"
+  },
+  "exp2/qad_fp8_v4k8": {
+   "data": [
+    "data-v2",
+    "climate-025"
+   ],
+   "init": [
+    "exp2/qad_fp8_v4"
+   ],
+   "evidence": "agent C 2026-11-19: checkpoints/exp2/qad_fp8_v4_chain.sh (train_qad --init qad_fp8_v4/student.pt --data-dir .../v2-gedtm30 --no-data, keep-8 = keep-6 + enc0.1.c0, enc0.0.c0); conditioning = 250 WorldGenerator2 detail windows of checkpoints/exp2/world_exp2b (checkpoints/exp2/qad_fp8_train_windows.pt), targets = the fp32 teacher d2_full_v2_mf_experts; log checkpoints/exp2/qad_fp8_v4k8.log"
+  },
+  "exp2/ab_v4_small": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [],
+   "evidence": "ab_small.sh: train_detail without --data-dir = v1 data"
+  },
+  "exp2/ab_d2_small": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [],
+   "evidence": "ab_small.sh: train_detail2 without --data-dir = v1 data"
+  },
+  "exp2/mf_d2_small": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [
+    "exp2/ab_d2_small"
+   ],
+   "evidence": "queue_meanflow_small.sh (no --data-dir)"
+  },
+  "exp2/qad_d2_small": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [
+    "exp2/ab_d2_small"
+   ],
+   "evidence": "queue_qad_small.sh (no --data-dir)"
+  },
+  "v4": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [],
+   "evidence": "EXP-1 shipping model (WorldClim climate inputs, plan doc 5b)"
+  },
+  "v3": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [],
+   "evidence": "EXP-1"
+  },
+  "v2": {
+   "data": [
+    "data-v1"
+   ],
+   "init": [],
+   "evidence": "EXP-1"
+  },
+  "exp2/sr15_v2": {
+   "data": [
+    "v2-15m-lidar"
+   ],
+   "init": [],
+   "evidence": "checkpoints/exp2/sr15_v2.sh: train_sr --data-dir v2-15m-lidar (from scratch, no --init); log checkpoints/exp2/sr15_v2/train.log"
+  },
+  "exp2/surface_r0": {
+   "data": [
+    "v2-surface"
+   ],
+   "init": [],
+   "evidence": "checkpoints/exp2/surface_r0.sh: train_surface --data-dir v2-surface (from scratch); log checkpoints/exp2/surface_r0/train.log"
+  },
+  "exp2/veg_r2": {
+   "data": [
+    "v2-vegetation"
+   ],
+   "init": [],
+   "evidence": "checkpoints/exp2/veg_r2.sh: train_veg train --dataset veg_dataset_v2 (held-out regions excluded; from scratch); log checkpoints/exp2/veg_r2/train.log + log.jsonl"
+  },
+  "exp2/veg_r3": {
+   "data": [
+    "v2-vegetation"
+   ],
+   "init": [],
+   "evidence": "checkpoints/exp2/veg_r2.sh (second command): train_veg train --dataset veg_dataset_v2 --all-regions (from scratch); log checkpoints/exp2/veg_r3/train.log + log.jsonl"
+  }
+ }
+}

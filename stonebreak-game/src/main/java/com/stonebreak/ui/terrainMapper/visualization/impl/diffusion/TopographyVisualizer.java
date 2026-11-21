@@ -26,7 +26,7 @@ public final class TopographyVisualizer implements NoiseVisualizer {
 
     // ─────────────────────────────────────────────── Palette
     // Below sea level: shallow water is a light blue that darkens into the abyss.
-    private static final int WATER_DEEP    = 0xFF2E1A66; // indigo, y = 0
+    private static final int WATER_DEEP    = 0xFF2E1A66; // indigo, y = TOPO_SEA_FLOOR and below
     private static final int WATER_SHALLOW = 0xFF7FC7E8; // light blue, y = SEA_LEVEL
 
     // Above sea level, evenly spaced across SEA_LEVEL..TOPO_LAND_CEILING.
@@ -83,7 +83,8 @@ public final class TopographyVisualizer implements NoiseVisualizer {
     public int colorFor(float blockHeight) {
         int y = Math.round(blockHeight);
         if (y <= SEA_LEVEL) {
-            float t = clamp01(y / (float) SEA_LEVEL);
+            int floor = TerrainMapperConfig.TOPO_SEA_FLOOR;
+            float t = clamp01((y - floor) / (float) (SEA_LEVEL - floor));
             return argbLerp(WATER_DEEP, WATER_SHALLOW, t);
         }
         float span = Math.max(1f, TerrainMapperConfig.TOPO_LAND_CEILING - SEA_LEVEL);

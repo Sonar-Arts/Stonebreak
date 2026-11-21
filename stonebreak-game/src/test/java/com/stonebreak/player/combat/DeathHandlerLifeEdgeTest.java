@@ -6,7 +6,8 @@ import com.stonebreak.items.Inventory;
 import com.stonebreak.network.MultiplayerSession;
 import com.stonebreak.player.Camera;
 import com.stonebreak.player.state.PhysicsState;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,9 +64,9 @@ class DeathHandlerLifeEdgeTest {
         handler.processDeathIfNeeded();
 
         // The edge is a no-op on the server (it already holds the player dead), sent at the corpse.
-        ArgumentCaptor<Vector3f> pos = ArgumentCaptor.forClass(Vector3f.class);
+        ArgumentCaptor<Vector3dc> pos = ArgumentCaptor.forClass(Vector3dc.class);
         session.verify(() -> MultiplayerSession.sendPlayerLife(eq(true), pos.capture()));
-        assertEquals(new Vector3f(40f, 70f, -12f), pos.getValue());
+        assertEquals(new Vector3d(40, 70, -12), pos.getValue());
         assertEquals(0f, state.getVelocity().length(), "the corpse stops");
         session.verify(() -> MultiplayerSession.sendPlayerLife(eq(false), any()), never());
     }
@@ -87,10 +88,12 @@ class DeathHandlerLifeEdgeTest {
 
         handler.respawn();
 
-        ArgumentCaptor<Vector3f> pos = ArgumentCaptor.forClass(Vector3f.class);
+        ArgumentCaptor<Vector3dc> pos = ArgumentCaptor.forClass(Vector3dc.class);
         session.verify(() -> MultiplayerSession.sendPlayerLife(eq(false), pos.capture()));
-        assertEquals(state.getPosition(), pos.getValue());
-        assertEquals(false, pos.getValue().equals(new Vector3f(40f, 70f, -12f)),
+        assertEquals(state.getPosition().x, pos.getValue().x(), 1e-9);
+        assertEquals(state.getPosition().y, pos.getValue().y(), 1e-9);
+        assertEquals(state.getPosition().z, pos.getValue().z(), 1e-9);
+        assertEquals(false, pos.getValue().equals(new Vector3d(40, 70, -12)),
                 "the respawn edge must not carry the corpse position");
         session.verify(() -> MultiplayerSession.sendPlayerLife(anyBoolean(), any()),
                 org.mockito.Mockito.times(2));

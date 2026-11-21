@@ -62,8 +62,8 @@ public final class EntityWaterPhysics {
      * origin — the reason the old single-point check kept sampling the wrong block for tall mobs.
      */
     public static float submersion(World world, Entity entity) {
-        Vector3f position = entity.getPosition();
-        float feetY = position.y;
+        org.joml.Vector3d position = entity.position;
+        double feetY = position.y;
         float height = entity.getHeight();
         if (entity instanceof LivingEntity living) {
             feetY -= living.getLegHeight();

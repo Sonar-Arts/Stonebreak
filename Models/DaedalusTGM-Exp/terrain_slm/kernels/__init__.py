@@ -5,6 +5,17 @@
   cuda_controls.py  procedural controls as one CUDA kernel, bit-identical to the torch version
   cuda_conv.py      fused implicit-GEMM fp16 tensor-core convolution (csrc/conv.cu): packing, configs
   cuda_unet.py      the detail / relief flow samplers as one CUDA graph of fused convolutions
+  cuda_detail2.py   EXP-2's Detail2 (MP layers folded, MeanFlow, gated experts) on the same kernels
+                    (+ csrc/pixnorm.cu); generator2.NATIVE_DETAIL, model_id marker :kd1
+  cuda_conv_fp8.py  e4m3 W8A8 twins of the conv kernels (csrc/conv_fp8.cu: mma m16n8k32 e4m3, fp32 accumulate)
+  cuda_detail2_fp8.py  Detail2 at mixed FP8 / fp16 (a QAD student, train/train_qad.py); generator2.DETAIL_FP8
+                    (ON since 2026-11-20, sm_89+), model_id marker :kd8; tune_fp8.py writes cuda_configs_fp8.json
+  cuda_sr.py        SR-30 / SR-15 (models/sr.py) on the Detail2 sampler through a Detail2-shaped view; marker :ks1
+  tune_detail2.py   launch-config tuner for both Detail2 samplers (real epilogues per layer kind, burst timing);
+                    cuda_detail2.KGEN = kernel generation (2: halo-tiled up-merge uconv/uconv8 + FP8 down dconv8,
+                    model_id marker :kg2; TGM_DETAIL_KGEN=1 = the generation-1 kernels)
+  cuda_blend.py     the generator's window cross-fades as one launch (csrc/blend.cu), bit-identical to the torch loop
+  cuda_river.py     the river pipeline's fixed-point loops one launch per step (csrc/river.cu), bit-identical
   hydro.py          drainage routing (priority-flood fill, D8, accumulation, seam cycles) in C++,
                     bit-identical to the numba / numpy reference
   cpu_sampler.py    the detail / relief samplers on the CPU (C++, AVX2 + FMA, fp32, Winograd)

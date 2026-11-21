@@ -17,7 +17,11 @@ public final class BattleTestRenderer implements AutoCloseable {
     private long bytes;
     private BattleTestMesh uploaded;
 
-    public void render(BattleTestMesh mesh, Matrix4f projection, Matrix4f view, Vector3f camera, float time) {
+    /**
+     * {@code view}/{@code camera} are ABSOLUTE world space: the arena mesh is baked at absolute
+     * coordinates a few tens of blocks from world zero, so float is exact there.
+     */
+    public void render(BattleTestMesh mesh, Matrix4f projection, Matrix4f view, org.joml.Vector3dc camera, float time) {
         if (uploaded != mesh) {
             close();
             try {
@@ -49,7 +53,7 @@ public final class BattleTestRenderer implements AutoCloseable {
             scene.bind();
             scene.setMat4("projection", projection);
             scene.setMat4("view", view);
-            scene.setVec3("camera", camera);
+            scene.setVec3("camera", new Vector3f((float) camera.x(), (float) camera.y(), (float) camera.z()));
             scene.setFloat("time", time);
             glBindVertexArray(vao);
             glDrawArrays(GL_TRIANGLES, 0, count);

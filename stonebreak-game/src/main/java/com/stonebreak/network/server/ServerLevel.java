@@ -11,6 +11,8 @@ import com.stonebreak.world.save.SaveService;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.spawn.SpawnLocator;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.concurrent.CompletableFuture;
@@ -54,7 +56,7 @@ public final class ServerLevel {
     private final com.stonebreak.world.weather.WeatherState weather;
     private final SaveService saveService;
     private volatile WorldData worldData;
-    private final Vector3f spawn;
+    private final Vector3d spawn;
     private final PlayerData loadedPlayerData;
     private final String loadNotice;
     /** Ephemeral (main menu showcase) level: never saved, its local player is an observer camera. */
@@ -70,7 +72,7 @@ public final class ServerLevel {
 
     private ServerLevel(long seed, World world, EntityManager entityManager,
                         EntitySpawner entitySpawner, long worldTimeTicks, SaveService saveService,
-                        WorldData worldData, Vector3f spawn, PlayerData loadedPlayerData,
+                        WorldData worldData, Vector3d spawn, PlayerData loadedPlayerData,
                         String loadNotice) {
         this.seed = seed;
         this.world = world;
@@ -100,14 +102,19 @@ public final class ServerLevel {
         WorldData worldData = WorldData.builder().seed(seed)
                 .worldName(com.stonebreak.network.MultiplayerSession.SHOWCASE_WORLD_NAME)
                 .spawnPosition(new Vector3f(anchor)).hasExplicitSpawn(true).build();
-        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
+        World world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType(),
+                worldData.getTerrainScale(), worldData.getClimateLayout(), worldData.getHeightCurve(),
+                worldData.getWorldFeatures(),
+                // the menu's flyover (resources/menu/showcase.json) was scouted on Standard shape 1 terrain: keep it
+                com.stonebreak.world.generation.StandardShapeVersion.V1,
+                null, false); // ephemeral: no cube store
         world.setSpawnPosition(new Vector3f(anchor));
         EntityManager entityManager = new EntityManager(world);
         EntitySpawner entitySpawner = new EntitySpawner(world, entityManager);
         world.setEntityManager(entityManager);
         world.setEntitySpawner(entitySpawner);
         ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-                null, worldData, new Vector3f(anchor), null, null);
+                null, worldData, new Vector3d(anchor), null, null);
         level.ephemeral = true;
         level.lodCachePath = lodCacheDir != null ? lodCacheDir.toString() : null;
         entitySpawner.setNightSource(level.timeOfDay::isNight);
@@ -176,7 +183,18 @@ public final class ServerLevel {
             String loadProfile = worldData.getGeneratorType() + "." + (returning ? "returning" : "new");
             LoadingScreen.report(t -> t.setProfile(loadProfile));
 
-            world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType());
+            // A DaedalusTGM-Exp world runs the terrain model it was made with (review-python HIGH-1): chosen before the
+            // world's generator first asks TGMPipe for tiles. Not installed = the default model + a chat warning.
+            String modelNotice = null;
+            if (worldData.getGeneratorType() == com.stonebreak.world.generation.TerrainGeneratorType.DIFFUSION) {
+                modelNotice = com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe.getInstance()
+                    .useWorldModel(worldData.getTerrainModel()).notice();
+            }
+
+            world = World.createHeadless(new WorldConfiguration(), seed, worldData.getGeneratorType(),
+                    worldData.getTerrainScale(), worldData.getClimateLayout(), worldData.getHeightCurve(),
+                worldData.getWorldFeatures(), worldData.getStandardShape(),
+                    java.nio.file.Path.of(worldPath), false);
             if (worldData.getSpawnPosition() != null) {
                 world.setSpawnPosition(worldData.getSpawnPosition());
             }
@@ -197,22 +215,22 @@ public final class ServerLevel {
             // The WORLD spawn: where new players appear and where everyone respawns. A returning player
             // still arrives where they saved (their restored PlayerData moves them there); that position
             // is never the world spawn, or every death respawned at the last save spot (#302).
-            Vector3f spawn;
+            Vector3d spawn;
             if (worldData != null && worldData.hasExplicitSpawn() && worldData.getSpawnPosition() != null) {
                 // Saved / user-chosen spawn: keep the column when its real (carved) surface is
                 // usable. A column picked on the map inside a ravine, sinkhole, cave mouth or under
                 // water would snap onto the pit floor / lakebed, so it is redirected to the nearest
                 // usable surface column instead; only if none is in reach does it fall back to the
                 // column's own floor.
-                Vector3f saved = worldData.getSpawnPosition();
+                org.joml.Vector3d saved = worldData.getSpawnPosition();
                 // the column that holds the saved point (round would move a block-centred x.5 spawn
                 // one block on every load)
                 int x = (int) Math.floor(saved.x);
                 int z = (int) Math.floor(saved.z);
                 int height = world.terrain().getFinalTerrainHeightAt(x, z);
-                Vector3f candidate = new Vector3f(x, height + 1, z);
+                Vector3d candidate = new Vector3d(x, height + 1, z);
                 pregenSpawnArea(world, candidate);
-                Vector3f surface = SpawnLocator.nearestSafeSurface(world, x, z, CHOSEN_SPAWN_SEARCH_RADIUS);
+                Vector3d surface = SpawnLocator.nearestSafeSurface(world, x, z, CHOSEN_SPAWN_SEARCH_RADIUS);
                 if (surface == null) {
                     spawn = resolveSurfaceSpawn(world, candidate);
                 } else {
@@ -240,7 +258,7 @@ public final class ServerLevel {
             }
 
             ServerLevel level = new ServerLevel(seed, world, entityManager, entitySpawner, timeTicks,
-                save, worldData, spawn, playerData, existing ? combinedNotice(lr) : null);
+                save, worldData, spawn, playerData, withNotice(existing ? combinedNotice(lr) : null, modelNotice));
             level.lodCachePath = worldPath;
             save.setWorldTimeSource(level.timeOfDay);
             save.setWeatherSource(level.weather);
@@ -288,6 +306,14 @@ public final class ServerLevel {
             return player;
         }
         return player == null ? world : world + " " + player;
+    }
+
+    /** {@code notice} followed by {@code extra} (either may be null). */
+    private static String withNotice(String notice, String extra) {
+        if (extra == null) {
+            return notice;
+        }
+        return notice == null ? extra : notice + " " + extra;
     }
 
     /** Boot checkpoint: waits that already completed never see an interrupt, so look for one. */
@@ -346,9 +372,9 @@ public final class ServerLevel {
      * every draw lands in a pit, falls back to snapping the last candidate to its real floor so
      * the player never drops / takes fall damage.
      */
-    private static Vector3f findSafeSurfaceSpawn(World world) throws InterruptedException {
+    private static Vector3d findSafeSurfaceSpawn(World world) throws InterruptedException {
         SpawnLocator locator = new SpawnLocator(world);
-        Vector3f last = null;
+        Vector3d last = null;
         LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.SPAWN_SEARCH));
         for (int attempt = 0; attempt < MAX_SPAWN_ATTEMPTS; attempt++) {
             // The attempt count is open-ended, so the fraction halves the remaining gap per
@@ -360,7 +386,7 @@ public final class ServerLevel {
             });
             last = locator.findSafeSurfaceSpawn();
             loadSpawnChunk(world, last);
-            Vector3f accepted = SpawnLocator.acceptIfSafeSurface(world, last);
+            Vector3d accepted = SpawnLocator.acceptIfSafeSurface(world, last);
             if (accepted != null) {
                 pregenSpawnArea(world, accepted);
                 return accepted;
@@ -370,74 +396,73 @@ public final class ServerLevel {
         return resolveSurfaceSpawn(world, last);
     }
 
-    /** Loads {@code p}'s chunk (blocking until generated) so its real surface can be read. */
-    private static void loadSpawnChunk(World world, Vector3f p) throws InterruptedException {
+    /**
+     * Streams the cube column around {@code p} in (blocking, on the level-build thread, which owns the world
+     * until the tick starts) so its real surface can be read: one stream center at {@code p}, ticked with an
+     * unlimited budget until the column is READY or 15 s pass.
+     */
+    private static void loadSpawnChunk(World world, Vector3dc p) throws InterruptedException {
         throwIfInterrupted();
-        int cx = Math.floorDiv((int) Math.floor(p.x), WorldConfiguration.CHUNK_SIZE);
-        int cz = Math.floorDiv((int) Math.floor(p.z), WorldConfiguration.CHUNK_SIZE);
-        world.getChunkAt(cx, cz);
-        try {
-            world.awaitPendingChunkLoads().get(15, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw e;
-        } catch (Exception e) {
-            System.err.println("[SERVER-LEVEL] Spawn chunk load wait failed: " + e.getMessage());
-        }
-        world.installCompletedChunkLoads();
+        long x = (long) Math.floor(p.x());
+        long z = (long) Math.floor(p.z());
+        streamUntil(world, p, () -> world.isColumnReadyAt(x, z), null);
     }
 
     /**
-     * Pre-generates a disc of chunks around {@code spawn} so the real (carved) terrain is
-     * resident before anything collides with it.
+     * Streams the area around {@code spawn} in so the real (carved, populated) terrain is resident before
+     * anything collides with it (blocking, on the level-build thread). Once the tick runs, every player's own
+     * stream center takes over ({@link #updateStreamCenters}).
      */
-    private static void pregenSpawnArea(World world, Vector3f spawn) throws InterruptedException {
+    private static void pregenSpawnArea(World world, Vector3dc spawn) throws InterruptedException {
         throwIfInterrupted();
         LoadingScreen.report(t -> t.beginPhase(LoadProgressTracker.Phase.PREGEN));
-        int pcx = (int) Math.floor(spawn.x / 16.0);
-        int pcz = (int) Math.floor(spawn.z / 16.0);
-        for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
-            for (int dz = -PREGEN_RADIUS; dz <= PREGEN_RADIUS; dz++) {
-                world.getChunkAt(pcx + dx, pcz + dz);
-            }
+        int pcx = (int) Math.floor(spawn.x() / 16.0);
+        int pcz = (int) Math.floor(spawn.z() / 16.0);
+        streamUntil(world, spawn, () -> world.areaDrawnFraction(pcx, pcz, PREGEN_RADIUS) >= 1f,
+            () -> reportPregenProgress(world, pcx, pcz));
+    }
+
+    private static void streamUntil(World world, Vector3dc center, java.util.function.BooleanSupplier done,
+                                    Runnable progress) throws InterruptedException {
+        if (world.stream() == null) {
+            return;
         }
-        CompletableFuture<Void> pending = world.awaitPendingChunkLoads();
+        world.setStreamCenters(java.util.List.of(world.centerAt(
+            (long) Math.floor(center.x()), (long) Math.floor(center.y()), (long) Math.floor(center.z()))));
+        world.setStreamBudget(com.openmason.engine.voxel.world.StreamBudget.UNLIMITED);
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        long nextReport = 0;
         try {
             while (true) {
-                reportPregenProgress(world, pcx, pcz);
-                try {
-                    pending.get(PREGEN_PROGRESS_POLL_MILLIS, TimeUnit.MILLISECONDS);
+                throwIfInterrupted();
+                world.tickStream();
+                if (done.getAsBoolean()) {
                     break;
-                } catch (TimeoutException stillLoading) {
-                    if (System.nanoTime() >= deadline) {
-                        throw stillLoading;
-                    }
                 }
+                long now = System.nanoTime();
+                if (progress != null && now >= nextReport) {
+                    progress.run();
+                    nextReport = now + TimeUnit.MILLISECONDS.toNanos(PREGEN_PROGRESS_POLL_MILLIS);
+                }
+                if (now >= deadline) {
+                    System.err.println("[SERVER-LEVEL] Spawn-area streaming did not settle within 15 s");
+                    break;
+                }
+                Thread.sleep(5);
             }
-            reportPregenProgress(world, pcx, pcz);
-        } catch (InterruptedException e) {
-            throw e;
-        } catch (Exception e) {
-            System.err.println("[SERVER-LEVEL] Spawn-area pre-gen wait failed: " + e.getMessage());
+        } finally {
+            world.setStreamBudget(World.DEFAULT_BUDGET);
+        }
+        if (progress != null) {
+            progress.run();
         }
     }
 
     private static void reportPregenProgress(World world, int pcx, int pcz) {
-        world.installCompletedChunkLoads(); // level build owns the world until the tick starts
-        int side = 2 * PREGEN_RADIUS + 1;
-        int total = side * side;
-        int loaded = 0;
-        for (int dx = -PREGEN_RADIUS; dx <= PREGEN_RADIUS; dx++) {
-            for (int dz = -PREGEN_RADIUS; dz <= PREGEN_RADIUS; dz++) {
-                if (world.getChunkIfLoaded(pcx + dx, pcz + dz) != null) {
-                    loaded++;
-                }
-            }
-        }
-        int done = loaded;
+        float fraction = world.areaDrawnFraction(pcx, pcz, PREGEN_RADIUS);
         LoadingScreen.report(t -> {
-            t.setPhaseFraction((double) done / total);
-            t.setPhaseDetail("Chunks " + done + "/" + total);
+            t.setPhaseFraction(fraction);
+            t.setPhaseDetail("Terrain " + Math.round(fraction * 100) + "%");
         });
     }
 
@@ -448,14 +473,15 @@ public final class ServerLevel {
      * rim height. Uses the same standable-column predicate as {@link EntitySpawner}. Falls back
      * to the candidate unchanged if no standable surface is found (e.g. open air to the floor).
      */
-    private static Vector3f resolveSurfaceSpawn(World world, Vector3f candidate) {
-        int x = (int) Math.floor(candidate.x);
-        int z = (int) Math.floor(candidate.z);
-        int standY = SpawnLocator.resolveStandingY(world, x, z, WorldConfiguration.WORLD_HEIGHT - 1);
-        if (standY < 1) {
-            return new Vector3f(candidate);
+    private static Vector3d resolveSurfaceSpawn(World world, Vector3dc candidate) {
+        long x = (long) Math.floor(candidate.x());
+        long z = (long) Math.floor(candidate.z());
+        long top = Math.min(WorldConfiguration.MAX_Y - 1, world.topY(x, z));
+        long standY = SpawnLocator.resolveStandingY(world, x, z, top);
+        if (standY == SpawnLocator.NO_STAND) {
+            return new Vector3d(candidate);
         }
-        return new Vector3f(x + 0.5f, standY, z + 0.5f);
+        return new Vector3d(x + 0.5, standY, z + 0.5);
     }
 
     public long seed() { return seed; }
@@ -467,7 +493,7 @@ public final class ServerLevel {
     public com.stonebreak.world.weather.WeatherState weather() { return weather; }
     public SaveService saveService() { return saveService; }
     public WorldData worldData() { return worldData; }
-    public Vector3f spawn() { return new Vector3f(spawn); }
+    public Vector3d spawn() { return new Vector3d(spawn); }
 
     /** The world's persisted cheats flag (issue #318) — the authority every client mirrors. */
     public boolean cheatsEnabled() { return worldData.isCheatsEnabled(); }
@@ -559,7 +585,7 @@ public final class ServerLevel {
             tickPreview();
             return;
         }
-        world.updateSimulation(deltaTime);
+        world.updateSimulation(deltaTime); // stream tick first (installs, unloads, events), then the sims
         entityManager.update(deltaTime);
         entitySpawner.update(deltaTime);
         timeOfDay.update(deltaTime);
@@ -572,6 +598,41 @@ public final class ServerLevel {
      */
     public void tickPreview() {
         world.updateStreaming();
+    }
+
+    private java.util.List<com.openmason.engine.voxel.world.StreamCenter> lastCenters = java.util.List.of();
+
+    /**
+     * Server tick: one stream viewer per positioned player with THAT player's radii (its render distance x 16
+     * blocks horizontally, its vertical render distance; {@code ViewDistanceC2S}) - the same shape the
+     * client's REMOTE stream plans with, so the server generates/loads what the client will ask for
+     * ({@code ServerChunkHandler}). The world spawn holds a viewer while nobody has reported a position, so
+     * the spawn area stays resident. Re-planned only when a center changed.
+     */
+    public void updateStreamCenters(java.util.Collection<ServerPlayer> players) {
+        java.util.List<com.openmason.engine.voxel.world.StreamCenter> centers = new java.util.ArrayList<>();
+        for (ServerPlayer sp : players) {
+            if (!sp.hasReportedPosition()) {
+                continue;
+            }
+            centers.add(centerFor(sp));
+        }
+        if (centers.isEmpty()) {
+            var s = world.getSpawnPosition();
+            centers.add(world.centerAt((long) Math.floor(s.x), (long) Math.floor(s.y), (long) Math.floor(s.z)));
+        }
+        if (!centers.equals(lastCenters)) {
+            lastCenters = java.util.List.copyOf(centers);
+            world.setStreamCenters(lastCenters);
+        }
+    }
+
+    /** The stream viewer of one player: its block position and its own view radii. */
+    static com.openmason.engine.voxel.world.StreamCenter centerFor(ServerPlayer sp) {
+        return new com.openmason.engine.voxel.world.StreamCenter(
+            (long) Math.floor(sp.x()), (long) Math.floor(sp.y()), (long) Math.floor(sp.z()),
+            sp.viewDistanceChunks() * WorldConfiguration.CHUNK_SIZE, sp.verticalViewBlocks(),
+            World.BAND_BELOW, World.BAND_ABOVE);
     }
 
     public void cleanup() {

@@ -44,7 +44,8 @@ public final class GameFxHost implements FxHost {
         if (soundSystem == null) {
             return;
         }
-        eventsFor(instance.system(), soundSystem).playAt(soundSystem, sound, (float) x, (float) y, (float) z, volume);
+        eventsFor(instance.system(), soundSystem).playAt(soundSystem, sound, com.stonebreak.audio.AudioSpace.x(x),
+            com.stonebreak.audio.AudioSpace.y(y), com.stonebreak.audio.AudioSpace.z(z), volume);
     }
 
     private SoundEvents eventsFor(FxSystem system, SoundSystem soundSystem) {

@@ -1,7 +1,7 @@
 package com.stonebreak.rendering.gameWorld;
 
 import com.openmason.engine.rendering.RenderOrigin;
-import com.stonebreak.world.chunk.Chunk;
+import com.stonebreak.world.chunk.Cube;
 import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
@@ -37,15 +37,14 @@ public class ChunkFrustumCuller {
     }
 
     /**
-     * Returns true if any part of the chunk's bounding box is inside the frustum.
-     * The box spans the full world height since chunks are 16x16xWORLD_HEIGHT.
+     * Returns true if any part of the cube's 32^3 box is inside the frustum (render space on all axes).
      */
-    public boolean isChunkVisible(Chunk chunk) {
-        float minX = chunk.getWorldX(0) - RenderOrigin.x();
-        float minZ = chunk.getWorldZ(0) - RenderOrigin.z();
-        float maxX = minX + WorldConfiguration.CHUNK_SIZE;
-        float maxZ = minZ + WorldConfiguration.CHUNK_SIZE;
-        return frustum.testAab(minX, 0.0f, minZ, maxX, WorldConfiguration.WORLD_HEIGHT, maxZ);
+    public boolean isCubeVisible(Cube cube) {
+        float minX = RenderOrigin.relativeX(cube.minX());
+        float minY = RenderOrigin.relativeY(cube.minY());
+        float minZ = RenderOrigin.relativeZ(cube.minZ());
+        float edge = WorldConfiguration.CUBE_EDGE;
+        return frustum.testAab(minX, minY, minZ, minX + edge, minY + edge, minZ + edge);
     }
 
     /**
@@ -55,9 +54,9 @@ public class ChunkFrustumCuller {
      */
     public boolean isBoxVisible(float minX, float minY, float minZ,
                                 float maxX, float maxY, float maxZ) {
-        float ox = RenderOrigin.x();
-        float oz = RenderOrigin.z();
-        return frustum.testAab(minX - ox, minY, minZ - oz, maxX - ox, maxY, maxZ - oz);
+        float x0 = RenderOrigin.relativeX((double) minX), y0 = RenderOrigin.relativeY((double) minY);
+        float z0 = RenderOrigin.relativeZ((double) minZ);
+        return frustum.testAab(x0, y0, z0, x0 + (maxX - minX), y0 + (maxY - minY), z0 + (maxZ - minZ));
     }
 
     /**
@@ -69,9 +68,9 @@ public class ChunkFrustumCuller {
      */
     public int intersectAab(float minX, float minY, float minZ,
                             float maxX, float maxY, float maxZ) {
-        float ox = RenderOrigin.x();
-        float oz = RenderOrigin.z();
-        return frustum.intersectAab(minX - ox, minY, minZ - oz, maxX - ox, maxY, maxZ - oz);
+        float x0 = RenderOrigin.relativeX((double) minX), y0 = RenderOrigin.relativeY((double) minY);
+        float z0 = RenderOrigin.relativeZ((double) minZ);
+        return frustum.intersectAab(x0, y0, z0, x0 + (maxX - minX), y0 + (maxY - minY), z0 + (maxZ - minZ));
     }
 
     /**

@@ -12,7 +12,7 @@ import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.mobs.goblin.camp.GoblinCamp;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.EnumSet;
 
@@ -30,7 +30,7 @@ public final class TendCampBehavior implements Behavior {
     private static final float SPEED = 1.0f;
 
     private final Goblin goblin;
-    private final Vector3f fire = new Vector3f();
+    private final Vector3d fire = new Vector3d();
     private final WayHome wayHome = new WayHome();
     private boolean done;
 

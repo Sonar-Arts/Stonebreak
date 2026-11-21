@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities;
 
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -35,8 +36,8 @@ class MobHuntingDamageTest {
 
     @Test
     void aMobHitRemembersWhereTheAttackerStood() {
-        StubMob sheep = new StubMob(EntityType.SHEEP, new Vector3f(0, 64, 0));
-        Vector3f goblin = new Vector3f(2, 64, 0);
+        StubMob sheep = new StubMob(EntityType.SHEEP, new Vector3d(0, 64, 0));
+        Vector3d goblin = new Vector3d(2, 64, 0);
         float before = sheep.getHealth();
         assertTrue(sheep.damage(2.0f, LivingEntity.DamageSource.MOB, goblin, false));
         assertTrue(sheep.getHealth() < before);
@@ -55,8 +56,8 @@ class MobHuntingDamageTest {
         for (int i = 0; i < targets.length; i++) {
             before[i] = targets[i].getHealth();
         }
-        float y = archer.getPosition().y + 0.5f;
-        Arrow arrow = new Arrow(world, new Vector3f(archer.getPosition().x, y, 0f), new Vector3f(30f, 0f, 0f))
+        double y = archer.getPosition().y + 0.5;
+        Arrow arrow = new Arrow(world, new Vector3d(archer.getPosition().x, y, 0.0), new Vector3f(30f, 0f, 0f))
                 .firedBy(archer, 3.0f);
         for (int i = 0; i < 100 && arrow.isAlive() && arrow.position.x < 12f; i++) {
             arrow.update(TICK);
@@ -72,16 +73,16 @@ class MobHuntingDamageTest {
 
     @Test
     void aGoblinArrowHitsTheSheepItWasLoosedAt() {
-        StubMob archer = new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 0));
-        StubMob sheep = new StubMob(EntityType.SHEEP, new Vector3f(8, 64, 0));
+        StubMob archer = new StubMob(EntityType.GOBLIN, new Vector3d(0, 64, 0));
+        StubMob sheep = new StubMob(EntityType.SHEEP, new Vector3d(8, 64, 0));
         assertTrue(shoot(archer, sheep)[0]);
     }
 
     @Test
     void aGoblinArrowFliesThroughAFellowGoblin() {
-        StubMob archer = new StubMob(EntityType.GOBLIN, new Vector3f(0, 64, 0));
-        StubMob packmate = new StubMob(EntityType.GOBLIN, new Vector3f(4, 64, 0));
-        StubMob sheep = new StubMob(EntityType.SHEEP, new Vector3f(8, 64, 0));
+        StubMob archer = new StubMob(EntityType.GOBLIN, new Vector3d(0, 64, 0));
+        StubMob packmate = new StubMob(EntityType.GOBLIN, new Vector3d(4, 64, 0));
+        StubMob sheep = new StubMob(EntityType.SHEEP, new Vector3d(8, 64, 0));
         boolean[] hurt = shoot(archer, packmate, sheep);
         assertTrue(!hurt[0], "no friendly fire");
         assertTrue(hurt[1], "it carries on to the sheep");

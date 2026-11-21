@@ -88,15 +88,15 @@ class ServerIllusionHandlerTest {
     void theDecoysMirrorTheCastersReportedMovement() {
         handler.handleDecoyCast(sp, new DecoyCastC2S(), ctx);
         IllusionDecoy decoy = handler.decoysOf(sp).get(0);
-        float startX = decoy.getPosition().x;
-        float startZ = decoy.getPosition().z;
+        double startX = decoy.getPosition().x;
+        double startZ = decoy.getPosition().z;
 
         sp.updateState(7f, 64f, 5f, 0f, 0f); // the caster walks 2 blocks along +X
         decoy.update(0.05f);                 // the server's entity tick
 
         float moved = (float) Math.hypot(decoy.getPosition().x - startX, decoy.getPosition().z - startZ);
         assertEquals(2f, moved, 1e-3f, "the same distance, rotated by the decoy's fan angle");
-        assertNotEquals(startX + 2f, decoy.getPosition().x, 1e-3f);
+        assertNotEquals(startX + 2.0, decoy.getPosition().x, 1e-3);
     }
 
     @Test

@@ -200,7 +200,7 @@ public class SlotGridState {
      * {@code preferencePoint} (the breaker, may be null) biases where the drops spawn, the
      * same rule block drops follow (issue #225).
      */
-    public void dropContentsAt(World world, Vector3f worldPos, Vector3f preferencePoint) {
+    public void dropContentsAt(World world, org.joml.Vector3dc worldPos, org.joml.Vector3dc preferencePoint) {
         for (int i = 0; i < slots.length; i++) {
             ItemStack s = slots[i];
             if (s != null && !s.isEmpty()) {

@@ -1,5 +1,6 @@
 package com.stonebreak.player.state;
 
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -10,12 +11,12 @@ import org.joml.Vector3f;
  */
 public class PhysicsState {
 
-    private final Vector3f position = new Vector3f();
+    private final Vector3d position = new Vector3d();
     private final Vector3f velocity = new Vector3f();
     private boolean onGround;
 
     // Fall tracking
-    private float previousY;
+    private double previousY;
     private boolean wasFalling;
 
     // Water state
@@ -25,14 +26,14 @@ public class PhysicsState {
     private boolean justEnteredWaterThisFrame;
     private float waterExitTime;
 
-    public Vector3f getPosition() { return position; }
+    public Vector3d getPosition() { return position; }
     public Vector3f getVelocity() { return velocity; }
 
     public boolean isOnGround() { return onGround; }
     public void setOnGround(boolean onGround) { this.onGround = onGround; }
 
-    public float getPreviousY() { return previousY; }
-    public void setPreviousY(float previousY) { this.previousY = previousY; }
+    public double getPreviousY() { return previousY; }
+    public void setPreviousY(double previousY) { this.previousY = previousY; }
 
     public boolean wasFalling() { return wasFalling; }
     public void setWasFalling(boolean wasFalling) { this.wasFalling = wasFalling; }

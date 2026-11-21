@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,7 +44,7 @@ class ServerPlayerLocatorTest {
 
     private final List<ServerPlayer> roster = new ArrayList<>();
     private final ServerPlayerLocator locator = new ServerPlayerLocator(roster);
-    private final StubMob goose = new StubMob(EntityType.GOOSE, new Vector3f(0, 64, 0));
+    private final StubMob goose = new StubMob(EntityType.GOOSE, new org.joml.Vector3d(0, 64, 0));
 
     private ServerPlayer joined(int id, float x, float z) {
         ServerPlayer player = new ServerPlayer(null, id);
@@ -108,12 +109,12 @@ class ServerPlayerLocatorTest {
         ServerPlayer dead = joined(4, 1, 0);
         dead.setDead(true);
 
-        assertNull(locator.nearestPlayer(goose.getPosition(), new Vector3f()));
+        assertNull(locator.nearestPlayer(goose.getPosition(), new org.joml.Vector3d()));
 
         joined(5, 9, 0);
-        Vector3f nearest = locator.nearestPlayer(goose.getPosition(), new Vector3f());
+        org.joml.Vector3d nearest = locator.nearestPlayer(goose.getPosition(), new org.joml.Vector3d());
         assertNotNull(nearest);
-        assertEquals(9.0f, nearest.x, 1e-4f, "only the live player counts, though it is furthest");
+        assertEquals(9.0, nearest.x, 1e-4, "only the live player counts, though it is furthest");
     }
 
     /**
@@ -123,17 +124,17 @@ class ServerPlayerLocatorTest {
     @Test
     void mobsSeeWhateverTheirWorldIsGiven() {
         TestWorld world = new TestWorld(new WorldConfiguration(8, 4), 1L, true);
-        StubMob mob = new StubMob(EntityType.COW, new Vector3f(0, 64, 0), world);
+        StubMob mob = new StubMob(EntityType.COW, new org.joml.Vector3d(0, 64, 0), world);
         PlayerLocator viaWorld = PlayerLocator.ofWorld(mob);
 
         assertSame(PlayerLocator.NONE, world.getPlayerLocator(), "render/test worlds see nobody");
         joined(2, 4, 0);
-        assertNull(viaWorld.nearestPlayer(mob.getPosition(), new Vector3f()));
+        assertNull(viaWorld.nearestPlayer(mob.getPosition(), new org.joml.Vector3d()));
 
         world.setPlayerLocator(locator);
-        Vector3f nearest = viaWorld.nearestPlayer(mob.getPosition(), new Vector3f());
+        org.joml.Vector3d nearest = viaWorld.nearestPlayer(mob.getPosition(), new org.joml.Vector3d());
         assertNotNull(nearest, "resolved lazily, so wiring after the mob was built still counts");
-        assertEquals(4.0f, nearest.x, 1e-4f);
+        assertEquals(4.0, nearest.x, 1e-4);
     }
     // ── Line of sight ──────────────────────────────────────────────────────
     // Mob hits on players are covered by ServerHealthHandlerTest (server-owned health, #343).
@@ -143,17 +144,17 @@ class ServerPlayerLocatorTest {
         joined(1, 6, 0);
         World world = mock(World.class);
         when(world.getAnimatedBlockRegistry()).thenReturn(new com.stonebreak.blocks.anim.AnimatedBlockRegistry());
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(call ->
-                (int) call.getArgument(0) == 3 ? BlockType.STONE : BlockType.AIR);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(call ->
+                (long) call.getArgument(0) == 3 ? BlockType.STONE : BlockType.AIR);
         ServerLevel level = mock(ServerLevel.class);
         when(level.world()).thenReturn(world);
         ServerWorldContext ctx = new ServerWorldContext(mock(ConnectionRegistry.class));
         ctx.setServerLevel(level);
         ServerPlayerLocator sighted = new ServerPlayerLocator(roster, ctx, null);
-        Vector3f eye = new Vector3f(0, 65, 0);
+        org.joml.Vector3d eye = new org.joml.Vector3d(0, 65, 0);
 
         assertFalse(sighted.canSeeNearestPlayer(goose.getPosition(), eye));
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(BlockType.AIR);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenReturn(BlockType.AIR);
         // Sight reads the physics cache: tell it the wall went, as World.setBlockAt would.
         com.stonebreak.world.physics.WorldPhysics.of(world).engine().invalidateAll();
         assertTrue(sighted.canSeeNearestPlayer(goose.getPosition(), eye));

@@ -1,6 +1,7 @@
 package com.stonebreak.blocks.blueberrybush;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.blueberrybush.BlueberryBushState.Stage;
@@ -26,12 +27,12 @@ public final class BlueberryBushHarvest {
      * @param picker where the picker stands; berries spawn on that side (may be null)
      * @return true when the bush was ripe and was picked
      */
-    public static boolean harvest(World world, int x, int y, int z, Vector3f picker) {
+    public static boolean harvest(World world, long x, long y, long z, Vector3dc picker) {
         if (world == null || world.getBlueberryBushGrowth() == null
                 || !world.getBlueberryBushGrowth().harvest(x, y, z)) {
             return false;
         }
-        DropUtil.handleBlockBroken(world, new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f),
+        DropUtil.handleBlockBroken(world, new Vector3d(x + 0.5, y + 0.5, z + 0.5),
                 BlockType.BLUEBERRY_BUSH, RIPE_STATE, null, 0, picker);
         return true;
     }

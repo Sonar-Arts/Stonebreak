@@ -24,14 +24,14 @@ public class BiomeManager {
     public BiomeManager(NoiseRouter noise, HeightMapGenerator heightMap) {
         this.noise = noise;
         this.heightMap = heightMap;
-        this.selector = new BiomeSelector();
+        this.selector = new BiomeSelector(noise.isV2());
     }
 
     public BiomeType getBiome(int x, int z) {
         DistilledShape.Column c = new DistilledShape.Column();
         heightMap.column(x, z, c);
         MultiNoiseSample s = NoiseRouter.sampleOf(c, noise.temperature(x, z, c.shapedHeight), noise.moisture(x, z));
-        return selector.select(s, isSubmerged(c.height));
+        return selector.select(s, isSubmerged(c.height) && !c.lake);
     }
 
     /**
@@ -72,10 +72,12 @@ public class BiomeManager {
         heightMap.fillColumns(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, cols);
         noise.fillClimateChannels(baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1, tRaw, mRaw);
         for (int idx = 0; idx < cells; idx++) {
+            boolean v2 = noise.isV2();
             MultiNoiseSample s = NoiseRouter.sampleOf(cols[idx],
-                NoiseRouter.temperatureFromRaw(tRaw[idx], heights[idx]),
-                NoiseRouter.moistureFromRaw(mRaw[idx]));
-            out[idx] = selector.select(s, isSubmerged(heights[idx]));
+                v2 ? NoiseRouter.temperatureFromRawV2(tRaw[idx], heights[idx])
+                   : NoiseRouter.temperatureFromRaw(tRaw[idx], heights[idx]),
+                v2 ? NoiseRouter.moistureFromRawV2(mRaw[idx]) : NoiseRouter.moistureFromRaw(mRaw[idx]));
+            out[idx] = selector.select(s, isSubmerged(heights[idx]) && !cols[idx].lake);
         }
     }
 }

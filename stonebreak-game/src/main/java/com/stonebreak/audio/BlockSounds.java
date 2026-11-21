@@ -8,7 +8,6 @@ import com.stonebreak.blocks.BlockType;
 import com.stonebreak.core.Game;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
-import org.joml.Vector3f;
 
 /**
  * Data-driven block sound playback. Every block↔sound association lives in
@@ -39,30 +38,31 @@ public final class BlockSounds {
         eventsFor(block).play2D(Game.getSoundSystem(), SoundData.EVENT_STEP, volumeScale);
     }
 
-    /** Footstep for a mob: positional 3D at the mob's feet. */
-    public static void playStepAt(BlockType block, Vector3f position, float volumeScale) {
-        playEventAt(block, SoundData.EVENT_STEP, position.x, position.y, position.z, volumeScale);
+    /** Footstep at a world position (feet): positional 3D. */
+    public static void playStepAt(BlockType block, double x, double y, double z, float volumeScale) {
+        playEventAt(block, SoundData.EVENT_STEP, x, y, z, volumeScale);
     }
 
     /** Block destroyed at block coordinates (played at the cell center). */
-    public static void playBreak(BlockType block, int x, int y, int z) {
-        playEventAt(block, SoundData.EVENT_BREAK, x + 0.5f, y + 0.5f, z + 0.5f, 1f);
+    public static void playBreak(BlockType block, long x, long y, long z) {
+        playEventAt(block, SoundData.EVENT_BREAK, x + 0.5, y + 0.5, z + 0.5, 1f);
     }
 
     /** Block being demolished/attacked (crack progress) at block coordinates. */
-    public static void playHit(BlockType block, int x, int y, int z) {
-        playEventAt(block, SoundData.EVENT_HIT, x + 0.5f, y + 0.5f, z + 0.5f, 1f);
+    public static void playHit(BlockType block, long x, long y, long z) {
+        playEventAt(block, SoundData.EVENT_HIT, x + 0.5, y + 0.5, z + 0.5, 1f);
     }
 
     /** Block placed at block coordinates. */
-    public static void playPlace(BlockType block, int x, int y, int z) {
-        playEventAt(block, SoundData.EVENT_PLACE, x + 0.5f, y + 0.5f, z + 0.5f, 1f);
+    public static void playPlace(BlockType block, long x, long y, long z) {
+        playEventAt(block, SoundData.EVENT_PLACE, x + 0.5, y + 0.5, z + 0.5, 1f);
     }
 
-    /** Any (possibly custom) event as positional 3D audio; unbound events no-op. */
+    /** Any (possibly custom) event as positional 3D audio at a world position; unbound events no-op. */
     public static void playEventAt(BlockType block, String event,
-                                   float x, float y, float z, float volumeScale) {
-        eventsFor(block).playAt(Game.getSoundSystem(), event, x, y, z, volumeScale);
+                                   double x, double y, double z, float volumeScale) {
+        eventsFor(block).playAt(Game.getSoundSystem(), event, AudioSpace.x(x), AudioSpace.y(y), AudioSpace.z(z),
+            volumeScale);
     }
 
     /** Drop all cached resolutions (e.g. after the SBO bridge re-initializes). */

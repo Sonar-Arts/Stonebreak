@@ -36,6 +36,17 @@ EXACT_WARP = False   # True = the single-point path Java/C++ use (slow in Python
 CURVE = WorldConfig.GAME.curve()
 
 
+def _game_curve(version: int):
+    """The 1:4 game curve of a Standard shape version: v1 = the original (ocean 48 m per block to the shore), v2 = the
+    height-curve v2 sea bands (shallows 4 / shelf 6 / deep 32 m per block, 2026-11-19), in the cubic column."""
+    from terrain_slm.eval.distill_sample import game_world
+    return game_world("1:4", 2 if version >= 2 else 1).curve()
+
+
+CURVES = {1: _game_curve(1), 2: _game_curve(2)}
+Y_LO, Y_HI = -383, 639        # the native clamp: [min_y + 1, max_y - 1]
+
+
 @dataclass(frozen=True)
 class Params:
     # continents (Daedalus: fbm 900 cells = 3600 blocks, 4 octaves; land = smoothstep((c + 0.35) / 0.2))
@@ -78,6 +89,31 @@ class Params:
     # summit soft cap (generator.soft_cap_peaks: 4300 / 850 m)
     peak_knee_m: float = 4300.0
     peak_span_m: float = 850.0
+    # ---- Standard shape v2 (2026-11-19, distilled from DaedalusTGM-Exp-2): ignored unless shape_version >= 2 ----
+    shape_version: float = 1.0
+    # open ocean: the sea floor drops from sea_floor_m (the shelf) by abyss_m once the continent field is
+    # shelf_width below the coast, over abyss_width (EXP-2: shelf, slope, abyssal plain)
+    shelf_width: float = 0.05
+    abyss_width: float = 0.2
+    abyss_m: float = 0.0
+    # landform provinces in the lowland (EXP-2 controls2.landforms): rolling hills everywhere in a province, plus
+    # mesa country (smoothstep levels joined by scarps) where the style field says so
+    prov_period: float = 2400.0
+    prov_bias: float = 0.0
+    roll_period: float = 300.0
+    roll_m: float = 0.0
+    mesa_period: float = 160.0
+    mesa_level: float = 0.3
+    mesa_m: float = 0.0
+    style_period: float = 4000.0
+    style_bias: float = 0.0
+    # dendritic tributaries: a finer valley field cut only near the main valleys (branches, not orange peel)
+    trib_period: float = 150.0
+    trib_m: float = 0.0
+    trib_reach: float = 0.25
+    # landform provinces are also the rugged country: their fine relief (valleys, texture) is raised by prov_rough,
+    # so the lowland splits into flat plains and rugged hills (EXP-2's lowland block mix is bimodal)
+    prov_rough: float = 0.0
 
 
 # Bounds for the optimiser, (lo, hi) per field, log-scaled when both are > 0 and span > 4x.
@@ -92,6 +128,14 @@ BOUNDS = {
     "rough_floor": (0.0, 0.5), "rough_hill": (0.0, 1.0), "valley_period": (150, 2500),
     "valley_m": (0, 1500), "valley_power": (0.4, 2.5), "texture_period": (12, 200), "texture_m": (0, 150), "texture_floor_m": (0, 30),
     "detail_blocks": (0, 3), "peak_knee_m": (2000, 4800), "peak_span_m": (200, 1500),
+}
+# Standard shape v2 knobs (fit with --version 2; sea_floor_m may now reach the abyss's shelf break)
+BOUNDS_V2 = {
+    "shelf_width": (0.0, 0.4), "abyss_width": (0.02, 0.8), "abyss_m": (-4500, 0),
+    "prov_period": (600, 9000), "prov_bias": (-1.5, 1.5), "roll_period": (60, 1200), "roll_m": (0, 300),
+    "mesa_period": (60, 1200), "mesa_level": (-0.8, 0.8), "mesa_m": (0, 250),
+    "style_period": (1000, 12000), "style_bias": (-1.5, 1.5),
+    "trib_period": (40, 600), "trib_m": (0, 600), "trib_reach": (0.05, 1.0), "prov_rough": (0.0, 1.0),
 }
 
 # Std of FastNoise2 simplex fbm (gain 0.5, lacunarity 2) by octave count, measured once over 6 seeds x
@@ -155,6 +199,12 @@ class Channels:
         self.valley = Fbm(4, 0.5, 1 / p.valley_period)
         self.texture = Fbm(4, 0.5, 1 / p.texture_period)
         self.detail = Fbm(3, 0.5, 1 / 45.0)
+        if p.shape_version >= 2:
+            self.prov = Fbm(3, 0.5, 1 / p.prov_period)
+            self.roll = Fbm(2, 0.5, 1 / p.roll_period)
+            self.mesa = Fbm(2, 0.5, 1 / p.mesa_period)
+            self.style = Fbm(2, 0.5, 1 / p.style_period)
+            self.trib = Fbm(3, 0.5, 1 / p.trib_period)
 
 
 def warped_lattice_field(ch: Channels, p: Params, seed: int, x0: int, z0: int, n: int, step: int):
@@ -217,8 +267,10 @@ def warped_lattice_field(ch: Channels, p: Params, seed: int, x0: int, z0: int, n
     return interp(rng) / s2, interp(spr) / s2
 
 
-def distilled_elevation(p: Params, ch: Channels, seed: int, x0: int, z0: int, n: int, step: int):
-    """(elevation metres, detail noise) on the n x n grid."""
+def distilled_elevation(p: Params, ch: Channels, seed: int, x0: int, z0: int, n: int, step: int,
+                        planes: dict | None = None):
+    """(elevation metres, detail noise) on the n x n grid; `planes` (optional) receives the biome inputs land,
+    mountain (along x body), hilly, rough."""
     xs = (x0 + np.arange(n) * step).astype(np.float64)
     zs = (z0 + np.arange(n) * step).astype(np.float64)
     r2 = xs[:, None] ** 2 + zs[None, :] ** 2
@@ -239,32 +291,63 @@ def distilled_elevation(p: Params, ch: Channels, seed: int, x0: int, z0: int, n:
     hill_m = p.hill_plains_m + (p.hill_country_m - p.hill_plains_m) * hilly + 200.0 * along * foot
     trend = p.sea_floor_m + (p.land_base_m - p.sea_floor_m) * land * (0.6 + 0.5 * cont) \
         + land * (mountains + hill_m * hills)
-    rough = np.clip(p.rough_floor + p.rough_hill * hilly + along * (0.9 * spine + 0.45 * spur + 0.25 * foot)
-                    + 0.25 * (0.3 + along * foot) * np.abs(hills), 0, 1) * land
+    v2 = p.shape_version >= 2
+    prov_low = 0.0
+    if v2:
+        # open ocean: shelf, then the slope down to the abyssal plain
+        deep = smoothstep((-(cont + p.cont_offset) - p.shelf_width) / p.abyss_width)
+        trend = trend + (1.0 - land) * p.abyss_m * deep
+        # lowland landform provinces (fade out toward the ranges)
+        prov = smoothstep((ch.prov.grid(seed + 29, x0, z0, n, n, step) / fbm_std(3) + p.prov_bias) / 1.2)
+        lowland = land * (1.0 - along * body) * prov
+        prov_low = (1.0 - along * body) * prov
+        roll = ch.roll.grid(seed + 30, x0, z0, n, n, step) / fbm_std(2)
+        mesa = smoothstep((ch.mesa.grid(seed + 31, x0, z0, n, n, step) / fbm_std(2) - p.mesa_level) / 0.35)
+        style = smoothstep((ch.style.grid(seed + 32, x0, z0, n, n, step) / fbm_std(2) + p.style_bias) / 0.8)
+        trend = trend + lowland * (p.roll_m * roll + style * p.mesa_m * (mesa - 0.5))
+    rough_in = p.rough_floor + p.rough_hill * hilly + along * (0.9 * spine + 0.45 * spur + 0.25 * foot) \
+        + 0.25 * (0.3 + along * foot) * np.abs(hills)
+    if v2:
+        rough_in = rough_in + p.prov_rough * prov_low
+    rough = np.clip(rough_in, 0, 1) * land
     v = ch.valley.grid(seed + 27, x0, z0, n, n, step)
     a = np.abs(v) / (2 * fbm_std(4))                                        # ~[0, 1+], zero lines = valley floors
     valleys = p.valley_m * rough * (valley_shape(a, p.valley_power) - 0.5)     # V valleys on zero lines
+    if v2:
+        b = np.abs(ch.trib.grid(seed + 33, x0, z0, n, n, step)) / (2 * fbm_std(3))
+        near = bell(a * a / p.trib_reach)
+        valleys = valleys + p.trib_m * rough * near * (valley_shape(b, p.valley_power) - 0.5)
     tex = (p.texture_floor_m + (p.texture_m - p.texture_floor_m) * rough) * ch.texture.grid(seed + 28, x0, z0, n, n, step)
     det = ch.detail.grid(seed + 3, x0, z0, n, n, step)
     e = trend + valleys + tex
+    if planes is not None:
+        planes.update(land=land, mountain=along * body, hilly=hilly, rough=rough)
     d = np.maximum(e - p.peak_knee_m, 0.0)
     return e - d + d / (1.0 + d / p.peak_span_m), det
 
 
-def distilled_height(p: Params, ch: Channels, seed: int, x0: int, z0: int, n: int, step: int) -> np.ndarray:
+def distilled_height(p: Params, ch: Channels, seed: int, x0: int, z0: int, n: int, step: int,
+                     with_elev: bool = False):
     elev, det = distilled_elevation(p, ch, seed, x0, z0, n, step)
-    blocks = CURVE.to_block_height_exact(elev) + p.detail_blocks * det
-    # floor, as the model's own tiles quantise (HeightCurve.to_block_height): ground occupies y < height
-    return np.clip(np.floor(blocks), 1, 255).astype(np.int32)
+    curve = CURVES[2 if p.shape_version >= 2 else 1]
+    blocks = curve.to_block_height_exact(np.maximum(elev, -4000.0 if p.shape_version < 2 else -11000.0)) \
+        + p.detail_blocks * det
+    # floor, as the model's own tiles quantise (HeightCurve.to_block_height): ground occupies y < height; clamped as
+    # the native generator does ([min_y + 1, max_y - 1]; the v1 table also floors elevation at -4 km)
+    h = np.clip(np.floor(blocks), Y_LO, Y_HI).astype(np.int32)
+    return (h, elev) if with_elev else h
 
 
 # ----------------------------------------------------------------------------- fitting
-def spec_from_target(target: Path, coarse: int, fine: int):
+_WORKERS = 10
+
+
+def spec_from_target(target: Path, coarse: int, fine: int, shuffle_seed: int = 7):
     metas = []
     for f in sorted(target.glob("*.npz")):
         s, x, z, lod = (int(v) for v in np.load(f)["meta"])
         metas.append((s, x, z, lod))
-    rng = np.random.default_rng(7)
+    rng = np.random.default_rng(shuffle_seed)
     c = [m for m in metas if m[3] == 8]
     f = [m for m in metas if m[3] == 1]
     rng.shuffle(c)
@@ -276,29 +359,44 @@ def _tile_job(args):
     """Worker: build + measure one tile (tile-local metrics are additive across tiles)."""
     p, (s, x, z, lod) = args
     ch = Channels(p)
-    return distilled_height(p, ch, s, x * 256 * lod, z * 256 * lod, 256, lod), lod
+    h, e = distilled_height(p, ch, s, x * 256 * lod, z * 256 * lod, 256, lod, with_elev=True)
+    # measured here, in the worker: the main process only merges (it was the bottleneck)
+    coarse, fine = {}, {}
+    nc, nf = DS.accumulate((h, None, lod, e if lod == 8 else None, None), coarse, fine)
+    return coarse, fine, nc, nf
 
 
 _POOL = None
 
 
-def evaluate(p: Params, spec, workers: int = 12) -> dict:
+def evaluate(p: Params, spec, workers: int | None = None) -> dict:
     global _POOL
+    workers = _WORKERS if workers is None else workers
     if workers <= 1:
-        ch = Channels(p)
-        items = ((distilled_height(p, ch, s, x * 256 * lod, z * 256 * lod, 256, lod), None, lod) for s, x, z, lod in spec)
-        return DS.measure_tiles(items, "distilled")
-    if _POOL is None:
-        import multiprocessing as mp
-        _POOL = mp.get_context("fork").Pool(workers)
-    tiles = _POOL.map(_tile_job, [(p, t) for t in spec], chunksize=2)
-    return DS.measure_tiles(((h, None, lod) for h, lod in tiles), "distilled")
+        parts = [_tile_job((p, t)) for t in spec]
+    else:
+        if _POOL is None:
+            import multiprocessing as mp
+            _POOL = mp.get_context("fork").Pool(workers)
+        parts = _POOL.map(_tile_job, [(p, t) for t in spec], chunksize=1)
+    coarse, fine = {}, {}
+    nc = nf = 0
+    for c, f, a, b in parts:
+        DS.merge(coarse, c)
+        DS.merge(fine, f)
+        nc += a
+        nf += b
+    return DS.summarize(coarse, fine, nc, nf, "distilled")
+
+
+def _bounds(k):
+    return BOUNDS[k] if k in BOUNDS else BOUNDS_V2[k]
 
 
 def to_vec(p: Params, keys):
     v = []
     for k in keys:
-        lo, hi = BOUNDS[k]
+        lo, hi = _bounds(k)
         x = getattr(p, k)
         if lo > 0 and hi / lo > 4:
             v.append((math.log(x) - math.log(lo)) / (math.log(hi) - math.log(lo)))
@@ -310,7 +408,7 @@ def to_vec(p: Params, keys):
 def from_vec(v, base: Params, keys) -> Params:
     kw = {}
     for k, x in zip(keys, np.clip(v, 0, 1)):
-        lo, hi = BOUNDS[k]
+        lo, hi = _bounds(k)
         kw[k] = math.exp(math.log(lo) + x * (math.log(hi) - math.log(lo))) if lo > 0 and hi / lo > 4 else lo + x * (hi - lo)
     return replace(base, **kw)
 
@@ -325,15 +423,22 @@ def main(argv=None) -> None:
     ap.add_argument("--init", help="params json to start from")
     ap.add_argument("--keys", help="comma list of knobs to fit (default: all)")
     ap.add_argument("--eval-only", action="store_true")
+    ap.add_argument("--version", type=int, default=1, help="Standard shape version to fit (2 = EXP-2 distillation)")
+    ap.add_argument("--workers", type=int, default=10)
+    ap.add_argument("--seed", type=int, default=7, help="tile subset shuffle")
     args = ap.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     print("measuring target ...", flush=True)
     target = DS.measure(Path(args.target))
-    spec = spec_from_target(Path(args.target), args.coarse, args.fine)
+    spec = spec_from_target(Path(args.target), args.coarse, args.fine, args.seed)
     base = Params(**json.loads(Path(args.init).read_text())) if args.init else Params()
-    keys = args.keys.split(",") if args.keys else list(BOUNDS)
+    if args.version != int(base.shape_version):
+        base = replace(base, shape_version=float(args.version))
+    keys = args.keys.split(",") if args.keys else list(BOUNDS) + (list(BOUNDS_V2) if args.version >= 2 else [])
+    global _WORKERS
+    _WORKERS = args.workers
 
     t0 = time.monotonic()
     r0 = evaluate(base, spec)

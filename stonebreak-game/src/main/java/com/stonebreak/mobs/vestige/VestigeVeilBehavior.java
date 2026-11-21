@@ -2,7 +2,7 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * Invisibility: out of the victim's sight, the Vestige draws its veil and moves — usually round
@@ -21,7 +21,7 @@ final class VestigeVeilBehavior extends VestigeBehavior {
     static final float BAND_MIN = 7f;
     static final float BAND_MAX = 13f;
 
-    private Vector3f goal;
+    private Vector3d goal;
     private float elapsed;
 
     VestigeVeilBehavior(Vestige vestige) {

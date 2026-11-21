@@ -8,7 +8,7 @@ public enum CategoryState {
     // ===== CATEGORIES =====
     GENERAL(0, new SettingType[]{SettingType.RESOLUTION, SettingType.UI_SCALE}),
     QUALITY(1, new SettingType[]{SettingType.LEAF_TRANSPARENCY, SettingType.CONNECTED_SHAPES, SettingType.WATER_SHADER, SettingType.CLOUDS_ENABLED, SettingType.GOD_RAYS, SettingType.SHADOWS, SettingType.SHADOW_QUALITY, SettingType.SHADOW_DISTANCE, SettingType.SMOOTH_LIGHTING}),
-    PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
+    PERFORMANCE(2, new SettingType[]{SettingType.RENDER_DISTANCE, SettingType.VERTICAL_RENDER_DISTANCE, SettingType.VSYNC, SettingType.MAX_FPS}),
     ADVANCED(3, new SettingType[]{SettingType.LOD_ENABLED, SettingType.LOD_DISTANCE, SettingType.LOD_QUALITY, SettingType.PARTICLES, SettingType.PARTICLE_DENSITY}),
     EXTRAS(4, new SettingType[]{SettingType.CROSSHAIR_STYLE, SettingType.CROSSHAIR_SIZE, SettingType.PLAYER_NAME_TAGS, SettingType.PAUSE_WORLD, SettingType.HIDE_ARM_WITH_HUD, SettingType.LIVE_MENU_BACKGROUND}),
     AUDIO(5, new SettingType[]{SettingType.VOLUME, SettingType.MUSIC_VOLUME, SettingType.MUSIC_ENABLED});
@@ -26,7 +26,28 @@ public enum CategoryState {
     }
     
     public SettingType[] getSettings() {
-        return settings;
+        java.util.Set<SettingType> hidden = hiddenRows;
+        if (hidden.isEmpty()) {
+            return settings;
+        }
+        return java.util.Arrays.stream(settings).filter(t -> !hidden.contains(t)).toArray(SettingType[]::new);
+    }
+
+    /** Rows {@link #getSettings()} leaves out (empty in the game); see {@link #hideRows}. */
+    private static volatile java.util.Set<SettingType> hiddenRows = java.util.Set.of();
+
+    /**
+     * Test seam: rows to leave out of every category. The settings fidelity gate replays captures frozen
+     * before some rows existed (a new setting is not a rendering change), so its fixture hides the rows
+     * added since and restores {@code Set.of()} afterwards.
+     */
+    public static void hideRows(java.util.Set<SettingType> rows) {
+        hiddenRows = rows == null ? java.util.Set.of() : java.util.Set.copyOf(rows);
+    }
+
+    /** The rows currently hidden by {@link #hideRows}. */
+    public static java.util.Set<SettingType> hiddenRows() {
+        return hiddenRows;
     }
     
     public String getDisplayName() {
@@ -96,7 +117,8 @@ public enum CategoryState {
         LIVE_MENU_BACKGROUND(27),
         PARTICLES(28),
         PARTICLE_DENSITY(29),
-        CONNECTED_SHAPES(30);
+        VERTICAL_RENDER_DISTANCE(30),
+        CONNECTED_SHAPES(31);
         
         private final int index;
         

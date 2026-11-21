@@ -9,6 +9,9 @@ import com.stonebreak.player.Player;
 import com.stonebreak.player.PlayerConstants;
 import com.stonebreak.player.combat.RageTier;
 import com.stonebreak.world.World;
+import com.stonebreak.util.Positions;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -31,9 +34,9 @@ public class RampageAbility {
 
     /** A burning patch left behind by a T2 charge; ticks burning onto anything standing in it. */
     private static final class TrailZone {
-        final Vector3f position;
+        final Vector3d position;
         float remaining;
-        TrailZone(Vector3f position, float remaining) {
+        TrailZone(Vector3d position, float remaining) {
             this.position = position;
             this.remaining = remaining;
         }
@@ -102,7 +105,7 @@ public class RampageAbility {
 
         while (remaining > 0f) {
             float stepLen = Math.min(COLLISION_STEP, remaining);
-            Vector3f newPos = new Vector3f(direction).mul(stepLen).add(player.getPosition());
+            Vector3d newPos = new Vector3d(player.getPosition()).fma(stepLen, direction);
 
             if (isBlocked(world, newPos)) {
                 stoppedByWall = true;
@@ -118,7 +121,7 @@ public class RampageAbility {
 
             if (tier == RageTier.T2 && distanceSinceLastWaypoint >= RAMPAGE_TRAIL_WAYPOINT_GAP) {
                 distanceSinceLastWaypoint = 0f;
-                trailZones.add(new TrailZone(new Vector3f(newPos), RAMPAGE_TRAIL_DURATION));
+                trailZones.add(new TrailZone(new Vector3d(newPos), RAMPAGE_TRAIL_DURATION));
             }
         }
 
@@ -132,25 +135,25 @@ public class RampageAbility {
         cooldownRemaining = RAMPAGE_COOLDOWN;
     }
 
-    private boolean isBlocked(World world, Vector3f pos) {
-        return isSolidAt(world, pos.x, pos.y + 0.1f, pos.z)
-            || isSolidAt(world, pos.x, pos.y + PlayerConstants.PLAYER_HEIGHT * 0.6f, pos.z);
+    private boolean isBlocked(World world, Vector3dc pos) {
+        return isSolidAt(world, pos.x(), pos.y() + 0.1, pos.z())
+            || isSolidAt(world, pos.x(), pos.y() + PlayerConstants.PLAYER_HEIGHT * 0.6, pos.z());
     }
 
-    private boolean isSolidAt(World world, float x, float y, float z) {
-        BlockType block = world.getBlockAt((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z));
+    private boolean isSolidAt(World world, double x, double y, double z) {
+        BlockType block = world.getBlockAt(Positions.cell(x), Positions.cell(y), Positions.cell(z));
         return block != null && block.isSolid();
     }
 
     /** Damages any not-yet-hit living entity within the charge's effective hitbox around {@code currentPos}. */
-    private void applyHits(Player player, Vector3f currentPos) {
+    private void applyHits(Player player, Vector3dc currentPos) {
         EntityManager entityManager = Game.getEntityManager();
         if (entityManager == null) return;
 
         for (LivingEntity entity : Player.combatTargets(entityManager)) {
             if (!entity.isAlive() || hitEntities.contains(entity)) continue;
 
-            Vector3f rel = entity.getPosition().sub(currentPos);
+            Vector3f rel = Positions.offset(currentPos, entity.getPosition());
             float longitudinal = rel.dot(direction);
             Vector3f perpendicular = new Vector3f(rel).sub(new Vector3f(direction).mul(longitudinal));
 
@@ -177,12 +180,12 @@ public class RampageAbility {
         if (world == null) return RAMPAGE_HIT_RADIUS;
 
         Vector3f perpendicular = new Vector3f(-direction.z, 0f, direction.x);
-        Vector3f origin = player.getPosition();
+        Vector3d origin = player.getPosition();
         float halfWidth = RAMPAGE_HIT_RADIUS;
 
         for (float dist = RAMPAGE_HIT_RADIUS; dist <= RAMPAGE_MAX_CLEAVE_HALF_WIDTH; dist += 0.5f) {
-            Vector3f posPositive = new Vector3f(perpendicular).mul(dist).add(origin);
-            Vector3f posNegative = new Vector3f(perpendicular).mul(-dist).add(origin);
+            Vector3d posPositive = new Vector3d(origin).fma(dist, perpendicular);
+            Vector3d posNegative = new Vector3d(origin).fma(-dist, perpendicular);
             boolean positiveBlocked = isBlocked(world, posPositive);
             boolean negativeBlocked = isBlocked(world, posNegative);
             if (positiveBlocked || negativeBlocked) {

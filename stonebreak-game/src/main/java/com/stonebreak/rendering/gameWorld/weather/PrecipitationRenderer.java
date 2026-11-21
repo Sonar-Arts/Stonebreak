@@ -161,7 +161,7 @@ public final class PrecipitationRenderer {
      * @param drawNear false while FX particles ({@link PrecipitationFx}) draw the near rain: only the far ring
      */
     public void render(World world, CloudRenderer cloudRenderer, PrecipitationFog fog, Matrix4f projection,
-                       Matrix4f view, Vector3f cameraWorldPos, float time, float ambientLight, float snow,
+                       Matrix4f view, org.joml.Vector3dc cameraWorldPos, float time, float ambientLight, float snow,
                        boolean drawNear) {
         int firstRing = drawNear ? 0 : 1;
         if (world == null || cloudRenderer == null) return;
@@ -265,10 +265,10 @@ public final class PrecipitationRenderer {
     }
 
     /** Fills and binds the ground texture around the camera (active unit). */
-    private void uploadGround(World world, Vector3f cam) {
+    private void uploadGround(World world, org.joml.Vector3dc cam) {
         int radius = (int) NEAR.radius();
-        int x0 = (int) Math.floor(cam.x) - radius - 1;
-        int z0 = (int) Math.floor(cam.z) - radius - 1;
+        int x0 = (int) Math.floor(cam.x()) - radius - 1;
+        int z0 = (int) Math.floor(cam.z()) - radius - 1;
         ground.clear();
         for (int j = 0; j < GROUND_SIZE; j++) {
             for (int i = 0; i < GROUND_SIZE; i++) {
@@ -281,7 +281,7 @@ public final class PrecipitationRenderer {
         glBindTexture(GL_TEXTURE_2D, groundTexture);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, GROUND_SIZE, GROUND_SIZE, GL_RG, GL_FLOAT, ground);
-        groundOrigin.set((float) (x0 - (double) RenderOrigin.x()), (float) (z0 - (double) RenderOrigin.z()));
+        groundOrigin.set(RenderOrigin.relativeX((long) x0), RenderOrigin.relativeZ((long) z0));
     }
 
     public void cleanup() {

@@ -21,14 +21,22 @@ public class BiomeManager {
     private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     private final TerrainTileSource tileSource;
+    private final BeachRule beach;
 
     public BiomeManager(TerrainTileSource tileSource) {
+        this(tileSource, BeachRule.LEGACY);
+    }
+
+    /** Biomes with the world's own beach rule ({@link BeachRule#of}: height-curve v2 worlds size it in metres). */
+    public BiomeManager(TerrainTileSource tileSource, BeachRule beach) {
         this.tileSource = tileSource;
+        this.beach = beach;
     }
 
     public BiomeType getBiome(int x, int z) {
         TerrainTile tile = tileSource.getTile(x, z);
-        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), tile.heightAt(x, z), nearbySeaLevel(tile, x, z));
+        int h = tile.heightAt(x, z);
+        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), h, seaLevelNear(tile, x, z, h), beach.bandBlocks());
     }
 
     /**
@@ -47,36 +55,78 @@ public class BiomeManager {
                 int worldX = baseX + x;
                 int worldZ = baseZ + z;
                 out[idx] = DiffusionBiomeMapper.map(tile.biomeIdAt(worldX, worldZ), heights[idx],
-                        nearbySeaLevel(tile, worldX, worldZ));
+                        seaLevelNear(tile, worldX, worldZ, heights[idx]), beach.bandBlocks());
             }
         }
     }
 
     /**
-     * Highest water level among the OCEAN columns of {@code (worldX, worldZ)} and its 8
-     * neighbours, or {@link TerrainTile#NO_WATER} if none of them is ocean. Lakes and
-     * rivers do not count: only the true ocean makes beaches (sand rings around every
-     * sea-level pit and along lowland rivers did). A dry column's own water level is
-     * always {@code NO_WATER}, so detecting "next to the sea" needs a neighbour's value.
-     *
-     * <p>A neighbour that falls outside this tile is skipped rather than resolved
-     * from a second tile: the shoreline test only needs to know the sea is nearby,
-     * and the miss is confined to columns exactly on a tile boundary (256 blocks
-     * apart by default).
+     * The biome of one column of {@code tile} with ground height {@code height}, by the same rule as
+     * {@link #populateChunkBiomes} (the coarse-LOD profiles read tiles in sample units through it).
      */
-    private static short nearbySeaLevel(TerrainTile tile, int worldX, int worldZ) {
+    public static BiomeType biomeAt(TerrainTile tile, int x, int z, int height) {
+        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), height, nearbySeaLevel(tile, x, z, 1, null));
+    }
+
+    /**
+     * {@link #biomeAt(TerrainTile, int, int, int)} with a world's beach height band (coarse LOD: one sample of reach,
+     * since a sample is already several blocks, and no cross-tile reads).
+     */
+    public static BiomeType biomeAt(TerrainTile tile, int x, int z, int height, BeachRule rule) {
+        return DiffusionBiomeMapper.map(tile.biomeIdAt(x, z), height, nearbySeaLevel(tile, x, z, 1, null),
+                rule.bandBlocks());
+    }
+
+    /**
+     * The sea level next to a column for the beach test, or {@link TerrainTile#NO_WATER}: skipped (no neighbour
+     * reads) for columns that cannot become beach anyway - not eligible, or outside [sea level, sea level + band) -
+     * so the cross-tile reads of the v2 rule only happen along low coasts.
+     */
+    private short seaLevelNear(TerrainTile tile, int x, int z, int height) {
+        int sea = WorldConfiguration.SEA_LEVEL;
+        if (height >= sea + beach.bandBlocks() || !DiffusionBiomeMapper.beachEligible(tile.biomeIdAt(x, z))) {
+            return TerrainTile.NO_WATER;
+        }
+        return nearbySeaLevel(tile, x, z, beach.reach(), beach.crossTile() ? tileSource : null);
+    }
+
+    /**
+     * Highest water level among the OCEAN columns within {@code reach} of {@code (worldX, worldZ)} (a disc:
+     * dx^2 + dz^2 <= reach^2 + reach, i.e. the 3x3 block at reach 1), or {@link TerrainTile#NO_WATER} if none of
+     * them is ocean. Lakes and rivers do not count: only the true ocean makes beaches (sand rings around every
+     * sea-level pit and along lowland rivers did). A dry column's own water level is always {@code NO_WATER}, so
+     * detecting "next to the sea" needs a neighbour's value.
+     *
+     * <p>A neighbour outside this tile is read from its own tile when {@code others} is given (v2 worlds), else
+     * skipped: the legacy rule, whose miss left a one-column notch in the sand wherever a coast crossed a tile edge
+     * (256 blocks apart by default).
+     */
+    private static short nearbySeaLevel(TerrainTile tile, int worldX, int worldZ, int reach, TerrainTileSource others) {
         short best = TerrainTile.NO_WATER;
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dz = -1; dz <= 1; dz++) {
+        int r2 = reach * reach + reach;
+        TerrainTile other = null;
+        for (int dx = -reach; dx <= reach; dx++) {
+            for (int dz = -reach; dz <= reach; dz++) {
+                if (dx * dx + dz * dz > r2) {
+                    continue;
+                }
                 int nx = worldX + dx;
                 int nz = worldZ + dz;
+                TerrainTile t = tile;
                 if (nx < tile.worldI1() || nx >= tile.worldI2() || nz < tile.worldJ1() || nz >= tile.worldJ2()) {
+                    if (others == null) {
+                        continue;
+                    }
+                    if (other == null || nx < other.worldI1() || nx >= other.worldI2() || nz < other.worldJ1()
+                            || nz >= other.worldJ2()) {
+                        other = others.getTile(nx, nz);
+                    }
+                    t = other;
+                }
+                if (!DiffusionBiomeMapper.isOceanId(t.biomeIdAt(nx, nz))) {
                     continue;
                 }
-                if (!DiffusionBiomeMapper.isOceanId(tile.biomeIdAt(nx, nz))) {
-                    continue;
-                }
-                short level = tile.waterLevelAt(nx, nz);
+                short level = t.waterLevelAt(nx, nz);
                 if (level != TerrainTile.NO_WATER && level > best) {
                     best = level;
                 }

@@ -7,7 +7,7 @@ import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goblin.GoblinLoadout.Headwear;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -24,7 +24,7 @@ class CampCodecTest {
     @Test
     void aCampRoundTripsThroughItsFire() {
         GoblinCamp camp = new GoblinCamp(FIRE);
-        Goblin archer = new Goblin(null, new Vector3f(10, 50, -3),
+        Goblin archer = new Goblin(null, new Vector3d(10, 50, -3),
                 new GoblinLoadout(MobWeapon.BOW, Headwear.PIRATE_HAT, null, true));
         camp.adopt(archer.pack());
         camp.addWaiting(new GoblinLoadout(MobWeapon.DAGGER, Headwear.BANDANA, "Red", false));
@@ -51,7 +51,7 @@ class CampCodecTest {
     @Test
     void aRecalledGoblinRejoinsTheRosterAndItsMeatTheStash() {
         GoblinCamp camp = new GoblinCamp(FIRE);
-        Goblin g = new Goblin(null, new Vector3f(), new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
+        Goblin g = new Goblin(null, new Vector3d(), new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
         camp.adopt(g.pack());
         g.inventory().add(new ItemStack(ItemType.RAW_BEEF, 2));
         g.pack().memberRemoved(g); // it wandered off into a chunk that unloaded

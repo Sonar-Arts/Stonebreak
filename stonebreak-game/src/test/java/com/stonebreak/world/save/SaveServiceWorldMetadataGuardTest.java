@@ -1,16 +1,11 @@
 package com.stonebreak.world.save;
 
-import com.openmason.engine.voxel.cco.coordinates.CcoBounds;
-import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
-import com.stonebreak.blocks.BlockType;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
-import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.repository.FileSaveRepository;
 import com.stonebreak.world.save.serialization.JsonWorldSerializer;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -47,12 +42,6 @@ class SaveServiceWorldMetadataGuardTest {
     @TempDir
     Path tempDir;
 
-    /** The world dimensions the game installs at startup (GameBootstrap): the chunk codec reads them (#385). */
-    @BeforeAll
-    static void installWorldDimensions() {
-        CcoBounds.configure(WorldConfiguration.voxelConfig());
-    }
-
     private Path world(String name) throws Exception {
         return Files.createDirectories(tempDir.resolve(name));
     }
@@ -63,10 +52,24 @@ class SaveServiceWorldMetadataGuardTest {
         Files.write(worldDir.resolve("world.json"), new JsonWorldSerializer().serialize(record));
     }
 
-    private static void saveAChunk(Path worldDir) throws Exception {
-        new FileSaveRepository(worldDir.toString()).saveChunk(ChunkData.builder().chunkX(0).chunkZ(0)
-            .blocks(CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR))
-            .lastModified(LocalDateTime.now()).build());
+    /** Saved terrain: a file in the world's cube store (its content does not matter to the metadata guard). */
+    private static void saveACube(Path worldDir) throws Exception {
+        Path cubes = Files.createDirectories(worldDir.resolve(WorldFormat.CUBES_DIR));
+        Files.write(cubes.resolve("r.0.0.0.cvr"), new byte[64]);
+    }
+
+    /** A world of the old column format: chunk files and a version-1 record. */
+    private static void writeColumnWorld(Path worldDir, boolean withMetadata) throws Exception {
+        Path region = Files.createDirectories(worldDir.resolve("chunks/r.0.0"));
+        Files.write(region.resolve("c.0.0.sbc"), new byte[32]);
+        String v1 = "{\n  \"seed\": 11,\n  \"worldName\": \"" + worldDir.getFileName() + "\",\n"
+            + "  \"spawnPosition\": {\n    \"x\": 0.0,\n    \"y\": 100.0,\n    \"z\": 0.0\n  },\n"
+            + "  \"creationTime\": \"2025-01-02T03:04:05\",\n  \"lastPlayed\": \"2025-01-02T03:04:05\",\n"
+            + "  \"totalPlayTimeMillis\": 5,\n  \"worldTimeTicks\": 6000,\n  \"formatVersion\": 1\n}";
+        Files.writeString(worldDir.resolve("world.json"), v1);
+        if (withMetadata) {
+            Files.writeString(worldDir.resolve("metadata.json"), v1);
+        }
     }
 
     private static SaveService.LoadResult load(Path worldDir) throws Exception {
@@ -111,7 +114,6 @@ class SaveServiceWorldMetadataGuardTest {
         writeCreationRecord(dir, 42L);
         Files.writeString(dir.resolve("metadata.json"), DAMAGED);
         World world = mock(World.class);
-        when(world.getDirtyChunks()).thenReturn(List.of());
 
         try (SaveService svc = new SaveService(dir.toString())) {
             SaveService.LoadResult result = svc.loadWorld().get(WAIT, TimeUnit.SECONDS);
@@ -149,10 +151,10 @@ class SaveServiceWorldMetadataGuardTest {
     }
 
     @Test
-    void missingMetadataInAWorldWithSavedChunksIsRebuiltNotNew() throws Exception {
-        Path dir = world("chunks-no-metadata");
+    void missingMetadataInAWorldWithSavedCubesIsRebuiltNotNew() throws Exception {
+        Path dir = world("cubes-no-metadata");
         writeCreationRecord(dir, 77L);
-        saveAChunk(dir);
+        saveACube(dir);
 
         SaveService.LoadResult result = load(dir);
         assertTrue(result.isSuccess(), result.getError());
@@ -161,10 +163,74 @@ class SaveServiceWorldMetadataGuardTest {
     }
 
     @Test
-    void missingMetadataInAWorldWithSavedChunksAndNoWorldJsonRefuses() throws Exception {
-        Path dir = world("chunks-only");
-        saveAChunk(dir);
+    void missingMetadataInAWorldWithSavedCubesAndNoWorldJsonRefuses() throws Exception {
+        Path dir = world("cubes-only");
+        saveACube(dir);
         assertRefused(load(dir));
+    }
+
+    // ---- incompatible versions (cubic runtime #447: no migration, old worlds are refused, never touched) ----
+
+    @Test
+    void aColumnFormatWorldIsRefusedAsIncompatibleAndLeftAlone() throws Exception {
+        Path dir = world("column-world");
+        writeColumnWorld(dir, true);
+        byte[] metadataBefore = Files.readAllBytes(dir.resolve("metadata.json"));
+
+        SaveService.LoadResult result = load(dir);
+
+        assertRefused(result);
+        assertTrue(result.isIncompatible());
+        assertTrue(result.getError().startsWith(WorldFormat.INCOMPATIBLE), result.getError());
+        assertTrue(Files.exists(dir.resolve("chunks/r.0.0/c.0.0.sbc")), "old chunk files are never deleted");
+        assertEquals(new String(metadataBefore), Files.readString(dir.resolve("metadata.json")),
+            "the old metadata is not rewritten");
+        assertFalse(Files.exists(dir.resolve("metadata.json.corrupt")), "an old record is not damaged");
+    }
+
+    @Test
+    void aColumnWorldWithoutMetadataIsIncompatibleNotRebuiltOrNew() throws Exception {
+        Path dir = world("column-no-metadata");
+        writeColumnWorld(dir, false);
+
+        SaveService.LoadResult result = load(dir);
+        assertRefused(result);
+        assertTrue(result.isIncompatible(), result.getError());
+    }
+
+    @Test
+    void currentRecordWithOnlyColumnChunkFilesIsIncompatible() throws Exception {
+        Path dir = world("current-record-old-files");
+        writeCreationRecord(dir, 3L);
+        Files.copy(dir.resolve("world.json"), dir.resolve("metadata.json"));
+        Path region = Files.createDirectories(dir.resolve("chunks/r.0.0"));
+        Files.write(region.resolve("c.0.0.sbc"), new byte[8]);
+
+        SaveService.LoadResult result = load(dir);
+        assertTrue(result.isIncompatible(), String.valueOf(result.getError()));
+    }
+
+    @Test
+    void otherWorldBoundsAreIncompatible() throws Exception {
+        Path dir = world("other-bounds");
+        WorldData tall = WorldData.builder().seed(1L).worldName("other-bounds").bounds(-64, 320, 32).build();
+        Files.write(dir.resolve("metadata.json"), new JsonWorldSerializer().serialize(tall));
+
+        SaveService.LoadResult result = load(dir);
+        assertTrue(result.isIncompatible(), String.valueOf(result.getError()));
+    }
+
+    @Test
+    void aCurrentWorldLoads() throws Exception {
+        Path dir = world("current");
+        writeCreationRecord(dir, 8L);
+        Files.copy(dir.resolve("world.json"), dir.resolve("metadata.json"));
+        saveACube(dir);
+
+        SaveService.LoadResult result = load(dir);
+        assertTrue(result.isSuccess(), result.getError());
+        assertFalse(result.isIncompatible());
+        assertEquals(WorldFormat.CURRENT_VERSION, result.getWorldData().getFormatVersion());
     }
 
     @Test

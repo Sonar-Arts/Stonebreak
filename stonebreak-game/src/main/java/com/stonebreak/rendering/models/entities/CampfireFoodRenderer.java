@@ -68,7 +68,7 @@ final class CampfireFoodRenderer {
         this.queue = queue;
     }
 
-    void queue(World world, Vector3f cameraPos) {
+    void queue(World world, org.joml.Vector3dc cameraPos) {
         if (world == null || cameraPos == null) {
             return;
         }
@@ -82,9 +82,9 @@ final class CampfireFoodRenderer {
         }
         float max2 = MAX_DISTANCE * MAX_DISTANCE;
         for (BlockPos p : positions) {
-            float dx = p.x() + 0.5f - cameraPos.x;
-            float dy = p.y() + 0.5f - cameraPos.y;
-            float dz = p.z() + 0.5f - cameraPos.z;
+            float dx = (float) (p.x() + 0.5 - cameraPos.x());
+            float dy = (float) (p.y() + 0.5 - cameraPos.y());
+            float dz = (float) (p.z() + 0.5 - cameraPos.z());
             if (dx * dx + dy * dy + dz * dz > max2 || world.getBlockAt(p.x(), p.y(), p.z()) != BlockType.CAMPFIRE) {
                 continue;
             }

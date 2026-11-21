@@ -3,7 +3,7 @@ package com.stonebreak.mobs.vestige;
 import com.stonebreak.world.World;
 import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
-import org.joml.Vector3f;
+import org.joml.Vector3dc;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -45,12 +45,12 @@ final class ShadeColumns {
         return shade;
     }
 
-    boolean isShade(Vector3f position) {
-        return isShade((int) Math.floor(position.x), (int) Math.floor(position.z));
+    boolean isShade(Vector3dc position) {
+        return isShade((int) Math.floor(position.x()), (int) Math.floor(position.z()));
     }
 
     /** Whether the column and the ones {@code margin} blocks around it are all Shade. */
-    boolean isShadeAround(float x, float z, float margin) {
+    boolean isShadeAround(double x, double z, double margin) {
         return isShade((int) Math.floor(x), (int) Math.floor(z))
                 && isShade((int) Math.floor(x + margin), (int) Math.floor(z))
                 && isShade((int) Math.floor(x - margin), (int) Math.floor(z))

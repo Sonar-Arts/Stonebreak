@@ -5,13 +5,14 @@ import com.stonebreak.blocks.anim.AnimatedBlockRegistry;
 import com.stonebreak.mobs.entities.FireBolt;
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -27,8 +28,8 @@ class VestigeSightThroughLeavesTest {
     private static World wallAt(BlockType wall) {
         World world = mock(World.class);
         when(world.getAnimatedBlockRegistry()).thenReturn(new AnimatedBlockRegistry());
-        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenAnswer(inv -> {
-            int x = inv.getArgument(0);
+        when(world.getBlockAt(anyLong(), anyLong(), anyLong())).thenAnswer(inv -> {
+            long x = inv.getArgument(0);
             return x >= 2 && x < 4 ? wall : BlockType.AIR;
         });
         return world;
@@ -36,7 +37,7 @@ class VestigeSightThroughLeavesTest {
 
     private static float sight(World world, boolean throughLeaves) {
         RaycastEngine ray = new RaycastEngine(null, null, world);
-        return ray.distanceToFirstSolid(new Vector3f(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f), 8f,
+        return ray.distanceToFirstSolid(new Vector3d(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f), 8f,
                 throughLeaves);
     }
 
@@ -70,18 +71,18 @@ class VestigeSightThroughLeavesTest {
     @Test
     void theOrbDriftsThroughLeaves() {
         World world = wallAt(BlockType.LEAVES);
-        assertFalse(burstsOnWall(new WillOWispOrb(world, new Vector3f(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f))));
+        assertFalse(burstsOnWall(new WillOWispOrb(world, new Vector3d(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f))));
     }
 
     @Test
     void theOrbStillBurstsOnStone() {
         World world = wallAt(BlockType.STONE);
-        assertTrue(burstsOnWall(new WillOWispOrb(world, new Vector3f(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f))));
+        assertTrue(burstsOnWall(new WillOWispOrb(world, new Vector3d(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f))));
     }
 
     @Test
     void aStaffBoltStillBurstsOnLeaves() {
         World world = wallAt(BlockType.LEAVES);
-        assertTrue(burstsOnWall(new FireBolt(world, new Vector3f(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f))));
+        assertTrue(burstsOnWall(new FireBolt(world, new Vector3d(0.5f, 64.5f, 0.5f), new Vector3f(1f, 0f, 0f))));
     }
 }

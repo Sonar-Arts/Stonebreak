@@ -27,15 +27,35 @@ from terrain_slm.river import banks as B
 from terrain_slm.river.field import RiverConfig
 from terrain_slm.river.geometry import dilate
 from terrain_slm.river.scale import BlockScale
+from terrain_slm.world.world_config import WorldConfig
 
 CROP = 128
 
 
+def world_at(scale: str) -> WorldConfig:
+    """The game's world config at preset `scale` ("1:4" = WorldConfig.GAME, 60 m blocks; "1:2" = 30 m blocks with
+    the height-curve rates halved, NativeCubeGenerator.TerrainScalePreset.ONE_TO_TWO)."""
+    import dataclasses
+
+    k = {"1:4": 1, "1:2": 2}[scale]
+    g = WorldConfig.GAME
+    return dataclasses.replace(g, horizontal_m=g.horizontal_m / k, downscale=max(1, g.downscale // k),
+                               ocean_m_per_block=g.ocean_m_per_block / k, lowland_m_per_block=g.lowland_m_per_block / k,
+                               midland_m_per_block=g.midland_m_per_block / k,
+                               highland_m_per_block=g.highland_m_per_block / k)
+
+
 class BankData:
-    def __init__(self, data_dir: Path, device: str, seed: int = 0):
+    """Water-edge crops at one or more world scales. The bank stage works in blocks at the world's scale (relief in
+    blocks above the water, a band bank_band_blocks wide), so a 1:2 world sees the same real bank twice as tall and
+    its band half as many pixels wide; training draws a scale per batch so one model serves every preset."""
+
+    def __init__(self, data_dir: Path, device: str, seed: int = 0, scales=("1:4",)):
         self.device = device
         self.gen = torch.Generator(device="cpu").manual_seed(seed)
-        self.scale = BlockScale.game_default(device)
+        self.scales = [BlockScale.from_world(world_at(s), device) for s in scales]
+        self.scale_names = list(scales)
+        self.scale = self.scales[0]
         self.band_px = int(round(RiverConfig().bank_band_blocks * self.scale.px_per_block))
         self.dems, self.masks, self.train, self.val = [], [], [], []
         for root in sorted(p.parent for p in data_dir.glob("*/water.npz")):
@@ -60,6 +80,10 @@ class BankData:
             self.val += [(k, int(r), int(c)) for r, c in edges[val & inside]]
             print(f"  {meta['region']}: {int((~val & inside).sum())} train / {int((val & inside).sum())} val edges", flush=True)
 
+    def use_scale(self, i: int) -> None:
+        self.scale = self.scales[i]
+        self.band_px = int(round(RiverConfig().bank_band_blocks * self.scale.px_per_block))
+
     def _assemble(self, samples, augment: bool):
         half = CROP // 2
         dem = torch.stack([self.dems[k][r - half : r + half, c - half : c + half] for k, r, c in samples])[:, None].float()
@@ -79,6 +103,7 @@ class BankData:
         return x, rel / B.REL_SCALE_BLOCKS, band
 
     def train_batch(self, batch: int):
+        self.use_scale(int(torch.randint(0, len(self.scales), (1,), generator=self.gen)))
         idx = torch.randint(0, len(self.train), (batch,), generator=self.gen).tolist()
         return self._assemble([self.train[i] for i in idx], augment=True)
 
@@ -134,10 +159,11 @@ def main():
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--lr", type=float, default=5e-4)
     ap.add_argument("--eval-every", type=int, default=1500)
+    ap.add_argument("--scales", default="1:4", help="comma-separated world scales to train at, e.g. 1:4,1:2")
     args = ap.parse_args()
     torch.manual_seed(0)
     args.out.mkdir(parents=True, exist_ok=True)
-    data = BankData(args.data, args.device)
+    data = BankData(args.data, args.device, scales=tuple(args.scales.split(",")))
     cfg = B.BankConfig()
     model = B.BankNet(cfg).to(args.device)
     ema = copy.deepcopy(model).eval()
@@ -165,7 +191,14 @@ def main():
             print(f"step {step:6d}  loss {l['total'].item():.4f}  l1 {l['l1'].item() * B.REL_SCALE_BLOCKS:.3f} blocks  "
                   f"{(time.time() - t0) / step * 1000:.1f} ms/step", flush=True)
         if step % args.eval_every == 0 or step == args.steps:
-            ev = {"step": step, **evaluate(ema, data, args.batch)}
+            ev = {"step": step}
+            per = []
+            for i, name in enumerate(data.scale_names):     # one held-out score per scale; selection on their mean
+                data.use_scale(i)
+                r = evaluate(ema, data, args.batch)
+                per.append(r)
+                ev.update({(k if len(data.scales) == 1 else f"{k}@{name}"): v for k, v in r.items()})
+            ev["total"] = sum(r["total"] for r in per) / len(per)
             log.write(json.dumps(ev) + "\n"); log.flush()
             print("  eval", {k: round(v, 4) for k, v in ev.items()}, flush=True)
             ckpt = {"model": ema.state_dict(), "config": cfg.to_dict(), "step": step, "eval": ev}

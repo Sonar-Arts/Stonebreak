@@ -5,8 +5,18 @@
     <!-- JDK-8379129: Microsoft JDK 25.0.3 C2 crashes in allocation-merge analysis
          while compiling FrameRenderer (hs_err_pid12921 / hs_err_pid162649).
          Keep other escape analysis and C2 optimizations enabled. Remove these
-         two workaround flags after verifying a JDK containing the upstream fix. -->
-    <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
+         two workaround flags after verifying a JDK containing the upstream fix.
+         Daedalus worlds use TGMPipe.DEFAULT_MODEL = Models/DaedalusTGM-Exp/checkpoints/exp2-r3, the DaedalusTGM-Exp-2
+         release (real files built from checkpoints/exp2/world_exp2f by scripts/make_release.py; the weights are
+         Git LFS files: run `git lfs install && git lfs pull` once, a checkout without them refuses to start the
+         model with that message; there is no fallback model since v4 was removed 2026-11-19). To try a candidate
+         for new worlds, add e.g. -Dstonebreak.tgmpipe.model=checkpoints/exp2/world_exp2f (live symlinks into
+         training dirs).
+         Heap (2026-11-20, measured): the live set is ~0.7-1.5 GB, but ZGC let the committed heap grow to -Xmx (8 GB RSS)
+         in every world. -XX:SoftMaxHeapSize=3g makes it collect before 3 GB (46 concurrent cycles / 165 s, no allocation
+         stalls) and -XX:ZUncommitDelay=30 hands freed memory back after 30 s; -Xmx8g stays the hard ceiling for spikes.
+         A Daedalus session peaked at 6.5 GB RSS instead of 11.6 GB. -->
+    <option name="VM_PARAMETERS" value="-XX:+UseZGC -Xms2g -Xmx8g -XX:SoftMaxHeapSize=3g -XX:ZUncommitDelay=30 -XX:+UseStringDeduplication -XX:+UseTLAB -XX:+ResizeTLAB -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges --enable-native-access=ALL-UNNAMED,openmason.engine.core,openmason.engine.ui,openmason.engine.voxel --add-exports=java.base/sun.nio.ch=ALL-UNNAMED --add-exports=java.base/sun.security.util=ALL-UNNAMED" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <method v="2">
       <!-- Cenda (libcenda_kernels) comes packaged in the Open Mason engine-core jar since #388, so there is

@@ -3,6 +3,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.LivingEntity;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -12,7 +14,7 @@ import org.joml.Vector3f;
 @FunctionalInterface
 public interface ArrowLauncher {
 
-    void launch(LivingEntity shooter, Vector3f origin, Vector3f velocity, float damage);
+    void launch(LivingEntity shooter, Vector3dc origin, Vector3f velocity, float damage);
 
     /** Spawns a real arrow in the shooter's own world (the server's, on a server world). */
     ArrowLauncher WORLD = (shooter, origin, velocity, damage) -> {

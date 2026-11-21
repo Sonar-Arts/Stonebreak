@@ -1,9 +1,9 @@
 package com.stonebreak.rendering.lighting;
 
 import com.openmason.engine.util.BlockPos;
+import com.openmason.engine.voxel.world.CubePos;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.chunk.Cube;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -13,68 +13,59 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The light sources in a world's unloaded chunks, so torches keep lighting the FastLOD
- * terrain those chunks hand over to. A loaded chunk's sources are indexed live (the
- * animated-block and furnace registries); those registries drop a chunk's entries when it
- * unloads, which is the moment a source is captured here. Reloading the chunk forgets them
- * again, because the live index takes over.
+ * The light sources in a world's unloaded cubes, so torches keep lighting the LOD terrain those
+ * cubes hand over to. A loaded cube's sources are indexed live (the animated-block and furnace
+ * registries); those registries drop a cube's entries when it unloads, so a source is captured
+ * here just before, while the cube is still resident ({@link #onCubeUnloadPending}). Installing the
+ * cube again forgets them, because the live index takes over.
  *
- * <p>Only what was seen this session is known: a chunk saved with torches and not loaded
- * since the game started stays dark until it is. Thread-safe — chunk hooks may run off the
- * render thread.
+ * <p>Only what was seen this session is known: a cube saved with torches and not loaded since the
+ * game started stays dark until it is. Thread-safe — cube hooks may run off the render thread.
  */
 public final class RememberedLights {
-
-    private static final int CHUNK_SIZE = WorldConfiguration.CHUNK_SIZE;
 
     /** A source frozen at unload: the cell it occupies and the point it emits from. */
     record Light(BlockPos pos, BlockLightSource source, float x, float y, float z) {}
 
-    private final Map<Long, Light[]> byChunk = new ConcurrentHashMap<>();
+    private final Map<CubePos, Light[]> byCube = new ConcurrentHashMap<>();
 
     /**
-     * Capture the chunk's sources; call before the world's registries drop them. The candidates
-     * are the ones the renderer was lighting from those registries, so the remembered set is
-     * exactly the live set the chunk leaves; the chunk itself, already out of the world, says
-     * which still hold their block and where they emit from.
+     * Capture the cube's sources; call while it is still resident, before the world's registries
+     * drop them. The candidates are the ones the renderer was lighting from those registries, so the
+     * remembered set is exactly the live set the cube leaves.
      */
-    public void onChunkUnloaded(World world, Chunk chunk) {
-        int baseX = chunk.getX() * CHUNK_SIZE;
-        int baseZ = chunk.getZ() * CHUNK_SIZE;
+    public void onCubeUnloadPending(World world, Cube cube) {
         List<Light> lights = null;
         Vector3f emitter = new Vector3f();
         for (BlockLightSource source : BlockLightSource.VALUES) {
             for (BlockPos pos : source.candidates(world)) {
-                int lx = pos.x() - baseX;
-                int lz = pos.z() - baseZ;
-                if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE) continue;
-                if (!source.isBlock(chunk.getBlock(lx, pos.y(), lz))) continue;
-                if (!source.rememberEmitter(chunk, lx, pos.y(), lz, pos, emitter)) continue;
+                if (!cube.contains(pos.x(), pos.y(), pos.z())) continue;
+                if (!source.isBlock(world.getBlockAt(pos.x(), pos.y(), pos.z()))) continue;
+                if (!source.rememberEmitter(world, pos, emitter)) continue;
                 if (lights == null) lights = new ArrayList<>();
                 lights.add(new Light(pos, source, emitter.x, emitter.y, emitter.z));
             }
         }
-        long key = key(chunk.getX(), chunk.getZ());
         if (lights == null) {
-            byChunk.remove(key);
+            byCube.remove(cube.pos());
         } else {
-            byChunk.put(key, lights.toArray(Light[]::new));
+            byCube.put(cube.pos(), lights.toArray(Light[]::new));
         }
     }
 
-    /** The chunk is live again; its sources are indexed by the world's registries. */
-    public void onChunkLoaded(Chunk chunk) {
-        byChunk.remove(key(chunk.getX(), chunk.getZ()));
+    /** The cube is live again; its sources are indexed by the world's registries. */
+    public void onCubeInstalled(Cube cube) {
+        byCube.remove(cube.pos());
     }
 
-    /** Live view of every remembered chunk's sources. */
+    /** Live view of every remembered cube's sources. */
     Collection<Light[]> chunks() {
-        return byChunk.values();
+        return byCube.values();
     }
 
     /** The remembered source occupying {@code pos}, or null. */
     Light find(BlockPos pos) {
-        Light[] lights = byChunk.get(key(Math.floorDiv(pos.x(), CHUNK_SIZE), Math.floorDiv(pos.z(), CHUNK_SIZE)));
+        Light[] lights = byCube.get(CubePos.ofBlock(pos.x(), pos.y(), pos.z()));
         if (lights == null) return null;
         for (Light light : lights) {
             if (light.pos().equals(pos)) return light;
@@ -83,10 +74,6 @@ public final class RememberedLights {
     }
 
     int chunkCount() {
-        return byChunk.size();
-    }
-
-    private static long key(int chunkX, int chunkZ) {
-        return ((long) chunkX << 32) ^ (chunkZ & 0xFFFFFFFFL);
+        return byCube.size();
     }
 }

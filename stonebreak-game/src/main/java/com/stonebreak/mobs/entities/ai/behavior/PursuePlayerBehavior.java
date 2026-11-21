@@ -2,7 +2,8 @@ package com.stonebreak.mobs.entities.ai.behavior;
 
 import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.EnumSet;
 
@@ -33,7 +34,7 @@ public final class PursuePlayerBehavior implements Behavior {
     private final float investigateSpeedMultiplier;
     private final float pursueSpeedMultiplier;
 
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
     private final CloseIn closeIn = new CloseIn();
 
     /**
@@ -74,14 +75,14 @@ public final class PursuePlayerBehavior implements Behavior {
     @Override
     public void tick(AiContext context, float deltaTime) {
         if (awareness.getState() == AwarenessController.AwarenessState.ALERTED) {
-            Vector3f player = context.targetPlayer();
+            Vector3d player = context.targetPlayer();
             if (player != null) {
                 closeIn.toward(context, player, holdDistance, pursueSpeedMultiplier);
                 return;
             }
         }
         closeIn.reset();
-        Vector3f destination = awareness.lastKnownPlayerPosition(target);
+        Vector3d destination = awareness.lastKnownPlayerPosition(target);
         if (destination != null) {
             boolean alerted = awareness.getState() == AwarenessController.AwarenessState.ALERTED;
             context.nav().moveTo(destination, ARRIVAL_RADIUS,

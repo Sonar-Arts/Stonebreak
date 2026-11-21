@@ -31,7 +31,8 @@ class TopographyVisualizerTest {
 
     @Test
     void waterRampRunsIndigoToLightBlue() {
-        int abyss = visualizer.colorFor(0);
+        int abyss = visualizer.colorFor(TerrainMapperConfig.TOPO_SEA_FLOOR);
+        assertEquals(abyss, visualizer.colorFor(WorldConfiguration.MIN_Y), "deeper than the sea floor clamps");
         int shore = visualizer.colorFor(SEA_LEVEL);
         // Indigo: blue-dominant and dark. Light blue: bright, blue still dominant.
         assertTrue(blue(abyss) > red(abyss), "abyss should be blue-dominant");
@@ -48,7 +49,7 @@ class TopographyVisualizerTest {
         int peak = visualizer.colorFor(CEILING);
         assertEquals(0xFFF5F5F5, peak, "the ceiling should be the white stop exactly");
         assertEquals(peak, visualizer.colorFor(CEILING + 500), "heights above the ceiling clamp to white");
-        assertEquals(peak, visualizer.colorFor(WorldConfiguration.WORLD_HEIGHT), "world ceiling stays in range");
+        assertEquals(peak, visualizer.colorFor(WorldConfiguration.MAX_Y), "world ceiling stays in range");
     }
 
     @Test
@@ -63,7 +64,7 @@ class TopographyVisualizerTest {
         // magnitude under the shoreline jump. The bound scales with the land ramp's length:
         // at the 1:4 world scale land spans ~116 blocks (SEA_LEVEL..TOPO_LAND_CEILING), so a
         // block is ~1/23 of a palette segment (it was ~1/76 on the 1024-tall world, bound 12).
-        for (int y = 1; y < WorldConfiguration.WORLD_HEIGHT; y++) {
+        for (int y = 1; y < WorldConfiguration.MAX_Y; y++) {
             if (y == SEA_LEVEL + 1) continue; // the intentional discontinuity
             int step = distance(visualizer.colorFor(y - 1), visualizer.colorFor(y));
             assertTrue(step <= 20, "abrupt colour step at y=" + y + " (distance " + step + ")");

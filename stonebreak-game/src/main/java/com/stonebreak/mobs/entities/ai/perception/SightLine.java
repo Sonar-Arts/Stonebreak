@@ -2,6 +2,7 @@ package com.stonebreak.mobs.entities.ai.perception;
 
 import com.stonebreak.player.interaction.RaycastEngine;
 import com.stonebreak.world.World;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -22,11 +23,12 @@ public final class SightLine {
      * @param throughLeaves whether leaves let the view through
      * @return whether {@code eye} sees {@code point}; true without a world to block it
      */
-    public boolean clear(World world, Vector3f eye, Vector3f point, boolean throughLeaves) {
+    public boolean clear(World world, Vector3dc eye, Vector3dc point, boolean throughLeaves) {
         if (world == null) {
             return true;
         }
-        dir.set(point).sub(eye);
+        // A small float offset wherever the look happens; the ray starts from the double eye.
+        dir.set((float) (point.x() - eye.x()), (float) (point.y() - eye.y()), (float) (point.z() - eye.z()));
         float dist = dir.length();
         if (dist < 1.0e-4f) {
             return true;

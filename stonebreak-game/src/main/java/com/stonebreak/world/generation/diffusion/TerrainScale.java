@@ -1,5 +1,9 @@
 package com.stonebreak.world.generation.diffusion;
 
+import com.stonebreak.world.generation.ClimateLayout;
+import com.stonebreak.world.generation.HeightCurveVersion;
+import com.stonebreak.world.generation.NativeCubeGenerator.HeightCurveSpec;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.operations.WorldConfiguration;
 
 import java.util.LinkedHashMap;
@@ -18,7 +22,10 @@ import java.util.Map;
  * soft-caps summits below ~5150 m so nothing is sheared flat at the build limit.
  *
  * <p>The terrain model works in metres on its own 30 m grid; TGMPipe turns them
- * into blocks with exactly these numbers, handed over in its handshake ({@link #worldConfigJson}).
+ * into blocks with exactly these numbers, handed over in its handshake ({@link #handshakeJson}, one config per
+ * {@link HeightCurveVersion} x {@link ClimateLayout} x {@link TerrainScalePreset}). The constants here are the 1:4
+ * preset's v1 curve (the Standard generator's); a DaedalusTGM-Exp world's curve is
+ * {@link TerrainScalePreset#heightCurve} of its saved {@link HeightCurveVersion} (v2 adds a shelf band near sea level).
  */
 public final class TerrainScale {
 
@@ -55,29 +62,133 @@ public final class TerrainScale {
     }
 
     /**
-     * The world config TGMPipe is handed in its handshake, as JSON — keys match
-     * {@code terrain_slm.world.world_config.WorldConfig} exactly (the service rejects a missing or
-     * unknown one), so the service never decides the world's scale on its own.
+     * One world config as TGMPipe reads it, for {@code scale}: keys match
+     * {@code terrain_slm.world.world_config.WorldConfig} exactly (the service rejects a missing or unknown one), so
+     * the service never decides a world's scale on its own. Metres per block and the height curve come from the
+     * preset (1:4 = 60 m blocks, 1:2 = 30 m blocks with half the curve rates); tile size and knots are shared.
      */
-    public static String worldConfigJson() {
-        Map<String, Number> world = new LinkedHashMap<>();
-        world.put("world_height", WorldConfiguration.WORLD_HEIGHT);
+    public static String worldConfigJson(TerrainScalePreset scale) {
+        return worldConfigJson(scale, ClimateLayout.DEFAULT);
+    }
+
+    /**
+     * {@link #worldConfigJson(TerrainScalePreset)} for a world with the EXP-2 climate {@code layout}: adds
+     * {@code climate_layout} (always explicit, even for {@link ClimateLayout#BELTS}, so the service's own default
+     * - which an environment variable can change - never decides a saved world's climate).
+     */
+    public static String worldConfigJson(TerrainScalePreset scale, ClimateLayout layout) {
+        return worldConfigJson(scale, layout, null);
+    }
+
+    /**
+     * {@link #worldConfigJson(TerrainScalePreset, ClimateLayout)} for a world created with the height curve
+     * {@code curve} (null = {@link HeightCurveVersion#CURRENT}): adds {@code curve_version} and the shelf band
+     * ({@code shelf_m_per_block} 0 for v1; the service leaves v1 worlds' fingerprints - their tile caches - as they
+     * were before curve versions existed).
+     */
+    public static String worldConfigJson(TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve) {
+        TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        ClimateLayout l = ClimateLayout.orDefault(layout);
+        HeightCurveSpec c = s.heightCurve(HeightCurveVersion.orCurrent(curve));
+        double[] rates = c.rates();
+        double[] knots = c.knots();
+        Map<String, Object> world = new LinkedHashMap<>();
+        // The cube world spans [MIN_Y, MAX_Y): the service clamps heights to [min_y, world_height).
+        world.put("world_height", WorldConfiguration.MAX_Y);
+        world.put("min_y", WorldConfiguration.MIN_Y);
         world.put("sea_level", WorldConfiguration.SEA_LEVEL);
-        world.put("horizontal_m", HORIZONTAL_METERS_PER_BLOCK);
-        world.put("downscale", DOWNSCALE);
+        world.put("horizontal_m", s.horizontalMetresPerBlock());
+        world.put("downscale", downscaleValue(s));
         world.put("tile_size", TILE_SIZE_BLOCKS);
-        world.put("ocean_m_per_block", CURVE_RATES[0]);
-        world.put("lowland_m_per_block", CURVE_RATES[1]);
-        world.put("midland_m_per_block", CURVE_RATES[2]);
-        world.put("highland_m_per_block", CURVE_RATES[3]);
-        world.put("lowland_top_m", CURVE_KNOTS[0]);
-        world.put("highland_base_m", CURVE_KNOTS[1]);
-        world.put("shore_blend_m", CURVE_KNOTS[2]);
-        world.put("midland_blend_m", CURVE_KNOTS[3]);
-        world.put("highland_blend_m", CURVE_KNOTS[4]);
-        StringBuilder json = new StringBuilder("{\"world\":{");
-        world.forEach((key, value) -> json.append('"').append(key).append("\":").append(value).append(','));
+        world.put("ocean_m_per_block", rates[0]);
+        world.put("lowland_m_per_block", rates[1]);
+        world.put("midland_m_per_block", rates[2]);
+        world.put("highland_m_per_block", rates[3]);
+        world.put("lowland_top_m", knots[0]);
+        world.put("highland_base_m", knots[1]);
+        world.put("shore_blend_m", knots[2]);
+        world.put("midland_blend_m", knots[3]);
+        world.put("highland_blend_m", knots[4]);
+        world.put("climate_layout", l.value());
+        world.put("curve_version", c.version().number());
+        world.put("shelf_m_per_block", c.shelfMetresPerBlock());
+        world.put("shelf_base_m", c.shelfBaseM());
+        world.put("shelf_blend_m", c.shelfBlendM());
+        world.put("shallow_m_per_block", c.shallowMetresPerBlock());
+        world.put("shallow_base_m", c.shallowBaseM());
+        world.put("shallow_blend_m", c.shallowBlendM());
+        StringBuilder json = new StringBuilder("{");
+        world.forEach((key, value) -> {
+            json.append('"').append(key).append("\":");
+            if (value instanceof String text) {
+                json.append('"').append(text).append('"'); // enum values only: nothing to escape
+            } else {
+                json.append(value);
+            }
+            json.append(',');
+        });
         json.setLength(json.length() - 1);
-        return json.append("}}").toString();
+        return json.append('}').toString();
+    }
+
+    /**
+     * Whole model pixels per block along each axis at {@code scale} (2 at 1:4, 1 at 1:2); 0 at 1:1, whose 15 m blocks
+     * are finer than a pixel (see {@link #pixelsPerBlock}).
+     */
+    public static int downscale(TerrainScalePreset scale) {
+        return (int) Math.floor(pixelsPerBlock(scale));
+    }
+
+    /** Model pixels per block along each axis at {@code scale}: 2 at 1:4, 1 at 1:2, 0.5 at 1:1 (two blocks a pixel). */
+    public static double pixelsPerBlock(TerrainScalePreset scale) {
+        return scale.horizontalMetresPerBlock() / MODEL_METERS_PER_PIXEL;
+    }
+
+    /**
+     * The handshake's {@code downscale}: {@link #pixelsPerBlock} as an integer when whole (1:4 / 1:2: unchanged JSON,
+     * so their world fingerprints - tile caches - keep), else the fraction (1:1: {@code 0.5}).
+     */
+    static Number downscaleValue(TerrainScalePreset scale) {
+        double px = pixelsPerBlock(scale);
+        return px == Math.rint(px) ? (Number) (int) px : (Number) px;
+    }
+
+    /** {@link #worldIndex(ClimateLayout, TerrainScalePreset, HeightCurveVersion)} of a current-curve world. */
+    public static int worldIndex(ClimateLayout layout, TerrainScalePreset scale) {
+        return worldIndex(layout, scale, null);
+    }
+
+    /**
+     * The index of the handshake world serving ({@code curve}, {@code layout}, {@code scale}):
+     * {@code (curve.ordinal() * layouts + layout.ordinal()) * presets + scale.ordinal()} (null curve =
+     * {@link HeightCurveVersion#CURRENT}). For {@link HeightCurveVersion#V1} it is the index from before curve
+     * versions existed; with {@link ClimateLayout#BELTS} too it equals the preset ordinal (0 = 1:4, 1 = 1:2). A tile
+     * request names its world by this index and the READY's {@code cache_namespaces} list is in the same order.
+     */
+    public static int worldIndex(ClimateLayout layout, TerrainScalePreset scale, HeightCurveVersion curve) {
+        TerrainScalePreset s = scale == null ? TerrainScalePreset.ONE_TO_FOUR : scale;
+        int c = HeightCurveVersion.orCurrent(curve).ordinal();
+        return (c * ClimateLayout.values().length + ClimateLayout.orDefault(layout).ordinal())
+                * TerrainScalePreset.values().length + s.ordinal();
+    }
+
+    /**
+     * TGMPipe's handshake (protocol v2): one world config per (height curve, climate layout, terrain scale) the game
+     * offers, at {@link #worldIndex} - curves outer, then layouts, {@link TerrainScalePreset}s inner, all in ordinal
+     * order. A tile request names its world by that index, so one service serves 1:4 and 1:2 worlds of every layout
+     * and curve (and the terrain mapper) side by side: the model's caches are in metres, only the block stages and
+     * the climate differ.
+     */
+    public static String handshakeJson() {
+        StringBuilder json = new StringBuilder("{\"worlds\":[");
+        for (HeightCurveVersion c : HeightCurveVersion.values()) {
+            for (ClimateLayout l : ClimateLayout.values()) {
+                for (TerrainScalePreset p : TerrainScalePreset.values()) {
+                    json.append(worldConfigJson(p, l, c)).append(',');
+                }
+            }
+        }
+        json.setLength(json.length() - 1);
+        return json.append("]}").toString();
     }
 }

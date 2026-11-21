@@ -49,17 +49,17 @@ public final class BlockFx {
     }
 
     /** Destroyed at block coordinates. True when the block binds FX to the event (whether or not it played). */
-    public static boolean breakAt(BlockType block, int x, int y, int z) {
+    public static boolean breakAt(BlockType block, long x, long y, long z) {
         return play(block, FxData.EVENT_BREAK, x + 0.5, y + 0.5, z + 0.5, AssetFx.NORMAL);
     }
 
     /** Being mined, at block coordinates. */
-    public static boolean hitAt(BlockType block, int x, int y, int z) {
+    public static boolean hitAt(BlockType block, long x, long y, long z) {
         return play(block, FxData.EVENT_HIT, x + 0.5, y + 0.5, z + 0.5, AssetFx.NORMAL);
     }
 
     /** Placed at block coordinates. */
-    public static boolean placeAt(BlockType block, int x, int y, int z) {
+    public static boolean placeAt(BlockType block, long x, long y, long z) {
         return play(block, FxData.EVENT_PLACE, x + 0.5, y + 0.5, z + 0.5, AssetFx.NORMAL);
     }
 

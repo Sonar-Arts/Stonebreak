@@ -8,7 +8,7 @@ import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goblin.GoblinLoadout.Headwear;
 import com.stonebreak.mobs.goblin.camp.GoblinCamp;
 import com.stonebreak.mobs.goblin.camp.RaidPlanner;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -31,7 +31,7 @@ class PackFightTest {
             .filter(e -> e.isAlive() && e.getPosition().distance(center) <= radius).toList();
 
     private Goblin goblin(float x) {
-        Goblin g = new Goblin(null, new Vector3f(x, 64, 0), new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
+        Goblin g = new Goblin(null, new Vector3d(x, 64, 0), new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
         world.add(g);
         return g;
     }

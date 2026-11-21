@@ -7,7 +7,6 @@ import com.stonebreak.blocks.furnace.FurnaceStateRegistry;
 import com.stonebreak.blocks.torch.TorchBlock;
 import com.stonebreak.blocks.torch.TorchState;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
 import com.stonebreak.world.lighting.BlockOpacity;
 import org.joml.Vector3f;
 
@@ -40,8 +39,8 @@ enum BlockLightSource {
                     .emberPosition(pos.x(), pos.y(), pos.z(), out);
         }
 
-        @Override boolean rememberEmitter(Chunk chunk, int lx, int ly, int lz, BlockPos pos, Vector3f out) {
-            TorchState.parse(chunk.getBlockState(lx, ly, lz)).emberPosition(pos.x(), pos.y(), pos.z(), out);
+        @Override boolean rememberEmitter(World world, BlockPos pos, Vector3f out) {
+            TorchState.parse(world.getBlockStateAt(pos.x(), pos.y(), pos.z())).emberPosition(pos.x(), pos.y(), pos.z(), out);
             return true;
         }
     },
@@ -63,7 +62,7 @@ enum BlockLightSource {
             return out.set(pos.x() + 0.5f, pos.y() + 0.45f, pos.z() + 0.5f);
         }
 
-        @Override boolean rememberEmitter(Chunk chunk, int lx, int ly, int lz, BlockPos pos, Vector3f out) {
+        @Override boolean rememberEmitter(World world, BlockPos pos, Vector3f out) {
             out.set(pos.x() + 0.5f, pos.y() + 0.45f, pos.z() + 0.5f);
             return true;
         }
@@ -122,13 +121,12 @@ enum BlockLightSource {
     abstract Vector3f emitterPosition(World world, BlockPos pos, Vector3f out);
 
     /**
-     * Where a source in a chunk that is unloading keeps emitting from while the chunk is drawn
-     * as FastLOD ({@link RememberedLights}). Reads the chunk itself, which has already left the
-     * world. {@code (lx, ly, lz)} is chunk-local and holds this source; {@code pos} is the same
-     * cell in world space. False for a source that cannot be judged from its own chunk (a
+     * Where a source in a cube that is about to unload keeps emitting from while its terrain is
+     * drawn as LOD ({@link RememberedLights}). Called while the cube is still resident, so it may
+     * read the world at {@code pos}. False for a source that cannot be judged from its own cell (a
      * furnace's lit state and sealed mouth live in the world's registry and its neighbours).
      */
-    boolean rememberEmitter(Chunk chunk, int lx, int ly, int lz, BlockPos pos, Vector3f out) {
+    boolean rememberEmitter(World world, BlockPos pos, Vector3f out) {
         return false;
     }
 

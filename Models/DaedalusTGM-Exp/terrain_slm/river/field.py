@@ -51,6 +51,87 @@ class Drainage:
     d8: torch.Tensor | None = None  # (Hc, Wc) long, 0..7 neighbour, 8 terminal (hydro sidecar)
 
 
+class Lazy:
+    """A diagnostics number (ctx.stats) still on the device: read (one device sync) only when someone asks. Stages
+    used to convert every count at once -- a dozen device syncs per tile for numbers nobody reads in the service
+    (2026-11-19). Behaves as the int / float it stands for."""
+    __slots__ = ("_t", "_conv", "_v")
+
+    def __init__(self, t, conv=int):
+        self._t, self._conv, self._v = t, conv, None
+
+    def value(self):
+        if self._t is not None:
+            self._v, self._t = self._conv(self._t), None
+        return self._v
+
+    def __int__(self):
+        return int(self.value())
+
+    def __float__(self):
+        return float(self.value())
+
+    def __index__(self):
+        return int(self.value())
+
+    def __bool__(self):
+        return bool(self.value())
+
+    def __hash__(self):
+        return hash(self.value())
+
+    def __repr__(self):
+        return repr(self.value())
+
+    def __format__(self, spec):
+        return format(self.value(), spec)
+
+    def _o(self, o):
+        return o.value() if isinstance(o, Lazy) else o
+
+    def __eq__(self, o):
+        return self.value() == self._o(o)
+
+    def __lt__(self, o):
+        return self.value() < self._o(o)
+
+    def __le__(self, o):
+        return self.value() <= self._o(o)
+
+    def __gt__(self, o):
+        return self.value() > self._o(o)
+
+    def __ge__(self, o):
+        return self.value() >= self._o(o)
+
+    def __add__(self, o):
+        return self.value() + self._o(o)
+
+    __radd__ = __add__
+
+    def __sub__(self, o):
+        return self.value() - self._o(o)
+
+    def __rsub__(self, o):
+        return self._o(o) - self.value()
+
+    def __mul__(self, o):
+        return self.value() * self._o(o)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, o):
+        return self.value() / self._o(o)
+
+    def __rtruediv__(self, o):
+        return self._o(o) / self.value()
+
+
+def _max_or_zero(t) -> float:
+    v = float(t)
+    return 0.0 if v == float("-inf") else v
+
+
 @dataclass
 class RiverContext:
     scale: BlockScale
@@ -78,7 +159,23 @@ class RiverField:
 
     @property
     def has_river(self) -> bool:
-        return self.channel is not None and bool(self.channel.any())
+        """Read by several stages per tile: answered once per channel tensor (one device sync, not four)."""
+        ch = self.channel
+        if ch is None:
+            return False
+        hit = _HAS_RIVER.get(id(ch))
+        if hit is not None and hit[0]() is ch and hit[1] == ch._version:
+            return hit[2]
+        v = bool(ch.any())
+        if len(_HAS_RIVER) > 64:
+            _HAS_RIVER.clear()
+        _HAS_RIVER[id(ch)] = (weakref.ref(ch), ch._version, v)
+        return v
+
+
+import weakref  # noqa: E402
+
+_HAS_RIVER: dict = {}   # id(channel tensor) -> (weakref to it, its version, any())
 
 
 @dataclass

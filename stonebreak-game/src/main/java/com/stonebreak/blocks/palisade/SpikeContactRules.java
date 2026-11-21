@@ -43,24 +43,24 @@ public final class SpikeContactRules {
      * spiked wall whose points it presses into, as {@code {dx, dz}} — or {@code null} when it is on
      * no wall's points.
      */
-    public static float[] pointsTouching(World world, float minX, float minY, float minZ,
-                                         float maxX, float maxY, float maxZ) {
-        int ix0 = (int) Math.floor(minX - TOUCH_MARGIN);
-        int ix1 = (int) Math.ceil(maxX + TOUCH_MARGIN);
-        int iy0 = (int) Math.floor(minY);
-        int iy1 = (int) Math.ceil(maxY);
-        int iz0 = (int) Math.floor(minZ - TOUCH_MARGIN);
-        int iz1 = (int) Math.ceil(maxZ + TOUCH_MARGIN);
-        float bodyX = (minX + maxX) * 0.5f;
-        float bodyZ = (minZ + maxZ) * 0.5f;
-        for (int x = ix0; x < ix1; x++) {
-            for (int y = iy0; y < iy1; y++) {
-                for (int z = iz0; z < iz1; z++) {
+    public static float[] pointsTouching(World world, double minX, double minY, double minZ,
+                                         double maxX, double maxY, double maxZ) {
+        long ix0 = (long) Math.floor(minX - TOUCH_MARGIN);
+        long ix1 = (long) Math.ceil(maxX + TOUCH_MARGIN);
+        long iy0 = (long) Math.floor(minY);
+        long iy1 = (long) Math.ceil(maxY);
+        long iz0 = (long) Math.floor(minZ - TOUCH_MARGIN);
+        long iz1 = (long) Math.ceil(maxZ + TOUCH_MARGIN);
+        double bodyX = (minX + maxX) * 0.5;
+        double bodyZ = (minZ + maxZ) * 0.5;
+        for (long x = ix0; x < ix1; x++) {
+            for (long y = iy0; y < iy1; y++) {
+                for (long z = iz0; z < iz1; z++) {
                     if (world.getBlockAt(x, y, z) != BlockType.PALISADE) {
                         continue;
                     }
                     float[] lean = direction(PalisadeState.parse(world.getBlockStateAt(x, y, z)).facing());
-                    if (onPoints(lean, bodyX - (x + 0.5f), bodyZ - (z + 0.5f))) {
+                    if (onPoints(lean, (float) (bodyX - (x + 0.5)), (float) (bodyZ - (z + 0.5)))) {
                         return lean;
                     }
                 }

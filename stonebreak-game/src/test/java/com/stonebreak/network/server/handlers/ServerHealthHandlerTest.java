@@ -54,7 +54,7 @@ class ServerHealthHandlerTest {
     @BeforeEach
     void setUp() {
         when(level.world()).thenReturn(mock(World.class));
-        when(level.spawn()).thenReturn(new Vector3f(0f, 80f, 0f));
+        when(level.spawn()).thenReturn(new org.joml.Vector3d(0, 80, 0));
         ctx.setServerLevel(level);
         locator = new ServerPlayerLocator(ctx.players(), ctx, health);
     }
@@ -93,7 +93,7 @@ class ServerHealthHandlerTest {
         ServerPlayer host = player(1, 40f);
         ServerPlayer guest = player(2, 2f);
 
-        assertTrue(locator.hurtNearestPlayer(new Vector3f(0f, 64f, 0f), 3f, 5f));
+        assertTrue(locator.hurtNearestPlayer(new org.joml.Vector3d(0f, 64f, 0f), 3f, 5f));
 
         assertEquals(17f, guest.health(), "the player the goblin reached, not the host");
         assertEquals(20f, host.health());
@@ -106,7 +106,7 @@ class ServerHealthHandlerTest {
     void aBlowReachesNobodyBeyondMeleeDistance() {
         ServerPlayer far = player(1, 30f);
 
-        assertFalse(locator.hurtNearestPlayer(new Vector3f(0f, 64f, 0f), 3f, 5f));
+        assertFalse(locator.hurtNearestPlayer(new org.joml.Vector3d(0f, 64f, 0f), 3f, 5f));
         assertEquals(20f, far.health());
     }
 
@@ -115,8 +115,8 @@ class ServerHealthHandlerTest {
         ServerPlayer target = player(1, 0f);
         ServerPlayer bystander = player(2, 3f);
 
-        assertTrue(locator.hitPlayerAt(new Vector3f(0.1f, 65f, 0f), 0.4f, 4f, -1));
-        assertFalse(locator.hitPlayerAt(new Vector3f(10f, 65f, 0f), 0.4f, 4f, -1), "inside nobody");
+        assertTrue(locator.hitPlayerAt(new org.joml.Vector3d(0.1f, 65f, 0f), 0.4f, 4f, -1));
+        assertFalse(locator.hitPlayerAt(new org.joml.Vector3d(10f, 65f, 0f), 0.4f, 4f, -1), "inside nobody");
 
         assertEquals(16f, target.health());
         assertEquals(20f, bystander.health());
@@ -127,8 +127,8 @@ class ServerHealthHandlerTest {
         ServerPlayer target = player(1, 5f);
         World world = mock(World.class); // getBlockAt → null: nothing to stop the arrow
         when(world.getPlayerLocator()).thenReturn(locator);
-        StubMob goblin = new StubMob(EntityType.GOBLIN, new Vector3f(0f, 64f, 0f), world);
-        Arrow arrow = new Arrow(world, new Vector3f(5f, 65f, 0f), new Vector3f(1f, 0f, 0f)).firedBy(goblin, 4f);
+        StubMob goblin = new StubMob(EntityType.GOBLIN, new org.joml.Vector3d(0f, 64f, 0f), world);
+        Arrow arrow = new Arrow(world, new org.joml.Vector3d(5f, 65f, 0f), new Vector3f(1f, 0f, 0f)).firedBy(goblin, 4f);
 
         arrow.update(0.01f);
 
@@ -142,7 +142,7 @@ class ServerHealthHandlerTest {
         health.hurt(dead, 20f, PlayerHealthS2C.CAUSE_MOB, System.nanoTime(), ctx);
         ServerPlayer alive = player(2, 4f);
 
-        locator.hurtNearestPlayer(new Vector3f(0f, 64f, 0f), 3f, 0f);
+        locator.hurtNearestPlayer(new org.joml.Vector3d(0f, 64f, 0f), 3f, 0f);
 
         assertEquals(17f, alive.health());
     }
@@ -156,7 +156,7 @@ class ServerHealthHandlerTest {
         ServerPlayer target = player(2, 1.5f);
 
         health.handlePlayerDamage(attacker, melee(target, 1f), ctx);
-        boolean arrowSpent = locator.hitPlayerAt(new Vector3f(1.5f, 65f, 0f), 0.1f, 4f, attacker.playerId());
+        boolean arrowSpent = locator.hitPlayerAt(new org.joml.Vector3d(1.5f, 65f, 0f), 0.1f, 4f, attacker.playerId());
 
         assertEquals(20f, target.health());
         assertFalse(arrowSpent, "the arrow flies on");
@@ -211,9 +211,9 @@ class ServerHealthHandlerTest {
         ServerPlayer shooter = player(1, 0f);
         ServerPlayer target = player(2, 5f);
 
-        assertFalse(locator.hitPlayerAt(new Vector3f(0f, 65f, 0f), 0.1f, 4f, shooter.playerId()),
+        assertFalse(locator.hitPlayerAt(new org.joml.Vector3d(0f, 65f, 0f), 0.1f, 4f, shooter.playerId()),
                 "an arrow leaving the bow is inside its shooter");
-        assertTrue(locator.hitPlayerAt(new Vector3f(5f, 65f, 0f), 0.1f, 4f, shooter.playerId()));
+        assertTrue(locator.hitPlayerAt(new org.joml.Vector3d(5f, 65f, 0f), 0.1f, 4f, shooter.playerId()));
 
         assertEquals(20f, shooter.health());
         assertEquals(16f, target.health());

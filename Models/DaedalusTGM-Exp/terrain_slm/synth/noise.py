@@ -68,11 +68,22 @@ def _hash32(x: torch.Tensor) -> torch.Tensor:
     return x ^ (x >> 16)
 
 
+def hash32_int(x: int) -> int:
+    """`_hash32` on a Python int, bit-identical (no device tensor: building one is a host -> device copy that waits
+    for the GPU)."""
+    x &= _MASK32
+    x ^= x >> 16
+    x = (x * 0x7FEB352D) & _MASK32
+    x ^= x >> 15
+    x = (x * 0x846CA68B) & _MASK32
+    return x ^ (x >> 16)
+
+
 def white_noise(i0: int, j0: int, h: int, w: int, seed: int, stream: int, device) -> torch.Tensor:
     """Unit-variance Gaussian-ish white noise for pixel rows [i0, i0+h), cols [j0, j0+w)."""
     ii = torch.arange(i0, i0 + h, device=device, dtype=torch.int64).view(-1, 1)
     jj = torch.arange(j0, j0 + w, device=device, dtype=torch.int64).view(1, -1)
-    base = _hash32(torch.tensor((seed * 0x9E3779B1 + stream * 0x85EBCA77) & _MASK32, device=device))
+    base = hash32_int((seed * 0x9E3779B1 + stream * 0x85EBCA77) & _MASK32)       # host int: no device sync
     key = _hash32(_hash32(ii ^ base) ^ jj)
     acc = torch.zeros((h, w), device=device, dtype=torch.float32)
     for k in range(4):

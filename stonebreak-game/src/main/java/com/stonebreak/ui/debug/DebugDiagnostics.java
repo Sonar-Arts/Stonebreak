@@ -9,12 +9,13 @@ import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.rendering.sbo.SBOBlockBridge;
 import com.stonebreak.world.World;
+import com.openmason.engine.voxel.world.StreamStats;
 import java.util.ArrayDeque;
 import org.joml.Vector3f;
 
 /**
  * Gathers the running game-state diagnostics shown on the debug info card:
- * the rolling FPS average, chunk-pipeline throughput rates, world-gen noise
+ * the rolling FPS average, cube-stream throughput rates, world-gen noise
  * backend, mob path-search load, and the block / water the player is looking
  * at. Holds the frame-to-frame sampling state those readings need.
  */
@@ -25,10 +26,9 @@ public final class DebugDiagnostics {
     private ArrayDeque<Float> fpsHistory = new ArrayDeque<>(FPS_SAMPLE_SIZE);
     private float averageFPS = 0.0f;
 
-    // Previous ChunkPipelineStats sample for per-second rate derivation.
-    private long pipelineSampleNanos = 0L;
-    private final long[] pipelineLast = new long[6];
-    private final double[] pipelineRates = new double[6];
+    // Per-second rates of the rendered world's stream and, in singleplayer/host, the integrated server's.
+    private final StreamRates localRates = new StreamRates();
+    private final StreamRates serverRates = new StreamRates();
 
     /**
      * Updates the average FPS calculation with the current frame's FPS.
@@ -70,15 +70,14 @@ public final class DebugDiagnostics {
 
         if (camera == null || world == null) return null;
 
-        Vector3f position = player.getPosition();
-        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
+        var position = player.getPosition();
+        double ox = position.x, oy = position.y + 1.6, oz = position.z;
         Vector3f rayDirection = camera.getFront();
 
         for (float d = 0; d < 6.0f; d += 0.05f) {
-            Vector3f point = new Vector3f(rayDirection).mul(d).add(rayOrigin);
-            int bx = (int) Math.floor(point.x);
-            int by = (int) Math.floor(point.y);
-            int bz = (int) Math.floor(point.z);
+            long bx = (long) Math.floor(ox + rayDirection.x * d);
+            long by = (long) Math.floor(oy + rayDirection.y * d);
+            long bz = (long) Math.floor(oz + rayDirection.z * d);
 
             BlockType bt = world.getBlockAt(bx, by, bz);
             if (bt != null && bt != BlockType.AIR) {
@@ -101,15 +100,14 @@ public final class DebugDiagnostics {
 
         if (camera == null || world == null) return null;
 
-        Vector3f position = player.getPosition();
-        Vector3f rayOrigin = new Vector3f(position.x, position.y + 1.6f, position.z);
+        var position = player.getPosition();
+        double ox = position.x, oy = position.y + 1.6, oz = position.z;
         Vector3f rayDirection = camera.getFront();
 
         for (float d = 0; d < 5.0f; d += 0.05f) {
-            Vector3f point = new Vector3f(rayDirection).mul(d).add(rayOrigin);
-            int bx = (int) Math.floor(point.x);
-            int by = (int) Math.floor(point.y);
-            int bz = (int) Math.floor(point.z);
+            long bx = (long) Math.floor(ox + rayDirection.x * d);
+            long by = (long) Math.floor(oy + rayDirection.y * d);
+            long bz = (long) Math.floor(oz + rayDirection.z * d);
 
             BlockType bt = world.getBlockAt(bx, by, bz);
             if (bt == BlockType.WATER) {
@@ -130,33 +128,86 @@ public final class DebugDiagnostics {
     }
 
     /**
-     * Per-second rates through the chunk pipeline stages
-     * (gen → populate → stream → install → mesh → upload), derived from
-     * frame-to-frame deltas of the {@code ChunkPipelineStats} totals.
+     * Per-second rates of the rendered world's cube stream: cubes generated, loaded from the store, populated,
+     * meshed, saved and unloaded, from frame-to-frame deltas of the native {@link StreamStats} totals. "idle"
+     * for a detached world (no stream).
      */
     public String chunkPipelineSummary() {
-        long now = System.nanoTime();
-        long[] totals = {
-            com.stonebreak.world.chunk.utils.ChunkPipelineStats.GENERATED.sum(),
-            com.stonebreak.world.chunk.utils.ChunkPipelineStats.POPULATED.sum(),
-            com.stonebreak.world.chunk.utils.ChunkPipelineStats.STREAMED.sum(),
-            com.stonebreak.world.chunk.utils.ChunkPipelineStats.INSTALLED.sum(),
-            com.stonebreak.world.chunk.utils.ChunkPipelineStats.MESHED.sum(),
-            com.stonebreak.world.chunk.utils.ChunkPipelineStats.UPLOADED.sum(),
-        };
-        // Refresh rates every ~500 ms so the row is readable, not flickering.
-        if (pipelineSampleNanos == 0L || now - pipelineSampleNanos >= 500_000_000L) {
-            double seconds = pipelineSampleNanos == 0L ? 0
-                : (now - pipelineSampleNanos) / 1_000_000_000.0;
-            for (int i = 0; i < totals.length; i++) {
-                pipelineRates[i] = seconds > 0 ? (totals[i] - pipelineLast[i]) / seconds : 0;
-                pipelineLast[i] = totals[i];
-            }
-            pipelineSampleNanos = now;
+        World w = Game.getWorld();
+        return streamRatesSummary(w != null ? w.streamStats() : null, localRates);
+    }
+
+    /** {@link #chunkPipelineSummary()} for the integrated server's world; null without one. */
+    public String serverPipelineSummary() {
+        StreamStats st = serverStreamStats();
+        return st == null ? null : streamRatesSummary(st, serverRates);
+    }
+
+    /** The integrated server's stream counters (singleplayer/host), or null. */
+    public static StreamStats serverStreamStats() {
+        World rendered = Game.getWorld();
+        World authoritative = navigationWorld(rendered);
+        return authoritative != null && authoritative != rendered ? authoritative.streamStats() : null;
+    }
+
+    /** Residency of a stream: installed cubes, loads/generations in flight, meshing, queued (absent, wanted). */
+    public static String streamCubesSummary(StreamStats st) {
+        if (st == null) {
+            return "detached";
         }
-        return String.format("gen %.0f pop %.0f str %.0f inst %.0f mesh %.0f gl %.0f /s",
-            pipelineRates[0], pipelineRates[1], pipelineRates[2],
-            pipelineRates[3], pipelineRates[4], pipelineRates[5]);
+        return String.format("%,d loaded / %d gen / %d mesh / %d queued", st.cubesLoaded(), st.cubesGenerating(),
+            st.cubesMeshing() + st.meshesPending(), st.cubesQueued() + st.installsPending());
+    }
+
+    /** Owner-thread cost of a stream: last/max tick, last plan, ready columns. */
+    public static String streamTickSummary(StreamStats st) {
+        if (st == null) {
+            return "detached";
+        }
+        return String.format("tick %d us (max %d) plan %d us, cols %d/%d ready%s", st.tickUsLast(), st.tickUsMax(),
+            st.planUsLast(), st.columnsReady(), st.columnsTracked(),
+            st.errorsTotal() > 0 ? ", " + st.errorsTotal() + " ERR" : "");
+    }
+
+    static String streamRatesSummary(StreamStats st, StreamRates rates) {
+        if (st == null) {
+            return "detached";
+        }
+        double[] r = rates.sample(System.nanoTime(), new long[]{
+            st.generatedTotal(), st.loadedTotal(), st.populatedTotal(),
+            st.meshedTotal(), st.savedTotal(), st.unloadedTotal(),
+        });
+        return String.format("gen %.0f load %.0f pop %.0f mesh %.0f save %.0f unload %.0f /s",
+            r[0], r[1], r[2], r[3], r[4], r[5]);
+    }
+
+    /**
+     * Rates from counter totals, refreshed every ~500 ms so the row is readable, not flickering. A total that
+     * goes backwards (a new world) restarts the sampling.
+     */
+    static final class StreamRates {
+        private long sampleNanos;
+        private long[] last;
+        private double[] rates = new double[0];
+
+        double[] sample(long now, long[] totals) {
+            if (last == null || last.length != totals.length) {
+                last = totals.clone();
+                rates = new double[totals.length];
+                sampleNanos = now;
+                return rates;
+            }
+            if (now - sampleNanos >= 500_000_000L) {
+                double seconds = (now - sampleNanos) / 1_000_000_000.0;
+                for (int i = 0; i < totals.length; i++) {
+                    long delta = totals[i] - last[i];
+                    rates[i] = delta >= 0 ? delta / seconds : 0;
+                    last[i] = totals[i];
+                }
+                sampleNanos = now;
+            }
+            return rates;
+        }
     }
 
     /** One-line world-gen backend status: Cenda native noise vs classic Java, plus whether the
@@ -165,7 +216,7 @@ public final class DebugDiagnostics {
         if (com.stonebreak.world.generation.noise.TerrainNoise.backend()
                 == com.stonebreak.world.generation.noise.TerrainNoise.Backend.NATIVE) {
             return "Cenda FastNoise2 (" + com.openmason.engine.cenda.CendaKernels.simdLevel() + "), worldgen "
-                + (com.stonebreak.world.generation.WorldgenNatives.isAvailable() ? "native" : "Java");
+                + (com.stonebreak.world.generation.NativeTerrain.isAvailable() ? "native cubes" : "MISSING");
         }
         return "Java (classic simplex)";
     }

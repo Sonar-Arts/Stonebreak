@@ -61,7 +61,7 @@ public final class AnimatedBlockRenderer {
 
     private final SbeEntityRenderer sbeRenderer = new SbeEntityRenderer();
     private final Vector3f unitScale = new Vector3f(1f, 1f, 1f);
-    private final Vector3f reusablePosition = new Vector3f();
+    private final org.joml.Vector3d reusablePosition = new org.joml.Vector3d();
 
     private SBOBlockBridge bridge;
 
@@ -104,22 +104,21 @@ public final class AnimatedBlockRenderer {
      *                  animation clock clip start times are measured against
      */
     public void render(World world, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                       Vector3f cameraPos, float totalTime) {
+                       org.joml.Vector3dc cameraPos, float totalTime) {
         renderBlocks(world, viewMatrix, projectionMatrix, cameraPos, totalTime, MAX_RENDER_DISTANCE_SQ, false);
     }
 
     /** Live door/animated-block shadows. Emissive torches are excluded to avoid enclosing their light. */
     public void renderShadowCasters(World world, Matrix4f view, Matrix4f projection,
-                                    Vector3f lightPosition, float radius, float totalTime) {
+                                    org.joml.Vector3dc lightPosition, float radius, float totalTime) {
         float reach = radius + 2f; // include models extending beyond their anchor cell
-        // view is render space (the SBE draws are); block positions are world space.
-        shadowFrustum.set(com.openmason.engine.rendering.RenderOrigin.acceptWorldSpace(
-                projection.mul(view, shadowViewProjection)));
+        // view is render space (the SBE draws are); block positions are rebased per test below.
+        shadowFrustum.set(projection.mul(view, shadowViewProjection));
         renderBlocks(world, view, projection, lightPosition, totalTime, reach * reach, true);
     }
 
     private void renderBlocks(World world, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                              Vector3f cameraPos, float totalTime, float distanceSquared, boolean shadow) {
+                              org.joml.Vector3dc cameraPos, float totalTime, float distanceSquared, boolean shadow) {
         if (bridge == null || world == null) return;
 
         Set<BlockPos> positions = world.getAnimatedBlockRegistry().positions();
@@ -130,11 +129,14 @@ public final class AnimatedBlockRenderer {
         if (!shadow) playbacks.keySet().retainAll(positions);
 
         for (BlockPos pos : positions) {
-            float dx = pos.x() + 0.5f - cameraPos.x;
-            float dy = pos.y() + 0.5f - cameraPos.y;
-            float dz = pos.z() + 0.5f - cameraPos.z;
+            float dx = pos.x() + 0.5f - (float) cameraPos.x();
+            float dy = pos.y() + 0.5f - (float) cameraPos.y();
+            float dz = pos.z() + 0.5f - (float) cameraPos.z();
             if (dx * dx + dy * dy + dz * dz > distanceSquared) continue;
-            if (shadow && !shadowFrustum.testSphere(pos.x() + .5f, pos.y() + 1f, pos.z() + .5f, 2f)) continue;
+            if (shadow && !shadowFrustum.testSphere(
+                    com.openmason.engine.rendering.RenderOrigin.relativeX((long) pos.x()) + .5f,
+                    com.openmason.engine.rendering.RenderOrigin.relativeY((long) pos.y()) + 1f,
+                    com.openmason.engine.rendering.RenderOrigin.relativeZ((long) pos.z()) + .5f, 2f)) continue;
 
             BlockType type = world.getBlockAt(pos.x(), pos.y(), pos.z());
             if (!AnimatedBlockRegistry.isAnimatedType(type)) {
@@ -223,10 +225,10 @@ public final class AnimatedBlockRenderer {
     }
 
     /** True when world-space {@code point} lies inside the cell at {@code pos}. */
-    private static boolean holdsPoint(BlockPos pos, Vector3f point) {
-        return (int) Math.floor(point.x) == pos.x()
-                && (int) Math.floor(point.y) == pos.y()
-                && (int) Math.floor(point.z) == pos.z();
+    private static boolean holdsPoint(BlockPos pos, org.joml.Vector3dc point) {
+        return (long) Math.floor(point.x()) == pos.x()
+                && (long) Math.floor(point.y()) == pos.y()
+                && (long) Math.floor(point.z()) == pos.z();
     }
 
     /** Extra flat brightness a torch model draws with (it is lit by its own flame). */

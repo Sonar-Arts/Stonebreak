@@ -3,7 +3,8 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.core.Game;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -121,14 +122,14 @@ final class HostileSpawner {
         if (room < rule.groupMin()) {
             return;
         }
-        Vector3f spot = findSpot(rule, anchor.position());
+        Vector3d spot = findSpot(rule, anchor.position());
         if (spot == null || !roll(rule.chance().at(sites.world(), spot))) {
             return; // try again next interval
         }
         int size = Math.min(room, rule.groupMin() + random.nextInt(rule.groupMax() - rule.groupMin() + 1));
         List<Entity> group = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            Vector3f pos = i == 0 ? spot : sites.jitterStandable(spot);
+            Vector3d pos = i == 0 ? spot : sites.jitterStandable(spot);
             if (pos != null && sites.isValidSpawnLocation(pos, rule.type())
                     && rule.where().allows(sites.world(), pos, anchor.position())) {
                 Entity spawned = entityManager.spawnEntity(rule.type(), pos);
@@ -146,10 +147,10 @@ final class HostileSpawner {
         return chance >= 1f || random.nextFloat() < chance;
     }
 
-    private Vector3f findSpot(HostileSpawnRule rule, Vector3f anchor) {
+    private Vector3d findSpot(HostileSpawnRule rule, Vector3dc anchor) {
         World world = sites.world();
         for (int attempt = 0; attempt < SPOT_ATTEMPTS; attempt++) {
-            Vector3f spot = sites.findSpawnNear(anchor, MAX_DISTANCE);
+            Vector3d spot = sites.findSpawnNear(anchor, MAX_DISTANCE);
             if (spot != null && spot.distance(anchor) >= rule.minDistance()
                     && rule.where().allows(world, spot, anchor) && !crowded(rule, spot)) {
                 return spot;
@@ -159,7 +160,7 @@ final class HostileSpawner {
     }
 
     /** Whether a living mob of the rule's type is within its {@link HostileSpawnRule#spacing() spacing} of {@code spot}. */
-    private boolean crowded(HostileSpawnRule rule, Vector3f spot) {
+    private boolean crowded(HostileSpawnRule rule, Vector3dc spot) {
         if (rule.spacing() <= 0f) {
             return false;
         }
@@ -205,7 +206,7 @@ final class HostileSpawner {
         return count;
     }
 
-    private static boolean withinDistance(Vector3f point, List<EntitySpawner.SpawnAnchor> anchors, float distance) {
+    private static boolean withinDistance(Vector3dc point, List<EntitySpawner.SpawnAnchor> anchors, float distance) {
         for (EntitySpawner.SpawnAnchor anchor : anchors) {
             if (point.distance(anchor.position()) <= distance) {
                 return true;

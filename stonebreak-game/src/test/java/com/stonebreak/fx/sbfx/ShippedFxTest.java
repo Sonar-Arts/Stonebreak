@@ -57,6 +57,15 @@ class ShippedFxTest {
     }
 
     @Test
+    void theEffectsThatReplacedRenderingEffectsShip() {
+        // Stonebreak#441: the fire bolt trail/impact, the decoy smoke and the swimmer's ripples.
+        for (String id : List.of("stonebreak:fire_trail", "stonebreak:fire_burst", "stonebreak:illusion_smoke",
+                "stonebreak:water_ripple")) {
+            assertNotNull(library.find(id), id + " is shipped");
+        }
+    }
+
+    @Test
     void thePlacedTorchsFlameBreathesWithItsEmber() {
         FxSystem fire = library.find("stonebreak:torch_fire");
         assertNotNull(fire, "stonebreak:torch_fire is shipped");
@@ -128,7 +137,7 @@ class ShippedFxTest {
         assertTrue(events(bound, "sbo/blocks/SB_Dirt.sbo").contains("step"));
         assertTrue(events(bound, "sbo/blocks/SB_Torch_Placed.sbo").contains("ambient"));
         assertTrue(events(bound, "sbo/blocks/SB_Furnace.sbo").contains("ambient"));
-        assertTrue(events(bound, "sbe/Mobs/SB_Player.sbe").contains("splash"));
+        assertTrue(events(bound, "sbe/Mobs/SB_Player.sbe").containsAll(List.of("splash", "ripple")));
     }
 
     private static List<String> events(Map<Path, FxData> bound, String asset) {

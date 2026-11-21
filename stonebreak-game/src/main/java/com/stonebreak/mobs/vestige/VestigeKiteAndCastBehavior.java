@@ -2,6 +2,8 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
+import com.stonebreak.util.Positions;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 /**
@@ -26,7 +28,8 @@ final class VestigeKiteAndCastBehavior extends VestigeBehavior {
     private float replanAt;
     private boolean released;
     private CoverFinder.PeekSetup post;
-    private final Vector3f scratch = new Vector3f();
+    private final Vector3d scratch = new Vector3d();
+    private final Vector3f headingScratch = new Vector3f();
 
     VestigeKiteAndCastBehavior(Vestige vestige) {
         super(vestige);
@@ -79,9 +82,9 @@ final class VestigeKiteAndCastBehavior extends VestigeBehavior {
             }
             case STEP_OUT -> {
                 context.faceTarget(WATCH_TURN_SPEED);
-                Vector3f out = post != null ? post.peek() : null;
+                Vector3d out = post != null ? post.peek() : null;
                 if (out != null && vestige.getPosition().distance(out) > 0.2f) {
-                    Vector3f heading = scratch.set(out).sub(vestige.getPosition());
+                    Vector3f heading = Positions.offset(vestige.getPosition(), out, headingScratch);
                     heading.y = 0f;
                     float yaw = vestige.getYaw();
                     context.steering().steerAlong(heading.normalize(), MOVE_SPEED, deltaTime, false);

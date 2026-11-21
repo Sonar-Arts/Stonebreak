@@ -1,8 +1,5 @@
 package com.stonebreak.world.save.repository;
 
-import com.openmason.engine.voxel.cco.data.palette.CcoPalettedChunkStorage;
-import com.stonebreak.blocks.BlockType;
-import com.stonebreak.world.save.model.ChunkData;
 import com.stonebreak.world.save.model.PlayerData;
 import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.operations.WorldConfiguration;
@@ -13,9 +10,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -28,73 +22,38 @@ class FileSaveRepositoryTest {
     @TempDir
     Path tempDir;
 
-    /** Direct repository writes of one chunk from four threads — SaveService serializes
-     *  its own same-chunk writes, so this pins the file layer by itself (Windows rename
-     *  contention used to throw AccessDeniedException here). */
+    /** Direct repository writes of player.json from four threads (atomic + durable replace): one complete
+     *  record survives and no temp file is left (Windows rename contention used to throw here). */
     @Test
-    void concurrentSavesOfOneChunkLeaveOneValidPayload() throws Exception {
+    void concurrentPlayerSavesLeaveOneValidRecord() throws Exception {
         String worldPath = tempDir.resolve("w10").toString();
         FileSaveRepository repo = new FileSaveRepository(worldPath);
-        BlockType[] types = {BlockType.STONE, BlockType.DIRT, BlockType.GRASS, BlockType.SAND};
+        int[] slots = {0, 1, 2, 3};
 
         try (java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(4)) {
             java.util.concurrent.Future<?>[] futures = new java.util.concurrent.Future[4];
             for (int i = 0; i < 4; i++) {
-                final BlockType type = types[i];
-                final int idx = i;
-
-                futures[idx] = executor.submit(() -> {
+                final int slot = slots[i];
+                futures[i] = executor.submit(() -> {
                     try {
-                        CcoPalettedChunkStorage blocks =
-                            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
-                        blocks.set(0, 0, 0, type);
-
-                        ChunkData chunk = ChunkData.builder()
-                            .chunkX(7)
-                            .chunkZ(7)
-                            .blocks(blocks)
-                            .lastModified(LocalDateTime.of(2024, 3, 15, 10, 30, 45))
-                            .build();
-
-                        repo.saveChunk(chunk);
+                        repo.savePlayer(PlayerData.builder().worldName("w").selectedHotbarSlot(slot).build());
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
                 });
             }
-
-            // Wait for all with timeouts
             for (java.util.concurrent.Future<?> f : futures) {
                 f.get(10, java.util.concurrent.TimeUnit.SECONDS);
             }
         }
 
-        // Load and verify exactly one valid chunk remains
-        java.util.Optional<ChunkData> loaded = repo.loadChunk(7, 7);
-        assertTrue(loaded.isPresent(), "Chunk (7,7) should still exist after concurrent saves");
-
-        BlockType survivor = (BlockType) loaded.get().getBlockStorage().get(0, 0, 0);
-        boolean matchesOneOfTheFour = false;
-        for (BlockType t : types) {
-            if (t == survivor || t.equals(survivor)) {
-                matchesOneOfTheFour = true;
-                break;
-            }
+        Optional<PlayerData> loaded = repo.loadPlayer();
+        assertTrue(loaded.isPresent());
+        int survivor = loaded.get().getSelectedHotbarSlot();
+        assertTrue(survivor >= 0 && survivor <= 3, "survivor " + survivor);
+        try (Stream<Path> walk = Files.walk(Path.of(worldPath))) {
+            assertFalse(walk.anyMatch(p -> p.toString().endsWith(".tmp")), "No .tmp residue");
         }
-        assertTrue(matchesOneOfTheFour,
-            "Surviving block (0,0,0) was " + survivor + " — expected one of STONE, DIRT, GRASS, SAND");
-
-        // No .tmp residue anywhere under world root
-        Path worldRoot = Path.of(worldPath);
-        java.util.stream.Stream<Path> walk = Files.walk(worldRoot);
-        try {
-            boolean tmpFound = walk.anyMatch(p -> p.toString().endsWith(".tmp"));
-            walk.close();
-            assertFalse(tmpFound, "No .tmp residue should remain after concurrent saves");
-        } finally {
-            walk.close();
-        }
-
         repo.close();
     }
 
@@ -209,77 +168,6 @@ class FileSaveRepositoryTest {
     }
 
     @Test
-    void chunkPathsFollowRegionFormula() throws IOException {
-        String worldPath = tempDir.resolve("world").toString();
-        FileSaveRepository repo = new FileSaveRepository(worldPath);
-
-        ChunkData c00 = smallChunk(0, 0);
-        ChunkData c3131 = smallChunk(31, 31);
-        ChunkData c320 = smallChunk(32, 0);
-        ChunkData cm1m1 = smallChunk(-1, -1);
-        ChunkData cm33m33 = smallChunk(-33, -33);
-
-        repo.saveChunk(c00);
-        repo.saveChunk(c3131);
-        repo.saveChunk(c320);
-        repo.saveChunk(cm1m1);
-        repo.saveChunk(cm33m33);
-
-        Path worldRoot = Path.of(worldPath);
-
-        assertTrue(Files.exists(worldRoot.resolve("chunks/r.0.0/c.0.0.sbc")));
-        assertTrue(Files.exists(worldRoot.resolve("chunks/r.0.0/c.31.31.sbc")));
-        assertTrue(Files.exists(worldRoot.resolve("chunks/r.1.0/c.32.0.sbc")));
-        assertTrue(Files.exists(worldRoot.resolve("chunks/r.-1.-1/c.-1.-1.sbc")));
-        assertTrue(Files.exists(worldRoot.resolve("chunks/r.-2.-2/c.-33.-33.sbc")));
-
-        assertTrue(repo.chunkExists(0, 0));
-        assertTrue(repo.chunkExists(31, 31));
-        assertTrue(repo.chunkExists(32, 0));
-        assertTrue(repo.chunkExists(-1, -1));
-        assertTrue(repo.chunkExists(-33, -33));
-
-        Optional<ChunkData> loaded = repo.loadChunk(0, 0);
-        assertTrue(loaded.isPresent());
-        assertEquals(0, loaded.get().getChunkX());
-        assertEquals(0, loaded.get().getChunkZ());
-        assertEquals(BlockType.STONE, loaded.get().getBlockStorage().get(0, 0, 0));
-
-        repo.close();
-    }
-
-    @Test
-    void deleteChunkRemovesFileAndExistsGoesFalse() throws IOException {
-        String worldPath = tempDir.resolve("world").toString();
-        FileSaveRepository repo = new FileSaveRepository(worldPath);
-
-        repo.saveChunk(smallChunk(7, 7));
-        assertTrue(repo.chunkExists(7, 7));
-
-        repo.deleteChunk(7, 7);
-        assertFalse(repo.chunkExists(7, 7));
-        assertTrue(repo.loadChunk(7, 7).isEmpty());
-
-        repo.close();
-    }
-
-    @Test
-    void saveChunksCollectionSavesAll() throws IOException {
-        String worldPath = tempDir.resolve("world").toString();
-        FileSaveRepository repo = new FileSaveRepository(worldPath);
-
-        ChunkData chunk1 = smallChunk(10, 20);
-        ChunkData chunk2 = smallChunk(-5, -5);
-
-        repo.saveChunks(List.of(chunk1, chunk2));
-
-        assertTrue(repo.chunkExists(10, 20));
-        assertTrue(repo.chunkExists(-5, -5));
-
-        repo.close();
-    }
-
-    @Test
     void namedPlayerSanitization() throws IOException {
         String worldPath = tempDir.resolve("world").toString();
         FileSaveRepository repo = new FileSaveRepository(worldPath);
@@ -318,7 +206,6 @@ class FileSaveRepositoryTest {
             .build();
         repo.saveWorld(wd);
         repo.savePlayer(PlayerData.createDefault("tmp"));
-        repo.saveChunk(smallChunk(0, 0));
         repo.saveNamedPlayerBytes("TestUser", "data".getBytes());
 
         List<Path> tmpFiles;
@@ -328,26 +215,5 @@ class FileSaveRepositoryTest {
         assertTrue(tmpFiles.isEmpty(), "No .tmp files should remain: " + tmpFiles);
 
         repo.close();
-    }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private static ChunkData smallChunk(int chunkX, int chunkZ) {
-        CcoPalettedChunkStorage blocks =
-            CcoPalettedChunkStorage.createEmpty(16, WorldConfiguration.WORLD_HEIGHT, 16, BlockType.AIR);
-        blocks.set(0, 0, 0, BlockType.STONE);
-        blocks.set(5, 10, 5, BlockType.DIRT);
-
-        return ChunkData.builder()
-            .chunkX(chunkX)
-            .chunkZ(chunkZ)
-            .blocks(blocks)
-            .lastModified(LocalDateTime.of(2024, 3, 15, 10, 30, 45))
-            .featuresPopulated(true)
-            .hasEntitiesGenerated(false)
-            .waterMetadata(new HashMap<>())
-            .entities(new ArrayList<>())
-            .snowLayers(new HashMap<>())
-            .build();
     }
 }

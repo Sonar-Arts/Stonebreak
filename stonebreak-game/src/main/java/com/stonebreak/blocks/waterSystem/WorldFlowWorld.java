@@ -1,164 +1,103 @@
 package com.stonebreak.blocks.waterSystem;
 
-import java.util.HashSet;
 import java.util.Objects;
-import java.util.Set;
 
+import com.openmason.engine.voxel.world.CubeWorld;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.blocks.waterSystem.handlers.FlowBlockInteraction;
+import com.stonebreak.world.ServerMutationSinks;
 import com.stonebreak.world.World;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.utils.CachedChunkAccess;
 import com.stonebreak.world.operations.WorldConfiguration;
+import com.stonebreak.world.voxel.VoxelLayers;
 
 /**
- * Production {@link FlowWorld} over a {@link World}: CCO block reads through
- * the shared {@link CachedChunkAccess} plumbing, chunk-owned water-layer state,
- * batched mesh dirtying (flushed once per logical tick, spilling to border
- * neighbors so corner-sewn water heights stay seamless), and the server
- * replication funnel for sim-driven block mutations.
+ * Production {@link FlowWorld} over a {@link World} on the native cube runtime (#447): blocks through
+ * {@link World#getBlockAt}/{@link World#setBlockRaw}, water state in the world's WATER layer
+ * ({@link VoxelLayers#WATER}, converted to the game vocabulary), and the server replication funnels for
+ * sim-driven block and water-level mutations. Remeshing needs no bookkeeping: block and WATER-layer writes
+ * mark cubes dirty natively and the stream re-meshes them.
  */
 public final class WorldFlowWorld implements FlowWorld {
 
     private final World world;
-    private final CachedChunkAccess access;
-    private final Set<Long> dirtyChunks = new HashSet<>();
 
     public WorldFlowWorld(World world) {
         this.world = Objects.requireNonNull(world, "world");
-        this.access = new CachedChunkAccess(world);
     }
 
     @Override
-    public BlockType getBlock(int x, int y, int z) {
-        return access.getBlock(x, y, z);
+    public BlockType getBlock(long x, long y, long z) {
+        return world.getBlockAt(x, y, z);
     }
 
     @Override
-    public boolean isLoaded(int x, int y, int z) {
-        return access.isLoaded(x, y, z);
+    public boolean isLoaded(long x, long y, long z) {
+        return world.isLoaded(x, y, z);
     }
 
     @Override
-    public void setBlock(int x, int y, int z, BlockType type) {
-        Chunk chunk = chunkAt(x, z);
-        if (chunk == null || y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+    public void setBlock(long x, long y, long z, BlockType type) {
+        if (!WorldConfiguration.inBounds(y) || !world.setBlockRaw(x, y, z, type)) {
             return;
         }
-        chunk.setBlock(Math.floorMod(x, WorldConfiguration.CHUNK_SIZE), y,
-                       Math.floorMod(z, WorldConfiguration.CHUNK_SIZE), type);
-        world.invalidatePhysicsBlock(x, y, z);
-        markDirty(x, z);
-
-        // Report the mutation to the integrated server's replication funnel
-        // (installed on the headless server world only) so flow reaches clients
-        // through the same per-section batches as player edits.
-        com.stonebreak.world.ServerMutationSinks.BlockSink sink = world.serverSinks().blocks();
+        // Report the mutation to the integrated server's replication funnel (installed on the headless
+        // server world only) so flow reaches clients through the same batches as player edits.
+        ServerMutationSinks.BlockSink sink = world.serverSinks().blocks();
         if (sink != null) {
-            sink.onServerBlockChange(x, y, z, type);
+            sink.onServerBlockChange(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z), type);
         }
     }
 
     @Override
-    public int getWater(int x, int y, int z) {
-        Chunk chunk = chunkAt(x, z);
-        if (chunk == null) {
-            return 0;
-        }
-        return chunk.getWaterLayer().get(Math.floorMod(x, WorldConfiguration.CHUNK_SIZE), y,
-                                         Math.floorMod(z, WorldConfiguration.CHUNK_SIZE));
+    public int getWater(long x, long y, long z) {
+        int value = world.getWaterValueAt(x, y, z);
+        return Math.max(value, 0);
     }
 
     @Override
-    public void setWater(int x, int y, int z, int value) {
-        Chunk chunk = chunkAt(x, z);
-        if (chunk == null) {
-            return;
-        }
-        chunk.getWaterLayer().set(Math.floorMod(x, WorldConfiguration.CHUNK_SIZE), y,
-                                  Math.floorMod(z, WorldConfiguration.CHUNK_SIZE), value);
-        world.invalidatePhysicsWater(x, y, z);
+    public void setWater(long x, long y, long z, int value) {
+        world.setWaterValueAt(x, y, z, value);
     }
 
     @Override
-    public boolean isSolid(int x, int y, int z) {
+    public boolean isSolid(long x, long y, long z) {
         BlockType block = getBlock(x, y, z);
         return block != null && block.isSolid();
     }
 
     @Override
-    public void dropFragile(int x, int y, int z, BlockType type) {
+    public void dropFragile(long x, long y, long z, BlockType type) {
         FlowBlockInteraction.dropFragile(world, x, y, z, type);
     }
 
     @Override
-    public void markWaterChanged(int x, int y, int z, int newValue) {
-        markDirty(x, z);
-
-        // Report the layer change to the integrated server's water replication funnel
-        // (installed on the headless server world only) so clients receive live flow
-        // levels as BlockMetaS2C (KIND_WATER_LEVEL). Value 0 = removed / became source.
-        com.stonebreak.world.ServerMutationSinks.WaterSink sink = world.serverSinks().water();
+    public void markWaterChanged(long x, long y, long z, int newValue) {
+        // Live flow levels to clients as BlockMetaS2C (KIND_WATER_LEVEL); value 0 = removed / became
+        // source. Installed on the headless server world only.
+        ServerMutationSinks.WaterSink sink = world.serverSinks().water();
         if (sink != null) {
-            sink.onServerWaterChange(x, y, z, newValue);
+            sink.onServerWaterChange(Math.toIntExact(x), Math.toIntExact(y), Math.toIntExact(z), newValue);
         }
     }
 
-    /**
-     * Flushes batched mesh rebuilds. Mesh only — water flow is recomputable
-     * state and must not mark chunks save-dirty; real block changes already
-     * do that through {@link Chunk#setBlock}.
-     */
     @Override
-    public void onTickComplete() {
-        if (dirtyChunks.isEmpty()) {
+    public void forEachWaterValue(long cx, long cy, long cz, WaterCellVisitor visitor) {
+        CubeWorld.LayerCells cells = world.voxels().scanLayer(VoxelLayers.WATER, cx, cy, cz);
+        if (cells == null) {
             return;
         }
-        for (long key : dirtyChunks) {
-            int chunkX = (int) (key >> 32);
-            int chunkZ = (int) key;
-            if (world.getChunkIfLoaded(chunkX, chunkZ) != null) {
-                world.triggerChunkRebuild(chunkX * WorldConfiguration.CHUNK_SIZE, 0,
-                                          chunkZ * WorldConfiguration.CHUNK_SIZE);
+        long x0 = cx << 5, y0 = cy << 5, z0 = cz << 5;
+        for (int i = 0; i < cells.count(); i++) {
+            int cell = Short.toUnsignedInt(cells.index()[i]);
+            int value = VoxelLayers.waterToGame(Short.toUnsignedInt(cells.value()[i]));
+            if (value != 0) {
+                visitor.accept(x0 + (cell & 31), y0 + ((cell >> 10) & 31), z0 + ((cell >> 5) & 31), value);
             }
         }
-        dirtyChunks.clear();
     }
 
     @Override
-    public void onChunkUnloaded(int chunkX, int chunkZ) {
-        access.onChunkUnloaded(chunkX, chunkZ);
-    }
-
-    /**
-     * Marks the containing chunk dirty, plus adjacent chunks when the cell sits
-     * on a border — water corner heights are sewn across chunk seams, so a
-     * level change at local x/z 0 or 15 changes the neighbor's mesh too.
-     */
-    private void markDirty(int x, int z) {
-        int chunkX = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-        int chunkZ = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-        dirtyChunks.add(chunkKey(chunkX, chunkZ));
-
-        int localX = Math.floorMod(x, WorldConfiguration.CHUNK_SIZE);
-        int localZ = Math.floorMod(z, WorldConfiguration.CHUNK_SIZE);
-        if (localX == 0) {
-            dirtyChunks.add(chunkKey(chunkX - 1, chunkZ));
-        } else if (localX == WorldConfiguration.CHUNK_SIZE - 1) {
-            dirtyChunks.add(chunkKey(chunkX + 1, chunkZ));
-        }
-        if (localZ == 0) {
-            dirtyChunks.add(chunkKey(chunkX, chunkZ - 1));
-        } else if (localZ == WorldConfiguration.CHUNK_SIZE - 1) {
-            dirtyChunks.add(chunkKey(chunkX, chunkZ + 1));
-        }
-    }
-
-    private Chunk chunkAt(int x, int z) {
-        return access.chunkAt(x, z);
-    }
-
-    private static long chunkKey(int chunkX, int chunkZ) {
-        return CachedChunkAccess.chunkKey(chunkX, chunkZ);
+    public boolean readCubeIds(long cx, long cy, long cz, short[] out) {
+        return world.voxels().readIds(cx, cy, cz, out);
     }
 }

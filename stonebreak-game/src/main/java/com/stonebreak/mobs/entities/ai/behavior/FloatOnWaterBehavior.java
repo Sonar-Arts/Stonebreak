@@ -1,7 +1,10 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
+import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.nav.GroundProbe;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.EnumSet;
@@ -31,7 +34,7 @@ public final class FloatOnWaterBehavior implements Behavior {
     private static final float SURFACE_SPRING = 6.0f;
     private static final float SURFACE_SPRING_MAX_SPEED = 1.5f;
 
-    private final Vector3f target = new Vector3f();
+    private final Vector3d target = new Vector3d();
 
     @Override
     public int priority() {
@@ -45,7 +48,7 @@ public final class FloatOnWaterBehavior implements Behavior {
 
     @Override
     public boolean canStart(AiContext context) {
-        return context.entity().canSwim() && !Float.isNaN(surfaceOrNaN(context));
+        return context.entity().canSwim() && !Double.isNaN(surfaceOrNaN(context));
     }
 
     @Override
@@ -55,8 +58,8 @@ public final class FloatOnWaterBehavior implements Behavior {
 
     @Override
     public void tick(AiContext context, float deltaTime) {
-        float surface = surfaceOrNaN(context);
-        if (Float.isNaN(surface)) {
+        double surface = surfaceOrNaN(context);
+        if (Double.isNaN(surface)) {
             return; // water gone; shouldContinue ends this on the next tick
         }
         if (context.nav().isSettled()) {
@@ -65,7 +68,7 @@ public final class FloatOnWaterBehavior implements Behavior {
 
         // Applied after navigation has committed its horizontal velocity for this tick.
         Vector3f velocity = context.entity().getVelocity();
-        float toSurface = surface - context.entity().getPosition().y;
+        float toSurface = (float) (surface - context.entity().getY());
         velocity.y = Math.max(-SURFACE_SPRING_MAX_SPEED,
                 Math.min(SURFACE_SPRING_MAX_SPEED, toSurface * SURFACE_SPRING));
         context.entity().setVelocity(velocity);
@@ -87,19 +90,19 @@ public final class FloatOnWaterBehavior implements Behavior {
     }
 
     private void paddleSomewhere(AiContext context) {
-        Vector3f position = context.entity().getPosition();
+        Vector3d position = context.entity().getPosition();
         float angle = context.random().nextFloat() * (float) (Math.PI * 2.0);
         float distance = context.randomBetween(PADDLE_MIN_DISTANCE, PADDLE_MAX_DISTANCE);
         target.set(
-                position.x + (float) Math.cos(angle) * distance,
+                position.x + Math.cos(angle) * distance,
                 position.y,
-                position.z + (float) Math.sin(angle) * distance);
+                position.z + Math.sin(angle) * distance);
         context.nav().moveTo(target, ARRIVAL_RADIUS, PADDLE_SPEED_MULTIPLIER);
     }
 
-    private static float surfaceOrNaN(AiContext context) {
-        Vector3f position = context.entity().getPosition();
-        float surface = GroundProbe.waterSurface(context.world(), position.x, position.y, position.z);
-        return surface == Float.NEGATIVE_INFINITY ? Float.NaN : surface;
+    private static double surfaceOrNaN(AiContext context) {
+        LivingEntity entity = context.entity();
+        double surface = GroundProbe.waterSurface(context.world(), entity.getX(), entity.getY(), entity.getZ());
+        return surface == Double.NEGATIVE_INFINITY ? Double.NaN : surface;
     }
 }

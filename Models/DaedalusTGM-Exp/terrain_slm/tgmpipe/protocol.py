@@ -5,16 +5,24 @@ Mirror of stonebreak-game's `TGMPipeProtocol` -- change both together and bump V
 Frame: u32 length (of everything after it), u8 type, body. Little-endian throughout.
 
 Game -> service
-  HELLO      u16 version, UTF-8 JSON {"world": WorldConfig}
-  TILE       u32 id, i64 seed, i32 tile_x, i32 tile_z, u8 lod, u8 priority (lower = sooner)
+  HELLO      u16 version, UTF-8 JSON {"worlds": [WorldConfig, ...]} -- one per terrain scale the game offers
+             (v2: a world is no longer pinned per process; the generator's caches are in metres, so every
+             scale shares them and only the block stages differ)
+  TILE       u32 id, i64 seed, i32 tile_x, i32 tile_z, u8 lod, u8 priority (lower = sooner),
+             u8 world (index into HELLO's "worlds")
   CANCEL     u32 id -- the game no longer wants that request's answer
   STATUS     u32 token
 
 Service -> game
-  READY        UTF-8 JSON {"name", "model_id", "device", "cache", ...}, once, after HELLO
+  READY        UTF-8 JSON {"name", "model_id", "device", "cache_namespaces": [one per world], ...}, once,
+               after HELLO ("cache_namespace" = world 0's, for older readers)
   TILE_DATA    u32 id, u8 flags (bit 0 = from the disk cache), u16 rows, u16 cols, i32 i1, i32 j1,
                then PLANES int16 planes of rows x cols, row-major (row = x - i1, col = z - j1):
-               block height, biome id, water level, river tunnel floor, roof, flow octant
+               block height, biome id, water level, river tunnel floor, roof, flow octant, carve code
+               (world/carve_node.py; 16 bits carried as int16)
+               v3: then the SURFACE BLOCK (world/surface_channels.py): u8 count, per channel u8 name_len, ASCII name,
+               f32 scale, f32 offset, then count uint8 planes of rows x cols (255 = no data); readers look channels up
+               by name and ignore unknown ones, so a new channel never changes the format
   TILE_ERROR   u32 id, UTF-8 message
   STATUS_REPLY u32 token, UTF-8 JSON (model, queue, cache, timings; "vram" = tgmpipe/gpu_memory.py, the F3 screen)
   FATAL        UTF-8 message; the service exits after sending it
@@ -27,8 +35,9 @@ import json
 import struct
 from typing import BinaryIO
 
-VERSION = 1
-PLANES = 6
+#: 3 (2026-11-19, agent V): TILE_DATA carries the named per-block surface channels after the int16 planes.
+VERSION = 3
+PLANES = 7
 
 HELLO, TILE, CANCEL, STATUS = 0x01, 0x02, 0x03, 0x04
 READY, TILE_DATA, TILE_ERROR, STATUS_REPLY, FATAL = 0x81, 0x82, 0x83, 0x84, 0x8F
@@ -37,7 +46,7 @@ FLAG_CACHED = 0x01
 MAX_FRAME = 64 << 20
 
 _LEN = struct.Struct("<I")
-_TILE = struct.Struct("<IqiiBB")
+_TILE = struct.Struct("<IqiiBBB")
 _TILE_HEAD = struct.Struct("<IBHHii")
 _U32 = struct.Struct("<I")
 _U16 = struct.Struct("<H")
@@ -82,8 +91,8 @@ def parse_hello(body: bytes) -> tuple[int, dict]:
     return version, json.loads(body[_U16.size:].decode())
 
 
-def parse_tile(body: bytes) -> tuple[int, int, int, int, int, int]:
-    """(id, seed, tile_x, tile_z, lod, priority)"""
+def parse_tile(body: bytes) -> tuple[int, int, int, int, int, int, int]:
+    """(id, seed, tile_x, tile_z, lod, priority, world)"""
     return _TILE.unpack(body)
 
 
@@ -95,8 +104,8 @@ def hello(version: int, payload: dict) -> bytes:
     return frame(HELLO, _U16.pack(version), json.dumps(payload).encode())
 
 
-def tile(req_id: int, seed: int, tile_x: int, tile_z: int, lod: int, priority: int) -> bytes:
-    return frame(TILE, _TILE.pack(req_id, seed, tile_x, tile_z, lod, priority))
+def tile(req_id: int, seed: int, tile_x: int, tile_z: int, lod: int, priority: int, world: int = 0) -> bytes:
+    return frame(TILE, _TILE.pack(req_id, seed, tile_x, tile_z, lod, priority, world))
 
 
 def cancel(req_id: int) -> bytes:
@@ -109,23 +118,33 @@ def ready(payload: dict) -> bytes:
 
 
 def tile_data(req_id: int, cached: bool, i1: int, j1: int, planes) -> bytes:
-    """`planes`: int16 array (PLANES, rows, cols)."""
+    """`planes`: int16 array (PLANES, rows, cols); its surface channels (`surface_channels.TilePlanes.surface`,
+    none for a plain array) follow as the v3 surface block."""
+    from terrain_slm.world import surface_channels as SC
+
     k, rows, cols = planes.shape
     if k != PLANES:
         raise ValueError(f"expected {PLANES} planes, got {k}")
     head = _TILE_HEAD.pack(req_id, FLAG_CACHED if cached else 0, rows, cols, i1, j1)
-    return frame(TILE_DATA, head, planes.astype("<i2", copy=False).tobytes())
+    import numpy as np
+    return frame(TILE_DATA, head, np.asarray(planes).astype("<i2", copy=False).tobytes(), SC.pack(SC.surface_of(planes)))
 
 
 def parse_tile_data(body: bytes):
-    """(id, cached, i1, j1, planes (PLANES, rows, cols) int16) -- for tests and tools."""
+    """(id, cached, i1, j1, planes (PLANES, rows, cols) int16 as a TilePlanes with `.surface`) -- tests and tools."""
     import numpy as np
+    from terrain_slm.world import surface_channels as SC
 
     req_id, flags, rows, cols, i1, j1 = _TILE_HEAD.unpack_from(body)
-    planes = np.frombuffer(body[_TILE_HEAD.size:], dtype="<i2")
-    if planes.size != PLANES * rows * cols:
-        raise ProtocolError(f"tile body holds {planes.size} values, expected {PLANES}x{rows}x{cols}")
-    return req_id, bool(flags & FLAG_CACHED), i1, j1, planes.reshape(PLANES, rows, cols)
+    n = PLANES * rows * cols
+    planes = np.frombuffer(body, dtype="<i2", count=n, offset=_TILE_HEAD.size) if len(body) >= _TILE_HEAD.size + 2 * n else None
+    rest = body[_TILE_HEAD.size + 2 * n:]
+    if planes is None or not rest:
+        raise ProtocolError(f"tile body too short for {PLANES}x{rows}x{cols} planes + surface block")
+    surface, used = SC.unpack(rest, rows, cols)
+    if used != len(rest):
+        raise ProtocolError(f"tile surface block holds {len(rest)} bytes, parsed {used}")
+    return req_id, bool(flags & FLAG_CACHED), i1, j1, SC.TilePlanes(planes.reshape(PLANES, rows, cols), surface)
 
 
 def tile_error(req_id: int, message: str) -> bytes:

@@ -2,7 +2,7 @@ package com.stonebreak.mobs.vestige;
 
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.function.Predicate;
 
@@ -46,7 +46,7 @@ final class VestigeVanishBehavior extends VestigeBehavior {
     private Phase phase = Phase.DONE;
     private float elapsed;
     private boolean landed;
-    private Vector3f refuge;
+    private Vector3d refuge;
     private float readyAt;
 
     private VestigeVanishBehavior(Vestige vestige, String name, int priority, Predicate<VestigeBehavior> trigger,
@@ -173,7 +173,7 @@ final class VestigeVanishBehavior extends VestigeBehavior {
         vestige.veil(tuning().veilSeconds());
     }
 
-    private Vector3f refuge() {
+    private Vector3d refuge() {
         float kite = tuning().kiteDistance();
         return attackBand ? fleeSpot(kite, kite + 4f)
                 : fleeSpot(tuning().lurkBandMin() + 2f, tuning().lurkBandMax());

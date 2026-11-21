@@ -5,6 +5,8 @@ import com.stonebreak.mobs.entities.ai.AwarenessController;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
 import com.stonebreak.mobs.entities.ai.nav.Steering;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 import java.util.Random;
@@ -27,9 +29,10 @@ public final class AiContext {
     private final Random random;
     private final PlayerLocator players;
 
-    private final Vector3f playerScratch = new Vector3f();
+    private final Vector3d playerScratch = new Vector3d();
+    private final Vector3d selfScratch = new Vector3d();
     private final Vector3f faceScratch = new Vector3f();
-    private final Vector3f attacker = new Vector3f();
+    private final Vector3d attacker = new Vector3d();
     private boolean attackerKnown;
     private float deltaTime;
 
@@ -78,14 +81,19 @@ public final class AiContext {
      * The nearest player's position, or {@code null}. The returned vector is scratch owned by this
      * context — read it, do not retain it.
      */
-    public Vector3f nearestPlayer() {
-        return players.nearestPlayer(entity.getPosition(), playerScratch);
+    public Vector3d nearestPlayer() {
+        return players.nearestPlayer(self(), playerScratch);
+    }
+
+    /** The mob's position, in scratch owned by this context (read it, do not retain it). */
+    private Vector3d self() {
+        return selfScratch.set(entity.getX(), entity.getY(), entity.getZ());
     }
 
     /** Distance to the nearest player, or {@link Float#MAX_VALUE} when there is none. */
     public float distanceToNearestPlayer() {
-        Vector3f player = nearestPlayer();
-        return player == null ? Float.MAX_VALUE : entity.getPosition().distance(player);
+        Vector3d player = nearestPlayer();
+        return player == null ? Float.MAX_VALUE : (float) self().distance(player);
     }
 
     /**
@@ -93,14 +101,14 @@ public final class AiContext {
      * else the one its stealth awareness tracks (#321), else the nearest — or {@code null}. Scratch
      * owned by this context: read it, do not retain it.
      */
-    public Vector3f targetPlayer() {
-        return players.playerPosition(targetId(), entity.getPosition(), playerScratch);
+    public Vector3d targetPlayer() {
+        return players.playerPosition(targetId(), self(), playerScratch);
     }
 
     /** Distance to {@link #targetPlayer()}, or {@link Float#MAX_VALUE} when there is none. */
     public float distanceToTarget() {
-        Vector3f player = targetPlayer();
-        return player == null ? Float.MAX_VALUE : entity.getPosition().distance(player);
+        Vector3d player = targetPlayer();
+        return player == null ? Float.MAX_VALUE : (float) self().distance(player);
     }
 
     /**
@@ -117,12 +125,12 @@ public final class AiContext {
      *
      * @return degrees still left to turn, or {@link Float#MAX_VALUE} when {@code point} is null
      */
-    public float facePoint(Vector3f point, float turnSpeedDegPerSec) {
+    public float facePoint(Vector3dc point, float turnSpeedDegPerSec) {
         if (point == null) {
             return Float.MAX_VALUE;
         }
-        Vector3f toPoint = faceScratch.set(point).sub(entity.getPosition());
-        toPoint.y = 0;
+        Vector3f toPoint = faceScratch.set((float) (point.x() - entity.getX()), 0.0f,
+                (float) (point.z() - entity.getZ()));
         if (toPoint.lengthSquared() < 1.0e-6f) {
             return 0.0f;
         }
@@ -131,23 +139,23 @@ public final class AiContext {
     }
 
     /** Distance from this mob to {@code point}, or {@link Float#MAX_VALUE} when it is null. */
-    public float distanceTo(Vector3f point) {
-        return point == null ? Float.MAX_VALUE : entity.getPosition().distance(point);
+    public float distanceTo(Vector3dc point) {
+        return point == null ? Float.MAX_VALUE : (float) self().distance(point);
     }
 
     /** Whether {@link #targetPlayer()} is in clear sight from {@code eye}. */
-    public boolean canSeeTarget(Vector3f eye) {
-        return players.canSeePlayer(targetId(), entity.getPosition(), eye);
+    public boolean canSeeTarget(Vector3dc eye) {
+        return players.canSeePlayer(targetId(), self(), eye);
     }
 
     /** {@link #canSeeTarget}, with leaves no bar to the view. */
-    public boolean canSeeTargetThroughLeaves(Vector3f eye) {
-        return players.canSeePlayerThroughLeaves(targetId(), entity.getPosition(), eye);
+    public boolean canSeeTargetThroughLeaves(Vector3dc eye) {
+        return players.canSeePlayerThroughLeaves(targetId(), self(), eye);
     }
 
     /** Lands a blow from this mob on {@link #targetPlayer()}; see {@link PlayerLocator#hurtPlayer}. */
     public boolean hurtTarget(float amount, float knockback) {
-        return players.hurtPlayer(targetId(), entity.getPosition(), amount, knockback);
+        return players.hurtPlayer(targetId(), self(), amount, knockback);
     }
 
     /**
@@ -157,7 +165,7 @@ public final class AiContext {
      * @return {@code out}, or {@code null} when that is not known
      */
     public Vector3f targetLook(Vector3f out) {
-        return players.playerLook(targetId(), entity.getPosition(), out);
+        return players.playerLook(targetId(), self(), out);
     }
 
     /** The players this mob can perceive. */
@@ -186,7 +194,7 @@ public final class AiContext {
 
     /** Whether the nearest player is sprinting — skittish mobs notice that from further off. */
     public boolean nearestPlayerSprinting() {
-        return players.nearestPlayerSprinting(entity.getPosition());
+        return players.nearestPlayerSprinting(self());
     }
 
     /**
@@ -194,7 +202,7 @@ public final class AiContext {
      * status effect ticking, an unattributed projectile). Meaningful inside
      * {@link Behavior#onDamaged}; the returned vector is owned by this context.
      */
-    public Vector3f attacker() {
+    public Vector3d attacker() {
         return attackerKnown ? attacker : null;
     }
 
@@ -202,7 +210,7 @@ public final class AiContext {
      * Records the attacker of the hit about to be reported to the behaviours. Copied, never
      * retained: a damage source may pass a live position (cactus contact passes the mob's own).
      */
-    public void setAttacker(Vector3f attackerPosition) {
+    public void setAttacker(Vector3dc attackerPosition) {
         attackerKnown = attackerPosition != null;
         if (attackerKnown) {
             attacker.set(attackerPosition);

@@ -1,0 +1,6 @@
+/* Only the SBW ABI leaves the library (libstdc++ template instantiations would otherwise be exported
+ * with default visibility and could interpose on other libraries in the JVM). */
+{
+  global: sbw_*;
+  local: *;
+};

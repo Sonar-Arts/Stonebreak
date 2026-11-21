@@ -1,6 +1,7 @@
 package com.stonebreak.mobs.entities.ai.behavior;
 
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 /**
  * What an attack behaviour swings or shoots at. {@link MeleeAttackBehavior} and
@@ -16,10 +17,10 @@ public interface AttackTarget {
     boolean engaged(AiContext context);
 
     /** The target's feet, or {@code null} when there is none. Scratch: read it, do not retain it. */
-    Vector3f position(AiContext context);
+    Vector3d position(AiContext context);
 
     /** Whether the target is in clear sight from {@code eye}. */
-    boolean canSee(AiContext context, Vector3f eye);
+    boolean canSee(AiContext context, Vector3dc eye);
 
     /** Lands a blow on the target, shoving it {@code knockback} away; whether it counted. */
     boolean hurt(AiContext context, float amount, float knockback);
@@ -41,12 +42,12 @@ public interface AttackTarget {
         }
 
         @Override
-        public Vector3f position(AiContext context) {
+        public Vector3d position(AiContext context) {
             return context.targetPlayer();
         }
 
         @Override
-        public boolean canSee(AiContext context, Vector3f eye) {
+        public boolean canSee(AiContext context, Vector3dc eye) {
             return context.canSeeTarget(eye);
         }
 
@@ -90,12 +91,12 @@ public interface AttackTarget {
             }
 
             @Override
-            public Vector3f position(AiContext context) {
+            public Vector3d position(AiContext context) {
                 return pick(context).position(context);
             }
 
             @Override
-            public boolean canSee(AiContext context, Vector3f eye) {
+            public boolean canSee(AiContext context, Vector3dc eye) {
                 return pick(context).canSee(context, eye);
             }
 

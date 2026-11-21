@@ -46,12 +46,12 @@ final class SbeMobRenderer {
 
     /** Lit, textured draw of the mob followed by its socket attachments. */
     void render(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                com.stonebreak.world.World world, Vector3f cameraPos) {
+                com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         EntityType entityType = mob.getType();
         com.openmason.engine.entity.model.EntityAsset asset = assetFor(entityType);
         String stateName = stateName(entityType, mob);
         float clipTime = clipTime(mob);
-        Vector3f anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
+        org.joml.Vector3d anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
         sbeEntityRenderer.setLook(lookOf(mob, cameraPos));
         sbeEntityRenderer.render(
                 asset,
@@ -80,14 +80,14 @@ final class SbeMobRenderer {
      * How a mob is drawn beyond its clip: a Vestige's eyes glow, and veiled it is nearly invisible, a
      * shimmer up close. Every other mob draws as authored.
      */
-    static SbeEntityRenderer.Look lookOf(LivingEntity mob, Vector3f cameraPos) {
+    static SbeEntityRenderer.Look lookOf(LivingEntity mob, org.joml.Vector3dc cameraPos) {
         if (!(mob instanceof com.stonebreak.mobs.vestige.Vestige vestige)) {
             return SbeEntityRenderer.Look.NONE;
         }
         if (!vestige.isVeiled()) {
             return new SbeEntityRenderer.Look(1f, 0f, com.stonebreak.mobs.vestige.Vestige.EYE_PARTS, 1f);
         }
-        float distance = cameraPos != null ? cameraPos.distance(vestige.getPosition()) : Float.MAX_VALUE;
+        float distance = cameraPos != null ? (float) cameraPos.distance(vestige.getPosition()) : Float.MAX_VALUE;
         float shimmer = Math.clamp((SHIMMER_FAR - distance) / (SHIMMER_FAR - SHIMMER_NEAR), 0f, 1f);
         // Eyes dimmed, they fade with the body: nothing left to track.
         return new SbeEntityRenderer.Look(VEILED_BODY_ALPHA, shimmer, com.stonebreak.mobs.vestige.Vestige.EYE_PARTS,

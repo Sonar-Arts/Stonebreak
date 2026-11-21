@@ -6,6 +6,8 @@ import com.stonebreak.mobs.entities.ai.behavior.PlayerLocator;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
 import com.stonebreak.world.World;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 
 /**
@@ -29,7 +31,7 @@ public class Arrow extends Entity {
      * Where the arrow was at its previous update. External physics moves it between updates,
      * so {@code lastPosition → position} is the path it just flew.
      */
-    private final Vector3f lastPosition;
+    private final Vector3d lastPosition;
     private final com.openmason.engine.physics.RayHit rayHit = new com.openmason.engine.physics.RayHit();
 
     /** The mob that loosed this arrow, or null for a player's arrow. */
@@ -39,12 +41,12 @@ public class Arrow extends Entity {
     /** Unit flight direction for drawing; see {@link #heading()}. */
     private final Vector3f heading = new Vector3f();
     /** Where {@link #heading()} last saw the arrow, or null before its first call. */
-    private Vector3f headingSample;
+    private Vector3d headingSample;
 
-    public Arrow(World world, Vector3f position, Vector3f velocity) {
+    public Arrow(World world, Vector3dc position, Vector3f velocity) {
         super(world, position);
         this.launchSpeed = velocity.length();
-        this.lastPosition = new Vector3f(position);
+        this.lastPosition = new Vector3d(position);
         this.velocity.set(velocity);
         this.width  = 0.05f;
         this.height = 0.05f;
@@ -78,10 +80,10 @@ public class Arrow extends Entity {
         // let it pass through thin ones.
         if (world != null && velocity.lengthSquared() > 0.0f) {
             Vector3f front = new Vector3f(velocity).normalize().mul(length * 0.5f);
-            Vector3f tip = new Vector3f(position).add(front);
-            Vector3f path = new Vector3f(tip).sub(lastPosition);
-            float distance = path.length();
-            if (distance > 0.0f && com.stonebreak.world.physics.WorldPhysics.of(world).raycast(lastPosition.x, lastPosition.y, lastPosition.z,
+            Vector3d tip = new Vector3d(position).add(front);
+            Vector3d path = new Vector3d(tip).sub(lastPosition);
+            double distance = path.length();
+            if (distance > 0.0 && com.stonebreak.world.physics.WorldPhysics.of(world).raycast(lastPosition.x, lastPosition.y, lastPosition.z,
                     path.x, path.y, path.z, distance, com.stonebreak.world.physics.WorldPhysics.PROJECTILE_MASK,
                     com.stonebreak.world.physics.WorldPhysics.WATER, rayHit)) {
                 alive = false;
@@ -174,7 +176,7 @@ public class Arrow extends Entity {
         if (player == null || player.isDead()) {
             return false;
         }
-        Vector3f feet = player.getPosition();
+        Vector3d feet = player.getPosition();
         float halfWidth = com.stonebreak.player.PlayerConstants.PLAYER_WIDTH * 0.5f + HIT_RADIUS;
         return Math.abs(position.x - feet.x) <= halfWidth
                 && Math.abs(position.z - feet.z) <= halfWidth
@@ -192,12 +194,12 @@ public class Arrow extends Entity {
         if (headingSample == null) {
             float yaw = (float) Math.toRadians(rotation.y);
             heading.set((float) -Math.sin(yaw), 0f, (float) -Math.cos(yaw));
-            headingSample = new Vector3f(position);
+            headingSample = new Vector3d(position);
             return heading;
         }
-        float dx = position.x - headingSample.x;
-        float dy = position.y - headingSample.y;
-        float dz = position.z - headingSample.z;
+        float dx = (float) (position.x - headingSample.x);
+        float dy = (float) (position.y - headingSample.y);
+        float dz = (float) (position.z - headingSample.z);
         if (dx * dx + dy * dy + dz * dz > MIN_HEADING_STEP * MIN_HEADING_STEP) {
             heading.set(dx, dy, dz).normalize();
             headingSample.set(position);

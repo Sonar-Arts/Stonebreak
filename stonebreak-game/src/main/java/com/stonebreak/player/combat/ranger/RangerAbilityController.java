@@ -7,6 +7,7 @@ import com.stonebreak.mobs.entities.LivingEntity;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.QuarryController;
+import com.stonebreak.util.Positions;
 import org.joml.Vector3f;
 
 /**
@@ -77,7 +78,7 @@ public class RangerAbilityController {
         if (!quarry.isMarkedPrey() || !quarry.isPreyLowHp()) return 1f;
         if (intendedHorizontalDir.lengthSquared() < 0.0001f) return 1f;
 
-        Vector3f toPrey = quarry.getQuarry().getPosition().sub(player.getPosition());
+        Vector3f toPrey = Positions.offset(player.getPosition(), quarry.getQuarry().getPosition());
         toPrey.y = 0f;
         if (toPrey.lengthSquared() < 0.0001f) return 1f;
         toPrey.normalize();

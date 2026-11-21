@@ -176,9 +176,9 @@ public final class ParticlePass implements AutoCloseable {
         Settings settings = Settings.getInstance();
         runtime.setDensity(settings.getParticleDensity());
         collider.setWorld(world);
-        Vector3f cam = player.getCamera().getPosition();
+        org.joml.Vector3d cam = player.getCamera().getPosition();
         ambient.sync(runtime, LightAmbientSources.INSTANCE, BlockFx::data, BlockFx::tint, cam.x, cam.y, cam.z);
-        runtime.update(dt, cam.x, cam.y, cam.z, RenderOrigin.x(), 0.0, RenderOrigin.z());
+        runtime.update(dt, cam.x, cam.y, cam.z, RenderOrigin.blockX(), RenderOrigin.blockY(), RenderOrigin.blockZ());
         skyExposure = sampleSky(world, cam);
     }
 
@@ -199,7 +199,7 @@ public final class ParticlePass implements AutoCloseable {
         ensureSprites();
         player.getRenderPosition(camRender);
         frame.camera(player.getViewMatrix(), projection, camRender.x, camRender.y, camRender.z)
-                .origin(RenderOrigin.x(), 0.0, RenderOrigin.z())
+                .origin(RenderOrigin.blockX(), RenderOrigin.blockY(), RenderOrigin.blockZ())
                 .sprites(sprites)
                 .splitAtHeight(SEA_SURFACE);
         // Caves: the camera's sky exposure dims the ambient part, as the sky light dims the walls around it.
@@ -302,10 +302,11 @@ public final class ParticlePass implements AutoCloseable {
         shader.setFloat("u_cloudSlabTop", CloudType.slabTop());
     }
 
-    private static float sampleSky(World world, Vector3f cam) {
+    private static float sampleSky(World world, org.joml.Vector3dc cam) {
         try {
             return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
-                    new com.stonebreak.world.lighting.WorldLightingContext(world), cam.x, cam.y, cam.z);
+                    new com.stonebreak.world.lighting.WorldLightingContext(world),
+                    (float) cam.x(), (float) cam.y(), (float) cam.z());
         } catch (RuntimeException e) {
             return 1f;
         }

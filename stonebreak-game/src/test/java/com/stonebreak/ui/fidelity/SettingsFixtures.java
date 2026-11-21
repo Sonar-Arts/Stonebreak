@@ -48,10 +48,19 @@ public final class SettingsFixtures {
         s.setLodQuality("MEDIUM");
         s.setVsyncEnabled(true);
         s.setMaxFps(144);
+        s.setVerticalRenderDistance(128);
+        // Rows added after the captures froze (#447 Vertical Render Distance): a new setting is not a rendering
+        // change, so the gate replays the frozen row lists.
+        CategoryState.hideRows(ROWS_AFTER_CAPTURE);
         return before;
     }
 
+    /** Setting rows the frozen captures predate, hidden while a fixture is pinned. */
+    static final java.util.Set<CategoryState.SettingType> ROWS_AFTER_CAPTURE =
+        java.util.Set.of(CategoryState.SettingType.VERTICAL_RENDER_DISTANCE);
+
     public static void restore(UiValue.Obj before) {
+        CategoryState.hideRows(java.util.Set.of());
         SettingsContract.write(Settings.getInstance(), before);
     }
 

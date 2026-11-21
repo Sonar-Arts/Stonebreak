@@ -119,7 +119,7 @@ class DetailData:
             x = x.flip(-1)
         return x
 
-    def assemble(self, corners, train: bool):
+    def assemble(self, corners, train: bool, val_blur: float = 1.0):
         m, s = MARGIN_CELLS, CROP_CELLS
         n = s + 2 * m
         cell_f, dems = [], []
@@ -155,7 +155,8 @@ class DetailData:
                 jit = jit / jit.std().clamp_min(1e-6) * self._u(0.0, 20.0)
                 deg[i : i + 1] = g + jit
         else:
-            deg = D.blur(coarse, 1.0)
+            # val_blur 0: the coarse cells as they come (v4's in-game blow-ups came from unblurred planner cells)
+            deg = D.blur(coarse, val_blur) if val_blur > 0 else coarse
         ms = m * SPC
         crop = lambda x: x[..., ms : ms + s * SPC, ms : ms + s * SPC]
         base = crop(DT.detail_base(deg))
@@ -184,9 +185,9 @@ class DetailData:
     def train_batch(self, batch):
         return self.assemble(self.sample_corners(batch), train=True)
 
-    def val_batches(self, batch):
+    def val_batches(self, batch, val_blur: float = 1.0):
         for i in range(0, len(self.val_corners), batch):
-            yield self.assemble(self.val_corners[i : i + batch], train=False)
+            yield self.assemble(self.val_corners[i : i + batch], train=False, val_blur=val_blur)
 
 
 @torch.no_grad()
@@ -215,7 +216,8 @@ def evaluate(model, data: DetailData, batch: int, steps: int = 16):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", type=Path, default=Path("/mnt/extrastorage/terrain-slm-data"))
+    ap.add_argument("--data-dir", type=Path, required=True,
+                    help="no default (2026-11-19): the old default held EXP-1 regions with WorldClim climate (non-commercial); EXP-2 data is <root>/v2-gedtm30")
     ap.add_argument("--out", type=Path, default=Path("checkpoints/detail_r0"))
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--channels", type=int, nargs="+", default=list(DT.DetailConfig.channels))

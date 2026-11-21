@@ -1,5 +1,7 @@
 package com.stonebreak.world.generation.diffusion.tgmpipe;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import com.stonebreak.world.generation.NativeCubeGenerator.TerrainScalePreset;
 import com.stonebreak.world.generation.diffusion.DiffusionTileCache;
 import com.stonebreak.world.generation.diffusion.TGMPipeException;
 import com.stonebreak.world.generation.diffusion.TerrainScale;
@@ -29,9 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The real TGMPipe, driven the way the game drives it: model on the GPU, frames over the
- * child's pipes. Opt-in ({@code -Dstonebreak.tgmpipe.live=true}): it needs the packaged model,
- * its venv and a CUDA device, and takes about a minute.
+ * The real terrain pipeline, driven the way the game drives it: the native engine in-process on the model's release
+ * export. Opt-in ({@code -Dstonebreak.tgmpipe.live=true}): it needs the packaged model (Git LFS), the native terrain
+ * library, the CUDA compiler (downloaded on first use) and a CUDA device, and takes about a minute.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @RequiresDaedalus
@@ -72,21 +74,62 @@ class TGMPipeLiveTest {
             assertEquals(n, ta.width());
             assertEquals(n, ta.height());
             for (short h : ta.blockHeights()) {
-                assertTrue(h >= 0 && h < WorldConfiguration.WORLD_HEIGHT, "height " + h);
+                assertTrue(h >= WorldConfiguration.MIN_Y && h < WorldConfiguration.MAX_Y, "height " + h);   // cubic world: below 0 is real (sea floor)
             }
             assertFalse(Arrays.equals(ta.blockHeights(), tb.blockHeights()), "two seeds, two worlds");
         }
         String status = service.status().get(10, TimeUnit.SECONDS);
         assertTrue(status.contains(TGMPipe.MODEL_NAME), status);
-        // The F3 screen's Daedalus section: the service reports its own GPU memory.
-        TGMPipeVram.Reading vram = TGMPipeVram.parse(status, 0);
-        assertTrue(vram != null && vram.device() != null, status);
-        if (vram.onGpu()) {
-            assertTrue(vram.allocatedBytes() > 0 && vram.peakBytes() >= vram.allocatedBytes(), status);
-        }
         // FastLOD's node store is keyed on it: without it every world's LOD cache is thrown away.
         String namespace = TGMPipe.getInstance().cacheNamespace();
         assertTrue(namespace != null && namespace.matches("[0-9a-f]{16}"), "cache namespace: " + namespace);
+    }
+
+    @Test
+    @Order(1)
+    void oneServiceBuildsBothScalesIntoSeparateCaches() throws Exception {
+        long seed = freshSeed();
+        try (var quarter = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_WORLD, TerrainScalePreset.ONE_TO_FOUR);
+             var half = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_WORLD, TerrainScalePreset.ONE_TO_TWO)) {
+            TerrainTile q = quarter.getTileAsync(0, 0).get(4, TimeUnit.MINUTES);
+            TerrainTile h = half.getTileAsync(0, 0).get(4, TimeUnit.MINUTES);
+            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, q.width());
+            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, h.width());
+            assertNotEquals(null, service.cacheNamespace(TerrainScalePreset.ONE_TO_TWO));
+            assertNotEquals(service.cacheNamespace(TerrainScalePreset.ONE_TO_FOUR),
+                    service.cacheNamespace(TerrainScalePreset.ONE_TO_TWO), "each scale caches apart");
+            // The 1:2 tile is the 1:4 tile's top-left quarter at twice the resolution: different blocks.
+            boolean differs = false;
+            for (int x = 0; x < 64 && !differs; x++) {
+                for (int z = 0; z < 64 && !differs; z++) {
+                    differs = q.heightAt(x, z) != h.heightAt(x, z);
+                }
+            }
+            assertTrue(differs, "a 1:2 tile must not be the 1:4 tile");
+        }
+    }
+
+    @Test
+    @Order(1)
+    void oneToOneTilesBuildFromTheSameService() throws Exception {
+        // 1:1 (15 m blocks): the handshake's fractional downscale (0.5) reaches the service, which draws two blocks
+        // per model pixel (SR-15 when the model folder has sr15.pt, else its bilinear stand-in).
+        long seed = freshSeed();
+        try (var one = new DiffusionTileCache(seed, 1, TGMPipe.PRIORITY_WORLD, TerrainScalePreset.ONE_TO_ONE)) {
+            TerrainTile t = one.getTileAsync(0, 0).get(4, TimeUnit.MINUTES);
+            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, t.width());
+            assertNotEquals(null, service.cacheNamespace(TerrainScalePreset.ONE_TO_ONE));
+            assertNotEquals(service.cacheNamespace(TerrainScalePreset.ONE_TO_TWO),
+                    service.cacheNamespace(TerrainScalePreset.ONE_TO_ONE), "each scale caches apart");
+            int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+            for (int x = 0; x < t.width(); x++) {
+                for (int z = 0; z < t.width(); z++) {
+                    lo = Math.min(lo, t.heightAt(x, z));
+                    hi = Math.max(hi, t.heightAt(x, z));
+                }
+            }
+            assertTrue(lo >= WorldConfiguration.MIN_Y && hi < WorldConfiguration.MAX_Y && hi > lo, lo + ".." + hi);
+        }
     }
 
     @Test
@@ -100,30 +143,9 @@ class TGMPipeLiveTest {
     }
 
     @Test
-    @Order(3)
-    void aCrashedServiceIsRestartedAndItsTilesResent() throws Exception {
-        try (var cache = new DiffusionTileCache(freshSeed(), OVERVIEW_LOD, TGMPipe.PRIORITY_WORLD)) {
-            CompletableFuture<TerrainTile> inFlight = cache.getTileAsync(0, 0);
-            ProcessHandle child = ProcessHandle.current().children()
-                    .filter(p -> p.info().arguments().map(args -> Arrays.asList(args).contains(TGMPipe.MODULE))
-                            .orElse(false))
-                    .findFirst().orElseThrow(() -> new AssertionError("no TGMPipe child process"));
-            child.destroyForcibly();
-            child.onExit().get(30, TimeUnit.SECONDS);
-
-            TerrainTile tile = inFlight.get(4, TimeUnit.MINUTES);
-            assertEquals(TerrainScale.TILE_SIZE_BLOCKS, tile.width());
-        }
-    }
-
-    @Test
     @Order(4)
-    void aStoppedServiceFailsFastAndLeavesNoProcess() throws Exception {
+    void aStoppedPipelineFailsFast() throws Exception {
         service.shutdown();
-        assertEquals(0, ProcessHandle.current().children()
-                .filter(p -> p.info().arguments().map(args -> Arrays.asList(args).contains(TGMPipe.MODULE))
-                        .orElse(false))
-                .count());
         var cache = new DiffusionTileCache(freshSeed(), OVERVIEW_LOD, TGMPipe.PRIORITY_WORLD);
         assertThrows(TGMPipeException.class, () -> cache.getTile(0, 0));
     }

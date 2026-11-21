@@ -39,8 +39,11 @@ public enum FastLodQuality {
 
     /** Distance (blocks) per block of cell size: level k starts at {@code 2^k × blocksPerCell}. */
     public int blocksPerCell() {
-        return blocksPerCell;
+        return BLOCKS_PER_CELL_OVERRIDE > 0 ? BLOCKS_PER_CELL_OVERRIDE : blocksPerCell;
     }
+
+    /** Dev (measurements only): {@code -Dstonebreak.lod.blocksPerCell=<n>} replaces every preset's density. */
+    private static final int BLOCKS_PER_CELL_OVERRIDE = Integer.getInteger("stonebreak.lod.blocksPerCell", 0);
 
     /**
      * Whether nodes at {@code level} sample the cave-carved surface (ravines,

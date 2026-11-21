@@ -1,8 +1,7 @@
 package com.stonebreak.world.generation.diffusion;
 
 /**
- * One decoded tile from TGMPipe (a TILE_DATA frame, see
- * {@link com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipeProtocol}): a
+ * One tile from the terrain pipeline ({@link com.stonebreak.world.generation.diffusion.tgmpipe.TGMPipe}): a
  * {@code height x width} grid of block heights, the co-located biome ids, the
  * per-column water level and the river planes, row-major with
  * row = worldX - worldI1, col = worldZ - worldJ1.
@@ -30,8 +29,35 @@ public record TerrainTile(
         short[] waterLevels,
         short[] riverFloors,
         short[] riverRoofs,
-        short[] riverFlows
+        short[] riverFlows,
+        short[] carves,
+        SurfaceChannels surface
 ) {
+
+    /** Normalises a null surface to {@link SurfaceChannels#NONE}. */
+    public TerrainTile {
+        if (surface == null) {
+            surface = SurfaceChannels.NONE;
+        }
+    }
+
+    /** A tile without surface channels (every tile before TGMPipe v3). */
+    public TerrainTile(int tileX, int tileZ, int worldI1, int worldJ1, int worldI2, int worldJ2,
+                       int width, int height,
+                       short[] blockHeights, short[] biomeIds, short[] waterLevels,
+                       short[] riverFloors, short[] riverRoofs, short[] riverFlows, short[] carves) {
+        this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
+                blockHeights, biomeIds, waterLevels, riverFloors, riverRoofs, riverFlows, carves, null);
+    }
+
+    /** A tile without carve codes (the plane every tile had before TGMPipe v2's carve node). */
+    public TerrainTile(int tileX, int tileZ, int worldI1, int worldJ1, int worldI2, int worldJ2,
+                       int width, int height,
+                       short[] blockHeights, short[] biomeIds, short[] waterLevels,
+                       short[] riverFloors, short[] riverRoofs, short[] riverFlows) {
+        this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
+                blockHeights, biomeIds, waterLevels, riverFloors, riverRoofs, riverFlows, null, null);
+    }
 
     /**
      * A tile with no river tunnels in it. Every source of tiles other than the
@@ -43,7 +69,7 @@ public record TerrainTile(
                        int width, int height,
                        short[] blockHeights, short[] biomeIds, short[] waterLevels) {
         this(tileX, tileZ, worldI1, worldJ1, worldI2, worldJ2, width, height,
-                blockHeights, biomeIds, waterLevels, null, null, null);
+                blockHeights, biomeIds, waterLevels, null, null, null, null, null);
     }
 
     /**
@@ -126,6 +152,23 @@ public record TerrainTile(
      */
     public short riverFlowAt(int worldX, int worldZ) {
         return riverFlows == null ? NO_FLOW : riverFlows[indexOf(worldX, worldZ)];
+    }
+
+    /**
+     * The terrain model's carve-node code for a column (TGMPipe v2 plane 6; Python {@code world/carve_node.py},
+     * native {@code sbw_column_profile.carve}): bits 0-3 ravine density, 4-6 style, 7-10 strike, 11-15 depth class.
+     * 0 (no terrain-aware carving) when the tile has none.
+     */
+    public short carveAt(int worldX, int worldZ) {
+        return carves == null ? 0 : carves[indexOf(worldX, worldZ)];
+    }
+
+    /**
+     * A surface channel's unsigned byte for a column (TGMPipe v3, {@link SurfaceChannel}), or
+     * {@link SurfaceChannel#NO_DATA} when the tile does not carry it.
+     */
+    public int surfaceAt(SurfaceChannel channel, int worldX, int worldZ) {
+        return surface.has(channel) ? surface.at(channel, indexOf(worldX, worldZ)) : SurfaceChannel.NO_DATA;
     }
 
     private int indexOf(int worldX, int worldZ) {

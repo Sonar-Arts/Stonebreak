@@ -201,7 +201,10 @@ class CpuSampler:
             films = {id(b): [] for b in blocks}
             for i in range(steps):
                 t = torch.full((1,), float(ts[i]))
-                e = model.temb(timestep_embedding(t, temb_dim))
+                if getattr(model, "mean_flow", False) and hasattr(model, "embed"):   # MeanFlow relief student: e(t, r)
+                    e = model.embed(t, torch.full((1,), float(ts[i + 1])))
+                else:
+                    e = model.temb(timestep_embedding(t, temb_dim))
                 for b in blocks:
                     scale, shift = b.film(e)[0].float().chunk(2)
                     films[id(b)].append(torch.cat([1 + scale, shift]))

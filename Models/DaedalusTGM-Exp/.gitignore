@@ -57,18 +57,23 @@ __pycache__/
 # --- Small hand-made fixtures used by unit tests stay tracked ----------------
 !tests/fixtures/**
 
-# --- Shipping checkpoints are tracked -----------------------------------------
-# The model directory the game loads (TerrainServiceProcessManager's slm default) is committed,
-# so a fresh clone generates terrain with no manual setup (~9 MB, plain git, no LFS). Training
-# runs (checkpoints/<run>/) stay ignored. Shipping a new model = a NEW directory name (the
-# bridge's tile cache is keyed on it) plus the same two lines for that directory here.
-!/checkpoints/v2/
-!/checkpoints/v2/*.pt
-!/checkpoints/v3/
-!/checkpoints/v3/*.pt
-# v4 (2026-09-28): ~127 MB, detail.pt alone ~99 MB (bf16; GitHub's hard limit is 100 MiB per file,
-# it warns above 50 MB). Decide LFS vs plain git before committing.
-!/checkpoints/v4/
-!/checkpoints/v4/*.pt
+# --- The shipped release is tracked (Git LFS) ----------------------------------
+# The model folder the game loads (TGMPipe.DEFAULT_MODEL, checkpoints/exp2-r3: the DaedalusTGM-Exp-2 release built
+# by scripts/make_release.py) is committed: its *.pt weights through Git LFS (root .gitattributes), release.json and
+# ATTRIBUTION.md as normal files, and its native/ export (what the game runs: manifest.json as a normal file, the
+# *.cim networks through Git LFS; ~144 MB, written by `python -m terrain_slm.export.native_release` when the release
+# is made - the game never runs Python). Anything else written into the folder stays ignored. Training runs (checkpoints/<run>/, checkpoints/exp2/*, exp2-r1, exp2-r2)
+# stay ignored. Shipping a new model = a NEW directory name (the tile caches are keyed on it), these lines for it
+# here, and its `git lfs track` lines (*.pt and native/*.cim) in the root .gitattributes.
+# (EXP-1's v2 / v3 / v4 were tracked here in plain git until 2026-11-19: removed, WorldClim-trained.)
+!/checkpoints/exp2-r3/
+/checkpoints/exp2-r3/*
+!/checkpoints/exp2-r3/*.pt
+!/checkpoints/exp2-r3/release.json
+!/checkpoints/exp2-r3/ATTRIBUTION.md
+!/checkpoints/exp2-r3/native/
+/checkpoints/exp2-r3/native/*
+!/checkpoints/exp2-r3/native/manifest.json
+!/checkpoints/exp2-r3/native/*.cim
 # written by the game's model setup (ModelSetup.java)
 /.setup-unavailable

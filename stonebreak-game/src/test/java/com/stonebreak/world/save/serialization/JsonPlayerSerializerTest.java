@@ -6,6 +6,7 @@ import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.PlayerStats;
 import com.stonebreak.world.save.model.PlayerData;
 import org.joml.Vector2f;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +72,7 @@ class JsonPlayerSerializerTest {
         PlayerData deserialized = serializer.deserialize(bytes);
 
         // Position and rotation
-        assertEquals(new Vector3f(1.5f, 72, -3.25f), deserialized.getPosition());
+        assertEquals(new Vector3d(1.5, 72, -3.25), deserialized.getPosition());
         assertEquals(new Vector2f(90, -15), deserialized.getRotation());
 
         // Health and booleans
@@ -162,7 +163,7 @@ class JsonPlayerSerializerTest {
 
         PlayerData result = serializer.deserialize(legacyJson.getBytes(StandardCharsets.UTF_8));
 
-        assertEquals(new Vector3f(0, 100, 0), result.getPosition());
+        assertEquals(new Vector3d(0, 100, 0), result.getPosition());
         assertEquals(new Vector2f(0, 0), result.getRotation());
         assertEquals(20.0f, result.getHealth());
         assertFalse(result.isFlightEnabled());
@@ -319,8 +320,21 @@ class JsonPlayerSerializerTest {
 
         PlayerData back = serializer.deserialize(serializer.serialize(seated));
 
-        assertEquals(new Vector3f(10.25f, 62.125f, -7.5f), back.getVehiclePosition());
-        assertEquals(new Vector3f(10.5f, 62.4f, -7f), back.getPosition());
+        assertEquals(new Vector3d(10.25, 62.125, -7.5), back.getVehiclePosition());
+        assertEquals(new Vector3d(new Vector3f(10.5f, 62.4f, -7f)), back.getPosition());
+    }
+
+    @Test
+    void farPositionsKeepDoublePrecision() {
+        // Phase 4: positions are doubles; past 1e7 Java writes them in scientific notation.
+        Vector3d far = new Vector3d(4_294_967_296.25, 639.5, -17_179_869_184.125);
+        PlayerData p = PlayerData.builder().position(far).vehiclePosition(new Vector3d(far).add(0.5, 0, 0))
+            .lastSaved(TIMESTAMP).build();
+
+        PlayerData back = serializer.deserialize(serializer.serialize(p));
+
+        assertEquals(far, back.getPosition());
+        assertEquals(new Vector3d(far).add(0.5, 0, 0), back.getVehiclePosition());
     }
 
     @Test

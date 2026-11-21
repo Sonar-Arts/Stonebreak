@@ -6,7 +6,7 @@ import com.stonebreak.mobs.entities.ai.behavior.Behavior;
 import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.mobs.goblin.camp.GoblinCamp;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 import java.util.EnumSet;
 
@@ -20,7 +20,7 @@ public final class StayHomeBehavior implements Behavior {
     private static final float SPEED = 0.9f;
 
     private final Goblin goblin;
-    private final Vector3f fire = new Vector3f();
+    private final Vector3d fire = new Vector3d();
     private final WayHome wayHome = new WayHome();
 
     public StayHomeBehavior(Goblin goblin) {

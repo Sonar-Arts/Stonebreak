@@ -31,7 +31,7 @@ public class DamageNumbers {
         return INSTANCE;
     }
 
-    public void spawn(float wx, float wy, float wz, float damage) {
+    public void spawn(double wx, double wy, double wz, float damage) {
         if (active.size() >= MAX_ACTIVE) return;
         float vx = (random.nextFloat() * 2f - 1f) * VX_RANGE;
         float vy = VY_BASE + (random.nextFloat() * 2f - 1f) * VY_VARY;
@@ -49,7 +49,9 @@ public class DamageNumbers {
     public void collect(Matrix4f vp, int screenW, int screenH, List<WorldMarker> out) {
         Vector4f clip = new Vector4f();
         for (DamageNumber n : active) {
-            clip.set(n.wx, n.wy, n.wz, 1f);
+            clip.set(com.openmason.engine.rendering.RenderOrigin.relativeX(n.wx),
+                com.openmason.engine.rendering.RenderOrigin.relativeY(n.wy),
+                com.openmason.engine.rendering.RenderOrigin.relativeZ(n.wz), 1f);
             vp.transform(clip);
             if (clip.w <= 0f) continue;
 
@@ -79,10 +81,11 @@ public class DamageNumbers {
     }
 
     private static final class DamageNumber {
-        final float wx, wy, wz, damage, vx, vy;
+        final double wx, wy, wz;
+        final float damage, vx, vy;
         float age;
 
-        DamageNumber(float wx, float wy, float wz, float damage, float vx, float vy) {
+        DamageNumber(double wx, double wy, double wz, float damage, float vx, float vy) {
             this.wx = wx;
             this.wy = wy;
             this.wz = wz;

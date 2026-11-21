@@ -10,7 +10,7 @@ import com.stonebreak.mobs.goblin.Goblin;
 import com.stonebreak.mobs.goblin.GoblinLoadout;
 import com.stonebreak.mobs.goblin.GoblinLoadout.Headwear;
 import com.stonebreak.mobs.goblin.food.FoodLedger;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -36,14 +36,14 @@ class GoblinPackTest {
             .filter(e -> e.isAlive() && e.getPosition().distance(center) <= radius).toList();
 
     private Goblin goblin(float x, float z) {
-        Goblin g = new Goblin(null, new Vector3f(x, 64, z),
+        Goblin g = new Goblin(null, new Vector3d(x, 64, z),
                 new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
         world.add(g);
         return g;
     }
 
     private StubMob animal(EntityType type, float x, float z) {
-        StubMob mob = new StubMob(type, new Vector3f(x, 64, z));
+        StubMob mob = new StubMob(type, new Vector3d(x, 64, z));
         world.add(mob);
         return mob;
     }
@@ -163,7 +163,7 @@ class GoblinPackTest {
         StubMob sheep = animal(EntityType.SHEEP, 10, 0);
         run(pack, nearby, DT);
         assertSame(sheep, pack.quarry());
-        sheep.setPosition(new Vector3f(GoblinPack.PREY_LEASH + 5, 64, 0));
+        sheep.setPosition(new Vector3d(GoblinPack.PREY_LEASH + 5, 64, 0));
         run(pack, nearby, DT);
         assertNull(pack.quarry());
     }
@@ -186,7 +186,7 @@ class GoblinPackTest {
         run(pack, nearby, DT);
         // The goblins keep closing in, but never land a blow.
         for (float t = 0; t < GoblinPack.HUNT_DEADLINE_SECONDS + 1 && pack.task() == GoblinPack.Task.HUNT; t += 1f) {
-            sheep.setPosition(new Vector3f(6 - (t % 5), 64, 0));
+            sheep.setPosition(new Vector3d(6 - (t % 5), 64, 0));
             run(pack, nearby, 1f);
         }
         assertEquals(GoblinPack.Task.ROAM, pack.task());

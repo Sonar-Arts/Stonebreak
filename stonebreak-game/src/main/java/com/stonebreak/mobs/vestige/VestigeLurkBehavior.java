@@ -3,7 +3,7 @@ package com.stonebreak.mobs.vestige;
 import com.stonebreak.mobs.entities.ai.MobBehaviorState;
 import com.stonebreak.mobs.entities.ai.behavior.AiContext;
 import com.stonebreak.mobs.entities.ai.nav.PathAgent;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 
 /**
  * What a stalking Vestige does between tricks: drifts silently from tree to tree in the thick of the
@@ -20,7 +20,7 @@ final class VestigeLurkBehavior extends VestigeBehavior {
     /** Longest it stays at one tree, unseen and content, before drifting to another. */
     static final float SETTLE_SECONDS = 12f;
 
-    private Vector3f goal;
+    private Vector3d goal;
     private boolean moving;
     private float replanAt;
     private float settledAt;
@@ -63,7 +63,7 @@ final class VestigeLurkBehavior extends VestigeBehavior {
         boolean restless = !moving && age - settledAt >= SETTLE_SECONDS;
         if (age >= replanAt && (goal == null || senses.inView() || (!moving && outOfBand) || restless)) {
             replanAt = age + REPLAN_SECONDS;
-            Vector3f next = tracked ? flankSpot(SEARCH_RADIUS)
+            Vector3d next = tracked ? flankSpot(SEARCH_RADIUS)
                     : vestige.cover().find(vestige.getPosition(), SEARCH_RADIUS, senses.victimEye(),
                             senses.victimLook(), bandMin, bandMax, CoverFinder.Preference.FOREST);
             if (next != null && (goal == null || next.distance(goal) > 1.5f)) {

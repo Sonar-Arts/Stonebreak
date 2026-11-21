@@ -1,5 +1,6 @@
 package com.stonebreak.mobs.entities.ai.perception;
 
+import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
@@ -11,10 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PlayerTrackingTest {
 
     private static final float TICK = 0.05f;
-    private static final Vector3f EYE = new Vector3f(0f, 65.6f, 0f);
+    private static final Vector3d EYE = new Vector3d(0f, 65.6f, 0f);
     private static final Vector3f EAST = new Vector3f(1f, 0f, 0f);
     private static final Vector3f WEST = new Vector3f(-1f, 0f, 0f);
-    private static final Vector3f STALKER = new Vector3f(12f, 64f, 0f);
+    private static final Vector3d STALKER = new Vector3d(12f, 64f, 0f);
 
     private static void run(PlayerTracking tracking, float seconds, boolean inView, boolean watched, Vector3f look) {
         for (int i = 0; i < Math.round(seconds / TICK); i++) {
@@ -39,7 +40,7 @@ class PlayerTrackingTest {
         PlayerTracking tracking = new PlayerTracking();
         assertNull(tracking.lastSeen());
         run(tracking, 0.5f, true, true, EAST);
-        Vector3f elsewhere = new Vector3f(-30f, 64f, 5f);
+        Vector3d elsewhere = new Vector3d(-30f, 64f, 5f);
         tracking.update(false, false, elsewhere, EYE, EAST, TICK);
         assertEquals(STALKER, tracking.lastSeen(), "out of sight, it is not seen to move");
     }

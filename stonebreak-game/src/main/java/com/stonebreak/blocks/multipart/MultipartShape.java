@@ -36,7 +36,7 @@ public final class MultipartShape {
     /** A block lookup around the cell being resolved, in whatever coordinates the caller uses. */
     @FunctionalInterface
     public interface Neighbours {
-        BlockType at(int x, int y, int z);
+        BlockType at(long x, long y, long z);
     }
 
     private record Atom(MultipartData.Side side, MultipartData.Test test, String tag) {
@@ -168,7 +168,7 @@ public final class MultipartShape {
     }
 
     /** The mask of the cell at {@code (x, y, z)}: bit {@code a} set when atom {@code a}'s test passes. */
-    public int evaluate(Neighbours neighbours, int x, int y, int z) {
+    public int evaluate(Neighbours neighbours, long x, long y, long z) {
         return evaluate(neighbours, x, y, z, 0);
     }
 
@@ -176,7 +176,7 @@ public final class MultipartShape {
      * The mask of a cell whose model is turned {@code quarterTurns} × 90° about +Y: the table's
      * sides are read turned with it.
      */
-    public int evaluate(Neighbours neighbours, int x, int y, int z, int quarterTurns) {
+    public int evaluate(Neighbours neighbours, long x, long y, long z, int quarterTurns) {
         int[][] turned = offsets[Math.floorMod(quarterTurns, 4)];
         int mask = 0;
         for (int a = 0; a < atoms.length; a++) {

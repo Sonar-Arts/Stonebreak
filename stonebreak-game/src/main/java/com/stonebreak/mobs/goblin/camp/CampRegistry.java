@@ -12,8 +12,8 @@ import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.SimBlockEdits;
 import com.stonebreak.world.World;
-import com.stonebreak.world.operations.WorldConfiguration;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3i;
 
 import java.util.ArrayList;
@@ -71,12 +71,12 @@ public final class CampRegistry implements CampAnchor {
     }
 
     /** Whether any camp's fire is within {@code radius} of {@code pos}. */
-    public boolean campWithin(Vector3f pos, float radius) {
+    public boolean campWithin(Vector3dc pos, float radius) {
         float r2 = radius * radius;
         for (BlockPos f : camps.keySet()) {
-            float dx = f.x() + 0.5f - pos.x;
-            float dy = f.y() - pos.y;
-            float dz = f.z() + 0.5f - pos.z;
+            float dx = (float) (f.x() + 0.5 - pos.x());
+            float dy = (float) (f.y() - pos.y());
+            float dz = (float) (f.z() + 0.5 - pos.z());
             if (dx * dx + dy * dy + dz * dz <= r2) {
                 return true;
             }
@@ -228,7 +228,7 @@ public final class CampRegistry implements CampAnchor {
             }
         }
         // What the camp had outside its chest is left lying round the dead fire; the chest stays.
-        Vector3f at = new Vector3f(fire.x() + 0.5f, fire.y() + 0.5f, fire.z() + 0.5f);
+        Vector3d at = new Vector3d(fire.x() + 0.5, fire.y() + 0.5, fire.z() + 0.5);
         for (ItemStack s : camp.pouch().takeAll()) {
             DropUtil.createItemDrop(world, at, s);
         }
@@ -240,8 +240,7 @@ public final class CampRegistry implements CampAnchor {
         EntityManager entities = world.getEntityManager();
         BlockPos fire = camp.fire();
         if (entities == null || camp.waiting().isEmpty()
-                || world.getChunkIfLoaded(Math.floorDiv(fire.x(), WorldConfiguration.CHUNK_SIZE),
-                        Math.floorDiv(fire.z(), WorldConfiguration.CHUNK_SIZE)) == null) {
+                || !loaded(fire)) {
             return;
         }
         for (int i = 0; i < THAW_PER_TICK; i++) {
@@ -256,7 +255,7 @@ public final class CampRegistry implements CampAnchor {
     }
 
     /** A free cell beside the fire to bring a goblin back into; the fire's own cell failing that. */
-    private Vector3f spotNear(BlockPos fire, int salt) {
+    private Vector3d spotNear(BlockPos fire, int salt) {
         int[][] ring = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}};
         CampTerrain terrain = CampTerrain.of(world);
         for (int k = 0; k < ring.length; k++) {
@@ -265,11 +264,11 @@ public final class CampRegistry implements CampAnchor {
             int z = fire.z() + d[1];
             for (int dy = 0; dy >= -1; dy--) {
                 if (terrain.standable(x, fire.y() + dy, z)) {
-                    return new Vector3f(x + 0.5f, fire.y() + dy, z + 0.5f);
+                    return new Vector3d(x + 0.5, fire.y() + dy, z + 0.5);
                 }
             }
         }
-        return new Vector3f(fire.x() + 0.5f, fire.y(), fire.z() + 0.5f);
+        return new Vector3d(fire.x() + 0.5, fire.y(), fire.z() + 0.5);
     }
 
     /**
@@ -283,8 +282,7 @@ public final class CampRegistry implements CampAnchor {
         }
         BlockPos chest = camp.chest();
         if (chest != null) {
-            if (world.getChunkIfLoaded(Math.floorDiv(chest.x(), WorldConfiguration.CHUNK_SIZE),
-                    Math.floorDiv(chest.z(), WorldConfiguration.CHUNK_SIZE)) == null) {
+            if (!loaded(chest)) {
                 camp.unbindChest();
             } else if (world.getBlockAt(chest.x(), chest.y(), chest.z()) != BlockType.CHEST) {
                 camp.loseChest(); // broken: its loot dropped with it
@@ -295,7 +293,7 @@ public final class CampRegistry implements CampAnchor {
             return;
         }
         if (camp.readyForChest(dt) && camp.population() > 0) {
-            Vector3f spot = chestSpot(camp.fire());
+            Vector3d spot = chestSpot(camp.fire());
             if (spot != null) {
                 int x = (int) Math.floor(spot.x);
                 int y = (int) Math.floor(spot.y);
@@ -320,8 +318,7 @@ public final class CampRegistry implements CampAnchor {
         BlockPos rack = camp.rack();
         if (rack != null) {
             com.stonebreak.blocks.meatrack.MeatRackState hooks = racks.get(rack);
-            boolean standing = world.getChunkIfLoaded(Math.floorDiv(rack.x(), WorldConfiguration.CHUNK_SIZE),
-                    Math.floorDiv(rack.z(), WorldConfiguration.CHUNK_SIZE)) != null
+            boolean standing = loaded(rack)
                     && world.getBlockAt(rack.x(), rack.y(), rack.z()) == BlockType.MEAT_RACK;
             // A reloaded chunk brings a fresh grid: the old hooks array no longer reaches the rack.
             if (standing && hooks != null && hooks.getSlots() == camp.rackStash().slots()) {
@@ -426,7 +423,8 @@ public final class CampRegistry implements CampAnchor {
         for (int i = 0; i < reach.count(); i++) {
             if (Math.abs(reach.y(i) - fire.y()) <= HOME_GROUND_RISE
                     && !(reach.x(i) == fire.x() && reach.z(i) == fire.z())) {
-                cells.add(new Vector3i(reach.x(i), reach.y(i), reach.z(i)));
+                cells.add(new Vector3i(Math.toIntExact(reach.x(i)), Math.toIntExact(reach.y(i)),
+                        Math.toIntExact(reach.z(i))));
             }
         }
         camp.setHomeGround(cells);
@@ -434,8 +432,8 @@ public final class CampRegistry implements CampAnchor {
 
     /** Whether a player, or a goblin from outside the camp, is within {@link #ENEMY_RADIUS} of its fire. */
     private boolean enemyNear(GoblinCamp camp) {
-        Vector3f at = camp.fireCenter(new Vector3f());
-        Vector3f player = world.getPlayerLocator().nearestPlayer(at, new Vector3f());
+        Vector3d at = camp.fireCenter(new Vector3d());
+        Vector3d player = world.getPlayerLocator().nearestPlayer(at, new Vector3d());
         if (player != null && player.distance(at) <= ENEMY_RADIUS) {
             return true;
         }
@@ -449,12 +447,11 @@ public final class CampRegistry implements CampAnchor {
     }
 
     private boolean loaded(BlockPos at) {
-        return world.getChunkIfLoaded(Math.floorDiv(at.x(), WorldConfiguration.CHUNK_SIZE),
-                Math.floorDiv(at.z(), WorldConfiguration.CHUNK_SIZE)) != null;
+        return world.isLoaded(at.x(), at.y(), at.z());
     }
 
     /** An open, floored cell beside the fire for the chest — not where the goblins come back in. */
-    private Vector3f chestSpot(BlockPos fire) {
+    private Vector3d chestSpot(BlockPos fire) {
         CampTerrain terrain = CampTerrain.of(world);
         for (int r = 1; r <= 2; r++) {
             for (int dx = -r; dx <= r; dx++) {
@@ -465,7 +462,7 @@ public final class CampRegistry implements CampAnchor {
                     int x = fire.x() + dx;
                     int z = fire.z() + dz;
                     if (terrain.standable(x, fire.y(), z) && terrain.covered(x, fire.y(), z)) {
-                        return new Vector3f(x, fire.y(), z);
+                        return new Vector3d(x, fire.y(), z);
                     }
                 }
             }

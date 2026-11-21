@@ -17,7 +17,6 @@ import com.stonebreak.network.server.ServerWorldContext;
 import com.openmason.engine.format.sound.SoundData;
 import com.stonebreak.world.World;
 import com.stonebreak.world.operations.WorldConfiguration;
-import org.joml.Vector3f;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,10 +44,14 @@ public final class ServerBlockHandler {
 
     /** Outbound edits buffered this tick, grouped by section key {@code (sx, sy, sz)}.
      *  Insertion-ordered so wire order matches edit order. */
-    private final Map<Long, SectionBatch> pendingByTick = new LinkedHashMap<>();
+    private final Map<SectionKey, SectionBatch> pendingByTick = new LinkedHashMap<>();
 
-    /** Ticks an accepted edit may wait for its server chunk to load before being reverted. */
-    private static final int RETRY_TTL_TICKS = 20; // 1 s at 20 Hz
+    /** Ticks an accepted edit may wait for its server cube to load before being reverted (the stream
+     *  generates/loads around the player's center; a cube under generation can take a few seconds). */
+    static final int RETRY_TTL_TICKS = 100; // 5 s at 20 Hz
+
+    /** 64-bit coordinates of a 16³ section (block coordinates {@code >> 4}); never a packed key. */
+    private record SectionKey(long sx, long sy, long sz) {}
 
     /** Validated edits whose target chunk wasn't loaded server-side yet: the chunk load has
      *  been kicked off and the edit retries each tick until it applies or its TTL expires
@@ -97,12 +100,12 @@ public final class ServerBlockHandler {
     private enum BreakTiming { GO, WAIT, REFUSE }
 
     /** Snow-layer changes buffered this tick, per section — flushed as {@code BlockMetaS2C}. */
-    private final Map<Long, SectionBatch> pendingSnowByTick = new LinkedHashMap<>();
+    private final Map<SectionKey, SectionBatch> pendingSnowByTick = new LinkedHashMap<>();
 
     /** Water flow-level changes buffered this tick, per section — flushed as
      *  {@code BlockMetaS2C} (KIND_WATER_LEVEL) AFTER the block batches, so a cell's
      *  same-tick WATER block change lands before its level meta. */
-    private final Map<Long, SectionBatch> pendingWaterByTick = new LinkedHashMap<>();
+    private final Map<SectionKey, SectionBatch> pendingWaterByTick = new LinkedHashMap<>();
 
     /** Cells whose block state must be echoed behind this tick's block batches, so a state
      *  packet can never overtake — and be wiped by — its own block change (a client's
@@ -147,7 +150,7 @@ public final class ServerBlockHandler {
         // cleanup and the scoop all read it. An unloaded chunk reads AIR here, which never
         // conflicts; such an edit waits in the retry queue and is checked again once loaded.
         BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
-        boolean loaded = chunkLoaded(world, c.x(), c.z());
+        boolean loaded = chunkLoaded(world, c.x(), c.y(), c.z());
         if (loaded && conflictsWithServerCell(c, incoming, serverPrev)) {
             // Someone else changed the cell first: nothing is taken, the placer sees the real
             // block, and the sync undoes whatever their mirror spent on the edit.
@@ -184,10 +187,10 @@ public final class ServerBlockHandler {
         String prevState = world.getBlockStateAt(c.x(), c.y(), c.z()); // the apply clears it
         boolean applied = applyToWorld(world, c.x(), c.y(), c.z(), c.blockTypeId());
         if (!applied) {
-            // Server chunk not loaded yet (the reach check bounds this to a near-player chunk,
-            // so it's a load race, not garbage). Kick off the load and retry for a bounded
-            // window; expiry reverts the originator instead of silently diverging.
-            world.getChunkAt(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
+            // Server cube not loaded yet (the reach check bounds this to a near-player cube, so it's a
+            // load race, not garbage): the stream loads/generates around the player's center. Retry for a
+            // bounded window; expiry reverts the originator instead of silently diverging. A cube wholly in
+            // KNOWN AIR never loads (the stream never wants all-air cubes): applyToWorld created it already.
             retryQueue.add(new PendingEdit(sp, c, debit, receivedNs, loaded));
             return;
         }
@@ -224,7 +227,7 @@ public final class ServerBlockHandler {
      */
     public void handleBreakStart(ServerPlayer sp, com.stonebreak.network.packet.world.BlockBreakStartC2S s,
                                  long receivedNs) {
-        if (s.y() < 0 || s.y() >= WorldConfiguration.WORLD_HEIGHT || !inReach(sp, s.x(), s.y(), s.z())) {
+        if (!WorldConfiguration.inBounds(s.y()) || !inReach(sp, s.x(), s.y(), s.z())) {
             return;
         }
         sp.startBreak(s.x(), s.y(), s.z(), receivedNs);
@@ -318,8 +321,7 @@ public final class ServerBlockHandler {
             }
             BlockChangeC2S c = d.change();
             BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z());
-            if (!chunkLoaded(world, c.x(), c.z())) {
-                world.getChunkAt(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
+            if (!chunkLoaded(world, c.x(), c.y(), c.z())) {
                 retryQueue.add(new PendingEdit(d.sp(), c, PlacementDebit.NONE, d.dueNs(), true));
             } else if (conflictsWithServerCell(c, BlockType.AIR, serverPrev)) {
                 sendRevert(d.sp(), c.x(), c.y(), c.z(), ctx);
@@ -342,9 +344,9 @@ public final class ServerBlockHandler {
         if (sp.lastStateNs() == 0L) {
             return false;
         }
-        float dx = (x + 0.5f) - sp.x();
-        float dy = (y + 0.5f) - sp.y();
-        float dz = (z + 0.5f) - sp.z();
+        double dx = (x + 0.5) - sp.x();
+        double dy = (y + 0.5) - sp.y();
+        double dz = (z + 0.5) - sp.z();
         return dx * dx + dy * dy + dz * dz <= MAX_REACH_SQ;
     }
 
@@ -369,10 +371,9 @@ public final class ServerBlockHandler {
         return level != null && level.cheatsEnabled() && sp.gameMode() == 1;
     }
 
-    /** Whether the server holds the chunk under {@code (x, z)} — an unloaded cell reads AIR. */
-    private static boolean chunkLoaded(World world, int x, int z) {
-        return world.getChunkIfLoaded(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-                Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE)) != null;
+    /** Whether the server holds the cube of {@code (x, y, z)} — an unloaded cell reads AIR. */
+    private static boolean chunkLoaded(World world, int x, int y, int z) {
+        return world.isLoaded(x, y, z);
     }
 
     /**
@@ -418,7 +419,7 @@ public final class ServerBlockHandler {
         } else {
             loudness = incoming == BlockType.WATER ? 0f : Loudness.PLACE_BLOCK;
         }
-        NoiseBus.emitIn(world, new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f), sp.quieted(loudness));
+        NoiseBus.emitIn(world, new org.joml.Vector3d(c.x() + 0.5, c.y() + 0.5, c.z() + 0.5), sp.quieted(loudness));
     }
 
     /**
@@ -672,12 +673,12 @@ public final class ServerBlockHandler {
             }
             if (prev == BlockType.CHEST) {
                 world.getChestRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
-                        new Vector3f(sp.x(), sp.y(), sp.z()));
+                        new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
             }
             if (prev == BlockType.MEAT_RACK) {
                 // The food on its hooks drops with it.
                 world.getMeatRackRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
-                        new Vector3f(sp.x(), sp.y(), sp.z()));
+                        new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
             }
             if (prev == BlockType.CAMPFIRE) {
                 // Spills what was cooking; a goblin camp anchored here disbands.
@@ -686,7 +687,7 @@ public final class ServerBlockHandler {
             if (prev == BlockType.WORKBENCH) {
                 // Issue #307: the grid's items drop with the table, never vanish.
                 world.getWorkbenchRegistry().onBlockBroken(world, c.x(), c.y(), c.z(),
-                        new Vector3f(sp.x(), sp.y(), sp.z()));
+                        new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
             }
         }
         // Break (non-air → air): spawn drops authoritatively. A cell the server already held as
@@ -694,7 +695,7 @@ public final class ServerBlockHandler {
         // first (issue #370). The EntityManager listener broadcasts the resulting drop entities
         // (see ServerEntityHandler).
         if (prev != null && prev != BlockType.AIR && incoming == BlockType.AIR) {
-            Vector3f dropPos = new Vector3f(c.x() + 0.5f, c.y() + 0.5f, c.z() + 0.5f);
+            org.joml.Vector3d dropPos = new org.joml.Vector3d(c.x() + 0.5, c.y() + 0.5, c.z() + 0.5);
             // The breaker's last-reported held item selects per-tool drop overrides
             // (SBO `drops.byTool`). Block ids and item ids never collide, so a held
             // block simply resolves to no tool.
@@ -706,7 +707,7 @@ public final class ServerBlockHandler {
             // The pre-break state lets state-gated blocks decide (a blueberry bush drops only
             // when ripe).
             com.stonebreak.util.DropUtil.handleBlockBroken(world, dropPos, prev, prevState, tool, 0,
-                    new Vector3f(sp.x(), sp.y(), sp.z()));
+                    new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
         }
         // Furnace placement: register the authoritative state (Unlit, empty). The client's
         // own BlockPlacer only touched ITS display registry.
@@ -846,10 +847,9 @@ public final class ServerBlockHandler {
                             prev == BlockType.LIMESTONE_STALAGMITE);
             for (org.joml.Vector3i a : fell.fallenAnchors()) {
                 com.stonebreak.util.DropUtil.handleBlockBroken(world,
-                        new Vector3f(a.x + 0.5f, a.y + 0.5f, a.z + 0.5f), BlockType.LIMESTONE_STALAGMITE);
+                        new org.joml.Vector3d(a.x + 0.5, a.y + 0.5, a.z + 0.5), BlockType.LIMESTONE_STALAGMITE);
             }
             for (org.joml.Vector3i r : fell.removed()) {
-                chunkHandler.invalidateHash(Math.floorDiv(r.x, 16), Math.floorDiv(r.z, 16));
                 queueOutgoing(r.x, r.y, r.z, (short) BlockType.AIR.getId());
             }
         }
@@ -875,7 +875,6 @@ public final class ServerBlockHandler {
                 onServerWaterChange(c.x(), c.y(), c.z(), water);
             }
         }
-        chunkHandler.invalidateHash(Math.floorDiv(c.x(), 16), Math.floorDiv(c.z(), 16));
         queueOutgoing(c.x(), c.y(), c.z(), c.blockTypeId());
     }
 
@@ -893,7 +892,7 @@ public final class ServerBlockHandler {
             return;
         }
         int layers = s.layers();
-        if (layers < 0 || layers > 8 || s.y() < 0 || s.y() >= WorldConfiguration.WORLD_HEIGHT) {
+        if (layers < 0 || layers > 8 || !WorldConfiguration.inBounds(s.y())) {
             return;
         }
         if (!inReach(sp, s.x(), s.y(), s.z())) {
@@ -948,7 +947,7 @@ public final class ServerBlockHandler {
         if (world == null) {
             return;
         }
-        if (t.y() < 0 || t.y() >= WorldConfiguration.WORLD_HEIGHT) {
+        if (!WorldConfiguration.inBounds(t.y())) {
             return;
         }
         if (!inReach(sp, t.x(), t.y(), t.z())) {
@@ -975,7 +974,7 @@ public final class ServerBlockHandler {
         }
         if (target == BlockType.BLUEBERRY_BUSH) {
             com.stonebreak.blocks.blueberrybush.BlueberryBushHarvest.harvest(
-                    world, t.x(), t.y(), t.z(), new Vector3f(sp.x(), sp.y(), sp.z()));
+                    world, t.x(), t.y(), t.z(), new org.joml.Vector3d(sp.x(), sp.y(), sp.z()));
             return;
         }
         if (target != BlockType.OAK_DOOR) {
@@ -1078,7 +1077,6 @@ public final class ServerBlockHandler {
             queueOutgoing(newCell.x, newCell.y, newCell.z, (short) BlockType.LIMESTONE_STALAGMITE.getId());
         }
         for (org.joml.Vector3i w : written) {
-            chunkHandler.invalidateHash(Math.floorDiv(w.x, 16), Math.floorDiv(w.z, 16));
             queueStateEcho(w.x, w.y, w.z);
         }
     }
@@ -1089,15 +1087,13 @@ public final class ServerBlockHandler {
      * {@link com.stonebreak.network.packet.world.BlockMetaS2C} (KIND_SNOW_LAYERS).
      */
     public void onServerSnowChange(int x, int y, int z, int layers) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+        if (!WorldConfiguration.inBounds(y)) {
             return;
         }
-        int sx = Math.floorDiv(x, 16);
-        int sy = Math.floorDiv(y, 16);
-        int sz = Math.floorDiv(z, 16);
-        long key = sectionKey(sx, sy, sz);
-        SectionBatch batch = pendingSnowByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
-        batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) layers);
+        chunkHandler.onReplicatedEdit(x, y, z);
+        SectionKey key = sectionOf(x, y, z);
+        pendingSnowByTick.computeIfAbsent(key, SectionBatch::new)
+            .add((int) (x & 15), (int) (y & 15), (int) (z & 15), (short) layers);
     }
 
     /**
@@ -1110,15 +1106,13 @@ public final class ServerBlockHandler {
      * coalesce to the last value in the section batch.
      */
     public void onServerWaterChange(int x, int y, int z, int value) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+        if (!WorldConfiguration.inBounds(y)) {
             return;
         }
-        int sx = Math.floorDiv(x, 16);
-        int sy = Math.floorDiv(y, 16);
-        int sz = Math.floorDiv(z, 16);
-        long key = sectionKey(sx, sy, sz);
-        SectionBatch batch = pendingWaterByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
-        batch.add(x - sx * 16, y - sy * 16, z - sz * 16, (short) value);
+        chunkHandler.onReplicatedEdit(x, y, z);
+        SectionKey key = sectionOf(x, y, z);
+        pendingWaterByTick.computeIfAbsent(key, SectionBatch::new)
+            .add((int) (x & 15), (int) (y & 15), (int) (z & 15), (short) value);
     }
 
     /** Retry edits that were waiting on a server chunk load; revert the originator on expiry. */
@@ -1140,7 +1134,7 @@ public final class ServerBlockHandler {
             BlockChangeC2S c = pe.change;
             BlockType incoming = BlockType.getById(c.blockTypeId() & 0xFFFF);
             BlockType serverPrev = world.getBlockAt(c.x(), c.y(), c.z()); // before apply
-            if (chunkLoaded(world, c.x(), c.z()) && conflictsWithServerCell(c, incoming, serverPrev)) {
+            if (chunkLoaded(world, c.x(), c.y(), c.z()) && conflictsWithServerCell(c, incoming, serverPrev)) {
                 // The cell the edit waited for turned out to be taken (issue #370): undo it and
                 // give back exactly what the placement took.
                 sendRevert(pe.sp, c.x(), c.y(), c.z(), ctx);
@@ -1150,7 +1144,7 @@ public final class ServerBlockHandler {
                 }
                 continue;
             }
-            if (!pe.timed && chunkLoaded(world, c.x(), c.z())) {
+            if (!pe.timed && chunkLoaded(world, c.x(), c.y(), c.z())) {
                 // The chunk was not loaded when the break arrived, so it is timed now — from
                 // its arrival, exactly as it would have been then (issue #333).
                 BreakTiming timing = timeBreak(pe.sp, c, incoming, serverPrev, pe.receivedNs, ctx);
@@ -1186,8 +1180,6 @@ public final class ServerBlockHandler {
     /** Host-originated edit (wired from {@code World.setBlockAt} in the lifecycle phase). */
     public void onLocalBlockChange(int x, int y, int z, BlockType type, ServerWorldContext ctx) {
         short id = (short) (type == null ? 0 : type.getId());
-        chunkHandler.invalidateHash(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-            Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
         queueOutgoing(x, y, z, id);
     }
 
@@ -1209,22 +1201,15 @@ public final class ServerBlockHandler {
      * skip per-block queuing for the rest of the tick.
      */
     public void onServerBlockChange(int x, int y, int z, BlockType type) {
-        if (y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+        if (!WorldConfiguration.inBounds(y)) {
             return;
         }
         if (simEditsThisTick >= MAX_SIM_EDITS_PER_TICK) {
-            int cx = Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE);
-            int cz = Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE);
-            chunkHandler.markChunkModified(cx, cz);
-            // Still a sim edit: record it for the audit's sim-edit grace window too.
-            chunkHandler.invalidateHash(cx, cz);
+            // Past the per-tick cap: the cube's holders get the whole cube again instead.
+            chunkHandler.markCubeModified(x, y, z);
             return;
         }
         simEditsThisTick++;
-        // Sim edits change chunk contents without a version bump, so the audit hash cache
-        // must be invalidated here (player edits do the same in applyAccepted).
-        chunkHandler.invalidateHash(Math.floorDiv(x, WorldConfiguration.CHUNK_SIZE),
-            Math.floorDiv(z, WorldConfiguration.CHUNK_SIZE));
         queueOutgoing(x, y, z, (short) (type == null ? 0 : type.getId()));
     }
 
@@ -1237,6 +1222,11 @@ public final class ServerBlockHandler {
     /** {@link #tick(ServerWorldContext)} on an explicit clock (deferred breaks fall due by it). */
     void tick(ServerWorldContext ctx, long nowNs) {
         simEditsThisTick = 0;
+        // Registry names before anything this flush sends (state echoes carry state strings whose variant ids
+        // the client must assign exactly as the server did).
+        for (ServerPlayer sp : ctx.players()) {
+            ServerChunkHandler.syncStateNames(sp, ctx.world());
+        }
         drainDeferredBreaks(ctx, nowNs);
         emitMiningHits(ctx, nowNs);
         drainRetries(ctx);
@@ -1289,6 +1279,7 @@ public final class ServerBlockHandler {
             }
             pendingStateEchoes.clear();
         }
+        chunkHandler.afterDeltasFlushed(ctx);
     }
 
     /**
@@ -1299,9 +1290,10 @@ public final class ServerBlockHandler {
      * already in it or marked sent before this flush.
      */
     private static void sendToHolders(ServerWorldContext ctx, SectionBatch sb, com.openmason.engine.net.protocol.Packet packet) {
-        long key = ServerChunkHandler.packKey(sb.sx, sb.sz);
+        com.openmason.engine.voxel.world.CubePos cube =
+            new com.openmason.engine.voxel.world.CubePos(sb.sx >> 1, sb.sy >> 1, sb.sz >> 1);
         for (ServerPlayer sp : ctx.players()) {
-            if (sp.sentChunkVersion(key) >= 0) {
+            if (sp.cubeView().holds(cube)) {
                 sp.send(packet, false);
             }
         }
@@ -1345,25 +1337,20 @@ public final class ServerBlockHandler {
      * first write lands in the same tick as the block that created them.
      */
     public void queueStateEcho(int x, int y, int z) {
+        chunkHandler.onReplicatedEdit(x, y, z);
         pendingStateEchoes.add(new com.openmason.engine.util.BlockPos(x, y, z));
     }
 
     // ─── Outgoing batching ─────────────────────────────────────────────────────────
 
-    private void queueOutgoing(int x, int y, int z, short blockId) {
-        int sx = Math.floorDiv(x, 16);
-        int sy = Math.floorDiv(y, 16);
-        int sz = Math.floorDiv(z, 16);
-        int lx = x - sx * 16;
-        int ly = y - sy * 16;
-        int lz = z - sz * 16;
-        long key = sectionKey(sx, sy, sz);
-        SectionBatch batch = pendingByTick.computeIfAbsent(key, k -> new SectionBatch(sx, sy, sz));
-        batch.add(lx, ly, lz, blockId);
+    private void queueOutgoing(long x, long y, long z, short blockId) {
+        chunkHandler.onReplicatedEdit(x, y, z);
+        pendingByTick.computeIfAbsent(sectionOf(x, y, z), SectionBatch::new)
+            .add((int) (x & 15), (int) (y & 15), (int) (z & 15), blockId);
     }
 
-    private static long sectionKey(int sx, int sy, int sz) {
-        return ((long) (sx & 0xFFFFFF) << 36) | ((long) (sz & 0xFFFFFF) << 12) | (sy & 0xFFF);
+    private static SectionKey sectionOf(long x, long y, long z) {
+        return new SectionKey(x >> 4, y >> 4, z >> 4);
     }
 
     // ─── Inbound application + validation ────────────────────────────────────────────
@@ -1373,13 +1360,31 @@ public final class ServerBlockHandler {
         if (type == null) {
             type = BlockType.AIR;
         }
+        if (type != BlockType.AIR) {
+            ensureEditableCube(world, x, y, z);
+        }
         // false = non-broadcasting: applies to the authoritative world without firing the
         // local-change hook (the server decides the rebroadcast via queueOutgoing).
         return world.setBlockAt(x, y, z, type, false);
     }
 
+    /**
+     * A placement into KNOWN AIR (a cube wholly above its column's top: the stream never loads all-air cubes)
+     * creates that cube as air first - otherwise building above the terrain could never apply. The stream
+     * adopts the host-created cube (complete as it is); the raised column top then pulls it into every nearby
+     * client's surface band, so clients request it. A cube with unknown cells is left to the retry queue
+     * ({@link World#ensureCube}). {@code World.setBlockAt} on a SERVER world does this itself; kept for callers
+     * that only want the cube.
+     */
+    public static void ensureEditableCube(World world, long x, long y, long z) {
+        if (!WorldConfiguration.inBounds(y) || world.isLoaded(x, y, z)) {
+            return;
+        }
+        world.ensureCube(x >> 5, y >> 5, z >> 5);
+    }
+
     private boolean validateClientEdit(ServerPlayer sp, BlockChangeC2S c) {
-        if (c.y() < 0 || c.y() >= WorldConfiguration.WORLD_HEIGHT) {
+        if (!WorldConfiguration.inBounds(c.y())) {
             return false;
         }
         if (BlockType.getById(c.blockTypeId() & 0xFFFF) == null) {
@@ -1408,7 +1413,7 @@ public final class ServerBlockHandler {
 
     private void sendRevert(ServerPlayer sp, int x, int y, int z, ServerWorldContext ctx) {
         World world = ctx.world();
-        if (world == null || y < 0 || y >= WorldConfiguration.WORLD_HEIGHT) {
+        if (world == null || !WorldConfiguration.inBounds(y)) {
             return;
         }
         BlockType actual = world.getBlockAt(x, y, z);
@@ -1418,11 +1423,11 @@ public final class ServerBlockHandler {
 
     /** Mutable buffer for batched edits in one section (mirrors the legacy wire layout). */
     private static final class SectionBatch {
-        final int sx, sy, sz;
+        final long sx, sy, sz;
         int[] packed = new int[8];
         int n = 0;
 
-        SectionBatch(int sx, int sy, int sz) { this.sx = sx; this.sy = sy; this.sz = sz; }
+        SectionBatch(SectionKey key) { this.sx = key.sx(); this.sy = key.sy(); this.sz = key.sz(); }
 
         /** Past this many cells, repeat edits are found through {@link #slotOf}, not a scan. */
         private static final int INDEX_THRESHOLD = 16;

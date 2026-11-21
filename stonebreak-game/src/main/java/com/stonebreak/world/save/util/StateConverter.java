@@ -1,16 +1,11 @@
 package com.stonebreak.world.save.util;
 
-import com.stonebreak.world.save.model.WorldData;
 import com.stonebreak.world.save.model.PlayerData;
-import com.stonebreak.world.save.model.ChunkData;
-import com.stonebreak.world.World;
 import com.stonebreak.player.CharacterStats;
 import com.stonebreak.player.Player;
-import com.stonebreak.world.chunk.Chunk;
-import com.stonebreak.world.chunk.api.commonChunkOperations.data.CcoSerializableSnapshot;
 import com.stonebreak.items.ItemStack;
 import com.stonebreak.items.Inventory;
-import org.joml.Vector3f;
+import org.joml.Vector3d;
 import org.joml.Vector2f;
 import com.stonebreak.mobs.entities.EntityType;
 import java.util.EnumMap;
@@ -53,7 +48,7 @@ public final class StateConverter {
         CharacterStats cs = player.getCharacterStats();
 
         return PlayerData.builder()
-            .position(new Vector3f(player.getPosition()))
+            .position(new Vector3d(player.getPosition()))
             .rotation(new Vector2f(player.getCamera().getYaw(), player.getCamera().getPitch()))
             .health(player.getHealth())
             .flightEnabled(player.isFlightEnabled())
@@ -222,55 +217,5 @@ public final class StateConverter {
         if (data.getHealth() <= 0f) {
             player.respawn();
         }
-    }
-
-    /**
-     * Converts Chunk to ChunkData using CCO snapshot API.
-     * Water metadata is automatically extracted via CCO integration.
-     */
-    public static ChunkData toChunkData(Chunk chunk, World world) {
-        // CCO snapshot now includes water metadata automatically
-        CcoSerializableSnapshot snapshot = chunk.createSnapshot(world);
-        return snapshot.toChunkData();
-    }
-
-    /**
-     * Applies ChunkData to Chunk using CCO snapshot API.
-     * Water metadata and entities are automatically applied via CCO integration.
-     */
-    public static void applyChunkData(Chunk chunk, ChunkData data, World world) {
-        // Convert ChunkData back to CCO snapshot (includes water metadata, entities,
-        // entity generation flag, per-block SBO state map, AND snow layers).
-        // CRITICAL: pass every trailing map — dropping one silently loses that state
-        // on load (e.g. the furnace's lit/unlit variant or stacked snow heights).
-        CcoSerializableSnapshot snapshot = new CcoSerializableSnapshot(
-            data.getChunkX(),
-            data.getChunkZ(),
-            data.getBlockStorage(),
-            data.getLastModified(),
-            data.isFeaturesPopulated(),
-            data.hasEntitiesGenerated(),
-            data.getWaterMetadata(),
-            data.getEntities(),
-            data.getBlockStates(),        // SBO 1.3 per-block state map
-            data.getSnowLayers()          // v3 snow layer counts
-        );
-
-        // Load from snapshot (hydrates the chunk's water layer from water metadata)
-        chunk.loadFromSnapshot(snapshot, world);
-
-        // NOTE: Do NOT call markClean() here!
-        // loadFromSnapshot() marks the chunk as MESH_DIRTY, which is correct - loaded chunks need mesh regeneration.
-        // markClean() should ONLY be called after a successful save, not after loading.
-    }
-
-    /**
-     * Creates ChunkData and applies to existing Chunk.
-     * Used when loading chunk from disk.
-     */
-    public static Chunk createChunkFromData(ChunkData data, World world) {
-        Chunk chunk = new Chunk(data.getChunkX(), data.getChunkZ());
-        applyChunkData(chunk, data, world);
-        return chunk;
     }
 }

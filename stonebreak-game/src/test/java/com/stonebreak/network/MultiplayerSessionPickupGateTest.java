@@ -27,7 +27,7 @@ import static org.mockito.Mockito.mock;
  */
 class MultiplayerSessionPickupGateTest {
 
-    private static final Vector3f DROP = new Vector3f(0f, 0f, 0f);
+    private static final org.joml.Vector3d DROP = new org.joml.Vector3d(0.0, 0.0, 0.0);
     private static final int STICK = ItemType.STICK.getId();
 
     private static ServerPlayer newPlayer(int id, String name, float x) {
@@ -40,7 +40,7 @@ class MultiplayerSessionPickupGateTest {
     }
 
     /** The world spawn the respawn test lands at (the server puts a respawn there, #343). */
-    private static final Vector3f SPAWN = new Vector3f(50f, 0f, 0f);
+    private static final org.joml.Vector3d SPAWN = new org.joml.Vector3d(50, 0, 0);
 
     private static com.stonebreak.network.server.ServerWorldContext ctx() {
         com.stonebreak.network.server.ServerWorldContext ctx =
@@ -81,7 +81,7 @@ class MultiplayerSessionPickupGateTest {
         assertNull(MultiplayerSession.nearestEligiblePickupCandidate(List.of(sp), DROP, 1.5f, STICK),
                 "respawned away from the corpse, so the death drop is out of range");
         assertSame(sp, MultiplayerSession.nearestEligiblePickupCandidate(
-                List.of(sp), new Vector3f(50f, 0f, 0f), 1.5f, STICK));
+                List.of(sp), new org.joml.Vector3d(50.0, 0.0, 0.0), 1.5f, STICK));
     }
 
     @Test
