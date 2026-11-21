@@ -41,6 +41,8 @@ import java.util.function.Supplier;
  *   <li>{@value FurnaceCrucibleProvider#BOWL_ID} and {@value FurnaceCrucibleProvider#RINGS_ID}
  *       v{@value FurnaceCrucibleProvider#VERSION}: the furnace crucible and its progress rings
  *       (Skia only, {@code params} = the {@code furnace} record)</li>
+ *   <li>{@value ScreenVignetteProvider#ID} v{@value ScreenVignetteProvider#VERSION}: the HUD's damage /
+ *       low-health screen-edge vignette (Skia only, {@code params.intensity})</li>
  * </ul>
  *
  * Providers render GL in {@code prepare}, so hosts must run {@code UiDocumentView.prepareProviders()}
@@ -65,7 +67,8 @@ public final class GameDrawProviders implements AutoCloseable {
         Map.entry(WoodPanelProvider.ID, WoodPanelProvider.VERSION),
         Map.entry(PipsProvider.ID, PipsProvider.VERSION),
         Map.entry(SetupIconProvider.ID, SetupIconProvider.VERSION),
-        Map.entry(BattleHudProvider.ID, BattleHudProvider.VERSION));
+        Map.entry(BattleHudProvider.ID, BattleHudProvider.VERSION),
+        Map.entry(ScreenVignetteProvider.ID, ScreenVignetteProvider.VERSION));
 
     private static GameDrawProviders instance;
     private static boolean installed;
@@ -103,6 +106,7 @@ public final class GameDrawProviders implements AutoCloseable {
         map.put(PipsProvider.ID, new PipsProvider());
         map.put(SetupIconProvider.ID, new SetupIconProvider());
         map.put(BattleHudProvider.ID, new BattleHudProvider(BattleHudProvider::gameScreen, typeface));
+        map.put(ScreenVignetteProvider.ID, new ScreenVignetteProvider());
         this.providers = java.util.Collections.unmodifiableMap(map);
         if (!providers.keySet().equals(DECLARED.keySet())) {
             throw new IllegalStateException("declared providers " + DECLARED.keySet() + " != " + providers.keySet());
@@ -165,7 +169,8 @@ public final class GameDrawProviders implements AutoCloseable {
             Map.entry(WoodPanelProvider.ID, new WoodPanelProvider()),
             Map.entry(PipsProvider.ID, new PipsProvider()),
             Map.entry(SetupIconProvider.ID, new SetupIconProvider()),
-            Map.entry(BattleHudProvider.ID, new BattleHudProvider(() -> null, () -> null)));
+            Map.entry(BattleHudProvider.ID, new BattleHudProvider(() -> null, () -> null)),
+            Map.entry(ScreenVignetteProvider.ID, new ScreenVignetteProvider()));
     }
 
     /** Declares every provider on {@code host}, so activation accepts documents that need them. */

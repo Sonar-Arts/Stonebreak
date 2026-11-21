@@ -553,6 +553,8 @@ public class Player {
 
     // Dodge (universal)
     public DodgeController getDodge() { return c.dodge; }
+    /** Hurt flash, low-health pulse and camera jolt (the HUD's {@code hurt} root reads it). */
+    public com.stonebreak.player.combat.DamageFeedback getDamageFeedback() { return c.damageFeedback; }
 
     /**
      * Triggers a dodge dash in the direction the WASD input is currently asking for (or backward

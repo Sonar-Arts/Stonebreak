@@ -64,6 +64,7 @@ final class PlayerControllers {
     final RogueAbilityController rogueAbilities;
     final DodgeController dodge;
     final StealthController stealth = new StealthController();
+    final com.stonebreak.player.combat.DamageFeedback damageFeedback = new com.stonebreak.player.combat.DamageFeedback();
 
     // Interaction
     final RaycastEngine raycastEngine;

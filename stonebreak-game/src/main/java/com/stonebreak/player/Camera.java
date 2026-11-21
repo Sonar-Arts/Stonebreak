@@ -35,7 +35,12 @@ public class Camera {
     private final Vector3f cinematicFront = new Vector3f(0.0f, 0.0f, -1.0f);
     private final Vector3f cinematicUp = new Vector3f(0.0f, 1.0f, 0.0f);
     private final Vector3f cinematicRight = new Vector3f(1.0f, 0.0f, 0.0f);
-    
+
+    // View-only shake (degrees), see setViewShake.
+    private float shakeYaw;
+    private float shakePitch;
+    private float shakeRoll;
+
     /**
      * Creates a camera with default values.
      */
@@ -77,7 +82,34 @@ public class Camera {
     public Matrix4f getViewMatrix() {
         Vector3f eye = getRenderPosition(new Vector3f());
         Vector3f target = eye.add(getFront(), new Vector3f());
-        return new Matrix4f().lookAt(eye, target, getUp());
+        return applyShake(new Matrix4f()).lookAt(eye, target, getUp());
+    }
+
+    /**
+     * Sets the view-only shake (degrees, view-space yaw/pitch/roll) that {@link #getViewMatrix()}
+     * rotates the picture by — the hurt jolt ({@code DamageFeedback}). It never touches the Euler
+     * angles or the basis vectors, so aiming, block targeting, audio and movement stay steady;
+     * frustum culling reads the shaken view matrix, so it stays consistent with what is drawn.
+     * Ignored while a cinematic owns the view.
+     */
+    public void setViewShake(float yawDeg, float pitchDeg, float rollDeg) {
+        this.shakeYaw = finiteOr0(yawDeg);
+        this.shakePitch = finiteOr0(pitchDeg);
+        this.shakeRoll = finiteOr0(rollDeg);
+    }
+
+    /** {@code m} times the view-space shake rotation (identity when there is none). */
+    private Matrix4f applyShake(Matrix4f m) {
+        if (cinematicActive || (shakeYaw == 0f && shakePitch == 0f && shakeRoll == 0f)) {
+            return m;
+        }
+        return m.rotateZ((float) Math.toRadians(shakeRoll))
+                .rotateX((float) Math.toRadians(-shakePitch))
+                .rotateY((float) Math.toRadians(shakeYaw));
+    }
+
+    private static float finiteOr0(float v) {
+        return Float.isFinite(v) ? v : 0f;
     }
 
     /**
@@ -225,6 +257,7 @@ public class Camera {
         this.yaw = YAW;
         this.pitch = PITCH;
         this.front.set(0.0f, 0.0f, -1.0f);
+        this.shakeYaw = this.shakePitch = this.shakeRoll = 0f;
         updateCameraVectors();
     }
     

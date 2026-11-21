@@ -40,6 +40,7 @@ final class PlayerUpdatePipeline {
     }
 
     void update() {
+        updateDamageFeedback();
         if (c.health.isDead()) {
             c.deathHandler.processDeathIfNeeded();
             return;
@@ -163,6 +164,19 @@ final class PlayerUpdatePipeline {
         if (!wasOnGround) {
             stats.addTimeInAir(dt);
         }
+    }
+
+    /**
+     * Hurt flash, low-health pulse and camera jolt. Runs before the death / unloaded-ground early
+     * returns, so a lethal hit still flashes and the jolt settles behind the death screen.
+     */
+    private void updateDamageFeedback() {
+        var settings = com.stonebreak.config.Settings.getInstance();
+        boolean motion = settings == null || !settings.isReducedMotion();
+        c.damageFeedback.update(Game.getDeltaTime(), c.health.getHealth(), c.health.getMaxHealth(),
+                c.health.isDead(), motion);
+        camera.setViewShake(c.damageFeedback.shakeYaw(), c.damageFeedback.shakePitch(),
+                c.damageFeedback.shakeRoll());
     }
 
     /** Eye-height camera in first person; terrain-clamped orbit camera in third person. */

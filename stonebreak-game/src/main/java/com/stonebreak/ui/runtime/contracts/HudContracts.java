@@ -26,14 +26,18 @@ import java.util.Objects;
  *       {@code stonebreak:class-gauge} provider paints) and {@code tooltip {shown, text, alpha, slot}} (the
  *       selected item's name over hotbar slot {@code slot}: 1.5 s, then a 0.5 s fade, from {@link HotbarScreen});</li>
  *   <li>collection {@code hearts}: one row per heart ({@code heart:i}, 2 HP each) with its
- *       {@code state} full, half or empty (thresholds 0.75 / 0.25).</li>
+ *       {@code state} full, half or empty (thresholds 0.75 / 0.25);</li>
+ *   <li>root {@code hurt} (version 2): the damage vignette's 0..1 intensities from
+ *       {@link com.stonebreak.player.combat.DamageFeedback}: {@code flash} (a hit, fading),
+ *       {@code lowHealth} (the heartbeat pulse under 30% health) and {@code vignette} (the two combined;
+ *       what the HUD document's {@code stonebreak:screen-vignette} provider is bound to).</li>
  * </ul>
  * Hotbar slots are the {@code stonebreak:hotbar} contract. Republished only when a shown value
  * changed (a regenerating bar changes every frame: that is the HUD's high-frequency path).
  */
 public final class HudContracts {
 
-    public static final HostContract HUD = HostContract.of("stonebreak:hud", 1);
+    public static final HostContract HUD = HostContract.of("stonebreak:hud", 2);
 
     private static final DataType.Obj BAR = DataType.object("shown", DataType.bool(), "fraction", DataType.number());
     public static final DataType.Obj TYPE = DataType.object("present", DataType.bool(), "heartSize", DataType.integer(),
@@ -42,6 +46,10 @@ public final class HudContracts {
         "classId", DataType.string(),
         "tooltip", DataType.object("shown", DataType.bool(), "text", DataType.string(), "alpha", DataType.number(),
             "slot", DataType.integer()));
+    public static final DataType.Obj HURT = DataType.object("flash", DataType.number(),
+        "lowHealth", DataType.number(), "vignette", DataType.number());
+    /** Hurt values are published in steps of this size (a fade does not republish every frame for nothing). */
+    private static final float HURT_STEP = 1f / 256f;
     public static final DataType.ListOf HEARTS = DataType.list(
         DataType.object("heart", DataType.string(), "state", DataType.string()), "heart");
 
@@ -71,6 +79,9 @@ public final class HudContracts {
 
     private final Services services;
     private final DataCell cell;
+    private final DataCell hurt;
+    private int lastFlash = -1;
+    private int lastLow = -1;
     private final DataCollection hearts = new DataCollection(HEARTS);
     private Snapshot last;
     private String[] heartStates = new String[0];
@@ -80,6 +91,7 @@ public final class HudContracts {
         this.services = services;
         cell = ui.data().register("hud", new DataCell(TYPE, value(empty())), HUD);
         ui.data().register("hearts", hearts, HUD);
+        hurt = ui.data().register("hurt", new DataCell(HURT, hurtValue(0, 0)), HUD);
     }
 
     /** UI thread, once per frame. An unchanged HUD allocates only its snapshot. */
@@ -94,6 +106,7 @@ public final class HudContracts {
             cell.set(value(now));
         }
         publishHearts(p);
+        publishHurt(p);
     }
 
     /** Back to no player (world left). */
@@ -102,6 +115,28 @@ public final class HudContracts {
         cell.set(value(last));
         heartStates = new String[0];
         hearts.setAll(List.of());
+        publishHurt(null);
+    }
+
+    /** The damage vignette's intensities, republished when either moved by a {@link #HURT_STEP}. */
+    private void publishHurt(Player p) {
+        var fb = p == null ? null : p.getDamageFeedback();
+        int flash = fb == null ? 0 : Math.round(fb.flash() / HURT_STEP);
+        int low = fb == null ? 0 : Math.round(fb.lowHealth() / HURT_STEP);
+        if (flash == lastFlash && low == lastLow) {
+            return;
+        }
+        lastFlash = flash;
+        lastLow = low;
+        hurt.set(hurtValue(flash * HURT_STEP, low * HURT_STEP));
+    }
+
+    private static UiValue.Obj hurtValue(float flash, float low) {
+        Map<String, UiValue> m = new LinkedHashMap<>();
+        m.put("flash", SettingsContract.exact(flash));
+        m.put("lowHealth", SettingsContract.exact(low));
+        m.put("vignette", SettingsContract.exact(Math.max(flash, low)));
+        return new UiValue.Obj(m);
     }
 
     private Snapshot snapshot(Player p, HotbarScreen hotbar) {

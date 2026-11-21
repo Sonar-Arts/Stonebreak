@@ -22,6 +22,7 @@
     "character": "stonebreak:player.character",
     "hud": "stonebreak:hud",
     "hearts": "stonebreak:hud",
+    "hurt": "stonebreak:hud",
     "crosshair": "stonebreak:crosshair",
     "worldMarkers": "stonebreak:world.hud",
     "stealth": "stonebreak:world.hud",
@@ -578,6 +579,11 @@
         "slot": 0
       },
       "hearts": 10
+    },
+    "hurt": {
+      "flash": 0.8,
+      "lowHealth": 0,
+      "vignette": 0.8
     },
     "crosshair": {
       "style": "SIMPLE_CROSS",
