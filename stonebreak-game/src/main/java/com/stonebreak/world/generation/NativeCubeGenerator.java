@@ -102,7 +102,9 @@ public final class NativeCubeGenerator implements AutoCloseable {
         /* SBW ABI 6 (Project-Heracles): wild bushes on plains grass */
         BLUEBERRY_BUSH,
         /* SBW ABI 7 (Project-Heracles): The Shade's ground and trees */
-        DRY_GRASS, DRY_OAK_LOG, DRY_OAK_LEAVES
+        DRY_GRASS, DRY_OAK_LOG, DRY_OAK_LEAVES,
+        /* added within SBW ABI 7 (2026-11-22): sparse dead bushes on desert sand; an older library ignores it */
+        DEAD_BUSH
     }
 
     /**

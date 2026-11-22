@@ -29,7 +29,7 @@ public final class NaturalGround {
                         BlockType.ICE, BlockType.SNOW, BlockType.SWAMPY_GRASS, BlockType.DRY_GRASS,
                         BlockType.GRAVEL, BlockType.CLAY, BlockType.LIMESTONE, BlockType.LIMESTONE_STALAGMITE,
                         BlockType.WATER,
-                        BlockType.ROSE, BlockType.DANDELION, BlockType.WILDGRASS, BlockType.CACTUS,
+                        BlockType.ROSE, BlockType.DANDELION, BlockType.WILDGRASS, BlockType.DEAD_BUSH, BlockType.CACTUS,
                         BlockType.BLUEBERRY_BUSH, BlockType.CYPRESS_SAPLING, BlockType.DRY_OAK_SAPLING,
                         BlockType.LEAVES, BlockType.PINE_LEAVES, BlockType.ELM_LEAVES, BlockType.CYPRESS_LEAVES,
                         BlockType.DRY_OAK_LEAVES)

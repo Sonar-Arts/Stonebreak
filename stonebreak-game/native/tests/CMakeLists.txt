@@ -38,6 +38,11 @@ add_executable(worldgen_blueberry_test blueberry_test.cpp)
 target_link_libraries(worldgen_blueberry_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
 target_compile_options(worldgen_blueberry_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
 add_test(NAME worldgen_blueberry COMMAND worldgen_blueberry_test)
+# Dead bushes (2026-11-22): sparse on desert / red sand desert sand, never with a cactus, id 0 = none.
+add_executable(worldgen_dead_bush_test dead_bush_test.cpp)
+target_link_libraries(worldgen_dead_bush_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)
+target_compile_options(worldgen_dead_bush_test PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-ffp-contract=off>)
+add_test(NAME worldgen_dead_bush COMMAND worldgen_dead_bush_test)
 
 add_executable(worldgen_shade_test shade_test.cpp)
 target_link_libraries(worldgen_shade_test PRIVATE stonebreak_worldgen_obj stonebreak_warnings Threads::Threads)

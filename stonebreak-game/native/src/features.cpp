@@ -799,9 +799,11 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
                          H_STONY = javaStringHash("stony_peaks_feature"), H_GLACIAL = javaStringHash("glacial_feature"),
                          H_BADLANDS = javaStringHash("badlands_feature"),
                          H_BB_GROUP = javaStringHash("blueberry_group"), H_BB_SIZE = javaStringHash("blueberry_group_size"),
-                         H_BB_STAGE = javaStringHash("blueberry_stage");
+                         H_BB_STAGE = javaStringHash("blueberry_stage"), H_DEAD_BUSH = javaStringHash("dead_bush");
     /* Chance an open plains grass column anchors a blueberry group (about one group per four 16x16 plains areas). */
     constexpr float BB_GROUP_CHANCE = 0.001f;
+    /* Chance an open desert sand column grows a dead bush (sparse: about one per 16x16 desert area). */
+    constexpr float DEAD_BUSH_CHANCE = 0.0035f;
     FactSource facts(*this);
     const uint16_t AIRID = cfg.id[SBW_AIR];
     (void) AIRID;
@@ -955,15 +957,21 @@ void Generator::collectFeatures(int64_t x0, int64_t z0, int64_t x1, int64_t z1, 
                 }
                 out.push_back(std::move(g));
             }
-            /* cactus */
-            if ((f.biome == SBW_DESERT || f.biome == SBW_RED_SAND_DESERT)
-                    && (surface == cfg.id[SBW_SAND] || surface == cfg.id[SBW_RED_SAND])
-                    && drand.getFloat(x, z, H_CACTUS) < 0.003f) {
+            /* cactus; on the columns without one, now and then a dead bush (2026-11-22; own DeterministicRandom key, so
+             * no other feature moves; id 0 = an older game, none) */
+            const bool desertSand = (f.biome == SBW_DESERT || f.biome == SBW_RED_SAND_DESERT)
+                                    && (surface == cfg.id[SBW_SAND] || surface == cfg.id[SBW_RED_SAND]);
+            if (desertSand && drand.getFloat(x, z, H_CACTUS) < 0.003f) {
                 const int height = drand.getFloat(x, z, H_CACTUS_H) < 0.5f ? 2 : 3;
                 ft.kind = Feature::PLANT;
                 ft.cells.clear();
                 for (int i = 0; i < height && h + i < cfg.maxY; i++) ft.cells.push_back({x, h + i, z, cfg.id[SBW_CACTUS], 0});
                 if (!ft.cells.empty()) out.push_back(ft);
+            } else if (desertSand && f.uncarved && cfg.id[SBW_DEAD_BUSH] != 0
+                       && drand.getFloat(x, z, H_DEAD_BUSH) < DEAD_BUSH_CHANCE) {
+                ft.kind = Feature::PLANT;
+                ft.cells = {{x, h, z, cfg.id[SBW_DEAD_BUSH], 0}};
+                out.push_back(ft);
             }
             /* decorations */
             auto snow = [&](int minLayers, int extra) {

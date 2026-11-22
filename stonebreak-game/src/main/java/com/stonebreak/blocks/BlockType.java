@@ -159,6 +159,9 @@ public final class BlockType implements Item, IBlockType {
     // blocks/blueberrybush/BlueberryBushState). Grows via world/growth/BlueberryBushGrowthSystem;
     // a ripe bush is picked with right-click and goes back to Mature instead of breaking.
     public static final BlockType BLUEBERRY_BUSH = fromRegistry("stonebreak:blueberry_bush", "BLUEBERRY_BUSH");
+    // Dead bush: cross-pane plant, scattered sparsely on desert / red sand desert sand by the native
+    // worldgen (native/src/features.cpp, SBW_DEAD_BUSH).
+    public static final BlockType DEAD_BUSH = fromRegistry("stonebreak:dead_bush", "DEAD_BUSH");
     /** Cooks raw meat put on it; a goblin camp gathers round one (blocks.campfire). */
     public static final BlockType CAMPFIRE = fromRegistry("stonebreak:campfire", "CAMPFIRE");
     /** Twenty-seven slots of storage (blocks.container.ChestState). */
@@ -465,7 +468,7 @@ public final class BlockType implements Item, IBlockType {
     }
 
     public boolean isFlower() {
-        return this == ROSE || this == DANDELION || this == WILDGRASS;
+        return this == ROSE || this == DANDELION || this == WILDGRASS || this == DEAD_BUSH;
     }
 
     /**

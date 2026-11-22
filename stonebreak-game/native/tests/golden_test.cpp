@@ -69,7 +69,7 @@ bool skyOpaqueRole(int r) {
     switch (r) {
         case SBW_AIR: case SBW_WATER: case SBW_ICE: case SBW_SNOW: case SBW_LEAVES: case SBW_ELM_LEAVES:
         case SBW_PINE_LEAVES: case SBW_CYPRESS_LEAVES: case SBW_ROSE: case SBW_WILDGRASS: case SBW_DANDELION:
-        case SBW_CACTUS: case SBW_LIMESTONE_STALAGMITE: return false;
+        case SBW_CACTUS: case SBW_LIMESTONE_STALAGMITE: case SBW_DEAD_BUSH: return false;
         default: return true;
     }
 }

@@ -168,6 +168,9 @@ enum sbw_block {
     SBW_BLUEBERRY_BUSH,
     /* SBW ABI 7 (Project-Heracles): The Shade's ground and trees; 0 = not supplied -> grass / the oak's blocks */
     SBW_DRY_GRASS, SBW_DRY_OAK_LOG, SBW_DRY_OAK_LEAVES,
+    /* added within SBW ABI 7 (2026-11-22): sparse dead bushes on desert / red sand desert sand (block_ids stays
+     * SBW_BLOCK_CAP wide, so no layout change); id 0 = not supplied -> none */
+    SBW_DEAD_BUSH,
     SBW_BLOCK_COUNT
 };
 #define SBW_BLOCK_CAP 64

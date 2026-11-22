@@ -181,7 +181,8 @@ final class LivingEntityLocomotion {
     private static boolean isFlower(BlockType blockType) {
         return blockType == BlockType.ROSE ||
                blockType == BlockType.DANDELION ||
-               blockType == BlockType.WILDGRASS;
+               blockType == BlockType.WILDGRASS ||
+               blockType == BlockType.DEAD_BUSH;
     }
 
     /**
